@@ -3,37 +3,25 @@ address: '0x0810CF4A'
 kind: function
 previous_names: []
 status: hypothesis
-summary: Looks up the chip this battle object has selected and kicks off chip-attack handling on the object (returns
-  0/1).
-interface: (r5 = BattleObjectPtr, r7 = ?, r10 = ToolkitPtr) -> r0 = bool/int (flag), r1 = ?; preserves r4..r7
-details: "Assembly could not be located (\"sub_810CF4A not found in bn6f/asm\"), so the description is\n  inferred\
-  \ from the callee list, the callee contracts, and the caller (sub_810CE1A).\n\n  The single known caller, sub_810CE1A,\
-  \ takes r5/r7/r10 (battle object + toolkit) and only\n  survives r1/r5, and it in/out contract overlaps heavily\
-  \ with this function, so this is\n  almost certainly the inner per-actor step it calls once a chip is queued.\n\
-  \n  The callees suggest the following skeleton:\n    1. r0 = battle_getSelectedChipForUse_800ED90(r5 = actor,\
-  \ ...) -- fetches the chip id\n       (or possibly the chip-pointer-pair) the actor intends to use, resolving\
-  \ hand/field\n       selection.\n    2. The result is fed into somethingWriteChipParams_80126E4(...) to materialise\
-  \ the\n       chip's parameters on the BattleObject's AttackVars / AIData.AttackVars region\n       (offsets seen\
-  \ in BattleObject+AIData.AttackVars at 0xa0..0xf0 and AIAttackVars at\n       +0x00..0x50).\n    3. object_setAttack0(r0\
-  \ = chipParamStruct, r5 = actor) is called to actually start\n       attack-0 on the object.\n    4. battle_getStateUnk40_800A704\
-  \ reads BattleState+0x40 (oBattleState_Unk_40) into r0,\n       probably as a guard or to pick a parameter (e.g.\
-  \ main/sub attack slot).\n    5. sub_800F322 is called with r5; it has no in-contract apart from r5 and writes\
-  \ r0\n       and NZCV -- looks like a small finalisation step.\n\n  In/out contract says r0 and r1 are caller-visible\
-  \ on return and flags NZCV are live,\n  which is consistent with a \"did the chip setup succeed / was there a\
-  \ chip\" bool.\n\n  Likely effect: given a BattleObject whose AI has already chosen a chip, look up the\n  chip\
-  \ parameters and set the object's attack-0 to that chip, returning a status flag.\n"
+summary: Stages a chip-use from the AI's currently selected chip by filling attack vars and writing params.
+interface: (r5 = AIDataPtr) -> r0 = ?, r1 = ? ; mutates AIData, attack vars, and the battle object's chip params
+details: "Operates on the AI's AIData pointer carried in r5 (r4/r7/r10 hold the surrounding battle context, with\n\
+  \  the toolkit/BattleState in r10). Calls battle_getSelectedChipForUse_800ED90 (via r0) to fetch the chip\n  the\
+  \ AI will use; battle_getStateUnk40_800A704 pulls an Unk_40 from the current BattleState used as\n  param data;\
+  \ somethingWriteChipParams_80126E4 pushes per-chip parameters onto the BattleObject;\n  object_setAttack0 forces\
+  \ the actor's CurAnim/CurAnimCopy (oBattleObject+0x10/0x11) to 0; and\n  sub_800F322 queues the chip use on the\
+  \ AI side (AttackVars at oAIData+0xa0). The two scratch regs\n  r0/r1 returned to the caller carry the params\
+  \ pointer and the chip use result for the AI tick. As\n  the assembly itself is missing from this build, the role\
+  \ is reconstructed from the callee set and\n  the caller's contract (which keeps r4/r5/r7/r10/lr over the call).\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- Caller sub_810CE1A''s in/out contract (in r4/r5/r6/r7/r10/lr, out r1/r5) matches a thin wrapper that
-    calls a per-actor subroutine and then merges a status, which fits this function''s contract (in r4/r5/r7/r10/lr,
-    out r0/r1/r4..r7). - Callee battle_getSelectedChipForUse_800ED90 explicitly resolves which chip a battle object
-    has queued for use from either its side''s hand or its own chip field -- the natural first step of an attack-from-chip
-    routine. - Callee somethingWriteChipParams_80126E4''s contract consumes r5 (the BattleObject) and r7 alongside
-    the chip handle from step 1, suggesting it materialises the chip''s per-object attack parameter block. - Callee
-    object_setAttack0(r0, r5) writes the assembled chip params into the object''s attack slot, confirming the routine
-    culminates in a "start this attack" call. - battle_getStateUnk40_800A704 reads oBattleState_Unk_40, a battle-global
-    value, so it'
+  detail: '- All four callees plus the caller sub_810CE1A share r4/r5/r7/r10/lr, identifying this as AI tick glue.
+    - battle_getSelectedChipForUse_800ED90 is the per-actor "chip I want to use this turn" resolver. - object_setAttack0
+    zeroes the CurAnim/CurAnimCopy fields of oBattleObject, the standard "init attack" hook. - somethingWriteChipParams_80126E4
+    takes the chip id and the param word to write into chip param buffers. - sub_800F322 only consumes r5 (the AIDataPtr)
+    and writes back into AttackVars — consistent with queuing. - battle_getStateUnk40_800A704 returns BattleState+0x40
+    used as the param source word.'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x0810CF4A
@@ -48,18 +36,13 @@ evidence:
     '
   result: battlesweep, beastsp, story5, story6, story9
 open_questions:
-- The actual control flow, registers/flags ordering and exact return semantics are
-- unknowable without the disassembly; the body section is reconstructed entirely from
-- the callee contracts.
-- Whether r7 is the hand pointer / actor index / chip-id pair used by the chip-params
-- writer cannot be confirmed without seeing the loads/stores around the bl sites.
-- The asm file lookup is failing for this function; recovering the ROM bytes at
-- 0x0810CF4A and disassembling them would settle all of the above.
-- '```'
+- The assembly listing is empty in this build so the precise ordering and conditional branches are
+- unknown; the body might also short-circuit when no chip is selected. Re-running with the asm dump
+- available would let us confirm the exact ordering vs. whether this is called per-actor or once per AI tick.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f c83478a3
+  where: bn6f 353d80a9
   tool: tools/symdoc.py

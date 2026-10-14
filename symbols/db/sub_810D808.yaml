@@ -3,46 +3,37 @@ address: '0x0810D808'
 kind: function
 previous_names: []
 status: hypothesis
-summary: 'Battle-object AI step (story-boss Anpanman/Snake-arm logic): resets the object''s timer to 8, refreshes
-  its panel highlight set with a directional side offset, sets a counter time and the INVISIBLE flag, then lets
-  the side-sign fall back through the helper.'
-interface: (r0 = ignored, r1 = &this function = 0x0810d809, r2 = 0x80, r3 = 3) -> r0 = 0x25 | 0x24 | 0x7f ; writes
-  the visible panels via sub_8109660, mutates the battle object's CollisionData/Timer, sets OBJECT_FLAGS_INVIS on
-  the object, leaves r1 with the side-direction multiplier the caller preserves in r5.
-details: "- Live snapshot is at 0x03007d70; capture comes from a story cutscene (snap_story6_*.bin) with lr = 0x0810d7f0.\n\
-  \  - lr 0x0810d7f0 means this is dispatched from a per-cutscene jumptable slot at 0x0810d7f0..0x0810d807 (5 thumb\
-  \ slots) — i.e. it's a story-boss behaviour invoked every BattleObject Update tick.\n  - Captured return r0 ranges:\
-  \ 0x24, 0x25, 0x7f, with C/V flags set; this is the chain of helper return values, not a \"real\" return value\
-  \ passed back to game state.\n  - Direct callees:\n      * battle_ResetObjectTimerTo8_80C4072 — sets the object's\
-  \ CurStateAction phase timer / CounterTimer field at +8 to 8 (start-of-tick).\n      * highlightPanelIfSomeCondition_8109660\
-  \ — paints the highlight set; takes (basePanelX, basePanelY, sideSign, ?). The constant r2=0x80 / r3=3 in the\
-  \ live capture feed this call.\n      * object_setCounterTime — sets CollisionData+0xd \"CounterTimer\" (already-initialised\
-  \ at 8 by the first helper, then set by this one with r5 = battler).\n      * object_setFlag1 — sets OBJECT_FLAGS_INVISIBLE\
-  \ (0x02) on CollisionData+3c.\n      * object_getFrontDirection — returns +1/-1 facing sign for the battler (r5\
-  \ in / r0 out).\n      * sub_80C5578 — likely an object-state/handler animation tick helper; commonly used to\
-  \ advance phase / AnimState.\n  - High-level flow derived from the callee set: reset timer to 8, paint highlight\
-  \ panels relative to battler panel using front direction, set counter time and INVISIBLE flag, run sub_80C5578\
-  \ with current state, then return the side-direction sign from object_getFrontDirection to the caller.\n  - The\
-  \ function uses r5 as the live battle-object pointer (BattleObject*), r10 as ToolkitPtr (standard battle convention),\
-  \ and clobbers r0-r4 plus callee-saved lr.\n  - The captured exit r0 values 0x24 and 0x25 are unusual — they're\
-  \ values returned by the chain of helpers, not meaningful to the caller. The 0x7f exits look like a side-effect\
-  \ of a subsequent helper returning a status byte (likely sub_80C5578's anim-state return).\n  - The chosen name\
-  \ reflects the story6 capture (Anpanman is a story-boss battler in BN6) plus the panel highlight + snake/arm panel-pattern\
-  \ behaviour suggested by highlightPanelIfSomeCondition_8109660.\n"
+summary: Drives one battle object's per-frame panel-highlight pass (counter-timer reset, side-flip direction lookup,
+  panel highlight for matching cells, related flag set).
+interface: (r0=ignored, r1=`BattleObject*` aliased with `r5`, r2=0x80, r3=3; out=r0=panel slot/iteration byte, r1=possibly
+  the cur-chip slot index; r4/r5/r7/r10/lr are callee-saved)
+details: "The assembly for this address was not located in the bn6f asm directory (`sub_810D808 not found in bn6f/asm`),\
+  \ so the description is inferred from the lifter contract, callees and captured-call arguments.\n  - Entry always\
+  \ loads r0=0, r1=`0810d809` (a `BattleObject*`-like address matching the linked-list sentinel of the battle-object\
+  \ list), r2=0x80, r3=3, sp=`03007d70`, lr=`0810d7f0`. That matches the project's \"battle object list walk with\
+  \ param block\" calling convention used by other `0x810D7xx` battle-object dispatchers.\n  - The callees it invokes\
+  \ match the operation: `battle_ResetObjectTimerTo8_80C4072` writes 8 into `BattleObject.Timer`; `object_setCounterTime`\
+  \ writes the counter; `object_getFrontDirection` returns the +/-1 facing multiplier; `object_setFlag1` ORs a flag\
+  \ into the object's collision `ObjectFlags1`; `highlightPanelIfSomeCondition_8109660` highlights panels using\
+  \ a (dx,dy) list around the object's panel coords with a side multiplier.\n  - Exit r0 cycles through small values\
+  \ (0x24, 0x25, 0x7f) and the captured-call stack frame is the same `03007d70` used by other battle update frames.\
+  \ Together this points to a per-frame battle object update that walks a panel list, sets per-object state, and\
+  \ returns either a hit count or a chip/slot index.\n  - Because no assembly was provided, every claim about field\
+  \ offsets, the highlight rule, and the meaning of the return value is inference from callee behaviour, not from\
+  \ disassembly.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- lr=0x0810d7f0 in every snapshot -> dispatcher at 0x0810d7f0, a per-tick story cutscene/battle-object
-    behaviour table. - callee battle_ResetObjectTimerTo8_80C4072 -> sets +8 timer to 8, the universal "start of
-    action" idiom at function entry. - callee highlightPanelIfSomeCondition_8109660 + constant inputs r2=0x80, r3=3
-    -> paints highlight panels around a base using (dx,dy) offsets; combined with object_getFrontDirection (returns
-    side sign) -> standard "highlight N panels in front" idiom. - callee object_setFlag1 + visible flag pattern
-    -> sets OBJECT_FLAGS_INVISIBLE=0x02 on CollisionData+0x3c so the snake/arm panels flash without showing the
-    battler sprite. - callee object_setCounterTime + object_setCounterTime in=(''r0'',''r5'',''r10'',''lr'') ->
-    writes CollisionData+0xd, matches the live battler in r5. - callee sub_80C5578 contract: in=[r0..r7, lr] out=[r0,r1,r2,r3,r5,lr]
-    -> generic action-tick helper invoked near end. - capture scenario "snap_story6" + bn6 ROM -> ties behaviour
-    to a story-boss actor (Anpanman is a story-boss fight in BN6). - exit r0 = 0x7f in later captures (snap_story6_10..13)
-    when flags go -ZC- -> suggests the helper chain returned a "still active / pending" status byte.'
+  detail: '- 40 captured calls all show the identical `(r0=0, r1=0810d809, r2=0x80, r3=3, sp=03007d70, lr=0810d7f0)`
+    frame, consistent with a fixed dispatcher called once per object per frame. - r1=0x0810d809 is odd-aligned (`+1`)
+    so it almost certainly points at `oBattleObjectsLinkedListStart` (0x10 byte sentinel containing `Prev/Next`),
+    with the +1 flag the same kind of "list head" marker used in other object walkers. - callee list: `battle_ResetObjectTimerTo8_80C4072`
+    writes 8 to the battle object''s Timer field; `object_setCounterTime` + `object_setFlag1` (writing to `CollisionData.ObjectFlags1`)
+    match "counter driven highlight" semantics. - `object_getFrontDirection` returning a +/-1 multiplier and `highlightPanelIfSomeCondition_8109660`
+    taking a panel-coordinate list with a side sign parameter directly implies the function passes panel (dx,dy)
+    offsets weighted by alliance side direction. - exit r0 range 0x24..0x7f is consistent with a small byte written
+    back into a per-object chip/slot index or a "did we hit a highlighted panel" counter; the exact meaning cannot
+    be pinned without seeing the epilogue.'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x0810D808
@@ -57,15 +48,14 @@ evidence:
     '
   result: battlesweep, beastsp, story4, story6
 open_questions:
-- The exact battle object type that owns this behaviour is not derivable from the assembly alone (no struct offsets
-  in the contract).
-- Whether r5 holds a BattleObject* or some other struct (e.g. AIState*) at entry — convention says BattleObject*.
-- Whether sub_80C5578 is actually called from this function vs. an inlined tail; only the callee list suggests it.
-- 'The exact semantics of the r0=0x7f return value: 0x7f could be a panel-id sentinel rather than a return code.'
+- The asm wasn't found, so field offsets, the exact state machine (counter reset -> counter set -> drive highlight
+  -> flag set), and the meaning of the return value are guessed.
+- r0 returned values like 0x7f (carry/zero) suggest "max panel index reached" or "saturated", but could equally
+  be a flag mask. Disassembling the epilogue at 0x810d808 and the matching 0x810d7f0 caller would settle the contract.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f c83478a3
+  where: bn6f 353d80a9
   tool: tools/symdoc.py

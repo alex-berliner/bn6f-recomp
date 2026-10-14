@@ -1,0 +1,52 @@
+name: sub_8010C50
+address: '0x08010C50'
+kind: function
+previous_names: []
+status: hypothesis
+summary: Looks up the BattleObject for a given alliance and, if found, triggers a chip activation handler with the
+  chip's element code minus 0x3FF.
+interface: '(r0 = chipId, r1 = alliance) -> r0 = sub_8010D04 return ; side effects: reads chip database and possibly
+  mutates the player''s BattleObject/AIData via sub_8010D04'
+details: "Saves r0/r1 into r4/r6, then calls battle_findPlayer(r1) to obtain the player's BattleObject*.\n  If the\
+  \ returned pointer is null the function returns immediately.\n  Otherwise it calls getChip8021DA8(r4) to obtain\
+  \ the 44-byte static chip record for the chip ID,\n  loads the u16 at +0x1A of that record (the chip element/activation\
+  \ field), subtracts the constant\n  0x3FF loaded from dword_8010D40, and passes (chipElementMinus3FF, r6=original\
+  \ alliance arg)\n  down to sub_8010D04.\n  On every captured call r0 was 0x195 on entry and r0 was 0x1E on exit;\
+  \ the sub_8010D04 return is\n  left in r0 and the Z flag is cleared (LSR/AND semantics in sub_8010D04).\n  r10\
+  \ is the toolkit, held across the call. The constant 0x3FF (= 1023) is consistent with the\n  upper bits of Mega\
+  \ Man chip-element codes, so the result is likely a flag/index used by sub_8010D04\n  to mark the chip as activated\
+  \ for that player/alliance.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mov r4, r0 / mov r6, r1` then `mov r0, r1; bl battle_findPlayer` at the top of sub_8010C50 shows the
+    two args are preserved across the player lookup. - `beq locret_8010C74` after the tst on r5 shows a null-BattleObject
+    short-circuit. - `bl getChip8021DA8` followed by `ldrh r0, [r0,#0x1a]` and `ldr r1, dword_8010D40 // =0x3ff`
+    `sub r0, r0, r1` directly mirrors the struct field at +0x1A of ChipData and a 0x3FF mask. - The 40 captured
+    calls in snap_beastsp_0140000_*.bin all show entry r0=0x195 and exit r0=0x1E, consistent with a per-frame player
+    chip-activation dispatch.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08010C50
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^08010c50 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The actual semantics of `(element - 0x3FF)` passed to sub_8010D04 and what sub_8010D04
+- ultimately writes. Naming this `processChipActivation` is plausible from the captured-call
+- profile but the exact role of r1 (alliance vs. raw carry) is only inferred from the
+- battle_findPlayer contract; disassembling sub_8010D04 would settle it.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 353d80a9
+  tool: tools/symdoc.py

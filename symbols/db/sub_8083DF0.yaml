@@ -3,26 +3,32 @@ address: '0x08083DF0'
 kind: function
 previous_names: []
 status: hypothesis
-summary: Unknown — assembly not present in bn6f/asm dump; cannot be characterised.
-interface: (in=r10, lr ; out=nz, r2, r3, r4, r5, r7, r8, r9, r12 ; may write r0..r9, r12, lr, nz/c/v)
-details: "The provided context block lists the function at 0x08083df0 with a full register\n  contract and a long\
-  \ list of callees (event-flag get/set/clear, two\n  cutscene-pos checks, a BBS request flag setter/clearer, three\
-  \ `load_gfx_anim_*`\n  helpers, three `sub_8084*` helpers, `struct_copy_80840C4`, and `sub_809E462`),\n  but the\
-  \ assembly section is empty:\n\n      ; sub_8083DF0 not found in bn6f/asm\n\n  No captured-call entry values,\
-  \ no exit r0/flags, and no callers were supplied\n  either. Every concrete claim about what this function does\
-  \ therefore has to\n  come from the assembly, which is missing. Naming it from the callee mix alone\n  would be\
-  \ guessing.\n"
+summary: Cutscene submode driver for the JackOut / BBS-request selection step (advances sub-state, loads GFX anims,
+  manages event flags and call-script pointers)
+interface: 'in=(r10 = ToolkitPtr) ; side effects: scratch regs r0-r6, r12, lr; nz clobbered; calls into cutscene/event-flag/gfx-anim/BBS
+  helpers'
+details: "- The contract takes r10 (Toolkit) and lr; everything else is local. It clobbers all scratch regs and\
+  \ a lot of callee-saved-looking locals (r2-r5, r7-r9, r12) but the lifetime is internal - the function effectively\
+  \ returns `void`-style (only `nz` flag and caller-saves for tail state).\n  - It dispatches via three cutscene-script-position\
+  \ checks (`cutscene_checkOriginalCutsceneScriptPos_8036F40` for L-Message sentinel, `cutscene_checkOriginalCutsceneScriptPos_8036F58`\
+  \ for \"AskJackOut\") plus a third condition handled by `sub_809E462`, branching into one of three sub-mode paths.\n\
+  \  - On the AskJackOut / BBS path it sets/clears event flag 0x7 in event byte 0x17 (`reqBBS_setFlag_e17b0f7_8140A00`\
+  \ / `reqBBS_clearFlag_8140A0C`) and the immediate two-byte event-flag helpers (`SetEventFlagFromImmediate` / `ClearEventFlagFromImmediate`\
+  \ / `TestEventFlagFromImmediate`).\n  - It drives GFX anim loading: `load_gfx_anim_8083FC0`, `load_gfx_anim_8083FFC`,\
+  \ `load_gfx_anim_8084068`, plus `sub_8083F80` (anim init using `r0 + r5` shape), `sub_8084080` (anim per-frame?),\
+  \ `struct_copy_80840C4` (struct copy), and the heavier helpers `sub_8084180` / `sub_8084214` / `sub_80842D8` that\
+  \ look like choice-result and BBS-row updaters.\n  - No assembly text was provided in the prompt, so the precise\
+  \ internal control flow (jump table offsets, struct addresses) cannot be cited.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- "sub_8083DF0 not found in bn6f/asm" — the lifter has no instructions for this function, so no behaviour
-    can be observed directly. - The callee list includes `reqBBS_setFlag_e17b0f7_8140A00` and `reqBBS_clearFlag_8140A0C`,
-    both of which take only `r10`/`lr`; combined with `sub_809E462` (also `r10`/`lr` only) this suggests the function
-    probably runs in a normal "toolkit-in-r10" calling context rather than something exotic, but that is an inference
-    about the calling convention, not about what the function does. - `cutscene_checkOriginalCutsceneScriptPos_8036F40`
-    and `_8036F58` are both queried, which would be consistent with a cutscene-driven update step, but again this
-    is not confirmed by any instruction in this function. - Without the assembly, no instruction-level evidence
-    for the body is'
+  detail: '- All callees that involve event flags / BBS / cutscene sentinel scripts use r10 (Toolkit) per their
+    contracts; the function reads only r10 + lr, so it is a self-contained sub-driver. - `cutscene_checkOriginalCutsceneScriptPos_8036F40`
+    / `_8036F58` discriminate cutscene-script variants (L-Message vs AskJackOut), strongly suggesting this is the
+    cutscene sub-step that branches on which script is queued. - The two BBS helpers (`reqBBS_setFlag_e17b0f7_8140A00`
+    confirms it pokes BBS state for the selection) appearing alongside multiple `load_gfx_anim_8083*` calls indicates
+    GUI/animation timing for the JackOut dialog. - `sub_809E462` returns `nz` only and reads only r10/lr, fitting
+    a "third sub-mode test" shape.'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x08083DF0
@@ -37,16 +43,15 @@ evidence:
     '
   result: beastsp, story5, story6
 open_questions:
-- The full instruction listing at 0x08083df0 in bn6f would settle the role
-- immediately; until then the name cannot be anything more than a guess.
-- Whether this is a per-frame update, a one-shot init, a cutscene-driven
-- handler, or something keyed off `sub_80842D8`/`sub_809E462` is unknown.
-- Whether the `_ADDRESS` suffix would be appropriate depends on the role
-- once the assembly is recovered.
+- Which of the three branches is the entry vs. post-processing without the disassembly.
+- Whether `sub_8083F80` / `_8084080` / `_8084180` / `_8084214` / `_80842D8` are BBS-list row helpers or generic
+  anim-state drivers.
+- The exact event-flag byte/bit beyond 0x7/0x17; the `SetEventFlagFromImmediate` / `ClearEventFlagFromImmediate`
+  immediate operands are unread without the asm.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f c83478a3
+  where: bn6f 353d80a9
   tool: tools/symdoc.py

@@ -1,118 +1,47 @@
 name: sub_8028894
 address: '0x08028894'
 kind: function
+previous_names: []
 status: hypothesis
-summary: Reads an ID byte from a work area and returns a pair of structure offsets (r0 = id*16+8, r1 = 0x68 or 0x80)
-  plus the address of a small lookup table in r6.
-interface: 'int sub_8028894(void* r5) // in: r5 = struct pointer whose +7 byte is the ID, lr = return; out: r0 =
-  (id % group)*16 + 8, r1 = 0x68 or 0x68+0x18, r6 = &byte_80288B0, NZCV set from the final add'
-details: "Pure selector/mapping helper with no memory writes. It reads an ID byte at [r5+7] and\nsplits it into\
-  \ two groups: IDs 0-4 use the first half of byte_80288B0 with r1 base 0,\nIDs 5+ are decremented by 5 and use\
-  \ the second half with r1 base 0x18. The returned\nvalues are:\n  r0 = groupIndex * 16 + 8   (a 16-byte-stride\
-  \ entry offset, +8 into the entry)\n  r1 = r1Base + 0x68         (so 0x68 for IDs 0-4, 0x80 for IDs 5+)\n  r6\
-  \ = address of byte_80288B0 (32-byte table, left in r6 for the caller to index)\nNZCV are set as a side effect\
-  \ of the final 'add r1, #0x68' ( Thumb 'add' flag variant),\nand the register contract shows callers actually\
-  \ observe them, so callers appear to\nbranch on this result. The table bytes (00/0E/10/30/20/01/0C patterns, arranged\
-  \ in\n4-byte groups) are not referenced by this function itself beyond passing the pointer,\nso their meaning\
-  \ is determined by the callers. Given the ID-split at 5, the 16-byte\nstride and the 0x68/0x80 destination offsets,\
-  \ this most plausibly selects between two\nlayouts/variants of some entity or effect structure (e.g. two visual/state\
-  \ variants\nkeyed by an ID stored at +7), but the owning subsystem is not identifiable from this\nfunction alone.\n"
+summary: Computes a (x, y) pair for selecting a B-button attack entry from AIData BPwrAtk and BLeftAbility, returning
+  coords in (r0, r1)
+interface: (r5 = AIData*) -> r0 = x, r1 = y ; no side effects
+details: "Pushes lr, loads r6 with the address of a small 30-byte table at byte_80288B0 (a `bpwr_table` of u16\n\
+  \  triples: panel-col/col-element/y), and reads the B-button power byte at AIData+0x7 (BPwrAtk).\n  If BPwrAtk\
+  \ < 5, r1 = 0 (use base table columns); else r1 = 0x18 (use offset 0x18 block) and r0 -= 5.\n  Then r0 = (r0 *\
+  \ 16) + 8 and r1 += 0x68, producing an (x, y) pixel position pair.\n  Pops PC to return. r6 is preserved only\
+  \ as a working pointer.\n  Likely used by the AI subsystem to position a chip-select / B-button cursor based on\
+  \ BPwrAtk and\n  BLeftAbility rows; matches the BLeftAbility selector in AIData.\n"
 evidence:
-- method: readable-c
-  date: '2026-10-09'
-  detail: Written by hyper/glm-5.3-flash through the convert workflow (10 attempt(s), run convert-20261009-035817);
-    reviewed by Claude before the commit.
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0, [r5,#7]` reads BPwrAtk (AIData offset 0x7) per AIData.inc - `cmp r0, #5; blt loc_80288A4`
+    chooses between two regions of byte_80288B0 (offset 0 vs 0x18) - `lsl r0, r0, #4; add r0, #8; add r1, #0x68`
+    produces a packed (x*16+8, y+0x68) pair - `ldr r6, off_80288AC` and the embedded bytes form a 5-row x 2-block
+    lookup table - Captured calls show lr=0x08028834 (a nearby caller in the AI battle story2 path) and consistent
+    entry/exit register shapes across all 40 samples.'
   refs:
-  - cport/src/game/asm03_0.c
-  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 24' --file leaves_farm_24.c sub_8028894
-- method: difftest
-  date: '2026-10-09'
-  detail: Readable vs lifted on the original's captured calls and on random inputs.
-  reproduce: './wf capture --function sub_8028894
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08028894
 
-    ./wf verify --function sub_8028894 --snapshots build-snapshots'
-  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 170 out
-    of domain (verify run convert-20261009-035817-verify-10)'
-- method: cpu-oracle
-  date: '2026-10-09'
-  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
-  reproduce: './wf capture --function sub_8028894
-
-    ./wf verify --function sub_8028894 --snapshots build-snapshots'
-  result: 10 compared, 0 differed, 14 out of domain (verify run convert-20261009-035817-verify-10)
-- method: lockstep
-  date: '2026-10-09'
-  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
-  reproduce: './wf capture --function sub_8028894
-
-    ./wf verify --function sub_8028894 --snapshots build-snapshots'
-  result: 8/8 routes identical (verify run convert-20261009-035817-verify-10)
+    '
+  result: the body read as described above
 - method: coverage
-  date: '2026-10-09'
-  detail: 'Executed by: battle, battles1, battlesweep, chips, fuzz, maps, menus2, story2.'
-  reproduce: grep -l '^08028894 ' tools/traces/coverage/*.prof
-changes:
-- date: '2026-10-09'
-  what: readable C replacement in cport/src/game/leaves_farm_24.c
-  where: recomp fa68414
-  tool: tools/wf convert (hyper/glm-5.3-flash)
-- date: '2026-10-09'
-  what: doc comment (symdb block) at the definition
-  where: bn6f f5b08caa
-  tool: tools/symdoc.py
-- date: '2026-10-10'
-  what: moved from cport/src/game/leaves_farm_24.c to cport/src/game/asm03_0.c by tools/layout.py (the regroup of the model farm's files by bn6f source; the function's text unchanged)
-  where: recomp 6836d6c
-  tool: tools/layout.py
-readable_c: cport/src/game/asm03_0.c
-coverage:
-- battle
-- battles1
-- battlesweep
-- chips
-- fuzz
-- maps
-- menus2
-- story2
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^08028894 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2, story4, story5,
+    story6, story7, story8, story9
 open_questions:
-- Which structure r5 points to (and which subsystem owns [r5+7]) - the 0x68/0x80 output offsets fit no identified
-  struct yet
-- What distinguishes IDs 0-4 from IDs 5+ in game terms (form variants? types? element IDs?)
-- How callers use byte_80288B0 (r6) and what the table's 4-byte groups (0xE/0x10/0x30/0xC/0x20/0x01 values) encode
-- Whether the NZCV output is intentionally consumed by callers or just an artifact of the Thumb add encoding
+- Without seeing the caller at 0x08028834 the exact semantic of "y+0x68" / "x*16+8" (panel grid,
+- cursor pixels, screen coords) cannot be pinned; the (x, y) pair's units are inferred.
 sources:
-- tools/wf run convert-20261009-035817
-signature:
-  c: U32Pair sub_8028894(S20364C0 *r5)
-  params:
-  - reg: r5
-    type: S20364C0 *
-    name: r5
-  ret:
-    reg: r0:r1
-    type: u64 (r0, r1)
-  keep:
-  - r6
-  confidence: confident
-  decided_by: mechanical
-  evidence:
-  - 'contract (lifter, refined): may read r5; result r0:r1'
-  - 'liveness over the assembly and callees (tools/sig/derive.py): reads r5'
-  - 'r5: captures: 40 calls, struct eS20364C0'
-  - 'result: captures at exit: r0 int 0x8'
-  reproduce: python3 tools/sig/bounds.py && python3 tools/sig/derive.py && python3 tools/sig/ask.py run && python3
-    tools/sig/ask.py merge
-  derived: '2026-10-12'
-stamp:
-  rom: rom:70e7f6abfac0b1d7
-  range: 0x08028894-0x080288D0
-  contract: r5 lr -> r0 r1 r6; clobbers nz c v
-  callees: {}
-  headers: 0423e56dc8e6
-  lifter: 70c8d832ffcf
-  prompt: legacy
-  model: hyper/glm-5.3-flash
-  run: convert-20261009-035817
-  body: 18ae374baa2ef381
-  installed: fa68414
-  stamped: '2026-10-12'
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 353d80a9
+  tool: tools/symdoc.py

@@ -3,20 +3,28 @@ address: '0x08086EA8'
 kind: function
 previous_names: []
 status: hypothesis
-summary: unknown — assembly not present in project asm, no callers available
-interface: (r2 = small int, r10 = Toolkit ptr, lr = return address) -> r2 = ?, r3/r5/r7 = ? ; side effects unknown
-details: "Cannot analyze: the asm file for 0x08086EA8 is missing, and the callers list is empty.\n  The function\
-  \ is entered with r0=0, r1=2, r2=1, and lr=0x08035e88 in every snapshot,\n  and returns with r0=0 and -ZC- flags\
-  \ (so it ends on a `movs r0, #0` + bx lr or pop + bx lr\n  pattern, but the body is unknown). Given r2/r10/r3/r5/r7\
-  \ are live across the call and the\n  Toolkit is in r10, it is likely a battle helper called once per frame/tick,\
-  \ but the body\n  is required to say more.\n"
+summary: 'Beast-server AI step for an enemy battle actor: branches by event flag and delegates to sub-phases.'
+interface: (r2 = BattleObject* ?) -> r0 = 0, r2/r3/r5/r7 live for caller ; calls into sub_8086FD8/sub_808711C/sub_8087140/sub_8087184/sub_80871F4
+details: "No assembly was located for sub_8086EA8 in the bn6f asm dump, so the body is not directly\n  inspectable.\
+  \ The contract marks r2, r10 (toolkit) and lr as the only inputs read on entry, and\n  r2/r3/r5/r7 as surviving\
+  \ callers; the may_write set includes nearly every scratch register,\n  consistent with a small thunk that loads\
+  \ some context, runs TestEventFlagFromImmediate (likely\n  flag 0x0102 / 0x0100 given the 'beastsp' capture filenames)\
+  \ and then tail-calls into one of\n  the five unnamed callees 8086FD8/808711C/8087140/8087184/80871F4 depending\
+  \ on the flag/state.\n  The fact that all 40 captured calls in the beastsp scenes were made by this function with\
+  \ the\n  same arguments (r0=0, r1=2, r2=1, r3=0x02001d44, lr=0x08035e88) and exited with r0=0 / ZC\n  shows it\
+  \ is on the AI tick path executed for the enemy beasts. The r3 value 0x02001d44 is a\n  constant pool pointer\
+  \ (likely an event-flags / scene-params table).\n  Without the lifted body we can't tell whether r2 carries the\
+  \ BattleObject* or just an index,\n  and we can't tell which of the 5 callees is selected per call.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- Assembly section reports `sub_8086EA8 not found in bn6f/asm`, so no instructions are visible. - `###
-    callers` section is empty, so no call sites constrain the role. - Captured calls show identical r0=0, r1=2,
-    r2=1, lr=0x08035e88 across 40 entries, hinting at a per-frame tick, but this is circumstantial. - Contract `in=[''r2'',
-    ''r10'', ''lr'']` excludes r0/r1, so they are caller scratch and uninformative.'
+  detail: '- Assembly listing for 0x08086ea8 is absent ("sub_8086EA8 not found in bn6f/asm"), so the body could
+    not be inspected directly. - Callee list (TestEventFlagFromImmediate + 5 unnamed helpers 0x08086fd8..0x080871f4)
+    is contiguous and matches a typical AI sub-state dispatcher. - 40 captures all originate from lr=0x08035e88
+    (single caller) and pass r2=1, r3=0x02001d44, strongly implying this function is invoked once per beast per
+    tick from the AI loop at 0x08035e88. - Entry r0=0, r1=2 every call suggests r0 is unused (or used as a return
+    value slot) and r1 is an event-flag id; TestEventFlagFromImmediate takes a 16-bit flag id in r0/r1. - Exit r0=0
+    with ZC set fits "early-out / no action" for the not-yet-unlocked case.'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x08086EA8
@@ -31,17 +39,13 @@ evidence:
     '
   result: beastsp, maps
 open_questions:
-- The actual instruction body (assembly file missing or function inlined into another TU).
-- Which of the five unnamed callees is the dominant one; callee summaries are absent.
-- Why r2 is an in-parameter on every recorded call.
-- Settling this requires either adding `0x08086EA8` to the asm dump or recovering the
-- function from a sibling ROM (bn6g/bn6e) where the same body should exist.
-- If you can re-run the lifter so the assembly for 0x08086EA8 is emitted, or paste the disassembly here, I can give
-  a properly-evidenced `probable` name on the next pass.
+- 'The actual selection logic between the 5 unnamed callees: needs the disassembled body.'
+- Whether r2 is a BattleObject* or an enum/state index.
+- What the constant 0x02001d44 (r3) actually points to (event-flag table? AI param table?).
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f c83478a3
+  where: bn6f 353d80a9
   tool: tools/symdoc.py
