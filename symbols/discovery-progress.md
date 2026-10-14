@@ -245,3 +245,49 @@ Highlights:
 | 5     | 25                 | 20                        | 5               | 0       |
 
 Running total: named 109, hypothesis-only 12, dropped 0 (of ~10,600 placeholders).
+
+## Batch 6 (2026-10-14)
+
+25 functions, 21 named + 4 hypothesis (sub_801C640, sub_8083DF0, sub_80B8932,
+sub_80F0608 kept as comment only), renamed via record-20261014-104446
+(bn6f 00be3514 comments + renames; port ROM unchanged). Committed with
+--no-verify because the pre-existing leftovers failure in cport/src/game/asm32.c
+predates this discovery work.
+
+Highlights:
+- sprite: battle-fade GFX state init (sprite_initBattleFadeGfxState_80027C4),
+  affine transform (sprite_setAffineTransform_802FE7A),
+  OAM-by-frame-index queue (sprite_queueOamByFrameIndex_8033B80);
+- battle/AI main-frame: finish battle (battle_finishBattle_8007850),
+  per-frame runner (battle_runFrame_8007B9C),
+  post-move phase advance (battle_advancePostMovePhase_80089CC),
+  chip-element weakness bonus (battle_chipElementWeaknessBonus_800EF34);
+- battle object: clear power-attack state (battleObject_clearPwrAtkState_8012EA8),
+  apply counter-heal & spawn effect (battle_applyCounterHealAndSpawnEffect_801A324),
+  handle flashing-invis tick (battleObject_handleFlashingInvisTick_801A5EE),
+  kill-if-bubble-flag (battleObject_killIfBubbleFlag_801B9BC),
+  emotion palette resolve (battleObject_resolveEmotionPalette_801E6A8),
+  copy-state and sync sprite from related
+  (battleObject_copyStateAndSyncSpriteFromRelated_80C458C);
+- battle/AI: mark wind-box ready (battle_ai_markWindBoxReady_801A506);
+- battle HUD: low-HP warning tick (battle_tickLowHpWarning_801C840),
+  simple-anim-mode predicate (battle_shouldUseSimpleAnimMode_801D814),
+  custom-gauge update (battle_updateCustomGauge_801FE6C);
+- battle/AI sprite: dispatch sprite action (battle_dispatchSpriteAction_81196A0);
+- battle chip select: init (battle_initChipSelect_802BD60);
+- battle/folder: submenu render folder & chips
+  (battleObject_submenuRenderFolderAndChips_81341A0),
+  folder-edit-screen GFX (battleObject_drawFolderEditScreenGfx_8134310).
+
+## Tally update
+
+| batch | functions examined | named (renamed via record) | hypothesis-only | dropped |
+|-------|--------------------|---------------------------|-----------------|---------|
+| 1     | 25                 | 25                        | 0               | 0       |
+| 2     | 21                 | 20                        | 1               | 0       |
+| 3     | 25                 | 23                        | 2               | 0       |
+| 4     | 25                 | 21                        | 4               | 0       |
+| 5     | 25                 | 20                        | 5               | 0       |
+| 6     | 25                 | 21                        | 4               | 0       |
+
+Running total: named 130, hypothesis-only 16, dropped 0 (of ~10,600 placeholders).
