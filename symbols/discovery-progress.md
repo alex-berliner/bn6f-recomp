@@ -1293,3 +1293,76 @@ Highlights:
 | 24    | 25                 | 15                        | 10              | 0       |
 
 Running total: named 450, hypothesis-only 146, dropped 0 (of ~10,600 placeholders).
+
+## Batch 25 (2026-10-14)
+
+25 functions, 19 named + 6 hypothesis (sub_8014E08, sub_8083DF0, sub_8086EA8,
+sub_810D808, sub_8123BE0, sub_814E7E0 kept as comment only), renamed in
+recomp 00c28c53 (bn6f pushed; port ROM unchanged).
+
+Highlights:
+- battle AI: get actor info (battle_ai_getActorInfo_801595E);
+- battle object: check AI unk-0x48 flag 0x80
+  (battleObject_checkAIUnk0x48Flag0x80_801597C);
+- custom screen: redraw chip slot (customScreen_redrawChipSlot_8029CD4);
+- battle scroll: advance by panel step
+  (battle_scrollAdvanceByPanelStep_8031520);
+- battle: dispatch jump by actor slot and action
+  (battle_dispatchJumpByActorSlotAndAction_804C404);
+- battle render: set blur and anim update
+  (battle_render_setBlurAndAnimUpdate_804C478);
+- battle object: update beast-out PwrAtk
+  (battleObject_updateBeastOutPwrAtk_80A5828);
+- object: spawn related child effect
+  (object_spawnRelatedChildEffect_80E08C4);
+- battle AI: find enemy targets (battle_ai_findEnemyTargets_80E1670);
+- battle AI beast-out: tick (battle_aiBeastOutTick_810F0D8);
+- battle object: dispatch beast-out action
+  (battleObject_dispatchBeastOutAction_8117110);
+- battle object: set sprite coords from EStruct entry if active
+  (battleObject_setSpriteCoordsFromEStructEntryIfActive_81171D4);
+- battle object: update beast-SP slot mask
+  (battleObject_updateBeastSpSlotMask_8118604);
+- battle object: set coords and update sprite
+  (battleObject_setCoordsAndUpdateSprite_811E1D4);
+- beast AI: get attack type affinity
+  (beastAi_getAttackTypeAffinity_813C624);
+- battle: can beast out (battle_canBeastOut_8141AD2);
+- battle object: run charge tick and store charge time
+  (battleObject_runChargeTickAndStoreChargeTime_814E210);
+- battle object: mark AI data unk-18 and mark dirty
+  (battleObject_markAIDataUnk18AndMarkDirty_814E21C);
+- battle AI data: process stream byte
+  (battle_aiData_processStreamByte_814E7CC).
+
+## Tally update
+
+| batch | functions examined | named (renamed via record) | hypothesis-only | dropped |
+|-------|--------------------|---------------------------|-----------------|---------|
+| 1     | 25                 | 25                        | 0               | 0       |
+| 2     | 21                 | 20                        | 1               | 0       |
+| 3     | 25                 | 23                        | 2               | 0       |
+| 4     | 25                 | 21                        | 4               | 0       |
+| 5     | 25                 | 20                        | 5               | 0       |
+| 6     | 25                 | 21                        | 4               | 0       |
+| 7     | 25                 | 19                        | 6               | 0       |
+| 8     | 25                 | 20                        | 5               | 0       |
+| 9     | 25                 | 18                        | 7               | 0       |
+| 10    | 25                 | 14                        | 11              | 0       |
+| 11    | 25                 | 17                        | 8               | 0       |
+| 12    | 25                 | 15                        | 10              | 0       |
+| 13    | 25                 | 19                        | 6               | 0       |
+| 14    | 25                 | 19                        | 6               | 0       |
+| 15    | 25                 | 21                        | 4               | 0       |
+| 16    | 25                 | 21                        | 4               | 0       |
+| 17    | 25                 | 21                        | 4               | 0       |
+| 18    | 25                 | 20                        | 5               | 0       |
+| 19    | 25                 | 17                        | 8               | 0       |
+| 20    | 25                 | 15                        | 10              | 0       |
+| 21    | 25                 | 18                        | 7               | 0       |
+| 22    | 25                 | 17                        | 8               | 0       |
+| 23    | 25                 | 14                        | 11              | 0       |
+| 24    | 25                 | 15                        | 10              | 0       |
+| 25    | 25                 | 19                        | 6               | 0       |
+
+Running total: named 469, hypothesis-only 152, dropped 0 (of ~10,600 placeholders).
