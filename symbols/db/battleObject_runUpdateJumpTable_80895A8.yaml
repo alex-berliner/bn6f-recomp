@@ -1,0 +1,71 @@
+name: battleObject_runUpdateJumpTable_80895A8
+address: '0x080895A8'
+kind: function
+previous_names:
+- sub_80895A8
+status: probable
+summary: BattleObject dispatch — read the 1-byte state at [r5] and tail-jump to one of 34 state-specific
+  handlers, returning their NZ-flag as boolean in r0.
+interface: '(r5 = BattleObject*, r10 = Toolkit*) -> r0 = bool (r0==0 false, non-zero true) ; side effects:
+  full state handler called via jump table at 0x80895C0; clobbers r0-r3,r6,r12,lr; preserves r4,r5,r7-r10'
+details: "- `push {r4-r7,lr}` then `mov r7, #0x70; add r7, r7, r5` builds a scratch pointer to `BattleObject+0x70`\
+  \ in r7 (the `Unk_70` slot of the BattleObject struct as defined in `BattleObject.inc`, though this\
+  \ file uses `AIData`-style 0x70 location).\n  - `ldrb r0, [r5]` reads byte 0 (the ObjectHeader `Flags`,\
+  \ which doubles as the dispatch/state byte at offset 0 of the linked-list prefix / ObjectHeader). Although\
+  \ the saved register contract marks r5 as `in`, the lifter is clearly happy with r5 being the object\
+  \ pointer (offset +0x00 = ObjectHeader.Flags).\n  - Loads `off_80895BC` (= `jt_80895C0`) then `ldr r0,\
+  \ [r1,r0]` indexes the 34-entry Thumb jump table with the dispatched byte. Each entry is a `sub_<...>+1`\
+  \ (already-incremented low bit so `bx r0` switches to Thumb). The handlers listed include sub_808964C,\
+  \ sub_80896B0, sub_80896C4, sub_80896D4, sub_8089792, sub_80897A6, sub_8089C16, sub_8089C78, sub_80897E8,\
+  \ sub_8089808, sub_8089826, sub_808983A, sub_808985A, sub_808989C, sub_80898B2, sub_80898E8, sub_80898FC,\
+  \ sub_808991C, sub_8089960, sub_808997E, sub_808999C, sub_80899D8, sub_80899F2, sub_8089A10, sub_8089A60,\
+  \ sub_8089ACA, sub_8089AE8, sub_8089B2E, sub_8089B54, sub_8089B7E, sub_8089B94, sub_8089BAA, sub_8089BC0,\
+  \ sub_8089BE4, sub_8089BFA.\n  - After the tail call, execution lands at `loc_80895B8`, which performs\
+  \ `tst r0, r0; pop {r4-r7,pc}` — i.e. it returns whatever handler-supplied r0 (likely a \"continue /\
+  \ finished\" boolean) and uses `tst` so the Z flag reflects r0. The `pop {r4-r7,pc}` returns into the\
+  \ caller.\n  - No frame is set up beyond the initial push, so lr is preserved across the dispatch via\
+  \ `mov lr, pc; bx r0`. Handler tail-calls keep the original lr.\n  - The 40 captured calls all originate\
+  \ from a single beastSP capture set (beastsp_0180000_*) where entry r0=08038029 (in IWRAM, looks like\
+  \ an embedded AIData/state blob), r1=02001b80 (EWRAM, with bytes 04 00 00 00 90 00 23 21 ...), r2=00003def,\
+  \ r3=02001f6f, lr=08038034. Captured exit is r0=1 in every case — a constant \"alive/keep running\"\
+  \ truthy result, consistent with the dispatch returning the per-state handler's bool.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0, [r5]` at 0x80895B2 followed by `ldr r1, off_80895BC; ldr r0, [r1,r0]` is the classic
+    Thumb jump-table dispatch shape. - The jump table at 0x80895C0 contains 34 `sub_XXXXXXXX+1` words
+    — only the low bit is set to indicate Thumb targets (a very common GBA linker convention). - `tst
+    r0, r0; pop {r4-r7,pc}` cleanly returns the handler''s r0 with no further work, and the captured calls
+    (r0=0x08038029 caller, r1=0x02001b80 with the consistent buffer) all return r0=1. - r5 is treated
+    as the BattleObject pointer (offset 0 read) and r10 is the Toolkit (offset 0x70 derived from r5, but
+    r10 isn''t actually used in the dispatch itself in this tiny stub). - The names of the callees (sub_808964C..sub_8089BFA,
+    all in asm23.s / this same large battle-object update module) confirm the dispatch family.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080895A8
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^080895a8 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- Whether [r5] truly indexes the full 34-entry table or is masked/clamped before the load — no `and` is
+  visible in this 6-instruction stub, so it's presumably already a small byte.
+- Whether r0 returned is "alive/keep ticking" vs. "handler finished" — both interpretations fit `tst r0,r0`.
+  Following one or two of the callee handlers and seeing how the caller loop uses r0 would settle it.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 2e79aac3
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80895A8 -> battleObject_runUpdateJumpTable_80895A8
+  where: bn6f d43feadd
+  tool: tools/rename_symbol.py

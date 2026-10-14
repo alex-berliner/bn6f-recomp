@@ -1,0 +1,55 @@
+name: battleObject_dispatchOnSubtype_80A781C
+address: '0x080A781C'
+kind: function
+previous_names:
+- sub_80A781C
+status: probable
+summary: Tail-calls one of three handlers chosen by BattleObject[+0x8]'s low byte (likely CurState or
+  related).
+interface: (r0 = [r5,#8] selector used for jump table, r5 = object base, r10 = toolkit, lr = return) ->
+  r0 = handler's r0 ; void-like tail call
+details: "The function pushes only lr, loads the address of a small jump table (off_80A7830 with three\n\
+  \  entries pointing to sub_80A783C+1, sub_80A786C+1, sub_80A78AE+1), then reads a single byte from\n\
+  \  r5+8 (BattleObject+8 is the CurState/CurAction byte per the struct definition) and uses it as an\n\
+  \  index into the table (LDR r0,[r0,r1] with r1 = selector). The selected address is loaded with\n \
+  \ +1 to switch to Thumb, copied into lr, and `bx lr` is reached via the `mov lr,pc; bx r0` idiom\n \
+  \ after another indirection. The `pop {pc}` epilogue never actually executes; the tail call returns\n\
+  \  to the original caller. Selector values are 0..2 (three entries).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r0, off_80A782C ; ldr r0,[r0,r1]` (asm line 0x80a7820) loads a function pointer from
+    a 3-entry table indexed by `[r5,#8]`. - `mov lr, pc ; bx r0` performs a Thumb interworking tail call.
+    - The three target addresses sub_80A783C, sub_80A786C, sub_80A78AE sit immediately after, suggesting
+    a 3-state dispatch. - BattleObject struct shows offset 0x8 is `CurState` (CUR_STATE_INITIALIZE=0,
+    CUR_STATE_UPDATE=4, CUR_STATE_DESTROY=8), consistent with a 3-way dispatch and the `[r5,#8]` byte
+    read. - Captured calls all show r5 used as a battle-object-like base and r10 as the toolkit (per contract
+    and struct definition).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080A781C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^080a781c '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- Whether the byte at [r5,#8] is masked to 0..2 (a `and r1,r1,#3` would clarify); the current code
+- indexes raw and only the three lowest entries exist, so higher values would be OOB. Checking
+- the callers for whether they ever pass selector>=3 would settle it.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 2e79aac3
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80A781C -> battleObject_dispatchOnSubtype_80A781C
+  where: bn6f d43feadd
+  tool: tools/rename_symbol.py

@@ -13,7 +13,7 @@
  *
  * Reads the phase byte at offset 0 of the AI attack state (r7) and tail-calls
  * the corresponding charge shot attack routine through the table off_80EBE14:
- *   +0 -> sub_80EBE20, +4 -> battle_aiBusterAttackTick_80EBE54, +8 -> sub_80EBEB2
+ *   +0 -> sub_80EBE20, +4 -> battle_aiBusterAttackTick_80EBE54, +8 -> battleObject_aiAttackTickCharge_80EBEB2
  *
  * Note the original indexes the table with the raw byte (`ldr r1, [r1, r0]`),
  * so the stored phase values are byte offsets (0, 4, 8), not entry indices.
@@ -43,8 +43,8 @@ Next megamanChargeShotAiAttack_80EBE00(void) {
         break;
     case 8:
         R0 = phase;
-        R1 = LD32(CHARGE_ATTACK_TABLE + 8); /* sub_80EBEB2 (thumb) */
-        GUEST_CALL(sub_80EBEB2);
+        R1 = LD32(CHARGE_ATTACK_TABLE + 8); /* battleObject_aiAttackTickCharge_80EBEB2 (thumb) */
+        GUEST_CALL(battleObject_aiAttackTickCharge_80EBEB2);
         break;
     default:
         /* Any other byte would make the original branch to a word read out

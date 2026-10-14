@@ -1,0 +1,59 @@
+name: battleObject_updateSpriteAndMaybeReloadAnim_80A827C
+address: '0x080A827C'
+kind: function
+previous_names:
+- sub_80A827C
+status: probable
+summary: If a derived animation id differs from the cached one, reload the object's sprite animation data
+  and shadow flag, then always run sprite_update.
+interface: (r5 = BattleObject*) -> void ; side effects sprite state, flags
+details: "- Calls sub_80A82DC first, which returns a u8 (kept in r0) representing the new desired animation/state\
+  \ id for the object.\n  - Loads the object's previously cached sprite state byte from [r5, #5] (ObjectSprite\
+  \ slot's first byte, per object_sprite_struct at offset 0x10 of BattleObject... actually offset 5 is\
+  \ inside the object_sprite_struct, so this is ObjectSprite Unk_05) into r1 and compares it to the new\
+  \ id.\n  - If they differ (beq to loc_80A8294 not taken): sprite_setAnimation (writes new id into ObjectSprite\
+  \ slot byte 0), then sprite_loadAnimationData (skips past object header to sprite data block and tail-calls\
+  \ shared animation loader), then sprite_noShadow (clears shadow rendering flag).\n  - If they match,\
+  \ the reload trio is skipped and control jumps straight to loc_80A8294.\n  - loc_80A8294 unconditionally\
+  \ calls sprite_update on r5 and returns.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl sub_80A82DC` at 0x080a827e produces the new id in r0. - `ldrb r1, [r5,#5]` reads the
+    cached byte at offset 5 from the object struct; offset 5 of BattleObject is `Unk_05` in the object_sprite_struct
+    (sprite slot byte 5), matching sprite_setAnimation''s contract that targets the sprite slot''s first
+    byte offset. - `cmp r0, r1` / `beq loc_80A8294` is the equality branch that skips reload. - The three
+    skipped calls sprite_setAnimation, sprite_loadAnimationData, sprite_noShadow have confirmed semantics
+    (animation index write, header-skip animation loader, no-shadow flag). - `bl sprite_update` at loc_80A8294
+    runs every frame regardless of branch. - Only known caller is sub_80A822C, with the same r5/r10/lr
+    contract, confirming this is called from another battle-object update routine in the same address
+    range.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080A827C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp, maps'
+  reproduce: 'grep -l ''^080a827c '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp, maps
+open_questions:
+- 'The exact meaning of the byte at [r5, #5] is uncertain; it''s treated here as a cached "last animation
+  id" but the struct offset/role is inferred from context rather than project documentation.'
+- The semantics of what sub_80A82DC's returned r0 represents (animation id vs state vs other sprite slot
+  byte) is unknown.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 2e79aac3
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80A827C -> battleObject_updateSpriteAndMaybeReloadAnim_80A827C
+  where: bn6f d43feadd
+  tool: tools/rename_symbol.py

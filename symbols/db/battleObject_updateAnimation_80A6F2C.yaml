@@ -1,0 +1,65 @@
+name: battleObject_updateAnimation_80A6F2C
+address: '0x080A6F2C'
+kind: function
+previous_names:
+- sub_80A6F2C
+status: probable
+summary: 'Per-frame update for an enemy battle object: gates its curAction animation logic on cutscene
+  / chatbox state, then runs the common sprite + end-of-frame hook.'
+interface: '(r5 = BattleObject*, r6 = ?AIData?, r10 = Toolkit*) -> void ; side effects: writes BattleObject->CurState
+  / CurAction (0x8..0x9), sets bit at eFlags2009F38 flag 0x80, calls sprite_update, calls sub_80A6F78/sub_80A70FC/sub_80A7160/sub_80A7238.'
+details: "Entry guard: if cutscene_checkOriginalCutsceneScriptPos_8036F40 (L-Message sentinel) or 8036F58\
+  \ (AskJackOut sentinel) is set, or if chatbox flag 0x80 is set, all the per-action logic is skipped\
+  \ and we just fall through to sprite_update + sub_80A7238 (assembly bne loc_80A6F66 short-circuits past\
+  \ the body).\n\n  Otherwise the body's behaviour is keyed off r6->[9] (which is AIData.Unk_09 / CurAction\
+  \ on the ai_data_struct, but here reused as a 2-bit CurAction for the object). If Unk_09 is 0 or !=\
+  \ 1 we fall into sub_80A6F78 + sub_80A70FC (the \"default\" idle/AI tick path). If Unk_09 == 1 we then\
+  \ test [r5+0x34] (BattleObject.Coords.X upper word, the \"Anger\"-like value at oBattleObject+0x34 /\
+  \ AIData.Anger at 0x34 in the live object): if non-zero we call sub_80A7160 (which is the second captured-call\
+  \ r2 path that branches on r2), otherwise we set BattleObject.CurState = 8 (CUR_STATE_DESTROY) at [r5+8]\
+  \ and exit.\n\n  Unconditional tail: bl sprite_update on r5's sprite; bl sub_80A7238; pop {r4-r7,pc}.\
+  \ The captured calls show entry r2 is an IWRAM pointer in the 08445xxx range that gets re-passed to\
+  \ sub_80A7160 (r2 is in its contract), strongly consistent with this being the second captured-call\
+  \ helper.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- bl cutscene_checkOriginalCutsceneScriptPos_8036F40 / 8036F58 and bne loc_80A6F66 at the top
+    gate the body on cutscene state (assembly 80A6F2C..80A6F40). - chatbox_mask_eFlags2009F38 with r0
+    = 0x80 and bne loc_80A6F66 short-circuits when chatbox flag 0x80 is set. - ldrb r0,[r6,#9] / cmp r0,#0
+    / cmp r0,#1 dispatch: r6->[9] selects between the default path and the anger/cur-action=1 path. -
+    ldr r0,[r5,#0x34] / cmp r0,#0 then b sub_80A7160 reads the u32 at BattleObject+0x34 (Coords.X upper
+    half / AIData.Anger u16) and uses 0 to mean "no anger yet". - mov r0,#8 / strb r0,[r5,#8] sets CurState
+    = CUR_STATE_DESTROY (struct_const CUR_STATE_DESTROY,0x08). - Tail: bl sprite_update on r5 and bl sub_80A7238
+    before pop {r4-r7,pc} are unconditional. - captured calls: in-frame r0=4 (== CurAction initialise?),
+    exit r0=0x26 (= CUR_STATE_INITIALIZE|CUR_STATE_UPDATE|CUR_STATE_DESTROY mask? actually 0x26 = CUR_STATE_UPDATE|CUR_STATE_INITIALIZE-ish,
+    but more importantly unchanged across calls), consistent with this being a per-frame dispatcher rather
+    than a value-returning function.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080A6F2C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^080a6f2c '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The exact split of work between sub_80A6F78, sub_80A70FC, sub_80A7160 and sub_80A7238 (idle/AI tick
+  / anger reaction / sprite update / end-of-frame hook) is inferred from offsets alone; confirming them
+  needs those bodies' assemblies.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 2e79aac3
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80A6F2C -> battleObject_updateAnimation_80A6F2C
+  where: bn6f d43feadd
+  tool: tools/rename_symbol.py

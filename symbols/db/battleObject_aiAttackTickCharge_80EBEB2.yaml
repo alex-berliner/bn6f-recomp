@@ -1,0 +1,72 @@
+name: battleObject_aiAttackTickCharge_80EBEB2
+address: '0x080EBEB2'
+kind: function
+previous_names:
+- sub_80EBEB2
+status: probable
+summary: AI attack step that drives the Unk_10/Unk_12 charge timer in AIAttackVars and exits to player-action
+  path on completion
+interface: (r5 = BattleObject, r6 = ?, r7 = AttackVars, r10 = Toolkit, lr = ret) -> r0 = 0; side effects
+  via r5/r7/AIDataPtr writes and r6/r10/lr touched in callees
+details: "On first entry (AttackVars.Unk_01 == 0) the function loads Unk_12 into Unk_10 as the countdown\
+  \ budget\n  and sets Unk_01 to 4 (in-progress sentinel). It then decrements Unk_10 once per call. When\
+  \ the\n  halfword underflows (i.e. timer expired) it nulls BattleObject.RelatedObject1Ptr\n  (oBattleObject_RelatedObject1Ptr,\
+  \ +0x4C) and AIData.Unk_68 (oAIData_Unk_68, +0x68), then calls\n  object_exitAttackState to leave the\
+  \ AI-attack state, and returns without going into the\n  player-input branch.\n\n  If the timer has\
+  \ not expired, it asks object_canMove whether the actor is free. If not free, it\n  returns. Otherwise\
+  \ it reads input via playerObject_checkDirectionButtons_800FA54 (returns the\n  pressed direction mask\
+  \ in r0). When the player pressed a direction (r0 != 0) AND sub_800F964\n  confirms a valid movement/action\
+  \ (r0 != 0 there), the function tears down the attack the same\n  way (clear RelatedObject1Ptr and AIData.Unk_68,\
+  \ object_exitAttackState) and then dispatches the\n  attack by calling battle_getCrossNaviTableByte_8010332\
+  \ (returns the Cross/Navi mode/element\n  byte in r0) and battle_GetAllianceFactionFromBattleObject_80103A8\
+  \ (returns the faction 0 or 3\n  in r0), then invokes sub_80116AE with the press mask, the cross-byte,\
+  \ and the faction — likely\n  the place where a counter-attack is launched back at the attacker.\n\n\
+  \  The capture data (r0=8, r1=0x080ebeb3+1, sp=0x03007d70, lr=0x080ebe0c) shows this is called\n  from\
+  \ the AI-attack dispatcher at 0x080ebe0c with battle object index (or type) 8 in r0.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0, [r7,#oAIAttackVars_Unk_01]` then `ldrh r0, [r7,#oAIAttackVars_Unk_12]` / `strh
+    r0, [r7,#oAIAttackVars_Unk_10]` at the function entry initialize the per-attack timer from Unk_12,
+    and `mov r0,#4` / `strb r0, [r7,#oAIAttackVars_Unk_01]` marks it active. - `ldrh r0, [r7,#oAIAttackVars_Unk_10];
+    sub r0,#1; strh r0, [r7,#oAIAttackVars_Unk_10]; bge loc_80EBED6` is the per-frame countdown. - On
+    underflow: `str r0,[r5,#oBattleObject_RelatedObject1Ptr]` zeroing the related-object pointer at offset
+    0x4C, then `ldr r1,[r5,#oBattleObject_AIDataPtr]; str r0,[r1,#oAIData_Unk_68]` zeroing AIData+0x68,
+    then `bl object_exitAttackState`. - `bl object_canMove` checks the OBJECT_FLAGS_IMMOBILIZED/etc. mask
+    before letting the player counter. - `bl playerObject_checkDirectionButtons_800FA54` returns a JoypadFlags
+    direction bitmask; the two early-`beq locret_80EBF0E` gate both the direction-press test and a second
+    test (`bl sub_800F964`) before kicking off the counter-attack sequence. - The dispatch tail builds
+    r0=pressed-button mask, r1=cross-navi byte (`bl battle_getCrossNaviTableByte_8010332`), r2=alliance
+    faction (`bl battle_GetAllianceFactionFromBattleObject_80103A8`) and calls `sub_80116AE` — the only
+    function that actually launches the response. - Captured callers all share entry r0=0x8, lr=0x080ebe0c,
+    indicating this routine is invoked from a fixed AI-attack-state dispatcher with index 8 as a per-call
+    argument.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080EBEB2
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, beastsp, fuzz, menus3, story2, story4, story5, story6, story7'
+  reproduce: 'grep -l ''^080ebeb2 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, beastsp, fuzz, menus3, story2, story4, story5, story6, story7
+open_questions:
+- The semantic identity of AttackVars Unk_01=4 ("attack-in-progress" sentinel), whether Unk_12 is a frame
+  counter or attack-telegraph timer, and whether sub_80116AE is the actual counter-attack launcher vs.
+  a state-transition fan-out. Settling any of these would need a type-1 attack sequence trace (virus attacks
+  vs. counter-attack) and to confirm what Unk_10 reaching 0 represents in the game logic.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 2e79aac3
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80EBEB2 -> battleObject_aiAttackTickCharge_80EBEB2
+  where: bn6f d43feadd
+  tool: tools/rename_symbol.py

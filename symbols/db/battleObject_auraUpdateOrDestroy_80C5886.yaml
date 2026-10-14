@@ -1,0 +1,71 @@
+name: battleObject_auraUpdateOrDestroy_80C5886
+address: '0x080C5886'
+kind: function
+previous_names:
+- sub_80C5886
+status: probable
+summary: 'Aura-style battle object update: on battle over spawn the death effect, otherwise process collision
+  (time-stop aware), and on collision resolution self-destroy.'
+interface: '(r5 = oBattleObject self, r10 = oToolkit) -> void ; side effects: removes collision, spawns
+  a type-4 effect on battle over, clears collision region and transitions CurState to CUR_STATE_DESTROY'
+details: "Pushes lr and immediately calls object_removeCollisionData (tail via the THUMB trampoline at\
+  \ 0x0801a00e) and object_spawnCollisionEffect, then polls battle_isBattleOver. If the battle is over\
+  \ (r0 != 0), it builds an effect-object spawn from the 12 bytes at oBattleObject + 0x34 (X/Y/Z coords,\
+  \ the `ldmia r0!, {r1-r3}` at loc_80C58B6) and calls spawn_t1_0x0_EffectObject (0x080e05f6, fixed r4\
+  \ = 0x14, presumably an effect slot/index).\n\n  If the battle isn't over and battle_isTimeStop returns\
+  \ 0, it reads the collision's `FlagsFromCollision` (oCollisionData + 0x70). If that word is zero it\
+  \ falls through to a two-entry jump table indexed by `oBattleObject_CurAction` (off_80C58D8 -> sub_80C58E0+1\
+  \ for action 0, sub_80C59B6+1 for action 1). If the flags word is non-zero (and time is not stopped),\
+  \ it jumps directly to the destroy path at loc_80C58C2.\n\n  If time is stopped it instead calls object_presentCollisionData\
+  \ and returns.\n\n  The destroy path (loc_80C58C2) clears bit 1 (OBJECT_FLAG_VISIBLE) from oObjectHeader_Flags\
+  \ (`bic r0, r1` with r1=2), calls object_clearCollisionRegion, writes CUR_STATE_DESTROY (0x08) into\
+  \ oBattleObject_CurStateActionPhaseAndPhaseInitialized, and returns via pop {pc}.\n\n  Behavior is consistent\
+  \ with sub_80C57F4's caller comment (\"aura-style battle object ... two animation tables by adjacency\"\
+  ), which suggests the two action handlers implement the aura's two adjacency-dependent animations; this\
+  \ dispatcher either advances them or, on a collision hit, ends the aura.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- push {lr} + pop {pc} shape and r5/r10 contract (r5 self, r10 toolkit) match an update handler
+    called from sub_80C57F4''s "aura init handler" description. - `bl object_removeCollisionData` / `bl
+    object_spawnCollisionEffect` at function head and the captured lr 0x080c57cc in the battle snapshots
+    match the dispatch from sub_80C57F4. - `bl battle_isBattleOver` then `bne loc_80C58B6` shows the battle-over
+    branch spawns the death effect; the `ldmia r0!, {r1-r3}` from oBattleObject+0x34 (Coords X/Y/Z) feeds
+    spawn_t1_0x0_EffectObject. - `bl battle_isTimeStop` -> `bne loc_80C58B0` then `bl object_presentCollisionData`
+    shows the time-stop branch re-runs the shared collision presenter. - `ldr r0, [r5,#oBattleObject_CollisionDataPtr]`
+    then `ldr r0, [r0,#oCollisionData_FlagsFromCollision]` followed by `tst r0, r0` and `bne loc_80C58C2`
+    shows a collision hit short-circuits the action handlers and goes straight to destroy. - The dispatch
+    `ldrb r0, [r5,#oBattleObject_CurAction]` + `ldr r1, [r1,r0]` + `mov lr, pc; bx r1` and the off_80C58D8
+    table with two entries (sub_80C58E0, sub_80C59B6) is a classic two-action jumptable dispatch keyed
+    by CurAction. - Destroy writes `mov r0, #CUR_STATE_DESTROY` (=0x08) into oBattleObject_CurStateActionPhaseAndPhaseInitialized
+    and clears bit 1 of oObjectHeader_Flags via `bic r0, r1` with r1=2, matching OBJECT_FLAG_VISIBLE clearing.
+    - The captured exit r0=0x02038790 is consistent with returning void (r5/r8/r10 preserved per out contract).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080C5886
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp'
+  reproduce: 'grep -l ''^080c5886 '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp
+open_questions:
+- What sub_80C58E0 and sub_80C59B6 actually do for the two CurAction values (the "two animation tables
+  by adjacency" described in the caller's summary); whether the destroy path also fires when FlagsFromCollision
+  has any specific bit or only when non-zero (the assembly is `tst r0, r0`, so any non-zero). Whether
+  spawn_t1_0x0_EffectObject's r4=0x14 is an effect-type/subtype argument versus a junk callee-saved reload.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 2e79aac3
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80C5886 -> battleObject_auraUpdateOrDestroy_80C5886
+  where: bn6f d43feadd
+  tool: tools/rename_symbol.py

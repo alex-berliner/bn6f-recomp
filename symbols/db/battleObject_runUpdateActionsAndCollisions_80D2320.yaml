@@ -1,0 +1,58 @@
+name: battleObject_runUpdateActionsAndCollisions_80D2320
+address: '0x080D2320'
+kind: function
+previous_names:
+- sub_80D2320
+status: probable
+summary: 'Per-frame battle object action step: forces VISIBLE, clears final palette, dispatches the CurAction
+  handler, then refreshes collision and sprite state.'
+interface: (r5 = BattleObject*, r10 = Toolkit*) -> side effects on the object only; void.
+details: "Sets OBJECT_FLAG_VISIBLE (0x2) into the object's ObjectHeader.Flags byte via `ldrb/orr/strb\
+  \ [r5,#oObjectHeader_Flags]` (so the object is drawn this frame).\n  Calls `sprite_clearFinalPalette`\
+  \ to zero the high nibble of the sprite's final palette byte.\n  Loads `jt_80D2348` (the per-CurAction\
+  \ jumptable) and dispatches it through `battleObject_dispatchActionHandler_801B394`, which runs one\
+  \ of: sub_80D236C, battle_ResetObjectActionState_80165B8, sub_80D239C, sub_80166AE, sub_8016B02, sub_8017E26,\
+  \ sub_8016B36, sub_8016B72, sub_80D2398. The CurAction byte (offset 0x9 in BattleObject) is the index.\n\
+  \  Runs `object_presentCollisionData` so any queued hit/status data is applied this frame.\n  Finally\
+  \ `object_updateSpriteTimestop` advances the sprite animation, respecting time-stop.\n  Tail-call returns\
+  \ with `pop {pc}`; no caller-visible return value.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {lr}` / `pop {pc}` and only `r5/r10` used from the caller-preserved set ⇒ void. - `ldrb
+    r0,[r5,#oObjectHeader_Flags]; orr r0,#2; strb r0,[r5,#oObjectHeader_Flags]` sets OBJECT_FLAG_VISIBLE
+    on the object pointed to by r5. - Direct call to `sprite_clearFinalPalette` immediately after that.
+    - `ldr r0, off_80D2344` then `bl battleObject_dispatchActionHandler_801B394` shows the jumptable at
+    jt_80D2348 is the action handler table; the table contains 9 handlers with r5 preserved across the
+    call. - `bl object_presentCollisionData` and `bl object_updateSpriteTimestop` are the documented per-frame
+    finalize/sync pair for battle objects. - Project callee summaries describe `battleObject_dispatchActionHandler_801B394`
+    as routing on CurAction.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080D2320
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp, maps'
+  reproduce: 'grep -l ''^080d2320 '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp, maps
+open_questions:
+- Which specific action handler this is the "update" entrypoint for (the jumptable has 9 entries, including
+  both generic ones like sub_80166AE and chip/script-specific ones like sub_80D236C/sub_80D2398). Identifying
+  the calling owner would confirm whether this is e.g. a generic battleObject per-frame step or one object's
+  per-state script driver.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 2e79aac3
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80D2320 -> battleObject_runUpdateActionsAndCollisions_80D2320
+  where: bn6f d43feadd
+  tool: tools/rename_symbol.py

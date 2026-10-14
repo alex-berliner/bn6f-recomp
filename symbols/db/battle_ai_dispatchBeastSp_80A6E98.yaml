@@ -1,0 +1,57 @@
+name: battle_ai_dispatchBeastSp_80A6E98
+address: '0x080A6E98'
+kind: function
+previous_names:
+- sub_80A6E98
+status: probable
+summary: AI dispatch wrapper that picks one of three handlers from a jump table using BattleObject.CurState
+  (offset 0x8) and calls it via lr/bx, returning its r0 directly.
+interface: (r5 = *BattleObject, r1 = ?, others caller-saved) -> r0 = handler result (e.g. 0x26 from samples)
+details: "- Saves lr, loads `r6 = unk_2011A90` (unused inside this function; likely scratch for callers).\n\
+  \  - Loads `r0 = off_80A6EA8` (= `&off_80A6EAC`), and `r1 = ldrb [r5, #8]` which is `BattleObject.CurState`\
+  \ per `oBattleObject`.\n  - Indexes the table: `r0 = [off_80A6EAC + r1*4]`. The table at 0x80A6EAC has\
+  \ 3 entries:\n    `[0] = sub_80A6EBC+1`, `[1] = sub_80A6F2C+1`, `[2] = sub_80A6F70+1`. Each is stored\
+  \ as +1 (Thumb bit set), so `bx r0` correctly enters Thumb.\n  - Uses `mov lr, pc; bx r0` to tail-call\
+  \ the handler, then `pop {pc}` to return to the original caller.\n  - Captured exit r0 = 0x26 across\
+  \ all samples, consistent with one of the three handlers returning a fixed value.\n  - The 0x40-byte\
+  \ memory range at r0 is not dereferenced inside this wrapper, only used as the function pointer base.\n\
+  \  - Caller-side context (r10=Toolkit, r5=BattleObject) and r2/r3 (0x8445190 / 0x84451A4) match the\
+  \ beast-sp (AIData) layout, suggesting this is the AIData-state dispatcher fired each frame.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r1, [r5,#8]` at 0x80A6E9E reads `BattleObject.CurState` per the oBattleObject macro
+    (CurState at loc=0x8). - `off_80A6EAC` contains three +1 Thumb pointers (`sub_80A6EBC+1`, `sub_80A6F2C+1`,
+    `sub_80A6F70+1`) at 0x80A6EAC..0x80A6EB4. - `mov lr, pc; bx r0` is the canonical Thumb tail-call sequence;
+    combined with `pop {pc}` it is a pure trampoline. - Captured entry lr=0x08004916 across all 40 samples
+    shows a fixed caller (handler enqueue site). - Snap names `snap_beastsp_*` and r2/r3 ranges (`0x08445190`
+    / `0x084451A4`, spacing 0x14 = sizeof AIData header block) place this in the AI/AIData path.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080A6E98
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^080a6e98 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The semantic names of `sub_80A6EBC / sub_80A6F2C / sub_80A6F70` are unknown; whether CurState 0/4/8
+  maps to init/update/destroy or some other triplet cannot be confirmed without reading those bodies.
+- r6 loaded with `unk_2011A90` is never used here; whether a callee expects it set (e.g. via r6 reuse)
+  is unverified.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 2e79aac3
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80A6E98 -> battle_ai_dispatchBeastSp_80A6E98
+  where: bn6f d43feadd
+  tool: tools/rename_symbol.py

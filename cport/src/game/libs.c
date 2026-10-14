@@ -1668,7 +1668,7 @@ Next battle_smashFx_SetParams_814E87C(void) {
 /* sub_814E9F0(r0 = song id):
  * Look the song up in sound_MusicTable (8 bytes per entry: pointer to the song
  * header + the index of the music player that plays it). If that player is
- * already playing this exact song, run sub_814F1E8 on the player (restart it);
+ * already playing this exact song, run sound_musicPlayerSetStopFlag_814F1E8 on the player (restart it);
  * otherwise do nothing.
  *
  * Register leftovers kept for callers: r1 = player's current song header,
@@ -1688,7 +1688,7 @@ Next sub_814E9F0(void) {
 
     if (R1 == LD32(songEntry)) {
         R0 = player;
-        GUEST_CALL(sub_814F1E8);
+        GUEST_CALL(sound_musicPlayerSetStopFlag_814F1E8);
     }
 
     RETURN_TO_CALLER();
@@ -1697,7 +1697,7 @@ Next sub_814E9F0(void) {
 /* ── sound_tickAllMusicPlayers_814EA58 ── */
 /* sound_tickAllMusicPlayers_814EA58: walk the fixed music-player table gMPlayTable (0x20 entries,
  * 12 bytes each, first word is the player info pointer) and call
- * sub_814F1E8 on every entry. The entry count is a literal pool constant
+ * sound_musicPlayerSetStopFlag_814F1E8 on every entry. The entry count is a literal pool constant
  * in the original, so its "count == 0" early-out can never be taken.
  * On return r0 holds the return address: the original pops lr into r0
  * and returns with "bx r0", leaving r0 = lr. */
@@ -1710,7 +1710,7 @@ Next sound_tickAllMusicPlayers_814EA58(void) {
 
     for (u32 i = MPLAY_TABLE_COUNT; i != 0; i--) {
         R0 = LD32((u32)entry);
-        GUEST_CALL(sub_814F1E8);
+        GUEST_CALL(sound_musicPlayerSetStopFlag_814F1E8);
         entry = (const u32 *)((u32)entry + MPLAY_TABLE_ENTRY_SIZE);
     }
 

@@ -1,0 +1,71 @@
+name: owMapObject_event5F1Trigger_80A75DC
+address: '0x080A75DC'
+kind: function
+previous_names:
+- sub_80A75DC
+status: probable
+summary: 'Overworld map-object Beast-Out state helper: if EVENT_5F1 is unset, checks the player against
+  an OW interaction box and sets the flag + writes 1 to [r5+0x24] on hit.'
+interface: (r5 = some object, r6 = some object) -> void ; may read/write event flag EVENT_5F1; writes
+  1 to [r5+0x24] on trigger
+details: "- Push {r4-r7,lr}; restores with pop {r4-r7,pc}.\n  - Tests event flag EVENT_5F1 via TestEventFlagFromImmediate;\
+  \ if already set, returns immediately (locret_80A763C). Guards the trigger so it fires at most once\
+  \ per playthrough per object instance.\n  - Calls ReadOWPlayerObjectCoords to get the player's position\
+  \ in r0=player ptr, r1=?, r2=X, r3=Y (per contract). The captured calls show entry r2=0x15000/0x18000\
+  \ (16.16 fixed-point X coords).\n  - Reads [r5+0xc]/[r5+0x10] as the trigger object's own X/Y, then\
+  \ runs overworldObject_withinBoxCheck_signed_80011D6 against an unsigned half extent of r4=0x12<<0x10\
+  \ = 0x120000 (a 16.16 box of ±0x12 around the player on the same Y).\n  - If within the box, jumps to\
+  \ loc_80A7630: sets EVENT_5F1 via SetEventFlagFromImmediate and writes 1 to [r5+0x24] (an \"armed/triggered\"\
+  \ latch on r5; size 4 since it stores an immediate with str, but the caller has limited meaning).\n\
+  \  - The else-branch (loc_80A760E) does a different check: it reads [r6+0x84] (r6+0x7c+8), and only\
+  \ if that pointer is non-zero runs the same within-box check, but with the box origin taken from [r6+0x7c]/[r6+0x80]\
+  \ (i.e., r6 is an OWObjectInteractionArea struct: x at 0x7c, y at 0x80, radius presumably encoded elsewhere).\
+  \ If it returns 1, also falls into the SetEventFlagFromImmediate + [r5+0x24]=1 path.\n  - Practical\
+  \ meaning: this is a \"has the player entered this trigger zone\" detector for an OW map object used\
+  \ during Beast-Out/MegaBeast sequence (per caller sub_80A7354's name). r5 is the controlled object,\
+  \ r6 is the OW object whose interaction area (0x7c = oOWObjectInteractionArea.X, 0x80 = oOWObjectInteractionArea.Y)\
+  \ is being polled.\n  - Quirks: stored value at [r5+0x24] is 1 (a u32-sized slot but conceptually a\
+  \ bool); the EVENT_5F1 guard makes the trigger one-shot.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- "movflag EVENT_5F1 ; bl TestEventFlagFromImmediate ; bne locret_80A763C" shows the one-shot
+    event guard at the entry. - "bl ReadOWPlayerObjectCoords" loads player coords (confirmed by caller''s
+    contract and captured r2=0x15000/0x18000 being 16.16 player X). - "ldr r0,[r5,#0xc] ; ldr r1,[r5,#0x10]"
+    reads the controlled object''s X/Y; "mov r4,#0x12 ; lsl r4,r4,#0x10" sets a 0x120000 16.16 box extent,
+    and "bl overworldObject_withinBoxCheck_signed_80011D6" with r2=player X, r3=player Y is the within-box
+    test. - "ldr r3,[r6,r2]" with r2=0x7c+8=0x84 first reads r6+0x84 as a non-zero gate; second path reads
+    "ldr r2,[r6,r4] ; ldr r3,[r6,r4]" with r4=0x7c, 0x80 — exactly oOWObjectInteractionArea.X and oOWObjectInteractionArea.Y.
+    - "loc_80A7630: movflag EVENT_5F1 ; bl SetEventFlagFromImmediate ; mov r0,#1 ; str r0,[r5,#0x24]"
+    is the trigger side-effect (set flag, write 1 to r5+0x24). - Caller sub_80A7354 is the "Beast-Out/MegaBeast
+    action-1" handler, consistent with using EVENT_5F1 as a once-per-fight flag and [r5+0x24] as a trigger
+    latch on the controlled object.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080A75DC
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^080a75dc '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- Exact meaning of EVENT_5F1 (story progress vs. local battle flag) and what consuming the latch at [r5+0x24]
+  does downstream — would need a follow-on caller that reads [r5+0x24].
+- Whether the r6 box path is the "primary" trigger and the player-coord path is a fallback, or vice versa
+  — the assembly only makes the r6 path gated on r6+0x84!=0.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 2e79aac3
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80A75DC -> owMapObject_event5F1Trigger_80A75DC
+  where: bn6f d43feadd
+  tool: tools/rename_symbol.py

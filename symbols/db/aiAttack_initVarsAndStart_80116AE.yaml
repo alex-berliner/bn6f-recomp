@@ -1,0 +1,67 @@
+name: aiAttack_initVarsAndStart_80116AE
+address: '0x080116AE'
+kind: function
+previous_names:
+- sub_80116AE
+status: probable
+summary: Initializes AI attack vars (Unk_0c/Unk_03/Unk_18/Unk_2c), sets the battle object's AttackVar[4]
+  to 0x10, and immediately steps the AI attack state machine.
+interface: (r0 = byte to Unk_0c, r1 = u16 to Unk_18, r2 = byte to Unk_03, r5 = BattleObject*, r10 = toolkit)
+  -> r0 = original r0 ; side effects writes AIAttackVars at AIDataPtr + 0xa0, then sets object AttackVar[4]
+  = 0x10 and runs one step of the AI attack state machine
+details: "Resolves r4 = [r5 + oBattleObject_AIDataPtr] (the AIData block belonging to object r5).\n  Computes\
+  \ r7 = r4 + 0xa0, i.e. the start of AttackVars (oAIData+0xa0 == oAIAttackVars).\n  Stores the caller's\
+  \ r0 (byte) at AttackVars+0x0c (Unk_0c), r1 (halfword) at AttackVars+0x18 (Unk_18), r2 (byte) at AttackVars+0x03\
+  \ (Unk_03); also clears the 32-bit field at AttackVars+0x2c (Unk_2c) to 0.\n  Then sets r0 = 0x10 and\
+  \ calls object_setAttack4, which writes 0x10 into BattleObject's AttackVar[4] (the sub-state of the\
+  \ AI attack action).\n  Finally invokes aiAttack_stepStateMachine_80EB04C to run the AI attack state\
+  \ machine once with the just-initialized vars.\n  The \"never reached\" tail writes AttackVar[4] = 0x3f\
+  \ and calls sub_80EB234 — that path is dead in normal flow.\n  Many callers (sub_802D3CA, sub_80EB502,\
+  \ sub_80EBEB2, sub_80EC490, sub_80EC67E, sub_80ED7A2, playerAI_sub_80F0354) all stash r5 (BattleObject*)\
+  \ and r10 (toolkit) across a call; they only ever pass r0∈{1..4}, r1=4, r2=0/2, r3=0xffff (r0 seems\
+  \ to be an AI action enum, r1 a param, r2 an arg for Unk_03).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r4, [r5,#oBattleObject_AIDataPtr]` at 0x80116B2 loads the AIData pointer stored on the
+    battle object. - `mov r7, #0xa0` then `add r7, r7, r4` matches AIData''s AttackVars offset 0xa0 (struct
+    shows `u8_arr AttackVars, 0x50 // loc=0xa0`). - `strb r0, [r7,#0xc]` / `strh r1, [r7,#0x18]` / `strb
+    r2, [r7,#3]` / `str r0(=0), [r7,#0x2c]` exactly match the corresponding AIAttackVars field offsets
+    (Unk_0c=0xc, Unk_18=0x18, Unk_03=0x3, Unk_2c=0x2c — the latter noted as "also size 4"). - `mov r0,
+    #0x10; bl object_setAttack4` sets the per-object attack-vars[4] slot to 0x10, the standard slot used
+    by aiAttack_stepStateMachine_80EB04C''s state table. - The five captured call snapshots all show r0∈{1,2,4},
+    r1=4, r2=0, r3=0xffff with consistent lr=0x080f0551 (playerAI) — i.e. the function is invoked identically
+    from many AI dispatch sites. - LR=0x080f0551 lives inside playerAI_sub_80F0354 (player AI dispatcher),
+    confirming this is on the AI-attack path.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080116AE
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^080116ae '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9
+open_questions:
+- 'Exact meaning of the values written: r0 to AttackVars.Unk_0c, r1 to Unk_18, r2 to Unk_03 — none of
+  these fields are documented, so the action enum being passed through r0 is unknown. Settling it would
+  need either a documented AIAttackVars spec or tracing what the state machine does with each combo.'
+- Why the dead tail writes AttackVar[4]=0x3f and calls sub_80EB234 — could be a leftover from a refactor;
+  not reachable from any observed caller in the captures.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 2e79aac3
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80116AE -> aiAttack_initVarsAndStart_80116AE
+  where: bn6f d43feadd
+  tool: tools/rename_symbol.py

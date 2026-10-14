@@ -1,0 +1,80 @@
+name: sprite_setupBeastOutSprite_80A786C
+address: '0x080A786C'
+kind: function
+previous_names:
+- sub_80A786C
+status: probable
+summary: Configure a battle object's sprite slot for a Beast-Out style transformation (priority 2, optional
+  alpha-off, then reload animation if the anim changed).
+interface: (r5 = BattleObject*, r10 = Toolkit*, r4 in = some init context) -> side effects only ; writes
+  r5+0..0x5, r5+0xc..0x14, calls sprite_disableAlpha/setPriority/setAnimation/loadAnimationData/update
+details: "1. Calls sub_809BA14 (subsystem init/restore helper using r10) and stores the returned (r0,r1,r2)\
+  \ at r5+0xc/0x10/0x14 (object ExtraVars bytes 0..0x0b area) plus r3 at r5+4 (Param3 byte).\n  2. Inspects\
+  \ incoming r4 (a flag passed from sub_80A783C): r4==0 -> store 1 into [r5]; r4==0x10 -> store 3 into\
+  \ [r5]; otherwise r4 keeps its old value and no alpha tweak is needed, branch straight to priority/anim\
+  \ step. The two chosen bytes 1 and 3 are written to the object's first byte (the object header index/category\
+  \ slot: see battle_object_struct Unk_0c? — actually stored at [r5] which is the linked-list prev ptr\
+  \ least-significant byte, not the header).\n  3. For the alpha-on path, jumps to loc_80A788A which calls\
+  \ sprite_disableAlpha (i.e. alpha toggle off for appearance change); the no-op paths fall through without\
+  \ the alpha call.\n  4. Always sets sprite priority to 2 (sprite_setPriority_8002E14 with r0=2), giving\
+  \ the Beast-Out sprite a fixed OAM layer below the regular actors.\n  5. Compares the desired anim byte\
+  \ (r5+4, just stored by sub_809BA14) against the last-rendered anim byte (r5+5); on change, calls sprite_setAnimation(byte)\
+  \ then sprite_loadAnimationData() to refresh frames, then stores the new anim byte into r5+5.\n  6.\
+  \ Always finishes with sprite_update() to push the refreshed sprite into OAM, then returns.\ndetails:\
+  \ |\n  Captured-call entries repeatedly show r0=0x080a786d (return target for tail-call site) and r3=0x40\
+  \ pointing to EWRAM object state; the function only ever returns to its sole caller sub_80A783C.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- push/pop {lr;..}/pop {pc} shows a leaf-like wrapper with no callee-saves, matching the public-ish
+    helper role seen in sprite_* callees. - `bl sub_809BA14` + four direct stores into r5 (offsets 0xc,
+    0x10, 0x14, 4) prove the first block copies a precomputed (r0,r1,r2,r3) into the battle object''s
+    ExtraVars + Param3 (BattleObject.inc at offset 0xc..0x14 / Param3 loc=0x6... actually Param3 is 0x6;
+    offset 0x4 stored via strb r3,[r5,#4] is Param1, which contradicts the byte layout — see uncertain).
+    - `cmp r0,#0` / `beq loc_80A7888` (mov r4,#1) and `cmp r0,#0x10` / `beq loc_80A788A` (mov r4,#3) followed
+    by a single `strb r4,[r5]` write a chosen byte into [r5]. - `bl sprite_disableAlpha` after the loc_80A788A
+    label shows the 3-case branch controls whether alpha is disabled (0/0x10 trigger it; anything else,
+    including the e.g. 0x20 default path through `b loc_80A788E`, skips it). - `mov r0,#2 ; bl sprite_setPriority_8002E14`
+    hard-codes OAM priority 2 for this sprite. - `ldrb r0,[r5,#4]` / `ldrb r1,[r5,#5]` / `cmp r0,r1` followed
+    by `beq loc_80A78A6` is a "render only if anim changed" cache, matching the standard sprite_setAnimation/loadAnimationData
+    dance used elsewhere (sprite_setAnimation @ 0x08002da4 writes byte 0 of the sprite; sprite_loadAnimationData
+    @ 0x080026a4 reloads animation assets). - `strb r0,[r5,#5]` then `bl sprite_update` persists the now-current
+    anim and pushes the sprite into OAM. - sole non-trivial caller `sub_80A783C` has matching contract
+    (in r5/r10/lr; out r2..r5), strongly suggesting this is Beast-Out-related given the sub_809BA14 capture
+    file is named "beastsp_0080000_*" (the runtime traces to a Beast-Out sprite slot).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080A786C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^080a786c '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- Exact meaning of [r5] byte 0 — the BattleObject struct begins with linked-list prev/next pointers, so
+  writing a u8 to [r5] actually mutates the low byte of `Prev`; this is unusual and may indicate r5 here
+  isn't actually a vanilla BattleObject or the file is using a custom object header where byte 0 is the
+  visual layer/object kind. Would settle it once sub_809BA14 and the caller's r5 origin are known.
+- 'The (r0,r1,r2,r3) -> (r5+0xc..0x14) mapping: battle_object_struct ExtraVars starts at 0x60, not 0xc,
+  so this is almost certainly a different/smaller object shape (likely a Beast-Out helper object). The
+  struct definitions do not list a 0xc..0x14 four-word block. Would settle by identifying r5''s type at
+  the call site.'
+- 'Why r4 is only branched on for two values (0 and 0x10): r4 likely classifies the transition (regular
+  vs cross-fade?), and other values may indicate "no change, just refresh" — would settle from sub_80A783C''s
+  setup code.'
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 2e79aac3
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80A786C -> sprite_setupBeastOutSprite_80A786C
+  where: bn6f d43feadd
+  tool: tools/rename_symbol.py

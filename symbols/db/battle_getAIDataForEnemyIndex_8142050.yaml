@@ -1,0 +1,55 @@
+name: battle_getAIDataForEnemyIndex_8142050
+address: '0x08142050'
+kind: function
+previous_names:
+- sub_8142050
+status: probable
+summary: Returns an AI data pointer for the given enemy slot using the toolkit/enemy-index lookup table.
+interface: (r0 = enemyIndex) -> r0 = ptr (in r7, copied to r0 on exit); r10 = toolkit (preserved by callee-saved)
+details: "- Saves r4-r6 and lr; computes r4 = enemyIndex*4.\n  - Calls sub_8142080 (battle_getEnemyIndexFromMapGroup_8142080)\
+  \ with r10 (toolkit) and r0 in some role, getting back an index in r0.\n  - Loads base pointer off_8141B18\
+  \ into r7, then loads r7 = [r7 + r0*4] (a table indexed by the previous lookup's result).\n  - Final\
+  \ result in r7 = [r7 + r4] where r4 is the per-enemy slot offset (enemyIndex*4).\n  - Restores r4-r6\
+  \ and returns the pointer via r0 (r7->r0 effectively via r7).\n  - Behavior: a two-stage indirection\
+  \ for AI data: first by map group / category, then by enemy slot.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `lsl r4, r0, #2` sets up r4 = enemyIndex*4 (r0 is entry, no other captures needed). - `bl
+    battle_getEnemyIndexFromMapGroup_8142080` is the only direct callee and returns an index used to index
+    off_8141B18. - `ldr r7, off_8142064 ; ldr r7, [r7,r0]` performs the first table lookup. - `ldr r7,
+    [r7,r4]` performs the second table lookup using the per-slot offset in r4. - `pop {r4-r6,pc}` returns
+    with r7 (the retrieved pointer) still live for the caller; the contract `out=[''r4'',''r5'',''r6'',''r7'']`
+    confirms r7 is the meaningful return. - 40 captured calls all return r0=0x04 to the caller (the high
+    half of a pointer-ish value? Or perhaps the captured exit sample only observed a low-word register
+    state; the actual return goes to r7). Note the contract annotates r7 as out, while r0 is just may_write.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08142050
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^08142050 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- Exact semantics of the off_8141B18 table (size, contents) and the role of sub_8142080's return are unknown;
+  confirming AIDataPtr vs another battle-scoped struct would require following off_8141B18 contents.
+- Whether the function ultimately returns in r0 or only r7 (caller may need to read r7) is unclear from
+  the captured exits (they show r0=4 in every case, suggesting either a constant low-byte result or sampling
+  artifact).
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 2e79aac3
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8142050 -> battle_getAIDataForEnemyIndex_8142050
+  where: bn6f d43feadd
+  tool: tools/rename_symbol.py

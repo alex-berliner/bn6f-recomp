@@ -1,0 +1,67 @@
+name: battle_calcPanelDistance_803182A
+address: '0x0803182A'
+kind: function
+previous_names:
+- sub_803182A
+status: probable
+summary: Computes a Manhattan-style panel distance between the entity at r0 and its target, returning
+  a panel count adjusted by an entry header.
+interface: '(r0 = entity/AI-data ptr, r5 = context) -> r0 = adjusted panel distance ; side effects: reads
+  dword_2011A20 table header, reads [r1] as a fixed-point coord'
+details: "- Pushes lr; calls battle_calcRelPosToTarget_803172E with (r0, r5, lr). That helper stores the\
+  \ entity's current and next relative coords (and target doubled point) in a scratch buffer and returns\
+  \ a pointer in r0, which is pushed on the stack for later use.\n  - Calls table_GetCurrentEntryHeader_8031760\
+  \ with r0=1 to fetch the current entry's header; returns signed count in r0, byte at +1 in r1, byte\
+  \ at +2 in r2, with r3 holding a shift count from the caller (r3 is set by the caller of this routine,\
+  \ see snapshots: r3 = 0x020284.. / 0x020292..).\n  - Computes (r0 + r1) - ((8) >> r3), doubles that\
+  \ (lsl #1), then pops the saved scratch pointer into r1.\n  - Loads a u32 from [r1] (a fixed-point coordinate),\
+  \ arith-shifts it right by r3, adds it to the doubled value, and arith-shifts right by 1 to halve.\n\
+  \  - Finally moves #2 into r1 and logical-shifts right by r3, returning r1 alongside r0. Net effect:\
+  \ ((header_lo+header_hi) - 8*tableShift) + (scratch >> tableShift), halved, with the table shift exposed\
+  \ back to the caller.\n  - Captured exit r0 values (0x3f, 0x3e, 0x35, 0x34, 0x33, 0x32 in successive\
+  \ beasts-related samples) line up with the difference between the entity's coords (seen in the dumped\
+  \ buffer at +0, +0x10) and a target's coords (at +8, +0x18), consistent with a panel/distance calculation\
+  \ rather than a direct coord return.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- The two callees are confirmed helpers for "compute relative-to-target coords" and "fetch
+    current table entry header". - r3 on entry is a small pointer-shaped value (0x02028464 / 0x0202929c
+    ...) that is used as an arithmetic shift count (`asr r2, r3`, `asr r0, r3`); this is consistent with
+    a per-entity coord-scaling shift. - The push/pop pair around the scratch pointer (`push {r0}` after
+    calcRelPosToTarget, `pop {r1}` before reading it) and the final `pop {pc}` make this a true leaf via
+    tail-return from lr. - Dumped memory at r0=02009f5c repeats the same structure with two pairs of u32
+    fields `0x00c067ff,0x0000xx` separated by a similar pair offset by 16 bytes — matches a (current,
+    next) coords pair layout, consistent with the helper above.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0803182A
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp, maps'
+  reproduce: 'grep -l ''^0803182a '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp, maps
+open_questions:
+- Whether r0 truly returns a "panel distance" or simply a screen/coord distance; the table-header subtraction
+  looks like an origin/centering offset, but the exact semantic unit (pixels vs panels) isn't directly
+  visible in the assembly.
+- 'The role of r1 at exit (`mov r1, #2; lsr r1, r3`) — likely a shift constant passed back, but no caller
+  was captured so the consumer''s interpretation is unknown.'
+- The precise relationship between r3's incoming value and the two pointer-looking operands (0x020284..
+  / 0x020292..) is unclear; they look like embedded struct pointers rather than pure shift counts.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 2e79aac3
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_803182A -> battle_calcPanelDistance_803182A
+  where: bn6f d43feadd
+  tool: tools/rename_symbol.py

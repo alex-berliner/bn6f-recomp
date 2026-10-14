@@ -1,0 +1,76 @@
+name: battleObject_updateFromCurAction_80A7354
+address: '0x080A7354'
+kind: function
+previous_names:
+- sub_80A7354
+status: probable
+summary: Advances a battle object's CurAction state machine, updating the sprite and chaining per-state
+  helpers (handles BeastOut/L-Message/AskJackOut gating around state 1)
+interface: '(r5 = object ptr, r6 = ?, r10 = toolkit) -> void ; side effects: may mutate object state and
+  call sprite_update plus per-state helpers'
+details: "Reads r6+9 (battle object's CurAction). If cutscene state's originally-saved script pointer\
+  \ matches L-Message sentinel or AskJackOut sentinel, OR the chatbox eFlags2009F38 bit 0x80 is set, the\
+  \ function skips the per-action branch and falls through to sprite_update + sub_80A775C.\n  When CurAction\
+  \ == 1 it checks r5+0x24 (u16 at offset 0x24 in the object header / BattleObject); if non-zero it calls\
+  \ sub_80A7640 (which takes r2 from the caller route coverage), otherwise it writes 8 (CUR_STATE_DESTROY)\
+  \ to r5+0x8 (CurState).\n  When CurAction is anything other than 0 or 1, it calls sub_80A73A0 followed\
+  \ by sub_80A75DC.\n  The unconditionally executed tail is `sprite_update` on the object (header + (byte\
+  \ 2 & 0xF0)) and then sub_80A775C; both treat r5 as the object pointer.\n  The two cutscene-pointer\
+  \ checks + chatbox flag 0x80 gate the \"action == 1\" branch to suppress it during L-Message/AskJackOut\
+  \ cutscenes, matching how BN normally suppresses gameplay advancement during scripted dialog.\n  r6\
+  \ is the \"battle object / opponent / next\" pair typically passed alongside r5 in BN6 battle object\
+  \ code; offset +9 is CurAction in the BattleObject union.\nevidence: |\n  - `bl cutscene_checkOriginalCutsceneScriptPos_8036F40`\
+  \ followed by `bne loc_80A738E` (cuts off action branch on L-Message sentinel)\n  - `bl cutscene_checkOriginalCutsceneScriptPos_8036F58`\
+  \ followed by `bne loc_80A738E` (cuts off action branch on AskJackOut sentinel)\n  - `mov r0, #0x80;\
+  \ bl chatbox_mask_eFlags2009F38; bne loc_80A738E` (chatbox event bit 0x80 also gates the action branch)\n\
+  \  - `ldrb r0, [r6,#9]; cmp r0, #0; beq loc_80A7386; cmp r0, #1; bne loc_80A7386` reads CurAction from\
+  \ r6+9\n  - When CurAction == 1 and r5+0x24 != 0 it does `bl sub_80A7640`; else `mov r0, #8; strb r0,\
+  \ [r5,#8]` writes CUR_STATE_DESTROY to CurState\n  - Default path: `bl sub_80A73A0; bl sub_80A75DC`\n\
+  \  - Tail: `bl sprite_update; bl sub_80A775C` (sprite + per-frame follow-up both keyed off r5)\n  -\
+  \ r5 is preserved across the function (push {r4-r7,lr} / pop {r4-r7,pc})\nuncertain: |\n  Whether the\
+  \ r6+r5 combination here represents BattleObject+r5-of-pair or two distinct objects; the callee contracts\
+  \ reading r10 and r5 plus the CurAction read on r6 suggest r6 holds the object whose CurAction drives\
+  \ the state and r5 is a second object (often the paired ally/enemy in BN6 handlers). Examining sub_80A73A0\
+  \ / sub_80A75DC / sub_80A7640 should confirm.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl cutscene_checkOriginalCutsceneScriptPos_8036F40` followed by `bne loc_80A738E` (cuts
+    off action branch on L-Message sentinel) - `bl cutscene_checkOriginalCutsceneScriptPos_8036F58` followed
+    by `bne loc_80A738E` (cuts off action branch on AskJackOut sentinel) - `mov r0, #0x80; bl chatbox_mask_eFlags2009F38;
+    bne loc_80A738E` (chatbox event bit 0x80 also gates the action branch) - `ldrb r0, [r6,#9]; cmp r0,
+    #0; beq loc_80A7386; cmp r0, #1; bne loc_80A7386` reads CurAction from r6+9 - When CurAction == 1
+    and r5+0x24 != 0 it does `bl sub_80A7640`; else `mov r0, #8; strb r0, [r5,#8]` writes CUR_STATE_DESTROY
+    to CurState - Default path: `bl sub_80A73A0; bl sub_80A75DC` - Tail: `bl sprite_update; bl sub_80A775C`
+    (sprite + per-frame follow-up both keyed off r5) - r5 is preserved across the function (push {r4-r7,lr}
+    / pop {r4-r7,pc})'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080A7354
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^080a7354 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- Whether the r6+r5 combination here represents BattleObject+r5-of-pair or two distinct objects; the callee
+  contracts reading r10 and r5 plus the CurAction read on r6 suggest r6 holds the object whose CurAction
+  drives the state and r5 is a second object (often the paired ally/enemy in BN6 handlers). Examining
+  sub_80A73A0 / sub_80A75DC / sub_80A7640 should confirm.
+- 'status: probable'
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 2e79aac3
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80A7354 -> battleObject_updateFromCurAction_80A7354
+  where: bn6f d43feadd
+  tool: tools/rename_symbol.py

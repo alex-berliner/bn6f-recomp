@@ -1,0 +1,62 @@
+name: battle_chipSelect_handleUpDownInput_802C460
+address: '0x0802C460'
+kind: function
+previous_names:
+- sub_802C460
+status: probable
+summary: handles up/down arrow D-pad input on the chip-select screen, advancing/retreating a cursor row
+  and animating the chip icon when it changes column
+interface: (r5 = s_20364C0_struct*, r6 = joypad/AI flags, r10 = Toolkit*) -> side effects on s_20364C0_struct
+  and chip-select UI state
+details: "Reads two signed bytes from s_20364C0_struct+0x6 and +0x7 (APwrAtk row vs B-button row indices,\
+  \ \"BLeftAbility\" and friends) as r0/r1.\n    If they are equal, the function returns immediately.\n\
+  \    Otherwise computes r4 = |r0 - r1| and picks the larger of the two into r0, then bumps it by 0x18\
+  \ (looks like a stride/index into a chip-select row table) before calling sub_802C490 (r5 = 0x12 constant,\
+  \ r1 = 2). The callee's return in r2 is tested; if zero, return.\n    If non-zero, r2 = 3, r3 = 0 are\
+  \ loaded and a render/animation kicker (call_sub_3005EBA, likely a battle-state enqueue or sprite-loader\
+  \ thunk) is called.\n    The constant 0x18 is a chip-slot row stride, 0x12 is the chip count visible\
+  \ on screen, and 2 is the cursor \"Up\" or \"Down\" delta — this is the row-jump handler in the chip-select\
+  \ UI invoked from battle_initChipSelect_802BD60.\n    Caller sub_802BD60 has the same contract shape\
+  \ (r5/r6/r10 in, no r0 return value) which fits a UI tick.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrsb r0, [r5,#6]` / `ldrsb r1, [r5,#7]` map to AIData offset 6/7 (APwrAtk/BPwrAtk indices)
+    but more likely S20364C0 fields given the caller''s "chip select" naming; s_20364C0_struct has fields
+    at 0x06/0x07 area covering chip-slot bookkeeping (ChipSelectCursorPos at 0x07, surrounding bytes used
+    by chip-select). - `cmp r0, r1; beq locret_802C48E` short-circuits when the two row indices match
+    — classic "no change, exit" early-out for D-pad nav. - `add r0, #0x18` is a 24-byte row stride typical
+    of a chip-row descriptor layout. - `mov r5, #0x12` (18) is the visible chip count, and `mov r1, #2`
+    is a ±2 row step consistent with vertical D-pad row jumping. - `bl call_sub_3005EBA` with `mov r2,
+    #3; mov r3, #0` is the only post-validation action, indicating an animation/event enqueue when the
+    cursor does move. - Only one caller (battle_initChipSelect_802BD60), contract symmetric on r5/r6/r10.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0802C460
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, beastsp, menus3, story2, story4, story5, story6, story7, story8,
+    story9'
+  reproduce: 'grep -l ''^0802c460 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, beastsp, menus3, story2, story4, story5, story6, story7, story8, story9
+open_questions:
+- Which exact struct r5 points to (AIData vs S20364C0 vs something else); the offsets 6/7 are byte-wide
+  and signed, which fits both APwrAtk/BPwrAtk and a chip-slot pair.
+- Whether the "moving by 0x18" is a stride into a chip table or a panel index — would settle by reading
+  sub_802C490.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 2e79aac3
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_802C460 -> battle_chipSelect_handleUpDownInput_802C460
+  where: bn6f d43feadd
+  tool: tools/rename_symbol.py

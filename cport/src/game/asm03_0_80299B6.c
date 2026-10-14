@@ -1801,8 +1801,8 @@ Next setupNaviDisplay_802C34E(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_802C460 ── */
-/* sub_802C460 (r5 = object pointer):
+/* ── battle_chipSelect_handleUpDownInput_802C460 ── */
+/* battle_chipSelect_handleUpDownInput_802C460 (r5 = object pointer):
  * Reads two signed bytes from the object at offsets 6 and 7 (two positions
  * along an axis). If they are equal there is nothing to do. Otherwise it
  * computes the distance between them and a start position (the smaller
@@ -1814,7 +1814,7 @@ Next setupNaviDisplay_802C34E(void) {
  * offset 7 on the early-out path, and whatever the callees leave otherwise.
  * c/v are outputs: on the early-out path they come from the CMP of the two
  * bytes; on the call paths they are whatever the callee left. */
-Next sub_802C460(void) {
+Next battle_chipSelect_handleUpDownInput_802C460(void) {
     u32 savedR4 = R4;
     u32 savedR5 = R5;
 

@@ -1,0 +1,61 @@
+name: battleObject_tryGetNextPanelInFacingDirection_800F964
+address: '0x0800F964'
+kind: function
+previous_names:
+- sub_800F964
+status: probable
+summary: For the current battle object in r5, returns the panel it would walk onto next given its facing
+  alliance (or 0 if invalid / sliding)
+interface: (r0 = unused arg passed to dirOffsetFromAlliance) -> r0 = next-panel-X, r1 = next-panel-Y ;
+  returns (r0,r1) = (PanelX,PanelY) when valid, otherwise r0=0,r1=undefined
+details: "Pushes r6/r7, saves r0 in r6. Calls object_getFlag (r5 implicit) and tests flag bit 0x1000\n\
+  \  (OBJECT_FLAGS_SLIDING at oBattleObject collision data offset 0x3c, bit 12). If the object is\n  currently\
+  \ sliding, returns (0, ?) immediately.\n  Otherwise reads the object's alliance byte at offset oBattleObject_Alliance\
+  \ (0x16 in\n  BattleObject) into r1 and calls dirOffsetFromAlliance_800F9DE(r0=dir?, r1=alliance) ->\
+  \ (r0,r1)\n  holding dx,dy offsets. Adds those to PanelX (offset 0x12) and PanelY (offset 0x13) loaded\
+  \ from r5\n  and stores the result as the candidate (r6,r7). Then validates the panel via\n  playerObjectMovingToPanelValidityRelated_800E618(r0=PanelX,\
+  \ r1=PanelY, r5=object); on success\n  pops with (r0=PanelX, r1=PanelY); on failure pops with (r0=0).\
+  \ Used by the AI / chip-target\n  routines in sub_80EB088 / sub_80EB402 / sub_80EB502 / sub_80EBEB2\
+  \ / sub_80EC490 / sub_80EC67E\n  / sub_80ED7A2 to probe where the object currently faces for movement/auto-target\
+  \ decisions.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl object_getFlag` immediately followed by `mov r1, #1; lsl r1, r1, #0xc; tst r0, r1` tests
+    flag bit 0x1000 == OBJECT_FLAGS_SLIDING. - `ldrb r1, [r5,#oBattleObject_Alliance]` (offset 0x16) and
+    `bl dirOffsetFromAlliance_800F9DE` -> returns dx in r0, dy in r1. - `ldrb r6, [r5,#oBattleObject_PanelX]`
+    / `ldrb r7, [r5,#oBattleObject_PanelY]` (offsets 0x12/0x13) are then added to the offset. - Final
+    `beq`+`mov r0, #0; pop {r6,r7,pc}` confirms the 0-return branch. - `beq loc_800F994` after `bl playerObjectMovingToPanelValidityRelated_800E618`
+    indicates the panel check (returning whether the target is a valid move) gates the (PanelX,PanelY)
+    return.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0800F964
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0800f964 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9
+open_questions:
+- The first argument r0 forwarded to dirOffsetFromAlliance_800F9DE is not used inside this
+- function visibly; the role of the caller's r0 (typically an action/direction index from the
+- caller) is unknown — knowing what the callers pass there would confirm whether the function
+- also overrides the natural alliance with an explicit direction.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 2e79aac3
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_800F964 -> battleObject_tryGetNextPanelInFacingDirection_800F964
+  where: bn6f d43feadd
+  tool: tools/rename_symbol.py

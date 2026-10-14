@@ -1,0 +1,64 @@
+name: sound_musicPlayerSetStopFlag_814F1E8
+address: '0x0814F1E8'
+kind: function
+previous_names:
+- sub_814F1E8
+status: probable
+summary: Sets the "stop" flag magic on a music player struct and, if it was just toggled on this call,
+  kicks the per-channel bank tear-down.
+interface: '(r0 = musicPlayerStruct*) -> void ; side effect: writes `0x68736D53` (`"Smsh"` little-endian)
+  into `[r0+0x34]`, may OR `0x80000000` into `[r0+4]`, and stops `r4 = [r0+8]` banks of channels pointed
+  at by `[r0+0x2C]` (each 0x50 bytes) via `sound_stopAllChannelsInBank_814E4DC`.'
+details: "Identical caller signature to `sound_tickAllMusicPlayers_814EA58` (it pushes the same set of\
+  \ high regs and saves `lr`); `r0` is one entry of `gMPlayTable`.\n  Compares the u32 at `[r0+0x34]`\
+  \ against the constant `0x68736D53` (\"Smsh\"). If unequal, no work is done (early `bne loc_814F21E`\
+  \ is taken). Otherwise it increments `[r0+0x34]`, sets the high bit (`0x80000000`) of `[r0+4]`, then\
+  \ loops `r4 = ldrb [r0+8]` times starting at pointer `r5 = [r0+0x2C]` and stepping `+0x50` per bank,\
+  \ calling `sound_stopAllChannelsInBank_814E4DC(mp, bankPtr)` for each bank. Finally it restores `[r0+0x34]`\
+  \ to the constant.\n  The double-write of the magic (`0x34 = X`, branch-if-set path, then `0x34 = X`\
+  \ again) is a single-shot guard: increment then compare-on-entry was probably coded as test-magic/stop-work\
+  \ on re-entry. The function tail `pop {r4-r6}; pop {r0}; bx r0` is the standard \"caller saved lr into\
+  \ r0, then bx r0 to return\" TailCall ABI used throughout the sound module.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `cmp r1, r0` against `dword_814F224 = 0x68736D53` at offset 0x34 is the obvious sentinel
+    check. - `add r0, r1, #1; str r0, [r6,#0x34]` followed later by `str r0, [r6,#0x34]` again with the
+    magic value is a re-entrancy guard. - `orr r0, r1` with `r1 = 0x80000000` sets bit 31 on `[r0+4]`
+    — typical "stopped/disabled" flag on a music player record. - Loop reads `r4 = ldrb [r6,#8]` (count)
+    and `r5 = ldr [r6,#0x2C]` (bank pointer table), stepping `r5 += 0x50`, and `bl sound_stopAllChannelsInBank_814E4DC`
+    — exactly a per-bank channel stop. - Only callers are the per-frame `sound_tickAllMusicPlayers_814EA58`
+    and `sub_814E9F0` (BGM restart). - Captured calls always run with `r2 = 0x46A` and `r3 = sound_tickAllMusicPlayers_814EA58
+    + 1` (i.e. the music-player-loop trampoline), confirming `r0` is a music player table entry pointer.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0814F1E8
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story1, story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^0814f1e8 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander
+open_questions:
+- Exact semantic of the magic string `"Smsh"` (some m4a/mp2k build artifact vs. an explicit "MusicPlayerStop
+  pending" sentinel) — seeing how `sub_814E9F0` and the two `814EA58` callers treat this field across
+  restart scenarios would settle it.
+- Whether `[r0+8]` is really a count of bank pointers or a flag (always small in practice, never seen
+  larger than a handful); the `ldrb + ble/bgt` pattern strongly implies count, however.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 2e79aac3
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_814F1E8 -> sound_musicPlayerSetStopFlag_814F1E8
+  where: bn6f d43feadd
+  tool: tools/rename_symbol.py

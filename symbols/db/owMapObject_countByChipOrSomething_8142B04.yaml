@@ -1,0 +1,64 @@
+name: owMapObject_countByChipOrSomething_8142B04
+address: '0x08142B04'
+kind: function
+previous_names:
+- sub_8142B04
+status: probable
+summary: Iterates the overworld map object array (eOverworldMapObjects), calling battleObject_getPanelChipByIndexAtPlayerPos_8142B28
+  per entry, and counts how many objects' returned "panel chip" value matches r0; returns that count (0
+  if none match).
+interface: '(r0 = key chip value, r10 = toolkit) -> r0 = match count ; side effects: walks the global
+  OW map-object array of 0x38 (56) entries and consumes r0..r5/r6/r7'
+details: "- r7 saves the incoming key value; r5 starts as the base of eOverworldMapObjects.\n  - r4 is\
+  \ the slot index 0..0x37 inclusive and r6 is the running match counter (both initialized to 0).\n  -\
+  \ For each slot, battleObject_getPanelChipByIndexAtPlayerPos_8142B28 is called; if it returns nonzero\
+  \ and r0 == r7, r6 is incremented (the \"add r6, #1\" only happens when the prior `beq`/`bne` checks\
+  \ place flow at loc_8142B1A *and* the branch was not taken — wait, re-read: `beq` skips the cmp, `bne`\
+  \ skips the add; so add only fires when both passes — i.e., helper returned nonzero AND result equals\
+  \ key).\n  - r5 is then bumped by 0x78 (sizeof(OverworldMapObject) per the layout that ends with object_sprite_struct\
+  \ at 0x40 and Size=0x78).\n  - Loop bound `cmp r4, #0x38` / `blt` → 0x38 iterations (56 entries; matches\
+  \ the \"0x38 entries\" pattern used elsewhere for OW object arrays).\n  - Final `tst r0, r0` + `pop\
+  \ {r4-r7,pc}` sets Z based on the returned count, so callers can branch on \"any matches?\".\n  - Returned\
+  \ r6 is also placed into r0. Snap_shot 11 (entry r0=0x8379, exit r0=1) shows the helper returned a value\
+  \ that equaled 0x8379 exactly once across the array; snapshots with exit r0=0 indicate no objects had\
+  \ a matching panel chip value.\n  - Captured-call r0=0/8 etc. mean the routine is repeatedly probed\
+  \ with arbitrary \"key\" values; the caller (sub_80A86B4) presumably decides which key to pass.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r5, off_8142B54 // =eOverworldMapObjects` at 0x8142B0E confirms r5 walks an array of
+    OW objects (size matches oOverworldMapObject_Size=0x78). - `add r5, #0x78` after each iteration matches
+    sizeof(OverworldMapObject). - `cmp r4, #0x38` / `blt loc_8142B0E` walks exactly 0x38 (56) entries
+    — the canonical OW map object count. - `cmp r0, r7` then `add r6, #1` only when equal shows r6 is
+    incremented per "value-equality match". - Tail `mov r0, r6` / `tst r0, r0` returns the match count
+    and reports zero via Z. - Snap_shot 11 entry r0=0x8379 produced exit r0=1; all other runs exit r0=0,
+    consistent with "count how many slots produce helper-return == key".'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08142B04
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^08142b04 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The semantic meaning of the "key" passed in r0 is not deducible from this function alone — likely a
+  chip id, an element, or a panel type value — hence the tentative "byChipOrSomething" in the name. Callee
+  sub_8142B28 will clarify what value it returns per OW map object, which would let this name be tightened
+  to e.g. owMapObject_countWithChip_8142B04.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 2e79aac3
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8142B04 -> owMapObject_countByChipOrSomething_8142B04
+  where: bn6f d43feadd
+  tool: tools/rename_symbol.py
