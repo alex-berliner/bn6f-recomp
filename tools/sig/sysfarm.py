@@ -35,7 +35,9 @@ main tree's commit when it starts:
      worktree with symbols/db (tools/sig/record_subsystem.py, new entries for members that had none),
      tools/abi/retype_queue.tsv rows of the members removed, the lint baseline lowered, stamps for the
      entry points. State `verified`: waiting for Claude's review of what pre-review flagged;
-  5. `install`: the commit, rebased onto the main tree's branch, gate, fast-forward under the main-tree lock.
+  5. `install`: the commit, rebased onto the main tree's branch, a check that every converted member is
+     reachable from the game (its unit's entry converted, or an adapter registered — otherwise the readable
+     code it replaces stops running), gate, fast-forward under the main-tree lock.
 Routes (by members): MiniMax-M3 first, then Hyper (glm-5.3-flash for up to 30, qwen3.8-flash above), then
 zai/glm-5.3 (deepseek-v4-pro, the pilot's model, is out of OpenCode Go's monthly quota). Tokens go to build/sig/usage.jsonl, tagged.
 """
@@ -1177,6 +1179,36 @@ def reopen(a) -> None:
     print(f"{a.name}: open")
 
 
+def unreachable_members(converted: list[str], g: dict, overridden: set[str]) -> list[str]:
+    """The converted members the game never runs as C: no `Next` override for any entry of their unit
+    (the entry converted, or an adapter registered — that is what routes the original dispatch's calls
+    into the C) and no call to their unit from converted code that itself runs. Landing the install
+    removes their readable originals — code that was running (sys chatbox_803FEB4: an install replaced
+    41 running readable functions with 56 unreachable ones) — so the caller must refuse. A converted
+    unit nothing calls at all is left out: nothing was running to lose."""
+    if not converted:
+        return []
+    unit_of = {n: e["unit"] for n, e in g["entries"].items()}
+    calls: dict[str, set[str]] = {}
+    for site in g.get("sites", []):
+        if site.get("target") and site.get("caller"):
+            calls.setdefault(site["caller"], set()).add(site["target"])
+    for e in g.get("edges", []):
+        if e.get("target") and e.get("site_unit"):
+            calls.setdefault(e["site_unit"], set()).add(e["target"])
+    units = {unit_of[m] for m in converted if m in unit_of}
+    called = {unit_of.get(t) for ts in calls.values() for t in ts} & units
+    seen: set[str] = {u for u in {unit_of[n] for n in overridden if n in unit_of} if u in units}
+    stack = list(seen)                               # only converted units run as C and call on as C
+    while stack:
+        for t in calls.get(stack.pop(), ()):
+            tu = unit_of.get(t)
+            if tu in units and tu not in seen:
+                seen.add(tu)
+                stack.append(tu)
+    return sorted(m for m in converted if unit_of.get(m) not in seen and unit_of.get(m) in called)
+
+
 def install(a) -> None:
     job = read()[a.name]
     tree = os.path.join(WORKTREES, f"sys-{slug(a.name)}")
@@ -1184,6 +1216,16 @@ def install(a) -> None:
     if rc:
         sh(["git", "rebase", "--abort"], tree)
         sys.exit(f"rebase onto {BRANCH} failed:\n{out[-1500:]}")
+    members, _entries, skip, g = members_of(a.name, tree)
+    rc, out = sh(["git", "grep", "-h", "-E", r"^Next [A-Za-z0-9_]+\(void\)", "HEAD", "--", "cport/src/game"], tree)
+    gone = unreachable_members([m for m in members if m not in set(skip) | set(job.get("skipped", []))],
+                               g, set(re.findall(r"^Next (\w+)\(void\)", out)))
+    if gone:
+        sys.exit(f"install refused: {len(gone)} converted members are unreachable from the game — no `Next` "
+                 f"override for their unit's entry (the entry converted, or an adapter registered) and no "
+                 f"call from converted code that runs, while the install removes their readable originals: "
+                 f"{' '.join(gone)} (sys chatbox_803FEB4: an install replaced 41 running readable functions "
+                 f"with 56 unreachable ones)")
     rc, out = sh([sys.executable, "tools/gate.py", "--all"], tree, timeout=3600)
     if rc:
         sys.exit(f"gate:\n{out[-2000:]}")
@@ -1282,6 +1324,22 @@ def selfcheck(_a) -> None:
         eq("unprobed_fails: one blocking failure naming the member and the ways out",
            (len(f), "probe_none" in f[0], "random-input difftest" in f[0], "CPU oracle" in f[0]),
            (1, True, True, True))
+
+    # the install refuses converted members the game never runs
+    g = {"entries": {"e_main": {"unit": "e_main"}, "m_a": {"unit": "m_a"}, "m_b": {"unit": "m_b"},
+                     "m_c": {"unit": "m_c"}, "m_d": {"unit": "m_d"}, "m_e": {"unit": "m_e"}},
+         "sites": [{"caller": "e_main", "target": "m_a"}, {"caller": "m_a", "target": "m_b"},
+                   {"caller": "lifted_x", "target": "m_c"}],
+         "edges": [{"site_unit": "e_main", "target": "m_d"}]}
+    converted = ["e_main", "m_a", "m_b", "m_c", "m_d", "m_e"]
+    eq("install: with the entry kept as the original and no adapter, the called members are unreachable",
+       unreachable_members(converted, g, set()), ["m_a", "m_b", "m_c", "m_d"])
+    eq("install: the converted entry's calls reach its members (a member only lifted code calls does not run)",
+       unreachable_members(converted, g, {"e_main"}), ["m_c"])
+    eq("install: an adapter reaches a member lifted code calls",
+       unreachable_members(converted, g, {"e_main", "m_c"}), [])
+    eq("install: a member nothing calls was not running; its conversion is not refused",
+       unreachable_members(["m_e"], g, set()), [])
     if bad:
         for b in bad:
             print("selfcheck: " + b)
