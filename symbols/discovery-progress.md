@@ -516,3 +516,50 @@ Highlights:
 | 11    | 25                 | 17                        | 8               | 0       |
 
 Running total: named 218, hypothesis-only 53, dropped 0 (of ~10,600 placeholders).
+
+## Batch 12 (2026-10-14)
+
+25 functions, 15 named + 10 hypothesis (sub_802DE5C, sub_8031980, sub_8031A5E,
+sub_8083DF0, sub_81196F0, sub_812053C, sub_81345D4, sub_8134610, sub_814E0B4,
+sub_814E1E8 kept as comment only), renamed in recomp ba5410f4 (bn6f pushed;
+port ROM unchanged).
+
+Highlights:
+- battle AI: get beast-out cost base (battle_aiActorKind_getBeastOutCostBase_800FD0A);
+- custMenu: animate cursor to OK (battle_custMenuAnimateCursorToOK_8026B04);
+- battle state: get story flag from battle state
+  (battle_getStoryFlagFromBattleState_802CE60);
+- camera: compute scroll delta (camera_computeScrollDelta_8030E8C);
+- battle textbox: run textbox update and set state bit 1
+  (battle_runTextboxUpdateAndSetStateBit1_8030F04);
+- battle object: update hitbox panel overlap (battleObject_updateHitboxPanelOverlap_804692C),
+  get from list pair (battleObject_getFromListPair_80A6E78),
+  update cursor pulsate (battle_updateCursorPulsate_811F0C8),
+  apply AI data to attack table (battleObject_applyAIDataToAttackTable_8123C20),
+  update chip charge (battleObject_updateChipCharge_814E168),
+  run update routine and advance PC next step
+  (battleObject_runUpdateRoutineAndAdvancePCNextStep_814E17C);
+- battle beast-sp: beast-sp evolve step (battle_beastSpEvolveStep_8141A10);
+- battle AI/soul: get soul weapon base (battle_getSoulWeaponBase_81427CE);
+- battle object/chip: get panel chip by index at player pos
+  (battleObject_getPanelChipByIndexAtPlayerPos_8142B28);
+- rfu: dispatch call from callback (rfu_dispatchCallFromCallback_814DA6C).
+
+## Tally update
+
+| batch | functions examined | named (renamed via record) | hypothesis-only | dropped |
+|-------|--------------------|---------------------------|-----------------|---------|
+| 1     | 25                 | 25                        | 0               | 0       |
+| 2     | 21                 | 20                        | 1               | 0       |
+| 3     | 25                 | 23                        | 2               | 0       |
+| 4     | 25                 | 21                        | 4               | 0       |
+| 5     | 25                 | 20                        | 5               | 0       |
+| 6     | 25                 | 21                        | 4               | 0       |
+| 7     | 25                 | 19                        | 6               | 0       |
+| 8     | 25                 | 20                        | 5               | 0       |
+| 9     | 25                 | 18                        | 7               | 0       |
+| 10    | 25                 | 14                        | 11              | 0       |
+| 11    | 25                 | 17                        | 8               | 0       |
+| 12    | 25                 | 15                        | 10              | 0       |
+
+Running total: named 233, hypothesis-only 63, dropped 0 (of ~10,600 placeholders).
