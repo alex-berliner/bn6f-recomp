@@ -1,0 +1,49 @@
+name: sub_8141A70
+address: '0x08141A70'
+kind: function
+previous_names: []
+status: hypothesis
+summary: per-frame Beast Out gauge driver for a battle object's AI state
+interface: (r5 = AIDataPtr) -> no return; mutates AIData fields around the Beast Out timer
+details: "Acts on the AIData struct pointed to by r5 (the \"in=r5,lr\" contract confirms this).\n  Reads AIData.Unk_0d\
+  \ (r5+0xd). If non-zero, returns immediately (beast out already\n  active / flagged, gauge frozen). Otherwise\
+  \ clears Unk_13 and Unk_17, sets\n  Unk_0c = 0x1e (a frame-delay/refresh value), and decrements Unk_0b; if it\
+  \ stays\n  >0 returns. When it hits zero it consumes Unk_11 (\"BeastOutAPwrAtk\") — only when\n  Unk_11 was non-negative\
+  \ (signed blt at 0x8141a8a → b loc_8141A92) — and then\n  bumps Unk_10, capping it at 0x50 (bgt at 0x8141a96).\
+  \ When the cap is exceeded,\n  Unk_11 is reset to 0; otherwise Unk_10 is stored and Unk_11 is reset to 2\n  (a\
+  \ 2-tick reload). The exit r0=0xff..0xf2/0xfe sequence across the captured\n  frames of one captured call site\
+  \ matches Unk_10 counting down from 0x50 toward\n  0, characteristic of the Beast Out gauge filling animation.\n\
+  \  Called only from sub_81419A0 (a Beast Out state handler).\ndetails: |\n  Captured-call entry r0=1, r1=0x40,\
+  \ r2=0x140, r3=AIData pointer at 0x02001d68\n  across 40 frames; exit r0 decrements 0xfe,0xf5,0xf4,0xf3,0xf2 —\
+  \ matching the\n  Unk_10 saturating countdown described.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0, [r5,#0xd]` followed by `tst r0,r0; bne locret_8141AA6` — the early-out uses AIData+0xd. -
+    Struct AIData lists BeastOutAPwrAtk at offset 0x11 and Unk_10 at 0x10; both are touched with `ldrb/strb`. -
+    The 0x50 cap (`cmp r0,#0x50; bgt loc_8141AA2`) plus the loaded "frame delay" 0x1e at r5+0xc match a gauge fill
+    rate. - Caller sub_81419A0 lives in the Beast Out AI handler (called `stepBeastOut`-style). - The exit r0 sequence
+    0xfe→0xf5→0xf4→0xf3→0xf2 across consecutive frames is a countdown that wraps near 0 — consistent with a gauge.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08141A70
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^08141a70 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- Exact semantic of fields Unk_0b (recharge tick counter), Unk_13, Unk_17, Unk_0c=0x1e and why "2" is reloaded into
+  BeastOutAPwrAtk (0x11) — settling these requires the broader Beast Out state machine.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f c951b1b4
+  tool: tools/symdoc.py

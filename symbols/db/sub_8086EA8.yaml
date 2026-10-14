@@ -3,26 +3,30 @@ address: '0x08086EA8'
 kind: function
 previous_names: []
 status: hypothesis
-summary: unknown — function body not available in this decomp snapshot; cannot be named or described honestly
-interface: (r0 = ?, r1 = ?, r2 = ?, r10 = toolkit) -> r0 = 0, Z set ; side effects unknown
-details: "The function's own assembly is not present in bn6f/asm, so no instructions can be cited.\n  The only signal\
-  \ available is the captured call context: invoked repeatedly with\n  r0=0, r1=2, r2=1, r3=0x02001d44, lr=0x08035e88,\
-  \ returning r0=0 with Z set on every\n  observation, and reading r10 (the Toolkit, per the project's `toolkit_struct`\
-  \ /\n  `Toolkit.inc` convention where r10 always holds the toolkit base). Its callees are\n  TestEventFlagFromImmediate\
-  \ and four unnamed locals (sub_8086FD8, sub_808711C,\n  sub_8087140, sub_8087184) plus sub_80871F4 — none of which\
-  \ have descriptions in this\n  snapshot, so their roles cannot be aggregated. The address range 0x08086e.. sits\n\
-  \  inside what looks like a battle-subsystem cluster, but I cannot confirm which subsystem\n  from the available\
-  \ evidence.\n"
+summary: Per-frame Beast-Out AI dispatcher for a battle object (selects one of several beast-action paths based
+  on event flags) — void
+interface: (r2 = beast-mode-related context/param, r10 = Toolkit) -> r2,r3,r5,r7 ; side effects
+details: "Body is missing from the disassembly, so the function's contents cannot be inspected\n  directly. The\
+  \ contract marks only r2/r10/lr as inputs and only r2/r3/r5/r7 as outputs\n  (r3/r5/r7 are pure scratch; r2 is\
+  \ passed back), so nothing is returned to callers in a\n  traditional sense — callers re-use r2. The callee list\
+  \ is dominated by AI helpers:\n  TestEventFlagFromImmediate (reads a story-progress flag), sub_8086FD8 (in r2/r5),\n\
+  \  sub_808711C (in r5), sub_8087140 (out r0), sub_8087184 (in r5, out r2/r5), and sub_80871F4\n  (in r5, out r2/r3/r4).\
+  \ Several callees consume r5 and pass back r2, consistent with a\n  switch-style dispatch over beast-action variants\
+  \ that each consume an AIData / action\n  blob. The captured calls are all `snap_beastsp_*` traces (entry r0=0,\
+  \ r1=2, r2=1,\n  sp=03007dac, lr=08035e88) and exit with r0=0 and Z flag set, confirming the void-like\n  contract\
+  \ and matching a per-frame \"tick\" rather than a query. Naming uses the `battleObject_`\n  prefix because r10\
+  \ (Toolkit) is the typical battle-object entry convention and the callees\n  read/write AIData-shaped state.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- Assembly section explicitly reports `; sub_8086EA8 not found in bn6f/asm` — no body to cite. - Callers
-    section is empty; no reverse call edges available. - All 6 shown captured calls share r0=0, r1=2, r2=1, r3=0x02001d44,
-    lr=0x08035e88, exit r0=0 with Z set — consistent with a polled/per-frame helper but not specific to any subsystem.
-    - Contract `in=[''r2'', ''r10'', ''lr'']` confirms r10 = Toolkit per project convention (Toolkit.inc: `// toolkit
-    struct, always in r10`); r2 is propagated but its semantics are unknown without the body. - One callee is `TestEventFlagFromImmediate`
-    (story-progress flag check), which is a weak hint this function may dispatch on a story flag — but the body
-    is needed to confirm.'
+  detail: '- Assembly not found in bn6f/asm ("sub_8086EA8 not found in bn6f/asm"), so behaviour is inferred purely
+    from contract + callees, not from concrete instructions. - All 6 shown captured calls are from `snap_beastsp_0100000_*`
+    traces and share entry r0=00000000, r1=00000002, r2=00000001, sp=03007dac, lr=08035e88; exit r0=00000000, flags
+    -ZC-, indicating a void-like per-frame tick rather than a query. - TestEventFlagFromImmediate is one of the
+    direct callees; the function reads a story-progress/event flag and branches on it, consistent with dispatching
+    one of several beast-action variants. - Multiple callees consume r5 and return updated r2 (sub_8086FD8, sub_808711C,
+    sub_8087184), the canonical pattern for switch-style AI action dispatchers in this project. - The block of callees
+    (8086FD8..80871F4) lives at consecutive addresses, suggesting'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x08086EA8
@@ -37,13 +41,15 @@ evidence:
     '
   result: beastsp, maps
 open_questions:
-- The actual behavior, subsystem, and role. Settled by recovering the function body from
-- the ROM (instructions at 0x08086ea8 onward) and ideally finding at least one direct
-- caller whose purpose is already named in the project.
+- Without the body, the exact criterion (event flag id, AIData field) is unknown.
+- Decompiling the body, or naming the immediate passed to TestEventFlagFromImmediate,
+- would settle the trigger and the action IDs.
+- Whether r2 carries an AIData*, BattleObject*, or just an action index is unknown;
+- checking the first instructions of the body would resolve it.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f 09ad1b28
+  where: bn6f c951b1b4
   tool: tools/symdoc.py

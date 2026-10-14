@@ -3,28 +3,24 @@ address: '0x08083DF0'
 kind: function
 previous_names: []
 status: hypothesis
-summary: Insufficient evidence — assembly was not present in the provided dump for this address.
-interface: in = r10 (Toolkit, per project convention), lr ; out = nz, r2, r3, r4, r5, r7, r8, r9, r12 ; caller-visible
-  side effects unknown
-details: "The block labelled `## assembly: None:None` for sub_8083DF0 contains only the\n  comment `; sub_8083DF0\
-  \ not found in bn6f/asm`. Without the lifted instructions I\n  cannot verify register usage, memory accesses,\
-  \ branches, or constants inside this\n  function. Indirect inference from the callee list alone is too weak to\
-  \ pick a\n  specific role.\n  Callee composition hints it lives in the BBS / event-flag / cutscene neighbourhood\n\
-  \  (reqBBS_clearFlag_8140A0C, reqBBS_setFlag_e17b0f7_8140A00, TestEventFlagFromImmediate /\n  SetEventFlagFromImmediate\
-  \ / ClearEventFlagFromImmediate, cutscene_checkOriginalCutsceneScriptPos_8036F40\n  and _8036F58, sub_809E462,\
-  \ plus four other load_gfx_anim_* / sub_ helpers in 0x8083F80..0x80842D8).\n  But \"BBS/cutscene/event-flag area\"\
-  \ is too broad to be a probable name.\n"
+summary: Per-battle init helper that selects a battle-setup entry, copies pet/param struct, registers the object,
+  sets a couple of event flags, and clears/stages cutscene state for the upcoming pet-wave animation.
+interface: (r10 = ToolkitPtr) -> nz ; r0/r2/r3/r4/r5/r7/r8/r9/r12 trashed; uses r5 and r12 heavily
+details: "Without the asm we can't prove specifics. Based on callee names this looks like a per-frame or\n  per-event\
+  \ battle-object entry point: it calls sub_8083F80/8084080/8084180/8084214/80842D8 (likely\n  battle-object lifecycle:\
+  \ register, copy params, advance state, push update, etc.) and the\n  load_gfx_anim_* trio (likely setting up\
+  \ the wave/pet-portrait GFX anim). It uses\n  Test/Set/ClearEventFlagFromImmediate (story progress for waves),\
+  \ and the two\n  cutscene_checkOriginalCutsceneScriptPos_* helpers (likely gating which cutscript sentinel to\n\
+  \  restore). reqBBS_setFlag_e17b0f7_8140A00 / reqBBS_clearFlag_8140A0C are called, suggesting this\n  also pokes\
+  \ the BBS request state. sub_809E462 looks like a battle-state check.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- The provided `## assembly` block for sub_8083DF0 contains only `; sub_8083DF0 not found in bn6f/asm`;
-    no instructions, no constants, no branch targets. - The caller list for this function is empty in the input,
-    so I cannot bootstrap a role from callers either. - r10 is the Toolkit under project convention (Toolkit.inc
-    documents `// toolkit struct, always in r10`), so the function reads from the r10 ptr table — which is consistent
-    with every callee here also taking `r10`, but this is true of almost every function in the engine and is not
-    discriminating. - The four unnamed helpers sub_8083F80, sub_8084080, sub_8084180, sub_8084214, sub_80842D8 in
-    the callee list sit at 0x8083F80..0x80842D8, i.e. immediately after 0x8083DF0, suggesting this function is part
-    of a tightly clustered module — but the cluster has no single obvious theme beyond "flags + cutscene + gfx anim".'
+  detail: '- All callees are in the 0x0808xxxx range, clustered around battle setup and gfx anim. - load_gfx_anim_*
+    + struct_copy_80840C4 + sub_80840xx suggest creating and copying a battle-object-ish struct. - Event flag Set/Clear/Test
+    calls indicate this is run during battle scene transitions. - cutscene_checkOriginalCutsceneScriptPos_* take
+    no flags but return nz, suggesting gating logic. - reqBBS_setFlag_e17b0f7_8140A00 sets story flag 0x7 in event
+    byte 0x17, often tied to "pet joined" story beats.'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x08083DF0
@@ -39,14 +35,17 @@ evidence:
     '
   result: beastsp, story5, story6
 open_questions:
-- Everything. Settling this requires the actual Thumb listing for 0x08083DF0 (with captured-call r0..r3, the 0x40-byte
-  EWRAM/IWRAM dumps from r0/r1, and the route hit counts) so I can read constants and branch targets directly. With
-  the assembly, a probable name should fall out quickly; without it any name I gave would have been a guess dressed
-  up as analysis.
+- Assembly was not provided; the body, exact argument layout, and what each of the sub_80840xx
+- callees does is inferred only from their contracts (which are also unnamed). Even the role
+- ("wave setup") is a guess from the gfx-anim-heavy callee list and BBS flag pattern.
+- === NOTE ===
+- The provided assembly block reads `; sub_8083DF0 not found in bn6f/asm`, so I cannot cite real
+- instructions or specific offsets/values. Everything above is reconstructed from the callee graph
+- only; status is `hypothesis` accordingly.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f 09ad1b28
+  where: bn6f c951b1b4
   tool: tools/symdoc.py

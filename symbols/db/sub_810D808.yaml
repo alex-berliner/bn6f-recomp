@@ -3,32 +3,30 @@ address: '0x0810D808'
 kind: function
 previous_names: []
 status: hypothesis
-summary: Battle object hook that resets the object's timer, ORs a flag bit, updates a counter and highlights a panel
-  range relative to the object's facing direction.
-interface: (r0 = unused, r1 = thispc+1 (called via tail-call), r2 = ?, r3 = ?, r4/r5/r7/r10 = preserved object/toolkit;
-  lr = return) -> r0 = counter value (0x24..0x7f), r1 = panel side-sign, r5 = preserved; NZCV clobbered
-details: "Assembly is not present in the provided slice (\"sub_810D808 not found in bn6f/asm\"), so the\n  description\
-  \ is reconstructed only from the register contract, callee list and 40 captured\n  call snapshots.\n  Looks like\
-  \ a per-frame AI/panel step for a battle object whose this-pointer comes in via r1\n  with bit 0 set (r1 = 0x0810d809\
-  \ = sub_810D808 | 1, i.e. Thumb callee entered with BX-style\n  tail call). It calls battle_ResetObjectTimerTo8_80C4072\
-  \ on r0, then object_setCounterTime\n  (contract uses r0, r5, r10), then object_setFlag1 to OR a flag into the\
-  \ object's\n  CollisionData, then highlightPanelIfSomeCondition_8109660 using object_getFrontDirection\n  (r5)\
-  \ to derive a +1/-1 side-sign, and finally writes a small monotonic counter into r0\n  (0x24, 0x25, 0x7f, ...\
-  \ observed). Exits with r1 carrying the side-sign and r5 intact\n  (r5 is listed in `in` and `out`, so it is preserved\
-  \ across the call).\n  The captured-return counters (0x24, 0x25, 0x7f) are consistent with a per-tick value that\n\
-  \  ramps up to 0x7f and possibly wraps; the function is `void`-ish from the caller's POV\n  (r0 is not a \"real\"\
-  \ return - it is a state value the caller might read).\n"
+summary: Picks a panel in the 6x3 grid in front of a battle object and highlights it, setting the in-front flag
+interface: (r0 = ?, r1 = self/pc_addr, r2 = 0x80, r3 = 3) -> r0 = highlighted panel index (0..0x7F or sentinel)
+details: "Assembly is not currently disassembled in bn6f/asm, so behaviour is inferred only from the\n  register\
+  \ contract, callees, and 40 captured call sites (snap_story6_*.bin). r1 arrives carrying\n  0x0810d809 (PC+1 of\
+  \ this Thumb function), the standard idiom for thunked-from-Thumb callers\n  passing the function's own address\
+  \ — strong evidence this is an AI/action callback dispatched\n  by table. r2=0x80 and r3=3 are stable across captures\
+  \ and look like flags/slot arguments.\n\n  Output r0 is a small panel index (0x24, 0x25, 0x7F seen), consistent\
+  \ with the 6x3 grid layout\n  the sibling `highlightPanelIfSomeCondition_8109660` operates on. The callee mix\
+  \ is exactly what\n  a \"highlight what is in front of me\" routine needs: `object_getFrontDirection` provides\
+  \ the\n  ±X side sign, `object_setFlag1` likely sets the in-front flag on the chosen panel/object,\n  `object_setCounterTime`\
+  \ resets a wait timer, `battle_ResetObjectTimerTo8_80C4072` resets the\n  caller's per-object timer to 8, and\
+  \ `sub_80C5578` is most likely the panel-data accessor that\n  reads/writes a PanelData row.\n\n  The snapshot\
+  \ variation (r0 climbs from 0x24/0x25 up to 0x7F as the object moves across frames)\n  fits a routine that selects\
+  \ the panel directly ahead on the grid.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- callee list: battle_ResetObjectTimerTo8_80C4072, object_setCounterTime, object_setFlag1, highlightPanelIfSomeCondition_8109660,
-    object_getFrontDirection, sub_80C5578 — all battle-object helpers, none of them chatbox/map. - entry r1 = 0x0810d809
-    in every snapshot (= sub_810D808 | 1) is the classic Thumb "function is entered via a tail-call to address+1"
-    pattern. - exit r0 values: 0x25, 0x24, 0x7f, 0x7f, 0x7f, 0x7f — small monotonic counters that saturate at 0x7f,
-    matching an internal frame/walk counter. - flags transition --C- on most exits (carry set) and -ZC- on the 0x7f
-    exits, matching a saturating "cmp #0x80" or similar. - object_getFrontDirection is in the callee list and its
-    contract reads r5; combined with highlightPanelIfSomeCondition_8109660, this strongly implies a panel highlighting
-    pass that walks panels in the direction the object is facing.'
+  detail: '- captured calls all share r1=0x0810d809 = own_PC+1 (Thumb `ADR r1, sub_810D808` style), typical of an
+    AI/dispatch-table callback - r2=0x80 and r3=0x03 are constant across all 40 captures => two fixed call arguments
+    - exit r0 saturates near 0x7F, which is the max index of an 8-wide (6 cols x 3 rows packed as linear) panel
+    array - callee set matches "find panel in front, highlight it, set in-front flag" exactly: object_getFrontDirection
+    supplies ±X, object_setFlag1 (OBJECT_FLAGS_2_DO_UPDATE_COLLISION_PANELS or similar) updates its object state,
+    object_setCounterTime and battle_ResetObjectTimerTo8_80C4072 frame the call as part of an action''s countdown
+    - sibling panel-helper highlightPanelIfSomeCondition_8109660 confirms 6x3 grid convention'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x0810D808
@@ -43,16 +41,15 @@ evidence:
     '
   result: battlesweep, beastsp, story4, story6
 open_questions:
-- 'Exact role: could be a generic "tick + rehighlight valid move panels" or something'
-- specific to a chip/element (e.g. SnakeArm-style panel range). Without the assembly we
-- cannot tell.
-- The high byte of the side-sign in r1 is unknown.
-- Reading the actual disassembly (file not present in the supplied slice) would settle
-- the role and let us drop the `_ADDRESS` suffix.
+- 'Without the actual disassembly the exact return semantics are unknown: r0 may be a panel'
+- index, a flat packed (x,y), or a hit/sentinel value — disassembly would settle it
+- Whether this routine is invoked from an AI state handler versus a chip action handler is
+- unknown; the lr=0x0810d7f0 in the snapshots (just below this function) hints at a call site
+- in the same translation unit that would clarify the role
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f 09ad1b28
+  where: bn6f c951b1b4
   tool: tools/symdoc.py
