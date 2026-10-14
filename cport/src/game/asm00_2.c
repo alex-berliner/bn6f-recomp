@@ -1431,10 +1431,10 @@ Next nullsub_42(void) {
 }
 
 /* ── battle_getObjectNameID_8011020 ── */
-/* battle_getObjectNameID_8011020: forward the battle object's NameID (in R5) to sub_801102A. */
+/* battle_getObjectNameID_8011020: forward the battle object's NameID (in R5) to battle_callActorActionHandler_801102A. */
 Next battle_getObjectNameID_8011020(void) {
     R0 = LD16(R5 + oBattleObject_NameID);
-    GUEST_CALL(sub_801102A);
+    GUEST_CALL(battle_callActorActionHandler_801102A);
     RETURN_TO_CALLER();
 }
 

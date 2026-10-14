@@ -1,0 +1,53 @@
+name: battle_pickClosestPanelObject_80E1730
+address: '0x080E1730'
+kind: function
+previous_names:
+- sub_80E1730
+status: probable
+summary: Picks the battle object (among r4 and r7) whose PanelY best matches the current object's PanelY
+interface: '(r0 = objA, r3 = objB, r6 = refObj) -> r0 = chosenObj ; side effects: none'
+details: "Saves the two candidate object pointers in r4/r7. Reads PanelY (offset 0x13) of refObj (r6),\
+  \ objA\n  (r4) and objB (r7), the same Y-coordinate byte used by many other panel-comparison helpers.\n\
+  \n  - If refObj.PanelY == objA.PanelY, it then checks objB.PanelY. If they match, return refObj;\n \
+  \   otherwise return objA.\n  - Else (refObj.PanelY != objA.PanelY), if refObj.PanelY == objB.PanelY,\
+  \ swap: make r4 = objB\n    (so objB is treated as the \"first match\"), then fall through to compare\
+  \ objA.PanelY against\n    objB.PanelY again. If still unequal, defer to sub_80E175C (r7, r4, r6) which\
+  \ appears to\n    actually choose among the two objects by some richer criterion, and return its result.\n\
+  \n  Returns the chosen BattleObject pointer in r0.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0, [r6,#oBattleObject_PanelY]` reads PanelY from r6 (the reference BattleObject).
+    - `ldrb r1, [r4,#0x13]` / `ldrb r2, [r7,#oBattleObject_PanelY]` reads the same byte from r4 and r7.
+    - Control paths at loc_80E1748 and loc_80E174C only fall through to `bl sub_80E175C` when the three
+    PanelY values are not pairwise equal; sub_80E175C is invoked with (r7, r4, r6) and its return value
+    becomes the function''s r0 (final `mov r0, r4` after the bl). - Single caller (sub_80E1704) keeps
+    r4/r6/r7 across the call, confirming these are preloaded BattleObject pointers.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080E1730
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^080e1730 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- What sub_80E175C's selection rule actually is (probably "closer by Manhattan distance along
+- X then Y", but not directly inferable from this caller). Looking at it would pin down the
+- '"closest" semantics used here.'
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f eb748819
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80E1730 -> battle_pickClosestPanelObject_80E1730
+  where: bn6f c2454a87
+  tool: tools/rename_symbol.py

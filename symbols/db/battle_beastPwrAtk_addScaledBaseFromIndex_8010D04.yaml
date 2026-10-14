@@ -1,0 +1,60 @@
+name: battle_beastPwrAtk_addScaledBaseFromIndex_8010D04
+address: '0x08010D04'
+kind: function
+previous_names:
+- sub_8010D04
+status: probable
+summary: Looks up a 2-byte beast power-Atk base entry at byte_80212D4 + 2*idx and forwards (idx, two table
+  bytes) to sub_8012642.
+interface: (r0 = beast-power-Atk table index) -> r0 = ... (forwarded from callee, captured as 0x1e) ;
+  no side effects in this frame
+details: "Sub is a thin wrapper: r0 *= 2 (mul r0, r2 with r2=2), then loads the base address\n  byte_80212D4\
+  \ via ldr from off_8010D50, adds the doubled index to get a pointer\n  into the 2-byte-wide table, and\
+  \ reads two successive bytes into r0 (low) and\n  r1 (high). It then tail-calls sub_8012642 (named\n\
+  \  battle_beastPwrAtk_addScaledBase_8012642 in the callee list). The\n  beast-power-Atk name + \"addScaledBase\"\
+  \ callee make clear this is feeding the\n  power-Atk's per-version base and a second parameter into\
+  \ a routine that adds\n  the scaled base (likely charge-level-scaled) damage to the AI/AttackVars\n\
+  \  buffer. r5 and r10 are callee-saved and restored; the \"in r5, out r5\" pattern\n  in callers shows\
+  \ it threads the AIData or AIData-attached object through.\n  Captured calls always enter with r0=0x0B\
+  \ (the BPwrAtk table index, e.g.\n  Tomahawkman being the 12th beast but here index 0xB is whatever\
+  \ is\n  configured for this beast), r2=0x2C (charge or scaling level), and exit\n  r0=0x1E (the resulting\
+  \ scaled-base value from sub_8012642).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- mul r0, r2 ; r2 = 2 -> index is doubled to stride 2 in a u16 table - ldr r2, off_8010D50
+    ; =byte_80212D4 loads a fixed base table address - ldrb r0, [r2] / ldrb r1, [r2,#1] -> reads two consecutive
+    bytes (table entry) - bl battle_beastPwrAtk_addScaledBase_8012642 -> tail call to the only callee
+    - All 40 captured entries have r0_in=0x0B and r0_out=0x1E, with r2=0x2C constant (scaling level) -
+    Caller tomahawkmanBPwrAtk_init_8012258 (Tomahawkman B-power-Atk init) lives at 0x08012258 and is in
+    the same 0x8012xxx beast zone - The struct definition BPwrAtk at AIData offset 0x7 and PwrAtkState/PwrAtkButton
+    at 0x1d/0x1e match a "beast power-Atk setup" interpretation'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08010D04
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^08010d04 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- Exact semantics of sub_8012642 (scaling formula, what it adds the result to) is unknown but doesn't
+  change this function's name
+- The meaning of the second byte at [r2,#1] (loaded into r1 and passed on) is not confirmed; could be
+  element or version
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f eb748819
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8010D04 -> battle_beastPwrAtk_addScaledBaseFromIndex_8010D04
+  where: bn6f c2454a87
+  tool: tools/rename_symbol.py

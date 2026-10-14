@@ -1,0 +1,68 @@
+name: battleObject_runObjectFlagStateMachine_80E386A
+address: '0x080E386A'
+kind: function
+previous_names:
+- sub_80E386A
+status: probable
+summary: Battle object step that toggles the pause-update flag bit via `RelatedObject1Ptr->CurAction`/param
+  and dispatches via the jump table at off_80E38B4
+interface: (r5 = this BattleObject*, r10 = toolkit, lr = return) -> void ; no return value, side effect
+  on r5's `oObjectHeader_Flags` and possibly state
+details: "- Reads r5->oBattleObject_Param1; if equal to 4, jumps to loc_80E387C; otherwise loads r5->oBattleObject_RelatedObject1Ptr.\n\
+  \  - If r5->oBattleObject_RelatedObject1Ptr->oBattleObject_CurAction is not 0xB, sets r5->oBattleObject_CurStateActionPhaseAndPhaseInitialized\
+  \ to CUR_STATE_DESTROY (0x8) and returns.\n  - In the main path, syncs bit 0x02 (OBJECT_FLAG_PAUSE_UPDATE)\
+  \ of r5->oObjectHeader_Flags from r3 (the related object)'s oObjectHeader_Flags: `r0 = (r5.Flags & ~2)\
+  \ | (r3.Flags & 2)`; stored back into r5->oObjectHeader_Flags.\n  - If Param1 != 4 (after the sync),\
+  \ calls `battle_isTimeStop`; if the battle is in time-stop, returns (the OBJECT_FLAG_PAUSE_UPDATE is\
+  \ already set above).\n  - Otherwise (or if Param1==4), uses r5->oBattleObject_CurAction as an index\
+  \ into the 5-entry jump table at off_80E38B4 (sub_80E38C8, sub_80E38EE, sub_80E3904, sub_80E3930, sub_80E3950),\
+  \ tail-calls via `mov lr,pc ; bx r1`.\n  - `snap_beastsp_0150000_*.bin` entry shows r1 = 0x080e386b\
+  \ (i.e. lr pointing one past the function entry), r5 holds the caller's BattleObject*, and exits set\
+  \ N/C flag in various ways reflecting which branch was taken.\n  - The contract says nothing is returned,\
+  \ so callers treat it as void-like (Tail call or fall through to pop {pc}).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {lr}` at the start and `pop {pc}` at the end show void-like behavior (asm31.s:93067).
+    - `ldrb r0, [r5,#oBattleObject_Param1]; cmp r0, #4; beq loc_80E387C` directly compares Param1 against
+    literal 4. - `ldr r0, [r5,#oBattleObject_RelatedObject1Ptr]; ldrb r0, [r0,#oBattleObject_CurAction];
+    cmp r0, r1` (r1=0xb) is the CurAction==0xB test. - The pause-update flag sync uses the constants `mov
+    r1, #2; mvn r1, r1` (mask ~0x02) and `mov r2, #2; and r1, r2` for the source bit, which matches `OBJECT_FLAG_PAUSE_UPDATE
+    = 0x04`/`0x02` convention from `object_header_struct` flags8; bit 0x02 of oObjectHeader_Flags corresponds
+    to OBJECT_FLAG_PAUSE_UPDATE. - The fallback `mov r0, #CUR_STATE_DESTROY; str r0, [r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]`
+    matches the CUR_STATE_DESTROY enum (0x08) from BattleObject.inc. - `bl battle_isTimeStop` is the only
+    callee; battle_isTimeStop returns Z=1 when time-stop is active, and the `bne locret_80E38AC` skips
+    the table jump in that case (correct: during time-stop, pause-update is already in sync). - The 5-entry
+    table at off_80E38B4 contains sub_80E38C8/EE/904/930/950 (the .word entries) so the function has 5
+    distinct "CurAction" sub-states.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080E386A
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp, chips'
+  reproduce: 'grep -l ''^080e386a '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp, chips
+open_questions:
+- What each of the 5 sub-states does (would need to follow into sub_80E38C8..sub_80E3950).
+- The exact game-term role of CurAction 0xB and Param1 0x4; both look like BattleObject flag/state-machine
+  "anim phase" indices for one specific object type whose handler this is (likely a kind of secondary
+  battle object that re-uses another's flags).
+- The reason for the captured-call entry r1=0x080e386b (lr at the next word) — that's just how the snap
+  capture sees lr after a `bl` with lr saved, normal Thumb behavior.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f eb748819
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80E386A -> battleObject_runObjectFlagStateMachine_80E386A
+  where: bn6f c2454a87
+  tool: tools/rename_symbol.py

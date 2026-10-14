@@ -3819,7 +3819,7 @@ Next battle_refreshObjectCollisionFromExtraVars_80C6AB8(void) {
 
     /* Reapply the effect of the panel element this object stands on. */
     R0 = LD8(object + oBattleObject_Element);
-    GUEST_CALL(sub_8019F8C);
+    GUEST_CALL(battleObject_setElement_8019F8C);
 
     /* Extra-vars byte 3 non-zero: flag the collision status effect. */
     extraVars = LD32(object + oBattleObject_ExtraVars);

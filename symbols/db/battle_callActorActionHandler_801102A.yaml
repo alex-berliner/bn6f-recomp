@@ -1,0 +1,60 @@
+name: battle_callActorActionHandler_801102A
+address: '0x0801102A'
+kind: function
+previous_names:
+- sub_801102A
+status: probable
+summary: Dispatches an actor's action handler by (ActorType, AIIndex) via a 2D jump table.
+interface: '(r0 = actorNameID: u8) -> r0 = handlerRoutinePtr: u32 (moved to lr and jumped to)'
+details: "Looks up the enemy's record via GetVerActorTyAndAIIdx_80182B4(r0=nameID) which returns a pointer\n\
+  \  to a small AIData-like record. Reads fields at offsets +1 (ActorType) and +2 (AIIndex); these\n \
+  \ form the two axes of a 2D dispatch table. Computes r1 = actorType<<2 and r2 = aiIndex<<2,\n  loads\
+  \ the table base from off_8011058 (a `**func` style array), double-indexes ([base+type] +\n  aiIndex),\
+  \ and tail-calls the resulting function pointer via `mov lr,pc; bx r0`. The Pop at the\n  end is dead\
+  \ code (LR is consumed by the bx) — it's a \"thunk\" tail pattern, not a real return.\n  Effect: the\
+  \ chosen function runs in place, and the constant observed at caller exit (0x080114d5)\n  is whatever\
+  \ code those thunks happen to fall into.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl GetVerActorTyAndAIIdx_80182B4` then `ldrb r1,[r0,#1]; ldrb r2,[r0,#2]` show the function
+    reads ActorType/AIIndex from the per-enemy record. - `lsl r1,r1,#2; lsl r2,r2,#2` build u32 stride
+    indices into a pointer table. - `ldr r0,off_8011058 ; ldr r0,[r0,r1] ; ldr r0,[r0,r2]` is a textbook
+    double-dereferenced 2D dispatch (each axis of `ActorType` x `AIIndex` picks a function pointer). -
+    `mov lr,pc ; bx r0` is an indirect tail-call (no lr save/reload needed across it). - Sole in-caller
+    `battle_getObjectNameID_8011020` reads battle_object.NameID and tail-calls here, confirming r0 is
+    the actor NameID.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801102A
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0801102a '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9
+open_questions:
+- Exact contents of the dispatch table at off_8011058 → off_801105C (the `**func` it points
+- into); would settle by reading the ROM at that pointer.
+- Whether there are actually 3 ActorType rows (VIRUS/NAVI/PLAYER) and how many AIIndex columns;
+- would settle by reading the table base + stride ranges.
+- 'What 0x080114d5 (the captured return value on exit) actually represents: r0 ends up holding'
+- the last value of r0 from the called AI routine (since this is a tail call), so it tells us
+- one such handler returned that pointer in some captured scenarios, not the function itself.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f eb748819
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801102A -> battle_callActorActionHandler_801102A
+  where: bn6f c2454a87
+  tool: tools/rename_symbol.py

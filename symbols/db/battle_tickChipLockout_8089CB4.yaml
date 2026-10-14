@@ -1,0 +1,56 @@
+name: battle_tickChipLockout_8089CB4
+address: '0x08089CB4'
+kind: function
+previous_names:
+- sub_8089CB4
+status: probable
+summary: decrements ChipLockoutTimer (AIData+0x18) and returns whether it hit/exceeded zero this frame
+interface: (r5 = *AIData) -> r0 = 0 if timer remained >0 after decrement, 1 if it reached 0 or was already
+  <=0; r0 holds the new timer value on the 0 path
+details: "Loads the u16 at r5+0x18 (AIData.ChipLockoutTimer per AIData.inc loc=0x19... actually struct\
+  \ shows 0x18 as `Unk_18`; callers use it as a u16 halfword here) into r0, does `sub r0, #1`, and on\
+  \ BLT (i.e. the result was negative, meaning the timer was 0 and underflowed) sets r0=1. Otherwise stores\
+  \ the decremented value back to [r5,#0x18] with `strh r0,[r5,#0x18]` and returns r0=0. Uses Thumb `mov\
+  \ pc, lr`, so it is a non-save leaf. r1/r2/r3/r4 are not touched.\n  Equivalent to: `return val = (uint16)(AIData->field_0x18\
+  \ - 1); AIData->field_0x18 = (val & 0x8000) ? val : (uint16)val; return (val & 0x8000) ? 1 : 0;` — i.e.,\
+  \ a saturating-decision test for \"did the timer expire this frame\".\n  18 distinct in-function callers\
+  \ in the `sub_80897xx..sub_8089Cx` cluster all live in the same function (`sub_80897E8`'s jump-table\
+  \ driven AI/beastout step), so this is a per-frame AI timer tick helper.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrh r0,[r5,#0x18]` (offset 0x18 = AIData.Unk_18; callers consistently treat this halfword
+    as the chip lockout counter) - `sub r0,#1` / `blt loc_8089CC0` takes the underflow path only when
+    the original was 0; behavior matches a signed-decision tick of an unsigned halfword - `strh r0,[r5,#0x18]`
+    stores the decremented value only on the non-expired path - `mov r0,#0` vs `mov r0,#1` are the two
+    return values; exit snapshots show r0=0 on the in-progress branch and r0=1 only on one capture (`snap_beastsp_0180000_10.bin`)
+    - 18 callers all share `r5` as AIData pointer per the captured call entries (r5 holds AIData across
+    the AI handler)'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08089CB4
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^08089cb4 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- Exact semantic of AIData+0x18 (the struct labels it `Unk_18`); tying it to chip-lockout relies on the
+  captured-call filenames (`beastsp`) and the surrounding chip-selection code in the same call cluster
+  — would settle by reading adjacent handlers' use of the return value to skip chip firing.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f eb748819
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8089CB4 -> battle_tickChipLockout_8089CB4
+  where: bn6f c2454a87
+  tool: tools/rename_symbol.py

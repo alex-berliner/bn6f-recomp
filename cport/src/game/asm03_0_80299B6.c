@@ -3473,11 +3473,11 @@ Next zeroFill_802E544(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_802EF5C ── */
-/* sub_802EF5C: run a check (battle_testFlag0x40_800A8F8); if it reports "active", pump the
+/* ── battle_dispatchDestroyEvents_802EF5C ── */
+/* battle_dispatchDestroyEvents_802EF5C: run a check (battle_testFlag0x40_800A8F8); if it reports "active", pump the
  * sub_802EF74 state machine with argument 0 followed by argument 1.
  * Flags/results are whatever the last executed call (or the zero check) left. */
-Next sub_802EF5C(void) {
+Next battle_dispatchDestroyEvents_802EF5C(void) {
     GUEST_CALL(battle_testFlag0x40_800A8F8);
 
     if (R0 == 0) {

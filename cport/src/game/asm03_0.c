@@ -2377,13 +2377,13 @@ Next loadOneSpriteTileRow_80287D2(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8028894 ── */
-/* sub_8028894: pick a pair of offsets from the ID byte at [R5+7].
+/* ── battleObject_computeBButtonOffsets_8028894 ── */
+/* battleObject_computeBButtonOffsets_8028894: pick a pair of offsets from the ID byte at [R5+7].
  * IDs 0-4 index the first half of the byte_80288B0 table (R1 stays 0),
  * IDs 5+ index the second half and start R1 at 0x18 instead.
  * Returns R0 = index*16 + 8 and R1 = start + 0x68 (flags set from that add),
  * and leaves the byte_80288B0 table address in R6. */
-Next sub_8028894(void) {
+Next battleObject_computeBButtonOffsets_8028894(void) {
     u32 index = LD8(R5 + 7);
     u32 r1Base = 0;
 

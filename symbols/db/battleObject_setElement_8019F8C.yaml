@@ -1,0 +1,62 @@
+name: battleObject_setElement_8019F8C
+address: '0x08019F8C'
+kind: function
+previous_names:
+- sub_8019F8C
+status: probable
+summary: Writes a packed-elements byte into both BattleObject.Element and CollisionData.{PrimaryElement,SecondaryElement},
+  splitting the low/high nibbles.
+interface: (r0 = packed element byte, r5 = *BattleObject) -> side effects only; r2 clobbered to 0
+details: "- Loads the BattleObject's CollisionData pointer at oBattleObject_CollisionDataPtr into r1 (`ldr\
+  \ r1, [r5,#oBattleObject_CollisionDataPtr]`).\n  - Stores the full byte at oBattleObject_Element (`strb\
+  \ r0, [r5,#oBattleObject_Element]`).\n  - Splits r0 into low nibble (mask 0x0F) and high nibble (mask\
+  \ 0xF0), writing them respectively to oCollisionData_PrimaryElement and oCollisionData_SecondaryElement.\n\
+  \  - Returns via `mov pc, lr` (tail call); no caller-visible return value, but the contract's `out r2`\
+  \ reflects that r2 was overwritten during the split (it ends at 0xF0 & r0 ≈ low byte of mask in r2's\
+  \ last use).\n  - The 64-byte captured IWRAM snapshot at 0x0203CE00 (the toolkit's BattleStatePtr block)\
+  \ shows no in-place mutation of that buffer, confirming the function only touches the object/collision\
+  \ pair.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `strb r0, [r5,#oBattleObject_Element]` writes the full byte; `oBattleObject_Element = 0x0E`.
+    - `mov r2, #0xf` then `and r2, r0` then `strb r2, [r1,#oCollisionData_PrimaryElement]` writes only
+    the low nibble at offset 0x02. - `mov r2, #0xf0` then `and r0, r2` then `strb r0, [r1,#oCollisionData_SecondaryElement]`
+    writes only the high nibble at offset 0x19 (per struct comment "SecondaryElement at 0x19, SecondaryElementWeakness
+    at 0x18"). - Calibration snapshots all show exit r0 == 0 with Z flag set (`-Z--`), consistent with
+    the post-mask `and r0, r2` result of 0 for typical callers passing small/zero element bytes — though
+    here r0 was already 0 on entry, so Z reflects `cmp`-equivalent from `and`. - Caller battle_refreshObjectCollisionFromExtraVars_80C6AB8
+    description ("reapplies the panel element effect") matches splitting a packed element byte into secondary/primary
+    slots.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08019F8C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^08019f8c '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- 'Why `r0` ends up zero at exit in captured calls: every captured entry has r0=0, so the post-mask result
+  of `and r0, #0xf0` would be 0 anyway; whether callers normally pass nonzero elements is not seen in
+  the captured set.'
+- The contract marks `out r2`, but the assembly leaves r2 = `r0 & 0xF0` (0xF0's mask applied to remaining
+  r0); this is a write, not a meaningful return.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f eb748819
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8019F8C -> battleObject_setElement_8019F8C
+  where: bn6f c2454a87
+  tool: tools/rename_symbol.py

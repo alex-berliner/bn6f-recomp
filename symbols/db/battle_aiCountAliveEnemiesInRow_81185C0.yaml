@@ -1,0 +1,53 @@
+name: battle_aiCountAliveEnemiesInRow_81185C0
+address: '0x081185C0'
+kind: function
+previous_names:
+- sub_81185C0
+status: probable
+summary: 'AI helper: return the count of alive enemy battle-objects in a row (incremented when found)'
+interface: (r5 = AIData? r6 = BattleState?) -> r0 = u8 count of alive enemies in row ; side effects none
+details: "Reads BattleState fields Unk_3a (r6+0x3a) and Unk_38 (r6+0x38) as a row index and\n  base. Sums\
+  \ them, scales by 4, adds the EWRAM table base at word_201DA80 (off_81186A4)\n  and reads a u16 entry;\
+  \ subtracts 0x90 to get a battle-object index, then calls\n  battleObject_getByIndex_813B780 to fetch\
+  \ that object. Checks byte offset 0x01 of the\n  fetched object (object header Index field, byte 1 =\
+  \ the second byte which appears to\n  be used as an alive/active flag in BN's header); if non-zero the\
+  \ count (the original\n  AIData.Unk_0c byte loaded at r5+0xc) is incremented by 1 and returned in r0.\n\
+  \  Falls straight through to the return when no live enemy is found.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrh r0, [r6,#0x3a]` / `[r6,#0x38]` are the row/col pair from BattleState (Unk_38/Unk_3a).
+    - `ldr r1, off_81186A4` -> `word_201DA80`, the per-row enemy table base. - `lsl r0, r0, #2` and `ldrh
+    r0, [r0]` then `sub r0, #0x90` gives a battle-object index. - `bl battleObject_getByIndex_813B780`
+    resolves that index to a BattleObject pointer. - `ldrb r1, [r1,#1]` reads the byte right after the
+    BattleObject pointer dereference (likely an alive flag bit packed in the object header). - `ldrb r0,
+    [r5,#0xc]` reads the running counter (AIData.Unk_0c) and `add r0, #1` only when the liveness byte
+    is non-zero, then returns r0.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x081185C0
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^081185c0 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- Exact semantics of the table at 0x0201DA80 (per-row enemy index table) and what the
+- byte at +1 of the resolved object really flags (alive vs visible vs something else).
+- Field names would settle this; the behaviour is otherwise clear from the asm.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f eb748819
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_81185C0 -> battle_aiCountAliveEnemiesInRow_81185C0
+  where: bn6f c2454a87
+  tool: tools/rename_symbol.py

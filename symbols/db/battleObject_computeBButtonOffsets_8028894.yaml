@@ -1,0 +1,59 @@
+name: battleObject_computeBButtonOffsets_8028894
+address: '0x08028894'
+kind: function
+previous_names:
+- sub_8028894
+status: probable
+summary: Computes a base offset and slot-index pair (returned in r0/r1) from a battle object's B-button
+  chip slot byte
+interface: '(r5 = BattleObject*) -> r0 = base, r1 = slot index; side effects: r6 set to &byte_80288B0,
+  lr saved/restored via push {lr}/pop {pc}'
+details: "Reads `ldrb r0, [r5, #7]` — that is byte 0x7 of the `BattleObject`, which sits inside the\n\
+  \  `Params` union (`Param4` / `BPwrAtk` candidate; with the AI/ObjectHeader layout this is the\n  `Param4`\
+  \ byte used by chips). If the value is < 5, r1 is left at 0; otherwise r1 becomes 0x18\n  and 5 is subtracted\
+  \ from r0. The result is then `r0 = (r0 << 4) + 8`, `r1 += 0x68`.\n  Concretely: the function returns\
+  \ a 16-byte-aligned base address/8-bit slot offset (`r0*16+8`)\n  and a per-row constant (`0x68` for\
+  \ row 0, `0x80` for row 1) in r1. r6 is loaded with the\n  address of the `byte_80288B0` table at 0x080288B0\
+  \ (32 bytes of small constants used by the\n  caller). The function is a tail-call via `pop {pc}`, so\
+  \ there is no real frame. It runs with\n  an interrupt-safe saved-lr-on-stack pattern (`push {lr}`).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0, [r5, #7]` at 0x0802889c reads a byte from the struct pointed at by r5 (per the
+    captured-call r5 convention). - `cmp r0, #5; blt loc_80288A4` selects between the two branches. -
+    `mov r1, #0x18; sub r0, #5` on the >=5 branch produces r1=0x18 and r0-=5 (so inputs 5..N map to 0..N-5).
+    - `lsl r0, r0, #4; add r0, #8` yields `r0 = r0*16 + 8`. - `add r1, #0x68` is the unconditional final
+    adjustment (so the <5 branch gets r1=0x68 and the >=5 branch gets r1=0x80). - `ldr r6, off_80288AC
+    // =byte_80288B0` is the only consumer-visible write of r6, matching the contract `out: r6`. - Tail
+    return via `pop {pc}` matches the captured exit snapshot (Z clear: `flags=---- was -Z--`). - Captured
+    calls show constant inputs `r0=0x08028895`, `r1=0x0802886c` (these are Thumb-bit'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08028894
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^08028894 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- The exact consumer of r0/r1/r6 is not shown by this leaf. Identifying the caller (one of the
+- '`battle_` chip-selection helpers) would let the offset become a named `BattleObject` field'
+- read (e.g. B-button slot index → base address into a chip-list table).
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f eb748819
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8028894 -> battleObject_computeBButtonOffsets_8028894
+  where: bn6f c2454a87
+  tool: tools/rename_symbol.py

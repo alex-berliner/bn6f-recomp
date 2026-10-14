@@ -2513,9 +2513,9 @@ static void maybe_signal_battle_over(void) {
     GUEST_CALL(relatedToIsBattleOver_800A11C);
 }
 
-/* register form: calls sub_802EF5C outside this file, which has no typed C interface yet */
+/* register form: calls battle_dispatchDestroyEvents_802EF5C outside this file, which has no typed C interface yet */
 static void post_teardown_hook(void) {
-    GUEST_CALL(sub_802EF5C);
+    GUEST_CALL(battle_dispatchDestroyEvents_802EF5C);
 }
 
 /* Tear down one battle object (r5 = object ptr): clear collision region, drop slot,
@@ -3126,7 +3126,7 @@ Next sub_80170E4(void) {
     if (LD8(R5 + oBattleObject_Param2) == 0)
         GUEST_CALL(relatedToIsBattleOver_800A11C);
 
-    GUEST_CALL(sub_802EF5C);
+    GUEST_CALL(battle_dispatchDestroyEvents_802EF5C);
 
     R0 = 4;
     ST16(R5 + oBattleObject_CurPhaseAndPhaseInitialized, 4);

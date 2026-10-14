@@ -1,0 +1,62 @@
+name: battleObject_dispatchSpriteUpdate_8118874
+address: '0x08118874'
+kind: function
+previous_names:
+- sub_8118874
+status: probable
+summary: 'BeastSP object sprite update dispatcher: copies 0xC->0xD and jumps to one of 14 sprite routines
+  indexed by the object''s SpriteOffset (low nibble of header byte 2), then chains into sprite_update.'
+interface: '(r5 = object ptr, r6 = related ptr) -> r0 = 0x5EC ; side effect: byte [r5+0xD] := byte [r5+0xC],
+  then calls the sprite handler chosen from off_8118890[r6[2]] and finally sprite_update(r5)'
+details: 'Reads Unk_0c from the BattleObject (header byte 0xC relative to r5) and writes it into Unk_0d
+  (header+1). Loads off_811888C -> off_8118890, then indexes that jump table with `ldrb r1,[r6,#2]` and
+  `bx r0` (Thumb interworking via `mov lr,pc`). The picked handler is one of 14 sub_81188CC/sub_81188EC/sub_811891C/sub_8118964/sub_8118998/sub_81189C0/sub_8A00/sub_89D4/sub_89E0/8A2C/8A58/8A88;
+  entries 4 and 9 share target sub_811891C, entries 8 and 14 share sub_81189D4, entries 2 and 13 share
+  sub_81188EC. After returning it falls through `bl sprite_update` then `pop {pc}` (pop-jump used as the
+  function epilogue, matching the captured lr=0x08118875/081187f6 / r0=0x8118875 entries that arrive with
+  the function''s own base+1 as lr). The captured entry r0=0 and r1=0x1B for the first call and r0=0x8118875,
+  r1=4, r2=0201e544 for the rest match a BeastSP battle-object initialiser pre-staging r6 and the chosen
+  sprite routine index. Returns r0=0x5EC (likely an OAM buffer base, as in other battle sprite-update
+  returns).
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- asm line `ldrb r0,[r5,#0xc]` / `strb r0,[r5,#0xd]` copies 0xC to 0xD of the object pointed
+    to by r5 (BattleObject offsets Unk_0c/Unk_0d). - asm line `ldr r0, off_811888C` followed by `ldrb
+    r1,[r6,#2]` and `ldr r0,[r0,r1]` indexes off_8118890 (a 15-entry jump table) by a byte at r6+2. -
+    `mov lr,pc` / `bx r0` is Thumb/ARM interworking dispatch into the chosen routine (entries have `+1`
+    to bias for Thumb). - `bl sprite_update` is the only callee reached after the dispatched handler returns;
+    sprite_update''s documented contract takes r5 as the BattleObject pointer. - captured-call r0=0x5EC
+    on exit matches the OAM/render return value typical of sprite_update in this codebase. - The 14 jump-table
+    slots (sub_81188CC through sub_8118A88) suggest sprite routines covering the various BeastSP battle-object
+    sprite variants; naming the callee group is the only gap.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08118874
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^08118874 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- What the value at r6+2 represents (sprite-id/anim-id field) and which sub_ entry corresponds to which
+  BeastSP sprite variant; also why r6 (not r5) is used for the dispatch index. A side-by-side map of sprite_id
+  -> jump-table entry would settle the variant names.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f eb748819
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8118874 -> battleObject_dispatchSpriteUpdate_8118874
+  where: bn6f c2454a87
+  tool: tools/rename_symbol.py

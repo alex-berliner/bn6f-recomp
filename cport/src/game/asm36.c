@@ -915,7 +915,7 @@ Next battle_dispatchObjectUpdateOrEffect_81333A0(void) {
     else if (objType == 4)
         GUEST_CALL(sub_81337C4);
     else if (objType == 8)
-        GUEST_CALL(sub_8133434);
+        GUEST_CALL(submenu_handleSelectAFromList_8133434);
     else if (objType == 0xC)
         GUEST_CALL(battleObject_submenuDispatchByBeastSpIndex_8133484);
     else /* objType == 0x10 */
@@ -1413,8 +1413,8 @@ Next sub_8133944(void) {
      * input-handling block and go straight to the tail-end draws/updates. */
     GUEST_CALL(sub_8133C0C);
     if (ZERO_FLAG()) {
-        /* sub_81347A4 gates the joypad cursor movement block. If non-zero, skip it. */
-        GUEST_CALL(sub_81347A4);
+        /* battleObject_selectAIDataHandler_81347A4 gates the joypad cursor movement block. If non-zero, skip it. */
+        GUEST_CALL(battleObject_selectAIDataHandler_81347A4);
         if (ZERO_FLAG()) {
             u32 toolkit   = R10;
             u32 joypadPtr = LD32(toolkit + oToolkit_JoypadPtr);

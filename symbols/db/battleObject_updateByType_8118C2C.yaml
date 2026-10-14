@@ -1,0 +1,68 @@
+name: battleObject_updateByType_8118C2C
+address: '0x08118C2C'
+kind: function
+previous_names:
+- sub_8118C2C
+status: probable
+summary: 'Battle-object per-frame dispatcher: copies CurAnim (offset 0xc) into a backup byte (0xd), then
+  tail-calls an animation-update routine picked from a small jump table indexed by `header.Type` (0x2),
+  finally running the standard sprite update.'
+interface: '(r5 = BattleObject*, r6 = header-staging ptr, lr = return) -> r0 = 0x24c ; r2/r3/r5 caller-saved
+  ; side effects: writes [r5+0xd], dispatches via jump table, calls sprite_update'
+details: "- `ldrb r0, [r5,#0xc]` then `strb r0, [r5,#0xd]`: copies BattleObject.CurAnim (0xc) into CurAnimCopy\
+  \ (0xd); this is the standard \"remember previous anim\" idiom used so animation-change code can detect\
+  \ a transition.\n  - Loads `off_8118C44` (a pointer to `off_8118C48`) into r0, then `ldrb r1, [r6,#2]`\
+  \ to read the object's Type field from a staging header (r6 acts like an ObjectHeader where byte 2 carries\
+  \ the type).\n  - `ldr r0, [r0,r1]; mov lr,pc; bx r0` performs an ARM/Thumb switch via the table at\
+  \ `0x8118C48`. The 15-entry table only varies at index 2, which points to `sub_8118C8C+1`; every other\
+  \ slot (0,1,3..14) calls `sub_8118C84+1`. So 14 of 15 types share the same per-frame path and one specific\
+  \ type gets a custom routine.\n  - After the dispatched routine returns (via `bl sprite_update` from\
+  \ the previous line — actually `bl sprite_update` is the literal next instruction), `sprite_update(r5)`\
+  \ is invoked on the object's sprite struct.\n  - Caller sub_8118BC8 also has identical contract (r5/r6/lr\
+  \ in, r2/r3/r5 out) and likely is the parent step of the per-frame battle-object update pipeline.\n\
+  \  - Exit r0=0x24c across 40 hits is the constant 0x24c (= 588), probably a status/code carried through\
+  \ from `sprite_update` (whose contract is \"in r5, out flags+r0..r5\").\n  - All EWRAM captured entry\
+  \ buffers (e.g. r2=0x02021358) point into the BattleObject pool; r6 is a staging header written by the\
+  \ caller before this is invoked.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0,[r5,#0xc]; strb r0,[r5,#0xd]` at 0x08118c2e matches the CurAnim/CurAnimCopy pattern
+    documented in `battle_object_struct` (loc=0x10 CurAnim / loc=0x11 CurAnimCopy packed as u16; here
+    treated byte-wise, so 0xc actually reads the union byte before CurAnim — the assembly''s offsets 0xc/0xd
+    correspond to fields just above CurAnim; consistent with "copy prev value before mutating"). - `ldr
+    r0, off_8118C44` then indexing by `[r6,#2]` is the standard ObjectHeader.Type dispatch (header struct
+    has `Type` at byte 2 in `object_header_struct`). - Table at `0x8118C48` holds 15 Thumb entries; only
+    slot 2 (Type=2) differs (`sub_8118C8C+1`), the other 14 jump to `sub_8118C84+1` — clear per-type polymorphism.
+    - `bl sprite_update` at 0x08118c3c with r5 (the BattleObject pointer, whose trailing bytes are the
+    `object_sprite_struct`) matches the confirmed `sprite_update` callee contract ("Run _sprite_update
+    on the object''s sprite struct"). - Caller `sub_8118BC8` has the same in/out register contract and
+    is unnamed but lives in the same battle-object update family.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08118C2C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^08118c2c '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- Exact semantic of Type value 2 vs the rest; what sub_8118C8C does differently is not visible here.
+- Whether r0=0x24c is a meaningful status or just the side effect of sprite_update (would settle by reading
+  sprite_update's tail).
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f eb748819
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8118C2C -> battleObject_updateByType_8118C2C
+  where: bn6f c2454a87
+  tool: tools/rename_symbol.py

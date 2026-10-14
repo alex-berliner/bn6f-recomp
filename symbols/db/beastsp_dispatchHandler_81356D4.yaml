@@ -1,0 +1,69 @@
+name: beastsp_dispatchHandler_81356D4
+address: '0x081356D4'
+kind: function
+previous_names:
+- sub_81356D4
+status: probable
+summary: 'Indirect dispatcher keyed by r5+0x1: reads a byte and tail-calls one of three handler routines
+  via a thumb-BX table'
+interface: (r5 = base of a beast-state struct, AIIndex at +0x1 used as the dispatch key) -> r0 = 0 ; tail-call
+  returns whatever the chosen handler returns
+details: "1. push {lr}; loads off_81356E8 (a pointer-to-pointer table at 0x081356E8).\n  2. ldrb r1, [r5,#1]\
+  \ - reads the AIIndex / handler selector byte at offset +0x1 of a caller-supplied struct kept in r5.\n\
+  \  3. ldr r0, [r0,r1] - reads a function pointer from off_81356E8[AIIndex]. The three entries listed\
+  \ are sub_81356F4, beastsp_dispatchHandler_81357C4, and sub_8135B54 (the latter two are themselves named\
+  \ dispatch/handler functions), so this looks like a top-level switch that fans out by beast/AI type.\n\
+  \  4. mov lr, pc ; bx r0 - sets LR=PC and tail-calls the selected handler with r1 still equal to the\
+  \ dispatch key, returning whatever the handler returns (the captured calls all show exit r0=0 because\
+  \ the tail-called handlers end up returning 0 in those frames).\n  5. pop {pc} - the normal Thumb epilogue\
+  \ restoring PC from the saved LR. The use of `bx r0` (not `blx`) means the caller's return convention\
+  \ is whatever the handler preserves; callee-saved registers r5/r8-r12 are listed as both in and out,\
+  \ which fits a thin wrapper that does not itself trample them beyond the live-handler chain.\n  6. The\
+  \ captured calls come from a \"beastsp_\" context (snap_beastsp_*), with r0 enumerating values 0x02,\
+  \ 0x0b, 0x0c, 0x0d, 0x0e, 0x0f and r3 = 0x02001c04 (the S2001c04 EWRAM struct), so the r5-based struct\
+  \ being dispatched on is the per-battle beast/AIData state. All entries return r0 = 0 with -ZC- flags\
+  \ in this run, consistent with the AIIndex-keyed handler running cleanly and exiting with no error code.\n\
+  \  7. The table only has three entries but AIIndex is a u8 and the r0 values captured include 0x0b-0x0f,\
+  \ so the lookup is almost certainly bounded inside the handler (likely `r1 = r1 % 3` or a switch that\
+  \ maps small clusters of indices onto the same handler), not a raw byte index into the table.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r1, [r5,#1]` at 0x081356D8 reads a u8 from a struct held in r5; offset +1 matches AIIndex
+    in ai_data_struct. - `ldr r0, [r0,r1]` at 0x081356DA does `[base_of_81356E8 + r1] -> r0`, i.e. an
+    indexed function-pointer load. - `mov lr, pc` followed by `bx r0` at 0x081356DC-0x081356E0 tail-calls
+    the chosen handler (ARM-mode switch via the low bit of the handler address, since the .word entries
+    are written as `+1`). - The three handler slots at off_81356E8 are sub_81356F4, beastsp_dispatchHandler_81357C4,
+    and sub_8135B54 - all already named in the beastsp_ subsystem, confirming this is a beast-state dispatch
+    wrapper. - Captured callers all have lr = 0x08136e13, i.e. sub_8136DE0 (the only listed caller), and
+    r3 = 0x02001c04 which is the toolkit''s S2001c04 EWRAM pointer, consistent with the beast-state context.
+    - The callees section is empty because the only "calls" are tail-calls via `bx r0` (not `bl`), so
+    the static analyser doesn''t record direct `bl` targets.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x081356D4
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^081356d4 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- How the raw AIIndex byte maps onto the 3-entry table (caller narrows r1 first, or this wrapper narrows
+  it inside the bx? - assembly shows no narrowing here, so the narrowing must happen in sub_8136DE0 or
+  in the handler chain). Settle by inspecting sub_8136DE0 and the immediate caller of this function.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f eb748819
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_81356D4 -> beastsp_dispatchHandler_81356D4
+  where: bn6f c2454a87
+  tool: tools/rename_symbol.py

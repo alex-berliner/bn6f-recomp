@@ -1,0 +1,70 @@
+name: submenu_handleSelectAFromList_8133434
+address: '0x08133434'
+kind: function
+previous_names:
+- sub_8133434
+status: probable
+summary: 'Advances the submenu selection state for the "main submenu" widget: refreshes its target row,
+  runs beast-status effect / object resolve helpers, and either stays on the cursor (option busy) or commits
+  the highlighted row by playing the menu-select SFX, switching the highlight to the "OK" row and fading
+  out.'
+interface: (r5 = submenu state ptr, r10 = toolkit ptr) -> side effects only ; writes submenu->idx_00/Possibly
+  wantsNewRow/HoveredIndex; plays SFX and starts screen fade
+details: "- Calls submenu_clearBgIfClosed_8134594 first so the submenu background is blanked when closed.\n\
+  \  - Calls submenu_resolveTableEntryByIndex_8134538 and battleObject_runBeastStatusEffect_81345B0 then\
+  \ object_resolveTableEntryWrapper_8134548: per-call setup that pulls the row entry pointer (r5-relative)\
+  \ and finalises the per-row state.\n  - Reads chatbox flag 0x80 via chatbox_mask_eFlags2009F38: if NZ\
+  \ (the chatbox is busy showing something) the function returns early without changing r5 state.\n  -\
+  \ Otherwise sets r5->idx_00 = 4 (advance to \"OK\" state, see SubMenu.inc) and r5->Unk_03 = r5->Unk_0d\
+  \ (likely copying the row ID/index of the chosen item into the OK slot).\n  - Re-checks chatbox flag\
+  \ 0x20; if NZ reads chatbox_GetState_8045F4C: if any bit is set plays menu-select SFX then does the\
+  \ same r5 assignment; if zero, calls submenu_ConfirmExitAndFade_811FB64 with r0=8 (some param of ConfirmExitAndFade)\
+  \ before doing just the idx_00 = 4 write.\n  - Read fields through r5: idx_00 (offset 2 in the captured\
+  \ call, but SubMenu.inc's idx_00 is at 0x0; the index 2 in the capture is `Unk_02`, so the field touched\
+  \ is the next-state byte at sub+2), Unk_0d/0x3 (chosen menu item identifier).\n  - r10 is the toolkit\
+  \ (per project convention); the call sites 0x081333ac recorded in the snapshots suggest this is dispatched\
+  \ from the submenu object's state-action handler when action = 4 (Select/A).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- r5 in/out contract and the unconditional `pop {pc}` (Tail-call per submenu dispatcher) —
+    typical leaf in submenu object handlers. - Direct bl submenu_clearBgIfClosed_8134594 (clears submenu
+    BG when closed). - `chatbox_mask_eFlags2009F38(0x80)` then `bne loc_8133458` — short-circuit while
+    chatbox busy. - `mov r0, #0x20 ; bl chatbox_mask_eFlags2009F38 ; beq locret_8133482` — second chatbox
+    flag check. - `bl chatbox_GetState_8045F4C ; tst r0, r0 ; beq loc_8133478 ; mov r0, #SOUND_MENU_SELECT
+    ; bl PlaySoundEffect` — branches on whether to SFX-then-commit or fade-and-commit. - `mov r0, #8 ;
+    bl submenu_ConfirmExitAndFade_811FB64` — calls the confirmed exit+fade helper with r0=8. - Multiple
+    `strb r0, [r5,#2]` with `r0=4` — assignment to the second submenu byte (submenu next-state byte, value
+    4 = OK). - `ldrb r0, [r5,#0xd] ; strb r0, [r5,#3]` — copying 0xd → 0x3 within r5. - Snapshots show
+    r3 = 0x02001c04 (S2001c04 struct ptr) and lr = 0x081333ac (submenu state dispatcher tail) — consistent
+    with being called from the submenu object''s CurState=Update handler.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08133434
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp, story9'
+  reproduce: 'grep -l ''^08133434 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp, story9
+open_questions:
+- Exact semantic of "value 4" written to submenu+2 (it's reported as offset 2 but the SubMenu struct's
+  documented idx_00 lives at offset 0; offset 2 is `Unk_02`). The displacement here is almost certainly
+  another "next-state" or "phase" byte at offset 2.
+- Whether `Unk_0d→Unk_03` carries a chip/menu index, a confirmed action code, or just a copy of "previous
+  index" — would need a snapshot inspection of the r5 EWRAM region.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f eb748819
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8133434 -> submenu_handleSelectAFromList_8133434
+  where: bn6f c2454a87
+  tool: tools/rename_symbol.py

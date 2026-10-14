@@ -1,0 +1,67 @@
+name: battle_dispatchDestroyEvents_802EF5C
+address: '0x0802EF5C'
+kind: function
+previous_names:
+- sub_802EF5C
+status: probable
+summary: If battle flag 0x40 is set, dispatches a paired "0 then 1" signal to the battle object's destroy
+  sub-event handler (sub_802EF74), then returns; otherwise no-op.
+interface: '() -> ; side effect: when BATTLE flag 0x40 is set, calls sub_802EF74(r0=0) then sub_802EF74(r0=1)'
+details: "- Only reads inputs (r5/r10/lr) per the contract; r10 is the toolkit/battle-context pointer\
+  \ used by the callee.\n  - Calls battle_testFlag0x40_800A8F8 to query flag 0x40 of the battle state.\n\
+  \  - If the flag is clear, branches to `locret_802EF72` and returns immediately (no side effects).\n\
+  \  - If the flag is set, executes the two-step dispatch: r0=0 then r0=1, both passed to sub_802EF74.\n\
+  \  - The 0/1 sequence is a classic \"edge / level\" pair: sub_802EF74 likely uses it to drive a state-machine\
+  \ transition (e.g. send \"begin destroy\" then \"destroy confirmed\" or to differentiate a guard word\
+  \ from its data word).\n  - Wide use by ~30 battle-object teardown / destruction code paths (airspinObject_update,\
+  \ battle_teardownObject_80165F8, sub_80170E4, and many sub_80CDXX/sub_80DXXX teardown helpers) strongly\
+  \ suggests this is the standard \"issue the destroy command for this battle object\" hook that runs\
+  \ after the per-object teardown has prepared the object for removal.\n  - The function is `void`-like:\
+  \ nothing is returned in r0 to callers (callee-saved r4..r7/r5..r7 are caller-managed and overwritten\
+  \ by callees).\ndetails_evidence_bullets:\n  - `push {lr}; bl battle_testFlag0x40_800A8F8; cmp r0,#0;\
+  \ beq locret_802EF72` shows the flag-guard early-out.\n  - `mov r0,#0; bl sub_802EF74; mov r0,#1; bl\
+  \ sub_802EF74` shows the two calls with r0=0 then r0=1, no other state is touched between them.\n  -\
+  \ `pop {pc}` returns directly; no value placed in r0.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- All 19 captured calls show entry r0=0 and exit r0=0 with flags unchanged; never touches any
+    memory via r1 (r1 pointer to a mostly-zero 0x40-byte block + one back-pointer at offset 0x30 is just
+    an uninitialised scratchpad in the caller''s frame). - 30+ callers all sit in battle-object destroy/teardown
+    code paths (battle_teardownObject_80165F8, sub_80170E4, airspinObject_update_80D8988, and dozens of
+    sub_80CDXX/sub_80DXXX object teardown handlers). - The two-call 0/1 dispatch pattern to a sub-handler
+    is the standard "send command then send acknowledgement" idiom used across MMBN battle object teardown.
+    - battle_testFlag0x40_800A8F8 returns 1 when BATTLE flag 0x40 is set, and the caller proceeds only
+    then.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0802EF5C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0802ef5c '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9
+open_questions:
+- The exact meaning of flag 0x40 (it gates the destroy signal so it only fires in certain battle states,
+  e.g. normal turn-end vs. custom-screen victory); settling it requires correlating the writers of flag
+  0x40 with battle phases.
+- What sub_802EF74 actually does with r0=0 vs r0=1 (e.g. writes a sentinel to the object, signals the
+  battle scheduler, or arms a delayed destroy); needs decompilation of sub_802EF74 itself.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f eb748819
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_802EF5C -> battle_dispatchDestroyEvents_802EF5C
+  where: bn6f c2454a87
+  tool: tools/rename_symbol.py
