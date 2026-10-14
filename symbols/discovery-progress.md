@@ -2168,8 +2168,9 @@ Highlights:
 | 41    | 25                 | 20                        | 5               | 0       |
 | 42    | 25                 | 20                        | 4               | 0       |
 | 43    | 25                 | 21                        | 4               | 0       |
+| 44    | 25                 | 18                        | 7               | 0       |
 
-Running total: named 805, hypothesis-only 235, dropped 0 (of ~10,600 placeholders).
+Running total: named 823, hypothesis-only 235, dropped 0 (of ~10,600 placeholders).
 
 ## Batch 37 (2026-10-14)
 
@@ -2198,6 +2199,10 @@ Running total: named 805, hypothesis-only 235, dropped 0 (of ~10,600 placeholder
 ## Batch 43 (2026-10-14)
 
 25 functions: 21 renamed to probable, 4 left as hypothesis (sub_80EB79C, sub_810CC54, sub_810CA8E, sub_810C0E4). Note: sub_80D4472 was promoted from hypothesis to probable this batch (was a hypothesis in batch 41, now LLM named it battleObject_initActorStateT4_80D4472). Also: LLM used a "details_extra:" block for sub_80E3B94 that the parser didn't handle; fixed manually.
+
+## Batch 44 (2026-10-14)
+
+25 functions: 18 renamed to probable, 7 left as hypothesis. Notable: sub_80EB79C was promoted from hypothesis (carried since batch 39) to probable — LLM named it aiAttackVars_updateIllusionSpawnState. Higher than usual hypothesis count (7) this batch — many AI/attack-vars/state-machine functions the LLM didn't feel confident naming.
 
 ## Session summary
 
