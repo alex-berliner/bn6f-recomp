@@ -98,3 +98,52 @@ address, resolve the current name from the lifter's header comments.
 | 2     | 21                 | 20                        | 1               | 0       |
 
 Running total: named 45, hypothesis-only 1, dropped 0 (of ~10,600 placeholders).
+
+## Batch 3 (2026-10-14)
+
+25 functions, 23 named + 2 hypothesis (sub_800A01C, sub_801002C kept as comment
+only), renamed in recomp 3dbe05db (bn6f 0fc2dd04 comments + renames; port ROM unchanged):
+
+- sprite subsystem: renderAll and palette-count reset
+  (sprite_resetPaletteCount_800286C, sprite_setRenderFlushState_80027B4,
+  sprite_finalizeBattleSpriteGroupQueue_8004298, sprite_finishGroup_8004590);
+- overworld: the per-frame overworld render over the OWPlayerObject list
+  (owMapObject_renderAll_8003BF4) and the type-dispatch object router
+  (object_dispatchByType_8003AFA);
+- battle-object layer: barrier-state update
+  (battleObject_updateBarrierStatus_801A802), emotion-shader trigger
+  (battleObject_applyEmotionShaderIfCounterReady_8016CA4), collision-hit clear
+  (battleObject_clearCollisionIfHitAction_801BADE), terminate flag dispatch
+  (battleObject_checkTerminateFlagAndDispatch_8020140), counter-timer tick
+  (battleObject_tickCounterTimer_801A420), custom-chip-cursor OAM setup
+  (battleObject_setupCustomChipCursorState_803C59C);
+- panel/status effects on objects: ice-freeze tick
+  (object_tickIcePanelFreeze_801A36A), poison-panel status
+  (object_updatePoisonPanelStatus_801A186), air-shoe clear
+  (battleObject_clearChipSelectionOnAirShoe_801A2CC);
+- battle/AI attack queue: queued-attacks dispatch
+  (battle_ai_dispatchQueuedAttacks_8017BC0) and AI player use-chip action
+  (battle_aiPlayerUseChipAction_8017AB4);
+- battle HUD/draw: chip-counts OAM (battle_drawChipCountsOAM_801C082),
+  custom-gauge sync (battle_updateCustGaugeFromAI_802E156),
+  battle-start overlay (battle_drawBattleStartOverlay_8033F80),
+  OAM queue-all (battle_queueAllOamEntries_8009FCC);
+- flagged-update dispatch (battle_dispatchFlaggedUpdates_801BEE0);
+- one OAM/queue helper (object_computeAndQueueOamEntry_811FA98).
+
+Hypothesis entries: sub_800A01C (resets byte_3000EA8 - 1 instruction),
+sub_801002C (transform-aware palette row picker for AI-controlled player
+objects - too many unverified struct field names to commit to a specific
+name).
+
+tool: continued from batch 2 (tools/asmcat.py).
+
+## Tally update
+
+| batch | functions examined | named (renamed via record) | hypothesis-only | dropped |
+|-------|--------------------|---------------------------|-----------------|---------|
+| 1     | 25                 | 25                        | 0               | 0       |
+| 2     | 21                 | 20                        | 1               | 0       |
+| 3     | 25                 | 23                        | 2               | 0       |
+
+Running total: named 68, hypothesis-only 3, dropped 0 (of ~10,600 placeholders).
