@@ -1945,3 +1945,88 @@ Highlights:
 | 33    | 25                 | 19                        | 6               | 0       |
 
 Running total: named 596, hypothesis-only 225, dropped 0 (of ~10,600 placeholders).
+
+## Batch 34 (2026-10-14)
+
+25 functions, 20 named + 5 hypothesis (sub_8031264, sub_8083DF0, sub_8086EA8,
+sub_810D808, sub_811E090 kept as comment only), renamed in recomp b686d5d8
+(bn6f pushed; port ROM unchanged).
+
+Highlights:
+- battle AI: AI data unk-32 is zero (battle_aiAIDataUnk32IsZero_801445C);
+- battle: check AI data unk-36 is non-zero
+  (battle_checkAIDataUnk36IsNonZero_8014490);
+- battle: dispatch beast-out event
+  (battle_dispatchBeastOutEvent_80148CC);
+- object: apply self collision (object_applySelfCollision_8019F44);
+- custMenu: reload from chip entries
+  (battle_customScreenReloadFromChipEntries_8028250);
+- battle chip-select: draw chip select row tilemap block
+  (battle_drawChipSelectRowTilemapBlock_802C810);
+- battle: dispatch beast-out update or anim
+  (battle_dispatchBeastOutUpdateOrAnim_804CCBC);
+- battle object: scenario effect input handler
+  (battleObject_scenarioEffectInputHandler_8089704);
+- battle: tick chip lockout and fade
+  (battle_tickChipLockoutAndFade_80897E8);
+- battle: tick chip lockout lockout and attack
+  (battle_tickChipLockoutLockoutAndAttack_8089B2E);
+- beast overworld AI: decide transform or idle
+  (beastOverworldAi_decideTransformOrIdle_8089C16);
+- battle object: step sprite (battleObject_stepSprite_80B86C4);
+- object: die or update collision
+  (object_dieOrUpdateCollision_80CC562);
+- battle object: AI snake arm update
+  (battle_object_aiSnakeArmUpdate_80ED154);
+- battle AI attack: tick down (battle_aiAttackTickDown_80EF608);
+- battle AI: snake arm attack tick
+  (battle_aiSnakeArmAttack_tick_8110574);
+- battle object: set cur state and queue OAM for shadow
+  (battleObject_setCurStateAndQueueOamForShadow_8116A28);
+- battle object: tick beast-out action cooldown
+  (battleObject_tickBeastOutActionCooldown_8141A70);
+- battle scenario effect: is active
+  (battleScenarioEffect_isActive_814216E);
+- battle: count alive actors on team
+  (battle_countAliveActorsOnTeam_8142C20).
+
+## Tally update
+
+| batch | functions examined | named (renamed via record) | hypothesis-only | dropped |
+|-------|--------------------|---------------------------|-----------------|---------|
+| 1     | 25                 | 25                        | 0               | 0       |
+| 2     | 21                 | 20                        | 1               | 0       |
+| 3     | 25                 | 23                        | 2               | 0       |
+| 4     | 25                 | 21                        | 4               | 0       |
+| 5     | 25                 | 20                        | 5               | 0       |
+| 6     | 25                 | 21                        | 4               | 0       |
+| 7     | 25                 | 19                        | 6               | 0       |
+| 8     | 25                 | 20                        | 5               | 0       |
+| 9     | 25                 | 18                        | 7               | 0       |
+| 10    | 25                 | 14                        | 11              | 0       |
+| 11    | 25                 | 17                        | 8               | 0       |
+| 12    | 25                 | 15                        | 10              | 0       |
+| 13    | 25                 | 19                        | 6               | 0       |
+| 14    | 25                 | 19                        | 6               | 0       |
+| 15    | 25                 | 21                        | 4               | 0       |
+| 16    | 25                 | 21                        | 4               | 0       |
+| 17    | 25                 | 21                        | 4               | 0       |
+| 18    | 25                 | 20                        | 5               | 0       |
+| 19    | 25                 | 17                        | 8               | 0       |
+| 20    | 25                 | 15                        | 10              | 0       |
+| 21    | 25                 | 18                        | 7               | 0       |
+| 22    | 25                 | 17                        | 8               | 0       |
+| 23    | 25                 | 14                        | 11              | 0       |
+| 24    | 25                 | 15                        | 10              | 0       |
+| 25    | 25                 | 19                        | 6               | 0       |
+| 26    | 25                 | 16                        | 9               | 0       |
+| 27    | 25                 | 15                        | 10              | 0       |
+| 28    | 25                 | 17                        | 8               | 0       |
+| 29    | 25                 | 13                        | 12              | 0       |
+| 30    | 25                 | 15                        | 10              | 0       |
+| 31    | 25                 | 15                        | 10              | 0       |
+| 32    | 25                 | 17                        | 8               | 0       |
+| 33    | 25                 | 19                        | 6               | 0       |
+| 34    | 25                 | 20                        | 5               | 0       |
+
+Running total: named 616, hypothesis-only 230, dropped 0 (of ~10,600 placeholders).
