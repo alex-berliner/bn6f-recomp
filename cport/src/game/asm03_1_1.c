@@ -2171,7 +2171,7 @@ Next sub_803DE5C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_803DE72 ── */
+/* ── battle_pollSIOLinkIfActive_803DE72 ── */
 /* register form: calls libSIOControlPoll_81445F8 outside this file, which has no typed C interface yet;
    the game function reads r0 (handler pointer) and writes back r0–r3 plus condition flags. */
 static void check_and_call_handler(void) {
@@ -2184,9 +2184,9 @@ static void check_and_call_handler(void) {
     }
 }
 
-/* sub_803DE72: if the global handler at unk_200A284 is non-null, invoke libSIOControlPoll_81445F8
+/* battle_pollSIOLinkIfActive_803DE72: if the global handler at unk_200A284 is non-null, invoke libSIOControlPoll_81445F8
  * (which reads r0 = that handler); otherwise return with r0 = 0 and flags from tst. */
-Next sub_803DE72(void) {
+Next battle_pollSIOLinkIfActive_803DE72(void) {
     check_and_call_handler();
     RETURN_TO_CALLER();
 }

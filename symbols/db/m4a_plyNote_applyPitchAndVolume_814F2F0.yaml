@@ -1,0 +1,65 @@
+name: m4a_plyNote_applyPitchAndVolume_814F2F0
+address: '0x0814F2F0'
+kind: function
+previous_names:
+- sub_814F2F0
+status: probable
+summary: MPlay note callback that scales a track's current/volume bytes by attacker FPorta's bend and
+  possibly a Beast-Out rage offset, then writes back to the channel state.
+interface: '(r0 = ChannelPtr (SoundChannel*, unused), r1 = ChannelPtr / NoteTrack) -> r0 = saved LR (return
+  address); side effects: writes TrackState[0x8], TrackState[0x9], TrackState[0x10], TrackState[0x11],
+  TrackState[0], and pops {r4,pc}'
+details: "Called from MPlayMain and ply_note as a per-note/post-update callback. The argument\n  pointer\
+  \ is in r1; the function immediately moves it to r2 for convenience. Treats\n  `[r2 + 0]` as a flags\
+  \ byte, `[r2 + 0x18]` as a subMode selector (0/1/2).\n\n  Branch 0x1 (flag bit 0x01): pitch processing.\n\
+  \    r3 = (PanelX-or-equivalent * PanelY-or-equivalent) >> 5   [mul+lsr from bytes 0x12,0x13].\n   \
+  \ If subMode == 1, also r3 *= ((int8)byte0x16 + 0x80) >> 7.\n    r1 = ((int8)byte0x14)<<1 + (int8)byte0x15;\
+  \ if subMode == 2 add (int8)byte0x16.\n    Clamp r1 to [-0x80, 0x7f], then r0 = r1+0x80.\n    byte[0x10]\
+  \ = (r0 * r3) >> 8\n    byte[0x11] = ((0x7f - r1) * r3) >> 8    — i.e. a split between two track state\
+  \ bytes.\n\n  Branch 0x4 (flag bit 0x02): volume processing, computed entirely from bytes 0xa..0xf\n\
+  \  combined into r1 (the 16-bit accumulator is right-shifted by 8 to give the track byte\n  at +0x08)\
+  \ with low 8 bits stored at +0x09. If subMode == 0, byte 0x16 adds r0<<4 to r1.\n\n  Finally clears\
+  \ bits 0x05 of byte[0] (and r0 in r3 marks which bits were) and tail-pops\n  r4 plus the saved LR into\
+  \ PC.\n\n  The captured-call snapshot r0=0x0814e427 is the saved return LR into MPlayMain / ply_note,\n\
+  \  matching the `pop {r0}; bx r0` epilogue.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {r4,lr}; mov r2,r1; ... pop {r4}; pop {r0}; bx r0` is the canonical m4a SoundChannel
+    callback shape, used by ply_note (0x0814e558) which lists it as a callee. - Caller MPlayMain (0x0814e260)
+    summary mentions "the m4a music player sequencer", so this helper is part of the m4a chain. - `byte[0]
+    & 1` and `& 4` gating and the two `strb` pairs at +0x10/+0x11 and +0x08/+0x09 match m4a''s pitch/volume
+    split-bytes for Tone/Noise tracks. - snap_story2 callers show r1 = offsets inside a 0x50-byte TrackState
+    (0x02007ee8 / 7f38 / 7f88 / 7fd8 ... spaced 0x50 apart) — exactly the size of m4a''s `Track` array
+    entry. - Sub-mode gate (`cmp r4,#1` / `cmp r0,#2` against byte0x18) lines up with m4a flag bits for
+    FNum/Pitch/Volume envelope hooks.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0814F2F0
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story1, story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^0814f2f0 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander
+open_questions:
+- Exact mapping of byte 0x14/0x15/0x16/0xa..0xf to m4a fields (hL./vL/p/etc.) — only the
+- general class (note processor's split bytes) is clear; matching GBA Tek m4a internals would
+- settle which one is being computed.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a1dd9fb3
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_814F2F0 -> m4a_plyNote_applyPitchAndVolume_814F2F0
+  where: bn6f 06d70503
+  tool: tools/rename_symbol.py

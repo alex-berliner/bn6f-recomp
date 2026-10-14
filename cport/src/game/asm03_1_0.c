@@ -401,7 +401,7 @@ Next battle_resetState_8033AC4(void) {
  * update step, flags state 1 for battle_drawBattleStartOverlay_8033F80, then redraws the map name
  * display. All callee flag/register effects are passed through to callers. */
 Next onUpdateInInternet_8033B1E(void) {
-    GUEST_CALL(sub_8033E0C);
+    GUEST_CALL(internet_drawHpDigits_8033E0C);
 
     R0 = 1;
     GUEST_CALL(battle_drawBattleStartOverlay_8033F80);

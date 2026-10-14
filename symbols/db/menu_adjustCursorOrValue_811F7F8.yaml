@@ -1,0 +1,67 @@
+name: menu_adjustCursorOrValue_811F7F8
+address: '0x0811F7F8'
+kind: function
+previous_names:
+- sub_811F7F8
+status: probable
+summary: Adjusts a cursor/selection index by ±1 on D-pad/shoulder input, clamps to a min/max range, writes
+  the new index back into a slot state word, and returns whether the value changed.
+interface: (r0 = joypad-held flags, r1 = joypad struct ptr, r2 = flags/mask, r3 = caller scratch, r5 =
+  toolkit ptr) -> r0 = 0xff if value changed, 0x00 if unchanged ; also writes the new halfword back to
+  [r5 + r3 + 0x20] and [r5 + r3 + 0x24]
+details: "Operates on a pair of halfword \"cursor\" fields in a slot/object state block\n  indexed by\
+  \ r3 (offsets 0x20 and 0x24 relative to r5, i.e. toolkit + slot).\n  r1 originally carries 0x44 and\
+  \ is right-shifted: bits 0x6/0x7 (D-pad L/R or\n  similar) and the rotated 0x80/0x40 equivalents (R/L\
+  \ shoulder via lsl+lsr trick)\n  act as inc/dec inputs. r0's low bits 0x40/0x80 are likewise ORed-in\
+  \ inc/dec triggers\n  depending on the r1 shift branch. The \"min\" (r9 = r1-1 after stripping 0xc0)\
+  \ and\n  the \"max\" (loaded from [r5, r3+0x1e]) bound the result.\n\n  Two parallel halves mirror each\
+  \ other: a left-shifted half (bit 6/7 from r1) and\n  a right-shifted half (bits 0/1) each move the\
+  \ index by ±1 and clamp against the\n  corresponding bound read from the slot. After movement, both\
+  \ candidate values\n  are compared to the previously-stored values; if either differs, the new values\n\
+  \  are written back and SOUND_MENU_CUR_MOVE is played (unless r2's bit 0x2 is set,\n  which suppresses\
+  \ the SE). The function returns 0xff on change, 0x00 on no-op.\n\n  Heavy use of r5 (toolkit base) and\
+  \ indirect r3 offset suggests this is the\n  shared \"nudge a selection index\" helper used by every\
+  \ menu/folder/submenu screen,\n  which matches the long caller list (folderEdit, submenu, reqBBS, BBS\
+  \ static,\n  generic battle-screen state objects).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- Two parallel movement blocks: r1 lsr#7 + r0 &0x200 set "moved" flag for first slot, then
+    r1 lsl#1 lsr#7 + r0 &0x40 step r2 down with clamp (lines near 0x811F844-0x811F86E). - Symmetric second
+    half at 0x811F876-0x811F8AE uses r0 &0x100 (R shoulder) and r0 &0x80 to nudge r3 up, again with `cmp
+    r2, r6` clamp. - `ldrh r6, [r5,r6]` at 0x1e+r8 and 0x20/0x24+r8 are the per-slot min/max and current
+    index reads, matching the slot state layout. - `bl PlaySoundEffect` with r0 = SOUND_MENU_CUR_MOVE
+    only on the change branch (0x811F8F4) and skipped when `[sp+8] & 2` is set. - Return r7 = 0xff on
+    change, 0x00 otherwise (0x811F8FA, 0x811F8F8). - All 17 named callers match a "menu/folder/BBS cursor
+    step" pattern: folderEdit_step_813388C, reqBBS_8140358, submenu_HandleInput_8127B18, etc.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0811F7F8
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, battlesweep, beastsp, maps, menus3, story1, story2, story4,
+    story6, story8, story9'
+  reproduce: 'grep -l ''^0811f7f8 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, battlesweep, beastsp, maps, menus3, story1, story2, story4, story6, story8,
+    story9
+open_questions:
+- Which field pair (0x20/0x24) actually is — the most likely interpretation is
+- a cursor index + a sub-index/secondary cursor, but the exact struct is not in
+- the included struct definitions. Settled by looking at how callers populate
+- r3 before the call.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a1dd9fb3
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_811F7F8 -> menu_adjustCursorOrValue_811F7F8
+  where: bn6f 06d70503
+  tool: tools/rename_symbol.py

@@ -1,0 +1,61 @@
+name: battle_allocateActorIndex_802FE48
+address: '0x0802FE48'
+kind: function
+previous_names:
+- sub_802FE48
+status: probable
+summary: Allocates a free actor slot index from a 16-bit bitmap in EWRAM and returns the slot index (or
+  0xFF if full)
+interface: '(no args) -> r0 = allocated slot index (0..15) or 0xFF on full ; side effect: sets the corresponding
+  bit in the 16-bit bitmap at 0x2009A2C'
+details: "Loads a pointer at off_802FF44 = 0x2009A2C, reads the current 16-bit allocation bitmap into\
+  \ r1.\n  Initialises r2 to 0x80000000 (high bit) and r0 (slot counter) to 0.\n  The loc_802FE52 loop\
+  \ shifts r2 right by one each iteration and tests r1 & r2 — the first bit\n  that is clear in the bitmap\
+  \ is claimed (the clear bit means slot free). On a free bit, the loop\n  exits to loc_802FE60, ORs r2\
+  \ into r1 (marks the bit as used), stores back, and returns r0 (slot\n  index 0..15). If all 16 bits\
+  \ are already set, the loop counter hits 0x10 and falls through to\n  loc_802FE66, which returns 0xFF\
+  \ (no slot). The captured calls always enter with r0=0 (matches the\n  function taking no real input)\
+  \ and exit with r0=0 and N--- flags (Z cleared, 0xFF would set Z).\n  Callers then treat the result\
+  \ as an actor slot index, used together with a BattleState-ish setup\n  (sub_8026A50 notes this returns\
+  \ a value, then queues an anim/spawn packet via sub_802FE7A with\n  (0,0x40,0x40,value) and pushes the\
+  \ object to state 4).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r3, off_802FF44` references a 0x2009A2C pointer (EWRAM global) holding the bitmap state
+    - `mov r2, #0x80; lsl r2, r2, #0x18` builds 0x80000000 — the high bit of a 32-bit search mask - Loop
+    body does `tst r1, r2` then `lsr r2, r2, #1` walking one bit at a time through the mask - `add r0,
+    #1; cmp r0, #0x10; bge loc_802FE66` is the "tried all 16 slots" terminal, returning 0xFF - loc_802FE60
+    path stores updated r1 back via `str r1, [r3]` and returns r0 (the discovered slot) - All 40 captured
+    calls enter with r0=0/1 ignored and exit r0=0 with N---, consistent with returning a small index -
+    Multiple callers exist (sub_8002D20, sub_801E792, sub_8026A50) all matching the "need next slot" pattern'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0802FE48
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story1, story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0802fe48 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story4, story5, story6, story7, story8, story9
+open_questions:
+- The role of the bitmap (actor slots vs. enemy slots vs. generic index allocator) isn't pinned down by
+  the function alone; verifying one consumer writes the returned index into a BattleState.PlayerActors/OpponentActors
+  slot would confirm "battle actor allocator".
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a1dd9fb3
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_802FE48 -> battle_allocateActorIndex_802FE48
+  where: bn6f 06d70503
+  tool: tools/rename_symbol.py

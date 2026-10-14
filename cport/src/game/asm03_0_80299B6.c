@@ -2522,14 +2522,14 @@ Next wrapCountersAt203CFB0ToU16_802CDFE(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_802CE10 ── */
-/* sub_802CE10(r0 = value, r5 = battle object):
+/* ── battleObject_accumulateFinalDamageUpperBound_802CE10 ── */
+/* battleObject_accumulateFinalDamageUpperBound_802CE10(r0 = value, r5 = battle object):
  * Updates one of the two battle side-counters for the object's alliance.
  * If the object is the one currently tracked at (+8) of the counter block,
  * its stored increment (+2) is added to r0; otherwise r0 acts as a new
  * maximum and overwrites the counter (+0) when it is larger.
  * Returns: r0 = updated value, r2 = the tracked object pointer. */
-Next sub_802CE10(void) {
+Next battleObject_accumulateFinalDamageUpperBound_802CE10(void) {
     u32 amount = R0;
     u32 object = R5;
 

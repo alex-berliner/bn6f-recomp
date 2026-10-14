@@ -1,0 +1,75 @@
+name: owPlayer_checkSliprunRewardAndPlaySfx_809DB02
+address: '0x0809DB02'
+kind: function
+previous_names:
+- sub_809DB02
+status: probable
+summary: Overworld-player per-frame check that, when the player's state halfword has bit 0x20 set, runs
+  the four Sliprun event-flag guards and, on the slip-unlock combo, sets the unlock flags and plays a
+  reward SFX.
+interface: '(r5 = OWPlayer object ptr, r10 = toolkit ptr) -> r0 = preserved halfword & 0x20 ; side effects:
+  may set EVENT_IN_SLIPRUN_STATE / EVENT_173E and call PlaySoundEffect(0x35) when EVENT_173F is unset,
+  EVENT_1716 is set, and the player is in the slip-run state.'
+details: "- Reads the player's state halfword at [r5 + 0x4C]: `ldrh r0, [r5, r3]` with r3=0x4C (per the\
+  \ OWPlayer struct's animation/state area; caller treats r5 as OWPlayerObject*).\n  - The \"0x20\" halfword\
+  \ (JoypadHeld bit mask, indicating the down/D-pad direction on this build) is pushed twice with the\
+  \ original `0x20` mask and ANDed back to the same value at exit, so the saved halfword is just stashed\
+  \ on the stack and restored verbatim (`push {r0,r1}` ... `pop {r0,r1}` ... `pop {pc}` to `thumb_func_end`).\n\
+  \  - If the AND result is zero the function jumps straight to the restore-pop epilogue at loc_809DB4A\
+  \ and does nothing else.\n  - When bit 0x20 is set: tests four event flags in order — if any of EVENT_IN_SLIPRUN_STATE,\
+  \ EVENT_173F is set, or EVENT_1716 is NOT set, the handler bails to loc_809DB4A without playing SFX.\
+  \ Only the exact combination \"EVENT_IN_SLIPRUN_STATE == 0, EVENT_173F == 0, EVENT_1716 == 1\" proceeds.\n\
+  \  - On that exact state it sets EVENT_IN_SLIPRUN_STATE and EVENT_173E (the \"slip-run unlocked for\
+  \ real\" pair), then plays `PlaySoundEffect(0x36 + 0xFF)` = `PlaySoundEffect(0x35)` and falls through\
+  \ to loc_809DB4A.\n  - All three direct callees are confirmed wrappers: `TestEventFlagFromImmediate`\
+  \ / `SetEventFlagFromImmediate` / `PlaySoundEffect`. The captured-call snapshots have r0==0 (already\
+  \ masked-out halfword), consistent with the AND-and-restore epilogue.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- Function lives in bn6f/asm/ow_player.s:1308 and is bracketed by overworld-player callers
+    (sub_809D470/809D4DC/809D61A), matching r5 == OWPlayerObject*. - `mov r3, #0x4c; ldrh r0, [r5,r3]`
+    reads the u16 at offset 0x4C, then `mov r1, #0x20; and r0, r1` masks just bit 0x20 — `and r0, r1`
+    is repeated at the epilogue (`pop {r0,r1}` -> `and r0, r1`), so the saved value is restored and the
+    function returns the ANDed halfword in r0 (-Z-- when the bit was clear). - The four `movflag`/`TestEventFlagFromImmediate`/`SetEventFlagFromImmediate`
+    blocks with `bne loc_809DB4A` / `beq loc_809DB4A` short-circuits implement exactly the "all-but-one"
+    pre-condition (second pass matches EVENT_1716 being SET with `beq loc_809DB4A`). - `movflag EVENT_IN_SLIPRUN_STATE;
+    bl SetEventFlagFromImmediate` followed by `movflag EVENT_173E; bl SetEventFlagFromImmediate` sets
+    the slip-run/unlock pair; `mov r0, #0x36; add r0, #0xff; bl PlaySoundEffect` reduces to SFX 0x35.
+    - All six captured entry samples share r0=0 r1=0x10 r2=0 r3=0x4c — the AND(0x20) of a halfword whose
+    bit 0x20 was clear, with the 0x10 in r1 being the mask constant preserved on the stack.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0809DB02
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story1, story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^0809db02 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander
+open_questions:
+- The exact player-side field semantics for halfword at +0x4C (the OWPlayer struct reserves 0x4C as `u16
+  Unk_4c`); it plausibly overlaps JoypadHeld or a state copy, but the absolute fields touched on r5 are
+  not directly pinned to a named member.
+- The semantic meaning of EVENT_173E / EVENT_173F / EVENT_1716 (i.e. what slip-run progression they encode)
+  is not derivable from this function alone; cross-referencing the story script/event-flag table would
+  settle it.
+- Why a halfword rather than a u8 is read for a single bit is unclear — could be a misalignment artifact
+  in the calling struct, or the halfword is genuinely a small flag field that happens to be u16.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a1dd9fb3
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_809DB02 -> owPlayer_checkSliprunRewardAndPlaySfx_809DB02
+  where: bn6f 06d70503
+  tool: tools/rename_symbol.py

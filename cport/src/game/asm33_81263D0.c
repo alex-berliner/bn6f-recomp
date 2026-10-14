@@ -2048,13 +2048,13 @@ static void call_sub_8120CC8(u32 a, u32 b, u32 *out0, u32 *out1) {
     *out1 = (u8)R1;
 }
 
-/* register form: calls sub_811F7F8 outside this file, which has no typed C interface yet */
+/* register form: calls menu_adjustCursorOrValue_811F7F8 outside this file, which has no typed C interface yet */
 static u32 call_sub_811F7F8(u32 a, u32 b, u32 c, u32 d) {
     R0 = a;
     R1 = b;
     R2 = c;
     R3 = d;
-    GUEST_CALL(sub_811F7F8);
+    GUEST_CALL(menu_adjustCursorOrValue_811F7F8);
     return R0;
 }
 

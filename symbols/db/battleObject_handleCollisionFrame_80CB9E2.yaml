@@ -1,0 +1,77 @@
+name: battleObject_handleCollisionFrame_80CB9E2
+address: '0x080CB9E2'
+kind: function
+previous_names:
+- sub_80CB9E2
+status: probable
+summary: 'Per-frame battle-object collision update: tears down current collision, spawns the matching
+  effect, possibly damages the owner (Buster-style HP loss), and either dispatches to the cur-action handler
+  or marks the object for destruction.'
+interface: '(r5 = BattleObject*, r10 = Toolkit) -> void ; mutates the BattleObject at r5 (state, collision
+  region), side effects: spawns collision effect, plays damage, may destroy object'
+details: "1. push {r4,r7,lr}; r5 is the BattleObject*, r10 is Toolkit (per project convention). Saves\
+  \ nothing else.\n    2. Calls object_removeCollisionData(0x0801a00e) to detach the object's current\
+  \ collision region.\n    3. Calls object_spawnCollisionEffect(0x0801a0d4) to spawn the visual effect\
+  \ matching the just-removed collision data.\n    4. Calls battle_isBattleOver (0x0800a18e). If the battle\
+  \ is over, falls through to destruction.\n    5. Calls basicHandleBattleObjectDamage_801156A with r0=0\
+  \ (no attacker); adds 1 to the result and beqs the destruction path. If result was -1 (i.e. the object's\
+  \ HP actually changed), we proceed to check flags instead of immediately destroying.\n    6. Loads CollisionDataPtr\
+  \ from r5+0x54 into r7; reads oCollisionData_FlagsFromCollision (+0x70) and tests bit 0x0f800000. If\
+  \ any of those \"end-of-collision\" bits are set, destroys.\n    7. Calls battle_isTimeStop (0x0800a098).\
+  \ If time is stopped, jumps to the present-collision path (skips the action dispatch and just re-presents\
+  \ collision data via object_presentCollisionData).\n    8. Otherwise reads `oBattleObject_CurAction`\
+  \ (+0x9), uses it as an index into the small table at off_80CBA28 which contains two Thumb+1 entries\
+  \ (sub_80CBA34, sub_80CBA52). Loads the corresponding handler into r1 and tail-calls it via `bx r1`\
+  \ after setting `lr=pc`. This is the standard object cur-action dispatch.\n    9. Destruction path (loc_80CBA1E):\
+  \ calls object_clearCollisionRegion, then writes CUR_STATE_DESTROY (0x08) into oBattleObject_CurStateActionPhaseAndPhaseInitialized\
+  \ (+0x8) and returns.\n    10. The function preserves r5/r8/r10 (callee-saved) per its contract; r4/r7/r8\
+  \ are pushed/popped explicitly, and r10 is implicitly via Toolkit convention.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {r4,r7,lr}` + `pop {r4,r7,pc}` shows the frame-update skeleton returning to a dispatcher
+    that walks r4/r7 objects (beastSP snapshot context suggests a per-actor loop). - `bl object_removeCollisionData`
+    (0x0801a00e) and `bl object_spawnCollisionEffect` (0x0801a0d4) immediately follow the prologue, matching
+    the confirmed helper roles. - `bl battle_isBattleOver` followed by `tst r0,r0; bne loc_80CBA1E` shows
+    that a finished battle short-circuits to destroy. - `bl basicHandleBattleObjectDamage_801156A` with
+    r0=0 and `add r0,#1; beq loc_80CBA1E` is the standard pattern used by attack-dispatch handlers to
+    skip destruction when HP actually decreased this frame. - `ldr r7,[r5,#oBattleObject_CollisionDataPtr];
+    ldr r0,[r7,#oCollisionData_FlagsFromCollision]; ldr r1,dword_80CBB40=0x0f800000; tst r0,r1; bne loc_80CBA1E`
+    matches the "end of collision" / dying flag set in CollisionData. - `bl battle_isTimeStop; bne loc_80CBA18`
+    -> `bl object_presentCollisionData; pop {r4,r7,pc}` is the exact time-stop freeze branch: keep showing
+    the collision but skip the cur-action work. - The two-entry table at off_80CBA28 -> off_80CBA2C =
+    {sub_80CBA34+1, sub_80CBA52+1}, indexed by CurAction via `ldrb r0,[r5,#oBattleObject_CurAction]; ldr
+    r1,[r1,r0]; mov lr,pc; bx r1`, is the project''s cur-action dispatch idiom. - Destruction: `bl object_clearCollisionRegion;
+    mov r0,#CUR_STATE_DESTROY (0x08); str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized];
+    pop {r4,r7,pc}`. - Snapshots `snap_beastsp_0050000_*.bin` show r5 (BattleObject*) reused across calls
+    and a stable r2=02036778 (Toolkit area), with r0 returning an EWRAM pointer on exit (02038790) consistent
+    with the CollisionData being repopulated by object_presentCollisionData/object_removeCollisionData.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080CB9E2
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp'
+  reproduce: 'grep -l ''^080cb9e2 '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp
+open_questions:
+- The exact role of the two dispatch targets (sub_80CBA34, sub_80CBA52) - one likely handles the normal
+  hit/recoil frame and the other the "destroyed" / no-effect frame. Inspecting those two sub_ functions
+  (or seeing them named elsewhere) would confirm and let this function be renamed without the `_ADDRESS`
+  suffix.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a1dd9fb3
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80CB9E2 -> battleObject_handleCollisionFrame_80CB9E2
+  where: bn6f 06d70503
+  tool: tools/rename_symbol.py

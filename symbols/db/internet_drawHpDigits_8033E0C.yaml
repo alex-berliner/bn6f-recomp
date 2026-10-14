@@ -1,0 +1,98 @@
+name: internet_drawHpDigits_8033E0C
+address: '0x08033E0C'
+kind: function
+previous_names:
+- sub_8033E0C
+status: probable
+summary: Draws the PET navi's current HP as 4 OAM digits in the Internet overworld UI, copying a sprite
+  template for the current HP block.
+interface: (no r0-r3 contract documented by caller) -> side effects only; mutates [r5+0x8] and queues
+  OAM sprites
+details: "1. Tests event flag 1732 (movflag EVENT_1732 + TestEventFlagFromImmediate); if set, jumps to\
+  \ the draw loop at loc_8033E6A, skipping the HP \"smoothing\" branch entirely.\n  2. In the smoothing\
+  \ branch it calls GetCurPETNavi + GetMaxAndCurHPForCurPETNavi_80010D4 to read curHP (r1), then compares\
+  \ it with the previous value stored at [r5+0x8] (a u16 working slot in the caller-provided context object).\n\
+  \     - r6 holds the \"delta direction\" tag: 0=no change, 1=curHP dropped more than 4 below the cached\
+  \ value, 2=curHP rose more than 4 above it. Otherwise the cached value is simply overwritten with the\
+  \ fresh curHP and r6 stays 0.\n     - The +4 / -4 hysteresis is applied to the *cached* value before\
+  \ comparing (sub r0,#4 / add r0,#4), so small HP changes (<=4) don't update the display, but a single\
+  \ jump of >4 does, and the cached value snaps to the new curHP either way.\n  3. After re-reading curHP,\
+  \ it computes r1 = curHP >> 2 (i.e. curHP / 4, the bar segment index) and selects a sprite-template\
+  \ offset via r2:\n     - r6==0 (steady): pick one of three slots in `byte_86C1F20` -- base (0x20) if\
+  \ maxHP >= curHP/4 (r0 is the maxHP returned earlier? actually r0 holds maxHP at that point), else 0;\
+  \ otherwise lsl r2,r6,#5 to use one of the per-direction slots.\n     - Then CopyByEightWords copies\
+  \ 0x20 bytes (8 words) from `byte_86C1F20 + r2` into the EWRAM buffer at `byte_30016D0` -- an OAM template\
+  \ area.\n  4. At loc_8033E6A it converts the cached HP value at [r5+0x8] to 8-digit packed BCD via memory_bcdConvert,\
+  \ then walks 4 digits by shifting r7 (starting at 0xc, decrementing by 4) and masks 4 bits. It tracks\
+  \ a \"leading-zero suppression\" flag in r8/r4: once a non-zero digit is emitted, r8=1 and subsequent\
+  \ digits display; leading zeros (and the very first nibble while still zero) are replaced with OAM tile\
+  \ id 0xb (a blank/space tile). Each digit is queued through sprite_queueOamEntryThunk_802FE28 with attribute\
+  \ word 0x8000 | (tileRow<<16) -- the tileRow is 8/0x10/0x18/0x20 for the 4 digit columns (r0 incremented\
+  \ by 8 each iteration) and the OAM tile id is 0xC792 + 2*digitValue (so the digit glyphs live at 0xC792,\
+  \ 0xC794, ...).\n  5. After the digit loop it queues two extra sprite entries: one with attribute word\
+  \ 0x8000 and tile id 0xC790 (the static \"HP\" label tile in the HUD), and a second with attribute word\
+  \ 0x10288000 + 0xC790 (a palette/shape variant, possibly the colon or \"x\" separator).\n  6. The caller\
+  \ contract shows r5 as a context pointer (its offset 0x8 holds the cached HP), and r10 is the Toolkit.\
+  \ Other callers (sub_8033B0C/B30/B46/B5C/B6E) appear to share the same context object: r5 always in,\
+  \ r4-r8 clobbered, return via `pop {r5,pc}` (a Thumb tail-call idiom) so this function never actually\
+  \ returns -- it dispatches into another function via r5.\ndetails-cn: |\n  Note: the contract \"out=r2/r4..r8\"\
+  \ plus the `pop {r5,pc}` epilogue strongly suggest r5 was loaded with the next-function address before\
+  \ this was called (i.e. the caller does `mov r5, lr; ... bl sub_8033E0C; ...` style), and the function's\
+  \ last `pop {r5,pc}` returns to *that* address rather than to the caller's lr. That matches the caller\
+  \ onUpdateInInternet_8033B1E whose contract is `out=['r8','r9']` -- the same tail-call mechanism is\
+  \ used there.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- HP read path: `bl GetCurPETNavi` + `bl GetMaxAndCurHPForCurPETNavi_80010D4` (asm03_1_0.s:822-823),
+    then `ldrh r0,[r5,#8]` / `cmp r1,r0` (s:824-826) confirms the cached value lives at [r5+0x8] and is
+    u16. - Hysteresis constants +4 / -4: `sub r0,#4` (s:829) and `add r0,#4` (s:834), with `bge`/`blt`
+    checks against r1 = curHP. - Sprite template table: `ldr r0,off_8033ED0 // =byte_86C1F20` then `add
+    r0,r0,r2` where r2 is either 0, 0x20, or `lsl r6,#5` (s:856-860), copied with `CopyByEightWords(..,
+    byte_30016D0, 0x20)` (s:864). - Digit glyph table: `ldr r1,dword_8033EDC // =0xC792` then `add r1,r1,r2`
+    with r2 = 2*digit (s:881-882), so the 10 digit tiles span 0xC792..0xC7A4. - Label tile 0xC790 is queued
+    at the end with the constant attribute word 0x8000 (s:894-898), and a second copy with 0x10288000
+    (s:898-903) -- matches an HP/colon label rather than the digits themselves. - `memory_bcdConvert`
+    is the known BCD-of-32-bit helper (callees list), used here to feed nibble extraction: `lsr r2,r7`
+    / `and r2,r1,#0xf` (s:873-874) is the classic per-digit nibble pull from BCD. - Tail-call epilogue:
+    `pop {r5,pc}` (s:904) with no lr push/pop means the next function''s address is in r5 on entry --
+    consistent with the `in=[''r5'',''r10'',''lr'']` contract. - Captured-call snapshots show a constant
+    entry context (r0=08033b1f, r1=8, r2=0200df20, r3=02001f69) which is exactly the context pointer +
+    the HP slot, and the function always returns r0=0xff (the bcdConvert result of an upper-leaving jne
+    path).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08033E0C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, beastsp, fuzz, maps, menus2, menus3, story1, story2, story4,
+    story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^08033e0c '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, beastsp, fuzz, maps, menus2, menus3, story1, story2, story4, story5, story6,
+    story7, story8, story9
+open_questions:
+- The exact meaning of the four template slots in `byte_86C1F20` (steady / dropping / rising / low-HP).
+  The conditional `r0,r1` at s:855 looks like a maxHP-vs-derivation comparison, but the values are not
+  obviously typed in any provided struct.
+- The second label sprite at 0x10288000 -- colon, "HP" suffix, or HP-bar endcap? Without a font sheet
+  it's hard to tell.
+- What EVENT_1732 gates -- the call is short-circuited to just draw the digits, so it's probably "show
+  the HP readout" itself; needs the story-flag table to confirm.
+- The `r10` (Toolkit) value is unused inside this function, which is consistent with the caller passing
+  it for register-window symmetry rather than direct use.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a1dd9fb3
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8033E0C -> internet_drawHpDigits_8033E0C
+  where: bn6f 06d70503
+  tool: tools/rename_symbol.py

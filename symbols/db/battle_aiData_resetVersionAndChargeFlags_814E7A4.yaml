@@ -1,0 +1,59 @@
+name: battle_aiData_resetVersionAndChargeFlags_814E7A4
+address: '0x0814E7A4'
+kind: function
+previous_names:
+- sub_814E7A4
+status: probable
+summary: Resets AIData version/charge-byte fields and ORs a BeastOut-state bit (0x0C vs 0x03) into the
+  object header flags
+interface: (r1 = AIData*) -> no return value
+details: "- r1 is an AIData* (EWRAM-resident, e.g. 0x02007ee8 or 0x02007f38 from the snapshots).\n  -\
+  \ `strb r2, [r1,#0x16]` zeros Version_16.\n  - `strb r2, [r1,#0x1a]` zeros Unk_1a.\n  - Reads `[r1,#0x18]`\
+  \ (Unk_18) and selects r2 = 0x0C if that byte is 0, otherwise r2 = 0x03.\n  - Reads `[r1]` (object-header\
+  \ Flags), ORs in r2, and writes the result back to `[r1]`. So bit 0x0C (OBJECT_FLAG_PAUSE_UPDATE) is\
+  \ set when Unk_18 == 0, and bit 0x03 (OBJECT_FLAG_VISIBLE | OBJECT_FLAG_ACTIVE? actually 0x03 is ACTIVE|VISIBLE)\
+  \ is set otherwise.\n  - bx lr; no other side effects, no callees, r0 is left as it was on entry (always\
+  \ 0x0e in snapshots).\n  - Only called from sub_814E7E0 (per the caller list) and reached via the small\
+  \ wrapper chain around ply_note (0x0814e558), suggesting it is the follow-up \"fixup\" applied after\
+  \ a sub_814E7C0 byte lookup returned zero.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `strb r2, [r1,#0x16]` / `strb r2, [r1,#0x1a]` clearly zero Version_16 and Unk_1a in the AIData
+    struct definition. - `ldrb r2, [r1,#0x18]` reads Unk_18; cmp/bne selects r2 = 0x0C (when zero) or
+    0x03 (when nonzero). - `ldrb r3, [r1]` plus `orr r3, r2` / `strb r3, [r1]` ORs the selected mask into
+    the ObjectHeader flags at byte 0. - Captured-call r1 values (0x02007ee8, 0x02007f38) are AIData-sized
+    EWRAM blobs whose byte 0 is the ObjectHeader.Flags word per the battle_object layout. - Caller chain
+    in `sub_814E7E0` is described as "runs a follow-up call only when that result is zero", consistent
+    with this function being the conditional branch target. - r0 stays 0x0000000e in every snapshot, matching
+    a void contract.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0814E7A4
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story1, story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^0814e7a4 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander
+open_questions:
+- The exact semantic of the 0x0C vs 0x03 split (probably "BeastOut vs not" or "active vs paused") is not
+  pinned down; would need a labelled state for Unk_18 or a decomp of ply_note to confirm the gameplay
+  meaning.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a1dd9fb3
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_814E7A4 -> battle_aiData_resetVersionAndChargeFlags_814E7A4
+  where: bn6f 06d70503
+  tool: tools/rename_symbol.py

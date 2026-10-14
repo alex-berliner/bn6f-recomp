@@ -1,0 +1,68 @@
+name: cutscene_runTriggeredOverworldCutscene_8034DB0
+address: '0x08034DB0'
+kind: function
+previous_names:
+- sub_8034DB0
+status: probable
+summary: Picks and starts one of four cutscene scripts based on the overworld player coord interaction
+  value, when not slip-run and not in a cutscene
+interface: '() -> r0 = 0 on cutscene-started, 1 on no-op ; side effects: may call IsNotSlipRunningAndNotInCutscene,
+  sub_8034E3C, sub_8034E88, and StartCutscene to load eS200AC80+4 as script'
+details: "Wrapped in push {r4-r7, lr}; no parameters passed in r0..r3 by callers (captures show\n  r0=1\
+  \ on exit, --C-, i.e. on the \"no-op\" return path through loc_8034E22).\n\n  Reads Toolkit(r10) and\
+  \ game-state fields via fixed addresses:\n    - eS200AC80+4 (off_8034E28) -> ldrh r0, [r7,#4] (a u16\
+  \ cutscene-script id at word_200AC84)\n    - GameState.CoordInteractionValue loaded via r10->oToolkit_GameStatePtr\
+  \ +\n      oGameState_CoordInteractionValue, then tst r4, r4 / beq loc_8034E22.\n  If [eS200AC80+4]\
+  \ is non-zero it starts cutsceneScript1 (byte_809A8A8) via StartCutscene and returns 0.\n  Otherwise\
+  \ it walks three (table_index, value) pairs:\n    - sub_8034E3C with r1 = 0, then sub_8034E88(r1=0);\
+  \ both must succeed to start byte_8099EA0\n    - same with r1 = 1 for byte_809AA34\n    - same with\
+  \ r1 = 2 for byte_809CAD8\n  Each sub_8034E3C/sub_8034E88 pair returns NZ iff there is a hit; on a complete\
+  \ match StartCutscene is\n  called and r0=0 is returned.\n  Returns r0=1 on the \"no cutscene started\"\
+  \ fall-through (loc_8034E22).\n  Sole caller is cutscene_8034BB8; uses r10/r9/r11/lr-save, so it is\
+  \ a tick of the overworld cutscene\n  scheduler choosing one of three available overworld interaction-script\
+  \ variants.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- push {r4-r7, lr} prologue; captured entry r0/r1/r2/r3 and lr=08034be7 (cutscene_8034BB8 return
+    site) at bn6f/asm/asm03_1_0.s:2271. - bl IsNotSlipRunningAndNotInCutscene; beq loc_8034E22 -> early
+    no-cutscene return at 8034E22 mov r0,#1; pop {r4-r7,pc}. - ldr r7,off_8034E28 (= eS200AC80) ; ldrh
+    r0,[r7,#0x4] ; cmp r0,#0 ; beq loc_8034DCA = a primary "always-play-this-once" cutscene gate at eS200AC80+4.
+    - mov r7,r10 ; ldr r7,[r7,#oToolkit_GameStatePtr] ; ldrb r4,[r7,#oGameState_CoordInteractionValue]
+    ; tst r4,r4 ; beq loc_8034E22 - uses the Toolkit (r10) and the named struct field offset oGameState_CoordInteractionValue.
+    - Three pairs of (mov r1,#N; bl sub_8034E3C / sub_8034E88), each followed by bne loc_8034DEE/E08/E22
+    to skip to the next table index, otherwise StartCutscene with the matching script: byte_8099EA0 /
+    byte_809AA34 / byte_809CAD8 (off_8034E2C / E34 / E38).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08034DB0
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story1, story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^08034db0 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander
+open_questions:
+- Exact semantics of sub_8034E3C/sub_8034E88 (the contract hints they look up the 0xFFFF list and
+- a related value, but the role in this "branch on coord interaction" context is guessed). Naming
+- the table-id values as "interaction type 0/1/2" for overworld coord events is a hypothesis from
+- the r1=0/1/2 repetition, not confirmed.
+- Whether eS200AC80+4 being set bypasses the three case dispatch entirely (reading assembly it does
+- skip everything else) and exactly what triggers that u16 from being non-zero is unknown.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a1dd9fb3
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8034DB0 -> cutscene_runTriggeredOverworldCutscene_8034DB0
+  where: bn6f 06d70503
+  tool: tools/rename_symbol.py

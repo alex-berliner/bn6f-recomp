@@ -1,0 +1,65 @@
+name: battleObject_accumulateFinalDamageUpperBound_802CE10
+address: '0x0802CE10'
+kind: function
+previous_names:
+- sub_802CE10
+status: probable
+summary: Updates the per-ally / per-enemy per-turn maximum-damage tracker, returning the new higher-of-two
+  value to the caller for clamping FinalDamage.
+interface: '(r0 = newDamage, r5 = battleObject) -> r0 = max(newDamage + thisObjBonus, storedMax); r2 =
+  dword_203CFB0 / +0xC ; side effects: writes 0x0 / 0x2 (or 0xC / 0xE) of dword_203CFB0 when r0 exceeds
+  the stored max'
+details: "Loads the base of a small static EWRAM struct at dword_203CFB0 into r1.\n  Reads `oBattleObject_Alliance`\
+  \ from the caller's battle object (`r5`). If non-zero (enemy), it\n  switches to the enemy slot by adding\
+  \ 0xC to r1; otherwise it stays in the ally slot (struct base).\n  Loads `[r1+8]` (the battle object\
+  \ this entry is currently \"tracking\") and compares against r5:\n    - If equal, the tracked battle\
+  \ object is the same one being damaged; reads `[r1+2]` as a u16 bonus\n      and returns `r0 + r3` (i.e.\
+  \ damage + this-actor bonus). The caller treats this as the upper\n      bound for its own damage accumulator,\
+  \ which is why in the snapshots the returned value remains 0\n      (the stored tracked object differs\
+  \ from the caller, so the equality branch is not taken).\n    - If not equal, loads `[r1]` as the stored\
+  \ u16 max; if `r0 > max` it stores r0 into `[r1]`.\n  In either path r2 ends up equal to `dword_203CFB0`\
+  \ (or `+0xC`) because that is what was loaded into\n  r1 and r2 is never overwritten. Exits via `mov\
+  \ pc, lr`.\n  The structure of the dword (looks like an [u16 max, u16 bonus, ptr battleObject] triple)\
+  \ is inferred\n  only from the offsets used here; the struct is not declared in the project.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r1, off_802CE50 // =dword_203CFB0` at 0x802CE12 gives the base EWRAM address. - `ldrb
+    r2, [r5,#oBattleObject_Alliance]` (0x16) selects ally/enemy; `add r1, #0xc` switches to the second
+    copy of the triple (enemy slot). - `ldr r2, [r1,#8]` / `cmp r5, r2` / `bne loc_802CE26` implements
+    the "is the tracked object the one currently being damaged?" test. - On equal: `ldrh r3, [r1,#2]`
+    (the bonus) / `add r0, r0, r3` / `mov pc, lr`. - On not-equal: `ldrh r3, [r1]` (the stored max) /
+    `cmp r0, r3` / `bls locret_802CE2E` / `strh r0, [r1]` updates the stored maximum. - Caller `object_calculateFinalDamage1`
+    at 0x0800e3de has signature that returns r2/out and uses this function as its damage clamp step.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0802CE10
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0802ce10 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9
+open_questions:
+- The exact semantic name of the stored fields (`max`, `bonus`, `tracked object`). The captured
+- calls all show the non-equal path being taken (caller is not the tracked object) and r0/r3
+- start at 0 in EWRAM, so the function is effectively a no-op for those story2 traces. Whether
+- this is a per-turn reset, an enemy-side mirror, or a per-battle accumulator is not resolvable
+- from this function alone; cross-referencing `dword_203CFB0` users would settle it.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a1dd9fb3
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_802CE10 -> battleObject_accumulateFinalDamageUpperBound_802CE10
+  where: bn6f 06d70503
+  tool: tools/rename_symbol.py

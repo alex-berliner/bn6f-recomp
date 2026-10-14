@@ -1,0 +1,81 @@
+name: sound_main_tickFadesAndStopBank_814F228
+address: '0x0814F228'
+kind: function
+previous_names:
+- sub_814F228
+status: probable
+summary: Drives the m4a sound-player fade timer once per frame, ramps the volume down to 0, then stops
+  every channel in the player bank and clears its entry bit.
+interface: (r0 = SoundMainPlayerState*) -> (popped PC into r0, no other return value) ; mutates SoundMainPlayerState
+  fade fields, sets low byte of r0 from the saved LR
+details: "Walk-through of the bytes in the SoundMainPlayerState struct (offset relative to r0/r6):\n \
+  \   +0x04 saved LR\n    +0x08 count of channels (u8, 0 = \"no channels\")\n    +0x24 current fade timer\
+  \ (u16, decremented each frame)\n    +0x26 reload value of the fade timer (u16, written back when the\
+  \ counter expires)\n    +0x28 volume/fade state word (u16) — low byte is volume, high byte a flag; bit\
+  \ 1 selects the ramp direction.\n    +0x2C pointer to the channel array (each channel 0x50 bytes; first\
+  \ byte is the channel's \"in-use\" flag, byte 0x13 is the volume byte).\n  Behaviour:\n    - if +0x24\
+  \ == 0, return immediately (no fade pending).\n    - otherwise decrement +0x24; when it underflows back\
+  \ to 0 reload the original value and start the volume ramp.\n    - if bit1 of +0x28 is set, ramp volume\
+  \ up by 0x10 each tick, capped at 0xFF; if it overflows, clamp to 0x100 and clear the in-progress flag\
+  \ (+0x24 = 0). When capped, the state word is also forced to 0x100 and the timer cleared.\n    - if\
+  \ bit1 is clear, ramp volume down by 0x10; when the byte underflows to 0, iterate the channel array,\
+  \ call sound_stopAllChannelsInBank_814E4DC(r0=SoundMainPlayerState, r1=channelPtr) for each channel,\
+  \ optionally clear the channel's \"active\" flag (if bit0 of +0x28 was clear), set the high byte of\
+  \ the saved LR field (+0x04 |= 0x80_00_00_00) or zero the whole field depending on bit0, then clear\
+  \ the fade timer.\n    - on every \"non-terminal\" tick (timer still running and not yet finished),\
+  \ walk the channel array and write `(state>>2) & 0xFF` into each channel's +0x13 volume slot, then OR\
+  \ 0x03 into the channel's in-use byte to flag it active.\n  The \"saved LR\" stored at +0x04 is used\
+  \ by m4a as the return address once the ramp completes; sub_814F228 therefore ends with `pop {r4-r7};\
+  \ pop {r0}; bx r0` (return-via-saved-LR) instead of a normal return.\n  Naming: this is the m4a `MPlayMain`\
+  \ tick that handles the `MPlay_FA`/`MPlay_FB` fade-out state of a single player; chosen name keeps the\
+  \ \"MPlayMain helper\" context.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- Caller is MPlayMain (0x0814e260) [confirmed] which iterates SoundMainPlayerStates and calls
+    this for the ones whose LR has been overwritten with 0x0814F228 (entry r3 = 0x0814E27D, lr = 0x0814E2A1
+    in the captured snapshots confirm this — the popped LR is the MPlayMain loop back-edge). - Offset
+    0x24 used as a 16-bit countdown (`ldrh r0, [r6,#0x24]` ... `sub r0, #1` ... `strh r0, [r6,#0x26]`
+    ... `cmp r3, #0`) is the m4a `MPlayMain` `x224_fadeTimer` and `x226_fadeCounter` fields. - Offset
+    0x28 holds a u16 whose low byte is volume and high byte is a flag; `and r0, r1; cmp r0, #0` then the
+    two branches are the up/down ramp variants (`add r0, #0x10` / `sub r0, #0x10`) — matches m4a `MPlay_FA`
+    (fade-in) vs `MPlay_FB` (fade-out) handling. - The terminal-fade branch calls `sound_stopAllChannelsInBank_814E4DC`
+    (the unnamed callee) and then ORs 0x80_00_00_00 into `+0x04` to mark the player as "ready to be released
+    by MPlayMain" (m4a sets the high bit of the stored LR to signal completion to MPlayMain). - The non-terminal
+    branch writes the current volume into every channel''s +0x13 byte (`ldrh r0, [r6,#0x28]; lsr r0, r0,
+    #2; strb r0, [r4,#0x13]`) which is the per-channel volume-update step in m4a. - The `pop {r0}; bx
+    r0` epilogue is the tell-tale sign that this function was called via BLX-style "trampoline": the caller
+    wrote its own LR into the struct, and this returns into MPlayMain after handling the fade.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0814F228
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story1, story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^0814f228 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander
+open_questions:
+- Whether the high-byte set in +0x04 in the "stop" branch is 0x80000000 (the m4a completion flag) or some
+  other high bit — the only evidence is the `orr r0, r1` where r1 = 0x80000000, and that this is consistent
+  with m4a source but not 100% confirmed.
+- 'The exact channel-record size (0x50) is inferred from the stride `add r4, #0x50`; m4a standard `SoundChannel`
+  struct is 0x40 in size, so the stride here is larger — could be a megaman-custom record or a wrapping
+  struct. Worth verifying with the SoundChannel struct definition if it lives elsewhere in the project.'
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a1dd9fb3
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_814F228 -> sound_main_tickFadesAndStopBank_814F228
+  where: bn6f 06d70503
+  tool: tools/rename_symbol.py

@@ -1,0 +1,59 @@
+name: battle_aiDivMod_802FF10
+address: '0x0802FF10'
+kind: function
+previous_names:
+- sub_802FF10
+status: probable
+summary: AI helper that divides 0x100 by r3 (loop count), returning quotient in r3 and remainder in r1;
+  tail-called from sub_802FE7A.
+interface: (r1 = 0x100 dividend, r2 = 0, r3 = divisor) -> r1 = remainder, r3 = quotient ; caller-supplied
+  r0/r2 pushed/popped, lr tail-returned
+details: "Pushes r1 and r2 to preserve caller values, sets r1 = 0x10 << 4 = 0x100, r2 = 0.\n  If r3 (divisor)\
+  \ is zero, jumps straight to epilogue (quotient 0, dividend unchanged).\n  Otherwise enters a subtraction\
+  \ loop at loc_802FF1C: while divisor <= r1, r1 -= r3 and r2 += 1.\n  Returns via `pop {r1,r2}` then\
+  \ `mov pc, lr`, so this is a leaf-style helper called by tail-jump,\n  leaving r1 = remainder and r3\
+  \ = r2 (quotient). No memory is touched; pure integer divmod.\n  Captured calls confirm consistent pattern:\
+  \ r0 is always 0x0200a6f0 (the per-actor AIData buffer),\n  r3 alternates between 0x10/0x18/0x24, suggesting\
+  \ the divisor comes from an AIData field (possibly\n  APwrAtk/BPwrAtk family at offsets 0x05/0x07/0x11).\
+  \ r1 supplied by caller (0xC0 = 192, or 0x10 = 16)\n  is the dividend in some calls, but the helper\
+  \ itself hard-codes 0x100.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mov r1, #0x10` / `lsl r1, r1, #4` builds 0x100 in r1 (`asm03_0.s:21143-21144`). - `mov r2,
+    #0` initializes quotient counter (`asm03_0.s:21145`). - Loop at loc_802FF1C performs `sub r1, r1,
+    r3` / `add r2, #1` with `cmp r1, r3; blt loc_802FF26` (`asm03_0.s:21150-21153`). - `beq loc_802FF26`
+    short-circuits when divisor is 0 to avoid infinite loop (`asm03_0.s:21147`). - `mov r3, r2` + `pop
+    {r1,r2}` + `mov pc, lr` shows it returns quotient in r3, remainder in r1, with no stack frame beyond
+    the two saved regs (`asm03_0.s:21154-21157`). - Caller sub_802FE7A LR 0x0802fea9 / 0x0802fed9 in captured
+    traces shows direct tail-call pattern (no `bl sub_802FF10` epilogue, suggesting inlining or direct
+    jump).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0802FF10
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story1, story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0802ff10 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story4, story5, story6, story7, story8, story9
+open_questions:
+- Whether the caller actually consumes r1 (remainder) or only r3 (quotient); the captured exit values
+  keep r0 unchanged but don't expose r1/r3.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a1dd9fb3
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_802FF10 -> battle_aiDivMod_802FF10
+  where: bn6f 06d70503
+  tool: tools/rename_symbol.py

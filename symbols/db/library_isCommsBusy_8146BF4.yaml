@@ -1,0 +1,60 @@
+name: library_isCommsBusy_8146BF4
+address: '0x08146BF4'
+kind: function
+previous_names:
+- sub_8146BF4
+status: probable
+summary: Returns 1 when the comms-busy flag at dword_2010CC0->byte0 is 0 or 1, else 0
+interface: () -> r0 = bool (0/1); NZCV set from `cmp r0,#1` and the final `mov r0,#0` vs `mov r0,#1` (the
+  listed nz/c/v are an artefact of the ldr-merged-then-cmp sequence); no side effects besides reading
+  EWRAM pointer
+details: "- Loads the EWRAM pointer dword_2010CC0, dereferences it, and reads the first byte.\n  - If\
+  \ the byte equals 1, returns 1; if it equals 0, returns 1 as well (beq loc_8146C04 / bne loc_8146C0C\
+  \ after `cmp r0,#0`).\n  - Otherwise falls through to loc_8146C0C, returning 0.\n  - So in practice\
+  \ the function returns 1 for {0,1} and 0 for everything else (>=2).\n  - Uses a Thumb `push {lr}` /\
+  \ `pop {r1}` / `bx r1` tail-return idiom (no local stack).\n  - Single caller sub_803C59C, which passes\
+  \ r0=0xE0 / r1=0x90; those args are unused inside, consistent with a global-state probe.\n  - `dword_2010CC0`\
+  \ is not declared in the supplied struct definitions; from context (called by a comms/game subsystem,\
+  \ captured at story2 snapshots with r2=0x0200f389 which lives near other EWRAM comms data) it looks\
+  \ like a small comms-busy/state struct.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r0, off_8146C08 // =dword_2010CC0` and `ldr r0,[r0]; ldrb r0,[r0]` at the function head
+    show it dereferences an EWRAM pointer-to-pointer. - `cmp r0,#1` then `beq loc_8146C04` (returns 1)
+    and `cmp r0,#0` then `bne loc_8146C0C` (returns 0) — so {0,1} -> 1, anything else -> 0. - `loc_8146C0C:
+    mov r0,#0` and `loc_8146C0E: pop {r1}; bx r1` show the single-byte Tail return and no callee-saved
+    registers are touched. - Captured calls always return r0=0 with -ZC- flags (the `mov r0,#1` branch
+    was never taken in the recorded snapshots, so the value at dword_2010CC0 was always >=2 in story2).
+    - All 40 captures show identical r0=0xE0 / r1=0x90 entry args that are ignored inside, consistent
+    with a global-state probe called from one hot site.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08146BF4
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^08146bf4 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- What dword_2010CC0 actually points to (the field semantics) — without a struct definition this is the
+  unknown. Identifying its owner struct would let us drop the `library_` prefix in favour of a subsystem
+  name (e.g. `comm_` or `bbs_`).
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a1dd9fb3
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8146BF4 -> library_isCommsBusy_8146BF4
+  where: bn6f 06d70503
+  tool: tools/rename_symbol.py

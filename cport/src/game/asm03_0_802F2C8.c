@@ -42,13 +42,13 @@ Next sprite_queueOamEntryThunk_802FE28(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_802FE48 ── */
-/* sub_802FE48: allocate one slot in the allocation bitmap at dword_2009A2C.
+/* ── battle_allocateActorIndex_802FE48 ── */
+/* battle_allocateActorIndex_802FE48: allocate one slot in the allocation bitmap at dword_2009A2C.
  * Scans bits 31..16 from the top down, sets the first clear bit and returns
  * its index in r0. Returns 0xFF if all 16 slots are already taken.
  * (r1 = bitmap word, r2 = mask of the claimed/failed bit, r3 = bitmap address,
  * as the original leaves them.) */
-Next sub_802FE48(void) {
+Next battle_allocateActorIndex_802FE48(void) {
     u32 addr = A_dword_2009A2C;
     u32 bits = LD32(addr);
     u32 mask = 0x80000000u;

@@ -1823,21 +1823,21 @@ static u32 get_panel_data_offset(u32 panel_x, u32 panel_y) {
     return R0;
 }
 
-/* register form: calls sub_802CE10 outside this file, which has no typed C interface yet */
+/* register form: calls battleObject_accumulateFinalDamageUpperBound_802CE10 outside this file, which has no typed C interface yet */
 static u32 clamp_final_damage(u32 damage) {
     R0 = damage;
-    GUEST_CALL(sub_802CE10);
+    GUEST_CALL(battleObject_accumulateFinalDamageUpperBound_802CE10);
     return R0;
 }
 
 /* Sum the object's five panel-damage entries into its final damage.
  * On holy panels (panel type 5) each entry is halved, rounding up
  * ((damage + 1) >> 1); on normal panels the entries are summed as-is.
- * The total is passed through sub_802CE10 (damage caps etc.) and stored
+ * The total is passed through battleObject_accumulateFinalDamageUpperBound_802CE10 (damage caps etc.) and stored
  * into oCollisionData_FinalDamage.
  * Returns the CollisionDataPtr so the adapter can reproduce the flags of
  * the original's final `add r3, #oCollisionData_FinalDamage`.
- * Leaves r2 as sub_802CE10 left it (callers read it from there). */
+ * Leaves r2 as battleObject_accumulateFinalDamageUpperBound_802CE10 left it (callers read it from there). */
 static u32 total_panel_damage(u32 object_ptr) {
     u32 collision = LD32(object_ptr + oBattleObject_CollisionDataPtr);
 
@@ -1868,7 +1868,7 @@ static u32 total_panel_damage(u32 object_ptr) {
 }
 
 /* object_calculateFinalDamage1(r4 = scratch in, r5 = object, r6 = scratch in, lr)
- * -> r4/r6 restored, r2 as left by sub_802CE10, c/v from collisionPtr + oCollisionData_FinalDamage */
+ * -> r4/r6 restored, r2 as left by battleObject_accumulateFinalDamageUpperBound_802CE10, c/v from collisionPtr + oCollisionData_FinalDamage */
 Next object_calculateFinalDamage1(void) {
     u32 collision = total_panel_damage(R5);
     SET_FLAGS_ADD(collision, oCollisionData_FinalDamage);

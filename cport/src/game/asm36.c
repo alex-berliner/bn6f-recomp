@@ -923,7 +923,7 @@ Next battle_dispatchObjectUpdateOrEffect_81333A0(void) {
 
     /* Sync battle state from the object and finalize the handler call */
     GUEST_CALL(battle_setFieldsFromObj_81340FC);
-    GUEST_CALL(sub_8134490);
+    GUEST_CALL(menu_drawSubmenuBox_8134490);
 
     /* Run the generic entity update pipeline */
     GUEST_CALL(entity_runAllUpdateHandlers_80465BC);
@@ -1130,14 +1130,14 @@ static inline call_chatbox_selectPress_8133C58_result call_chatbox_selectPress_8
 }
 
 typedef struct { u32 r0, r2, r3, r4, r5, r6, r7, r8, r9, r10, r12; } call_sub_811F7F8_result;
-/* register form: generated wrapper: sub_811F7F8 has no typed C interface yet */
+/* register form: generated wrapper: menu_adjustCursorOrValue_811F7F8 has no typed C interface yet */
 static inline call_sub_811F7F8_result call_sub_811F7F8(u32 r0, u32 r1, u32 r2, u32 r3, u32 r5) {
     R0 = r0;
     R1 = r1;
     R2 = r2;
     R3 = r3;
     R5 = r5;
-    GUEST_CALL(sub_811F7F8);
+    GUEST_CALL(menu_adjustCursorOrValue_811F7F8);
     return (call_sub_811F7F8_result){ R0, R2, R3, R4, R5, R6, R7, R8, R9, R10, R12 };
 }
 
@@ -1338,13 +1338,13 @@ static bool guard_8134A3C_passed(void) {
     return ZERO_FLAG();
 }
 
-/* register form: calls sub_811F7F8 outside this file, which has no typed C interface yet */
+/* register form: calls menu_adjustCursorOrValue_811F7F8 outside this file, which has no typed C interface yet */
 static bool folder_edit_gesture_matched(u32 joypad_low) {
     R0 = joypad_low;
     R1 = 7;
     R2 = 0;
     R3 = 0xA;
-    GUEST_CALL(sub_811F7F8);
+    GUEST_CALL(menu_adjustCursorOrValue_811F7F8);
     return R0 != 0;              /* original: tst r0,r0; bne post -> matched when R0!=0 */
 }
 
@@ -1375,7 +1375,7 @@ static void post_step_8134548(void) { GUEST_CALL(sub_8134548); }
  * gives the held buttons. All three outer guards must return 0 to proceed;
  * if any returns nonzero we skip straight to the post-step helpers. With the
  * guards passed: when the object is input-locked, the low-sensitivity held
- * buttons are checked for the folder-edit gesture (sub_811F7F8 with id 7,
+ * buttons are checked for the folder-edit gesture (menu_adjustCursorOrValue_811F7F8 with id 7,
  * arg2=0, arg3=0xA); a match skips the rest of the body. Otherwise the L/R
  * folder-edit handler runs with argument 3; if it returns nonzero we skip
  * saving, else we save state and switch into state 8. The post-step helpers
@@ -1467,7 +1467,7 @@ Next sub_813399C(void) {
     R1 = method;
     GUEST_CALL(petNavi_perFrameUpdate_81339BC);
 
-    GUEST_CALL(sub_8134490);
+    GUEST_CALL(menu_drawSubmenuBox_8134490);
     RETURN_TO_CALLER();
 }
 

@@ -1,0 +1,73 @@
+name: battle_getNaviCustStyleStatBoostFromChip_800F09E
+address: '0x0800F09E'
+kind: function
+previous_names:
+- sub_800F09E
+status: probable
+summary: For a chip ID and the current navi stat byte, looks up a custom-style "stat boost" pairing in
+  the chip table and a per-team table, returning the bonus byte.
+interface: '(r0 = chipId, r1 = naviStatsByte, r5 = battleObjectPtr) -> r0 = baseBoost (0 or param), r1
+  = bonusIndex (0 or 0xC..0x12) ; side effects: reads alliance-team table and a 15-byte-wide lookup at
+  0x02021300'
+details: "- Saves incoming r4; copies chipId into r4. If r0 is 0xFFFF (constant `dword_800F208`), returns\
+  \ (0,0) immediately.\n  - Calls `GetBattleNaviStatsByte_AllianceFromBattleObject` with index 0x29 (BButton\
+  \ per `NaviStats`) to read the current \"custom style\" byte for this battle object's side (1..N).\n\
+  \  - For value 1: requires chip flags 0x2 on byte 9 set, chip byte 6 == 0, and chip flags 0x1 on byte\
+  \ 9 set; sets bonusIndex = 0xC.\n  - For value 2: same flag pattern with chip byte 6 == 2; sets bonusIndex\
+  \ = 0xD.\n  - For value 3: chip byte 6 == 5; bonusIndex = 0xE.\n  - For value 4: chip byte 6 == 6; bonusIndex\
+  \ = 0xF.\n  - For value 8: chip byte 6 == 8; bonusIndex = 0x10.\n  - For value 9: chip byte 6 == 9;\
+  \ bonusIndex = 0x11.\n  - For value 0xA: chip byte 6 == 9; bonusIndex = 0x12. The matching values 5,6,7,0xB..0xFF\
+  \ all fall through to the default (0,0).\n  - When a match succeeds, calls `battle_getObjectAllianceTeam_800F49E`;\
+  \ if the alliance-team index is 0xFF, returns (0,0). Otherwise computes (`bonusIndex - 0xC`) * 0xF,\
+  \ adds the team index, and reads one byte from `byte_8021300` into `r6` (the baseBoost return).\n  -\
+  \ Returns (baseBoost, bonusIndex) - both 0 on the no-match path. The `r1`/`r7` bonusIndex range 0xC..0x12\
+  \ picks the per-team row; the returned byte is the actual stat boost the chip grants when wielded by\
+  \ a Navi with that custom style.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- Entry always shows r0=0xFFFF (sentinel) or a chip ID; r1 is unused until `str r1, [sp]` saves
+    it; the sentinel branch at `cmp r0, #0xffff; beq loc_800F0DE` early-returns. - The chain `bl GetBattleNaviStatsByte_AllianceFromBattleObject`
+    with r1=0x29 (mirrors BButton at `oNaviStats+0x4`) selects the "custom style" index; compared against
+    1..4,8,9,0xA. - For each match the chip record''s byte 9 is masked with both 0x2 and 0x1 (`tst r1,
+    #2` then `tst r1, #1`), and a specific value at chip byte 6 is required, exactly matching BG style
+    bits 0x2 (BG), 0x1 (MB) and a unique element/class byte. - The final indexing math `mul r1, r2 ; r2=0xf`
+    then `add r0, r0, r1` followed by `ldrb r6, [r1, r0]` over `byte_8021300` is a classic 15-byte-stride
+    per-(element,team) table read - that''s how MMBN encodes "Element * number of teams + team" tables.
+    - The function emits (r6=baseBoost, r7=bonusIndex) via `mov r0, r6 / mov r1, r7` at the exit, matching
+    the captured return of `r0=0` on all failed snapshots. - `snap_beastsp_0140000_*.bin` all show r0=0xFFFF
+    on entry with r1=0 and exit r0=0 (the sentinel path), corroborating the "no chip selected -> 0" code
+    path.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0800F09E
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp'
+  reproduce: 'grep -l ''^0800f09e '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp
+open_questions:
+- The exact semantic of the returned `r1` is unclear - it is 0xC..0x12 (i.e. always non-zero when matched).
+  Whether r1 is consumed by callers or only r0 is consumed remains to be confirmed; the contract marks
+  r1 in `out` so something reads it.
+- The two chip flag bits (0x1 and 0x2 at chip byte 9) - their gameplay meaning (likely MB / BG / etc.)
+  needs cross-checking against the chip database.
+- Whether the "team index" through `battle_getObjectAllianceTeam_800F49E` is the alliance (0=friendly,1=enemy)
+  or a deeper per-Navi team ID, and how many teams the 8021300 table actually covers, is not visible here.
+  Looking at a wider window of `byte_8021300` and the caller `sub_800EF34` would settle it.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a1dd9fb3
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_800F09E -> battle_getNaviCustStyleStatBoostFromChip_800F09E
+  where: bn6f 06d70503
+  tool: tools/rename_symbol.py

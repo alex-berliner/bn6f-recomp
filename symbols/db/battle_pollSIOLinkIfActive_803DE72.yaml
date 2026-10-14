@@ -1,0 +1,63 @@
+name: battle_pollSIOLinkIfActive_803DE72
+address: '0x0803DE72'
+kind: function
+previous_names:
+- sub_803DE72
+status: probable
+summary: Polls the SIO link library once per frame when SIO comms are enabled (battle)
+interface: (no args) -> no return ; reads globals `unk_200A284` and calls `libSIOControlPoll_81445F8`
+  when that word is non-zero
+details: "Thumb wrapper used inside the battle main loop. On entry it loads the address of the\n  global\
+  \ `unk_200A284` (an EWRAM byte/word flag set elsewhere when SIO/battle link\n  is active), reads it,\
+  \ and tests it with `tst r0, r0`. If zero, it branches over the\n  callee and pops PC; if non-zero it\
+  \ calls `libSIOControlPoll_81445F8` before\n  returning. There is no save/restore of r4..r7 aside from\
+  \ the `push {lr}`/`pop {pc}`\n  pair shown in the assembly (the `r4` listed in `out` reflects the callee's\
+  \ contract,\n  not this sub's). Captured call sites (snap_story2_*) come from a battle/story context\n\
+  \  (entry lr=0x03005cec, sp=03007E region, sp/return addresses inside the egym's\n  battle main loop).\
+  \ r2=0x00012004 and r3=0x0000001f/0x2000001f are unrelated caller\n  scratch; this function itself doesn't\
+  \ touch them.\ndetails_quirks: |\n  The pool literal after the function resolves to the EWRAM address\
+  \ 0x0200A284 (the\n  pointer `unk_200A284` referenced in this pool). Two captured samples return\n \
+  \ r0=0 (skip branch) and two later samples return r0=0x0803DE81 (just past the `bl`,\n  i.e. the call\
+  \ was taken). That is consistent with the `tst`/`beq` predicate.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r0, =unk_200A284; ldr r0, [r0]; tst r0, r0; beq locret_803DE80` (asm03_1_1.s:9842) reads
+    a global word and skips when zero. - `bl libSIOControlPoll_81445F8` is the sole callee; the callee''s
+    name and address match a SIO poll routine in the libSIO bucket. - `push {lr}` / `pop {pc}` shows no
+    callee-saved regs saved here; the `r4` in the contract comes from the callee. - Captured samples called
+    from lr=0x03005cec (within the battle egym main loop at 0x03005CEC), consistent with a per-frame battle
+    hook. - Half the samples return r0=0 (flag=0, no `bl`), the other half return r0=0x0803DE81 (just
+    past the `bl`, so the branch into the call was taken).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0803DE72
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story1, story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^0803de72 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander
+open_questions:
+- The exact role/size of the global at 0x0200A284 (only known to be "enable SIO poll" for this site);
+  not in the structs provided.
+- Whether this is purely a battle-poll or reused by a non-battle subsystem that happens to live near 0x03005CEC;
+  the captured callers' sp ranges (03007DB4..03007DF4) sit in the same battle object region, so likely
+  battle-only.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a1dd9fb3
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_803DE72 -> battle_pollSIOLinkIfActive_803DE72
+  where: bn6f 06d70503
+  tool: tools/rename_symbol.py

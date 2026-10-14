@@ -1,0 +1,86 @@
+name: battle_renderHpOverlays_801C202
+address: '0x0801C202'
+kind: function
+previous_names:
+- sub_801C202
+status: probable
+summary: Render the four floating battle HP readouts (players + enemies) by queueing one OAM entry per
+  active panel, drawing the HP digits and conditionally loading battle portraits.
+interface: '(r10 = toolkit) -> void ; side effects: queues OAM entries, decompresses portrait tiles into
+  VRAM, reads/writes small per-portrait state on byte_203EB50'
+details: "Iterates r6=4 times over a per-portrait state array at byte_203EB50 (advanced by 0x14 each iteration),\
+  \ keeping a base OAM tile address r5 initialised to 0x6016600 and stepped by 0x100 (2 tiles * 0x80).\
+  \ For each entry it tests byte_203EB50[r4].bit1 (visible flag); if not set the slot is skipped.\n  When\
+  \ visible it calls renderHpDigits_801C296(r4,r7,lr) to draw the current HP into a 4-nibble OAM buffer,\
+  \ then sub_801C304(r4,r5,r7,lr) to decompress the four portrait tile pairs (effect index selects source\
+  \ table, skip tile 0xB) into VRAM at r5.\n  byte_203EB50.bit3 (=0x8) gates a \"draw portrait\" path:\
+  \ if clear a runtime slot is zeroed (str r0,[r7,#4]); r2 in the loop counter (0,8,16,24) is pushed to\
+  \ track which palette group / entry index is used downstream.\n  The screen coords are then computed\
+  \ in two branches. Branch A (bit2 = 0x4 set) takes absolute offsets from byte_203EB50+4/+5 (x,y signed\
+  \ bytes) anchored to -Camera.Y>>16. Branch B uses projectObjectToScreen_800362C against the AIData's\
+  \ BattleObject at AIData+0x78 + 0x34 (X), then adds the per-portrait x/y offsets and the previously-zeroed\
+  \ \"[sp,#4]\" value (used as a hide/offset flag), gating on the project's visibility result (cmp r2,#0;\
+  \ beq skip).\n  Coordinates are packed x<<16|y, ANDed with 0x1ff00ff (clamps to 9-bit x/y), ORed with\
+  \ 0x80004000 (OAM attr0 base) and tile = 0xeb30 + loop_idx (0xeb30,0xeb38,0xeb40,0xeb48). The queued\
+  \ entry goes through sprite_queueOamEntryThunk_802FE28 (r0 = packed attr, r1 = tile16, r2 = 2 = count,\
+  \ r3 = 0xdf = palette bank). No caller-visible return value; r4-r7/lr are callee-saved, scratch regs\
+  \ get trashed.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- "mov r6,#4" + "sub r6,#1; bne loc_801C210" gives an exact 4-iteration loop; combined with
+    "add r4,#0x14" the r4 base address is byte_203EB50 stepping 0x14 per element. - "ldr r5, dword_801C344
+    // =0x6016600" + "add r5,#0x80; add r5,#0x80" advances the OAM tile base by 0x100, consistent with
+    two portrait sub-tile decompressed per slot. - "tst r1,#2; beq loc_801C286" tests the visibility bit
+    on byte_203EB50[r4]; the loop body is entirely gated on this bit. - "bl renderHpDigits_801C296" +
+    "bl sub_801C304" are called immediately after the visibility test with r4/r7/r5 preserved → per-portrait
+    HP digits then VRAM portrait tile decompression. - "tst r0,#8; beq loc_801C22C; mov r0,#0; str r0,[r7,#4]"
+    → the local stack slot [sp,#4] is conditionally zeroed when bit3 is set (i.e. clear-this-slot flag
+    for the "show only one portrait" variants). - "push {r3}" / "pop {r3}" around the projectObjectToScreen
+    block plus "ldr r2,[sp]" / "add r1,r1,r2" after restoration proves r2 holds the per-iteration slot
+    index (0/8/16/24) added to the base tile id 0xeb30. - "ldr r1,[r10,#oToolkit_CameraPtr]; ldr r1,[r1,#oCamera_Y];
+    asr r1,r1,#0x10; neg r1,r1" anchors the screen-y to -Camera.Y fixed point. - "ldr r0,[r4,#0xc]; add
+    r0,#0x34; bl projectObjectToScreen_800362C" then "cmp r2,#0; beq loc_801C284" confirms the off-screen-cull
+    branch reads the AIData ptr at byte_203EB50+0xC, dereferences +0x34 (BattleObject X), and skips OAM
+    submit if invisible. - "ldrsb r2,[r4,r2]" / "ldrsb r2,[r4,r2]" with offsets 4 and 5 (= signed x/y
+    nudges) added on top of the projected coords matches the branch-A "absolute panel" case when bit2
+    is set. - "lsl r0,r0,#0x10; orr r0,r1; ldr r2,dword_801C360=0x1ff00ff; and r0,r2; ldr r2,dword_801C358=0x80004000;
+    orr r0,r2" builds packed OAM attr0/1 (9-bit clamp + OBJ enable base). - "ldr r1,dword_801C35C=0xeb30;
+    add r1,r1,r2" → tile = 0xeb30 + slot; "mov r2,#2; mov r3,#0xdf" → length 2 tiles + palette bank 0xdf
+    (bank 15, slot 7), the standard "HP/portrait overlay" GBA OBJ palette. - Captured callers show lr=0x0801bf7c
+    across 40 story frames and stable r1=4, r2=0x4ba, r3=0x86e04c2 → consistent per-frame invocation from
+    the battle render task that owns toolkit r10.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801C202
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0801c202 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- Whether byte_203EB50 is an array of "HP overlay state" structs or holds AIData pointers; the +0xC slot
+  loaded as a pointer into projectObjectToScreen suggests AIData ptrs, but the +4/+5 signed byte offsets
+  feel more like a local per-overlay layout.
+- What the "0x4" branch (bit2) actually represents — likely "use absolute on-panel coords (cursor/HUD
+  variant)" vs the normal "project battle object" path; no symbol hints at this.
+- Exact meaning of [sp,#4] when zeroed — probably a "hide this slot" / "force skip this tile group" flag
+  for single-enemy or first-turn-no-portrait cases; needs caller context to confirm.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a1dd9fb3
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801C202 -> battle_renderHpOverlays_801C202
+  where: bn6f 06d70503
+  tool: tools/rename_symbol.py

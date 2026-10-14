@@ -1,0 +1,64 @@
+name: battle_object_tryUseChipWhenLowHP_81131D8
+address: '0x081131D8'
+kind: function
+previous_names:
+- sub_81131D8
+status: probable
+summary: If its HP is at or below half of MaxHP, has the BattleObject in r5 use its currently selected
+  chip
+interface: '(r5 = BattleObject*) -> r0 = bool (1 = used a chip, 0 = did not) ; side effects: may call
+  battle_getSelectedChipForUse / somethingWriteChipParams / object_setAttack / sub_800F322 on r5'
+details: "Loads the BattleObject pointer from callee-saved r5 (the captured entry lr 0x0811312b lives\
+  \ inside sub_8113124, so r5 is the caller-passed BattleObject). r6 starts as 0 (the \"did not fire\"\
+  \ result). It calls battle_getSelectedChipForUse_800ED90 to fetch the chip id selected for use by r5;\
+  \ if r3 is zero (no chip selected), it falls through to the result return with r6 still 0.\n\n  When\
+  \ a chip IS selected, it masks r0 to the low byte (lsl/lsr by 0x17 = mask 0xFF), storing the chip id\
+  \ into r4. It then reads BattleObject.HP (offset 0x24 = oBattleObject_HP) and BattleObject.MaxHP (0x26\
+  \ = oBattleObject_MaxHP), right-shifting MaxHP by 1 to get MaxHP/2. The branch \"bgt loc_8113204\" skips\
+  \ the use when HP > MaxHP/2 — so the chip is only used when HP is at or below half of MaxHP.\n\n  When\
+  \ that low-HP condition holds, the chosen chip id (r4) is passed to somethingWriteChipParams_80126E4,\
+  \ then object_setAttack0 is invoked on the same object, then sub_800F322 is called (r5 only). After\
+  \ those three calls, r6 is set to 1 to signal that a chip was used. The function returns r6 (0 or 1)\
+  \ as a bool.\n\n  Caller sub_8113124 treats this as a \"did we end up using the chip?\" decision and\
+  \ acts on the returned r0/r1 per its contract.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- r5 is loaded as the BattleObject ptr into r0 for the first call: `mov r0, r5` then `bl battle_getSelectedChipForUse_800ED90`.
+    - HP/MaxHP comparison: `ldrh r0, [r5,#oBattleObject_HP]`, `ldrh r1, [r5,#oBattleObject_MaxHP]`, `lsr
+    r1, r1, #1`, `cmp r0, r1`, `bgt loc_8113204` — clearly a half-HP threshold test. - The r3-zero test
+    from the chip-fetch callee gates the whole chip path: `tst r3, r3` / `beq loc_8113204`. - Chip id
+    is masked to a byte: `lsl r4, r0, #0x17` / `lsr r4, r4, #0x17`. - Result register r6 is initialized
+    to 0 and only set to 1 after the use-chip sequence; final `mov r0, r6` returns it. - Sub-call chain
+    matches the routine''s intent: somethingWriteChipParams_80126E4 (writes chip params), object_setAttack0
+    (kicks off attack state), sub_800F322 (post-attack housekeeping).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x081131D8
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles2, battlesweep, beastsp, fuzz, menus3, story2, story4, story5, story8,
+    story9'
+  reproduce: 'grep -l ''^081131d8 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles2, battlesweep, beastsp, fuzz, menus3, story2, story4, story5, story8, story9
+open_questions:
+- Why exactly the threshold is "HP ≤ MaxHP/2" rather than some other low-HP trigger — could be a desperation
+  chip use, an emergency AI behavior, or an anti-StandStill check; only the caller's full logic or function
+  context would settle it. The role of sub_800F322 (post-use cleanup vs. something else) is also unclear
+  from this routine alone.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a1dd9fb3
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_81131D8 -> battle_object_tryUseChipWhenLowHP_81131D8
+  where: bn6f 06d70503
+  tool: tools/rename_symbol.py

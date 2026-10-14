@@ -247,12 +247,12 @@ Next sub_814692C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8146BF4 ── */
-/* sub_8146BF4: read the state byte of the object referenced by dword_2010CC0
+/* ── library_isCommsBusy_8146BF4 ── */
+/* library_isCommsBusy_8146BF4: read the state byte of the object referenced by dword_2010CC0
  * (dword_2010CC0 -> struct; first byte is its state code).
  * R0 = 1 if the state is 0 or 1, else 0. NZ/C/V are left as the original's
  * final CMP + MOV sequence leaves them so callers can branch on the result. */
-Next sub_8146BF4(void) {
+Next library_isCommsBusy_8146BF4(void) {
     u32 state = LD8(LD32(A_dword_2010CC0));
 
     SET_FLAGS_CMP(state, 1);
@@ -1495,14 +1495,14 @@ Next sub_814E758(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_814E7A4 ── */
-/* sub_814E7A4(r1 = status struct ptr):
+/* ── battle_aiData_resetVersionAndChargeFlags_814E7A4 ── */
+/* battle_aiData_resetVersionAndChargeFlags_814E7A4(r1 = status struct ptr):
  * Clear the two status bytes at +0x16 and +0x1A, then OR a mode flag into
  * byte 0: 0xC if byte +0x18 is zero, 3 otherwise.
  * Leaves r2 = mode flag, r3 = new byte 0.
  * Flags: N/Z from the OR result; the final ORR leaves C and V alone, so
  * they still hold what the "cmp r2, #0" left there (C set, V clear). */
-Next sub_814E7A4(void) {
+Next battle_aiData_resetVersionAndChargeFlags_814E7A4(void) {
     ST8(R1 + 0x16, 0);
     ST8(R1 + 0x1A, 0);
 
@@ -1540,7 +1540,7 @@ Next streamReadNextByte_814E7C0(void) {
 /* sub_814E7CC: tail of a getter/setter pair.
  * Calls streamReadNextByte_814E7C0 (which returns a byte in r3 and a struct pointer in r1),
  * stores the byte at [r1 + 0x19], and if it was zero also calls
- * sub_814E7A4. r12 is kept as the original does (r12 = lr on entry). */
+ * battle_aiData_resetVersionAndChargeFlags_814E7A4. r12 is kept as the original does (r12 = lr on entry). */
 Next sub_814E7CC(void) {
     R12 = LR;
 
@@ -1549,8 +1549,8 @@ Next sub_814E7CC(void) {
     ST8(R1 + 0x19, R3);
     if (R3 == 0) {
         /* Value was zero: run the extra fixup. Flags on this path are
-         * whatever sub_814E7A4 leaves behind. */
-        GUEST_CALL(sub_814E7A4);
+         * whatever battle_aiData_resetVersionAndChargeFlags_814E7A4 leaves behind. */
+        GUEST_CALL(battle_aiData_resetVersionAndChargeFlags_814E7A4);
     } else {
         /* Reproduce the `cmp r3, #0` for callers that branch on return. */
         SET_FLAGS_CMP(R3, 0);
@@ -1562,7 +1562,7 @@ Next sub_814E7CC(void) {
 /* ── sub_814E7E0 ── */
 /* sub_814E7E0: wrapper around streamReadNextByte_814E7C0.
  * Calls streamReadNextByte_814E7C0, stores its byte result at [r1 + 0x17], and — when the
- * result is zero — follows up with sub_814E7A4 before returning to the caller
+ * result is zero — follows up with battle_aiData_resetVersionAndChargeFlags_814E7A4 before returning to the caller
  * (the return address is kept in r12 across both calls). */
 Next sub_814E7E0(void) {
     R12 = LR;                       /* mov r12, lr: remember where to return */
@@ -1572,7 +1572,7 @@ Next sub_814E7E0(void) {
     ST8(R1 + 0x17, R3);             /* store the byte result into the struct */
     SET_FLAGS_CMP(R3, 0);
     if (R3 == 0)
-        GUEST_CALL(sub_814E7A4);    /* extra fixup only when result was zero */
+        GUEST_CALL(battle_aiData_resetVersionAndChargeFlags_814E7A4);    /* extra fixup only when result was zero */
 
     RETURN_TO_CALLER();             /* bx r12 */
 }
@@ -1830,8 +1830,8 @@ static void init_cgb_sound(u32 sound_buf) {
     ST32(fp + 0x74, (A_sub_814E758 | 1));
     ST32(fp + 0x78, (A_SampleFreqSet_814EDC0 | 1));
     ST32(fp + 0x7C, (A_sound_stopAllChannelsInBank_814E4DC | 1));
-    ST32(fp + 0x80, (A_sub_814F228 | 1));
-    ST32(fp + 0x84, (A_sub_814F2F0 | 1));
+    ST32(fp + 0x80, (A_sound_main_tickFadesAndStopBank_814F228 | 1));
+    ST32(fp + 0x84, (A_m4a_plyNote_applyPitchAndVolume_814F2F0 | 1));
 
     /* Wire state struct to patched handlers and the sound buffer */
     ST32(state_ptr + 0x1C, sound_buf);

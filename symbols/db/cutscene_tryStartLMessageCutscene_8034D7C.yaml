@@ -1,0 +1,55 @@
+name: cutscene_tryStartLMessageCutscene_8034D7C
+address: '0x08034D7C'
+kind: function
+previous_names:
+- sub_8034D7C
+status: probable
+summary: Overworld tick that starts the "L-button message" cutscene (CutsceneScriptLMessage_80991F4) when
+  the L shoulder button is held, slip-run is not active, and the L-message story flag is not set.
+interface: () -> r0 = 1 if no cutscene was started (early-out), 0 if StartCutscene was invoked
+details: "Called from cutscene_8034BB8. Reads r10 (the Toolkit) and grabs the JoypadPtr at oToolkit_JoypadPtr,\
+  \ then peeks the Held word at offset 2 and tests bit 0x200 (JOYPAD_L). If L is not held, returns r0=1.\n\
+  \  If a slip-run is in progress or a cutscene script is already running (IsNotSlipRunningAndNotInCutscene\
+  \ returns false), returns r0=1.\n  Otherwise checks EVENT_L_MESSAGE_ACTIVE via TestEventFlagFromImmediate;\
+  \ if already set, returns r0=1.\n  On the success path, calls StartCutscene with the fixed cutscene\
+  \ script CutsceneScriptLMessage_80991F4 and r0 cleared to 0 to signal \"started\".\n  The \"L message\"\
+  \ wording comes from the GameState comment (\"related to L button messages\") plus the dedicated cutscene\
+  \ script constant.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl IsNotSlipRunningAndNotInCutscene` at the function head, then `beq loc_8034DA4` (returns
+    1) when the world is busy - `ldrh r2, [r2,#2]` on the JoypadPtr is the Held field, and `tst r3, r2`
+    with `off_8034DA8 = 0x200` is JOYPAD_L - `movflag EVENT_L_MESSAGE_ACTIVE` followed by `bl TestEventFlagFromImmediate`
+    and `bne loc_8034DA4` skips starting the cutscene if the L-message flag is already set - `ldr r0,
+    off_8034DAC // =CutsceneScriptLMessage_80991F4` and `bl StartCutscene` install the dedicated L-message
+    script - Returns r0=0 on the success path and r0=1 on every bail-out path'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08034D7C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story1, story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^08034d7c '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander
+open_questions:
+- Exact semantic of EVENT_L_MESSAGE_ACTIVE; only the constant name and the dedicated `CutsceneScriptLMessage_80991F4`
+  symbol name imply it gates "L-button info" pop-ups.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a1dd9fb3
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8034D7C -> cutscene_tryStartLMessageCutscene_8034D7C
+  where: bn6f 06d70503
+  tool: tools/rename_symbol.py

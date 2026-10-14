@@ -138,7 +138,7 @@ Next sub_8026A28(void) {
 /* ── sub_8026A50 ── */
 /* sub_8026A50(self: r5 = *S20364C0) -> u8 in r0 (always 0)
  *
- * Stores the value returned by sub_802FE48 into the object's byte at
+ * Stores the value returned by battle_allocateActorIndex_802FE48 into the object's byte at
  * offset 0x0E, starts sprite_setAffineTransform_802FE7A with (0, 0x40, 0x40, value), sets the
  * object's state word to 4, and returns 0. r1-r3 end as sprite_setAffineTransform_802FE7A
  * left them (it preserves its arguments); flags come from "mov r0, #0".
@@ -146,7 +146,7 @@ Next sub_8026A28(void) {
 Next sub_8026A50(void) {
     u32 result;
 
-    GUEST_CALL(sub_802FE48);            /* -> r0 */
+    GUEST_CALL(battle_allocateActorIndex_802FE48);            /* -> r0 */
 
     result = R0;
     ST8(R5 + oS20364C0_Unk_0e, result); /* remember the result on the object */

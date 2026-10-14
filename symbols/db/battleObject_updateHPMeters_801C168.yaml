@@ -1,0 +1,68 @@
+name: battleObject_updateHPMeters_801C168
+address: '0x0801C168'
+kind: function
+previous_names:
+- sub_801C168
+status: probable
+summary: Per-frame update loop that drives the 4 battle HP/Damage meter UI bars (read actor HP, dispatch
+  into one of two update paths, store current HP back)
+interface: '() -> r0 = 1 ; side effects: writes 4 * 0x14-byte meter entries at `byte_203EB50`'
+details: "- Saves r4, r6, lr; r4 = `byte_203EB50` (a table of 4 meter entries, 0x14 bytes each, see `r6\
+  \ = 4` and `add r4, #0x14`); r6 = iteration counter.\n  - For each entry: tests `byte_00 & 1`; if clear,\
+  \ just advance and continue.\n  - If active: r2 = `[r4+0xC]` (pointer to a battle object — offsets match\
+  \ `BattleObject.HP` at 0x24, `CurState` at 0x8, etc.); r0 = `[r4+2]` (last sampled HP, u16); r1 = `object->HP`\
+  \ (ldrh [r2,#0x24]).\n  - If HP == 0: clear active flag (`[r4] = 0`) and store r0 back at `[r4+2]`,\
+  \ then advance.\n  - Else compare last sampled HP r0 to current HP r1: pick branch index 0 (r0<r1, \"\
+  gained HP\" — would play a \"heal\" effect), index 2 (r0>r1, \"lost HP\" — damage path), or index 4\
+  \ (equal) and `bx [pc,r2]` via the `off_801C33C` thunk table at `dword_801C338`.\n  - On the equal branch\
+  \ (`loc_801C19E`): if `object->AIDataPtr+0x54 -> [byte] + 8` is non-zero, mark a 2-frame \"flash\" via\
+  \ `[r4+8]=1`, `[r4+9]=2` and exit; otherwise if `[r4+9]>0` decrement it, and when it hits 0 clear `[r4+8]`\
+  \ and write `0x0B0B0B0B` (gray) to `[r4+0x10]`.\n  - The `off_801C33C` table dispatches the \"HP changed\"\
+  \ cases into dedicated update functions; the captured-call `r0=0801c169` (the function's own Thumb bit-set\
+  \ address) strongly suggests `r0` on entry is ignored and only the `lr`/`pc` thunk dispatch matters.\n\
+  \  - Constant `0x0B0B0B0B` is the gray \"no-change\" tint written into a colour field at offset 0x10\
+  \ of the meter entry.\n  - Always exits with r0 = 1 and ZC flags set (the contract's \"out\" is just\
+  \ r4/r6 restoration; r0 happens to be 1, but the contract is otherwise void-like — keep `_ADDRESS` suffix).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r4, off_801C334 // byte_203EB50` and `add r4, #0x14` with `r6 = 4` iteration count establishes
+    4 x 0x14-byte entries. - `ldrb r1, [r4]` / `tst r1, #1` / `beq loc_801C1C8` is the standard "active
+    flag in byte 0" pattern. - `ldr r2, [r4,#0xc]` followed by `ldrh r1, [r2,#0x24]` matches `BattleObject.HP`
+    exactly. - `ldrh r0, [r4,#2]` (last HP) vs current HP; `cmp r0, r1; bgt/blt/beq` drives the 3-way
+    branch into a thunk table (`ldr r3, off_801C338; ldr r2, [r3,r2]; bx r2`). - `strh r0, [r4,#2]` at
+    the bottom stores the new last-HP value. - The "0x0B0B0B0B" tint at `[r4+0x10]` plus the 2-frame counter
+    at `[r4+8]/[r4+9]` is consistent with a UI meter "flash" that decays back to grey. - `r0 = 1` on exit
+    across all 40 captured calls is the function''s return value (caller-discardable per the contract).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801C168
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0801c168 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- The two dispatch functions (HP-rose vs HP-fell) and what UI element `byte_203EB50` actually backs (HP
+  bars, Custom Gauge, damage numbers?) — would be settled by reading the thunk table at `off_801C33C`
+  and looking at one entry's 0x14 layout in `byte_203EB50`.
+- Why a captured call's `r0` is the function's own address +1 — looks like a Thumb-bit artifact from the
+  calling convention, not a real argument.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a1dd9fb3
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801C168 -> battleObject_updateHPMeters_801C168
+  where: bn6f 06d70503
+  tool: tools/rename_symbol.py

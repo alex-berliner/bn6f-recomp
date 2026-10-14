@@ -1,0 +1,60 @@
+name: owMapObject_checkPlayerFacingFreeze_809DF36
+address: '0x0809DF36'
+kind: function
+previous_names:
+- sub_809DF36
+status: probable
+summary: Reads the player's frozen-animation byte from eStruct200ace0 and returns its current value.
+interface: () -> r0 = byte at eStruct200ace0+0 ; clobbers r7
+details: "- The function pushes lr then loads r7 from the literal pool entry `eStruct200ace0`.\n  - It\
+  \ jumps into a tiny trampoline (`loc_809DF3A`) that loads `ldrb r0, [r7]` and `pop {pc}` to return that\
+  \ byte in r0 (zero-extended).\n  - `eStruct200ace0` is the small EWRAM block `S200ace0` whose offset\
+  \ 0x02 is `owPlayerFixedAnimationSelect_02` (per `S200ace0.inc`); given the caller sits in `ow_player.s`,\
+  \ this read is most plausibly the player's \"fixed animation select\" flag used to decide whether the\
+  \ player can change facing while frozen.\n  - The contract lists lr as an input (consumed by `pop {pc}`);\
+  \ only r7 is destroyed and r0 holds the return value.\n  - All captured call sites share `r3 = 0x020047cc`\
+  \ (likely the OWPlayerObject pointer) and return `r0 = 1` with the Z bit still set, suggesting the byte\
+  \ is being treated as a boolean (`!= 0`) by the caller.\n  - No callees; this is a leaf helper assembled\
+  \ next to its only caller.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `sub_809DF36:` `push {lr}` followed by `ldr r7, off_809DF40` with `off_809DF40 = eStruct200ace0`
+    (`asm/ow_player.s:1859`). - `loc_809DF3A:` `ldrb r0, [r7]; pop {pc}` — the entire body is a byte load
+    from that pointer returned in r0. - Sits in `ow_player.s`, consistent with reading a field of the
+    overworld player state block. - Captured invocations all show entry `r3 = 0x020047cc` (OW player object
+    slot) and exit `r0 = 0x01` with Z flag set, matching a "is-fixed?" boolean read. - S200ace0 definition
+    places the natural candidate at offset 0x02 (`owPlayerFixedAnimationSelect_02`), one byte wide, matching
+    the `ldrb` semantics.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0809DF36
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^0809df36 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander
+open_questions:
+- The exact field name — `S200ace0` is small and contains several 1-byte slots around offset 0x02 (the
+  doc comment says `owPlayerFixedAnimationSelect_02` but the field used could be a neighbour such as `fixOWPlayerAnim_15`);
+  confirming would require inspecting how `sub_809D800` interprets the returned `0`/`1` value.
+- Whether the return is consumed as a truthy flag only, or compared to a specific value, is not visible
+  from this function alone.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a1dd9fb3
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_809DF36 -> owMapObject_checkPlayerFacingFreeze_809DF36
+  where: bn6f 06d70503
+  tool: tools/rename_symbol.py

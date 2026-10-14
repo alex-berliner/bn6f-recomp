@@ -562,7 +562,7 @@ Next ow_tryTileInteraction_809DF00(void) {
  * Overworld player per-frame dispatcher. Inspects the player's current
  * substate (jumptable index field). Substate 0x10 is the "locked /
  * skip-this-tick" state: in that case we just return 0. Otherwise we
- * fall through into the real per-frame handler (sub_809DF36) at
+ * fall through into the real per-frame handler (owMapObject_checkPlayerFacingFreeze_809DF36) at
  * eStruct200ace0 and propagate whatever it returns. R7 is loaded with
  * the handler address so callers can recognize which path was taken.
  *
@@ -572,7 +572,7 @@ Next ow_tryTileInteraction_809DF00(void) {
  */
 Next sub_809DF28(void) {
     /* Original: push {lr} ... pop {pc}. Preserve lr across the call
-     * so that sub_809DF36's pop {pc} returns to our caller. */
+     * so that owMapObject_checkPlayerFacingFreeze_809DF36's pop {pc} returns to our caller. */
     u32 saved_lr = LR;
     SP -= 32;
     ST32(SP, saved_lr);
@@ -596,7 +596,7 @@ Next sub_809DF28(void) {
      * It returns its own result in r0 and sets c/v itself. */
     LR = LD32(SP);
     SP += 32;
-    GUEST_CALL(sub_809DF36);
+    GUEST_CALL(owMapObject_checkPlayerFacingFreeze_809DF36);
     RETURN_TO_CALLER();
 }
 

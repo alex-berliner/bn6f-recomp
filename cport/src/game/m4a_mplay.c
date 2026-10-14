@@ -58,10 +58,10 @@ enum { CGB_VOL_CHANGED = 1, CGB_FREQ_CHANGED = 2 };
 #define U32(a) (*(u32 *)(uintptr_t)(u32)(a))
 
 /* Lifted m4a helpers (bn6f names in comments). */
-#define FadeOutBody     sub_814F228
+#define FadeOutBody     sound_main_tickFadesAndStopBank_814F228
 #define ClearChain      m4a_ply_trampoline_814ECA0
 #define Clear64byte     sub_814ECB4
-#define TrkVolPitSet    sub_814F2F0
+#define TrkVolPitSet    m4a_plyNote_applyPitchAndVolume_814F2F0
 #define ChnVolSetAsm    sprite_crossfadeColorChannels_814E528
 #define MidiKeyToFreq   sub_814E7F4
 
