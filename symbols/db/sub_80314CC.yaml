@@ -1,0 +1,65 @@
+name: sub_80314CC
+address: '0x080314CC'
+kind: function
+previous_names: []
+status: hypothesis
+summary: Steps the battle grid/scroll by 1 pixel (or 0x20 / 8 pixels in the alternate path) per frame using line-vs-point
+  tests, accumulating axis deltas into a packed result held in r12.
+interface: '(r0 = ?, r1 = ?, r2 = ?, r5 = ?, r12 in/out) -> r0 = r0 (unchanged), flags NZCV ; side effect: writes
+  axis-step bits into r12 across calls'
+details: "- The function is a tail call dispatched from a battle-frame callback (lr=0x08030bfc across all\n    captured\
+  \ entries); it pushes {r0-r2, r5, lr} on entry and returns via `pop {pc}`.\n  - It always calls battleObject_applyShakeOffsetAndProject_8031136\
+  \ first to project battle\n    objects, then probes one or eight potential scroll steps via line/point geometry\
+  \ helpers\n    (sub_8030E14, sub_8030F7C) and asks camera_moveByDelta_80310B0 to apply the camera delta.\n  -\
+  \ First branch: r2 = -1, r3 = -1, r4 = 0x20, r5 = 0, r6 = 0 -> sub_8030E14 with the line-vs-point\n    setup.\
+  \ The result (r3) is OR-ed, shifted by 0, into r12. If r3 == 1 the function returns.\n  - Second branch (fall-through):\
+  \ r2 = 0, r4 = 0x20, r3 = 0x20, r5 = 0x20, r6 = 0, loops once through\n    sub_8030F7C (the wedge intersection\
+  \ test), then camera_moveByDelta_80310B0 with r0=0; the\n    per-axis delta in r3 is shifted left by 1 and OR-ed\
+  \ into r12.\n  - r12 behaves as an accumulating bitfield of X/Y/Z scroll bits returned to the caller, which\n\
+  \    forwards them into the BG scroll HBlank callback infrastructure (see BGScrollCallbacks struct:\n    Callback0/HBlankCallback/Callback1).\n\
+  \  - Captured EWRAM at r0 == 0x02009f5c holds a 0x40-byte block of pre/post-axis deltas\n    (`00 c0 e0 ff 00\
+  \ c0 f8 00 ...`) consistent with a camera/grid state struct, and the\n    updated result word at +0x34 matches\
+  \ in/out through r12.\n  - Because r12 is treated as in/out across the calls but never restated in the register\
+  \ contract\n    as a save, treat it as the caller's accumulator; naming keeps the `_ADDRESS` suffix.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- All captured entries have lr=0x08030bfc, the loop dispatch routine; the function is invoked per-frame
+    from the battle scroll pipeline. - Two possible `r3` accumulators (single-bit `lsl r3, #0` after sub_8030E14,
+    two-bit `lsl r1, r3, #1` after sub_8030F7C) match a 1-pixel-and-8-pixel split on the grid axes. - `cmp r3, #1
+    ; beq locret` ends the early branch after a successful single sub-pixel step, letting the caller skip the 8-pixel
+    pass on frames where the camera does not need it. - sub_8030E14 ("line-vs-point test") and sub_8030F7C ("wedge
+    intersection test") share the same register contract in/out, hinting at the same per-pixel/step iteration machinery.
+    - camera_moveByDelta_80310B0 is invoked with r1=0 in both passes, matching the description "adds a delta (scaled
+    to fixed-point) plus the current scroll offsets".'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080314CC
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, beastsp, chips, fuzz, maps, story1, story2, story3, story4, story5, story6,
+    story8, story9, wander'
+  reproduce: 'grep -l ''^080314cc '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, beastsp, chips, fuzz, maps, story1, story2, story3, story4, story5, story6, story8,
+    story9, wander
+open_questions:
+- Which struct lives at 0x02009f5c (looks like a scroll/camera accumulator with words at +0x10
+- and +0x20, plus a u16 sentinel at +0x34 = 0x0023). Without more call-site disassembly it
+- cannot be matched to Camera/BattleState/CutsceneCameraInfo.
+- Whether r12 truly is being passed back to the caller via a global, or there is a tail-call
+- convention via the stack that the lifter is treating as `in`. Anchoring the caller
+- 0x08030bfc would settle this.
+- The literal 0x0023 stored at offset 0x34 in the captured struct is some count/index; its
+- meaning (grid size? scroll speed?) is unknown.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 4b6ad669
+  tool: tools/symdoc.py

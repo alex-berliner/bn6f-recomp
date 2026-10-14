@@ -1,0 +1,57 @@
+name: sub_810CF4A
+address: '0x0810CF4A'
+kind: function
+previous_names: []
+status: hypothesis
+summary: 'Runs the AI-driven chip use sequence for an enemy actor: fetches its selected chip, writes chip params,
+  sets its Attack0, then dispatches an attack-side update.'
+interface: (r4 = AIDataPtr?, r5 = BattleObject?, r7 = chip param struct?, r10 = Toolkit) -> r0, r1; side effects
+  on AIData/AIState/BattleObject/CollisionData
+details: "Sub-step that sits inside the AI chip-use path (called from sub_810CE1A, the parent AI chip\n  selector).\
+  \ It first calls battle_getSelectedChipForUse_800ED90 to obtain the chip id the\n  object has committed to; the\
+  \ result lands in r0/r1. It then reads oBattleState_Unk_40 via\n  battle_getStateUnk40_800A704 to gate a branch,\
+  \ and if non-zero writes chip parameters through\n  somethingWriteChipParams_80126E4 (passing the actor's BattleObject\
+  \ in r5 plus the chip param\n  struct in r7). It then calls object_setAttack0 to put the actor into the Attack0\
+  \ chip-use\n  state, and finally calls sub_800F322 (which seems to advance the AI/attack update). Preserves\n\
+  \  r4/r5/r6/r7 across the call so that the surrounding AI state machine can continue iterating.\ndetails: |\n\
+  \  Cannot summarise confidently without assembly; the \"step list\" above is inferred from callee\n  identities\
+  \ and contract (in={r4,r5,r7,r10,lr}, out={r0,r1,r4-r7}).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- One caller only, sub_810CE1A (unnamed AI helper), matches the contract-in set {r4,r5,r7,r10,lr}. -
+    callee battle_getSelectedChipForUse_800ED90 is the canonical "fetch the chip this actor will use" helper, strongly
+    suggesting this routine then acts on that chip. - callee somethingWriteChipParams_80126E4 takes (r0,r5,r7,r10,lr),
+    matching the contract''s in-set; r5 is the BattleObject, r7 is the chip param struct, exactly what a chip-use
+    step needs. - callee object_setAttack0 is named "Attack0" which, in this codebase, is the chip-use attack state
+    set on BattleObject.CurAction, consistent with finishing the chip-selection step. - callee sub_800F322 has contract
+    in={r5,lr}, i.e. takes the same BattleObject, consistent with a follow-up "advance actor/AI state" call. - callee
+    battle_getStateUnk40_800A704 returning oBattleState_Unk_40 is the only branch input listed; this likely gates
+    whether the chip is actually fired (e.g. cleared by timestop/'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0810CF4A
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp, story5, story6, story9'
+  reproduce: 'grep -l ''^0810cf4a '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp, story5, story6, story9
+open_questions:
+- The exact branching topology (does the unk40==0 path skip the chip write, or skip the
+- Attack0 transition?) is unknown; assembly would settle it.
+- Whether sub_810CF4A loops or is single-step; the caller sub_810CE1A may iterate, this may be
+- a single iteration.
+- Why the address doesn't appear in the asm dump (`sub_810CF4A not found in bn6f/asm`) —
+- could be in an overlay not yet extracted; behaviour inferred purely from callees + caller.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 4b6ad669
+  tool: tools/symdoc.py

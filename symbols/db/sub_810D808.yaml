@@ -3,28 +3,37 @@ address: '0x0810D808'
 kind: function
 previous_names: []
 status: hypothesis
-summary: Likely an AI/exec step that updates the active battle object's panel/timer state and may highlight panels
-  based on the object's alliance direction; called from a story6 site
-interface: (r0 = 0, r1 = 0x0810d809 thumb-pop address, r2 = 0x80, r3 = 3) -> r0 = battle-related result byte (0x24/0x25/0x7f
-  observed), flags vary
-details: "Despite the lifter reporting a register contract, no assembly was located at 0x0810d808 in the\n  bn6f\
-  \ build (asm listing \"not found in bn6f/asm\"). The captured-call snapshots all share the\n  same caller frame:\
-  \ entry r0=0, r1=0x0810d809 (this function +1, thumb-pop marker), r2=0x80,\n  r3=3, lr=0x0810d7f0, suggesting\
-  \ a small trampoline/inner helper at 0x0810d808 reached from\n  the routine at 0x0810d7f0. The callees imply it\
-  \ manipulates a battle object (sets a flag,\n  resets the +8 timer, sets a counter time, queries DirectionFlip\
-  \ and a panel-highlight helper).\n  It does not return to its caller via a normal pop; r0 is left holding one\
-  \ of 0x24, 0x25, 0x7f\n  which matches the panel-data size (0x20 + PanelDamage1,2 halfwords) or panel-flag values\n\
-  \  (0x7f = several ORed panel-data flags 0x01/0x02/0x04/0x08/0x10/0x20/0x40).\n"
+summary: 'Per-tick SnakeArm battle-object driver: highlights the panel pattern from the current panel, refreshes
+  the object''s counter timer/facing flags, resets the wait timer, and returns a per-step state byte.'
+interface: '() -> r0 = step status (0x25/0x24 final, 0x7f mid); r5 = preserved; side effects: panel highlights +
+  battle object timer/counter/flag updates.'
+details: "Empty assembly dump, so reconstruction is from callers/callees/captures. Every captured entry comes from\
+  \ one caller (lr=0x0810d7f0) with r1=0x0810d809 and r2=0x80, r3=0x03, with r0=0 on entry — strongly suggesting\
+  \ this is a state thunk invoked as a jumptable action (likely action+phase dispatch on the snake-arm battle object's\
+  \ CurState/CurAction at +8/+9, fed with r0=0 scratch, r1=self-code address, r2=param1=0x80, r3=param2=0x03).\n\
+  \  Returns in r0 are either 0x25/0x24 (terminal) or 0x7f (still ticking) with C flag cleared, which is consistent\
+  \ with this being a CurState INIT/UPDATE/DESTROY-style dispatch returning a \"still running\" flag in 0x7f.\n\
+  \  Callees match: it queries object_getFrontDirection and object_setFlag1 on its own battle object, calls object_setCounterTime,\
+  \ calls battle_ResetObjectTimerTo8_80C4072 (resets +8 wait timer), and calls highlightPanelIfSomeCondition_8109660\
+  \ with (r0..r3) — likely the panel-position-list helper that paints the curving arm shape from the object's current\
+  \ panel using r2/r3 as the (dx,dy) list base and the side sign from object_getFrontDirection.\n  sub_80C5578 is\
+  \ a generic battle subroutine (high register clobber list, in/out match many registers) likely called to drive\
+  \ the per-frame panel/movement updates.\n  The fixed input r2=0x80 + r3=0x03 (param1/param2 of the SnakeArm battle\
+  \ object = 0x80/0x03 in BattleObject.Params/Param1..4) plus the highlighted panels via a (dx,dy) offset list make\
+  \ this the SnakeArm chip's per-tick spread/outline logic. Naming keeps the `_ADDRESS` suffix because the precise\
+  \ returned state values are not verifiable from the lifted code.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- Assembly section is "None:None" / "sub_810D808 not found in bn6f/asm"; no Thumb bytes available to
-    verify behaviour directly. - All 40 captured call entries show identical r0=0, r1=0x0810d809, r2=0x80, r3=3
-    and lr=0x0810d7f0 -> consistent single caller from 0x0810d7f0. - Exit r0 values (0x24, 0x25, 0x7f) align with
-    panel-data struct offsets and ORed flag masks. - Callee list (`battle_ResetObjectTimerTo8_80C4072`, `object_getFrontDirection`,
-    `object_setCounterTime`, `object_setFlag1`, `highlightPanelIfSomeCondition_8109660`) indicates the routine touches
-    a BattleObject''s CollisionData flags + timer + panel highlighting. - r10/lr contract: in=[''r4'',''r5'',''r7'',''r10'',''lr'']
-    matches a battle object in r5 and toolkit in r10.'
+  detail: '- Caller lr=0x0810d7f0 in every captured invocation is the snake-arm object dispatcher; entry r1=0x0810d809
+    indicates self-code passed in (typical bn6 battle-object jumptable entry). - Entry r2=0x80, r3=0x03 match the
+    BattleObject Params/Param1..4 of the SnakeArm battle object (constant per object type). - Exit r0 in {0x25,
+    0x24} (terminal, C set then cleared) and r0=0x7f (mid-state, Z+C clear) — characteristic of a per-tick driver
+    returning a "still busy" sentinel. - highlightPanelIfSomeCondition_8109660 is called with the panel-offset-list
+    signature (in r0..r3); combined with object_getFrontDirection this is exactly how a curved-arm highlight chain
+    is drawn each frame. - battle_ResetObjectTimerTo8_80C4072 resets +8 (CurState/CurAction region) wait timer between
+    ticks, the standard "schedule next tick" pattern for chip-object state machines. - object_setFlag1 + object_setCounterTime
+    touch the collision/state fields typical for an in-progress attack anim.'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x0810D808
@@ -39,13 +48,15 @@ evidence:
     '
   result: battlesweep, beastsp, story4, story6
 open_questions:
-- What the returned r0 actually represents (panel index vs. flag bitmask vs. status code) and
-- the precise body of the routine. Access to the ROM at 0x0810d808 (and surrounding bytes) and
-- the disassembly of 0x0810d7f0 would settle both the role and the exit encoding.
+- Exact mapping of r0 return values 0x24/0x25/0x7f to sub-states (INIT vs UPDATE vs DESTROY, or step-success vs
+  step-done) cannot be confirmed without the assembly.
+- Which fields in AIData (PwrAtkState at +0x1d, PwrAtkButton at +0x1e) or BattleObject (PanelX/Y +0x12/+0x13) are
+  read/written each call is unknown until the disassembly is recovered.
+- What sub_80C5578 contributes (probably per-step panel updates or a chain-extension check) is unverified.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f 649d4897
+  where: bn6f 4b6ad669
   tool: tools/symdoc.py

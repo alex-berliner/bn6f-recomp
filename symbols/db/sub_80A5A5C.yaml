@@ -1,0 +1,47 @@
+name: sub_80A5A5C
+address: '0x080A5A5C'
+kind: function
+previous_names: []
+status: hypothesis
+summary: Stores BattleObject.r5.CurAction into an EWRAM mirror byte
+interface: '(r5 = BattleObject*) -> void ; side effect: writes byte at 0x2000EC0'
+details: "Tail-call (`pop {pc}`) helper. Takes a BattleObject pointer in r5 and copies the\n  byte at offset 0x9\
+  \ (CurAction per battle_object_struct) to the EWRAM address\n  byte_2000EC0. No other registers are touched. Used\
+  \ by sub_80A5828 (a battle\n  handler that keeps r5 alive across calls) presumably to publish the current\n  action\
+  \ to some shared scratch byte that other subsystems (camera, BG scroll,\n  AI) poll. The name suffix reflects\
+  \ that this is an inferred mirror/copy of\n  CurAction rather than a guaranteed public API.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0, [r5,#9]` reads byte at offset 9 of whatever struct r5 points to (assembly at 0x80A5A64) -
+    battle_object_struct declares `u8 CurAction` at loc=0x9 - `strb r0, [r1]` writes that byte to the address loaded
+    from `off_80A5A68`, which resolves to `byte_2000EC0` in EWRAM (0x02000000 region) - `pop {pc}` makes this a
+    tail call: no caller-visible out registers (contract confirms `out=[]`) - Only caller sub_80A5828 preserves
+    r5 across the call (its contract lists r5 as both in and out), consistent with passing a long-lived object pointer
+    - Captured-call exits all show r0=0 with -ZC- flags unchanged; the ldrb/strb sequence does not touch r0''s user-visible
+    value beyond the load'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080A5A5C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp, maps'
+  reproduce: 'grep -l ''^080a5a5c '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp, maps
+open_questions:
+- What actually consumes byte_2000EC0 (no other function in the provided
+- context reads it). Settling it would require searching the ROM for readers
+- of 0x02000EC0, which would confirm whether this is a real "mirror" or
+- e.g. a debug/trace byte.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 4b6ad669
+  tool: tools/symdoc.py

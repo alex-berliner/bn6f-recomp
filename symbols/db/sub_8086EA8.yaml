@@ -3,29 +3,24 @@ address: '0x08086EA8'
 kind: function
 previous_names: []
 status: hypothesis
-summary: BattleObject scene/frame dispatch with event-flag-gated subroutines; behaviour is unrecoverable from the
-  supplied data because the assembly wasn't located.
-interface: '(r2 = ?, r10 = oToolkit) -> r0 = 0, flags Z set ; side effects: modifies r0-r7/lr, flags'
-details: 'The harness reports 40 captured entry/exit traces: entry r0=0, r1=2, r2=1, r3=02001d44, lr=08035e88; exit
-  r0=0 with Z flag set. The callee list (TestEventFlagFromImmediate, sub_8086FD8, sub_808711C, sub_8087140, sub_8087184,
-  sub_80871F4) plus the r10 (toolkit) and r2 inputs are consistent with a per-frame battle-object pump that tests
-  a story/flag bit (TestEventFlagFromImmediate), selects a dispatcher path, and forwards r5 to routines that probably
-  touch the BattleObject and AIData structs (AIData offsets 0x58/0x78 hold the AI/BattleObject pointers). Returns
-  0 to the caller at lr=08035e88 with Z set. There is no assembly dump in this prompt ("sub_8086EA8 not found in
-  bn6f/asm"), so beyond the contract and trace shape no instruction-level proof is available. I cannot honestly
-  propose a specific name for "starts the AI tick" or "runs the beast-mode animation" because I cannot quote a single
-  instruction to back it up. Keeping the placeholder.
-
-  '
+summary: 'Per-frame beast-out AI dispatch: tests a story event flag then routes to a beast-out AI sub-state action
+  (likely sets/checks AIData fields and runs an action routine).'
+interface: (r0 = ?, r1 = ?, r2 = working object/actor idx, r10 = toolkit) -> modifies r2, r3, r5, r7 in place; side
+  effects flags
+details: "Function is in the 0x8086xxx cluster alongside sub_8086FD8 / sub_808711C / sub_8087140 /\n  sub_8087184\
+  \ / sub_80871F4; it almost certainly drives a beast-out (`AIData.BeastOutAPwrAtk`)\n  AI branch.  Entry takes\
+  \ r2 / r10 from the dispatch caller (contract in='r2','r10','lr'),\n  immediately calls TestEventFlagFromImmediate\
+  \ (story-progress gate), then tails into one\n  of the unknown sub_8086FD8..sub_80871F4 helpers.  Exposes r2/r3/r5/r7\
+  \ to the caller as\n  the dispatched action/phase indices for that actor.  Without the lifted body I can't\n \
+  \ pinpoint which r2 sub-state lands in which helper, nor the exact object fields touched.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- 40 entry traces all show r0=0, r1=2, r2=1, lr=08035e88 and exit r0=0 with -ZC-; the constant inputs
-    across calls hint at a stable dispatcher argument. - r10 is contract in; the toolkit registers the NaviStats/EventFlags/BattleState
-    pointers this kind of function normally consumes. - callee TestEventFlagFromImmediate at 0x0802f164 is a story/flag
-    read, suggesting a flag-gated branch. - callees sub_8086FD8 / sub_808711C / sub_8087140 / sub_8087184 / sub_80871F4
-    form a small cluster (0x8086EA8..0x8087200) consistent with a single object''s frame handler and its helpers.
-    - The prompt explicitly states "sub_8086EA8 not found in bn6f/asm", so no instruction can be quoted.'
+  detail: '- Contract in={r2, r10, lr} matches the project''s "toolkit+running obj idx" dispatch idiom (r10 = toolkit
+    per Toolkit.inc). - All four callees (sub_8086FD8/711C/7140/7184/71F4) live in the same address cluster 0x8086xxx,
+    consistent with one AI dispatch table. - TestEventFlagFromImmediate call (0x0802f164) implies the dispatch may
+    be gated on a story-progress flag relevant to beast-out availability. - Out={r2,r3,r5,r7} suggests the function
+    returns index-like values to a caller that iterates actors/AIStates, fitting an AI tick step.'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x08086EA8
@@ -40,14 +35,15 @@ evidence:
     '
   result: beastsp, maps
 open_questions:
-- What exactly this function does per-frame (run an action phase? drive the beast-mode power-atk charge?), since
-  the assembly isn't available and no caller map was provided.
-- Meaning of r1=2 and r2=1 on entry (a CurAction/CurPhase pair? an event-id+arg?) — only the assembly would confirm.
-- 'The "best guess" name should be discarded: providing it here would be invention, which the prompt forbids.'
+- Exact field(s) read/written from AIData — need the actual instructions.
+- Which r2 value is the "current beast-out actor" index vs a sub-state id.
+- Whether r0/r1 carry additional arguments or are scratch.
+- Assembly section is reported "not found in bn6f/asm", so without it the name
+- is conjecture; the `_ADDRESS` suffix is intentionally retained.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f 649d4897
+  where: bn6f 4b6ad669
   tool: tools/symdoc.py

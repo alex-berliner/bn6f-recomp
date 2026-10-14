@@ -3,47 +3,54 @@ address: '0x08014E08'
 kind: function
 previous_names: []
 status: hypothesis
-summary: AI attack-vars phase handler that drives the "Beast Out" style transformation step — flashes it white,
-  performs a sprite change/animation, plays a sound, and on expiry runs turn-open post-processing before handing
-  off to the next AI phase.
-interface: '(r5 = battleObject, r7 = aiAttackVars, r10 = toolkit) -> void ; side effects: battle object''s sprite,
-  animation, palette and NaviStats transformation byte are mutated, plus battle-wide setup callbacks fire.'
-details: "- Guard byte oAIAttackVars_Unk_01 is tested (`bne loc_8014EB8`); if non-zero, the function only decrements\
-  \ oAIAttackVars_Unk_10 once per call and returns early, indicating this routine is driven by a counter (10 = 0xA\
-  \ frames).\n  - On first entry it forces a white palette (`sprite_forceWhitePalette`), reads NaviStats byte 0x2C\
-  \ (Transformation) via the alliance helper, runs `sub_8011384` to convert it, then loads chip-class metadata (`sub_801595E`)\
-  \ for byte 0x29 (Folder1/Folder2 area), and `chip_class_lookup_800FC9E` to derive a chip-class-related value that\
-  \ drives the sprite id argument (0x80) to `sprite_load`.\n  - The new sprite is materialised with `sprite_loadAnimationData`,\
-  \ `sprite_hasShadow`, animation 0 via `object_setAnimation`, `sprite_setAnimation` (echoing oBattleObject_CurAnim),\
-  \ `sprite_loadAnimationData`, then `object_getFlip`/`sprite_setFlip` and `object_setCoordinatesFromPanels`. AIAttackVars_Unk_10\
-  \ is set to 10 (frames).\n  - It re-forces the white palette, recomputes the chip-class value, and writes it back\
-  \ into NaviStats byte 0x2C (Transformation) via `SetBattleNaviStatsByte_AllianceFromBattleObject`, then loads\
-  \ a 24-bit word from `dword_8014F00` (=0x30E00) into r4 and calls `sub_80E11E0(r1,r2,r3,r4,r7,lr)` — likely a\
-  \ battle/queue pump.\n  - Plays sound 0x100 (`PlaySoundEffect(0xFF+1)`); then conditionally writes the chip-class\
-  \ into NameID (only if Transformation byte is in 1..0x18) using `battle_setObjectTextId_8015B22`.\n  - `sub_8011268`\
-  \ is dispatched with mode 0, then the RelatedObject2Ptr's Param3 byte is zeroed (if the related pointer is non-null),\
-  \ and a 3-step AI horizontal delta is computed via `battleObject_computeAIStepForwardDeltaX_8018856` and patched\
-  \ through `sub_801DC06` (which writes the neg-DeltaX). AIAttackVars_Unk_01 is then set to 4 to advance the AI\
-  \ state machine.\n  - Each subsequent call decrements oAIAttackVars_Unk_10; when it goes below 1 the \"turn open\"\
-  \ routine fires: it calls `callPossiblyGetBattleEmotion_8015B54` (r0=alliance, r1 set 1 if emotion==2), then `battle_beginTurnOpenProcess_80144C0`,\
-  \ `battleObject_markUsedAction_80143A6`, and (only if r1==1) writes 0xFF into NaviStats field 0x0E via `battle_setPlayerNaviStatsField0E_8015BEC`\
-  \ — i.e. ending the transformation.\n  - It clears invulnerability (`object_clearInvulnerableTime`), clears the\
-  \ final-palette high nibble on RelatedObject2Ptr, and finally sets oAIAttackVars_Unk_00 = 0xC (next AI phase).\
-  \ Uses r10 as toolkit and r5/r7 as the object and attack-vars workspace throughout.\n"
+summary: AI attack sub-state that handles the sequence just before/after a battle object transforms (Beast Out /
+  Soul Unison / etc.) — flashes white, swaps sprite+anim, plays the transform SFX, updates the NaviStats Transformation
+  byte, then opens the post-transform turn
+interface: '(r4 = unused?, r5 = *battleObject, r6 = ??, r7 = *aiAttackVars, r10 = *toolkit) -> void ; side effects:
+  rewrites object sprite+anim, NaviStats[0x2C], triggers beginTurnOpenProcess'
+details: "Entered from the AI attack state machine when oAIAttackVars_Unk_01 == 0 (first sub-step).\n  - Force-white\
+  \ palette on the object (sprite_forceWhitePalette twice, book-ends).\n  - Pull the current Transformation byte\
+  \ (NaviStats offset 0x2C) via GetBattleNaviStatsByte_AllianceFromBattleObject, run sub_8011384 on it (some chip-class\
+  \ lookup against 0x29 of the same stats record), then call chip_class_lookup_800FC9E.\n  - Load a sprite/animation\
+  \ pair: r0=0x80 into sprite_load + sprite_loadAnimationData, sprite_hasShadow, set current anim 0 and copy oBattleObject_CurAnim,\
+  \ get/set flip, recompute panel coords.\n  - Park an oAIAttackVars_Unk_10 countdown at 0x000A (10 frames).\n \
+  \ - Mirror the freshly loaded Transformation back to NaviStats via SetBattleNaviStatsByte_AllianceFromBattleObject.\n\
+  \  - Fire 0x30E00 through sub_80E11E0 (likely the Beast-Out / transformation table loader), then PlaySoundEffect(0x100,\
+  \ \"0x01 + #0xFF\" = 0).\n  - If the new transformation byte is in [1..0x18], also call battle_setObjectTextId_8015B22\
+  \ (sets the NameID for the transformed form).\n  - Dispatch a mode index (param r0=cur anim copy, r2=0) into sub_8011268\
+  \ (24-way jump-table dispatcher).\n  - If oBattleObject_RelatedObject2Ptr is non-null, zero its oBattleObject_Param3\
+  \ byte.\n  - Compute a step-forward delta via battleObject_computeAIStepForwardDeltaX_8018856 with kind=3, negate\
+  \ r1, then call sub_801DC06 (the 6-slot table patcher) — this records/updates a queued displacement for the AI.\n\
+  \  - Mark oAIAttackVars_Unk_01 = 4 (advance to next AI attack sub-state).\n\n  Returns immediately if oAIAttackVars_Unk_01\
+  \ was already non-zero on entry; otherwise falls through to a frame-tick loop on oAIAttackVars_Unk_10. While that\
+  \ countdown > 0 the function just returns; when it underflows:\n  - callPossiblyGetBattleEmotion_8015B54 → r0;\
+  \ if r0==2 push r1=1 (otherwise 0) for later use.\n  - battle_beginTurnOpenProcess_80144C0 (clears chip-hand/AI\
+  \ state, handles control-invert, rebuilds collision + panel setup).\n  - battleObject_markUsedAction_80143A6.\n\
+  \  - If the pushed r1 was 1, call battle_setPlayerNaviStatsField0E_8015BEC with r1=0xFF (probably \"consume a\
+  \ transformation/Beast-Out charge\").\n  - object_clearInvulnerableTime.\n  - If oBattleObject_RelatedObject2Ptr\
+  \ is non-null, push r5, swap r5 to it, sprite_clearFinalPalette, pop r5.\n  - Park oAIAttackVars_Unk_00 = 0x000C\
+  \ (next sub-state / next timer).\n\n  Net behaviour: drives the visual + persistent state for a battle object's\
+  \ mid-battle form change, then opens the next turn.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- `bl sprite_forceWhitePalette` at entry and again after `mov r0, #0xa; strh r0, [r7,#oAIAttackVars_Unk_10]`
-    show the "white flash" pattern typical of Beast Out. - `GetBattleNaviStatsByte_AllianceFromBattleObject` with
-    `mov r1, #0x2c` and `SetBattleNaviStatsByte_AllianceFromBattleObject` write the same byte back — Transformation
-    (NaviStats+0x2C). - `chip_class_lookup_800FC9E` is fed byte 0x29 via `sub_801595E` and the result goes to `sprite_load(0x80,
-    …)` and back to NaviStats+0x2C — matches the way other BN6 routines translate folder/class into the visual form.
-    - `PlaySoundEffect` is called with r0=1 then `add r0, #0xff` -> 0x100, which is the Beast Out jingle. - `callPossiblyGetBattleEmotion_8015B54`
-    + `cmp r0, #2` and conditional write of 0xFF into NaviStats+0x0E via `battle_setPlayerNaviStatsField0E_8015BEC`
-    mirrors how the battle engine terminates the transformation after the turn opens. - `strh r0, [r7,#oAIAttackVars_Unk_10]`
-    decremented to <=0 then `mov r0, #0xc; strh r0, [r7,#oAIAttackVars_Unk_00]` matches an FSM where Unk_00 holds
-    the next phase and Unk_10 the per-phase frame counter. - `strb r0, [r7,#oAIAttackVars_Unk_01]` writing 4 is
-    the only place Unk_01 is set, suggesting it is the "done" flag for phase 3.'
+  detail: '- `bne loc_8014EB8` after `tst r0,r0` on oAIAttackVars_Unk_01 means the heavy block runs only when that
+    flag is 0; the trailing block runs after Unk_10 decrements past 0. - `mov r1, #0x2c` paired with `GetBattleNaviStatsByte_AllianceFromBattleObject`
+    reads/writes NaviStats offset 0x2C (`Transformation` per NaviStats.inc) both before and after the sprite swap.
+    - `mov r1, #0x29` + second `GetBattleNaviStatsByte_AllianceFromBattleObject` reads NaviStats offset 0x29 (`NaviIndex`),
+    then `chip_class_lookup_800FC9E` uses it; this matches the typical "look up which sprite to use for the transformed
+    navi" pattern. - `mov r0, #0x80; bl sprite_load` then `sprite_loadAnimationData` + `sprite_hasShadow` + setting
+    animation 0 / copying oBattleObject_CurAnim rebuilds the visible sprite. - `strh r0,[r7,#oAIAttackVars_Unk_10]`
+    with r0=0xa sets the white-flash countdown; the matching `ldrh r0,[r7,#oAIAttackVars_Unk_10]; sub r0,#1; strh
+    r0,...; bgt locret_8014EFE` decrements it each call. - `dword_8014F00 = 0x30E00` then `bl sub_80E11E0` looks
+    like a ROM table pointer for transformation data. - `mov r0, #1; add r0,#0xff` = 0 → PlaySoundEffect(0) is a
+    no-op style init sound; the real transform SFX is likely elsewhere (possibly triggered by sub_80E11E0). - `cmp
+    r0,#1; blt loc_8014E92; cmp r0,#0x18; bgt loc_8014E92; bl battle_setObjectTextId_8015B22` → only valid transformation
+    IDs 1..0x18 get a display name. - `bl sub_8011268` with r0=oBattleObject_CurAnim + r2=0 dispatches the post-transform
+    anim/state mode. - `ldr r0,[r5,#oBattleObject_RelatedObject2Ptr]; tst r0,r0; beq loc_8014EA8; strb r1,[r0,#oBattleObject_Param3]`
+    resets the second related object''s param3 to 0 (used for partner/ghost cleanup on transform). - `mov r0,#3;
+    bl battleObject_computeAIStepForwardDeltaX_8018856; neg r1,r1; bl sub_801DC06` queues an AI displacement of
+    negative-X delta kind 3. - `strb r0,[r7,#oAIAttackVars_Unk_01]` with r0=4 marks the AI attack sub-state to advance.'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x08014E08
@@ -58,16 +65,16 @@ evidence:
     '
   result: beastsp
 open_questions:
-- Exact identity of "step" (whether this is just Beast-Out, or also handles Counter/Pierce etc.) is not certain;
-  the visual signature (white palette + chip-class-driven sprite + 0x100 SFX + emotion-driven field-0xE write) matches
-  Beast Out, but a similar helper could exist for other transform-style attacks.
-- '`sub_8011268(mode=0)`, `sub_80143A6`, `sub_80E11E0`, `sub_801DC06`, `sub_8011384`, `sub_801595E` and `dword_8014F00
-  = 0x30E00` are not decompiled and could shift the interpretation (e.g. whether 0x30E00 is a queue/arena pointer,
-  and whether sub_80143A6 actually "marks the action used").'
+- The exact form (Beast Out vs Soul Unison vs something else) the function targets — the value 0x80 sprite id +
+  0x30E00 table pointer + NaviStats[0x2C] updates are consistent with any transformation; only side context (which
+  AI attack state dispatches here) would settle it.
+- What sub_8011384 does with r0=Transformation + r1=NaviIndex; only its body would explain the second `GetBattleNaviStatsByte_AllianceFromBattleObject(_,0x29)`
+  call.
+- Why PlaySoundEffect(0) is called at all (could be intentional silence to reset the sound channel queue).
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f 649d4897
+  where: bn6f 4b6ad669
   tool: tools/symdoc.py

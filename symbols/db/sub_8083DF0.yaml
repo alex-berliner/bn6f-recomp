@@ -3,33 +3,30 @@ address: '0x08083DF0'
 kind: function
 previous_names: []
 status: hypothesis
-summary: Per-frame driver for a battle-related animation/state-machine chain (graphical animation loaders + NPC/cutscene
-  script flag tests).
-interface: '(r10 = toolkit ptr, lr) -> flags (nz) ; side effects: jumps via tail-call/jump table to load_gfx_anim_*,
-  and may set/clear/test event flags.'
-details: "- No local assembly was found for this placeholder so behaviour is inferred from the contract and callees\
-  \ only (callers listed none — likely an entry point or one of the many anonymous dispatchers in the battle subsystem\
-  \ reachable indirectly).\n  - The function lives in the 0x8083xxx range, surrounded by `load_gfx_anim_8083FC0/8083FFC/8084068`\
-  \ callees, all of which match the pattern of `gfx_anim` state-machine drivers (matched by their `in=['r5', 'lr']`\
-  \ contract and r5 = anim state pointer, plus `struct GFXAnimState` is referenced).\n  - It also talks to the cutscene/event-flag\
-  \ world: `cutscene_checkOriginalCutsceneScriptPos_8036F40` (L-Message sentinel test), `cutscene_checkOriginalCutsceneScriptPos_8036F58`\
-  \ (AskJackOut test), and `TestEventFlagFromImmediate`/`SetEventFlagFromImmediate`/`ClearEventFlagFromImmediate`.\
-  \ This pattern matches the lobby/menu-of-jackin flow where BBS request handlers (`reqBBS_setFlag_e17b0f7_8140A00`,\
-  \ `reqBBS_clearFlag_8140A0C`) are also involved.\n  - Contract `in=['r10', 'lr']` is the standard toolkit-dispatcher\
-  \ signature; `out=['nz', 'r2', 'r3', 'r4', 'r5', 'r7', 'r8', 'r9', 'r12']` means it does not return a struct pointer\
-  \ in r0, only flags plus callee-saved scratch — fits a void-like dispatcher.\n  - Without seeing the instructions,\
-  \ the precise branch logic and what the BBS flags gate are not provable; the safest guess is a per-tick state/progression\
-  \ ticker that decides which gfx-anim driver to advance and which flags to flip based on cutscene state.\n"
+summary: Cutscene/BBS orchestrator that tests/sets event flags and drives GFX anim + sprite loads around the cutscene-script-pos
+  checks
+interface: (r10 = toolkit ptr, no other inputs) -> void ; modifies a wide set of scratch regs and writes through
+  toolkit globals
+details: "Entry reads toolkit globals via r10 (standard in-pattern). It dispatches to a small block\n  of unnamed\
+  \ helpers (sub_8083F80, 8084080, 8084180, 8084214, 80842D8) that all take r5 in,\n  plus a sequence of read-modify-writes\
+  \ on event-flag bytes. Surrounding that, it queries\n  cutscene state with cutscene_checkOriginalCutsceneScriptPos_8036F40\
+  \ and _8036F58, sets\n  flag 0x7 of event byte 0x17 via reqBBS_setFlag_e17b0f7_8140A00, clears a BBS request flag\n\
+  \  with reqBBS_clearFlag_8140A0C, and triggers three GFX anim drivers\n  (load_gfx_anim_8083FC0 / 8083FFC / 8084068).\
+  \ The struct_copy_80840C4 likely moves a\n  small fixed data block; sub_809E462 is a thin glue callback. No assembly\
+  \ was supplied, so\n  the exact order/cases of these calls cannot be pinpointed beyond \"this function owns\n\
+  \  the orchestration\".\n  Contract: `out` lists only nz plus the callee-saved registers (r2,r3,r4,r5,r7,r8,r9,r12)\n\
+  \  that the caller reloads itself; nothing is returned to the caller in r0/r1, so this is\n  effectively a void\
+  \ cutscene-stage function from the toolkit dispatcher.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- Adjacent callees `load_gfx_anim_8083FC0`, `load_gfx_anim_8083FFC`, `load_gfx_anim_8084068` all share
-    the gfx_anim driver shape (in=[''r5'', ''lr'']/r5 = anim state), strongly suggesting this function is a tick
-    wrapper around them. - `reqBBS_setFlag_e17b0f7_8140A00` and `reqBBS_clearFlag_8140A0C` are confirmed BBS request
-    handlers setting event flag 0x7 @ 0x2001F68, implying this function mediates BBS-progression state on a per-frame
-    tick. - Cutscene-script pointer probes `cutscene_checkOriginalCutsceneScriptPos_8036F40` and `8036F58` indicate
-    dispatch is gated on which cutscene script was originally saved. - `contract.in = r10` aligns with the toolkit-dispatcher
-    calling convention used widely across the battle subsystem.'
+  detail: '- `contract in=[''r10'',''lr'']` and `out` lacks any r0/r1 value => this is a void-like toolkit callee.
+    - Callee names `cutscene_checkOriginalCutsceneScriptPos_8036F40/_8036F58` and `reqBBS_setFlag_e17b0f7_8140A00`
+    (confirmed) tie the routine to the BBS/cutscene path. - Three `load_gfx_anim_*` callees (8083FC0/8083FFC/8084068)
+    and `struct_copy_80840C4` imply a sprite/GFX bundle install around the flag decision points. - `reqBBS_clearFlag_8140A0C`
+    clears a flag the prior `_setFlag` may have set or that another stage conditioned on. - All inner helpers take
+    r5 as their main pointer, consistent with a per-actor or per-bundle context (`r5` arrives from somewhere inside
+    this function).'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x08083DF0
@@ -44,14 +41,14 @@ evidence:
     '
   result: beastsp, story5, story6
 open_questions:
-- The actual assembly is unavailable; the per-frame control flow (loop/branch/return) is unknown.
-- Which event-flag indices are tested/set/cleared is unknown without the disassembly.
-- The name `..._gfxAnimOrStateMachine_tick` is the generic-but-true fallback; confidence would jump to `probable`
-  once the asm is supplied.
+- Exact branching/sequencing of the inner calls (no asm was attached for this placeholder).
+- What `r5` points to inside this function (likely an Object or an animation script
+- pointer; the asm would settle it).
+- Whether the BBS handler call is unconditional or guarded by the cutscene-pos tests.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f 649d4897
+  where: bn6f 4b6ad669
   tool: tools/symdoc.py

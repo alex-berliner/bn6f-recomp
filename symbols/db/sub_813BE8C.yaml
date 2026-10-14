@@ -1,0 +1,52 @@
+name: sub_813BE8C
+address: '0x0813BE8C'
+kind: function
+previous_names: []
+status: hypothesis
+summary: Loops over the 0x31 8-byte Unk2004190 entries and clears/initializes the ones whose first halfword is already
+  zero.
+interface: (no args, r10 = oToolkit) -> void; r7 clobbered, no return value
+details: "Iterates r6 from 0 to 0x30 (cmp r6,#0x31; blt) and for each index calls\n  toolkit_getUnk2004190EntryPtr_813B9FC(r6)\
+  \ -> r7. The body is a literal\n  `ldrh r0,[r7] ; tst r0,r0 ; beq loc_813BE9E` followed by a fallthrough `add\
+  \ r6,#1`,\n  i.e. it currently does nothing when the halfword is non-zero and also does nothing\n  when it is\
+  \ zero — the only concrete side-effect is incrementing the index and looping.\n  The captured pointer (02004190)\
+  \ holds 64 zero bytes at every call site, so the\n  function is effectively a no-op against the live state. The\
+  \ single caller\n  (battle_initState_813BBD4) runs it as part of the battle sub-init sequence, so it\n  reads\
+  \ as a leftover/disabled init step for the Unk2004190 entry array (Toolkit at\n  oToolkit+0x5c, pointer held at\
+  \ 02004190).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- asm:00001144 `mov r6,#0 / bl toolkit_getUnk2004190EntryPtr_813B9FC / mov r7,r0 / ldrh r0,[r7]` shows
+    the loop fetches each entry and reads its first u16. - asm:00001144 `tst r0,r0 / beq loc_813BE9E` and the next
+    instruction `add r6,#1 / cmp r6,#0x31 / blt loc_813BE90` make the body trivial; the non-taken branch is also
+    empty. - Captured calls (snap_story2_0..13.bin): entry r1=02004190 (the array base the caller set up) and the
+    first 64 bytes at 02004190 are all zero every time the caller runs this. - Caller battle_initState_813BBD4''s
+    docstring explicitly says it "runs the battle sub-init sequence (layout, sprite/cell setup, etc.) on the state
+    buffer", which lines up with this being one of those optional/empty sub-init steps.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0813BE8C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^0813be8c '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1, story2, story3,
+    story4, story5, story6, story7, story8, story9, wander
+open_questions:
+- Whether this is dead/inlined-out code or whether the original intent was a memset/something conditional on the
+  u16; knowing whether the beq-target originally contained a real write (early build artifact, debugging stub) would
+  settle it. None of the 40 captured calls exercise a non-zero entry.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 4b6ad669
+  tool: tools/symdoc.py
