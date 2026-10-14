@@ -1,0 +1,57 @@
+name: sub_801002C
+address: '0x0801002C'
+kind: function
+previous_names: []
+status: hypothesis
+summary: Computes which palette slot to use for a Navi battle object's sprite, dispatching on the player's transformation/element
+interface: '(r5 = battle object, r10 = toolkit) -> r0 = palette index offset ; side effects: reads NaviStats at
+  offsets 0x29/0x2c/0x10/0xe; may call sub_800FD0A to recompute palettes'
+details: "Reads the battle object's AIData.ActorType (oAIData_ActorType). If it equals 2 (ACTOR_TYPE_PLAYER), it\
+  \ inspects the player's NaviStats to decide which palette row to use:\n  - If NaviStats byte at 0x29 (NaviIndex?\
+  \ actually offset 0x29 = NaviIndex) matches a specific case (early branch on r0==0), it returns 2; otherwise if\
+  \ the AIData Unk_48 flag 0x200 is set, returns 1.\n  - Otherwise it reads NaviStats byte 0x2c (Transformation);\
+  \ values 0/0xb/0xc fall through, otherwise it indexes into a small byte table (byte_80203EA) and returns that\
+  \ as r4.\n  - There is also a path on byte 0xe (Mood?): if 0xff returns 4, otherwise 0.\n  - Then for the normal\
+  \ player path it reads NaviStats byte 0x10 (Unk_10); if non-zero it scales by 5 and adds 0x12.\n  - r4 accumulates\
+  \ these contributions and is returned as the palette offset.\n  - If ActorType is anything other than 2, it returns\
+  \ 0 (no special palette handling).\n  - The loc_8010096 branch reads something else (sub_800FD0A recompute), used\
+  \ when the player is in a specific NaviIndex state.\n  - This function is called from battle_refreshNaviSpritePaletteFromForm_80100EC\
+  \ and many battle-object UPDATE handlers (sub_802D7A0, sub_802DB80, sub_80C0E24, sub_80E121C, etc.) to decide\
+  \ which of the 6 navi palette rows (0..5) the sprite should use.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0, [r7,#oAIData_ActorType]` at offset 0x802D.. (reads AIData.ActorType, compare to 2) - `cmp
+    r0, #2; bne loc_801009C` then `mov r4, #0` returns 0 for non-player actors - Callee GetBattleNaviStatsByte_AllianceFromBattleObject
+    is called with offsets 0x29, 0x2c, 0x10, 0xe — those match NaviStats fields (NaviIndex, Transformation, Unk_10,
+    Mood) - Hard-coded table byte_80203EA indexed by Transformation value (cmp #0, #0xb, #0xc) - Return path `mov
+    r0, r4; pop {r4,r7,pc}` returns a small (0..5) palette index - Call from `battle_refreshNaviSpritePaletteFromForm_80100EC`
+    strongly suggests palette selection role - Behaviour when r0==0 at first stats read skips to loc_8010096 (calls
+    sub_800FD0A recompute) — suggests "default MegaMan" handling'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801002C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0801002c '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2, story4, story5,
+    story6, story7, story8, story9
+open_questions:
+- Exact meaning of each NaviStats byte branch (Transformation lookup table) and how the returned index maps to a
+  final palette bank in the caller
+- Why sub_800FD0A is called only on one branch (NaviIndex==0?)
+- What specific palette slot each r4 value corresponds to in the sprite palette update logic
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 12fbd516
+  tool: tools/symdoc.py

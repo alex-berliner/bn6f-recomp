@@ -1,0 +1,60 @@
+name: sub_8083DF0
+address: '0x08083DF0'
+kind: function
+previous_names: []
+status: hypothesis
+summary: Boot helper that primes the ReqBBS scene GFX anims and ensures the "asked to jack out" / L-message cutscene
+  sentinels are registered by setting/clearing the relevant event flags.
+interface: (void) -> void ; side effects on GameState/Gfx anims and one oBB.
+details: "The function takes no inputs and returns no value to callers (only restores the\n  non-scratch regs the\
+  \ contract lists). It first pokes three GFX anims by calling\n  load_gfx_anim_8083FC0, load_gfx_anim_8083FFC,\
+  \ and load_gfx_anim_8084068 (these each\n  take r5 as their AIData-style param, so they are loading/animating\
+  \ GFX for an object\n  referenced through r5). It then defers to several helpers that act on event flags\n  and\
+  \ the cutscene state:\n    - reqBBS_setFlag_e17b0f7_8140A00 / reqBBS_clearFlag_8140A0C: BBS-request setters\n\
+  \        that toggle a flag at event byte 0x17 bit 0x7.\n    - ClearEventFlagFromImmediate / SetEventFlagFromImmediate\
+  \ /\n        TestEventFlagFromImmediate: standard story-progress flag helpers.\n    - cutscene_checkOriginalCutsceneScriptPos_8036F40\
+  \ / 8036F58: predicates over the\n        cutscene state's originally-saved script pointer (L-message sentinel\
+  \ /\n        AskJackOut script).\n    - sub_8083F80 / sub_8084080 / sub_8084180 / sub_8084214 / sub_80842D8:\n\
+  \        per-frame BBS GFX/animation drivers (contract all take r5).\n    - struct_copy_80840C4: mem-copy helper.\n\
+  \    - sub_809E462: test of oGameState_Unk_10 used as a gate.\n  Because the lifter could not disassemble the\
+  \ body (`sub_8083DF0 not found in bn6f/asm`)\n  the precise ordering and conditional structure is not visible,\
+  \ but every callee\n  belongs to the BBS subsystem (gfx anims + story/cutscene flag wiring around asking\n  to\
+  \ jack out), so the role is best read as the init/update entry point of the BBS\n  request flow: kick the three\
+  \ BBS GFX anims and reconcile any \"asked to jack out\"\n  cutscene-sentinel flags left over from the previous\
+  \ frame.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- Function body is unavailable; assembly box says `sub_8083DF0 not found in bn6f/asm`. - Three direct
+    `load_gfx_anim_*` callees (0x8083FC0, 0x8083FFC, 0x8084068) all live in this same 0x08084xxx page and take r5,
+    matching a per-frame BBS GFX driver. - Callee `reqBBS_setFlag_e17b0f7_8140A00` is explicitly the BBS request
+    handler for event byte 0x17 bit 0x7 (memory 0x2001F68) and `reqBBS_clearFlag_8140A0C` is its clear counterpart.
+    - Callee `cutscene_checkOriginalCutsceneScriptPos_8036F40` reads the cutscene sentinel for the L-Message cutscript;
+    `cutscene_checkOriginalCutsceneScriptPos_8036F58` tests for the "AskJackOut" script. The BBS / jack-out flow
+    always re-checks these. - `ClearEventFlagFromImmediate`/`SetEventFlagFromImmediate` are paired with the sentinel
+    tests, so the function reconciles event flags based on which sentinel is active.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08083DF0
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp, story5, story6'
+  reproduce: 'grep -l ''^08083df0 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp, story5, story6
+open_questions:
+- Exact ordering of the calls and whether they are guarded by conditional branches
+- is not visible without the function body.
+- Whether the function is the per-frame ReqBBS update vs. a one-shot init cannot be
+- told from callees alone; route coverage / hit counts would settle which is which.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 12fbd516
+  tool: tools/symdoc.py
