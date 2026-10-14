@@ -2425,10 +2425,10 @@ static u32 get_flag_163_result(void) {
     return R0;
 }
 
-/* register form: calls sub_803D0F4 outside this file, which has no typed C interface yet */
+/* register form: calls gameState_getProtectedBugfrags_803D0F4 outside this file, which has no typed C interface yet */
 static u32 battle_state_query(u32 val, u32 offset) {
     R0 = val; R1 = offset;
-    GUEST_CALL(sub_803D0F4);
+    GUEST_CALL(gameState_getProtectedBugfrags_803D0F4);
     return R0;
 }
 

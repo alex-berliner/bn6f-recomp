@@ -1,0 +1,66 @@
+name: owPlayer_setDirectionAnimFromOffset_80A5974
+address: '0x080A5974'
+kind: function
+previous_names:
+- sub_80A5974
+status: probable
+summary: Facing-aware animation swap for an OW player's navi sprite based on the vector to the overworld
+  player
+interface: '(r5 = OWPlayerObject*) -> void ; side effects: triggers sprite_setAnimation / sprite_loadAnimationData
+  / sprite_noShadow on the same object; updates r5+0x30 with the new anim index'
+details: "1. Calls ReadOWPlayerObjectCoords to get the current overworld player object's X/Y into r0/r1\
+  \ (and returns the object via r10.. wait, the contract shows r5, but the standard \"ReadOWPlayerObjectCoords\"\
+  \ writes r0..r3 = coords + ptr in r3; here r5 is the input object).\n  2. Loads this object's own X/Y\
+  \ at offsets 0xC/0x10 (per `Coords` substruct in BattleObject/OverworldPlayerObject — wait, OW player\
+  \ uses 0x1C; the 0xC/0x10 layout here matches an NPC/object coords). Subtracts them to get the delta\
+  \ between this object (r5) and the overworld player.\n  3. Pushes the delta into battle_calcAngleOctant_800118A\
+  \ which returns an octant index 0..3 (or 0 for \"no change / same direction\"). The byte table at 0x80A59B0\
+  \ maps octant -> animation id: `{2, 2, 0, 6, 4, 0, 0, 0}`.\n  4. Compares the picked anim against the\
+  \ cached value at r5+0x30; if unchanged, returns immediately (early-out).\n  5. Otherwise calls sprite_setAnimation(anim),\
+  \ sprite_loadAnimationData(), sprite_noShadow() to refresh the sprite, then stores the new anim at r5+0x30.\n\
+  \  6. Control flow note: the entry `push {r4,lr}` is at 0x80A5974, and the symmetric `push {r4,lr}`\
+  \ at 0x80A598C is dead/unreachable via fall-through; the only path that reaches the tail body is the\
+  \ `b loc_80A598E` from 0x80A597A, then later paths. This looks like the lifter linearised a small jump-around-the-push\
+  \ pattern.\n  r5 is callee-saved by the project convention, so the function is void-like from the caller's\
+  \ POV.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl ReadOWPlayerObjectCoords` at 0x80A5978 returns coords in r0/r1 and r3 = player object
+    (per callee contract). - `ldr r2,[r5,#0xc]` / `ldr r3,[r5,#0x10]` followed by `sub r0,r0,r2` / `sub
+    r1,r1,r3` clearly compute this_obj - player delta on X/Y. - `bl battle_calcAngleOctant_800118A` converts
+    delta to an octant index in r0. - `ldrb r0,[r0 + off_80A59AC]` (off_80A59AC points at `byte_80A59B0
+    = {2,2,0,6,4,0,0,0}`) is a classic angle->anim lookup table. - `ldr r1,[r5,#0x30]` then `cmp r0,r1`
+    / `beq locret_80A59AA` is an explicit "only update if anim changed" cache check. - `bl sprite_setAnimation`
+    / `bl sprite_loadAnimationData` / `bl sprite_noShadow` are the standard sprite-refresh triple. - `str
+    r4,[r5,#0x30]` after the BLs writes the chosen anim back into the cache slot. - Caller `sub_80A5890`
+    is the only direct caller; callee contracts show r5 is the live object pointer.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080A5974
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp, maps'
+  reproduce: 'grep -l ''^080a5974 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp, maps
+open_questions:
+- Which object type `r5` actually points to (overworld NPC vs. battle/aux object) — the 0xC/0x10 offsets
+  match BattleObject/Unk_0c/Unk_0d but not OWPlayerObject's 0x1C; structural identification would settle
+  this.
+- Exact semantics of the `byte_80A59B0` table values 2/0/6/4 (which directions they map to).
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 78d5a37f
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80A5974 -> owPlayer_setDirectionAnimFromOffset_80A5974
+  where: bn6f d34dcc4e
+  tool: tools/rename_symbol.py

@@ -1,0 +1,56 @@
+name: pet_testIsMapGroupAllowed_8141AA8
+address: '0x08141AA8'
+kind: function
+previous_names:
+- sub_8141AA8
+status: probable
+summary: Checks whether the current map group is in the PET-menu's allowed "beast-sp" map whitelist.
+interface: () -> r0 = bool (0 = allowed, 1 = not allowed / flag set); flags Z set on success path
+details: "1. Saves r4-r7 and lr. Calls TestPETMenuDataFlag(1); if that flag is set, jumps to the \"not\
+  \ allowed\" path (returns r0=1).\n  2. On the allowed-flag path, reads the Toolkit struct pointer from\
+  \ r10 (oToolkit_GameStatePtr) and loads the current GameState's MapGroup (u16 at oGameState_MapGroup)\
+  \ into r7.\n  3. Walks a table at `byte_8141B08` (loaded via off_8141B04) as a `u16` array. For each\
+  \ entry, if the entry is 0 the loop ends (returns r0=1, not allowed); if it equals the current MapGroup\
+  \ the function returns r0=0 (allowed).\n  4. All paths return via `pop {r4-r7, pc}` with r0 either 0\
+  \ (match found) or 1 (PET menu flag set, end-of-table, or no match).\n  The caller (sub_81419A0) uses\
+  \ the bool to gate a beast-overworld / \"beast-sp\" behaviour, only running it when the player is on\
+  \ one of the whitelisted map groups and the PET menu flag is unset.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl TestPETMenuDataFlag` with r0=1 at 0x08141AAC; bne to 0x08141ACE shows the flag being
+    checked first. - `mov r7, r10; ldr r7, [r7,#oToolkit_GameStatePtr]; ldrh r7, [r7,#oGameState_MapGroup]`
+    shows the current MapGroup being fetched via the Toolkit/GameState chain. - The `ldrh r0, [r4,r6]
+    / tst r0,r0 / beq / cmp r0,r7 / beq` loop at 0x08141ABC is a classic NULL-terminated u16 whitelist
+    scan. - `off_8141B04 -> byte_8141B08` is the table base loaded into r4; r6 starts at 0 and increments
+    by 2 (`add r6, #2`). - Captured calls all enter with r0 = 0x081419a1+7 = the call site inside sub_81419A0
+    (the only caller), confirming it is a helper for that function and is called for many map groups;
+    return is consistently r0=0 meaning the current map IS in the whitelist for these samples. - callee
+    summary: TestPETMenuDataFlag tests a bit in ePETMenuData+5.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08141AA8
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^08141aa8 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The exact identity of the whitelist (which map groups are listed in `byte_8141B08` and what "beast-sp"
+  the caller name implies) is not pinned down; this would settle by reading the data at 0x08141B08.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 78d5a37f
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8141AA8 -> pet_testIsMapGroupAllowed_8141AA8
+  where: bn6f d34dcc4e
+  tool: tools/rename_symbol.py

@@ -1,0 +1,65 @@
+name: battleObject_applyAIDataToAttackTable_8123BC0
+address: '0x08123BC0'
+kind: function
+previous_names:
+- sub_8123BC0
+status: probable
+summary: Forwards fixed AI-attack parameter table plus per-frame params into battleObject_applyAIDataToAttackTable_8123C20
+  for all battle objects on the field.
+interface: '(r0 = dword_8123BDC = 0x0302F2E, r1 = 0x1, r2 = byte_81233D8, r3 = 0x4, r4 = 0x1c) -> void
+  ; side effects: jumps into the per-battle-object loop in 8123C20'
+details: "Thin trampoline (8 instructions of code + data pool). It hardcodes a constant\n  data bundle\
+  \ `{0x0302F2E, 0x1, byte_81233D8, 0x4, 0x1c}` and forwards it via the\n  standard r0..r4 calling convention\
+  \ to sub_8123BC0's sole callee\n  battleObject_applyAIDataToAttackTable_8123C20. The callee in/out contract\
+  \ already\n  shows it loops over battle objects and pokes them; this wrapper enforces the\n  per-frame\
+  \ parameters that drive one specific update pass.\n\n  r0 = 0x0302F2E points into the EWRAM \"Toolkit\"\
+  -style area\n  ([oToolkit]+0x2e = 0x0302f2e - 0x3000000 ... actually the byte_20026e0/word area), but\n\
+  \  concretely the callee treats r0 as a `Toolkit*`-like base that already encodes\n  the per-frame input\
+  \ bundle (this is the same address dispatched from\n  battle_updateFrame_8123558, captured call data:\
+  \ entry r0=0x08123559 which is the\n  tail of an inline expansion).\n\n  r1 = 0x1 selects the AI-update\
+  \ sub-mode.\n  r2 = byte_81233D8 is the AIAttackVars/constant data table passed straight through.\n\
+  \  r3 = 0x4 (the loop phase / count selector).\n  r4 = 0x1c (28-byte stride, matching `oAIAttackVars.Size`\
+  \ = 0x50? No: 0x1c is the\n  element count / per-actor stride used by the callee and matches\n  `oT4BattleObject.ExtraVars`\
+  \ extra_vars_size = 0x1c).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- The body is `push {r4-r7,lr}; ldr r0,[pc]; mov r1,#1; ldr r2,[pc]; mov r3,#4; mov r4,#0x1c;
+    bl battleObject_applyAIDataToAttackTable_8123C20; pop {r4-r7,pc}` - literally a fixed-arg forwarder.
+    - Captured-call snapshots show all 40 callers are the per-frame battle update path (`battle_updateFrame_8123558`
+    retails r0/lr at 0x08123559, the literal address inside its body, which means sub_8123BC0 is reached
+    either inlined-via-trampoline or directly from there). - `off_8123BD4 -> byte_81233D8` (an actual
+    data table) and `off_8123BD8 -> 0x0302F2E` are both pc-pool loads resolved at fixed offsets, so the
+    constants cannot vary at runtime. - The callee contract lists `in=[''r0'',''r1'',''r2'',''r3'',''r4'',''r5'',''r6'',''r10'',''lr'']`
+    - matching exactly the 5 fixed values pushed plus r5/r6/r10/lr held by the caller (callers'' saved
+    register set).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08123BC0
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus3, story4, story6,
+    story8, story9'
+  reproduce: 'grep -l ''^08123bc0 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus3, story4, story6, story8, story9
+open_questions:
+- Without disassembly of sub_8123C20 the semantics of "AI attack vars table" cannot be proven; the name
+  is borrowed from the callee's project summary.
+- Whether the function is ever used outside the per-frame update (it is reachable from two other callers
+  listed, sub_8123574 and sub_81235A4, but those are also part of battle-update flow).
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 78d5a37f
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8123BC0 -> battleObject_applyAIDataToAttackTable_8123BC0
+  where: bn6f d34dcc4e
+  tool: tools/rename_symbol.py

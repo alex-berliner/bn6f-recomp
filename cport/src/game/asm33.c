@@ -412,9 +412,9 @@ Next chipFolder_init_812349C(void) {
 }
 
 /* ── battle_updateFrame_8123558 ── */
-/* register form: calls sub_8123BC0 outside this file, which has no typed C interface yet */
+/* register form: calls battleObject_applyAIDataToAttackTable_8123BC0 outside this file, which has no typed C interface yet */
 static void call_8123bc0(void) {
-    GUEST_CALL(sub_8123BC0);
+    GUEST_CALL(battleObject_applyAIDataToAttackTable_8123BC0);
 }
 
 /* register form: calls sub_8123BE0 outside this file, which has no typed C interface yet */
@@ -422,9 +422,9 @@ static void call_8123be0(void) {
     GUEST_CALL(sub_8123BE0);
 }
 
-/* register form: calls sub_8123C00 outside this file, which has no typed C interface yet */
+/* register form: calls battleObject_runAITurnPhase_8123C00 outside this file, which has no typed C interface yet */
 static void call_8123c00(void) {
-    GUEST_CALL(sub_8123C00);
+    GUEST_CALL(battleObject_runAITurnPhase_8123C00);
 }
 
 /* register form: calls IsScreenFadeActive outside this file, which has no typed C interface yet.
@@ -487,9 +487,9 @@ Next sub_8123574(void) {
     ST16(R5 + 0x20, 2);
 
     /* Chain of setup routines (they read r5 implicitly via R5). */
-    GUEST_CALL(sub_8123BC0);
+    GUEST_CALL(battleObject_applyAIDataToAttackTable_8123BC0);
     GUEST_CALL(sub_8123BE0);
-    GUEST_CALL(sub_8123C00);
+    GUEST_CALL(battleObject_runAITurnPhase_8123C00);
     GUEST_CALL(sub_8123D70);
 
     /* sub_811B314(1, 3). */
@@ -1286,14 +1286,14 @@ Next drawBattleBackground_8123AB8(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8123BC0 ── */
-/* sub_8123BC0:
+/* ── battleObject_applyAIDataToAttackTable_8123BC0 ── */
+/* battleObject_applyAIDataToAttackTable_8123BC0:
  * Passes a fixed argument set to battleObject_applyAIDataToAttackTable_8123C20 and returns its result untouched.
  * Arguments are all constants: the word table at dword_8123BDC, the byte
  * table at byte_81233D8, 1 in r1, 4 in r3 and a length of 0x1C in r4.
  * Like the original, this wrapper preserves r4-r7 across the call (it only
  * sets r4 as an argument, then restores the caller's value afterwards). */
-Next sub_8123BC0(void) {
+Next battleObject_applyAIDataToAttackTable_8123BC0(void) {
     u32 r4 = R4, r5 = R5, r6 = R6, r7 = R7;
 
     R0 = A_dword_8123BDC; /* pointer to the word table (0x302F2E) */
@@ -1335,13 +1335,13 @@ Next sub_8123BE0(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8123C00 ── */
-/* sub_8123C00: prepare a fixed set of arguments and forward them to battleObject_applyAIDataToAttackTable_8123C20.
+/* ── battleObject_runAITurnPhase_8123C00 ── */
+/* battleObject_runAITurnPhase_8123C00: prepare a fixed set of arguments and forward them to battleObject_applyAIDataToAttackTable_8123C20.
  * The color/palette table at dword_8123C1C (0x5B5957 = three BGR555 entries) and
  * the work buffer byte_81233E8 are passed by address; the remaining arguments
  * (0x40, 6, 0x60, -, 1) are constants. r4-r7 are restored to their entry values
  * on return, matching the original's push/pop around the call. */
-Next sub_8123C00(void) {
+Next battleObject_runAITurnPhase_8123C00(void) {
     u32 savedR4 = R4, savedR5 = R5, savedR6 = R6, savedR7 = R7;
 
     R0 = A_dword_8123C1C;   /* color data */

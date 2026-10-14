@@ -1717,7 +1717,7 @@ Next GiveBugfrags(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_803D0F4 ── */
+/* ── gameState_getProtectedBugfrags_803D0F4 ── */
 /* register form: calls encryption_bugfrags_8006fd0 outside this file, which has no typed C interface yet */
 static bool encryption_bugfrags_succeeded(u32 arg0, u32 arg1) {
     R0 = arg0;
@@ -1740,8 +1740,8 @@ static BugfragsCheck get_protected_bugfrags(u32 arg0, u32 arg1, u32 toolkit) {
     return (BugfragsCheck){ LD32(game_state + oGameState_ProtectedBugfrags), game_state };
 }
 
-/* sub_803D0F4(r0, r1, r10 = toolkit) -> r0 (bugfrags or 0), r1 (game state ptr) */
-Next sub_803D0F4(void) {
+/* gameState_getProtectedBugfrags_803D0F4(r0, r1, r10 = toolkit) -> r0 (bugfrags or 0), r1 (game state ptr) */
+Next gameState_getProtectedBugfrags_803D0F4(void) {
     BugfragsCheck res = get_protected_bugfrags(R0, R1, R10);
     R0 = res.bugfrags;
     R1 = res.state_ptr;
@@ -2454,15 +2454,15 @@ Next sub_803EAE4(void) {
 
 /* ── sub_803EB04 ── */
 /* sub_803EB04(r3 r4 r5 r6 r8 r9 r10 r11 r12 lr):
- * Calls sub_803DEB4; if its return value equals 2, also calls sub_803ED1C
+ * Calls battle_updateLinkState_803DEB4; if its return value equals 2, also calls sub_803ED1C
  * before returning to the caller. */
 Next sub_803EB04(void) {
     /* push {lr} */
     SP -= 4;
     ST32(SP, LR);
 
-    /* bl sub_803DEB4 ; cmp r0, #2 ; bne locret_803EB12 */
-    GUEST_CALL(sub_803DEB4);
+    /* bl battle_updateLinkState_803DEB4 ; cmp r0, #2 ; bne locret_803EB12 */
+    GUEST_CALL(battle_updateLinkState_803DEB4);
     SET_FLAGS_CMP(R0, 2);
     if (R0 != 2) {
         /* pop {pc} */
@@ -2691,10 +2691,10 @@ struct sub_803F560_result {
     u32 saved_r7;
 };
 
-/* register form: calls sub_803DEB4 outside this file, which has no typed C interface yet */
+/* register form: calls battle_updateLinkState_803DEB4 outside this file, which has no typed C interface yet */
 static u32 current_battle_mode(u32 *r1_out) {
     R6 = 0xFF;                     /* the caller always passes 0xFF in r6 */
-    GUEST_CALL(sub_803DEB4);
+    GUEST_CALL(battle_updateLinkState_803DEB4);
     *r1_out = R1;                  /* r1 leftover: becomes the final r1 unless overwritten later */
     return R0;
 }

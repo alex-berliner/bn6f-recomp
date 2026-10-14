@@ -1,0 +1,67 @@
+name: battleObject_applyFullscreenShakeAndCameraBump_8031388
+address: '0x08031388'
+kind: function
+previous_names:
+- sub_8031388
+status: probable
+summary: applies a one-frame fullscreen camera shake and a zero-magnitude line-vs-point test, then marks
+  the camera shake as updated
+interface: '(r0 = battle object ptr, r12 = some bitfield ptr) -> r0 = battle object ptr ; side effects:
+  camera position shifted by tiny fixed delta via camera_moveByDelta, sub_8030E14 (hit test) called, r12
+  ORed with 1'
+details: "1. Pushes {r0-r2,r5,lr} so r0/r1/r2 are saved across the calls and reloaded into r0 on exit\
+  \ (the `pop {r0-r2,r5,pc}`).\n  2. Calls battleObject_applyShakeOffsetAndProject_8031136 with the saved\
+  \ battle object / scratch args; this is the actual per-object shake-project step (the captured calls\
+  \ all come from a story2 scripted section that pre-stages shake parameters at the scratch buffer pointed\
+  \ to by r0 = 0x02009f5c).\n  3. Sets up r2 = -1, r4 = 0x20, r3 = -1, r5 = 0, r6 = 1 and calls sub_8030E14\
+  \ (line-vs-point hit test). The -1 / 0x20 / -1 setup means the test always misses (r2 = r3 = -1, delta\
+  \ 0), and r0 is returned unchanged. This looks like a deterministic no-op hit test whose side effect\
+  \ is just to clear or stage something for the camera.\n  4. Calls camera_moveByDelta_80310B0 with r0\
+  \ from the hit-test return and r1 = 0, i.e. applies a zero-delta move (the function summary says it\
+  \ skips the update when the delta is zero, so this is again effectively a no-op in the camera position).\n\
+  \  5. Finally does `r0 = r12 | 1; r12 = r0`, i.e. sets bit 0 of the caller's r12 (some \"shake/frame\
+  \ happened\" flag) so the caller can poll it.\n  6. r0/r1/r2 are restored from the stack on return,\
+  \ so the function is effectively void for callers; the only observable side effect is bit 0 of r12 being\
+  \ set.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {r0-r2,r5,lr}` and matching `pop {r0-r2,r5,pc}` show r0/r1/r2 are clobbered-saved and
+    returned untouched, so the function is void from the caller''s view. - `mov r2,#0; sub r2,#1` then
+    later `mov r3,#0; sub r3,#1` and `mov r4,#0x20` are the exact arguments sub_8030E14 expects (confirmed
+    by its in-contract: r0/r2/r3/r4/r5/r6) and force a miss. - `mov r1,#0` before `bl camera_moveByDelta_80310B0`
+    matches the "skips the update when delta is zero" branch in that callee, so the camera position is
+    not actually moved. - `mov r0,r12; mov r1,#1; orr r0,r1; mov r12,r0` is a direct OR-with-1 of the
+    caller''s r12, the only externally visible write. - Caller lr is 0x08030bfc in all 6 captured entries,
+    indicating a single fixed call site in story2 scripting.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08031388
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, beastsp, fuzz, maps, story1, story2, story3, story4, story5,
+    story6, story8, story9, wander'
+  reproduce: 'grep -l ''^08031388 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, beastsp, fuzz, maps, story1, story2, story3, story4, story5, story6, story8,
+    story9, wander
+open_questions:
+- What r12 points to / means (likely a per-frame shake dirty flag in the cutscene camera or shake state
+  struct, but the exact field is not visible from this function alone). Why sub_8030E14 is called with
+  a guaranteed miss is also unclear; it may be required to satisfy side effects of that callee (e.g. a
+  counter increment) rather than for its return value.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 78d5a37f
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8031388 -> battleObject_applyFullscreenShakeAndCameraBump_8031388
+  where: bn6f d34dcc4e
+  tool: tools/rename_symbol.py

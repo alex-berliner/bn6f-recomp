@@ -1,0 +1,59 @@
+name: battleObject_panelSnapshotBufferInit_80A54F0
+address: '0x080A54F0'
+kind: function
+previous_names:
+- sub_80A54F0
+status: probable
+summary: Trampoline/jump-table dispatcher that calls one of three BBS-related sub-functions selected by
+  an index byte on an object pointed to by r5.
+interface: (no explicit arguments) -> returns to caller via `pop {pc}`; r0 ultimately carries the result
+  of the dispatched function (0x6f8 in all captured calls)
+details: "- Function uses a tail-call pattern: `push {lr}` then `mov lr, pc; bx r0` to dispatch to a Thumb\
+  \ function with the original LR preserved for return, finishing with `pop {pc}`.\n  - `r5` is the caller's\
+  \ \"object\" pointer (per the contract in_r5). The dispatcher reads `[r5, #8]` (the CurState / CurAction\
+  \ byte of the linked object header) into r1.\n  - `off_80A5500` is a pointer to a 3-entry table `off_80A5504`:\
+  \ [sub_80A5514+1, owMapObject_bbsObjectUpdate_80A5588+1, sub_80A55CC+1]. The byte from r5+8 is used\
+  \ as an index into that table (`ldr r0, [r0, r1]`).\n  - `r6` is loaded with `unk_2013960` but never\
+  \ used by the dispatcher itself — it is preserved only because it is callee-saved.\n  - Because the\
+  \ LR is loaded into PC via the trampoline and the original LR is restored by `pop {pc}`, the chosen\
+  \ callee returns directly to the caller of sub_80A54F0 (true tail call).\n  - In all 40 captured story6\
+  \ calls r0 returns 0x6f8, suggesting the dispatched callee (typically `owMapObject_bbsObjectUpdate_80A5588`)\
+  \ deterministically returns that value, but the dispatcher itself does not set r0.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {lr}` / `pop {pc}` at 0x80A54F0..0x80A50FE establishes the tail-call return convention.
+    - `ldrb r1, [r5,#8]` reads a single state byte from the object r5 points to. - `ldr r0, [r0,r1]` with
+    `r0 = off_80A5504` (the 3-entry table) shows indexed dispatch by that byte. - Table contents: `sub_80A5514+1`,
+    `owMapObject_bbsObjectUpdate_80A5588+1`, `sub_80A55CC+1` (the +1 converts to Thumb). - `mov lr, pc;
+    bx r0` performs the indirect Thumb branch to the selected callee. - Captured calls consistently enter
+    with r0=0x080a54f1 (the return address, +1 in Thumb) confirming the tail-call relationship.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080A54F0
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp, story5, story6'
+  reproduce: 'grep -l ''^080a54f0 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp, story5, story6
+open_questions:
+- The exact role of `unk_2013960` (r6) — loaded but unused inside this function; presumably for the callees
+  that may read it.
+- Whether the index byte at r5+8 is `CurState`, `CurAction`, or some other field of the object — struct
+  offsets place state-like bytes at +0x8 but the precise meaning depends on what struct r5 is.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 78d5a37f
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80A54F0 -> battleObject_panelSnapshotBufferInit_80A54F0
+  where: bn6f d34dcc4e
+  tool: tools/rename_symbol.py

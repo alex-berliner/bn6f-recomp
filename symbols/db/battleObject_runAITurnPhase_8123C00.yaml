@@ -1,0 +1,68 @@
+name: battleObject_runAITurnPhase_8123C00
+address: '0x08123C00'
+kind: function
+previous_names:
+- sub_8123C00
+status: probable
+summary: 'Runs an AI/attack phase on a battle object: prepares an AI data context (0x40 bytes) from a
+  per-object state blob at 0x81233E8, then calls sub_8123C20 with 6 entries.'
+interface: '(r5 = toolkit ptr, r10 = some battle-obj ptr carried in) -> r0 = 0x40 (size hint) ; side effects:
+  writes to AI scratch memory and object state via sub_8123C20'
+details: "Pushes r4-r7,lr. Loads a per-frame scratch pointer from 0x8123C1C (value 0x005B5957) into r0,\
+  \ r1=0x40 (size of one AIData record), r2=byte_81233E8 (the per-object state blob the captured calls\
+  \ show in r2), r3=6 (count), r4=0x60 (stride/sizeof(AIState? since AIState size is 0x20, AIAttackVars\
+  \ 0x50; 0x60 == 0x20+0x40 or sum-of-attack-records), r6=1. Then bl sub_8123C20 which the callee contract\
+  \ takes all of r0-r6,r10. The \"6\" with r4=0x60 (6*0x60 = 0x240) and the r1=0x40 strongly suggest it\
+  \ walks 6 AI state/attack-var records starting from r2, copying/applying them through the AIData window\
+  \ r0..r0+0x40. Captured calls in `snap_battles1_*.bin` always enter with r0=0x20, r2=0x081233E8, r3=0x020047CC\
+  \ and exit r0=0x40, lr returning to 0x08123567 (inside battle_updateFrame_8123558), so this is invoked\
+  \ once per frame from the per-frame battle update when an AI attack step is needed. Because the call\
+  \ is reached only from `battle_updateFrame_8123558`, `sub_8123574`, and `sub_81235A4` (the latter is\
+  \ in a more complex path with r8/r9/r12 also live), the function effectively steers the battle object's\
+  \ \"perform an AI attack\" sub-phase, advancing the state blob at byte_81233E8.\ndetails: |\n  Note:\
+  \ the captured entry r0=0x20 (not 0x40) vs exit r0=0x40 is consistent with the immediate `mov r1,#0x40`\
+  \ overwriting r1 with the size while the previous r0 (=0x20) survives until the BL; sub_8123C20 itself\
+  \ rewrites r0 to 0x40 on return (mirroring its own internal size). The struct window r0..r0+0x40 lines\
+  \ up with `struct AIData` whose `struct_org 0x40` is a natural boundary (JoypadHeld etc end at 0x3c).\
+  \ r4=0x60 likely is the per-actor AI block size used for the count-of-6 loop in the callee.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mov r1, #0x40` and `ldr r0, [dword_8123C1C]` give the AI scratch buffer + its size; the
+    captured calls show that scratch address ends up in r0 at exit. - `mov r3, #6 ; mov r4, #0x60 ; mov
+    r6, #1` set a loop count, stride, and an "apply" flag for sub_8123C20. - Captured r2=0x081233E8 in
+    every sample maps to the project''s `byte_81233E8` state blob the function references. - Captured
+    exit lr=0x08123567 lies inside `battle_updateFrame_8123558`, which the caller list confirms as the
+    primary per-frame caller. - All three callers carry r5=toolkit and r10=related battle object (toolkit-stdout
+    contract), fitting the "AI step on this object" role. - Register contract lists r0 in `out`, matching
+    the captured return r0=0x40.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08123C00
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus3, story4, story6,
+    story8, story9'
+  reproduce: 'grep -l ''^08123c00 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus3, story4, story6, story8, story9
+open_questions:
+- The exact semantics of the loop in sub_8123C20 (whether it copies state in or applies it) is invisible
+  here; settling that would require sub_8123C20's body.
+- The 0x60 stride hypothesis (state struct 0x20 + attack var 0x50 − overlap, or 6 attack-var slots) is
+  not directly confirmed by these 6 instructions.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 78d5a37f
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8123C00 -> battleObject_runAITurnPhase_8123C00
+  where: bn6f d34dcc4e
+  tool: tools/rename_symbol.py

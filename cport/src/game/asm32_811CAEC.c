@@ -734,7 +734,7 @@ Next updateMapNameDisplay_811F014(void) {
 
 /* ── drawMapNamesScreen_811F050 ── */
 /* drawMapNamesScreen_811F050: redraw the map-name text screen.
- * Calls sub_803D0F4 and stores its result into the toolkit's unk_200A220
+ * Calls gameState_getProtectedBugfrags_803D0F4 and stores its result into the toolkit's unk_200A220
  * struct, renders the "map names" text script into the unk_200C2A0 buffer,
  * then uploads the rendered tiles/tilemap to VRAM at 0x6015400. */
 Next drawMapNamesScreen_811F050(void) {
@@ -742,7 +742,7 @@ Next drawMapNamesScreen_811F050(void) {
      * also expect the row/column arguments in those registers. */
     u32 savedR4 = R4, savedR5 = R5, savedR6 = R6, savedR7 = R7;
 
-    GUEST_CALL(sub_803D0F4);
+    GUEST_CALL(gameState_getProtectedBugfrags_803D0F4);
 
     u32 unk200a220 = LD32(R10 + oToolkit_Unk200a220_Ptr);
     ST32(unk200a220 + 8, R0);

@@ -1,0 +1,55 @@
+name: beastSp_spawnIndexDispatcher_804CC8E
+address: '0x0804CC8E'
+kind: function
+previous_names:
+- sub_804CC8E
+status: probable
+summary: Jump-table dispatcher that selects one of two beast-spawn routines based on the AIData Unk_0c
+  byte read from r5.
+interface: (r0 = junk loaded from table, r1 = dispatch index<<2, r5 = AIData ptr) -> (tail call into sub_804CCBC
+  or sub_804CCC0); preserves r5 via the 'push/pop {r4-r7,lr}'
+details: "Function is a thin trampoline. After pushing {r4-r7,lr}, it loads a pointer from off_804CCA0\n\
+  \  (=off_804CCA4), indexes it with the byte at [r5,#0xc] << 2 (so Unk_0c is treated as an\n  index in\
+  \ [0..6] since the table holds 6 word entries), reads the function pointer from\n  that slot, and tail-calls\
+  \ it via 'mov lr,pc / bx r0'. The 'pop {r4-r7,pc}' then returns\n  to the original caller once the tail-called\
+  \ function returns. The table at off_804CCA4\n  contains four copies of sub_804CCBC+1 (entries 0..3)\
+  \ followed by two copies of\n  sub_804CCC0+1 (entries 4..5), so the byte at AIData+0xc acts as a discriminator:\n\
+  \  values 0..3 call sub_804CCBC, values 4..5 call sub_804CCC0. r5 is implicitly the AIData\n  pointer\
+  \ (matching the calling convention seen in the caller sub_804CBDC where r5 carries\n  AIData across).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r1, [r5,#0xc]` at +4 reads AIData byte at offset 0xc (Unk_0c) - `lsl r1, r1, #2` makes
+    the index a word offset - `ldr r0, [r0,r1]` indexes off_804CCA4 by that offset - The .word table at
+    off_804CCA4 lists sub_804CCBC+1 four times then sub_804CCC0+1 twice - `mov lr,pc / bx r0` is the canonical
+    Thumb->Thumb tail-call via loaded address - `pop {r4-r7,pc}` returns to the caller after the tail-called
+    routine - The sole caller sub_804CBDC has r5/AIData in its in-contract, consistent with this routine
+    also using r5'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0804CC8E
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^0804cc8e '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- What sub_804CCBC vs sub_804CCC0 actually do (they are unnamed dispatch targets); the exact
+- meaning of AIData.Unk_0c in game semantics. Settled by renaming those two callees and
+- finding what fields they touch on AIData/BattleObject.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 78d5a37f
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_804CC8E -> beastSp_spawnIndexDispatcher_804CC8E
+  where: bn6f d34dcc4e
+  tool: tools/rename_symbol.py

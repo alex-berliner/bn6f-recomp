@@ -1,0 +1,60 @@
+name: gameState_getProtectedBugfrags_803D0F4
+address: '0x0803D0F4'
+kind: function
+previous_names:
+- sub_803D0F4
+status: probable
+summary: Returns the anti-tamper Protected BugFrags counter from the global GameState, or 0 if the integrity
+  check fails.
+interface: () -> r0 = ProtectedBugfrags (u32), or 0 when integrity check fails ; sets Z according to the
+  integrity-check result
+details: "- Calls `encryption_bugfrags_8006fd0`, which performs the anti-tamper integrity check on the\
+  \ Protected BugFrags counter (callee returns Z=1 if intact, Z=0 if tampered; r10 holds the toolkit pointer).\n\
+  \  - On intact (bne not taken), loads the toolkit via `r10` (GameStatePtr at `oToolkit_GameStatePtr\
+  \ = 0x3c`), then dereferences `oGameState_ProtectedBugfrags = 0x60` and returns that value in r0.\n\
+  \  - On failure (bne taken), returns 0 in r0.\n  - Uses `push {lr}` / `pop {pc}` (no other saved regs)\
+  \ so it is a leaf, no side effects beyond the read of GameState.ProtectedBugfrags.\n  - Captured calls\
+  \ (snap_story2_0/1 with toolkit+GameState pointers, snap_story2_10..13 with arbitrary args) all exit\
+  \ with r0=0 and Z set, consistent with both the success and failure paths producing either a u32 or\
+  \ zero with Z based on the prior compare.\ndetails_callers: |\n  - Called from `battle_initBattleStateBuffer_800B144`\
+  \ (RNG seed area for the protected counter) and several chatbox/UI routines (`chatbox_80424E0`, `chatbox_8042C18`,\
+  \ `sub_8046D4C`, `sub_8099FFC`, `sub_809A138`, `sub_809A1FC`, `drawMapNamesScreen_811F050`) - typical\
+  \ for places that need to read the BugFrag value to display or branch on it.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl encryption_bugfrags_8006fd0` at 0x0803d0f8 is the integrity check, exactly the documented
+    `encryption_bugfrags_8006fd0` purpose. - `bne loc_803D104` is taken when the check failed (Z=0); the
+    fallthrough loads and returns the counter, the branch returns 0. - `mov r1, r10; ldr r1, [r1,#oToolkit_GameStatePtr]`
+    (0x3c in `Toolkit.inc`) loads GameStatePtr from the toolkit register r10. - `ldr r0, [r1,#oGameState_ProtectedBugfrags]`
+    matches `oGameState_ProtectedBugfrags = 0x60` from `GameState.inc`. - Exit captured r0=0 with Z set
+    for every recorded call, matching both code paths.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0803D0F4
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story1, story2, story3, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0803d0f4 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9
+open_questions:
+- Whether the success path returns the raw u32 or a sanitised value depends on `encryption_bugfrags_8006fd0`
+  doing the actual decryption (not visible here). Either way the contract above holds.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 78d5a37f
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_803D0F4 -> gameState_getProtectedBugfrags_803D0F4
+  where: bn6f d34dcc4e
+  tool: tools/rename_symbol.py

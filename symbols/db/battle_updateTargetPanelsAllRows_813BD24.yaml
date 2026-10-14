@@ -1,0 +1,67 @@
+name: battle_updateTargetPanelsAllRows_813BD24
+address: '0x0813BD24'
+kind: function
+previous_names:
+- sub_813BD24
+status: probable
+summary: Iterates all 0x31 battle rows and, for each entry with the enabled bit set, collects target panels
+  in the four cardinal neighbours of the entry's panel and runs a finalize helper.
+interface: '() -> ; side effects: zero-fills a 0x31-byte scratch buffer and writes per-entry panels via
+  battleObject_collectTargetsInRegion + sub_813BE38'
+details: "Loop counter r6 sweeps 0..0x30 (cmp r6,#0x31; blt). Per iteration:\n    - ZeroFillByByte(byte_2006C50,\
+  \ 0x31) clears a 0x31-byte scratch buffer (storing its address in r8 for the helper-set).\n    - toolkit_getUnk2004190EntryPtr_813B9FC(r6)\
+  \ returns the entry pointer (r7) for index r6 in the per-row array at oToolkit_Unk2004190_Ptr.\n   \
+  \ - ldrh r0,[r7] - the entry's u16 enable/state word; tst/beq skips work when zero.\n    - For the live\
+  \ entry, four calls to battleObject_collectTargetsInRegion_813BD90 are issued with (u16 ldh from [r7],\
+  \ panelX from r7+3 ±1, panelY from r7+4 ±1, region/flags from r7+5), covering the four cardinal neighbours\
+  \ of the entry's own panel stored at offsets 3/4/5 of the record.\n    - Finally sub_813BE38 is called\
+  \ with the same u16 in r0; this likely commits / merges the accumulated scratch results for this row.\n\
+  \  Exit value of r0 varies between captured calls (0 or 0x1c) - r0 is set by battleObject_collectTargetsInRegion's\
+  \ last return, so it is essentially void-like from the caller's perspective.\n  The constant 0x31 matches\
+  \ the row count of the battle grid (BattleState.PlayerActors/OpponentActors u8_arr[0x10], 3 columns\
+  \ × 10 rows = 0x1E, plus the 0x31 here suggests a 5×something grid; the scratch size 0x31 is exactly\
+  \ one byte per panel column-area).\n  Caller battle_initState_813BBD4 invokes it as part of the layout/sprite/cell\
+  \ sub-init sequence after three 0x31-byte I/O scratch buffers are pulled from the toolkit.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- The cmp/cmp pair `cmp r6,#0x31 / blt loc_813BD2C` shows iteration over exactly 0x31 (49)
+    slots. - `ZeroFillByByte(byte_2006C50, 0x31)` clears a 0x31-byte region - matches the per-row scratch
+    pattern set up by the caller. - Four symmetric calls to battleObject_collectTargetsInRegion_813BD90
+    with `+/-1` on panelX (r7+3) and panelY (r7+4) (sub r1,#1/add r1,#1, sub r2,#1/add r2,#1) prove the
+    four cardinal neighbours. - r7+3/r7+4/r7+5 reads show a panelX/panelY/region-style record layout.
+    - `ldrh r0,[r7]; tst r0,r0; beq` shows a per-entry u16 enable flag that skips processing when zero.
+    - The single helper called after all four neighbours, sub_813BE38, receives the same u16 in r0 and
+    is plausibly a "commit region results to the row" hook. - Toolkit access via toolkit_getUnk2004190EntryPtr_813B9FC(r6)
+    confirms the index argument semantics and ties to oToolkit_Unk2004190_Ptr (a row/state array).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0813BD24
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story1, story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^0813bd24 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander
+open_questions:
+- The exact semantic of the r7+5 byte (probably a region/element mask). Decompiling sub_813BD90 and sub_813BE38
+  would settle it.
+- Whether r0 on exit carries a meaningful aggregate count or is just a leftover from the last callee is
+  unclear (varies in captures).
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 78d5a37f
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_813BD24 -> battle_updateTargetPanelsAllRows_813BD24
+  where: bn6f d34dcc4e
+  tool: tools/rename_symbol.py

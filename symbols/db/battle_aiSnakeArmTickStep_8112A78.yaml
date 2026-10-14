@@ -1,0 +1,68 @@
+name: battle_aiSnakeArmTickStep_8112A78
+address: '0x08112A78'
+kind: function
+previous_names:
+- sub_8112A78
+status: probable
+summary: 'AI tick for SnakeArm-style battle object: counts down Unk_08 then fires two stage checks (0x74/0x7F/0x84
+  and 0x64/0x7F/0x84) before deciding whether to schedule attack 0xB (or fall through to attack 0xA)'
+interface: (r4 = AIData ptr, r5 = BattleObject ptr, r6 = AIState ptr, r7 = AIAttackVars ptr, r10 = toolkit)
+  -> flags; writes AIData.Version_16 into AttackVars.Unk_03 and several AttackVars fields
+details: "- Always clears BattleObject.ExtraVars+0x14 to 0 (str r0,[r5,#oBattleObject_ExtraVars+0x14]).\n\
+  \  - Reads AIState.Unk_08 (u16). If it is not 0xFF it is decremented; if the result is zero the function\n\
+  \    installs `sub_8112B06+1` into AIAttackVars.Unk_28 and calls `object_setAttack0(0xA)`, then zeroes\n\
+  \    AIState.Unk_00 and returns. So Unk_08 is a \"ready countdown\" — when it ticks to 0 the actor switches\n\
+  \    to attack 0xA.\n  - Otherwise reads BattleObject.ExtraVars[0]; if zero, returns. If non-zero, that\
+  \ slot is cleared and\n    `FindBattleActorsWithNonzeroParam_ReturnCountAndSum` is called twice:\n \
+  \     1) args (0x74, 0x7F, 0x84): looks for allied actors with that param mask, return==0 is required.\n\
+  \      2) args (0x64, 0x7F, 0x84): looks for enemy actors with that mask, return==0 is required.\n \
+  \ - If either scan finds anything the function bails (locret_8112B04). Otherwise it checks\n    `object_getFlag`\
+  \ against 0x8000 (OBJECT_FLAGS_CONFUSED) — if confused, still bails.\n  - Only on a clean pass does\
+  \ it set ExtraVars+0x14=1 and populate the AttackVars record from a\n    per-version table (AIData.Version_16\
+  \ is the index): Unk_03, Unk_10, Unk_12, Unk_18, Damage,\n    Unk_0a=0x0A, Unk_0c=0x64, Unk_0d=0x68.\
+  \ ExtraVars+8..+0x10 are zeroed and `object_setAttack0(0xB)`\n    is invoked to start the \"big\" attack.\n\
+  \  - Return type is void; callees preserve r4-r7, lr. The sub_8112B06 routine that gets installed in\n\
+  \    Unk_28 is presumably the per-version attack-action handler.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `str r0,[r5,#oBattleObject_ExtraVars+0x14]` immediately after entry zeroes the "active" flag.
+    - `ldrh r0,[r6,#oAIState_Unk_08]; sub r0,#1; strh r0,[r6,...]` is the visible countdown decrement.
+    - `beq`/`bne` after the decrement only fire the install+`object_setAttack0(0xA)` branch when the post-decrement
+    value is zero, i.e. this is a "fire when timer expires" gate. - Two back-to-back `bl FindBattleActorsWithNonzeroParam_ReturnCountAndSum`
+    calls with mask 0x7F and values 0x74/0x64 plus common param 0x84 — symmetry suggests friend vs. foe
+    panel/param checks whose count must be zero to proceed. - `bl object_getFlag; ldr r1,=0x8000; tst
+    r0,r1` is the standard "not confused" gate (bit 15 = OBJECT_FLAGS_CONFUSED). - The `ldrb r1,[r4,#oAIData_Version_16]`
+    then a chain of `ldrb r0,[r1,<table>]; strh r0,[r7,#...]` is plainly a version-keyed lookup filling
+    AIAttackVars before scheduling attack 0xB (`mov r0,#0xb; bl object_setAttack0`).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08112A78
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp'
+  reproduce: 'grep -l ''^08112a78 '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp
+open_questions:
+- Exact meaning of FindBattleActorsWithNonzeroParam args (0x74/0x64 paired with 0x7F and 0x84) —
+- the param-bit patterns look like alliance/element checks but the project does not document them.
+- The semantic role of "snake arm" is inferred from sub_8112B06 being grouped with this code;
+- no in-function string confirms the actor identity. Naming `battle_aiSnakeArmTickStep_*` is a
+- hypothesis pending the matching sub_8112A64 wrapper which presumably dispatches per attack
+- state.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 78d5a37f
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8112A78 -> battle_aiSnakeArmTickStep_8112A78
+  where: bn6f d34dcc4e
+  tool: tools/rename_symbol.py

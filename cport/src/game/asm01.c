@@ -112,9 +112,9 @@ static u32 sub_8144D04_call(u32 arg) {
 }
 
 static u8 sub_803DEB4_call(void) {
-    /* Register form: calls sub_803DEB4 outside this file, which has no typed C interface yet.
+    /* Register form: calls battle_updateLinkState_803DEB4 outside this file, which has no typed C interface yet.
      * Returns the chosen step byte (the original stores r0 as a byte). */
-    GUEST_CALL(sub_803DEB4);
+    GUEST_CALL(battle_updateLinkState_803DEB4);
     return (u8)R0;
 }
 
@@ -151,7 +151,7 @@ static void do_step(u8 prev_step) {
 
     if (!test_event_flag(0x172D)) {
         /* Event 0x172D not set: pick a new step based on whether bit 0x8 of the current
-         * battle-effects word is clear. When clear, run sub_803DEB4 to choose the step;
+         * battle-effects word is clear. When clear, run battle_updateLinkState_803DEB4 to choose the step;
          * when set, restore whatever was saved (the original redundantly reloads the byte). */
         if (battle_effects_has_8()) {
             e_state_set_byte1(prev_step);

@@ -1,0 +1,70 @@
+name: battle_updateLinkState_803DEB4
+address: '0x0803DEB4'
+kind: function
+previous_names:
+- sub_803DEB4
+status: probable
+summary: Updates the link-battle state (eLinkState + Camera shake/state fields) and returns a numeric
+  code describing the current link phase.
+interface: '(r0 = timer/group index, r1 = pointer to local stack scratch from caller) -> r0 = link-state
+  code (1, 2, 4, 8, 0x20, or 4) ; side effects: writes to eLinkState and the camera-struct fields at +0x04
+  (pad_54), +0x06 (pad_56), +0x07 (pad_56+1), +0x0C (eCamera.unk_5C), +0x48; calls TestEventFlagFromImmediate
+  on EVENT_172F.'
+details: "Steps performed in the function:\n  1. Saves r4-r7, sets r6=1, loads eLinkState base into r7.\n\
+  \  2. Calls sub_8144250 (some helper that fills camera pad fields / link init) and stores the returned\
+  \ u32 at eLinkState+0x48.\n  3. Calls timer_IsEnabled_8144CE0 with the original r0; if it returns 5\
+  \ the function short-circuits with r6=4.\n  4. Otherwise it calls timer_IsEnabled_8144CE0 again and\
+  \ inspects the return:\n     - 1: if story flag EVENT_172F is set AND eLinkState+0x0C > 0, it decrements\
+  \ eLinkState+0x0C; otherwise sets eLinkState+0x06 = 1.\n     - 2: if eLinkState+0x07 == 2, writes 0xFF\
+  \ to eLinkState+0x07; else copies the timer value into eLinkState+0x07 and sets eLinkState+0x06 = 1.\n\
+  \  5. Decodes the bottom two bits of the timer value as a state index and bits 2..4 as a sub-index,\
+  \ storing the sub-index into eLinkState+0x04 (pad_54) and the raw masked value as scratch.\n  6. If\
+  \ bit 0x20 of the timer value is clear, sets r6 from the call results of sub_803E018/sub_803E200; the\
+  \ return value is mapped to 0x20, 4, or 8 based on the sub_803E200 result.\n  7. If the resulting r6\
+  \ ends up as 4 AND eLinkState+0x05 is non-zero, keeps r6 = 4.\n  8. Returns r0 = r6.\n  The captured\
+  \ calls all show entry r0=1, r1=0x0200ad04 (EWRAM scratch from the caller), the same story2 sub, with\
+  \ timer value descending (0x78, 0x77, 0x6e...) at r1+2, and exit r0=1 — consistent with the \"no special\
+  \ link event this frame\" path.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- r6 is set to 1, 4, 8 or 0x20 over the function and is what is returned (mov r0, r6; pop {pc}),
+    so the return is a small enum. - callee battle_getLinkStateCode_803F560 is documented as a link-state
+    code retriever and the only callsite-with-known-meaning here is a thin dispatcher sub_803EB04. - sub_8144250
+    is the only routine that uses byte_200DD10/unk_2009480, and the result is parked at eLinkState+0x48
+    (off_803DF9C) — i.e. this function "initializes/fills" the link state struct. - timer_IsEnabled_8144CE0
+    is invoked twice with the same arg; the first return drives the early-out, the second drives the per-timer
+    branch (1, 2, else fallthrough). - TestEventFlagFromImmediate on EVENT_172F (movflag EVENT_172F) gates
+    a decrement of eLinkState+0x0C, which is the "Camera.unk_5C" shake-timer slot, supporting the camera/link
+    framing. - EWRAM dump at 0x0200ad04 shows the low word at +2 (=0x78, 0x77, ..., 0x6b) is the timer
+    counter this function is reading each frame; higher bytes stay zero in the captured frames.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0803DEB4
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3,
+    story1, story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^0803deb4 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander
+open_questions:
+- Exact meaning of each return code (1 vs 2 vs 4 vs 8 vs 0x20) — the assembly clearly encodes them but
+  the underlying semantics (e.g. 0x20 = "request/connect", 8 = "in progress") are not pinned down without
+  seeing how the dispatcher and link state machine consume them.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 78d5a37f
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_803DEB4 -> battle_updateLinkState_803DEB4
+  where: bn6f d34dcc4e
+  tool: tools/rename_symbol.py

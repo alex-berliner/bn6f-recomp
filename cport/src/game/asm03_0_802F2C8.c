@@ -1818,8 +1818,8 @@ Next camera_recenterAndSetCtrlBits_803135E(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8031388 ── */
-/* sub_8031388(r0-r2 = parameters, r5 = parameter, r12 = state flags):
+/* ── battleObject_applyFullscreenShakeAndCameraBump_8031388 ── */
+/* battleObject_applyFullscreenShakeAndCameraBump_8031388(r0-r2 = parameters, r5 = parameter, r12 = state flags):
  * Runs the three-step sequence shared by this family of routines:
  *   1. battleObject_applyShakeOffsetAndProject_8031136 on the caller's r0-r2; its r0/r1 results are fed
  *      straight into step 2 (the original never reloads them),
@@ -1831,7 +1831,7 @@ Next camera_recenterAndSetCtrlBits_803135E(void) {
  * left. r0, r1, r2 and r5 are restored to their entry values (the
  * original's push/pop pair); r3, r4 and r6 return whatever camera_moveByDelta_80310B0
  * left in them. */
-Next sub_8031388(void) {
+Next battleObject_applyFullscreenShakeAndCameraBump_8031388(void) {
     u32 ret_addr = LR;   /* push {lr} */
     u32 arg0 = R0, arg1 = R1, arg2 = R2, arg5 = R5;
 
@@ -2527,13 +2527,13 @@ Next sub_8031BFA(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8031C2A ── */
-/* sub_8031C2A(r0, r5 = context):
+/* ── battle_calcRelPosAndAdvanceTextboxBlink_8031C2A ── */
+/* battle_calcRelPosAndAdvanceTextboxBlink_8031C2A(r0, r5 = context):
  * Runs a short helper sequence: first battle_calcRelPosToTarget_803172E on the incoming context,
  * then textbox_computeCursorBlinkAdvance_80315B8 with the fixed arguments (r2 = 1, r3 = 0x10, r4 = 1,
  * r5 = 0x10), and finally sub_8031B7C. The caller sees whatever registers
  * and flags sub_8031B7C leaves behind. */
-Next sub_8031C2A(void) {
+Next battle_calcRelPosAndAdvanceTextboxBlink_8031C2A(void) {
     GUEST_CALL(battle_calcRelPosToTarget_803172E);
 
     R2 = 1;

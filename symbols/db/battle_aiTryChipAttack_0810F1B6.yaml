@@ -1,0 +1,66 @@
+name: battle_aiTryChipAttack_0810F1B6
+address: '0x0810F1B6'
+kind: function
+previous_names:
+- sub_810F1B6
+status: probable
+summary: Per-actor AI helper that fires a selected battle chip when charge/threshold gates pass.
+interface: '(r5 = battle object AI data ptr?, r10 = toolkit, r7/r4/r6 = preserved callee-saved) -> r0
+  = 1 if chip was triggered, 0 otherwise ; side effects: may write chip params, set attack, and update
+  related object state'
+details: "- `r6` is initialised to 0 and used as the success/failure flag at the end (mov r0,r6).\n  -\
+  \ Reads the battle object's currently selected chip via `battle_getSelectedChipForUse_800ED90(r5)` (caller\
+  \ passes r5 as the battle object pointer; saved in r0 then carried through subsequent calls).\n  - If\
+  \ the returned chip flag/status word (r3) is zero, or the key derived in r4 is zero, the function bails\
+  \ to `loc_810F1E2` returning 0.\n  - `r4 = (r0 & 0xFF)` shifted/masked (LSL #0x17 / LSR #0x17) — masks\
+  \ the chip id to its low byte.\n  - Calls `battle_getStateUnk40_800A704` to fetch `BattleState->Unk_40`\
+  \ and compares it against `0x12C` (off_810F1FC). Only proceeds when `Unk_40 >= 0x12C` (a charge/threshold\
+  \ gate).\n  - On success: writes the chip params into the AI attack vars (or chip-use buffer) via `somethingWriteChipParams_80126E4(r4)`,\
+  \ then `object_setAttack0` to set the attack, then `sub_800F322` (probably a sound/animation trigger).\
+  \ Sets r6=1 and returns it.\n  - The four captured call sites all share the same `r0=0, r1=0810f0d9,\
+  \ r2=0x80, r3=0x3` shape and exit with `r0=0, flags=Z` — in those samples the early `tst r3,r3`/r4-zero\
+  \ branch fires, so this is the no-fire path of the gate.\n  - Naming follows caller `sub_810F0D8` (which\
+  \ is itself the AI sub-state machine at 0x0810f0d8) and the chip-selection+set-attack pattern; this\
+  \ is the \"fire chip if ready\" step.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl battle_getSelectedChipForUse_800ED90` immediately after `mov r0,r5` (asm offsets 810f1bc..810f1c2)
+    confirms r5 is the source battle object and the call resolves to the per-actor selected chip. - `bl
+    battle_getStateUnk40_800A704` and `cmp r0, #0x12C` / `blt loc_810F1E2` shows a global threshold (BattleState.Unk_40)
+    gating chip use. - The sequence `bl somethingWriteChipParams_80126E4` -> `bl object_setAttack0` ->
+    `bl sub_800F322` ending with `mov r6,#1` exactly matches "write chip params then set attack and play
+    sfx/anim". - Return via `mov r0,r6; pop {pc}` and `out=[''r0'',''r1'',...]` confirms the boolean return
+    slot is r0. - captured-call snapshots all returning r0=0 with -Z-- map to the `beq loc_810F1E2` branch
+    (zero chip result or zero mask).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0810F1B6
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp'
+  reproduce: 'grep -l ''^0810f1b6 '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp
+open_questions:
+- Exact meaning of the 0x12C threshold on `BattleState->Unk_40` (turn charge? damage counter?).
+- r7/r10/r4 input roles beyond "toolkit in r10 and callee-saved" — r5 in particular looks like the actor
+  pointer but the contract lists it under `out` rather than `in`, which may simply be that the lifter
+  couldn't model it as a struct-ptr-in.
+- What `sub_800F322` does (likely SFX / animation trigger) — confirming would solidify the "fire chip"
+  framing.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 78d5a37f
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_810F1B6 -> battle_aiTryChipAttack_0810F1B6
+  where: bn6f d34dcc4e
+  tool: tools/rename_symbol.py

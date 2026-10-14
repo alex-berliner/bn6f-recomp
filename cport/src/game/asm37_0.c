@@ -94,9 +94,9 @@ static void call_sub_813BC98(u32 p) {
     GUEST_CALL(sub_813BC98);
 }
 
-/* register form: calls sub_813BD24 outside this file, which has no typed C interface yet */
+/* register form: calls battle_updateTargetPanelsAllRows_813BD24 outside this file, which has no typed C interface yet */
 static void call_sub_813BD24(void) {
-    GUEST_CALL(sub_813BD24);
+    GUEST_CALL(battle_updateTargetPanelsAllRows_813BD24);
 }
 
 /* register form: calls sub_813BE8C outside this file, which has no typed C interface yet */
