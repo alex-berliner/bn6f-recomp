@@ -1,0 +1,54 @@
+name: object_setStateHandlerAndReturnOne_811CC02
+address: '0x0811CC02'
+kind: function
+previous_names:
+- sub_811CC02
+status: probable
+summary: Initializes an object's state handler table entry and returns 1.
+interface: '(r5 = object pointer) -> r0 = 1 ; side effects: writes the state-handler pointer into the
+  object via object_SetStateHandler_811CC4E'
+details: "Tail-leaf of 4 instructions: pushes lr, calls object_SetStateHandler_811CC4E with r5 still in\
+  \ place\n  (the callee reads r5 as the object pointer and writes the matching handler), then loads r0\
+  \ = 1\n  and returns via `pop {pc}`. No other registers are read or written by this function itself.\n\
+  \  Because every captured call returns r0 = 1, this looks like the CUR_STATE_INITIALIZE handler\n  used\
+  \ when an object first enters the active list, signalling \"initialization succeeded, continue\".\n\
+  \  The 40 captured calls all share entry r0 = 0811cc03 (this function's own address plus one,\n  the\
+  \ Thumb call-site offset) and r1 = 0811cac4, with varying r2 (object ids) and r3\n  (EWRAM work buffers),\
+  \ and all exit with r0 = 1 and clear flags. The caller pattern matches\n  a per-object dispatch wrapper\
+  \ (r5 holds the object across the bl).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `sub_811CC02: push {lr}; bl object_SetStateHandler_811CC4E; mov r0, #1; pop {pc}` at bn6f/asm/asm32.s:29601.
+    - object_SetStateHandler_811CC4E''s contract in=[''r5'',''lr''] matches: this function preserves r5
+    across the call. - Every captured call (40) exits with r0 = 0x00000001 and flags = ----, matching
+    the explicit `mov r0, #1`. - All 40 captured entry sites use the same lr=0x0811caa4, indicating a
+    single caller invoked per-object from a small dispatch table near 0x0811caa4.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0811CC02
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp, maps, menus2, story1, story2, story4, story5, story8'
+  reproduce: 'grep -l ''^0811cc02 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp, maps, menus2, story1, story2, story4, story5, story8
+open_questions:
+- The exact caller chain and the "object" struct (BattleObject vs OWMAP) are not pinned down by this snippet
+  alone; seeing what object_SetStateHandler_811CC4E does to r5 would confirm whether r5 holds a BattleObject
+  or a generic ObjectHeader.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 90fa2c5c
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_811CC02 -> object_setStateHandlerAndReturnOne_811CC02
+  where: bn6f f043a75e
+  tool: tools/rename_symbol.py

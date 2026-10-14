@@ -3244,7 +3244,7 @@ Next install_object_state_handler_811CA1C(void) {
  *   0: battleObject_runFloatingAnim_811CAEC
  *   4: timerCountdown_step_811CBA0
  *   8: battle_matchTrackedSpriteAndShrink_811CBD0
- *  12: sub_811CC02
+ *  12: object_setStateHandlerAndReturnOne_811CC02
  *  16: battle_initObjectSpriteAndStartAnimation_811CC0C
  *  20: sub_811CC26
  *  24: sub_811CC3A */
@@ -3262,7 +3262,7 @@ Next sub_811CA94(void) {
             case  0: GUEST_CALL(battleObject_runFloatingAnim_811CAEC);                                            break;
             case  4: GUEST_CALL(timerCountdown_step_811CBA0);                            break;
             case  8: GUEST_CALL(battle_matchTrackedSpriteAndShrink_811CBD0);             break;
-            case 12: GUEST_CALL(sub_811CC02);                                            break;
+            case 12: GUEST_CALL(object_setStateHandlerAndReturnOne_811CC02);                                            break;
             case 16: GUEST_CALL(battle_initObjectSpriteAndStartAnimation_811CC0C);       break;
             case 20: GUEST_CALL(sub_811CC26);                                            break;
             case 24: GUEST_CALL(sub_811CC3A);                                            break;

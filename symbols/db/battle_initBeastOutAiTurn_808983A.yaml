@@ -1,0 +1,59 @@
+name: battle_initBeastOutAiTurn_808983A
+address: '0x0808983A'
+kind: function
+previous_names:
+- sub_808983A
+status: probable
+summary: Initializes AI state for a BeastOut attack turn during the first non-faded frame after a scene
+  fade ends.
+interface: (r5 = AIData*, r7 = ?BattleObject*, lr) -> r0 = 1 ; no other side effects observable from callers
+details: "Skips all work while IsScreenFadeActive() returns false (z flag set after the bl), which is\n\
+  \  encoded as the beq to loc_8089856 — so the body only runs on the first frame after a fade\n  ends.\
+  \ Calls sub_8089D44 to (re)compute whatever per-turn AI scratch value lives in r7,\n  then queries battleScenarioEffect_isActive_814216E\
+  \ and stores its bool into AIData + 0xc\n  via `str r0, [r7,#0xc]`. Loads r0 = 0x1e and calls ai_setAIDataUnk18_8089CB0\
+  \ to set\n  AIData.Unk_18 = 0x1e (named Unk_18 in the AIData struct at 0x18). Finally writes 0x30\n\
+  \  into byte [r5] (r5 looks like a counter/state byte, e.g. PwrAtkState or a phase index).\n  Always\
+  \ returns 1 (boolean success) regardless of the fade branch, so callers likely treat\n  it as \"AI turn\
+  \ ready / BeastOut PwrAtk init complete\". The captured calls always have\n  r1 = 0x0808983b+1 i.e.\
+  \ the function pointer table entry right after the routine, hinting\n  r1 is a callback table and r5\
+  \ is the active AIData slot.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl IsScreenFadeActive` at 0x808983e followed by `beq loc_8089856` short-circuits the whole
+    body — only runs when no fade is in progress. - `bl sub_8089D44` at 0x8089842 prepares a per-turn
+    AI scratch value (no return examined). - `bl battleScenarioEffect_isActive_814216E` returns its bool
+    in r0 (project name implies "is the current battle scenario effect active?"), then `str r0, [r7,#0xc]`
+    writes it to offset 0xc of the struct r7 points at — this matches AIData.Unk_0c (0xc) semantically
+    (a scenario-effect flag stored alongside the AI state). - `mov r0, #0x1e` then `bl ai_setAIDataUnk18_8089CB0`
+    writes 0x1e to AIData.Unk_18 (named `Unk_18` at loc 0x18 in AIData.inc). - `mov r0, #0x30; strb r0,
+    [r5]` writes 0x30 to the byte r5 points at — interpreted as writing 0x30 (B-button PwrAtk button code?
+    compare PwrAtkButton at AIData +0x1e) into the caller''s state byte.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0808983A
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^0808983a '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- What r5 and r7 exactly point to (the namings derive from offsets the function touches,
+- but the inputs-in r5/r7 pointers aren't proven by the assembly itself).
+- Whether `[r5]` is `AIData.PwrAtkButton` or a separate state byte elsewhere.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 90fa2c5c
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_808983A -> battle_initBeastOutAiTurn_808983A
+  where: bn6f f043a75e
+  tool: tools/rename_symbol.py

@@ -1,0 +1,58 @@
+name: battle_getSubstateFinishedFlag_801FE5E
+address: '0x0801FE5E'
+kind: function
+previous_names:
+- sub_801FE5E
+status: probable
+summary: Returns a byte from a global battle sub-state struct (offset 0, likely a finished/idle flag)
+  by loading it from EWRAM pointer `eStruct203F7D8`.
+interface: () -> r0 = eStruct203F7D8[0]; no side effects beyond reading the byte
+details: "The function is a one-instruction Tail-call to `mov pc, lr` after `ldrb r0, [r3]`, where r3\
+  \ is loaded\n  with the address stored at `off_80200D0` (= `eStruct203F7D8`, an EWRAM pointer). So it\
+  \ simply returns\n  the byte at offset 0 of that struct in r0 (low 8 bits, upper bits zero from the\
+  \ byte load). The\n  caller `battle_stepSubstateToState4_8007C14` appears to test whether the current\
+  \ sub-state has\n  finished (the field is a single flag/byte, consistent with an \"isIdle\"/\"finished\"\
+  \ status), and\n  advances the main state machine to state 4 when it reads true. Multiple identical\
+  \ snapshots show\n  the function always returning `0x00` here, so the byte is checked (not consumed\
+  \ as data) — the\n  caller is testing whether the sub-state is still busy.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r3, off_80200D0 // =eStruct203F7D8` shows the target is the EWRAM struct at 0x0203F7D8.
+    - `ldrb r0, [r3]` loads exactly one unsigned byte from offset 0 of that struct. - `mov pc, lr` is
+    the Thumb leaf-return idiom; no stack use, no callees. - All 6 captured calls return `r0=0x00000000`
+    with the Z flag set, confirming a zero/non-zero is read and propagated to the caller for a branch.
+    - Sole caller `battle_stepSubstateToState4_8007C14` advances the battle FSM to state 4 when its callee
+    reports idle, which matches returning a "sub-state finished" flag.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801FE5E
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0801fe5e '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9
+open_questions:
+- The semantic of `eStruct203F7D8[0]` (whether it really is "isFinished", "error code", or some
+- other sub-state status byte) is not provable from this routine alone; only its caller can
+- disambiguate it, and that context isn't given here. Renaming the field-level meaning as
+- '"SubstateFinishedFlag" is therefore my best inference, kept at `probable` for the function'
+- role but a hypothesis at the field-name level.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 90fa2c5c
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801FE5E -> battle_getSubstateFinishedFlag_801FE5E
+  where: bn6f f043a75e
+  tool: tools/rename_symbol.py

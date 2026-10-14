@@ -1259,7 +1259,7 @@ Next getCurNaviStatTier_8014150(void) {
 /* battle_applyNaviStatTableEntry_8014178: read two stat bytes of the current navi via
  * GetBattleNaviStatsByte(kind, 8), combine them as index = stat1*3 + stat0,
  * look up byte_80141A0[index] (three entries per navi), and hand that byte to
- * sub_801DF8C. r4/r6 are preserved for the caller. */
+ * battle_setEnemyCountFromNaviStats_801DF8C. r4/r6 are preserved for the caller. */
 Next battle_applyNaviStatTableEntry_8014178(void) {
     u32 saved_r4 = R4;
 
@@ -1279,7 +1279,7 @@ Next battle_applyNaviStatTableEntry_8014178(void) {
 
     R4 = A_byte_80141A0;        /* table base, as in the original */
     R0 = LD8(A_byte_80141A0 + index);
-    GUEST_CALL(sub_801DF8C);
+    GUEST_CALL(battle_setEnemyCountFromNaviStats_801DF8C);
 
     R4 = saved_r4;
     RETURN_TO_CALLER();

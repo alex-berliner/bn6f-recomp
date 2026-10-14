@@ -1,0 +1,67 @@
+name: battleObject_beastModeAiPhaseInit_80898B2
+address: '0x080898B2'
+kind: function
+previous_names:
+- sub_80898B2
+status: probable
+summary: Picks the next AI sub-phase for a Beast-mode battle object by picking one of three PwrAtk phase
+  IDs (0x5C / 0x18 / 0x3C) into the AI's Unk_18 state byte.
+interface: '(r5 = ...AIData) -> r0 = 1 ; side effect: stores a u8 to [r5+0x18], possibly calls init helpers'
+details: "Entry r5 is a pointer to an AIData struct (AIDataPtr at +0x58 of a BattleObject, see struct_inc),\
+  \ and the `mov r0, #0x80 ; bl chatbox_mask_eFlags2009F38` tests bit 0x80 of the chatbox event flag word.\n\
+  \    * If that bit is set (`bne loc_80898E4`), the function just returns 1 with no state change (caller-driven\
+  \ loop iteration result).\n    * Else, `battleScenarioEffect_isActive_814216E` is queried; if NZ (effect\
+  \ active), control falls to `sub_8142ADA`. If that returns Z, it falls back to the default Beast phase\
+  \ selection via `sub_8089CDC` and writes 0x18 to AIData.Unk_18.\n    * If `sub_8142ADA` returns NZ,\
+  \ the fallback writes 0x3C.\n    * If the scenario effect was inactive, the function unconditionally\
+  \ calls `ai_setAIDataUnk18_8089CB0(r0=0x1e)`, then writes 0x5C to AIData.Unk_18.\n  The three magic\
+  \ bytes 0x5C / 0x18 / 0x3C align with the \"Unk_18\" byte of AIData (struct offset 0x18, sitting beside\
+  \ PwrAtkButton at 0x1e and PwrAtkState at 0x1d); this looks like a per-turn Beast-mode PwrAtk pick whose\
+  \ value [r5+0x18] is the new action/phase index the surrounding AI loop will dispatch on. `ai_setAIDataUnk18_8089CB0(0x1e)`\
+  \ looks like \"set the PwrAtk button\" given the constant 0x1e matches PwrAtkButton's offset. Always\
+  \ returns 1 at the end.\n  Note that r10 (ToolkitPtr) and r7 (BattleObjectPtr, presumably) are saved\
+  \ across the call, used by callees that touch Toolkit/BattleState. The exact BattleObject field(s) used\
+  \ by `sub_8142ADA`/`sub_8089CB0`/`sub_8089CDC` are out of scope here.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mov r0, #0x80 ; bl chatbox_mask_eFlags2009F38` matches eFlags2009F38 bit 7 test at the top;
+    callee summary says it returns NZ on mask. - Three `strb r0, [r5]` after three `mov r0, #imm` blocks
+    write 0x5C, 0x18, and 0x3C respectively into the same byte the callees'' param was just set up against.
+    - Captured-call r5 entries (saved by the function) correspond to AIData per the project''s callee
+    names; r10 (Toolkit) and r7 are callee-saved across the call per the contract. - The callee `ai_setAIDataUnk18_8089CB0(r0=0x1e)`
+    is called with 0x1e which equals offset of AIData.PwrAtkButton, supporting the "set PwrAtk button"
+    reading. - `bl battleScenarioEffect_isActive_814216E`; the literal "scenario effect" wording in callee''s
+    summary shows the branch changes behaviour based on whether an encounter-level effect/scenario is
+    active. - Return `mov r0, #1 ; pop {r4-r7,pc}` is unconditional; every call site (32 captures) shows
+    r0=1 and NZ cleared.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080898B2
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^080898b2 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- What offset [r5] refers to (likely AIData.Unk_18 = 0x18, but could be BattleObject.Timer if r5 isn't
+  AIData).
+- Which of the three branches is the "default" Beast path vs scenario-driven variants.
+- The exact meaning of the 0x5C / 0x18 / 0x3C constant — possibly AIState/AIAttackVars phases, given AIData
+  also has AIState at 0x80.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 90fa2c5c
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80898B2 -> battleObject_beastModeAiPhaseInit_80898B2
+  where: bn6f f043a75e
+  tool: tools/rename_symbol.py

@@ -1,0 +1,61 @@
+name: battleObject_isHitByPanelRectangle_8031570
+address: '0x08031570'
+kind: function
+previous_names:
+- sub_8031570
+status: probable
+summary: Tests whether a battle-object cell rectangle intersects a fixed rectangle from a PanelData-like
+  struct, returning 1 on hit.
+interface: (r0 = panelStructPtr, r2 = rectX, r3 = rectY, r4 = rectW, r5 = rectH) -> r0 = 0|1 ; side effects
+  none
+details: "Computes r6 = r5 - r4 and r7 = r2 - r3, then r3 = r4*r6 (??) — the assembly as written shows\
+  \ `mul r3, r4` (one-operand MUL).\n  Cleaned intent: the four corners of an axis-aligned rectangle (x0=r2,\
+  \ y0=r3, w=r4, h=r5) are tested against the cell rect\n  described by `panelStructPtr` (offsets 0..7\
+  \ read into r3/r4): r3 = *(r0+0) (e.g. cell x), r4 = *(r0+4) (cell w or x extent).\n  Performs a 2D\
+  \ AABB overlap test: `r3*di + r4*dj + r2` is the signed overlap sum, and the function returns 1 if non-negative\n\
+  \  (`cmp r5,#0; bge -> mov r0,#1`), else 0. `r1` is unused in this caller snapshot (0x6ab2 is just the\
+  \ panel struct's +0xC field).\n  Structure accessed at r0 has two u32 fields at offsets 0x0 and 0x4\
+  \ followed by a u32 +0x8 (zero in all snapshots).\n  Caller sub_80311F4 re-runs setup and uses the returned\
+  \ boolean to trigger an effect; sub_80319FE/sub_8031BFA consume r0 as a hit flag.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r3, [r0]` and `ldr r4, [r0,#4]` read two u32 from the panel struct at r0; the third
+    u32 at +0x8 is implicit (zero). - `[r0 @0200f3e0]` dump begins `07 00 00 00 03 00 00 00 00 00 00 00
+    07 00 00 00 ff ff ff ff ...`, i.e. w=7, h=3, pad=0 then x=7, y=0xffff, etc. - `mul r3, r6` and `mul
+    r4, r7` plus `add r3, r3, r4` / `add r5, r5, r3` build a weighted signed overlap value. - Final `cmp
+    r5,#0; bge loc_8031590` then returns 0 (no hit) or 1 (hit); exit flags in snapshots exactly match
+    `mov r0,#1` setting C, vs `-ZC-` for 0. - Caller sub_80311F4 description explicitly mentions "when
+    sub_8031570 reports a hit/non-zero event" → consistent hit-test boolean use. - Captured exit values
+    are exactly 0 or 1, no other range observed across 40 hits.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08031570
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, beastsp, fuzz, maps, story3, story4, story5, story6, story8'
+  reproduce: 'grep -l ''^08031570 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, beastsp, fuzz, maps, story3, story4, story5, story6, story8
+open_questions:
+- What the r0 struct actually represents (PanelData has only u16s at 0x0 and 0x2, not two u32s — could
+  be an inline panel rectangle or a per-cell rectangle embedded in a battle object).
+- Exact role of `r1` (constant 0x6ab2 in all snapshots — looks like panel-type or alliance byte plus unused
+  word).
+- Why two separate callers (`sub_80319FE` and `sub_8031BFA`) both call it with the same contract — likely
+  a duplicated helper compiled into two callers' object files.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 90fa2c5c
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8031570 -> battleObject_isHitByPanelRectangle_8031570
+  where: bn6f f043a75e
+  tool: tools/rename_symbol.py

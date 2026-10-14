@@ -1,0 +1,68 @@
+name: battle_renderBgLayer3TilesAndHandleEvent_804CDD4
+address: '0x0804CDD4'
+kind: function
+previous_names:
+- sub_804CDD4
+status: probable
+summary: Sets a BG layer 3 flag in RenderInfo, branches on a story flag (EVENT_BF0) to call a layout helper,
+  then copies a 32x32 tile block from ROM into BG tile block 3 at (0,0).
+interface: '(r5 = toolkit-related; r10 = ToolkitPtr) -> void ; side effects: writes to eRenderInfo (BG
+  control reg bits), conditionally calls sub_804CE3C, always calls sub_804CE0C, then CopyBackgroundTiles(r0=0,
+  r1=0, r2=3, r3=byte_86A3F40, r4=0x20, r5=0x20)'
+details: "1. Saves r4-r7 and lr; r4 = Toolkit.RenderInfoPtr (read via r10 + oToolkit_RenderInfoPtr).\n\
+  \  2. ldrh r0,[r4]; orr r0, #0x800; strh r0,[r4] - sets bit 0x800 in eRenderInfo.Unk_00 (likely a BG-related\
+  \ flag such as display/mosaic enable; the constant 0x800 matches the upper bit pattern typical of BG\
+  \ control bits).\n  3. movflag EVENT_BF0; bl TestEventFlagFromImmediate - tests a 16-bit story/event\
+  \ flag (immediate operand). If set, falls through to bl sub_804CE3C, otherwise skips it.\n  4. bl sub_804CE0C\
+  \ - unconditionally runs a sibling setup helper.\n  5. Loads args for CopyBackgroundTiles: r0=0 (dest\
+  \ tile X), r1=0 (dest tile Y), r2=3 (BG tile block index for layer 3), r3 = off_804CE08 -> byte_86A3F40\
+  \ (ROM tile-id source table), r4=0x20 (height in tiles = 32), r5=0x20 (width in tiles = 32). The 32x32\
+  \ size is appropriate for filling an entire 32x32-tile BG block.\n  6. bl CopyBackgroundTiles and returns;\
+  \ pop {r4-r7,pc}.\n  Net effect: enable/configure BG layer 3, optionally run a variant (sub_804CE3C)\
+  \ for one story path, run the common BG3 setup (sub_804CE0C), then DMA-copy a 32x32 tile-id table into\
+  \ BG tile block 3 at origin (0,0).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- "ldr r4, [r4,#oToolkit_RenderInfoPtr]" reaches into the Toolkit via r10 to obtain RenderInfoPtr.
+    - "ldrh r0,[r4]" / "orr r0, r2" with r2=0x800 / "strh r0,[r4]" writes a single u16 flag word at the
+    start of RenderInfo (offset 0). - "movflag EVENT_BF0; bl TestEventFlagFromImmediate" is the canonical
+    pattern for story-flag-gated branches; the immediate operand is EVENT_BF0. - "beq loc_804CDF0; bl
+    sub_804CE3C; loc_804CDF0: bl sub_804CE0C" - sub_804CE3C only runs when the flag is set, sub_804CE0C
+    always runs. - "mov r2,#3" selects BG tile block 3; "ldr r3,off_804CE08" loads the tile-id table pointer
+    byte_86A3F40; r4=0x20,r5=0x20 makes a 32x32 copy. - CopyBackgroundTiles signature in callee contract
+    matches (j,i,which_tile_block_32x32,*u16,j_size,i_size). - Two unnamed callers (sub_804CD5C and sub_804CDCC)
+    with identical contracts indicate this is one variant of a small table-driven dispatcher that picks
+    BG setup based on event flag.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0804CDD4
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^0804cdd4 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The exact meaning of bit 0x800 in eRenderInfo.Unk_00 (the contract labels it "Unk_00" with no semantics).
+  Checking render_flushDisplayRegisters_800172C or other places that read RenderInfo offset 0 would settle
+  it.
+- Which story branch sub_804CE3C corresponds to (i.e. what EVENT_BF0 actually gates in-game) - needs an
+  EVENT_BF0 reference in the event-flag table.
+- What sub_804CE0C does specifically (palette upload? tilemap? VRAM fill?). Its callees/assembly would
+  tell.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 90fa2c5c
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_804CDD4 -> battle_renderBgLayer3TilesAndHandleEvent_804CDD4
+  where: bn6f f043a75e
+  tool: tools/rename_symbol.py

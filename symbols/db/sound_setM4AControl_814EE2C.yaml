@@ -1,0 +1,69 @@
+name: sound_setM4AControl_814EE2C
+address: '0x0814EE2C'
+kind: function
+previous_names:
+- sub_814EE2C
+status: probable
+summary: m4a sound driver control register update (handles D-ma/pcm wave volume bits and a sample-rate
+  reroll guarded by the "Smsh" header magic)
+interface: (r0 = 32-bit control bits) -> r0 = saved lr (return address); updates m4a driver's direct-sound
+  state at *byte_3007FF0, writes to hardware regs via SoundPWMControl
+details: "Loads the pointer stored at `byte_3007FF0` into r4, peeks the first word of that\n  struct and\
+  \ compares it against the literal `0x68736d53` (\"Smsh\" little-endian). If\n  it doesn't match, it\
+  \ just pops the saved lr and returns (no work done, no recursion\n  guard). If it does match, it bumps\
+  \ the magic word (r4[0] += 1) as a re-entry guard,\n  then sweeps bits of r0 one nibble at a time:\n\
+  \   - bit 7..0   -> r4[5] = (r0 & 0xff) & 0x7f (master left volume)\n   - bits 0xf00 -> sets r4[6] =\
+  \ (r0 >> 8), then zeroes a 0x40-byte stride table at\n     r4+0x50..r4+0x50+0xc*0x40 (12 channel slots\
+  \ x 64 bytes of channel state) — looks\n     like the \"reset DMA buffers / channel snapshot\" config\
+  \ word.\n   - bits 0xf0000 -> r4[7] = (r0 >> 12) (master right volume)\n   - bits 0xb0000000 -> OR's\
+  \ two channel-decode nibbles into the low 6 bits of\n     `SoundPWMControl+1` (the GBA's SOUNDCNT_X\
+  \ mixed-control byte: writing to bit\n     +0 of `+1` lands on SOUNDCNT_H bits 0..5, i.e. direct-sound\
+  \ A/B volume),\n     clamping the existing 6 bits with a 0x3F mask; the upper byte holds the\n     4-bit\
+  \ shift value.\n   - bits 0xf0000000 -> forwards the high 8 bits of r0 to m4aSampleFreqSet as the\n\
+  \     \"sample rate id / sound id\" to recompute pcmDmaPeriod/pcmFreq/divFreq.\n  Finally restores r4[0]\
+  \ back to 0x68736d53 and returns the saved lr (so the caller\n  sees its own return address in r0).\
+  \ This is a thin control dispatcher sitting on\n  top of the m4a driver, not the main update loop.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r0, off_814EEB4 // =byte_3007FF0` then `ldr r4, [r0]; ldr r1, [r4]` — fetches the m4a
+    driver''s EWRAM state pointer. - `cmp r1, r0` with `dword_814EEB8 = 0x68736d53` ("Smsh" LE) — only
+    proceeds if the driver''s struct begins with that magic. - `add r0, r1, #1; str r0, [r4]` then a final
+    `str 0x68736d53, [r4]` — a lock-token pattern taken from libmid''s m4a internals. - `strb r3, [r4,#5]`
+    after isolating r0 & 0xff — drives an m4a internal byte at offset 5 (DSound master volume L slot).
+    - The 0..11 loop `mov r0, r4; add r0, #0x50; mov r1, #0; strb r1, [r0]` with `sub r3, #1; add r0,
+    #0x40` — exactly a 12-iteration zero-write at stride 0x40, i.e. clearing one byte per m4a channel
+    record. - `ldr r2, off_814EEBC // =SoundPWMControl+1` and the `ldrb ... and r0, r1, #0x3f;'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0814EE2C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story1, story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^0814ee2c '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander
+open_questions:
+- The exact mapping of bits 0xf00 -> r4+0x50 zero table is inferred from the stride
+- 0x40 and loop count 12; the project's m4a EWRAM struct isn't surfaced in the
+- Structs section, so this stays hypothesis-level pending a libmid m4a header cross-
+- reference. Bit-pack meaning for the SOUNDCNT_X nibble (which 4 bits of r0 go where
+- in `SoundPWMControl+1`) was derived from the `0xC0 << 14` mask; s80 would confirm
+- the exact field name.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 90fa2c5c
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_814EE2C -> sound_setM4AControl_814EE2C
+  where: bn6f f043a75e
+  tool: tools/rename_symbol.py

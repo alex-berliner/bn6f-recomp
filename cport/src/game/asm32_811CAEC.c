@@ -90,11 +90,11 @@ Next battle_matchTrackedSpriteAndShrink_811CBD0(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_811CC02 ── */
-/* sub_811CC02:
+/* ── object_setStateHandlerAndReturnOne_811CC02 ── */
+/* object_setStateHandlerAndReturnOne_811CC02:
  * Perform the object_SetStateHandler_811CC4E action, then report success (r0 = 1).
  * r1 and the carry flag are whatever object_SetStateHandler_811CC4E left behind. */
-Next sub_811CC02(void) {
+Next object_setStateHandlerAndReturnOne_811CC02(void) {
     GUEST_CALL(object_SetStateHandler_811CC4E);
 
     R0 = 1;

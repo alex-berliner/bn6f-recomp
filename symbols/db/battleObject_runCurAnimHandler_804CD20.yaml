@@ -1,0 +1,57 @@
+name: battleObject_runCurAnimHandler_804CD20
+address: '0x0804CD20'
+kind: function
+previous_names:
+- sub_804CD20
+status: probable
+summary: Dispatches through a CurAnim-keyed jump table to one of two BattleObject CurAnim handlers, returning
+  the callee's r0.
+interface: (r5 = BattleObjectPtr) -> r0 = whatever the dispatched handler returns ; tail-call via saved
+  lr
+details: "Saves r4-r7 and lr, loads the address of `off_804CD34` (a 2-entry function-pointer table)\n\
+  \  into r0, reads `BattleObjectPtr->CurAnim` (byte at offset 0x10) into r1, then loads\n  `[r0 + r1*4]`\
+  \ to obtain a handler address, sets lr=pc and `bx`s to it (+1 to switch to\n  Thumb). After the callee\
+  \ returns, the saved r4-r7 and pc are restored (pop {r4-r7,pc}),\n  so the function is a thin dispatcher\
+  \ whose r0 is whatever the chosen handler returned.\n  The table at 0x0804CD34 holds `sub_804CD5C+1`\
+  \ (index 0) and `sub_804CDCC+1` (index 1).\n  The trailing bytes 0x0804CD3C onward look like padding/uninitialized\
+  \ constants and are\n  not reached by control flow.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r1, [r5,#0x10]` reads `BattleObject.CurAnim` (struct offset 0x10 in battle_object_struct)
+    — confirms r5 is the BattleObject pointer. - `ldr r0, [r0,r1]` after `ldr r0, off_804CD30` indexes
+    a 2-entry function-pointer table indexed by `CurAnim`. - `mov lr, pc; bx r0` is the standard Thumb->Thumb
+    indirect-call sequence; r0 holds the address with the low bit set (+1 on both table entries), confirming
+    Thumb targets. - `off_804CD34: .word sub_804CD5C+1, sub_804CDCC+1` lists the two dispatch targets,
+    both `sub_` handlers (only their names are visible — bodies are the next functions). - `pop {r4-r7,pc}`
+    restores lr into pc, so r0 on exit is the callee''s r0.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0804CD20
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^0804cd20 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- Whether r5 always points at a real BattleObject or could be a generic object whose
+- offset 0x10 is also an animation index (the dispatch key is just "CurAnim"); without
+- seeing the callees' bodies it is not certain what animation states 0 and 1 mean.
+- No callers are listed, so call sites would clarify whether this fires for every
+- BattleObject each frame or only for specific object types.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 90fa2c5c
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_804CD20 -> battleObject_runCurAnimHandler_804CD20
+  where: bn6f f043a75e
+  tool: tools/rename_symbol.py

@@ -1,0 +1,71 @@
+name: battle_advanceCinematicCameraByTextboxCharCount_8031264
+address: '0x08031264'
+kind: function
+previous_names:
+- sub_8031264
+status: probable
+summary: Advances the cinematic camera based on textbox progress during story battles
+interface: '(r0 = textbox/state ptr, r12 = flag word ptr) -> r12 = flag word ptr with bits OR''d by 3
+  ; side effects: manipulates camera + writes to dword_200F3E0'
+details: "Prologue: pushes {r0-r2,r5,lr} saving r0-r2 (r0 is the textbox/state ptr, captured 0x02009f5c),\n\
+  \  r5 (saved across bl), and lr.\n  Calls sub_8031122 which (per its summary) zeros two counter/flag\
+  \ words of the global state\n  struct at dword_200F3E0 and dispatches into sub_80310EC.\n  Then sets\
+  \ up args for sub_8030F04 (the unnamed callee whose name `battle_runTextboxUpdateAndSetStateBit1_8030F04`\
+  \ we can read from your structured prompt summary): r2=0, r4=0, r3=0x20, r5=0x20, r6=1.\n  After return,\
+  \ negates r0 twice via `neg r0,r0 ; lsr r0,#1 ; neg r0,r0` which produces a\n  fixed-point safety net\
+  \ (rounded abs), then `lsr r1,r1,#1` halves the second return reg.\n  Passes (r0,r1) into camera_moveByDelta_80310B0,\
+  \ which adds the (scaled) delta to the camera\n  scroll positions.\n  Finally ORs r12 (the saved flag\
+  \ word) with 3 and stores back; this looks like flipping in\n  bits 0 and 1 of a state/bitfield word\
+  \ that the caller expects to be set after a successful\n  textbox-driven advance step.\n  5 captured\
+  \ story snapshots (story3_0..4) all use the same r0=0x02009f5c, r1=0x00008466, r2=0x02027c50 entry signature,\n\
+  \  consistent with this being called per-cinematic-frame during a script line where the textbox\n  cursor\
+  \ advances by exactly one character (the 0x33..0x38 range in the snapshot matches the\n  textbox cursor\
+  \ positions seen across sequential frames).\n  Name `battle_advanceCinematicCameraByTextboxCharCount_8031264`\
+  \ matches: per-char advance of\n  a textbox whose char count drives a camera delta, plus or-in of two\
+  \ state bits via r12.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl sub_8031122` dispatches first; per its hypothesis it zeroes dword_200F3E0 counters and
+    calls sub_80310EC (a battle state mutator). - `bl battle_runTextboxUpdateAndSetStateBit1_8030F04`
+    with args r2=0,r4=0,r3=0x20,r5=0x20,r6=1 indicates textbox-driven update that sets a bit (BIT1 implied
+    by the callee name) and returns (r0,r1) used as deltas. - `neg r0,r0 ; lsr r0,#1 ; neg r0,r0 ; lsr
+    r1,r1,#1` followed by `bl camera_moveByDelta_80310B0` shows the (r0,r1) return is consumed as a 2D
+    camera delta (the comment in camera_moveByDelta_80310B0 says it adds delta scaled to fixed-point plus
+    current scroll). - `mov r0,r12 ; orr r0,#3 ; mov r12,r0` then `pop {pc}` returning r12 to caller means
+    r12 in/out is a state/flags word for the caller; bits 0 and 1 are being set unconditionally at the
+    end of this routine. - Captured calls share r0=0x02009f5c (likely a per-line textbox/state struct),
+    r1=0x00008466 (a fixed-point delta seed), r2=0x02027c50 (likely an iterator/list), all consistent
+    with a per-frame story cinematic call site (lr=0x08030BFC). - Snapshots show textbox cursor pointer
+    at successive offsets 0x88..0x8C, suggesting per-call increment, consistent with char-by-char textbox
+    progression.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08031264
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp, fuzz, maps, story3, story4, story5, story6, story8'
+  reproduce: 'grep -l ''^08031264 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp, fuzz, maps, story3, story4, story5, story6, story8
+open_questions:
+- The exact meaning of bits 0x3 ORed into r12 — likely "camera done advancing" + "textbox tile updated"
+  but no symbol names.
+- Whether r1=0x00008466 encodes (panel_dx, panel_dy) or a single screen-space delta is unknown.
+- The semantics of `r2=0, r4=0, r3=0x20, r5=0x20, r6=1` to sub_8030F04 — looks like an axis/range pair
+  with a flag, but the callee struct could not be located.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 90fa2c5c
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8031264 -> battle_advanceCinematicCameraByTextboxCharCount_8031264
+  where: bn6f f043a75e
+  tool: tools/rename_symbol.py

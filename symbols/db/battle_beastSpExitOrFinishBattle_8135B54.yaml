@@ -1,0 +1,80 @@
+name: battle_beastSpExitOrFinishBattle_8135B54
+address: '0x08135B54'
+kind: function
+previous_names:
+- sub_8135B54
+status: probable
+summary: BattleSystem frame step that either exits back to the overworld (r5 == 0x28) or finishes the
+  battle by zeroing the submenu and restarting the map music.
+interface: '(r5 = battle-result/state byte, r10 = *Toolkit, r2/lr = save/lr) -> void ; side effects: runs
+  entity+sprite updates, may clear chatbox flags, zero 0x80-byte submenu buffer, switch map music, may
+  unlock player and exit to map.'
+details: "- r5 is treated as a battle result byte (ldrb r4, [r5]); when it equals 0x28 the battle is treated\
+  \ as a clean end and the routine exits to the map via next_exitToMap_811F728 after first running owPlayer_unlockPlayerAfterNonNPCDialogue_809E122\
+  \ (which clears the dialogue-busy flag and story flag 0x1719).\n  - For any other value the path falls\
+  \ through to loc_8135B88, which writes 0x0c into [r5] (a \"battle finished/return to map\" state byte)\
+  \ and calls PlayMapMusic to start the map's BGM, suggesting the music had been suppressed during the\
+  \ battle and is now restored.\n  - Always runs entity_runAllUpdateHandlers_80465BC and battle_updateEStructSprites_80465F8\
+  \ first to keep active entities/sprites animated.\n  - Gate controlled by IsScreenFadeActive: only past\
+  \ this point does the chatbox get cleared (chatbox_8040818 + chatbox_clear_eFlags2009F38 with mask 0x40)\
+  \ and the 0x80-byte Submenu buffer pointed at by Toolkit.SubmenuPtr (oToolkit_SubmenuPtr = 0x34) zero-filled.\n\
+  \  - Push {r4,lr} / pop {r4,pc} matches the void-like contract: r4 is the only callee-saved register\
+  \ saved, and no result is returned to callers.\n  - The captured-call site (return from r0=08135b55\
+  \ / lr=081356e0, r1=8) and the consistent exit r0=1 with -ZC- flags suggest this routine is invoked\
+  \ repeatedly from a coroutine dispatcher that itself is called when a battle result byte becomes non-zero.\n\
+  evidence: |\n  - asm: ldrb r4, [r5] ; cmp r4, #0x28 ; beq exit path vs bne loc_8135B88 at 0x8135B7C..8135B84\
+  \ shows the dual-branch structure.\n  - asm: ldr r0, [r10,#0x34] then ZeroFillByWord(r0, 0x80) zeroes\
+  \ Toolkit.SubmenuPtr-sized buffer; 0x34 matches oToolkit_SubmenuPtr.\n  - asm: at loc_8135B88, `mov\
+  \ r0, #0xc ; strb r0, [r5]` writes the post-battle state byte before PlayMapMusic.\n  - asm: `bl next_exitToMap_811F728`\
+  \ only on the 0x28 branch; `bl PlayMapMusic` only on the other branch.\n  - callee summaries confirm\
+  \ unlockPlayer clears dialogue/story flag, next_exitToMap transitions back to overworld map, chatbox_clear_eFlags2009F38\
+  \ clears selected bits of eFlags2009F38 (mask 0x40 here).\n  - captured-call r0 always returns 0x1,\
+  \ consistent with a void-like step function rather than a query.\nuncertain: |\n  - Exact meaning of\
+  \ the [r5] byte values 0x28 vs other and whether 0x0c is the \"battle done\" sentinel for the caller;\
+  \ identifying [r5]'s struct field by reverse-engineering the dispatching coroutine at 0x081356e0 would\
+  \ settle it.\n  - What flag 0x1719 inside owPlayer_unlockPlayerAfterNonNPCDialogue_809E122 represents\
+  \ in this specific battle-completion path; the overworld/non-NPC naming suggests this exit may be reused\
+  \ for non-battle dialogue too.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- asm: ldrb r4, [r5] ; cmp r4, #0x28 ; beq exit path vs bne loc_8135B88 at 0x8135B7C..8135B84
+    shows the dual-branch structure. - asm: ldr r0, [r10,#0x34] then ZeroFillByWord(r0, 0x80) zeroes Toolkit.SubmenuPtr-sized
+    buffer; 0x34 matches oToolkit_SubmenuPtr. - asm: at loc_8135B88, `mov r0, #0xc ; strb r0, [r5]` writes
+    the post-battle state byte before PlayMapMusic. - asm: `bl next_exitToMap_811F728` only on the 0x28
+    branch; `bl PlayMapMusic` only on the other branch. - callee summaries confirm unlockPlayer clears
+    dialogue/story flag, next_exitToMap transitions back to overworld map, chatbox_clear_eFlags2009F38
+    clears selected bits of eFlags2009F38 (mask 0x40 here). - captured-call r0 always returns 0x1, consistent
+    with a void-like step function rather than a query.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08135B54
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^08135b54 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- Exact meaning of the [r5] byte values 0x28 vs other and whether 0x0c is the "battle done" sentinel for
+  the caller; identifying [r5]'s struct field by reverse-engineering the dispatching coroutine at 0x081356e0
+  would settle it.
+- What flag 0x1719 inside owPlayer_unlockPlayerAfterNonNPCDialogue_809E122 represents in this specific
+  battle-completion path; the overworld/non-NPC naming suggests this exit may be reused for non-battle
+  dialogue too.
+- 'status: probable'
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 90fa2c5c
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8135B54 -> battle_beastSpExitOrFinishBattle_8135B54
+  where: bn6f f043a75e
+  tool: tools/rename_symbol.py

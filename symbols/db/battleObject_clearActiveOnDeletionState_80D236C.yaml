@@ -1,0 +1,54 @@
+name: battleObject_clearActiveOnDeletionState_80D236C
+address: '0x080D236C'
+kind: function
+previous_names:
+- sub_80D236C
+status: probable
+summary: If the deletion-state battle flag is set, clear the object's ACTIVE bit, set PAUSE_UPDATE, force
+  CurAction=8 and zero CurPhaseAndPhaseInitialized.
+interface: (r5 = BattleObject*) -> side effects only; no return value
+details: "Calls battle_getFlags to read the battle state's halfword at offset 0x32, then tests bit 0 with\
+  \ tst r0, #1.\n  If bit 0 is clear, calls nullsub_10 (an empty stub) and returns.\n  If bit 0 is set,\
+  \ manipulates the BattleObject at r5:\n    - reads byte at oObjectHeader_Flags (offset 0 in the ObjectHeader),\
+  \ clears bit 0x04 (OBJECT_FLAG_PAUSE_UPDATE) and writes it back\n    - then reads it again, sets bit\
+  \ 0x02 (OBJECT_FLAG_ACTIVE) and writes it back\n    - writes immediate 8 into oBattleObject_CurAction\
+  \ (offset 0x9)\n    - writes halfword 0 into oBattleObject_CurPhaseAndPhaseInitialized (offset 0xa)\n\
+  \  Net effect: when the per-frame \"deletion\" flag is asserted, the object is left ACTIVE but update-paused,\
+  \ with its action forced to 8 and phase counter reset.\n  Used as a per-frame routine during battle\
+  \ object lifecycle handling.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl battle_getFlags` reads `oBattleState_Unk_32` via the callee''s contract - `tst r0, #1;
+    bne loc_80D237E` branches on the LSB of that halfword - `bic r0, r1` then `orr r0, r1` against `#4`
+    / `#2` shows OBJECT_FLAG_PAUSE_UPDATE cleared and OBJECT_FLAG_ACTIVE set - `mov r0, #8; strb r0, [r5,#oBattleObject_CurAction]`
+    writes CurAction = 8 (CUR_STATE_DESTROY-like sentinel) - `mov r0, #0; strh r0, [r5,#oBattleObject_CurPhaseAndPhaseInitialized]`
+    zeros the CurPhase + PhaseInitialized halfword - No callee-saved registers (r4-r7, r8-r10) are pushed/popped,
+    only lr; signature is void-like'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080D236C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp, maps'
+  reproduce: 'grep -l ''^080d236c '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp, maps
+open_questions:
+- The exact meaning of CurAction = 8 in this codebase, and whether `OBJECT_FLAG_PAUSE_UPDATE` semantics
+  match "stop processing but stay around for cleanup".
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 90fa2c5c
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80D236C -> battleObject_clearActiveOnDeletionState_80D236C
+  where: bn6f f043a75e
+  tool: tools/rename_symbol.py

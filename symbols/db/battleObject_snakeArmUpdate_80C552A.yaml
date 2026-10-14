@@ -1,0 +1,74 @@
+name: battleObject_snakeArmUpdate_80C552A
+address: '0x080C552A'
+kind: function
+previous_names:
+- sub_80C552A
+status: probable
+summary: 'Per-frame update for a SnakeArm-style battle object: while ticking, spawn sibling "body segment"
+  objects ahead in its facing direction each beat, then clean up and self-destruct when its outer life
+  counter expires.'
+interface: '(r5 = BattleObjectPtr) -> r0 = previous oBattleObject_Param1 value ; may_write: oBattleObject_Timer,
+  oBattleObject_Param2, oBattleObject_Param1, oBattleObject_CurStateActionPhaseAndPhaseInitialized on
+  the parent, and spawns one or more child BattleObjects via sub_80C5590'
+details: "Loads `[r5+oBattleObject_ExtraVars+0]` (read once into r0); if that pointer is NULL it goes\
+  \ straight to the\n  \"done\" branch and self-destructs (beq loc_80C556E -> object_clearCollisionRegion\
+  \ + write\n  CUR_STATE_DESTROY into oBattleObject_CurStateActionPhaseAndPhaseInitialized). Otherwise\
+  \ it ticks\n  oBattleObject_Timer down by 1 each call. When oBattleObject_Timer hits zero AND oBattleObject_Param2\
+  \ is\n  non-zero, it calls object_getFrontDirection to get the per-side facing unit (+1/-1), spawns\
+  \ a sibling\n  battle object at (panelX+dir, panelY) via sub_80C5590 (which inherits this object's params/counter/\n\
+  \  extra-vars/element and wires RelatedObject1Ptr), then decrements oBattleObject_Param2 and, while\n\
+  \  `[r5+oBattleObject_ExtraVars+4]` is non-zero, spawns two more sibling objects one and two panels\n\
+  \  further ahead (r1-=1, then r1+=2 from after the second call). Finally it ticks oBattleObject_Param1\n\
+  \  down by 1 each call regardless; if Param1 reaches zero OR the ExtraVars[0] pointer is NULL, it calls\n\
+  \  object_clearCollisionRegion and sets CurState=DESTROY (0x08) so the parent's per-frame dispatcher\n\
+  \  destroys it next phase. The sibling-spawn pattern (interval timer + N-segment count + variable-range\n\
+  \  ExtraVars[4]) is consistent with a SnakeArm (multi-segment projectile) head/body dispatcher.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- ldr r0,[r5,#oBattleObject_ExtraVars]; ldr r0,[r0]; cmp r0,#0; beq loc_80C556E — ExtraVars[0]
+    gates whether the object is even ticking. - ldrh r0,[r5,#oBattleObject_Timer]; sub r0,#1; strh r0,[r5,...];
+    bne loc_80C5566 — Timer drives each beat. - ldrb r0,[r5,#oBattleObject_Param2]; cmp r0,#0; beq loc_80C5566
+    — Param2 is the remaining-segment counter that gates new spawns. - bl object_getFrontDirection; ldrb
+    r1,[r5,#oBattleObject_PanelX]; add r0,r0,r1; ldrb r1,[r5,#oBattleObject_PanelY]; bl sub_80C5590 —
+    first segment is spawned one panel ahead in the facing direction. - ldr r2,[r5,#oBattleObject_ExtraVars+4];
+    cmp r2,#0; ... sub r1,#1; bl sub_80C5590; add r1,#2; bl sub_80C5590 — ExtraVars[4] (a "spawn-range/length"
+    word) controls whether to spawn two additional segments at panel offsets −1 and +2 from the leading
+    one. - loc_80C5566: ldrb r0,[r5,#oBattleObject_Param1]; sub r0,#1; strb r0,[r5,...]; bne locret_80C5576
+    — Param1 is the outer life counter (separate from Param2/segment count). - loc_80C556E: bl object_clearCollisionRegion;
+    mov r0,#CUR_STATE_DESTROY (0x08); str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]
+    — standard "remove from collision grid, mark for next-phase destroy". - sub_80C5590 summary confirms
+    it spawns a sibling BattleObject inheriting params/counter/extra-vars/element and sets its RelatedObject1Ptr
+    to this one, which matches a chain-segment head/body relationship. - Captured entry r2 = 0x40000088
+    (IWRAM), r3 = 0x02034880 (WRAM battle context pointer), lr = 0x080c5508 — consistent with a battle-object
+    update called out of the standard CUR_STATE_UPDATE phase hook.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080C552A
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp, story4, story6'
+  reproduce: 'grep -l ''^080c552a '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp, story4, story6
+open_questions:
+- What ExtraVars[0] vs ExtraVars[4] actually represent (probably head/tail pointers or remaining-vs-range
+  counters). Confirming whether this is specifically SnakeArm (SNAKEARM_EV_* defines in the header suggest
+  EV[1]=current segment, EV[2]=length, EV[3]=...) vs another multi-spawn battle chip would settle it;
+  would also need to identify the caller that establishes r5 and the CurState jump table entry to confirm
+  object type.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 90fa2c5c
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80C552A -> battleObject_snakeArmUpdate_80C552A
+  where: bn6f f043a75e
+  tool: tools/rename_symbol.py

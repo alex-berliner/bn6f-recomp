@@ -2542,10 +2542,10 @@ Next custGauge_Init_801DED0(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_801DF8C ── */
-/* sub_801DF8C(r0 = value): store a halfword into word_20352A2 (the 0x22 field of
+/* ── battle_setEnemyCountFromNaviStats_801DF8C ── */
+/* battle_setEnemyCountFromNaviStats_801DF8C(r0 = value): store a halfword into word_20352A2 (the 0x22 field of
  * the eStruct2035280 struct). */
-Next sub_801DF8C(void) {
+Next battle_setEnemyCountFromNaviStats_801DF8C(void) {
     ST16(A_eStruct2035280 + 0x22, R0);
     RETURN_TO_CALLER();
 }

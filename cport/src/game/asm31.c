@@ -2804,7 +2804,7 @@ Next sub_80C53E4(void) {
  *     destroy state (CUR_STATE_DESTROY), done.
  *   - otherwise: run the object's per-action collision handler, selected by
  *     CurAction through the table at off_80C551C (this table has a single
- *     entry, sub_80C552A), then present the current collision data and
+ *     entry, battleObject_snakeArmUpdate_80C552A), then present the current collision data and
  *     highlight the panel the object is standing on. */
 Next sub_80C54E0(void) {
     GUEST_CALL(object_removeCollisionData);
@@ -2825,7 +2825,7 @@ Next sub_80C54E0(void) {
      * handler sees R0 = CurAction and R1 = the table entry itself. */
     R0 = LD8(R5 + oBattleObject_CurAction);
     R1 = LD32(A_off_80C551C + R0);
-    GUEST_CALL(sub_80C552A);
+    GUEST_CALL(battleObject_snakeArmUpdate_80C552A);
 
     GUEST_CALL(object_presentCollisionData);
 

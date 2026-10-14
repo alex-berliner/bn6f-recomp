@@ -74,10 +74,10 @@ Next sub_801FE24(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_801FE5E ── */
-/* sub_801FE5E: read the byte at eStruct203F7D8.
+/* ── battle_getSubstateFinishedFlag_801FE5E ── */
+/* battle_getSubstateFinishedFlag_801FE5E: read the byte at eStruct203F7D8.
  * Returns r0 = that byte, r3 = the struct's address. */
-Next sub_801FE5E(void) {
+Next battle_getSubstateFinishedFlag_801FE5E(void) {
     R3 = A_eStruct203F7D8;
     R0 = LD8(R3);
     RETURN_TO_CALLER();

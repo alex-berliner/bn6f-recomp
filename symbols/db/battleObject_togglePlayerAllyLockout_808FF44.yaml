@@ -1,0 +1,56 @@
+name: battleObject_togglePlayerAllyLockout_808FF44
+address: '0x0808FF44'
+kind: function
+previous_names:
+- sub_808FF44
+status: probable
+summary: Toggles/clears a player's ally lockout flag and resets its associated counters during battle.
+interface: (r5 = ptr to battle-related struct) -> r5 preserved ; r1/r2/r3 clobbered ; NZ flags updated
+details: "Reads ePETMenuData+5 (a flag byte accessed via TestPETMenuDataFlag with r0=1). If that bit is\n\
+  \  already set, this routine falls through to loc_808FF68 which writes 1 into [r5,#5] and returns.\n\
+  \  Otherwise it tests the local zero flag at [r5,#5]; if zero, returns immediately. In the active\n\
+  \  case, calls sub_80468BA (no args) and then sub_80468C6 with r0/r1/r2 = 0,0,0, then stores 0\n  into\
+  \ [r5,#5] before returning. The two callees sub_80468BA / sub_80468C6 look like clear/reset\n  helpers,\
+  \ implying the routine is releasing something (counters/timers) attached to the\n  flag byte at offset\
+  \ 5 — consistent with a PET-menu / ally-control lockout being cleared.\n  Lives in the battle subsystem\
+  \ (called from sub_808FEA4, which itself is a battle helper),\n  and is reached as part of per-frame\
+  \ battle updates. r5 holds the target struct pointer; the\n  struct field at offset 5 (one byte) is\
+  \ the lockout indicator being manipulated.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0, [r5,#5]` reads and `strb r0, [r5,#5]` writes the same offset-5 byte of r5''s struct.
+    - `bl TestPETMenuDataFlag` with r0=1 confirms the gate uses ePETMenuData+5 bit 1 (PET menu state).
+    - `bne loc_808FF68` then `mov r0, #1; strb r0, [r5,#5]` shows the "set" path writes 1 back. - `bl
+    sub_80468BA` followed by `sub_80468C6(r0=0, r1=0, r2=0)` strongly suggests zeroing a 3-arg counter/timer
+    triple after releasing the lockout. - Single caller sub_808FEA4 lives in the battle subsystem, so
+    the routine is battle-scoped.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0808FF44
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^0808ff44 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The exact struct that r5 points to is not visible here; could be a BattleObject or the
+- BattleState's AI/player entry. Identifying r5's type in the caller would settle the
+- semantics (whether the cleared triple at [r5,#5..] is enemy/allied lockout, an HP regen
+- counter, etc.).
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 90fa2c5c
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_808FF44 -> battleObject_togglePlayerAllyLockout_808FF44
+  where: bn6f f043a75e
+  tool: tools/rename_symbol.py

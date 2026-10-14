@@ -1,0 +1,72 @@
+name: battleObject_beastOutActivate_8089A10
+address: '0x08089A10'
+kind: function
+previous_names:
+- sub_8089A10
+status: probable
+summary: 'Beast-Out activation handler for a battle object: when its chip-lockout flag clears, look up
+  the soul-weapon script and start its Beast-Out camera/AI.'
+interface: (r5 = BattleObjectAIDataPtr) -> r0 = 1 ; sets AIData Unk_3c / Unk_13 / Unk_18 / byte0, calls
+  cutscene camera + AI helpers
+details: "- r5 holds the AIData pointer (per project convention r5 in battle AI helpers), and the callee\
+  \ `battle_tickChipLockout_8089CB4` decrements/tests `AIData.ChipLockoutTimer` (offset 0x19). When the\
+  \ lockout has elapsed (Z=1, branch falls through) it goes to the early return.\n  - Otherwise it calls\
+  \ `GetSoulWeaponsMapIndex` which returns an index into a 2-entry `off_8089A40` table (8 u32 pointers\
+  \ pointing to `byte_8089494` ... `byte_80894CC` in pairs; index*4 fetched). The picked pointer is stored\
+  \ at `AIData.Unk_3c` (`str r0,[r5,#0x3c]`).\n  - It then calls `SetCutsceneCameraScript` with the pointer\
+  \ (passed via r0 in r1) to start the Beast-Out / soul-weapon camera script playback from the top.\n\
+  \  - It writes 1 to `AIData.Unk_13` (`strb r0,[r5,#0x13]`) — likely a \"Beast-Out active\" flag — and\
+  \ `ai_setAIDataUnk18_8089CB0(0x3c)` writes 0x3c to `AIData.Unk_18` (`strb r0,[r5]` immediately after,\
+  \ given the helper signature in r0).\n  - Finally it returns r0=1 unconditionally. The \"early return\"\
+  \ path at `loc_8089A36` also returns 1, so the function is effectively `bool`-like but always true;\
+  \ likely the caller treats the return as \"fire-and-forget\" or \"fired this frame\".\n  - The 0x60\
+  \ stored as the first byte of AIData (`strb r0,[r5]` with r0=0x60) overwrites `ActorType` (offset 0x00).\
+  \ That is consistent with `0x60` being a Beast-Out actor-type flag/encoding (bit pattern 0110_0000).\
+  \ Confirms this is a per-frame transition into Beast-Out.\n  - Caller lists are blank in the capture\
+  \ set, but the lifted caller/callee naming (`GetSoulWeaponsMapIndex`, `SetCutsceneCameraScript`, `battle_tickChipLockout_8089CB4`,\
+  \ `ai_setAIDataUnk18_8089CB0`) all fit a battle-object lifecycle hook.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl battle_tickChipLockout_8089CB4` followed by `beq loc_8089A36` shows the body only fires
+    when chip lockout has expired. - `bl GetSoulWeaponsMapIndex` then `lsl r0,r0,#2` + `ldr r0,[r1,r0]`
+    with `off_8089A40` table of 8 entries selects a script pointer indexed by soul weapon. - `str r0,[r5,#0x3c]`
+    stores the chosen script into AIData offset 0x3c (AIData.Unk_3c per the struct def). - `bl SetCutsceneCameraScript`
+    matches the contract description "Points the cutscene camera engine at a new camera script and resets
+    its command timer"; the soul-weapon camera plays. - `mov r0,#1; strb r0,[r5,#0x13]` sets AIData offset
+    0x13 (AIData.Unk_13) to 1. - `mov r0,#0x3c; bl ai_setAIDataUnk18_8089CB0` writes 0x3c via that helper,
+    consistent with `AIData.Unk_18` initialization. - `mov r0,#0x60; strb r0,[r5]` overwrites AIData offset
+    0x00 (AIData.ActorType) with 0x60 — the Beast-Out actor-type encoding. - Always returns r0=1 (both
+    fall-through and tail path), matching the captured call exit `r0=1`. - 40 captured calls from `snap_beastsp_*`
+    (BeastSP = Beast Special?) all hit this same path with consistent AIData state, supporting the Beast-Out
+    interpretation.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08089A10
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^08089a10 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- Exact meaning of AIData.Unk_13 (=1 here) and AIData.Unk_3c (soul-weapon script pointer vs another role)
+  — naming them clearly would need cross-referencing the cutscene camera table at byte_8089494+.
+- The "_ADDRESS" suffix is kept because the 0x60 actor-type rewrite and `ai_setAIDataUnk18_8089CB0` payload
+  could be re-purposed by surrounding logic; the high-level role ("trigger Beast-Out transition") is probable
+  but the precise fields touched still need confirmation.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 90fa2c5c
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8089A10 -> battleObject_beastOutActivate_8089A10
+  where: bn6f f043a75e
+  tool: tools/rename_symbol.py

@@ -2624,7 +2624,7 @@ Next eStruct200BC30_dispatchJumpOffset00_8007BF0(void) {
 /* ── battle_stepSubstateToState4_8007C14 ── */
 /* battle_stepSubstateToState4_8007C14: one step of the battle-state machine at R5.
  *
- * If the current state's handler (sub_801FE5E) reports it is still running,
+ * If the current state's handler (battle_getSubstateFinishedFlag_801FE5E) reports it is still running,
  * the state is kept alive: on its first step it is initialized by
  * sub_803DDA4 and marked with sub-state 4; afterwards sub_803DE24 is polled
  * and, unless it reports completion for an object of kind 2 (byte at R4+1),
@@ -2635,7 +2635,7 @@ Next eStruct200BC30_dispatchJumpOffset00_8007BF0(void) {
  * Preserves r4-r7; returns flags and r0 as the original does. */
 Next battle_stepSubstateToState4_8007C14(void) {
     /* Is the current state's handler still busy? */
-    GUEST_CALL(sub_801FE5E);
+    GUEST_CALL(battle_getSubstateFinishedFlag_801FE5E);
     if (R0 != 0) {
         if (LD8(R5 + 3) == 0) {
             /* First step in this state: run its init routine and mark it

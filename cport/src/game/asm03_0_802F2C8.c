@@ -1549,10 +1549,10 @@ static void call_8031122(void) {
     GUEST_CALL(sub_8031122);
 }
 
-/* register form: calls sub_8031570(r2=0,r3=0x20,r4=0x20,r5=0); no typed C interface yet */
+/* register form: calls battleObject_isHitByPanelRectangle_8031570(r2=0,r3=0x20,r4=0x20,r5=0); no typed C interface yet */
 static u32 call_8031570(void) {
     R2 = 0; R4 = 0x20; R3 = 0x20; R5 = 0;
-    GUEST_CALL(sub_8031570);
+    GUEST_CALL(battleObject_isHitByPanelRectangle_8031570);
     return R0;
 }
 
@@ -2509,7 +2509,7 @@ Next battleObject_checkInAttackRange_08031BE2(void) {
 /* ── battle_aiUpdate_8031BFA ── */
 /* battle_aiUpdate_8031BFA:
  * Runs battle_calcRelPosToTarget_803172E on the values the caller left in r0/r5, then invokes
- * sub_8031570 with a fixed argument set (r2 = 0, r3 = r4 = 0x10, r5 = 0)
+ * battleObject_isHitByPanelRectangle_8031570 with a fixed argument set (r2 = 0, r3 = r4 = 0x10, r5 = 0)
  * and finally sub_8031B7C. Register results and flags are whatever the
  * last callee leaves behind; lr is untouched (the original just pushes
  * lr and pops it back into pc). */
@@ -2520,7 +2520,7 @@ Next battle_aiUpdate_8031BFA(void) {
     R4 = 0x10;
     R3 = 0x10;
     R5 = 0;
-    GUEST_CALL(sub_8031570);
+    GUEST_CALL(battleObject_isHitByPanelRectangle_8031570);
 
     GUEST_CALL(sub_8031B7C);
 
