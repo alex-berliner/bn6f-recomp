@@ -620,3 +620,60 @@ Highlights:
 | 13    | 25                 | 19                        | 6               | 0       |
 
 Running total: named 252, hypothesis-only 69, dropped 0 (of ~10,600 placeholders).
+
+## Batch 14 (2026-10-14)
+
+25 functions, 19 named + 6 hypothesis (sub_802C460, sub_8083DF0, sub_80A7E44,
+sub_8113124, sub_8119880, sub_81345D4 kept as comment only), renamed in
+recomp 80ba811b (bn6f pushed; port ROM unchanged).
+
+Highlights:
+- battle object: is current-turn battle object
+  (battleObject_isCurrentTurnBattleObject_800AA06),
+  AI get unk-4C ptr (battleObject_aiGetUnk4cPtr_801442C);
+- battle: count alive next entries (battle_countAliveNextEntries_800AA92);
+- battle state: set unk flag bit 0 eStruct2035280
+  (battle_setUnkFlagBit0_eStruct2035280_801DB60),
+  set flag 0x04 eStruct2035280
+  (battle_setFlag0x04_eStruct2035280_801DC6E);
+- camera: should apply BG scroll to both layer pairs
+  (camera_shouldApplyBgScrollToBothLayerPairs_80269E2);
+- battle object: load chip panel GFX (battleObject_loadChipPanelGfx_80284E2);
+- overworld player: clear state unk-10 (owPlayerObject_clearStateUnk10_809D7D8);
+- overworld map object: BBS object update
+  (owMapObject_bbsObjectUpdate_80A5588);
+- battle object: update sprite (battleObject_updateSprite_80C464C),
+  destroy on collision (battleObject_destroyOnCollision_80DFEA8);
+- object: end PwrAtk action (object_endPwrAtkAction_80EAF36);
+- battle AI: attack step run decrement (ai_attackStepRunDecrement_80EB1C4);
+- battle GFX: render lattice or spinner
+  (battle_gfx_renderLatticeOrSpinner_811E0BA);
+- battle object/OAM: draw indicator or status icon
+  (battleObject_drawIndicatorOrStatusIcon_812053C);
+- battle submenu: dispatch by beast-SP index
+  (battleObject_submenuDispatchByBeastSpIndex_8133484),
+  folder edit tick (battleObject_submenuFolderEditTick_81338D4);
+- battle object: align row offset check SN3
+  (battleObject_alignRowOffsetCheckSN3_81353DC);
+- battle AI: get AI data ptr (battle_getAIDataPtr_8142068).
+
+## Tally update
+
+| batch | functions examined | named (renamed via record) | hypothesis-only | dropped |
+|-------|--------------------|---------------------------|-----------------|---------|
+| 1     | 25                 | 25                        | 0               | 0       |
+| 2     | 21                 | 20                        | 1               | 0       |
+| 3     | 25                 | 23                        | 2               | 0       |
+| 4     | 25                 | 21                        | 4               | 0       |
+| 5     | 25                 | 20                        | 5               | 0       |
+| 6     | 25                 | 21                        | 4               | 0       |
+| 7     | 25                 | 19                        | 6               | 0       |
+| 8     | 25                 | 20                        | 5               | 0       |
+| 9     | 25                 | 18                        | 7               | 0       |
+| 10    | 25                 | 14                        | 11              | 0       |
+| 11    | 25                 | 17                        | 8               | 0       |
+| 12    | 25                 | 15                        | 10              | 0       |
+| 13    | 25                 | 19                        | 6               | 0       |
+| 14    | 25                 | 19                        | 6               | 0       |
+
+Running total: named 271, hypothesis-only 75, dropped 0 (of ~10,600 placeholders).
