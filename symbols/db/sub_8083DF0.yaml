@@ -3,34 +3,29 @@ address: '0x08083DF0'
 kind: function
 previous_names: []
 status: hypothesis
-summary: BBS request dispatcher that reads/clauses the request entry, asks the cutscene engine which script sent
-  it, and routes to the appropriate per-request handler (set/clear flag, NSF animation loaders, set-event-flag helpers).
-interface: (r10 = eToolkit ptr, lr = return) -> flags nz ; side effects on r0-r9/r12, EWRAM via r10, calls a chain
-  of subsystem helpers
-details: "- Standalone function body is missing from the lifted asm (`sub_8083DF0 not found in bn6f/asm`).\n  -\
-  \ The caller/callee graph shows it switches on the BBS request slot's index field (likely oReqBBS2001150.Unk_04\
-  \ / Unk_28) and dispatches:\n      * reqBBS_setFlag_e17b0f7_8140A00 (set event-flag 0x7 of byte 0x17) for one\
-  \ branch.\n      * reqBBS_clearFlag_8140A0C (clear the matching event flag) as its complement.\n      * load_gfx_anim_8083FC0\
-  \ / load_gfx_anim_8083FFC / load_gfx_anim_8084068 plus struct_copy_80840C4 / sub_8083F80 / sub_8084080 / sub_8084180\
-  \ / sub_8084214 / sub_80842D8 for graphical request slots (likely NSF/avatar-loading BBS requests).\n  - cutscene_checkOriginalCutsceneScriptPos_8036F40\
-  \ and cutscene_checkOriginalCutsceneScriptPos_8036F58 are consulted to decide whether the originating cutscene\
-  \ script is the L-Message or \"AskJackOut\" sentinel; their nz result likely steers which gfx/anim helper is invoked.\n\
-  \  - sub_809E462 is invoked as another branch terminator (probably a \"default/no-op\" handler).\n  - Reads/writes\
-  \ std event flags via SetEventFlagFromImmediate / ClearEventFlagFromImmediate / TestEventFlagFromImmediate; those\
-  \ routines gate on the byte id and bit id passed in r0/r1.\n  - The contract writes `nz`, so the boolean decision\
-  \ (which branch was taken, or whether a flag was set/cleared) propagates to the caller — typical of a BBS state-machine\
-  \ hander returning \"handled yes/no\" to the BBS subsystem dispatcher.\n"
+summary: Handles the BBS request screen state machine, managing updates based on player input.
+interface: () -> void ; updates BBS state, manipulates event flags, modifies render/cutscene globals
+details: "The function is part of a larger menu/UI handler (likely a jump table target, given the r10 contract implies\
+  \ it's a per-frame\n  routine called from the main toolkit loop). It orchestrates several state changes: clearing\
+  \ or setting story event flags,\n  updating BBS request states, querying cutscene scripts, and triggering graphics\
+  \ animations.\n  Although no assembly is available, the callee surface (event flags, GFX anims, cutscene checks,\
+  \ BBS state) strongly\n  suggests this acts as the main update loop for an in-game BBS (Bulletin Board System)\
+  \ menu screen.\n  The contract \"in: r10\" indicates this is a void-like update routine taking the Toolkit (r10)\
+  \ implicitly.\n  The \"out: nz\" means it modifies flags, likely returning whether the menu should consume the\
+  \ input or close itself.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- Confirmed callees for SetEventFlagFromImmediate / ClearEventFlagFromImmediate / TestEventFlagFromImmediate
-    (event-flag helpers) listed in callees. - reqBBS_setFlag_e17b0f7_8140A00 is the only other "confirmed" BBS request
-    callee and its project summary literally describes it as a "BBS request handler that sets event flag 0x7 in
-    event byte 0x17". - cutscene_checkOriginalCutsceneScriptPos_8036F40 and _8036F58 summaries both mention comparing
-    the cutscene state''s saved original script pointer to known BBS-triggering scripts. - Multiple load_gfx_anim_*
-    callees at addresses near sub_8083DF0 (0x8083FC0/FFC/4068) suggest this function owns a small family of NSF
-    / BBS animation loaders. - The contract: in r10 (toolkit), in lr; out only callee-saved r4/r5/r7/r8/r9/r12 +
-    r2/r3 (scratch) + nz; matches the standard EWRAM-via-r10 subsystem-handler signature used elsewhere in bn6f.'
+  detail: '- The lifter''s contract `in=[''r10'', ''lr'']` and `out=[''nz'', ...]` matches a standard per-frame
+    UI update routine using the global Toolkit. - Direct calls to `reqBBS_setFlag_e17b0f7_8140A00` (setting an event
+    flag) and `reqBBS_clearFlag_8140A0C` (clearing one) show this routine manages request state completion. - Calls
+    to `cutscene_checkOriginalCutsceneScriptPos_8036F40` and `..._8036F58` indicate context-aware routing (e.g.,
+    specific handling when returning from a JackOut/L-Message cutscene). - Calls to `ClearEventFlagFromImmediate`,
+    `SetEventFlagFromImmediate`, and `TestEventFlagFromImmediate` confirm heavy story-flag manipulation typical
+    of BBS post-quest updates. - Multiple `load_gfx_anim_...` callees imply it drives UI animations (loading icons,
+    message boxes). - Grouping of all `reqBBS_...`, `cutscene_check...`, and BBS GUI related flags points to the
+    `reqBBS` subsystem. - Empty assembly dump: `; sub_8083DF0 not found in bn6f/asm` (no concrete instruction-level
+    evidence available).'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x08083DF0
@@ -45,13 +40,15 @@ evidence:
     '
   result: beastsp, story5, story6
 open_questions:
-- No assembly was available; the exact decision tree (which request index maps to which callee) cannot be verified.
-  Re-deriving the asm and cross-checking the cmp against reqBBS2001150.Unk_04 / Unk_28 would settle the dispatch
-  table.
+- The empty assembly completely prevents confirming the function body's control flow, local stack variables, or
+  exact return conditions.
+- Without the assembly, it's impossible to know which specific event flags are being tested/set by the immediate
+  values passed to the flag helpers, leaving the exact BBS screen (e.g., Check Request vs. Finish Request) unverified.
+- Decompiling the body or viewing the caller graph in the ROM would settle these unknowns.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f 9c862a66
+  where: bn6f ebaed976
   tool: tools/symdoc.py

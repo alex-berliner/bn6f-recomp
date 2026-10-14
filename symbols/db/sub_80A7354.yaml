@@ -1,0 +1,58 @@
+name: sub_80A7354
+address: '0x080A7354'
+kind: function
+previous_names: []
+status: hypothesis
+summary: 'Beast-Out/MegaBeast action-1 (Beast Cannon/etc.) substep: chooses the per-tick script flow (sub_80A7640
+  or write CurState=8) and runs sprite update + a phase helper.'
+interface: 'in: r5 = battle object whose CurAction==1, r6 = battle object, r10 = toolkit ; out: r2-r3-r4-r5-r8-r9-r10
+  (no caller-visible return; callee-saved only)'
+details: "Entry guard: if the saved original cutscene script pointer is the L-Message sentinel OR the AskJackOut\
+  \ sentinel, skip the action body (bne loc_80A738E). Also skip if eFlags2009F38 bit 0x80 is set.\n  Reads CurAction\
+  \ at [r6,#9] = battle_object_struct.CurAction. If it is neither 0 nor 1, jump to sub_80A73A0 / sub_80A75DC.\n\
+  \  If CurAction==1 and the u16 at [r5,#0x24] (battle_object_struct.HP) is nonzero, call sub_80A7640; otherwise\
+  \ write 0x08 to [r5,#0x8] = CurState (DESTROY).\n  Unconditionally tail-call sprite_update(r5) and then sub_80A775C\
+  \ (the per-action helper hooked through curAction 1).\n  The early branches land at loc_80A738E which still runs\
+  \ sprite_update + sub_80A775C, so this function always ends with those two calls regardless of which branch was\
+  \ taken.\n  The caller (sub_80A72D8) is the action dispatcher for the beast-out object (likely the second controller\
+  \ update of the BeastCannon action).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl cutscene_checkOriginalCutsceneScriptPos_8036F40` / `bne loc_80A738E` at 0x80A7358–0x80A735A: skips
+    body when cutscene sentinel matches; the "ask jack out" sister check is the next `bne loc_80A738E` (game term
+    "L-Message cutscript sentinel" + "AskJackOut" come from callee summaries). - `bl chatbox_mask_eFlags2009F38`
+    with `mov r0,#0x80` and `bne loc_80A738E`: when chatbox event flag 0x80 is set, the beast-out substep is skipped,
+    suggesting a chatbox/state override. - `ldrb r0,[r6,#9] cmp r0,#0 beq loc_80A7386` then `cmp r0,#1 bne loc_80A7386`:
+    routes off the action byte at +9 (battle_object_struct.CurAction); values 0 and 1 follow one path, anything
+    else follows sub_80A73A0 + sub_80A75DC. - `ldr r0,[r5,#0x24] cmp r0,#0 beq loc_80A7380`: HP at +0x24 (battle_object_struct.HP)
+    zero means sub_80A7640 isn''t called; instead `mov r0,#8 strb r0,[r5,#8]` writes CUR_STATE_DESTROY (0x8) into
+    CurState. - `bl sub_80A7640`: the per-tick Beast Cannon advance when HP>0. - Tail: `bl sprite_update` then `bl
+    sub_80A775C` (CurAction 1 helper) at loc_80A738E. - Both `bl sprite_update` and `bl sub_80A775C` execute on
+    every path, confirming they are unconditional bookends of the function. - Caller `sub_80A72D8` has identical
+    contract except larger out set, consistent with a per-frame dispatcher that calls this for CurAction==1.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080A7354
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^080a7354 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- Whether this function is beast-out specific or one of several near-identical CurAction helpers (0x80A7354, 0x80A73A0,
+  0x80A75DC, 0x80A7640, 0x80A775C may form a small per-action family under 0x80A72D8); seeing the dispatcher's switch
+  would settle whether r6/r5 always point at the same MegaBeast object.
+- Sub_80A7640 vs sub_80A73A0 identity (charge-advance vs init) – only call-graph separation hints at it.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ebaed976
+  tool: tools/symdoc.py

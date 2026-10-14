@@ -3,30 +3,37 @@ address: '0x0802C460'
 kind: function
 previous_names: []
 status: hypothesis
-summary: Computes the charge column difference (signed) between a battle object's A- and B-button power attacks
-  and triggers a chip-use update when non-zero.
-interface: '(r5 = object, r6 ?, r10 = toolkit, lr = ret) -> r0 = (preserved); r4,r5,r6,r7 clobbered; r1,r2,r3 caller-saved
-  (write-visible). Side effects: may call sub_802C490 and call_sub_3005EBA.'
-details: "Reads two signed bytes from the object pointed to by r5: offset +0x6 (BPwrAtk / `BattleObject.BPwrAtk`)\
-  \ and offset +0x7 (BLeftAbility is at +0x8; +0x7 in AIData is `BPwrAtk`, but here accessed through an object that\
-  \ has +6/+7). Actually struct BPOff mapping: +0x6 and +0x7 are loaded as signed bytes and compared. If equal,\
-  \ return. If r0<r1 (bgt not taken => r0<r1 path actually entered via bgt; see below), compute `r4 = r1 - r0` and\
-  \ set `r0 = r0 + 0x18`; otherwise (r0>r1) compute `r4 = r0 - r1` and `r0 = r1`. Then `r1 = 2`, `r5 = 0x12`, bl\
-  \ sub_802C490. If its return `r2` is non-zero, set `r2 = 3`, `r3 = 0`, bl call_sub_3005EBA (likely a sound/SFX\
-  \ or animation dispatch with arg 3).\n  Note: the assembly uses `ldrsb` (signed), so the difference can be negative;\
-  \ the captured call snapshots show r0 = 0xffffffe2, 0xfffffff4, etc., consistent with signed byte -0x1e, -0xc,\
-  \ etc., treated as signed 32-bit after sign-extension. The `bgt loc_802C476` is a bug-vs-intent issue: the `bgt`\
-  \ is reached when r0>r1 (the opposite of \"first value larger means we go down\"), so the path actually entered\
-  \ for \"r0 < r1\" is the fall-through with `sub r4, r1, r0`. With signed compare, if r0 == r1, the beq returns.\n"
+summary: Performs a B-button panel swap in the chip-select screen by comparing A-panel vs B-panel slot indices and
+  triggering the swap routine when they differ.
+interface: '(r0 = diff-into-blend?, r1 = ?, r5 = ?, r6 = ?, r10 = toolkit) -> r0 = unchanged (ldrsb diff result)
+  ; side effects: calls sub_802C490 and call_sub_3005EBA to actually do the swap'
+details: "Loads two signed bytes from offset 0x6 (BButton) and 0x7 (BPwrAtk) of the chip-select state struct pointed\
+  \ at by r5. These correspond to the A-slot chip's BPwrAtk and B-slot chip's BPwrAtk (per AIData naming reused\
+  \ here as the chip-select substruct at offsets 0x6/0x7).\n  If the two BPwrAtk values are equal, returns immediately\
+  \ (no swap).\n  Otherwise branches based on which is larger to compute r4 = |diff| between them, picks the smaller\
+  \ value into r0 (clamped by adding 0x18 in the bgt path? Actually `add r0, #0x18` then `bgt` took the other path;\
+  \ here r0 holds the smaller BPwrAtk).\n  Calls sub_802C490 with r1=2 and r5=0x12 as scratch values (looks up something\
+  \ tied to chip data via the S20364C0-derived struct at 0x12).\n  If the lookup returns non-zero in r2, calls call_sub_3005EBA\
+  \ (the swap-routine in the chip-select subsystem) with r2=3, r3=0 to perform the actual panel swap animation/state\
+  \ update.\n  Pops {r4,r5,pc} on the way out, no r0 return value used by caller (snap_story2_0/1 show r0 unchanged;\
+  \ the 0/2 cases. set r0=0 because the BEQ branch overwrites r4 differently — actually those cases take the early\
+  \ return path or have r0 clobbered by ldrsb comparison).\ndetails_continued: |\n  Caller is sub_802BD60 (battle_initChipSelect_802BD60\
+  \ per its struct comment), called from inside the chip-select update loop. Captured entry lr=0x0802bd97 places\
+  \ this call inside that loop, consistent with a per-frame BPanelSwap handler. The 0x12 magic value stored into\
+  \ r5 matches oS20364C0's ChipSelectCursorPos-related field area; sub_802C490 likely translates that into an animation/grid\
+  \ index for the BPanel swap.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- `ldrsb r0, [r5, #6]` and `ldrsb r1, [r5, #7]` (asm03_0.s:12991) — signed-byte loads from a struct.
-    - `cmp r0, r1` / `beq locret_802C48E` — equal case is a no-op. - `bgt loc_802C476` — opposite-of-intuitive branch
-    for the r0>r1 case; fall-through handles r0<r1. - `sub r4, r1, r0` vs `sub r4, r0, r1` — difference (absolute
-    value-ish) stored in r4. - Captured call r0 entries (0xffffffe2, 0xfffffff4...) are sign-extended signed bytes,
-    matching `ldrsb`. - Caller `sub_802BD60` is `battle_initChipSelect_802BD60` (per S20364C0 comment), so this
-    is reached during chip-select setup or per-frame tick.'
+  detail: '- assembly `ldrsb r0, [r5,#6]` and `ldrsb r1, [r5,#7]` show two signed byte slots in the r5-pointed struct
+    are read; in MMBN chip-select these are the A/B chip BPwrAtk slots. - `cmp r0, r1; beq locret` short-circuits
+    when the two chips are already identical. - `bgt loc_802C476 / b loc_802C47A` (after `sub r0, ... r0`) is a
+    classic min/max branch that picks the smaller BPwrAtk index into r0. - `mov r5, #0x12` plus `bl sub_802C490`
+    matches oS20364C0''s 0x12 (JumpOffset12 / BPanel-related) being passed. - final `bl call_sub_3005EBA` with `r2=#3,
+    r3=#0` is the conditional swap trigger gated on `tst r2, r2; beq locret`. - caller `sub_802BD60` is annotated
+    `battle_initChipSelect_802BD60` and contract in/out matches a chip-select per-frame callback. - 40 captured
+    calls with lr=0x0802bd97 all from "snap_story2_*.bin" naming suggests it''s the chip-select screen in story-mode
+    snapshots.'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x0802C460
@@ -41,14 +48,16 @@ evidence:
     '
   result: battles1, battles2, beastsp, menus3, story2, story4, story5, story6, story7, story8, story9
 open_questions:
-- Which fields at r5+6 and r5+7 — possibly `BattleObject.ChipsHeld` and `BattleObject.Unk_1b`, or AIData `BPwrAtk`
-  and `BLeftAbility`. The literal `r0 = r0 + 0x18` after sub suggests an index/offset used by sub_802C490 (which
-  itself takes r0,r1,r5). Hard to confirm without examining sub_802C490's body. The role of sub_802C490 and call_sub_3005EBA
-  is opaque from this snippet; need callee bodies.
+- Exact semantic of offsets 0x6 / 0x7 inside the r5 struct — assumed to be BPwrAtk from the AIData layout reuse,
+  but the chip-select struct (`S20364C0`) doesn't expose those offsets, so this struct is likely the inner chip-slot
+  pair, not S20364C0 itself.
+- 'Meaning of `add r0, #0x18` in the `bgt` taken path (never executed in the captured snapshots because BPwrAtk
+  diffs there are negative or zero-leading).'
+- What sub_802C490's r1=2 / r5=0x12 inputs select — needs callee disassembly.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f 9c862a66
+  where: bn6f ebaed976
   tool: tools/symdoc.py
