@@ -202,3 +202,46 @@ this commit's scope (the call there predates batch 1).
 | 4     | 25                 | 21                        | 4               | 0       |
 
 Running total: named 89, hypothesis-only 7, dropped 0 (of ~10,600 placeholders).
+
+## Batch 5 (2026-10-14)
+
+25 functions, 20 named + 5 hypothesis (sub_80027C4, sub_801B9BC, sub_8033B80,
+sub_8083DF0, sub_81196A0 kept as comment only), renamed in recomp 2eda8b0a
+(bn6f 4ab63ce3 comments + renames; port ROM unchanged).
+
+Highlights:
+- main loop / system: pending-request drain and sound forward
+  (main_drainPendingRequestQueueAndForwardSoundReq_80007BE);
+- sprite: queue-frame-pieces sub (sprite_queueFramePiecesViaSub_8002694);
+- battle object layer: AI category classify (battle_aiClassifyChipCategory_8012A38),
+  power-attack charge update (battle_ai_updatePowerAttackCharge_8012EBC),
+  object poison-tick (battleObject_processPoisonTick_801026A), anim/state update
+  (battleObject_updateAnimAndState_801CADC), visual-state sync
+  (battleObject_syncVisualStateFromRelatedObject_80B863A), invincibility destroy
+  handler (battleObject_handleDestroyByInvincibility_80D44D2),
+  charge-shot play-charge (battleObject_chargeShotChargeObject_playChargeSounds_80E0F5E);
+- battle HUD: timer tile draw (battle_drawTimerTiles_801C4E4),
+  battle-busy predicate (battle_isInputAllowedOrBattleBusy_80A7C58);
+- battle/AI dispatch: advance Unk40 if flag set
+  (battle_advanceUnk40IfFlagSet_800A6A6), object-update/effect dispatch
+  (battle_dispatchObjectUpdateOrEffect_81333A0);
+- cutscene: jack-in/jack-out try (cutscene_tryJackInOrJackOut_8034CB6);
+- overworld player: run/slip/run engine (owPlayer_runSlipRunOrEngine_0809D61A);
+- overworld map object: player interact (owMapObject_handlePlayerInteract_809D9E0),
+  elevator hover (owMapObject_isHoveringElevator_0809E3A2);
+- navi palette picker (battle_pickPaletteIndexForNavi_801002C - upgraded from
+  hypothesis now that the called sub_800FD0A is identified);
+- m4a audio: ply trampoline (m4a_ply_trampoline_814ECA0);
+- RFU wireless: call-func-by-ptr stub (rfu_callFuncByPtr_814DA68).
+
+## Tally update
+
+| batch | functions examined | named (renamed via record) | hypothesis-only | dropped |
+|-------|--------------------|---------------------------|-----------------|---------|
+| 1     | 25                 | 25                        | 0               | 0       |
+| 2     | 21                 | 20                        | 1               | 0       |
+| 3     | 25                 | 23                        | 2               | 0       |
+| 4     | 25                 | 21                        | 4               | 0       |
+| 5     | 25                 | 20                        | 5               | 0       |
+
+Running total: named 109, hypothesis-only 12, dropped 0 (of ~10,600 placeholders).
