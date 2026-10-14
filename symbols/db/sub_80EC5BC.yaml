@@ -1,0 +1,59 @@
+name: sub_80EC5BC
+address: '0x080EC5BC'
+kind: function
+previous_names: []
+status: hypothesis
+summary: Dispatches an AI action based on AIAttackVars Unk_00; if the resulting flag has bits 0x8600 set, calls
+  sub_801056A
+interface: () -> side effects; no caller-visible return values (tail-pops with pop {pc})
+details: "Reads AIAttackVars Unk_00 (a one-byte selector at [r7 + oAIAttackVars_Unk_00]) and uses it\n  to index\
+  \ a 2-entry Thumb dispatch table at off_80EC5E0 (the address of the table is loaded\n  via off_80EC5DC). Each\
+  \ entry is a function pointer with bit0 set (Thumb address). Entry 0\n  is sub_80EC5EC and entry 1 is battle_aiAttackVarsTryResetAndProcessAction_80EC67E\
+  \ (this\n  is the +1 pattern; the code does `mov lr, pc; bx r1` to clear the Thumb bit on dispatch).\n\n  The\
+  \ dispatched callee returns a flags word in r0. The code tests that r0 against\n  dword_80EC5E8 = 0x8600 with\
+  \ `tst r0, r1; beq locret_80EC5DA`. When the test is non-zero\n  (i.e. the result has 0x8600 bits set), it sets\
+  \ r1=0, r2=0 and calls sub_801056A (whose\n  contract expects a \"process action\"-style role on r5 with r1/r2\
+  \ zeroed). Otherwise it\n  returns immediately via `pop {pc}`. Saves and restores lr via push/pop.\n\n  r7 is\
+  \ the toolkit battle-object / AI struct pointer (the \"current battle object\" passed\n  by the AI tick). The\
+  \ function is a thin glue layer between an AI decision flag and the\n  \"try to perform the selected action\"\
+  \ pipeline (sub_801056A). Without more callers or\n  the AI attack vars struct comment for Unk_00, the exact semantics\
+  \ of the dispatch are\n  inferred.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0, [r7,#oAIAttackVars_Unk_00]` at sub_80EC5BC+0x4 reads the selector byte. - `ldr r1, off_80EC5DC`
+    / `ldr r1, [r1,r0]` is a classic 2-entry dispatch table load. - `mov lr, pc; bx r1` switches to Thumb (callee
+    +1) without going through BL, so LR is preserved for the caller''s eventual return. - `dword_80EC5E8 = 0x8600`
+    mask via `tst r0, r1` decides whether to forward into sub_801056A, mirroring typical "decision resolved -> run
+    action" patterns. - `push {lr} ... pop {pc}` shows this is a leaf-like glue; the tail `pop {pc}` reuses the
+    saved LR to return to the caller. - sub_801056A contract takes r5 (battle object) plus r1/r2 = 0 here, consistent
+    with an "execute the queued AI action with cleared parameters" call.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080EC5BC
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^080ec5bc '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- Which AIAttackVars Unk_00 value maps to which behaviour (only 2 entries here, and the
+- two callee addresses are named in the disassembly but their bodies are not shown).
+- What 0x8600 represents as a flag combination. The matcher must be a return flag from
+- the dispatched helper, so resolving the helper bodies would settle the meaning.
+- Whether r7 is the toolkit, the current battle object, or the AIData block (the
+- function does not dereference it further; the offset is into AIAttackVars, which is
+- inside AIData, suggesting r7 points at AIData or at the battle object whose AIAttackVars
+- are inlined).
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8d94ac47
+  tool: tools/symdoc.py

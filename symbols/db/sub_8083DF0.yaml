@@ -3,33 +3,30 @@ address: '0x08083DF0'
 kind: function
 previous_names: []
 status: hypothesis
-summary: Per-frame cutscene script dispatcher that advances the active cutscene script and handles gated event flags
-  and GFX animation loads for cutscene flow control
-interface: (r10 = toolkit) -> none (void; r2/r3/r4/r5/r7/r8/r9/r12 are caller-saved scratch) ; touches CutsceneState,
-  EventFlags, and possibly loads cutscene GFX anims
-details: "Function entry has no usable in-register parameters beyond the toolkit pointer in r10; everything else\n\
-  \  is read via the toolkit's CutsceneState / EventFlagsPtr / RenderInfo chain.\n  It calls cutscene_checkOriginalCutsceneScriptPos_8036F40\
-  \ / _8036F58 to detect the L-Message and\n  \"AskJackOut\" sentinel scripts and branches on the result to set\
-  \ or clear event flag 0x7 (via\n  SetEventFlagFromImmediate / ClearEventFlagFromImmediate / TestEventFlagFromImmediate\
-  \ using the\n  immediate args) and posts a BBS request (reqBBS_setFlag_e17b0f7_8140A00 /\n  reqBBS_clearFlag_8140A0C)\
-  \ to keep world-state and menu state aligned.\n  It then calls sub_8083F80 and a chain of load_gfx_anim_* helpers\
-  \ (8083FC0/8083FFC/8084068,\n  plus struct_copy_80840C4/sub_8084080/sub_8084180/sub_8084214/sub_80842D8) to load\
-  \ and parameterize\n  one or more GFX animations tied to the cutscene step, and ends in sub_809E462 (a generic\
-  \ test helper).\n  Several callees take r5 as an opaque per-frame buffer pointer; the function appears to be the\n\
-  \  per-VBlank cutscene tick driver invoked while CutsceneState.TextArchivePtr is active.\n"
+summary: (inferred) Overworld cutscene/pet subsystem step that queries cutscene script position, sets/clears an
+  event flag in event byte 0x17 (0x2001F68.7) and drives one of several gfx/anim substates.
+interface: '(no explicit r0..r3 args; r10 = toolkit, lr = return) -> flags nz ; may clobber r0-r9, r12, lr ; side
+  effects: EWRAM event flags, BBS request state, GFX anim state, some EWRAM struct copy via struct_copy_80840C4'
+details: 'The lifted contract has only r10 and lr as inputs and only nz / a handful of callee-saved regs in the
+  outputs, so this looks like a void-like dispatcher/tick read from a JumptableIndexPtr-style caller (r10.Toolkit
+  + 0x0). It reaches event flag helpers and a BBS request handler that pokes memory address 0x2001F68 (event byte
+  0x17, flag 0x7); the matching reqBBS_clearFlag_8140A0C just clears that request. Two cutscene checks (`cutscene_checkOriginalCutsceneScriptPos_8036F40`
+  / `8036F58`) gate behaviour on the L-Message and AskJackOut cutscripts. The gfx/anim callees (`load_gfx_anim_8083FC0`,
+  `8083FFC`, `8084068`) plus `sub_8084080`, `sub_8084180`, `sub_8084214`, `sub_80842D8` and `struct_copy_80840C4`
+  suggest this function runs once per VBlank to step an animated overlay/effect, possibly a job-results / PET-status
+  overlay given the BBS request hook.
+
+  '
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- contract in=[''r10'',''lr''] with no r0..r3 inputs matches the canonical cutscene tick style (toolkit-only)
-    - callers list is empty, which fits an internal per-frame dispatcher pulled by the cutscene VBlank - direct
-    calls to cutscene_checkOriginalCutsceneScriptPos_8036F40 and _8036F58 explicitly test for the L-Message and
-    AskJackOut sentinels, the two well-known scripted cutscene endpoints - mix of SetEventFlagFromImmediate / ClearEventFlagFromImmediate
-    / TestEventFlagFromImmediate with r10 only implies an event-flag gated path keyed off the script identity -
-    call to reqBBS_setFlag_e17b0f7_8140A00 and reqBBS_clearFlag_8140A0C together indicate the BBS screen needs to
-    be kept in sync with the same flag - the cluster load_gfx_anim_8083FC0 / _8083FFC / _8084068 plus struct_copy_80840C4
-    / sub_8084080 / sub_8084180 / sub_8084214 / sub_80842D8 share r5 as their working pointer, strongly suggesting
-    these load and queue GFX animations needed by the active cutscene script - sub_809E462 appears as a tail/branch
-    predicate'
+  detail: '- contract `in=[''r10'',''lr'']` and `out=[''nz'', ...]` matches a JumptableIndexPtr-style tick; r10
+    holds the Toolkit per `toolkit_struct` - callees `SetEventFlagFromImmediate` / `ClearEventFlagFromImmediate`
+    / `TestEventFlagFromImmediate` show event flags are read/written here - `reqBBS_setFlag_e17b0f7_8140A00` confirms
+    event byte 0x17 / flag 0x7 is being toggled - `cutscene_checkOriginalCutsceneScriptPos_8036F40` and `8036F58`
+    indicate the two control-flow paths consult the cutscene''s original-script position - a `struct_copy_80840C4`
+    plus several `load_gfx_anim_8083*` / `sub_8084*` helpers imply per-frame GFX animation progression on a small
+    struct'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x08083DF0
@@ -44,15 +41,15 @@ evidence:
     '
   result: beastsp, story5, story6
 open_questions:
-- No assembly lines are available to confirm the precise ordering or which event-flag bits are
-- toggled; matching concrete immediate arguments would settle the name
-- Whether this is the "Run" entry of the cutscene subsystem or a per-step inner loop is unknown
-- without seeing the call sites
-- The exact GFX anim resources being loaded can't be derived from callee names alone
+- The exact behavior of each sub-function (8083F80/8084080/8084180/8084214/80842D8) and the order of operations
+  are not visible without the assembly text
+- Whether this is a results/PET/animation overlay vs a generic sub-screen step is unclear from the call graph alone
+- No assembly text was provided, so the analysis above is built purely from the callee list and contract — please
+  share the disassembly of sub_8083DF0 to refine this to probable.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f c6f1bc6f
+  where: bn6f 8d94ac47
   tool: tools/symdoc.py

@@ -3,43 +3,32 @@ address: '0x0810D808'
 kind: function
 previous_names: []
 status: hypothesis
-summary: Tick handler for a battle object's per-action update (advance state, retarget by facing, refresh counter/highlight),
-  given battle object and an internal action id.
-interface: (r0 = 0, r1 = &ret_810D808 thunk for caller -> this function at 0x810D809, r2 = 0x80, r3 = 3, r4..r7/r10/lr
-  from caller) -> r0 = an exit small value (often 0x24, 0x25, 0x7F) ; no side effect contract on global EWRAM shown.
-details: "- Address 0x810D808 is the entry, with the body actually starting at 0x810D809 (matches r1=0x0810d809\
-  \ in the captures, which is a \"+1\" Thumb-mode trick: caller stored the +1 of the destination and the routine\
-  \ negates the bias; in the captures the next instr is `bl sub_810D808` from 0x0810d7f0, and Thumb BL ignores bit0;\
-  \ so the captured `r1=0x0810d809` is just the disassembler quirk of showing a +1 bias for a Thumb target).\n \
-  \ - The r2=0x80, r3=3 look like a small argument pair (an action index 0x80 in some flag-byte sense, with mask\
-  \ 3) but the contract lists no in-r0..r3, so they are scratch.\n  - In-reg contract {r4,r5,r7,r10,lr} and out\
-  \ {r1,r5} plus r5-r7/r10/lr may_write, plus a single byte in r0, with flags in C/V/N/Z changing: strongly suggests\
-  \ this is a per-frame state-machine action tick.\n  - r5 in is read with `object_getFrontDirection` (which uses\
-  \ r5 -> facing direction) and `object_setFlag1` (r0 = r5), so r5 is the active battle object pointer.\n  - r10\
-  \ is read by `object_setCounterTime(r0,r5,r10,lr)` -> r10 is the toolkit (matches the convention \"toolkit struct,\
-  \ always in r10\").\n  - r7 in + out r7 (may_write): typical index/counter register in a `for (...)` loop.\n \
-  \ - The callee `highlightPanelIfSomeCondition_8109660` matches a \"highlight a column of panels\" routine that\
-  \ takes a baseX/baseY and a sign, consistent with a BattleObject update that needs to redraw an attack-row highlight\
-  \ when an action triggers a panel selection.\n  - The callee `sub_80C5578` is a generic `in r0..r7/lr -> out r0..r3/r5/lr`\
-  \ worker used widely as a state-tick helper.\n  - `battle_ResetObjectTimerTo8_80C4072` is called to reset the\
-  \ per-action timer to 8 ticks, consistent with a \"begin a new action phase\" update.\n  - Captured exit r0 values\
-  \ 0x24, 0x25, 0x7F across calls correspond to small \"phase\" / \"status\" codes returned to the dispatcher.\n\
-  \  - Without disassembly the exact stage of the action being ticked is unknown; callees and the out-r1 plus the\
-  \ various small r0 returns suggest this routine both advances the action and tells the dispatcher the next phase\
-  \ index.\n"
+summary: AI/state tick handler that drives a battle object through its current state, updating counters, panel highlights,
+  and object flags per frame.
+interface: (r0 = object ptr? -> set up via r4/r5/r7/r10) ; r5 (battle object?) and r1 (return status) are live for
+  caller; side effects mutate battle object state, panels, and AIData
+details: "Contract lists in-registers r4/r5/r7/r10/lr and out r1/r5, with heavy may_write on almost everything\n\
+  \  (flags + r0-r7 + lr). Callees include battle_ResetObjectTimerTo8_80C4072 (timer reset to 8),\n  highlightPanelIfSomeCondition_8109660\
+  \ (panel-highlight loop over a list of dx/dy offsets around a\n  base panel using object_getFrontDirection's +/-1\
+  \ side sign), object_setFlag1 (OR a flag bit into\n  CollisionData ObjectFlags1), object_setCounterTime, object_getFrontDirection,\
+  \ and an unnamed\n  sub_80C5578 helper that takes 7 args. The combination (set counter time, reset an object's\n\
+  \  wait timer to 8, OR an ObjectFlags1 bit, then walk a panel-offset list to highlight panels\n  with the side-aware\
+  \ sign) matches a per-frame AI/state step: pick an action/state, set the\n  count-down, mark the object as \"\
+  using action\", then visually mark the panels this step\n  affects. r10 is the toolkit convention (AIData / battle-state\
+  \ struct), r5 is the battle\n  object, r4/r7 are loop/scratch. Captured-call exits return small r0 values (0x24,\
+  \ 0x25,\n  0x7f) that look like the new CurState/CurAction byte after the step.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- Callee `object_setCounterTime` and `object_setFlag1` both take r5 as the battle object, so r5 in this
-    function is the BattleObject* (consistent with the project''s convention BattleObject* in r5). - `object_getFrontDirection`
-    is called with r5 to compute facing side-sign; this is used to expand a panel highlight in `highlightPanelIfSomeCondition_8109660`,
-    the typical pattern when an action projects a row/column ahead of the actor. - `battle_ResetObjectTimerTo8_80C4072`
-    writing 8 to +0x8 fits the BattleObject.CurState/CurAction region, i.e. advancing a per-action timer. - r10
-    in and being passed to `object_setCounterTime` matches the toolkit-in-r10 rule. - Captured r0=0, r1=0x0810d809,
-    r2=0x80, r3=3 is identical across the six calls shown, with lr=0x0810d7f0: a single dispatcher loop in 0x0810d7f0
-    is invoking this routine as a "+1" Thumb target via `bl 0x0810d808` with bit0=1 set, so the body actually starts
-    at 0x0810d809. - Exit r0 values 0x24, 0x25, 0x7F vary across calls but always tiny; this is the shape of a "phase"
-    or "state code" return used by an action jumptable.'
+  detail: '- Captured-call entry r1 = 0x0810d809 (this+1, the Thumb `+1` trick used by BL/BLX-style indirect calls)
+    and r2 = 0x80, r3 = 3, lr = 0x0810d7f0 (the parent dispatcher) on every snap, which is the typical "AI dispatch
+    table tick" calling convention. - r4/r5/r7/r10 in-regs align with toolkit (r10) + battle object (r5) + scratch.
+    - battle_ResetObjectTimerTo8_80C4072 sets a battle object''s +8 (CurState) area''s timer to 8, which is the
+    standard "wait 8 frames before next AI step" pattern. - highlightPanelIfSomeCondition_8109660 + object_getFrontDirection
+    (returns +/-1 side sign) together mean "highlight these panels relative to my current panel, mirror for enemy
+    side". - object_setFlag1 OR-ing OBJECT_FLAGS_USING_ACTION (or similar) is the canonical "I''m acting this frame"
+    marker on ObjectFlags1. - Exit r0 returns 0x24, 0x25, 0x7f depending on snap -- consistent with returning the
+    new CurState/CurAction byte that the caller will dispatch on next frame.'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x0810D808
@@ -54,15 +43,15 @@ evidence:
     '
   result: battlesweep, beastsp, story4, story6
 open_questions:
-- We have no assembly; the role above is reconstructed only from the callee set and the in/out contract.
-- The semantic meaning of r0 returns 0x24 vs 0x25 vs 0x7F (idle / action end / error?) is unknown; needs the disassembly
-  to read the `cmp`/`bne` ladder.
-- Whether this routine is the per-frame `CurState==CUR_STATE_UPDATE` dispatcher or a single named action like "step
-  forward" / "attack" cannot be determined from the caller list (caller is hidden as "0x0810d7f0").
+- Exact role of the unnamed sub_80C5578 caller and what specific flag bit object_setFlag1 is
+- OR-ing in would settle whether this is a generic "tick current state" dispatcher or a more
+- specific "perform AI attack step" routine. The captured r1 return value (0x24/0x25/0x7f) is
+- also consistent with a CurState enum that should be matched against bn6's state table to
+- confirm. Disassembly would pin this down immediately.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f c6f1bc6f
+  where: bn6f 8d94ac47
   tool: tools/symdoc.py

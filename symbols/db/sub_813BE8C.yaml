@@ -3,30 +3,26 @@ address: '0x0813BE8C'
 kind: function
 previous_names: []
 status: hypothesis
-summary: Walks the 0x31-entry 8-byte array pointed to by toolkit's oToolkit_Unk2004190_Ptr and reads the halfword
-  at offset 0 of each entry, doing nothing meaningful with it; the captured-call memory is zero-filled.
-interface: (r10 = toolkit) -> side effects only; no return value used by caller
-details: "Saves {r4-r7, lr}. Sets r6 = 0 and loops while r6 < 0x31 (49 entries):\n    r0 = r6 (loop index)\n   \
-  \ bl toolkit_getUnk2004190EntryPtr_813B9FC  -> returns entry pointer in r0 (plus r1/r2 maybe set/used)\n    r7\
-  \ = r0   (entry ptr)\n    ldrh r0, [r7]      ; load first u16 of the 8-byte entry\n    tst r0, r0; beq loc_813BE9E\
-  \   ; the branch target is the fallthrough at loc_813BE9E which is the loop increment\n    ; body of the if (r0\
-  \ != 0) is empty (falls straight through to loc_813BE9E), so the conditional is currently a no-op\n  loc_813BE9E:\
-  \ r6 += 1; if r6 < 0x31 keep looping; else pop {r4-r7, pc}.\n  Net effect today: a 49-iteration scan over the\
-  \ Unk2004190 array that only reads each entry's first u16; the \"if non-zero\" branch body is empty, so this is\
-  \ effectively a touch/read pass rather than a real initializer. Caller (battle_initState_813BBD4) treats the call\
-  \ as void; the function restores all callee-saved regs and does not propagate a return.\n"
+summary: Polls the 0x31-entry Unk2004190 array; returns void when all entries report idle (r7 holds last entry ptr).
+interface: '(no args) -> void ; side effects: clobbers r0-r2 via 49 bls to toolkit_getUnk2004190EntryPtr_813B9FC'
+details: "Loop runs r6 = 0..0x30 (inclusive), each iteration calling\n  toolkit_getUnk2004190EntryPtr_813B9FC(r0=r6)\
+  \ to get an 8-byte-per-entry pointer\n  into the array at tk->Unk2004190_Ptr. Loads ldrh r0, [r7] (the entry's\
+  \ first u16)\n  and tests via tst r0,r0 / beq. If the entry is non-zero it appears the loop body\n  is empty in\
+  \ this disassembly (the branch target is the increment), so this looks\n  like a busy/wait poll that simply iterates\
+  \ through all 0x31 entries every frame.\n  r7 holds the last fetched entry pointer across the loop so callers\
+  \ can see it,\n  but no other value escapes (lr is restored via pop, out only lists r7 per the\n  contract).\n\
+  \  Called once from battle_initState_813BBD4 alongside a longer battle init\n  sequence, suggesting it is a \"\
+  make sure every per-battle sub-buffer reports\n  ready/inactive before starting\" check.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- Loop counter `r6` initialised to 0 and bounded by `cmp r6, #0x31` followed by `blt loc_813BE90` (loc_813BE90..loc_813BEA8
-    in the listing). - Per-iteration pointer fetch via `bl toolkit_getUnk2004190EntryPtr_813B9FC` with `r0 = r6`,
-    capturing the 8-byte stride is implied by the toolkit accessor contract. - `ldrh r0, [r7]` reads the first halfword
-    of each 8-byte entry; `tst r0, r0; beq loc_813BE9E` shows only the non-zero case falls through (and even that
-    falls through to the loop increment, leaving an empty conditional). - Caller summary "three 0x31-byte I/O scratch
-    buffers pulled from the toolkit" matches the 0x31 iteration count; the dump `[r1 @02004190] 00..` zeros are
-    consistent with the read-only pass not mutating the array in the captured frames. - Contract `out=[''r7'']`
-    and `may_write` excluding r0..r3 from the caller''s view: the callee clobbers r0/r1/r2 through the bl but only
-    r7 is listed as live-out (the caller''s save/restore of r4-r7 absorbs the rest).'
+  detail: '- Loop bounds `cmp r6, #0x31 ; blt loc_813BE90` -> iterates exactly 0x31 entries, matching the size of
+    the three "0x31-byte I/O scratch buffers" the caller description mentions. - `bl toolkit_getUnk2004190EntryPtr_813B9FC`
+    returns r0/r1/r2 and the body immediately stores it in r7 and reads `[r7]` -> operates on the 8-byte entries
+    of the Unk2004190 array. - `ldrh r0, [r7] ; tst r0, r0 ; beq loc_813BE9E` -> the only per-entry read is a halfword
+    at the entry''s first word; zero is the "free" sentinel the caller summary implies. - Caller battle_initState_813BBD4
+    names three 0x31-byte I/O scratch buffers pulled from the toolkit -> the iteration count matches those buffer
+    sizes exactly, reinforcing the "poll every per-battle sub-buffer" reading.'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x0813BE8C
@@ -43,16 +39,14 @@ evidence:
   result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1, story2, story3,
     story4, story5, story6, story7, story8, story9, wander
 open_questions:
-- Whether the empty "non-zero" branch was once a real init and got DCE'd, or is intentionally a stub pending future
-  use (would settle by checking revision history or sibling titles BN5/BN6G).
-- The semantic role of the u16 at entry offset 0 (status, owner, type, etc.) is unknown — no other code in the snapshot
-  reads it.
-- Whether each 8-byte entry holds just a u16 + padding or some other layout (the accessor's 8-byte stride is taken
-  on faith from the callee contract).
+- Whether non-zero entries are actually re-checked later or simply ignored
+- (the body looks like a no-op aside from the load+test). Disassembly of
+- surrounding code in battle_initState_813BBD4 or the real per-frame driver
+- of these buffers would settle the role.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f c6f1bc6f
+  where: bn6f 8d94ac47
   tool: tools/symdoc.py

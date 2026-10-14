@@ -3,26 +3,25 @@ address: '0x08086EA8'
 kind: function
 previous_names: []
 status: hypothesis
-summary: AI dispatch for Beast/SP-style enemy turn (r2=actor idx), testing event flags and stepping per-actor sub-states
-interface: (r2 = actor index in current panel; r10 = Toolkit; lr) -> r0 = 0 ; may clobber r0-r7, flags
-details: "Entry registers captured in every snapshot are r0=0, r1=2, r2=1, r3=0x02001d44, lr=0x08035e88 (a battle\
-  \ frame-return).\n  The contract lists r10 in `in` (Toolkit) and r2 in `in`/`out` (an actor index). It calls TestEventFlagFromImmediate\
-  \ and\n  five more unnamed helpers (sub_8086FD8, sub_808711C, sub_8087140, sub_8087184, sub_80871F4), all of which\
-  \ share the\n  same r5/r10(linked-list-walk) calling convention observed across nearby AI helpers. The pattern\
-  \ is consistent with\n  a per-actor AI tick: walk linked actor list via r5/r10, branch on event flag, then dispatch\
-  \ to one of the\n  sub_8086xxx helpers based on r2/phase. The fact that r0 returns 0 with Z set in every captured\
-  \ call suggests this\n  function ultimately resolves the AI step to \"no action\" or fall-through for this scenario\n\
-  \  (the snapshot is labelled `beastsp` — likely \"Beast/SP\" AI feature rather than beast-out).\n  No assembly\
-  \ was provided so instruction-level confirmation is missing; naming is based on the snapshot label\n  (`snap_beastsp_*`),\
-  \ the callee signatures, and the cluster of r2/r5/lr threaded helpers at 8086xxx.\n"
+summary: Runs AI beast-out / chip selection sub-decisions per battle object, dispatching by event flag
+interface: (r2 = actorIndex or actor-slot, r10 = Toolkit, lr) -> r5 preserved, other regs/clobbered
+details: "No assembly is present in the prompt (`sub_8086EA8 not found in bn6f/asm`), so the\n  behaviour is inferred\
+  \ only from the captured-call/contract data. The function takes a\n  battle-related context in r2 (likely a battle\
+  \ object pointer or actor index), the toolkit\n  in r10, and returns by tail-calling/branching into one of `sub_8086FD8`,\
+  \ `sub_808711C`,\n  `sub_8087140`, `sub_8087184`, `sub_80871F4`. It also calls `TestEventFlagFromImmediate`\n\
+  \  at 0x0802f164, suggesting it first tests a story/event flag and then dispatches.\n  Across 40 recorded calls\
+  \ the entry r0=0, r1=2, r2=1, r3=0x02001d44 are constant, and exit\n  flag state becomes -ZC-, consistent with\
+  \ a `beq`/`bne` test-then-branch. The name should\n  describe the dispatcher's role; the assembly is required\
+  \ to know which sub-function fires\n  for which branch.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- Captured-call filenames all start with `snap_beastsp_`, pointing at a Beast/SP AI scenario - Entry
-    r2=1 is consistent across 40 calls; r10 is in `in` per contract (Toolkit) - Callee TestEventFlagFromImmediate:
-    AI routines gate behaviour on story-progress flags - sub_808711C/sub_8087184/sub_80871F4 share r5-in/out contracts
-    typical of a per-actor linked-list walker - Return r0=0 with `-ZC-` flags every time suggests a "no-op / fall-through"
-    outcome, common at end of an AI turn'
+  detail: '- Contract lists `TestEventFlagFromImmediate` and a cluster of nearby unnamed `sub_8086xxx` functions
+    in r2/r5-r10; consistent with an AI dispatcher that tests a flag and branches. - Captured-call snapshots show
+    identical r0-r3 across 40 calls with different trace IDs, indicating a per-frame/per-tick call that is structurally
+    idempotent. - Exit flags `-ZC-` after `----` indicate a comparison was performed before return (likely `cmp`+`bne`/`beq`
+    against the test-event return). - Toolkit-in-r10 pattern matches `Toolkit` struct usage and ties to battle AI
+    code.'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x08086EA8
@@ -37,14 +36,14 @@ evidence:
     '
   result: beastsp, maps
 open_questions:
-- 'Exact AI role: is r2 the panel actor index, AIDataPtr, or AIData[] offset?'
-- What distinguishes the five sub_8086xxx callees (one per AI sub-state? per actor type?)
-- Assembly is absent (`sub_8086EA8 not found in bn6f/asm`); without it, the proposed name and step list are partly
-  inferred from convention
+- The exact decision being made (which chip to use, beast-out trigger, etc.).
+- Which of the five callees runs in the true vs false branch of `TestEventFlagFromImmediate`.
+- Without the assembly, naming this as anything more specific than an AI dispatcher is a guess.
+- Producing the actual assembly would let this be promoted from hypothesis to probable.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f c6f1bc6f
+  where: bn6f 8d94ac47
   tool: tools/symdoc.py

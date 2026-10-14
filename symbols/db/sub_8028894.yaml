@@ -3,29 +3,24 @@ address: '0x08028894'
 kind: function
 previous_names: []
 status: hypothesis
-summary: returns a (sprite, frame) pair as (r0, r1) for a battle object's BPwrAtk chip-code chip
-interface: '(r5 = BattleObject*) -> r0 = tile/sprite offset, r1 = frame offset added to base 0x68 ; side effects:
-  none (uses r6)'
-details: "Reads the object's `BPwrAtk` byte at offset 0x7 of the BattleObject pointed to by r5.\n  If that byte\
-  \ is >= 5, the function forces r1 to 0x18 and subtracts 5 from r0 before\n  scaling; otherwise r1 starts at 0.\
-  \ The value in r0 is then shifted left 4 (×16),\n  incremented by 8, and r1 is increased by 0x68. The literal\
-  \ pool immediately after\n  the code (byte_80288B0) is a small chip-code palette/anim lookup table (6 entries\n\
-  \  × 5 bytes) that the caller presumably indexes for the chip-code B-press attack,\n  but this function itself\
-  \ does not read it; r6 is loaded with the table address\n  (off_80288AC → byte_80288B0) and the function returns\
-  \ via `pop {pc}`.\n  Returned r0 is the chip-code sprite offset and r1 the corresponding frame table\n  offset\
-  \ (with 0x68 base). r6 leaks the address of byte_80288B0; per the calling\n  convention note the address _8028894\
-  \ is a tail-call thunk, but in practice it\n  returns to its caller (pop {pc}).\n"
+summary: Returns a pointer into a small per-BPwrAtk lookup table for the current actor
+interface: (r5 = AIData*) -> r0 = pointer into byte_80288B0 ; r1 = 0x68 or 0x80 ; side effects none
+details: "Loads the address of a small lookup table (byte_80288B0) into r6, then reads r5->BPwrAtk\n  (offset 0x7\
+  \ in AIData). If that B-power-attack value is >= 5 it subtracts 5 from it and\n  picks the \"B\" branch (r1 =\
+  \ 0x18 base); otherwise the \"A\" branch (r1 starts at 0). It then\n  left-shifts the index by 4 and adds 8 (so\
+  \ each entry is 16 bytes, the first 8 are skipped\n  header padding), giving r0 the byte offset within byte_80288B0.\
+  \ r1 is then biased by +0x68\n  (or +0x80 on the B branch). Returns via `pop {pc}` (tail-call). The 0x68/0x80\
+  \ values look\n  like the slot size, with byte_80288B0 indexing panel-placement rows for chip select / attack\n\
+  \  targeting given the B-button BPwrAtk.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- `ldrb r0, [r5,#7]` reads BattleObject.BPwrAtk (struct offset 0x7). - `cmp r0, #5 / blt loc_80288A4
-    / sub r0, #5` implements the two-range split for chip-code indices >= 5 (B-button chip codes past the standard
-    5). - `lsl r0, r0, #4 ; add r0, #8` produces r0 = (idx*16 + 8), the per-entry stride into a 16-byte/entry sprite
-    table. - `mov r1, #0 / mov r1, #0x18` selects 0 or 0x18 as the base frame offset. - `add r1, #0x68` lifts the
-    frame offset to 0x68/0x80 (frame table base). - `ldr r6, off_80288AC` loads the address of byte_80288B0 into
-    r6, leaking it. - `pop {pc}` returns to the saved lr from the matched `push {lr}`. - Captured calls all show
-    the same entry r0=0x08028895/r1=0x0802886c and exit r0=8, indicating the common path is `BPwrAtk < 5` with idx
-    such that idx*16+8 = 8, i.e. BPwrAtk == 0 → Cannon-style chip-code 0.'
+  detail: '- `ldrb r0, [r5,#7]` reads AIData+0x7 which is `BPwrAtk`. - `cmp r0,#5` / `blt loc_80288A4` branch chooses
+    between A-path (r1=0) and B-path (r1=0x18). - `lsl r0,r0,#4` then `add r0,#8` builds index*16 + 8 into a 32-byte
+    table at byte_80288B0. - `add r1,#0x68` (or `#0x80`) shifts base by 0x68/0x80 to give the result register pairs
+    that the callers (per contract r0/r1 out) consume as coordinates/placements. - Inline data byte_80288B0 is 32
+    bytes; fits a 2-row × 16-byte chip-placement lookup. - Contract says only r0/r1 are out (no writeback to r5);
+    this is a pure getter.'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x08028894
@@ -42,19 +37,12 @@ evidence:
   result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2, story4, story5,
     story6, story7, story8, story9
 open_questions:
-- 'The role of byte_80288B0 (6×5 bytes of mostly-zero / `0xE`/`0xC` values):'
-- likely the chip-code palette-or-frame index table indexed by BPwrAtk, but this
-- function never indexes it; the address is just handed to the caller via r6.
-- 'Why r6 (a callee-saved register) is set in a `void`-shaped function: this is'
-- almost certainly a leaf helper that exists to be inlined/instantiated per
-- chip-code (the `0x08028895` self-entry shows the call site is one byte into
-- the function, i.e. the caller builds r5 and falls through skipping `push lr`).
-- Settled by identifying the chip-code table (Palette20097a0 or similar) and
-- confirming which struct holds 0x68-based frame indices.
+- Exact semantics of byte_80288B0 contents (panel offsets? chip-slot indices?).
+- Why the A/B branch uses different r1 base offsets (0x68 vs 0x80).
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f c6f1bc6f
+  where: bn6f 8d94ac47
   tool: tools/symdoc.py
