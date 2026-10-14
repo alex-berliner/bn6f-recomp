@@ -968,18 +968,18 @@ static inline call_PlaySoundEffect_result_sub_80A5514 call_PlaySoundEffect_sub_8
 }
 
 typedef struct { u32 r2, r10, r11; } call_sub_80A5588_result;
-/* register form: generated wrapper: sub_80A5588 has no typed C interface yet */
+/* register form: generated wrapper: owMapObject_bbsObjectUpdate_80A5588 has no typed C interface yet */
 static inline call_sub_80A5588_result call_sub_80A5588(u32 r5, u32 r6) {
     R5 = r5;
     R6 = r6;
-    GUEST_CALL(sub_80A5588);
+    GUEST_CALL(owMapObject_bbsObjectUpdate_80A5588);
     return (call_sub_80A5588_result){ R2, R10, R11 };
 }
 
 /* Spawn/setup an overworld object: assign a sprite (with special id for map group 0x85),
  * load graphics + animation, apply layer effects and priority, remember position,
  * play the entry sound (unless the "no-sound" flag is set), then advance sub-state
- * to 4 and tail-dispatch to the per-state handler sub_80A5588.
+ * to 4 and tail-dispatch to the per-state handler owMapObject_bbsObjectUpdate_80A5588.
  *
  * The original's pop restores r4-r7 (including r5, r6), so the caller-visible r5 is
  * always the input value regardless of what the callees do to it. */
@@ -1065,8 +1065,8 @@ Next sub_80A5514(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80A5588 ── */
-/* sub_80A5588: cutscene/sprite step (bank 0x68).
+/* ── owMapObject_bbsObjectUpdate_80A5588 ── */
+/* owMapObject_bbsObjectUpdate_80A5588: cutscene/sprite step (bank 0x68).
  *   inputs:  r5 r6 r10 lr
  *   outputs: r2 r5 r10 r11
  *   clobbers (scratch for callees): nz c v r0 r1 r3 lr
@@ -1080,7 +1080,7 @@ Next sub_80A5514(void) {
  * at r6+8 is not 2, call checkBbsReqFlag_80A5744. sprite_update always runs past the
  * early-out block.
  */
-Next sub_80A5588(void) {
+Next owMapObject_bbsObjectUpdate_80A5588(void) {
     /* If either cutscene-script-position probe is non-zero, bail entirely. */
     GUEST_CALL(cutscene_checkOriginalCutsceneScriptPos_8036F40);
     if (!ZERO_FLAG()) {

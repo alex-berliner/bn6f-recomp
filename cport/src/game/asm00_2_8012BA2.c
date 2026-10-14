@@ -2136,10 +2136,10 @@ static u32 battle_getStateUnk5c(void) {
     return R0;
 }
 
-/* register form: calls sub_800AA06 outside this file, which has no typed C interface yet */
+/* register form: calls battleObject_isCurrentTurnBattleObject_800AA06 outside this file, which has no typed C interface yet */
 static u32 sub_800AA06_query(u32 arg) {
     R0 = arg;
-    GUEST_CALL(sub_800AA06);
+    GUEST_CALL(battleObject_isCurrentTurnBattleObject_800AA06);
     return R0;
 }
 
@@ -2186,7 +2186,7 @@ typedef struct { u32 r0; u32 r1; } R0R1;
  *     - else set bit 1 of oObjectHeader_Flags, write 8 to
  *       oBattleObject_CurPhaseAndPhaseInitialized, and return.
  * - phaseInitialized != 0 (ongoing handling):
- *     - if battle-state bit 0 is set and sub_800AA06(0) is nonzero, play the join
+ *     - if battle-state bit 0 is set and battleObject_isCurrentTurnBattleObject_800AA06(0) is nonzero, play the join
  *       sound effect (0x94), set Timer = 2, Timer2 = 0x10, sprite alpha = 0,
  *       set CurPhase = 4, and return (r1 left as sprite_setAlpha left it).
  *     - otherwise fall through to the common BIC path.

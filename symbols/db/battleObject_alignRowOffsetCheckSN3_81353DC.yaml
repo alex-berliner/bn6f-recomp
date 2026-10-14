@@ -1,0 +1,67 @@
+name: battleObject_alignRowOffsetCheckSN3_81353DC
+address: '0x081353DC'
+kind: function
+previous_names:
+- sub_81353DC
+status: probable
+summary: Hard-coded row-alignment check for the BattleObject at panel column 6, used as a one-shot reposition
+  helper.
+interface: '() -> r0 = "offset delta result" (1); side effects: clobbers r0-r3, may invoke `battle_alignRowCheck_81348DC`.'
+details: "This is a tiny trampoline that loads four literal arguments into r0-r3 and forwards\n  them\
+  \ to `battle_alignRowCheck_81348DC`, then returns its r0 to the caller. The\n  arguments are:\n    r0\
+  \ = 0x24, r1 = 0xa5, r2 = 0x28, r3 = 4, r4 (passed via r4) = 6.\n  Mapping onto `battle_alignRowCheck_81348DC`'s\
+  \ expected BattleObject fields, these\n  are panel/column targets, not just register noise: 0x24 is\
+  \ the BattleObject's\n  HP offset and 0x28 the NameID/Chip offset, but the helper only consumes them\
+  \ as\n  raw word inputs, so they likely encode panel-coordinate offsets encoded into\n  byte pairs.\
+  \ The fifth argument, 6, is the panel column the caller is gating on.\n  The function is leaf-like:\
+  \ it pushes {r4,lr}, sets up r4=#6, bl's the helper,\n  and pops to pc. Two trailing `.byte 0, 0` are\
+  \ alignment padding for the next\n  thumb symbol.\n  All 6 captured calls share identical inputs and\
+  \ the same r0=1, -ZC- exit, meaning\n  the alignment always succeeds for this caller. It is reached\
+  \ from the\n  submenu/scene-update dispatchers in the battle_objectUpdate / sub_8133484 /\n  sub_81337E8\
+  \ / sub_81338D4 / sub_8133944 / sub_8133C9C cluster, suggesting it\n  fires every frame for the same\
+  \ fixed panel slot (likely a \"is the slot-6 enemy\n  sitting on its row?\" probe used by SN3 enemy\
+  \ formation).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mov r0, #0x24 ; mov r1, #0xa5 ; mov r2, #0x28 ; mov r3, #4` at 0x081353E2..EE shows the
+    four literal args fed to `battle_alignRowCheck_81348DC`. - `mov r4, #6` immediately before the bl
+    is the fifth arg (r4) the callee reads. - `push {r4,lr}` / `pop {r4,pc}` plus single `bl battle_alignRowCheck_81348DC`
+    show this is a leaf trampoline, not a sequence. - All six captured `snap_battles1_*` entries show
+    identical r0=0x1c, r1=0x12, r2=0x478, r3=0 and identical exit r0=1, confirming the helper runs once
+    with fixed inputs and reports aligned. - The callee''s contract (`battle_alignRowCheck_81348DC`) is
+    described as "Verifies a battle object''s column position against its expected row offset; if aligned,
+    repositions the object and clears a misalignment flag, otherwise sets the flag." — directly explains
+    the r0=1 / -ZC- exit on success.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x081353DC
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, beastsp, maps, menus3, story4, story6, story8, story9'
+  reproduce: 'grep -l ''^081353dc '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, beastsp, maps, menus3, story4, story6, story8, story9
+open_questions:
+- The exact meaning of the four word arguments (0x24/0xa5/0x28/4) inside
+- '`battle_alignRowCheck_81348DC` is not resolvable from this function alone —'
+- reading that helper's body is needed to map them to BattleObject fields. The
+- 'reason this dedicated trampoline exists (vs. inlining) is also unclear: it'
+- may simply be a shrink-table slot.
+- Determining the precise battle-object/panel slot it targets would require
+- cross-referencing its six callers' r5/BattleObject setup.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a5b62063
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_81353DC -> battleObject_alignRowOffsetCheckSN3_81353DC
+  where: bn6f 0c53d483
+  tool: tools/rename_symbol.py

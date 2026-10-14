@@ -1,0 +1,67 @@
+name: battle_countAliveNextEntries_800AA92
+address: '0x0800AA92'
+kind: function
+previous_names:
+- sub_800AA92
+status: probable
+summary: Counts how many non-zero entries exist in the "Next" array (at 0x2038170) and returns that as
+  the number of alive/active battle actors queued.
+interface: (no explicit args read; r0 holds whatever the caller passed in but is overwritten immediately
+  to 0) -> r0 = number of non-zero u32 entries (each 0x20 bytes apart) in the entry block at 0x2038170
+  + r0*0x20 ; no side effects beyond reading the array and restoring lr
+details: "1. Calls getNextEntryAddress_800AAAE which computes a pointer to entry r0 of the \"Next\" array\n\
+  \     at 0x2038170, leaving the array base in r1 and the entry pointer in r0.\n  2. Saves the entry\
+  \ pointer in r3, then sets r0=0 (count) and r2=0 (byte stride offset).\n  3. Loops r2 over offsets 0,\
+  \ 4, 8, ... 0x1C (8 words = 0x20 bytes per entry). For each word\n     it does ldr r1, [r3, r2]; cmp\
+  \ r1, #0; beq skip; add r0, #1; skip. So r0 tallies the\n     number of non-zero u32 words inside that\
+  \ single 0x20-byte entry.\n  4. Returns r0 via pop {pc} (function is called with bl, so the linker's\
+  \ pc is restored as the\n     return address; this is a Thumb-1 \"leave function\" pattern with push\
+  \ {lr}/pop {pc}).\n  5. The sole caller battle_object_teardownAndFree_80E06E0 is invoked as the per-object\n\
+  \     teardown callback while freeing memory; the returned count (0x03 in all six captured\n     calls)\
+  \ represents how many of the 8 words in this Next-entry slot are non-zero, likely\n     \"live\" references\
+  \ that still need unlinking before the object is freed.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl getNextEntryAddress_800AAAE` followed by `mov r3, r0` shows the entry pointer comes from
+    the Next array at 0x2038170 (per getNextEntryAddress_800AAAE''s confirmed summary). - The loop `cmp
+    r2, #0x20; blt loc_800AA9E` walks exactly 0x20 bytes / 8 words per entry, matching a 0x20-byte entry
+    size. - `ldr r1, [r3,r2]; cmp r1, #0; beq loc_800AAA6; add r0, #1` is a textbook "count non-zero words"
+    pattern with r0 used as the accumulator. - All six captured calls return r0=0x03 with the same entry
+    index passed in r0=0x00000000, consistent with a fixed return value per call site (deterministic count
+    of non-zero fields in that specific entry). - Caller summary for battle_object_teardownAndFree_80E06E0
+    mentions it runs a teardown step and frees the resulting object''s memory, which matches using a count
+    to drive cleanup.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0800AA92
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0800aa92 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- Exactly which u32 fields of a Next-entry the function is intended to count (any non-zero
+- vs. only "active object pointer" words) is not determinable from this routine alone; the
+- convention is inferred from the teardown/free context in the sole caller.
+- Whether the return value is "number of live references to unlink" or a more general
+- '"populated-words count" could be settled by reading battle_object_teardownAndFree_80E06E0'
+- to see how it uses the returned r0.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a5b62063
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_800AA92 -> battle_countAliveNextEntries_800AA92
+  where: bn6f 0c53d483
+  tool: tools/rename_symbol.py

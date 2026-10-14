@@ -1,0 +1,60 @@
+name: owPlayerObject_clearStateUnk10_809D7D8
+address: '0x0809D7D8'
+kind: function
+previous_names:
+- sub_809D7D8
+status: probable
+summary: When chatbox event-flag bit 0x80 is clear, zero the OW player's Unk_10 game-state byte, the Unk_07/Unk_09/Unk_0a
+  OWPlayerObject bytes, then return.
+interface: '() -> void ; side effects: writes eGameState+0x10, writes r5+0x07/0x09/0x0a'
+details: "Entry: push {lr}; r0 := 0x80. Calls chatbox_mask_eFlags2009F38 with r0=0x80; if the bit is set\
+  \ (NZ after `bne locret_809D7F6`) the function returns immediately.\n  Otherwise it loads r7 := [r10,oToolkit_GameStatePtr]\
+  \ (so r10 is the toolkit reg), then clears:\n    - r7+0x10 (`eGameState+0x10`, i.e. GameState.Unk_10)\
+  \ -> 0\n    - r5+0x07 (`oOWPlayerObject_Unk_07`) -> 0\n    - r5+0x09 (`oOWPlayerObject_JumptableIndex_09`)\
+  \ -> 0\n    - r5+0x0a (`oOWPlayerObject_Unk_0a`) -> 0\n  and pops PC. The captured-call pattern (entry\
+  \ r0=8, r1=0x4e4000, r2=0, r3=0x020047cc, exit Z->----, r0=0x80) matches the \"flag clear\" path being\
+  \ taken in every recorded snapshot.\n  Caller(s) of this short stub were not enumerated in the lift\
+  \ dump, but its location under ow_player.s and usage of r5/r10 strongly suggest it is an OW-player reset/clear\
+  \ hook executed when a chatbox/quest flag (0x80) is not set.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mov r0, #0x80` then `bl chatbox_mask_eFlags2009F38` gates the path on chatbox event-flag
+    bit 0x80 (0x08045f3c returns NZ for set flag). - `bne locret_809D7F6` skips the work when the flag
+    is set; `pop {pc}` confirms early-return void semantics. - `mov r7, r10; ldr r7, [r7,#oToolkit_GameStatePtr]`
+    matches the project convention that r10 holds the Toolkit and offset 0x3c is GameStatePtr (Toolkit
+    struct). - `strb r0,[r7,#oGameState_Unk_10]` writes offset 0x10 of GameState (matches `u8 Unk_10 //
+    loc=0x10` in game_state_struct). - Three `strb r0,[r5,#oOWPlayerObject_*]` write 0x07/0x09/0x0a of
+    OWPlayerObject (matches `Unk_07/JumptableIndex_09/Unk_0a` in overworld_player_object_struct). - r5
+    is OWPlayerObject base (in reg contract `in=[''r5'']`) which fits the file src/asm/ow_player.s and
+    a per-player reset stub.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0809D7D8
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, beastsp, fuzz, maps, menus2, menus3, story1, story2, story3,
+    story4, story5, story6, story8, story9'
+  reproduce: 'grep -l ''^0809d7d8 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, beastsp, fuzz, maps, menus2, menus3, story1, story2, story3, story4, story5,
+    story6, story8, story9
+open_questions:
+- Which bit 0x80 in eFlags2009F38 means in narrative terms (e.g. "busy with chatbox/dialog") and which
+  OW-player state machine state it represents; not resolvable without cross-referencing eFlags2009F38
+  definitions.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a5b62063
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_809D7D8 -> owPlayerObject_clearStateUnk10_809D7D8
+  where: bn6f 0c53d483
+  tool: tools/rename_symbol.py

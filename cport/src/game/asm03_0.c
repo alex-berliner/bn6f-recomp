@@ -22,11 +22,11 @@ Next camera_isObjectInFrontOfCamera_80269D0(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80269E2 ── */
+/* ── camera_shouldApplyBgScrollToBothLayerPairs_80269E2 ── */
 /* eS20364C0 RAM pointer (r5 in the original). */
 #define eS20364C0_PTR A_eS20364C0
 
-/* Replicates sub_80269E2:
+/* Replicates camera_shouldApplyBgScrollToBothLayerPairs_80269E2:
  *   - r0 starts at 0.
  *   - Read byte 0 as r1; if r1 is 0 or 8, r0 becomes 1 (and that CMP's flags win).
  *   - Otherwise read byte 1 as r1; if r1 is any of {0, 8, 4, 0xC, 0x2C, 0x30, 0x34,
@@ -89,8 +89,8 @@ static u32 check_es20364c0(u8 *last_cmp_r1, u8 *last_cmp_op) {
     return result;
 }
 
-/* sub_80269E2(r5 = eS20364C0 pointer) -> r0, sets c, v from the final CMP */
-Next sub_80269E2(void) {
+/* camera_shouldApplyBgScrollToBothLayerPairs_80269E2(r5 = eS20364C0 pointer) -> r0, sets c, v from the final CMP */
+Next camera_shouldApplyBgScrollToBothLayerPairs_80269E2(void) {
     u8 last_r1, last_op;
     u32 r = check_es20364c0(&last_r1, &last_op);
     R0 = r;
@@ -2182,11 +2182,11 @@ static u32 get_chip_id_sub_8028476(u32 raw_id, u8 kind) {
     return R0;
 }
 
-/* register form: calls sub_80284E2 outside this file, which has no typed C interface yet */
+/* register form: calls battleObject_loadChipPanelGfx_80284E2 outside this file, which has no typed C interface yet */
 static void activate_chip(u32 chip_id) {
     R0 = chip_id;
     /* r1 stays as getChipID left it, exactly as in the original's tail call */
-    GUEST_CALL(sub_80284E2);
+    GUEST_CALL(battleObject_loadChipPanelGfx_80284E2);
 }
 
 /* register form: calls beastout_QueuePaletteGFXAndSheets_80286D4 outside this file, which has no typed C interface yet */

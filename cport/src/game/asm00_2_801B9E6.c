@@ -2082,11 +2082,11 @@ Next sub_801DB54(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_801DB60 ── */
-/* sub_801DB60: invoke some game action with argument 1.
+/* ── battle_setUnkFlagBit0_eStruct2035280_801DB60 ── */
+/* battle_setUnkFlagBit0_eStruct2035280_801DB60: invoke some game action with argument 1.
  * Sets R0 = 1 and tail-calls flagSetBits_eStruct2035280_801BEB8; all outputs (r0-r2, flags)
  * come from that callee. */
-Next sub_801DB60(void) {
+Next battle_setUnkFlagBit0_eStruct2035280_801DB60(void) {
     /* mov r0, #1; lsl r0, r0, #0 (identity shift, value stays 1) */
     R0 = 1;
 
@@ -2257,15 +2257,15 @@ Next releaseSlotByValue_801DC36(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_801DC6E ── */
-/* sub_801DC6E: invoke flagSetBits_eStruct2035280_801BEB8 with r0 = 4 (bit flag 1 << 2).
+/* ── battle_setFlag0x04_eStruct2035280_801DC6E ── */
+/* battle_setFlag0x04_eStruct2035280_801DC6E: invoke flagSetBits_eStruct2035280_801BEB8 with r0 = 4 (bit flag 1 << 2).
  *
  * The LSL that builds the argument is the last flag-setting instruction
  * before the call, and flagSetBits_eStruct2035280_801BEB8 preserves the flags, so the state it
  * leaves must survive to our caller: shifting 1 left by 2 pushes no set
  * bit out, giving N=0, Z=0, C=0 (result 4, no bits shifted out).
  * SET_FLAGS_ADD(1, 3) reproduces exactly those flags (sum 4, no carry). */
-Next sub_801DC6E(void) {
+Next battle_setFlag0x04_eStruct2035280_801DC6E(void) {
     R0 = 1u;
     R1 = 2u;
     R0 = R0 << R1;          /* r0 = 1 << 2 = 4 */

@@ -1,0 +1,63 @@
+name: battleObject_destroyOnCollision_80DFEA8
+address: '0x080DFEA8'
+kind: function
+previous_names:
+- sub_80DFEA8
+status: probable
+summary: 'Tear-down path for a battle object after collision: remove its collision data, spawn the destruction
+  effect, and either destroy the object (if it should not persist during the destruction effect) or continue
+  running its per-action collision handler.'
+interface: (r5 = BattleObject*, r10 = Toolkit*) -> void ; no return value
+details: "1. Calls `object_removeCollisionData` (THUMB trampoline) to tear down the object's\n     collision\
+  \ data, with r5 holding the BattleObject and r10 the toolkit.\n  2. Calls `object_spawnCollisionEffect`\
+  \ to spawn the visual effect for the\n     object being destroyed.\n  3. Loads `oObjectHeader_Flags`\
+  \ (BattleObject offset 0x0) and tests bit 0x10\n     (OBJECT_FLAG_UPDATE_DURING_TIMESTOP). If that bit\
+  \ is set, jumps straight to\n     the per-action dispatch (`loc_80DFEC2`).\n  4. Otherwise calls `battle_isBattleOver`;\
+  \ if the battle is not over\n     (r0 non-zero), the object is queued for destruction: `object_clearCollisionRegion`\n\
+  \     is called and `CUR_STATE_DESTROY` (0x08) is written into\n     `oBattleObject_CurStateActionPhaseAndPhaseInitialized`\
+  \ (offset 0x8).\n  5. In the normal path (`loc_80DFEC2`), reads `oBattleObject_CurAction` (offset 0x9)\n\
+  \     and uses a 2-entry table at `off_80DFEE0` to dispatch to either\n     `sub_80DFEE8` (when CurAction\
+  \ selects index 0) or `loc_80DFF64` (index 1),\n     which are the per-action handlers. After that,\
+  \ `object_presentCollisionData`\n     is invoked before returning.\n  6. Used as a battle-object handler;\
+  \ `lr` returns to the caller that invoked\n     this object handler.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl object_removeCollisionData` at 0x080dfeac tears down collision data. - `bl object_spawnCollisionEffect`
+    at 0x080dfeb0 spawns the visual effect. - `ldrb r0, [r5,#oObjectHeader_Flags]` then `tst r0, #0x10`
+    checks OBJECT_FLAG_UPDATE_DURING_TIMESTOP (0x10) on the BattleObject header. - `bl battle_isBattleOver`
+    at 0x080dfec0; `tst r0, r0` / `bne loc_80DFED2` sends objects to destruction when the battle continues
+    normally. - At `loc_80DFED2`: `bl object_clearCollisionRegion` clears collision region, then `mov
+    r0, #0x8; str r0, [r5,#0x8]` writes CUR_STATE_DESTROY to the CurStateActionPhaseAndPhaseInitialized
+    field. - At `loc_80DFEC2`: `ldrb r0, [r5,#oBattleObject_CurAction]` and the table `off_80DFEE0` with
+    two entries (sub_80DFEE8 and loc_80DFF64) implement a per-CurAction dispatch; `bl object_presentCollisionData`
+    then refreshes'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080DFEA8
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles2, battlesweep, beastsp, fuzz, menus3, story2, story8, story9'
+  reproduce: 'grep -l ''^080dfea8 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles2, battlesweep, beastsp, fuzz, menus3, story2, story8, story9
+open_questions:
+- Whether the 0x10-bit short-circuit (timestop/UpdateDuringTimestop) is meant
+- to skip the destruction queue even when the battle is over, or whether that
+- is the same condition as a "timestop" check; reviewing the per-action
+- handlers at sub_80DFEE8/loc_80DFF64 would settle it.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a5b62063
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80DFEA8 -> battleObject_destroyOnCollision_80DFEA8
+  where: bn6f 0c53d483
+  tool: tools/rename_symbol.py

@@ -3828,7 +3828,7 @@ Next t3_0xd3_80DFE40(void) {
 
     switch (state) {
     case 0 * 4: GUEST_CALL(sub_80DFE64);          break; /* alive/normal */
-    case 1 * 4: GUEST_CALL(sub_80DFEA8);          break; /* second phase */
+    case 1 * 4: GUEST_CALL(battleObject_destroyOnCollision_80DFEA8);          break; /* second phase */
     case 2 * 4: GUEST_CALL(object_genericDestroy); break; /* destroyed */
     }
 
@@ -4330,14 +4330,14 @@ Next sub_80E0684(void) {
 
 /* ── battle_object_teardownAndFree_80E06E0 ── */
 /* battle_object_teardownAndFree_80E06E0: teardown routine for a battle object.
- * Asks sub_800AA92 (with argument 0) whether cleanup should be skipped;
+ * Asks battle_countAliveNextEntries_800AA92 (with argument 0) whether cleanup should be skipped;
  * if it returns nonzero we bail out early. Otherwise it runs
  * battle_orStateFlags5c_8001382(2) and then releases the object whose pointer that call
  * leaves in r0 via object_freeMemory.
- * Flags on the early-exit path reflect the TST of sub_800AA92's result. */
+ * Flags on the early-exit path reflect the TST of battle_countAliveNextEntries_800AA92's result. */
 Next battle_object_teardownAndFree_80E06E0(void) {
     R0 = 0;
-    GUEST_CALL(sub_800AA92);
+    GUEST_CALL(battle_countAliveNextEntries_800AA92);
 
     if (R0 != 0) {
         /* tst r0, r0 */

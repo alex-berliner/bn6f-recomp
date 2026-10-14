@@ -1,0 +1,55 @@
+name: battle_getAIDataPtr_8142068
+address: '0x08142068'
+kind: function
+previous_names:
+- sub_8142068
+status: probable
+summary: Returns a pointer to one of up to four AIData slots stored at unk_2000BE0, indexed by r0.
+interface: (r0 = actor index 0..3) -> r0 = &unk_2000BE0 + r0 * 0x28 ; no side effects
+details: "Loads a base address from off_8142130 (resolves to unk_2000BE0 in EWRAM) into r6, computes\n\
+  \  r6 + r0 * 0x28 with `mul r0, #0x28`, and returns the resulting pointer in r6 (caller-visible\n  out\
+  \ register). Function is a single-instruction tail jump (`mov pc, lr`), so it is a pure\n  leaf accessor\
+  \ with no callees.\n  The 0x28-byte stride matches the size of a single AIData slot (oAIData_Size ==\
+  \ 0x100, so this\n  is not AIData itself; rather, this looks like a smaller per-actor AI control block\
+  \ of 0x28\n  bytes, possibly an AIState or a compact per-battle-actor wrapper). The captured-call pattern\n\
+  \  (r0 = 0..3 yielding 0x00, 0x28, 0x50, 0x78) is consistent with a 4-entry array indexed by\n  per-battle-actor\
+  \ index. Caller sub_80A78B8 returns the result in r6 and feeds it into a wider\n  battle-actor iteration\
+  \ loop (r5/r10 loop counters), strongly suggesting this is the per-actor\n  AI scratch/state pointer\
+  \ table used during battle AI updates.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r6, off_8142130 // =unk_2000BE0` at 0x0814206C loads the EWRAM table base. - `mov r1,
+    #0x28; mul r0, r1; add r6, r6, r0` computes `base + index * 0x28`. - Captured calls with r0 = 0,1,2,3
+    give r0 = 0x00, 0x28, 0x50, 0x78 — pure linear addressing with stride 0x28, exactly matching the assembly.
+    - Caller sub_80A78B8 has in=[r5,r10,lr] and out=[r2,r3,r4,r5,r10] with may_write r6 — it preserves
+    r5/r10 as loop bounds and uses r6 as the AI-block pointer it threads through its loop body, consistent
+    with a per-actor pointer accessor. - No `bl` calls inside, only `mov pc, lr` — leaf getter.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08142068
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^08142068 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- Whether unk_2000BE0 really is an AIData array or a smaller AI scratch struct (the 0x28 stride
+- is too small for the full AIData of 0x100 bytes). Settling it needs the struct layout of
+- unk_2000BE0 / its surrounding EWRAM region, or a writer that fills one of these slots.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a5b62063
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8142068 -> battle_getAIDataPtr_8142068
+  where: bn6f 0c53d483
+  tool: tools/rename_symbol.py

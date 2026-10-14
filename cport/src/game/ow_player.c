@@ -102,7 +102,7 @@ static void ow_player_dispatch_action(u32 player_obj) {
     switch (idx) {
         case 0: GUEST_CALL(sub_809D7A8); break;
         case 4: GUEST_CALL(ow_player_setCounterTalkStateAfterNpcInteract_809D7C8); break;
-        case 8: GUEST_CALL(sub_809D7D8); break;
+        case 8: GUEST_CALL(owPlayerObject_clearStateUnk10_809D7D8); break;
     }
 }
 

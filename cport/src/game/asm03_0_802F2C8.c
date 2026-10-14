@@ -354,7 +354,7 @@ Next camera_LoadPositionFromSource_8030126(void) {
 /* camera_applyScrollToBgLayers_8030158 (r5 = camera state, r10 = toolkit):
  * Scroll the first background layer pair by the camera's movement since the
  * last frame (current camera position minus previous position), then ask
- * sub_80269E2 -- passing it the scroll deltas on the stack -- whether the
+ * camera_shouldApplyBgScrollToBothLayerPairs_80269E2 -- passing it the scroll deltas on the stack -- whether the
  * second layer pair should follow; if it returns 0, scroll that pair too.
  * The original saves/restores r4-r7, so those end unchanged; r1 and r4's
  * scroll deltas are reloaded after the call like the original's pop does,
@@ -382,12 +382,12 @@ Next camera_applyScrollToBgLayers_8030158(void) {
     ST16(renderInfo + oRenderInfo_Unk_14, R6);
     ST16(renderInfo + oRenderInfo_Unk_16, R7);
 
-    /* sub_80269E2(r0 = render info, [sp] = scrollX, [sp+4] = scrollY) */
+    /* camera_shouldApplyBgScrollToBothLayerPairs_80269E2(r0 = render info, [sp] = scrollX, [sp+4] = scrollY) */
     R0 = renderInfo;
     SP -= 8;
     ST32(SP, scrollX);
     ST32(SP + 4, scrollY);
-    GUEST_CALL(sub_80269E2);
+    GUEST_CALL(camera_shouldApplyBgScrollToBothLayerPairs_80269E2);
     SP += 8;
 
     /* the callee may clobber r1/r4; the original pops its saved copies back */

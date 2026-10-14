@@ -1,0 +1,68 @@
+name: battleObject_submenuDispatchByBeastSpIndex_8133484
+address: '0x08133484'
+kind: function
+previous_names:
+- sub_8133484
+status: probable
+summary: 'Beast-SP submenu jump table dispatcher: picks one of four sub-handlers from the AIData''s Beast-SP
+  index, then chains submenu/folder/AI init and runs the turn handler.'
+interface: '(r0 = BattleObject self ptr, r1 = AIData ptr, r2 = index/state word, r5 = Toolkit ptr (r10
+  convention), lr = return) -> r0 = Beast-SP index (0x40) ; side effects: calls submenu/folder render,
+  calls sub_81353F0 twice with handler indices 5 and 6'
+details: "- Tail of caller (lr=0x081333ac) suggests this is called from the per-frame BattleObject main\
+  \ loop (sub_81333AC region). Entry r0/r1 match the Beast-SP \"beastsp_*\" snapshots (entry AIData pointer\
+  \ 0x02001c04, r0==&code+1 = 0x08133485 i.e. Thumb address of the function).\n  - First dispatch: reads\
+  \ r5+0x03 (the Beast-SP index inside the AIData struct) via `ldrb r1, [r5,#3]`, then loads a 4-entry\
+  \ Thumb function pointer table at off_81334B8 (`sub_81334C8+1`, `sub_8133540+1`, `sub_81335EC+1`, `sub_8133770+1`)\
+  \ and `bx`'s into the selected handler. r0 and r5 are live across the bx. This is the classic GBA \"\
+  switch on AIData.Unk_03\" dispatcher pattern.\n  - After the dispatched handler returns, sequentially:\n\
+  \      * bl battleObject_submenuRenderFolderAndChips_81341A0 (with r5/r10 still loaded)\n      * bl\
+  \ submenu_clearBgIfClosed_8134594\n      * bl object_resolveTableEntryByIndex_8134538\n      * bl sub_81353DC\
+  \ (the fixed-arg wrapper for sub_81348DC)\n      * bl sub_81353F0 with r0=5,r1=0 (likely sub_81348DC's\
+  \ \"draw/init\" entry)\n      * bl sub_81353F0 with r0=6,r1=1 (likely the per-turn update entry)\n \
+  \ - The exit r0==0x40 (= Beast-SP \"beast out\" code) is the canonical return value when a Beast-SP\
+  \ card is held; the callers test for it. So this function returns whether the Beast-SP is currently\
+  \ active.\n  - epilogue uses `pop {pc}` (not lr), so this is a `void`/caller-restore function from the\
+  \ toolchain's POV: it really returns via POP, not a `bx lr`.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r1, [r5,#3]` reads the 4th byte of an AIData-like record (offset 0x03 == `Unk_03`,
+    the Beast-SP index, since `r5` here is the AIData pointer that came in as r1=0x02001c04 in the snapshots
+    and is moved to r5 by the caller). - 4-entry jump table off_81334B8 mapped from indices 0..3; standard
+    GBA Thumb `ldr r0,[r0,r1]; bx r0` pattern. - Captured calls all show identical entry (r0=func+1, r1=0x0c=AIData,
+    r2=0, r3=0x02001c04) and identical exit r0=0x40, indicating the dispatcher is re-entered every frame
+    during Beast-SP and the Beast-SP flag is propagated out. - sub_81353F0 is called twice with consecutive
+    handler indices 5/6, matching the "init" + "per-turn" AI/handler pair used elsewhere in the Beast-SP
+    code (sub_81348DC is the worker). - `pop {pc}` shows the function was actually entered via a tail-call
+    (lr saved to stack then popped) — so the real entry is one instruction earlier in sub_81333AC; this
+    is the body of a per-Beast-SP update frame.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08133484
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^08133484 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The exact role of each of the four dispatched handlers (sub_81334C8 / 8133540 / 81335EC / 8133770) —
+  they probably correspond to Mega/Heat/Aqua/Elec/Beast-SP cards, but we only have 4 slots and Beast-SP
+  spans multiple elements. Reading r5+0x03 in more call sites and cross-referencing the AIData.Unk_03
+  enum would settle it.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a5b62063
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8133484 -> battleObject_submenuDispatchByBeastSpIndex_8133484
+  where: bn6f 0c53d483
+  tool: tools/rename_symbol.py

@@ -1,0 +1,59 @@
+name: owMapObject_bbsObjectUpdate_80A5588
+address: '0x080A5588'
+kind: function
+previous_names:
+- sub_80A5588
+status: probable
+summary: 'Per-frame update for the BBS overworld object (spawned by sub_80A5514): poll cutscene/chatbox/player-busy
+  gates, run sub-state 4 BBS request logic and sprite animation.'
+interface: '(r5 = owMapObjectPtr, r6 = ???, r10 = toolkitPtr, lr) -> void ; side effects: events flags
+  EVENT_4EA/EVENT_4EB tested/possibly set, sprite updated'
+details: "- Bails out immediately if any of these conditions hold:\n    1. `cutscene_checkOriginalCutsceneScriptPos_8036F40`\
+  \ returns TRUE (cutscene script not the L-Message sentinel)\n    2. `cutscene_checkOriginalCutsceneScriptPos_8036F58`\
+  \ returns TRUE (cutscene script matches the \"AskJackOut\" sentinel)\n    3. `chatbox_mask_eFlags2009F38`\
+  \ reports bit 0x80 is set\n    4. `owPlayer_isBusyOrCutsceneActive_809E462` returns TRUE (player is\
+  \ busy or a cutscene is active)\n    If any holds, the function skips straight to `sprite_update` and\
+  \ returns.\n  - Otherwise calls the sub-state helper `sub_80A55D4`, then runs `checkBbsReqFlag_80A5744`\
+  \ only when neither `EVENT_4EA` nor `EVENT_4EB` is set *and* `r6` byte offset 0x8 is not equal to 2\
+  \ (so a CurAction of 2 gates BBS flag checks).\n  - Always falls through to `sprite_update` once either\
+  \ the conditional BBS block is left (loc_80A55C6) or after the bail-out (locret_80A55CA).\n  - Captured\
+  \ entry R5/R6 are the standard overworld object callee-saved pair, matching how the caller (sub_80A5514)\
+  \ tail-dispatches.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {lr}` ... `pop {pc}` frame matches a void leaf dispatch entry. - Four sequential `bl`
+    calls before the first `bne locret_80A55CA`: each followed by `bne` to the early return — assembly
+    confirms these are independent guard conditions. - `movflag EVENT_4EA` / `movflag EVENT_4EB` macros
+    followed by `TestEventFlagFromImmediate` show which flags gate the BBS request check. - `ldrb r0,
+    [r6,#8]` with `cmp r0, #2` / `beq loc_80A55C6` proves r6 has a byte at offset 0x8 (likely CurAction
+    or CurPhase) used to bypass the BBS request handling. - Caller summary for sub_80A5514: "advances
+    the object''s sub-state to 4 and tail-dispatches to sub_80A5588" — consistent with this being the
+    sub-state-4 handler.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080A5588
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp, story5, story6'
+  reproduce: 'grep -l ''^080a5588 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp, story5, story6
+open_questions:
+- The exact meaning of r6 (which overworld object class it points to); confirmed only by the byte read
+  at offset 0x8.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a5b62063
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80A5588 -> owMapObject_bbsObjectUpdate_80A5588
+  where: bn6f 0c53d483
+  tool: tools/rename_symbol.py

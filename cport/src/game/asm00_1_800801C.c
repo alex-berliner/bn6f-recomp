@@ -1798,12 +1798,12 @@ Next battle_clearEnemyFadeinList(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_800AA06 ── */
-/* sub_800AA06(r0 = handle passed through to getNextEntryAddress_800AAAE, r5 = expected id):
+/* ── battleObject_isCurrentTurnBattleObject_800AA06 ── */
+/* battleObject_isCurrentTurnBattleObject_800AA06(r0 = handle passed through to getNextEntryAddress_800AAAE, r5 = expected id):
  * Asks getNextEntryAddress_800AAAE (called with r0 unchanged) for a pointer, then checks
  * whether the id field at that pointer matches r5. Returns r0 = 1 on match,
  * 0 otherwise (also left in r2, with flags from the move). */
-Next sub_800AA06(void) {
+Next battleObject_isCurrentTurnBattleObject_800AA06(void) {
     GUEST_CALL(getNextEntryAddress_800AAAE);
 
     u32 match = 0;
@@ -1901,13 +1901,13 @@ Next compactEntryWords_800AA64(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_800AA92 ── */
-/* sub_800AA92: fetch a table pointer from getNextEntryAddress_800AAAE, then count how many
+/* ── battle_countAliveNextEntries_800AA92 ── */
+/* battle_countAliveNextEntries_800AA92: fetch a table pointer from getNextEntryAddress_800AAAE, then count how many
  * of its eight u32 entries are nonzero.
  * outputs: r0 = nonzero count, r1 = last word read, r2 = 0x20 (loop end),
  *          r3 = table pointer; c/v left as the final `cmp r2, #0x20` leaves
  *          them (c set, v clear). */
-Next sub_800AA92(void) {
+Next battle_countAliveNextEntries_800AA92(void) {
     GUEST_CALL(getNextEntryAddress_800AAAE);
     R3 = R0;
 

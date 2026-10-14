@@ -1,0 +1,73 @@
+name: object_endPwrAtkAction_80EAF36
+address: '0x080EAF36'
+kind: function
+previous_names:
+- sub_80EAF36
+status: probable
+summary: 'Finalizes a battle object''s power-attack action: commits the move to the destination panel,
+  exits the attack state (or falls into the sub-attack handler) when the power-attack bookkeeping resolves,
+  and may draw the next chip into hand if a charged attack finished.'
+interface: (r5 = object, r6 = AIState, r7 = ???) -> void ; no return value consumed by callers; r5/r6/r7
+  callee-saved
+details: "- Reads oBattleObject_CurAction (offset 0x9) on r5; values >=0x10 are dispatched through the\
+  \ AIAttackJumptable at off_80EB044 (sub_0x10 then *4 indexing).\n  - The jump-target handler returns;\
+  \ afterward, if CurAction is 8 (PwrAtk?), it inspects a u16 queue head at r7+0x1e and an \"available\"\
+  \ flag at r7+0x22; if non-empty it calls sub_800FC30 to peek the next chip ID and, if not 0xFFFF, draws\
+  \ it into hand via battle_drawCardToHand_800FC7C, writes 0x4 into the queue head and zeroes the available\
+  \ flag, sets AIState.Unk_05 = 0xc, and calls sub_80E1662.\n  - On all other paths (or after the chip-draw\
+  \ block) it falls into the loc_80EAF80 cleanup: clears PwrAtk state via sub_801011A, copies FuturePanelX/Y\
+  \ into PanelX/Y, releases the panel reservation, recomputes pixel coords, updates collision panels,\
+  \ clears OBJECT_FLAGS_CANNOT_SLIDE (0x40) and sets OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT, then calls sub_80F02A2;\
+  \ if that returns non-zero it calls object_exitAttackState, else it calls sub_801171C to continue.\n\
+  \  - Reads GetBattleMode but does not branch on it (the cmp #1 / beq loc_80EAFAE test is a fall-through\
+  \ to the same label), so the check is effectively dead code.\n  - The contract says nothing is returned\
+  \ to callers (only flags), matching a void AI action-step.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r1, [r5,#oBattleObject_CurAction]` / `cmp r1, #0x10` / `blt loc_80EAF80` shows the
+    >=0x10 dispatch path with the AIAttackJumptable. - `ldr r0, off_80EB044` / `ldr r0, [r0,r1]` / `mov
+    lr, pc; bx r0` is a Thumb jumptable dispatch typical of the AI attack handler chain. - `cur r3, #0x1e;
+    add r3, r3, r7` plus `[r3,#4]` and the subsequent `ldr r3, dword_80EB048 // =0xffff` + `cmp r0, r3`
+    shows it peeks the queued next chip id and treats 0xFFFF as empty. - `bl battle_drawCardToHand_800FC7C`
+    plus `mov r0, #4; strh r0, [r1]` and `strb r0, [r1,#4]` enqueues the drawn chip id at the queue head
+    and clears the availability flag. - `bl sub_800FC30` is the queue-peek helper, called before battle_drawCardToHand
+    to know whether a chip is available. - `bl sub_801011A` (ai_clearPwrAtkStateFromBattleObject) is the
+    named "clear PwrAtk state" callee. - The cleanup sequence `object_removePanelReserve` -> `object_setCoordinatesFromPanels`
+    -> `object_updateCollisionPanels` -> `object_clearFlag(0x40)` (CANNOT_SLIDE) -> `object_setFlag1(1<<19=OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT)`
+    is the standard "commit move, start moving" path. - `bl sub_80F02A2; tst r0, r0; beq loc_80EAFBC`
+    followed by `bl object_exitAttackState` vs `bl sub_801171C` shows the success-of-action branch choosing
+    exit-attack vs sub-handler. - Contract `out` lists only flags and callee-saved registers, so this
+    is a void step function for the AI action loop.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080EAF36
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^080eaf36 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- r6 (AIState) and r7 (queue base) roles are inferred from offset 0x5 (`oAIState_Unk_05`) and from the
+  0x1e-indexed queue; the project comments note ai_state_struct vs ai_attack_vars_struct ordering may
+  be swapped, so the precise struct mapping for r6 is not certain.
+- 'The `GetBattleMode`/compare pair is dead code as written (cmp #1, beq to the very next instruction);
+  the intent of that comparison is unclear - perhaps an unfinished guard for a special battle type.'
+- The exact AI attack sub-action jumped to via off_80EB044 is not visible here; naming it would need seeing
+  the table entries and the other CurAction>=0x10 handlers.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a5b62063
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80EAF36 -> object_endPwrAtkAction_80EAF36
+  where: bn6f 0c53d483
+  tool: tools/rename_symbol.py

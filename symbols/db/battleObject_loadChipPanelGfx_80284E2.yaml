@@ -1,0 +1,78 @@
+name: battleObject_loadChipPanelGfx_80284E2
+address: '0x080284E2'
+kind: function
+previous_names:
+- sub_80284E2
+status: probable
+summary: Battle side-effect routine that streams the chip-activation panel graphics (chip name tiles,
+  icon, element palette, attack counter BCD digits) into VRAM for the active battle object's side.
+interface: (r0 = chip_id_word, r1 = ?, r2 = ?, r3 = toolkit-derived pointer) -> r0 = pointer into gfx
+  chunk table (e.g. 0x0802a6c0) or VRAM-side data; only caller-saved regs (r4-r10) survive
+details: "- Saves r0 (chip id word) on the stack, then calls `chip_SelectNameTextTable_8027D10` to split\n\
+  \    the id into a name-text table pointer/index, and publishes the chip-name tile chunk via\n    `renderTextGfx_8045F8C`\
+  \ (text-graphics publish + render of one glyph chunk at\n    0x6009360/0x6009560).\n  - Calls `sub_80109A4(r0_chip_id\
+  \ & 0x1ff, BattleState->Unk_0d)` and stores the result on stack.\n  - Resolves the chip's 44-byte record\
+  \ via `getChip8021DA8`. If the record's `+0x24` ptr is non-null,\n    queues a 0x540-byte GFX transfer\
+  \ from there to 0x6009560 (icon/element tiles), and another\n    0x20-byte copy from `record+0x28` to\
+  \ `unk_3001AA0` (likely palette).\n  - Picks a frame index from `record[+7]` (capped at 2 -> 0..3) and\
+  \ `record[+9] & 0x20`, then\n    queues a 0x20-byte palette chunk from `byte_86E587C + idx*0x20` to\
+  \ 0x3001A80 (frame palette).\n  - Special-cases chip 0x1c (id == 0x1c00, \"Sword\") by remapping to\
+  \ index 0x1b, then queues a\n    0x40-byte element icon to 0x6009aa0 from `dword_86E2E98 + 0x40*idx`.\n\
+  \  - Picks an element-anim index from `record[+6]`, queues a 0x80-byte tile to 0x6009ae0 and a\n   \
+  \ 0xC-byte mapping entry to 0x3001AD4 (`QueueWordAlignedGFXTransfer`).\n  - If the chip's `+9` & 0x12\
+  \ has any bits (counter/special bit), sets a digit count: for the\n    fixed counter chip 0x55 it forces\
+  \ a 3-digit BCD \"0xAAA\" pattern; otherwise BCD-converts\n    the value from `sp+0xC` via `memory_bcdConvert`,\
+  \ then pads with `countHexDigits_8000C5C`.\n  - If `3 - digit_count` is non-zero, calls `sub_802868C`\
+  \ to draw a \"rows\" frame chunk\n    (`byte_802A6C0` -> 0x6009b60), then loops `digit_count` times\
+  \ uploading 0x40-byte BCD\n    digit tiles from `dword_86E411C + 0x40*(nibble & 0xF)` to successive\
+  \ 0x40-byte slots\n    starting at 0x6009be0 and stepping down by 0x40 (right-to-left BCD digits).\n\
+  \  - Many `QueueEightWordAlignedGFXTransfer` calls push the actual VRAM writes onto the GFX\n    DMA\
+  \ ring buffer; nothing is written back to game-side state, so callers may treat this\n    as a `void`\
+  \ \"render chip panel\" routine (returned r0 values look incidental: the cached\n    pointer at 0x0802a6c0\
+  \ / 0x086e415c / 0x086e421c / 0x086e431c from prior `sub_802868C` /\n    `getChip` calls, kept in r0\
+  \ only because the function pops straight to `pop {r4,pc}`).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- r0 saved at function entry and reused as the chip id for both `getChip8021DA8` and the sub_80109A4
+    call (`str r0, [sp]`; `ldr r0, [sp]`; `and r0, r1` with r1=0x1ff). - 7 distinct `QueueEightWordAlignedGFXTransfer`
+    calls and 1 `QueueWordAlignedGFXTransfer`, each writing a fixed-size (0x20/0x40/0x80/0x540) chunk
+    into specific VRAM regions (0x6009360, 0x6009560, 0x3001AA0, 0x3001A80, 0x6009aa0, 0x6009ae0, 0x3001AD4,
+    0x6009b60, 0x6009be0), characteristic of an asset streaming helper. - The BCD digit loop at loc_80285DC
+    is shaped exactly like a 4-bit nibble unpacker (`and r0, r4; lsr r4, r4, #4; sub r1, #0x40; sub r3,
+    #1; bne`), matching a small decimal counter on the chip-activation panel. - Chip 0x55 special-case
+    sets r4 = (0xAA << 4) + 0x0A and digit count = 3, which is recognizable as the "+100" / numeric-counter
+    chip''s BCD glyph pattern. - The single caller `sub_8028476` is described as "dispatch on chip kind
+    to the chip-activation'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080284E2
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^080284e2 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- Exact role of `sub_80109A4` and the meaning of the value returned into `sp+0x10` are not
+- used downstream; it may select a battle-side flag index but is otherwise dead in this fn.
+- The pointer/idx pair from `chip_SelectNameTextTable_8027D10` is consumed by
+- '`renderTextGfx_8045F8C`; the exact glyph chosen within the chunk isn''t reconstructable'
+- from this assembly alone.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a5b62063
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80284E2 -> battleObject_loadChipPanelGfx_80284E2
+  where: bn6f 0c53d483
+  tool: tools/rename_symbol.py

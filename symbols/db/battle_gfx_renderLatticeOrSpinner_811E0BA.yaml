@@ -1,0 +1,66 @@
+name: battle_gfx_renderLatticeOrSpinner_811E0BA
+address: '0x0811E0BA'
+kind: function
+previous_names:
+- sub_811E0BA
+status: probable
+summary: Prepares and VRAM-queues a 0x140-byte background-tile lattice (or "no-data" filler) used by the
+  chip-select/lattice battle-screen effect, branching on `eStruct2001010+0x10`.
+interface: () -> void ; queues a 0x140-byte GFX transfer from EWRAM `byte_2027200` to VRAM `0x06015580`
+  via `QueueEightWordAlignedGFXTransfer`; reads/writes `eStruct2001010+0x10..0x12`.
+details: "- Clears the 0x140-byte staging buffer at `byte_2027200` with `ZeroFillByWord(byte_2027200,\
+  \ 0xa<<5)` (i.e. 0x140 = 32*10 bytes).\n  - Reads a u8 control byte at `eStruct2001010+0x10` into r4.\
+  \ If non-zero (the \"render lattice\" branch), picks a column-width nibble `r1 = r0>>4` and a base nibble\
+  \ `r0` from a 3-step table driven by the control value (`0xc0` default; `0xd0` if r4>=0x14; `0xe0` if\
+  \ r4>=0x28).\n  - Walks r6 from 0 to r4 in steps that lay down 8 bytes per 4-column tile: `r2 = (r1\
+  \ | r0)` once two columns have been written, else just `r1`; the byte is then stored at seven offsets\
+  \ `+0,+4,+8,+c,+10,+14,+18,+1c` and r7 advances by 1. Every 8 rows r7 jumps an extra `+0x1c` to skip\
+  \ the inter-tile gap (so the writes target the visible 8x8 tile columns only). Stops when r6 reaches\
+  \ r4.\n  - If `eStruct2001010+0x10 == 0` (the \"idle / wait\" branch), increments `eStruct2001010+0x12`,\
+  \ masks it (`& 0x3f`), and once the low 6 bits reach `0x20..0x3f` writes a uniform `0xee` byte (8 writes\
+  \ per row) across r6 = 0..0x50 in the same pattern - a \"spinner / no-data\" fill that runs only on\
+  \ alternating ticks.\n  - Both branches fall through to `QueueEightWordAlignedGFXTransfer(byte_2027200,\
+  \ 0x06015580, 0xa<<5)` to push the buffer to VRAM character-base `0x06015580` (one screenful of 4bpp\
+  \ tiles).\n  - The caller `sub_81419A0` lives in the same lattice-related block (`snap_beastsp_*` traces\
+  \ show it firing on every animation tick while a BeastSP-style effect plays), so this is the per-frame\
+  \ tile/uploader for that effect.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl ZeroFillByWord` with `r1 = 0xa<<5 = 0x140` and `r0 = byte_2027200` (assembly lines after
+    `mov r1,#0xa; lsl r1,r1,#5`). - Destination constant `0x6015580` (`dword_811E15C`) plus size `0xa<<5`
+    matches a 4bpp 32x32-tile BG block typical of a BG character base. - The `tst r6,#7` + `add r7,#0x1c`
+    pattern emits exactly 8 visible bytes then 28 tri-byte tile-gap bytes per row (28 = 0x1c), consistent
+    with writing every other 4-byte column inside an 8-byte tile stride. - The branch on `[eStruct2001010+0x10]`
+    being zero vs non-zero with the second branch incrementing `[eStruct2001010+0x12]` is visible at `cmp
+    r4,#0 / beq loc_811E118` and `add r0,#1; strb r0,[r1,#0x12]`. - Caller `sub_81419A0` is reached from
+    `lr=0x081419d9` in every captured snap, and its contract (in r4/r6/r7/r10/lr, out r8/r9/r12) fits
+    a per-frame effect dispatcher that calls into this uploader.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0811E0BA
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^0811e0ba '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The semantic meaning of `eStruct2001010+0x10` (a count of active tiles? a mode flag?) and of `0xee`
+  in the idle branch (blank/dark-coded, "no-data" filler, or a noise frame) cannot be derived from the
+  assembly alone; correlating this struct's offsets with a higher-level engine would settle it.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a5b62063
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_811E0BA -> battle_gfx_renderLatticeOrSpinner_811E0BA
+  where: bn6f 0c53d483
+  tool: tools/rename_symbol.py

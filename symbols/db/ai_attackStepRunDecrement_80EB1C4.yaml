@@ -1,0 +1,64 @@
+name: ai_attackStepRunDecrement_80EB1C4
+address: '0x080EB1C4'
+kind: function
+previous_names:
+- sub_80EB1C4
+status: probable
+summary: 'AI tick: decrements AIAttackVars.Unk_10 countdown; on expiry resolves an outcome and either
+  exits the attack state or advances a sub-step.'
+interface: (r4 = AIDataPtr, r7 = AIAttackVarsPtr) -> r0 = 0..3 (success/result); side effects updates
+  AIAttackVars.Unk_10, AIData.Unk_1a; may call object_exitAttackState.
+details: "1. push {lr} and read a halfword at [r7,#oAIAttackVars_Unk_10] (the AttackVars buffer at AIData+0xa0,\
+  \ so offset 0x10 within it is the u16 at AIData+0xb0).\n  2. sub r0,#1 and strh back, then bgt locret_80EB1F6:\
+  \ while the counter is still > 0 the function returns immediately with r0=0 (per snap_story2_11.bin\
+  \ where r0 was 0 and flags -ZC-, indicating the counter hit 0 on this tick).\n  3. When the counter\
+  \ reaches 0 (or below), read [r7,#oAIAttackVars_Unk_03] (AIAttackVars.Unk_03). If it is 1, skip the\
+  \ roll and force r0=0 via the loc_80EB1E0 branch.\n  4. Otherwise call battle_RollNaviStatChance_8013FAE\
+  \ (which uses r5=AI owner and rolls a d8 against the navi's BeastOutAPwrAtk stat byte at +0x11). If\
+  \ the roll returns 0, also fall through to r0=0; if non-zero, read [r7,#oAIAttackVars_Unk_0c] (AIAttackVars.Unk_0c)\
+  \ and use that as the result.\n  5. strb r0,[r4,#oAIData_Unk_1a] (AIData.Unk_1a) storing the resolved\
+  \ value (0..3) seen in the captured exits.\n  6. bl sub_80F02A2; if it returns non-zero, bl object_exitAttackState\
+  \ to end the attack; otherwise bl sub_801171C to advance to the next sub-step.\n  7. pop {pc} returns.\
+  \ r0 carries the resolved outcome (0..3), matching all captured-call exit r0 values 0,1,2,3.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrh r0,[r7,#oAIAttackVars_Unk_10]` / `sub r0,#1` / `strh r0,[r7,#oAIAttackVars_Unk_10]`
+    / `bgt locret_80EB1F6`: decrement a u16 counter and bail while positive. - `ldrb r0,[r7,#oAIAttackVars_Unk_03]`
+    / `cmp r0,#1` / `beq loc_80EB1E0` and the roll/skip branches: on expiry choose between a navi-stat
+    roll result and the AIAttackVars.Unk_0c value. - `bl battle_RollNaviStatChance_8013FAE` is the confirmed
+    "roll d8 vs navi stat 0x11" helper. - `ldrb r0,[r7,#oAIAttackVars_Unk_0c]` loads the alternate outcome
+    byte; `strb r0,[r4,#oAIData_Unk_1a]` stores the chosen value into AIData. - `bl sub_80F02A2` / `tst
+    r0,r0` / `beq loc_80EB1F2` / `bl object_exitAttackState` vs `bl sub_801171C`: branches on a helper
+    return to either exit or advance. - Captured exits r0=0..3 from snap_story2_0..13 (all with entry
+    r0=0x0c, r1=0x80eb1c5+1, lr=0x80eb058) confirm the 0..3 result range written to AIData.Unk_1a.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080EB1C4
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^080eb1c4 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9
+open_questions:
+- The semantic meaning of AIData.Unk_1a (stored result 0..3) and which sub-step sub_801171C advances to.
+- Why AIAttackVars.Unk_03 == 1 short-circuits to 0 (perhaps a "guaranteed miss" or already-resolved flag).
+- What sub_80F02A2 actually checks (its contract is in=['r5','r7','lr'] but its purpose isn't summarized).
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a5b62063
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80EB1C4 -> ai_attackStepRunDecrement_80EB1C4
+  where: bn6f 0c53d483
+  tool: tools/rename_symbol.py

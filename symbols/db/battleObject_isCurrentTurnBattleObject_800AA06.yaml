@@ -1,0 +1,58 @@
+name: battleObject_isCurrentTurnBattleObject_800AA06
+address: '0x0800AA06'
+kind: function
+previous_names:
+- sub_800AA06
+status: probable
+summary: Returns true if the battle object whose AIData is at index r0 matches the battle object passed
+  in r5.
+interface: (r0 = aiDataIndex, r5 = battleObjectPtr) -> r0 = 1 if match else 0 ; sets flags Z (equal) and
+  C (carry) via the cmp/bne path; r1/r2 are clobbered
+details: "Calls getNextEntryAddress_800AAAE(r0) to get a pointer into the Next array at 0x2038170 (0x20-byte\
+  \ entries).\n  Loads the first word at that entry ([r0]) and compares it to r5 (the candidate BattleObject\
+  \ pointer).\n  Sets r2 = 1 on equality, 0 otherwise, then returns r2 (which becomes r0 via `mov r0,\
+  \ r2`).\n  Effectively a \"is the battle object whose AIData index is r0 the same as the one in r5?\"\
+  \ test used by battleObject phase-update paths.\n  Saves only lr; r1/r2 are caller-clobbered but only\
+  \ r0 is contractually meaningful.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl getNextEntryAddress_800AAAE` followed by `mov r2,#0; ldr r0,[r0]; cmp r0,r5; bne loc_800AA16;
+    mov r2,#1` is exactly "compare entry r0''s first word to r5, return 1 if equal else 0". - getNextEntryAddress
+    returns Next[r0] base in r0 and array base in r1 (confirmed by callee summary), confirming r0 indexes
+    0x20-byte entries at 0x2038170. - Caller sub_8109EC4 (Mettaur attack loop) uses this to gate Param4/AttackVars
+    initialization on whether the "next" AIData target matches the current battle object. - Caller battleObject_joinAlly_80163B4
+    is a phase-update for an ally-joining battle object; this check fits as "is this object the one we''re
+    tracking?" - Contract out=[''r0'',''r1'',''r2''] matches assembly: r0 returned, r1/r2 set by the callee
+    and the mov/return sequence.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0800AA06
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0800aa06 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- The semantic meaning of the first word stored at Next[r0] (likely a BattleObject* pointer cached when
+  the AI was queued). Identifying it exactly would settle whether this is "is my queued target still alive"
+  vs "is the object in slot r0 me?" — captured callers show only r5 holds a battle-object pointer, so
+  this is the more probable reading, but the array's purpose beyond indexing isn't proven here.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a5b62063
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_800AA06 -> battleObject_isCurrentTurnBattleObject_800AA06
+  where: bn6f 0c53d483
+  tool: tools/rename_symbol.py

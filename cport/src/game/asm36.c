@@ -917,7 +917,7 @@ Next battle_dispatchObjectUpdateOrEffect_81333A0(void) {
     else if (objType == 8)
         GUEST_CALL(sub_8133434);
     else if (objType == 0xC)
-        GUEST_CALL(sub_8133484);
+        GUEST_CALL(battleObject_submenuDispatchByBeastSpIndex_8133484);
     else /* objType == 0x10 */
         GUEST_CALL(sub_8133788);
 
@@ -976,9 +976,9 @@ static void call_update_camera(void) {
     GUEST_CALL(battleObject_submenuRenderFolderAndChips_81341A0);
 }
 
-/* register form: calls sub_81353DC outside this file, which has no typed C interface yet */
+/* register form: calls battleObject_alignRowOffsetCheckSN3_81353DC outside this file, which has no typed C interface yet */
 static void call_reset_turn_state(void) {
-    GUEST_CALL(sub_81353DC);
+    GUEST_CALL(battleObject_alignRowOffsetCheckSN3_81353DC);
 }
 
 /* register form: calls battle_aiRunTurnHandler_81353F0 outside this file, which has no typed C interface yet */
@@ -1190,10 +1190,10 @@ static inline call_sub_8134538_result call_sub_8134538(u32 r5) {
 }
 
 typedef struct { u32 r4, r5, r6, r7; } call_sub_81353DC_result;
-/* register form: generated wrapper: sub_81353DC has no typed C interface yet */
+/* register form: generated wrapper: battleObject_alignRowOffsetCheckSN3_81353DC has no typed C interface yet */
 static inline call_sub_81353DC_result call_sub_81353DC(u32 r5) {
     R5 = r5;
-    GUEST_CALL(sub_81353DC);
+    GUEST_CALL(battleObject_alignRowOffsetCheckSN3_81353DC);
     return (call_sub_81353DC_result){ R4, R5, R6, R7 };
 }
 
@@ -1438,7 +1438,7 @@ Next sub_8133944(void) {
     GUEST_CALL(sub_8134548);
     GUEST_CALL(battleObject_submenuRenderFolderAndChips_81341A0);
     GUEST_CALL(battleObject_drawFolderEditScreenGfx_8134310);
-    GUEST_CALL(sub_81353DC);
+    GUEST_CALL(battleObject_alignRowOffsetCheckSN3_81353DC);
 
     /* Two palette/OBJ-bank setups: slot 5 in low (0), slot 6 in high (1). */
     R0 = 5; R1 = 0;
@@ -2759,13 +2759,13 @@ Next battle_copyStateSlotsAndZeroNext_813527C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_81353DC ── */
-/* sub_81353DC: thin wrapper around battle_alignRowCheck_81348DC. It invokes that routine with
+/* ── battleObject_alignRowOffsetCheckSN3_81353DC ── */
+/* battleObject_alignRowOffsetCheckSN3_81353DC: thin wrapper around battle_alignRowCheck_81348DC. It invokes that routine with
  * a fixed argument set (r0 = 0x24, r1 = 0xA5, r2 = 0x28, r3 = 4, r4 = 6) and
  * simply lets its results in r2/r3 pass through to the caller. As in the
  * original (push/pop {r4}), the caller's r4 survives even though the callee
  * may clobber it; r5-r7 are untouched. */
-Next sub_81353DC(void) {
+Next battleObject_alignRowOffsetCheckSN3_81353DC(void) {
     u32 saved_r4 = R4;
 
     R0 = 0x24;

@@ -1,0 +1,63 @@
+name: battleObject_drawIndicatorOrStatusIcon_812053C
+address: '0x0812053C'
+kind: function
+previous_names:
+- sub_812053C
+status: probable
+summary: Queue an OAM sprite entry for a battle object's status / damage indicator, if the previous draw
+  step succeeded
+interface: '(r0 = draw result code, r1 = battle object ptr, r2 = ?) -> r0 = 0xff ; side effects: queues
+  an OAM entry via sprite_queueOamEntryThunk_802FE28'
+details: "1. Saves r4-r7,lr and copies r1 (battle object) into r4 for later.\n  2. Calls sub_81205C0 with\
+  \ r3=0 to do some lookup / preparation; if the result in r0 has bit 31 set (BLT branch taken after tst\
+  \ r0,r0), returns immediately with r0=0xff.\n  3. Otherwise masks r0 with 0xc0008000 (clears the priority/affine\
+  \ bits), ORs in byte_8120564 (0), then queues an OAM entry through sub_802FE28 with the cleaned-up attribute\
+  \ word, an OAM tile offset of r4+0xc (a per-object sprite slot), r2=0, r3=1.\n  4. This is the typical\
+  \ \"draw one sprite/animation overlay tied to a battle object\" pattern: r4 is a BattleObject*, +0xc\
+  \ lands inside its object header / early field area and is used as the OAM slot index by sub_802FE28.\n\
+  \  5. The early-out result of 0xff is the same constant sub_81205C0-style code uses to mean \"skip drawing\
+  \ this frame\".\ndetails: |\n  - `mov r4, r1` then `add r1, r1, r4 ; mov r1, #0xc ; add r1, r1, r4`\
+  \ is `r1 = r4 + 0xc`; BattleObject's `CurAnim`/`CurAnimCopy` lives at +0x10, so +0xc is one byte before\
+  \ that — likely the per-object \"slot\"/ListIndex used as an OAM tile-source offset.\n  - The mask `0xc0008000`\
+  \ corresponds to OAM attr0 bits (affine index / obj disable / mode) being cleared while GFX-related\
+  \ bits kept; combined with `orr r0, byte_8120564 (=0)` the attribute word passed to sub_802FE28 has\
+  \ only the bottom bits coming from r0's precomputed value.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- callee `sprite_queueOamEntryThunk_802FE28` is documented as `(u32 a1, u16 a2, int notUsed,
+    int a4) -> void`, and r1 here ends up `r4+0xc` (u16 tile offset), r2=0, r3=1 — exactly matching the
+    OAM-queue call shape. - r4 is set from r1 (the second arg) and is the only persistent register across
+    the call to sub_81205C0, consistent with r1 being the BattleObject ptr. - The early-out path returns
+    r0=0xff, identical in shape to other "indicator draw skip" routines in this project. - The mask `0xc0008000`
+    is the standard GBA OAM attr0/attr1 bit pattern (disable/affine bits) that callers strip before queueing.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0812053C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus3, story4, story6,
+    story8, story9'
+  reproduce: 'grep -l ''^0812053c '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus3, story4, story6, story8, story9
+open_questions:
+- What `sub_81205C0` produces in r0 (a packed OAM attribute, an anim ID, or a status bitmap) is not directly
+  visible from this slice — it determines whether we draw or skip.
+- The semantic of the indicator (damage pop-up vs status icon vs counter) is unclear; the +0xc offset
+  doesn't obviously map to any named BattleObject field.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a5b62063
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_812053C -> battleObject_drawIndicatorOrStatusIcon_812053C
+  where: bn6f 0c53d483
+  tool: tools/rename_symbol.py

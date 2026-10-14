@@ -1,0 +1,64 @@
+name: battleObject_updateSprite_80C464C
+address: '0x080C464C'
+kind: function
+previous_names:
+- sub_80C464C
+status: probable
+summary: Per-frame sprite/animation tick for a battle object, picking one of three update paths based
+  on Param3 and skipping when the collision flags forbid it.
+interface: '(r5 = oBattleObjectPtr, r10 = oToolkitPtr) -> void ; side effects: refreshes mosaic + alpha
+  on the object''s sprite via the toolkit, then advances its animation'
+details: "Called for one battle object (r5). First refreshes mosaic/scaling parameters on the\n  RelatedObject1Ptr's\
+  \ sprite and re-sets its alpha (sprite_getMosaicScalingParameters +\n  sprite_setAlpha; uses r5→RelatedObject1Ptr).\n\
+  \  If [r5+ExtraVars+0xc] != 0, AND [r5→RelatedObject1Ptr→CollisionData→ObjectFlags1] has any\n  bit\
+  \ set in dword_80C46F8 (=0x00100800 = OBJECT_FLAGS_PARALYZED | OBJECT_FLAGS_FROZEN), the\n  function\
+  \ returns early without animating; this skips objects that are paralyzed/frozen at the\n  per-extraVars\
+  \ level (param 0 path).\n  Otherwise it reads Param3 ([r5+6]) to pick the sprite tick variant:\n   \
+  \ - Param3 == 1 → object_updateSpriteTimestop (advance even during time-stop)\n    - Param3 == 2 → sub_801BCD0\
+  \ (custom tick path)\n    - otherwise (Param3 == 0 or anything else) → only run object_updateSprite\
+  \ if\n      battle_isTimeStop() is false (the .flags bit that freezes normal sprites is off); if it\n\
+  \      returns true the early exit is taken.\n  Caller is sub_80C461C which loops over the battle objects\
+  \ once per frame; this is the body of\n  the loop.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- Single caller sub_80C461C loops over objects per frame, calling this once each. - r5 read
+    for RelatedObject1Ptr is the per-object pointer; r10 is the toolkit convention. - First two BLS unconditionally
+    run mosaic + alpha (sprite_getMosaicScalingParameters + sprite_setAlpha) on every visit — pointer
+    chain r5→[oBattleObject_RelatedObject1Ptr]→ [oBattleObject_CollisionDataPtr]→[oCollisionData_ObjectFlags1].
+    - dword_80C46F8 = 0x00100800 = bit 11 (PARALYZED) | bit 16 (FROZEN) of ObjectFlags1. - ExtraVars+0xc
+    set + any of those bits → locret_80C468A (skips sprite update entirely). - Param3 dispatch is one
+    cmp/beq/cmp/beq chain that branches to each variant. - battle_isTimeStop() returning true (NE-flag
+    set after tst) also bne''s to the early return, so Param3==0 honours a global time-stop while Param3==1/2
+    override it. - sub_801BCD0 stands in for "third custom sprite-update variant" — only reached when
+    Param3 == 2.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080C464C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp'
+  reproduce: 'grep -l ''^080c464c '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp
+open_questions:
+- What the Param3 == 2 path actually does differently (sub_801BCD0 is unnamed).
+- Whether ExtraVars+0xc is actually a "must-update even when paralyzed" enable bit, or
+- something orthogonal that simply gates the paralysis/frozen skip.
+- 'The right project prefix: looks like a battle object tick (only called from a battle loop),'
+- so battleObject_ is the best fit but battle_ would also be defensible.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a5b62063
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80C464C -> battleObject_updateSprite_80C464C
+  where: bn6f 0c53d483
+  tool: tools/rename_symbol.py

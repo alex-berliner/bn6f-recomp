@@ -2223,15 +2223,15 @@ Next sub_81204C4(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_812053C ── */
-/* sub_812053C:
+/* ── battleObject_drawIndicatorOrStatusIcon_812053C ── */
+/* battleObject_drawIndicatorOrStatusIcon_812053C:
  *   Ask sub_81205C0 for a value; if it came back non-negative, build an
  *   address/flag word (low 0x4000 on, top bits and 0x8000 cleared) and
  *   hand it to sprite_queueOamEntryThunk_802FE28 together with (0xC + original r1).
  *   inputs:  r0 r1 r2 lr
  *   outputs: nz c v r0 r1 r2 r3 lr
  *   preserved: r4 r5 r6 r7 */
-Next sub_812053C(void) {
+Next battleObject_drawIndicatorOrStatusIcon_812053C(void) {
     /* r4 holds the caller's r1 across the leaf call (preserved register). */
     u32 saved_r1 = R1;
 
