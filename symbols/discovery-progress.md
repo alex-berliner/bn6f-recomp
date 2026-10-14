@@ -1711,3 +1711,81 @@ Highlights:
 | 30    | 25                 | 15                        | 10              | 0       |
 
 Running total: named 545, hypothesis-only 201, dropped 0 (of ~10,600 placeholders).
+
+## Batch 31 (2026-10-14)
+
+25 functions, 15 named + 10 hypothesis (sub_8072B70, sub_8083DF0, sub_8086EA8,
+sub_80871F4, sub_80EC5BC, sub_810CE1A, sub_810D808, sub_81187E8, sub_8118BA4,
+sub_813BE8C kept as comment only), renamed in recomp 9db261c8 (bn6f pushed;
+port ROM unchanged in source). The first record attempt errored on
+sub_8072B70 and sub_80871F4 which are no-asm placeholders already named
+as themselves; after stripping those (no rename needed) the second
+attempt committed cleanly. Two no-asm placeholders (sub_8072B70 and
+sub_80871F4) are kept as comment-only entries for the next session.
+
+Highlights:
+- battle object: decrement chip held and clear chip
+  (battleObject_decrementChipHeldAndClearChip_800F322);
+- battle beast PwrAtk: add scaled base from index
+  (battle_beastPwrAtk_addScaledBaseFromIndex_8010D04);
+- battle: call actor action handler
+  (battle_callActorActionHandler_801102A);
+- battle object: set element (battleObject_setElement_8019F8C);
+- battle object: compute B-button offsets
+  (battleObject_computeBButtonOffsets_8028894);
+- battle: dispatch destroy events (battle_dispatchDestroyEvents_802EF5C);
+- battle: tick chip lockout (battle_tickChipLockout_8089CB4);
+- battle: pick closest panel object
+  (battle_pickClosestPanelObject_80E1730);
+- battle object: run object flag state machine
+  (battleObject_runObjectFlagStateMachine_80E386A);
+- battle AI: count alive enemies in row
+  (battle_aiCountAliveEnemiesInRow_81185C0);
+- battle object: dispatch sprite update
+  (battleObject_dispatchSpriteUpdate_8118874);
+- battle object: update by type
+  (battleObject_updateByType_8118C2C);
+- submenu: handle select A from list
+  (submenu_handleSelectAFromList_8133434);
+- battle object: select AI data handler
+  (battleObject_selectAIDataHandler_81347A4);
+- beast-SP: dispatch handler
+  (beastsp_dispatchHandler_81356D4).
+
+## Tally update
+
+| batch | functions examined | named (renamed via record) | hypothesis-only | dropped |
+|-------|--------------------|---------------------------|-----------------|---------|
+| 1     | 25                 | 25                        | 0               | 0       |
+| 2     | 21                 | 20                        | 1               | 0       |
+| 3     | 25                 | 23                        | 2               | 0       |
+| 4     | 25                 | 21                        | 4               | 0       |
+| 5     | 25                 | 20                        | 5               | 0       |
+| 6     | 25                 | 21                        | 4               | 0       |
+| 7     | 25                 | 19                        | 6               | 0       |
+| 8     | 25                 | 20                        | 5               | 0       |
+| 9     | 25                 | 18                        | 7               | 0       |
+| 10    | 25                 | 14                        | 11              | 0       |
+| 11    | 25                 | 17                        | 8               | 0       |
+| 12    | 25                 | 15                        | 10              | 0       |
+| 13    | 25                 | 19                        | 6               | 0       |
+| 14    | 25                 | 19                        | 6               | 0       |
+| 15    | 25                 | 21                        | 4               | 0       |
+| 16    | 25                 | 21                        | 4               | 0       |
+| 17    | 25                 | 21                        | 4               | 0       |
+| 18    | 25                 | 20                        | 5               | 0       |
+| 19    | 25                 | 17                        | 8               | 0       |
+| 20    | 25                 | 15                        | 10              | 0       |
+| 21    | 25                 | 18                        | 7               | 0       |
+| 22    | 25                 | 17                        | 8               | 0       |
+| 23    | 25                 | 14                        | 11              | 0       |
+| 24    | 25                 | 15                        | 10              | 0       |
+| 25    | 25                 | 19                        | 6               | 0       |
+| 26    | 25                 | 16                        | 9               | 0       |
+| 27    | 25                 | 15                        | 10              | 0       |
+| 28    | 25                 | 17                        | 8               | 0       |
+| 29    | 25                 | 13                        | 12              | 0       |
+| 30    | 25                 | 15                        | 10              | 0       |
+| 31    | 25                 | 15                        | 10              | 0       |
+
+Running total: named 560, hypothesis-only 211, dropped 0 (of ~10,600 placeholders).
