@@ -1,0 +1,61 @@
+name: sub_800F09E
+address: '0x0800F09E'
+kind: function
+previous_names: []
+status: hypothesis
+summary: For a given chip ID and a battle object, look up which battle object on the opposite alliance is targeted
+  (returns a battle object index in r0 and a category/tag in r1).
+interface: '(r0 = chipId, r1 = ?battleObject) -> r0 = targetBattleObjectIndex, r1 = targetCategory ; side effects:
+  reads chip DB and alliance team table'
+details: "r0 (chipId) is saved to r4. r1 is stashed on stack.\n  Reads byte 0x29 of the alliance's NaviStats via\
+  \ GetBattleNaviStatsByte_AllianceFromBattleObject (which uses the battle object in r5 to compute alliance; though\
+  \ r5 isn't passed in here, the caller at 0x800ef34 must set it).\n  If NaviStats 0x29 == 1: chip with element==0,\
+  \ flag 0x02 set, flag 0x01 not set -> r7=0xc, r6=0, then later index into byte_8021300 with (r7-0xc)*0xf + allianceTeamIdx.\n\
+  \  If ==2: element==2, flags 0x02 set, 0x01 not set -> r7=0xd.\n  If ==3: element==5, flags 0x02 set, 0x01 not\
+  \ set -> r7=0xe.\n  If ==4: element==6 -> r7=0xf.\n  If ==8: element==8 -> r7=0x10.\n  If ==9: element==9 -> r7=0x11.\n\
+  \  If ==0xa: element==9 (again) -> r7=0x12.\n  If chipId == 0xffff, or none of the above match, jumps to 800F1D4\
+  \ returning r0=r6=0, r1=r7=0.\n  When one matches, calls battle_getObjectAllianceTeam_800F49E to get the alliance-team\
+  \ base, then does\n  r6 = byte_8021300[allianceTeamIdx + (r7-0xc)*0xf]\n  Returns r0=r6 (target object idx), r1=r7\
+  \ (target category).\n  The categories 0xc..0x12 likely correspond to \"BattleObject / Position / Column / Row\
+  \ / Behind-Ally / Behind-Enemy / LastRow\" style chip targeting tags used by the AI for \"Select target\" chips\
+  \ (e.g. Snctuary/Spreadr/etc).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- r4=chipId at entry, str r1,[sp] preserves battle object pointer (sub_800F09E lds). - The dispatch on
+    NaviStats 0x29 values 1..0xa with element 0/2/5/6/8/9 corresponds to known chip targeting families (the element
+    numbers are the standard BN element values). - r7-0xc normalises 0xc..0x12 to 0..6, and *0xf (15) is the per-row
+    stride into the byte_8021300 lookup table — a per-targeting-category, per-alliance-team table of 8-bit values.
+    - The r6/r7 return registers (out=[''r0'',''r1'']) line up with a (targetObjectIndex, targetCategory) pair;
+    r6 is the byte read from the table, r7 is the category index chosen above. - The off_800F20C / byte_8021300
+    reference (off_800F20C) plus the dword_800F208 == 0xffff sentinel are both immediate constants in the disassembly.
+    - The function is only called from sub_800EF34, which passes an external parameter set (r0=chipId-ish, r1=?ptr)
+    — consistent with an AI helper computing "where to send this chip".'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0800F09E
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp'
+  reproduce: 'grep -l ''^0800f09e '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp
+open_questions:
+- Whether r7 values 0xc..0x12 map to the exact BN targeting tags (BATTLETARGET_ENEMY_5X, BATTLETARGET_ALLY_ROW,
+  etc.) — would need the byte_8021300 table contents and the matching consumer that interprets r7.
+- Why NaviStats 0x29==0xa reuses element==9 — possibly a distinct category (e.g. "First row of enemies" vs "Last
+  row") that the game distinguishes at higher bits the table doesn't care about.
+- 'What the stashed r1 (on stack) is used for — it is never read again in this function, so it''s probably a battle-object
+  pointer the callee also expects to thread through (note: r5 is also a battle object the function uses, set up
+  by the caller).'
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 742e7bfe
+  tool: tools/symdoc.py

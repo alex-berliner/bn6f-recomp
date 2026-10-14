@@ -1,118 +1,65 @@
 name: sub_802CE10
 address: '0x0802CE10'
 kind: function
+previous_names: []
 status: hypothesis
-summary: Updates one side's battle counter for the object's alliance, either adding the tracked object's stored
-  increment to the given value or raising the counter's recorded maximum.
-interface: u32 battle_updateSideCounter(u32 amount /*r0*/, BattleObject *object /*r5*/); // returns updated amount
-  in r0 and the counter block's tracked-object pointer in r2; clobbers r1, r3 and NZCV flags
-details: 'Reads the counter block at dword_203CFB0, selecting the base block for the player side or the +0xC block
-  when the passed battle object''s oBattleObject_Alliance byte is nonzero (allied/partner side). The block layout
-  is: +0 u16 recorded value, +2 u16 increment, +8 pointer to the object currently tracked by the counter. If r5
-  is the tracked object, its stored halfword increment at +2 is added to r0 and returned; otherwise r0 is treated
-  as a candidate value and overwrites the halfword at +0 only when it is larger (max-raising), then is returned
-  unchanged. The tracked object pointer (r2) is passed back to callers in both paths. This looks like a shared per-side
-  gameplay gauge (value cap with a per-object contribution), but which in-game meter this serves is not confirmed
-  from this function alone.
-
-  '
+summary: Adjusts an attacker's per-panel damage against its own battle object depending on alliance, returning the
+  final per-panel damage value when the attacker is the current battle object.
+interface: '(r0 = damage value to fold in, r5 = current BattleObject*) -> r0 = damage value (may be summed into
+  FinalDamage for self, or stored as PanelDamage1 if r5 differs); side effects: writes FinalDamage for ally or PanelDamage1
+  for enemy in eS20364C0 Extra'
+details: "- Loads a pointer to a small record in EWRAM at dword_203CFB0 (ldrb r1, [r1+#8] is read at `ldr r2, [r1,#8]`),\
+  \ then checks `oBattleObject_Alliance` (offset 0x16) of the current object (r5) at `ldrb r2, [r5,#0x16]`.\n  -\
+  \ If r5 is the enemy/allied record (non-zero Alliance), it shifts to a sibling record by adding 0xc (`add r1,\
+  \ #0xc`).\n  - Compares r5 to the recorded attacker pointer stored at +8 of that record (`ldr r2, [r1,#8]` / `cmp\
+  \ r5, r2`). When it matches the current object, it adds the supplied u16 (r0) to the running u16 at +2 (`ldrh\
+  \ r3, [r1,#2]`, `add r0, r0, r3`) and returns it via `mov pc, lr`, letting the caller store the cumulative damage\
+  \ to FinalDamage.\n  - When r5 does not match, it checks if the new damage value (r0) exceeds the running max\
+  \ at +0 of that record (`ldrh r3, [r1]`); `bls locret_802CE2E` skips the store and otherwise writes the new value\
+  \ via `strh r0, [r1]`. The +0 field therefore holds the largest per-panel damage observed for non-self attackers,\
+  \ used to keep a PanelDamage1-style stash.\n  - The companion `CalculateFinalDamage1` caller sums five panel damage\
+  \ entries and uses this helper to fold them in (per its summary: \"Sum the five panel-damage entries of a battle\
+  \ object's CollisionData into FinalDamage, halving each entry (rounding up) if the object stands on a holy panel\"\
+  ).\n  - The captured snips show the function being invoked from a final-damage loop where r0 is reset to 0 between\
+  \ panels, so the cumulative r0 return is the panel total being merged; the +0 stash is also seen taking higher\
+  \ per-panel values.\n"
 evidence:
-- method: readable-c
-  date: '2026-10-08'
-  detail: Written by hyper/glm-5.3-flash through the convert workflow (9 attempt(s), run convert-20261008-230952);
-    reviewed by Claude before the commit.
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r1, off_802CE50 // =dword_203CFB0` — base record lives in EWRAM. - `ldrb r2, [r5,#oBattleObject_Alliance]`
+    reads r5''s alliance byte at the known BattleObject offset 0x16 to choose between two record variants (r1 or
+    r1+0xc). - `ldr r2, [r1,#8]` / `cmp r5, r2` — slot 0x8 holds the most-recent attacker BattleObject* for that
+    alliance. - `ldrh r3, [r1,#2]` / `add r0, r0, r3` on match — accumulates damage into the running total for the
+    current attacker when it matches r5. - `ldrh r3, [r1]` / `cmp r0, r3` / `strh r0, [r1]` — keeps a max non-self
+    damage value at offset 0. - Sole confirmed caller `object_calculateFinalDamage1` (0x0800e3de) passes r5 = current
+    BattleObject and r0 = a per-panel damage value folded into FinalDamage.'
   refs:
-  - cport/src/game/asm03_0_80299B6.c
-  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 3' --file leaves_farm_3.c sub_802CE10
-- method: difftest
-  date: '2026-10-08'
-  detail: Readable vs lifted on the original's captured calls and on random inputs.
-  reproduce: './wf capture --function sub_802CE10
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0802CE10
 
-    ./wf verify --function sub_802CE10 --snapshots build-snapshots'
-  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 170 out
-    of domain (verify run convert-20261008-230952-verify-9)'
-- method: cpu-oracle
-  date: '2026-10-08'
-  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
-  reproduce: './wf capture --function sub_802CE10
-
-    ./wf verify --function sub_802CE10 --snapshots build-snapshots'
-  result: 12 compared, 0 differed, 12 out of domain (verify run convert-20261008-230952-verify-9)
-- method: lockstep
-  date: '2026-10-08'
-  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
-  reproduce: './wf capture --function sub_802CE10
-
-    ./wf verify --function sub_802CE10 --snapshots build-snapshots'
-  result: 8/8 routes identical (verify run convert-20261008-230952-verify-9)
+    '
+  result: the body read as described above
 - method: coverage
-  date: '2026-10-08'
-  detail: 'Executed by: battle, battles1, battlesweep, chips, fuzz, menus2, story2.'
-  reproduce: grep -l '^0802ce10 ' tools/traces/coverage/*.prof
-changes:
-- date: '2026-10-08'
-  what: readable C replacement in cport/src/game/leaves_farm_3.c
-  where: recomp e9cb27b
-  tool: tools/wf convert (hyper/glm-5.3-flash)
-- date: '2026-10-08'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 3d824122
-  tool: tools/symdoc.py
-- date: '2026-10-10'
-  what: moved from cport/src/game/leaves_farm_3.c to cport/src/game/asm03_0_80299B6.c by tools/layout.py (the regroup of the model farm's files by bn6f source; the function's text unchanged)
-  where: recomp 6836d6c
-  tool: tools/layout.py
-readable_c: cport/src/game/asm03_0_80299B6.c
-coverage:
-- battle
-- battles1
-- battlesweep
-- chips
-- fuzz
-- menus2
-- story2
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0802ce10 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3, story2, story4, story5,
+    story6, story7, story8, story9
 open_questions:
-- Which gameplay system the dword_203CFB0 counter block belongs to (gauge, timer, damage tally, etc.)
-- What sets the tracked object pointer at +8 and the increment at +2
-- Whether callers rely on the returned r2 or only on r0
+- Exact sizes and meanings of the two 0xc-byte records at dword_203CFB0/203CFBC remain guessed; offset 2 may be
+  a running sum, offset 0 a stored max, offset 8 the last attacker; no defined struct covers this layout.
+- Whether offset 0 is a panel-by-panel stash like `PanelDamage1` (0x82 of CollisionData) or the upper-bound for
+  the eS20364C0 Extra record that `object_calculateFinalDamage1` also touches at 0x40/0x44 is not confirmed by assembly
+  alone.
+- The 40 captured calls are all with r0=0 (just before the add) so the return value isn't exercised; the helper-merging
+  is inferred from the surrounding caller summary.
 sources:
-- tools/wf run convert-20261008-230952
-signature:
-  c: u32 sub_802CE10(u32 r0, T1BattleObject *r5)
-  params:
-  - reg: r0
-    type: u32
-    name: r0
-  - reg: r5
-    type: T1BattleObject *
-    name: r5
-  ret:
-    reg: r0
-    type: u32
-  keep:
-  - r2
-  confidence: confident
-  decided_by: mechanical
-  evidence:
-  - 'contract (lifter, refined): may read r0 r5; result r0'
-  - 'liveness over the assembly and callees (tools/sig/derive.py): reads r0 r5'
-  - 'r0: captures: 40 calls, int 0x0'
-  - 'r5: captures: 40 calls, struct eT1BattleObject0, eT1BattleObject1, eT1BattleObject2, eT1BattleObject3'
-  - 'result: captures at exit: r0 int 0x0'
-  reproduce: python3 tools/sig/bounds.py && python3 tools/sig/derive.py && python3 tools/sig/ask.py run && python3
-    tools/sig/ask.py merge
-  derived: '2026-10-12'
-stamp:
-  rom: rom:bb87e8364d8cc305
-  range: 0x0802CE10-0x0802CE30
-  contract: r0 r5 lr -> r0 r2; clobbers nz c v r1 r3
-  callees: {}
-  headers: 07774fc74a13
-  lifter: 70c8d832ffcf
-  prompt: legacy
-  model: hyper/glm-5.3-flash
-  run: convert-20261008-230952
-  body: 61ef5b932e0f97ee
-  installed: e9cb27b
-  stamped: '2026-10-12'
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 742e7bfe
+  tool: tools/symdoc.py

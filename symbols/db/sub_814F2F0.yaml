@@ -1,0 +1,59 @@
+name: sub_814F2F0
+address: '0x0814F2F0'
+kind: function
+previous_names: []
+status: hypothesis
+summary: m4a sound channel envelope/LFO mixer step used by the music player (likely an xcmd/vcmd handler dispatching
+  on voice flags)
+interface: (r1 = SoundChannel* voice state) -> r0 = saved LR (tail-call return)
+details: "Saves lr, copies r1 (channel struct ptr) into r2. Tests byte[0] flag 0x01 (\"envelope on\"). If set, reads\
+  \ envelope increments at 0x12 (u8) and 0x13 (u8), multiplies them (mul), shifts right by 5 to get a magnitude\
+  \ r3. Mode byte at 0x18 selects pan modifier source: mode 1 reads signed byte 0x16, adds 0x80 (bias to 0..255\
+  \ range), multiplies by magnitude and >>7 to scale r3. Then pan = (signed[0x14] << 1) + signed[0x15]; mode 2 additionally\
+  \ adds signed[0x16]. Pan is clamped to [-0x80, 0x7F]. Computes left = ((pan + 0x80) * magnitude) >> 8, right =\
+  \ ((0x7F - pan) * magnitude) >> 8, stores at 0x10/0x11.\n\n  Then tests byte[0] flag 0x04 (\"LFO on\"). If set,\
+  \ reads ldrsb[0x0e] * byte[0x0f] + ldrsb[0x0c], adds lsl<<2, then ldrsb[0x0a]<<8 + ldrsb[0x0b]<<8 + byte[0x0d].\
+  \ Mode 0: adds signed[0x16]<<4. Stores (value>>8) at 0x08 and low byte at 0x09 (a u16 LFO target).\n\n  Finally\
+  \ masks byte[0] with 0xfa (clears flags 0x01 and 0x04) and returns via `pop {r4}; pop {r0}; bx r0` (tail-call\
+  \ to caller's lr; the `push {r4,lr}; ... pop {r4}; pop {r0}` pattern is how m4a track handlers trampoline).\n\n\
+  \  Two callers: MPlayMain (sequencer tick) and ply_note (single note trigger) - both standard m4a-lib dispatch\
+  \ paths.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {r4,lr}` at entry and `pop {r4}; pop {r0}; bx r0` at exit is the classic m4a trampoline/thunk
+    dispatch pattern - Function name `sub_814F2F0` lives in `asm/libs.s` (a library, not main game code) and is
+    called by both MPlayMain and ply_note - exactly how m4a-lib per-voice handlers are wired - First branch: `ldrb
+    r0, [r2]; mov r0,#1; and r0,r1; beq` is a "if (flags & 1) envelope" check; the multiplier `mul r0,r1; lsr r3,r0,#5`
+    reads byte[0x12]*byte[0x13] which is "envelope step * envelope speed" - Clamp pattern `mov r0,#0x80; neg r0,r0;
+    cmp r1,r0; bge; mov r1,r0; ... mov r1,#0x7f; ble; mov r1,#0x7f` is a saturate-to-sbyte - `and r0, r3, #0xfa;
+    strb r0, [r2]` clears exactly bits 0 and 1 of the flag byte, matching a "consumed this tick" envelope/LFO handshake
+    - r1 in snapshots points at distinct channel slots (02007ee8, 02007f38, 02007f88, 02007fd8 spaced 0x50 apart)
+    consistent with an array of SoundChannel structs'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0814F2F0
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^0814f2f0 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1, story2, story3,
+    story4, story5, story6, story7, story8, story9, wander
+open_questions:
+- The exact struct field semantics for offsets 0x14/0x15 (signed pan vs. l/r delta) and 0x08/0x09 (single u16 output
+  vs. two u8s) are inferred from the arithmetic, not matched against a known m4a header yet. The 0x18 mode values
+  (0/1/2) likely come from a previous track opcode (env setup or lfo setup). Confirming against m4a-lib source (`tonemainmod.c`/`track.c`
+  `EnvMixer` / `LfoMixer`) or finding the setup opcodes would settle the role and exact name.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 742e7bfe
+  tool: tools/symdoc.py

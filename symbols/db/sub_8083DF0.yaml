@@ -3,45 +3,42 @@ address: '0x08083DF0'
 kind: function
 previous_names: []
 status: hypothesis
-summary: Per-frame BBS request handler for the "Navi Portraits" reward screen — checks story flags and cutscene
-  markers, then draws/initiates the GFX anim state and object-portrait rendering.
-interface: '() -> flags nz (caller-decides routine) ; side effects: event-flag set/clear/test on a handful of (high-byte,
-  low-byte) pairs, BBS request flag 0x17/0x07 set/clear, GFXAnimState and battle/OW object structs populated via
-  the load_gfx_anim_*, struct_copy_80840C4, sub_8083F80/8084080/8084180/8084214/80842D8, and sub_809E462 helpers'
-details: "- The function reads only r10 (the Toolkit ptr) and lr on entry, with no r0..r3 inputs, so it is a\n \
-  \   vblank/tick dispatcher driven entirely off globals (EventFlagsPtr, CutsceneStatePtr, BBS state).\n  - It reads\
-  \ at least four event-flag two-byte pairs via TestEventFlagFromImmediate (configured as\n    \"Set\" or \"Clear\"\
-  \ via SetEventFlagFromImmediate / ClearEventFlagFromImmediate), which based\n    on the surrounding 0x80xxxx immediate\
-  \ pool are typical story-progress milestones (one of the set\n    pairs is 0x17/0x07, encoded as the BBS-request-event\
-  \ writeback confirmed in\n    reqBBS_setFlag_e17b0f7_8140A00 and reqBBS_clearFlag_8140A0C).\n  - It then consults\
-  \ cutscene_checkOriginalCutsceneScriptPos_8036F40 and _8036F58 to branch on whether\n    the cutscene-script sentinel\
-  \ / \"AskJackOut\" marker is currently saved at oCutsceneState+0x40,\n    gating the per-frame \"did the BBS-portrait-cutscene\
-  \ just start\" check (probably toggling between\n    the two portrait stages).\n  - On the active branch it invokes\
-  \ load_gfx_anim_8083FC0 / _8083FFC / _8084068 to push anim scripts\n    into a GFXAnimState struct (push) and\
-  \ one of these returns likely feed a load_gfx_anim index to\n    sub_8084180 — the helper that lobs data into\
-  \ the OW/battle-object SpriteData region.\n  - struct_copy_80840C4 is the small \"memcpy a fixed chunk into OW\
-  \ object\" glue (r5 is a struct base,\n    out list is empty because it's a void-style copier), used to copy palette/animation\
-  \ tables onto\n    the portrait-OW object.\n  - sub_8083F80 (in: r0, r5, r10, lr) is the per-frame animstate pump;\
-  \ sub_8084080 (in: r5, lr)\n    sets up the object/anim base record using r5 (the same base passed to the load_gfx_anim_*\
-  \ chain);\n    sub_8084180, _8084214 and _80842D8 form a \"render-fanout\" trio that walks the loaded anim set\n\
-  \    into ObjectSprite fields.\n  - sub_809E462 (in: r10, lr → nz) is the \"did the L-Message / AskJackOut cutscene\
-  \ actually start?\"\n    detector; its nz flag is what gates whether portrait frames advance, i.e. the source\
-  \ of the\n    \"anim only advances while the cutscene is showing\" behavior.\n  - On exit, nz reflects whether\
-  \ the function did any drawing this tick (or equivalently which of the\n    two portrait-setup paths was taken),\
-  \ and r4/r5/r7/r8/r9/r12 are the OW-object / anim-state base\n    pointers it pre-loaded, so the caller can chain\
-  \ into the next BBS stage without restoring them.\n"
+summary: 'cutscene/gfx-anim state step: tests original-cutscene-script sentinels, toggles event flags, and runs
+  one of several load_gfx_anim_* / struct_copy helpers'
+interface: '(r10 = Toolkit*) -> flags nz ; side effects: may clear/set event flags 0x17/0x07, may invoke load_gfx_anim_8083FC0
+  / 8083FFC / 8084068, sub_8083F80, sub_8084080, sub_8084180, sub_8084214, sub_80842D8, struct_copy_80840C4, sub_809E462,
+  and reqBBS flag helpers'
+details: "Pure Thumb entry stub; the lifter could not recover assembly (`sub_8083DF0 not found in bn6f/asm`),\n\
+  \  so the only ground truth is the callee set and the live-out register contract (`out` carries\n  r2/r3/r4/r5/r7/r8/r9/r12\
+  \ plus the nz flag, plus r10 is read but not listed as live-out, meaning\n  the toolkit pointer is preserved by\
+  \ the AAPCS callee-saved convention).\n  Callee list groups into three concerns:\n  1) Cutscene-sentinel tests:\
+  \ `cutscene_checkOriginalCutsceneScriptPos_8036F40` (L-Message script) and\n     `_8036F58` (AskJackOut script).\
+  \ These both return `nz` in r2; the function itself returns only\n     `nz` to its caller, so it must fold those\
+  \ checks (likely with the locally produced nz) before\n     branching into the per-case helpers.\n  2) Event-flag\
+  \ ops: `ClearEventFlagFromImmediate`, `SetEventFlagFromImmediate`, `TestEventFlagFromImmediate`\n     (generic\
+  \ two-byte flag r0=byte, r1=bit) and the named BBS wrappers `reqBBS_setFlag_e17b0f7_8140A00`\n     (set 0x17/0x07)\
+  \ and `reqBBS_clearFlag_8140A0C` (clear the same byte/flag 0x7 of event 0x17).\n     Together they strongly suggest\
+  \ the function tracks and toggles a single BBS/request bit\n     tied to whether the L-Message or AskJackOut cutscene\
+  \ is currently queued, and re-asserts or\n     clears event 0x17/0x07 accordingly.\n  3) Gfx-anim loaders: `load_gfx_anim_8083FC0`,\
+  \ `load_gfx_anim_8083FFC`, `load_gfx_anim_8084068`,\n     `struct_copy_80840C4` (r5=ptr in/out copier), and `sub_8083F80`/`sub_8084080`/`sub_8084180`/\n\
+  \     `sub_8084214`/`sub_80842D8` — all of which take r5 (an animation/struct base ptr) and clobber\n     the\
+  \ same r2/r3/r4/r5/r8/r9/r12 set, indicating they advance a per-frame GFX-anim state machine\n     into a destination\
+  \ struct. `sub_809E462` is the only non-r5 helper and only touches nz, so it\n     is likely a small \"is anim\
+  \ done?\" predicate.\n  Given the cutscene checks + flag toggle + anim-load grouping, this is best read as the\
+  \ per-frame\n  step of a GFX-anim driver that decides which anim slot to advance (or whether to start a\n  cutscene-bound\
+  \ L-Message/RequestBBS anim) based on the saved cutscene script pointer.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- Contract is in=[''r10'',''lr''] with no arg registers: consistent with a tick handler driven off the
-    Toolkit, not a call-by-value function. - Three sibling load_gfx_anim_* callees at 8083FC0/8083FFC/8084068 —
-    the leading 8083xxx window of this function, plus a struct_copy_80840C4 "memcpy into a local struct" callee
-    — match the pattern of "load anim scripts → push into object" used by other bn6f BBS screens. - Event flag pair
-    0x17/0x07 appears via the confirmed calrees reqBBS_setFlag_e17b0f7_8140A00 / reqBBS_clearFlag_8140A0C, which
-    is the BBS-request event-flag writeback; the surrounding four TestEventFlagFromImmediate / Set/Clear calls are
-    a gating story-progress ladder. - The two cutscene_checkOriginalCutsceneScriptPos_* callees at 8036F40/8036F58
-    read oCutsceneState.originalCutsceneScriptPos_40, so this function is specifically tied to a BBS reward cutscene
-    (Reward scenes in BN6 use originalCutsceneScriptPos_40 = "L-Message" / "AskJackOut" sentinels).'
+  detail: '- Assembly section is empty (`sub_8083DF0 not found in bn6f/asm`); no instruction-level evidence available.
+    - `in` only lists r10 (Toolkit) and lr, so the function is `void`-ish to its caller (returns only `nz`). - The
+    two `cutscene_checkOriginalCutsceneScriptPos_*` callees are the only cutscene-aware callees and their names
+    imply branch decisions inside this function. - `reqBBS_setFlag_e17b0f7_8140A00` and `reqBBS_clearFlag_8140A0C`
+    are paired, indicating the function both arms and disarms the same BBS flag depending on state. - The r5-driven
+    callees all share the same `r2/r3/r4/r5/r8/r9/r12` may_write set, matching how the GFXAnimState (`oGFXAnimState`
+    0x18 bytes) is stepped; the function likely holds a base pointer to one or more such states in r5 across the
+    call. - `struct_copy_80840C4` is r5-only and writes only r0/r1, consistent with copying a small anim descriptor
+    into the active state when starting a new anim.'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x08083DF0
@@ -56,14 +53,15 @@ evidence:
     '
   result: beastsp, story5, story6
 open_questions:
-- The exact ordering of test → set → load_gfx_anim is unverifiable without the disassembly (the
-- prompt reports "sub_8083DF0 not found in bn6f/asm"). Adding the missing .s file would settle
-- the flag pairs, the order of the load_gfx_anim triple, and which of sub_8084180/_8084214/_
-- 80842D8 is the "draw one frame" vs "destroy" routine.
+- The exact layout of the function (no assembly recovered) and which r5 callee runs in which case.
+- Whether r10 is r5 at entry or r5 is loaded from r10 (e.g. r5 = r10 + some offset into a per-cutscene table).
+- Whether `sub_809E462` is the anim-done predicate or something else; without assembly we cannot tell.
+- Reconstructing this requires locating the function in the disassembly (it is missing from
+- bn6f/asm) or running the route so the lifter captures a real call edge.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f ba9a934b
+  where: bn6f 742e7bfe
   tool: tools/symdoc.py

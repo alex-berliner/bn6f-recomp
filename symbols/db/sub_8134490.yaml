@@ -1,0 +1,64 @@
+name: sub_8134490
+address: '0x08134490'
+kind: function
+previous_names: []
+status: hypothesis
+summary: Draws a row of tile ids from `unk_20347D8` and `unk_2034814` onto two background tile blocks, then queues
+  a sub-`sub_812053C` palette/VRAM-flagged word indexed by submenu-open state vs. a navi-stats byte, using `r5->0x18`
+  as a column-shifted origin.
+interface: '(r5 = ?, r10 = toolkit, lr) -> r0 = 0xff ; side effects: tile-block writes via CopyBackgroundTiles,
+  tilemap fills via sub_81202FC / sub_8120348, and a sub_812053C call that builds a "0x4000"-flagged VRAM/palette
+  word'
+details: "Entry just saves r4-r7/lr and immediately saves r5 into r7 for use throughout. submenu_isOpen_81355D8\
+  \ selects between two near-mirror branches that fill two different unk_ buffers (unk_20347D8 vs unk_2034814):\n\
+  \    - If a submenu is open (Z=0 after the test), it tiles 11 rows of width 1 starting at row 7 (sub_81202FC fill,\
+  \ j=7, i=0xb, j_size=1, i_size=0xf).\n    - Otherwise it copies 11 entries from r7+0xc (some `0x18`-wide stride\
+  \ element) into unk_20347D8 with sub_8120348.\n  Both branches then do the same CopyBackgroundTiles sequence:\
+  \ j = 0xb - r5->u16 at offset 0x18, i=2, tile block 2, tile ids=unk_20347D8, j_size=0xf, i_size=2; then refill\
+  \ unk_2034814 via sub_81202FC (j=0xa, i=0xb, j_size=0xc, i_size=0x14) and re-copy with j = 0x1f - r5->u16 at offset\
+  \ 0x18 (so the two rows are offset by the r5+0x18 short, which reads as a panel/column index).\n  Finally the\
+  \ function either picks r0 = 0x1e when a submenu is open or queries the current PET navi and reads a stats byte\
+  \ via GetCurPETNaviStatsByte(0, 9); both feed into sub_812053C alongside `r5->*0x18 << 0x13` and a hard-coded\
+  \ `0xC20016` / `0x8160`, producing whatever 0x4000-flagged object the dispatcher there expects.\n  Exit pops {r4-r7,\
+  \ pc} and writes 0xff into r0 per captured calls.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- Branching on `submenu_isOpen_81355D8` then taking one of `sub_81202FC`/`sub_8120348` to populate the
+    same unk buffer at 0x020347D8 (asm lines 8666-8677). - Both halves use the literal `0xb`, `0xf` and `1` for
+    the filler params and the literal `2` for the CopyBackgroundTiles tile-block id (asm lines 8678-8690). - r5
+    holds the active object and `r5+0x18` is loaded as a `ldrsh` (`mov r1,#0x18; ldrsh r2,[r7,r1]`) — i.e. a u16
+    short, then used to shift the j origin (0xb and 0x1f), giving a horizontally scrolling chip-selection column.
+    - The same `r5->u16 at 0x18` is also scaled by `lsl r1,r1,#0x13` and fed to sub_812053C (asm lines 8706-8709),
+    suggesting the column index doubles as a palette/tilemap base offset. - All 40 captured calls pass the same
+    args (r0=0, r1=0x02008500 — a chatbox ptr —, r2=0xb0, r3=0, lr=0x081333B5) and exit with r0=0xff.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08134490
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, beastsp, maps, menus3, story4, story6, story8, story9'
+  reproduce: 'grep -l ''^08134490 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, beastsp, maps, menus3, story4, story6, story8, story9
+open_questions:
+- 'Exact role of `r5`: the `0x18` offset doesn''t map to any obvious field in BattleObject/SubMenu; it could be
+  a submenu/state struct held in r5 by the caller sub_81333A0 / sub_813399C.'
+- The two unk_ buffers (unk_20347D8 / unk_2034814) aren't defined anywhere I can see — they likely hold tile-id
+  arrays for the chip slots (one per row).
+- What the `0xC20016 / 0x8160` constants and the `r0=0x1e`/NaviStats[9] discriminator correspond to (a base tile
+  id? a palette bank?) would need a cross-ref into the tile-asset tables.
+- Whether this is the *chip-select* row rather than e.g. a generic "draw chip-curve panel" — the captured-call names
+  ("battles1") and the per-column shift strongly suggest chip selection, but I haven't confirmed by cross-referencing
+  the unk buffers' tile ids.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 742e7bfe
+  tool: tools/symdoc.py
