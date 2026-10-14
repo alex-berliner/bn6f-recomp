@@ -174,7 +174,7 @@ static inline call_object_getFrontDirection_result call_object_getFrontDirection
     return (call_object_getFrontDirection_result){ R0 };
 }
 
-typedef struct { u32 r0, r1, r2, r3, r4, r5, r6, r7; } call_sub_8109708_result;
+typedef struct { u32 r0, r1; } call_sub_8109708_result;
 /* register form: generated wrapper: sub_8109708 has no typed C interface yet */
 static inline call_sub_8109708_result call_sub_8109708(u32 r0, u32 r1, u32 r2, u32 r5) {
     R0 = r0;
@@ -182,7 +182,7 @@ static inline call_sub_8109708_result call_sub_8109708(u32 r0, u32 r1, u32 r2, u
     R2 = r2;
     R5 = r5;
     GUEST_CALL(sub_8109708);
-    return (call_sub_8109708_result){ R0, R1, R2, R3, R4, R5, R6, R7 };
+    return (call_sub_8109708_result){ R0, R1 };
 }
 
 typedef struct { u32 r0, r2, r3, r5, r6, r7; } call_sub_80103F8_result;
