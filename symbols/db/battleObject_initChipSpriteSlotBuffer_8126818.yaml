@@ -1,0 +1,75 @@
+name: battleObject_initChipSpriteSlotBuffer_8126818
+address: '0x08126818'
+kind: function
+previous_names:
+- sub_8126818
+status: probable
+summary: 'Initialises a small buffer at oToolkit_Unk200f3a0 (chip-sprite slot staging area) for an idle
+  chip-frame sprite: writes fixed tile-index/palette bytes, picks left/right slot positions from the linked
+  battle object''s Unk_3a, then writes the final frame-and-duration slots (id 0x2F, y=0x58).'
+interface: (r0 = stageBuffer base ptr OR 0 to default, r5 = linked BattleObject, r10 = Toolkit) -> r0
+  = oToolkit_Unk200f3a0_Ptr ; no caller-visible side effects beyond the buffer and the two shared sprite
+  halfword slots at offset 0x10/0x14 of that buffer.
+details: '- r4 (caller''s r0) is a flag: 0 = use "no owner" branch (loc_812686A, places 0x50 at offset
+  2 and 0x10 at offset 7); non-zero = use the linked-object branch.
+
+  - Always writes a fixed header into the buffer pointed to by Toolkit->Unk200f3a0_Ptr (r0 from r7+oToolkit_Unk200f3a0_Ptr):
+  byte 8 = 0x3F, 9 = 0x22, 0xA = 0x32, 1 = 0x58, 5 = 0, 0 = 0xF0, 4 = 0x9A. These are the standard sprite
+  staging bytes (mosaic=0, shape/size nibble, palette row, x/y, etc.) used by `battle_updateChipSprite_8126630`
+  for the same sprite id 0x2F.
+
+  - Reads `ldrh r2, [r5,#0x3a]` — in `battle_object_struct`, `oUnk_1e_Unk_1f` is at 0x1E and `oUnk_30/oUnk_32`
+  are 0x30/0x32; 0x3A is just past the named Unk_32 fields and matches the AIData offset `Unk_3a` and
+  the same offset in many battle sprite stages. Its zero-ness picks between two x-positions (0x50 default
+  vs 0x47 when the field is non-zero) written at offset 2 of the buffer.
+
+  - All three branches write the same trailing bytes 3 = 0xE, 7 = 0x11, 6 = 0x12 (the no-owner branch
+  writes byte 7 = 0x10 instead of 0x11). Bytes 3/6 are the duration/durationUpdate halfword pair used
+  by `battle_updateChipSprite_8126630` (kind-4 slot path).
+
+  - Return value r0 = `Toolkit->Unk200f3a0_Ptr`; all callers ignore r0 in the captured traces (always
+  0200F3A0 at exit), matching the function''s role as a pure "write this staging buffer now" helper.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r0, [r7,#oToolkit_Unk200f3a0_Ptr]` at 0x0812681E loads the toolkit slot whose pointer
+    is stored at +0x1C of the Toolkit struct (matches `oToolkit_Unk200f3a0_Ptr = 0x1c`). - Captured-call
+    exit r0 = 0x0200F3A0 across all 40 samples — exactly the address the toolkit slot points to and what
+    the function returns. - All three branches end with `strb r1, [r0,#0x3]` (0x0E) and `strb r1, [r0,#0x6]`
+    (0x12), the halfword-pair slots whose `oUnk_14`/`oUnk_16` match `battle_updateChipSprite_8126630`''s
+    slot-frame path: id 0x2F, y=0x58, fixed-position chip-frame sprite. - The "branch on `ldrh r2,[r5,#0x3a]`"
+    check is the standard "object idle pose busy" test the same routine uses elsewhere (compare with `battle_runIntro_812508C_812509C`
+    and `battle_objTickTimerAndRefreshSpritePairs_8124D30`, which read the same offset 0x3a to choose
+    between two layouts). - 17 of 18 callers are in the `battle_obj*` / `sprite_*` / `battle_updateChipSprite_8126630`
+    family — i.e. routine per-frame "now write the chip-frame sprite slot" entry points.'
+  refs:
+  - bn6f/asm/asm33.s
+  reproduce: 'python3 tools/asmcat.py 0x08126818
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_initChipSpriteSlotBuffer_8126818
+
+    '
+open_questions:
+- What exactly `Unk200f3a0` is named in the project (the struct at 0x0200F3A0 is referenced via the toolkit
+  slot but no struct definition is supplied here; the function clearly writes a 0x10-byte sprite staging
+  buffer).
+- The semantics of the linked-object flag in r0 (non-zero meaning "linked to a battle object whose Unk_3a
+  is busy"), and what `oUnk_3a` of `oBattleObject` represents — likely a "pose/animation in progress"
+  counter consistent with the sprite-finalising call sites.
+- Which byte pair at offset 2/3 vs 6/7 corresponds to which `oUnk_16` halfword slot in `battle_updateChipSprite_8126630`'s
+  kind-4 path.
+sources:
+- discovery session 2026-10-14 batch 44 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ae9cb8d5
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8126818 -> battleObject_initChipSpriteSlotBuffer_8126818
+  where: bn6f 0823ec4c
+  tool: tools/rename_symbol.py

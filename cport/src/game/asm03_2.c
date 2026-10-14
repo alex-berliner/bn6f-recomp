@@ -2993,11 +2993,11 @@ Next sub_8049E84(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8049EBC ── */
-/* sub_8049EBC: scene initializer / fade-in setup.
+/* ── battle_initOverlayScene_8049EBC ── */
+/* battle_initOverlayScene_8049EBC: scene initializer / fade-in setup.
  * Inputs: r5 = state struct pointer, r10 = preserved across the call, lr = return address.
  * Outputs: r8/r9/r11/r12 untouched (preserved); r10 preserved; ends with state->field_1 = 4. */
-Next sub_8049EBC(void) {
+Next battle_initOverlayScene_8049EBC(void) {
     u32 state = R5;
 
     /* Configure LCD for the upcoming transition. */

@@ -1,0 +1,80 @@
+name: object_battleInitPhase_80DFE64
+address: '0x080DFE64'
+kind: function
+previous_names:
+- sub_80DFE64
+status: probable
+summary: Initializes a battle object's collision state for a new spawn (timer, collision-data, hit-effect=0,
+  panel position) and enters CUR_STATE_UPDATE.
+interface: (r5 = BattleObject*, r10 = Toolkit*) -> void ; preserves r5/r8 (r10/r8 live across, side effects
+  via callees)
+details: '1. Calls object_setCoordinatesFromPanels to sync pixel X/Y from the object''s current panel
+  X/Y.
+
+  2. Copies Param2 into Timer (battle object +0x20..+0x21), copying a per-spawn timer config from the
+  spawn params.
+
+  3. Allocates a CollisionData slot via object_createCollisionData; if allocation fails (returns 0), frees
+  the object via object_freeMemory and returns early.
+
+  4. Reads Param3 (battle object +0x6) to choose an r3 argument: 3 for Param3==0, 1 for Param3==1, else
+  0. This value is passed as the 4th arg to object_setupCollisionData alongside r1=0xa, r2=5 (collision-type/group
+  flags consistent with "no-hit/passive" objects like obstacles or panel-attached effects).
+
+  5. Sets the collision hit effect to 0 (no hit effect) via object_setCollisionHitEffect(0).
+
+  6. Clears the object''s current collision region (object_clearCollisionRegion) so it''s not stale from
+  any previous occupant.
+
+  7. Runs object_presentCollisionData once so the freshly set-up collision participates in this frame''s
+  collision pass.
+
+  8. Writes CUR_STATE_UPDATE (0x4) into CurStateActionPhaseAndPhaseInitialized (+0x8..+0xb) so the dispatcher
+  starts calling Update next frame.
+
+
+  The shape — explicit collision setup, "enter Update after init", and a Param3-driven r3 selector — is
+  the standard battle-object spawn/init path used by spawned battle objects.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl object_setCoordinatesFromPanels` is the first call, matching "init from panels" behaviour.
+    - `ldrb r0, [r5,#oBattleObject_Param2]` then `strh r0, [r5,#oBattleObject_Timer]` directly copies
+    Param2 into Timer (offsets 0x6/0x20 in BattleObject struct). - `bl object_createCollisionData` with
+    `bne` to skip on success and the failure path being `object_freeMemory` matches the documented slot-allocation
+    contract. - `mov r3,#3 / #1 / #0` based on Param3 == 0 / == 1 / otherwise is the selector feeding
+    object_setupCollisionData''s r3. - `mov r1,#0xa; mov r2,#5; bl object_setupCollisionData` — fixed
+    collision-type pair 0xa/5 passed identically to setupCollisionData. - `mov r0,#0; bl object_setCollisionHitEffect`
+    zeroes HitEffect. - `bl object_clearCollisionRegion` immediately after setup clears the stale region
+    byte. - `bl object_presentCollisionData` runs the collision handler once on entry. - `mov r0,#CUR_STATE_UPDATE;
+    str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]` — sets the dispatcher state to
+    0x4, exactly the CUR_STATE_UPDATE constant. - Captured calls all enter with r5 set, no r0/r1/r2/r3
+    args meaningful; the function uses r5 (BattleObject*) and r10 (Toolkit*) only, consistent with the
+    contract.'
+  refs:
+  - bn6f/asm/asm31.s
+  reproduce: 'python3 tools/asmcat.py 0x080DFE64
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): object_battleInitPhase_80DFE64
+
+    '
+open_questions:
+- The specific "kind" of battle object this initializes (chip effect, panel attack, obstacle, etc.) is
+  unclear — Param3==0/1/other is just three values feeding a small switch, but the meaning of those values
+  and what 0xa/5 represent in object_setupCollisionData isn't documented. Cross-referencing callers would
+  pin the role.
+sources:
+- discovery session 2026-10-14 batch 44 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ae9cb8d5
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80DFE64 -> object_battleInitPhase_80DFE64
+  where: bn6f 0823ec4c
+  tool: tools/rename_symbol.py

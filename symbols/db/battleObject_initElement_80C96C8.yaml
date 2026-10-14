@@ -1,0 +1,70 @@
+name: battleObject_initElement_80C96C8
+address: '0x080C96C8'
+kind: function
+previous_names:
+- sub_80C96C8
+status: probable
+summary: 'Initializes/animates a battle object after its Param2-driven ExtraVars setup: loads sprite+anim+no-shadow,
+  sets cur anim/palette/flip, copies XYZ to velocity, plays spawn SFX 0xA0, sets state to CUR_STATE_UPDATE,
+  and runs the cur-action handler.'
+interface: '(r5 = battleObjectPtr) -> void ; side effects: writes sprite/anim/flags on object, plays sound
+  effect 0xA0, tail-calls sub_80C9726'
+details: '- Reads Param2 (`oBattleObject_Param2` at +0x5), uses it as an index into a 6-byte table at
+  `byte_80C9664` (loaded via `off_80C9804`), storing the resulting pointer at `oBattleObject_ExtraVars
+  + 4`.
+
+  - Loads sprite from the table entry: r0=table[0], r1=table[1], r2=0x80 via `sprite_load`; then `sprite_loadAnimationData`.
+
+  - Disables shadow via `sprite_noShadow`, then ORs 0x02 into `oObjectHeader_Flags` (sets OBJECT_FLAG_VISIBLE).
+
+  - Copies `table[2]` to `oBattleObject_CurAnim` and sets `oBattleObject_CurAnimCopy = 0xFF` (force re-trigger).
+
+  - Sets palette from `table[5]` via `sprite_setPalette`, recomputes panel position via `object_setPanelsFromCoordinates`,
+  applies facing flip with `object_getFlip` + `sprite_setFlip`.
+
+  - Plays SFX 0xA0 (a "spawn/appear" cue), then primes velocity by copying current X/Y/Z into XVelocity/YVelocity/ZVelocity
+  (object will move from its current spot) before clearing state to `CUR_STATE_UPDATE`.
+
+  - Falls into `sub_80C9726` which dispatches the cur-action handler (probably a per-element/normal-state
+  init like summon/appear) and finally clears `OBJECT_FLAGS_USING_ACTION` unless the handler keeps the
+  object busy.
+
+  - Captured-call r1=0x080C96C9 suggests a `thumb_func_start + 1` odd-LR (some callers jump with lsb=1
+  to switch into Thumb state machine); the function body starts cleanly on a word boundary.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0, [r5,#oBattleObject_Param2]` then table lookup `add r7, r7, r0*6` and store at `[r5,#oBattleObject_ExtraVars+4]`
+    is the only meaningful ExtraVars use of this function. - Sequence `sprite_load` → `sprite_loadAnimationData`
+    → `sprite_noShadow` → OR 0x02 into `oObjectHeader_Flags` matches other "battle-object element init"
+    patterns. - `bl PlaySoundEffect` with `mov r0, #0xa0` immediately before clearing the state is the
+    standard "SFX on appear" hook. - `mov r0, #CUR_STATE_UPDATE` / `str r0, [r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]`
+    followed by `bl sub_80C9726` is the canonical "spawn then run handler" tail call. - r10/lr contract
+    (saved by callee) plus r5 in/out confirms this is called from a routine that walks the battle-object
+    list with r10 holding the toolkit.'
+  refs:
+  - bn6f/asm/asm31.s
+  reproduce: 'python3 tools/asmcat.py 0x080C96C8
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_initElement_80C96C8
+
+    '
+open_questions:
+- The exact role of the table at `byte_80C9664` (per-element data such as sprite id/anim index/palette)
+  and what object type (T1/T3/T4) consumes it — would settle by inspecting `byte_80C9664` itself and the
+  nearby callers of this function.
+sources:
+- discovery session 2026-10-14 batch 44 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ae9cb8d5
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80C96C8 -> battleObject_initElement_80C96C8
+  where: bn6f 0823ec4c
+  tool: tools/rename_symbol.py

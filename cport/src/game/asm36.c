@@ -1104,11 +1104,11 @@ static inline call_sub_8133BB4_result call_sub_8133BB4(u32 r2, u32 r4, u32 r5) {
 }
 
 typedef struct { u32 r2, r4, r5, r6, r7, r10; bool z, n; } call_sub_8133C0C_result;
-/* register form: generated wrapper: sub_8133C0C has no typed C interface yet */
+/* register form: generated wrapper: battleObject_submenuHandleExitStartOrB_8133C0C has no typed C interface yet */
 static inline call_sub_8133C0C_result call_sub_8133C0C(u32 r2, u32 r5) {
     R2 = r2;
     R5 = r5;
-    GUEST_CALL(sub_8133C0C);
+    GUEST_CALL(battleObject_submenuHandleExitStartOrB_8133C0C);
     return (call_sub_8133C0C_result){ R2, R4, R5, R6, R7, R10, ZERO_FLAG(), NEGATIVE_FLAG() };
 }
 
@@ -1326,9 +1326,9 @@ static bool guard_8133BB4_passed(void) {
     return ZERO_FLAG();          /* Z set: returned 0, continue past guard */
 }
 
-/* register form: calls sub_8133C0C outside this file, which has no typed C interface yet */
+/* register form: calls battleObject_submenuHandleExitStartOrB_8133C0C outside this file, which has no typed C interface yet */
 static bool guard_8133C0C_passed(void) {
-    GUEST_CALL(sub_8133C0C);
+    GUEST_CALL(battleObject_submenuHandleExitStartOrB_8133C0C);
     return ZERO_FLAG();
 }
 
@@ -1409,9 +1409,9 @@ Next folderEdit_step_813388C(void) {
 
 /* ── battleObject_submenuLoopStep_8133944 ── */
 Next battleObject_submenuLoopStep_8133944(void) {
-    /* State-query gate: if sub_8133C0C returns non-zero (state mismatch), skip the
+    /* State-query gate: if battleObject_submenuHandleExitStartOrB_8133C0C returns non-zero (state mismatch), skip the
      * input-handling block and go straight to the tail-end draws/updates. */
-    GUEST_CALL(sub_8133C0C);
+    GUEST_CALL(battleObject_submenuHandleExitStartOrB_8133C0C);
     if (ZERO_FLAG()) {
         /* battleObject_selectAIDataHandler_81347A4 gates the joypad cursor movement block. If non-zero, skip it. */
         GUEST_CALL(battleObject_selectAIDataHandler_81347A4);
@@ -1730,7 +1730,7 @@ Next battleObject_submenuHandleBPress_8133BB4(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8133C0C ── */
+/* ── battleObject_submenuHandleExitStartOrB_8133C0C ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r1; bool z, n; } call_IsButtonPressed_result;
 /* register form: generated wrapper: IsButtonPressed has no typed C interface yet */
@@ -1804,8 +1804,8 @@ static s32 handle_submenu_toggle(u32 menu, u32 sound_extra) {
     return snd.n ? -1 : 1;
 }
 
-/* sub_8133C0C(r2, r5, r10, lr) -> nz r2 r4 r5 r6 r7 r10 */
-Next sub_8133C0C(void) {
+/* battleObject_submenuHandleExitStartOrB_8133C0C(r2, r5, r10, lr) -> nz r2 r4 r5 r6 r7 r10 */
+Next battleObject_submenuHandleExitStartOrB_8133C0C(void) {
     SET_FLAGS_NZ(handle_submenu_toggle(R5, R2));
     RETURN_TO_CALLER();
 }

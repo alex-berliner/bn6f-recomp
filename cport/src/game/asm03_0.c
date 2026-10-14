@@ -2474,7 +2474,7 @@ Next custMenuPressOK_8028D3A(void) {
     u32 return_address = LR;
     u32 menu = R5;
 
-    GUEST_CALL(sub_8029110);
+    GUEST_CALL(custMenu_confirmAndProcessSelectedChips_8029110);
     GUEST_CALL(sub_80293F8);
 
     if (LD8(menu + oS20364C0_Unk_19) != 0) {

@@ -1,0 +1,78 @@
+name: battle_runBattlePhase_8009158
+address: '0x08009158'
+kind: function
+previous_names:
+- sub_8009158
+status: probable
+summary: Top-level battle driver — dispatches the current BattleState sub-phase via a table jump keyed
+  off Index_01, and checks if the player HP dropped below 1/4 to play a low-HP BGM cue.
+interface: '(r5 = BattleStatePtr, r10 = ToolkitPtr, lr = ...) -> r0 = 0x049e2 (battle effects helper return)
+  ; side effects: may play/clear cue sounds, scratch r0-r7/r10, no callee-saved restore (r4-r6, r8-r10
+  are live out)'
+details: '1. `push {lr}` then read `BattleState.Index_01` (`oBattleState_Index_01`).
+
+  2. Use that byte as an index into `off_80091BC`, a 10-entry ARM jump table of `+1`-tagged Thumb phase
+  routines (`battle_runBattleIntroSpawnStep_80091F0`, `battle_dispatchStatePhase_80092A0`, `sub_8009338`,
+  `battle_stepRunAndDecideResult_800938A`, `battle_DispatchStatePhase_800945C`, `battle_initFadeToBattleResult_80094DA`,
+  `sub_800951E`, `sub_8009552`, `sub_8009594`, `sub_80095C8`).
+
+  3. `bx` into the chosen handler (set `lr=pc` to make it return back here).
+
+  4. Call `GetBattleEffects()` and test bit 3 (mask 0x8). If clear, return.
+
+  5. Otherwise call `battle_preUpdateAndGetPlayerObject_80103EC` to fetch the player BattleObject.
+
+  6. Read `HP` (offset 0x24) and `MaxHP` (offset 0x26), compare HP against `MaxHP >> 2`.
+
+  7. If HP > MaxHP/4: if `BattleState.Unk_20 == 0`, set `Unk_20 = 1` and play SFX 0x1f with id 0xffff
+  (vol arg 0x100) then second-call sound helper with id 0x11a (start low-HP cue).
+
+  8. If HP <= MaxHP/4 (the `loc_800919A` branch): if `Unk_20 != 0`, clear it to 0 and re-issue the same
+  SFX helper with id 0x100 (volume 0, i.e. cancel/stop the cue).
+
+  9. `pop {pc}` to return to caller (no `{r4-r10}` saved/restore — this is a Thumb `push {lr}` / `pop
+  {pc}` leaf dispatcher).
+
+  The `Unk_20` field is a sticky latch for "low-HP music/SFX currently active" toggled by HP crossing
+  the 25% threshold.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0, [r5,#oBattleState_Index_01]; ldr r1,[r1,r0]; bx r1` is a direct table dispatch
+    off Index_01. - The 10-entry table at off_80091BC matches exactly the names listed above; one entry
+    per Index_01 value 0x00..0x24 (stride 4). - `GetBattleEffects` followed by `tst r0, #8` tests effect
+    bit 3 (low-HP music enabled setting). - `ldrh r1,[r0,#oBattleObject_MaxHP]` / `ldrh r0,[r0,#oBattleObject_HP]`
+    then `lsr r1,r1,#2; cmp r0,r1; bgt loc_800919A` is the classic "HP > MaxHP/4" check using the BattleObject
+    HP/MaxHP fields at offsets 0x24/0x26. - The two `strh r0,[r5,#oBattleState_Unk_20]` writes toggle
+    a u16 in BattleState at offset 0x20 between 0 and 1, the latch. - `bl sound_800065A` with r0=0x1f,
+    r1=0xffff, r2=0x100 then `bl sound_8000672` with r0=0x1f, r1=0x11a play the low-HP BGM cue (SFX 0x1f
+    = common music channel, id 0x11a is the low-HP BGM track in BN6). - The mirrored "stop" branch passes
+    r2=0 (volume 0) and r1=0x100 (the "stop BGM" id) to cancel the cue. - Captured-call entry r0/r1 values
+    (0x08009159/0x08007b50 with lr=2) are the linker-applied `+1` Thumb addresses for the dispatcher and
+    `off_80091BC` itself — consistent with the table layout.'
+  refs:
+  - bn6f/asm/asm00_1.s
+  reproduce: 'python3 tools/asmcat.py 0x08009158
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battle_runBattlePhase_8009158
+
+    '
+open_questions:
+- Which exact Index_01 value triggers which phase (the table uses +1 Thumb offsets but the surrounding
+  phase functions already have confirmed names); whether effect bit 3 is "low-HP BGM enabled" vs. something
+  more general. Settled by reading `GetBattleEffects`'s bit definitions.
+sources:
+- discovery session 2026-10-14 batch 44 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ae9cb8d5
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8009158 -> battle_runBattlePhase_8009158
+  where: bn6f 0823ec4c
+  tool: tools/rename_symbol.py

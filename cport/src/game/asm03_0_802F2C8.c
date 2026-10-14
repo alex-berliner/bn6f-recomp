@@ -1348,7 +1348,7 @@ Next sub_8030E14(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8030F7C ── */
+/* ── battle_scrollHitTestLineVsWedge_8030F7C ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r2, r6, r7; } call_sub_8031048_result;
 /* register form: generated wrapper: battleObject_collisionProjectRay_8031048 has no typed C interface yet */
@@ -1361,7 +1361,7 @@ static inline call_sub_8031048_result call_sub_8031048(u32 r2, u32 r3, u32 r6, u
     return (call_sub_8031048_result){ R2, R6, R7 };
 }
 
-/* sub_8030F7C: Segment-edge intersection test.
+/* battle_scrollHitTestLineVsWedge_8030F7C: Segment-edge intersection test.
  * obj points to a structure holding two edge endpoints:
  *   edge 0 = (LD32(obj), LD32(obj+4)),  edge 1 = (LD32(obj+0xC), LD32(obj+0x10)).
  * A segment is defined by two points (xA,yA)→(xB,yB).
@@ -1416,7 +1416,7 @@ static seg_result seg_intersect(u32 obj, u32 xA, u32 yA, u32 xB, u32 yB,
     return succ;
 }
 
-Next sub_8030F7C(void) {
+Next battle_scrollHitTestLineVsWedge_8030F7C(void) {
     seg_result r = seg_intersect(R0, R2, R3, R4, R5, R6, R9);
     R0 = r.r0, R1 = r.r1, R4 = r.r4, R6 = r.r6, R7 = r.r7, R8 = r.r8, R9 = r.r9;
     RETURN_TO_CALLER();
@@ -1745,7 +1745,7 @@ Next sub_803128E(void) {
         R3 = 0x20;
         R5 = 0;
         R6 = 1;
-        GUEST_CALL(sub_8030F7C);
+        GUEST_CALL(battle_scrollHitTestLineVsWedge_8030F7C);
 
         /* Pan the camera by half that delta. */
         R0 = R0 >> 1;
@@ -1770,7 +1770,7 @@ Next sub_803128E(void) {
 /* camera_recenterAndSetCtrlBits_803135E: recenter camera and set bits 0-1 of the r12 control word.
  *
  * Pushes r0..r2, r5 and lr; calls sub_80311B6 to seed a view; calls
- * sub_8030F7C to compute a delta against a 64x32 box anchored at (0x20, 0x20)
+ * battle_scrollHitTestLineVsWedge_8030F7C to compute a delta against a 64x32 box anchored at (0x20, 0x20)
  * with layer 1; halves the delta and feeds it to camera_moveByDelta_80310B0;
  * then ORs 3 into the r12 control word and tail-returns through the saved
  * lr so the caller sees the original r0/r1/r2/r5 intact. */
@@ -1787,14 +1787,14 @@ Next camera_recenterAndSetCtrlBits_803135E(void) {
     /* Seed the base view via sub_80311B6 (return values ignored). */
     GUEST_CALL(sub_80311B6);
 
-    /* Ask sub_8030F7C for a delta against a 64x32 box at (0x20, 0x20),
+    /* Ask battle_scrollHitTestLineVsWedge_8030F7C for a delta against a 64x32 box at (0x20, 0x20),
      * layer 1. The function returns the dx/dy in r0/r1. */
     R2 = 0;
     R4 = 0x40;   /* 0x20 + 0x20 */
     R3 = 0x20;
     R5 = 0x20;   /* 0 + 0x20 */
     R6 = 1;
-    GUEST_CALL(sub_8030F7C);
+    GUEST_CALL(battle_scrollHitTestLineVsWedge_8030F7C);
 
     /* Halve the delta (logical >>1) and apply it to the camera. */
     R0 = R0 >> 1;
@@ -1946,7 +1946,7 @@ Next battle_runTextboxUpdateAndSetStateBit1_80313D4(void) {
 }
 
 /* ── battle_scrollTickStepOrStop_80313FC ── */
-/* battle_scrollTickStepOrStop_80313FC: runs a three-step sequence (battle_scrollAccumulateStep_8031176; sub_8030F7C with a fixed
+/* battle_scrollTickStepOrStop_80313FC: runs a three-step sequence (battle_scrollAccumulateStep_8031176; battle_scrollHitTestLineVsWedge_8030F7C with a fixed
  * parameter set of 0x20/0x20/0x20/1; camera_moveByDelta_80310B0 with 0) and then sets bit 1 of
  * the state word passed in r12.  The caller's r0, r1, r2 and r5 are preserved
  * across the calls; the Z/N flags reflect the updated r12 value. */
@@ -1961,7 +1961,7 @@ Next battle_scrollTickStepOrStop_80313FC(void) {
     R4 = 0x20;
     R5 = 0x20;
     R6 = 1;
-    GUEST_CALL(sub_8030F7C);
+    GUEST_CALL(battle_scrollHitTestLineVsWedge_8030F7C);
 
     R0 = 0;
     GUEST_CALL(camera_moveByDelta_80310B0);

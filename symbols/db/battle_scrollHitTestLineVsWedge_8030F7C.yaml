@@ -1,0 +1,80 @@
+name: battle_scrollHitTestLineVsWedge_8030F7C
+address: '0x08030F7C'
+kind: function
+previous_names:
+- sub_8030F7C
+status: probable
+summary: Performs a line-vs-wedge hit test for battle camera/scroll queries, returning two offsets via
+  r0/r1.
+interface: (r0 = CollisionData*, r1 = ?, r2 = lineY/r2_in, r3 = lineX/r3_in, r4 = ?, r5 = ?, r6 = ?, lr
+  = ?) -> r0 = dyComp/r9, r1 = dxComp/r8 ; side effects trashes r2-r7, r8, r9
+details: 'Reads four u32 vectors from r0 (offsets 0x0, 0x4, 0xC, 0x10) treating them as 2D points/lines
+  for a line-vs-wedge query.
+
+  Computes a 2D cross product r2 = (r5*r2 - r4*r3) over the input delta (r6 = r5-r4, r7 = r2-r3).
+
+  Forms a 2x2 determinant using offsets +0x0/+0x4 of r0 with the delta and accumulates into r5.
+
+  If r5 <= 0 takes an early-exit branch returning r0=0, r1=0.
+
+  Otherwise, if r8 != 1, performs a second determinant check using offsets +0xC/+0x10 of r0; bails out
+  on r5 > 0 (different sign from the first), but proceeds if either r8==1 or the second determinant is
+  also non-positive.
+
+  Builds a vector (-((r0_0 * r6) + r2), r7) and calls battleObject_collisionProjectRay_8031048 to project
+  along r6/r7; reads the projected Y and saves (r7 - projY) into r8.
+
+  Builds another vector (-((r0_0 * r7) + r2), r6) and projects again; reads the projected X and saves
+  (r6 - projX) into r9.
+
+  Returns r0 = r9, r1 = r8 (the projected component deltas).
+
+  Caller side: battle_scrollAdvanceByPanelStep_8031520/battle_scrollStep_80314CC accumulate these into
+  r12 to drive camera scroll/clamp behavior.
+
+  Tail call (`pop {pc}`) used as the return path, so lr is not preserved separately.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- 2D cross/determinant structure: `mul r3, r4`, `mul r2, r5`, `sub r2, r3, r2` then `mul r3,
+    r6`, `mul r4, r7`, `add r3, r3, r4`, `add r5, r5, r3` — classic 2D cross + linear combo. - Early-exit
+    on sign check: `cmp r5, #0 ; ble loc_8030FEE` then `mov r0, #0 ; mov r1, #0 ; pop {pc}`. - Second-axis
+    gate uses r8 (`mov r3, r8 ; cmp r3, #1 ; beq loc_8030FB4`) and the [r0,#0xc]/[r0,#0x10] fields. -
+    Two-stage ray projection via `bl battleObject_collisionProjectRay_8031048`, each time pushing/popping
+    r6/r7 across the call and reading back [r0,#0]/[r0,#4] (projX/projY) to compute deltas. - Final return
+    shuffles r9 into r0 and r8 into r1: `mov r0, r9 ; mov r1, r8 ; pop {pc}`. - Captured calls show the
+    input struct at 0x0200f3e0 with r1 values like 0x7b82/0x9532/0x9533 and r3 = 0x20; output r0 ranges
+    from small signed values to 0xfffffffb, consistent with the line-vs-wedge "no hit" / "hit with delta"
+    outputs described above. - The struct fields read ([r0,+0], [r0,+4], [r0,+0xc], [r0,+0x10]) match
+    the wedge/triangle collision data layout used by CollisionData (offsets 0x0/0x4 enabled/region/element
+    + AllianceFlip, and beyond).'
+  refs:
+  - bn6f/asm/asm03_0.s
+  reproduce: 'python3 tools/asmcat.py 0x08030F7C
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battle_scrollHitTestLineVsWedge_8030F7C
+
+    '
+open_questions:
+- The exact meaning of the CollisionData fields being read as a wedge (likely 2 axis-aligned edge vectors).
+  The captured-call memory dumps are non-zero garbage, so the live struct cannot be confirmed from snapshots.
+- What r1 encodes on entry (unused inside the function but consistently non-zero in captured calls); might
+  be a flags byte or second object pointer in callers.
+- Whether r0 points to CollisionData, a stack wedge descriptor, or a dedicated collision-frame struct
+  — the read pattern matches CollisionData but the caller chain (battle_/camera_) is suggestive rather
+  than certain.
+sources:
+- discovery session 2026-10-14 batch 44 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ae9cb8d5
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8030F7C -> battle_scrollHitTestLineVsWedge_8030F7C
+  where: bn6f 0823ec4c
+  tool: tools/rename_symbol.py

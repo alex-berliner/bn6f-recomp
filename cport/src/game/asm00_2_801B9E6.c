@@ -1262,7 +1262,7 @@ Next chatbox_uploadFrameTileGFX_801C304(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_801C906 ── */
+/* ── chatbox_drawHPNumber_801C906 ── */
 /* Tile id of the first small digit glyph. Each digit is two vertically stacked tiles
  * (top at DIGIT_GLYPH_TILES + digit*2, bottom one below it), so a nibble indexes its
  * glyph directly; nibble 0xA is the blank used to pad short numbers. */
@@ -1351,9 +1351,9 @@ static struct PreservedRegisters draw_number_label(u32 obj, struct PreservedRegi
     return preserved;
 }
 
-/* sub_801C906(r5 = label object) -> r3 (leftover from the gfx transfer call),
+/* chatbox_drawHPNumber_801C906(r5 = label object) -> r3 (leftover from the gfx transfer call),
  * r4-r7 restored to their entry values */
-Next sub_801C906(void) {
+Next chatbox_drawHPNumber_801C906(void) {
     struct PreservedRegisters preserved = { R4, R5, R6, R7 };
     struct PreservedRegisters out = draw_number_label(R5, preserved);
     R4 = out.r4;

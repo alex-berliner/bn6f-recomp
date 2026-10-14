@@ -1,0 +1,83 @@
+name: battleObject_updateCollisionAndState_80CADE0
+address: '0x080CADE0'
+kind: function
+previous_names:
+- sub_80CADE0
+status: probable
+summary: 'Per-frame update for a battle object: removes its collision data, dispatches to an action handler,
+  and either destroys the object or refreshes its collision region for the current frame.'
+interface: '(r5 = battleObject) -> r0 = some EWRAM ptr ; side effects: may mark object CUR_STATE_DESTROY
+  (writes 0x8 to [r5,#0x8])'
+details: '1. push {lr} then tail-call object_removeCollisionData to tear down this object''s CollisionDataPtr
+  (r5 is the standard battleObject callee-saved arg).
+
+  2. Tail-call object_spawnCollisionEffect (no captured effect; consistent with object collision teardown).
+
+  3. battle_isBattleOver() -> if non-zero (battle already ending), branch to loc_80CAE10.
+
+  4. Otherwise inspect CollisionDataPtr->FlagsFromCollision (offset 0x70, the collision-region flags).
+  If any flags are set, also branch to loc_80CAE10.
+
+  5. loc_80CAE10 path: object_clearCollisionRegion() to release the panel slot, then write CUR_STATE_DESTROY
+  (0x8) to BattleObject+0x8 (the combined CurStateActionPhaseAndPhaseInitialized slot) — this is the standard
+  "object is gone, kill it next tick" signal used by the battle object list walker.
+
+  6. If the battle is still live and no FlagsFromCollision were set: check battle_isTimeStop(). If time-stopped,
+  skip collision re-presentation (b locret).
+
+  7. Otherwise read CurAction ([r5,#0x9], offset BattleObject.CurAction) and use it as an index into a
+  2-entry jump table at off_80CAE20 (entries: sub_80CAE28 for action 0, battle_applyXMoveAndCheckDestroy_80CAE94
+  for action 1). The selected handler is invoked with `bx` (Thumb→ARM switch via the +1 low bit) and is
+  the action-specific behaviour (e.g. an x-move chip handler that also checks destruction).
+
+  8. If the action handler returns without destroying the object, the non-timestop branch falls through
+  to object_presentCollisionData(), which re-adds the object to its collision region for the next frame,
+  then pop {pc} returns.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {lr}` + tail-call `bl object_removeCollisionData` at 0x80cade2 establishes the function
+    returns via `pop {pc}` (tail-call pattern). - `bl object_spawnCollisionData` (battle_applyXMoveAndCheckDestroy_80CAE94)
+    directly follows teardown, mirroring the standard battle object init/update prologue order. - `bl
+    battle_isBattleOver`; `tst r0,r0`; `bne loc_80CAE10` (0x80cae00) — branch on battle-over condition.
+    - `ldr r0,[r5,#oBattleObject_CollisionDataPtr]` then `ldr r0,[r0,#oCollisionData_FlagsFromCollision]`
+    — FlagsFromCollision is offset 0x70 per the CollisionData struct. - `bne loc_80CAE10` on the second
+    test forces destroy-path when any collision flag is present. - `bne loc_80CAE0A` after `bl battle_isTimeStop`
+    — when time-stopped, skip presentCollisionData (object still active but frozen). - Action dispatch:
+    `ldrb r0,[r5,#oBattleObject_CurAction]` then `ldr r1,[r1,r0]` + `bx r1` — CurAction (offset 0x9) indexes
+    off_80CAE20 which holds `sub_80CAE28+1` and `battle_applyXMoveAndCheckDestroy_80CAE94+1` (the +1 marks
+    Thumb via `thumb_func_end` / `bx` convention). - Destroy path: `bl object_clearCollisionRegion`; `mov
+    r0,#CUR_STATE_DESTROY` (0x8) and `str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]`
+    — CUR_STATE_DESTROY constant defined in BattleObject.inc. - Captured calls all show r5 as the consistent
+    callee-saved object pointer and r10 as toolkit (visible in `battle_isBattleOver`/`battle_isTimeStop`
+    contracts). - 40 captured snapshots with r1=0x080cade1 (function+1, Thumb bit set) confirms caller
+    passes the function pointer with Thumb bit for indirect call paths, and lr=0x080cad34 (caller in battle
+    main loop) consistent with per-tick update role.'
+  refs:
+  - bn6f/asm/asm31.s
+  reproduce: 'python3 tools/asmcat.py 0x080CADE0
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_updateCollisionAndState_80CADE0
+
+    '
+open_questions:
+- The exact semantics of the two action handlers (sub_80CAE28 and battle_applyXMoveAndCheckDestroy_80CAE94)
+  are not visible here; whether CurAction has more values than 0-1 is unclear (only 2 entries in the jump
+  table but no bounds check).
+- Whether object_spawnCollisionEffect is paired with removeCollisionData as cleanup or runs as a side-effect
+  spawn is unclear from this frame.
+sources:
+- discovery session 2026-10-14 batch 44 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ae9cb8d5
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80CADE0 -> battleObject_updateCollisionAndState_80CADE0
+  where: bn6f 0823ec4c
+  tool: tools/rename_symbol.py

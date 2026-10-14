@@ -1,0 +1,58 @@
+name: battleObject_getUnk_0cPtr_811CC68
+address: '0x0811CC68'
+kind: function
+previous_names:
+- sub_811CC68
+status: probable
+summary: Reads the cached pointer at BattleObject+0xC and returns it (used as a sin/cos table index by
+  the floating-anim routine)
+interface: (r5 = BattleObject*) -> r0 = [r5+0xC]
+details: 'Single-instruction tail call: `ldr r0, [r5, #0xc] ; mov pc, lr`. Treats r5 as a BattleObject
+  (per
+
+  BattleObject.inc the +0x8 region holds CurState/Phase flags and +0xC is the first byte past that —
+
+  Unk_0c — which the floating-anim routine elsewhere indexes sin/cos tables with). All callers pass
+
+  r5 holding the active BattleObject and immediately use the returned pointer as an index into a
+
+  per-frame animation curve. `math_sinTable` / `math_cosTable` constants live immediately after the
+
+  function at off_811CC6C/off_811CC70, hinting this whole region is the floating-anim lookup set.
+
+  No side effects other than r0 written.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- Assembly is exactly `ldr r0, [r5,#0xc]` followed by `mov pc, lr` at 0x0811CC68. - All five
+    listed callers (battleObject_runFloatingAnim_811CAEC, battle_initObjectSpriteAndStartAnimation_811CC0C,
+    battle_matchTrackedSpriteAndShrink_811CBD0, sub_811CA94, timerCountdown_step_811CBA0) take r5 as a
+    BattleObject and immediately consume the returned pointer. - The very next two words in the binary
+    (off_811CC6C, off_811CC70) are `math_sinTable` and `math_cosTable`, matching the floating-anim semantic
+    described by the callers. - Captured call snap_story4_12.bin: entry r0=1, r1=object+0xC pointer; exit
+    r0=object+0x14C — the returned value is a pointer into the BattleObject''s sprite/anim data.'
+  refs:
+  - bn6f/asm/asm32.s
+  reproduce: 'python3 tools/asmcat.py 0x0811CC68
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_getUnk_0cPtr_811CC68
+
+    '
+open_questions:
+- Whether +0xC is truly `Unk_0c` or whether it aliases an OAM/sprite sub-struct — settle by inspecting
+  writes to [r5,#0xc] in the spawning code.
+sources:
+- discovery session 2026-10-14 batch 44 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ae9cb8d5
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_811CC68 -> battleObject_getUnk_0cPtr_811CC68
+  where: bn6f 0823ec4c
+  tool: tools/rename_symbol.py

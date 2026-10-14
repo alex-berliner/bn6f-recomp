@@ -1491,7 +1491,7 @@ found:
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80C96C8 ── */
+/* ── battleObject_initElement_80C96C8 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r4, r5; } call_sprite_load_result_sub_80C96C8;
 /* register form: generated wrapper: sprite_load has no typed C interface yet */
@@ -1639,8 +1639,8 @@ static sub_80C96C8_result spawn_shuriken(u32 battle_obj) {
     return out;
 }
 
-/* sub_80C96C8(r5 = battle object, r10/lr = standard) -> r5 r8 r9 r10 r11 r12 */
-Next sub_80C96C8(void) {
+/* battleObject_initElement_80C96C8(r5 = battle object, r10/lr = standard) -> r5 r8 r9 r10 r11 r12 */
+Next battleObject_initElement_80C96C8(void) {
     sub_80C96C8_result out = spawn_shuriken(R5);
     R5  = out.r5;
     R8  = out.r8;
@@ -2507,8 +2507,8 @@ Next battle_applyElementAttackModIfEnabled_80CAD14(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80CADE0 ── */
-/* sub_80CADE0:
+/* ── battleObject_updateCollisionAndState_80CADE0 ── */
+/* battleObject_updateCollisionAndState_80CADE0:
  * Collision-update step for a battle object (object in r5).
  *
  * Removes the object's old collision data and spawns the associated effect,
@@ -2520,7 +2520,7 @@ Next battle_applyElementAttackModIfEnabled_80CAD14(void) {
  *     two-entry jump table at off_80CAE20, then present the collision data.
  *
  * outputs: r5 r8 r9 r10 r11 r12 (everything else is scratch) */
-Next sub_80CADE0(void) {
+Next battleObject_updateCollisionAndState_80CADE0(void) {
     GUEST_CALL(object_removeCollisionData);
     GUEST_CALL(object_spawnCollisionEffect);
 
@@ -2792,8 +2792,8 @@ Next sub_80CAF9C(void) {
         RETURN_TO_CALLER();
     }
 
-    /* Action jump table (off_80CAFC4) has a single entry: sub_80CAFC8 for action 0. */
-    GUEST_CALL(sub_80CAFC8);
+    /* Action jump table (off_80CAFC4) has a single entry: battleObject_throwProjectile_80CAFC8 for action 0. */
+    GUEST_CALL(battleObject_throwProjectile_80CAFC8);
 
     RETURN_TO_CALLER();
 }
@@ -3827,7 +3827,7 @@ Next t3_0xd3_80DFE40(void) {
     R1 = LD32(A_off_80DFE58 + state);      /* ...and their own table entry */
 
     switch (state) {
-    case 0 * 4: GUEST_CALL(sub_80DFE64);          break; /* alive/normal */
+    case 0 * 4: GUEST_CALL(object_battleInitPhase_80DFE64);          break; /* alive/normal */
     case 1 * 4: GUEST_CALL(battleObject_destroyOnCollision_80DFEA8);          break; /* second phase */
     case 2 * 4: GUEST_CALL(object_genericDestroy); break; /* destroyed */
     }
@@ -3837,15 +3837,15 @@ Next t3_0xd3_80DFE40(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80DFE64 ── */
-/* sub_80DFE64 (r5 = battle object):
+/* ── object_battleInitPhase_80DFE64 ── */
+/* object_battleInitPhase_80DFE64 (r5 = battle object):
  * Finish setting up a battle object: snap it to its panel coordinates, copy
  * Param2 into its timer, then build and publish its collision data. If the
  * collision data cannot be created the object is freed instead. On success
  * the object's state advances to CUR_STATE_UPDATE.
  * Preserves r4-r7 (r7 is only used as scratch by the original) and leaves
  * r5/r8 as they came in. */
-Next sub_80DFE64(void) {
+Next object_battleInitPhase_80DFE64(void) {
     u32 obj = R5;
 
     /* Place the object on its panels and (re)start its timer from Param2. */

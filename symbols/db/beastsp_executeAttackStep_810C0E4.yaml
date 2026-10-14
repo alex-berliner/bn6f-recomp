@@ -1,0 +1,71 @@
+name: beastsp_executeAttackStep_810C0E4
+address: '0x0810C0E4'
+kind: function
+previous_names:
+- sub_810C0E4
+status: probable
+summary: 'Drives the BeastSp/SnakeArm-style attack AI on r5''s BattleObject: increments the Unk_10 step
+  counter, fires a hit on step 2 (SFX 0xC0, optional camera shake, spawns a type-0x16 hit object at the
+  front panel), then on every frame checks the current sprite frame bit 0x80 to transition the attacker
+  to a follow-up state.'
+interface: (r2 = AIAttackVars ptr [r7], r5 = attacker BattleObject, r7 = also AIAttackVars? r10 = toolkit
+  [unused in body] lr = return) -> side effects ; returns nothing meaningful
+details: "- Pushes r4/r6 and walks the r5-attacker through a small finite state controlled by AIAttackVars\
+  \ fields relative to r7.\n- Step counter is AIAttackVars+0x10 (u16). On transition into value 2 (`cmp\
+  \ r0,#2 / bne loc_810C120`) the function:\n    * plays sound effect 0xC0 (`mov r0,#0xc0 ; bl PlaySoundEffect`)\n\
+  \    * if AIAttackVars+0x0d (`Unk_0d`, a \"shake strength\"?) is non-zero, kicks a 2-tick camera shake\
+  \ (`mov r0,#2 ; bl camera_initShakeEffect_80302a8`)\n    * computes target panel = object_getFrontDirection()+BattleObject.PanelX\
+  \ at row BattleObject.PanelY, then spawns a kind-0x16 battle object via `battle_spawnBasicObjectKind0x16_80C6CE4`,\
+  \ passing Damage=AIAttackVars+0x08 in r6, param4=AIAttackVars+0x03 in r4, r3=0 (no attacker pointer).\n\
+  \    * if AIAttackVars+0x0e is non-zero, delegates to sub_810C14A (the `Unk_0e`-driven sub-step, likely\
+  \ a secondary projectile/follow-up).\n- After the step-2 work (or after the counter wasn't 2) the function\
+  \ always calls `sprite_getFrameParameters` on r5 and tests bit 0x80 of the returned tile-attr byte (`tst\
+  \ r0,#0x80`). If clear, falls through to `pop`/`pc` and the caller continues.\n- When that bit is set\
+  \ (a specific sprite frame): clears CurAnim (`mov r0,#0 ; strb r0,[r5,#oBattleObject_CurAnim]`), clears\
+  \ ObjectFlag 0x40 (`OBJECT_FLAGS_CANNOT_SLIDE`) with `object_clearFlag`, sets ObjectFlag `1<<OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT`\
+  \ (=0x80000) via `object_setFlag1`, marks a \"done\" byte in AIAttackVars (`strb #1,[r7,#oAIAttackVars_Unk_1a]`),\
+  \ copies Unk_18→Unk_10 and writes 0x10 into AIAttackVars+0x0 (Unk_00, a sub-state).\n- The Unk_10=2\
+  \ → step work then transition-out makes this clearly the \"attack hit frame\" + \"post-hit follow-through\"\
+  \ tail of a power-atk AI handler, almost certainly the BeastSp attack given the gameplay tracer name\
+  \ (`snap_beastsp_…`) and the kind-0x16 spawn (SnakeArm/BeastSp projectiles are kind 0x16 here).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrh r0,[r7,#oAIAttackVars_Unk_10] ; add r0,#1 ; strh r0,[r7,#oAIAttackVars_Unk_10]` increments
+    a u16 step counter in AIAttackVars at offset 0x10 (struct `AIAttackVars`). - `cmp r0,#2 ; bne loc_810C120`
+    is a one-shot gate to fire the hit exactly on step 2. - `mov r0,#0xc0 ; bl PlaySoundEffect` plays
+    SFX 0xC0 (BeastSp hit sound matches the typical power-atk SFX table). - `bl object_getFrontDirection
+    ; ldrb r1,[r5,#oBattleObject_PanelX] ; add r0,r0,r1` computes the front-panel column using the battle
+    object''s alliance/facing. - `bl battle_spawnBasicObjectKind0x16_80C6CE4` with r3=0 (no attacker),
+    r4=AIAttackVars+0x03 (param4), r6=Damage=AIAttackVars+0x08 → spawns the visual hit object of kind
+    0x16. - `bl sprite_getFrameParameters ; tst r0,#0x80 ; beq locret_810C148` polls the current anim
+    frame''s bit-7 to detect the end-of-attack frame. - `strh r0,[r7,#oAIAttackVars_Unk_18]→Unk_10` and
+    `mov r0,#0x10 ; strh r0,[r7,#oAIAttackVars_Unk_00]` arms the post-hit transition into sub-state 0x10.
+    - Captured-call LR `0x0810bfc4` and the `snap_beastsp_*` context confirm this is the BeastSp AI attack
+    tail. - No callers listed; beastsp''s caller must reside in the same AI subroutine module around 0x0810bfc0.'
+  refs:
+  - bn6f/asm/asm31.s
+  reproduce: 'python3 tools/asmcat.py 0x0810C0E4
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): beastsp_executeAttackStep_810C0E4
+
+    '
+open_questions:
+- Exact meaning of AIAttackVars+0x0d (shake-strength vs. enable-shake) and +0x0e (sub-step selector calling
+  `sub_810C14A`).
+- The BattleObject's AIData→AttackVars field 0x08 is reused as the "Damage" payload to the kind-0x16 spawn.
+- Why the kind-0x16 spawn is given r3=0 (no source pointer) — possibly because the kind handles its own
+  damage application from the Damage word.
+sources:
+- discovery session 2026-10-14 batch 44 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ae9cb8d5
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_810C0E4 -> beastsp_executeAttackStep_810C0E4
+  where: bn6f 0823ec4c
+  tool: tools/rename_symbol.py

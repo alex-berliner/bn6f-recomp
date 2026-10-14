@@ -1,0 +1,71 @@
+name: battle_loadChipIconSprites_8126430
+address: '0x08126430'
+kind: function
+previous_names:
+- sub_8126430
+status: probable
+summary: Loads up to 7 chip icon GFX (0x80 bytes each from the chip DB at offset 0x20) into an icon buffer
+  array, given an icon buffer ptr, a folder-index array and a target chip-count buffer; empty slots are
+  zeroed.
+interface: (r0 = icon_count, r1 = *icon_sprite_buf [u8; 0x380], r2 = *folder_chip_u16_arr, r3 = *chip_target_destination_ptr,
+  r4 = icon_byte_size, lr) -> void ; r7 used as loop counter
+details: "- Saves r0..r2 to the stack so it can keep icon_sprite_buf (=r1) and the destination slot pointer\
+  \ (=r2) live across the CopyWords calls; r0 is restored later only as the icon index.\n- `r5 = r1 +\
+  \ r0*4` is the per-icon index table (u16 chip-id, u16 ?? — only the first two bytes are read via `ldrh\
+  \ r0, [r5]`).\n- For each of 7 entries (counter r7: `cmp r7, #7; blt loc_8126448`):\n  - If the halfword\
+  \ chip-id is zero, OR if the trailing byte at [r5+2] is non-zero (looks like a \"slot empty / bypass\"\
+  \ flag), the 8-byte slot in r2 is zeroed (`str r4,[r2]; str r4,[r2+4]`).\n  - Otherwise `getChip8021DA8(r0)`\
+  \ returns a pointer to a chip-DB record (44 bytes per the summary); the function reads 32 bytes from\
+  \ offset 0x20 of that record (the chip icon GFX blob), then `CopyWords` copies 0x80 bytes to the output\
+  \ sprite buffer at `r1 + entry*0x80`.\n- The caller's `r4` is used as the zero word that gets stored\
+  \ into the 8-byte slot for empty chips, and also as the chip-graphic source base (`r6 = r4`) — so callers\
+  \ pass a pointer to the chip-icon graphic blob pool, with the same zero word reused for both roles.\
+  \ That is consistent with the 0x40-byte snap buffer capture showing r4 behaving like the source graphics\
+  \ base plus a 0x00000000 sentinel.\n- The caller's r3 (held across the loop) is unused inside the function\
+  \ (it was passed in but never read after the prologue); it likely encodes a per-frame flag/count the\
+  \ caller wants to preserve, not an argument.\n- Writes up to 7 icon entries × 0x80 = 0x380 bytes of\
+  \ chip-graphic tiles to the icon buffer, plus 7 × 8 bytes of state into the r2 buffer. Called from chip-select\
+  \ / custom-cust screen draw passes and from arena-tile drawers that also need the chip icon set in BG\
+  \ tile block 2.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {r0-r2}` followed by `mov r0,r3; mov r1,r2; mov r2,#0x38; bl CopyWords` shows the function
+    first does a 0x38-byte copy of a chip-header/folder block from r3 into [r2]; this is the leading setup
+    before per-icon loading. - `ldrh r0,[r5]; tst r0,r0; bne loc_8126456` and `ldrb r1,[r5+2]; tst r1,r1;
+    beq loc_8126464` show the icon-id halfword plus a "skip" flag at offset 2 of each 4-byte table entry.
+    - `bl getChip8021DA8` then `ldr r0,[r0,#0x20]; ...; mov r2,#0x80; bl CopyWords` shows it pulls the
+    0x80-byte chip icon image out of the chip DB record at offset 0x20 and copies it. - `add r5,#4; add
+    r6,#0x80; add r2,#8; add r7,#1; cmp r7,#7; blt loc_8126448` fixes the loop count at exactly 7, stride
+    4 in the index table, stride 0x80 in the icon buffer, stride 8 in the r2 target. - All callers (battle_drawCustFolderSlots_8125D10,
+    bg_drawArenaTiles_8125E78, sub_8125D94, sub_8125F5C, sub_8126030) are battle-screen BG/icon loaders
+    that consume chip icon graphics into a BG tile block. - Captured calls show r1=0x0201dc20 with bytes
+    01 00 / 00 00 / 00 00 / 00 00 / 04 00 / 00 00 / 05 00 / 00 00 / then zeros — that is exactly a [u16;
+    4] of chip ids (1, 4, 5, 0) with no skip flags set, matching the function''s index-array layout.'
+  refs:
+  - bn6f/asm/asm33.s
+  reproduce: 'python3 tools/asmcat.py 0x08126430
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battle_loadChipIconSprites_8126430
+
+    '
+open_questions:
+- The first CopyWords(0x38 bytes) using r3 (held across the loop untouched) is presumably a chip-slot/folder
+  state block copy; its exact meaning depends on what r2 points to in the caller. Disambiguating whether
+  the 7×8-byte region is a packed "slot state + offset" or just eight bytes of icon-state per chip would
+  settle it.
+- Why r3 is preserved but unused inside the loop (instead of just being consumed up front) is unclear;
+  it may be that the compiler materialized a callee-save register from a caller-known constant.
+sources:
+- discovery session 2026-10-14 batch 44 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ae9cb8d5
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8126430 -> battle_loadChipIconSprites_8126430
+  where: bn6f 0823ec4c
+  tool: tools/rename_symbol.py

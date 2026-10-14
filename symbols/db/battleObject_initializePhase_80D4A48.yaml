@@ -1,0 +1,67 @@
+name: battleObject_initializePhase_80D4A48
+address: '0x080D4A48'
+kind: function
+previous_names:
+- sub_80D4A48
+status: probable
+summary: 'Initialize-phase handler for a battle object: refreshes pixel coords from panels, installs its
+  sprite/collision, then transitions to Update state.'
+interface: '(r5 = battleObjectPtr) -> r0 = init result from battleObject_initSpriteAndCollision ; side
+  effects: writes object flags, palette, XVelocity, sets CurState=CUR_STATE_UPDATE, falls through to object_destroyPhase_80D4A98'
+details: '1. Calls object_setCoordinatesFromPanels(r5) so X/Y reflect the current PanelX/PanelY (battleObject
+  X at 0x34, Y at 0x38).
+
+  2. Loads two animation/sprite constants (0x0102102a and 0x06050300) and calls battleObject_initSpriteAndCollision_8011504(r0=0x0102102a,
+  r1=0x06050300). r5 is passed implicitly (callee contract).
+
+  3. If that init returns 0 (failure), it reads three words at oBattleObject_Coords (r5+0x34..0x3c), adds
+  0x100000 (X bias) to the third (Z-related), then calls spawn_t1_0x0_EffectObject with those values to
+  spawn a "fail" effect at the object''s position. It then frees the object via object_freeMemory(r5)
+  and returns.
+
+  4. On success, it sets OBJECT_FLAG_VISIBLE (0x02) on the object header, calls sprite_setPalette(0) to
+  reset palette index 0, sets XVelocity=0x00080000 (one panel half), calls object_setCollisionHitEffect(0xa),
+  then object_presentCollisionData to register collision for this frame, stores CUR_STATE_UPDATE (0x4)
+  into CurState, and tail-calls object_destroyPhase_80D4A98.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- object_setCoordinatesFromPanels is called first (line `bl object_setCoordinatesFromPanels`),
+    which the project''s summary confirms recomputes pixel X/Y from PanelX/PanelY. - battleObject_initSpriteAndCollision_8011504
+    is called with animation id 0x0102102a / collision id 0x06050300 (lines `ldr r0, dword_80D4B5C //
+    =0x102102a` and `ldr r1, dword_80D4B60 // =0x6050300`); the callee summary says it returns 1 on success
+    and the `tst r0,r0` / `bne` branches on that. - Failure branch reads from r5+0x34 (oBattleObject_Coords)
+    with `ldmia r0!, {r1-r3}` then `add r3, r3, r4` where r4=0x100000, then calls spawn_t1_0x0_EffectObject
+    and object_freeMemory. - Success branch sets `orr r0, r1` with r1=2 at oObjectHeader_Flags (i.e. OBJECT_FLAG_VISIBLE),
+    stores 0x00080000 to oBattleObject_XVelocity (`str r0, [r5,#oBattleObject_XVelocity]` with `ldr r0,
+    dword_80D4B64 // =0x80000`), writes 0xa via object_setCollisionHitEffect, then `strb r0, [r5,#oBattleObject_CurState]`
+    with CUR_STATE_UPDATE, and finally `bl object_destroyPhase_80D4A98`. - Function only saves {r4,lr},
+    confirming the rest of the callee-saved set is untouched by the function itself but listed by the
+    contract because the destroy-phase tail-call clobbers them.'
+  refs:
+  - bn6f/asm/asm31.s
+  reproduce: 'python3 tools/asmcat.py 0x080D4A48
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_initializePhase_80D4A48
+
+    '
+open_questions:
+- Why the init can fail in a way that spawns an effect at the object's location and frees itself is not
+  visible here; would settle by looking at battleObject_initSpriteAndCollision_8011504's failure mode
+  and any callers that rely on this fallback. The meaning of hit-effect 0xa and XVelocity 0x80000 (one
+  panel step) is also inferred, not directly shown.
+sources:
+- discovery session 2026-10-14 batch 44 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ae9cb8d5
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80D4A48 -> battleObject_initializePhase_80D4A48
+  where: bn6f 0823ec4c
+  tool: tools/rename_symbol.py

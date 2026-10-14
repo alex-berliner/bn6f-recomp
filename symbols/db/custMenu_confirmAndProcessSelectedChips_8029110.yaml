@@ -1,0 +1,66 @@
+name: custMenu_confirmAndProcessSelectedChips_8029110
+address: '0x08029110'
+kind: function
+previous_names:
+- sub_8029110
+status: probable
+summary: 'Custom Screen menu confirm handler: builds the per-slot chip-use command queue at dword_2033000
+  from the active-chip slots, validates opcodes/chip attributes, and kicks off processing of the queue.'
+interface: (r5 = *S20364C0, r10 = *Toolkit) -> void ; side effects write dword_2033000 (chip-use queue),
+  byte_20366C0..0x20366FE (per-slot use entries), byte_20349AC (chip-use bitmap), and r5+0xB = 0x14 (or
+  0x10); processes the chip queue at the end
+details: "Sets S20364C0+0xB = 0x14 first, signalling the \"confirm OK pressed\" phase. Zero-fills dword_2033000\
+  \ for 0x48 bytes\nand writes six halfword 0xFFFF sentinels into dword_2033000 and byte_20366C0+0x32..+0x3C.\
+  \ Then for each\nselected chip in the custom screen (count from r5+oS20364C0_NumChipsSelected, walking\
+  \ via getLocOfActiveChips_8027E1C\nwith byte index starting at r6=0x48 because the active-chip record\
+  \ stores chip data at that offset):\n\n  - if the slot's flag byte is 2, calls sub_8029344 to handle\
+  \ the \"tag/special\" slot.\n  - else if flag 0, copies some halfword (slot[4]) into the 0x3C word of\
+  \ the queue entry.\n  - resolves chip ID from the slot's data pointer via getChipID_802A54E, writes\
+  \ the chip ID's low 9 bits\n    into queue entry +0x00 and high bits into +0x30, OR's a 0x190-threshold\
+  \ bitmap bit into word_20349AC.\n  - dispatches the chip \"use\" handler via battle_chipEffectDispatcher_80109A4\
+  \ passing\n    Toolkit->BattleStatePtr[0xd] as the target class index, stores the handler's return value\
+  \ in +0x0C\n    of the queue entry.\n  - copies a \"power/element\" byte from the chip record (offset\
+  \ 6) into +0x24.\n\nAfter the per-slot loop, if sub_8029520 (called with r0=byte_20366C0+0x32..+0x3C,\
+  \ r1=0) returns nonzero and\nsub_8029328 returns 0, calls sub_80292CC and sub_802B6F2, then writes 0x10\
+  \ to r5+0xB (likely\n\"queued chips executing\"). Finally calls processChipCommandQueue_8029224.\n\n\
+  The trailing block at loc_80291E6 walks the 6-slot buffer copying three words per slot\n(offsets 0x00,\
+  \ 0x0C, 0x18) into byte_20366C0 and a byte per slot into byte_20366FE from queue\n+0x3C, and a byte\
+  \ into byte_20366FE from Toolkit->BattleStatePtr[7]-1; sets byte_20366C0[0] to 0xFF\nwhen no chips selected\
+  \ or 0 otherwise.\n\nr5 is the S20364C0 custom-screen state, r10 is the Toolkit pointer (so BattleStatePtr\
+  \ comes from\nr10+oToolkit_BattleStatePtr).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `strb r0, [r5,#oS20364C0_Unk_0b]` with r0=0x14 right at entry sets the custom-screen status
+    byte. - `ZeroFillByWord` is called with r1=0x48 on dword_2033000, the chip-use command queue. - `bl
+    getLocOfActiveChips_8027E1C` with the index derived from r6=0x48.. is used to fetch the active chip
+    slot. - `bl battle_chipEffectDispatcher_80109A4` with `ldr r1, [r1,#oToolkit_BattleStatePtr]; ldrb
+    r1, [r1,#0xd]` invokes each chip''s use handler. - The threshold `0x190` and bitmap write into `word_20349AC`
+    (`[r0,#0xc]`) correspond to a per-chip-class use bitmap. - `bl processChipCommandQueue_8029224` at
+    the very end runs the built queue. - The caller custMenuPressOK_8028D3A explicitly handles the OK-press
+    flow on the Custom Screen.'
+  refs:
+  - bn6f/asm/asm03_0.s
+  reproduce: 'python3 tools/asmcat.py 0x08029110
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): custMenu_confirmAndProcessSelectedChips_8029110
+
+    '
+open_questions:
+- Exact semantics of sub_8029344 / sub_8029328 / sub_80292CC / sub_8029520 / sub_802B6F2 in this pipeline;
+  the meaning of S20364C0+0xB = 0x14 vs 0x10 (probably "preparing" vs "executing"); and what the bytes
+  at byte_20366C0+0x32..+0x3C vs byte_20366FE represent. Naming custMenu_ assumes the caller context;
+  this could equally be the broader battle-side chip confirm path.
+sources:
+- discovery session 2026-10-14 batch 44 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ae9cb8d5
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8029110 -> custMenu_confirmAndProcessSelectedChips_8029110
+  where: bn6f 0823ec4c
+  tool: tools/rename_symbol.py

@@ -97,7 +97,7 @@ Next bg_drawTileStripTileBlock2_8126404(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8126430 ── */
+/* ── battle_loadChipIconSprites_8126430 ── */
 /* register form: calls CopyWords outside this file, which has no typed C interface yet */
 static void copy_words(const u32 *src, u32 *dst, u32 count_u32) {
     R0 = (u32)src;
@@ -113,7 +113,7 @@ static const void *get_chip_raw(s32 which_chip) {
     return (const void *)R0;
 }
 
-/* sub_8126430:
+/* battle_loadChipIconSprites_8126430:
  *   Inputs:  r0 (slot index scale), r1 (chip-id table base), r2 (destination),
  *            r3 (source for first copy), r4 (chip-data dest base),
  *            r5/r6/r7 are loop-local in the original but our caller contract gives them in.
@@ -165,7 +165,7 @@ static void run_chip_row(u32 r0_in, u32 r1_in, u32 r2_in, u32 r3_in, u32 r4_in,
     }
 }
 
-Next sub_8126430(void) {
+Next battle_loadChipIconSprites_8126430(void) {
     /* Thin adapter: read the inputs, do the work, write the outputs (r4/r5/r6/r7).
      * The original preserves r4 and the loop uses r5/r6/r7 only internally; the caller
      * contract lists r4..r7 as outputs, so we hand back the incoming values for them
@@ -494,10 +494,10 @@ static void set_sprite_position(u32 id, u32 y, u32 z) {
     GUEST_CALL(sprite_setPositionForIdRange3_8119854);
 }
 
-/* register form: calls sub_8126818 outside this file, which has no typed C interface yet */
+/* register form: calls battleObject_initChipSpriteSlotBuffer_8126818 outside this file, which has no typed C interface yet */
 static void trigger_slot_effect(u32 arg) {
     R0 = arg;
-    GUEST_CALL(sub_8126818);
+    GUEST_CALL(battleObject_initChipSpriteSlotBuffer_8126818);
 }
 
 /* register form: calls setSlotFieldsFromStartTo3_811A1F4 outside this file, which has no typed C interface yet */

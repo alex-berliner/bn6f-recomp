@@ -1,0 +1,77 @@
+name: battle_initOverlayScene_8049EBC
+address: '0x08049EBC'
+kind: function
+previous_names:
+- sub_8049EBC
+status: probable
+summary: 'Initializes the battle overlay/scene: zeroes the frame''s render counters, sets a fixed LCD-control
+  value (0x1F40), applies palette slot 0x13, resets the eStructArr2008450 scene-record array, decompresses
+  init GFX, kicks off a screen fade (mode 8, speed 0x10), zeros key BattleState bytes, expands the text-script
+  table, loads the overlay sprite + SFX, then loops sub_803B674 across slot indices 4..14 and 0x29..0x2C,
+  runs two sub_803BE30 phases, calls chatbox_8040818, and writes 4 into BattleState.Index_01.'
+interface: '(no entry args, r10 = Toolkit*) -> void ; side effects: render-info counters cleared, palette
+  slot 0x13 loaded, eStructArr2008450 records reset, VRAM/GFX buffers zeroed + decompressed, screen-fade
+  set to mode 8, several BattleState fields cleared (offsets 0x08, 0x12, 0x13, 0x1c, 0x1d, 0x01), text-script
+  words expanded into 8-byte records, sprite tiles loaded + SFX played, two sub_803BE30 invocations with
+  r0=0 then r0=1, chatbox init.'
+details: 'Body is a fixed init sequence with no branches. `push {r4-r7,lr}`; r5/r10 are the callee-preserved
+  Toolkit/BattleState-related pointers. Sets RenderInfo DISPCNT-like halfword to 0x1F40 via SetRenderInfoLCDControl,
+  then clears per-frame sprite counters and a halfword counter (renderInfo_8001788, renderInfo_80017A0).
+  Loads palette slot 0x13 (toolkit_applyOverlayPalette_80015FC r0=0x13). Calls battle_resetEStructRecords_8046664
+  to redo the eStructArr2008450 record-array init.
+
+  copyData_804A0AC zeroes VRAM/GFX buffers and decompresses the init GFX table (its summary). SetScreenFade(r0=8,
+  r1=0x10) starts a fade-in (mode 8 / speed 0x10).
+
+  Stores 0 at offsets 0x08, 0x12, 0x13, 0x1c, 0x1d of the r5 struct (BattleState: CurState=0, Unk_12,
+  ChoiceCursorPos=0, Unk_1c, Unk_1d). sub_803BEC0 then expands the static text-script word index table
+  into per-byte 8-byte command records (project''s "expand" description) — likely feeding the chatbox/text
+  pipeline. sprite_loadTilesAndPlaySfx_804A14C loads overlay tiles into a sprite object and plays SFX
+  0x10/0x30.
+
+  sub_803A740 initializes battler slots 4..9 via sub_803B522; sub_803A752 loops sub_803B674 across 4..14;
+  sub_8049F20 loops it across 0x29..0x2C. Then two phase calls to sub_803BE30 with r0=0 and r0=1 (likely
+  "init" and then "execute step 1"). Finally chatbox_8040818 is invoked, the BattleState Index_01 byte
+  is set to 4 (curstate/mode of the overlay), and the function pops to caller.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r0, dword_8049F1C // =0x1f40` then `bl SetRenderInfoLCDControl` — DISPCNT-style halfword
+    0x1F40 written to RenderInfo. - `bl renderInfo_8001788` + `bl renderInfo_80017A0` — frame-counter
+    resets in RenderInfo. - `mov r0,#0x13 ; bl toolkit_applyOverlayPalette_80015FC` — palette slot 0x13
+    copied. - `bl battle_resetEStructRecords_8046664` — record-array reinit. - `bl copyData_804A0AC` —
+    VRAM/GFX zero+decompress init data. - `mov r0,#8 ; mov r1,#0x10 ; bl SetScreenFade` — fade mode 8
+    / speed 0x10. - `strb r0,[r5,#8] ; strb r0,[r5,#0x1c] ; strb r0,[r5,#0x1d] ; strb r0,[r5,#0x13] ;
+    strb r0,[r5,#0x12]` — five zero stores into the BattleState-like r5 struct at those offsets. - `bl
+    sub_803BEC0` — text-script word table → 8-byte record expansion. - `bl sprite_loadTilesAndPlaySfx_804A14C`
+    — 0x20-byte sprite tile block + SFX. - `bl sub_803A740` ; `bl sub_803A752` ; `bl sub_8049F20` — slot-initialisation
+    loops 4..9, 4..14, 0x29..0x2C. - `mov r0,#0 ; bl sub_803BE30` then `mov r0,#1 ; bl sub_803BE30` —
+    two-phase dispatch. - `bl chatbox_8040818` — chatbox routine. - `mov r0,#4 ; strb r0,[r5,#1]` — BattleState
+    Index_01 = 4 (the chosen overlay init state).'
+  refs:
+  - bn6f/asm/asm03_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08049EBC
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battle_initOverlayScene_8049EBC
+
+    '
+open_questions:
+- The exact BattleState role of [r5,#1]=4 (entry state index) — could be a sub-mode under CurState/phase.
+  Knowing the project-wide enum for BattleState.Index_01 would settle the overlay phase name.
+- Whether the loop in sub_803BEC0 is the text-record expansion consumed by chatbox_8040818 (very plausible
+  given the immediate chatbox call, but not provable from this function alone).
+sources:
+- discovery session 2026-10-14 batch 44 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ae9cb8d5
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8049EBC -> battle_initOverlayScene_8049EBC
+  where: bn6f 0823ec4c
+  tool: tools/rename_symbol.py

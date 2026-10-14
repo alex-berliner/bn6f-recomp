@@ -1,0 +1,80 @@
+name: aiAttackVars_updateIllusionSpawnState_80EB79C
+address: '0x080EB79C'
+kind: function
+previous_names:
+- sub_80EB79C
+status: probable
+summary: AI attack-vars step that, when active and allowed, spawns an "illusion"-style object one panel
+  behind the user and warps them there; otherwise cancels into animation 4 and idle state.
+interface: (r5 = *BattleObject, r7 = *AIAttackVars, lr) -> void ; side effects write r7->Unk_34, AIAttackVars->Unk_00,
+  may flip DirectionFlip, play anim 4
+details: '1. Stores #4 into [r7,#oAIAttackVars_Unk_00] up front (idle-state sentinel) and reads [r7,#oAIAttackVars_Unk_0c];
+  if zero, exits.
+
+  2. Reads [r7,#oAIAttackVars_Unk_1b] (PwrAtkCurChargeTime). If non-zero OR if the battle object''s NaviStats
+  offset 0x2c lies outside [0x0B..0x18], branches to the "spawn illusion" path at loc_80EB7D6 (skipping
+  the reserve-panel branch).
+
+  3. Otherwise calls sub_800E5FC, and if it returns 0, exits. Else sets OBJECT_FLAGS_CANNOT_SLIDE on the
+  battle object, copies PanelX/PanelY into FuturePanelX/FuturePanelY, and calls object_reservePanel —
+  locking the home panel so nobody else moves onto it during the manoeuvre.
+
+  4. Spawn path (loc_80EB7D6): zeros [r7,#oAIAttackVars_Unk_34], calls sub_8015B00 (some check), and if
+  it returns 0 takes the "fail" branch at loc_80EB82C (clears Unk_34, plays animation 4, writes 0x0c into
+  Unk_00).
+
+  5. Success branch: pushes scratch regs, computes `r4 = (object_getFlip()<<8) + sub_800F2AA(0) + 0xFF`,
+  then `ldmia [r5+0x34]` to load three 32-bit params (Coords.X/Y/Z fixed-point), and calls spawnIllusionObject_80E33FA
+  with const pool values `0xFFE0` and `0x01010014` as extras (an offset/dimensions mask).
+
+  6. After pop, stores the spawn result bytes into BattleObject.PanelX/PanelY, calls object_setCoordinatesFromPanels
+  + object_updateCollisionPanels, and only when [r7,#oAIAttackVars_Unk_34]==1 does it XOR DirectionFlip
+  with 1 and refresh sprite+arm via battleObject_refreshSpriteAndArm_800F2C6 / battleRefreshTrackedObjectArmPos_801DBD4.
+
+  7. The trailing `dword_80EB844=0xFFE0` and `dword_80EB848=0x01010014` are passed as the 5th/6th args
+  to spawnIllusionObject_80E33FA (a spawn-illusion helper).
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- "strh r0, [r7,#oAIAttackVars_Unk_00]" with r0=#4 right at the start sets AIAttackVars state
+    byte to 4 unless overwritten. - "ldrb r4, [r7,#oAIAttackVars_Unk_0c]" / "tst r4,r4 ; beq locret" gates
+    the entire body on Unk_0c being truthy. - The `0x0B..0x18` window on NaviStats byte 0x2c is read via
+    `GetBattleNaviStatsByte_AllianceFromBattleObject(r5,0x2c)` — selecting illusion-capable Navis. - "mov
+    r0, #OBJECT_FLAGS_CANNOT_SLIDE / bl object_setFlag1" plus copy PanelX/PanelY to FuturePanelX/FuturePanelY
+    followed by `object_reservePanel` is the standard "claim your current panel so you don''t lose it
+    before teleporting" pattern. - `sub_8015B00` returning 0 falls into `loc_80EB82C` which writes animation
+    4 and state 0x0c — a known move-failed-end animation for Megaman/Bass-style AI scripts. - The spawn
+    block reads three words via `ldmia r0!, {r1-r3}` from `r5+0x34` (BattleObject Coords starting at X)
+    — exactly the per-instance xyz used for teleport destination. - Spawn call uses the two const-pool
+    words `0xFFE0` / `0x01010014` as r6/r7 args, then stores r0/r1 back into BattleObject.PanelX/PanelY,
+    confirming the spawn returns the destination panel in r0/r1. - "ldr r0, [r7,#oAIAttackVars_Unk_34]
+    / cmp r0,#1 / bne loc_80EB82A" gates the flip+sprite refresh on a spawn-success flag of 1.'
+  refs:
+  - bn6f/asm/asm31.s
+  reproduce: 'python3 tools/asmcat.py 0x080EB79C
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): aiAttackVars_updateIllusionSpawnState_80EB79C
+
+    '
+open_questions:
+- Exact semantics of `sub_8015B00` and `sub_800E5FC` (success/fail returns) — they decide which branch
+  executes.
+- What the returned illusion object's "spawn mask" `0x01010014` encodes; naming assumes "illusion clone"
+  but could be any support object helper.
+- The precise game meaning of the values 4 and 0x0C in Unk_00 — they appear to be move-state sentinels
+  but no symbol names them.
+sources:
+- discovery session 2026-10-14 batch 44 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ae9cb8d5
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80EB79C -> aiAttackVars_updateIllusionSpawnState_80EB79C
+  where: bn6f 0823ec4c
+  tool: tools/rename_symbol.py

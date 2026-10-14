@@ -1,0 +1,96 @@
+name: battleObject_throwProjectile_80CAFC8
+address: '0x080CAFC8'
+kind: function
+previous_names:
+- sub_80CAFC8
+status: probable
+summary: Battle-object state that throws itself (or its 0x34-inline params) to a target panel as a parabolic
+  projectile, spawning an impact effect and collision on arrival.
+interface: (r5 = oBattleObject*) -> void; updates object state, velocities, timer, panel highlight
+details: 'Phase 0 entry: sets CurPhase to 4 (init phase), looks up pixel coordinates of the future
+
+  target panel via object_getCoordinatesForPanels (FuturePanelX/Y at +0x14/+0x15), and calls
+
+  math_getThrowSpeeds using ExtraVars[0] (r4 = +0x60 lo) and ExtraVars[4] (r6 = +0x64) plus
+
+  the just-fetched coordinates and object+0x34 (likely start position) to compute X/Y/Z velocities
+
+  stored into +0x40/+0x44/+0x48. Timer is set from the low half of ExtraVars[0] (+0x60) and
+
+  Timer2 cleared.
+
+
+  Phase 4+ (every subsequent call): Timer2 increments every frame; on bit 3 (every 8 frames)
+
+  object_highlightPanel is called for the destination panel. Each frame X/Y/Z accumulate their
+
+  velocities, and ZVelocity itself increases by ExtraVars[4] each frame (gravity-like accel).
+
+  object_setPanelsFromCoordinates recomputes PanelX/Y from world coords.
+
+
+  When Timer underflows (Timer -= 1; bge skip): reads oBattleObject_Alliance, indexes the
+
+  byte_80CB070 table {0x10, 0x80, 0x15, 0x10, 0x80, 0x2A} by Alliance<<2, and if the
+
+  destination panel''s flags intersect that mask, spawns a type-4 effect object at object+0x34
+
+  via spawn_t1_0x0_EffectObject and creates a collision region via
+
+  battle_spawnCollisionForObject_80CB0AE. Then sets CurStateActionPhaseAndPhaseInitialized to
+
+  CUR_STATE_DESTROY and clears Timer2.
+
+
+  Caller (lr=0x80cafb6 in the captured snapshots) is the dispatcher that funnels each object
+
+  state''s update; this is one row in that jumptable. No callers other than the dispatcher are
+
+  listed, consistent with how other battle-object state functions are dispatched.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- r5 in/r5 out contract with no other args; pushes r4/r6/lr — classic battle-object state handler.
+    - CurPhase==0 branch writes 4 to oBattleObject_CurPhase (+0xa): standard two-phase (init/update) pattern.
+    - object_getCoordinatesForPanels reads FuturePanelX (+0x14) and FuturePanelY (+0x15). - math_getThrowSpeeds
+    is called with r0=object+0x34 (inline coords/target), r4=ExtraVars[0] (+0x60), r6=ExtraVars[4] (+0x64),
+    producing X/Y/Z velocities stored at +0x40/+0x44/+0x48. - Timer (u16 at +0x20) is loaded from the
+    low half of ExtraVars[0] and counts down each frame; bge on the decremented value gates arrival. -
+    Timer2 (u16 at +0x22) is incremented each frame and tested via `lsr r0,r0,#3; bcs` — every 8th frame
+    it highlights the destination panel. - ZVelocity is bumped by ExtraVars[4] each frame, producing a
+    parabolic arc. - object_setPanelsFromCoordinates is called each frame to update PanelX/Y from world
+    coords. - On expiry, object_getPanelParameters fetches the destination panel flags; the byte_80CB070
+    lookup keyed by Alliance<<2 acts as an alliance-aware "valid landing panel" mask. - spawn_t1_0x0_EffectObject
+    (type 4, effect 0) and battle_spawnCollisionForObject_80CB0AE create the on-arrival impact effect/collision.
+    - CurStateActionPhaseAndPhaseInitialized = 0x08 (CUR_STATE_DESTROY) ends the state. - 40 captured
+    calls all share entry r5 as object pointer, lr=0x80cafb6, consistent with a state-dispatch site; exit
+    r0 varies (0/4/5) which are leftover flags / phase values, not meaningful returns.'
+  refs:
+  - bn6f/asm/asm31.s
+  reproduce: 'python3 tools/asmcat.py 0x080CAFC8
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_throwProjectile_80CAFC8
+
+    '
+open_questions:
+- What the inline 0x34..0x44 block actually represents (start position? target coords? something else).
+  The 0x60/0x64 ExtraVars are not yet annotated semantically (initial speed, gravity?). Naming the effect
+  "projectile" / "throw" is a guess from math_getThrowSpeeds plus the parabolic Z update; if ExtraVars[0]
+  is actually a number of frames and ExtraVars[4] is a fixed increment, the same code path would still
+  be "move to panel along an arc and explode". Settling this needs a known chip/battle that exercises
+  this state with known parameters (e.g. a thrown BombCorn / SnakeArm / similar).
+sources:
+- discovery session 2026-10-14 batch 44 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ae9cb8d5
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80CAFC8 -> battleObject_throwProjectile_80CAFC8
+  where: bn6f 0823ec4c
+  tool: tools/rename_symbol.py

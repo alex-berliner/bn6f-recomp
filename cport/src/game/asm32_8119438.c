@@ -3253,9 +3253,9 @@ Next sub_811CA94(void) {
 
     /* dispatch loop: step the state machine until it reports "done" */
     do {
-        /* sub_811CC68 returns a pointer whose halfword is the byte-offset
+        /* battleObject_getUnk_0cPtr_811CC68 returns a pointer whose halfword is the byte-offset
          * into the jump table for the current state. */
-        GUEST_CALL(sub_811CC68);
+        GUEST_CALL(battleObject_getUnk_0cPtr_811CC68);
         state_offset = LD16(R0);
 
         switch (state_offset) {

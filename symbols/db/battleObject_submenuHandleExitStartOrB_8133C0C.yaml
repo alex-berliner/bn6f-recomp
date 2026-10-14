@@ -1,0 +1,79 @@
+name: battleObject_submenuHandleExitStartOrB_8133C0C
+address: '0x08133C0C'
+kind: function
+previous_names:
+- sub_8133C0C
+status: probable
+summary: Handles START/B input to confirm or cancel a submenu/folder-edit screen; flips a state byte and
+  resets Anger-like halfword to 0.
+interface: (r5 = AIData-like struct, r10 = toolkit) -> void ; side effects may write r0 for sound ID,
+  may call IsButtonPressed and PlaySoundEffect
+details: '- Pushes lr, reads JOYPAD_START via IsButtonPressed; if newly pressed, jumps to the exit-handling
+  path.
+
+  - Otherwise loads byte [r5,#3]; if it equals 0xC (the "open" submenu state), additionally checks JOYPAD_B
+  via IsButtonPressed and exits the function on either START or (in state 0xC) a fresh B press.
+
+  - On exit (loc_8133C24): checks byte [r5,#0x44] (likely a "input locked" flag); if non-zero, returns.
+
+  - When in state 0xC ([r5,#3] == 0xC, the open-confirm branch): copies [r5,#0xD] back into [r5,#3] (restores
+  the prior state, "cancel") and plays SOUND_EXIT_SUBMENU.
+
+  - Otherwise (entering state 0xC from another state): stores current [r5,#3] into [r5,#0xD] (saves previous
+  state), sets [r5,#3] = 0xC, zeroes the 16-bit at [r5,#0x34] (the Anger halfword per AIData), and plays
+  SOUND_MENU_SELECT.
+
+  - All three r5 offsets used (0x3, 0xD, 0x34, 0x44) line up exactly with AIData fields (Unk_03 / Unk_0d
+  / Anger / Unk_44) when the AIData struct is laid out at offset 0 from r5.
+
+  - The trailing `mov r0, #0; tst r0, r0` is a vestigial clear-Z pattern that ensures Z is set on the
+  fall-through `loc_8133C52` path (matches the captured-call exit flags `-Z--`).
+
+  - All callers (folderEdit_step_813388C, battleObject_runSubmenuInputHandler_81337E8, battleObject_submenuLoopStep_8133944)
+  treat r5 as an AIData-like blob and route "exit" input through this helper, which fits its role as the
+  shared cancel/confirm dispatcher.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {lr}` / `pop {pc}` shows a void helper (asm line 7587, 7623). - `mov r0, #JOYPAD_START;
+    bl IsButtonPressed` (line 7589) reads the START button mask from the joypad constants table. - `mov
+    r0, #JOYPAD_B; bl IsButtonPressed` (line 7597) only runs when `[r5,#3] == 0xC`. - State-byte swap
+    uses `[r5,#3]`/`[r5,#0xD]` (lines 7605, 7610), which corresponds to AIData.Unk_03 and Unk_0d (0xd,
+    0xd in struct). - The 16-bit clear `mov r0, #0; strh r0, [r5,#0x34]` (line 7613) matches AIData.Anger
+    at offset 0x34. - `[r5,#0x44]` (line 7591) corresponds to AIData.Unk_44 (the second 32-bit word of
+    the post-0x40 region), used as an "input locked" guard. - Two distinct sound IDs are chosen by direction
+    of transition (SOUND_EXIT_SUBMENU on cancel, SOUND_MENU_SELECT on open) (lines 7607, 7617). - All
+    captured-call entry r0/r1/r2/r3 values are constant (r0=2, r1=0, r2=0, r3=0x02001c04), confirming
+    r0/r1/r2 are unused on entry (matches contract `in=[''r2'', ''r5'', ''r10'', ''lr'']`). - Exit flags
+    `-Z--` on every recorded call (e.g. snap_battles1_0.bin) confirm the trailing `mov r0, #0; tst r0,
+    r0` always sets Z.'
+  refs:
+  - bn6f/asm/asm36.s
+  reproduce: 'python3 tools/asmcat.py 0x08133C0C
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_submenuHandleExitStartOrB_8133C0C
+
+    '
+open_questions:
+- The exact semantics of AIData offset 0x44 (whether it is truly an "input locked" gate or a different
+  mode flag); could be settled by checking the only writer of that byte.
+- Whether the value at [r5,#0xD] (saved prior state) is itself used as the previous submenu state by other
+  helpers; the swap pattern suggests yes but no other code is visible from this function.
+- Caller-side meaning of the constant 0xC as a submenu state value; the three callers all use the same
+  byte, so the meaning is consistent, but its exact name ("confirm-screen-open" vs "Beast-Out cancel"
+  vs "folder-edit confirm") is unknown.
+sources:
+- discovery session 2026-10-14 batch 44 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ae9cb8d5
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8133C0C -> battleObject_submenuHandleExitStartOrB_8133C0C
+  where: bn6f 0823ec4c
+  tool: tools/rename_symbol.py

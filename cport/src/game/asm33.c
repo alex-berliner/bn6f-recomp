@@ -2316,10 +2316,10 @@ static void call_sub_80015FC(u32 arg) {
     GUEST_CALL(toolkit_applyOverlayPalette_80015FC);
 }
 
-/* register form: calls sub_8126818 outside this file, which has no typed C interface yet */
+/* register form: calls battleObject_initChipSpriteSlotBuffer_8126818 outside this file, which has no typed C interface yet */
 static void call_sub_8126818(u32 arg) {
     R0 = arg;
-    GUEST_CALL(sub_8126818);
+    GUEST_CALL(battleObject_initChipSpriteSlotBuffer_8126818);
 }
 
 /* register form: calls initRefs_buildAndDecompressTable_8125280 outside this file, which has no typed C interface yet */
@@ -2527,7 +2527,7 @@ Next sub_8124C30(void) {
 /* ── sub_8124C94 ── */
 Next sub_8124C94(void) {
     R0 = 0;
-    GUEST_CALL(sub_8126818);
+    GUEST_CALL(battleObject_initChipSpriteSlotBuffer_8126818);
 
     R0 = 0;
     R1 = 1;
@@ -2577,7 +2577,7 @@ Next sub_8124CE8(void) {
     u32 lr = LR;
 
     R0 = 0;
-    GUEST_CALL(sub_8126818);
+    GUEST_CALL(battleObject_initChipSpriteSlotBuffer_8126818);
 
     /* Tick the per-sprite counter at o+0x74 down by 2 (note: it actually
      * decrements, even though the disassembly uses 'sub'). The original
@@ -2624,10 +2624,10 @@ Next sub_8124CE8(void) {
  * comes from inside the callees, not from this function's own code.
  */
 
-/* register form: calls sub_8126818 outside this file, which has no typed C interface yet */
+/* register form: calls battleObject_initChipSpriteSlotBuffer_8126818 outside this file, which has no typed C interface yet */
 static void call_sub_8126818_with_zero(void) {
     R0 = 0;
-    GUEST_CALL(sub_8126818);
+    GUEST_CALL(battleObject_initChipSpriteSlotBuffer_8126818);
 }
 
 /* register form: calls battle_runTransition_8125444 outside this file, which has no typed C interface yet */
@@ -2693,11 +2693,11 @@ Next battle_objTickTimerAndRefreshSpritePairs_8124D30(void) {
 /* ── sub_8124D78 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r5, r6; } call_sub_8126818_result;
-/* register form: generated wrapper: sub_8126818 has no typed C interface yet */
+/* register form: generated wrapper: battleObject_initChipSpriteSlotBuffer_8126818 has no typed C interface yet */
 static inline call_sub_8126818_result call_sub_8126818_sub_8124D78(u32 r0, u32 r5) {
     R0 = r0;
     R5 = r5;
-    GUEST_CALL(sub_8126818);
+    GUEST_CALL(battleObject_initChipSpriteSlotBuffer_8126818);
     return (call_sub_8126818_result){ R5, R6 };
 }
 
@@ -2835,10 +2835,10 @@ Next sub_8124D78(void) {
 #define SLOT_HP_FRAME     4
 #define SLOT_STATE_FRAME  7
 
-/* register form: calls sub_8126818 outside this file, which has no typed C interface yet */
+/* register form: calls battleObject_initChipSpriteSlotBuffer_8126818 outside this file, which has no typed C interface yet */
 static void call_sub_8126818_sub_8124DCC(u32 arg) {
     R0 = arg;
-    GUEST_CALL(sub_8126818);
+    GUEST_CALL(battleObject_initChipSpriteSlotBuffer_8126818);
 }
 
 /* register form: calls battle_runTransition_8125444 outside this file, which has no typed C interface yet */
@@ -2932,10 +2932,10 @@ Next sprite_shieldUpdate_8124DCC(void) {
 }
 
 /* ── battle_runIntro_812508C_812509C ── */
-/* register form: calls sub_8126818 outside this file, which has no typed C interface yet */
+/* register form: calls battleObject_initChipSpriteSlotBuffer_8126818 outside this file, which has no typed C interface yet */
 static void sub_8126818_reg(u32 arg) {
     R0 = arg;
-    GUEST_CALL(sub_8126818);
+    GUEST_CALL(battleObject_initChipSpriteSlotBuffer_8126818);
 }
 
 /* register form: calls battle_input_tick_8125784 outside this file, which has no typed C interface yet */
@@ -3144,10 +3144,10 @@ Next battle_transitionTick_8125170(void) {
 }
 
 /* ── sub_8125198 ── */
-/* register form: calls sub_8126818 outside this file, which has no typed C interface yet */
+/* register form: calls battleObject_initChipSpriteSlotBuffer_8126818 outside this file, which has no typed C interface yet */
 static void call_sub_8126818_zero(void) {
     R0 = 0;
-    GUEST_CALL(sub_8126818);
+    GUEST_CALL(battleObject_initChipSpriteSlotBuffer_8126818);
 }
 
 /* register form: calls battle_runTransition_8125444 outside this file, which has no typed C interface yet */

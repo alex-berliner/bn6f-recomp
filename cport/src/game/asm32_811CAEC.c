@@ -12,7 +12,7 @@
 /* timerCountdown_step_811CBA0 (r5 = state object):
  * Runs the countdown timer at +0x10. The first time it runs (active flag in
  * the byte at +0x9 still clear) it marks itself active and initialises the
- * timer from the halfword at +2 of the entry returned by sub_811CC68.
+ * timer from the halfword at +2 of the entry returned by battleObject_getUnk_0cPtr_811CC68.
  * Every call decrements the timer; once it goes negative the timer is reset
  * to 0, the active flag is cleared, 4 is added to the u32 counter at +0xC,
  * and the function returns 1. Otherwise it returns 0. */
@@ -23,7 +23,7 @@ Next timerCountdown_step_811CBA0(void) {
     if (LD8(obj + 9) == 0) {
         u32 entry;
         ST8(obj + 9, 1);
-        GUEST_CALL(sub_811CC68);
+        GUEST_CALL(battleObject_getUnk_0cPtr_811CC68);
         entry = R0;
         ST32(obj + 0x10, LD16(entry + 2));
     }
@@ -57,7 +57,7 @@ Next timerCountdown_step_811CBA0(void) {
  * 10-frame counter at r5+0xC. Always returns r0 = 1. */
 Next battle_matchTrackedSpriteAndShrink_811CBD0(void) {
     /* Fetch a pointer to the sprite data the object is tracking. */
-    GUEST_CALL(sub_811CC68);
+    GUEST_CALL(battleObject_getUnk_0cPtr_811CC68);
     u32 tracked = R0;
 
     /* Move this object's sprite to the tracked sprite's position. */
@@ -68,7 +68,7 @@ Next battle_matchTrackedSpriteAndShrink_811CBD0(void) {
 
     /* Fetch the sprite data again and copy its two size halfwords into the
      * object. */
-    GUEST_CALL(sub_811CC68);
+    GUEST_CALL(battleObject_getUnk_0cPtr_811CC68);
     tracked = R0;
     u32 width = LD16(tracked + 6);
     ST16(R5 + 0x14, width);
@@ -105,14 +105,14 @@ Next object_setStateHandlerAndReturnOne_811CC02(void) {
 
 /* ── battle_initObjectSpriteAndStartAnimation_811CC0C ── */
 /* battle_initObjectSpriteAndStartAnimation_811CC0C: (re)initialize a battle sprite.
- * Asks sub_811CC68 for the object's sprite info, starts the animation
+ * Asks battleObject_getUnk_0cPtr_811CC68 for the object's sprite info, starts the animation
  * named by its halfword field at +2, loads the animation's frame data,
  * then hands the object state 4 to counter_addU32_r5Plus0C_811CC60.
  * Always returns r0 = 1 with NZ set from that final `mov r0, #1`.
  * r4 and r5 are never touched, so they pass through untouched. */
 Next battle_initObjectSpriteAndStartAnimation_811CC0C(void) {
     /* Which animation to play: halfword at offset 2 of the sprite info. */
-    GUEST_CALL(sub_811CC68);
+    GUEST_CALL(battleObject_getUnk_0cPtr_811CC68);
     R0 = LD16(R0 + 2);
     GUEST_CALL(sprite_setAnimation);   /* (u8 animation) */
     GUEST_CALL(sprite_loadAnimationData);
@@ -196,10 +196,10 @@ Next counter_addU32_r5Plus0C_811CC60(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_811CC68 ── */
-/* sub_811CC68: return the value at [r5 + 0xC] in r0.
+/* ── battleObject_getUnk_0cPtr_811CC68 ── */
+/* battleObject_getUnk_0cPtr_811CC68: return the value at [r5 + 0xC] in r0.
  * A simple field getter: r5 points to some struct, r0 gets its 0xC field. */
-Next sub_811CC68(void) {
+Next battleObject_getUnk_0cPtr_811CC68(void) {
     R0 = LD32(R5 + 0xC);
     RETURN_TO_CALLER();
 }

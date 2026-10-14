@@ -261,7 +261,7 @@ Next clearDword_203CA70Record_80084C0(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8009158 ── */
+/* ── battle_runBattlePhase_8009158 ── */
 /* Battle state machine tick: runs the current state's phase handler (chosen through the
  * jump table at off_80091BC), then keeps the low-HP warning siren in step with the
  * player's HP: it starts when HP falls to a quarter of max or below and stops again
@@ -362,9 +362,9 @@ static void battle_state_update(u32 battle_state)
     }
 }
 
-/* sub_8009158(r5 = battle state) -> no computed outputs: r2..r6 and r8..r12 carry
+/* battle_runBattlePhase_8009158(r5 = battle state) -> no computed outputs: r2..r6 and r8..r12 carry
  * whatever the phase handler and the sound calls left in them */
-Next sub_8009158(void) {
+Next battle_runBattlePhase_8009158(void) {
     battle_state_update(R5);
     RETURN_TO_CALLER();
 }
