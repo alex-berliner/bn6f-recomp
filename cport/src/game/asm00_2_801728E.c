@@ -486,14 +486,14 @@ Next getBattleArmPositionMaybe_8018810(void) {
 
 /* ── getIndexedSignedBytePair_8018842 ── */
 /* getIndexedSignedBytePair_8018842(r0, r1 = arguments for the lookup, r2 = entry index, r4 = unused):
- * Looks up a two-byte table entry: the entry base comes from sub_8018886
+ * Looks up a two-byte table entry: the entry base comes from getAnmSeqRowIndexTableEntry_8018886
  * (called with r0/r1 as passed in), offset by twice the index in r2.
  * Outputs: r0 = first byte (signed), r1 = second byte (signed) of the entry.
  * r2/r3/r4 are left untouched. */
 Next getIndexedSignedBytePair_8018842(void) {
     u32 addr = R2 + R2;
 
-    GUEST_CALL(sub_8018886);
+    GUEST_CALL(getAnmSeqRowIndexTableEntry_8018886);
     addr += R0;
 
     R0 = (s8)LD8(addr);
@@ -501,8 +501,8 @@ Next getIndexedSignedBytePair_8018842(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8018886 ── */
-/* sub_8018886(r0 = table_index, r1 = sub_index):
+/* ── getAnmSeqRowIndexTableEntry_8018886 ── */
+/* getAnmSeqRowIndexTableEntry_8018886(r0 = table_index, r1 = sub_index):
  * Look up an entry in one of three sprite/animation tables.
  *
  * When r0 == 0, r1 is used as an index into a 16-byte mapping table (A_byte_80188B0) to
@@ -517,7 +517,7 @@ Next getIndexedSignedBytePair_8018842(void) {
  *   clobbers: nz c v r1 r2
  *   preserved: -
  */
-Next sub_8018886(void) {
+Next getAnmSeqRowIndexTableEntry_8018886(void) {
     /* If table_index == 0, remap sub_index through the lookup table. */
     if (R0 == 0) {
         R1 = LD8(A_byte_80188B0 + R1);

@@ -1363,11 +1363,11 @@ static void save_state_and_set_state_8(void) {
 /* register form: calls battleObject_drawFolderEditScreenGfx_8134310 outside this file, which has no typed C interface yet */
 static void post_step_8134310(void) { GUEST_CALL(battleObject_drawFolderEditScreenGfx_8134310); }
 
-/* register form: calls sub_81345B0 outside this file, which has no typed C interface yet */
-static void post_step_81345B0(void) { GUEST_CALL(sub_81345B0); }
+/* register form: calls battleObject_runBeastStatusEffect_81345B0 outside this file, which has no typed C interface yet */
+static void post_step_81345B0(void) { GUEST_CALL(battleObject_runBeastStatusEffect_81345B0); }
 
-/* register form: calls sub_8134548 outside this file, which has no typed C interface yet */
-static void post_step_8134548(void) { GUEST_CALL(sub_8134548); }
+/* register form: calls object_resolveTableEntryWrapper_8134548 outside this file, which has no typed C interface yet */
+static void post_step_8134548(void) { GUEST_CALL(object_resolveTableEntryWrapper_8134548); }
 
 /* One frame of the folder-edit object step.
  *
@@ -1433,9 +1433,9 @@ Next sub_8133944(void) {
 
     /* Always-run scene updates. */
     GUEST_CALL(submenu_clearBgIfClosed_8134594);
-    GUEST_CALL(sub_81345B0);
+    GUEST_CALL(battleObject_runBeastStatusEffect_81345B0);
     GUEST_CALL(object_resolveTableEntryByIndex_8134538);
-    GUEST_CALL(sub_8134548);
+    GUEST_CALL(object_resolveTableEntryWrapper_8134548);
     GUEST_CALL(battleObject_submenuRenderFolderAndChips_81341A0);
     GUEST_CALL(battleObject_drawFolderEditScreenGfx_8134310);
     GUEST_CALL(battleObject_alignRowOffsetCheckSN3_81353DC);
@@ -1545,14 +1545,14 @@ static void sub_8134538_call(void) {
     GUEST_CALL(object_resolveTableEntryByIndex_8134538);
 }
 
-/* register form: calls sub_81345B0 outside this file, which has no typed C interface yet */
+/* register form: calls battleObject_runBeastStatusEffect_81345B0 outside this file, which has no typed C interface yet */
 static void sub_81345B0_call(void) {
-    GUEST_CALL(sub_81345B0);
+    GUEST_CALL(battleObject_runBeastStatusEffect_81345B0);
 }
 
-/* register form: calls sub_8134548 outside this file, which has no typed C interface yet */
+/* register form: calls object_resolveTableEntryWrapper_8134548 outside this file, which has no typed C interface yet */
 static void sub_8134548_call(void) {
-    GUEST_CALL(sub_8134548);
+    GUEST_CALL(object_resolveTableEntryWrapper_8134548);
 }
 
 /* Per-frame PET/Navi update: drive the update pipeline, and while a screen fade
@@ -2182,11 +2182,11 @@ Next object_resolveTableEntryByIndex_8134538(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8134548 ── */
-/* sub_8134548: tail-call wrapper for object_resolveTableEntry_8134558 with fixed arguments
+/* ── object_resolveTableEntryWrapper_8134548 ── */
+/* object_resolveTableEntryWrapper_8134548: tail-call wrapper for object_resolveTableEntry_8134558 with fixed arguments
  *   r0 = 0x182, r1 = 0x1C, r2 = 0x28, r3 = 0x2E.
  * Registers r0-r3 and the condition flags are whatever object_resolveTableEntry_8134558 leaves. */
-Next sub_8134548(void) {
+Next object_resolveTableEntryWrapper_8134548(void) {
     R0 = 0x182;
     R1 = 0x1C;
     R2 = 0x28;
@@ -2274,7 +2274,7 @@ Next submenu_clearBgIfClosed_8134594(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_81345B0 ── */
+/* ── battleObject_runBeastStatusEffect_81345B0 ── */
 /* register form: calls battleObject_updateShieldOrStatusEffect_813468C outside this file, which has no typed C interface yet */
 static void call_813468C(u32 arg0, u32 arg1, u32 arg2, u32 arg3, u32 ptr, u32 flag) {
     /* Original pushes {r4-r7} before this call and pops them after, so we save/restore. */
@@ -2291,8 +2291,8 @@ static void invoke_813468C(void) {
     call_813468C(0xF3, 0x16, 0, 0x11, A_byte_81331EC, 0x10000000);
 }
 
-/* sub_81345B0: preserve r4-r7 and tail-call battleObject_updateShieldOrStatusEffect_813468C with fixed arguments. */
-Next sub_81345B0(void) {
+/* battleObject_runBeastStatusEffect_81345B0: preserve r4-r7 and tail-call battleObject_updateShieldOrStatusEffect_813468C with fixed arguments. */
+Next battleObject_runBeastStatusEffect_81345B0(void) {
     invoke_813468C();
     RETURN_TO_CALLER();
 }

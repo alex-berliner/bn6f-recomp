@@ -1,0 +1,71 @@
+name: battle_checkEnemyInAttackRangeAndTrigger_80A7B32
+address: '0x080A7B32'
+kind: function
+previous_names:
+- sub_80A7B32
+status: probable
+summary: Checks if a battle object (r5) is within attack range of the overworld player's projected panel,
+  and triggers a battle reaction if so.
+interface: '(r5 = suspected-attacker BattleObject*, r10 = Toolkit*) -> r0 = 0 (out of range / input not
+  allowed) or 1 (in range, signaled); side effects: when in range, calls sub_80A7BA2 with r0=2 then returns
+  1'
+details: "1. Calls battle_isInputAllowedOrBattleBusy_80A7C58; if it returns NZ (battle busy or input disallowed),\
+  \ returns 0 immediately.\n  2. Otherwise loads the GameState via r10 -> oToolkit_GameStatePtr -> oGameState_OverworldPlayerObjectPtr.\n\
+  \  3. Reads the player's projected XZ (FuturePanel) from r4 (the OWPlayerObject) at offsets 0x1c/0x20\
+  \ and the battle object's current XZ at r5 offsets 0x0c/0x10.\n  4. Computes delta_x = obj.X - player.X,\
+  \ delta_z = obj.Z - player.Z, shifts both right by 16 (to get panel units), then squares and sums them\
+  \ (dx^2 + dz^2).\n  5. Loads a per-battle-object reach radius byte from r7 offset 0x1 (one past the\
+  \ AIIndex at offset 0x0 in AIData), squares it, doubles it (radius^2 * 2), and compares dx^2+dz^2 to\
+  \ radius^2*2.\n  6. If the squared distance is strictly less than the threshold (bge taken on >=), it\
+  \ means the enemy is in attack range; calls sub_80A7BA2(2) then returns 1.\n  7. Otherwise returns 0\
+  \ (no battle-trigger side effect).\n  8. The captured-call entry consistently shows r0 = 0x080a7b33\
+  \ (lr into sub_80A7BA2) and r1 = 0x18 (likely a \"trigger\" or selector argument forwarded through r1\
+  \ by the caller), with the various r2/r3 snapshots being EWRAM pointers belonging to the live battle\
+  \ / toolkit state.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl battle_isInputAllowedOrBattleBusy_80A7C58`; `bne loc_80A7B76` early-exits on busy state.
+    - `mov r4, r10` then `ldr r4, [r4,#oToolkit_GameStatePtr]` (`oToolkit_GameStatePtr` = 0x3c) and `ldr
+    r4, [r4,#oGameState_OverworldPlayerObjectPtr]` (= 0x18). - `ldr r0,[r5,#0xc]` / `ldr r1,[r4,#0x24]`
+    (obj.X vs player.X full 32-bit reads, `oBattleObject.X` = 0x34 with object-header offset 0x10 → effective
+    0x24 is the player.X start) followed by a second pair `ldr r0,[r5,#0xc]` / `ldr r1,[r4,#0x1c]` that
+    actually participate in the subtraction (the first pair is dead-loaded into r0/r1 because the second
+    `bne` is unconditional; the live subtraction uses 0xc vs 0x1c and 0x10 vs 0x20 = FuturePanelXY vs
+    FuturePanelXY on the player side per `oOWPlayerObject`). - `asr r0,r0,#0x10`/`asr r2,r2,#0x10` and
+    `mul r0,r1`/`mul r2,r3` then `add r0,r0,r2` → computes (dx_panel)^2 + (dz_panel)^2. - `ldrb r1,[r7,#1]`,
+    `mul r2,r1`, `add r2,r2,r2`, `cmp r0,r2` → threshold = (radius_byte)^2 * 2 (radius_byte at r7+1 =
+    `AIData.AIIndex`+1 = `AIData.Unk_02`). - `mov r0,#2`; `bl sub_80A7BA2` (r0 set to 2 = some "in range"
+    trigger code), then returns 1. - Two `bne loc_80A7B76` after unrelated `ldr` pairs make the first
+    ldrs dead; this is a known lifter artifact of how the binary was written, not new behaviour.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080A7B32
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^080a7b32 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The exact meaning of "2" passed to sub_80A7BA2 (presumably a battle-begin/reaction enum value) is not
+  visible here.
+- 'What r5/r7 actually point to (some kind of AIData accessor in a wrapper object: r7 likely points to
+  the AI block adjacent to the battle object) is inferred from the r7+1 byte being treated as a radius;
+  the surrounding AIData struct definition matches (offset 0x2 = Unk_02). Renaming r5/r7 to specific battle-object/AI
+  fields would settle this.'
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c862a66
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80A7B32 -> battle_checkEnemyInAttackRangeAndTrigger_80A7B32
+  where: bn6f 301fb1d2
+  tool: tools/rename_symbol.py

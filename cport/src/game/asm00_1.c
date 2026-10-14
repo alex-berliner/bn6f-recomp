@@ -265,7 +265,7 @@ Next SpawnBattleObjectCommon(void) {
  *
  * Spawns a battle object of type 1. The five word arguments are copied into
  * a context block on the stack, which SpawnBattleObjectCommon reads while
- * creating the object. If spawning succeeded, sub_8003400 runs the
+ * creating the object. If spawning succeeded, object_attachToEUnkBattleObjectLinkedList_8003400 runs the
  * type-1 specific initialisation on the new object (passed in r5). */
 Next object_spawnType1(void) {
     /* Frame layout, matching the original push {r7,lr} + 0x14 byte block:
@@ -298,7 +298,7 @@ Next object_spawnType1(void) {
         /* Type-1 specific initialisation of the new object in r5;
          * r0-r3 still hold SpawnBattleObjectCommon's results, as in the
          * original. */
-        GUEST_CALL(sub_8003400);
+        GUEST_CALL(object_attachToEUnkBattleObjectLinkedList_8003400);
     } else {
         /* Spawn failed: the original's `tst r5, r5` is the last flag
          * setting on this path. */
@@ -315,7 +315,7 @@ Next object_spawnType1(void) {
  * Spawns a battle object of type 3. The five arguments (r0-r4) are handed to
  * SpawnBattleObjectCommon through a 5-word block on the stack; r7 points just
  * past that block while the callee runs. If an object was actually created,
- * its type-3 initializer (sub_8003400) runs immediately.
+ * its type-3 initializer (object_attachToEUnkBattleObjectLinkedList_8003400) runs immediately.
  * Returns the new object pointer in r5; flags come from the initializer when
  * one ran, otherwise from testing the pointer against zero. */
 Next object_spawnType3(void) {
@@ -343,7 +343,7 @@ Next object_spawnType3(void) {
     /* tst r5, r5: did the spawn succeed? */
     SET_FLAGS_NZ(R5);
     if (R5 != 0)
-        GUEST_CALL(sub_8003400);   /* run the new object's initializer */
+        GUEST_CALL(object_attachToEUnkBattleObjectLinkedList_8003400);   /* run the new object's initializer */
 
     SP += 0x1C;
     R7 = savedR7;
@@ -392,7 +392,7 @@ Next sub_8003374(void) {
  * Spawns a type-4 battle object. The five parameter words are copied into a
  * context block on the stack, which is what SpawnBattleObjectCommon expects
  * in r1. If an object was actually created (non-zero pointer in r5), its
- * initializer sub_8003400 runs immediately with the spawn results still in
+ * initializer object_attachToEUnkBattleObjectLinkedList_8003400 runs immediately with the spawn results still in
  * the registers.
  * Returns the object pointer; r4, r6 and r7 are preserved. */
 Next object_spawnType4(void) {
@@ -419,7 +419,7 @@ Next object_spawnType4(void) {
 
     if (R5 != 0) {
         /* Object created: run its initializer, which reads r0-r5 and r7. */
-        GUEST_CALL(sub_8003400);
+        GUEST_CALL(object_attachToEUnkBattleObjectLinkedList_8003400);
     } else {
         /* No object: hand the tst r5, r5 flags to the caller. */
         SET_FLAGS_NZ(R5);

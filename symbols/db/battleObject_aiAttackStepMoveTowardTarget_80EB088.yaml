@@ -1,0 +1,77 @@
+name: battleObject_aiAttackStepMoveTowardTarget_80EB088
+address: '0x080EB088'
+kind: function
+previous_names:
+- sub_80EB088
+status: probable
+summary: AI attack state action that picks a destination panel and commits a "move toward target" reservation
+  for the actor.
+interface: () -> void ; updates AIData/AIAttackVars at r7 and the current BattleObject at r5 (panel/FuturePanel,
+  flags, anim, plus an Alliance-row counter)
+details: "Step-by-step:\n  1. Clears OBJECT_FLAGS_UNK_4 (bit 2) on the current battle object (mov r0,#1;\
+  \ lsl r0,#0x16 => 0x4000000 — actually wait, `lsl #0x16` of 1 is 0x4000000, not the named UNK_4; the\
+  \ constant used is the \"unk 0x25\" range). The cleared bit index is 0x16 (22) i.e. OBJECT_FLAGS_UNK_25.\n\
+  \  2. Bail branch if object_canMove returns 0; else clear AIAttackVars.Unk_30 (a stride/counter).\n\
+  \  3. Dispatch on AIAttackVars.Unk_03 (0..3):\n        0 → sub_800F964 (no-arg pick)\n        1 → sub_800F998\
+  \ passed the object's current PanelX/PanelY as the \"from\" with the prior AIAttackVars.Unk_0c as something\
+  \ (r0 carry-over); produces target X/Y in r0/r1\n        2 → re-uses the previously-stored FuturePanel\
+  \ coords from AIAttackVars.Unk_16/Unk_17 (no recompute)\n        3 → sub_800FA20 (alternative picker)\n\
+  \  4. If the picker returned non-zero in r0, write the chosen (x,y) into both AIAttackVars.Unk_16/Unk_17\
+  \ and the BattleObject's FuturePanelX/FuturePanelY, then call object_reservePanel to claim that panel\
+  \ for the mover.\n  5. compute an 8-direction bitmask toward (FutureX,FutureY) from (PanelX,PanelY),\
+  \ call SetAIDataUnk0x48Flag to flag the AIData's 0x48 word, set OBJECT_FLAGS_CANNOT_SLIDE on the object,\
+  \ tableAddSaturatedByte_800AB46 with row=Alliance, col=4, +1 (counts toward the AI alliance-move tally).\n\
+  \  6. Call battle_aiAttack_checkMysteryDataUnk_80F02A2; if it returns non-zero, set animation 4 and\
+  \ queue AIAttackVars.Unk_10=3 / Unk_00=4 (transition to a \"wind-up\" frame).\n  7. On any failure path\
+  \ (canMove=0, picker returned 0, or the mystery check returns 0), call object_exitAttackState_801171C\
+  \ (or object_exitAttackState if the mystery check was non-zero).\n  This is clearly one of the per-frame\
+  \ AIAttack steps that drives an enemy/navi toward a target panel during an attack maneuver — the function\
+  \ name reflects both the \"pick a panel then commit\" and the surrounding AIAttack state machine.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- Contract shows r5/r6/r7/lr live on entry; r5/r7 are the BattleObject and AIData/AIAttackVars
+    pointers used throughout (e.g. `ldrb r0, [r5,#oBattleObject_PanelX]`, `str r1, [r7,#oAIAttackVars_Unk_30]`).
+    - `sub_800F964`/`sub_800F998`/`sub_800FA20` are the three pickers dispatched off AIAttackVars.Unk_03
+    (cmp #0/#1/#2/#3). - Stores chosen coords to both `AIAttackVars_Unk_16/17` and `BattleObject_FuturePanelX/Y`
+    (strb r0,[r7,#oAIAttackVars_Unk_16]; strb r0,[r5,#oBattleObject_FuturePanelX]) — the canonical "commit
+    a move step" pair. - `object_reservePanel` followed by `calc8DirBitmaskTowardsPoint_801BE04` from
+    current panel toward the new one is the same move-reservation pattern shared by other AIAttack stepping
+    functions in the file. - `SetAIDataUnk0x48Flag` + `object_setFlag1 OBJECT_FLAGS_CANNOT_SLIDE` + `tableAddSaturatedByte_800AB64(Alliance,4,+1)`
+    set the bookkeeping bits an actor gets while it has a panel reserved to step into. - `object_exitAttackState`
+    / `sub_801171C` being the two "exit attack" helpers, and `object_setAnimation 4` matching a wind-up/charge
+    animation, are consistent with the AI attack state flow. - The captured-call entries all show lr=0x080eb058
+    calling into +1 (r1=0x080eb089), matching a Thumb state-function-pointer table indirection typical
+    of AIAttack state dispatchers.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080EB088
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^080eb088 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9
+open_questions:
+- Which of the four Unk_03 cases corresponds to which enemy behavior (e.g. "charge player", "lunge toward
+  target", "re-use last pick") is not distinguishable without more callers/context.
+- Whether the bitmask from calc8DirBitmaskTowardsPoint is later consumed by SetAIDataUnk0x48Flag directly,
+  or is just used to seed the FacingDirection — the assembly calls the helper before SetAIDataUnk0x48Flag
+  but does not store r0.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c862a66
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80EB088 -> battleObject_aiAttackStepMoveTowardTarget_80EB088
+  where: bn6f 301fb1d2
+  tool: tools/rename_symbol.py

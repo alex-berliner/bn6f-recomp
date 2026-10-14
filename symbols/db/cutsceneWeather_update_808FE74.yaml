@@ -1,0 +1,58 @@
+name: cutsceneWeather_update_808FE74
+address: '0x0808FE74'
+kind: function
+previous_names:
+- sub_808FE74
+status: probable
+summary: 'Drives the overworld "weather" cutscene trigger each frame: while the screen fade is inactive,
+  asks a state helper to spawn/update a weather-component battle object near the player, picks a cutscene
+  script, and starts it if one is returned.'
+interface: (r10 = *Toolkit) -> void ; no return; reads Toolkit globals, may call StartCutscene
+details: "- Loads an indirect word through off_808FEA0 -> off_808FDB8 into r5 (only used as r5-input to\
+  \ callees).\n  - Calls IsScreenFadeActive; if a screen fade is in progress (zf=1 → beq not taken) it\
+  \ returns immediately at locret_808FE9C.\n  - Calls sub_809019C; if it returns non-zero (bne loc_808FE90),\
+  \ control skips the spawn/update helpers. Otherwise calls sub_809005C and then weatherComp_spawnObject1DNearPlayer_80900C8.\n\
+  \  - Falls through to weatherComp_pickScript_8090104 which returns a *const CutsceneScript (or 0) in\
+  \ r0. If non-zero, StartCutscene(r0, r5) is invoked (r1=param). r10 (Toolkit) is preserved as the only\
+  \ input.\n  - All callees pass r5+r10 in, so they share the same state pointer pair.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `beq locret_808FE9C` right after `bl IsScreenFadeActive` shows the function early-outs while
+    a fade is active. - `bl weatherComp_pickScript_8090104` then `cmp r0, #0` / `beq locret_808FE9C` shows
+    the function only calls StartCutscene when a non-null script pointer is returned. - `push {r4-r7,lr}`
+    / `pop {r4-r7,pc}` and r10 not pushed show r10 (Toolkit) is the sole input and is callee-preserved
+    across the call. - Sub_809019C/sub_809005C/sub_80900C8/sub_8090104 form the named "weatherComp_*"
+    helper group that this driver composes. - Sub_809019C''s contract out=[''nz'',''r5'',''r8''] with
+    the caller''s `bne loc_808FE90` test matches using nz (z) as a "should-spawn" flag.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0808FE74
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^0808fe74 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The exact meaning of off_808FEA0 -> off_808FDB8 (r5); presumably a shared weather-cutscene state object,
+  but offset/struct unknown.
+- What r1 ("sub_809019C")'s r5 state and r10 tell sub_809005C/80900C8 — i.e. which sub-state they collectively
+  update.
+- What criterion sub_8090104 uses to pick a script (map? weather? progress flags?). Resolving it would
+  let us rename this driver more confidently.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c862a66
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_808FE74 -> cutsceneWeather_update_808FE74
+  where: bn6f 301fb1d2
+  tool: tools/rename_symbol.py

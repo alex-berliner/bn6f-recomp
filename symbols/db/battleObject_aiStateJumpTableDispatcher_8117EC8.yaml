@@ -1,0 +1,62 @@
+name: battleObject_aiStateJumpTableDispatcher_8117EC8
+address: '0x08117EC8'
+kind: function
+previous_names:
+- sub_8117EC8
+status: probable
+summary: AI-state jump-table dispatcher for a battle object; indexes one of three routines using byte
+  at r5+8 (the object's CurState) and tail-calls it via `mov lr,pc; bx`.
+interface: (no explicit params; r5 = battle object, r10 = toolkit) -> r0 = result of dispatched routine;
+  tail-call (no return), caller pushes lr and pops pc
+details: "- Loads the address of an inner jump table at `off_8117EDC` from `off_8117ED8`, then indexes\
+  \ it by `ldrb r1,[r5,#8]`, i.e. `BattleObject.CurState` (object_header+8 in BattleObject struct).\n\
+  \  - Builds `r0 = table[CurState]` and does `mov lr,pc / bx r0` — this is the standard Thumb tail-call\
+  \ pattern; the final `pop {pc}` only fires if the BX somehow didn't take control. So callers treat this\
+  \ as a `bl`-like call.\n  - Three targets: `sub_8117EE8+1` (entry 0, CUR_STATE_INITIALIZE), `sub_8117F78+1`\
+  \ (entry 4, CUR_STATE_UPDATE), `sub_81180FC+1` (entry 8, CUR_STATE_DESTROY). These are the AI/state\
+  \ lifecycle handlers for a specific battle object type.\n  - The captured calls all show r0=0x08117ec9,\
+  \ r1=0x3c, lr=0x080465e0 — that lr is the canonical return site used by every call to this dispatcher,\
+  \ strongly suggesting it sits inside the per-frame battle-object update loop. The `r1=0x3c` value is\
+  \ consumed by the dispatched routine, not by the dispatcher itself.\n  - `r5` is preserved across the\
+  \ call (it's in the contract as both in and out) — required because the dispatcher uses it only for\
+  \ the byte read and the called routine likely also expects the object pointer in r5.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r1,[r5,#8]` reads CurState (offset 8 in BattleObject) and indexes `off_8117EDC` (`ldr
+    r0,[r0,r1]`) — three entries, matching CUR_STATE_INITIALIZE/UPDATE/DESTROY constants. - `mov lr,pc;
+    bx r0` is the textbook Thumb tail-call ("blx-via-lr") pattern; the trailing `pop {pc}` is the no-target
+    fallback. - Each entry in `off_8117EDC` is stored `+1` (Thumb-bit set), confirming the targets are
+    Thumb functions. - All 40 captured calls share the same `lr=0x080465e0`, consistent with one call
+    site inside the per-frame AI update loop. - Contract keeps `r5` live across the call, matching the
+    saved-r5 convention used by battle-object update routines.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08117EC8
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^08117ec8 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The exact battle object type this dispatcher belongs to (likely a BeastOut / ChipUse / scripted battle
+  object — the captured `r0=0x08117ec9` is the dispatcher+1, not a parameter; the real argument is whatever
+  `r5` points to).
+- What the `r1=0x3c` value in the captures encodes (an AI-state field offset? a param slot?). The dispatcher
+  itself only reads r5+8, so `r1` is set by the caller for the callee.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c862a66
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8117EC8 -> battleObject_aiStateJumpTableDispatcher_8117EC8
+  where: bn6f 301fb1d2
+  tool: tools/rename_symbol.py

@@ -1,0 +1,63 @@
+name: battleObject_beastSpDispatchAction_8117F78
+address: '0x08117F78'
+kind: function
+previous_names:
+- sub_8117F78
+status: probable
+summary: 'BeastSP battle object dispatch: invokes an init/update routine via CurAction, then calls sprite_update.'
+interface: '(r5 = BattleObject, r10 = Toolkit, lr = retaddr) -> r0/r1 clobbered, r2/r3/r5 returned ; side
+  effects: sprite frame advanced and one of two action handlers run'
+details: "Pushes {lr} (actually returns via `pop {pc}`, an ARM7 `bx`/`pop` tail-trick). Loads a\n  jump-table\
+  \ base `off_8117F90`, uses `r5` as the BattleObject pointer and indexes with\n  the object's `CurAction`\
+  \ byte at offset 9 (`ldrb r1, [r5,#9]` -> r1 = index). Reads the\n  indexed word and tail-calls it via\
+  \ `mov lr, pc; bx r0` (so the table values are\n  Thumb+1 addresses, e.g. `sub_8117F9C+1`, `sub_8117FC4+1`).\
+  \ Both table entries in the\n  asm emit presumably perform per-action init/update work that this routine\
+  \ hangs off\n  of, because immediately afterwards this function unconditionally calls `sub_8118234`\n\
+  \  and then `sprite_update` (`0x080026c4`), which advances the OAM sprite frame for the\n  object's\
+  \ `_SpriteData` substruct (offset 0x80 or 0x90 depending on object variant).\n  Caller (`sub_8117EE8`)\
+  \ has the same contract and goes through identical dance, so\n  this pair is almost certainly \"action\
+  \ phase\" of the BeastSP Beast object handler.\n  The captured snapshots come from two different call\
+  \ sites (lr=0x08117f3d inside\n  `sub_8117F78`'s caller, and lr=0x08117ed4 for entries where r0 holds\
+  \ the function's\n  own address+1, i.e. the handler-thunk entry) and always exit with r0=0x7cc. Nothing\n\
+  \  is meaningfully returned through r0; the caller treats it as void-like.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r1, [r5,#9]` matches BattleObject.CurAction offset 0x9 (`battle_object_struct`) - `ldr
+    r0, off_8117F90 // =off_8117F94` loads pointer to a 2-entry table of Thumb+1 targets (`off_8117F94`
+    -> `sub_8117F9C+1`, `sub_8117FC4+1`) - `mov lr, pc; bx r0` is a Thumb-mode register-indirect call
+    using those +1 addresses - `bl sub_8118234` and `bl sprite_update` are the only direct callees (sprite_update
+    at `0x080026c4`) - `push {lr}` + `pop {pc}` is the classic "function that returns via pop" idiom:
+    this is a leaf-style dispatch, no stack frame - `r5` not pushed fits the "r5 holds BattleObject for
+    the lifetime of the caller" convention used everywhere in the battle subsystem - r10 (Toolkit) is
+    in the in-contract but not actually touched by this 8-instruction body; it''s preserved by convention
+    so the called action handler sees it'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08117F78
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^08117f78 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- What `sub_8117F9C` vs `sub_8117FC4` actually do (init vs per-tick update, or two unrelated actions).
+  Decompiling those would settle the action split.
+- Whether `sub_8118234` is "common per-frame bookkeeping" before sprite_update or something specific to
+  BeastSP; its r5-only contract hints it touches the same BattleObject.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c862a66
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8117F78 -> battleObject_beastSpDispatchAction_8117F78
+  where: bn6f 301fb1d2
+  tool: tools/rename_symbol.py

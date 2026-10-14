@@ -1,0 +1,53 @@
+name: battleObject_runTripleSoundDispatch_81176C0
+address: '0x081176C0'
+kind: function
+previous_names:
+- sub_81176C0
+status: probable
+summary: Thin Tail-call wrapper that just tail-calls battle_playObjectTripleSound_81176D0; used as a CurState=UPDATE
+  phase entrypoint for one battle-object type.
+interface: '(r5 = BattleObjectPtr, r10 = ToolkitPtr, lr = return) -> r0 = 0x80000 (set by callee) ; side
+  effects: sound registers / SIO per callee, callee-saved r5 preserved'
+details: "Three instructions: push {lr}; bl battle_playObjectTripleSound_81176D0; pop {pc}.\n  The push/pop\
+  \ {lr}/{pc} is the standard Thumb \"jump-and-link\" trampoline: it preserves lr across the\n  call and\
+  \ returns by popping PC, so the function effectively tail-transfers control to the callee with\n  the\
+  \ same argument registers it received. There is no work added in this function; it exists to be\n  stored\
+  \ as a CurState=UPDATE handler in a battle-object's jump table (the only direct caller\n  sub_81176B0\
+  \ installs such a handler before calling it). Captured-call exit r0=0x80000 matches the\n  callee's\
+  \ contract (its sound-ID base advances by 0x80000 each of three calls).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- Whole function is 3 Thumb instructions at 0x081176c0 (`push {lr}` / `bl 0x081176d0` / `pop
+    {pc}`). - `bl battle_playObjectTripleSound_81176D0` is the only direct call. - Single direct caller
+    sub_81176B0 (hypothesis: sets a battle-object''s CurState=4 UPDATE handler and immediately runs it),
+    matching the wrapper role. - Captured-call r0/r1/r2/r3 are consistent with a battle-object routine
+    being dispatched (small mode/counter 4 fits CurState=UPDATE per the BattleObject CurState enum 0x04=CUR_STATE_UPDATE).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x081176C0
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, beastsp, fuzz, maps, menus3, story4, story6'
+  reproduce: 'grep -l ''^081176c0 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, beastsp, fuzz, maps, menus3, story4, story6
+open_questions:
+- Whether this wrapper is shared by several object types or only one; verifying its presence in
+- other battle-object jump tables (search for the 8-hex literal 0x081176c1 / +1 = Thumb address of
+- this routine) would settle that.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c862a66
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_81176C0 -> battleObject_runTripleSoundDispatch_81176C0
+  where: bn6f 301fb1d2
+  tool: tools/rename_symbol.py

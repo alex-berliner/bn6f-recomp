@@ -1214,8 +1214,8 @@ Next aiAttack_stepStateMachine_80EB04C(void) {
     R0 = state;                          /* handler input: current state */
     R1 = LD32(A_off_80EB074 + state);    /* handler address from the table */
     switch (state) {
-    case 0x00: GUEST_CALL(sub_80EB088); break;
-    case 0x04: GUEST_CALL(sub_80EB128); break;
+    case 0x00: GUEST_CALL(battleObject_aiAttackStepMoveTowardTarget_80EB088); break;
+    case 0x04: GUEST_CALL(battle_aiAttack_applyPanelMove_80EB128); break;
     case 0x08: GUEST_CALL(aiAttack_TimerTickEnd_80EB194); break;
     case 0x0C: GUEST_CALL(ai_attackStepRunDecrement_80EB1C4); break;
     case 0x10: GUEST_CALL(sub_80EB1F8); break;

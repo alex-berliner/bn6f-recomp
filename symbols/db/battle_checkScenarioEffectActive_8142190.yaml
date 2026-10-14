@@ -1,0 +1,56 @@
+name: battle_checkScenarioEffectActive_8142190
+address: '0x08142190'
+kind: function
+previous_names:
+- sub_8142190
+status: probable
+summary: Returns whether a given scenario effect slot is currently active.
+interface: (r0 = slot index 0..N) -> r0 = non-zero if the slot is active, zero otherwise ; sets nz/cv
+  via tst; no other side effects
+details: "Loads the base pointer `eScenarioEffectState2000780` into r5, then loads a single byte at\n\
+  \  `eScenarioEffectState2000780 + 0x10 + r0` (the `+0x10` past the pointer is added before the\n  load,\
+  \ so the byte accessed is `[2000790 + r0]`). The byte is then `tst`'d against itself and\n  the result\
+  \ (the byte itself) returned in r0 — non-zero means the scenario effect slot is\n  set, zero means inactive.\
+  \ Function is a tight leaf (no callees), r4-r7/lr are pushed but\n  only lr is paired with r5 via the\
+  \ single ldr; the rest of the callee-saves are noise from\n  the prologue/pop pattern. The naming `_ADDRESS`\
+  \ suffix is kept because the exact purpose\n  of `eScenarioEffectState2000780`/scenario effects table\
+  \ is not directly named in the\n  project, so the role is partly inferred from the constant.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r5, off_8142308` loads a 32-bit base constant `eScenarioEffectState2000780` (assembly
+    line 2). - `add r0, #0x10` then `ldrb r0, [r5,r0]` indexes one byte into the table starting at base+0x10
+    (assembly lines 3-4). - `tst r0, r0; pop {r4-r7,pc}` is the canonical "return a flag byte" pattern;
+    pc-as-pop confirms a leaf function (assembly lines 5-6). - Captured calls show r0 in {0,1,2,3} on
+    entry and exit r0 in {0,1,2}, consistent with a small slot index lookup (snap_beastsp_0180000_*.bin).
+    - Callers `sub_8089704`, `sub_80A86B4`, and `sub_811E314` each contract-restore r4-r7 but otherwise
+    treat this as a query; e.g. `sub_811E314` writes `r0 = sub_8142190(r5,r10)` form suggesting slot enumeration.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08142190
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^08142190 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The exact size of the scenario-effects table after base+0x10, and what semantic the
+- stored byte represents (e.g. "effect active" vs. "effect slot populated"), would settle
+- whether this is an "is-active" check or an "is-non-empty" check. The function name
+- should be tightened once `eScenarioEffectState2000780` is documented.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c862a66
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8142190 -> battle_checkScenarioEffectActive_8142190
+  where: bn6f 301fb1d2
+  tool: tools/rename_symbol.py

@@ -1,0 +1,74 @@
+name: battle_chipEffectDispatcher_80109A4
+address: '0x080109A4'
+kind: function
+previous_names:
+- sub_80109A4
+status: probable
+summary: Dispatches a battle chip's "use" handler from the static chip data, then jumps into it with (r0=chipID,
+  r1=targetStruct).
+interface: '(r0 = chipID, r1 = user data pointer) -> r0 = return value from the dispatched handler ; side
+  effects: jumps through a handler table indexed by ChipData[chipID].Unk_1a (offset 0x1a in the 44-byte
+  chip record), threads into the per-chip effect routine.'
+details: "Saves r4/r7/lr, preserves chipID in r7 and the user-data pointer in r4. If chipID == 0xFFFF\
+  \ the function early-returns r0=0 (no chip). Otherwise it calls getChip8021DA8(r0) to fetch the *const\
+  \ ChipData (44-byte record), reads the halfword at ChipData[chipID].Unk_1a (offset 0x1a in the record\
+  \ — ldrh r0,[r0,#0x1a]) into r0, subtracts 0x3E8 (mov r2,#0xfa; lsl r2,#2 -> 0x3E8), and if the result\
+  \ is < 0 the function returns 0. Otherwise it computes a word index (lsl r0,r0,#2) into off_80109DC\
+  \ at 0x080109DC and tail-calls (mov lr,pc; bx r2) the function pointer stored there, restoring r0=chipID\
+  \ and r1=userPtr. off_80109DC is a 44-entry dispatch table: index 0 -> sub_8010A90 (the \"other\" branch,\
+  \ used for the base 0x3E8 entry); indices 1..18 -> sub_8010AE4 (apparently a generic chip handler —\
+  \ likely Sword/LongSword or similar shared); index 19 -> sub_8010B78; 20 -> sub_8010BF0; 21 -> sub_8010C06;\
+  \ 22 -> sub_8010C50 (the most populated slot, indices 22..43, 22 entries). The wide use of sub_8010C50\
+  \ (called out 22 times) suggests a default/standard ranged-attack chip handler (e.g., Cannon/Shot/etc.).\n\
+  \  The \"0x3E8\" threshold matches an internal chip-effect ID classification (probably \"no special\
+  \ handler\" = 0, \"sword-like\" = 1, \"ranged\" = 22+, etc.). Return values observed in captured calls:\
+  \ 0x00, 0x0a, 0x14 — looks like some flag/status from the per-chip handler.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl getChip8021DA8` at 0x80109B0 returns the 44-byte ChipData record for the chip ID; `ldrh
+    r0,[r0,#0x1a]` reads the effect-class field. - `mov r2,#0xfa; lsl r2,#2` => r2=0x3E8; `sub r0,r0,r2`
+    then `cmp r0,r2; blt locret_80109D2` only dispatches when (Unk_1a - 0x3E8) >= 0 and < 0x3E8 (table
+    size 44 entries). - `lsl r0,r0,#2; ldr r2,off_80109D4; ldr r2,[r0,r2]; ... bx r2` is a textbook indexed-function-pointer
+    dispatch. - `mov r0, r7; mov r1, r4` before `bx r2` re-installs the original chipID in r0 and userPtr
+    in r1 as expected. - Captured call snap_story2_0: r0=0xB8 (chip 184) routed through, exit r0=0; snap_story2_10:
+    r0=5 routed, exit r0=0x0A; snap_story2_12: r0=4 routed, exit r0=0x14 — consistent with the per-chip
+    handler returning a damage/status byte. - off_80109DC layout: 1 entry to sub_8010A90, 18 to sub_8010AE4,
+    then 1+1+1+1+(22) to sub_8010B78/BF0/C06/C50 — strongly suggests effect-class groupings. - Caller
+    `handleVariableDamageChip_800AEE8` ("re-rolls damage of variable-damage chips") calls this to actually
+    execute the chip after re-rolling. - Caller `somethingWriteChipParams_80126E4` and the four sub_8029xxx
+    / sub_802DED8 callers (in the story2 capture set, lr=08028513, 0802919b, 0801270b) all live in battle-subsystem
+    code, consistent with chip-use dispatch.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080109A4
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^080109a4 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- What the per-chip handler functions actually do (only their dispatch slot counts are visible here).
+- Whether off_80109DC index 0 (sub_8010A90) is the "sword" group and sub_8010AE4 is something else; the
+  table layout is clearly classified by ChipData.Unk_1a but the names/groups aren't readable from this
+  function alone.
+- Exact meaning of r0 return value (0x0A, 0x14) — likely damage or a status flag bit but needs one of
+  the dispatch targets to confirm.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c862a66
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80109A4 -> battle_chipEffectDispatcher_80109A4
+  where: bn6f 301fb1d2
+  tool: tools/rename_symbol.py

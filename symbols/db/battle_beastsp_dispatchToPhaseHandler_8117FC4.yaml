@@ -1,0 +1,67 @@
+name: battle_beastsp_dispatchToPhaseHandler_8117FC4
+address: '0x08117FC4'
+kind: function
+previous_names:
+- sub_8117FC4
+status: probable
+summary: 'Beast-SP entry dispatcher: jumps to one of six sub-handlers based on the actor''s CurPhase,
+  then copies the actor''s Timer into the returned object''s FuturePanelRef-style field at offset 0xE.'
+interface: (r5 = BattleObject*) -> r0 = new struct ptr (EWRAM/heap object) ; side effects writes a u16
+  from r5+0x14 into r0+0xE
+details: "- `push {lr}` / `pop {pc}` Tail-call style: save lr, do an indirect jump-table dispatch with\
+  \ no stack frame preserved.\n  - `ldrb r1, [r5,#0xa]` reads `CurPhase` (offset 0xA in `BattleObject`,\
+  \ the `CurPhase` field).\n  - `ldr r0, [r0,r1]` indexes a 6-entry function table at `off_8117FE0` by\
+  \ `CurPhase` (values 0..5) -> `sub_8117FF8`, `sub_811800C`, `sub_8118030`, `sub_811805C`, `loc_8118098`,\
+  \ `sub_81180E0`.\n  - `mov lr, pc ; bx r0` is a Thumb-to-Thumb call; after the bx, control returns to\
+  \ `bl sub_8118314`. The callee (handler) leaves r0 = pointer to a per-phase state struct in EWRAM (e.g.\
+  \ 0x02008470, 0x020084C8, ..., stepping by 0x58/0xA8).\n  - `sub_8118314` is called with (r5 = BattleObject*,\
+  \ lr = site of return here). It returns something in r0 (contract: out = r0).\n  - `ldrh r1, [r5,#0x14]`\
+  \ reads `FuturePanelXY` (offset 0x14) of the BattleObject, then `strh r1, [r0,#0xe]` writes that u16\
+  \ into the returned object's +0xE (e.g. one of the per-beast EWRAM objects 0x02008470..0x02008xxx, which\
+  \ from offsets look like an attack-vars-like struct). Note r0 here is *not* the BattleObject but the\
+  \ heap/EWRAM struct returned by `sub_8118314` — the captured-call exit r0 values confirm that.\n  -\
+  \ The whole function is the Beast-SP beast-specific phase dispatch wrapper, copying the actor's queued\
+  \ panel coords into the SP beast object for the current phase.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- Jump table at off_8117FE0 with six ARM/Thumb targets confirms phase dispatch: `sub_8117FF8+1`,
+    `sub_811800C+1`, `sub_8118030+1`, `sub_811805C+1`, `loc_8118098+1`, `sub_81180E0+1`. - `ldrb r1, [r5,#0xa]`
+    is the canonical `CurPhase` load in the BattleObject struct (offset 0xA). - Captured-call snapshots
+    show exit r0 in the EWRAM range 0x02008470..0x02008680 (six distinct values, each separated by varying
+    stride 0x58/0xA8), corresponding to the six phases; lr=08117f84 shows the call comes from the caller
+    at 0x08117F84, not from inside this function. - `ldrh r1, [r5,#0x14]; strh r1, [r0,#0xe]` shows the
+    explicit copy of the BattleObject''s FuturePanelXY (offset 0x14) into the per-phase EWRAM object''s
+    0xE field. - The two captured entries (snap_0 with r1=0x04 and others with r1=0x04) confirm the `ldrb
+    [r5,#0xa]` always reads the same phase for these BeastSP frames (r1=4 is just a constant in this call
+    — note actually `r1` here is being set to the phase value pre-dispatch, see assembly).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08117FC4
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^08117fc4 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The exact role of `sub_8118314` (the immediate callee after the table-jump) is not visible here — whether
+  it allocates the EWRAM object, fills it, or merely fetches a cached pointer. Examining sub_8118314 would
+  settle whether the EWRAM object is per-phase-static or per-frame allocated.
+- Why this function then writes FuturePanelXY into r0+0xE (vs. some other field) is unclear without seeing
+  the consumer struct.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c862a66
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8117FC4 -> battle_beastsp_dispatchToPhaseHandler_8117FC4
+  where: bn6f 301fb1d2
+  tool: tools/rename_symbol.py

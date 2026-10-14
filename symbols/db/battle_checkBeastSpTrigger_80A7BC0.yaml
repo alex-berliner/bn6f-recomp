@@ -1,0 +1,63 @@
+name: battle_checkBeastSpTrigger_80A7BC0
+address: '0x080A7BC0'
+kind: function
+previous_names:
+- sub_80A7BC0
+status: probable
+summary: Checks whether the BeastSP trigger zone is active and, if so, sets the EVENT_1731 flag, plays
+  a sound, and starts the BeastSP cutscene.
+interface: '(r5 = *BeastSPTriggerZone, r10 = *Toolkit) -> void ; side effects: writes to r5+4 flag/byte,
+  sets EVENT_1731, plays sound 0x73, kicks off cutscene byte_8089DD8'
+details: "Gate: only runs when battle_isInputAllowedOrBattleBusy_80A7C58 reports false (and skips via\
+  \ locret_80A7C3C on all early-outs, so this is \"void\"-like: only nz/c/v flags and caller-saved regs\
+  \ survive).\n  Pulls the overworld player object via Toolkit->GameStatePtr->OverworldPlayerObjectPtr,\
+  \ then compares BeastSPTriggerZone->FuturePanelXY (offset 0x14) against the player's JoypadHeld (offset\
+  \ 0x24) — only proceeds if they match.\n  Adds the offset pair at dword_80A7C44 / dword_80A7C48 (= 0x80000\
+  \ each) to the player's full PlayerX/Y (0x1c/0x20) and subtracts the trigger zone's coords at offsets\
+  \ 0xc/0x10; BLT exits (out of range check vs 0x100000 from dword_80A7C4C/dword_80A7C50).\n  On hit:\
+  \ calls sub_81420F0 with r5[4] (some r5-local state byte) to obtain an event-flag argument, then SetEventFlag,\
+  \ sets r5[8] = 8, plays SOUND_UNK_73 via PlaySoundEffect, calls a small init pair (sub_81418F0 then\
+  \ sub_81418E4) that returns a value compared against sub_81420C8, sets EVENT_1731 with SetEventFlagFromImmediate,\
+  \ then finally StartCutscene(byte_8089DD8, sub_8142080()).\n  r5 is the per-trigger zone scratch struct;\
+  \ offsets 4 (state byte) and 8 (\"triggered\"/phase) are written.\n  Snapshot filename \"snap_beastsp_*\"\
+  \ in the captured-call log corroborates the \"Beast SP\" interpretation.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- Captured snapshots are named snap_beastsp_*, so r5 is the BeastSP trigger zone. - Calls SetEventFlagFromImmediate
+    EVENT_1731, then StartCutscene(byte_8089DD8) — direct cutscene trigger on event 1731. - Uses `ldr
+    r7,[r10,#oToolkit_GameStatePtr]; ldr r7,[r7,#oGameState_OverworldPlayerObjectPtr]` to fetch the overworld
+    player and reads JoypadHeld (offset 0x24) for the panel direction check. - The 0x80000 / 0x100000
+    constants computed via add/sub are the +/-0x80000 (8 panels = 1 column) range math typical of "is
+    player within ~2 columns/rows of the trigger zone center" Beast SP proximity tests. - Gate callee
+    is named battle_isInputAllowedOrBattleBusy_80A7C58; bl+`bne locret_80A7C3C` is a standard "skip side
+    effects unless idle" guard. - Sets byte at r5+8 to 8 immediately before the SFX/cutscene: clearly
+    a "this zone just fired" latch.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080A7BC0
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^080a7bc0 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- 'Whether r5+4 is a Navi-team / SP-state selector passed to sub_81420F0 (most likely: it goes into a
+  flag-ID computation that ends with SetEventFlag, then EVENT_1731 is the story-side latch). Identifying
+  the sub_81418E4/... helpers would pin the trigger semantics down.'
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c862a66
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80A7BC0 -> battle_checkBeastSpTrigger_80A7BC0
+  where: bn6f 301fb1d2
+  tool: tools/rename_symbol.py

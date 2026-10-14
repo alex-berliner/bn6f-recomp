@@ -2095,20 +2095,20 @@ Next sub_8117690(void) {
 /* ── sub_81176B0 ── */
 /* sub_81176B0(r5 = state struct):
  * Mark the entity as active (flag 1) and set its mode/counter field at +8 to 4,
- * then run the shared update at sub_81176C0. Flags and r0-r3 on return come
+ * then run the shared update at battleObject_runTripleSoundDispatch_81176C0. Flags and r0-r3 on return come
  * from that call. */
 Next sub_81176B0(void) {
     ST8(R5, 1);
     ST8(R5 + 8, 4);
 
-    GUEST_CALL(sub_81176C0);
+    GUEST_CALL(battleObject_runTripleSoundDispatch_81176C0);
 
     RETURN_TO_CALLER();
 }
 
-/* ── sub_81176C0 ── */
-/* sub_81176C0: tail-call wrapper for battle_playObjectTripleSound_81176D0. */
-Next sub_81176C0(void) {
+/* ── battleObject_runTripleSoundDispatch_81176C0 ── */
+/* battleObject_runTripleSoundDispatch_81176C0: tail-call wrapper for battle_playObjectTripleSound_81176D0. */
+Next battleObject_runTripleSoundDispatch_81176C0(void) {
     GUEST_CALL(battle_playObjectTripleSound_81176D0);
     RETURN_TO_CALLER();
 }

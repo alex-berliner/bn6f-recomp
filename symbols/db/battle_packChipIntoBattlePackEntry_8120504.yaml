@@ -1,0 +1,59 @@
+name: battle_packChipIntoBattlePackEntry_8120504
+address: '0x08120504'
+kind: function
+previous_names:
+- sub_8120504
+status: probable
+summary: Pack a chip ID into an 8-byte battle "chip pack" entry (slot id, code A/B, element, xxxx).
+interface: (r0 = count (unused after), r1 = outPtr (entry[0]), r2 = chipId, r3 = unused) -> r0 = (elementIdx<<16)|(codeB<<8)|(chipId+1)
+  ; r0/r1 clobbered, r4..r7 preserved
+details: "- Saves r4..r7 and lr; r7 = r1 (outPtr), r4 = r2 (chipId).\n  - Calls the BIOS Modulo service\
+  \ (swi 0x6 with r1 = 10) to compute r2 = chipId % 10 and r0 = chipId / 10.\n  - If r1 (the remainder)\
+  \ is zero, the slot-id byte is just r4; otherwise it is r4 + 1 (1-based slot index).\n  - The element\
+  \ code is r0 + 1; the damage code is r1 + 1.\n  - Stores at [r7+0] the u32 (elementIdx<<16) | (damageIdx<<8)\
+  \ | slotId; stores at [r7+4] the u32 (0xC<<16) | (0xB<<8) | r4 (i.e. upper byte 0x0C, then 0x0B, then\
+  \ the raw chip id). The constant 0xC/0xB likely encode two fixed properties of the pack entry layout\
+  \ (chip class/category).\n  - Caller sub_81204C4 loops over the 5 chip slots of a folder, calling this\
+  \ per occupied slot to build a contiguous 8-byte-per-slot chip pack buffer; empty slots are zeroed.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `svc 6` with r1=10 = BIOS Modulo; the four operands left after it are quotient/remainder
+    of chipId/10. - `add r1, r1, r4` and conditional `add r1, #1` produce a 1-based slot index from chipId%10.
+    - `add r0, r0, r4 / #1` and `lsl r0, r0, #0x10`; `orr r0, r1` build a packed u32. - Second store uses
+    fixed immediates `mov r0, #0xb` and `mov r2, #0xc`, then same pack idiom, written to `[r7,#4]`. -
+    Caller `sub_81204C4` is documented as iterating 32-byte chip slots and converting each chip into an
+    8-byte entry via this routine. - Snapshots show 8-byte records `4f 93 56 93 5a 93 5b 93` repeating:
+    slotIdx=0x4F, codeA=0x56, codeB=0x5A, codeC=0x5B, exactly the four u8 fields the routine writes (low
+    slot byte, low/high parts of two packed words).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08120504
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus3, story4, story6,
+    story8, story9'
+  reproduce: 'grep -l ''^08120504 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus3, story4, story6, story8, story9
+open_questions:
+- The exact meaning of the 0x0B/0xC constants in the second word is unknown — they may be chip-element/element-damage
+  indices rather than literal fixed values; reverse-engineering the consumer of the produced buffer would
+  settle it.
+- Whether r0 on entry (count?) is meaningful or just a stale caller value is unclear; r0 is overwritten
+  before being used.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c862a66
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8120504 -> battle_packChipIntoBattlePackEntry_8120504
+  where: bn6f 301fb1d2
+  tool: tools/rename_symbol.py

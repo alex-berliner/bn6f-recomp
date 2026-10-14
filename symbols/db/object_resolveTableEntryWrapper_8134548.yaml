@@ -1,0 +1,65 @@
+name: object_resolveTableEntryWrapper_8134548
+address: '0x08134548'
+kind: function
+previous_names:
+- sub_8134548
+status: probable
+summary: Thin tail-call wrapper that calls object_resolveTableEntry_8134558 with fixed args (table 0x182,
+  fields 0x1C/0x28/0x2E) and returns its result.
+interface: (r0, r1, r2, r3) -> r0 ; tail-calls to object_resolveTableEntry_8134558
+details: "The function is a 7-instruction Thumb routine: it pushes lr, loads an immediate 0x182 into r0,\
+  \ sets\n  r1=0x1C, r2=0x28, r3=0x2E, then `bl object_resolveTableEntry_8134558` and `pop {pc}` to return\n\
+  \  straight through the callee's result. The single callee is the confirmed resolver which:\n    - packs\
+  \ a table-index + sub-id into an object id\n    - reads two 16-bit attributes (offsets 0x1C and 0x28\
+  \ from the table-entry context, with a 0x2E\n      stop/length constant) from the referenced entry\n\
+  \    - delegates to sub_811FA98 (lookup type 0x20002, field 0xC24C, count 100, entry-type 7)\n  Captured\
+  \ calls show it invoked 40 times with identical r0=0xFF, r1=0xCA4C, r2=0, r3=2 and sp=0x03007DBC\n \
+  \ (i.e. from inside a frame step at lr=0x08133925, the petNavi_perFrameUpdate path). The exit r0\n \
+  \ varies per call (e.g. 0x0172001C, 0x0162001C, 0x00D2001C) — top 16 bits look like an object id,\n\
+  \  low 16 bits are 0x001C, suggesting the call resolves \"which animation/sprite to use\" for a given\n\
+  \  Navi index at frame-step time.\n  All listed callers (folderEdit_step, petNavi_perFrameUpdate, and\
+  \ the unnamed sub_8133434 / sub_8133788\n  / sub_81338D4 / sub_8133944 / sub_8133A68 / sub_8133B18 /\
+  \ sub_8133B74) are PET/Navi and folder-edit\n  per-frame steps, fitting a \"look up the current pet\
+  \ Navi's table entry\" role.\ndetails_extra: |\n  The fact that r0 is hard-loaded to 0x182 means the\
+  \ function is not parameterised; callers always get\n  the same object id packed. The varied r0..r3\
+  \ inputs in the captures are passed straight to the\n  wrapped callee (which uses them as table-index/sub-id),\
+  \ so this wrapper is really just a fixed-args\n  \"fetch entry at id 0x182\" convenience.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {lr}` / `pop {pc}` and a single `bl` show it is a pure tail-call wrapper (asm36.s:8775)
+    - `ldr r0, dword_8134588 // =0x182` hard-codes the table id; `mov r1, #0x1c; mov r2, #0x28; mov r3,
+    #0x2e` hard-codes the field offsets/limit - Callee object_resolveTableEntry_8134558 is confirmed and
+    matches this exact argument shape (lookup 0x20002, field 0xC24C, count 100, entry-type 7) - 40 captured
+    invocations all from sp=0x03007DBC lr=0x08133925, consistent with petNavi_perFrameUpdate being the
+    dominant caller in the battle1 snap set - Callers are all PET/Navi or folder-edit frame steps, consistent
+    with a per-frame Navi table lookup'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08134548
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, beastsp, maps, menus3, story4, story6, story8, story9'
+  reproduce: 'grep -l ''^08134548 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, beastsp, maps, menus3, story4, story6, story8, story9
+open_questions:
+- Exactly what 0x182 indexes and which Navi the lookup is for. Captured r0=0xFF on entry looks like a
+- default/object-id placeholder, but the wrapper overwrites r0 with 0x182 before the call, so the real
+- input is the caller's r5/object context. Settling this would require walking petNavi_perFrameUpdate
+- to see which PET index it loads into r1..r3 before invoking.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c862a66
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8134548 -> object_resolveTableEntryWrapper_8134548
+  where: bn6f 301fb1d2
+  tool: tools/rename_symbol.py

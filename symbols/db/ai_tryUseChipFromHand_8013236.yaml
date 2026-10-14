@@ -1,0 +1,70 @@
+name: ai_tryUseChipFromHand_8013236
+address: '0x08013236'
+kind: function
+previous_names:
+- sub_8013236
+status: probable
+summary: Decides whether the enemy AI may play the chip currently sitting in its battle hand this frame,
+  considering chip ID, alliance, element and the owner's element/attack modifiers.
+interface: in r0 = chip ID to test -> r0 = 1 if the AI is allowed to use the chip, 0 if it is blocked
+details: "Entry saves the chip ID on the stack and bounds-checks it against 0x190; out-of-range IDs return\
+  \ 0 (mov r0,#0 at loc_8013360).\n  The chip DB record is fetched via getChip8021DA8; r7 = chip record\
+  \ pointer, r4 = [r7+6] (chip \"element\"/type byte),\n  r1 = [r7+9] (chip \"targeting\"/target flags).\
+  \ r6 holds the NaviStats byte 0x2c (CustomLevel? field of the\n  alliance-side NaviStats), read by GetBattleNaviStatsByte_AllianceFromBattleObject,\
+  \ which treats r5 as the\n  current battle object and reads the byte at offset 0x2c of the NaviStats\
+  \ belonging to that object's alliance\n  (see LocEnemy vs SlotBasedEnemy in the same helper's summary).\n\
+  \n  The function is a long if/else-if ladder that bails out to \"allowed\" (loc_8013366 -> r0=#1) when\
+  \ the\n  alliance/NaviStats byte r6 sits in one of several magic ranges (==2, in {3,0xf}, in [0xb..0x16],\
+  \ in\n  {7,0x13}, {6,0x12}, ==9, ==0x15, ==5, ==0x11}) paired with specific r4 / r1-bit (bits 1 and\
+  \ 2 of r1)\n  combinations. In all those branches it returns 1 unless both r1 bit1 and bit2 are also\
+  \ asserted.\n\n  When r6 is none of the above it falls through to a \"team-based\" branch: it asks\n\
+  \  battle_getObjectAllianceTeam_800F49E for the alliance-team slot (r6 := that team index, or 0xFF ->\
+  \ bail out).\n  r4 = byte_8021369 (a 4-byte table indexed by element-with-matches), and NaviStats byte\
+  \ 0x29 is read.\n  Pairing of (NaviStats 0x29, r4) checks vs 5/0, 6/1, 7/2, 0xb/3 are used to bump r4\
+  \ by 0..3, then a byte\n  load and `cmp r6, r0; bge allowed` gates the result - if the team index is\
+  \ at least the threshold the AI\n  may use the chip.\n\n  Caller aiTrySelectChipFromHand_801336C uses\
+  \ the returned boolean to decide whether to actually queue the\n  chip via sub_8013324. The function\
+  \ does no writes to memory besides the stack stash of r0; it has no\n  Effect on the chip DB / NaviStats\
+  \ / battle object.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- Entry `cmp r0, #0x190; blt loc_8013244; b loc_8013360` shows the chip-ID upper bound check
+    before touching the chip DB; out-of-range IDs always return 0 via `mov r0,#0 ... pop {..,pc}` at loc_8013360.
+    - `bl getChip8021DA8` and `ldrb r4, [r7,#6]`, `ldrb r1, [r7,#9]` show fields 6 and 9 of the chip record
+    are read into r4 (chip element/type) and r1 (chip targeting flags). - `mov r1,#0x2c; bl GetBattleNaviStatsByte_AllianceFromBattleObject`
+    reads the 0x2c NaviStats byte for the battle object''s alliance (CustomLevel, see navi_stats_struct
+    at 0x2c). - All branches ending in `b loc_8013366` then `mov r0,#1 ... pop {..,pc}` show "allowed"
+    is r0=1. - `bl battle_getObjectAllianceTeam_800F49E` returns the team-slot index used in the late
+    threshold comparison `ldrb r0,[r4]; cmp r6,r0; bge loc_8013366`. - `ldr r4, off_80133E8 // =byte_8021369`
+    plus the chained `add r4,#1/#2/#3` show byte_8021369 is a per-element threshold table for the alliance-team
+    gate. - Caller summary for aiTrySelectChipFromHand_801336C confirms it calls this after checking'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08013236
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp, menus2'
+  reproduce: 'grep -l ''^08013236 '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp, menus2
+open_questions:
+- The exact semantic meaning of the magic-value ladder (r6 ranges paired with element r4 and r1 bits
+- 1/2) - those are element/element-counter rules per the AI's element that allow or block the chip. The
+- table at byte_8021369 thresholds are also opaque (presumably per-element level gates). Settling either
+- would need cross-referencing with a sibling game's AI routine or known battle-AI documentation.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c862a66
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8013236 -> ai_tryUseChipFromHand_8013236
+  where: bn6f 301fb1d2
+  tool: tools/rename_symbol.py

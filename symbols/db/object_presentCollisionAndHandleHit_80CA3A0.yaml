@@ -1,0 +1,73 @@
+name: object_presentCollisionAndHandleHit_80CA3A0
+address: '0x080CA3A0'
+kind: function
+previous_names:
+- sub_80CA3A0
+status: probable
+summary: 'Per-frame collision update dispatcher for a battle object: tears down prior collision, checks
+  for end-of-battle, then runs an action-specific sub-handler and re-establishes the object''s collision
+  region/panels (or destroys it).'
+interface: (r5 = BattleObject*) -> void ; no caller-visible return value (only r5/r8 in out)
+details: "1. Calls object_removeCollisionData to clear this object's existing collision state.\n  2. Calls\
+  \ object_spawnCollisionEffect (likely any queued hit/visual effect).\n  3. Calls battle_isBattleOver;\
+  \ if true, jumps straight to the destroy path at loc_80CA3F6.\n  4. Otherwise loads r7 = BattleObject_CollisionDataPtr\
+  \ and tests FlagsFromCollision against 0xff800000 (all the high \"current-collision-result\" bits).\
+  \ When that mask is non-zero, calls object_clearCollisionRegion and stores BattleObject_PanelXY into\
+  \ ExtraVars (presumably to remember the panel where the effect was triggered).\n  5. Reads CurAction\
+  \ (offset 0x9) and uses it as an index into a small jump table at 0x80CA404 (off_80CA400 -> off_80CA404\
+  \ -> sub_80CA408+1) to invoke an action-specific routine.\n  6. After that returns, checks CollisionDataPtr->Region;\
+  \ if 0 and BattleObject_PanelXY differs from the ExtraVars saved earlier, calls object_setCollisionRegion(r0=1)\
+  \ to reattach the object to the current panel.\n  7. If object_isCurrentPanelValid returns true, runs\
+  \ object_presentCollisionData (the per-frame collision update) and object_highlightCurrentCollisionPanels\
+  \ to redraw the panel highlight.\n  8. The end-of-battle / non-valid-panel path falls through to loc_80CA3F6\
+  \ which calls object_clearCollisionRegion and sets CurState = CUR_STATE_DESTROY (0x8) at oBattleObject_CurStateActionPhaseAndPhaseInitialized.\n\
+  \  Captured-call traces show entry r0=4, r1=0x80ca3a1 (i.e. r1 holds `sub_80CA3A0 | 1` for a Thumb/ARM\
+  \ interwork call into the action handler), with consistent r2=0x02036778 across the 40 beast-sp snapshots\
+  \ and exit r0=0x7f (BattleObject_Index / a non-trivial value the caller is expected to handle).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl object_removeCollisionData` at 0x80CA3A4 is the first instruction after the push, matching
+    the lifecycle pattern of "drop, then re-add" collision. - `bl object_spawnCollisionData` is reached
+    only after `object_isCurrentPanelValid`; the helper is described in the project as "Refreshes a battle
+    object''s collision state for the current frame... then running the shared collision handler". - `bl
+    battle_isBattleOver` and the subsequent `bne loc_80CA3F6` show the early-exit condition. - `ldr r1,
+    dword_80CA540 // =0xff800000; tst r0, r1; beq loc_80CA3C4` matches the high-bit mask on `oCollisionData_FlagsFromCollision`
+    (offset 0x70) in the CollisionData struct. - The `str r0, [r5,#oBattleObject_ExtraVars]` after `ldrh
+    r0, [r5,#oBattleObject_PanelXY]` saves the panel into the object-local ExtraVars buffer. - `ldr r1,
+    off_80CA400 // =off_80CA404 ... ldrb r0, [r5,#oBattleObject_CurAction]; ldr r1, [r1,r0]; mov lr, pc;
+    bx r1` is a classic Thumb interwork dispatch through a per-action table; `off_80CA404` is initialised
+    to `sub_80CA408+1` (the `+1` is the Thumb bit, which matches r1=0x80ca3a1 in the snapshots). - `str
+    r0, [r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]` with r0=#CUR_STATE_DESTROY at loc_80CA3F6
+    mirrors the standard object destroy path used elsewhere in the engine. - Captured-call r1=0x80ca3a1
+    across 40 frames (snap_beastsp_0210000_*) confirms the r1 interwork value is the table entry, not
+    a parameter.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080CA3A0
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^080ca3a0 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- What sub_80CA408 (the action-specific handler dispatch target) actually does is unknown from this frame
+  alone; its behaviour likely depends on CurAction and is the main unknown.
+- The precise meaning of the 0xff800000 mask on FlagsFromCollision (which bits represent "this object
+  took a hit this frame") is not pinned down by this assembly.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c862a66
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80CA3A0 -> object_presentCollisionAndHandleHit_80CA3A0
+  where: bn6f 301fb1d2
+  tool: tools/rename_symbol.py

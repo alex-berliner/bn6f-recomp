@@ -1,0 +1,63 @@
+name: object_attachToEUnkBattleObjectLinkedList_8003400
+address: '0x08003400'
+kind: function
+previous_names:
+- sub_8003400
+status: probable
+summary: Inserts a freshly-spawned battle object into the doubly-linked list just before the node held
+  in eUnkBattleObjectLinkedList, falling back to UpdateBattleObjectLinkedList when there is no previous
+  entry.
+interface: '(r5 = pointer to new BattleObject payload) -> r0 = same pointer ; side effects: rewrites the
+  Prev/Next fields of three list nodes (new node, U node, and U''s old Next)'
+details: "- Called from object_spawnType1/3/4 right after a successful spawn, before the type-specific\
+  \ initialiser runs.\n  - r0 is computed as r5 - oBattleObject_LinkedList_Size, so it points at the embedded\
+  \ battle_object_linked_list_struct that sits immediately before the BattleObject payload.\n  - Loads\
+  \ eUnkBattleObjectLinkedList (via off_8003424). If the pointer stored there equals r0 (the new node\
+  \ is already the previous entry) or eUnkBattleObjectLinkedList is NULL, it tail-appends via UpdateBattleObjectLinkedList\
+  \ (0x08003428).\n  - Otherwise performs a four-store splice: sets new.Prev = U, U.Next = new, new.Next\
+  \ = N (U's old Next), N.Prev = new, where U = *eUnkBattleObjectLinkedList and N = U.Next. Offsets used\
+  \ are oBattleObject_LinkedList_Prev / oBattleObject_LinkedList_Next and oUnkBattleObjectLinkedList_Next.\n\
+  \  - Returns the BattleObject pointer (r0) and is void-like in the sense that no caller-visible state\
+  \ besides the list linkage and the returned pointer is produced; flags are clobbered by the tail-call\
+  \ path.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mov r0, #oBattleObject_LinkedList_Size; sub r0, r5, r0` derives the list-node base from
+    the r5 payload, matching the LinkedList-then-payload BattleObject layout in BattleObject.inc. - `ldr
+    r1, off_8003424 // =eUnkBattleObjectLinkedList` and `ldr r1, [r1]` show r1 = the "previous" list node
+    held in the global eUnkBattleObjectLinkedList. - `beq .loc_800341E` is taken when the new node already
+    sits at the previous slot, jumping into the existing UpdateBattleObjectLinkedList splice. - The four
+    `str` instructions in the body write the standard Prev/Next fields at the LinkedList offsets (`oBattleObject_LinkedList_Prev`,
+    `oBattleObject_LinkedList_Next`, `oUnkBattleObjectLinkedList_Next`), implementing the U <-> C <->
+    N splice. - All three callers (object_spawnType1/3/4) pass the new object in r5 and immediately follow
+    the call with the type-specific initialiser, consistent with this being a list-attach step.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08003400
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^08003400 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- Why eUnkBattleObjectLinkedList tracks a "previous" pointer distinct from the list tail sentinel is unclear;
+  resolving it would need to see what writes to eUnkBattleObjectLinkedList and what reads it elsewhere.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c862a66
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8003400 -> object_attachToEUnkBattleObjectLinkedList_8003400
+  where: bn6f 301fb1d2
+  tool: tools/rename_symbol.py

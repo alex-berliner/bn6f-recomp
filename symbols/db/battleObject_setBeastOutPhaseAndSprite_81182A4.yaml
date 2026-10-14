@@ -1,0 +1,66 @@
+name: battleObject_setBeastOutPhaseAndSprite_81182A4
+address: '0x081182A4'
+kind: function
+previous_names:
+- sub_81182A4
+status: probable
+summary: Sets the battle object's CurPhase (and related PanelXY/FuturePanelXY fields) for the Beast-Out
+  / Cross-Megaman transformation, choosing different sprite-scaling/sprite-state setups based on the submenu's
+  Unk_0C mode byte.
+interface: (r5 = battle object, lr = return) -> r0 = sSubmenu (0x02009A30), no other caller-visible writes;
+  side effects write to battle object fields 0x0A/0x10/0x12/0x14/0x16 and the sprite-data area, and call
+  sprite_makeScalable/sprite_setScaleParameters/sprite_setUnk0x2c.
+details: "- Calls sub_8118314 with r5 to obtain a per-object helper pointer (returned in r0), then reads\
+  \ sSubmenu->Unk_0C (a mode byte at 0x02009A30 + 0x0C) into r4.\n  - If r4 == 0, falls through with r7\
+  \ = 0 → writes CurPhase = 0 at r5+0x0A and returns.\n  - If r4 == 0x10: copies the helper's halfword\
+  \ at +0x0E into the object's FuturePanelXY (r5+0x14) and sets CurPhase = 0x14.\n  - If r4 is something\
+  \ else (the main beast-out branch): writes 0xB8 to helper+0x0C, then copies helper+0x0E into both PanelXY\
+  \ (r5+0x10) and FuturePanelXY (r5+0x14); if r4 != 0x0C, it indexes byte_8118304 with r4 (table layout:\
+  \ index 4 → +0x12, index 8 → -0x12) and writes the result to Alliance/AllianceAndDirectionFlip at r5+0x16,\
+  \ with CurPhase = 4.\n  - For r4 == 0x0C specifically: runs sprite_makeScalable, sets PanelXY's high\
+  \ byte to 0x40 at r5+0x12, then calls sprite_setScaleParameters(0, 0x40, 0x40) and sprite_setUnk0x2c(0xFFFFFFFC)\
+  \ (computed via `mvn r0, r0` of 0xFC000000), with CurPhase = 0x0C. This is the Cross-Megaman scaled\
+  \ sprite path.\n  - Final epilogue stores CurPhase into r5+0x0A and pops r4-r7,pc.\n  - Note: the function\
+  \ is not \"void-like\" — it returns r0 = sSubmenu (0x02009A30), which the captured-call snapshots confirm.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- sub_8118314 is called with r5 first and its return drives the helper in r3 (used for halfword
+    reads/writes at +0x0C and +0x0E). - `ldrb r4, [r0,#0xc]` against off_8118310 (=sSubmenu at 0x02009A30)
+    — sSubmenu->Unk_0C controls the branch (assembly `bn6f/asm/asm32.s:20156`). - `cmp r4, #0x10` / `bne
+    loc_81182C2` distinguishes the FuturePanelXY-copy path from the default. - `ldr r1, off_8118300 //
+    =byte_8118304` followed by `ldr r1, [r1,r4]` is an indexed table lookup; the byte_8118304 contents
+    (entries 4 = 0x12, 8 = 0xEE 0xFF 0xFF 0xFF i.e. -0x12) match the symmetric +0x12 / -0x12 panel shifts
+    written to r5+0x16. - `bl sprite_makeScalable` + `bl sprite_setScaleParameters` with the only 0x40/0x40
+    scale pair and `bl sprite_setUnk0x2c` only in the r4 == 0x0C arm identify the Cross/Beast sprite-scaling
+    branch. - All 40 captured calls return r0 = 0x02009A30, the sSubmenu pointer.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x081182A4
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^081182a4 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The exact semantic meaning of the sSubmenu Unk_0C values (0x10 vs 0x0C vs the indexed range) — they
+  map to "teleport-copy", "scaled Cross sprite", and "Beast-Out panel offset" respectively by context,
+  but the gameplay names are inferred.
+- What sub_8118314 returns (the helper struct used at offsets +0x0C/+0x0E) is unknown; identifying it
+  would settle which object's coordinates are being copied.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c862a66
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_81182A4 -> battleObject_setBeastOutPhaseAndSprite_81182A4
+  where: bn6f 301fb1d2
+  tool: tools/rename_symbol.py

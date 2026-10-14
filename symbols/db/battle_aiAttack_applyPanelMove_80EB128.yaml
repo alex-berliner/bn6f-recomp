@@ -1,0 +1,80 @@
+name: battle_aiAttack_applyPanelMove_80EB128
+address: '0x080EB128'
+kind: function
+previous_names:
+- sub_80EB128
+status: probable
+summary: 'Per-tick AI-attack step that finalises a panel move: clears an AI flag, may roll a panel change
+  under the object, commits the panel move (release reserve, sync coords/collision), plays a column-pattern
+  reaction, and resets the attack timer/phase.'
+interface: '(r5 = battle object, r7 = AIAttackVars, r10 = toolkit, lr) -> r0 = next state/phase code (1,
+  2 or 8) ; side effects: writes AIData+0x48 flag, mutates BattleObject PanelX/PanelY/FuturePanelX/FuturePanelY
+  and timer fields'
+details: "1. Calls ClearAIDataUnk0x48Flag(r0=0xF) up front (mov r0,#0xf ; bl 0x0801031c), so 0x0F is the\
+  \ bit mask being cleared in AIData.Unk_48.\n  2. Decrements AIAttackVars.Unk_10 by 1 (`ldrh r0,[r7,#oAIAttackVars_Unk_10];\
+  \ sub r0,#1; strh r0,[r7,#oAIAttackVars_Unk_10]`) and bails out (`bne locret_80EB188`) while it is still\
+  \ non-zero: i.e. this function is the per-frame tick of a frame counter and only acts when it wraps\
+  \ to 0.\n  3. When the counter expires, asks naviAi_changePanel_8013CC4(r0=PanelX, r1=PanelY) to probabilistically\
+  \ alter/break the panel under the object's feet, playing the SFX.\n  4. Commits the move: copies FuturePanelX/FuturePanelY\
+  \ into PanelX/PanelY, then runs object_removePanelReserve, object_setCoordinatesFromPanels, object_updateCollisionPanels\
+  \ so the object's pixel/collision state matches the new panel.\n  5. If AIAttackVars.Unk_2c is non-zero,\
+  \ inspects the current column pattern via GetBattlePanelColumnPattern; if it is 0x31, 0x23 or 0x33 (three\
+  \ of the \"holy\"/rare battle-board patterns) it forwards Unk_2c into sub_800F2FC (probably plays a\
+  \ custom reaction animation/SFX for that board).\n  6. Calls battle_aiAttack_checkMysteryDataUnk_80F02A2;\
+  \ if it returns non-zero, kicks off object_setAnimation(r0=3) on the object (a hit/contact anim).\n\
+  \  7. Resets the phase: AIAttackVars.Unk_10 = 5 (next delay before this step runs again) and AIAttackVars.Unk_00\
+  \ = 8 (the next AI-attack phase/state the controller should switch to), then returns. The exit r0 values\
+  \ in the captures (1, 2, 8) match these phases/Unk_10 outcomes.\n  8. r10 (toolkit) is in the contract\
+  \ because naviAi_changePanel_8013CC4 and GetBattlePanelColumnPattern both expect it, and r5 (battle\
+  \ object) is the subject of all the mutation calls.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mov r0,#0xf; bl ClearAIDataUnk0x48Flag` clears a flag bitmask in AIData+0x48 at function
+    entry. - `ldrh r0,[r7,#oAIAttackVars_Unk_10]; sub r0,#1; strh r0,[r7,#oAIAttackVars_Unk_10]; bne locret_80EB188`
+    shows the function is gated on AIAttackVars.Unk_10 counting down to 0. - `ldrb r0,[r5,#oBattleObject_PanelX];
+    ldrb r1,[r5,#oBattleObject_PanelY]; bl naviAi_changePanel_8013CC4` is a probabilistic panel-change
+    call using the object''s current panel coordinates. - `ldrb r0,[r5,#oBattleObject_FuturePanelX]; strb
+    r0,[r5,#oBattleObject_PanelX]; ldrb r1,[r5,#oBattleObject_FuturePanelY]; strb r1,[r5,#oBattleObject_PanelY]`
+    commits the queued FuturePanel* into PanelX/PanelY. - The three `bl object_removePanelReserve / object_setCoordinatesFromPanels
+    / object_updateCollisionPanels` sequence is the standard "I''m moving to a new panel, sync everything"
+    chain used by battle object movers. - `ldr r0,[r7,#oAIAttackVars_Unk_2c]; tst r0,r0; beq loc_80EB172`
+    skips the column-pattern reaction when Unk_2c is zero. - `cmp r0,#0x31 / #0x23 / #0x33; beq loc_80EB16C`
+    lists exactly three "holy"/special column patterns that trigger sub_800F2FC, matching the in-game
+    boards that have unique reactions. - `bl battle_aiAttack_checkMysteryDataUnk_80F02A2; tst r0,r0; beq
+    loc_80EB180; mov r0,#3; bl object_setAnimation` shows that a "mystery data" condition forces animation
+    3 on the object. - `mov r0,#5; strh r0,[r7,#oAIAttackVars_Unk_10]; mov r0,#8; strh r0,[r7,#oAIAttackVars_Unk_00]`
+    resets the per-tick delay to 5 frames and writes the next AI-attack phase/state = 8. - The captured
+    exit r0 values (1, 2, 8) correspond to Unk_10 residue and the Unk_00=8 phase write.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080EB128
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^080eb128 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9
+open_questions:
+- Exact semantics of AIAttackVars.Unk_2c (object/animation/SFX handle passed to sub_800F2FC) and AIAttackVars.Unk_00
+  (which downstream AI state value 8 means).
+- Why exactly the three column patterns 0x23, 0x31, 0x33 are singled out (one of the game's "holies" or
+  rare boards); would be settled by reading what GetBattlePanelColumnPattern returns and matching against
+  a board list.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c862a66
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80EB128 -> battle_aiAttack_applyPanelMove_80EB128
+  where: bn6f 301fb1d2
+  tool: tools/rename_symbol.py

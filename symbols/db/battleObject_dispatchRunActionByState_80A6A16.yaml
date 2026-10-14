@@ -1,0 +1,60 @@
+name: battleObject_dispatchRunActionByState_80A6A16
+address: '0x080A6A16'
+kind: function
+previous_names:
+- sub_80A6A16
+status: probable
+summary: Dispatches a battle object's per-state action routine by indexing a 3-entry table on `CurState`
+  (0x8) of the object in r5.
+interface: (r5 = battle object ptr, r1 = 0x20) -> r0 = whatever the called routine returns ; side effects
+  depend on the dispatched routine; lr clobbered via tail-call (bx)
+details: "Reads `CurState` (offset 0x8) from the BattleObject pointed to by r5 (`ldrb r1, [r5,#8]`), then\
+  \ uses it\n  to index a 3-entry jump table at off_80A6A28 (entries stored with +1 for Thumb switch).\
+  \ The chosen\n  function pointer is loaded into r0, lr is set to pc, and `bx r0` is used as a tail call.\
+  \ `pop {pc}`\n  is unreachable in normal flow (only hit if the table read yielded a non-Thumb/ARM-aliased\
+  \ value,\n  which in this ROM is constant).\n  Table entries (from the data at off_80A6A28):\n    index\
+  \ 0 -> sub_80A6A34\n    index 1 -> battleObject_runActionSubroutineDispatch_80A6A62\n    index 2 ->\
+  \ sub_80A6B08\n  CurState values seen in the project (BattleObject.inc) are 0x00 INITIALIZE, 0x04 UPDATE,\n\
+  \  0x08 DESTROY; the table has only 3 entries so probably covers exactly these three states.\n  Caller\
+  \ `08004916` (the single recorded caller; lr on entry) is the battle-object update loop that\n  fans\
+  \ out state handling.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r1, [r5,#8]` at the second instruction loads the CurState byte of the BattleObject
+    in r5 (BattleObject.inc: CurState @ 0x8). - `ldr r0, off_80A6A24` then `ldr r0, [r0,r1]` does a 4-byte
+    table read indexed by CurState. - `off_80A6A28` lists 3 word entries, each suffixed `+1` to mark them
+    as Thumb targets. - `mov lr, pc` + `bx r0` performs a Thumb/ARM-agnostic tail call. - Captured call
+    lr=0x08004916 (in every snapshot) shows the sole caller; entry r5 is implicit and non-tracked but
+    the only argument read is `[r5,#8]`. - Entry r0 is 0x080a6a17 (lr value, due to push {lr}/Thumb bit),
+    r1=0x20 is a hard-coded constant (does not seem to be used here, probably caller scratch), and exits
+    vary by dispatched callee, consistent with this being a dispatcher.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080A6A16
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^080a6a16 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- What state values the three table slots really cover (the CurState constants are 0, 4, 8, but
+- here r1 is masked/used as a 4-byte index into only 3 entries — so one of the slots must be hit
+- by an odd value, or CurState is normalised before being passed in; verifying what r5->0x8 holds
+- at each of the 40 call sites would settle it).
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c862a66
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80A6A16 -> battleObject_dispatchRunActionByState_80A6A16
+  where: bn6f 301fb1d2
+  tool: tools/rename_symbol.py

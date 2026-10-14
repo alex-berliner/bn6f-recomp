@@ -332,7 +332,7 @@ Next DeterminePowerAttackChargeTime(void) {
  * (0xFF, for both the normal value and the Beast-Out override), the AI
  * condition flags must allow acting, and a real chip must be queued in the
  * hand; otherwise the function bails out with r0 = 0.  When every check
- * passes, sub_8013236 performs the actual chip selection and its results
+ * passes, ai_tryUseChipFromHand_8013236 performs the actual chip selection and its results
  * (r2/r3, flags) are returned to the caller. */
 Next aiTrySelectChipFromHand_801336C(void) {
     /* r1 = the battle object's AI data block */
@@ -372,7 +372,7 @@ Next aiTrySelectChipFromHand_801336C(void) {
 
     /* all checks passed: pick the chip (r0 = chip id, r1 = 0xFFFF) */
     R1 = 0xFFFF;
-    GUEST_CALL(sub_8013236);
+    GUEST_CALL(ai_tryUseChipFromHand_8013236);
     RETURN_TO_CALLER();
 }
 

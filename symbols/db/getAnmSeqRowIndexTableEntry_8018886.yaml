@@ -1,0 +1,69 @@
+name: getAnmSeqRowIndexTableEntry_8018886
+address: '0x08018886'
+kind: function
+previous_names:
+- sub_8018886
+status: probable
+summary: Looks up a per-form entry in one of three animation sequence tables indexed by a form id and
+  row index, optionally remapped by a 16-byte remap table.
+interface: '(r0 = formID, r1 = rowIdx) -> r0 = pointer to a 0x44-byte row inside one of three variant
+  tables ; side effects: none (leaf, returns via mov pc, lr)'
+details: "- If r0 == 0, the function reads one byte from the 16-byte remap table at byte_80188B0 indexed\
+  \ by r1\n    (ldr r2, off_80188AC ; ldrb r1, [r2,r1]) and uses that as the new r1 row index; otherwise\
+  \ r1 is used as-is\n    (cmp r0, #0 ; bne loc_801888E).\n  - It then resolves r0 = [off_80188A0 + r0*4],\
+  \ picking one of three base pointers:\n      [0] = byte_80188C0 (about 0xCC bytes of data)\n      [1]\
+  \ = byte_801898C (largest of the three, ~0x83C bytes, fills most of the file)\n      [2] = byte_80191C8\
+  \ (similar-sized block following byte_801898C)\n    (ldr r2, off_801889C ; ldr r0, [r2,r0]).\n  - It\
+  \ multiplies the (possibly remapped) row index r1 by 0x44 (mov r3, #0x44 ; mul r1, r3) to obtain a byte\n\
+  \    offset within the chosen base block, and adds that to r0 (add r0, r0, r1) before returning\n  \
+  \  r0 = base + offset.\n  - The 0x44 stride and the captured call sites (entries with r0 always 0, r1=0..0x44)\
+  \ line up with a\n    \"pick animation-sequence variant table by form, then return a pointer to one\
+  \ 0x44-byte sequence row.\"\n  - Returns via `mov pc, lr` (pure leaf). Caller is getIndexedSignedBytePair_8018842\
+  \ per the contract,\n    consistent with this being an entry-resolving helper it invokes to fetch a\
+  \ sequence descriptor.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `cmp r0, #0 ; bne loc_801888E` shows a form==0 special case that bypasses the remap. - `ldrb
+    r1, [r2,r1]` against the 16-byte `byte_80188B0` literal at off_80188AC shows r1 is overwritten from
+    a remap lookup only in the r0==0 branch. - `ldr r2, [off_801889C]` then `ldr r0, [r2,r0]` reads a
+    32-bit pointer from one of three slots indexed by r0; the off_80188A0 list explicitly contains pointers
+    to byte_80188C0, byte_801898C, byte_80191C8. - `mov r3, #0x44 ; mul r1, r3 ; add r0, r0, r1` shows
+    a fixed 0x44-byte element stride yielding a pointer into the chosen table. - `mov pc, lr` (leaf, no
+    stack frame, no callees). - Captured calls all show entry r0=0 and exit r0 equal to `0x080188c0` (i.e.
+    byte_80188C0 base, offset 0), matching the r0==0 remap path with r1=0 falling on the first row of
+    the byte_80188C0 table. - Caller getIndexedSignedBytePair_8018842 is described as fetching two-byte
+    entries from a table whose base is supplied by a helper call; 0x44 is too large for that direct role,
+    so this is consistent with'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08018886
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^08018886 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- The actual subject of each 0x44-byte row is not known (animation sequence opcode list? scripted
+- action list?). Identifying which game struct uses a 0x44-byte block would settle the role.
+- Exact semantics of the form index (r0) and why r0==0 needs the remap is not derivable from this
+- function alone; correlating with the few projects calling it (only getIndexedSignedBytePair_8018842
+- is known) would clarify whether r0 is a "form id" or a variant select bit.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c862a66
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8018886 -> getAnmSeqRowIndexTableEntry_8018886
+  where: bn6f 301fb1d2
+  tool: tools/rename_symbol.py
