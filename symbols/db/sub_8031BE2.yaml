@@ -1,120 +1,52 @@
 name: sub_8031BE2
 address: '0x08031BE2'
 kind: function
+previous_names: []
 status: hypothesis
-summary: Runs a three-call setup/update sequence, passing fixed tile parameters (0, 0x10, 0xC, 0xC) to the middle
-  call.
-interface: void sub_8031BE2(int r0, void* r5); // calls sub_803172E(r0,r5), sub_8031594(r0, 0, 0x10, 0xC, 0xC),
-  then sub_8031B7C(r0, r5); returns whatever the last callee leaves in r0/r3-r7 and flags
-details: Tiny trampoline with no state of its own. It first calls sub_803172E forwarding the incoming r0 and r5
-  unchanged, then loads the constant tuple r2=0, r4=0xC, r3=0x10, r5=0xC (note r5, an incoming argument, is overwritten
-  here) and calls sub_8031594, and finally calls sub_8031B7C with whatever registers that left behind. Everything
-  the caller sees on return (r0, r2-r7, nzcv) is simply whatever sub_8031B7C left, since this function sets no outputs
-  itself. The constants 0x10 x 0xC with stride 0xC look like tile/grid dimensions (e.g. a 16x12 tile region, likely
-  a text window or BG map block), so the middle call plausibly draws or clears such a region and the other two calls
-  handle surrounding setup/teardown, but the callees' own semantics are unknown.
+summary: Thin tail-call wrapper that computes relative coordinates to a target and runs a half-plane cross test
+  (and a follow-up call).
+interface: '(r0 = some context ptr, r5 = ?, lr = ?) -> r0 = sub_8031B7C result, lr = sub_8031B7C tail; side effects:
+  clobbers r2-r7.'
+details: "- push {lr}\n  - bl battle_calcRelPosToTarget_803172E   ; uses r0 + r5 as inputs\n  - mov r2,#0 / mov\
+  \ r4,#0xc / mov r3,#0x10 / mov r5,#0xc ; fixed constants consumed by next call\n  - bl math_pointCrossHalfPlaneTest_8031594\
+  \ ; r0 already holds \"relative position\" scratch, r4/r5 = 0x0c, r3 = 0x10\n  - bl sub_8031B7C              \
+  \            ; final pass, return in r0\n  - pop {pc}                                ; `pop {pc}` is used as a\
+  \ return (= `bx lr`-like tail)\n  - Struct @02009f5c (r0 captured) holds what looks like a polygon vertex pair\
+  \ (x,y,z), at offsets 0x00 and 0x18; the snapshot variants differ only in those coordinate pairs (e.g. c6/c8 vs\
+  \ c2/c4 vs c2/c4 across snapshots 0/1 vs 10..13), matching what a relative-position test would consume.\n  - Quirk:\
+  \ this function is a \"dispatcher stub\" - it just chains three calls and returns via `pop {pc}`. Naming it more\
+  \ precisely than \"wrapper\" requires the semantics of sub_8031B7C, which is itself only probable.\n"
 evidence:
-- method: readable-c
-  date: '2026-10-09'
-  detail: Written by hyper/glm-5.3-flash through the convert workflow (2 attempt(s), run convert-20261009-003921);
-    reviewed by Claude before the commit.
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `pop {pc}` at sub_8031BE2+18 indicates this routine exists to chain calls and return the final callee''s
+    value unchanged (sub_8031B7C return flows through to caller). - Three back-to-back `bl` calls with no stack
+    frame or locals, only inline `mov r2/r3/r4/r5` setup between them (sub_8031BE2+2..+10). - Captured entry r0=0x02009f5c;
+    r1=0x7687; r2=0x0202b7bc; r3=8 - mirrors exactly the contract of battle_calcRelPosToTarget_803172E (in r0/r5,
+    out via scratch in r0). - The constants loaded between calls (r4=0xc, r3=0x10, r5=0xc) are the edges of the
+    directed-edge/half-plane test that math_pointCrossHalfPlaneTest_8031594 expects. - Captured exit r0=0 in every
+    snapshot, with -Z- flag set: matches sub_8031B7C returning 0 when its `r0 != 1` branch falls through.'
   refs:
-  - cport/src/game/asm03_0_802F2C8.c
-  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 6' --file leaves_farm_6.c sub_8031BE2
-- method: difftest
-  date: '2026-10-09'
-  detail: Readable vs lifted on the original's captured calls and on random inputs.
-  reproduce: './wf capture --function sub_8031BE2
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08031BE2
 
-    ./wf verify --function sub_8031BE2 --snapshots build-snapshots'
-  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 275 out
-    of domain (verify run convert-20261009-003921-verify-2)'
-- method: cpu-oracle
-  date: '2026-10-09'
-  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
-  reproduce: './wf capture --function sub_8031BE2
-
-    ./wf verify --function sub_8031BE2 --snapshots build-snapshots'
-  result: 2 compared, 0 differed, 22 out of domain (verify run convert-20261009-003921-verify-2)
-- method: lockstep
-  date: '2026-10-09'
-  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
-  reproduce: './wf capture --function sub_8031BE2
-
-    ./wf verify --function sub_8031BE2 --snapshots build-snapshots'
-  result: 8/8 routes identical (verify run convert-20261009-003921-verify-2)
+    '
+  result: the body read as described above
 - method: coverage
-  date: '2026-10-09'
-  detail: 'Executed by: fuzz, maps, story2, story3.'
-  reproduce: grep -l '^08031be2 ' tools/traces/coverage/*.prof
-changes:
-- date: '2026-10-09'
-  what: readable C replacement in cport/src/game/leaves_farm_6.c
-  where: recomp 083b266
-  tool: tools/wf convert (hyper/glm-5.3-flash)
-- date: '2026-10-09'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 0dbd5ac5
-  tool: tools/symdoc.py
-- date: '2026-10-09'
-  what: doc comment (symdb block) at the definition
-  where: bn6f f5b08caa
-  tool: tools/symdoc.py
-- date: '2026-10-10'
-  what: moved from cport/src/game/leaves_farm_6.c to cport/src/game/asm03_0_802F2C8.c by tools/layout.py (the regroup of the model farm's files by bn6f source; the function's text unchanged)
-  where: recomp 6836d6c
-  tool: tools/layout.py
-readable_c: cport/src/game/asm03_0_802F2C8.c
-coverage:
-- fuzz
-- maps
-- story2
-- story3
+  date: '2026-10-14'
+  detail: 'Executed by: battles2, beastsp, fuzz, maps, story2, story3, story4, story5, story8, story9'
+  reproduce: 'grep -l ''^08031be2 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles2, beastsp, fuzz, maps, story2, story3, story4, story5, story8, story9
 open_questions:
-- What sub_803172E, sub_8031594 and sub_8031B7C do individually; the fixed 0x10/0xC/0xC constants suggest a 16x12
-  tile layout but this is unverified
-- What r0 and r5 mean on entry (both are forwarded to the first callee and r5 is then clobbered by the constants)
-- Which subsystem (menu, textbox, battle UI) this sequence belongs to
+- What the vertex pairs at +0x00 and +0x18 of @02009f5c semantically represent (a polygon boundary? a hit-area edge?).
+  Resolving sub_8031B7C's full contract (currently "with r0==1 return byte 1 of [[dword_2013920]+0x14]; else 0")
+  would settle the wrapper's role (likely a "is target inside attack hit area?" test).
 sources:
-- tools/wf run convert-20261009-003921
-signature:
-  c: u8 sub_8031BE2(u8 *r0, u8 *r5)
-  params:
-  - reg: r0
-    type: u8 *
-    name: r0
-  - reg: r5
-    type: u8 *
-    name: r5
-  ret:
-    reg: r0
-    type: u8
-  keep:
-  - r5
-  confidence: confident
-  decided_by: mechanical
-  evidence:
-  - 'contract (lifter, refined): may read r0 r5; result r0'
-  - 'liveness over the assembly and callees (tools/sig/derive.py): reads r0 r5'
-  - 'r0: captures: 40 calls, field eOWPlayerObject+0x1c'
-  - 'r5: captures: 40 calls, ram eOverworldMapObjectsEnd'
-  - 'result: captures at exit: r0 int 0x0, 0x3c'
-  reproduce: python3 tools/sig/bounds.py && python3 tools/sig/derive.py && python3 tools/sig/ask.py run && python3
-    tools/sig/ask.py merge
-  derived: '2026-10-12'
-stamp:
-  rom: rom:c2b3065587b497d3
-  range: 0x08031BE2-0x08031BFA
-  contract: r0 r5 lr -> r0 r5 lr; clobbers nz c v r2 r3 r4 r6 r7
-  callees:
-    battle_calcRelPosToTarget_803172E: r0 r6 r7
-    math_pointCrossHalfPlaneTest_8031594: r0 r2 r3 r4 r6 r7
-    sub_8031B7C: r0 r5
-  headers: 350885c5648e
-  lifter: 70c8d832ffcf
-  prompt: legacy
-  model: hyper/glm-5.3-flash
-  run: convert-20261009-003921
-  body: b7f3c429d832d6d6
-  installed: 083b266
-  stamped: '2026-10-12'
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7aba4135
+  tool: tools/symdoc.py

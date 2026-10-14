@@ -3,26 +3,25 @@ address: '0x080A82DC'
 kind: function
 previous_names: []
 status: hypothesis
-summary: If a story-progress (event) flag is set for the current map/group, bump the sprite's OAM priority on the
-  object passed in r5 and return 1; otherwise return 0.
-interface: (r5 = object ptr, r10 = toolkit ptr) -> r0 = 0 (no priority bump) or 1 (priority was bumped to 3)
-details: "- Reads GameState via r10->Toolkit->GameStatePtr, then picks MapGroup (when == 0x85) or MapNumber to index\
-  \ a small table of u16 flag tables.\n  - Uses object[r5]+0x4 (an actor/object index) doubled as a word index to\
-  \ load a u16 event flag index, then calls TestEventFlag on it.\n  - When the flag is set: writes r4=1, calls sprite_setPriority_8002E14(r0=3)\
-  \ on the sprite implied by r5, and returns 1.\n  - Otherwise: returns 0 without touching sprite priority.\n  -\
-  \ The selection of 3 as the OAM priority is hard-coded; the index lookup is a per-map/per-group flag table.\n"
+summary: Tests an event flag selected by current map/object index; if set, returns 1 and bumps the battle object's
+  sprite OAM priority to 3
+interface: '(r5 = BattleObjectPtr) -> r0 = 0/1 ; side effects: may call TestEventFlag and sprite_setPriority_8002E14'
+details: "Reads GameStatePtr from r10->Toolkit, picks a per-map group/number (group 0x85 is treated as 3, otherwise\n\
+  \  the map number byte) and uses it as an index into the table at off_80A8314 (four u16 entry pointers\n  into\
+  \ byte_* data tables at 0x80A81BE/CC/DE/F0). Loads a u16 event-flag offset from that table indexed\n  by r5->ObjectID\
+  \ (r5 byte 4 << 1 as u16), and calls TestEventFlag. On success writes r4=1 and calls\n  sprite_setPriority_8002E14(r0=3)\
+  \ on the sprite pointed to by r5 (sprite byte 0x15 = priority 3). On\n  failure r4 stays 0. Returns r4 (0 or 1)\
+  \ in r0. Looks like a per-battle-object \"has the story flag\n  been set that should raise this object's sprite\
+  \ above others\" check.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- `mov r0, r10; ldr r0, [r0,#oToolkit_GameStatePtr]` then `ldrb r1, [r0,#oGameState_MapGroup]` and `ldrb
-    r1, [r0,#oGameState_MapNumber]` (map id read from GameState). - `cmp r1, #0x85; bne loc_80A82EC` then `mov r1,
-    #3; b loc_80A82EE` substitutes 3 when MapGroup == 0x85 (special "always uses index 3" path). - `lsl r1, r1,
-    #2; ldr r2, off_80A8310; ldr r0, [r2,r1]` selects one of byte_80A81BE/byte_80A81CC/byte_80A81DE/byte_80A81F0
-    (four flag tables). - `ldrb r2, [r5,#4]; lsl r2, r2, #1; ldrh r3, [r0,r2]` reads an index from the object at
-    offset 4 and indexes the chosen u16 flag table. - `bl TestEventFlag` (confirmed event flag tester), with `beq
-    loc_80A830C` skipping the priority change. - On flag set: `mov r4, #1; mov r0, #3; bl sprite_setPriority_8002E14`
-    (the callee''s summary explicitly matches: bits 2-3 of sprite byte 0x15 = r0). - `mov r0, r4; pop {r4,pc}` returns
-    r4 (=1 on success, 0 otherwise).'
+  detail: '- r10->Toolkit->GameStatePtr load (`mov r0, r10` then `ldr r0, [r0,#oToolkit_GameStatePtr]`) - MapGroup==0x85
+    branch substitutes a hardcoded index 3 instead of MapNumber (`cmp r1,#0x85; ... mov r1, #3`) - ldr r2,[off_80A8310]
+    -> table of 4 word pointers (off_80A8314) used as u16 arrays of event flags - `ldrb r2, [r5,#4]` then `lsl r2,r2,#1`
+    uses r5 byte 4 (ObjectID within the BattleObject struct) as index - `ldrh r3,[r0,r2]` reads a u16 event flag
+    number that is passed to TestEventFlag - On flag set: `mov r4,#1; mov r0,#3; bl sprite_setPriority_8002E14`
+    raises sprite priority to 3 - Returns r4 in r0'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x080A82DC
@@ -37,16 +36,17 @@ evidence:
     '
   result: beastsp, maps
 open_questions:
-- Whether r5 must be an OverworldMapObject (or NPCObject) vs a generic object — the only field touched is byte at
-  +0x4 which is the ObjectID in those structs; sprite_setPriority_8002E14 likely walks r5 the same way its callers
-  in nearby code do.
-- Why MapGroup 0x85 forces the table index to 3 is unclear without knowing the map-group numbering.
-- Exactly which four flag tables at byte_80A81BE/byte_80A81CC/byte_80A81DE/byte_80A81F0 contain (unconfirmed; only
-  their addresses are referenced via off_80A8314).
+- What the four byte_* tables at 0x80A81BE/CC/DE/F0 represent (story flags per zone? per chapter?); what
+- MapGroup==0x85 corresponds to (likely a special map group like WWW/Expo). The byte_4 field is assumed
+- to be ObjectID because BattleObject's first field (byte 0) is the ObjectHeader and byte 1 is the
+- Index, but r5 isn't confirmed to be a BattleObject vs OverworldMapObject/etc.; both share the
+- ObjectHeader layout so byte 4 differs in meaning. Callee `sprite_setPriority_8002E14` summary says
+- it touches sprite byte 0x15, but the struct in this project puts ObjectSprite at 0x90/0x80 in
+- BattleObject — byte 0x15 may actually be at oBattleObject_SpriteData+0x15 within the struct.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f 4efa6ddc
+  where: bn6f 7aba4135
   tool: tools/symdoc.py

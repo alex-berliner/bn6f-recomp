@@ -1,0 +1,70 @@
+name: sub_803DEB4
+address: '0x0803DEB4'
+kind: function
+previous_names: []
+status: hypothesis
+summary: 'Per-frame camera/timer step for battle: applies timer mode flags, shakes/shifts the camera, and returns
+  a link-state result code used by the link-battle subsystem.'
+interface: '(no explicit params; reads/writes globals) -> r0 = link-state code (1 = nominal, 4 = some mode, 2/8/0x20
+  = special-cased); side effects: writes to eLinkState fields and other EWRAM globals'
+details: "Saves r4-r7, then loads eLinkState pointer into r7. Calls sub_8144250 with r0 = eLinkState+6, r1 = byte_200DD10,\
+  \ r2 = unk_2009480; the result is stored at eLinkState+0x48 (a 4-byte field).\n  Reads timer_IsEnabled_8144CE0()\
+  \ into r0; if it equals 5 the function bails to the final path with r6 = 4.\n  Otherwise it re-reads timer_IsEnabled\
+  \ and branches on its value: 1 triggers the EVENT_172F (story flag) test path which can decrement eLinkState+0xc\
+  \ (a shake/shift timer) and set eLinkState+0x6 to 1; 2 cycles a state byte at eLinkState+0x7 (writing 0xff then\
+  \ writing back the value to flag \"done\").\n  After the timer switch it splits the original r0 into bit-fields:\
+  \ bits0-1 stored at sp+4, bits2-4 (mask 0x1c) shifted right 2 stored at sp+8 and also stored to eLinkState+0x4\
+  \ (the low byte of the \"pad_54\" area).\n  If bit5 (0x20) is clear, just falls through. If bit6 (0x40) is also\
+  \ clear, sets r6 = 4. Otherwise calls sub_803E018(r0, sp+4, sp+8) and potentially sub_803E200; returns 0x20/4/8\
+  \ from that branch.\n  Final: if r6 == 4 and eLinkState+0x5 (byte) is non-zero, r6 stays 4; otherwise r6 is returned\
+  \ as-is.\n  Routinely invoked by battle_getLinkStateCode_803F560, sub_801FE6C, and sub_803EB04 — looks like the\
+  \ link-state poll's per-frame helper.\n  The data struct comment (\"eCamera\") in the assembly hints eLinkState\
+  \ may overlap or alias a camera struct; the [r1 @0200ad04] buffers in the captured calls are nearly all zeros\
+  \ (the only varying byte is a small counter at offset +2, decreasing by 1 each call).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- Instruction `bl sub_8144250` with args derived from `eLinkState+6`, `byte_200DD10`, `unk_2009480` shows
+    it queries a subsystem using eLinkState as scratch. - `str r0, [r7,#0x48]` writes the sub_8144250 result into
+    eLinkState+0x48 (a 4-byte slot). - `bl timer_IsEnabled_8144CE0` called twice, then a `cmp r0, #5` short-circuits
+    the function with r6=4. - `movflag EVENT_172F` + `bl TestEventFlagFromImmediate` + `ldrh r0, [r7,#0xc]` shows
+    the EVENT_172F branch decrements a u16 counter at eLinkState+0xc (commented "shake timer") while the story flag
+    is on. - `cmp r0, #2` / `cmp r2, #2` + `mov r0, #0xff` / `strb r0, [r7,#0x7]` shows the second branch latches
+    the byte at eLinkState+0x7 to 0xff once and then writes the timer-mode value back. - Bit slicing `mov r1, #3
+    / and r0, r1 / lsl r0, r0, #0` and `mov r1, #0x1c / and r0, r1 / lsr r0, r0, #2` + `str r0, [sp,#4]` and `str
+    r0, [sp,#8]` + `strb r0, [r7,#0x4]` proves the original timer byte is decomposed into a 2-bit field and a 3-bit
+    field; the 3-bit one is also persisted to eLinkState+0x4. - `bl sub_803E018` + `bl sub_803E200` followed by
+    switch over return (==2 / ==0x20 / other) shows the 0x40-bit path drives a sub-decision that overrides r6 with
+    0x20, 4, or 8. - Caller `battle_getLinkStateCode_803F560` is described as returning a link-battle state code
+    from current battle mode and link polling, so it makes sense for it to depend on this per-frame update. - Captured
+    call buffers [r1 @0200ad04] have only byte[2] changing across snapshots (0x78 → 0x77 → 0x6e → 0x6d → 0x6c →
+    0x6b), implying a single decrementing counter that the function reads/uses.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0803DEB4
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^0803deb4 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3, story1, story2, story3,
+    story4, story5, story6, story7, story8, story9, wander
+open_questions:
+- Whether eLinkState is genuinely a separate "link state" struct or whether the assembly comment "eCamera" implies
+  aliasing with the Camera struct at the same base.
+- The exact semantics of r6 return values (1, 2, 4, 8, 0x20) — the project notes for `battle_getLinkStateCode_803F560`
+  mention it returns 0xFF, 0x80, or 0, so the codes here probably feed into that mapping rather than being the final
+  value.
+- What sub_8144250, sub_803E018 and sub_803E200 actually compute; only inferred from their inputs.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7aba4135
+  tool: tools/symdoc.py

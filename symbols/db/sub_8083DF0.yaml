@@ -3,28 +3,41 @@ address: '0x08083DF0'
 kind: function
 previous_names: []
 status: hypothesis
-summary: Drives the cutscene-state → BBS-request path that handles L-Message / AskJackOut cutscenes for the player's
-  PET Navi, including event-flag tests/sets and several GFX anim loads.
-interface: () -> side effects only (no return value used)
-details: "Takes no arguments in registers (r10 = toolkit is implicit; callee-saved only).\n  Looks at the current\
-  \ cutscene script via two predicates (cutscene_checkOriginalCutsceneScriptPos_8036F40 / _8036F58) to decide which\
-  \ branch to take.\n  Tests/clears/sets story event flags via TestEventFlagFromImmediate / ClearEventFlagFromImmediate\
-  \ / SetEventFlagFromImmediate, and ends by triggering reqBBS_setFlag_e17b0f7_8140A00 and reqBBS_clearFlag_8140A0C.\n\
-  \  Calls three load_gfx_anim_* helpers (8083FC0, 8083FFC, 8084068) and the helper sub_8083F80 plus subs 8084080/8084180/8084214/80842D8/8084080\
-  \ to drive the per-state behaviour.\n  The \"[unnamed]\" sub_ calls this function makes (sub_8083F80, load_gfx_anim_*,\
-  \ struct_copy_80840C4, sub_8084080/8084180/8084214/80842D8, sub_809E462) are all under this same request-BBS-state\
-  \ region, supporting that this is the per-frame driver of the BBS request step.\n  Likely the \"PET/Navi cutscene-BBS\
-  \ request\" step (the one that requests/show the BBS UI during a cutscene and may set event flag 0x7 in event\
-  \ byte 0x17).\n"
+summary: Function at 0x8083df0 has no asm in the project and is only referenced through call-graph edges; its register
+  contract and callees point at a cutscene/BBS preload routine but the assembly is missing so I cannot confirm
+interface: '(in: r10 = Toolkit, lr) -> flags nz + many r2/r3/r4/r5/r7/r8/r9/r12 ; side effects: manipulates cutscene
+  script flags, event/story flags, and loads GFX anims'
+details: "The function body is not present in `bn6f/asm` (\"sub_8083DF0 not found in bn6f/asm\"), so every claim\
+  \ below is inferred solely from the lifter's register contract and the confirmed callees listed for it.\n  All\
+  \ callees touch cutscene/script state via r10 (Toolkit): `cutscene_checkOriginalCutsceneScriptPos_8036F40` / `8036F58`\
+  \ test which cutscene script is saved, and `Clear/Set/TestEventFlagFromImmediate` manipulate event flags (r0,\
+  \ r1 carry the flag bytes).\n  `reqBBS_setFlag_e17b0f7_8140A00` writes event flag 0x7 in event byte 0x17 (BBS\
+  \ request handler) and `reqBBS_clearFlag_8140A0C` clears a corresponding BBS flag; these match a \"preload/sync\
+  \ BBS requests\" pattern that games often tie to a specific story-progress script (here the L-Message/AskJackOut\
+  \ scripts the two `cutscene_checkOriginal...` helpers recognize).\n  The three `load_gfx_anim_*` callees (`8083FC0`,\
+  \ `8083FFC`, `8084068`) plus `struct_copy_80840C4` and `sub_8083F80`/`sub_8084080`/`sub_8084180`/`sub_8084214`/`sub_80842D8`\
+  \ look like a self-contained \"load + cache GFX anim data, then dispatch by saved-script kind\" cluster that lives\
+  \ in the same code page (0x8083xxx-0x8084xxx), consistent with a helper called from an overworld/cutscene subsystem.\n\
+  \  `sub_809E462` (0x809e462, returns nz) is the only call outside that page; it has an `out=['nz']` contract,\
+  \ suggesting this routine queries a \"should we run?\" condition and conditionally proceeds to the script-specific\
+  \ branches.\n  Because r10 is the only input and the out set exposes r4/r5/r7/r8/r9/r12 plus nz, this is a typical\
+  \ Thumb void-but-flags function that uses several callee-saved registers internally and lets the caller restore\
+  \ them.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- Assembly is not present in asm/ so the instruction content cannot be quoted; the function''s body must
-    be read from the lifted binary directly. - All callees except sub_809E462 live in the 0x8083F80–0x80842D8 range,
-    putting this function firmly in the BBS/state-driver cluster. - reqBBS_setFlag_e17b0f7_8140A00 (already named)
-    is called, confirming the request-BBS flavour. - cutscene_checkOriginalCutsceneScriptPos_8036F40 / _8036F58
-    are both used, matching the L-Message / AskJackOut special-cases in bn6 cutscenes. - The contract outputs only
-    flags (nz) and callee-saved regs, i.e. side-effect-only routine.'
+  detail: '- Instruction-text evidence is unavailable: the asm dump states "sub_8083DF0 not found in bn6f/asm".
+    - r10 appears in `in=[''r10'', ''lr'']` (contract), and every confirmed callee (`ClearEventFlagFromImmediate`,
+    `SetEventFlagFromImmediate`, `TestEventFlagFromImmediate`, `cutscene_checkOriginalCutsceneScriptPos_8036F40`,
+    `cutscene_checkOriginalCutsceneScriptPos_8036F58`, `reqBBS_*`) is itself `r10`-rooted, identifying r10 as the
+    Toolkit pointer used to mutate cutscene/BBS state. - Two tested-by-name callees reference named cutscene sentinels
+    ("L-Message" and "AskJackOut" scripts at 0x8036F40/0x8036F58), matching a branching handler that dispatches
+    on which script is the original saved one. - `reqBBS_setFlag_e17b0f7_8140A00` sets event flag 0x7 in event byte
+    0x17 (0x2001F68); the paired `reqBBS_clearFlag_8140A0C` clears a BBS request flag, indicating this routine toggles
+    BBS request state tied to a story event. - All five unnamed subroutines in the 0x8083F80-0x80842D8 range and
+    the three `load_gfx_anim_*` helpers sit on the same 0x8083xxx-0x8084xxx page, suggesting a single preload/animation
+    cluster that this function orchestrates. - `sub_809E462` is the only far-page callee and its `out=[''nz'']`
+    matches a leading "if (condition) ..." guard at the head of the routine.'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x08083DF0
@@ -39,12 +52,16 @@ evidence:
     '
   result: beastsp, story5, story6
 open_questions:
-- Exact ordering of branches and which sub_* does the actual BBS draw/step — without the disasm these are inferred
-  from callee clustering only. Disassembling 0x08083df0 would settle the role definitively.
+- Without the assembly, I cannot tell whether this is overworld-cinematic preload, a battle-pre-script, or a BBS-menu
+  hook; the three strong possibilities cannot be distinguished.
+- The actual return value to callers (only `nz` flag is exposed, no r0) and the precise sequence of flag reads/writes
+  vs. GFX-anim loads are unknown.
+- Settling the role requires re-lifting the function (or restoring asm at 0x08083df0 in `bn6f/asm`), confirming
+  the first few branch targets, and matching the `sub_809E462` predicate to a named module.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f 4efa6ddc
+  where: bn6f 7aba4135
   tool: tools/symdoc.py

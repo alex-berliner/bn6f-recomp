@@ -3,31 +3,32 @@ address: '0x080E1670'
 kind: function
 previous_names: []
 status: hypothesis
-summary: On the AI's battle object (`r5`), locate a 4-slot enemy-name-range array using the flipped alliance, then
-  probe RelatedObject1Ptr for matching names at slot indices 0, 1 and 2 via sub_80E16CC.
-interface: '(r5 = AI/target BattleObjectPtr, r6 caller-saved, r7 caller-saved, r10 = toolkit, lr) -> r0 = last sub_80E16CC
-  return (probe hit flag), r5 preserved (callee-saved) ; side effects: stack scratch `0x34` bytes, calls object_getEnemyByNameRange
-  and sub_80E16CC three times.'
-details: "- Sets up a 4-word (0x34 bytes = 13 words + sp+0 padding aligns to 4) scratch buffer on the stack at r4\
-  \ = sp, passed to object_getEnemyByNameRange as `out` array (initialised with `r1=0`, `r2=0x1c3`).\n  - Flips\
-  \ the caller's Alliance byte (`ldrb r3, [r5,#oBattleObject_Alliance]; eor r3, #1`) so the search runs against\
-  \ the opposing side.\n  - Result count is shifted into slot 0 (str r0, [r4]; mov r6,r0 then lsl r3,r0,#2; add\
-  \ r3,r3,r4; str r0,[r3]) before each probe - meaning the first u32 holds the count returned by the range query.\n\
-  \  - Then it loops for indices 0, 1, 2 calling sub_80E16CC(r0=index, r1=r5->RelatedObject1Ptr, r2=r4=buffer);\
-  \ on the first non-zero return it skips to the epilogue.\n  - Only one named caller (sub_80E1566) sits in a small\
-  \ routine that already knows about enemy name lists, suggesting this lives inside a battle-AI naming/selection\
-  \ path.\n"
+summary: Checks the alliance of the BattleObject's RelatedObject1Ptr against the caller's alliance, returning a
+  result via sub_80E16CC into a stack buffer.
+interface: '(r5 = caller BattleObject, r10 = toolkit) -> r0 = 0 ; side effects: stack scratch, may read RelatedObject1Ptr
+  chain'
+details: "- Allocates 0x34 bytes on the stack as a scratch buffer (r4 = sp).\n  - Loads the caller's Alliance byte\
+  \ (offset 0x16) from r5, XORs with 1 (eor r3, #1) to flip friend/enemy.\n  - Calls object_getEnemyByNameRange(r4=buf,\
+  \ r1=0, r2=0x1c3) which presumably fills the scratch buffer with a name list / table and returns a count in r0\
+  \ -> saved in r6.\n  - Zeros buf[r6*4] (str r0, [r3]) to clear the first slot beyond the populated entries.\n\
+  \  - Calls sub_80E16CC(bufIdx=0, r1=RelatedObject1Ptr, r2=buf) and bne-skip-out if non-zero; repeats with bufIdx=1\
+  \ and 2. Each non-zero short-circuits the chain to loc_80E16BA which simply restores sp and returns.\n  - The\
+  \ result r0 on return is the last bufIdx (2) when all three checks return 0, otherwise 0. The exact semantics\
+  \ live in sub_80E16CC; from this caller it is a \"first match in {0,1,2}\" probe of RelatedObject1Ptr against\
+  \ the enemy-name list.\n  - This is part of the AI's enemy-target search using a reversed-alliance search: the\
+  \ caller asks \"which of the three target slots is an enemy of me?\"\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- `ldrb r3, [r5,#oBattleObject_Alliance]; eor r3, #1` (lines `mov r3, ... eor r3, r0`) directly flips
-    the alliance and feeds it into object_getEnemyByNameRange''s `r3`. - `ldr r1, [r5,#oBattleObject_RelatedObject1Ptr]`
-    is reused unchanged for all three sub_80E16CC calls, treating RelatedObject1Ptr as the search pool. - Stack
-    frame of 0x34 (sub sp, #0x34) plus `mov r4, sp` and a 4-slot walk (`lsl r3,r0,#2; add r3,r3,r4`) shows a small
-    array used as the range-query output buffer. - Hardcoded `dword_80E17E4 = 0x1c3` passed in r2 likely selects
-    which enemy name range table to walk over. - Final `bx`/pop with `out=r0,r5` matches the contract: r5 (the AI
-    BattleObject) is preserved; r0 holds whatever sub_80E16CC last returned. - Three `cmp r0,#0; bne loc_80E16BA`
-    repeated blocks match a short-circuit "find first match across indices 0/1/2 then exit".'
+  detail: '- `ldrb r3, [r5,#oBattleObject_Alliance]` and `eor r3, #1` at the entry show the function flips the caller''s
+    Alliance to the opposing side before searching (`oBattleObject_Alliance` = 0x16). - `bl object_getEnemyByNameRange`
+    with a stack buffer (r4=sp, r1=0, r2=0x1c3=451) populates an enemy-name table; result r0 stored in r6 and used
+    to size-clear the buffer (`lsl r3, r0, #2; add r3, r3, r4; mov r0, #0; str r0, [r3]`). - `ldr r1, [r5,#oBattleObject_RelatedObject1Ptr]`
+    (offset 0x4c) loads the first related-object pointer and passes it to sub_80E16CC three times with indices 0,
+    1, 2. - Each call uses `cmp r0, #0 / bne loc_80E16BA`, indicating a "found / not found" boolean style return;
+    the `bne` jumps to the epilogue, leaving r0 with the last call''s non-zero value. - Only caller is sub_80E1566
+    (also unnamed AI-routine in the 0x080e15xx range), consistent with AI enemy-targeting helpers. - The 8-byte
+    literal at byte_80E16C4 is data referenced by something else, not used by this function.'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x080E1670
@@ -42,16 +43,15 @@ evidence:
     '
   result: beastsp
 open_questions:
-- What object_getEnemyByNameRange actually fills into the stack buffer (whether the first dword is the count or
-  the names themselves) - need to read its body to confirm the 0x34-byte layout.
-- The semantic meaning of `0x1c3` and how RelatedObject1Ptr is structured - is it a list of allied names or a per-side
-  list of names? Would be confirmed by sub_80E16CC's body and by the caller sub_80E1566.
-- Whether r6 (`mov r6, r0` after getEnemyByNameRange) is later used by the caller or just stored for debugging -
-  the contract lists r6 as caller-saved in/out so it is throwaway here.
+- The exact meaning of sub_80E16CC's bufIdx (0/1/2) and what it indexes in the scratch buffer is unknown; whether
+  the indices are "enemy by panel column / row / distance" or AI attack-vars array slots is unclear. Disassembly
+  of sub_80E16CC would settle it.
+- Whether r0 on return is meaningful to the caller (it currently is 0 if matched early, 2 if none matched) is unknown
+  because the only caller sub_80E1566 is also unnamed.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f 4efa6ddc
+  where: bn6f 7aba4135
   tool: tools/symdoc.py

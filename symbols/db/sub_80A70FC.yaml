@@ -3,31 +3,31 @@ address: '0x080A70FC'
 kind: function
 previous_names: []
 status: hypothesis
-summary: One-shot overworld check that raises a beast-out flag and bumps AIData Anger when the player enters a particular
-  map-object box (or the player Z is non-zero and the same box holds).
-interface: void (r5=owMapObject*, r6=owMapObject* r6+0x84 context, r10=toolkit) ; sets flag EVENT_5F1 and `[r5+0x34]=1`
-  on success
-details: "- Tests EVENT_5F1 first (TestEventFlagFromImmediate); if already set, returns immediately so the trigger\
-  \ is one-shot.\n  - Reads overworld player coords with ReadOWPlayerObjectCoords, returning PlayerX/Y in r0/r1\
-  \ (16.16) and Z in r2.\n  - Two parallel \"is the player inside this object's box?\" checks against [r5+0xc]/[r5+0x10]\
-  \ (probably X/Z coords; r6+0x84 is a struct containing the 0x12-radius extent and another 4-byte extent at +0x80),\
-  \ using sub_80011D6 (overworldObject_withinBoxCheck_signed_80011D6). The fixed-point radius is 0x120000.\n  -\
-  \ Path 1: Z==0 AND the player is inside r5's box.\n  - Path 2: Z!=0 OR [r6+0x84] is non-zero, then checks a second\
-  \ box described by [r6+0x7c] and [r6+0x80].\n  - On hit, sets EVENT_5F1 (SetEventFlagFromImmediate) and writes\
-  \ 1 to [r5+0x34]. In AIData that's Anger (u16), but here it's a 32-bit write so it's whatever r5's struct actually\
-  \ is (likely OverworldMapObject or a battle object pointer given to the overworld bridge).\n  - r5 is treated\
-  \ as a generic struct with 0x34 an \"armed\" flag and 0x0c/0x10 an XZ pair, r6 as a struct with offsets 0x7c/0x80/0x84\
-  \ describing a second box.\n  - Returns void via `pop {r4-r7,pc}`; no value is produced for callers.\n"
+summary: 'Overworld beast-out spotted check: tests EVENT_5F1, then if the player is inside a small box (0x120000,
+  ~18 px) around the OW map object''s interact area center (r6+0x7C), sets EVENT_5F1 and writes 1 to [r5+0x34] (Anger/flag
+  field); else if player is inside the larger box (r6+0x7C/0x80 box coords with reach) and r6+0x84 (some object-relative
+  counter/timer) is 0, also triggers the flag+write.'
+interface: '(r5 = toolkit-ish ptr with +0xC/+0x10 coords and +0x34 anger field, r6 = OverworldMapObject-ish ptr,
+  r10 = event flag token) -> void ; side effects: may set EVENT_5F1 and str 1 into [r5+0x34]'
+details: "Early-returns if EVENT_5F1 already set (TestEventFlagFromImmediate). Otherwise reads the OW player coords\
+  \ with ReadOWPlayerObjectCoords into r0/r1 (X/Y), checks z!=0 and falls through to the \"no object interaction\"\
+  \ path when z==0.\n  Fast path: if [r5+0xC]/[r5+0x10] (player X/Y) is within +/-0x120000 of the object's \"tight\"\
+  \ coords [r6+0x7C+8]? -- actually the loaded r2/r3 come from ldr r3,[r6,r2] with r2=0x84, then compared to 0 --\
+  \ and the withinBoxCheck returns 1, plus the \"reach\" field [r6+0x84] is 0, jump to SetEventFlagFromImmediate+write\
+  \ 1.\n  Slow path: otherwise re-checks using the broader area: ldr r2,[r6,0x7C] and ldr r3,[r6,0x80] as the box,\
+  \ with r4=0x120000 radius, and only triggers when [r6+0x84]==0.\n  The captured call frames all show r1=0xFFC00000\
+  \ and r2/r3 matching \"min/max\" type coordinates of a box (r2 positive small, r3 positive big), consistent with\
+  \ the box-center + radius/half-extent arguments.\n  Writes back to [r5+0x34] (matches AIData.Anger offset 0x34\
+  \ / GameState cur coords area; here likely a \"spotted\" flag/state byte in the caller-context object).\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- `movflag EVENT_5F1; bl TestEventFlagFromImmediate; bne locret_80A715C` shows the early-out-on-already-set
-    semantics. - `bl SetEventFlagFromImmediate; mov r0,#1; str r0,[r5,#0x34]` at loc_80A7150 shows the trigger sets
-    a flag and writes 1 to r5+0x34. - `bl ReadOWPlayerObjectCoords` then `cmp r2,#0; bne loc_80A712E` indicates
-    Z is taken as the "non-airborne" gate. - The two `bl overworldObject_withinBoxCheck_signed_80011D6` calls with
-    `mov r4,#0x12; lsl r4,r4,#0x10` (= 0x120000, a 16.16 radius) show two distinct box checks; the second uses `[r6,#0x7c]`
-    and `[r6,#0x80]` as the box extents. - Contract `out=[''r5'']` (r4-r7/lr saved by the function) and the explicit
-    `pop {r4-r7,pc}` confirm the function is void-like; nothing is returned in r0.'
+  detail: '- bl TestEventFlagFromImmediate / bl SetEventFlagFromImmediate with `movflag EVENT_5F1` at top and at
+    the trigger label show a one-shot event flag guard. - bl ReadOWPlayerObjectCoords loads player X/Y into r0/r1
+    used as the "test point" for withinBoxCheck_signed_80011D6. - Captured entries: r2=0x1c000, r3=large box extent
+    value (e.g. 0x780000) and r1=0xFFC00000 -- these match the (center, half-extent) calling convention of sub_80011D6
+    (the boxCheck helper). - Final action `mov r0,#1; str r0,[r5,#0x34]` sets a state byte at r5+0x34 after the
+    flag is set. - Sub-path compares `ldr r3,[r6,r2]` (r2=0x84) against 0 -- a "must be zero" gating condition.'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x080A70FC
@@ -42,15 +42,16 @@ evidence:
     '
   result: beastsp
 open_questions:
-- 'What r5 and r6 actually are: caller sub_80A6F2C''s contract shows `out=[''r2'',''r3'',''r4'',''r5'',''r10'']`,
-  so it forwards pointers, but the struct semantics of r5+0x34/0xc/0x10 and r6+0x7c/0x80/0x84 are not declared in
-  the provided headers.'
-- The semantic role of EVENT_5F1 (some "beast out available / beast gauge primed" story flag?) is a guess from the
-  captured "beastsp" filename and the function sitting inside the beast-out update.
+- The semantics of r5 (is it AIData, GameState, or another per-frame struct?) and what r5+0x34 represents in the
+  caller -- here r5 comes from the caller's frame so without the caller's prologue it is hard to label.
+- The exact role of r6 (OverworldMapObject vs. some sub-struct) and offsets 0x7C/0x80/0x84 -- they could be the
+  OWObjectInteractionArea (size 0x14) embedded or a separate per-map-object spotted-region struct.
+- Whether EVENT_5F1 is the actual "beast spotted" flag in BN6 -- snapshot names "snap_beastsp_*" strongly suggest
+  yes, but the EVENT_5F1 mapping would settle it.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f 4efa6ddc
+  where: bn6f 7aba4135
   tool: tools/symdoc.py

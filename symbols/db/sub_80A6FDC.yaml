@@ -1,0 +1,66 @@
+name: sub_80A6FDC
+address: '0x080A6FDC'
+kind: function
+previous_names: []
+status: hypothesis
+summary: Looks up a battle object's APwrAtk/BPwrAtk/BButton entries in a small 4×3 jump table and stores two attack-stat
+  words into the object's AIData at offsets 0x24/0x28 (zeroing the index on sentinel).
+interface: (r5 = BattleObjectPtr) -> void ; side effects writes [r5+0x24], [r5+0x28], [r5+0x6]
+details: "- The function takes r5 as the battle object (matching every other AI helper in this\n    region), and\
+  \ uses three byte indices on it: r5+5 (APwrAtk), r5+4 (AIIndex/param),\n    r5+6 (BButton).\n  - It loads a 4-entry\
+  \ outer table at off_80A7010, indexes it with APwrAtk shifted by 2\n    (so APwrAtk must be 0..3 to stay in range),\
+  \ giving a per-button sub-table pointer.\n  - The sub-table (4 entries, each 3 ptrs into attack-stat blobs at\
+  \ byte_8140C68 /\n    byte_8140CA4 / byte_8140CE0 / byte_8140D1C) is indexed with AIIndex*4, producing a\n   \
+  \ pointer to a small record whose first u16 is the attack-index and second u16 is the\n    attack stat.\n  - It\
+  \ adds BButton*4 to that record pointer and reads [r2] (attack index) and [r2+2]\n    (attack stat). Both are\
+  \ shifted left by 16 (i.e. treated as 16.16 fixed-point ints\n    or just zero-extended into the upper half-word)\
+  \ and stored as full u32 words at\n    r5+0x24 and r5+0x28 - which match the AIData `JoypadPressed` (0x24) and\n\
+  \    `JoypadUp` (0x24 layout differs in this dump) / `JoypadReleased` slot. More likely\n    these are AIData\
+  \ attack-vars slots feeding the AI loop.\n  - If the first u16 of the chosen record is 0xFFFF, it clears BButton\
+  \ (r5+6) to 0 and\n    loops back to retry with BButton=0, ensuring the lookup never returns the sentinel.\n \
+  \ - Returns nothing in r0; the contract's \"out = []\" matches this loader's void style.\n  - The function never\
+  \ calls any helper; all work is direct table walking. It is called\n    only from sub_80A6F78, which the contract\
+  \ shows reads r5/lr and writes r5/r6 - a\n    typical AI per-frame driver that then calls this to (re)load attack\
+  \ vars each turn.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {lr}` and tail `pop {pc}` show a non-returning TailCall-via-LR pattern with no callees; matches
+    a self-contained lookup. - `ldrb r3, [r5,#5]` / `[r5,#4]` / `[r5,#6]` line up with BattleObject offsets: r5+0x4
+    is `Param1`, r5+0x5 is `Param2` (APwrAtk per AIData mapping), r5+0x6 is `Param3` (BButton per AIData mapping).
+    - `off_80A7010` lists 4 sub-table pointers (`byte_8140C68/CA4/CE0/D1C`) and each sub-table is 3 entries, giving
+    a 4 (button) × 3 (variant) attack-stat table. - `cmp r0, #0xff` / `bne` and `strb r0, [r5,#6]` implement the
+    sentinel retry with BButton forced to 0. - Final stores `str r0, [r5,#0x24]` and `str r1, [r5,#0x28]` write
+    the two chosen stats; their slot alignment (0x24, 0x28) matches the BattleObject/AIData fields that the calling
+    AI update reads next.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080A6FDC
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^080a6fdc '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- Exact semantics of the chosen stat (raw damage vs. animation id vs. parameter) is
+- 'not pinned: the table pointers and the 0xFFFF sentinel suggest "end of list", but'
+- the only way to be sure is to read the data at byte_8140C68 / CA4 / CE0 / D1C.
+- Which AIData fields 0x24/0x28 actually correspond to (JoypadPressed vs. some
+- attack-var) is inferred from offsets; the AIData struct lists 0x24=`JoypadPressed`
+- and 0x26=`JoypadUp`, so a u32 write at 0x24 clobbers both. Confirming with
+- callers that read these slots would settle the role.
+- The exact identification of r5 fields (Param1/2/3) as APwrAtk/AIIndex/BButton
+- comes from cross-referencing the AIData macro; verifying against sub_80A6F78
+- would confirm.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7aba4135
+  tool: tools/symdoc.py

@@ -3,28 +3,34 @@ address: '0x080315B8'
 kind: function
 previous_names: []
 status: hypothesis
-summary: Returns 1 if the (r4,r5) and (r3,r2) deltas cross-product *into* a 2x2 cross-shaped hit area defined by
-  a struct passed in r0; otherwise 0.
-interface: (r0 = ptr to a small struct of two u32 pairs; r2,r3,r4,r5 = signed 16.16 coords forming two vectors)
-  -> r0 = 1 if test passes else 0 ; side effects none
-details: "Steps:\n    r6 = r5 - r4          ; r7 = r2 - r3\n    r3 = r3 * r4          ; r2 = r2 * r5\n    r2 = r3\
-  \ - r2          ; cross product (r3,r4) x (r2,r5)? (signed)\n    r3 = [r0]   ; r4 = [r0+4]\n    r5 = r2\n    r3\
-  \ = r3 * r6 ; r4 = r4 * r7\n    r3 = r3 + r4\n    r5 = r5 + r3\n    if r5 > 0 -> r0 = 1 else r0 = 0\n  No callees.\
-  \ Pure leaf. Two memory loads from *r0.\n  Called only from the textbox subsystem chain (`text_setupTextboxAndStartPrint_8031BB2`,\n\
-  \  `textbox_StepAndRefreshWindow_8031BCA`, and a handful of related `sub_8031C2A/1C7C/1C94`\n  wrappers), but\
-  \ the routine itself reads at most 8 bytes and has no chatbox-aware\n  behaviour — the callers are reaching into\
-  \ an AIData-style struct ([r0] and [r0+4]\n  could be the 2x2 AttackVars-style block at oAIData+0xa0). Treat the\
-  \ struct type as\n  unknown.\n"
+summary: Tests whether a character cell (column r4, row r3) inside a chatbox text block at r0 lies inside a non-blank
+  tile using 2D cross-product-style sign tests
+interface: (r0 = chatbox/text-block struct ptr, r1 = ?unused/0x6fd6, r2 = height-in-cells (r5), r3 = ?cell coord
+  (used both as row count and index), r4 = ?cell coord, r5 = width-in-cells (r6)) -> r0 = 1 if hit, 0 if blank;
+  side effects none beyond return value
+details: "Thumb math: r6 = r5 - r4  (signed diff)\n            r7 = r2 - r3\n            r3 = r3 * r4    (low half\
+  \ of MUL)\n            r2 = r5 * r2\n            r2 = r3 - r2    -> r2 = r3*r4 - r5*r2 = r4*r3 - (width)*(row)\n\
+  \  Then loads two 32-bit values from [r0+0] and [r0+4] into r3 and r4,\n  folds r6 (= width - cellX) and r7 (=\
+  \ height - cellY) into them,\n  and adds r2 to the sum. The combined value is compared with 0 (`ble loc_80315D8`\
+  \ => no, else yes).\n  This looks like a 2D half-plane test (\"is point (cellX,cellY) inside rectangle whose opposite\
+  \ corner is (width,height)\")\n  using the determinant (x*Y - y*X), but loaded from the chatbox struct (possibly\
+  \ tile/block descriptors).\n  Two captured calls with r0=0200f3e0 dump bytes 0..0x27 of that struct: first u32\
+  \ = some kind of \"top-left tile index\",\n  second u32 = the matching \"bottom-right tile index\". Other captured\
+  \ calls show r0=0200f3e0 with first/second u32\n  swapped sign (0xffffffff 0x07...), which would make the result\
+  \ positive (= \"inside\") and exit r0=1, matching snap_story2_10..12.\n  Callee list is empty (leaf function);\
+  \ all callers chain through other textbox/text setup helpers.\n  Inputs r0..r5/lr are read; only r0 is written\
+  \ on exit (r2..r7/r4/r5 preserved per contract — they're callee-saved so this is normal).\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- `mul r3,r4`; `mul r2,r5`; `sub r2,r3,r2` is a textbook 2D signed cross product (`r3*r5 - r2*r4`). -
-    Two `ldr` from `r0` and `r0+4`, plus `mul` against the just-computed differences — second inner product / dot-ish
-    sum. - Final `cmp r5,#0; ble 0; mov r0,#1` vs `mov r0,#0` — boolean return (>0 ⇒ true). - Captured-call memory
-    at `[r0 @0200f3e0]` shows two consecutive u32 pairs (`03 00 00 00 08 00 00 00` and `00 00 00 00 ff ff ff ff`/etc.)
-    — exactly the *x0,y0,x1,y1* pattern an AttackVars hitbox would have, but the pointer is EWRAM 0x0200f3e0, not
-    0x0200xxx known AIData slots, so the struct identity is not pinned down. - Caller list (textbox setup/refresh
-    wrappers) is the only way to reach it during story2 captures.'
+  detail: '- `mul r3, r4` / `mul r2, r5` followed by `sub r2, r3, r2` (asm line ~24725) computes r4*r3 - r5*r2 —
+    a 2D cross term - The two `ldr` from `[r0]` and `[r0,#4]` plus the multiplication by `(width-cellX)` and `(height-cellY)`
+    produce (cellX,cellY)''s offset from the bottom-right tile''s coordinate frame. - `cmp r5, #0; ble loc_80315D8;
+    mov r0,#1` vs `mov r0,#0` returns a clean bool — typical "is point inside cell?" helper. - All callers (`text_setupTextboxAndStartPrint_8031BB2`,
+    `textbox_StepAndRefreshWindow_8031BCA`, plus the sub_8031C2A/C2A/C94/7C/C2/5B6 series) are text/textbox-step
+    routines, and r0 in the dumps points to what looks like a chatbox tile-range sub-struct. - Captured exits flip
+    between r0=0 and r0=1 purely based on the sign of the leading u32 word in [r0..3], confirming the test depends
+    only on those two 32-bit fields and the cross term.'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x080315B8
@@ -41,15 +47,14 @@ evidence:
   result: battles2, beastsp, chips, fuzz, maps, story1, story2, story3, story4, story5, story6, story7, story8,
     story9
 open_questions:
-- What struct is at r0 — the captured pointer `0x0200f3e0` doesn't match a documented AIData/BattleState offset
-  cleanly; verifying which global holds it and whether `r0[0]/r0[1]` are ints, fixed-point, or half-words would
-  settle the real semantics (hitbox-in-rect vs. signed-area vs. point-in-quad).
-- Why a chatbox/text setup path calls a 2D-vector test at all — possibly it is being called for the chatbox print-position
-  calculation against the mugshot/box bounds; needs the caller's argument setup to confirm.
+- 'Exact field semantics at [r0] and [r0+4]: likely "tile coord of cell (0,0)" and "tile coord of cell (width,height)",
+  but unconfirmed.'
+- What r1 (0x6fd6) was for — the function never reads it; might be a side context unused here.
+- Whether the result means "draw this cell" or "this cell is inside the dirty rect" — needs caller inspection.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f 4efa6ddc
+  where: bn6f 7aba4135
   tool: tools/symdoc.py
