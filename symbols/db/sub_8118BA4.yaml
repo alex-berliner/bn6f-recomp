@@ -1,0 +1,58 @@
+name: sub_8118BA4
+address: '0x08118BA4'
+kind: function
+previous_names: []
+status: hypothesis
+summary: Tail-call dispatcher that branches on the current submenu state's index (r5->offset 0x8) to one of three
+  Thumb handlers in sSubmenu's state machine
+interface: '(r5 = sSubmenu base pointer (state struct in EWRAM)) -> tail-call; side effects: clobbers r0-r3, r5,
+  lr per handler; Z flag from final r0'
+details: "The function saves lr, loads the global pointer sSubmenu (off_8118BC4) into r6\n  (unused afterwards),\
+  \ loads the dispatch table address off_8118BB8 into r0, and\n  reads the state index from r5 with a 3-byte offset\
+  \ (ldrb r1, [r5,#8]). It\n  indexes the 3-entry table (sub_8118BC8, sub_8118C2C, sub_8118CEC) by that\n  byte,\
+  \ sets lr = pc and bx r0 (Thumb tail-call to the chosen handler+1). The\n  pop {pc} is the classical \"we'll never\
+  \ return\" tail epilogue — this function\n  is never expected to come back; each handler is expected to end with\
+  \ `pop\n  {pc}` itself. The 0x3 offset into r5 (instead of an immediate state struct\n  field) suggests r5 may\
+  \ be a wrapper, but the captured calls show r5 unwinds\n  back to a value used by all 40 callers identically,\
+  \ and the `[r5,#8]` index\n  matches the `idx_00` style field on a SubMenu struct (the SubMenu struct in\n  this\
+  \ project only declares `idx_00` at 0x0; offset 0x8 hints this r5 is\n  actually a larger or different submenu-state\
+  \ struct). The exit r0 = 0x24C\n  in the snapshots is the value left in r0 by whichever handler ran, not\n  something\
+  \ this dispatcher itself produces.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r6, off_8118BC4` loads sSubmenu (its address only consumed as a side effect of the dispatcher;
+    r6 is not reused). - `ldr r0, off_8118BB4` then `ldr r0, [r0,r1]` is the textbook table-of-function-pointers
+    pattern, where r1 = ldrb [r5,#8] is the index. - The table at off_8118BB8 contains exactly three +1 (Thumb-bit-set)
+    words pointing at sub_8118BC8 / sub_8118C2C / sub_8118CEC, matching a small state machine. - `mov lr, pc; bx
+    r0` followed by `pop {pc}` is the canonical Thumb "jump to handler and let it return for us" tail-call; the
+    saved LR is unused because no `bx lr` ever executes. - The contract lists r5 in, and r2/r3/r5 in out — i.e.
+    the handler decides the return shape, consistent with a tail call.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08118BA4
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^08118ba4 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- 'What r5 actually points to: the project''s SubMenu struct only declares'
+- '`idx_00` at offset 0; the read at [r5,#8] implies r5 is either a'
+- SubMenu wrapper, a 0x8-prefixed state struct, or unrelated — identifying
+- the r5 struct would settle the name. Tracing the callers (none listed)
+- to find how r5 is set up before each call would do it.
+- Whether the three callees are init/step/destroy or input-dispatch
+- variants is not visible from this dispatcher alone.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f eb748819
+  tool: tools/symdoc.py

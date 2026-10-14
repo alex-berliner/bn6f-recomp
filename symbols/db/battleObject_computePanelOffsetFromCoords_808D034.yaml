@@ -4,33 +4,31 @@ kind: function
 previous_names:
 - sub_808D034
 status: probable
-summary: Converts 16.16 absolute world (X,Y) returned by sub_808D060 into a packed (panelCol, panelRow)
-  tile offset on a BattleObject, packed back into r2/r3 and stored to the object's PanelX/PanelY
-interface: (r0 = xQ12, r1 = yQ12, r5 = BattleObject*, r10 = Toolkit) -> r2 = (panelCol<<1 | low bit),
-  r3 = (panelRow<<1 | low bit) ; writes [r5+8] and [r5+9] bytes
-details: "Caller (sub_808CFB8) saves incoming r0/r1 (16.16 fixed-point world coords) to the stack, calls\n\
-  \  sub_808D060 to fetch some other coordinate pair (probably the BattleObject's own X/Y in the\n  same\
-  \ 16.16 format; sub_808D060 takes no BattleObject argument but the out contract returns\n  r0/r1), then\
-  \ pops the saved x/y into r3/r4, takes the upper 16 bits (`asr r3, r3, #0x10`) and\n  adds them to sub_808D060's\
-  \ output. The sum is right-shifted by 5 and offset by 0x80, then\n  truncated to bytes (`strb`) stored\
-  \ at offsets 0x8 and 0x9 of the BattleObject struct\n  (which matches `CurState`/`CurAction` location,\
-  \ but more plausibly panel-column/panel-row\n  encoding reused here - note the only other place these\
-  \ offsets get used as panel coords is\n  via `strb` followed by the final `mul/add` packing). The same\
-  \ two byte values are also\n  packed back into r2/r3 as ((col<<1)|(row&1)) / ((row<<1)|(col&1)) using\
-  \ `lsl #1` on the\n  constant 0x80 -> effectively a panel-index encoding.\n  r5 (BattleObject*) is treated\
-  \ as alive (live-out), r10 (Toolkit) is preserved on the stack\n  by the push/pop, but not actually\
+summary: Converts 16.16 absolute world (X,Y) returned by sub_808D060 into a packed (panelCol, panelRow) tile offset
+  on a BattleObject, packed back into r2/r3 and stored to the object's PanelX/PanelY
+interface: (r0 = xQ12, r1 = yQ12, r5 = BattleObject*, r10 = Toolkit) -> r2 = (panelCol<<1 | low bit), r3 = (panelRow<<1
+  | low bit) ; writes [r5+8] and [r5+9] bytes
+details: "Caller (sub_808CFB8) saves incoming r0/r1 (16.16 fixed-point world coords) to the stack, calls\n  sub_808D060\
+  \ to fetch some other coordinate pair (probably the BattleObject's own X/Y in the\n  same 16.16 format; sub_808D060\
+  \ takes no BattleObject argument but the out contract returns\n  r0/r1), then pops the saved x/y into r3/r4, takes\
+  \ the upper 16 bits (`asr r3, r3, #0x10`) and\n  adds them to sub_808D060's output. The sum is right-shifted by\
+  \ 5 and offset by 0x80, then\n  truncated to bytes (`strb`) stored at offsets 0x8 and 0x9 of the BattleObject\
+  \ struct\n  (which matches `CurState`/`CurAction` location, but more plausibly panel-column/panel-row\n  encoding\
+  \ reused here - note the only other place these offsets get used as panel coords is\n  via `strb` followed by\
+  \ the final `mul/add` packing). The same two byte values are also\n  packed back into r2/r3 as ((col<<1)|(row&1))\
+  \ / ((row<<1)|(col&1)) using `lsl #1` on the\n  constant 0x80 -> effectively a panel-index encoding.\n  r5 (BattleObject*)\
+  \ is treated as alive (live-out), r10 (Toolkit) is preserved on the stack\n  by the push/pop, but not actually\
   \ used by this function. Result lives in r2/r3 for the\n  caller, while [r5+8]/[r5+9] keep a side copy.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- `push {r4,r5,lr}` / `push {r0,r1}` saves the world coords; `bl sub_808D060`; `pop {r3,r4}`
-    recovers them - `asr r3, r3, #0x10` and `asr r4, r4, #0x10` extract integer parts of 16.16 fixed-point
-    - `add r0, r0, r3` / `add r1, r1, r4` combine camera/object origin with delta - `asr r0, r0, #5` followed
-    by `add r0, #0x80` matches a typical "convert world pixel >> 5 + 8 (panel centre)" tile coord conversion
-    - `strb r0, [r5,#8]` / `strb r1, [r5,#9]` writes bytes to BattleObject fields at 0x8/0x9 (panel offsets)
-    - final `mov r4, #0x80; lsl r4, r4, #1; mul r2, r4; add r2, r2, r3` packs the two values (panel_col<<1
-    | panel_row_lsb) into r2 - r5 (BattleObject*) appears only in the push/pop and the strb sites, confirming
-    it''s the target struct'
+  detail: '- `push {r4,r5,lr}` / `push {r0,r1}` saves the world coords; `bl sub_808D060`; `pop {r3,r4}` recovers
+    them - `asr r3, r3, #0x10` and `asr r4, r4, #0x10` extract integer parts of 16.16 fixed-point - `add r0, r0,
+    r3` / `add r1, r1, r4` combine camera/object origin with delta - `asr r0, r0, #5` followed by `add r0, #0x80`
+    matches a typical "convert world pixel >> 5 + 8 (panel centre)" tile coord conversion - `strb r0, [r5,#8]` /
+    `strb r1, [r5,#9]` writes bytes to BattleObject fields at 0x8/0x9 (panel offsets) - final `mov r4, #0x80; lsl
+    r4, r4, #1; mul r2, r4; add r2, r2, r3` packs the two values (panel_col<<1 | panel_row_lsb) into r2 - r5 (BattleObject*)
+    appears only in the push/pop and the strb sites, confirming it''s the target struct'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x0808D034
@@ -45,10 +43,10 @@ evidence:
     '
   result: beastsp
 open_questions:
-- Exact semantic of the r2/r3 packed return (panel index? row-major/col-major encoding?) is not directly
-  verifiable without a matching call site that uses it
-- The role of r10 (Toolkit) is preserved but never read here; whether the caller relies on it being preserved
-  is unclear
+- Exact semantic of the r2/r3 packed return (panel index? row-major/col-major encoding?) is not directly verifiable
+  without a matching call site that uses it
+- The role of r10 (Toolkit) is preserved but never read here; whether the caller relies on it being preserved is
+  unclear
 - What sub_808D060 actually returns (camera pos? object home pos?) is unknown from this function alone
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
@@ -61,3 +59,7 @@ changes:
   what: rename sub_808D034 -> battleObject_computePanelOffsetFromCoords_808D034
   where: bn6f 57a30947
   tool: tools/rename_symbol.py
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f eb748819
+  tool: tools/symdoc.py

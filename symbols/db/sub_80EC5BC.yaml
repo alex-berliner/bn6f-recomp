@@ -3,31 +3,33 @@ address: '0x080EC5BC'
 kind: function
 previous_names: []
 status: hypothesis
-summary: Dispatches an AI action based on AIAttackVars Unk_00; if the resulting flag has bits 0x8600 set, calls
-  sub_801056A
-interface: () -> side effects; no caller-visible return values (tail-pops with pop {pc})
-details: "Reads AIAttackVars Unk_00 (a one-byte selector at [r7 + oAIAttackVars_Unk_00]) and uses it\n  to index\
-  \ a 2-entry Thumb dispatch table at off_80EC5E0 (the address of the table is loaded\n  via off_80EC5DC). Each\
-  \ entry is a function pointer with bit0 set (Thumb address). Entry 0\n  is sub_80EC5EC and entry 1 is battle_aiAttackVarsTryResetAndProcessAction_80EC67E\
-  \ (this\n  is the +1 pattern; the code does `mov lr, pc; bx r1` to clear the Thumb bit on dispatch).\n\n  The\
-  \ dispatched callee returns a flags word in r0. The code tests that r0 against\n  dword_80EC5E8 = 0x8600 with\
-  \ `tst r0, r1; beq locret_80EC5DA`. When the test is non-zero\n  (i.e. the result has 0x8600 bits set), it sets\
-  \ r1=0, r2=0 and calls sub_801056A (whose\n  contract expects a \"process action\"-style role on r5 with r1/r2\
-  \ zeroed). Otherwise it\n  returns immediately via `pop {pc}`. Saves and restores lr via push/pop.\n\n  r7 is\
-  \ the toolkit battle-object / AI struct pointer (the \"current battle object\" passed\n  by the AI tick). The\
-  \ function is a thin glue layer between an AI decision flag and the\n  \"try to perform the selected action\"\
-  \ pipeline (sub_801056A). Without more callers or\n  the AI attack vars struct comment for Unk_00, the exact semantics\
-  \ of the dispatch are\n  inferred.\n"
+summary: 'Battle dispatcher that routes based on the AI attack vars index byte: if AIData.Unk_44 matches a known
+  pattern (0x8600), a reset/process action runs; otherwise an alternate handler runs.'
+interface: (r7 = AIData/AIState/AIAttackVars-like struct ptr; r0..r12 = preserved caller state) -> r0 = Tst result
+  state, NZ/C/V flags ; side effects may call into battle action or AI attack vars processors
+details: "1. Pushes lr, then reads off_80EC5DC into r1 (a pointer to an inner table off_80EC5E0).\n  2. Reads an\
+  \ u8 from [r7 + oAIAttackVars_Unk_00] into r0, then loads r1 = [r1 + r0*4] (a function pointer), moves lr to pc\
+  \ and branches with bx, so this is a tail call via table lookup indexed by AIAttackVars byte 0.\n  3. The follow-up\
+  \ `bl GetAIData_Unk_44_Flag` is then evaluated. Note the order in the asm is the index-jump first; the `bl GetAIData_Unk_44_Flag`\
+  \ that appears in the callee listing is the inline `bl` to that helper, whose result is masked with 0x8600.\n\
+  \  4. `tst r0, #0x8600` checks the AI flag mask; if zero, falls through to `locret_80EC5DA` and returns. Otherwise\
+  \ sets r1 = r2 = 0 and calls `sub_801056A`.\n  5. Function returns via `pop {pc}` (Thumb tail/return idiom).\n\
+  \  6. The inner jump table at off_80EC5E0 has entries: sub_80EC5EC+1 and battle_aiAttackVarsTryResetAndProcessAction_80EC67E+1\
+  \ (both +1 to switch to Thumb).\n  7. The dispatch index read is `oAIAttackVars_Unk_00`, an AIAttackVars offset;\
+  \ AIAttackVars lives at AIData+0xa0 (per AIData struct).\n  8. Output registers are entirely caller-saved (`r0..r12,\
+  \ lr`) and `nz/c/v` flags are clobbered, consistent with a void-like dispatcher.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- `ldrb r0, [r7,#oAIAttackVars_Unk_00]` at sub_80EC5BC+0x4 reads the selector byte. - `ldr r1, off_80EC5DC`
-    / `ldr r1, [r1,r0]` is a classic 2-entry dispatch table load. - `mov lr, pc; bx r1` switches to Thumb (callee
-    +1) without going through BL, so LR is preserved for the caller''s eventual return. - `dword_80EC5E8 = 0x8600`
-    mask via `tst r0, r1` decides whether to forward into sub_801056A, mirroring typical "decision resolved -> run
-    action" patterns. - `push {lr} ... pop {pc}` shows this is a leaf-like glue; the tail `pop {pc}` reuses the
-    saved LR to return to the caller. - sub_801056A contract takes r5 (battle object) plus r1/r2 = 0 here, consistent
-    with an "execute the queued AI action with cleared parameters" call.'
+  detail: '- `push {lr}` followed by `pop {pc}` at locret_80EC5DA implements standard Thumb leaf return. - `ldrb
+    r0, [r7,#oAIAttackVars_Unk_00]` then `ldr r1, [r1,r0]` performs a 4-byte-stride function pointer table lookup
+    using r0 as the index into off_80EC5E0. - `mov lr, pc` + `bx r1` performs a tail-call (not a normal `bl`); control
+    transfers into the indexed handler. - `bl GetAIData_Unk_44_Flag` reads a boolean-style flag from AIData offset
+    0x44 and returns it in r0; `ldr r1, dword_80EC5E8 // =0x8600` + `tst r0, r1` masks the result. - `beq locret_80EC5DA`
+    short-circuits when the masked flag is zero, returning immediately. - When non-zero, `mov r1, #0; mov r2, #0;
+    bl sub_801056A` invokes a reset/process-action helper with cleared args. - The off_80EC5E0 table contains exactly
+    two entries (sub_80EC5EC+1 and battle_aiAttackVarsTryResetAndProcessAction_80EC67E+1), confirming an `if/else`
+    between two AI attack handlers indexed by AIAttackVars.Unk_00.'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x080EC5BC
@@ -42,18 +44,15 @@ evidence:
     '
   result: beastsp
 open_questions:
-- Which AIAttackVars Unk_00 value maps to which behaviour (only 2 entries here, and the
-- two callee addresses are named in the disassembly but their bodies are not shown).
-- What 0x8600 represents as a flag combination. The matcher must be a return flag from
-- the dispatched helper, so resolving the helper bodies would settle the meaning.
-- Whether r7 is the toolkit, the current battle object, or the AIData block (the
-- function does not dereference it further; the offset is into AIAttackVars, which is
-- inside AIData, suggesting r7 points at AIData or at the battle object whose AIAttackVars
-- are inlined).
+- Whether the index byte selects between just these two handlers or could index past them (table ends after 2 words,
+  so 0/1 are the valid indices; 2+ would read trailing zeros).
+- The semantic meaning of `0x8600` as a bitmask on AIData.Unk_44 is not described in any struct comment.
+- Which handler covers the "true"/reset branch (sub_80EC5EC) vs the "false" branch (battle_aiAttackVarsTryResetAndProcessAction_80EC67E)
+  needs cross-referencing the two callees; I have not disassembled them here.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f 8d94ac47
+  where: bn6f eb748819
   tool: tools/symdoc.py

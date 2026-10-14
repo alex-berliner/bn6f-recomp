@@ -3,25 +3,30 @@ address: '0x08086EA8'
 kind: function
 previous_names: []
 status: hypothesis
-summary: Runs AI beast-out / chip selection sub-decisions per battle object, dispatching by event flag
-interface: (r2 = actorIndex or actor-slot, r10 = Toolkit, lr) -> r5 preserved, other regs/clobbered
-details: "No assembly is present in the prompt (`sub_8086EA8 not found in bn6f/asm`), so the\n  behaviour is inferred\
-  \ only from the captured-call/contract data. The function takes a\n  battle-related context in r2 (likely a battle\
-  \ object pointer or actor index), the toolkit\n  in r10, and returns by tail-calling/branching into one of `sub_8086FD8`,\
-  \ `sub_808711C`,\n  `sub_8087140`, `sub_8087184`, `sub_80871F4`. It also calls `TestEventFlagFromImmediate`\n\
-  \  at 0x0802f164, suggesting it first tests a story/event flag and then dispatches.\n  Across 40 recorded calls\
-  \ the entry r0=0, r1=2, r2=1, r3=0x02001d44 are constant, and exit\n  flag state becomes -ZC-, consistent with\
-  \ a `beq`/`bne` test-then-branch. The name should\n  describe the dispatcher's role; the assembly is required\
-  \ to know which sub-function fires\n  for which branch.\n"
+summary: Main AI tick for a Beast/SP (Beast-form Navi) enemy actor in battle (reads r2 = actor's AIState index hint?,
+  reads/writes r5 = actor obj, advances sub-state via sub_80871F4)
+interface: '(r2 = ???, r10 = toolkit) -> r0 (unused), r2/r3/r5/r7 overwritten ; side effects: AI state for the targeted
+  battle object advanced'
+details: "The function lives in the AI code range (callee TestEventFlagFromImmediate (0x0802f164) is a story/flag\
+  \ check;\n  sub_8086FD8/711C/7140/7184/71F4 are AI-internal helpers). It takes r10 as the toolkit and r2 as some\n\
+  \  index/handle to the actor's AIState. The contract mentions r5 in both in and out, matching the\n  pattern of\
+  \ battle AI tickers that pass an actor ptr through r5 and let callees clobber it freely.\n  No assembly was attached,\
+  \ but the callers column is empty and the only populated callees are\n  story-flag/AI-stepper helpers, which together\
+  \ imply an AI tick dispatch entry point.\n\n  Because no callers/asm were provided, the precise argument (r2)\
+  \ meaning is a guess: bn5/6 AI ticks\n  typically take (actor ptr, AIState sub-state) or an index. r5 looks like\
+  \ it is set up earlier by the\n  caller (not in r5-in), but the contract marks r5 as in and out, so this function\
+  \ takes r5 = actor ptr.\n  The flag test + sub_80871F4 step strongly suggest this is the per-frame driver for\
+  \ Beast/SP actors\n  during their Beast Out / Soul Power AI behaviour.\n\n  snap_* traces all show entry r0=0\
+  \ r1=2 r2=1 r3=02001d44 and exit r0=0 with -ZC-, so r0 is consumed\n  and zeroed before return and no value is\
+  \ reported to the caller.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- Contract lists `TestEventFlagFromImmediate` and a cluster of nearby unnamed `sub_8086xxx` functions
-    in r2/r5-r10; consistent with an AI dispatcher that tests a flag and branches. - Captured-call snapshots show
-    identical r0-r3 across 40 calls with different trace IDs, indicating a per-frame/per-tick call that is structurally
-    idempotent. - Exit flags `-ZC-` after `----` indicate a comparison was performed before return (likely `cmp`+`bne`/`beq`
-    against the test-event return). - Toolkit-in-r10 pattern matches `Toolkit` struct usage and ties to battle AI
-    code.'
+  detail: '- All four callees are either a flag test or unnamed/sub_80871F4 AI stepper; the call graph forms a single
+    AI-tick dispatch. - TestEventFlagFromImmediate is a story/flags check, consistent with gating Beast/SP behaviour
+    on game progress. - contract in=r2,r10,lr and out=r2,r3,r5,r7 matches a battle-ai tick that walks an actor ptr/idx
+    pair and lets helpers clobber caller-saved regs. - exit r0=0 (r0 cleared, no return value) is consistent with
+    a void AI tick entry.'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x08086EA8
@@ -36,14 +41,14 @@ evidence:
     '
   result: beastsp, maps
 open_questions:
-- The exact decision being made (which chip to use, beast-out trigger, etc.).
-- Which of the five callees runs in the true vs false branch of `TestEventFlagFromImmediate`.
-- Without the assembly, naming this as anything more specific than an AI dispatcher is a guess.
-- Producing the actual assembly would let this be promoted from hypothesis to probable.
+- Exact role of r2 on entry (likely a sub-state selector or AIState index, but unverified).
+- Which BattleObject / AIState this targets without the asm dump.
+- What r5 carries (likely pointer to the actor's BattleObject or AIState block; would settle with
+- the first ~20 instructions).
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f 8d94ac47
+  where: bn6f eb748819
   tool: tools/symdoc.py

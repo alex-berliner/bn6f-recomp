@@ -3,36 +3,31 @@ address: '0x0810CE1A'
 kind: function
 previous_names: []
 status: hypothesis
-summary: AI turn-step for a Navi-controlled battle object that rolls a target row, picks an opponent, and triggers
-  a chip attack.
-interface: '(r0 = BattleObject ptr, r5 = AIData ptr, r7 = ?, r10 = Toolkit) → void ; side effects: writes attack
-  state to the object''s AIData and CollisionData'
-details: "- Entry captures six callee-saved registers (r4/r5/r6/r7/r10/lr), so this is a non-leaf per-actor AI handler;\
-  \ r5 holds the AIData ptr, r10 the Toolkit (consistent with the bn6f convention), and r0 a BattleObject ptr.\n\
-  \  - Calls `GetPositiveSignedRNG` (0x08001532) to drive a probabilistic branch (likely the \"does the AI attack\
-  \ this turn?\" roll) and `battle_pickRandomRowObjectFields_810971A` (0x0810971a) to choose an opponent by panel/row\
-  \ — both confirmed callees with confirmed summaries.\n  - Calls `ifPanelFlagSetFindBattleActorWithCollisionOnPanelXY_80E7486`\
-  \ (0x080e7486) to scan the alive-actor table for someone standing on a flagged panel — the typical \"find a valid\
-  \ target\" step.\n  - Calls `object_getFlag` (0x0801a166) and `object_setAttack0` (0x08011680) on the candidate\
-  \ target, suggesting it reads that actor's collision flags and stamps attack parameters onto them.\n  - Forwards\
-  \ into the two adjacent unnamed functions `sub_810CEAE` (0x0810ceae) and `sub_810CF4A` (0x0810cf4a, hypothesis\
-  \ \"AI handler that selects a battle object's chip and writes the resulting attack parameters to its AIData\"\
-  ). Together these form the offensive-action half of the per-turn Navi AI pipeline: roll → pick row → pick actor\
-  \ → check flag → set attack → hand off to chip-selection.\n  - Exit sets r0=0 and -ZC- (was ----), and writes\
-  \ r1; the captured 40 calls all hit the same entry shape (r0=0x0810ce1b [Thumb low bit, so address 0x0810ce1a],\
-  \ r1=0x20, r2=0xff, r3=0x02038598) from a single caller at 0x0801ba10, i.e. an outer battle-AI dispatcher that\
-  \ calls this once per Navi-controlled battle object per turn.\n"
+summary: AI attack-decision routine that picks a random battle object in the opposing row and fires one of several
+  helper sub-selectors
+interface: '(r0 = AIData base/related ptr?, r1 = 0x20, r5 = battle object, r7 = alliance/alliance-mask?) -> r0 =
+  0 ; side effects: may mutate the chosen battle object (via sub_810CEAE / sub_810CF4A / object_setAttack0) and
+  the RNG state'
+details: 'AI attack-decision routine that picks a random battle object in the opposing row and fires one of several
+  helper sub-selectors.
+
+  '
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- Register contract preserves r5 and r10 across a non-trivial body, matching the AIData-ptr/Toolkit-ptr
-    pattern documented in the project. - Confirmed callees `GetPositiveSignedRNG` + `battle_pickRandomRowObjectFields_810971A`
-    + `ifPanelFlagSetFindBattleActorWithCollisionOnPanelXY_80E7486` + `object_getFlag` together match "AI rolls
-    → picks row → finds an alive enemy on a panel → reads its collision flag". - Confirmed callee `object_setAttack0`
-    writes attack parameters onto the chosen target object. - Adjacent callee `sub_810CF4A` is hypothesised to be
-    the chip-selection step that follows attack-target selection, fitting a two-stage "target → chip" AI pipeline.
-    - 40 captured calls all from a single caller (lr=0x0801ba10), identical entry shape per call, and identical
-    exit state (r0=0, flags -ZC-) — consistent with this being invoked once per actor per turn from a fixed dispatcher.'
+  detail: '- Symbol captured calls all hit story6 files with r0=0x0810ce1b (Thumb+1 entry), r1=0x20, r2=0xff, r3=0x02038598,
+    lr=0x0801ba10 -> the entry r0 in the capture is the return address, so on entry r0 is whatever the caller passed
+    (likely an AIData or related ptr) and r1=0x20 looks like a panel-mask/flag - callee GetPositiveSignedRNG at
+    0x08001532 (RNG advance), battle_pickRandomRowObjectFields_810971A (picks a random object in a battle row and
+    returns id/attribute fields), and ifPanelFlagSetFindBattleActorWithCollisionOnPanelXY_80E7486 (looks up an actor
+    on a panel) — together these strongly suggest "pick a random target/panel and act on it" - callee object_setAttack0
+    at 0x08011680 writes the object''s Attack0 field, consistent with setting up an AI attack - callees sub_810CEAE
+    and sub_810CF4A take this function''s r5 (battle object) and r7 in their contracts, so they are direct follow-up
+    actions on the same target - object_getFlag at 0x0801a166 reads a flag word off the collision data of r5, used
+    to gate behavior - callees all reside in the AI/attack-decision neighborhood (0x0810xxxx region) and chain:
+    random pick -> lookup -> set attack or sub-action - exit r0 is hard 0 across all 40 captured calls and flags
+    are -ZC-, matching a non-error "done" return - in/out lr-only style contract plus callee-save r4-r7,r10 plus
+    written r1,r5 is the standard shape for "mutates state and returns status"'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x0810CE1A
@@ -47,16 +42,16 @@ evidence:
     '
   result: battlesweep, beastsp, story5, story6, story9
 open_questions:
-- The exact battle-state byte read to decide whether to attack (chip-lockout timer at AIData+0x19? anger at AIData+0x34?)
-  is unknown without assembly.
-- Whether r7 holds an alive-actor slot index, a panel coord pair, or something else is not visible from the callee
-  list alone.
-- The role of `sub_810CEAE` (0x0810ceae) versus `sub_810CF4A` (0x0810cf4a) — which is the chip-pick and which is
-  the target-pick — can be tightened by reading either function's body.
+- The exact meaning of the entry r1=0x20 (panel-flag? row mask? attack-id?) is not visible without assembly
+- Whether the function picks an enemy actor, an enemy panel, or a free panel for an attack cannot be told without
+  seeing the captured call's r5/r7 values and the function body
+- Address 0x0810ce1a has no asm file under bn6f/asm, so all naming comes from callee contracts and call-site context
+  only; a decompiled source for this function or a snapshot dump would settle the role of r1 and the row selection
+  logic
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f 8d94ac47
+  where: bn6f eb748819
   tool: tools/symdoc.py

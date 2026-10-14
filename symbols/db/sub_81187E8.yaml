@@ -1,0 +1,54 @@
+name: sub_81187E8
+address: '0x081187E8'
+kind: function
+previous_names: []
+status: hypothesis
+summary: Dispatches the SubMenu's current CurAction through a 3-entry Thumb jump table using the SubMenu object's
+  CurAction byte.
+interface: '(r5 = SubMenu*) -> r0/r1/r2/r3 clobbered by callee ; side effect: jumps to sub_811880C, sub_8118874
+  or sub_8118AA8 based on [r5+8]'
+details: 'Pushes lr only (no locals saved), loads the address of `sSubmenu` into r6 (unused on this path), loads
+  the pointer-to-jump-table base `off_81187F8` (= `off_81187FC`) into r0, indexes it by the CurAction byte at `[r5+8]`
+  (`sub_menu_struct::idx_00`... wait, offset 0x8 of SubMenu is beyond the declared 0x0..0x50 region; the dispatcher
+  is using whatever SubMenu field sits at 0x8), dereferences that pointer to fetch a Thumb function address into
+  r0, then performs `mov lr, pc; bx r0` (no link, so this is a tail-call into the chosen handler). Three handlers:
+  sub_811880C (idx 0), sub_8118874 (idx 1), sub_8118AA8 (idx 2). Returns to caller via `pop {pc}`, which restores
+  the saved lr.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {lr}` / `pop {pc}` at sub_81187E8 / sub_81187E8+6 show it returns to the caller (no body). -
+    `ldrb r1, [r5,#8]` reads an action byte at offset 8 of the object in r5. - The `off_81187FC` table at the bottom
+    lists exactly three Thumb targets (+1 for Thumb bit). - `mov lr, pc; bx r0` is a classic indirect-tail-call
+    pattern (function pointer dispatch). - Captured calls all enter with r5 alive (matches caller convention) and
+    lr=0x080465e0, showing a single hot caller. - Captured-call entry r0 values start at 0x081187e9 (Thumb-bit-set
+    `sub_81187E8+1`), consistent with calls via `bl sub_81187E8+1`.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x081187E8
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^081187e8 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- What SubMenu field is at offset 0x8 — the declared `sub_menu_struct` only shows `idx_00` at 0x0 and stops at 0x50;
+  the dispatcher treats offset 8 as the action selector.
+- Roles of sub_811880C / sub_8118874 / sub_8118AA8 (menu screens, animation phases?). Naming them would settle what
+  the three CurAction values represent.
+- r6 loaded with `sSubmenu` is never touched on this code path; could be a leftover from a previous dispatcher that
+  used it.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f eb748819
+  tool: tools/symdoc.py
