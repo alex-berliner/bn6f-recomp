@@ -1,0 +1,84 @@
+name: battleObject_initSnakeArmMover_80C9024
+address: '0x080C9024'
+kind: function
+previous_names:
+- sub_80C9024
+status: probable
+summary: Initializes a battle object as a Snake-Arm style moving object (loads sprite 0x80/0x14, sets
+  anim 0x0B with no shadow, recomputes panel coords, sets element 5 and front-facing X-velocity, allocates
+  collision data, configures it as alliance slot 4/element 5 and transitions into CUR_STATE_UPDATE).
+interface: '(r5 = BattleObject*) -> void ; side effects: sets r5->CurAnim = 0x0B, r5->Element = 5, r5->XVelocity
+  = +1/-1 facing, allocates and initializes a CollisionData block linked to r5, sets r5->CurStateActionPhaseAndPhaseInitialized
+  = CUR_STATE_UPDATE'
+details: '1. sprite_load(r5, 0x80, 0x14, 5): loads the sprite for the object using sprite-id 0x14 with
+  a 0x80-flavored header/palette.
+
+  2. r5->CurAnim = 0x0B via strb + sprite_setAnimation: chooses animation 11.
+
+  3. sprite_loadAnimationData + sprite_noShadow + sprite_update: brings the sprite online, disables the
+  shadow, and runs one update so the first frame is valid.
+
+  4. object_setCoordinatesFromPanels: recomputes X/Y from current PanelX/PanelY.
+
+  5. object_getFrontDirection result is stored into r5->XVelocity, so the object starts moving toward
+  the enemy line at panel-step speed.
+
+  6. r5->Element = 5 (Aqua, per the BattleObject Element enum convention; the code uses the raw value
+  5).
+
+  7. object_createCollisionData: if it returns NULL (tst r0,r0 / bne), the object is freed via object_freeMemory
+  and the function returns — the standard "no collision slot" early-out.
+
+  8. Otherwise object_setupCollisionData(r0, 1, 5, 0): fills the new CollisionData with r5''s element/region
+  data; the constant 1 is written into collision-type byte 0x4 (Alliance = 1) and 5 into PrimaryElement.
+
+  9. object_presentCollisionData: primes the just-built collision block.
+
+  10. Writes CUR_STATE_UPDATE (0x04) into the combined CurStateActionPhaseAndPhaseInitialized field, so
+  the object is immediately active in the update phase.
+
+  The constant set (sprite 0x14, anim 0x0B, element 5, alliance slot 1 with collision 4) is consistent
+  with a "snake/arm" sub-boss (e.g. the underwater virus pattern in BN6), but only the init pattern itself
+  is grounded in the asm; the in-game role is inferred.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mov r0, #0x80; mov r1, #0x14; mov r2, #5; bl sprite_load` loads sprite id 0x14 with palette
+    header 0x80 and a parameter of 5. - `mov r0, #0xb; strb r0, [r5,#oBattleObject_CurAnim]; bl sprite_setAnimation`
+    writes anim 11 (0x0B) at offset 0x10. - `bl sprite_noShadow` is the confirmed "no shadow" setter,
+    so the object deliberately renders without a shadow. - `bl object_setCoordinatesFromPanels; bl object_getFrontDirection;
+    str r0, [r5,#oBattleObject_XVelocity]` writes the +1/-1 facing multiplier into XVelocity (offset 0x40).
+    - `mov r0, #5; strb r0, [r5,#oBattleObject_Element]` sets Element (offset 0x0E) to 5. - `bl object_createCollisionData;
+    tst r0, r0; bne loc_80C9060; bl object_freeMemory; pop {pc}` is the standard "fail → free the object"
+    guard. - `mov r1, #4; mov r2, #5; mov r3, #0; bl object_setupCollisionData` fills the collision block
+    with alliance slot 4, element 5, region 0; the `5` matches r5->Element. - `bl object_presentCollisionData`
+    runs the present-collision refresh. - `mov r0, #CUR_STATE_UPDATE; str r0, [r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized];
+    pop {pc}` sets the CUR_STATE_UPDATE (0x04) value in the combined offset 0x08. - Captured calls show
+    lr=0x080c9008, meaning a caller at 0x080c9008 jumps into the function at the +1 offset; consistent
+    with a Thumb `bl` + 4 tail pattern.'
+  refs:
+  - bn6f/asm/asm31.s
+  reproduce: 'python3 tools/asmcat.py 0x080C9024
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_initSnakeArmMover_80C9024
+
+    '
+open_questions:
+- The exact in-game identity of this battle object (which enemy/Navi it represents) is not pinned down
+  by the asm alone — only the init constants are. Cross-referencing sprite id 0x14 / anim 0x0B in the
+  sprite table would confirm the visual.
+sources:
+- discovery session 2026-10-14 batch 38 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7db59311
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80C9024 -> battleObject_initSnakeArmMover_80C9024
+  where: bn6f 1a2beb61
+  tool: tools/rename_symbol.py

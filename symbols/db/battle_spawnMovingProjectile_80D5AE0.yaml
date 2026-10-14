@@ -1,0 +1,60 @@
+name: battle_spawnMovingProjectile_80D5AE0
+address: '0x080D5AE0'
+kind: function
+previous_names:
+- sub_80D5AE0
+status: probable
+summary: Initializes a battle object's position/sprite/collision and seeds its X-velocity from a Param1
+  table; runs when the object's state reaches CUR_STATE_UPDATE.
+interface: '(r5 = oBattleObject, r10 = oToolkit) -> void ; side effects: writes multiple fields on the
+  object, allocates a collision slot, schedules a sub-routine.'
+details: "- `object_setCoordinatesFromPanels` is called first to recompute the pixel X/Y from the\n  object's\
+  \ panel coordinates.\n- Z coordinate is then forcibly set to `0x19` via `strh r0, [r5,#oBattleObject_Z16]`.\n\
+  - The X position is shifted by `object_getFrontDirection() * 0xF` (a +1/-1 multiplied by\n  15 pixels,\
+  \ likely to spawn the object just outside the actor in its facing direction).\n- The sprite is loaded\
+  \ via `sprite_load(0x80, 0x33, 0xC)`, shadow turned on (`sprite_hasShadow`),\n  and `OBJECT_FLAG_VISIBLE`\
+  \ is OR-ed in (`ldrb/orr/strb` at oBattleObject_Flags).\n- Anim 0 is selected for both CurAnim fields\
+  \ and animation data is loaded.\n- Palette index = `Alliance XOR 1` (so enemies use one palette, friendlies\
+  \ the other).\n- Sprite flip is set from `object_getFlip`.\n- A collision slot is allocated; if allocation\
+  \ fails the object is freed and the function\n  returns (`object_freeMemory` then `pop {pc}`).\n- Collision\
+  \ data is set up with parameters (6, 5, 1) and `object_setCollisionHitEffect(6)`;\n  `object_presentCollisionData`\
+  \ is invoked.\n- The X-velocity is computed as a `mul` of `object_getFrontDirection()` by a value pulled\
+  \ from\n  a 4-byte table indexed by `Param1 << 2` (table at `byte_80D5B74` containing velocities\n \
+  \ 0x00000005, 0x80000500, 0x00000600, 0x80000600).\n- The X velocity and `ExtraVars` are written, `sub_80D5C26`\
+  \ is called and its return is stored\n  into `Timer`, and the state is set to `CUR_STATE_UPDATE` (=4)\
+  \ so the object's main\n  handler runs next tick.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: "- `strh r0, [r5,#oBattleObject_Z16]` with r0=0x19 forces Z16 directly. - `bl object_setCoordinatesFromPanels`\
+    \ immediately after the push to recompute X/Y from panels. - `mul r0, r1` (r1=0xF) after `object_getFrontDirection()`\
+    \ shows ±1×15 px offset to X. - `orr r0, r1` (r1=2) writing `oBattleObject_Flags` is `OBJECT_FLAG_VISIBLE`.\
+    \ - `strh r0, [r5,#oBattleObject_Timer]` after `bl sub_80D5C26` stores that sub's return. - `ldr r2,\
+    \ off_80D5B70` + `ldrb r1, [r5,#oBattleObject_Param1]` + `lsl r1, r1, #2`\n  + `ldr r1, [r2,r1]` indirection\
+    \ through Param1-indexed table `byte_80D5B74`.\n- `str r0, [r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]`\
+    \ with\n  `CUR_STATE_UPDATE (=4)` advances the object out of init."
+  refs:
+  - bn6f/asm/asm31.s
+  reproduce: 'python3 tools/asmcat.py 0x080D5AE0
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battle_spawnMovingProjectile_80D5AE0
+
+    '
+open_questions:
+- What `sub_80D5C26` computes and stores into `Timer` (an init-derived timer? a random number? a delay
+  before next phase?), and what each Param1 entry of `byte_80D5B74` is semantically — table looks like
+  packed speed * direction (5 / 0x80000500 could be "speed 5, left-facing signed high bit"). Settling
+  it requires checking callers and matching Param1 values used to spawn this object type.
+sources:
+- discovery session 2026-10-14 batch 38 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7db59311
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80D5AE0 -> battle_spawnMovingProjectile_80D5AE0
+  where: bn6f 1a2beb61
+  tool: tools/rename_symbol.py

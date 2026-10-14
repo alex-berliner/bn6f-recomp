@@ -3080,14 +3080,14 @@ Next sub_80C5E44(void) {
     R0 = action;
     R1 = handler;
     switch (action) {
-    case 0:  GUEST_CALL(sub_80C5E84); break;
+    case 0:  GUEST_CALL(battleObject_panelBreakEffectTimer_80C5E84); break;
     default: GUEST_CALL(sub_80C5F0C); break;
     }
     GUEST_CALL(object_presentCollisionData);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80C5E84 ── */
+/* ── battleObject_panelBreakEffectTimer_80C5E84 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r1, r2, r3; } call_object_highlightPanel_result;
 /* register form: generated wrapper: object_highlightPanel has no typed C interface yet */
@@ -3191,7 +3191,7 @@ static inline call_object_clearCollisionRegion_result call_object_clearCollision
     return (call_object_clearCollisionRegion_result){ R1 };
 }
 
-/* sub_80C5E84: per-frame handler for the "highlight → teleport" battle-object action.
+/* battleObject_panelBreakEffectTimer_80C5E84: per-frame handler for the "highlight → teleport" battle-object action.
  * While the timer's bit 2 is clear it repaints the panel highlight; once the timer
  * expires it either swaps to a teleport sprite (success) or aborts (destroy).
  * Returns the final value of R1 (output). R5/R10 are preserved by the callees. */
@@ -3267,8 +3267,8 @@ static u32 battle_highlight_teleport(u32 obj) {
     return r1;
 }
 
-/* sub_80C5E84(r5 = battle object pointer) -> r1 */
-Next sub_80C5E84(void) {
+/* battleObject_panelBreakEffectTimer_80C5E84(r5 = battle object pointer) -> r1 */
+Next battleObject_panelBreakEffectTimer_80C5E84(void) {
     R1 = battle_highlight_teleport(R5);
     RETURN_TO_CALLER();
 }

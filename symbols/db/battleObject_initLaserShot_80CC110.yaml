@@ -1,0 +1,91 @@
+name: battleObject_initLaserShot_80CC110
+address: '0x080CC110'
+kind: function
+previous_names:
+- sub_80CC110
+status: probable
+summary: 'Initializes a laser-tracer battle object: places it on its panel, loads its sprite/animation/palette,
+  sets flip, installs collision data, and transitions to its first action phase.'
+interface: '(r5 = battle object, r8 = ?, r10 = toolkit, lr = return) -> r0 = collision-data-pointer-or-0
+  ; sets nz/cv ; side effects: many battle-object fields, IWRAM collision slot, sprite load'
+details: '1) Recomputes pixel X/Y from current panels via object_setCoordinatesFromPanels.
+
+  2) Stores 0x28 (40) into oBattleObject_Z16 (halfword Z fixed-point hi), and adds 1 to oBattleObject_Z
+  and oBattleObject_Y (so Y/Z are bumped one panel up).
+
+  3) sprite_load(0x80, 0x10, 0x2A) — spriteId 0x80, args 0x10/0x2A.
+
+  4) sprite_noShadow on the object; sets OBJECT_FLAG_VISIBLE (flag 0x02) into oObjectHeader_Flags.
+
+  5) Zeros oBattleObject_CurAnim (0x10) and oBattleObject_CurAnimCopy (0x11), then sprite_setAnimation(0)
+  and sprite_loadAnimationData and sprite_update.
+
+  6) sprite_setPalette(0) (palette 0).
+
+  7) object_getFlip / sprite_setFlip propagate horizontal facing.
+
+  8) Reads oBattleObject_Param1 (= Param1 of battle object, byte 0x4) and uses it <<2 as index into byte_80CC0D8
+  (the dispatch table at off_80CC4BC). The fetched u32 is stored into oBattleObject_DamageAndStaminaDamageCounterDisabler
+  (offset 0x2C) — i.e., a per-Param1 damage/stamina/double/...word packaged into the battle object.
+
+  9) object_createCollisionData tries to allocate a collision-data slot. If 0 returned, object_freeMemory
+  is called and the function returns early (no sprite init beyond what already happened — but sprite was
+  already drawn).
+
+  10) When allocated: object_setupCollisionData(r5=r5_tied_object?, 0xC=slefType?, 0xD=target?, r3=3=timeStop?).
+
+  11) object_setCollisionHitEffect(6) → hit effect kind 6 on the new collision data.
+
+  12) object_clearCollisionRegion / object_presentCollisionData refresh collision state.
+
+  13) Writes 0 to oBattleObject_Param4 (offset 0x7), copies current PanelX/Y into FuturePanelX/Y, and
+  sets oBattleObject_CurStateActionPhaseAndPhaseInitialized = 4 (CUR_STATE_UPDATE? Or initializer phase=4?
+  Note: CurState is at 0x8; the .org at 0x8 says it stores 4 into a single u32 — that is CurState=4 =
+  CUR_STATE_UPDATE, CurAction=0, CurPhase=0, PhaseInitialized=0.)
+
+  The CurState=4 result suggests this initializes an object whose sprite corresponds to a "shot"/"bullet"
+  object (no HP/timer, action phase 0, no movement), scheduled to enter the standard update phase. The
+  0x28 height, +1 panel Y/Z offset, and shadowless sprite are consistent with a laser beam/tracer segment.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- 0x080cc110 sets 0x28 at oBattleObject_Z16 and increments both Y and Z by 1 (after sprite
+    load 0x80 0x10 0x2A) — a tracer/laser shot is drawn one panel up. - The damage-and-stamina word is
+    loaded from a tiny dispatch table at off_80CC4BC (=byte_80CC0D8) keyed by Param1 — switching by some
+    external parameter suggests several variants of one attack. - The collision self/target types are
+    0xC/0xD; time-stop bit 0x3 is OR-ed in via r3=3 in object_setupCollisionData. - HitEffect 6 (object_setCollisionHitEffect(6))
+    and the lack of HP/Timer state (no HP write here) are characteristic of a non-living "shot" hitbox.
+    - CurState=4 written as a single u32 to 0x8 marks the object as having finished initialization and
+    entered CUR_STATE_UPDATE. - Initialization must precede CUR_STATE_UPDATE, so this routine is the init
+    handler for the spawner at 0x080CC486 (the unnamed caller), which itself is the per-frame/action dispatcher
+    for this object. - The single caller sub_80CC486, plus the absence of HP/MaxHP writes, supports the
+    "init" hypothesis: a separate handler presumably handles per-frame movement.'
+  refs:
+  - bn6f/asm/asm31.s
+  reproduce: 'python3 tools/asmcat.py 0x080CC110
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_initLaserShot_80CC110
+
+    '
+open_questions:
+- What actor class uses sprite id 0x80 and palette 0 — without seeing the sprite archive this stays "laser/beam"
+  inferred from the per-panel Z bump and lack of HP fields.
+- What the byte at byte_80CC0D8 entries actually encode (the meaning of the u32 stored at DamageAndStaminaDamageCounterDisabler
+  is opaque from this routine alone).
+- Whether sub_80CC486 is the spawner factory or the per-frame action dispatcher; confirming it would pick
+  a precise name (init vs. action).
+sources:
+- discovery session 2026-10-14 batch 38 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7db59311
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80CC110 -> battleObject_initLaserShot_80CC110
+  where: bn6f 1a2beb61
+  tool: tools/rename_symbol.py

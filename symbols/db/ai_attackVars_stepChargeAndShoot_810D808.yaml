@@ -1,0 +1,66 @@
+name: ai_attackVars_stepChargeAndShoot_810D808
+address: '0x0810D808'
+kind: function
+previous_names:
+- sub_810D808
+status: probable
+summary: Ticks a charged-beam attack timer in AIAttackVars, plays the windup/recoil anims, and spawns
+  the projectile once the timer expires.
+interface: (r4 = AIDataPtr, r5 = BattleObjectPtr, r7 = AIAttackVarsPtr, r10 = ToolkitPtr) -> r0 = remaining
+  windup frames (or final state); writes AIAttackVars fields, BattleObject.CurAnim, CollisionData flag,
+  and a child battle object via sub_80C5578.
+details: 'On entry r4=AIData, r5=BattleObject, r7=AIAttackVars, r10=Toolkit. First visit (Unk_01==0) primes
+  the attack: sets the already-firing latch to 1, raises OBJECT_FLAGS_UNK_BIT_22 on the BattleObject via
+  object_setFlag1, sets Unk_12 (a u16 windup timer) to 0x26 (38 frames), changes CurAnim to 1 (charge
+  anim), arms a 0x1e (30) frame counter via object_setCounterTime, and if AIAttackVars.Unk_28 points at
+  a non-null script, writes 5 to its +0x10. Each call then decrements Unk_12; when it hits zero, builds
+  a packed spawn descriptor (r4) by ORing in [AIData_Version_16]:8 with (Unk_0c-1)<<8, 1<<24 (the "fire"
+  bit, OBJECT_FLAGS_USING_ACTION), and Unk_10 from AIAttackVars. It reads object_getFrontDirection to
+  know which side the actor faces, computes the front panel as (panelX + facing, panelY), sets Unk_0e=1,
+  advances CurAnim to 2 (recoil/attack anim), reloads the optional script latch (battle_ResetObjectTimerTo8_80C4072
+  then clears Unk_28), stores 1 into the AIAttackVars handle at Unk_30, and calls sub_80C5578 with (panelXfront,
+  panelY, 1, Damage=r6, scratchPtr=r7=r7[0x30]) to spawn/handle the projectile. While Unk_12 % 4 != 0,
+  calls highlightPanelIfSomeCondition_8109660 with the same front panel coords plus (Alliance ^ DirectionFlip)
+  and Unk_0d so the cursor blinks on the firing panel.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- "ldrb r0,[r7,#oAIAttackVars_Unk_01]; cmp r0,#0; bne loc_810D836" is the first-call latch
+    primed by writing 1 back. - "lsl r0,r0,#OBJECT_FLAGS_UNK_BIT_22_BIT; bl object_setFlag1" sets the
+    pre-fire collision flag bit 22. - "strh r0,[r7,#oAIAttackVars_Unk_12]" with #0x26 stores 38 as the
+    windup counter; the subsequent sub #1 / strh / bne loc_810D892 loop is the per-frame tick. - "strb
+    r0,[r5,#oBattleObject_CurAnim]" with #1 (charge) and later #2 (recoil) show the two anim phases (0x10/0x11
+    of BattleObject). - "bl object_setCounterTime" with #0x1e arms the 30-frame timeout on the BattleObject.
+    - "orr r4,r0 / ldrh r0,[r7,#oAIAttackVars_Unk_10]; orr r4,r0" packs AIData.Version_16, (Unk_0c-1)<<8,
+    1<<24 (USING_ACTION), and Unk_10 into r4 before the spawn. - "bl object_getFrontDirection; ldrb r1,[r5,#oBattleObject_PanelX];
+    add r0,r0,r1" computes the panel in front of the actor. - "ldr r6,[r7,#oAIAttackVars_Damage]; ldr
+    r7,[r7,#oAIAttackVars_Unk_30]; bl sub_80C5578" passes Damage and the handle at Unk_30 as the scratch/spawn
+    argument pair. - "bl battle_ResetObjectTimerTo8_80C4072 ... str r0,[r1]" clears Unk_28 and writes
+    1 into Unk_30 to mark the projectile created. - The tail "tst r0,#4 / bne locret_810D8B0" gates highlightPanelIfSomeCondition_8109660
+    to a 4-frame strobe on Unk_12.'
+  refs:
+  - bn6f/data/dat31.s
+  reproduce: 'python3 tools/asmcat.py 0x0810D808
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): ai_attackVars_stepChargeAndShoot_810D808
+
+    '
+open_questions:
+- The exact bit meaning of the packed u32 passed to sub_80C5578 (chip/element vs facing) and what sub_80C5578
+  does with it; identifying sub_80C5578 would confirm this is the projectile-spawn entry. The Unk_28 pointer's
+  owner (a script struct of unknown size) is also unmapped.
+sources:
+- discovery session 2026-10-14 batch 38 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7db59311
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_810D808 -> ai_attackVars_stepChargeAndShoot_810D808
+  where: bn6f 1a2beb61
+  tool: tools/rename_symbol.py

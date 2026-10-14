@@ -1,0 +1,69 @@
+name: battle_initChipSelectTurn_8027E2C
+address: '0x08027E2C'
+kind: function
+previous_names:
+- sub_8027E2C
+status: probable
+summary: Initializes the chip-select active-state (12 active-chip records), updates beast-out counter,
+  and sets up the first row of selectable chips from the folder.
+interface: '() -> r0 = 0x0b ; side effects: clears 0x90 bytes at the active-chip array, rewrites the beast-out
+  counter byte, resets record slots, writes to r4+4 and r5+6.'
+details: '- r5 is the caller''s battle object pointer; r10 is the toolkit. The function gets the active-chip
+  entry table (12-byte records indexed by an active-chip-slot id) via getLocOfActiveChips_8027E1C(0),
+  then zero-fills 0x90 bytes (12 records) at that address, exactly matching the per-battle-record layout
+  (see resetBattleRecordSlots_8027E90).
+
+  - battle_updateBeastOutCounter_802A40C + resetBattleRecordSlots_8027E90 then repopulate the records,
+  with `eS20364C0.Unk_17` (or whatever ends up at the caller''s offset+4) being forced to 1 when a battle-mode
+  byte is non-zero — i.e. "flag the first chip slot as taken" when not in the canonical battle mode.
+
+  - Reads `eBattleState_Unk_0d` and compares with r5+0x10/0x15; if they differ it calls sub_8015B5C (an
+  emotion-with-mood overload), otherwise the standard callPossiblyGetBattleEmotion_8015B54 path.
+
+  - sub_8027F10 + battle_spawnMirrorFacingHelper_80280E0 + selectChipTableEntryIntoActiveSlot9_80280A2
+  + sub_8027F42 + table_findFirstOccupiedEntry_8028050 + folder_findFirstChipWithFlag_802806C fill in
+  the rest of the per-turn state (mirror helper, chip-table entry, first-occupied-row select, and shield/pickup
+  flag).
+
+  - Returns 0x0b in r0 across all 13 captured callsites; this is the post-init battle-subsystem phase
+  id for chip-select.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- Captured callsites all enter with r0=0x1e/0x1c (battle subsystem id), r1=0xffff, r2=address
+    of a toolkit/BattleState struct, r3=0/2; r5 is a battle object pointer and exits with r0=0x0b. - `bl
+    getLocOfActiveChips_8027E1C` with r0=0 selects the 0th 12-byte record in the active-chip records;
+    `bl ZeroFillByWord` with r1=0x90 clears exactly 12 of those records. - `bl resetBattleRecordSlots_8027E90`
+    is the standard post-init for those 12 records and matches the post-zero state. - `bl battle_updateBeastOutCounter_802A40C`
+    writes the turn-counter at r5+6 — observed `ldrb r6,[r5,#6]` between the two `bl`s. - `mov r0,#1;
+    strb r0,[r4,#4]` is taken when `eBattleState_Unk_17` is non-zero, flagging the first chip as taken
+    (entry+4 = first record''s slot flag). - `cmp r1,#0; cmp r1,r2` against r5+0x10/0x15 is the route-select
+    guard for the two emotion wrappers (sub_8015B5C vs callPossiblyGetBattleEmotion_8015B54). - `bl selectChipTableEntryIntoActiveSlot9_80280A2`
+    aligns with copying the table entry into slot 9 of the active-chip records. - `bl folder_findFirstChipWithFlag_802806C`
+    and `bl table_findFirstOccupiedEntry_8028050` complete the row/cursor selection.'
+  refs:
+  - bn6f/asm/asm03_0.s
+  reproduce: 'python3 tools/asmcat.py 0x08027E2C
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battle_initChipSelectTurn_8027E2C
+
+    '
+open_questions:
+- The exact meaning of `r5+0x10` vs `r5+0x15` (route/side chosen flag) and which sub_8015B5C vs standard
+  emotion path it actually chooses per call would need runtime profiling. The r4+4 "flag first chip taken
+  when battle-mode byte non-zero" reading is inferred from the only branch in this block.
+sources:
+- discovery session 2026-10-14 batch 38 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7db59311
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8027E2C -> battle_initChipSelectTurn_8027E2C
+  where: bn6f 1a2beb61
+  tool: tools/rename_symbol.py

@@ -1,0 +1,71 @@
+name: battleObject_updateColorShader_8016860
+address: '0x08016860'
+kind: function
+previous_names:
+- sub_8016860
+status: probable
+summary: Recolor a battle object's sprite as a warm/cool gradient depending on its navi version.
+interface: '(r5 = BattleObjectPtr, r10 = ToolkitPtr) -> r0 = 0 ; side effects: writes the object''s high-nibble
+  sprite color shader via sprite_setColorShader.'
+details: 'Reads the object''s alliance navi-stats byte at offset 0x2c (NaviStats.Transformation-ish? here
+  called via GetBattleNaviStatsByte_AllianceFromBattleObject); if that version byte is in [0x17, 0x18]
+  the function exits without touching the sprite.
+
+  Otherwise it checks that r5->CurAction != 0 and != 0x56 and that object_getFlag has bit 0x08 set (this
+  is OBJECT_FLAGS_INVIS, 0x00000002 — wait the constant 8 in code means bit 0x08; reread: object_getFlag
+  returns the first flags dword, `tst r0, #8` is OBJECT_FLAGS_AIRSHOE), so this only recolors an acting
+  AirShoe''d object.
+
+  When eligible it picks one of two palettes depending on GetBattleMode: r4 = 0 (player/non-battle) if
+  mode==1, otherwise r4 = 5 (enemy/other). It then indexes a 24-entry table at byte_80168A8 with `(oBattleState->Unk_40
+  & 0x1f)` as the table index (battle_getStateUnk40_800A704). The picked value is left-shifted by r4 and
+  stored as the color shader for the selected sprite block of r5 (sprite_setColorShader r0=selected-sprite-from-r5).
+
+  The `byte_80168A8` table is a smooth 0..30 ramp (0,2,4,...,0x1E,0x1E,0x1C,...,0), used so the player''s
+  block is tinted cool and the enemy''s block warm (or vice versa) based on the Unk_40 counter; this looks
+  like the "alive battlefield tinting"/shadow-tint animation that runs during a turn.
+
+  Stores nothing in r0 for callers (sets r0 = 0 right before one branch''s pop, but the very last pop
+  ignores r0; treat as `void`).
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mov r1, #0x2c ; bl GetBattleNaviStatsByte_AllianceFromBattleObject` reads version/0x2c field
+    from the alliance''s NaviStats. - `cmp r0, #0x17 / blt / cmp r0, #0x18 / ble locret` gates behaviour
+    to all non-(0x17/0x18) version values (per AIData.Version_17, anything other than transformations
+    0x17/0x18). - `ldrb r0, [r5,#oBattleObject_CurAction]; cmp r0, #0; beq locret ; cmp r0, #0x56 ; beq
+    locret` skips when CurAction is 0 or 0x56. - `bl object_getFlag ; tst r0, #8` requires bit 0x08 (OBJECT_FLAGS_AIRSHOE)
+    of object collision flags. - `bl GetBattleMode ; cmp r0, #1 ; bne ; mov r4, #0` chooses r4=0 when
+    battle mode == 1, r4=5 otherwise; combined with the `lsl r0, r4` the shader is multiplied by 1 vs
+    32, i.e. placed in the bottom vs upper bits of the shader byte for the chosen sprite block. - `bl
+    battle_getStateUnk40_800A704 ; mov r1, #0x1f ; and r0, r1 ; ldr r1, off_80168A4 ; ldrb r0, [r1,r0]`
+    indexes the 24-byte gradient table at 0x80168A8 with `(oBattleState.Unk_40 & 0x1f)`. - Final `bl sprite_setColorShader`
+    is the only side-effect callee. - Callers `ai_eventuallyRunsAIAttack_801AF44` and `battle_801B1C4`
+    both pass r5/r10, matching this contract.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08016860
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_updateColorShader_8016860
+
+    '
+open_questions:
+- 'Exact semantics of byte_80168A8 and r4 bits: it could equally mean "temperature tint" or "battlefield
+  blue/orange tint", tied to whether the r5 object is the controlled navi versus an enemy.'
+- Whether the 0x2c byte is NaviStats.Transformation (0x2c) or some AIData field is not fully clear from
+  this function alone.
+sources:
+- discovery session 2026-10-14 batch 38 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7db59311
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8016860 -> battleObject_updateColorShader_8016860
+  where: bn6f 1a2beb61
+  tool: tools/rename_symbol.py

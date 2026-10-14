@@ -2520,7 +2520,7 @@ Next sub_811BD88(void) {
 
     ST32(R5 + 0xC, R0);
 
-    GUEST_CALL(sub_811BE1C);
+    GUEST_CALL(petSprite_setVisualForSelectedNavi_811BE1C);
 
     R0 = 4;
     ST8(R5 + 8, R0);
@@ -2598,7 +2598,7 @@ Next sprite_setPositionByStructIndex_811BDFC(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_811BE1C ── */
+/* ── petSprite_setVisualForSelectedNavi_811BE1C ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r4, r5, r6; } call_initGuiSprite_8002770_result;
 /* register form: generated wrapper: initGuiSprite_8002770 has no typed C interface yet */
@@ -2759,7 +2759,7 @@ static u32 init_pet_navi_sprite(u32 slot_index, u32 sprite_record, u32 r3_in) {
     return call_sprite_setCoordinates((u32)(s32)x, (u32)(s32)y, sprite_record).r3;
 }
 
-Next sub_811BE1C(void) {
+Next petSprite_setVisualForSelectedNavi_811BE1C(void) {
     R3 = init_pet_navi_sprite(R0, R5, R3);
     RETURN_TO_CALLER();
 }

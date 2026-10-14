@@ -1,0 +1,91 @@
+name: cutscene_runIntroStateMachine_8083DF0
+address: '0x08083DF0'
+kind: function
+previous_names:
+- sub_8083DF0
+status: probable
+summary: Per-frame state machine that drives a cutscene/intro animation (states 0–4, then terminate),
+  gating start on event flags and the overworld busy flag, and clearing a large set of related event flags
+  when finished.
+interface: () -> r0 = 0/1 (continuation flag for the caller's "still active" check); no other args used.
+details: 'Loads a pointer `r5` from `off_8083C38` which is the cutscene/intro state struct (one byte `State`
+  at +0, plus several byte/halfword counters at +2,+7,+8,+0x12,+0x14,+0x16).
+
+
+  Entry guards — sets EVENT_4FD if either cutscene sentinel script is active (L-Message at 8036F40, "AskJackOut"
+  at 8036F58) OR if the OW player is busy (`owPlayer_isBusyOrCutsceneActive_809E462` returns NZ). In that
+  case it also calls `struct_copy_80840C4` and returns 1.
+
+
+  Otherwise it clears EVENT_4FD and only proceeds if EVENT_4EB is NOT set (acts as "intro complete" sentinel).
+
+
+  State machine (`State` at r5+0):
+
+  - 0 → calls `sub_80842D8` then `sub_8084180`, increments State, calls `reqBBS_setFlag_e17b0f7_8140A00`
+  (sets BBS event flag 0x17:0x7).
+
+  - 1 → counts down two halfword timers at +0x14 and +0x16 (sub-second and second-stage timers), driving
+  `sub_8083F80` and `load_gfx_anim_8083FC0`; when +0x16 reaches 0 sets +2 to 0 and advances to state 2.
+
+  - 2 → sets EVENT_PET_DISABLED, EVENT_1739, EVENT_4FF; primes a 0x5A timer at +0x14, clears +8, runs
+  `sub_8084214`, advances to state 3.
+
+  - 3 → counts down +0x14 timer, calling `sub_8084080` each frame until 0, then advances to state 4.
+
+  - 4 → writes 0x28 to +0x12, writes 4 to +7, writes 2 to +8, sets State to 5 (overlapping a "fallthrough"
+  at 8083EAE).
+
+  - 5+ → counts down +0x12 timer calling `load_gfx_anim_8083FFC` until 0.
+
+
+  Termination (`loc_8083ED4`): calls `load_gfx_anim_8084068`, writes 2 to +8, zeros +0,+1,+2,+3,+7, and
+  clears the full bundle of flags — EVENT_PET_DISABLED, EVENT_1739, EVENT_4E9, EVENT_4EB, EVENT_1700,
+  EVENT_4FB, EVENT_4FF — plus `reqBBS_clearFlag_8140A0C`, then returns 0.
+
+
+  Both "still running" exits route through `struct_copy_80840C4` (copy-back of the state struct? VRAM/display
+  flush?) before returning 1.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r5, =off_8083C38; ldr r5, [r5]` at +0 loads the per-scene state struct pointer (0x08083DF4–6).
+    - Two cutscene-script sentinel checks (`cutscene_checkOriginalCutsceneScriptPos_8036F40`/`_8036F58`)
+    and the busy guard (`owPlayer_isBusyOrCutsceneActive_809E462`) only OR into the "freeze and exit"
+    branch — confirms this is gated on cutscene/intro conditions. - `bl SetEventFlagFromImmediate`/`bl
+    ClearEventFlagFromImmediate` with EVENT_4FD before/after the guard establishes a "intro is running"
+    lock flag. - `TestEventFlagFromImmediate` of EVENT_4EB after the guard at 0x8083E1E tests a "intro
+    already completed" sentinel. - `ldrb r4,[r5]; cmp r4,#0/1/2/3/4` cascade at 8083E2C/8083E40/8083E6C/8083E98/8083EAE
+    reads the `State` byte; each `add r4,#1; strb r4,[r5]` is the state advance. - Timer fields +0x12,
+    +0x14, +0x16 are written with concrete constants 0x28, 0x5A and decremented each frame, then branch
+    on zero — classic frame-countdown pattern. - The 7 `ClearEventFlagFromImmediate` calls in the termination
+    block + `reqBBS_clearFlag_8140A0C` show a coordinated cleanup of the same flags the intro had set.
+    - Final return `r0=0` (terminate) vs the two `r0=1` returns (continue / freeze).'
+  refs:
+  - bn6f/data/dat21.s
+  reproduce: 'python3 tools/asmcat.py 0x08083DF0
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): cutscene_runIntroStateMachine_8083DF0
+
+    '
+open_questions:
+- Which specific cutscene/intro this drives (could be the opening NetIntro / a story intro) — known event
+  flags include PET_DISABLED, EVENT_1739, EVENT_4E9/4EB/4FB/4FD/4FF, EVENT_1700, BBS flag 0x17:0x7, but
+  no symbol name is recoverable without cross-referencing where these flags appear in script.
+- Exact role of `struct_copy_80840C4` (whether it's VRAM flush, chatbox sync, etc.) and the unnamed sub_8083F80/8084180/8084080/8084214/80842D8
+  helpers.
+sources:
+- discovery session 2026-10-14 batch 38 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7db59311
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8083DF0 -> cutscene_runIntroStateMachine_8083DF0
+  where: bn6f 1a2beb61
+  tool: tools/rename_symbol.py

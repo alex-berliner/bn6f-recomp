@@ -1,0 +1,85 @@
+name: owMap_checkWarpTrigger_80058D0
+address: '0x080058D0'
+kind: function
+previous_names:
+- sub_80058D0
+status: probable
+summary: Per-frame overworld check that consumes a coordinate trigger and dispatches to one of nine warp
+  cutscene routines based on the warp type.
+interface: () -> void ; triggers a warp via Toolkit's Warp2011bb0 state. No register contract for callers
+  (saves r5,lr only)
+details: 'Reads Toolkit->GameStatePtr (r5) and bails early unless GameState.SubsystemIndex == 4 (overworld
+  subsystem).
+
+  Guards: if the overworld player is busy/cutscene is active (owPlayer_isBusyOrCutsceneActive_809E462),
+  if the
+
+  current warp helper struct has byte 0x10 != 0 (warp_LoadCurrentAndReadUnk10_8005F28), if PET menu data
+  flag 1
+
+  is set (TestPETMenuDataFlag), if no screen fade is active (IsScreenFadeActive), or if a cutscene script
+  is
+
+  currently set (IsCutsceneScriptNonNull), the function simply returns.
+
+  Otherwise it asks checkCoordinateTrigger_8031a7a to test the OW player object''s coords; the returned
+  u8
+
+  index (r1 → r4) must be in [1, 0xF]. It then tests the event flag (EVENT_16F0 + index) via TestEventFlag
+
+  and bails if it is set (the warp must not have been consumed yet).
+
+  On success it sets Toolkit->Warp2011bb0.Unk_10 = 1, WarpIndex = r4, MapGroupTransitionType = 0, then
+  indexes
+
+  WarpDataPtr with (r4 - 1) * sizeof(WarpData) and dispatches via a 9-entry jump table keyed by
+
+  oWarpData_warpType_02 to one of: gameState_beginEndingSequence_800596C, sub_8005990,
+
+  map_onMapWarpCutscene_80059B4, startInMapWarpCutscene_80059D0, sub_80059EC, sub_8005A00,
+
+  sub_8005A0C, sub_8005A28, sub_8005A50. Dispatch uses mov lr,pc / bx r0 with thumb bit set (+1 to each
+
+  label).
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: "- `cmp r0, #4` against GameState.SubsystemIndex shows this only runs in the overworld subsystem.\
+    \ - Sequential guards all return early via .doNotCheckWarp; the order is player-busy, warp-loader\
+    \ byte,\n  PET menu flag 1, screen fade NOT active, cutscene script NULL.\n- `add r0, #oOWPlayerObject_Coords`\
+    \ (0x1c from struct) before checkCoordinateTrigger_8031a7a is the\n  expected pair (coords of overworld\
+    \ player).\n- Bounds check `cmp r4, #1` / `cmp r4, #0xf` matches a u8 trigger index in [1,15]. - `ldr\
+    \ r1, off_8005940 // =EVENT_16F0` then `add r1, r1, r4`; TestEventFlag with (flag: u16) signature\n\
+    \  confirms a per-index event flag range.\n- Three sequential strb writes set Unk_10=1, WarpIndex=r4,\
+    \ MapGroupTransitionType=0 on\n  Toolkit->Warp2011bb0.\n- 9-entry JumpTable8005948 with `+1` thumb-bit\
+    \ entries and dispatcher pattern\n  `mov lr,pc / bx r0` is exactly the routine's dispatch."
+  refs:
+  - bn6f/asm/asm00_1.s
+  reproduce: 'python3 tools/asmcat.py 0x080058D0
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): owMap_checkWarpTrigger_80058D0
+
+    '
+open_questions:
+- Names of jump-table entries 2..9 (sub_8005990, sub_80059EC, etc.) and the semantic warp-type ids they
+  encode; capturing each transition type in a snapshot and matching it to map data would settle which
+  id corresponds to "underground", "levbus", "ending", etc.
+- Whether the "must not be set" condition on EVENT_16F0+r4 is a one-shot trip flag or a "warp unavailable
+  here" flag (the bne/.doNotCheckWarp branch-on-NZ suggests trip-already-set, but not certain from this
+  frame alone).
+- Exact relationship of index r4 (after `mov r4, r1`) to the WarpData array element -- assumed (r4 - 1)*oWarpData_Size.
+sources:
+- discovery session 2026-10-14 batch 38 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7db59311
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80058D0 -> owMap_checkWarpTrigger_80058D0
+  where: bn6f 1a2beb61
+  tool: tools/rename_symbol.py

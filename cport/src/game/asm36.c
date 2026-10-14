@@ -1407,8 +1407,8 @@ Next folderEdit_step_813388C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8133944 ── */
-Next sub_8133944(void) {
+/* ── battleObject_submenuLoopStep_8133944 ── */
+Next battleObject_submenuLoopStep_8133944(void) {
     /* State-query gate: if sub_8133C0C returns non-zero (state mismatch), skip the
      * input-handling block and go straight to the tail-end draws/updates. */
     GUEST_CALL(sub_8133C0C);

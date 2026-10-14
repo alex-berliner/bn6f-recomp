@@ -1,0 +1,90 @@
+name: battleObject_updatePanelBreakBounce_80CA61A
+address: '0x080CA61A'
+kind: function
+previous_names:
+- sub_80CA61A
+status: probable
+summary: 'Per-frame update of a bouncing panel-break attack object: tears down stale collision data, applies
+  Z hop until apex, moves X and counts panel-bounces off the column edge, refreshes panels, and finally
+  destroys the object.'
+interface: '(r5 = battle object) -> void ; side effects: mutates BattleObject fields (X, Z, ZVelocity,
+  PanelX/PanelY, header Flags, CurState), removes and re-presents collision data, may destroy object'
+details: 'Entry is the standard battle-object updater shape: r5 holds the object, lr is the caller''s
+  return, and the function preserves r5/r8 (and r4 for the thunk removeCollisionData trampoline) on the
+  stack with `push {r4,r6,lr}`.
+
+  First two unconditional `bl`s do frame setup: `object_removeCollisionData` tears down last frame''s
+  collision data, and `object_spawnCollisionEffect` re-creates it for this frame.
+
+  Reads `BattleObject.CollisionDataPtr->FlagsFromCollision`; if any flag is set it falls straight to the
+  destroy branch at loc_80CA670, bypassing all motion.
+
+  Otherwise reads Z (16.16) and compares the integer part against 0x14 (20). While the object is still
+  below the apex, ZVelocity is added to Z and the function continues to `object_presentCollisionData`
+  (no X step yet).
+
+  Once Z has reached the apex (or it has been pushed past 20), it asks the panel grid for the X coordinate
+  of the object''s current (PanelX,PanelY) via `object_getCoordinatesForPanels` (returning r0=target X),
+  applies XVelocity to X, and asks `IsR2BetweenR0AndR1` whether the new X lies within `[oldX - XVelocity,
+  oldX]` (the panel boundary on one side).
+
+  If the new X is inside that panel it decrements `BattleObject.Param1` and, when it underflows below
+  1, drops into the destroy path; otherwise falls through to re-snap panel coords.
+
+  `object_setPanelsFromCoordinates` recomputes PanelX/PanelY from the new X/Y, `object_updateCollisionPanels`
+  syncs that into the collision record and re-faces the object, and `object_isCurrentPanelValid` decides
+  whether the object is still on a legal battlefield panel. An invalid panel routes to the destroy branch.
+
+  Destroy branch (loc_80CA670): clears the OBJECT_FLAG_VISIBLE bit (mask 0x02) in `oObjectHeader_Flags`,
+  calls `object_clearCollisionRegion`, then sets `CurStateActionPhaseAndPhaseInitialized = CUR_STATE_DESTROY`
+  (0x08).
+
+  Tail path loc_80CA680 always runs `object_presentCollisionData` to commit the new collision state, then
+  returns via `pop {r4,r6,pc}`.
+
+  Caller `battleObject_initPanelBreakBounce_80CA568` initializes the X trajectory and seeds Param1 with
+  the bounce count (snap_story2_12 captured call shows non-zero `Param1`), and on every subsequent frame
+  the engine dispatches into this updater.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl object_removeCollisionData` followed by `bl object_spawnCollisionEffect` is the standard
+    battle-object per-frame collision rebuild pattern (asm lines 1-3). - `ldr r1,[r5,#oBattleObject_Z]`
+    then `lsr r0,r1,#0x10; cmp r0,#0x14; bge loc_80CA63C` is the integer-Z threshold test against 0x14
+    (line 8-10). - `ldr r1,[r5,#oBattleObject_X]; ldr r0,[r5,#oBattleObject_XVelocity]; add r0,r0,r1;
+    str r0,[r5,#oBattleObject_X]` is the X step (lines 13-15). - `bl IsR2BetweenR0AndR1` with r0=target-panel
+    X and r1=previous X returning whether the new X fell into that panel, and `ldrb r0,[r5,#oBattleObject_Param1];
+    sub r0,#1; strb r0,[r5,...]; bgt loc_80CA660; b loc_80CA670` is the decrement-and-destroy-on-undershoot
+    logic (lines 16-19). - Destroy branch writes `CUR_STATE_DESTROY` (mov r0,#0x08; str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized])
+    matching the CUR_STATE_DESTROY constant at 0x08 in BattleObject.inc (lines 26-29). - Snap_story2_12
+    captured entry shows Param1 (=oBattleObject_Param1, offset 0x4) holding a non-zero counter for the
+    bouncing object, supporting Param1-as-bounce-counter inference.
+
+    Whether `IsR2BetweenR0AndR1` is called with [oldX - XVelocity, oldX] or [oldX, oldX - XVelocity] depends
+    on the helper''s bound ordering; the captured calls (e.g. snap_story2_12 exit r0=02038640 differing
+    from earlier 02038790) suggest it really does choose one side of the panel. Decoding the precise panel-edge
+    direction (left vs right) would need the actual `IsR2BetweenR0AndR1` body or a non-trivial test case.
+    The captured-call exit r0 values (02038790 / 02038640) look like addresses of other objects or scratch
+    state left in r0 by the helper, not meaningful outputs from this function.'
+  refs:
+  - bn6f/asm/asm31.s
+  reproduce: 'python3 tools/asmcat.py 0x080CA61A
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_updatePanelBreakBounce_80CA61A
+
+    '
+sources:
+- discovery session 2026-10-14 batch 38 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7db59311
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80CA61A -> battleObject_updatePanelBreakBounce_80CA61A
+  where: bn6f 1a2beb61
+  tool: tools/rename_symbol.py

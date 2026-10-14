@@ -1,0 +1,75 @@
+name: battleObject_throwProjectile_80D9B2C
+address: '0x080D9B2C'
+kind: function
+previous_names:
+- sub_80D9B2C
+status: probable
+summary: Throw-tick for a type-4 battle object — initialises a parabolic (gravity) throw on the first
+  call, applies X/Y/Z velocity each frame, snaps to the landing panel when the timer expires, and destroys
+  itself (spawning a hit effect) if it lands on a valid empty panel of the opposing alliance.
+interface: '(r5 = oBattleObject*) -> void ; side effects: object state, collision region, panel reservation,
+  effect-object allocation'
+details: "- On entry checks oBattleObject_PhaseInitialized; if unset, reads Param3/Param4 as source panel\
+  \ (col,row) and converts them to pixel-space via object_getCoordinatesForPanels. Calls math_getThrowSpeeds\
+  \ with Z-acceleration = 0xFFFFD000 (gravity) and stores the resulting XVelocity/YVelocity/ZVelocity;\
+  \ arms Timer=0x28 and sets PhaseInitialized=4.\n- Every tick integrates X/Y/Z by their velocities, then\
+  \ applies gravity to ZVelocity and recomputes PanelX/PanelY via object_setPanelsFromCoordinates + object_updateCollisionPanels.\
+  \ Decrements Timer.\n- When Timer hits 0 it converts the current pixel position to panel coords with\
+  \ convertBattleObjectXYToPanelXY_800E24C, writes them into both the object and its CollisionDataPtr,\
+  \ then validates the panel:\n    * If on a valid, non-solid, enemy-side (or ally-side for alliance=1)\
+  \ panel whose param word carries the matching alliance bit, it sets collision region 1 and CurAction=4\
+  \ (resolve/contact phase), CurPhaseAndPhaseInitialized=0 — handing the object off to its next sub-action.\n\
+  \    * Otherwise (invalid, solid, wrong-side) it spawns the type-1 effect-0 (hit/impact visual) using\
+  \ the stored (x,y,z) scratch at +0x34, clears its collision region, releases its FuturePanel reservation,\
+  \ sets CUR_STATE_DESTROY, and clears OBJECT_FLAG_VISIBLE.\n- The 0x40-byte data block at r5+0x34 is\
+  \ treated as scratch: at init `0x34`/`0x38`/`0x3C` are the throw source coords fed to math_getThrowSpeeds,\
+  \ and on the failing-landing branch the same three words are forwarded to spawn_t1_0x0_EffectObject\
+  \ as the effect's spawn position.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0,[r5,#oBattleObject_PhaseInitialized]` then `bne loc_80D9B60` is the init-vs-tick
+    guard. - `mov r3,#0; mov r4,#0x28; mov r0,#0x34; add r0,r0,r5; ldr r6,dword_80D9D3C` followed by `bl
+    math_getThrowSpeeds` shows a gravity-arc compute keyed off +0x34..+0x3C; the constant `0xffffd000`
+    is a gravity term (also reused as `add r1,r1,r0` on ZVelocity later). - `strh r0,[r5,#oBattleObject_Timer]`
+    with `r0=0x28` arms a 40-tick window before resolving. - The four-line `ldr … add … str` triple adds
+    (X,Y,Z) by (XVelocity,YVelocity,ZVelocity), then a separate `add r1,r1,r0` against `0xffffd000` applies
+    gravity to ZVelocity — classic projectile integration. - `bl object_setPanelsFromCoordinates; object_updateCollisionPanels`
+    then a Timer decrement with `bne loc_80D9BFE` makes the body the per-frame tick. - On Timer=0, `bl
+    convertBattleObjectXYToPanelXY_800E24C` followed by writing r0/r1 to both `oBattleObject_PanelX/PanelY`
+    and `oCollisionData_PanelX/PanelY` snaps the object to its current grid cell. - The `object_isValidPanel
+    / object_isCurrentPanelSolid` block plus `object_getPanelParameters` and the alliance-keyed mask compare
+    (`0x8000000` vs `0x4000000`) implement "valid empty enemy panel" landing. - On success it does `mov
+    r0,#4; strb r0,[r5,#oBattleObject_CurAction]` and `strh r0,[r5,#oBattleObject_CurPhaseAndPhaseInitialized]`
+    (=0) — handing the object to its resolve/impact sub-action. - On failure, `ldmia r0!,{r1-r3}` from
+    the same +0x34 scratch then `bl spawn_t1_0x0_EffectObject` (with `r4=1` for Param1) spawns the impact
+    effect at the throw''s recorded coordinates. - Final cleanup on failure: `object_clearCollisionRegion`,
+    `object_removePanelReserve(FuturePanelX,FuturePanelY)`, `CUR_STATE_DESTROY` write and `bic r0,#2`
+    clearing OBJECT_FLAG_VISIBLE.'
+  refs:
+  - bn6f/asm/asm31.s
+  reproduce: 'python3 tools/asmcat.py 0x080D9B2C
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_throwProjectile_80D9B2C
+
+    '
+open_questions:
+- What flag combination 0x8000000 / 0x4000000 actually means on the panel param word (consistent with
+  a "team-aligned panel" bit pattern but no symbol confirms which side is which).
+- The exact significance of PhaseInitialized=4 (only "thrown" flag set, no other sub-state).
+- Whether the source panel stored in Param3/Param4 is (col,row) or (row,col) — the code passes r0=Param3,
+  r1=Param4 straight into object_getCoordinatesForPanels, whose semantics were inferred from other call
+  sites.
+sources:
+- discovery session 2026-10-14 batch 38 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7db59311
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80D9B2C -> battleObject_throwProjectile_80D9B2C
+  where: bn6f 1a2beb61
+  tool: tools/rename_symbol.py

@@ -4,35 +4,33 @@ kind: function
 previous_names:
 - sub_8004510
 status: probable
-summary: Iterate every battle object's sprite group (OBJ_GROUP) and either queue/cull/draw them, or clear
-  their frame-piece flags if their sprites aren't active this frame.
-interface: '(r10 = Toolkit ptr, lr = retaddr) -> r0 = 4 ; side effects: writes battle-object OAM data,
-  calls sub_80028C0 to record palette count.'
-details: "Loads byte_2036830 as a per-frame OBJ-group count (r6) and walks byte_203F750 as an array of\
-  \ pointers (r7 steps by 4) to \"sprite group\" arrays (r5).\n  For each pointer r5 = [r7], it reads\
-  \ the group's flags byte [r5]. Bit 0x02 set means \"active this frame\":\n    - save r4/r6/r7, set r0\
-  \ = r5 + 0x34 (Coords/X) and call sprite_projectAndCull (via bx lr trick)\n    - r0 = 4, call sprite_ensureGfxResident\n\
-  \    - r0 = 2, r1 = 0x40, r0 = r5 + 0x80, call sprite_queueFramePieces\n    - restore saved regs, advance\n\
-  \  Bit 0x02 clear: it stores 0 to [r5 + 0x80 + 0x24] (clears the queued-piece word in the group header),\
-  \ then if bit 0x01 is set it still calls sprite_projectAndCull to update on-screen flags but skips drawing.\n\
-  \  After the loop it does `mov r0, #4; bl sub_80028C0` which records the final OBJ palette slot count.\n\
-  \  Returned r0 = 4 matches the \"OBJ group\" palette index used by the palette-count recorder.\n  Inputs\
-  \ are a Toolkit in r10 (consistent with other battle helpers); callees are the project's standard sprite_*/Gfx\
-  \ helpers plus the palette-count recorder.\n"
+summary: Iterate every battle object's sprite group (OBJ_GROUP) and either queue/cull/draw them, or clear their
+  frame-piece flags if their sprites aren't active this frame.
+interface: '(r10 = Toolkit ptr, lr = retaddr) -> r0 = 4 ; side effects: writes battle-object OAM data, calls sub_80028C0
+  to record palette count.'
+details: "Loads byte_2036830 as a per-frame OBJ-group count (r6) and walks byte_203F750 as an array of pointers\
+  \ (r7 steps by 4) to \"sprite group\" arrays (r5).\n  For each pointer r5 = [r7], it reads the group's flags byte\
+  \ [r5]. Bit 0x02 set means \"active this frame\":\n    - save r4/r6/r7, set r0 = r5 + 0x34 (Coords/X) and call\
+  \ sprite_projectAndCull (via bx lr trick)\n    - r0 = 4, call sprite_ensureGfxResident\n    - r0 = 2, r1 = 0x40,\
+  \ r0 = r5 + 0x80, call sprite_queueFramePieces\n    - restore saved regs, advance\n  Bit 0x02 clear: it stores\
+  \ 0 to [r5 + 0x80 + 0x24] (clears the queued-piece word in the group header), then if bit 0x01 is set it still\
+  \ calls sprite_projectAndCull to update on-screen flags but skips drawing.\n  After the loop it does `mov r0,\
+  \ #4; bl sub_80028C0` which records the final OBJ palette slot count.\n  Returned r0 = 4 matches the \"OBJ group\"\
+  \ palette index used by the palette-count recorder.\n  Inputs are a Toolkit in r10 (consistent with other battle\
+  \ helpers); callees are the project's standard sprite_*/Gfx helpers plus the palette-count recorder.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- `ldr r6, off_80045B4 // =byte_2036830` then `sub r6, #1; blt loc_8004572` ⇒ counts OBJ groups
-    present this frame. - `ldr r7, off_80045B8 // =byte_203F750` stepping by 4 ⇒ array of group pointers
-    (consistent with a `ptr[]` table at 0x203F750). - `ldrb r2, [r5]; mov r3, #2; tst r2, r3` ⇒ branches
-    on group flag bit 0x02 = "draw this frame". - Active path: `add r0, #0x34` ⇒ passes the camera-group
-    coords block to `sprite_projectAndCull` (its contract reads world coords); followed by `sprite_ensureGfxResident(r0=4)`
-    and `sprite_queueFramePieces(r0=r5+0x80, r1=0x40, r2=2)`. - Inactive path: `add r0, #0x80; mov r3,
-    #0; str r3, [r0,#0x24]` ⇒ zeroes the queued-piece counter at offset 0xA4 of the group when not drawing.
-    - Inactive path still calls `sprite_projectAndCull` when bit 0x01 set, matching "update visibility
-    but don''t queue OAM". - Final `mov r0, #4; bl sub_80028C0` ⇒ records palette count for OBJ group
-    4 at slot byte_200F389 (its described contract). - Captured entry r2=0x0200F389 (byte_200F389 palette
-    counter base) and exit r0=4 confirm it''s writing palette-slot 4 each frame.'
+  detail: '- `ldr r6, off_80045B4 // =byte_2036830` then `sub r6, #1; blt loc_8004572` ⇒ counts OBJ groups present
+    this frame. - `ldr r7, off_80045B8 // =byte_203F750` stepping by 4 ⇒ array of group pointers (consistent with
+    a `ptr[]` table at 0x203F750). - `ldrb r2, [r5]; mov r3, #2; tst r2, r3` ⇒ branches on group flag bit 0x02 =
+    "draw this frame". - Active path: `add r0, #0x34` ⇒ passes the camera-group coords block to `sprite_projectAndCull`
+    (its contract reads world coords); followed by `sprite_ensureGfxResident(r0=4)` and `sprite_queueFramePieces(r0=r5+0x80,
+    r1=0x40, r2=2)`. - Inactive path: `add r0, #0x80; mov r3, #0; str r3, [r0,#0x24]` ⇒ zeroes the queued-piece
+    counter at offset 0xA4 of the group when not drawing. - Inactive path still calls `sprite_projectAndCull` when
+    bit 0x01 set, matching "update visibility but don''t queue OAM". - Final `mov r0, #4; bl sub_80028C0` ⇒ records
+    palette count for OBJ group 4 at slot byte_200F389 (its described contract). - Captured entry r2=0x0200F389
+    (byte_200F389 palette counter base) and exit r0=4 confirm it''s writing palette-slot 4 each frame.'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x08004510
@@ -41,17 +39,16 @@ evidence:
   result: the body read as described above
 - method: coverage
   date: '2026-10-14'
-  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
-    story2, story4, story5, story6, story7, story8, story9'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9'
   reproduce: 'grep -l ''^08004510 '' tools/traces/coverage/*.prof
 
     '
-  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
-    story4, story5, story6, story7, story8, story9
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2, story4, story5,
+    story6, story7, story8, story9
 open_questions:
-- Whether r5 is a `CameraSpriteGroup*` (it has Coords at +0x34, OAM-queue slot at +0x80, queued-count
-  at +0x80+0x24) or a sprite-bundle struct; settling would require locating the struct owner of 0x203F750
-  entries.
+- Whether r5 is a `CameraSpriteGroup*` (it has Coords at +0x34, OAM-queue slot at +0x80, queued-count at +0x80+0x24)
+  or a sprite-bundle struct; settling would require locating the struct owner of 0x203F750 entries.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
@@ -63,3 +60,7 @@ changes:
   what: rename sub_8004510 -> battle_updateSprites_8004510
   where: bn6f e008e389
   tool: tools/rename_symbol.py
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7db59311
+  tool: tools/symdoc.py

@@ -1,0 +1,77 @@
+name: battleObject_initSnakeArm_80C53FA
+address: '0x080C53FA'
+kind: function
+previous_names:
+- sub_80C53FA
+status: probable
+summary: Initializes a battle object representing a snake-like arm/part (Param4 picks animation/handling)
+  — sets sprite, palette, flip, lays it out in front of its parent, creates and configures a hitbox, then
+  advances to the Update state.
+interface: '(r5 = parent/this battle object, r10 = toolkit) -> void ; side effects: writes sprite attributes,
+  coords, timer, state, allocates a CollisionData slot'
+details: "Bails to object_freeMemory when the current panel is invalid (object_isCurrentPanelValid ->\
+  \ beq loc_80C54CA, tail pop).\nClears Param2's 0x80 flag (an \"armed\" bit), and if it was set writes\
+  \ 0x80 into ExtraVars[0x4] (a small state latch).\nLoads sprite (object/sprite id 0x80, sub 0xC/0xE)\
+  \ and forces sprite_noShadow, sets header flag 0x02 (visible).\nPicks CurAnim via byte_80C54DC indexed\
+  \ by Param4 — table values {0,1,1,0} ⇒ Param4=1 or 2 yields anim 1 (in/out/extended arm), others yield\
+  \ anim 0 (idle). Mirrors CurAnimCopy, calls sprite_setAnimation + sprite_loadAnimationData, palette=0,\
+  \ sprite_setFlip from object_getFlip.\nobject_setCoordinatesFromPanels to seed X/Y, then branches by\
+  \ Param4:\n  • Param4 == 1: multiplies front-direction sign by table entry [0,0,4,0,…,0x14,…] (word\
+  \ from byte_80C54D0) and adds to BattleObject_X (16.16 fixed).\n  • Param4 != 1: subtracts 0x28*frontSign\
+  \ from X16, then asks getBattleArmPositionMaybe_8018810 for the (dx, dz) attachment offset using the\
+  \ parent's NameID, this object's Alliance/DirectionFlip, slot id 0x12; adds dx to X and dz to Z (16.16).\n\
+  Then shifts Param2 left by 16 to convert to 16.16 and adds the same delta to Y and Z (lifts the arm\
+  \ up by Param2).\nobject_createCollisionData; on success (saved in r7) calls object_setupCollisionData\
+  \ with Region=0xA, Element=5, SelfDmg/CollisionType=3; sets Region(HitEffect dir?)=1, sets HitEffect=1,\
+  \ runs object_presentCollisionData (turns the arm into a damage-dealing collision).\nFinalises: Timer=4,\
+  \ CurStateActionPhaseAndPhaseInitialized = CUR_STATE_UPDATE (4), then pops {r4,r7,pc}.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- bail at loc_80C54CA: `bl object_freeMemory` then `pop {r4,r7,pc}` shows invalid-panel cleanup
+    path. - Param2 clear: `ldrb r0,[r5,#oBattleObject_Param2]; mov r1,#0x80; tst r0,r1; beq ...; bic r0,r1;
+    strb r0,...; str r1,[r5,#oBattleObject_ExtraVars+4]` — only stores 0x80 in ExtraVars+4 when the bit
+    was actually set. - byte_80C54DC values 0,1,1,0 indexed by Param4 choose which anim plays (0x1 = sword-style
+    arm thrust pose reused). - 0x80/0xC/0xE passed to sprite_load then sprite_noShadow, then `ldrb r0,[r5,#oObjectHeader_Flags];
+    orr r0,#2` makes the sprite visible. - `cmp r2,#1; bne loc_80C5466` plus table lookup `ldr r1,off_80C55AC;
+    ldr r1,[r1,r2]; mul r0,r1` and fall-through `mov r1,#0x28; mul r1,r0` show two distinct placement
+    branches keyed off Param4. - getBattleArmPositionMaybe_8018810 called with `ldrh r0,[r0,#oBattleObject_NameID];
+    mov r1,#0x12; ld r2/r3 = Alliance/DirectionFlip` — its 4th param (slot) is the literal 0x12; returned
+    dx/dz (`lsl r0,r0,#0x10; lsl r1,r1,#0x10`) shifted to 16.16 then added to BattleObject_X / BattleObject_Z.
+    - `ldrb r0,[r5,#oBattleObject_Param2]; lsl r0,r0,#0x10` converts Param2 (0..7) into a 16.16 height-step
+    added to both Y and Z — raising the arm in 3D. - `mov r7,r0; tst r0,r0; beq loc_80C54CA` followed
+    by `mov r1,#0xa; mov r2,#5; mov r3,#3; bl object_setupCollisionData` plus `mov r1,#1; strb r1,[r7,#1]`
+    (writes CollisionData Region byte) and `mov r0,#1; bl object_setCollisionHitEffect; bl object_presentCollisionData`
+    — full collision setup. - Final `mov r0,#4; strh r0,[r5,#oBattleObject_Timer]; mov r0,#CUR_STATE_UPDATE;
+    str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]` advances to update phase with a
+    4-frame timer. - Captured calls always return r0=4 with --C- flag — consistent with `CUR_STATE_UPDATE
+    = 0x4` left in r0; entry r0 is always 0 (no caller args passed in regs) and lr=0x080c53cc suggests
+    this is invoked from a state-machine via a small wrapper.'
+  refs:
+  - bn6f/asm/asm31.s
+  reproduce: 'python3 tools/asmcat.py 0x080C53FA
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_initSnakeArm_80C53FA
+
+    '
+open_questions:
+- The exact game element this represents (Snakeman/Sword-style "arm" part vs. generic helper arm) isn't
+  named in-source; the address label and the name table at 0x80C54D0 containing 0x14 at index 10 hint
+  at "Snakeman long arm" but couldn't be confirmed.
+- Why ExtraVars+4 is given the constant 0x80 (and not Param2*something) is unclear — possibly a latch
+  for "armed this frame".
+- The Param4==1 special branch (table indexed by Param4*4 looking up 4 at offset 8 and 0x14 at offset
+  0x28) appears to add a panel-level x-shift on top of front dir — purpose not labelled.
+sources:
+- discovery session 2026-10-14 batch 38 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7db59311
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80C53FA -> battleObject_initSnakeArm_80C53FA
+  where: bn6f 1a2beb61
+  tool: tools/rename_symbol.py

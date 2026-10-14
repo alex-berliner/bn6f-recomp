@@ -1,0 +1,61 @@
+name: battle_runTransition_8125444
+address: '0x08125444'
+kind: function
+previous_names:
+- sub_8125444
+status: probable
+summary: 'One-shot battle-transition pump: draws player/enemy row sprites, ticks chip/eStruct/entities,
+  and (if the `r5+0x70` flag is set) clears it, reloads the static+scene tilemaps and redraws the 32x32
+  background tiles.'
+interface: '(r5 = battle state ptr, r10 = toolkit ptr) -> (none, void) ; side effects: OAM/VRAM writes
+  via callees, sets [r5+0x70] = 0 when consumed'
+details: "1. push {lr}; call drawBattleRowSprites_81265DC, battle_updateChipSprite_8126630,\n   entity_runAllUpdateHandlers_80465BC\
+  \ and battle_updateEStructSprites_80465F8 in sequence —\n   these together do the per-frame sprite refresh\
+  \ for chips, the 15-entity array and the eStruct record array.\n2. ldr r0, [r5, #0x70]; cmp r0, #0;\
+  \ beq locret_8125468 — if the +0x70 flag on the battle-state-shaped struct is\n   already zero, skip\
+  \ the BG reload and return.\n3. Otherwise str r0 (#0), [r5, #0x70] (consume/clear the flag), then bl\
+  \ sub_81252C0 (loads the static\n   and scene-specific background tilemaps into VRAM after blanking\
+  \ the target tile-block slots) and\n   bl sub_812546C (draws a multi-row 32x32 background tile graphic\
+  \ for a battle-scene object).\n4. pop {pc} returns to the caller; r5/r10 are callee-saved and preserved.\n\
+  The function is called from at least six different per-frame/state routines in the battle subsystem\n\
+  (intro, scene update, transition tick, shield update, sprite stage-2 init, sprite init, etc.), all of\n\
+  which keep r5 as the active \"battle object / battle state\" pointer.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: "- The callee list is exactly \"draw row sprites, update chip sprite, run all entity handlers,\
+    \ run\n  eStruct sprite pipeline\" (the four sprite/actor refresh steps used in other battle_* routines).\n\
+    - `ldr r0, [r5, #0x70]; cmp r0, #0; beq locret_8125468` followed by `mov r0, #0; str r0, [r5, #0x70]`\n\
+    \  implements a \"consume a one-shot flag\" pattern: read it, branch on it, then zero it.\n- On the\
+    \ taken branch, sub_81252C0 is \"load static and scene-specific background tilemaps into VRAM,\n \
+    \ blanking target tile-block slots first\" — i.e. an explicit BG reload step, which only happens\n\
+    \  when a field change is being committed.\n- sub_812546C is \"draws a multi-row 32x32 background\
+    \ tile graphic for a battle-scene object\" — i.e.\n  the actual redraw of the field tiles after the\
+    \ tilemap has been refreshed.\n- The function is short and called from many battle subsystem per-frame\
+    \ helpers (intro, scene\n  update, transition tick, shield update, sprite init, sprite stage-2 init,\
+    \ ...), which is the\n  call-site pattern of a \"shared transition/refresh helper\"."
+  refs:
+  - bn6f/asm/asm33.s
+  reproduce: 'python3 tools/asmcat.py 0x08125444
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battle_runTransition_8125444
+
+    '
+open_questions:
+- The exact semantics of the r5+0x70 flag (whether it is a "stage changed" latch or a counter) and whether
+  r5 here is a BattleObject or a BattleState would be settled by reading the callers' contracts — they
+  all keep r5 across many calls, but the struct layout for offset 0x70 is not declared in any of the provided
+  struct defs.
+sources:
+- discovery session 2026-10-14 batch 38 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7db59311
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8125444 -> battle_runTransition_8125444
+  where: bn6f 1a2beb61
+  tool: tools/rename_symbol.py

@@ -1,0 +1,74 @@
+name: battleObject_initializeInvulnerable_80D8464
+address: '0x080D8464'
+kind: function
+previous_names:
+- sub_80D8464
+status: probable
+summary: Initializes a battle object sprite, sets a 1-HP invulnerable target placed one panel below its
+  panel coords (Z-1, Y-1) with collision types 0/0xe/0xf and immediately enters CUR_STATE_UPDATE.
+interface: (r5 = oBattleObjectPtr) -> void ; on creation failure the slot is freed and the function returns
+  without further setup
+details: '- `object_setCoordinatesFromPanels` (`bl 0800e29c`) is called first to convert PanelXY/FuturePanelXY
+  into the pixel X/Y16 fields.
+
+  - Z16 is zeroed (`strh r0,[r5,#oBattleObject_Z16]`), Z and Y16 are then decremented by 1 each (offsets
+  0x3c/0x3a), so the final placement is one panel below the object''s panel position.
+
+  - `sprite_load(0x80,0x10,0)` runs the standard sprite loader. `sprite_noShadow` clears shadow flags,
+  and `oObjectHeader_Flags |= 2` is forced (`OBJECT_FLAG_VISIBLE`).
+
+  - CurAnim and CurAnimCopy are set to 3 and propagated via `sprite_setAnimation`. `sprite_loadAnimationData`
+  + `sprite_update` push the first frame; `sprite_setPalette(0)` assigns palette 0.
+
+  - NameID is fixed at 0xd2 (a string-table index), HP and MaxHP are both set to 1, giving a 1-HP target.
+
+  - `object_createCollisionData` allocates the collision block; on failure the object is destroyed via
+  `object_freeMemory` and the function returns early to `locret_80D84DC`.
+
+  - On success `object_setupCollisionData(0xe, 0xf, 3)` configures self/target collision-type tables with
+  these constants, `object_presentCollisionData` processes its first collision tick, and `object_setFlag1(OBJECT_FLAGS_INVULNERABLE)`
+  (bit 0x8) is OR''d into ObjectFlags1.
+
+  - The function ends by writing `CUR_STATE_UPDATE` (0x04) into `oBattleObject_CurStateActionPhaseAndPhaseInitialized`,
+  allowing the per-frame handler to run next frame.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl object_setCoordinatesFromPanels` immediately at entry maps panel coords into X/Y. - `strh
+    r0,[r5,#oBattleObject_Z16]` then `sub r0,#1` + `strh r0,[r5,#oBattleObject_Z16]`/`#oBattleObject_Y16`
+    show Z16 and Y16 being shifted down by one panel (lower-right placement). - `mov r0,#0x80; mov r1,#0x10;
+    mov r2,#0; bl sprite_load` is the canonical sprite load invocation. - `orr r0,r1; strb r0,[r5,#oObjectHeader_Flags]`
+    with `r1=#2` sets OBJECT_FLAG_VISIBLE. - `mov r0,#3` written into both CurAnim (0x10) and CurAnimCopy
+    (0x11) and propagated via `sprite_setAnimation`/`sprite_loadAnimationData`/`sprite_update`. - `mov
+    r0,#0xd2; strh r0,[r5,#oBattleObject_NameID]` and `mov r0,#1; strh r0,[r5,#oBattleObject_HP]` + `oBattleObject_MaxHP`
+    lock the NameID and 1 HP. - `bl object_createCollisionData; tst r0,r0; bne loc_80D84C4; bl object_freeMemory;
+    b locret_80D84DC` is a failed-allocation cleanup path. - `mov r1,#0xe; mov r2,#0xf; mov r3,#3; bl
+    object_setupCollisionData` then `bl object_presentCollisionData` are the standard collision init +
+    first-tick pattern. - `mov r0,#OBJECT_FLAGS_INVULNERABLE; bl object_setFlag1` ORs bit 0x8 into the
+    CollisionData ObjectFlags1 word. - `mov r0,#CUR_STATE_UPDATE; str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]`
+    advances the state machine to its update phase.'
+  refs:
+  - bn6f/asm/asm31.s
+  reproduce: 'python3 tools/asmcat.py 0x080D8464
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_initializeInvulnerable_80D8464
+
+    '
+open_questions:
+- Whether NameID 0xd2 corresponds to "Entry Plug"/a specific scripted barrier is not derivable from assembly
+  alone; mapping the name table would settle the exact battle-object role this routine serves.
+sources:
+- discovery session 2026-10-14 batch 38 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7db59311
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80D8464 -> battleObject_initializeInvulnerable_80D8464
+  where: bn6f 1a2beb61
+  tool: tools/rename_symbol.py

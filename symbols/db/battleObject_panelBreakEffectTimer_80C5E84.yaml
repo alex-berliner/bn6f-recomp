@@ -1,0 +1,82 @@
+name: battleObject_panelBreakEffectTimer_80C5E84
+address: '0x080C5E84'
+kind: function
+previous_names:
+- sub_80C5E84
+status: probable
+summary: Battle-object action that highlights the panel while a timer ticks down, then cracks the tile,
+  plays a break SFX, and advances the object's state to phase 4 (or destroys it if the panel refuses the
+  crack).
+interface: '(r5 = BattleObject*) -> void ; side effects: panel highlight/clear, sprite reload, tile crack,
+  sound 0xB9, destroys or sets CurAction=4'
+details: 'Reads oBattleObject_Timer. While bit 2 (mask 0x4) is clear, refreshes the panel highlight by
+  calling object_highlightPanel(oBattleObject_PanelX, oBattleObject_PanelY). Decrements oBattleObject_Timer;
+  while it remains >0 the function just returns.
+
+
+  When the timer hits zero, if oBattleObject_Param4 != 0 the function re-reads the panel flags via object_getPanelParameters
+  and checks bit 0x10 ("hole/cracked?"). If that bit is set, the path falls through to the standard "do
+  the crack" branch.
+
+
+  In the crack branch it loads sprite 0x10 with palette 0x26 and group 0x80 via sprite_load, disables
+  the shadow (sprite_noShadow), ORs OBJECT_FLAG_VISIBLE (0x2) into the object header flags, clears CurAnim/CurAnimCopy
+  (sprite_setAnimation(0)), reloads animation data (sprite_loadAnimationData), propagates facing via object_getFlip+sprite_setFlip,
+  and sets collision region 1 (object_setCollisionRegion). If oBattleObject_Param1 != 0 it calls sub_8109794
+  (the tile-cracker helper at 0x08109794) on the object''s current panel to actually crack the panel.
+  It then plays sound effect 0xB9 (PlaySoundEffect), writes 4 to oBattleObject_CurAction, clears oBattleObject_CurPhaseAndPhaseInitialized
+  (so the next dispatch re-enters), and returns.
+
+
+  The branch that "aborts" the crack is at loc_80C5F02: it calls object_clearCollisionRegion and writes
+  CUR_STATE_DESTROY (0x8) into oBattleObject_CurStateActionPhaseAndPhaseInitialized, which kills the object
+  (battle engine destroys it on observing CurState==DESTROY).
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {lr}` / `pop {pc}` Tail-call leaf taking only `r5` (BattleObject*); consistent with
+    an object action/phase handler. - `ldrh r0, [r5,#oBattleObject_Timer]`; `sub r0,#1`; `strh r0,[r5,#oBattleObject_Timer]`;
+    `bgt locret_80C5F0A` decrements the per-object action timer and exits early while it''s still >0.
+    - `tst r0, #4` skipping object_highlightPanel while bit 2 of Timer is set: gives a "post-crack, stop
+    highlighting" beat. - `bl object_highlightPanel` after loading PanelX/PanelY: refreshes the highlighted
+    panel each tick. - Param4 gate: `ldrb r0, [r5,#oBattleObject_Param4]; cmp r0,#0; beq loc_80C5EB2`
+    falls through to the always-crack branch when Param4==0; otherwise it consults the panel flags. -
+    `bl object_getPanelParameters` ... `tst r0, #0x10` then `beq loc_80C5F02` aborts (clears collision
+    + DESTROY) if the panel lacks the 0x10 flag. - Crack branch: `sprite_load(0x10,0x26,0x80)`, `sprite_noShadow`,
+    `orr #2` into header flags (OBJECT_FLAG_VISIBLE), `strb 0` into CurAnim/CurAnimCopy + `sprite_setAnimation(0)`
+    + `sprite_loadAnimationData`: reloads the broken-panel sprite. - `object_getFlip` + `sprite_setFlip`
+    re-applies alliance flip after the sprite reload. - `object_setCollisionRegion(1)` puts the object
+    back into the standard panel-collision region. - `ldrb r0,[r5,#oBattleObject_Param1]` Param1 non-zero
+    triggers `bl sub_8109794` (whose summary is "cracks the tile under an object if the panel parameters
+    allow it") — actual tile crack. - `PlaySoundEffect(0xB9)` is the break/crack sound; `strb 4` to CurAction
+    + clear CurPhaseAndPhaseInitialized advances the FSM to action phase 4. - loc_80C5F02: `object_clearCollisionRegion`
+    then `str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]` with `r0 = CUR_STATE_DESTROY
+    (0x8)` — destroys the object.'
+  refs:
+  - bn6f/asm/asm31.s
+  reproduce: 'python3 tools/asmcat.py 0x080C5E84
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_panelBreakEffectTimer_80C5E84
+
+    '
+open_questions:
+- Exact meaning of Param1/Param4 distinction (Param1 seems to gate "actually do the tile crack" vs. just
+  animate the sprite, Param4 gates "panel must already be breakable"); needs cross-reference with the
+  spawner that allocates this object.
+- Which sprite (0x10, palette 0x26, group 0x80) this represents visually — looks like a "broken/hollow"
+  panel sprite, but not confirmed from this function alone.
+sources:
+- discovery session 2026-10-14 batch 38 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7db59311
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80C5E84 -> battleObject_panelBreakEffectTimer_80C5E84
+  where: bn6f 1a2beb61
+  tool: tools/rename_symbol.py

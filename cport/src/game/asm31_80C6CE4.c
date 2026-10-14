@@ -826,7 +826,7 @@ Next battle_runObjects_80C8368(void) {
  * Reads the object's current state and runs the matching state handler.
  * The state byte is stored pre-multiplied by 4, so it indexes the handler
  * table at off_80C9014 (one word per state) directly:
- *   state 0  -> sub_80C9024
+ *   state 0  -> battleObject_initSnakeArmMover_80C9024
  *   state 4  -> sub_80C9074
  *   state 8  -> sub_80C90DC
  *   state 12 -> object_genericDestroy
@@ -839,7 +839,7 @@ Next t3_0x28_80C8FFC(void) {
     R0 = state;                 /* handlers receive the state in r0 */
     switch (state) {
     case 0:
-        GUEST_CALL(sub_80C9024);
+        GUEST_CALL(battleObject_initSnakeArmMover_80C9024);
         break;
     case 4:
         GUEST_CALL(sub_80C9074);
@@ -859,12 +859,12 @@ Next t3_0x28_80C8FFC(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80C9024 ── */
-/* sub_80C9024: initialize a battle object sprite, collision data and entry state.
+/* ── battleObject_initSnakeArmMover_80C9024 ── */
+/* battleObject_initSnakeArmMover_80C9024: initialize a battle object sprite, collision data and entry state.
  * Inputs:  r5 = battle object ptr
  * Outputs: r5, r8 unchanged
  */
-Next sub_80C9024(void) {
+Next battleObject_initSnakeArmMover_80C9024(void) {
     /* Load sprite 0x80 (slot 0x14), 5 frames of animation. */
     R0 = 0x80;
     R1 = 0x14;
@@ -2015,7 +2015,7 @@ static void dispatch_battle_state(u32 r5) {
 
     switch (state) {
         case 0: GUEST_CALL(battleObject_initPanelBreakBounce_80CA568);           break;
-        case 4: GUEST_CALL(sub_80CA61A);           break;
+        case 4: GUEST_CALL(battleObject_updatePanelBreakBounce_80CA61A);           break;
         case 8: GUEST_CALL(object_genericDestroy);  break;
     }
 
@@ -2028,7 +2028,7 @@ Next t3_0x33_80CA544(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80CA61A ── */
+/* ── battleObject_updatePanelBreakBounce_80CA61A ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r2, r4, r5, r6, r7; bool c, v; } call_object_removeCollisionData_result;
 /* register form: generated wrapper: object_removeCollisionData has no typed C interface yet */
@@ -2123,7 +2123,7 @@ static bool revalidate_panel(u32 r5, u32 *out_r1) {
     return valid.r0 != 0;
 }
 
-/* sub_80CA61A: collision tick for the battle object at r5.
+/* battleObject_updatePanelBreakBounce_80CA61A: collision tick for the battle object at r5.
  * Returns the r5 (unchanged, preserved) and r8 (updated by presentCollisionData). */
 typedef struct { u32 r5; u32 r8; } sub_80CA61A_result;
 
@@ -2196,7 +2196,7 @@ static sub_80CA61A_result sub_80CA61A_impl(u32 r4, u32 r5, u32 r7, u32 r8) {
 }
 
 /* Adapter: inputs r4 r5 r7 r8; outputs r5 r8. */
-Next sub_80CA61A(void) {
+Next battleObject_updatePanelBreakBounce_80CA61A(void) {
     sub_80CA61A_result res = sub_80CA61A_impl(R4, R5, R7, R8);
     R5 = res.r5;
     R8 = res.r8;
@@ -3422,11 +3422,11 @@ Next t3_0x98_80D8444(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80D8464 ── */
-/* sub_80D8464: Initialize a battle object (FlagMan-type object) by snapping it to its
+/* ── battleObject_initializeInvulnerable_80D8464 ── */
+/* battleObject_initializeInvulnerable_80D8464: Initialize a battle object (FlagMan-type object) by snapping it to its
  * panel, loading its sprite/animation, setting its stat sheet, building its hitbox and
  * stamping the current state-action phase. */
-Next sub_80D8464(void) {
+Next battleObject_initializeInvulnerable_80D8464(void) {
     /* Snap to the object's current panel coordinates. */
     GUEST_CALL(object_setCoordinatesFromPanels);
 

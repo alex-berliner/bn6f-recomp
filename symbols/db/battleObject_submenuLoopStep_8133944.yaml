@@ -1,0 +1,84 @@
+name: battleObject_submenuLoopStep_8133944
+address: '0x08133944'
+kind: function
+previous_names:
+- sub_8133944
+status: probable
+summary: 'Per-frame main update for a battle object''s sub-menu state (e.g. Beast/Custom-Anger confirm
+  screen): cancels on START/B, confirms on A, scrolls the cursor through up to 8 entries on d-pad, and
+  re-renders the folder-edit/submenu graphics and AI-related callbacks each tick.'
+interface: '(r2, r4, r5, r6, r7, r8, r10, lr = various preserved live regs incl. submenu ptr in r5 and
+  Toolkit ptr in r10) -> no return value (pop {pc}); side effects: writes tile-flag palette, BG tilemap,
+  custom-gfx, AI turn-handler dispatch, cursor index stored back at r5+0x34'
+details: '- `push {lr}` / `pop {pc}` and no callee-saved register restores => void tail-call style update.
+
+  - First calls `sub_8133C0C`, the project''s "START/B cancel for sub-menu" handler; if it returns NEQ
+  (i.e. didn''t exit/transition), the code then runs `battleObject_selectAIDataHandler_81347A4` (A-button
+  confirm step, dispatching the mode handler and rewriting tracked target slots).
+
+  - Then reads the LowSensitivityHeld joypad bits via `Toolkit->JoypadPtr->LowSensitivityHeld` (offset
+  0x4 on Joypad), calls `menu_moveCursorUpDown_811FA22` with r1=7 / r2=1 / r3=[r5+0x34] (max 7 entries,
+  step 1, current cursor index), and stores the resulting cursor back to r5+0x34 — that''s the only field
+  of the submenu-like object this function mutates itself.
+
+  - After that the always-run block fires: `copyBackgroundTiles_sub_813471C` and `sub_8134740` (the tile-blit
+  and animation-counter decrement helpers) only when the menu is still in normal state; otherwise we skip
+  to `loc_813396C`.
+
+  - At `loc_813396C` it always: clears the submenu background if closed (`submenu_clearBgIfClosed_8134594`),
+  runs the beast status-effect pump (`battleObject_runBeastStatusEffect_81345B0`), calls two `object_resolveTableEntryByIndex/Wrapper`
+  helpers (reading 0xE2/0x1C/0x1E/0x24 / 0x182/0x1C/0x28/0x2E table entries used elsewhere in this screen),
+  uploads the chip/folder tile blocks (`battleObject_submenuRenderFolderAndChips_81341A0`), rebuilds the
+  folder-edit BG (`battleObject_drawFolderEditScreenGfx_8134310`), the row-align SN3 check (`battleObject_alignRowOffsetCheckSN3_81353DC`),
+  then dispatches two AI turn-handler steps via `battle_aiRunTurnHandler_81353F0` with (r0=5, r1=0) and
+  (r0=6, r1=1) — i.e. it triggers action ids 5 and 6 with sub-modes 0/1 inside this state.
+
+  - The 40 captured-call snapshots all show the same r0=0x08133945 (return-into-Thumb-BX-style return
+  address one past `sub_8133944`), r1=0x0c, r2=0, r3=0x02001c04, lr=0x081337d0 — i.e. it''s invoked as
+  one entry of a jump table at 0x081337D0 with the index/state byte 0x0C in r1, no incoming args in r0/r3,
+  and a global struct at 0x02001c04 in r3. Exit r0 is consistently 0x40 with -Z-- (Z set), so the function
+  does not return a meaningful value (likely the late `battle_aiRunTurnHandler_81353F0` last call returns
+  0x40). r5 is preserved across the call (it''s a callee-saved pointer to the submenu-like object).
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {lr}` / `pop {pc}` with no other register restores indicates a void dispatcher (asm36.s:7247).
+    - First call `bl sub_8133C0C` matches the project''s confirmed handler for "START/B cancel for sub-menu
+    screen" (state 0x0C). - Cursor read/write: `ldrh r0, [r5,#0x34]` ... `strh r0, [r5,#0x34]` (asm36.s:7247)
+    with r1=7 (max entries) and r2=1 (step) -> up/down cursor over up to 8 items. - The two `bl battle_aiRunTurnHandler_81353F0`
+    invocations use fixed `(5,0)` and `(6,1)` (`mov r0, #5; mov r1, #0` then `mov r0, #6; mov r1, #1`),
+    which matches the function''s documented signature. - Captured entry lr=0x081337D0 in `snap_menus3_*.bin`
+    shows this is invoked as index 0x0C from a state-mode dispatcher at 0x081337D0, with r1=0x0C (the
+    state byte). All 40 snapshots share these values, so it is a stable per-frame loop body for that state.
+    - All callees'' summaries reference battle sub-menu / folder-edit / AI confirm screen activities consistent
+    with the per-frame draw/update loop of a battle object sub-menu state.'
+  refs:
+  - bn6f/asm/asm36.s
+  reproduce: 'python3 tools/asmcat.py 0x08133944
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_submenuLoopStep_8133944
+
+    '
+open_questions:
+- Whether r5 is a `struct SubMenu*` (which has `idx_00` at 0x0 and an implied size 0x80 per SubMenu.inc)
+  or one of the bigger `S20364C0`/`oBattleObject` objects that also expose offset 0x34; the cursor at
+  0x34 fits `S20364C0` best (no field 0x34 documented there either). Decompiling one of the called renderers
+  will settle the r5 base type.
+- What state byte the wrapper at 0x081337D0 actually carries in r1 vs. what `sub_8133C0C` interprets —
+  the captured r1=0x0C matches `sub_8133C0C`'s documented cancel-state 0x0C but may also be passed straight
+  to `sub_8133C0C` as its "current state" arg.
+sources:
+- discovery session 2026-10-14 batch 38 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7db59311
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8133944 -> battleObject_submenuLoopStep_8133944
+  where: bn6f 1a2beb61
+  tool: tools/rename_symbol.py

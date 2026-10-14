@@ -1,0 +1,60 @@
+name: scenario_runEffectStateJumptable_80039AA
+address: '0x080039AA'
+kind: function
+previous_names:
+- sub_80039AA
+status: probable
+summary: 'Per-frame scenario effect dispatch: indexes `jt_80038E8` by `eScenarioEffectState2000780.Index`
+  and tail-calls the resulting handler.'
+interface: (no args passed by callee — caller-set r10 toolkit + lr drive behaviour) -> r0 from the dispatched
+  handler ; no side effects on r4-r9/r12 when no handler runs
+details: 'At entry, reads a byte from `eScenarioEffectState2000780` (`ldr r5, off_80039F0`). If that byte
+  is zero, or has bit 0x80 set, returns immediately (`tst r0,r0 / beq locret` and `tst r0,#0x80 / bne
+  locret`). Otherwise reads `eScenarioEffectState2000780.Index` (offset +1), multiplies by 0x10, adds
+  that to `jt_80038E8` (`ldr r7, off_80039F4`), loads the function pointer at `jt_80038E8[Index]`, and
+  `bx r0`s into it. The function therefore acts as a 16-byte-stride scenario-effect dispatcher; its result
+  comes from the called handler (its r0/flags appear in the captured exits as 0/-ZC- across all 40 calls).
+  No other memory or registers are touched beyond r5/r7; r4-r9/r12 are preserved for the caller via the
+  `push {r4-r7,lr} / pop {r4-r7,pc}` epilogue. The dispatch gate at 0x00 and 0x80 makes this match the
+  standard "state inactive or terminal-bit-set → bail" idiom used by the per-frame state handlers it sits
+  beside (every caller in the callee list is a per-frame state handler that also gates itself on the screen
+  fade).
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r5, off_80039F0 // =eScenarioEffectState2000780` at 0x080039B0 binds r5 to the EWRAM
+    state struct. - `ldrb r0,[r5]` / `tst r0,r0` / `beq locret_80039CA` shows early-out on inactive state.
+    - `tst r0,#0x80` / `bne locret_80039CA` shows early-out when bit 7 is set (likely a terminal/frozen
+    flag). - `ldrb r0,[r5,#0x1]` then `mul r0,r1` with `mov r1, #0x10` shows a 16-byte stride. - `ldr
+    r7, off_80039F4 // =jt_80038E8` then `add r7,r7,r0` then `ldr r0,[r7]` then `mov lr,pc / bx r0` is
+    a textbook indexed tail-call dispatch through a 0x10-stride jump table. - Captured calls all show
+    `lr=08005293`, indicating a fixed-site bl from one specific caller (consistent with the per-frame
+    tick layout). - All 14 listed callers are per-frame main-jumptable handlers (`battle_init_80052D8`,
+    `gamestate_OnMapUpdate_8005268`, `mainState_runFrame_8005814`, etc.) — the same shape that the other
+    per-frame scenario/battle dispatch functions are called from, supporting the "effect dispatch" reading.'
+  refs:
+  - bn6f/asm/asm00_1.s
+  reproduce: 'python3 tools/asmcat.py 0x080039AA
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): scenario_runEffectStateJumptable_80039AA
+
+    '
+open_questions:
+- What the entries in `jt_80038E8` actually do (need to disassemble each entry to confirm they're scenario
+  effects rather than, e.g., battle-scene graphics). Also the semantics of the bit-0x80 guard (terminal
+  vs. paused).
+sources:
+- discovery session 2026-10-14 batch 38 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7db59311
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80039AA -> scenario_runEffectStateJumptable_80039AA
+  where: bn6f 1a2beb61
+  tool: tools/rename_symbol.py

@@ -1,0 +1,68 @@
+name: petSprite_setVisualForSelectedNavi_811BE1C
+address: '0x0811BE1C'
+kind: function
+previous_names:
+- sub_811BE1C
+status: probable
+summary: Configures the PET navi sprite's appearance (init sprite, animation, palette, priority, coordinates)
+  based on the currently selected navi and stats.
+interface: '(r0 = navi/state index, r1 = 1, r2 = table byte, r5 = sprite object) -> void ; side effects:
+  writes sprite/palette/anim/coord fields of object in r5'
+details: '- Stores 1 at r5+0x0 (r5 byte 0) and reads a gating byte from off_811BEFC; returns early if
+  zero (`tst r0,r0; beq locret`).
+
+  - Calls initGuiSprite_8002770(r0=tableByte, r1=1) to initialize the GUI sprite object, then sets r5+0x0
+  = 0x23.
+
+  - Sets current animation 0 via sprite_setAnimation(0), loads animation data, and disables shadow via
+  sprite_noShadow.
+
+  - Sets palette bank 4 on the selected sub-entry, then branches on r5+0xc: if 0x17, fetches GetCurPETNavi
+  and reads NaviStats byte 0x0E; if that byte is 0xFF uses 0x0C, otherwise uses 0x17. The chosen value
+  indexes byte_811BFD8 to obtain the final palette index.
+
+  - Stores 0x120 into the slotList field via slotList_storeHalfwordAndClearField_800306C, sets OAM priority
+  2, looks up sprite sub-record field A from byte_811BFB6 keyed by r5+0xc, and finally sets coordinates
+  from the table at 811BF0C (pairs of s16: x,y) indexed by r5+0xc.
+
+  - Called only from sub_811BD88, the PET screen sprite state setter, so this is the "configure / refresh"
+  step of that state''s update phase.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `strb r1,[r5]` with r1=1 sets object flag byte 0 to 1; `strb r1,[r5]` then `0x23` overwrites
+    it to 0x23 (the visible/init byte). Assembly: `mov r1,#1; strb r1,[r5]` then `mov r1,#0x23; strb r1,[r5]`.
+    - `bl initGuiSprite_8002770` and the subsequent sprite_setAnimation(0), sprite_loadAnimationData,
+    sprite_noShadow are the standard GUI sprite bring-up sequence. - The branch `ldrb r1,[r5,#0xc]; cmp
+    r1,#0x17; bne loc_811BE60` and the GetCurPETNavi+GetCurPETNaviStatsByte(0x0E) call match the captured
+    struct at r1=0200ad04 whose CurPETNavi state looks like a PET/S20047CC layout; field 0x0E on NaviStats
+    is `Mood`. - `cmp r0,#0xff` with fallback `mov r0,#0xc` then loading `ldrb r0,[r0,r1]` from byte_811BFD8
+    implements a per-navi palette table. - Final `ldrsh r0,[r1,r2]; ldrsh r1,[r1,r2+2]; bl sprite_setCoordinates`
+    shows x/y pulled as a s16 pair from a table keyed by the r5+0xc selector.'
+  refs:
+  - bn6f/asm/asm32.s
+  reproduce: 'python3 tools/asmcat.py 0x0811BE1C
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): petSprite_setVisualForSelectedNavi_811BE1C
+
+    '
+open_questions:
+- The semantic meaning of r5+0xc (sprite variant/pose index 0..0x17) is not fully clear; the PET screen
+  uses ~24 poses per navi, which is consistent.
+- The table semantics (byte_811BF94 enable mask, byte_811BFB6 sub-record field A, byte_811BFD8 palette,
+  byte_811BF0C x/y) are inferred from addresses; actual contents unknown without further dumps.
+sources:
+- discovery session 2026-10-14 batch 38 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7db59311
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_811BE1C -> petSprite_setVisualForSelectedNavi_811BE1C
+  where: bn6f 1a2beb61
+  tool: tools/rename_symbol.py

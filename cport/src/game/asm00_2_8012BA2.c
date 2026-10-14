@@ -2565,7 +2565,7 @@ Next battle_teardownObject_80165F8(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8016860 ── */
+/* ── battleObject_updateColorShader_8016860 ── */
 /* register form: calls GetBattleNaviStatsByte_AllianceFromBattleObject outside this file, which has no typed C interface yet */
 static u32 get_battle_navi_stats_byte(u32 field) {
     R1 = field;    /* r0 is handed to the callee untouched, exactly as the original does */
@@ -2624,8 +2624,8 @@ static void pulse_object_color_shader(u32 obj) {
     sprite_set_color_shader(brightness << shift);
 }
 
-/* sub_8016860(r5 = battle object) */
-Next sub_8016860(void) {
+/* battleObject_updateColorShader_8016860(r5 = battle object) */
+Next battleObject_updateColorShader_8016860(void) {
     pulse_object_color_shader(R5);
     RETURN_TO_CALLER();
 }

@@ -993,8 +993,8 @@ Next scenario_ClearEffectActiveFlag_800399A(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80039AA ── */
-/* Indirect-dispatch helper for sub_80039AA.
+/* ── scenario_runEffectStateJumptable_80039AA ── */
+/* Indirect-dispatch helper for scenario_runEffectStateJumptable_80039AA.
  * The original sets r5=eScenarioEffectState, r7=jt-entry, r1=16, r0=handler,
  * then bx r0. The handler may clobber r2-r12; r4-r7 are saved/restored here. */
 static u32 call_effect_handler(u32 handler, u32 status_addr, u32 entry_addr) {
@@ -1035,9 +1035,9 @@ static void dispatch_scenario_effect(u32 r2, u32 r3, u32 r4, u32 r6,
     call_effect_handler(handler, A_eScenarioEffectState2000780, entry);
 }
 
-/* sub_80039AA: scenario-effect dispatcher.
+/* scenario_runEffectStateJumptable_80039AA: scenario-effect dispatcher.
  * Outputs: r2-r12. Preserved: r4-r7. Clobbers: nz c v r0 r1 lr. */
-Next sub_80039AA(void) {
+Next scenario_runEffectStateJumptable_80039AA(void) {
     u32 lr_save = LR;
     dispatch_scenario_effect(R2, R3, R4, R6, R8, R9, R10, R11, R12);
     LR = lr_save;
@@ -2605,9 +2605,9 @@ static void call_eventDispatch(void) {
     GUEST_CALL(dispatch_80339CC);
 }
 
-/* register form: calls sub_80039AA outside this file, which has no typed C interface yet */
+/* register form: calls scenario_runEffectStateJumptable_80039AA outside this file, which has no typed C interface yet */
 static void call_sub_80039AA_gamestate_OnMapUpdate_8005268(void) {
-    GUEST_CALL(sub_80039AA);
+    GUEST_CALL(scenario_runEffectStateJumptable_80039AA);
 }
 
 /* register form: calls object_dispatchByType_8003AFA outside this file, which has no typed C interface yet */
@@ -2675,9 +2675,9 @@ static void call_runArmedCallback(void) {
     GUEST_CALL(event_runArmedCallback_80024AE);
 }
 
-/* register form: calls sub_80058D0 outside this file, which has no typed C interface yet */
+/* register form: calls owMap_checkWarpTrigger_80058D0 outside this file, which has no typed C interface yet */
 static void call_sub_80058D0(void) {
-    GUEST_CALL(sub_80058D0);
+    GUEST_CALL(owMap_checkWarpTrigger_80058D0);
 }
 
 /* register form: calls checkThenStartBattle_8005A8C outside this file, which has no typed C interface yet */
@@ -2776,9 +2776,9 @@ static void call_dispatch_80339CC(void) {
     GUEST_CALL(dispatch_80339CC);
 }
 
-/* register form: calls sub_80039AA outside this file, which has no typed C interface yet */
+/* register form: calls scenario_runEffectStateJumptable_80039AA outside this file, which has no typed C interface yet */
 static void call_sub_80039AA(void) {
-    GUEST_CALL(sub_80039AA);
+    GUEST_CALL(scenario_runEffectStateJumptable_80039AA);
 }
 
 /* register form: calls object_dispatchByType_8003AFA outside this file, which has no typed C interface yet */
@@ -2968,13 +2968,13 @@ Next endBattleAndEnterMap_800531C(void) {
 static const u16 warp_entry_cues[2] = { 0xE7, 0xEC };
 
 /* register form: calls the overworld per-frame update/draw routines
- * (dispatch_80339CC, sub_80039AA, object_dispatchByType_8003AFA, sprite_setRenderFlushState_80027B4, sprite_resetPaletteCount_800286C,
+ * (dispatch_80339CC, scenario_runEffectStateJumptable_80039AA, object_dispatchByType_8003AFA, sprite_setRenderFlushState_80027B4, sprite_resetPaletteCount_800286C,
  * owMapObject_renderAll_8003BF4, sub_8003E98, npc_drawSprites_800467C, sprite_finalizeBattleSpriteGroupQueue_8004298,
  * sprite_finishGroup_8004590, owMapObject_queueSprites_8004934, event_runArmedCallback_80024AE) outside this
  * file, which have no typed C interface yet */
 static void run_overworld_updates(void) {
     GUEST_CALL(dispatch_80339CC);
-    GUEST_CALL(sub_80039AA);
+    GUEST_CALL(scenario_runEffectStateJumptable_80039AA);
     GUEST_CALL(object_dispatchByType_8003AFA);
     GUEST_CALL(sprite_setRenderFlushState_80027B4);
     GUEST_CALL(sprite_resetPaletteCount_800286C);
@@ -3047,8 +3047,8 @@ Next overworld_owMap_renderAndTickSubsystems_800536E(void) {
 /* register form: calls dispatch_80339CC outside this file, which has no typed C interface yet */
 static void call_dispatch(void) { GUEST_CALL(dispatch_80339CC); }
 
-/* register form: calls sub_80039AA outside this file, which has no typed C interface yet */
-static void call_sub_80039AA_sub_80053E4(void) { GUEST_CALL(sub_80039AA); }
+/* register form: calls scenario_runEffectStateJumptable_80039AA outside this file, which has no typed C interface yet */
+static void call_sub_80039AA_sub_80053E4(void) { GUEST_CALL(scenario_runEffectStateJumptable_80039AA); }
 
 /* register form: calls object_dispatchByType_8003AFA outside this file, which has no typed C interface yet */
 static void call_sub_8003AFA_sub_80053E4(void) { GUEST_CALL(object_dispatchByType_8003AFA); }
@@ -3263,9 +3263,9 @@ static void call_dispatch_80339CC_sub_8005642(void) {
     GUEST_CALL(dispatch_80339CC);
 }
 
-/* register form: calls sub_80039AA outside this file, which has no typed C interface yet */
+/* register form: calls scenario_runEffectStateJumptable_80039AA outside this file, which has no typed C interface yet */
 static void call_sub_80039AA_sub_8005642(void) {
-    GUEST_CALL(sub_80039AA);
+    GUEST_CALL(scenario_runEffectStateJumptable_80039AA);
 }
 
 /* register form: calls object_dispatchByType_8003AFA outside this file, which has no typed C interface yet */
@@ -3464,7 +3464,7 @@ Next scenario_finalizeFrameOrRestart_8005642(void) {
  * path (e.g. title -> title). */
 Next mainState_runFrame_8005814(void) {
     GUEST_CALL(dispatch_80339CC);
-    GUEST_CALL(sub_80039AA);
+    GUEST_CALL(scenario_runEffectStateJumptable_80039AA);
     GUEST_CALL(object_dispatchByType_8003AFA);
     GUEST_CALL(sprite_setRenderFlushState_80027B4);
     GUEST_CALL(sprite_resetPaletteCount_800286C);
@@ -3484,9 +3484,9 @@ Next mainState_runFrame_8005814(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80058D0 ── */
+/* ── owMap_checkWarpTrigger_80058D0 ── */
 /* ---------------------------------------------------------------------------
- * sub_80058D0 -- overworld warp trigger check
+ * owMap_checkWarpTrigger_80058D0 -- overworld warp trigger check
  *
  * Runs from the overworld dispatcher.  While the on-map-update gamestate is
  * active and nothing else owns the screen (no fade, no cutscene, no PET menu
@@ -3638,12 +3638,12 @@ static u32 check_map_warp_start(u32 entry_r5, u32 toolkit) {
     return entry_r5;
 }
 
-/* sub_80058D0(r10 = toolkit) -> r1..r12; r5 preserved on every path.
+/* owMap_checkWarpTrigger_80058D0(r10 = toolkit) -> r1..r12; r5 preserved on every path.
  * r1/r2/r3/r4 on exit are whatever the last guest callee left behind (or the armed warp
  * values handed to the cutscene handler), which the GUEST_CALLs above already put in place.
  * r8-r12 are the original's outputs: unchanged on the early paths, and on the warp path
  * whatever the cutscene handler left, which the guest calls already left in place. */
-Next sub_80058D0(void) {
+Next owMap_checkWarpTrigger_80058D0(void) {
     R5 = check_map_warp_start(R5, R10);
     RETURN_TO_CALLER();
 }

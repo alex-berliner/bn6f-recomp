@@ -2546,7 +2546,7 @@ Next sub_8124C94(void) {
         GUEST_CALL(menu_handleStartAndDpad_8125594);
     }
 
-    GUEST_CALL(sub_8125444);
+    GUEST_CALL(battle_runTransition_8125444);
     GUEST_CALL(sub_8125D10);
     GUEST_CALL(sub_81264F4);
 
@@ -2591,7 +2591,7 @@ Next sub_8124CE8(void) {
     }
 
     ST32(R5 + 0x70, 0xFF);
-    GUEST_CALL(sub_8125444);
+    GUEST_CALL(battle_runTransition_8125444);
     GUEST_CALL(sub_8125D10);
     GUEST_CALL(sub_8125D94);
 
@@ -2630,9 +2630,9 @@ static void call_sub_8126818_with_zero(void) {
     GUEST_CALL(sub_8126818);
 }
 
-/* register form: calls sub_8125444 outside this file, which has no typed C interface yet */
+/* register form: calls battle_runTransition_8125444 outside this file, which has no typed C interface yet */
 static void call_sub_8125444_sub_8124D30(void) {
-    GUEST_CALL(sub_8125444);
+    GUEST_CALL(battle_runTransition_8125444);
 }
 
 /* register form: calls sub_8125D10 outside this file, which has no typed C interface yet */
@@ -2721,10 +2721,10 @@ static inline call_sub_81255F8_result call_sub_81255F8(u32 r0, u32 r2, u32 r5) {
 }
 
 typedef struct { u32 r3, r4, r5, r6, r7, r8, r9, r10, r11, r12; } call_sub_8125444_result;
-/* register form: generated wrapper: sub_8125444 has no typed C interface yet */
+/* register form: generated wrapper: battle_runTransition_8125444 has no typed C interface yet */
 static inline call_sub_8125444_result call_sub_8125444_sub_8124D78(u32 r5) {
     R5 = r5;
-    GUEST_CALL(sub_8125444);
+    GUEST_CALL(battle_runTransition_8125444);
     return (call_sub_8125444_result){ R3, R4, R5, R6, R7, R8, R9, R10, R11, R12 };
 }
 
@@ -2841,9 +2841,9 @@ static void call_sub_8126818_sub_8124DCC(u32 arg) {
     GUEST_CALL(sub_8126818);
 }
 
-/* register form: calls sub_8125444 outside this file, which has no typed C interface yet */
+/* register form: calls battle_runTransition_8125444 outside this file, which has no typed C interface yet */
 static void call_sub_8125444_sub_8124DCC(void) {
-    GUEST_CALL(sub_8125444);
+    GUEST_CALL(battle_runTransition_8125444);
 }
 
 /* register form: calls sub_8125D94 outside this file, which has no typed C interface yet */
@@ -2944,9 +2944,9 @@ static void sub_8125784_reg(u32 arg) {
     GUEST_CALL(battle_input_tick_8125784);
 }
 
-/* register form: calls sub_8125444 outside this file, which has no typed C interface yet */
+/* register form: calls battle_runTransition_8125444 outside this file, which has no typed C interface yet */
 static void sub_8125444_reg(void) {
-    GUEST_CALL(sub_8125444);
+    GUEST_CALL(battle_runTransition_8125444);
 }
 
 /* register form: calls sub_8126184 outside this file, which has no typed C interface yet */
@@ -3027,9 +3027,9 @@ static void call_sub_81267A8(void) {
     GUEST_CALL(sub_81267A8);
 }
 
-/* register form: calls sub_8125444 outside this file, which has no typed C interface yet */
+/* register form: calls battle_runTransition_8125444 outside this file, which has no typed C interface yet */
 static void call_sub_8125444(void) {
-    GUEST_CALL(sub_8125444);
+    GUEST_CALL(battle_runTransition_8125444);
 }
 
 /* register form: calls sub_8125D10 outside this file, which has no typed C interface yet */
@@ -3088,9 +3088,9 @@ static void call_81267A8(void) {
     GUEST_CALL(sub_81267A8);
 }
 
-/* register form: calls sub_8125444 outside this file, which has no typed C interface yet */
+/* register form: calls battle_runTransition_8125444 outside this file, which has no typed C interface yet */
 static void call_8125444(void) {
-    GUEST_CALL(sub_8125444);
+    GUEST_CALL(battle_runTransition_8125444);
 }
 
 /* register form: calls sub_8126114 outside this file, which has no typed C interface yet */
@@ -3150,9 +3150,9 @@ static void call_sub_8126818_zero(void) {
     GUEST_CALL(sub_8126818);
 }
 
-/* register form: calls sub_8125444 outside this file, which has no typed C interface yet */
+/* register form: calls battle_runTransition_8125444 outside this file, which has no typed C interface yet */
 static void call_sub_8125444_sub_8125198(void) {
-    GUEST_CALL(sub_8125444);
+    GUEST_CALL(battle_runTransition_8125444);
 }
 
 /* register form: calls bg_drawArenaTiles_8125E78 outside this file, which has no typed C interface yet */

@@ -1,0 +1,81 @@
+name: battleObject_initFromHPTableByParam1_80CCFFC
+address: '0x080CCFFC'
+kind: function
+previous_names:
+- sub_80CCFFC
+status: probable
+summary: Initializes a battle object of the type that reads its HP/extra-vars from a per-index table in
+  `byte_80CCFD4` and sets up sprite/collision/curstate (Param1 indexes the type/HP table).
+interface: '(r5 = battleObject) -> void ; side effects: writes many fields of the battle object, loads
+  sprite, allocates collision, dispatches to sub_80CD08C'
+details: '- Sets `oObjectHeader_Flags` |= 0x02 (OBJECT_FLAG_VISIBLE) immediately on entry.
+
+  - Calls `sprite_load(0x80, 4, 9)`, then `sprite_noShadow`, then sets palette from `oBattleObject_Param1`,
+  animation index 0, loads animation data, runs `sprite_update`, applies `object_getFlip` via `sprite_setFlip`,
+  and snaps pixels to the panel via `object_setCoordinatesFromPanels`.
+
+  - Zeros `oBattleObject_Z`; copies `oBattleObject_PanelXY` into `oBattleObject_FuturePanelXY`; clears
+  `oBattleObject_Element`.
+
+  - Builds `oBattleObject_NameID = 0xD6 + Param1`.
+
+  - Indexes `byte_80CCFD4[Param1]` (a u32-ptr table, entry size 4 — first word is the per-type `ExtraVars`
+  pointer that is stored into `oBattleObject_ExtraVars`, second word at +2 is the type''s HP) and writes
+  that HP into both `oBattleObject_HP` and `oBattleObject_MaxHP`. Sets `oBattleObject_Timer = 0x5A0`.
+
+  - Allocates a collision slot via `object_createCollisionData`; on failure the object is freed (`object_freeMemory`)
+  and the function returns.
+
+  - Calls `object_setupCollisionData(0x13, 0x14, 0)` and `object_presentCollisionData`, then sets `oBattleObject_CurState
+  = CUR_STATE_UPDATE (4)` and tail-calls `sub_80CD08C`.
+
+  - This is the `CUR_STATE_INITIALIZE` handler for a specific battle-object type whose per-instance configuration
+  (HP, ExtraVars root) lives in `byte_80CCFD4`; the `+0xD6` base for `NameID` and the constant `0x5A0`
+  timer are how the type distinguishes itself.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0,[r5,#oObjectHeader_Flags] ... orr r0,r1 ... strb` immediately sets the visible bit
+    (`oObjectHeader_Flags |= 2`). - `mov r0,#0x80; mov r1,#4; mov r2,#9; bl sprite_load` — hard-coded
+    sprite args. - `bl sprite_noShadow` after sprite load, mirroring the standard battle-object init.
+    - `ldrb r0,[r5,#oBattleObject_Param1]; bl sprite_setPalette` — palette is Param1. - `mov r0,#0; strh
+    r0,[r5,#oBattleObject_CurAnimAndCurAnimCopy]; bl sprite_setAnimation` then `bl sprite_loadAnimationData;
+    bl sprite_update`. - `bl object_getFlip; bl sprite_setFlip` and `bl object_setCoordinatesFromPanels`
+    are the standard pre-flip/coord init. - `mov r0,#0; str r0,[r5,#oBattleObject_Z]; ldrh r0,[r5,#oBattleObject_PanelXY];
+    strh r0,[r5,#oBattleObject_FuturePanelXY]` zeroes Z and seeds future panel from current. - `mov r0,#0;
+    strb r0,[r5,#oBattleObject_Element]` clears element. - `mov r0,#0xd6; ldrb r1,[r5,#oBattleObject_Param1];
+    add r0,r0,r1; strh r0,[r5,#oBattleObject_NameID]` builds `NameID = 0xD6 + Param1`. - `ldr r7,off_80CD088`
+    (= `byte_80CCFD4`); `ldrb r0,[r5,#oBattleObject_Param1]; lsl r0,r0,#2; add r7,r7,r0; str r7,[r5,#oBattleObject_ExtraVars]`
+    — 4-byte stride, Param1 is the index. - `ldrh r0,[r7,#2]; strh r0,[r5,#oBattleObject_HP]; strh r0,[r5,#oBattleObject_MaxHP]`
+    reads HP from the +2 halfword of the per-type table entry. - `ldr r0,off_80CD084` (= `0x5A0`); `strh
+    r0,[r5,#oBattleObject_Timer]` — fixed 0x5A0 timer. - `bl object_createCollisionData; tst r0,r0; bne
+    loc_80CD06C; bl object_freeMemory; pop {r7,pc}` — collision slot allocation with free-on-failure.
+    - `mov r1,#0x13; mov r2,#0x14; mov r3,#0; bl object_setupCollisionData` then `bl object_presentCollisionData`.
+    - `mov r0,#CUR_STATE_UPDATE; strb r0,[r5,#oBattleObject_CurState]` then `bl sub_80CD08C` — finalize
+    init by switching to UPDATE and calling the per-type update routine.'
+  refs:
+  - bn6f/asm/asm31.s
+  reproduce: 'python3 tools/asmcat.py 0x080CCFFC
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_initFromHPTableByParam1_80CCFFC
+
+    '
+open_questions:
+- The actual semantics of the object type (what `byte_80CCFD4` describes — looks like per-Param1 extra-vars
+  pointer + HP), and the meaning of `NameID = 0xD6 + Param1`, are inferred from the indexing pattern only;
+  the data table contents at `0x80CCFD4` would settle what kind of battle object this initializes.
+sources:
+- discovery session 2026-10-14 batch 38 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7db59311
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80CCFFC -> battleObject_initFromHPTableByParam1_80CCFFC
+  where: bn6f 1a2beb61
+  tool: tools/rename_symbol.py
