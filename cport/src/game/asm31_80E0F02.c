@@ -1319,7 +1319,7 @@ Next battle_aiAttackDispatch_80EB436(void) {
     if (slot == 0)
         GUEST_CALL(sub_80EB450);
     else
-        GUEST_CALL(sub_80EB502);
+        GUEST_CALL(aiAttack_handleMoveDirectionTimerAndStartNewAttack_80EB502);
 
     RETURN_TO_CALLER();
 }

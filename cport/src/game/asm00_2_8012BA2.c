@@ -810,11 +810,11 @@ static u32 get_navi_stat(u32 battle_obj, u32 field) {
     return R0;
 }
 
-/* register form: calls sub_80143A6 outside this file, which has no typed C interface yet */
+/* register form: calls battleObject_markUsedAction_80143A6 outside this file, which has no typed C interface yet */
 static void ai_action_a(u32 r0_val, u32 r1_val) {
     R0 = r0_val;
     R1 = r1_val;
-    GUEST_CALL(sub_80143A6);
+    GUEST_CALL(battleObject_markUsedAction_80143A6);
 }
 
 /* register form: calls sub_8014446 outside this file, which has no typed C interface yet */

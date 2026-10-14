@@ -1,0 +1,51 @@
+name: battle_getScenarioEffectStateField_81421D0
+address: '0x081421D0'
+kind: function
+previous_names:
+- sub_81421D0
+status: probable
+summary: Returns the byte at offset 0xB of the scenario/effect state (eScenarioEffectState2000780).
+interface: () -> r0 = byte at state + 0xB ; no side effects
+details: "Loads the static address `eScenarioEffectState2000780` (a global EWRAM byte array at\n  0x02000780)\
+  \ into r5, then performs a single `ldrb r0, [r5, #0xb]`, reading byte 0xB of\n  that state. Returns\
+  \ that byte directly in r0; the `push {r4-r7,lr}` / `pop {r4-r7,pc}`\n  pair is a no-cost leaf-frame\
+  \ trick (lr saved into the saved-PC slot of the pop). The\n  eight named callers (e.g. 0x08089704, 0x080a86b4,\
+  \ 0x0811e2b4, 0x081429ca) all read this\n  byte as a flag/selector that varies per frame in the captured\
+  \ beastspecialization samples.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r5, off_8142308 // =eScenarioEffectState2000780` (r5 holds the global state base) -
+    `ldrb r0, [r5,#0xb]` is the only data access in the body - `push {r4-r7,lr}` / `pop {r4-r7,pc}` shows
+    this is a leaf that returns r0 unchanged to callers; r4-r6 in `out` are callee-saved noise from the
+    save area - Captured exit r0==0 in every shown sample while the rest of r0-r3 were unrelated input
+    args, confirming the function disregards its arguments and just reads +0xB - The address being dereferenced
+    is named `eScenarioEffectState...` with `200` (EWRAM) prefix and lives in the battle/scenario subsystem
+    used by beast-sp (game-mode = beast specialization) callers like 0x0811e2b4 / 0x0811e3cc'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x081421D0
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^081421d0 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The semantic meaning of byte 0xB (mode flag? step index? effect ID?) is not derivable
+- here; pairing this with a writer of `eScenarioEffectState2000780+0xB` would settle it.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 4efa6ddc
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_81421D0 -> battle_getScenarioEffectStateField_81421D0
+  where: bn6f df5b9de6
+  tool: tools/rename_symbol.py

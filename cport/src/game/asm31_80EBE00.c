@@ -3629,7 +3629,7 @@ Next sub_8109804(void) {
  * candidate panel passes the parameter check, store the future panel on
  * the battle object and reserve it, set the "cannot slide" flag,
  * dispatch to sub_81098C4 or sub_810990E based on Unk_03, then run
- * sub_810986E. Otherwise clear Unk_1a and call object_exitAttackState_801171C.
+ * battleObject_advanceAIStepMove_810986E. Otherwise clear Unk_1a and call object_exitAttackState_801171C.
  *
  * Inputs:  r5 = battle object ptr, r6 = ?, r7 = AI attack vars ptr
  * Outputs: standard AAPCS; preserves r4..r7. */
@@ -3664,7 +3664,7 @@ Next sub_8109820(void) {
     } else {
         GUEST_CALL(sub_810990E);
     }
-    GUEST_CALL(sub_810986E);
+    GUEST_CALL(battleObject_advanceAIStepMove_810986E);
     RETURN_TO_CALLER();
 
 fail:
@@ -3901,7 +3901,7 @@ Next ai_attackTickDown_timerEndExit_8109DBA(void) {
 /* AI attack dispatch: selects one of two handlers using the attack-var type
  * byte stored at the head of the AIAttackVars struct referenced by self. */
 
-/* register form: full-register virtual dispatch — both handlers (sub_8109DEC
+/* register form: full-register virtual dispatch — both handlers (aiAttackVars_runKeyItemTrapStep_8109DEC
  * and aiAttackTimer_tick_8109E4A) receive and return every CPU register, so C parameter
  * passing cannot express the call. */
 static void ai_attack_dispatch_sub_8109DD2(u32 self) {
@@ -3911,7 +3911,7 @@ static void ai_attack_dispatch_sub_8109DD2(u32 self) {
     R1 = handler_addr;
     u32 saved_r6 = R6;
     if (idx == 0)
-        GUEST_CALL(sub_8109DEC);
+        GUEST_CALL(aiAttackVars_runKeyItemTrapStep_8109DEC);
     else
         GUEST_CALL(aiAttackTimer_tick_8109E4A);
     R6 = saved_r6;

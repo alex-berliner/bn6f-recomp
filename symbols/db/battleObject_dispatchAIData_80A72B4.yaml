@@ -4,36 +4,32 @@ kind: function
 previous_names:
 - sub_80A72B4
 status: probable
-summary: Dispatches an AIData handler based on the actor's `BLeftAbility` byte (r5+8), tail-calling one
-  of three thunked sub-routines via a small table
-interface: '(r0 = actor AIDataPtr, r1 = ?, r5 = BattleObjectBase, r10 = Toolkit) -> r0 = whatever the
-  dispatched routine returns ; side effects: tail-calls into sub_80A72D8 / sub_80A7354 / sub_80A7398 depending
-  on (r5+0x8)'
-details: "- Loads an unused EWRAM pointer (`unk_2011A90`) into r6 (never used again in the body).\n  -\
-  \ Reads `ldrb r1, [r5, #8]`, which is `BattleObject->BLeftAbility` at offset 0x8 — wait, that's `CurState`.\
-  \ So actually `r5` here is not a BattleObjectBase; offset 0x8 in the AIData layout is `BLeftAbility`,\
-  \ which means `r5` is an `AIData*` and r5 holds the pointer to AIData rather than the object. (Captured\
-  \ r1=0x28 across all 40 calls is consistent with that byte being a stable AIData field.)\n  - Loads\
-  \ `off_80A72C8`, dereferences it with the actor's `BLeftAbility` to obtain a function pointer (with\
-  \ Thumb bit set, hence the `bx r0` / `mov lr, pc` sequence used to tail-call Thumb code from a non-Thumb\
-  \ prologue/return).\n  - Performs the tail call as `push {lr}; mov lr, pc; bx r0; pop {pc}` — i.e.,\
-  \ it is a `return`-equivalent call, so the dispatcher's return value equals the dispatched routine's\
-  \ return value (which matches the captured `r0` outputs of 0x00000001, 0x00c60000, 0xffc60000 etc.,\
-  \ all values originating from the targets).\n  - Three handlers are available: `sub_80A72D8`, `sub_80A7354`,\
-  \ `sub_80A7398`, selected by `BLeftAbility` values 0..2.\n  - Captured-call `lr` is `08004916` for all\
-  \ 40 traces, which is the sole caller — a routine at 0x08004916 invokes this dispatcher inside the battle\
-  \ AI tick.\n"
+summary: Dispatches an AIData handler based on the actor's `BLeftAbility` byte (r5+8), tail-calling one of three
+  thunked sub-routines via a small table
+interface: '(r0 = actor AIDataPtr, r1 = ?, r5 = BattleObjectBase, r10 = Toolkit) -> r0 = whatever the dispatched
+  routine returns ; side effects: tail-calls into sub_80A72D8 / sub_80A7354 / sub_80A7398 depending on (r5+0x8)'
+details: "- Loads an unused EWRAM pointer (`unk_2011A90`) into r6 (never used again in the body).\n  - Reads `ldrb\
+  \ r1, [r5, #8]`, which is `BattleObject->BLeftAbility` at offset 0x8 — wait, that's `CurState`. So actually `r5`\
+  \ here is not a BattleObjectBase; offset 0x8 in the AIData layout is `BLeftAbility`, which means `r5` is an `AIData*`\
+  \ and r5 holds the pointer to AIData rather than the object. (Captured r1=0x28 across all 40 calls is consistent\
+  \ with that byte being a stable AIData field.)\n  - Loads `off_80A72C8`, dereferences it with the actor's `BLeftAbility`\
+  \ to obtain a function pointer (with Thumb bit set, hence the `bx r0` / `mov lr, pc` sequence used to tail-call\
+  \ Thumb code from a non-Thumb prologue/return).\n  - Performs the tail call as `push {lr}; mov lr, pc; bx r0;\
+  \ pop {pc}` — i.e., it is a `return`-equivalent call, so the dispatcher's return value equals the dispatched routine's\
+  \ return value (which matches the captured `r0` outputs of 0x00000001, 0x00c60000, 0xffc60000 etc., all values\
+  \ originating from the targets).\n  - Three handlers are available: `sub_80A72D8`, `sub_80A7354`, `sub_80A7398`,\
+  \ selected by `BLeftAbility` values 0..2.\n  - Captured-call `lr` is `08004916` for all 40 traces, which is the\
+  \ sole caller — a routine at 0x08004916 invokes this dispatcher inside the battle AI tick.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- `ldrb r1, [r5, #8]` indexes a single byte that selects one of three targets via `off_80A72C8`
-    (asm line 3963). - The push/pop `{pc}` plus `mov lr, pc; bx r0` pattern is the canonical "tail-call
-    a Thumb function while preserving lr" idiom; the populated table at off_80A72C8 stores Thumb-bit-set
-    addresses (sub_…+1). - Captured `r1 = 0x28` for every entry is constant, matching an enum-ish byte
-    used purely as an index (would match, e.g., a stored ability id). - Captured `lr = 0x08004916` is
-    the same across all 40 calls, identifying a unique caller. - Exit `r0` values vary (0x00000001, 0x00c60000,
-    0xffc60000) — these track what each of the three leaf routines returns, confirming they are the actual
-    computation.'
+  detail: '- `ldrb r1, [r5, #8]` indexes a single byte that selects one of three targets via `off_80A72C8` (asm
+    line 3963). - The push/pop `{pc}` plus `mov lr, pc; bx r0` pattern is the canonical "tail-call a Thumb function
+    while preserving lr" idiom; the populated table at off_80A72C8 stores Thumb-bit-set addresses (sub_…+1). - Captured
+    `r1 = 0x28` for every entry is constant, matching an enum-ish byte used purely as an index (would match, e.g.,
+    a stored ability id). - Captured `lr = 0x08004916` is the same across all 40 calls, identifying a unique caller.
+    - Exit `r0` values vary (0x00000001, 0x00c60000, 0xffc60000) — these track what each of the three leaf routines
+    returns, confirming they are the actual computation.'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x080A72B4
@@ -48,9 +44,9 @@ evidence:
     '
   result: beastsp
 open_questions:
-- Whether r5 is really an AIData* vs some other struct that happens to put a meaningful byte at offset
-  8 is not fully pinned from this snippet alone (offset 0x8 = CurState in BattleObject but BLeftAbility
-  in AIData — needs a caller-side check). Whatever its type, the selector byte is at +8.
+- Whether r5 is really an AIData* vs some other struct that happens to put a meaningful byte at offset 8 is not
+  fully pinned from this snippet alone (offset 0x8 = CurState in BattleObject but BLeftAbility in AIData — needs
+  a caller-side check). Whatever its type, the selector byte is at +8.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
@@ -62,3 +58,7 @@ changes:
   what: rename sub_80A72B4 -> battleObject_dispatchAIData_80A72B4
   where: bn6f 438cfa55
   tool: tools/rename_symbol.py
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 4efa6ddc
+  tool: tools/symdoc.py

@@ -1,0 +1,68 @@
+name: aiAttack_walkForwardThenAttack_80ED7A2
+address: '0x080ED7A2'
+kind: function
+previous_names:
+- sub_80ED7A2
+status: probable
+summary: AI attack step that walks the battle object forward each turn and, once in range, hands the turn
+  off to the standard attack flow
+interface: '(no explicit return) ; side effects: mutates AIAttackVars (Unk_01 init flag, Unk_10 free-panel
+  count), BattleObject->RelatedObject1Ptr, AIData->Unk_68, exits the attack state and starts the normal
+  ai attack via aiAttack_initVarsAndStart_80116AE'
+details: "Looks up whether the AI attack vars have already been initialized (oAIAttackVars_Unk_01 == 0).\n\
+  \  First call: reads the alliance's NaviStats byte index 2, then calls scanFrontPanels_800FAF6\n  with\
+  \ the object's PanelX/PanelY to count the free panels in front of it; the result is\n  stored as the\
+  \ initial value of oAIAttackVars_Unk_10 (free-panel counter) and the init flag\n  is set to 4.\n  Each\
+  \ subsequent call: decrements oAIAttackVars_Unk_10 by one. When it underflows,\n  the object clears\
+  \ its RelatedObject1Ptr + AIData->Unk_68 and exits the attack state via\n  object_exitAttackState, ending\
+  \ the walking phase without firing an attack.\n  Otherwise it asks object_canMove; if the object is\
+  \ free, queries playerObject_checkDirectionButtons_800FA54\n  for the pressed direction, tries to take\
+  \ a step forward via battleObject_tryGetNextPanelInFacingDirection_800F964,\n  and on success clears\
+  \ RelatedObject1Ptr/Unk_68, exits the attack state, then re-enters the\n  generic attack pipeline: combines\
+  \ the cross/beast navi index (battle_getCrossNaviTableByte_8010332)\n  with the alliance faction (battle_GetAllianceFactionFromBattleObject_80103A8)\
+  \ and the previously\n  read direction, calling aiAttack_initVarsAndStart_80116AE to perform the actual\
+  \ attack.\n  Inputs via r5 = BattleObject, r7 = AIData, r10 = Toolkit; uses oAIAttackVars_Unk_01 (init\
+  \ flag),\n  oAIAttackVars_Unk_10 (remaining free-panel budget), oBattleObject_RelatedObject1Ptr and\n\
+  \  oAIData_Unk_68 (both zeroed on the hand-off), and the panel coords at oBattleObject_PanelX/Y.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0, [r7,#oAIAttackVars_Unk_01]; tst r0, r0; bne loc_80ED7C0` is the init-flag guard
+    - The init branch stores `4` into oAIAttackVars_Unk_01 after scanFrontPanels_800FAF6: `mov r0, #4;
+    strb r0, [r7,#oAIAttackVars_Unk_01]` - `ldrh r0, [r7,#oAIAttackVars_Unk_10]; sub r0, #1; strh r0,
+    [r7,#oAIAttackVars_Unk_10]; bge loc_80ED7D6` decrements the free-panel budget - On underflow the function
+    zeros RelatedObject1Ptr and AIData->Unk_68 and calls object_exitAttackState, terminating the walk
+    - `bl playerObject_checkDirectionButtons_800FA54` then `bl battleObject_tryGetNextPanelInFacingDirection_800F964`
+    implement per-step walking toward an enemy - The final block calls `battle_getCrossNaviTableByte_8010332`,
+    `battle_GetAllianceFactionFromBattleObject_80103A8`, then `aiAttack_initVarsAndStart_80116AE` to launch
+    the attack'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080ED7A2
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^080ed7a2 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- Exact intent of oAIAttackVars_Unk_01 value 4 (likely "initialized" marker, not a state)
+- 'Whether `oAIAttackVars_Unk_10` is a panel-count budget or a delay counter (its use with `sub r0, #1;
+  bge` could fit either)'
+- Why the early-fail path (timer underflow) skips the direction+attack sequence even though scanFrontPanels
+  gave a non-zero count
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 4efa6ddc
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80ED7A2 -> aiAttack_walkForwardThenAttack_80ED7A2
+  where: bn6f df5b9de6
+  tool: tools/rename_symbol.py

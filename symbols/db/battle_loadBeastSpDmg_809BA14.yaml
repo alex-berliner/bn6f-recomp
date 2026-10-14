@@ -1,0 +1,58 @@
+name: battle_loadBeastSpDmg_809BA14
+address: '0x0809BA14'
+kind: function
+previous_names:
+- sub_809BA14
+status: probable
+summary: Load the 5-word Beast SP damage/info table from CutsceneState into r0-r4, clamping the fourth
+  word to 0x10
+interface: (no explicit args; uses Toolkit->CutsceneStatePtr) -> r0=word0, r1=word1, r2=word2, r3=word3,
+  r4=min(word4,0x10)
+details: "Reads r10 (Toolkit) into r5, then loads the toolkit->CutsceneStatePtr and uses it as the base\
+  \ for a 0x70-offset struct member array.\n  Five 32-bit values are pulled from indices 0..4 of that\
+  \ array into r0-r4, with the third value (at +0x14 in the slice, i.e. index 4) clamped to a maximum\
+  \ of 0x10 via `cmp r4,#0x10; bgt ...; mov r4,#0x10`.\n  The function pops to PC, returning those 5 words\
+  \ in caller-visible registers. The branch-out only occurs when word4 > 0x10; otherwise r4 keeps the\
+  \ loaded value.\n  Captured calls show it is called in BeastSP (\"BeastOut\"/SP-emiss) contexts; the\
+  \ 0x10 cap is consistent with a per-BP \"PwrAtkState\" slot count or max slot index (0..15) used by\
+  \ the SP-emission pipeline.\n  No BL targets; it is a leaf that just marshals struct fields into the\
+  \ four return registers plus r4.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mov r5, r10` then `ldr r5, [r5,#oToolkit_CutsceneStatePtr]` reads Toolkit.CutsceneStatePtr
+    into r5. - `mov r0,#0x70` plus `add r6,r5,r0` forms the base of the loaded slice (offset 0x70 from
+    CutsceneState base). - Five `ldr r{0..3},[r6,#0/4/8/C]` then `ldr r4,[r6,#0x14]` pull five 32-bit
+    words into r0-r4. - `cmp r4,#0x10; ble locret; mov r4,#0x10` clamps r4 at 0x10. - Return value r0=0x016a0000
+    in every captured call: this is the first word at CutsceneState+0x70 in the test snapshot. - Caller
+    `sub_80A786C` (lr=080a7873) is the BeastSP driver (its in/out shape touches r2-r5 and the captured
+    entry r1=0x04 matches a "BeastSP slot count" parameter that the function then marshals into r0-r4).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0809BA14
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^0809ba14 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The exact identity of the 0x70-offset array member (cutscene-camera helper, BeastSP-config slot, or
+  per-frame state) and which subset of the five words maps to which gameplay concept (chip slot index,
+  charge timer, slot count). Settling it would need either the struct definition of CutsceneState+0x70
+  or a static-data view of what the captured 0x016a0000 represents at runtime.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 4efa6ddc
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_809BA14 -> battle_loadBeastSpDmg_809BA14
+  where: bn6f df5b9de6
+  tool: tools/rename_symbol.py

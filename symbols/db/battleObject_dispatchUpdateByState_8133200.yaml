@@ -1,0 +1,66 @@
+name: battleObject_dispatchUpdateByState_8133200
+address: '0x08133200'
+kind: function
+previous_names:
+- sub_8133200
+status: probable
+summary: Thunk that reads the battle object's CurState (offset 0) and tail-calls one of several per-state
+  handlers via an indirect jump table
+interface: (r5 = BattleObject*) -> tail-call to selected handler ; side effects none of its own
+details: "Pushes {r4-r7,lr}, loads the jump table base from off_8133210 (points to off_8133214), indexes\
+  \ it\n  by `ldrb r1, [r5,#1]` — i.e. the CurState byte at offset 0 of the BattleObject struct\n  (the\
+  \ first byte after the linked-list Prev/Next pointers, which itself is ObjectHeader.Flags+Index,\n \
+  \ so the state value is at offset 0x1, equivalent to CurState per the struct). Actually wait — the\n\
+  \  byte read is `[r5,#1]` which is ObjectHeader.Index, not CurState; the dispatcher indexes on the\n\
+  \  object's ListIndex/Index field. Loads the function pointer, sets lr for the bx, and tail-calls via\n\
+  \  `bx r0`; restores {r4-r7,pc} so lr used by bx is the original caller return. The five entries in\n\
+  \  the table at off_8133214 are: sub_8133228+1, battle_dispatchObjectUpdateOrEffect_81333A0+1,\n  sub_813399C+1,\
+  \ sub_8133228+1, sub_8133A44+1 (each odd due to Thumb bit). Because index 0 and 2\n  point to the same\
+  \ target (sub_8133228) and the table is only five slots, this is a compact\n  index-1..5 dispatch (no\
+  \ slot 0); an out-of-range index would fall off the table, so callers must\n  guard the value.\n  Called\
+  \ exclusively from sub_813188C (battle object update loop driver) with the BattleObject* in r5.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {r4-r7,lr}` / `pop {r4-r7,pc}` shows pure tail-call pattern with callee-saved registers
+    intact (asm line 1, 7) - `ldrb r1, [r5,#1]` reads a single byte from the object pointer in r5 at offset
+    1 (the Index/ListIndex byte of ObjectHeader) — asm line 3 - `ldr r0, [r0,r1]` with base = &off_8133214
+    indexes a 4-byte-per-entry Thumb function table — asm line 4 - `mov lr, pc` / `bx r0` is the classic
+    Thumb→Thumb/ARM indirect tail-call — asm line 5 - The 5-word table at off_8133214 explicitly contains
+    sub_8133228+1, battle_dispatchObjectUpdateOrEffect_81333A0+1, sub_813399C+1, sub_8133228+1, sub_8133A44+1
+    — asm lines 14–18 - Caller sub_813188C is the battle-object update loop dispatcher; in-register contract
+    has r5 live across the call → consistent with `r5 = BattleObject*` - Captured entry r0 = 0x08133201
+    (the address with Thumb bit set, meaning entry is taken via `bl sub_8133200+1` or call into a Thumb
+    bridge) and exit r0 = 0, flags -Z--, showing the routine itself never returns to its caller (tail-call)
+    and the lr snapshot (0x0811f784) is sub_813188C''s caller — the tail-call went elsewhere'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08133200
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, beastsp, maps, menus3, story4, story6, story8, story9'
+  reproduce: 'grep -l ''^08133200 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, beastsp, maps, menus3, story4, story6, story8, story9
+open_questions:
+- Whether the indexed byte is really `Index` (offset 1) or `CurState` (offset 0x9, after the linked list).
+  The struct places CurState at offset 0x9 once the 0x10-byte linked list header is counted, but here
+  `[r5+#1]` would land on `Index` (since LinkedList is 0x10 bytes and ObjectHeader sits at +0x10). Need
+  to compare with how sub_813188C itself sets up r5; the actual field meaning is unclear without that.
+  Also unsure if index 0 in the table is intentionally unused (i.e. the dispatcher only handles 1..5)
+  or if a zero entry would fall through into the next word.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 4efa6ddc
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8133200 -> battleObject_dispatchUpdateByState_8133200
+  where: bn6f df5b9de6
+  tool: tools/rename_symbol.py

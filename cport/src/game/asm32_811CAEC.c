@@ -1364,7 +1364,7 @@ enum SubmenuScreen {
     SUBMENU_KEY_ITEMS   = 0x14, /* key items    (HandleKeyItemMenu8128730)    */
     SUBMENU_COMM        = 0x18, /* comm menu    (HandleCommMenu81291E8)       */
     SUBMENU_SAVE        = 0x1C, /* save screen  (HandleSaveMenu8132B88)       */
-    SUBMENU_UNK_20      = 0x20, /* unidentified (sub_8133200) */
+    SUBMENU_UNK_20      = 0x20, /* unidentified (battleObject_dispatchUpdateByState_8133200) */
     SUBMENU_UNK_24      = 0x24, /* unidentified (sub_81356D4) */
     SUBMENU_UNK_28      = 0x28, /* unidentified (sub_8136DE0) */
     SUBMENU_UNK_2C      = 0x2C, /* unidentified (sub_81378B4) */
@@ -1406,7 +1406,7 @@ static void run_screen_handler(u8 screen, u32 submenu, u32 handler_arg2, u32 han
     case SUBMENU_KEY_ITEMS:   GUEST_CALL(HandleKeyItemMenu8128730); break;
     case SUBMENU_COMM:        GUEST_CALL(HandleCommMenu81291E8); break;
     case SUBMENU_SAVE:        GUEST_CALL(HandleSaveMenu8132B88); break;
-    case SUBMENU_UNK_20:      GUEST_CALL(sub_8133200); break;
+    case SUBMENU_UNK_20:      GUEST_CALL(battleObject_dispatchUpdateByState_8133200); break;
     case SUBMENU_UNK_24:      GUEST_CALL(sub_81356D4); break;
     case SUBMENU_UNK_28:      GUEST_CALL(sub_8136DE0); break;
     case SUBMENU_UNK_2C:      GUEST_CALL(sub_81378B4); break;

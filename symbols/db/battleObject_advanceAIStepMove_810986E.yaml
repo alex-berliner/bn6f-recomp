@@ -1,0 +1,68 @@
+name: battleObject_advanceAIStepMove_810986E
+address: '0x0810986E'
+kind: function
+previous_names:
+- sub_810986E
+status: probable
+summary: 'Per-tick AI attack motion: integrate velocity into X/Y, periodically re-sync panel/collision,
+  and finalize the move when the AI step counter expires (snap to destination, release reservation, raise
+  cannot-slide, set currently-moving flag, mark Unk_1a=1, then exit attack state).'
+interface: '(r5 = BattleObject*, r6 = ?, r7 = AIData*) -> void ; side effects: mutates BattleObject X/Y/PanelX/PanelY/CollisionData
+  flags and AIData AttackVars Unk_10/Unk_1a'
+details: "1) Adds BattleObject.XVelocity into BattleObject.X and stores back (offsets oBattleObject_XVelocity,\
+  \ oBattleObject_X).\n  2) Adds BattleObject.YVelocity into BattleObject.Y and stores back (offsets oBattleObject_YVelocity,\
+  \ oBattleObject_Y).\n  3) Loads AIData.AttackVars.Unk_10 and Unk_12 (oAIAttackVars_Unk_10/_12). When\
+  \ they are equal, calls object_setPanelsFromCoordinates and object_updateCollisionPanels to keep the\
+  \ panel/collision state in sync with the moving X/Y (skipped on most ticks; only done when the counter\
+  \ matches its target).\n  4) Decrements Unk_10 by 1. If the result is still >= 0, the function returns\
+  \ early (continue sliding this frame).\n  5) Otherwise, when the step counter underflows, copies FuturePanelX/Y\
+  \ into PanelX/Y, then calls object_removePanelReserve, object_setCoordinatesFromPanels, and object_setCollisionPanelsToCurrent\
+  \ to finalize the object on the reserved destination panel.\n  6) Clears CollisionData.ObjectFlags1\
+  \ bit 0x40 (OBJECT_FLAGS_CANNOT_SLIDE) via object_clearFlag and sets bit OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT\
+  \ via object_setFlag1.\n  7) Writes 1 into AIData.AttackVars.Unk_1a (strb r0, [r7,#oAIAttackVars_Unk_1a]).\n\
+  \  8) Tail-calls object_exitAttackState_801171C (sub_801171C) to leave the attack state machine.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- ldr/add/str sequence on oBattleObject_XVelocity then oBattleObject_X (and Y) shows per-tick
+    velocity integration. - oAIAttackVars_Unk_10 / Unk_12 comparison followed by object_setPanelsFromCoordinates
+    + object_updateCollisionPanels shows panel/collision resync only when the AI step counter matches
+    its target. - sub #1 / strh / bge pattern implements a downward step counter; early-return branch
+    falls through to the finalize block. - FuturePanelX/Y copied into PanelX/Y then object_removePanelReserve,
+    object_setCoordinatesFromPanels, object_setCollisionPanelsToCurrent implement "snap to the pre-reserved
+    destination and release the reservation". - object_clearFlag(0x40) clears OBJECT_FLAGS_CANNOT_SLIDE;
+    lsl r0,#OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT then object_setFlag1 raises the currently-moving bit.
+    - strb r0, [r7,#oAIAttackVars_Unk_1a] = 1 right before sub_801171C (the caller''s "exit attack state"
+    hook) matches the caller''s described "advance the AI attack state" behaviour. - The single confirmed
+    caller sub_8109820 matches the role: it reserves a destination panel and sets OBJECT_FLAGS_CANNOT_SLIDE,
+    then dispatches to this routine to slide the AI one panel at a time.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0810986E
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp, story4, story6, story9'
+  reproduce: 'grep -l ''^0810986e '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp, story4, story6, story9
+open_questions:
+- Exact semantic of AIAttackVars.Unk_10 (sub-steps or pixel-tick counter) and Unk_12 (target) versus Unk_1a
+  (post-move marker).
+- r6's role is unused in this routine; the caller's contract just propagates it as a callee-saved register.
+- Why Unk_10 == Unk_12 is the condition to resync panels, rather than e.g. Unk_10 == 0; could be a "first
+  tick" check.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 4efa6ddc
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_810986E -> battleObject_advanceAIStepMove_810986E
+  where: bn6f df5b9de6
+  tool: tools/rename_symbol.py

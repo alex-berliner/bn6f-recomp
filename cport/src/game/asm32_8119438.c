@@ -409,7 +409,7 @@ Next sprite_stepZoomShrinkOut_811976C(void) {
  * Dispatch helper: looks up a handler in the jump table at off_81197B0,
  * indexed by the object's state byte at offset +9, and calls it with
  * r0 = handler address (thumb) and r1 = state index. The table currently
- * has a single entry, sub_81197B4+1. When the handler returns, its
+ * has a single entry, submenu_updateChipPalette_81197B4+1. When the handler returns, its
  * results (registers and flags) go straight back to our caller, so this
  * behaves as a tail call. */
 Next npc_dispatchStateHandler_811979C(void) {
@@ -418,7 +418,7 @@ Next npc_dispatchStateHandler_811979C(void) {
     R0 = LD32(A_off_81197B0 + state);   /* handler address from the jump table */
     R1 = state;                         /* index passed along to the handler */
 
-    GUEST_CALL(sub_81197B4);
+    GUEST_CALL(submenu_updateChipPalette_81197B4);
     RETURN_TO_CALLER();
 }
 

@@ -1,0 +1,70 @@
+name: chatbox_initFolderNameDisplayBuffer_81202FC
+address: '0x081202FC'
+kind: function
+previous_names:
+- sub_81202FC
+status: probable
+summary: Seeds two u16 tile-index buffers (back and front) with a base tile plus VRAM offset, then expands
+  a TextScript folder name into both via sub_81202B4.
+interface: '(r0 = folder name index, r1 = EWRAM dest buffer A (paired u16), r2 = number of u16 pairs,
+  r3 = secondary u16 count, r4 = VRAM tile base) -> r0 = 4 ; side effects writes r1..r1+2*r2-1 and r1..r1+2*r4-1?
+  wait: writes to two buffers derived from r1 and r3*sizes, plus EWRAM at 0x02034814 captured'
+details: "Prologue computes r6 = 0x200 (a VRAM bank/offset constant) and `tileBase = r4 << 16 | 0x200`\
+  \ (saved on stack).\n  Saves r3 (= r4-r3 diff?), stores r3, r2, r1, and r3 = r4*2 + r1 (a second buffer\
+  \ pointer offset by `r4*2` bytes from r1) on the stack as locals.\n  The loop at loc_812031C runs `r4\
+  \ = r3` times (initial `r4` reloaded from [sp+0x10] = original r3, which was *subtracted* from r4 first\
+  \ → so the iteration count is r4 - r3, i.e. the count in r3 from the caller), each pass writing the\
+  \ same `tileBase` halfword to both [r2] and [r3] (interleaved front/back buffers), advancing by 2.\n\
+  \  After the loop clears r6=0, loads TextScriptFolderNames table base into r1, indexes [r1 + r0*2] →\
+  \ u16 offset to a folder-name string (a TextScript subtable), adds it back to r1 → pointer to the raw\
+  \ text. Re-loads tileBase and `r5 = r4 - r3` (the pair count) and tail-calls sub_81202B4 with (r0=textPtr,\
+  \ r1, r2=tileBase u16, r3, r4, r5) — which then expands the string into both buffers using tileBase\
+  \ as the base tile.\n  Returns r0 = 4 (a status/category constant used by the chatbox subsystem).\n\
+  \  Captured-call evidence: r1 always points at 0x02034814 (EWRAM), the snapshots show the buffer being\
+  \ filled with `0x00b2, 0x0034, 0x004c, 0x0050, 0x0060, 0x00b2` halfword patterns — this is exactly what\
+  \ sub_81202B4 emits (a font tile index per character), confirming the dual-buffer expansion.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r6, off_8120344 // =0x200` and `orr r2, r6` with r2 = r2<<0xc produce the tileBase u16
+    used as both filler and expansion base (`lsl r2, r2, #0xc` / `orr r2, r6` at asm32.s:36422-36423).
+    - The `strh r1, [r2]` / `strh r1, [r3]` interleaved write loop at loc_812031C (asm32.s:36428-36434)
+    seeds both buffers with tileBase for the clear-fill pass. - The table pointer is loaded via `ldr r1,
+    off_8120340 // =TextScriptFolderNames` and dereferenced as `ldrh r0, [r1,r0]; add r0, r0, r1` (asm32.s:36435-36438),
+    the standard u16-offset→string-pointer pattern for the TextScript subtable layout. - The callee contract
+    for sub_81202B4 explicitly says it "Expands a text string into pairs of font tile indices (two u16
+    arrays), offset by a base tile" — which matches what is needed for the chatbox double-buffer. - Captured
+    snapshots at 0x02034814 show the front buffer receiving the actual font tile indices (`0x00b2, 0x0034,
+    0x004c, 0x0050, 0x0060, ...`) produced by sub_81202B4 (snap_battles1_1..13.bin), while snap_battles1_0.bin
+    shows the buffer still zeroed (sub_81202B4 had not yet been reached on first call). - Return value
+    0x04 is consistent across all 6 captured exits (r0=00000004, flags ----) — a fixed "ok"/state-id return
+    used by both callers.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x081202FC
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, beastsp, maps, menus3, story4, story6, story8, story9'
+  reproduce: 'grep -l ''^081202fc '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, beastsp, maps, menus3, story4, story6, story8, story9
+open_questions:
+- Exact meaning of r2/r3/r4 split between front-buffer pair count and back-buffer size; the second buffer
+  pointer is `r1 + r4*2` but the iteration count uses `r3` (the original r3 was subtracted from r4 before
+  being saved, so loop count = original r4 - original r3). Until a struct with these chatbox-display fields
+  is matched to 0x02034814 the role of each count stays partly inferred.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 4efa6ddc
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_81202FC -> chatbox_initFolderNameDisplayBuffer_81202FC
+  where: bn6f df5b9de6
+  tool: tools/rename_symbol.py

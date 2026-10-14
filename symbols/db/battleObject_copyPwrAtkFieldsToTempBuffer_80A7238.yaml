@@ -1,0 +1,67 @@
+name: battleObject_copyPwrAtkFieldsToTempBuffer_80A7238
+address: '0x080A7238'
+kind: function
+previous_names:
+- sub_80A7238
+status: probable
+summary: Copies a BattleObject's power-attack / beast-out fields (BPwrAtk, BButton, Anger, AIData ptrs)
+  into a scratch EWRAM table indexed by the object's slot id.
+interface: (r5 = BattleObjectPtr) -> side effects only; no return value
+details: "Treats r5 as a BattleObject. Reads BPowerAtk slot id from [r5+4] and BButton from [r5+6];\n\
+  \  also reads the PowerAttack APwrAtk byte from [r5+5] and stores it at byte_2000EC0+0x16.\n  Uses base\
+  \ byte_2000EC0 (loaded once into r7) and writes several entries in that scratch\n  buffer:\n\n  - byte_2000ED6\
+  \ = APwrAtk ([r5+5]) (offset 0x16 in the buffer)\n  - byte_2000ED0 + (slot_id+0x17) = BButton ([r5+6])\n\
+  \  - byte_2000ED0 + (slot_id+0x26) = low byte of Anger ([r5+0x34])\n  - word at byte_2000ED0 + 0x2C\
+  \ + (slot_id*4) = [r5+0xC] (AIData pointer slot)\n  - word at byte_2000ED0 + 0x44 + (slot_id*4) = [r5+0x10]\n\
+  \n  Indexing by slot id with a stride of 4 for the pointer fields implies the buffer is an\n  array\
+  \ of per-slot records at base 0x2000EC0 with offsets 0x17/0x26/0x2C/0x44 keyed off\n  the object's 4-bit\
+  \ slot id. The function is a leaf (only branches/calls are off_80A7268),\n  and preserves r4-r7. Only\
+  \ one caller (sub_80A6F2C) is recorded, suggesting it's part of a\n  battle init / pre-step that loads\
+  \ per-battle-object power-attack state into the side\n  scratch table used by sub_80A6F2C's loop.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r3, [r5,#4]` and subsequent `lsl r3, r3, #2` index off the slot id (BattleObject.Params
+    byte 1), used as both a scalar and a stride-4 base. - `ldrb r0, [r5,#5]` -> `strb [r7,#0x16]` writes
+    APwrAtk (BattleObject.Params byte 2 / AIData.APwrAtk+0x01) into the scratch table at fixed offset
+    0x16. - `ldrb r2, [r5,#6]` -> `strb r2, [r7,r0]` with r0 = 0x17 + slot writes BButton (BattleObject.Params
+    byte 3) at slot-indexed entry. - `ldr r2, [r5,#0x34]` -> `strb r2, [r7,r0]` with r0 = 0x26 + slot
+    writes low byte of BattleObject.Anger at slot-indexed entry. - `ldr r2, [r5,#0xc]` and `ldr r2, [r5,#0x10]`
+    are stored as words at 0x2C + slot*4 and 0x44 + slot*4; these match the pointer fields 0x0C (AIDataPtr)
+    and 0x10 (something else) inside the BattleObject header region. - No direct BL calls; only `pop {r4-r7,pc}`
+    after `off_80A7268` lookup -> leaf, scratch-table write. - Trailing `.byte` constants (byte_80A726C..)
+    live inside the function''s footprint but are unreferenced by the body''s instructions, suggesting
+    they are coincidentally adjacent data (likely part of an earlier static table in the same translation
+    unit).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080A7238
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^080a7238 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- What the buffer at 0x2000EC0 is named in the project (only `byte_2000EC0` is in the symbol table); the
+  offsets 0x16/0x17/0x26/0x2C/0x44 don't match any documented struct in the include dump, so the buffer's
+  true layout is inferred.
+- What call in sub_80A6F2C ends up consuming these slots — only sub_80A6F2C is listed as the caller, but
+  no callees are emitted from this function itself.
+- Whether slot-id is masked (it is just a byte; the 4-bit assumption is based on it being used as `slot*4`
+  for two pointer arrays that look like 16-entry tables).
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 4efa6ddc
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80A7238 -> battleObject_copyPwrAtkFieldsToTempBuffer_80A7238
+  where: bn6f df5b9de6
+  tool: tools/rename_symbol.py

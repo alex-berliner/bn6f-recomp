@@ -1,0 +1,69 @@
+name: battleObject_stealChipFromEnemyNavi_8010740
+address: '0x08010740'
+kind: function
+previous_names:
+- sub_8010740
+status: probable
+summary: Attempts to steal a chip from the enemy Navi by clearing their anti-steal flag and spawning a
+  steal effect at their panel; returns whether the steal was performed.
+interface: (r0 = chipID, r5 = actor BattleObject / caller context, r10 = toolkit) -> r0 = 1 on success,
+  0 if any guard failed
+details: "1. Saves r4/r6/r7 and keeps chipID in r4.\n  2. Calls GetBattleEffects and tests bit 0x8 (chip-steal-allowed\
+  \ battle setting); if clear, returns 0.\n  3. Loads the actor BattleObject's Alliance (r5+oBattleObject_Alliance),\
+  \ XORs it with 1 to address the *enemy* alliance, stores in r6.\n  4. Reads enemy NaviStats byte at\
+  \ offset 0x0d via GetBattleNaviStatsByte; if 0xff or bit 0 unset, returns 0 (guard not yet lifted /\
+  \ no enemy Navi).\n  5. Calls getChip8021DA8(r4) to get the static ChipData and tests its flag byte\
+  \ at offset 0x16 against bit 1; if not set, returns 0 (chip is non-stealable).\n  6. Re-reads enemy\
+  \ NaviStats[0x0d] and clears bit 0 via bic, writes it back with SetBattleNaviStatsByte (consumes the\
+  \ steal).\n  7. Calls battle_findPlayer(r6) to locate the enemy BattleObject, saves r5, loads PanelX/PanelY\
+  \ from oBattleObject_0x12/oBattleObject_0x13.\n  8. Constructs an effect request with the chipID shifted\
+  \ into the high 16 bits plus constant 0x179, calls sub_80E90FE (effect spawner) then chains into sub_800BF16\
+  \ to play the steal cue (r1=1).\n  9. Returns 1 on the success path, 0 on every guard failure.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl GetBattleEffects` then `tst r0, r1`/`beq loc_80107B6` shows a battle-setting gate; GetBattleEffects
+    reads BattleSettings. - `ldrb r0, [r5,#oBattleObject_Alliance]` followed by `eor r0, #1` flips the
+    alliance to address the opponent, matching the BN anti-steal pattern. - `mov r1, #0xd` + `GetBattleNaviStatsByte`
+    tests NaviStats+0xD twice (read, bit clear, write back) — consistent with a "has-been-stolen-already"
+    flag. - `bl getChip8021DA8` then `ldrb r1, [r0,#0x16]` / `tst r1, #2` tests the chip''s stealable
+    flag bit 1 of the 44-byte ChipData record (size confirmed by callee summary). - `bic r0, r2` / `SetBattleNaviStatsByte(r6,
+    0xd, r0)` clears that bit on the enemy Navi only. - `battle_findPlayer(r6)` plus `PanelX/PanelY` reads
+    place the VFX at the enemy Navi''s panel. - `lsl r4, r4, #0x10` + `ldr r7, off_80107BC` (=0x179) packs
+    chipID|0x179 then `bl sub_80E90FE` followed by `sub_800BF16(alliance, 1, return)` is the standard
+    "spawn effect at panel" idiom in this codebase. - Captured entry r1 = 8 in every call matches GetBattleEffects''s
+    call signature pattern; chipID r0 varies (1..0x36) consistent with real chip IDs. - `mov r0, #1` on
+    success path, `mov r0, #0` at loc_80107B6 confirm the bool return.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08010740
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^08010740 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3, story2, story4, story5,
+    story6, story7, story8, story9
+open_questions:
+- Exact semantics of NaviStats+0xD bit 0 (likely "chip already stolen this battle" or "anti-steal shield");
+  offset 0x16 bit 1 of ChipData (likely a "stealable" chip flag) is also inferred from context only.
+- The constant 0x179 packed alongside the chipID looks like an effect/event-type ID; confirming what sub_80E90FE
+  does with the high 16 bits would lock down the VFX ID.
+- Whether this function is invoked from the player AI (playerAI_sub_80F0354) only on a successful chip-selection
+  vs. autonomously by the opponent's turn logic.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 4efa6ddc
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8010740 -> battleObject_stealChipFromEnemyNavi_8010740
+  where: bn6f df5b9de6
+  tool: tools/rename_symbol.py

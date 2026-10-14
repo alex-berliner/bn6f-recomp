@@ -1,0 +1,58 @@
+name: battleObject_stepBeastOut_80A6F78
+address: '0x080A6F78'
+kind: function
+previous_names:
+- sub_80A6F78
+status: probable
+summary: Advances a Beast Out beastSP offset toward its target, applying the delta and incrementing a
+  phase counter on stall
+interface: '(r5 = ptr AIData/AIState?) -> void ; side effects: writes AIData+0xc/0x10 (offsets toward
+  JoypadHeld/JoypadReleased targets) and AIState[+6] phase counter'
+details: "Called as one stage of a Beast-Out pet/beast sprite controller (snap_beastsp_*). It first calls\n\
+  \  three init/setup helpers (sub_80A6FDC, sub_80A704C, sub_80A708C); the last returns a 16.16-style\n\
+  \  delta in r2. The routine then reads the current \"value\" at +0xc from r5 and its target at +0x24,\n\
+  \  and walks +0xc toward that target by r2 (sign-correct, capped to half the remaining distance),\n\
+  \  setting r4=1 when it moved. Identical logic is then repeated on +0x10 vs +0x28. If neither axis\n\
+  \  moved (r4 == 0), AIState-style byte at +6 is incremented instead; this matches the \"phase\n  counter,\
+  \ advance on stall\" pattern. r5 itself is preserved across the calls (in) but its fields\n  are mutated.\
+  \ No return value goes to the caller.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- File naming hint: every captured call site is `snap_beastsp_0100000_*.bin`, with lr=0x080a6f63
+    pointing one instruction before this function, so it runs every frame for the Beast SP overlay - `sub_80A6FDC`/`sub_80A704C`/`sub_80A708C`
+    are called back-to-back at start (lines 1-3) and sub_80A708C returns the movement delta in r0 (`mov
+    r2, r0`) - Two near-identical axis blocks: `[r5,+0xc]` toward `[r5,+0x24]` and `[r5,+0x10]` toward
+    `[r5,+0x28]`, each comparing, sub-ing, capping, and storing back via `str r0, [r5,+0xc/0x10]` - On
+    stall (no movement on either axis), `ldrb r0, [r5,#6]` ... `add r0,#1`; `strb r0, [r5,#6]` bumps a
+    phase/timer byte - The +0xc/+0x10 fields sit next to +0x24/+0x28 which line up with the JoypadHeld/JoypadReleased
+    positions of `ai_data_struct`, but the small struct at r5 (size hinted by +6, +0xc, +0x10, +0x24,
+    +0x28) looks more like an inner AIState or per-beast motion struct; exact type is unclear'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080A6F78
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^080a6f78 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- Whether r5 points at AIData or at a small per-beast motion sub-struct (only offsets 0x6, 0xc,
+- 0x10, 0x24, 0x28 are touched, none match a clearly named BattleObject field).
+- What sub_80A6FDC/704C/708C each do — they produce the delta but their bodies were not provided.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 4efa6ddc
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80A6F78 -> battleObject_stepBeastOut_80A6F78
+  where: bn6f df5b9de6
+  tool: tools/rename_symbol.py

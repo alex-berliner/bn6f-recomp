@@ -1,0 +1,61 @@
+name: battle_beastsp_setAITemplateStats_80A775C
+address: '0x080A775C'
+kind: function
+previous_names:
+- sub_80A775C
+status: probable
+summary: Copies selected fields from a BattleObject AIData struct (APwrAtk, BButton, BPwrAtk, version,
+  joypad) into a per-fighter template buffer at 0x2000EC0.
+interface: (r5 = BattleObject*, r6 = AIData-derived or per-fighter stats base) -> r3 = last offset used;
+  side effect writes several bytes into byte_2000EC0.
+details: "Pushes r4-r7,lr and loads r7 = &byte_2000EC0 (0x02000EC0).\n  r3 = r5->Unk_04 (per-fighter slot/index\
+  \ from the BattleObject header).\n  r4 = r6->Unk_0a (an index-like field, used as a second strb slot).\n\
+  \  Strbs into byte_2000EC0 at offsets 0x1A, 0x1D, 0x20, 0x23 from r5->Unk_04 the values of\n   r5->Unk_2c\
+  \ (u32, ldrb = low byte),\n   r5->Unk_05 (APwrAtk-like u8),\n   r5->Unk_06 (BButton-like u8),\n   r5->Unk_30\
+  \ (u32, ldrb = low byte).\n  Then writes r5->Unk_24 (joypad low byte) to byte_2000EC0 at offset (0x26\
+  \ + (r6->Unk_0a + r5->Unk_04)).\n  Then writes the u32s r5->Unk_0c and r5->Unk_10 to byte_2000EC0 at\
+  \ offsets (0x2C + ((r6->Unk_0a + r5->Unk_04)<<2))\n  and (0x44 + ((r6->Unk_0a + r5->Unk_04)<<2)).\n\
+  \  Caller sub_80A7354 uses this to populate the per-Navi beast-out partner template (the \"BeastSP\"\
+  \ filename tag fits) with two copies (r6 alias pair) per partner slot.\n  No direct callees; pure register/scratchpad\
+  \ copy.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r7, off_80A77A4 // =byte_2000EC0` shows destination base is IWRAM mirror of 0x02000EC0.
+    - `ldrb r3, [r5,#4]` reads ObjectHeader.Index of the BattleObject in r5. - `ldrb r4, [r6,#0xa]` reads
+    a second index byte (e.g. AIData.Unk_0a) from r6. - Writes `r5->Unk_2c, u5, u6, u30` to byte_2000EC0
+    + (0x1A,0x1D,0x20,0x23)+r3 (BattleObject AIData APwrAtk/BButton/BPwrAtk/Version byte fields line up
+    with AIData offsets 0x2c/0x05/0x06/0x30). - `ldr r0, [r5,#0x24]` then `strb r0, [r7,r1]` where r1
+    = 0x26 + (r4+r3) writes the joypad field (AIData.Unk_24 = JoypadPressed low byte). - `lsl r4, r4,
+    #2` then storing 0x0c and 0x10 (u32) into byte_2000EC0 at 0x2C+(r4+r3)*4 and 0x44+(r4+r3)*4 deposits
+    two u32 AIData fields (Unk_0c/Unk_10) into a per-slot record. - Called only by sub_80A7354 (lr=080a7397
+    in captures), which the captured traces show running inside a battle loop touching 0x0203C27C-area
+    structs.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080A775C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^080a775c '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The exact game meaning of the destination buffer (it is referenced only by `byte_2000EC0`; mapping it
+  to a labelled per-Navi template array would need a wider scan), and whether r6 is a separate BattleObject
+  (the captured two pairs at 0x3a60/0x3b40 hint at two objects).
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 4efa6ddc
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80A775C -> battle_beastsp_setAITemplateStats_80A775C
+  where: bn6f df5b9de6
+  tool: tools/rename_symbol.py

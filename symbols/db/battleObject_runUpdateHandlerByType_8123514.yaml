@@ -1,0 +1,61 @@
+name: battleObject_runUpdateHandlerByType_8123514
+address: '0x08123514'
+kind: function
+previous_names:
+- sub_8123514
+status: probable
+summary: Dispatches one battle object's per-frame update through a type-indexed jump table, then runs
+  chip SFX, the PET menu stat block, and the standard entity/BattleObject update passes.
+interface: '(r2 = ?, r4..r7, r10 = toolkit, r5 = current battle object) -> r5, r8..r10, r12 ; side effects:
+  jumps through off_812353C, then calls sfx_playChipUseSound_8123C98, pet_menu_drawCharacterStatBlock_8123C98,
+  sub_8123E58, entity_runAllUpdateHandlers_80465BC, battle_updateEStructSprites_80465F8'
+details: "- `push {lr}` then loads off_8123538 (=off_812353C) and reads the object's type byte from `[r5,#2]`\
+  \ (BattleObject.CurState / object header byte 2 area; the lifter's `r5` carries the active battle object).\n\
+  \  - The chosen pointer is fetched `[off_812353C + type]` and tail-called via `mov lr, pc; bx r0`. The\
+  \ table at off_812353C has seven entries, each pointing to the high (Thumb-set, +1) address of: battle_updateFrame_8123558,\
+  \ sub_81235A4, chatbox_resetIfFading_8123644, sub_812365C, sub_812377C, sub_8123790, sub_8123574.\n\
+  \  - After the dispatched handler returns, control falls through into five fixed `bl` calls: chip-use\
+  \ SFX, PET menu character stat block draw, an unnamed handler, the 15-entry entity update handler array,\
+  \ and the BattleObject EStruct sprite update.\n  - The contract claims no caller-visible return value\
+  \ (only r5/r8..r10/r12 in `out`), so the function is effectively `void` to its caller (likely the battle\
+  \ subsystem main loop in r10 = toolkit); the `pop {pc}` confirms it returns via saved lr, not a thunk.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r0, off_8123538` / `ldrb r1, [r5,#2]` (asm33.s:511) loads the type index from r5 (the
+    battle object pointer) at offset 2. - `ldr r0, [r0,r1]` plus `mov lr, pc; bx r0` implements a Thumb-switch
+    jump table; `+1` on every table entry confirms Thumb targets. - The off_812353C table at asm33.s:511
+    lists 7 functions, matching the 7 dispatched handlers; the `bl` list afterwards is identical across
+    all 40 captured traces (entry r0 always 0x08123515 = `sub_8123514+1`, exit r0=0). - Captured exit
+    r0=0 with -ZC- flags is consistent with a void frame-step dispatch (no return value, only the Z flag
+    set from the last `bl`''s tail `pop {pc}` path).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08123514
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus3, story4, story6,
+    story8, story9'
+  reproduce: 'grep -l ''^08123514 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus3, story4, story6, story8, story9
+open_questions:
+- The exact meanings of the two `bl`s `pet_menu_drawCharacterStatBlock_8123C98` and `sub_8123E58` are
+  not shown by this assembly; the lifter's name guesses are not verified, only their address/contract.
+- Which of the seven table entries correspond to which battle-object `CurState` values (initialize/update/destroy
+  or per-actor-type) is unknown — the table entries themselves are not described here.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 4efa6ddc
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8123514 -> battleObject_runUpdateHandlerByType_8123514
+  where: bn6f df5b9de6
+  tool: tools/rename_symbol.py

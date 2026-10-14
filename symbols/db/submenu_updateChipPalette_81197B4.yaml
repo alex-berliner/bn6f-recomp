@@ -1,0 +1,66 @@
+name: submenu_updateChipPalette_81197B4
+address: '0x081197B4'
+kind: function
+previous_names:
+- sub_81197B4
+status: probable
+summary: Refreshes the chip-select submenu's sprite palette based on the currently highlighted chip and
+  its element
+interface: (r5 = *SubMenu) -> void ; updates SubMenu palette + sprite-setPalette
+details: "Operates on the SubMenu struct whose pointer is kept in r5 by the caller. First asks\n  `submenu_isStateChanged_81198B0`\
+  \ whether the submenu state byte has changed since the\n  last update; if not, also checks [r5+0x14]\
+  \ (a pointer to a chip/slot record) and\n  tests byte +0x0 against mask 0x2 — if neither triggers, the\
+  \ function bails out\n  early (pop without further writes).\n\n  When it does proceed, it captures the\
+  \ previous chip id (u16 at r5+0xE), the\n  previous row/column (u8 at r5+0xC) and an \"uninitialized\"\
+  \ flag (u8 at r5+0x13).\n  If the uninitialized flag is 0, it asks `getChip8021DA8(previousChipId)`\
+  \ for the\n  static chip record and inspects byte +0x9 of that record: bit 0x20 is an\n  \"element icon\
+  \ / dark palette\" override that forces palette index 3; otherwise\n  the chip's element (byte +0x7)\
+  \ is used to index the small lookup table\n  `byte_81197F8` at the end of the function to obtain a palette\
+  \ index 0..2.\n\n  The chosen palette is then handed to `sprite_setPalette` (which writes it to\n  byte\
+  \ 4 of the submenu's sprite struct) and the cached values are committed:\n  [r5+0x10] = previous chip\
+  \ id, [r5+0xD] = previous row, so the next call can\n  detect whether the selection moved.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl submenu_isStateChanged_81198B0` at 0x081197b8 is the early-exit gate; the callee returns
+    Z when nothing changed - `ldrh r4, [r5,#0xe]` / `ldrb r6, [r5,#0xc]` cache the current chip id and
+    a row index from the SubMenu struct - `ldrb r0, [r5,#0x13]` is the "needs refresh" byte (tested with
+    `tst r0, r0`); non-zero skips the chip lookup entirely - `bl getChip8021DA8` is called with the chip
+    id in r0; result is the 44-byte static chip record - chip record byte +0x9 mask 0x20 is the "force
+    dark/element-icon" override → `mov r0, #3` at loc_81197E2''s other branch - chip record byte +0x7
+    is the element, used as index into `byte_81197F8` (a 8-byte table starting 0,1,2,0,0,0,0,0) to pick
+    palette 0/1/2 - `bl sprite_setPalette` stores r0 into the sprite struct''s byte 4, and the project
+    summary confirms this is exactly what `sprite_setPalette` does - `strh r4, [r5,#0x10]` and `strb r6,
+    [r5,#0xd]` update the "previous chip id / previous row" cache so the next call''s isStateChanged comparison
+    works - Captured calls all show r0 = 0x081197b5 (caller address +1) and zero lr=0x081197a8, consistent
+    with a per-frame submenu tick function called from a single static site'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x081197B4
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, beastsp, maps, menus3, story2, story4, story6, story8, story9'
+  reproduce: 'grep -l ''^081197b4 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, beastsp, maps, menus3, story2, story4, story6, story8, story9
+open_questions:
+- The exact semantics of byte r5+0x14 (pointer deref then mask 0x2) is unclear — could be a "submenu slot
+  dirty" flag the parent sets when the cursor moves over a new chip; would settle by walking the few callers
+  that write that byte. The mapping in byte_81197F8 is also too sparse to decode without seeing which
+  elements actually land in 3..7, but the call-site pattern (palette 0/1/2 are the only normal ones, 3
+  is the override) is solid.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 4efa6ddc
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_81197B4 -> submenu_updateChipPalette_81197B4
+  where: bn6f df5b9de6
+  tool: tools/rename_symbol.py

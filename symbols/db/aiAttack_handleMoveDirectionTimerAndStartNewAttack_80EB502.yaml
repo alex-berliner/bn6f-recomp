@@ -1,0 +1,75 @@
+name: aiAttack_handleMoveDirectionTimerAndStartNewAttack_80EB502
+address: '0x080EB502'
+kind: function
+previous_names:
+- sub_80EB502
+status: probable
+summary: AI tick that counts down a "wait for direction input" timer, then on expiry/exit kicks off a
+  new attack via aiAttack_initVarsAndStart_80116AE using the held D-pad direction and the equipped cross
+  navi.
+interface: '(r5 = BattleObject, r6 = ?, r7 = AIAttackVars, r10 = Toolkit) -> void ; side effects: writes
+  to AIAttackVars (Unk_01, Unk_10, Unk_12), clears BattleObject.RelatedObject1Ptr and AIData.Unk_68, calls
+  object_exitAttackState, and may dispatch aiAttack_initVarsAndStart_80116AE'
+details: "1. On entry, reads AIAttackVars byte 0x01 (Unk_01). If it is zero, copies the halfword at offset\
+  \ 0x12 into offset 0x10 (a duration latch) and sets Unk_01 = 4 (mark as \"armed/ticking\"). This is\
+  \ the first-frame init for this state.\n  2. Decrements the halfword at AIAttackVars+0x10 by 1. If it\
+  \ underflows (<0, BGE not taken), this state is done: clears BattleObject.RelatedObject1Ptr (r5+0x4C)\
+  \ and AIData.Unk_68 (r5->AIDataPtr + 0x68), calls object_exitAttackState to terminate, and returns.\n\
+  \  3. Otherwise the object must still be free: object_canMove must return non-zero AND playerObject_checkDirectionButtons_800FA54\
+  \ must return a non-zero direction (saved in r6). If either check fails, the function returns without\
+  \ changing state (the timer keeps ticking next frame).\n  4. battleObject_tryGetNextPanelInFacingDirection_800F964\
+  \ must also succeed (return non-zero). If the panel in the held direction is not available, return (timer\
+  \ continues).\n  5. On all conditions met: clears RelatedObject1Ptr and AIData.Unk_68, calls object_exitAttackState\
+  \ (same as the timeout path), then queries battle_getCrossNaviTableByte_8010332 (in r4) and battle_GetAllianceFactionFromBattleObject_80103A8\
+  \ (in r2), and finally calls aiAttack_initVarsAndStart_80116AE(r6=heldDirection, r4=crossNaviByte, r2=faction)\
+  \ to launch the actual attack.\n  The duplicate \"exitAttackState then launch\" pattern around offset\
+  \ 0x80EB528/0x80EB546 plus the use of r4/r2 being passed to aiAttack_initVarsAndStart_80116AE makes\
+  \ this clearly the \"wait for player D-pad, then start the chosen chip/PwrAtk\" bridge state for AI-attack\
+  \ style scripts.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- Timer copy + init flag at start: `ldrh r0,[r7,#oAIAttackVars_Unk_12]` / `strh r0,[r7,#oAIAttackVars_Unk_10]`
+    / `mov r0,#4` / `strb r0,[r7,#oAIAttackVars_Unk_01]` followed by `ldrh r0,[r7,#oAIAttackVars_Unk_10]`
+    / `sub r0,#1` / `strh r0,[r7,#oAIAttackVars_Unk_10]` / `bge loc_80EB528`. - Timeout branch clears
+    RelatedObject1Ptr (`str r0,[r5,#oBattleObject_RelatedObject1Ptr]`), clears AIData.Unk_68 (`ldr r1,[r5,#oBattleObject_AIDataPtr]`
+    / `str r0,[r1,#oAIData_Unk_68]`), and calls `bl object_exitAttackState`. - Movement gate: `bl object_canMove`
+    then `beq locret_80EB560`, then `bl playerObject_checkDirectionButtons_800FA54` / `cmp r0,#0` / `beq
+    locret_80EB560`. The direction value is preserved in r6 (`mov r6,r0`). - Facing-panel probe: `bl battleObject_tryGetNextPanelInFacingDirection_800F964`
+    / `tst r0,r0` / `beq locret_80EB560`. - Launch sequence: `bl battle_getCrossNaviTableByte_8010332`
+    (r4 = byte), `bl battle_GetAllianceFactionFromBattleObject_80103A8` (r2 = faction), `mov r0,r6` (held
+    direction), `mov r1,r4`, `bl aiAttack_initVarsAndStart_80116AE`. - Caller `lr=080eb442` (sub_80EB442)
+    repeatedly drives this function (18 captures all show identical r0-r3, with r0=4 always passed in
+    - consistent with r0 being the AI-attack index/arg4 echo and r1=function address low half).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080EB502
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, story2,
+    story9'
+  reproduce: 'grep -l ''^080eb502 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, story2, story9
+open_questions:
+- The exact meaning of AIAttackVars Unk_01 = 4 (state sentinel) and Unk_12 (initial duration) - inferred
+  from the one-shot latch pattern, not named elsewhere.
+- The captured r0 = 4 in every call may be an enum/state value passed through; the function itself never
+  uses r0 before writing it back as 0 on the exit paths, so r0 is treated as scratch.
+- Which AI-attack script index uses this routine - the only known caller is sub_80EB442 (the dispatcher)
+  which we don't have full assembly for.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 4efa6ddc
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80EB502 -> aiAttack_handleMoveDirectionTimerAndStartNewAttack_80EB502
+  where: bn6f df5b9de6
+  tool: tools/rename_symbol.py

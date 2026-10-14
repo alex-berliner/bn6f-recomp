@@ -4,40 +4,38 @@ kind: function
 previous_names:
 - sub_80A7912
 status: probable
-summary: 'Drives a single Beast-Out AI step on the actuator: copies two BattleObject scratch regions,
-  runs a per-action script (sub-handlers 0..6) with compare-and-loop semantics, optionally fires the Beast-SP
-  trigger check, then commits and runs sprite_update.'
-interface: '(r5 = AIDataPtr, r6 = BattleObjectPtr, r10 = ToolkitPtr, r7 = byte-table cursor, lr) -> void
-  ; side effects: r0-r7/r10/lr/flags; mutates AIData+0xc/0x10/0x14 and BattleObject+8/0xc/0x10; calls
-  sub_8142050, sub_80A7BC0, sprite_update'
+summary: 'Drives a single Beast-Out AI step on the actuator: copies two BattleObject scratch regions, runs a per-action
+  script (sub-handlers 0..6) with compare-and-loop semantics, optionally fires the Beast-SP trigger check, then
+  commits and runs sprite_update.'
+interface: '(r5 = AIDataPtr, r6 = BattleObjectPtr, r10 = ToolkitPtr, r7 = byte-table cursor, lr) -> void ; side
+  effects: r0-r7/r10/lr/flags; mutates AIData+0xc/0x10/0x14 and BattleObject+8/0xc/0x10; calls sub_8142050, sub_80A7BC0,
+  sprite_update'
 details: "- Header copies AIData[0xc..0x14] (3 words) into BattleObject+8..0x10 ('scratch in'), so a snapshot\n\
-  \    of the AI scratch is pushed into the object before stepping.\n  - Loop top at loc_80A7920: ldrb\
-  \ r0,[r5+4]; bl sub_8142050 — invokes a per-tick AI step using the\n    AIData byte at +4 as the handler.\
-  \ Returns into a small dispatch:\n      - adds byte [r6] (the object's CurAction / state byte) onto\
-  \ r7 (the script cursor),\n      - ldrb r1,[r7] reads the next opcode at that table pointer,\n     \
-  \ - ldr r0,=off_80A7950; ldr r0,[r0,r1] loads a handler; `mov lr,pc; bx r0` is a tail-call via\n   \
-  \     a function-pointer table with `+1` Thumb bit set on every entry\n        (sub_80A79DC, sub_80A7A40,\
-  \ sub_80A7AA4, sub_80A7AD4, sub_80A7AE0, sub_80A7AFA,\n         battle_checkEnemyInAttackRangeAndTrigger_80A7B32).\n\
-  \  - The loop back-edge is conditional on Z (bne loc_80A7920), so an action handler that clears\n  \
-  \  Z continues stepping while one that sets Z breaks out — exactly the pattern used to sequence\n  \
-  \  sub-actions within a single Beast-SP tick.\n  - After the loop falls through: bl battle_checkBeastSpTrigger_80A7BC0\
-  \ — fires the per-object\n    trigger condition once the script chain ends.\n  - Footer mirrors the\
-  \ header: AIData+0xc/0x10/0x14 are written back from BattleObject+8/0xc/0x10\n    (committing the modified\
-  \ scratch), and finally bl sprite_update is called on the object's\n    sprite to advance the OAM/animation.\n\
-  \  - This whole function is the \"step one object for one frame in Beast-Out\" routine invoked from\n\
-  \    sub_80A78E0 (the Beast-SP dispatcher) in a per-object, per-state cadence.\n"
+  \    of the AI scratch is pushed into the object before stepping.\n  - Loop top at loc_80A7920: ldrb r0,[r5+4];\
+  \ bl sub_8142050 — invokes a per-tick AI step using the\n    AIData byte at +4 as the handler. Returns into a\
+  \ small dispatch:\n      - adds byte [r6] (the object's CurAction / state byte) onto r7 (the script cursor),\n\
+  \      - ldrb r1,[r7] reads the next opcode at that table pointer,\n      - ldr r0,=off_80A7950; ldr r0,[r0,r1]\
+  \ loads a handler; `mov lr,pc; bx r0` is a tail-call via\n        a function-pointer table with `+1` Thumb bit\
+  \ set on every entry\n        (sub_80A79DC, sub_80A7A40, sub_80A7AA4, sub_80A7AD4, sub_80A7AE0, sub_80A7AFA,\n\
+  \         battle_checkEnemyInAttackRangeAndTrigger_80A7B32).\n  - The loop back-edge is conditional on Z (bne\
+  \ loc_80A7920), so an action handler that clears\n    Z continues stepping while one that sets Z breaks out —\
+  \ exactly the pattern used to sequence\n    sub-actions within a single Beast-SP tick.\n  - After the loop falls\
+  \ through: bl battle_checkBeastSpTrigger_80A7BC0 — fires the per-object\n    trigger condition once the script\
+  \ chain ends.\n  - Footer mirrors the header: AIData+0xc/0x10/0x14 are written back from BattleObject+8/0xc/0x10\n\
+  \    (committing the modified scratch), and finally bl sprite_update is called on the object's\n    sprite to\
+  \ advance the OAM/animation.\n  - This whole function is the \"step one object for one frame in Beast-Out\" routine\
+  \ invoked from\n    sub_80A78E0 (the Beast-SP dispatcher) in a per-object, per-state cadence.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- push {r4-r7,lr} / pop {r4-r7,pc} shows a leaf-ish routine saving the per-call scratch set
-    - Header ldr/str from AIData[+8/+0xc/+0x10] into BattleObject[+8/+0xc/+0x10] (two 3-word scratch blocks)
-    is preserved symmetrically by the footer str/ldr pair before sprite_update - loc_80A7920 + bne is
-    the loop; `bl sub_8142050` is the inner step and off_80A7950''s table of seven +1 Thumb-bit entries
-    is a handler dispatch (mov lr,pc; bx r0) - exit captures land on r0=0x3c4 across 40 Beast-SP traces,
-    indicating consistent post-step state (likely the last ldrb/handler residue at the call site) - sub_8142050
-    is reached only from Beast-SP traces (AIData+4 byte), consistent with an AI step - battle_checkBeastSpTrigger_80A7BC0
-    sits once between the script loop and the commit, matching the role of a "final trigger check" in
-    Beast-Out sequencing'
+  detail: '- push {r4-r7,lr} / pop {r4-r7,pc} shows a leaf-ish routine saving the per-call scratch set - Header
+    ldr/str from AIData[+8/+0xc/+0x10] into BattleObject[+8/+0xc/+0x10] (two 3-word scratch blocks) is preserved
+    symmetrically by the footer str/ldr pair before sprite_update - loc_80A7920 + bne is the loop; `bl sub_8142050`
+    is the inner step and off_80A7950''s table of seven +1 Thumb-bit entries is a handler dispatch (mov lr,pc; bx
+    r0) - exit captures land on r0=0x3c4 across 40 Beast-SP traces, indicating consistent post-step state (likely
+    the last ldrb/handler residue at the call site) - sub_8142050 is reached only from Beast-SP traces (AIData+4
+    byte), consistent with an AI step - battle_checkBeastSpTrigger_80A7BC0 sits once between the script loop and
+    the commit, matching the role of a "final trigger check" in Beast-Out sequencing'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x080A7912
@@ -68,3 +66,7 @@ changes:
   what: rename sub_80A7912 -> battle_beastSpStepper_80A7912
   where: bn6f 438cfa55
   tool: tools/rename_symbol.py
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 4efa6ddc
+  tool: tools/symdoc.py

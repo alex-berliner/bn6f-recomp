@@ -1,0 +1,77 @@
+name: aiAttackVars_runKeyItemTrapStep_8109DEC
+address: '0x08109DEC'
+kind: function
+previous_names:
+- sub_8109DEC
+status: probable
+summary: 'Drives a multi-frame key-item trap AI: arms it on first call, plays the "armed" anim, fires
+  the kind-0x16 hitbox, then resolves after a timer elapses.'
+interface: (r5 = battleObject, r7 = AIAttackVars, r10 = toolkit) -> r0 = residual Timer value (0..0x3f);
+  side effects mutate AIAttackVars + battleObject CurAnim and spawn a kind-0x16 projectile
+details: "Step-by-step:\n  - First invocation (Unk_01 == 0): sets Unk_01=1, ORs OBJECT_FLAGS_UNK_BIT_22\
+  \ into the battle object's collision flags via object_setFlag1, sets CurAnim=1 / CurAnimCopy=0xff, and\
+  \ seeds Unk_10 = 0x40 (64 frame timer).\n  - When the remaining timer (Unk_10) is exactly 0x32 (50):\
+  \ calls object_setCounterTime(0x1e) — this is the 30-frame \"tell\" pause before the trap fires.\n \
+  \ - When Unk_10 is exactly 0x1b (27): computes target panel as (PanelX + frontDir, PanelY) via object_getFrontDirection,\
+  \ reads Unk_0c (kind/anim param) and Damage from AIAttackVars, then calls battle_spawnBasicObjectKind0x16_80C6CE4\
+  \ to spawn the trap projectile in front of the player. Immediately writes 1 to *Unk_30, signalling completion\
+  \ of the spawn step.\n  - Every call: decrements Unk_10; when it hits 0 it clears CurAnim back to 0\
+  \ and writes 4 to Unk_00 (AI state transition).\n  - Captured calls always have r0=0, r1=0x08109ded\
+  \ (thumb odd address, indicating this was called via a function pointer table entry), r2=0x80, r3=3;\
+  \ exit r0 is the post-decrement Unk_10 (0x3f, 0x3e, 0x35, 0x34, 0x33, 0x32 ...), confirming the captured-call\
+  \ sample is exactly the per-frame Unk_10 count.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0,[r7,#oAIAttackVars_Unk_01]; cmp r0,#0; bne loc_8109E0C` plus `strb r0,[r7,#oAIAttackVars_Unk_01]`
+    is the classic one-shot init guard for an AIAttackVars sub-step. - `mov r0,#1; lsl r0,r0,#OBJECT_FLAGS_UNK_BIT_22_BIT;
+    bl object_setFlag1` arms the collision-flag bit that prevents the trap owner from being hit by their
+    own projectile. - `mov r0,#1 / strb r0,[r5,#oBattleObject_CurAnim]` and `mov r0,#0xff / strb r0,[r5,#oBattleObject_CurAnimCopy]`
+    switches the actor into the "trap set" pose. - The two cmp-against-immediate branches (`cmp r0,#0x32
+    -> setCounterTime(0x1e)`; `cmp r0,#0x1b -> spawn kind-0x16`) correspond to a typical frame-50 pause
+    then frame-27 spawn window. - `bl object_getFrontDirection` plus `ldrb r1,[r5,#oBattleObject_PanelX];
+    add r0,r0,r1; ldrb r1,[r5,#oBattleObject_PanelY]; mov r3,#0; ldrb r4,[r7,#oAIAttackVars_Unk_0c]; ldr
+    r6,[r7,#oAIAttackVars_Damage]; bl battle_spawnBasicObjectKind0x16` is the canonical kind-0x16 spawn
+    (kind=Unk_0c, r0=panelX, r1=panelY, r2=damage-from-r6, r3=0). - `mov r0,#1; ldr r1,[r7,#oAIAttackVars_Unk_30];
+    str r0,[r1]` — Unk_30 is a pointer whose pointee is set to 1 the same frame as the spawn, matching
+    a "spawn done" flag that the AI driver polls. - `ldrh r0,[r7,#oAIAttackVars_Unk_10]; sub r0,#1; strh
+    r0,[r7,#oAIAttackVars_Unk_10]; bne locret_8109E48` is a per-frame down-counter; `mov r0,#0 / strb
+    r0,[r5,#oBattleObject_CurAnim]; mov r0,#4 / strh r0,[r7,#oAIAttackVars_Unk_00]` transitions Unk_00=4
+    (next AI state) when the counter reaches zero. - Captured-call exit values (0x3f, 0x3e, 0x35, 0x34,
+    0x33, 0x32) are exactly (0x40-1, 0x40-2, 0x40-11, 0x40-12, 0x40-13, 0x40-14), matching Unk_10''s initial
+    0x40 and per-call decrement. - The lr on every entry (0x08109dde) is `sub_8109DEC+1` (odd = thumb),
+    i.e. this function was invoked indirectly through a function pointer stored in r1 = 0x08109ded (also
+    odd = thumb).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08109DEC
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, battlesweep, beastsp, fuzz, menus2, story2, story4, story5,
+    story6, story8, story9'
+  reproduce: 'grep -l ''^08109dec '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, battlesweep, beastsp, fuzz, menus2, story2, story4, story5, story6, story8,
+    story9
+open_questions:
+- The semantic identity of this trap (which key item / which battle object kind spawns kind-0x16) is not
+  pinned down; Unk_0c and Damage are forwarded into the spawn but the calling code that fills them is
+  not provided.
+- Whether OBJECT_FLAGS_UNK_BIT_22 truly is "immune to own trap" vs "trap active" needs a similar AI step
+  to confirm.
+- The pointer at AIAttackVars+0x30 and what reads it (so we can be sure r1 isn't stale).
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 4efa6ddc
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8109DEC -> aiAttackVars_runKeyItemTrapStep_8109DEC
+  where: bn6f df5b9de6
+  tool: tools/rename_symbol.py

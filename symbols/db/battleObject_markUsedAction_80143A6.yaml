@@ -1,0 +1,63 @@
+name: battleObject_markUsedAction_80143A6
+address: '0x080143A6'
+kind: function
+previous_names:
+- sub_80143A6
+status: probable
+summary: Sets the navi alliance's navi-stats `Unk_0e` flag to 0x80 for the AI actor in r5, clears the
+  global `USING_ACTION`/`FLINCHING` object flags, and zeros the actor's AIData Anger and Unk_4c fields.
+interface: '(r5 = *BattleObject whose AIDataPtr is set up) -> r0 = 0 ; side effects: clears `object_clearFlag(1<<0x15)`
+  and `object_clearFlag2(0x200)`, writes 0x80 to NaviStats+0xe, writes 0 to AIData.Anger and AIData.Unk_4c'
+details: "1. Reads `BattleObject.Alliance` at oBattleObject_Alliance (r5+0x16) and calls `GetBattleNaviStatsAddr(alliance)`\
+  \ to fetch the alliance's `*NaviStats`.\n  2. Writes 0x80 into `[NaviStats+0xe]` — this matches `NaviStats`'s\
+  \ `Unk_0e` slot rather than a named field; in context with the AI's action lifecycle it is effectively\
+  \ \"this alliance's navi has just used an action / is actioning\".\n  3. Falls through (tail-call style\
+  \ via `b loc_80143B6`) into the shared tail:\n     - `object_clearFlag(1<<0x15)` clears global `OBJECT_FLAGS_USING_ACTION`\
+  \ (bit 21).\n     - `object_clearFlag2(0x200)` clears `OBJECT_FLAGS_2_UNK_BIT_09`.\n     - Loads `r5->AIDataPtr`\
+  \ and writes 0 as a halfword to `AIData.Anger` (offset 0x34) and as a word to `AIData.Unk_4c` (offset\
+  \ 0x4c).\n  4. Returns `r0 = 0` (Z flag set in the captured exit).\n  The pattern — \"mark alliance\
+  \ navi used-action, clear global USED_ACTION, reset AI Anger + Unk_4c\" — is shared by many AI action\
+  \ handlers (sub_8014BEE, 8014E08, 8015040, 80152C8, 80154C8) and `useChipRelated_80127C0`, suggesting\
+  \ this is the AI \"done with this action, clear input/aggro bookkeeping\" routine.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0, [r5,#oBattleObject_Alliance]` then `bl GetBattleNaviStatsAddr` (0x8013AA6) → fetches
+    the per-alliance NaviStats record. - `mov r1,#0x80; strb r1,[r0,#0xe]` writes 0x80 into `NaviStats.Unk_0e`
+    (struct shows `NaviStats+0xe` is the post-Mood gap, candidate "actioning" flag). - Falls through into
+    shared tail at `loc_80143B6`: `object_clearFlag(1<<0x15)` ⇒ bit 21 = `OBJECT_FLAGS_USING_ACTION`;
+    `object_clearFlag2(0x200)` ⇒ bit 9 of flags2. - Tail zeros `[r1+0x34]` (halfword) and `[r1+0x40]`?
+    — given AIData struct, those are `oAIData_Anger = 0x34` and `oAIData_Unk_4c = 0x4c` written with 0;
+    both are correct AI "reset" slots. - Caller `battle_naviAI_tick_8013DA0` invokes this after completing
+    AI state work, fitting a "reset AI state for next tick" interpretation. - Many sibling callers (`sub_8014BEE/8014E08/8015040/80152C8/80154C8`)
+    all share the same reg contract and the same "post-action cleanup" shape.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080143A6
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^080143a6 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The exact meaning of `NaviStats+0xe = 0x80` is not named in the struct; it's inferred from context (multiple
+  AI action routines toggle this same slot).
+- Whether the function is logically "markUsed" vs "afterActionReset" vs both — probable interpretation
+  is shared tail-only cleanup with the alliance-mark step being incidental; the 0x80 toggle might already
+  be done elsewhere too.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 4efa6ddc
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80143A6 -> battleObject_markUsedAction_80143A6
+  where: bn6f df5b9de6
+  tool: tools/rename_symbol.py

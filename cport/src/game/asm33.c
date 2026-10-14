@@ -197,11 +197,11 @@ static void folder_menu_state0(u32 state) {
     GUEST_CALL(chipFolder_screenInit_812345C);
 }
 
-/* register form: calls sub_8123514 outside this file, which has no typed C interface yet */
+/* register form: calls battleObject_runUpdateHandlerByType_8123514 outside this file, which has no typed C interface yet */
 static void folder_menu_state1(u32 state) {
-    R0 = 0x08123515; /* sub_8123514+1 */
+    R0 = 0x08123515; /* battleObject_runUpdateHandlerByType_8123514+1 */
     R1 = state;
-    GUEST_CALL(sub_8123514);
+    GUEST_CALL(battleObject_runUpdateHandlerByType_8123514);
 }
 
 /* register form: calls pet_menu_runFrame_81237BC outside this file, which has no typed C interface yet */
