@@ -1789,3 +1789,80 @@ Highlights:
 | 31    | 25                 | 15                        | 10              | 0       |
 
 Running total: named 560, hypothesis-only 211, dropped 0 (of ~10,600 placeholders).
+
+## Batch 32 (2026-10-14)
+
+25 functions, 17 named + 8 hypothesis (sub_8083DF0, sub_8086EA8, sub_80897E8,
+sub_808985A, sub_80CBAFA, sub_810D808, sub_81183C4, sub_813BE8C kept as
+comment only), renamed in recomp fc4ad4a9 (bn6f pushed; port ROM unchanged).
+
+Highlights:
+- chatbox: dispatch table (chatbox_dispatchTable_804C058),
+  copy navi sprite state (chatbox_copyNaviSpriteState_804C298);
+- battle beast-SP: refresh AI data from battle object
+  (battle_beastSpRefreshAIDataFromBattleObject_8087184);
+- battle: handle chip lockout transition
+  (battle_handleChipLockoutTransition_8089A60);
+- battle: handle beast-out step
+  (battle_handleBeastOutStep_8089AE8);
+- battle object: process snake arm phase
+  (battleObject_processSnakeArmPhase_80CBA52);
+- battle AI attack vars: handle attack vars subtype and action
+  (battle_aiHandleAttackVarsSubtypeAndAction_80EC5BC);
+- battle AI attack vars: dispatch
+  (battle_aiAttackVars_dispatch_810A3AC);
+- battle object: try beast-out chip attack
+  (battleObject_tryBeastOutChipAttack_810C282),
+  AI action step (battleObject_aiActionStep_810CE1A);
+- battle object: try use selected chip
+  (battleObject_tryUseSelectedChip_8111FAE);
+- battle: init beast-out attack (battle_initBeastOutAttack_8112E34);
+- submenu: dispatch by index (submenu_dispatchByIndex_8118344);
+- battle object: dispatch beast-out transform
+  (battleObject_dispatchBeastOutTransform_81183C4);
+- submenu: dispatch by index (submenu_dispatchByIndex_81187E8);
+- battle object: update dispatcher
+  (battleObject_updateDispatcher_8118BA4);
+- battle object: run beast-SP function
+  (battleObject_runBeastSpFunction_8136DE0);
+- link: state machine run step
+  (link_stateMachineRunStep_8144250).
+
+## Tally update
+
+| batch | functions examined | named (renamed via record) | hypothesis-only | dropped |
+|-------|--------------------|---------------------------|-----------------|---------|
+| 1     | 25                 | 25                        | 0               | 0       |
+| 2     | 21                 | 20                        | 1               | 0       |
+| 3     | 25                 | 23                        | 2               | 0       |
+| 4     | 25                 | 21                        | 4               | 0       |
+| 5     | 25                 | 20                        | 5               | 0       |
+| 6     | 25                 | 21                        | 4               | 0       |
+| 7     | 25                 | 19                        | 6               | 0       |
+| 8     | 25                 | 20                        | 5               | 0       |
+| 9     | 25                 | 18                        | 7               | 0       |
+| 10    | 25                 | 14                        | 11              | 0       |
+| 11    | 25                 | 17                        | 8               | 0       |
+| 12    | 25                 | 15                        | 10              | 0       |
+| 13    | 25                 | 19                        | 6               | 0       |
+| 14    | 25                 | 19                        | 6               | 0       |
+| 15    | 25                 | 21                        | 4               | 0       |
+| 16    | 25                 | 21                        | 4               | 0       |
+| 17    | 25                 | 21                        | 4               | 0       |
+| 18    | 25                 | 20                        | 5               | 0       |
+| 19    | 25                 | 17                        | 8               | 0       |
+| 20    | 25                 | 15                        | 10              | 0       |
+| 21    | 25                 | 18                        | 7               | 0       |
+| 22    | 25                 | 17                        | 8               | 0       |
+| 23    | 25                 | 14                        | 11              | 0       |
+| 24    | 25                 | 15                        | 10              | 0       |
+| 25    | 25                 | 19                        | 6               | 0       |
+| 26    | 25                 | 16                        | 9               | 0       |
+| 27    | 25                 | 15                        | 10              | 0       |
+| 28    | 25                 | 17                        | 8               | 0       |
+| 29    | 25                 | 13                        | 12              | 0       |
+| 30    | 25                 | 15                        | 10              | 0       |
+| 31    | 25                 | 15                        | 10              | 0       |
+| 32    | 25                 | 17                        | 8               | 0       |
+
+Running total: named 577, hypothesis-only 219, dropped 0 (of ~10,600 placeholders).
