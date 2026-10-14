@@ -831,7 +831,7 @@ Next object_updateSpritePaused(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_801BCF4 ── */
+/* ── battleObject_animationAndSpriteUpdate_801BCF4 ── */
 /* Bits of oObjectHeader_Flags that gate the per-frame sprite update. */
 enum {
     OBJF_HAS_SPRITE      = 0x01, /* clear: this object's sprite is not animated */
@@ -902,8 +902,8 @@ static u32 battle_object_update_sprite(u32 obj) {
     return obj;
 }
 
-/* sub_801BCF4(r5 = battle object) -> r5 (unchanged) */
-Next sub_801BCF4(void) {
+/* battleObject_animationAndSpriteUpdate_801BCF4(r5 = battle object) -> r5 (unchanged) */
+Next battleObject_animationAndSpriteUpdate_801BCF4(void) {
     R5 = battle_object_update_sprite(R5);
     RETURN_TO_CALLER();
 }

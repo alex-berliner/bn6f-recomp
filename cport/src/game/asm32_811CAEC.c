@@ -2094,7 +2094,7 @@ Next battle_loadFolderChipGfx_8120390(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_81203E4 ── */
+/* ── battle_buildChipFolderOamPack_81203E4 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r3; } call_ZeroFillByWord_result;
 /* register form: generated wrapper: ZeroFillByWord has no typed C interface yet */
@@ -2120,7 +2120,7 @@ static inline u32 call_sub_811FF54(u32 r0) {
     return R0;
 }
 
-/* sub_81203E4 -- build a packed chip-slot list.
+/* battle_buildChipFolderOamPack_81203E4 -- build a packed chip-slot list.
  *
  * Zero-fills 0x38 bytes at the output list, then walks `count` consecutive
  * 0x20-byte entries of the table starting at entry_base + entry_index * 0x20.
@@ -2177,9 +2177,9 @@ static void build_chip_slot_list(u32 entry_index, u32 entry_base,
     } while (i < (s32)count);
 }
 
-/* sub_81203E4(r0 = entry_index, r1 = entry_base, r2 = out_list,
+/* battle_buildChipFolderOamPack_81203E4(r0 = entry_index, r1 = entry_base, r2 = out_list,
  *             r3 = slot_base, r5 = count) -> r7 (unchanged, preserved) */
-Next sub_81203E4(void) {
+Next battle_buildChipFolderOamPack_81203E4(void) {
     build_chip_slot_list(R0, R1, R2, R3, R5);
     RETURN_TO_CALLER();
 }

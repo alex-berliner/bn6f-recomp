@@ -8,13 +8,13 @@
 #include "game.h"
 #include "runtime.h"
 
-/* ── sub_800B884 ── */
-/* sub_800B884(r0 = object, r1 = value):
+/* ── object_setBattleEffectParam2_800B884 ── */
+/* object_setBattleEffectParam2_800B884(r0 = object, r1 = value):
  * Resolve an address via byte_203CF00_getEntryPtr_800BF5C (passing r0 through unchanged),
  * then store the saved byte value at [result + 1].
  * Returns r0 = byte_203CF00_getEntryPtr_800BF5C's result, r1 unchanged; flags are whatever
  * byte_203CF00_getEntryPtr_800BF5C leaves behind. */
-Next sub_800B884(void) {
+Next object_setBattleEffectParam2_800B884(void) {
     u32 value = R1;
 
     GUEST_CALL(byte_203CF00_getEntryPtr_800BF5C);
@@ -211,11 +211,11 @@ Next object_dimScreen(void) {
 #define CHIP_FLAG_MASK    0x10000u
 #define CHIP_SOUND_EFFECT 0x173u
 
-/* register form: calls sub_800B884 outside this file, which has no typed C interface yet */
+/* register form: calls object_setBattleEffectParam2_800B884 outside this file, which has no typed C interface yet */
 static void alliance_set_state(u32 alliance, u32 state) {
     R0 = alliance;
     R1 = state;
-    GUEST_CALL(sub_800B884);
+    GUEST_CALL(object_setBattleEffectParam2_800B884);
 }
 
 /* register form: calls battleObject_getIndex_800B892 outside this file, which has no typed C interface yet */
@@ -409,7 +409,7 @@ Next sub_800BDB2(void) {
  *
  * Drives the battle object's animation/phase logic for a specific action id range.
  * If the object's Unk_30 maps into the 0xDD..0x118 window AND a paired table lookup
- * returns 0xBA, we kick off a panel-targeted sub-animation (sub_800B884) and a
+ * returns 0xBA, we kick off a panel-targeted sub-animation (object_setBattleEffectParam2_800B884) and a
  * panel-XY routine (sub_800ABC6), then set CurPhaseAndPhaseInitialized = 4.
  * Otherwise we advance CurAction by 4 and zero out CurPhaseAndPhaseInitialized. */
 Next sub_800BDD0(void) {
@@ -425,7 +425,7 @@ Next sub_800BDD0(void) {
         if (R0 == 0xBA) {
             R0 = LD8(R5 + oBattleObject_Alliance);
             R1 = 4;
-            GUEST_CALL(sub_800B884);
+            GUEST_CALL(object_setBattleEffectParam2_800B884);
 
             R0 = LD8(R5 + oBattleObject_PanelX);
             R1 = LD8(R5 + oBattleObject_PanelY);

@@ -1,0 +1,60 @@
+name: object_setBattleEffectParam2_800B884
+address: '0x0800B884'
+kind: function
+previous_names:
+- sub_800B884
+status: probable
+summary: Writes the low byte of r1 to byte offset 0x1 of the (r0-indexed) entry in the byte_203CF00 0x50-byte-per-entry
+  table and returns that entry pointer in r0.
+interface: (r0 = index, r1 = byte value) -> r0 = &byte_203CF00[index] ; no side effects beyond the one
+  store
+details: '1. Saves lr, then pushes r1 onto the stack so it survives the call, and calls byte_203CF00_getEntryPtr_800BF5C
+  with r0 as the index.
+
+  2. Restores r1 from the stack, stores r1 as a byte at [r0,#1] (offset 0x1 inside the 0x50-byte entry),
+  and pops pc to return to the caller.
+
+  3. Net effect: r0 becomes the entry pointer (byte_203CF00 index helper''s return), and the value at
+  entry+1 is set to the low byte of r1.
+
+  4. Given the callers'' contexts (chip-name drawing, SnakeArm per-tick handler, time-freeze end, panel-targeted
+  sub-animation), this looks like a small per-slot "set animation/effect parameter" setter for a shared
+  battle-object scratch table.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- assembly stores r1 low byte at [r0,#1]: `strb r1, [r0,#1]` (`asm/object.s:7`). - the indirect
+    `bl byte_203CF00_getEntryPtr_800BF5C` returns a pointer into the 0x50-byte-per-entry array at byte_203CF00
+    (confirmed callee). - entry r0 is always passed as a slot index (0..5) in captured calls; r1 carries
+    the value (2/4/5/0) being written. - `pop {pc}` plus the saved r1 via `push {r1}` shows r0 (the entry
+    pointer) is intentionally left as the return value for callers. - the same helper is invoked from
+    battleObject_stepSnakeArm_800BA8A and object_drawChipName paths, both of which need to update per-slot
+    battle-side state.'
+  refs:
+  - bn6f/asm/object.s
+  reproduce: 'python3 tools/asmcat.py 0x0800B884
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): object_setBattleEffectParam2_800B884
+
+    '
+open_questions:
+- The semantic meaning of "entry+1" for each caller (chip-name draw, SnakeArm action step, time-freeze
+  end, panel animation step) is not pinned down by the function itself; callers' one-line summaries suggest
+  animation/phase scratch fields but the exact field name is unknown.
+- No memory of the byte_203CF00 struct is in the provided headers, so the offset 0x1's name ("Param2",
+  "anim id", etc.) is unverified.
+sources:
+- discovery session 2026-10-14 batch 40 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d29ed784
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_800B884 -> object_setBattleEffectParam2_800B884
+  where: bn6f ceec2432
+  tool: tools/rename_symbol.py

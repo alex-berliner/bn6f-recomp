@@ -1131,7 +1131,7 @@ Next nullsub_12(void) {
 /* ── playerObject_main_80EA460 ── */
 /* Dispatch the player battle-object state machine.
  * Reads CurState byte, calls the matching handler, then the shared
- * post-state hook (sub_801BCF4).
+ * post-state hook (battleObject_animationAndSpriteUpdate_801BCF4).
  *
  * Jump table (off_80EA478, word-indexed by state byte):
  *   state 0 → playerObject_init_80172F0
@@ -1157,9 +1157,9 @@ static void call_sub_8016C4E(u32 state) {
     GUEST_CALL(battleObject_destroy_8016C4E);
 }
 
-/* register form: calls sub_801BCF4 outside this file, which has no typed C interface yet */
+/* register form: calls battleObject_animationAndSpriteUpdate_801BCF4 outside this file, which has no typed C interface yet */
 static void call_post_state_update(void) {
-    GUEST_CALL(sub_801BCF4);
+    GUEST_CALL(battleObject_animationAndSpriteUpdate_801BCF4);
 }
 
 static void player_state_dispatch(u32 battle_obj) {

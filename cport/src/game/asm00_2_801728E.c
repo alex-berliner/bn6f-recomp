@@ -1802,11 +1802,11 @@ static inline call_sub_80139F6_result call_sub_80139F6(u32 r5, u32 r6, u32 r7, u
     return (call_sub_80139F6_result){ R5, R7, R8, R9, R10, R11, R12 };
 }
 
-/* register form: generated wrapper: sub_801AEB0 has no typed C interface yet */
+/* register form: generated wrapper: battleObject_applyHitModifierFlags_801AEB0 has no typed C interface yet */
 static inline void call_sub_801AEB0(u32 r5, u32 r7) {
     R5 = r5;
     R7 = r7;
-    GUEST_CALL(sub_801AEB0);
+    GUEST_CALL(battleObject_applyHitModifierFlags_801AEB0);
 }
 
 /* register form: generated wrapper: battle_applyFlattenHitStatus_800EB26 has no typed C interface yet */
@@ -2064,7 +2064,7 @@ Next battleObject_processCollisionResultsForPlayer_801AC6C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_801AEB0 ── */
+/* ── battleObject_applyHitModifierFlags_801AEB0 ── */
 /* ------------------------------------------------------------------ */
 /* Object status flags used by object_getFlag / object_setFlag2 etc.   */
 #define OBJ_FLAG2_STATUS_2     0x000002u
@@ -2133,8 +2133,8 @@ static void apply_hit_modifiers(u32 object, u32 collision) {
     }
 }
 
-/* sub_801AEB0(r5 = hit battle object, r7 = collision data) -> no outputs */
-Next sub_801AEB0(void) {
+/* battleObject_applyHitModifierFlags_801AEB0(r5 = hit battle object, r7 = collision data) -> no outputs */
+Next battleObject_applyHitModifierFlags_801AEB0(void) {
     apply_hit_modifiers(R5, R7);
     RETURN_TO_CALLER();
 }

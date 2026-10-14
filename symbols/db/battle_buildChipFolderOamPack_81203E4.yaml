@@ -1,0 +1,73 @@
+name: battle_buildChipFolderOamPack_81203E4
+address: '0x081203E4'
+kind: function
+previous_names:
+- sub_81203E4
+status: probable
+summary: Build OAM tile-attribute pairs for the chips in one folder for the chip-pack (folder preview)
+  sprite layer
+interface: (r0 = folder_index, r1 = ptr to folder chip-IDs array of 0x20-stride slots, r2 = memBlock dest
+  (size 0x38), r3 = ptr to 4-byte-stride chip-element→OAM-base table, stack r5 = num_chip_slots) -> r0
+  = num_oeams_written ; side effects ZeroFillByWord on the 0x38-byte dest, writes 8 bytes per occupied
+  slot
+details: 'Clears the 0x38-byte output block via ZeroFillByWord. Computes the source slot start as `r1
+  + r0*0x20` and walks one chip-slot-halfword per iteration (stepping the source by 0x20, which reads
+  chip ID at +0x1c of each folder entry). For each slot: if the high bit (0x8000) of the chip-ID halfword
+  is clear, writes two u32 zeros into the dest at offsets r6*4 and r6*4+4. If set, calls getChip8021DA8(id)
+  to fetch the chip''s 44-byte data record, reads element/code at +6, then calls battle_synthesizePackEntryFromChipSearchResult_811FF54(elem)
+  and multiplies the returned index by 4 to fetch a u32 entry from the table in r3. Packs that entry''s
+  low halfword into both halves of a u32 (`lsl r3,r3,#16; orr r3,r1`) and then a second u32 = first +
+  0x20002 (an OAM attr2 with affine-enable + shape bits) and writes both at the same dest offsets. Iterates
+  `stack_r5` times. Returns the iteration count (r0).
+
+  The 0x8000 high-bit flag marks a valid chip in this fold. Per-chip OAM tile bases come from the table
+  at 0xa35c (table indexed by chip element), so chips without an entry in that table are silently skipped
+  (no OAM written but iteration still counts toward r0). The fixed `+0x20002` overlay is the OAM attr2
+  affine+size constant for the small square chip icon.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mov r0, r2; mov r1, #0x38; bl ZeroFillByWord` clears exactly 0x38 bytes of dest (5 chips
+    × 8 bytes fits; observed `memBlock` in `r2` is the cleared output) - `ldr r0, [sp]; mul r0, r5` (r5
+    = 0x20) computes `r0*0x20` — the 0x20 stride matches a folder slot size; `add r5, r0, r1` yields the
+    base of one slot - `ldrh r0, [r5,#0x1c]; lsr r0,#7; tst r0,r0` reads a halfword at +0x1c and the high-bit
+    test checks bit 7 of the high byte = 0x8000 mask, matching the captured `80 00 01 00 …` pattern at
+    r1 - `bl getChip8021DA8; ldrb r0,[r0,#6]` looks up the chip database and reads byte +6, consistent
+    with the callee''s known "44-byte chip data record" contract - `bl battle_synthesizePackEntryFromChipSearchResult_811FF54`
+    is called immediately after, matching the table-driven reordering summary - `lsl r3,r3,#16; orr r3,r1`
+    builds a u32 with the table value in both halfwords (packed OAM attr0|attr1) - `ldr r1, dword_8120454
+    = 0x20002` and `add r3,r3,r1` then `str r3,[r7,r2]` builds the second u32 = first + 0x20002 (OAM attr2
+    with affine-enable 0x20000 + shape 0x2) - Captured entry r1 = 0x0201d220 with the repeating `80 00
+    XX 00` chip-ID pattern; r3 = 0x0000a35c (a chip-element→tile-base table pointer); r2 = 0x0201d7f8
+    (a 0x38-byte memBlock for OAMs) - All callers are folder-edit / submenu / BG-tile rendering paths
+    that need to render chip-pack (folder preview) OAMs - Exit r0 = 5 matches the number of chip OAMs
+    produced for the captured folder (six slots have 0x8000 set, but the table lookup filters one)'
+  refs:
+  - bn6f/asm/asm32.s
+  reproduce: 'python3 tools/asmcat.py 0x081203E4
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battle_buildChipFolderOamPack_81203E4
+
+    '
+open_questions:
+- Exact meaning of `battle_synthesizePackEntryFromChipSearchResult_811FF54`'s return when a chip has no
+  entry (likely returns a sentinel index that produces a no-op OAM, but could return 0xFFFF and the `mul
+  r0, r1` would overflow). Settled by inspecting that callee.
+- What stack slot +0xc (saved r5) actually holds in callers — it's used as the loop bound; presumably
+  num chip slots in the folder (always 7 for MMBN, but observed exit r0 = 5 suggests a smaller active
+  count)
+sources:
+- discovery session 2026-10-14 batch 40 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d29ed784
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_81203E4 -> battle_buildChipFolderOamPack_81203E4
+  where: bn6f ceec2432
+  tool: tools/rename_symbol.py

@@ -1,0 +1,71 @@
+name: busStation_runBusMoveSequence_controller_808F900
+address: '0x0808F900'
+kind: function
+previous_names:
+- sub_808F900
+status: probable
+summary: Overworld bus-station state machine that drives MegaMan into the bus, the bus animates away,
+  and MegaMan is teleported onto the next map at the destination stop.
+interface: '(no explicit in regs - uses toolkit via r10) -> r0 = 0 when the whole sequence is finished,
+  1 while still running ; side effects: clears/raises event flags, mutates EWRAM struct at 0x2000310 (state
+  + cached coords/anims), moves and recolours the OWPlayer Navi, calls request_BBS_clear_8140A0C'
+details: "Reads a pointer at off_808FB48 -> off_808F5D4, which is the EWRAM struct at 0x2000310;\nbyte+0x2\
+  \ is a small state counter (0..3, exclusive, otherwise function just returns 1).\nState 0: writes 0xFF\
+  \ to byte+0x11, clears event flag EVENT_BE4, clears EVENT_BE5,\n         calls sub_808FA7C, calls owPlayer_disableWallCollision_809e254,\
+  \ then advances to 1.\nState 1: calls sub_808F9C4; if it returns \"done\" (taken from the bne branch)\
+  \ advance to 2.\nState 2: calls sub_808FA84, ZeroOWPlayerNaviPaletteIndex (resets Navi palette to default),\n\
+  \         sub_808FF9C, sub_808F990, then advances to 3.\nState 3: calls sub_808F9C4 again; if not done,\
+  \ returns 1.  Otherwise:\n         - owPlayer_enableWallCollision_809e248 (re-enable wall collision),\n\
+  \         - resetStruct2000aa0State_809E3B2,\n         - reconstructs the destination coords: word+0x12\
+  \ (X.fraction) <<16 with word+0x12,\n           word+0x14 (Y.fraction) <<16 with word+0x14, Z fixed\
+  \ as 0x00400000\n           and calls owPlayer_copyCoordsToNextCoordsWritePlayerCoordsThenIndirectlySetPlayerCoordsMaybe_809e188,\n\
+  \         - sets a fixed OW player anim from byte+0x0F via owPlayer_setS200ace0_fixedAnimationSelect_809e13c,\n\
+  \         - applies a facing direction from byte+0x10 via SetOWPlayerFacingDirection,\n         - calls\
+  \ reqBBS_clearFlag_8140A0C (likely clears a \"request BBS\" flag so a new BBS scene can fire),\n   \
+  \      - zeros byte+0x2 of the struct (back to state 0) and returns 0 (finished).\nThe 0xFF written\
+  \ to byte+0x11 plus palette zeroing is consistent with hiding/disabling the\nNavi sprite during the\
+  \ bus animation, then restoring state once the bus has driven away.\nReads r5 cached across the function\
+  \ for the EWRAM struct base; r4 holds the state byte.\nCaller treats the return value as \"still busy\"\
+  \ (1) vs \"finished, advance map/main loop\" (0).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- push {r4-r7,lr}; ldr r5, off_808FB48; ldr r5,[r5] loads the EWRAM pointer (0x2000310 base,
+    byte_2000312 is the state byte at +0x2). - State gating is via cmp r4,#0 / #1 / #2 with `bgt` skipping
+    each block, matching a 0..3 minute-minder state machine. - EVENT_BE4 and EVENT_BE5 are explicitly
+    cleared only during state 0 (the two `movflag ...; ClearEventFlagFromImmediate` pairs). - owPlayer_disableWallCollision_809e254
+    at state 0 vs owPlayer_enableWallCollision_809e248 at state 3 means the player walks through walls
+    during the cutscene then regains wall collision when it ends. - owPlayer_copyCoordsToNextCoordsWritePlayerCoordsThenIndirectlySetPlayerCoordsMaybe_809e188
+    receives the cached hi(X/Y.frac) << 16 and a hard-coded Z of 0x40 << 16 = 0x00400000, i.e. the player''s
+    cached destination coordinates stored in the struct. - byte+0x0F is fed to owPlayer_setS200ace0_fixedAnimationSelect_809e13c
+    and byte+0x10 to SetOWPlayerFacingDirection, i.e. an animation+facing pair saved before the cutscene.
+    - Final return is `mov r0,#0; pop ...pc` (finished) vs `loc_808F98A: mov r0,#1; pop ...pc` (still
+    busy); matches a VBlank/idle callback that polls until the sequence ends. - reqBBS_clearFlag_8140A0C
+    at the end suggests the bus arrival completes a "request BBS" chapter of the story; the bus station
+    is the canonical place for that script.'
+  refs:
+  - bn6f/asm/asm25.s
+  reproduce: 'python3 tools/asmcat.py 0x0808F900
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): busStation_runBusMoveSequence_controller_808F900
+
+    '
+open_questions:
+- Exact role of EVENT_BE4/EVENT_BE5 and which event IDs are touched (only the macro names are visible).
+- What sub_808FA7C / sub_808FA84 / sub_808FF9C / sub_808F9C4 / sub_808F990 actually do (their contracts
+  are empty); a "cutscene player" or "sprite animation script advance" is the obvious guess but unconfirmed.
+- Off_808FB48 -> off_808F5D4 final pointer value isn't visible in the dump; the inferred base 0x2000310
+  follows from the field offsets.
+sources:
+- discovery session 2026-10-14 batch 40 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d29ed784
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_808F900 -> busStation_runBusMoveSequence_controller_808F900
+  where: bn6f ceec2432
+  tool: tools/rename_symbol.py

@@ -1,0 +1,98 @@
+name: battleObject_initSnakeArmEvent_80C5BD4
+address: '0x080C5BD4'
+kind: function
+previous_names:
+- sub_80C5BD4
+status: probable
+summary: 'Initializes a battle object used by the SnakeArm scripted event after spawn: loads its sprite/animation,
+  picks a starting anim index from Param1 (3 when Param1==2 else 1), sets up a small per-variant config
+  table as ExtraVars, allocates/initializes collision data, sets hit effect 0xFF, and dispatches into
+  the standard initial collision-event handler.'
+interface: 'in (r5 = oBattleObject in toolkit''s standard battle-object convention, r10 = toolkit base,
+  r7/r8/lr = extra callers'' preserved state) -> void ; side effects: writes oBattleObject_Params, oObjectHeader_Flags,
+  oBattleObject_CurAnim/CurAnimCopy, oBattleObject_ExtraVars, CollisionDataPtr (via object_createCollisionData),
+  and the object''s CollisionData fields; on allocation failure calls object_freeMemory and tail-returns'
+details: '1. Calls sprite_load(0x80/0x0C, 0x02) and sprite_loadAnimationData() to mount the placeholder
+  sprite attached to the battle-object header, then sprite_hasShadow().
+
+  2. Sets OBJECT_FLAG_VISIBLE (bit 1) in oObjectHeader_Flags.
+
+  3. Selects CurAnim: if oBattleObject_Param1 == 2 then CurAnim = 3, else CurAnim = 1; clears CurAnimCopy
+  to 0xFF as a sentinel ("no override").
+
+  4. Looks up a 4-byte per-variant config record at byte_80C5BA0 + (Param1*4) via off_80C5C3C, stores
+  its pointer in oBattleObject_ExtraVars, and reads byte+3 from it as the palette index to pass to sprite_setPalette.
+
+  5. Allocates a CollisionData slot via object_createCollisionData; if it returns NULL, frees the whole
+  battle object via object_freeMemory and returns.
+
+  6. Loads three config bytes (offset 0/1/2 of the record) into r1/r2/r3 and calls object_setupCollisionData
+  to fill the new CollisionData (region/element/flags etc.).
+
+  7. Sets the hit-effect byte to 0xFF via object_setCollisionHitEffect, then calls object_presentCollisionData
+  so the next-frame handler is enqueued.
+
+  8. Writes CUR_STATE_UPDATE (0x4) into oBattleObject_CurStateActionPhaseAndPhaseInitialized and tail-calls
+  battle_processCollisionEvent_80C5C40, which uses the table record at oBattleObject_ExtraVars as the
+  per-action handler table for the "SnakeArm" scripted-event lifecycle.
+
+  Captured-call context (snap_story2_*.bin) shows the function reached via a tail-call from r5=080c5bbc,
+  with r2=02036778 (likely a free-list / cur-battle-data ptr in EWRAM); at exit r0 points into EWRAM (020386e8
+  / 02038790), the heap-allocated CollisionData pointer installed in the new object.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- assembly starts with `push {lr}` and `bl sprite_load` immediately, matching the standard
+    battle-object sprite-init prelude; `bl sprite_loadAnimationData` confirms tail-call to the shared
+    animation loader via oSpriteData - `orr r0, r1` where r1=2 sets OBJECT_FLAG_VISIBLE (0x02) in oObjectHeader_Flags
+    - `cmp r1, #2 ; bne loc_80C5BFA` chooses oBattleObject_CurAnim=3 when Param1==2, else 1; final `str
+    r0, [r5,#oBattleObject_CurAnim]` shows this - `ldrb r0, [r4,#3] ; bl sprite_setPalette` proves byte+3
+    of the chosen record at byte_80C5BA0+Param1*4 is the palette index, consistent with a per-variant
+    sprite record - `bl object_createCollisionData` immediately followed by `tst r0, r0 ; bne loc_80C5C1E`
+    is the standard "alloc collision slot, bail and free on NULL" pattern (object_createCollisionData
+    returns the new slot ptr) - fallthrough path loads `[r4]`, `[r4,#1]`, `[r4,#2]` into r1/r2/r3 and
+    calls object_setupCollisionData(r1,r2,r3) — those match the region/element/config-triple layout used
+    by the standard collision-setup call shape - `mov r0, #0xff ; bl object_setCollisionHitEffect` matches
+    the other "set to 0xFF" hit-effect initializations seen in scripted-event objects; same magic value
+    used elsewhere as "no hit effect yet" - `bl object_presentCollisionData` + writing `CUR_STATE_UPDATE`
+    to oBattleObject_CurStateActionPhaseAndPhaseInitialized is the canonical "kick off per-frame collision
+    update" pattern - tail-call to `battle_processCollisionEvent_80C5C40` whose description explicitly
+    says it dispatches a per-action handler via a jump table — the 4-byte record stored in oBattleObject_ExtraVars
+    is that handler/param table - callee `object_freeMemory` is reached on allocation failure, consistent
+    with a battle-object init entry point - captured-call r0=0 at entry (r0 unused, r1=0x080c5bd5 odd
+    low bit +1 indicates the call site at 0x080c5bbc was a thumb BL with the +1 thumb-bit) and r2 pointing
+    into EWRAM (0x02036778) match the typical "r5 = this, r10 = toolkit, r2 = EWRAM scratch/heap/cur-battle-data"
+    calling convention of battle-object init'
+  refs:
+  - bn6f/asm/asm31.s
+  reproduce: 'python3 tools/asmcat.py 0x080C5BD4
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_initSnakeArmEvent_80C5BD4
+
+    '
+open_questions:
+- The exact layout of the 4-byte records at byte_80C5BA0 (which fields are which, beyond the use of byte[3]
+  as palette and bytes[0..2] as collision-config triple) — would be settled by inspecting the records
+  or by callers passing Param1 to identify the variant
+- 'Whether the function name "SnakeArm" is appropriate: SNAKEARM_EV_* constants (1/2/3/0x20) exist in
+  BattleObject.inc but the only visible tie is the constant naming convention. A second event-object init
+  at the same call site (likely also here or in the same area) might be the other SNAKEARM event that
+  should share the helper. A more cautious working name might be battleObject_initCollisionEventObject_80C5BD4
+  until the SnakeArm attribution is confirmed.'
+- 'Whether `r0` is actually unused: the captured calls always show r0=0; harmless at the assembly level
+  since the function doesn''t read it.'
+sources:
+- discovery session 2026-10-14 batch 40 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d29ed784
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80C5BD4 -> battleObject_initSnakeArmEvent_80C5BD4
+  where: bn6f ceec2432
+  tool: tools/rename_symbol.py

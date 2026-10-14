@@ -1,0 +1,59 @@
+name: battleObject_initDmgNumberCounter_8117D4C
+address: '0x08117D4C'
+kind: function
+previous_names:
+- sub_8117D4C
+status: probable
+summary: 'Initializes a damage-number (and related) counter battle object: sets its type/id, builds its
+  sprite from a GUI template, then dispatches into the per-mode update handler.'
+interface: '(r5 = BattleObject*) -> r0/r2/r3 caller-saved ; side effects: writes many fields of *r5 (mode/type
+  byte 0x23, Unk_0c, CurState=0x04) and configures its sprite/animation/palette/priority/slot/palette-bank/coordinates.'
+details: 'Sets the battle object''s mode/type byte at [r5+0] to 0x23 (the "dmg/score number counter" object
+  type). Builds the sprite by `initGuiSprite(0x61, unk_20251B0)`. Then [r5+0xc] = [r5+4]+5, after which
+  `sprite_setAnimation`/`sprite_loadAnimationData`/`sprite_noShadow` are called. Palette 0, OAM priority
+  2, then `slotList_storeHalfwordAndClearField_800306C` writes a halfword into a slot selected by the
+  object''s ListIndex [r5+3] from the table at `off_8117DB4` ({0x90, 0xC0}). `sprite_setSubEntryPaletteBank`
+  uses `byte_8117DC4[[r5+3]]` (entries 2/3/4/0). `sprite_setSubRecordFieldA` gets 3. Coordinates: x =
+  0x78, y = 0x28 + [r5+3]*0x20. Finally CurState [r5+8] is set to 4 (CUR_STATE_UPDATE) and `sub_8117DC8`
+  (the mode-handler tail dispatcher) is called.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mov r0, #0x23; strb r0, [r5]` writes the object-type/mode byte 0x23 at the object''s [r5+0]
+    (BattleObject offset 0 is the object header byte 0). - `ldr r1, off_8117DBC // =unk_20251B0; bl initGuiSprite_8002770`
+    with r0=0x61 sets up a GUI sprite template pointed to by unk_20251B0. - `ldrb r0, [r5,#4]; add r0,
+    #5; strb r0, [r5,#0xc]` copies Param4 into Unk_0c. - `ldrb r0, [r5,#3]; lsl r1, r0, #2; ldr r0, [r0,r1];
+    bl slotList_storeHalfwordAndClearField_800306C` uses the high nibble of the slot byte at [r5+3] (ListIndex)
+    to pick one of two {0x90, 0xC0} slot entries. - `ldrb r1, [r5,#3]; ldrb r0, [byte_8117DC4,r1]; bl
+    sprite_setSubEntryPaletteBank_800304A` selects per-index palette bank from {2, 3, 4, 0}. - `ldrb r2,
+    [r5,#3]; mov r3, #0x20; mul r2, r3; add r1, r1, r2` lays the object out vertically with a 0x20-px
+    stride keyed off ListIndex (per-slot column positioning). - `mov r0, #4; strb r0, [r5,#8]` sets CurState
+    to CUR_STATE_UPDATE (=4) just before tail-calling `sub_8117DC8`, so the next per-frame dispatch lands
+    in the object''s update handler. - Callee `sub_8117DC8` is documented as the mode-byte dispatch (jump
+    table at off_8117DDC), so 0x23 picks the dmg/score-number counter update code.'
+  refs:
+  - bn6f/asm/asm32.s
+  reproduce: 'python3 tools/asmcat.py 0x08117D4C
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_initDmgNumberCounter_8117D4C
+
+    '
+open_questions:
+- The exact object type (0x23) being a "damage/score number counter" is inferred from training-set conventions
+  and the captured snap filenames (`snap_story2_*`), not from a label in the binary. A constant rename
+  (0x23 → OBJECT_TYPE_DMG_NUMBER / similar) would settle the role.
+sources:
+- discovery session 2026-10-14 batch 40 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d29ed784
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8117D4C -> battleObject_initDmgNumberCounter_8117D4C
+  where: bn6f ceec2432
+  tool: tools/rename_symbol.py

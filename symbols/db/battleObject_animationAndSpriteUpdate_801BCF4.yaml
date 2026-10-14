@@ -1,0 +1,68 @@
+name: battleObject_animationAndSpriteUpdate_801BCF4
+address: '0x0801BCF4'
+kind: function
+previous_names:
+- sub_801BCF4
+status: probable
+summary: 'Battle-object per-frame animation dispatcher: applies pause/timestop/stop-sprite-update flags,
+  syncs CurAnim into the sprite slot, loads frame data, and ticks sprite_update.'
+interface: '(r5 = BattleObject*) -> void ; side effects: reads/writes object header flags and sprite slot;
+  calls sprite_setAnimation / sprite_loadAnimationData / sprite_update.'
+details: "Early-out when battle_isPaused returns non-zero (bne locret). Otherwise reads the object header\
+  \ flags byte at oObjectHeader_Flags (r5+0):\n  - bit 0 OBJECT_FLAG_ACTIVE must be set (tst r0,#1; beq\
+  \ locret).\n  - bit 3 OBJECT_FLAG_STOP_SPRITE_UPDATE set => early-out (no sprite work this frame).\n\
+  \  - bit 4 OBJECT_FLAG_PAUSE_UPDATE unset, so call battle_isTimeStop; if time-stop is active, early-out\
+  \ too. (If bit 4 is set, fall through past the timestop check.)\nThen if the object has no CollisionDataPtr\
+  \ (oBattleObject_CollisionDataPtr at r5+0x54 == 0), or if PreventAnim (r5+0x18) is 0, allow anim sync.\
+  \ Otherwise early-out.\nCompare CurAnim (r5+0x10) with CurAnimCopy (r5+0x11); if they differ:\n  - bl\
+  \ sprite_setAnimation with the new anim index in r0 (its contract is in=['r0','r5'] so r0 already carries\
+  \ CurAnim).\n  - bl sprite_loadAnimationData to pull frame data for the object's sprite block.\n  -\
+  \ Write CurAnim into CurAnimCopy to mark them in sync.\nFinally bl sprite_update unconditionally (it\
+  \ uses oBattleObject header + (header byte 2 & 0xF0) to pick the sprite struct).\npush {lr} / pop {pc}\
+  \ style; only r5 is preserved across the call. Called from playerObject_main_80EA460 as the shared post-state\
+  \ hook for the player's battle object.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- Entry contract in=[''r5'',''r10'',''lr''] with only r5 preserved: this is the standard battleObject_
+    helper shape (object in r5, toolkit in r10). - `bl battle_isPaused` followed by `bne locret_801BD3A`
+    shows a battle-paused early-out; battle_isPaused contract confirms it reads the BattlePaused flag.
+    - `ldrb r0,[r5,#oObjectHeader_Flags]; tst r0,#1; beq locret` shows OBJECT_FLAG_ACTIVE gate. - `tst
+    r0,#8; bne locret` matches OBJECT_FLAG_STOP_SPRITE_UPDATE (bit 3) defined in ObjectHeader.inc. - `tst
+    r0,#0x10; bne loc_801BD16` matches OBJECT_FLAG_PAUSE_UPDATE (bit 4): if set, skip the timestop check
+    and proceed; otherwise `bl battle_isTimeStop; bne locret` enforces timestop freeze. - `ldr r0,[r5,#oBattleObject_CollisionDataPtr];
+    tst r0,r0; beq loc_801BD22` reads oBattleObject_CollisionDataPtr (offset 0x54 in BattleObject.inc)
+    and skips the PreventAnim check when no collision data exists. - `ldrb r0,[r5,#oBattleObject_PreventAnim];
+    tst r0,r0; bne locret` gates animation updates on PreventAnim (0x18) being zero. - CurAnim/CurAnimCopy
+    pair at offsets 0x10/0x11 matches the BattleObject.inc union; equality-check `cmp r0,r1; beq loc_801BD36`
+    then `strb r0,[r5,#oBattleObject_CurAnimCopy]` re-syncs the shadow only after a real change. - The
+    two sprite callees (sprite_setAnimation, sprite_loadAnimationData, sprite_update) all take r5 as the
+    object pointer per their contracts. - Caller playerObject_main_80EA460 description says it runs "the
+    shared post-state hook" after CurState dispatch, consistent with this function being that hook.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801BCF4
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_animationAndSpriteUpdate_801BCF4
+
+    '
+open_questions:
+- 'Exact semantics of the asymmetry where OBJECT_FLAG_PAUSE_UPDATE set causes the timestop check to be
+  skipped are inferred from the branch pattern (bne around the bl battle_isTimeStop); the header flag
+  comment "pause update" suggests the opposite, so the flag''s real role (update-during-timestop?) may
+  differ from the comment. Without more callers it is hard to settle which reading is canonical.
+
+  === sub_801BCF4 ==='
+sources:
+- discovery session 2026-10-14 batch 40 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d29ed784
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801BCF4 -> battleObject_animationAndSpriteUpdate_801BCF4
+  where: bn6f ceec2432
+  tool: tools/rename_symbol.py

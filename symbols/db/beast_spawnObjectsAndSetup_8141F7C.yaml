@@ -1,0 +1,90 @@
+name: beast_spawnObjectsAndSetup_8141F7C
+address: '0x08141F7C'
+kind: function
+previous_names:
+- sub_8141F7C
+status: probable
+summary: Looks up a per-MapGroup beast-spread config; if the matching flag set hasn't been processed yet
+  (or coords don't match), zeros a battle object buffer, spawns a set of scriptable overworld map objects
+  (MapGroup-indexed) flagged by per-slot story flags, optionally drives a "beast spread" cutscene, then
+  locks the elevator/jack-out state and clears setup flags.
+interface: '(no args; uses r5 + r10 + lr from the caller) -> r0 = 0 or 0x10 (post-test Carry/non-carry
+  result); side effects: clears/loads `unk_2000BE0` (0x140 bytes), clears flag 0x700/0x702, may start
+  cutscene `byte_8089DF4` and call `gameState_setUnk09_8001172(0x54)`.'
+details: '1. Pulls the Toolkit (r10) and follows GameStatePtr (+0x3c) into a SavedRealWorld... struct.
+  Reads fields r2=byte[+4], r3=byte[+0xc], r0=byte[+5]<<2, r1=byte[+0xd]<<2 then pushes them — these are
+  stored 16-bit coords/IDs for the "previous location" comparison.
+
+  2. Tests flag 0x700 via `TestEventFlagFromImmediate`. If set, OR if r2 != r3 OR r0 != r1 (location mismatch),
+  it zeroes 0x140 bytes at `unk_2000BE0` (via `ZeroFillByWord`) and runs `sub_814189A` to repopulate that
+  buffer. Comparison is *signed/unsigned-on-bytes with shifted operands*: `r2==r3 && r0==r1` is the "already
+  initialized for this location" branch.
+
+  3. Calls `battle_getEnemyIndexFromMapGroup_8142080` (returns MapGroup-indexed slot 0..2 or 0xff), uses
+  that index to look up a per-MapGroup table at `off_8141B18` (offsetted by `lsl r0,#2`). Walks that table,
+  calling `sub_81420F0(r4)` → `TestEventFlag(r0)` per slot; for each unset slot it spawns `0x0d` (an overworld
+  MapObject id) via `SpawnOverworldMapObject` and increments r4.
+
+  4. Calls `sub_81418DA` with `(ldrb [dword_8142044+r0], 0x0f)` and `battle_getEnemyIndexFromMapGroup_8142080`
+  again, then indexes `off_8141B24` and runs `SpawnObjectsFromList` with the matching script list to physically
+  place the beasts on the map.
+
+  5. If flag 0x702 is set: starts cutscene `byte_8089DF4` (per asm: `ldr r0, off_8142048 // =byte_8089DF4
+  // CutsceneScript`) with param 0 and immediately clears 0x702 (so it only runs once per trigger).
+
+  6. If the OW player Navi is "hovering elevator" (per `owMapObject_isHoveringElevator_0809E3A2`), sets
+  `GameState.Unk_09 = 0x54` (custom cannot-jack-out state) and runs `reqBBS_setFlag_e17b0f7_8140A00` (sets
+  event flag 0x7 in event byte 0x17 — the standard BBS-beast-related flag).
+
+  7. Always clears flag 0x700 at exit (`ClearEventFlagFromImmediate`). Function is `void`-like — only
+  r4/r5/r7/r3/r2 are restored, no real return value to callers (captured r0 differs across runs because
+  the last `TestEventFlag` chain leaves residue; per contract out=`r2,r3,r5,r7`).
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `movflag EVENT_700` / `TestEventFlagFromImmediate` + later `ClearEventFlagFromImmediate`
+    confirm event flags 0x700 and 0x702 (per `dword_8142044 = 0xFF050505`, event-byte 0x05 flag slot hints).
+    - `ldr r1, dword_8142038 // =0x140` then `bl ZeroFillByWord` then `bl sub_814189A` over `unk_2000BE0`
+    shows a 0x140-byte buffer (matches a sub-section of a battle/state struct, possibly an enemy/spawn
+    array). - The `cmp r2,r3` / `cmp r0,r1` after pushing saved-coord bytes exactly matches a "this is
+    the same location as last time → skip repopulate" guard. - `battle_getEnemyIndexFromMapGroup_8142080`
+    callee summary "Looks up an index in a small 3-entry table (byte_81420A8) by matching against the
+    current MapGroup" plus the loop counter `r4` from 0 with `add r4,#1; add r7,#4` and null-word termination
+    (`tst r0,r0; beq loc_8141FE4`) is a classic fixed-table walk. - `bl SpawnOverworldMapObject` with
+    `mov r0,#0xd` per slot shows slot-conditional spawning keyed off per-slot event flags. - `off_8142048
+    // =byte_8089DF4 // CutsceneScript` + `bl StartCutscene` with `r1=0` confirms a one-shot cutscene
+    invocation gated on flag 0x702. - Elevator-jackout interaction: `bl owMapObject_isHoveringElevator_0809E3A2`
+    → `mov r0,#0x54` → `bl gameState_setUnk09_8001172` (per summary: "Sets GameState''s Unk_09 byte (related
+    to can''t jack out / L-button-message-style control flag)"). - File naming context from the captured-call
+    snapshots (`snap_beastsp_0140000_*.bin` — "beastsp" is the project''s directory/token for this beast-spread
+    subsystem).'
+  refs:
+  - bn6f/asm/asm37_1.s
+  reproduce: 'python3 tools/asmcat.py 0x08141F7C
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): beast_spawnObjectsAndSetup_8141F7C
+
+    '
+open_questions:
+- What bytes r2/r3/r0/r1 represent (the four reads at +4/+5/+0xc/+0xd of a Toolkit-followed struct); the
+  offsets are consistent with a "previous MapGroup/Number + previous facing/identity" but the exact struct
+  identity of the indirection via `[r10,#0x3c]` (GameStatePtr) → `+0x3c` would normally be the GameState
+  tail, so likely a SavedRealWorldX/Y byte index into something custom rather than GameState itself.
+- The meaning of `dword_8142044 = 0xFF050505` and why that byte is read into r0 to pass to `sub_81418DA(_,
+  _, 0x0f)` is opaque.
+- Whether `sub_814189A` is the actual beast-spread buffer initializer or merely one of several state initializations.
+sources:
+- discovery session 2026-10-14 batch 40 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d29ed784
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8141F7C -> beast_spawnObjectsAndSetup_8141F7C
+  where: bn6f ceec2432
+  tool: tools/rename_symbol.py

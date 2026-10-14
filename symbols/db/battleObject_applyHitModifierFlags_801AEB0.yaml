@@ -1,0 +1,61 @@
+name: battleObject_applyHitModifierFlags_801AEB0
+address: '0x0801AEB0'
+kind: function
+previous_names:
+- sub_801AEB0
+status: probable
+summary: Translate the HitModifierFinal byte of a battle object's collision data into ObjectFlags2 side-effects
+  and Unk_0f updates.
+interface: (r5 = BattleObject*, r7 = ?, lr) -> void (returns nothing to callers; r0/r1/r2/r4 are scratch
+  and r4/r7/lr are restored)
+details: "Reads BattleObject_Unk_0f at offset oCollisionData_HitModifierFinal (which is\nCollisionData+0xF,\
+  \ i.e. oBattleObject_Unk_0f == CollisionData_HitModifierFinal by the\nstruct layout shown in battle_object_struct/collision_data_struct).\
+  \ Each set bit\nselects an effect:\n  - bit 0x01 (no superarmor/anger): setObjectFlags2(4)\n  - bit\
+  \ 0x02: setObjectFlags2(2)\n  - bit 0x3C mask = 0x3C -> four sub-cases selected by bit 0x40:\n     \
+  \ * bit 0x40 set: setObjectFlags2(0x100), clearObjectFlags2(4), write 1 to\n        [r5,+0x0F] twice\
+  \ (oBattleObject_Unk_0f, which aliases\n        CollisionData.HitModifierFinal -- the duplicate store\
+  \ suggests a redundant\n        update across the two aliases)\n      * bit 0x40 clear and flag bit\
+  \ 0x100040 clear: setObjectFlags2(0x10),\n        write 1 to [r5,+0x0F]\n      * bit 0x40 clear and\
+  \ flag bit 0x100040 set: do nothing (skip to return)\nThe dword 0x220000 in dword_801AF40 is OBJECT_FLAGS_SUPERARMOR|OBJECT_FLAGS_ANGER\n\
+  (0x20000|0x200000 = 0x220000), used in object_getFlag to short-circuit bit 0x01\nwhen the object already\
+  \ has super-armor or anger.\nSide effects: ObjectFlags2 bit 0x04/0x02/0x10/0x100 may be set/cleared,\
+  \ plus a\nscratch flag in object_getFlag; HitModifierFinal/oUnk_0f may be written to 1.\nCallers all\
+  \ share a per-frame post-collision pipeline (the three\nbattleObject_processCollisionResults* callers),\
+  \ and this is the per-object step that\npropagates the precomputed hit modifier into flag state.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: "- Entry reads `ldrb r4, [r7,#oCollisionData_HitModifierFinal]` so r4 caches\n  CollisionData+0xF\
+    \ (HitModifierFinal).\n- `ldr r1, dword_801AF40 = 0x220000` is exactly the SUPERARMOR+ANGER pair from\n\
+    \  ObjectFlags1; compared with object_getFlag() result to gate bit-0x1 case.\n- `ldr r1, dword_801AF38\
+    \ = 0x100040` is read after object_getFlag() inside the\n  bit-0x40-clear branch, gating whether `setFlag2(0x10)`\
+    \ runs.\n- Mask 0x3C selection (`tst r4, #0x3c` then `tst r4, #0x40`) plus `strb r0,\n  [r5,#oBattleObject_Unk_0f]`\
+    \ (and again) match four-bit modifier dispatch.\n- All three callers are confirmed/per-frame collision-result\
+    \ pipelines that\n  settle hit-modifier post-processing."
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801AEB0
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_applyHitModifierFlags_801AEB0
+
+    '
+open_questions:
+- Why HitModifierFinal is written to 1 in two places back-to-back in the bit-0x40- set branch (likely
+  an aliased field write); and the exact name of bits 2/0x10/ 0x100 in ObjectFlags2 (semantically unknown
+  beyond numeric).
+- What r7 contributes on entry; the contract advertises r7 read but the code only indexes through r7 once
+  for HitModifierFinal, so it must be a struct in r7 (likely a CollisionData/related struct pointer) -
+  the exact role of r7 vs the r5 BattleObject pointer is not fully explained by this slice.
+sources:
+- discovery session 2026-10-14 batch 40 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d29ed784
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801AEB0 -> battleObject_applyHitModifierFlags_801AEB0
+  where: bn6f ceec2432
+  tool: tools/rename_symbol.py

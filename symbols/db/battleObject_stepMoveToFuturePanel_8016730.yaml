@@ -1,0 +1,80 @@
+name: battleObject_stepMoveToFuturePanel_8016730
+address: '0x08016730'
+kind: function
+previous_names:
+- sub_8016730
+status: probable
+summary: Per-frame step of a battle object's "moving to its future panel" state (slide / approach), decrementing
+  the timer and finishing by either reverting to standing or starting a new sub-step.
+interface: '(r5 = BattleObject*) -> void ; side effects: panel reserve/release, write to battle object
+  fields, possibly AI data word, clear/leave object collision flags'
+details: "This is one state of an object's update-state machine (the \"approaching a panel in one or more\n\
+  steps\" state, entered by setting Unk_1e to a small counter). On entry:\n  - Decrement Unk_1e (loc=0x1e),\
+  \ which counts down how many tile steps remain for this move\n    (\"ldrb r0, [r5,#oBattleObject_Unk_1e];\
+  \ sub r0,#1; strb r0,[r5,#oBattleObject_Unk_1e]\").\nWhile Unk_1e > 0 (loc_801680E branch), translate\
+  \ the object's pixel X/Y by a fixed delta scaled\nby its signed per-frame move offsets stored at 0x1c/0x1d\
+  \ (0xA0000 per X-step, 0x60000 per\nY-step), then recompute PanelXY from world coords (object_setPanelsFromCoordinates)\
+  \ and refresh\nthe collision panel coords (object_setCollisionPanelsToCurrent).\nOnce the counter reaches\
+  \ 0 the object has reached the intermediate panel:\n  - Free the panel reservation on the future panel\
+  \ (object_removePanelReserve) and copy\n    FuturePanelXY into PanelXY.\n  - Recompute pixel coords\
+  \ from panel coords (object_setCoordinatesFromPanels).\n  - Look up the panel under the future panel\
+  \ (object_getPanelDataOffset) and read its panel\n    Type (oPanelData_Type = +0x2).\n  - Special handling\
+  \ for type 0x7 (\"grass\"/hollow panel): if the object's collision data\n    PrimaryElement is not 2\
+  \ (Wood), increment Unk_1b (a \"stuck on bad panel\" counter); fall through.\n  - Otherwise, for types\
+  \ 0x9..0xC (cracked/holy panels etc.), if the object's flag word does NOT\n    have bit 0x24 set, decide\
+  \ what to do based on Unk_0f:\n      * Unk_0f == 3 → write 5 to AIData+0x38 (oAIData_Unk_38; triggers\
+  \ an AI sub-state), and\n        proceed to alignment-cleanup block at loc_80167E6.\n      * Else (Unk_0f\
+  \ != 3) → resolve a new direction with sub_801683C from current contact\n        offsets (0x1c/0x1d\
+  \ signed) + object Alliance, write it into\n        CollisionDataPtr->Direction (oCollisionData_Direction\
+  \ = +0xc), set Unk_0f = 3, and\n        call battle_objectResolveContactOffset_800E468 (which updates\
+  \ 0x1c/0x1d from\n        neighbor panel contacts and returns a \"blocked\" flag in r2). If r2 is non-zero\n\
+  \        (movement onto a forbidden panel), bump Unk_1b; in any case fall through.\n  - After the panel-type\
+  \ / next-step decision, decrement Unk_1b; if it goes ≤ 0, drop into the\n    alignment block (loc_80167E6).\
+  \ Else the object is \"trying to keep walking\":\n      * Compute candidate future panel from current\
+  \ FuturePanelX/Y + signed offsets 0x1c/0x1d.\n      * Probe it via battle_objectCheckPanelByAlliance_800E5AC.\n\
+  \      * If the panel is rejected for the alliance, also fall through to alignment.\n      * Otherwise\
+  \ set Unk_1e = 4 (next sub-step window), store the candidate into\n        FuturePanelX/Y, call object_reservePanel\
+  \ for it, and return.\nThe alignment block (loc_80167E6): recompute Direction from current 0x1c/0x1d+Alliance\n\
+  (sub_801683C), store into CollisionData->Direction, clear Unk_1f and Unk_0f, clear collision\nflag 0x1000\
+  \ (OBJECT_FLAGS_SLIDING via object_clearFlag of bit 0x1000), and\nobject_setCollisionPanelsToCurrent\
+  \ — i.e. stand the object down at the panel it landed on.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: "- Decrement-and-branch on Unk_1e at 0x8016734..0x801673A is the classic counter-driven sub-step\
+    \ pattern\n  in MMBN battle-object updates.\n- Storing 4 back into Unk_1e at 0x80167DA shows the next\
+    \ sub-step count is 4 frames/steps. - The dword constants 0xA0000 (X) and 0x60000 (Y) at dword_8016834/dword_8016838\
+    \ with mul +\n  add into oBattleObject_X (0x34) / Y (0x38) are the canonical slide-step increments.\n\
+    - object_removePanelReserve + object_setCoordinatesFromPanels + FuturePanelXY→PanelXY copy is\n  exactly\
+    \ the \"snap to intermediate panel\" sequence.\n- panel type switches 7 / 0x9..0xC match the canonical\
+    \ \"grass/poison/cracked/etc.\" panel checks. - sub_801683C + battle_objectResolveContactOffset_800E468\
+    \ with Alliance as r2 is the\n  standard \"recompute direction/contact offsets after stepping\" idiom\
+    \ used elsewhere.\n- object_clearFlag with bit 0x1000 (r0 = mov r0,#1; lsl r0,#0xc → 0x1000 = OBJECT_FLAGS_SLIDING).\
+    \ - Writing 5 to [r1,#oAIData_Unk_38] uses a state index that other routines in this object\n  also\
+    \ write to coordinate AI sub-states."
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08016730
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_stepMoveToFuturePanel_8016730
+
+    '
+open_questions:
+- Exact semantics of Unk_0f (loc=0xf), Unk_1b (loc=0x1b), Unk_1e (loc=0x1e), Unk_1f (loc=0x1f) and AI+0x38
+  are still inferred by use, not by name; resolving them would let a `hypothesis` status be tightened
+  to `probable` and possibly drop the address suffix.
+- The exact state-table position (which CurState value dispatches here) isn't visible from this function
+  alone.
+sources:
+- discovery session 2026-10-14 batch 40 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d29ed784
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8016730 -> battleObject_stepMoveToFuturePanel_8016730
+  where: bn6f ceec2432
+  tool: tools/rename_symbol.py

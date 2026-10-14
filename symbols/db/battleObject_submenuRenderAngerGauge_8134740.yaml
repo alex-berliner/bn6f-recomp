@@ -1,0 +1,83 @@
+name: battleObject_submenuRenderAngerGauge_8134740
+address: '0x08134740'
+kind: function
+previous_names:
+- sub_8134740
+status: probable
+summary: 'Per-frame OAM render for a battle object''s submenu "anger/charge" gauge: queues one sprite
+  tile from a descriptor table and animates the low-nibble timer through its 0x10 step sequence.'
+interface: '(r5 = battleObject AIData ptr, r10 = toolkit) -> r0 = next frame''s low-nibble value (callee-saved
+  r5 live); side effects: OAM entry queued via battleObject_queueOamFromTableRow; reads/writes battleObject.AIData.Unk_15
+  (frame timer).'
+details: '1. Picks the VRAM bank base for the tile pair based on AIData.Unk_0d (r5+0xd): if non-zero use
+  0xA40000 (OBJ VRAM bank 1), otherwise 0xC00000 (OBJ VRAM bank 0) (`ldr r0, dword_813478C / 8134790`).
+
+  2. Builds a u32 OAM-tile base by OR-ing in AIData.Anger (r5+0x34, u16) << 4 with +0x20 offset, and OR-s
+  in 0x40000000 to set OBJ character VRAM mode 7 bits for 4bpp OBJ (constant 0x40000000).
+
+  3. Stashes the current AIData.Unk_15 byte on the stack (`str r2, [sp]`).
+
+  4. Calls battleObject_queueOamFromTableRow_811FAF4 with row index = AIData.Unk_15 & 0x0F, descriptor
+  table = byte_81331F4, additional arg = 2 (likely sprite count or palette slot).
+
+  5. If the high nibble of the stashed byte was 0 (i.e. `((Unk_15 >> 4) - 1) == 0`, meaning timer count
+  reached 1), calls battleObject_advanceAnimTableBy0xFF_8120CC8 on dword_81331FC to fetch the next animation
+  step byte and stores the low nibble back into AIData.Unk_15 (`strb r0, [r5,#0x15]`).
+
+  6. Final stage: writes the new high-nibble frame-counter back into AIData.Unk_15: `Unk_15 = (Unk_15
+  & 0x0F) | (high_nibble_next << 4)`. So Unk_15 is a packed (frameCounter<<4 | stepIndex) timer.
+
+  Caller battleObject_submenuLoopStep_8133944 invokes this every frame as part of the Beast/Custom-Anger
+  submenu; AIData.Anger is the per-actor Anger meter (u16 at 0x34), and AIData.Unk_15 acts as a packed
+  (4-bit) step + (4-bit) frame counter for the gauge tile cycling.
+
+  Note: r10 is the toolkit per convention; the function never directly references it though - the actual
+  storage base used by the callee is determined by r0 passed in.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r1, [r5,#0xd]; tst r1,r1; ldr r0,[dword_813478C=0xC0000]|ldr r0,[dword_8134790=0xA40000]`
+    selects VRAM bank 0 vs 1 from AIData+0xd (per-actor AIData byte matches the `AIData.Unk_0d` slot,
+    which sits at the same offset as BattleObject.Params byte 0xd given AIData+0x58/0x60 offsets — here
+    used as a tile-bank flag). - `ldrh r1,[r5,#0x34]; mov r3,#0x10; mul r1,r3; add r1,#0x20; orr r0,r1`
+    reads AIData.Anger (u16 at 0x34 of AIData struct), shifts left 4, adds 0x20, OR-s into r0 -> forms
+    an OAM tile base. - `ldr r4, dword_813479C = 0x40000000` -> the standard OAM OBJ-mode 7 bits, confirming
+    this is an OBJ tile address. - `ldrb r2,[r5,#0x15]; str r2,[sp]` then `mov r3,#0xf; and r2,r3` masks
+    low nibble -> that low nibble becomes the row index passed to battleObject_queueOamFromTableRow. -
+    `ldr r1,[sp]; lsr r1,#4; sub r1,#1; bne loc_813477A` checks whether the high nibble was 1 (= display
+    frame counter reached 0); if so, advances via battleObject_advanceAnimTableBy0xFF_8120CC8 on the `dword_81331FC`
+    table. - `strb r0,[r5,#0x15]; ... ldrb r0,[r5,#0x15]; and r0,#0xf; lsl r1,r1,#4; orr r0,r1; strb r0,[r5,#0x15]`
+    recomposes Unk_15 = (newStep & 0xf) | (nextHighNibble<<4), confirming Unk_15 is a packed timer (step/frame).
+    - Caller battleObject_submenuLoopStep_8133944 is the only caller, and it manages the folder-edit/Beast-Anger
+    submenu where Anger is the gauge that needs rendering. - The address suffixes 0xC0000/0xA40000 match
+    the OBJ VRAM bank offsets (0x06000000 + 0x10000 * bank), confirming this writes to OAM OBJ tiles.'
+  refs:
+  - bn6f/asm/asm36.s
+  reproduce: 'python3 tools/asmcat.py 0x08134740
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_submenuRenderAngerGauge_8134740
+
+    '
+open_questions:
+- Exact meaning of the 0x2 passed as `r1` to queueOamFromTableRow (sprite count, palette slot, or descriptor
+  stride) — would need to look at the descriptor table byte_81331F4 and queueOamFromTableRow's contract
+  more carefully.
+- Whether AIData.Unk_0d is really a "VRAM bank 0 vs 1" flag or a per-actor palette flag — assumed VRAM
+  bank from the literal constants 0xC0000/0xA40000.
+- High-nibble value being 1 as the "advance frame" condition rather than 0; we infer from the code `sub
+  r1,#1; bne` that the comparison is "was the high nibble 1? then advance".
+sources:
+- discovery session 2026-10-14 batch 40 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d29ed784
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8134740 -> battleObject_submenuRenderAngerGauge_8134740
+  where: bn6f ceec2432
+  tool: tools/rename_symbol.py

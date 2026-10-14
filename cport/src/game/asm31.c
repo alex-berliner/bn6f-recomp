@@ -2876,7 +2876,7 @@ Next sub_80C5590(void) {
  * t3_0x8_80C5BB0 — battle-object state-machine dispatcher.
  *
  * The jump table off_80C5BC8 is indexed by CurState (byte offsets 0, 4, 8):
- *   0 → sub_80C5BD4       (spawn / initialize)
+ *   0 → battleObject_initSnakeArmEvent_80C5BD4       (spawn / initialize)
  *   4 → battle_processCollisionEvent_80C5C40       (active / per-frame logic)
  *   8 → object_genericDestroy (death cleanup)
  * After the handler returns, object_updateSprite is called every frame.
@@ -2888,7 +2888,7 @@ static void dispatch_state_and_update_sprite(u32 object) {
     u32 state = LD8(R5 + oBattleObject_CurState);
     R0 = state;
     switch (state) {
-        case 0: GUEST_CALL(sub_80C5BD4); break;
+        case 0: GUEST_CALL(battleObject_initSnakeArmEvent_80C5BD4); break;
         case 4: GUEST_CALL(battle_processCollisionEvent_80C5C40); break;
         case 8: GUEST_CALL(object_genericDestroy); break;
     }
@@ -3840,7 +3840,7 @@ Next battle_refreshObjectCollisionFromExtraVars_80C6AB8(void) {
  * 32-bit entries and there is no shift before the load, the state byte
  * stores word offsets:
  *   0 -> battle_objectInitFromParamTable_80C6B64            (state handler 0)
- *   4 -> sub_80C6C14            (state handler 1)
+ *   4 -> battleObject_kind0x16Handler_80C6C14            (state handler 1)
  *   8 -> object_genericDestroy  (final state: remove the object)
  *
  * The handler is entered with r0 = state byte and r1 = its own table
@@ -3861,7 +3861,7 @@ Next t3_0x16_80C6B40(void) {
         GUEST_CALL(battle_objectInitFromParamTable_80C6B64);
         break;
     case 4:
-        GUEST_CALL(sub_80C6C14);
+        GUEST_CALL(battleObject_kind0x16Handler_80C6C14);
         break;
     case 8:
         GUEST_CALL(object_genericDestroy);
@@ -4063,8 +4063,8 @@ Next battle_objectInitFromParamTable_80C6B64(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80C6C14 ── */
-/* sub_80C6C14 (r5 = battle object): tick for an object standing inside an
+/* ── battleObject_kind0x16Handler_80C6C14 ── */
+/* battleObject_kind0x16Handler_80C6C14 (r5 = battle object): tick for an object standing inside an
  * active collision effect (grass/fire/swamp panels etc.).
  *
  * Removes the object's collision data, spawns the panel's effect, then lets
@@ -4073,7 +4073,7 @@ Next battle_objectInitFromParamTable_80C6B64(void) {
  * effect, the collision region is cleared and the object is destroyed.
  *
  * Preserves r7 (used internally for the object's collision data pointer). */
-Next sub_80C6C14(void) {
+Next battleObject_kind0x16Handler_80C6C14(void) {
     u32 savedR7 = R7;
 
     GUEST_CALL(object_removeCollisionData);

@@ -1,0 +1,85 @@
+name: battleObject_initBeastSP_811880C
+address: '0x0811880C'
+kind: function
+previous_names:
+- sub_811880C
+status: probable
+summary: 'BeastSP battle object''s initialize-phase handler: primes its sprite/animation, halts the sprite-update
+  chain, and leaves the object ready for the next state.'
+interface: (r5 = object, r6 = unknown context) -> nothing explicit returned; side effects on sprite fields
+  plus TailCall into battleObject_dispatchSpriteUpdate_8118874
+details: 'Called during a battle object''s initialize phase: writes 0x23 into the object''s header
+
+  byte 0 (typical "type/init" marker for BeastSP-derived objects), then initGuiSprite_8002770
+
+  with r0=0x15, r1=&unk_20218F0 to bind a sprite resource of header type 0x15.
+
+  Forces CurAnim+0 ([r5,#0xc]) to 0, calls sprite_setAnimation(0) and sprite_loadAnimationData
+
+  to load frame data with no shadow, OAM priority 3, halfword slot 0x1D8 cleared, sub-record +A
+
+  written with 3, palette bank 7 / palette 0, then sets [r5,#8]=4, [r5,#0xd]=0xFF (looks like
+
+  forcing a render pass through the sub-slot selector). Computes a y/x-shaped coordinate from
+
+  r6+0x20*0x14+0x1B and calls sprite_setCoordinates, then clears CurAnim again and runs the
+
+  sprite update dispatcher (battleObject_dispatchSpriteUpdate_8118874) which copies the
+
+  CurAnim into CurAnimCopy and then dispatches to one of 14 sprite routines. Because the
+
+  dispatcher itself chains into sprite_update with whatever CurAnimCopy holds, BeastSP''s
+
+  initialize handler forces CurAnim=0 right before the dispatcher to make it a no-op draw
+
+  pass on the very first tick after init. Function ends with pop {pc} rather than bx lr.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: "- `strb r0, [r5]` with r0=0x23 at +0 sets a known header-style marker - `bl initGuiSprite_8002770`\
+    \ with r0=0x15, r1=&unk_20218F0 at +0x10 binds a sprite slot of\n  type 0x15 (the high nibble of byte\
+    \ 2 of unk_20218F0 selects the 16-byte sub-record per the\n  sprite_setSubEntryPaletteBank / sprite_setCoordinates\
+    \ summaries)\n- Successive bl calls to sprite_setAnimation(0), sprite_loadAnimationData, sprite_noShadow,\n\
+    \  sprite_setPriority_8002E14(3) match a standard \"load+show\" sprite init sequence\n- `slotList_storeHalfwordAndClearField_800306C`\
+    \ with r0=0x1D8 stores a halfword into the\n  selected sub-slot (0xD8 high nibble → slot 0xD) and\
+    \ clears it\n- sprite_setSubRecordFieldA_8003060(3), sprite_setSubEntryPaletteBank_800304A(7),\n \
+    \ sprite_setPalette(0) finish sprite appearance\n- `strb r0, [r5,#8]` (r0=4) and `strb r0, [r5,#0xd]`\
+    \ (r0=0xFF) follow object_offset\n  conventions (object[+8] is Param1, [+0xD] is one of the small\
+    \ per-object control bytes)\n- Coordinates derived from `[r6,#0x20]` (a u16) * 0x14 + 0x1B passed\
+    \ to sprite_setCoordinates\n  indicate r6 points to a per-battle or per-team context (a Timer/panelRow\
+    \ style field at\n  +0x20 being used as a column multiplier) — this is plausible for \"place sprite\
+    \ at panel\n  index times spacing\"\n- `pop {pc}` plus the prior `mov r0, #0`/`strb r0, [r5,#0xc]`/`bl\
+    \ battleObject_dispatchSpriteUpdate_8118874`\n  makes the function a frame-stepping init in initialize-state:\
+    \ zero animation, then trigger\n  one update tick\n- route coverage: only one captured call (the initialize\
+    \ call) so other roles (idle/update/\n  destroy entries for the same object type) live at sibling\
+    \ addresses"
+  refs:
+  - bn6f/asm/asm32.s
+  reproduce: 'python3 tools/asmcat.py 0x0811880C
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_initBeastSP_811880C
+
+    '
+open_questions:
+- 'What r6 points to: not a known struct in the project''s structs file; could be a battle state pointer
+  or a per-panel column table'
+- The byte 0x23 written into [r5] — the project uses [r5] as the byte that mostly receives Flags in the
+  object header (offset +0), so 0x23 = ACTIVE|VISIBLE|UNUSED flags; combined with no Pause-update bit
+  this matches "make visible"
+- Whether the function is also called as a one-shot spawn (no return-via-bx-lr) versus only as an init-phase
+  handler
+sources:
+- discovery session 2026-10-14 batch 40 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d29ed784
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_811880C -> battleObject_initBeastSP_811880C
+  where: bn6f ceec2432
+  tool: tools/rename_symbol.py

@@ -1,0 +1,85 @@
+name: battleObject_initPlayerBeastOutShrine_80A57D0
+address: '0x080A57D0'
+kind: function
+previous_names:
+- sub_80A57D0
+status: probable
+summary: Beast-Out shrine's "player" battle object initializer (sets CurState=CUR_STATE_UPDATE, loads
+  sprite 0x80, anim 0, copies AI state dir/anim into the player, optionally calls sub_80A5A1C when EVENT_5F2
+  is set, then drives the beast-out PwrAtk tick).
+interface: '(r4 = player battle object ptr, r5 = this player battle object ptr, r6/r7/r10 = caller scratch,
+  lr = ret) -> r4/r5 preserved ; side effects: writes CurState=1, byte6/9=0, word30=0, byte8=4, calls
+  TestEventFlagFromImmediate(EVENT_5F2), conditional call to sub_80A5A1C, then battleObject_updateBeastOutPwrAtk_80A5828'
+details: '- Sets object header Flags byte 0 = 1 (OBJECT_FLAG_ACTIVE) on the object pointed at by r5 (first
+  store at top of fn: `strb r0,[r5]`).
+
+  - Calls sprite_load with sprite id 0x80, sub-id 0x18/0x3c, then sets anim 0, loads animation data, no
+  shadow, applies layer effect to its 0xC area (applyLayerEffectToOWObject_8035694).
+
+  - Sets sprite OAM priority, palette 0, then calls battle_setPlayerDirectionAndAnimFromAIState_80A5890
+  (which copies dir/anim triple from the AI state at offsets 0x7C..0x84 into the object and triggers an
+  anim update).
+
+  - Zeros battle object Unk_30 (u32) and bytes 6 and 9, sets byte 8 = 4 (looks like a CurPhase/state phase
+  value).
+
+  - If story-progress flag EVENT_5F2 is set (TestEventFlagFromImmediate non-zero), runs sub_80A5A1C before
+  tail-jumping to battleObject_updateBeastOutPwrAtk_80A5828 (which only uses callee-saved regs).
+
+  - Reading as the "beast-out player / shrine beast-out object" initializer: it pairs with battle_setPlayerDirectionAndAnimFromAIState_80A5890
+  (which copies dir/anim from an AI state at 0x7C..0x84 — likely a beast-out AI state struct embedded
+  in AIData, whose BeastOutAPwrAtk lives at AIData offset 0x11).
+
+  - The captured call frames all enter with r0=0x080a57d1 (address+1 of this fn), which is consistent
+  with this function being called through a jumptable slot and confirms r5 is the destination object.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `strb r0,[r5]` immediately sets header Flags to ACTIVE (offset 0 of the object header) before
+    any other work, the standard init pattern. - `bl sprite_load` with r0=0x80/0x18/0x3c defines the artwork;
+    `bl sprite_setAnimation 0` + `bl sprite_loadAnimationData` + `bl sprite_noShadow` follow the canonical
+    sprite init sequence. - `add r0,r5,#0xc` then `bl applyLayerEffectToOWObject_8035694` chooses the
+    BG layer for object offset 0xC (BattleObject Unk_0c/Battler region). - `bl sprite_setPriority_8002E14`
+    (uses r5 implicitly) and `bl sprite_setPalette 0` finalize the sprite. - `bl battle_setPlayerDirectionAndAnimFromAIState_80A5890`
+    per its contract copies offsets 0x7C..0x84 of the AI state into the player battle object — exactly
+    the call you''d expect after loading a fresh beast-out player. - `str r0,[r5,#0x30]` (with r0 just
+    set to 0), `strb r0,[r5,#6]` and `strb r0,[r5,#9]` clear Unk_30, Param3 and CurAction. - `strb r0,[r5,#8]`
+    with r0=4 sets CurState to 4 (= CUR_STATE_UPDATE), the canonical "start ticking" state after init.
+    - `bl TestEventFlagFromImmediate` with `movflag EVENT_5F2` gates an extra sub-step (`sub_80A5A1C`);
+    it then unconditionally tail-calls `battleObject_updateBeastOutPwrAtk_80A5828`. - Captured entries
+    show lr=0x080a57ba (i.e. returning into sub_80A5828 − 2) and r0=0x080a57d1 (the +1 Thumb address of
+    this function), i.e. callers go through a jumptable where r5 is loaded with the target object — exactly
+    the role of an initializer. - The function is `void`-like: it writes only r2/r3/r4/r5/r8/r9/r12 in
+    `out` (callee-saved scratch for the tail call) and pops with `pop {r4-r7,pc}`, so callers expect nothing
+    in r0 on return; consistent with init pattern.'
+  refs:
+  - bn6f/asm/asm29.s
+  reproduce: 'python3 tools/asmcat.py 0x080A57D0
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_initPlayerBeastOutShrine_80A57D0
+
+    '
+open_questions:
+- 'Whether "shrine" is the right theme: the EVENT_5F2-gated sub_80A5A1C call and the pairing with the
+  AI-state dir/anim copier strongly suggest a beast-out player, but the suffix word ("shrine"/"beast"/etc.)
+  is inferred. Knowing which beast-out entry table invokes this (likely a jumptable near the beast-out
+  handlers around 0x80A5800) would pin the name.'
+- The exact meaning of struct offsets 6, 9, and word 0x30 (BattleObject has Unk_30 at that offset) is
+  not in this struct's docs; they're named `Unk_*` everywhere.
+- 'The shape of EVENT_5F2 (immediate flag form: `u16 EVENT_5F2` lower byte = 0x??; `movflag` macro chooses
+  the upper).'
+sources:
+- discovery session 2026-10-14 batch 40 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d29ed784
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80A57D0 -> battleObject_initPlayerBeastOutShrine_80A57D0
+  where: bn6f ceec2432
+  tool: tools/rename_symbol.py

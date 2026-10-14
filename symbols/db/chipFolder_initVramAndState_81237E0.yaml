@@ -1,0 +1,82 @@
+name: chipFolder_initVramAndState_81237E0
+address: '0x081237E0'
+kind: function
+previous_names:
+- sub_81237E0
+status: probable
+summary: Initialize the chip folder screen state, clear VRAM/palette/BG tile blocks, fetch the current
+  Navi palette idx, apply a default palette, and queue a screen fade.
+interface: '(r0 = firstTimeInitFlag, r1 = ptr stored at submenu+0x4c) -> void ; side effects: writes submenu+0x10..0x3a,
+  +0x4c; clears VRAM and IWRAM 0x3001960; zeroes BG tile ID block at 0x30025c0; sets render info 0x1f40;
+  calls SetScreenFade(0x8, 0x10).'
+details: '- r0 (saved in `r4`) is used as a "first-time init" flag: only when nonzero does the function
+  zero VRAM and zero the small palette buffer at IWRAM 0x3001960 (ZeroFill_byte_3001960). It is the same
+  `r4` flag pushed at entry, so its meaning is "do expensive hardware reset on first call only".
+
+  - The state struct being initialized is at r5 (the toolkit->SubmenuPtr, since the chip folder uses the
+  SubMenu subsystem; matches SubMenu struct oSubMenu being small but accessed at offsets up to 0x4c).
+  Offsets cleared/initialised: 0x10,0x11 (bytes 0), 0x12 (panelX), 0x14 (futurePanelX), 0x18 (preventAnim),
+  0x20..0x3a (joypad held/pressed/up/release, HP/MaxHP, Damage, StaminaDamageCounterDisabler, Timer, Timer2).
+  Then stores r1 at +0x4c.
+
+  - `battleObject_advanceAnimTableBy0xFF_8120CC8` is called with index `0` against a small animation table
+  `dword_81233D4`; the resulting two-byte "X|Y" gets OR''d into r0 and stored as a single byte at +0x12
+  (PanelX). This matches the way BN6 packs a per-frame panel coordinate from an anim table.
+
+  - Current PET Navi index is fetched (`GetCurPETNavi`) and stored at +0x14. When first-time init, `GetCurPETNaviStatsByte`
+  is called with offset `0x2d` (`FloatShoes`?) and stored at +0xc.
+
+  - After VRAM clear: `toolkit_applyOverlayPalette_80015FC(0x10)` applies palette slot 0x10 to the toolkit
+  render write area; the render info''s first halfword is then written with `0x1F40` (probably a brightness/alpha/BG
+  mode bits) and 0x10..0x1a are zeroed.
+
+  - Submenu+1 = 0x4 (probably a state/jump table index), submenu+2 = 0, and SetScreenFade(8, 0x10) is
+  queued.
+
+  - Callee `GetCurPETNaviStatsByte(0x2d)` with the in-game NaviStats struct implies +0xc is a copy of
+  the FloatShoes navi stat byte (offset 0x1b in struct, but this callee applies a caller-chosen offset,
+  so it''s a user-defined slot for navi-specific data).
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {r4,lr}`; `mov r4, r0`; the same r4 controls the only `beq loc_8123830` branch, confirming
+    r0 is a one-shot init flag. - All zero stores use r5 as base pointer and offsets 0x10..0x3a match
+    the upper half of oSubMenu/JumpTable struct used by the chip folder. - `str r1, [r5,#0x4c]` and `strh
+    r0, [r5,#0x..]` show r1 is a table or script pointer associated with the screen. - `bl battleObject_advanceAnimTableBy0xFF_8120CC8`
+    with index 0 -> the lsl+orr pattern packs two bytes into one; result stored at +0x12. - `bl GetCurPETNavi`
+    and the immediate `strb r0, [r5,#0x14]` confirm +0x14 holds the current navi index. - `tst r4,r4`
+    then `beq loc_8123830` skips both `zeroFillVRAM` and `ZeroFill_byte_3001960`, gating hardware clears
+    behind first-init. - `bl GetCurPETNaviStatsByte` with `r0=currentNavi`, `r1=0x2d` and result stored
+    at +0xc. - `bl toolkit_applyOverlayPalette_80015FC` with `r0=0x10`, then `ldr r1,=0x1f40 ; strh r1,
+    [r0]` writes 0x1F40 to RenderInfo+0 (likely a BG mode/control register pair). - `mov r0,#8 ; mov r1,#0x10
+    ; bl SetScreenFade` queues a fade of style 8 with parameter 0x10. - Final `strb r0, [r5,#2]` zeroes
+    submenu byte +2.'
+  refs:
+  - bn6f/asm/asm33.s
+  reproduce: 'python3 tools/asmcat.py 0x081237E0
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): chipFolder_initVramAndState_81237E0
+
+    '
+open_questions:
+- Exact role of +0x12 (anim-derived panel/coord). The pack-into-one-byte result of `advanceAnimTableBy0xFF`
+  may actually be a sprite-tile selection rather than PanelX.
+- Semantics of r4 (firstTimeInitFlag) – name follows from the `tst/beq` pattern but the project doesn't
+  yet have a constant for it.
+- The render-info halfword 0x1F40 and palette slot 0x10 specifics (BG3 priority / mosaic) are inferred
+  from the toolkit helpers, not from labelled offsets.
+sources:
+- discovery session 2026-10-14 batch 40 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d29ed784
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_81237E0 -> chipFolder_initVramAndState_81237E0
+  where: bn6f ceec2432
+  tool: tools/rename_symbol.py

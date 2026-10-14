@@ -1,0 +1,85 @@
+name: battleObject_kind0x16Handler_80C6C14
+address: '0x080C6C14'
+kind: function
+previous_names:
+- sub_80C6C14
+status: probable
+summary: Update handler for battle objects whose CurAction is 0x16 (Snakearm); routes to a per-action
+  step and tears down the object on battle-over or non-hole+non-solid panels.
+interface: (r5 = BattleObjectPtr, r8 = ?, r10 = Toolkit, r4/r7 = saved) -> void ; r0 trashed, flags clobbered
+details: 'Reads `oBattleObject_CurAction` (r5+0x9) into r0, indexes the two-entry jump table at
+
+  `off_80C6C58` (entries 0x16 -> `battleObject_kind0x16SnakearmStep_80C6C6A+1`, 0x17
+
+  (read) `battleObject_dyingTickDespawn_80C6CBA+1`) using a Thumb `bx r1` indirection so
+
+  the callee sees Thumb state. The `CurAction` byte is the index; the slot used in the
+
+  trace (`r0=0x4` on entry is the BattleObject + size-of-pushed-context, not the action)
+
+  and the captured-call `r1=0x080c6c15` is just `sub_80C6C14|1`, the Thumb-bit trampoline
+
+  the caller uses. The function unconditionally calls `object_removeCollisionData` and
+
+  `object_spawnCollisionEffect` first; if `battle_isBattleOver` returns non-zero, or the
+
+  object''s current panel has neither the `0x10` (hole) bit nor the solid panel bit (the
+
+  `tst r0,r3`/`beq` branch into the destroy path), it clears the collision region and
+
+  sets `CurStateActionPhaseAndPhaseInitialized = CUR_STATE_DESTROY`. Otherwise, if
+
+  `oCollisionData_FlagsFromCollision` is non-zero it clears the collision region, then
+
+  dispatches via the action jump table; the `kind0x16` action calls
+
+  `object_presentCollisionData` then `object_highlightCurrentCollisionPanels`, while the
+
+  `0x17` action (`dyingTickDespawn`) presumably tears them down. The action dispatch uses
+
+  `CurAction` only as a 0/1 index into a 2-entry table, so this is in practice a 0x16/0x17
+
+  handler.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl object_removeCollisionData` at 0x80c6c18 (trampoline confirmed) - `bl object_spawnCollisionEffect`
+    at 0x80c6c1c - `bl battle_isBattleOver` then `tst r0,r0; bne loc_80C6C60` — early-out to teardown
+    - `ldrb r0,[r5,#oBattleObject_PanelX]` / `ldrb r1,[r5,#oBattleObject_PanelY]` then `bl object_getPanelParameters`
+    - `mov r3,#0x10; tst r0,r3; beq loc_80C6C60` — destroys the object if its panel isn''t hole+solid
+    (`Flags & 0x10`) - `ldr r7,[r5,#oBattleObject_CollisionDataPtr]; ldr r0,[r7,#oCollisionData_FlagsFromCollision];
+    tst r0,r0; beq loc_80C6C40` then `bl object_clearCollisionRegion` — clears panel region before stepping
+    when a collision flag exists - `ldrb r0,[r5,#oBattleObject_CurAction]; ldr r1,off_80C6C54; ldr r1,[r1,r0];
+    mov lr,pc; bx r1` — CurAction-driven 2-entry thumb dispatcher - Locally the `off_80C6C58` table holds
+    `battleObject_kind0x16SnakearmStep_80C6C6A+1` and `battleObject_dyingTickDespawn_80C6CBA+1` — names
+    already say it''s a Snakearm step vs despawn - Teardown path `loc_80C6C60`: `bl object_clearCollisionRegion;
+    mov r0,#CUR_STATE_DESTROY; str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]; pop
+    {r7,pc}` - Captured calls all show `lr=0x080c6b4c` (caller) and exit `r0=0x7f` is the shared post-call
+    scratch; `r0=4` at entry is the saved r4 pushed by the caller, not a CurAction value'
+  refs:
+  - bn6f/asm/asm31.s
+  reproduce: 'python3 tools/asmcat.py 0x080C6C14
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_kind0x16Handler_80C6C14
+
+    '
+open_questions:
+- The action-id semantics for the dispatcher entry 1 (`0x17`) come from the off_30(7) table bytes (declared
+  `+1` for Thumb bit); the project already names them `battleObject_kind0x16SnakearmStep` and `battleObject_dyingTickDespawn`,
+  so role is probable but the action byte mapping itself isn't seen here — only the size-2 dispatch table
+  is in this file.
+sources:
+- discovery session 2026-10-14 batch 40 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d29ed784
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80C6C14 -> battleObject_kind0x16Handler_80C6C14
+  where: bn6f ceec2432
+  tool: tools/rename_symbol.py

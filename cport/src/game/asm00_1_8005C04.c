@@ -2438,7 +2438,7 @@ Next battle_RevealFieldColumnsStep_80079F0(void) {
     GUEST_CALL(sub_800BF88);
 
     /* Let the field effect play out. */
-    GUEST_CALL(sub_800A3E4);
+    GUEST_CALL(battle_populateBattleFolder_800A3E4);
 
     /* Move the battle state to its next step (8, offset 1) and reset its
      * 16-bit timer (offset 2), leaving Z set as the original's MOV does. */

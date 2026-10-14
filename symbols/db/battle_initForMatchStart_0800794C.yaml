@@ -1,0 +1,66 @@
+name: battle_initForMatchStart_0800794C
+address: '0x0800794C'
+kind: function
+previous_names:
+- sub_800794C
+status: probable
+summary: 'Initializes a battle: clears battle-object linked lists, initializes T1/T3/T4 battle-object
+  structs, sets the beast-link flag, resets camera, zeroes battle counters, resets battle buffers, then
+  writes 4 to oBattleState_Index_01 and returns via battle-state dispatch.'
+interface: (no meaningful inputs) -> returns to caller via `pop {pc}`; side-effects a wide swath of EWRAM
+  battle state
+details: "The function is a single linear sequence of `bl` calls followed by a single store and a tail-return:\n\
+  \  1. `bl clearBattleObjectLinkedLists_800318C` - resets the doubly-linked battle-object list and its\
+  \ sentinel/head.\n  2. `bl InitializeT1BattleObjectStructs` - re-inits every T1 battle object.\n  3.\
+  \ `bl InitializeT3BattleObjectStructs` - re-inits every T3 battle object.\n  4. `bl InitializeT4BattleObjectStructs`\
+  \ - re-inits every T4 (tourney) battle object.\n  5. `bl battle_setBeastLinkFlag_0802E112` - turns on\
+  \ the 0x40 link-battle flag (real non-minigame link battle only).\n  6. `bl camera_resetToOrigin_8007338`\
+  \ - resets the camera to map group 0xF0, map 0 and clears unk03/14.\n  7. `bl clearBattleCounters_800A0C6`\
+  \ - zeros the four u32 counters at 0x2036820.\n  8. `bl resetBattleBuffers_801BE70` - zeroes battle-side\
+  \ RAM buffers.\n  9. `bl copy_8002668` - small helper (unnamed; probably a mem copy / buffer fix-up).\n\
+  Then `mov r0, #4; strb r0, [r5, #oBattleState_Index_01]` sets battle state's secondary index (offset\
+  \ 0x1) to 4 - a state that\ntypically requests \"initialize/queue-a-match\" before control returns to\
+  \ a dispatcher via `pop {pc}`. The route comment\n\"trigger battle_dispatchPhase_8007978 via battle_finishBattle_8007850\"\
+  \ makes 4 a phase-id the dispatch understands.\nThe inline comment `sub_800794C:` plus `thumb_func_end`\
+  \ and the entry contract (live-in r5 = a BattleState-related pointer, r10 = toolkit)\nshow this routine\
+  \ is called at the start of a battle just before turning control over to the per-frame dispatcher. r5\
+  \ is the\nBattleState pointer (because the `strb` writes through [r5,#0x1]). No meaningful return value;\
+  \ it's a void-ish initializer\nthat ends with the equivalent of `return pc` (pop {pc}).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {lr}` then nine straight `bl` instructions and `pop {pc}` shows a void initializer
+    that ends with a tail/return-to-dispatcher (`push lr` + `pop pc`). - `mov r0, #4; strb r0, [r5, #oBattleState_Index_01]`
+    writes a phase constant through r5 with the project''s `oBattleState_Index_01` (offset 0x1), consistent
+    with r5 being the battle-state pointer at this point. - The eight callees are all init/reset helpers
+    (`clearBattleObjectLinkedLists_800318C`, the three `InitializeT*BattleObjectStructs`, `battle_setBeastLinkFlag_0802E112`,
+    `camera_resetToOrigin_8007338`, `clearBattleCounters_800A0C6`, `resetBattleBuffers_801BE70`, `copy_8002668`).
+    - All 8 captured calls were taken from `snap_story2` (post-fade-in battle kickoff), each with identical
+    entry/exit state (r0=4 returned), consistent with an idempotent init function called on entering a
+    battle. - The route note `// trigger battle_dispatchPhase_8007978 via battle_finishBattle_8007850`
+    confirms the value 4 written to BattleState is the phase index that the dispatcher consumes next.'
+  refs:
+  - bn6f/asm/asm00_1.s
+  reproduce: 'python3 tools/asmcat.py 0x0800794C
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battle_initForMatchStart_0800794C
+
+    '
+open_questions:
+- The exact roles of `copy_8002668` and what specifically `0x40` ("Beast Link flag") governs.
+- Whether r5 is, project-wide, always the battle-state pointer on entry (the contract says r5/lr are live-in,
+  but doesn't name a pointer); inspection of the save-state stack at `sp=03007dd4` plus the strb target
+  would settle it.
+sources:
+- discovery session 2026-10-14 batch 40 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d29ed784
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_800794C -> battle_initForMatchStart_0800794C
+  where: bn6f ceec2432
+  tool: tools/rename_symbol.py

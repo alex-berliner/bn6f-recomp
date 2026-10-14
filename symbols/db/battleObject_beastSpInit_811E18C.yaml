@@ -1,0 +1,76 @@
+name: battleObject_beastSpInit_811E18C
+address: '0x0811E18C'
+kind: function
+previous_names:
+- sub_811E18C
+status: probable
+summary: 'Initializes a BeastOut "SP" overlay BattleObject: sets type 0x23, GUI sprite id 0x32, anim 0,
+  palette bank 0xA, no shadow, halfword 0x258 stored, then hands off to its stage-update.'
+interface: '(r5 = BattleObject*) -> void ; side effects: writes many fields of the BattleObject/sprite
+  and animates via the stage-update.'
+details: '- Writes the object header type byte to 0x23 (`strb r0, [r5]` with r0=0x23 — this is the object
+  header''s Index field, which lives at r5+1 in the standard layout; here it''s the first byte after the
+  0x10-byte linked-list prefix used by the macro, so r5 is being treated as a bare ObjectHeader pointer
+  at this point).
+
+  - Calls `initGuiSprite_8002770(0x32)` to attach GUI sprite 0x32 (BeastOut "SP" overlay sprite) to the
+  object.
+
+  - Sets animation index 0 (`sprite_setAnimation(0)`), loads its animation data (`sprite_loadAnimationData`),
+  and clears the shadow flag (`sprite_noShadow`).
+
+  - Sets the sub-entry palette bank to 0xA (`sprite_setSubEntryPaletteBank_800304A`) and the sub-record
+  field+0xA to 0.
+
+  - Writes halfword 0x258 into a slot via `slotList_storeHalfwordAndClearField_800306C(0x258)` — 0x258
+  looks like a palette/transform storage value.
+
+  - Sets OAM priority 1 (`sprite_setPriority_8002E14(1)`) and palette 0 (`sprite_setPalette(0)`).
+
+  - Writes 0x04 to r5+8 (object CurState area) — almost certainly `CUR_STATE_UPDATE` (0x4) so the object
+  will start updating.
+
+  - Tail-calls `battleObject_setCoordsAndUpdateSprite_811E1D4` which snaps the sprite to (0xCC, 0x1E)
+  and runs the object update.
+
+  - The captured-call sites are all `snap_beastsp_*` test fixtures, confirming this is the BeastOut SP
+  overlay object initializer used by snapshot/state-restoration paths.
+
+  - No value is returned to callers (only r5/lr are live); function is effectively `void`.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `strb r0, [r5]` immediately at entry writes 0x23 — first byte of the object header. - `bl
+    initGuiSprite_8002770` with r0=0x32 attaches GUI sprite 0x32 (BeastOut overlay icon). - `bl sprite_setAnimation(0)`
+    + `sprite_loadAnimationData` + `sprite_noShadow` chain matches other beast/overlay object inits. -
+    `bl slotList_storeHalfwordAndClearField_800306C` with literal 0x258 (from `off_811E1D0`) stores a
+    palette/animation halfword. - `strb r0, [r5,#8]` with r0=4 writes `CUR_STATE_UPDATE` into the CurState
+    slot of the BattleObject header. - All 6 captured calls have identical entry r0=0x811e18d (return-to-caller
+    thumb bit set), r2=0x087dc5a4, r3=0x20, lr=0x811e176, indicating the same dispatch path. - The `snap_beastsp_*`
+    filenames of the captured fixtures identify this as the BeastOut SP overlay.'
+  refs:
+  - bn6f/asm/asm32.s
+  reproduce: 'python3 tools/asmcat.py 0x0811E18C
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_beastSpInit_811E18C
+
+    '
+open_questions:
+- Whether r5 at entry is a bare ObjectHeader or already a full BattleObject (the r5+8 write could be `CurState`
+  if BattleObject, or a generic header flag otherwise). Snap data wasn't decoded to confirm. A callee
+  call-site cross-reference or following the header init at 0x811e176 would settle this.
+sources:
+- discovery session 2026-10-14 batch 40 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d29ed784
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_811E18C -> battleObject_beastSpInit_811E18C
+  where: bn6f ceec2432
+  tool: tools/rename_symbol.py

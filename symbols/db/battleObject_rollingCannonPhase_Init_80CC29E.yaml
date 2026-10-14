@@ -1,0 +1,67 @@
+name: battleObject_rollingCannonPhase_Init_80CC29E
+address: '0x080CC29E'
+kind: function
+previous_names:
+- sub_80CC29E
+status: probable
+summary: 'Phase handler for a rolling-cannon (SnakeArm-style projectile) battle object: initialises it
+  on the front row, plays a firing sound, sets HP and velocity, then drives its left/right column travel
+  via XVelocity and collision checks.'
+interface: '(r5 = battle object) -> void ; side effects: writes many BattleObject fields, plays SFX 0xFF'
+details: "First entry (PhaseInitialized == 0) sets CurState=UPDATE (oBattleObject_PhaseInitialized=4?\
+  \ actually\nraw writes 4 to that offset, matching CUR_STATE_UPDATE), CurAnim=1, Timer=5, and returns.\n\
+  Subsequent entries decrement Timer (oBattleObject_Timer). Once it underflows:\n  - Places the object\
+  \ at column PanelX=2 (friend Alliance=0) or PanelX=5 (enemy Alliance=1),\n    calls object_setCoordinatesFromPanels,\
+  \ sets Z16=0x14, calls object_updateCollisionPanels.\n  - Looks up XVelocity multiplier from `byte_80CC310`\
+  \ indexed by Param1*4 (entries 0x7,0x8,0x9,0xA),\n    multiplies by object_getEnemyDirection (±1) and\
+  \ stores into oBattleObject_XVelocity.\n  - Sets CurAnim=2, calls sprite_hasShadow (turns the shadow\
+  \ on), sets collision region to 1 via\n    object_setCollisionRegion, reads HP from a table at `byte_80CC0D0`\
+  \ (Param1*2) into HP and MaxHP,\n    plays sound effect 0xFF (almost certainly the cannon-fire/burst\
+  \ SFX), and writes\n    CurPhaseAndPhaseInitialized = 8 (CUR_STATE_DESTROY on the high byte 8 and the\
+  \ low byte seems\n    repurposed, but the comment `mov r0, #8 / strh r0, [r5,#CurPhaseAndPhaseInitialized]`\
+  \ is the\n    phase-transition to the moving sub-phase at loc_80CC320).\nAt loc_80CC320: each tick applies\
+  \ self-damage via object_applyDamage (r0=0); if it stays alive it\nintegrates X += XVelocity, recomputes\
+  \ panels, updates collision panels, then checks the alliance\nmask from `byte_80CC364` (entries 0x05800000\
+  \ friend / 0x0A580000 enemy) against the current\ncollision flags. If the mask is unset AND object_isCurrentPanelValid\
+  \ passes, the column continues;\notherwise object_clearCollisionRegion runs and CurPhaseAndPhaseInitialized\
+  \ is set to 0xC, returning\nvia locret_80CC35C.\nHP table (byte_80CC0D0) and XVelocity table (byte_80CC310)\
+  \ are 4 entries chosen by Param1,\nconsistent with 4 variants of this projectile (e.g. SnakeArm-level\
+  \ Cannon variants).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: "- `ldrb r0,[r5,#oBattleObject_PhaseInitialized]; tst r0,r0` is the standard initial/secondary\n\
+    \  phase-split used by every battle-object phase handler.\n- `mov r1,#4; strb r1,[r5,#oBattleObject_PhaseInitialized]`\
+    \ writes CUR_STATE_UPDATE. - PanelX chosen as 2 vs 5 by Alliance (loc_80CC2C6) is the front-row spawn\
+    \ column. - `bl object_setCoordinatesFromPanels`, `bl object_updateCollisionPanels`, `bl object_getEnemyDirection`\n\
+    \  are the canonical \"spawn projectile and pick left/right velocity sign\" steps.\n- `mul r0, r1`\
+    \ with table indexed by Param1*4 (byte_80CC310) sets XVelocity from a per-variant magnitude. - `bl\
+    \ object_applyDamage` with r0=0 inside the moving tick is the same self-damage-by-zero used\n  by\
+    \ SnakeArm-class projectiles to burn HP on each step.\n- Mask table `byte_80CC364` values 0x05800000\
+    \ and 0x0A580000 are the alliance-keyed collision bit\n  patterns previously seen on SnakeArm/ElecDrag-style\
+    \ projectiles; the rolling-cannon role is the\n  best fit given the HP/sound setup.\n- Phase 0x8 ->\
+    \ 0xC transition and the SFX 0xFF (\"sndElec\" / cannon firing) tie it to a fired cannon."
+  refs:
+  - bn6f/asm/asm31.s
+  reproduce: 'python3 tools/asmcat.py 0x080CC29E
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_rollingCannonPhase_Init_80CC29E
+
+    '
+open_questions:
+- Whether this is the EXE 6 *Cannon* (rolling projectile across enemy/own row) vs a SnakeArm variant;
+  the table at byte_80CC0D0 (HP) would identify the exact chip/element. Decompiling the caller to see
+  which object index dispatches here with which Param1 values would confirm.
+sources:
+- discovery session 2026-10-14 batch 40 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d29ed784
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80CC29E -> battleObject_rollingCannonPhase_Init_80CC29E
+  where: bn6f ceec2432
+  tool: tools/rename_symbol.py

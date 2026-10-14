@@ -1,0 +1,75 @@
+name: battle_aiEnemyAiActionHandler_80F8448
+address: '0x080F8448'
+kind: function
+previous_names:
+- sub_80F8448
+status: probable
+summary: Handles one tick of an enemy AI's battle-AI routine, selecting an attack script and target based
+  on HP ratios and difficulty tier.
+interface: '(r5 = *BattleObject self, r6 = *AIState state, r7 = *AIAttackVars attackVars) -> void ; side
+  effects: mutates AIState counters (Unk_04/Unk_05) and AIAttackVars fields (Unk_02, Unk_03, Unk_18, Unk_28,
+  Unk_2c, Unk_30) and triggers object_setAttack0/4 on self'
+details: "1. Reads self HP (oBattleObject_HP, r5+0x24) and MaxHP (oBattleObject_MaxHP, r5+0x26); compares\
+  \ half of MaxHP vs HP to derive r3 = 4 if HP>=half, else r3 = 2.\n2. Compares r6->Unk_04 (oAIState_Unk_04)\
+  \ against r3; if Unk_04 < r3, takes the \"low-HP trigger\" branch at 0x80F8518 which increments Unk_04,\
+  \ stores difficulty tier into r7->Unk_03, sets Unk_28 to sub_80F8CF8+1 (off_80F8704), stores a value\
+  \ into Unk_18 from sub_80F85B2, and calls object_setAttack4(r0=9).\n3. Otherwise (Unk_04 >= r3): clears\
+  \ Unk_04 to 0, reads difficulty tier via battle_getAiDifficultyTier_800FE36, then uses the tier as an\
+  \ index into dword_80F853C = 0x030030306 (i.e. per-tier byte table at 0x80F853C, four bytes [0x06,0x03,0x03,0x00])\
+  \ to compare against r6->Unk_05.\n4. If Unk_05 < tier-threshold: increments Unk_05, calls sub_80F8610\
+  \ (returns r0), and routes to one of three pre-attack sub-scripts:\n     - sub_80F8DA8 (off_80F86F8,\
+  \ branch when sub_80F8610 returns >= 3): Unk_02=4, sub_80F865C(r0=1), sub_80F85D4 -> Unk_18; target\
+  \ = battle_findPlayer(opposite alliance); Unk_30 not set; object_setAttack0(0x0b).\n     - sub_80F8D3E\
+  \ (off_80F86FC, default branch): Unk_02=4, sub_80F865C(r0=0), sub_80F85E8 -> Unk_18; target set; Unk_30\
+  \ = r5 + 0x64 (ExtraVars base of self); object_setAttack0(0x0a).\n   Note sub_80F8610 is only called\
+  \ here, then its return is compared; it acts as a delay/probability gate for the attack choice.\n5.\
+  \ Else (Unk_05 at/past threshold): clears Unk_05, sets Unk_03 = tier, Unk_02 = 0, sub_80F865C(r0=2),\
+  \ sub_80F85FC -> Unk_18, sets target = battle_findPlayer(opposite), Unk_28 = sub_80F8DFE+1 (off_80F8700),\
+  \ Unk_30 = r5 + 0x60 (likely ExtraVars[0] or HitEffect-related), then object_setAttack0(0x0c).\n6. r5/r6/r7/r10\
+  \ are preserved across calls; lr saved/restored. No explicit return value.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- r5/r6/r7 are read on entry (push r4,r6,lr; r5 referenced as BattleObject at oBattleObject_HP/oBattleObject_MaxHP/oBattleObject_Alliance;
+    r6 as AIState at Unk_04/Unk_05; r7 as AIAttackVars at Unk_02/Unk_03/Unk_18/Unk_28/Unk_2c/Unk_30).
+    - HP/MaxHP gating: `ldrh r1,[r5,#oBattleObject_MaxHP]; lsr r1,r1,#1; ldrh r2,[r5,#oBattleObject_HP];
+    cmp r1,r2; ble loc_80F8458; mov r3,#2` (assembly 0x80F8448+). - Tier table `dword_80F853C: .word 0x030030306`
+    read via `ldrb r0,[r1,r0]` (0x80F846C). - Low-HP branch stores `ldr r0, off_80F8704` (= sub_80F8CF8+1)
+    into r7->Unk_28 then object_setAttack4(9) (0x80F8518+). - Three attack-script pointers (off_80F86F8
+    = sub_80F8DA8+1; off_80F86FC = sub_80F8D3E+1; off_80F8700 = sub_80F8DFE+1) all written into oAIAttackVars_Unk_28
+    with Thumb+1 (BX-target encoding). - ExtraVars base references: `add r0,r0,r5; mov r0,#0x64; add r0,r0,r5`
+    then `str r0,[r7,#oAIAttackVars_Unk_30]` (0x80F84AC+, 0x80F84E0+) -- these point into the BattleObject
+    ExtraVars region (0x60+). - target = `bl battle_findPlayer` after `eor r0,r1` toggling oBattleObject_Alliance
+    (0x80F84A0, 0x80F84D4, 0x80F8508) — stores result in oAIAttackVars_Unk_2c. - Branching by sub_80F8610
+    return: `bl sub_80F8610; cmp r0,#3; bge loc_80F84AC` (0x80F8488+). - No r0/return value produced for
+    caller (pop {r4,r6,pc}); treated as void.'
+  refs:
+  - bn6f/asm/asm31.s
+  reproduce: 'python3 tools/asmcat.py 0x080F8448
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battle_aiEnemyAiActionHandler_80F8448
+
+    '
+open_questions:
+- 'Exact meanings of the three sub_80F8xxx routines stored in oAIAttackVars_Unk_28 (off_80F86F8/86FC/8700).
+  They look like attack-pattern scripts (param0 differs: 0x0b, 0x0a, 0x0c) but their internal roles are
+  inferred only from offsets.'
+- What Unk_04 / Unk_05 actually count (cooldown? consecutive-attempt counter?) – the asm shows them as
+  1-byte counters compared against tier-derived thresholds but semantics not labeled.
+- What oAIAttackVars_Unk_30 points to (r5+0x60 vs r5+0x64) – likely an ExtraVars slot used by the chosen
+  attack script, but field semantics unclear.
+- 'Who calls this function: contract lists no callers (no `bl sub_80F8448` in the provided snapshot).
+  Identifying the dispatch site would settle whether r5/r6/r7 setup matches a typical per-actor AI tick.'
+sources:
+- discovery session 2026-10-14 batch 40 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d29ed784
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80F8448 -> battle_aiEnemyAiActionHandler_80F8448
+  where: bn6f ceec2432
+  tool: tools/rename_symbol.py

@@ -263,10 +263,10 @@ Next HandleChipFolderMenu8123434(void) {
  * everything else not set up here is preserved by the callees.
  */
 
-/* register form: calls sub_81237E0 outside this file, which has no typed C interface yet */
+/* register form: calls chipFolder_initVramAndState_81237E0 outside this file, which has no typed C interface yet */
 static void call_sub_81237E0(u32 arg) {
     R0 = arg;
-    GUEST_CALL(sub_81237E0);
+    GUEST_CALL(chipFolder_initVramAndState_81237E0);
 }
 
 /* register form: calls chipFolder_initGfx_812386C outside this file, which has no typed C interface yet */
@@ -342,10 +342,10 @@ Next chipFolder_screenInit_812345C(void) {
 }
 
 /* ── chipFolder_init_812349C ── */
-/* register form: calls sub_81237E0 outside this file, which has no typed C interface yet */
+/* register form: calls chipFolder_initVramAndState_81237E0 outside this file, which has no typed C interface yet */
 static void call_sub_81237E0_sub_812349C(void) {
     R0 = 0;
-    GUEST_CALL(sub_81237E0);
+    GUEST_CALL(chipFolder_initVramAndState_81237E0);
 }
 
 /* register form: calls chipFolder_initGfx_812386C outside this file, which has no typed C interface yet */
@@ -867,7 +867,7 @@ Next pet_menu_runFrame_81237BC(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_81237E0 ── */
+/* ── chipFolder_initVramAndState_81237E0 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r1, r2; bool v; } call_sub_8120CC8_result_sub_81237E0;
 /* register form: generated wrapper: battleObject_advanceAnimTableBy0xFF_8120CC8 has no typed C interface yet */
@@ -992,10 +992,10 @@ static void init_battle_object(u32 flag, u32 battle_state_ptr,
     ST8(obj + 0x02, 0);
 }
 
-/* sub_81237E0 – set up a battle-object.
+/* chipFolder_initVramAndState_81237E0 – set up a battle-object.
  * r0 = first-init flag, r1 = battle-state ptr, r5 = object, r10 = toolkit.
  * Preserves r4, r5; sets r7 = toolkit. */
-Next sub_81237E0(void) {
+Next chipFolder_initVramAndState_81237E0(void) {
     init_battle_object(R0, R1, R5, R10);
     R7 = R10;
     RETURN_TO_CALLER();
@@ -1217,7 +1217,7 @@ static void call_prep_left_panel(u32 tileset_id, u32 battle_obj) {
     R4 = 0x6006B80;
     R5 = 5;
     R7 = battle_obj;
-    GUEST_CALL(sub_81203E4);
+    GUEST_CALL(battle_buildChipFolderOamPack_81203E4);
     R4 = s4; R5 = s5; R6 = s6; R7 = s7;
 }
 

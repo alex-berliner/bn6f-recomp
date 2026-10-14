@@ -1,0 +1,91 @@
+name: battle_populateBattleFolder_800A3E4
+address: '0x0800A3E4'
+kind: function
+previous_names:
+- sub_800A3E4
+status: probable
+summary: Builds the 30-chip battle folder (eBattleFolder) from a navi stat block, applying Beast-Out/dark-chip
+  overrides from battle state and optionally shuffling it
+interface: '(r0..r3 ignored on entry) -> no return value ; side effects: writes eBattleFolder (30 halfwords),
+  may set BattleState.Unk_17 / Unk_44, may shuffle folder'
+details: '1. Reserves three local byte slots initialized to 0xFF (chip-position sentinels) for the "fixed"
+  slots.
+
+  2. Calls GetBattleEffects; if the 0x200000 (Beast-Out) bit is set, uses the per-navi beast-out source
+  pointer at 0x02039AA0 directly; otherwise picks the current battle-mode source pointer from dword_802137C
+  (falling back to tk->S_Chip_2002178_Ptr when that table is zero).
+
+  3. If the resolved chip source equals the live S_Chip_2002178_Ptr, indexes a navi-stats record (battle_getNaviStatsByte_800A540
+  with index 0x2D, stride 0x3C) so a folder-tied navi gets its own battle folder; r7=1 marks "already
+  plaintext".
+
+  4. If the 0x80 (dark/darkInvincible) battle-effect bit is set, looks up the current navi via pet_getCurNaviChainedLookup_800A4E0;
+  if not 0xFF, forces slot 0 to that chip and sets BattleState+0x17 = 1 (tells shuffleFolder to preserve
+  a slot). pet_getCurNaviStatusPair_800A506 then forces slots 1 and 2 to the current navi''s chip pair
+  and sets BattleState+0x44 = 1.
+
+  5. Walks the 30 halfwords of the source chip block: for each offset r2, the first matching sentinel
+  slot in [sp, sp+4, sp+8] gets the chip; otherwise it is appended sequentially to eBattleFolder (offset
+  r3, starting at 2 since slot 0/1 are reserved for dark-chip + status pair).
+
+  6. If the source was not the live PET navi stats (r7 == 0), runs encryption_decryptPackTable30_800a7ea
+  in place to unpack the 9/7-bit packed chip IDs.
+
+  7. When the 0x80 effect bit is set, calls shuffleFolder_800A570 with the precomputed BattleState+0x17
+  / +0x44 flags so Giga chips are isolated and any fixed slot is preserved.
+
+  8. Called from battle_RevealFieldColumnsStep_80079F0 after the field pattern is applied, between steps
+  7 and 8 of the battle-intro script.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl GetBattleEffects` at 0x0800A3FA feeds r4; the `ldr r1, dword_800A564 // =0x200000` /
+    `tst r0, r1` test selects the Beast-Out pointer (`off_800A56C // =unk_2039AA0`) vs battle-mode table.
+    - The `bl GetBattleMode` / `lsl r0,#2` / `ldr r0,[r1,r0]` with `off_800A4D8 // =dword_802137C` (table
+    of per-mode chip sources) at 0x0800A404 selects the mode-specific folder pointer. - `mov r0, r10;
+    ldr r0,[r0,#oToolkit_S_Chip_2002178_Ptr]` at 0x0800A410/0x0800A418 reads the PET''s currently equipped
+    navi folder pointer for both the fallback and the "is the source the live PET folder?" comparison.
+    - `bl GetCurPETNavi` + `bl battle_getNaviStatsByte_800A540` with `r1=#0x2d` and `r2=#0x3c` (mul) at
+    0x0800A41A-0x0800A422 indexes the per-navi record in 0x3C-stride NaviStats, producing the offset added
+    to r0. - `mov r0, #0x80; tst r0, r4` at 0x0800A434 is the dark-chip battle-effect check; `bl pet_getCurNaviChainedLookup_800A4E0`
+    followed by `str r1,[sp]` and `strb r1,[r2,#oBattleState_Unk_17]` (0x17) at 0x0800A444 reserves slot
+    0 with the dark chip and flags BattleState+0x17. - `bl pet_getCurNaviStatusPair_800A506` + `str r2,[sp,#4];
+    str r3,[sp,#8]; strb r1,[r2,r3]` (r3=0x44) at 0x0800A44E-0x0800A466 reserves slots 1/2 with the dual-status
+    chip pair and flags BattleState+0x44. - The loop at 0x0800A468-0x0800A4A4 walks 30 halfwords (`cmp
+    r2,#0x3c`) writing into `eBattleFolder` at offsets 0x00, 0x38, 0x3A (the three reserved slots) and
+    the trailing `r3` for ordinary chips, matching a 30-chip folder layout. - `tst r7, r7` at 0x0800A4AC
+    and `bl encryption_decryptPackTable30_800a7ea` at 0x0800A4B2 skip the decryption when the source was
+    already a NaviStats record. - `mov r0, #0x80; tst r0, r4` then `bl shuffleFolder_800A570` at 0x0800A4B6-0x0800A4D0
+    shuffle the folder with the previously stashed BattleState flags (Unk_17, Unk_44) as parameters. -
+    The lone caller `battle_RevealFieldColumnsStep_80079F0` is documented as the script step that finishes
+    the column-reveal animation; populating the battle folder fits between that step and the script''s
+    `step 8` advance mentioned in its summary.'
+  refs:
+  - bn6f/asm/asm00_1.s
+  reproduce: 'python3 tools/asmcat.py 0x0800A3E4
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battle_populateBattleFolder_800A3E4
+
+    '
+open_questions:
+- The exact semantics of BattleState+0x17 and +0x44 (passed as r1/r2 into shuffleFolder_800A570) are not
+  directly visible here; their values of 1 likely mean "this slot must survive the shuffle as a Giga-paired
+  slot" but the precise contract is owned by the shuffle routine.
+- Why the live tk->S_Chip_2002178_Ptr comparison (0x0800A414) gates NaviStats indexing is unclear; it
+  probably distinguishes an out-of-battle vs in-battle navi stats block (the 0x2D index is the folder
+  pointer within NaviStats, so the offset 0x3C points at the per-navi folder data).
+sources:
+- discovery session 2026-10-14 batch 40 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d29ed784
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_800A3E4 -> battle_populateBattleFolder_800A3E4
+  where: bn6f ceec2432
+  tool: tools/rename_symbol.py

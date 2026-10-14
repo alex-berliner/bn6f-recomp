@@ -2910,7 +2910,7 @@ Next objectStateDispatcher_8117D2C(void) {
 
     switch (state) {
     case 0:
-        GUEST_CALL(sub_8117D4C);
+        GUEST_CALL(battleObject_initDmgNumberCounter_8117D4C);
         break;
     case 4:
         GUEST_CALL(sub_8117DC8);
@@ -2927,7 +2927,7 @@ Next objectStateDispatcher_8117D2C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8117D4C ── */
+/* ── battleObject_initDmgNumberCounter_8117D4C ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r4, r5, r6; } call_initGuiSprite_8002770_result;
 /* register form: generated wrapper: initGuiSprite_8002770 has no typed C interface yet */
@@ -3065,8 +3065,8 @@ static call_sub_8117DC8_result init_link_portrait(u32 obj) {
     return call_sub_8117DC8(obj);
 }
 
-/* sub_8117D4C(r5 = sprite control block) -> r2 r3 r5 r10 r11 */
-Next sub_8117D4C(void) {
+/* battleObject_initDmgNumberCounter_8117D4C(r5 = sprite control block) -> r2 r3 r5 r10 r11 */
+Next battleObject_initDmgNumberCounter_8117D4C(void) {
     call_sub_8117DC8_result res = init_link_portrait(R5);
     R2 = res.r2;
     R3 = res.r3;

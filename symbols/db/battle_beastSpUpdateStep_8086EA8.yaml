@@ -1,0 +1,104 @@
+name: battle_beastSpUpdateStep_8086EA8
+address: '0x08086EA8'
+kind: function
+previous_names:
+- sub_8086EA8
+status: probable
+summary: 'Per-frame update step for the Beast-form/SP (Beast-out) Navi''s AI: refresh AIData from the
+  actor''s BattleObject, run/queue the beast intro cutscene, and advance any pending beast sub-state.'
+interface: (r2 = ? , r10 = Toolkit, lr = ret) -> void ; no return value other than the clobbered scratch
+  registers
+details: 'The function is a small top-level dispatcher for the Beast-SP path. It first loads a
+
+  word from off_8086D18 (via off_8086ED4) into r5, which is then passed as a pointer-ish
+
+  context to several callees (r5 is consumed by battle_beastSpRefreshAIDataFromBattleObject_8087184,
+
+  sub_808711C, and sub_80871F4, all of which take `r5` as a documented in-register). r10 is
+
+  the Toolkit, as usual for the project''s battle code.
+
+
+  Step 1: battle_aiGetCurActionPanelY_8087140 reads PanelY (BattleObject+0x13) for the
+
+  Toolkit''s current actor slot. If non-zero (the actor is on a non-default panel),
+
+  battle_beastSpRefreshAIDataFromBattleObject_8087184 is called to copy the
+
+  BattleObject''s position/velocity into the AIData. The beq over the refresh on PanelY==0
+
+  means AIData refresh is skipped for the actor''s home panel.
+
+
+  Step 2: startScreen_runBeastCutscene_8086FD8 is always called; per its summary it
+
+  decides which beast-out / beast-sp intro cutscene to start (story flag + map + result
+
+  code gated).
+
+
+  Step 3: EVENT_5ED is tested via TestEventFlagFromImmediate; if set, sub_808711C is
+
+  called. EVENT_5ED is one of the 0x5ED-range event/story flags in this slot range; the
+
+  flag gates a beast-SP specific branch (sub_808711C takes r5, so it likely mutates
+
+  the beast-SP state struct loaded earlier).
+
+
+  Step 4: sub_80871F4 is called unconditionally to advance the beast-SP sub-state. It
+
+  takes r5 and returns r2/r3/r4 (kept by the caller per the contract; the caller
+
+  doesn''t appear to use them, so this is a tail-style call).
+
+
+  The captured-call snapshots are all from "snap_beastsp_0100000_*.bin" which suggests
+
+  the engine records traces specifically for this beast-SP code path, with entry
+
+  r2=1 and r3=02001d44 (consistent r2/r3 across 40 frames) and exit r0=0 with Z+C
+
+  set.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: "- `push {r4-r7, lr}` followed by `ldr r5, off_8086ED4; ldr r5, [r5]` at 0x8086ea8 sets r5 to\
+    \ a\n  static-state pointer used by the three downstream r5-takers.\n- `bl battle_aiGetCurActionPanelY_8087140`\
+    \ and `cmp r0, #0; beq loc_8086EBA` show the\n  PanelY-conditional refresh path; the callee's contract\
+    \ is exactly \"read PanelY of\n  current actor's BattleObject\".\n- `bl battle_beastSpRefreshAIDataFromBattleObject_8087184`\
+    \ is only called when PanelY != 0,\n  so it copies the actor's BattleObject state into AIData on non-home\
+    \ panels.\n- `bl startScreen_runBeastCutscene_8086FD8` (always taken) is the beast-cutscene trigger\n\
+    \  per the callee's name and summary.\n- `movflag EVENT_5ED; bl TestEventFlagFromImmediate; beq loc_8086ECC`\
+    \ shows the story\n  flag check and the conditional `bl sub_808711C`; the `beq` is taken when the\
+    \ flag\n  is NOT set (TestEventFlagFromImmediate contract: out includes nz/c/v and r0).\n- `bl sub_80871F4`\
+    \ after the conditional block runs unconditionally to advance state. - All 40 captured-call snapshots\
+    \ share r0=0, r1=2, r2=1, r3=0x02001d44, lr=0x08035e88\n  (same caller across all 40 frames), consistent\
+    \ with a stable per-frame update\n  from the same call site."
+  refs:
+  - bn6f/data/dat21.s
+  reproduce: 'python3 tools/asmcat.py 0x08086EA8
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battle_beastSpUpdateStep_8086EA8
+
+    '
+open_questions:
+- The exact semantic of EVENT_5ED (story / beast-SP unlock) and of the r5 state struct pointed to by [off_8086ED4]
+  is not known. Decompiling sub_808711C and sub_80871F4 would clarify which sub-state machine they implement.
+- r2 on entry is not used directly here but is part of the contract; what the caller supplies (result
+  code, attack-result code, etc.) would settle the meaning.
+sources:
+- discovery session 2026-10-14 batch 40 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d29ed784
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8086EA8 -> battle_beastSpUpdateStep_8086EA8
+  where: bn6f ceec2432
+  tool: tools/rename_symbol.py

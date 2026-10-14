@@ -1428,7 +1428,7 @@ Next battleObject_submenuLoopStep_8133944(void) {
             ST16(R5 + 0x34, (u16)R0);
         }
         GUEST_CALL(copyBackgroundTiles_sub_813471C);
-        GUEST_CALL(sub_8134740);
+        GUEST_CALL(battleObject_submenuRenderAngerGauge_8134740);
     }
 
     /* Always-run scene updates. */
@@ -2395,7 +2395,7 @@ Next copyBackgroundTiles_sub_813471C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8134740 ── */
+/* ── battleObject_submenuRenderAngerGauge_8134740 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r3, r4, r5, r6, r7; } call_sub_811FAF4_result;
 /* register form: generated wrapper: battleObject_queueOamFromTableRow_811FAF4 has no typed C interface yet */
@@ -2464,8 +2464,8 @@ static void process_object_tiles(u32 obj) {
     R4 = saved_r4;
 }
 
-/* sub_8134740(r5 = battle-object pointer) -> r5 preserved */
-Next sub_8134740(void) {
+/* battleObject_submenuRenderAngerGauge_8134740(r5 = battle-object pointer) -> r5 preserved */
+Next battleObject_submenuRenderAngerGauge_8134740(void) {
     u32 obj = R5;
     process_object_tiles(obj);
     R5 = obj;
