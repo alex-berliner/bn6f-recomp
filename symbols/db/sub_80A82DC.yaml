@@ -3,30 +3,26 @@ address: '0x080A82DC'
 kind: function
 previous_names: []
 status: hypothesis
-summary: For an overworld map object (r5), if its "tier/event" event flag for the current map is set, raise its
-  sprite OAM priority to 3, and report whether the flag was set.
-interface: '(r5 = OWMapObjectPtr, r10 = ToolkitPtr) -> r0 = 0/1 (event flag set?); side effect: may call sprite_setPriority
-  with priority=3 on the object''s sprite'
-details: "- Reads Toolkit->GameStatePtr (oToolkit_GameStatePtr, offset 0x3c) into r0.\n  - Reads MapGroup at oGameState_MapGroup\
-  \ (0x4). If MapGroup == 0x85, uses MapNumber index 3; otherwise reads MapNumber at oGameState_MapNumber (0x5)\
-  \ directly.\n  - Multiplies that index by 4 and indexes off_80A8310, a small table of four pointers whose targets\
-  \ are the byte arrays at 0x80A81BE, 0x80A81CC, 0x80A81DE, 0x80A81F0 (these sit inside the caller 0x80A822C's data\
-  \ region, which is also the function that holds the four per-map event-flag tables).\n  - Treats r5 byte at offset\
-  \ 4 as a sub-index; lsls #1 and ldrh from the chosen table gives a u16 event-flag id, which is passed to TestEventFlag.\n\
-  \  - If the flag is set (TestEventFlag returns NZ), sets r4=1 and calls sprite_setPriority_8002E14(0x3) to push\
-  \ the object's sprite to OAM priority 3; otherwise r4 stays 0.\n  - Returns r0 = r4. The function appears to be\
-  \ a sprite/visibility nudge for a particular overworld object depending on a story-progress flag on the current\
-  \ map.\n"
+summary: If a story-progress (event) flag is set for the current map/group, bump the sprite's OAM priority on the
+  object passed in r5 and return 1; otherwise return 0.
+interface: (r5 = object ptr, r10 = toolkit ptr) -> r0 = 0 (no priority bump) or 1 (priority was bumped to 3)
+details: "- Reads GameState via r10->Toolkit->GameStatePtr, then picks MapGroup (when == 0x85) or MapNumber to index\
+  \ a small table of u16 flag tables.\n  - Uses object[r5]+0x4 (an actor/object index) doubled as a word index to\
+  \ load a u16 event flag index, then calls TestEventFlag on it.\n  - When the flag is set: writes r4=1, calls sprite_setPriority_8002E14(r0=3)\
+  \ on the sprite implied by r5, and returns 1.\n  - Otherwise: returns 0 without touching sprite priority.\n  -\
+  \ The selection of 3 as the OAM priority is hard-coded; the index lookup is a per-map/per-group flag table.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- `ldr r0, [r10,#oToolkit_GameStatePtr]` reads the game-state pointer. - `ldrb r1, [r0,#oGameState_MapGroup];
-    cmp r1, #0x85; bne loc_80A82EC` shows the map-group special case 0x85. - `ldrb r1, [r0,#oGameState_MapNumber]`
-    in the fall-through reads the map number. - `lsl r1, r1, #2; ldr r2, [off_80A8310]; ldr r0, [r2,r1]` builds
-    an index into a 4-entry pointer table. - `ldrb r2, [r5,#4]; lsl r2, r2, #1; ldrh r3, [r0,r2]` reads a per-object
-    u16 event-flag id from the chosen per-map table. - `bl TestEventFlag` (confirmed `TestEventFlag (flag: u16)
-    -> !zf`). - `mov r0, #3; bl sprite_setPriority_8002E14` in the "flag set" branch. - `mov r0, r4` at the end
-    returns the boolean.'
+  detail: '- `mov r0, r10; ldr r0, [r0,#oToolkit_GameStatePtr]` then `ldrb r1, [r0,#oGameState_MapGroup]` and `ldrb
+    r1, [r0,#oGameState_MapNumber]` (map id read from GameState). - `cmp r1, #0x85; bne loc_80A82EC` then `mov r1,
+    #3; b loc_80A82EE` substitutes 3 when MapGroup == 0x85 (special "always uses index 3" path). - `lsl r1, r1,
+    #2; ldr r2, off_80A8310; ldr r0, [r2,r1]` selects one of byte_80A81BE/byte_80A81CC/byte_80A81DE/byte_80A81F0
+    (four flag tables). - `ldrb r2, [r5,#4]; lsl r2, r2, #1; ldrh r3, [r0,r2]` reads an index from the object at
+    offset 4 and indexes the chosen u16 flag table. - `bl TestEventFlag` (confirmed event flag tester), with `beq
+    loc_80A830C` skipping the priority change. - On flag set: `mov r4, #1; mov r0, #3; bl sprite_setPriority_8002E14`
+    (the callee''s summary explicitly matches: bits 2-3 of sprite byte 0x15 = r0). - `mov r0, r4; pop {r4,pc}` returns
+    r4 (=1 on success, 0 otherwise).'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x080A82DC
@@ -41,16 +37,16 @@ evidence:
     '
   result: beastsp, maps
 open_questions:
-- What the four per-map byte arrays at 80A81BE/81CC/81DE/81F0 actually contain (only seen indexed via `ldrh ...
-  [r0,r2]` with r2 = 2*byte_4_of_object); they likely hold event-flag ids specific to a particular object class.
-- What object type lives at r5 (the callers are unnamed and only share the same `(r5, r10, lr)` in-contract; r5
-  is some object/sprite pointer with at least 5 bytes known to this routine).
-- The semantic meaning of MapGroup==0x85 forcing index 3 (probably one of the Expo/floating-map variants, given
-  this is bn6f Falzar).
+- Whether r5 must be an OverworldMapObject (or NPCObject) vs a generic object — the only field touched is byte at
+  +0x4 which is the ObjectID in those structs; sprite_setPriority_8002E14 likely walks r5 the same way its callers
+  in nearby code do.
+- Why MapGroup 0x85 forces the table index to 3 is unclear without knowing the map-group numbering.
+- Exactly which four flag tables at byte_80A81BE/byte_80A81CC/byte_80A81DE/byte_80A81F0 contain (unconfirmed; only
+  their addresses are referenced via off_80A8314).
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f 2e79aac3
+  where: bn6f 4efa6ddc
   tool: tools/symdoc.py

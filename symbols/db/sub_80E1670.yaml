@@ -3,37 +3,31 @@ address: '0x080E1670'
 kind: function
 previous_names: []
 status: hypothesis
-summary: Resolve opposing-side enemies within an enemy-name ID range and store their object pointers into a caller-provided
-  4-entry table on the stack.
-interface: '(r5 = self BattleObject*, r6..r10 scratch) -> void ; stack: out [BattleObject*, BattleObject*, BattleObject*,
-  u8] indexed by alliance-flipping enemy name IDs, side-effect-only (caller-provided scratch + stack)'
-details: "Stack frame reserves 0x34 bytes used as a 4-slot u32 table (8*4=0x20 plus trailing bytes),\n  where index\
-  \ 0..2 receive BattleObject* of enemies (set to 0 if none) and the trailing bytes\n  appear to hold 7 enemy-name\
-  \ IDs (0xA0,0xA4,0xAC,0xB0,0xB4,0xB8,0xBC,0xFF) stored in `byte_80E16C4`.\n\n  1. Load `oBattleObject_Alliance`\
-  \ (off 0x16) from `r5` and XOR with 1 to get the opposing\n     alliance (friend<->enemy). This selects which\
-  \ list of name IDs to enumerate.\n  2. Call `object_getEnemyByNameRange(r4=table_ptr, r5=self?, r0=1=enable?,\
-  \ r1=0, r2=0x1c3 mask/range)`\n     - The literal 0x1c3 looks like a bitmask for the 7 name IDs in `byte_80E16C4`\n\
-  \       (0x80|0x40|0x20|0x10|0x08|0x04|0x02|0x01 = 0xFF, but 0x1c3 = 0b111_000_011 covers bits 0,1,6,7,8,9).\n\
-  \     Actually 0x1c3 = 0b1_1100_0011 - selects bits 0,1,6,7,8. The remaining `byte_80E16C4` IDs\n     (0xA4,0xAC,0xB0,0xB4,0xB8,0xBC\
-  \ = bits 2..5) are not covered; `r0=1` likely toggles \"include\n     viruses\" vs \"include navis\". Return:\
-  \ `r6 = bitmask` of which IDs had hits.\n  3. `r6<<2` -> word offset; for each set bit `i`, the table slot at\
-  \ `[r4+i*4]` is zeroed.\n  4. Three sequential calls to `sub_80E16CC(r0=arg0, r1=self->RelatedObject1Ptr (off\
-  \ 0x4c), r2=r4=table)`\n     with arg0 in {0,1,2}. Each call returns nonzero if it populated a slot. The bne's\
-  \ collapse\n     to a single fall-through (loc_80E16BA) regardless of which call succeeded.\n  5. Stack frame\
-  \ is torn down; function returns void-like.\n\n  Interpretation: this function appears to populate a list of valid\
-  \ enemy targets for\n  the AI/object, considering `self->RelatedObject1Ptr` (likely the player's controlled\n\
-  \  object). The 3 calls with hard-coded 0/1/2 likely represent virus slot indices or\n  target categories for\
-  \ the related object's enemies.\n"
+summary: On the AI's battle object (`r5`), locate a 4-slot enemy-name-range array using the flipped alliance, then
+  probe RelatedObject1Ptr for matching names at slot indices 0, 1 and 2 via sub_80E16CC.
+interface: '(r5 = AI/target BattleObjectPtr, r6 caller-saved, r7 caller-saved, r10 = toolkit, lr) -> r0 = last sub_80E16CC
+  return (probe hit flag), r5 preserved (callee-saved) ; side effects: stack scratch `0x34` bytes, calls object_getEnemyByNameRange
+  and sub_80E16CC three times.'
+details: "- Sets up a 4-word (0x34 bytes = 13 words + sp+0 padding aligns to 4) scratch buffer on the stack at r4\
+  \ = sp, passed to object_getEnemyByNameRange as `out` array (initialised with `r1=0`, `r2=0x1c3`).\n  - Flips\
+  \ the caller's Alliance byte (`ldrb r3, [r5,#oBattleObject_Alliance]; eor r3, #1`) so the search runs against\
+  \ the opposing side.\n  - Result count is shifted into slot 0 (str r0, [r4]; mov r6,r0 then lsl r3,r0,#2; add\
+  \ r3,r3,r4; str r0,[r3]) before each probe - meaning the first u32 holds the count returned by the range query.\n\
+  \  - Then it loops for indices 0, 1, 2 calling sub_80E16CC(r0=index, r1=r5->RelatedObject1Ptr, r2=r4=buffer);\
+  \ on the first non-zero return it skips to the epilogue.\n  - Only one named caller (sub_80E1566) sits in a small\
+  \ routine that already knows about enemy name lists, suggesting this lives inside a battle-AI naming/selection\
+  \ path.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- `ldrb r3,[r5,#oBattleObject_Alliance]` (off 0x16) + `eor r3,#1` clearly flips the alliance bit to query
-    the opposing side - `ldr r1,[r5,#oBattleObject_RelatedObject1Ptr]` (off 0x4c) reads self''s first related object
-    pointer; passed as r1 to every sub_80E16CC call - The literal pool at `byte_80E16C4` lists 7 enemy name IDs
-    (0xA0..0xBC) terminated with 0xFF - Stack reservation `sub sp,#0x34` is followed by writing 0 into `[r4+r6<<2]`,
-    indicating a u32 table on stack whose size matches ~0x20 bytes - `object_getEnemyByNameRange` name implies it
-    returns a list/bitmask of enemies in a given name-ID range - Three hard-coded calls with r0=0,1,2 to sub_80E16CC,
-    each consulting the same table, suggest iterating 3 enemy "slots" on the related object'
+  detail: '- `ldrb r3, [r5,#oBattleObject_Alliance]; eor r3, #1` (lines `mov r3, ... eor r3, r0`) directly flips
+    the alliance and feeds it into object_getEnemyByNameRange''s `r3`. - `ldr r1, [r5,#oBattleObject_RelatedObject1Ptr]`
+    is reused unchanged for all three sub_80E16CC calls, treating RelatedObject1Ptr as the search pool. - Stack
+    frame of 0x34 (sub sp, #0x34) plus `mov r4, sp` and a 4-slot walk (`lsl r3,r0,#2; add r3,r3,r4`) shows a small
+    array used as the range-query output buffer. - Hardcoded `dword_80E17E4 = 0x1c3` passed in r2 likely selects
+    which enemy name range table to walk over. - Final `bx`/pop with `out=r0,r5` matches the contract: r5 (the AI
+    BattleObject) is preserved; r0 holds whatever sub_80E16CC last returned. - Three `cmp r0,#0; bne loc_80E16BA`
+    repeated blocks match a short-circuit "find first match across indices 0/1/2 then exit".'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x080E1670
@@ -48,21 +42,16 @@ evidence:
     '
   result: beastsp
 open_questions:
-- Exact semantics of r0 in object_getEnemyByNameRange (count vs flags vs index) and
-- the meaning of 0x1c3 (still looks like a bitmask but doesn't fully match byte_80E16C4)
-- What sub_80E16CC actually does with (r0=slotIdx, r1=relatedObj, r2=table) - it likely
-- picks one of the table entries for that slot. Without its body, the function's higher-
-- level purpose is partially inferred.
-- 'Whether the returned r0 is meaningful: the contract says out=[''r0'',''r5''] but the'
-- assembly only does `pop {pc}` without a `mov r0,...`, so r0 likely returns whatever
-- the last sub_80E16CC set or remains clobbered.
-- The trailing `balign 4, 0` followed by `byte_80E16C4:` (8 bytes of data) being right
-- after `thumb_func_end` is unusual - it suggests this data may belong to a different
-- routine (sub_80E16CC?) but is physically co-located.
+- What object_getEnemyByNameRange actually fills into the stack buffer (whether the first dword is the count or
+  the names themselves) - need to read its body to confirm the 0x34-byte layout.
+- The semantic meaning of `0x1c3` and how RelatedObject1Ptr is structured - is it a list of allied names or a per-side
+  list of names? Would be confirmed by sub_80E16CC's body and by the caller sub_80E1566.
+- Whether r6 (`mov r6, r0` after getEnemyByNameRange) is later used by the caller or just stored for debugging -
+  the contract lists r6 as caller-saved in/out so it is throwaway here.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f 2e79aac3
+  where: bn6f 4efa6ddc
   tool: tools/symdoc.py

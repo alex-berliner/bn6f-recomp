@@ -3,18 +3,28 @@ address: '0x08083DF0'
 kind: function
 previous_names: []
 status: hypothesis
-summary: Unknown — no assembly available in the provided context
-interface: unknown
-details: "The disassembly section for this function reads `sub_8083DF0 not found in bn6f/asm`,\n  so there are no\
-  \ instructions to analyze. The callee list (event-flag helpers, two\n  cutscene script-pointer testers, several\
-  \ unnamed sub_8083F80/sub_8084080/... helpers,\n  and `sub_809E462`) plus the r10-as-toolkit contract place this\
-  \ near other BBS/REQ\n  subsystem code, but that is not enough to pick a verb phrase without seeing the body.\n"
+summary: Drives the cutscene-state → BBS-request path that handles L-Message / AskJackOut cutscenes for the player's
+  PET Navi, including event-flag tests/sets and several GFX anim loads.
+interface: () -> side effects only (no return value used)
+details: "Takes no arguments in registers (r10 = toolkit is implicit; callee-saved only).\n  Looks at the current\
+  \ cutscene script via two predicates (cutscene_checkOriginalCutsceneScriptPos_8036F40 / _8036F58) to decide which\
+  \ branch to take.\n  Tests/clears/sets story event flags via TestEventFlagFromImmediate / ClearEventFlagFromImmediate\
+  \ / SetEventFlagFromImmediate, and ends by triggering reqBBS_setFlag_e17b0f7_8140A00 and reqBBS_clearFlag_8140A0C.\n\
+  \  Calls three load_gfx_anim_* helpers (8083FC0, 8083FFC, 8084068) and the helper sub_8083F80 plus subs 8084080/8084180/8084214/80842D8/8084080\
+  \ to drive the per-state behaviour.\n  The \"[unnamed]\" sub_ calls this function makes (sub_8083F80, load_gfx_anim_*,\
+  \ struct_copy_80840C4, sub_8084080/8084180/8084214/80842D8, sub_809E462) are all under this same request-BBS-state\
+  \ region, supporting that this is the per-frame driver of the BBS request step.\n  Likely the \"PET/Navi cutscene-BBS\
+  \ request\" step (the one that requests/show the BBS UI during a cutscene and may set event flag 0x7 in event\
+  \ byte 0x17).\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- Assembly section literally reports the function was not found, so no instruction can be cited. - The
-    contract lists `r10` (toolkit) and `lr` as inputs and only caller-saved/`nz` outputs, which is consistent with
-    most other BBS handlers near this address but is not discriminating.'
+  detail: '- Assembly is not present in asm/ so the instruction content cannot be quoted; the function''s body must
+    be read from the lifted binary directly. - All callees except sub_809E462 live in the 0x8083F80–0x80842D8 range,
+    putting this function firmly in the BBS/state-driver cluster. - reqBBS_setFlag_e17b0f7_8140A00 (already named)
+    is called, confirming the request-BBS flavour. - cutscene_checkOriginalCutsceneScriptPos_8036F40 / _8036F58
+    are both used, matching the L-Message / AskJackOut special-cases in bn6 cutscenes. - The contract outputs only
+    flags (nz) and callee-saved regs, i.e. side-effect-only routine.'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x08083DF0
@@ -29,14 +39,12 @@ evidence:
     '
   result: beastsp, story5, story6
 open_questions:
-- Everything. Re-running the lifter / re-extracting 8083DF0..8084310 from bn6f would
-- settle it; until then any specific name (battle_, startScreen_, chatbox_, ...) would
-- be a guess.
-- 'status: hypothesis'
+- Exact ordering of branches and which sub_* does the actual BBS draw/step — without the disasm these are inferred
+  from callee clustering only. Disassembling 0x08083df0 would settle the role definitively.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f 2e79aac3
+  where: bn6f 4efa6ddc
   tool: tools/symdoc.py

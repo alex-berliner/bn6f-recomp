@@ -1,0 +1,65 @@
+name: sub_813C06C
+address: '0x0813C06C'
+kind: function
+previous_names: []
+status: hypothesis
+summary: 'Per-beastOut-index loop: scans the 0x31-byte `Unk200414c` array for matching actors and writes a 16-bit
+  code from `byte_813C188` (or an alternate based on r2 and item-flag checks) into `unk_30019E0` slots keyed by
+  the matched actor''s entry pointer; also sets the AIData `Unk_03`-derived second slot.'
+interface: '(r0 = ?, r1 = ?, r2 = beastOutIndex?, r10 = ToolkitPtr) -> r0 = 0 ; no other caller-visible outputs;
+  side effects: writes to unk_30019E0 u16 slots'
+details: "- Saves r4-r7,lr; reserves 0xc bytes; stashes r2 at [sp,#4] (used as the \"is second beastOut entry\"\
+  \ flag).\n  - Loads base of `byte_813C188` (r5) and `byte_813C1A4` (r4). Adds r2*0xe (r3=0xe) to each, giving\
+  \ per-beastOutIndex tables: a primary 14-byte (7 halfword) list of u16 codes at r5 and a similar alternate at\
+  \ r4. Stores r4 in [sp] for the rare \"ldrh r1,[r1,r0]\" tail.\n  - Calls `battle_checkItemFlagFor_813B9B4(r0)`\
+  \ to get a flag value, cached at [sp,#8].\n  - Loads Toolkit's `Unk200414c_Ptr` array of 0x31 entries (a u8 per\
+  \ \"slot\"); iterates `r4 = 0..0x30` (inclusive) over that array.\n  - For each entry whose byte equals the flag\
+  \ and is non-zero, decrements to get a 1-based index, asks `toolkit_getUnk2004190EntryPtr_813B9FC` for the entry's\
+  \ AIData pointer (r7), dereferences u16 at +0 (likely `NameID`/`Chip`); passes it to `battleObject_getByIndex_813B780`\
+  \ to obtain the matching BattleObject pointer.\n  - Reads `Unk_03` (lsl r0,#1) from that BattleObject and passes\
+  \ through `sub_813C4A8(r0)` which returns a pointer to the AIData so it can read `AIData.Unk_02`-like bytes (ldrb\
+  \ r1,[r1,r4]).\n  - Two branches selected by whether the matched actor's AIData byte at `[r1,r4]` (an \"is targeted\
+  \ by this beastOut index\" flag) is zero:\n    - If non-zero: picks one of four codes (0x4142, 0x51E4, 0x522E\
+  \ or 0x35C3; or 0x6F15/0x5A91 if r2==0); writes the chosen u16 at `unk_30019E0 + 2*flag`.\n    - If zero: writes\
+  \ the primary `byte_813C188[index]` u16 at the same slot, plus a second copy at +2, and conditionally writes the\
+  \ alternate `byte_813C1A4[index]` u16 at +2 when `BattleObject.Unk_01` is nonzero.\n  - Uses `sub_813C4C8` to\
+  \ translate (idx,code) before the unk_30019E0 write; likely writes into AIData as well, but only unk_30019E0 effects\
+  \ visible in this frame.\n  - Caller `sub_8136B10` (the BeastOut / Cross-change / \"Beast SP\" path that the captured\
+  \ calls come from) invokes it with r2 indicating which beastOut entry is being processed.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `r2 * 0xe` (`mov r3,#0xe; mul r2,r3; add r5,r5,r2`) and the matching `byte_813C188`/`byte_813C1A4`
+    tables of length 0x1c/0x1c (7 u16 entries each) imply a per-index table of 7 codes (0xe stride = 7 halfwords).
+    - The 0x31-iteration loop (`cmp r4,#0x31; blt loc_813C08C`) walks `Unk200414c_Ptr` (an 0x31-entry u8 array via
+    the toolkit offset). - Captured calls all show r1=3 (the BeastOut trigger code) and r2 toggling between 0 and
+    1 across snap_beastsp_*.bin, matching the `tst r2,r2; bne loc_813C0DE; ... 0x5A91/0x35C3` selection between
+    two pairs of codes. - `strh r1,[r2]` into `unk_30019E0 + 2*flag` matches an indexed write to a 16-bit beast-out
+    flag/state array in EWRAM. - The two helpers `sub_813C4A8`/`sub_813C4C8` only consume `(r0)` or `(r0,r1)` and
+    return a struct base + an AIData offset, consistent with translating a BattleObject slot to its AIData.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0813C06C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^0813c06c '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- Whether the primary/alternate byte_813C188/byte_813C1A4 codes are BattleChip IDs, element codes, or animation
+  script IDs is not derivable from this function alone.
+- Whether `sub_813C4C8` actually mutates AIData fields or only returns a pointer used for the conditional flag read;
+  the function name "Beast Out check/set flag" is partly inferred from the r1=3 captured entry and the table/flag
+  layout.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 4efa6ddc
+  tool: tools/symdoc.py

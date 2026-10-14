@@ -1,0 +1,56 @@
+name: sub_80A70FC
+address: '0x080A70FC'
+kind: function
+previous_names: []
+status: hypothesis
+summary: One-shot overworld check that raises a beast-out flag and bumps AIData Anger when the player enters a particular
+  map-object box (or the player Z is non-zero and the same box holds).
+interface: void (r5=owMapObject*, r6=owMapObject* r6+0x84 context, r10=toolkit) ; sets flag EVENT_5F1 and `[r5+0x34]=1`
+  on success
+details: "- Tests EVENT_5F1 first (TestEventFlagFromImmediate); if already set, returns immediately so the trigger\
+  \ is one-shot.\n  - Reads overworld player coords with ReadOWPlayerObjectCoords, returning PlayerX/Y in r0/r1\
+  \ (16.16) and Z in r2.\n  - Two parallel \"is the player inside this object's box?\" checks against [r5+0xc]/[r5+0x10]\
+  \ (probably X/Z coords; r6+0x84 is a struct containing the 0x12-radius extent and another 4-byte extent at +0x80),\
+  \ using sub_80011D6 (overworldObject_withinBoxCheck_signed_80011D6). The fixed-point radius is 0x120000.\n  -\
+  \ Path 1: Z==0 AND the player is inside r5's box.\n  - Path 2: Z!=0 OR [r6+0x84] is non-zero, then checks a second\
+  \ box described by [r6+0x7c] and [r6+0x80].\n  - On hit, sets EVENT_5F1 (SetEventFlagFromImmediate) and writes\
+  \ 1 to [r5+0x34]. In AIData that's Anger (u16), but here it's a 32-bit write so it's whatever r5's struct actually\
+  \ is (likely OverworldMapObject or a battle object pointer given to the overworld bridge).\n  - r5 is treated\
+  \ as a generic struct with 0x34 an \"armed\" flag and 0x0c/0x10 an XZ pair, r6 as a struct with offsets 0x7c/0x80/0x84\
+  \ describing a second box.\n  - Returns void via `pop {r4-r7,pc}`; no value is produced for callers.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `movflag EVENT_5F1; bl TestEventFlagFromImmediate; bne locret_80A715C` shows the early-out-on-already-set
+    semantics. - `bl SetEventFlagFromImmediate; mov r0,#1; str r0,[r5,#0x34]` at loc_80A7150 shows the trigger sets
+    a flag and writes 1 to r5+0x34. - `bl ReadOWPlayerObjectCoords` then `cmp r2,#0; bne loc_80A712E` indicates
+    Z is taken as the "non-airborne" gate. - The two `bl overworldObject_withinBoxCheck_signed_80011D6` calls with
+    `mov r4,#0x12; lsl r4,r4,#0x10` (= 0x120000, a 16.16 radius) show two distinct box checks; the second uses `[r6,#0x7c]`
+    and `[r6,#0x80]` as the box extents. - Contract `out=[''r5'']` (r4-r7/lr saved by the function) and the explicit
+    `pop {r4-r7,pc}` confirm the function is void-like; nothing is returned in r0.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080A70FC
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^080a70fc '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- 'What r5 and r6 actually are: caller sub_80A6F2C''s contract shows `out=[''r2'',''r3'',''r4'',''r5'',''r10'']`,
+  so it forwards pointers, but the struct semantics of r5+0x34/0xc/0x10 and r6+0x7c/0x80/0x84 are not declared in
+  the provided headers.'
+- The semantic role of EVENT_5F1 (some "beast out available / beast gauge primed" story flag?) is a guess from the
+  captured "beastsp" filename and the function sitting inside the beast-out update.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 4efa6ddc
+  tool: tools/symdoc.py
