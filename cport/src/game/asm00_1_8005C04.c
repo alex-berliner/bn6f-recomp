@@ -2396,7 +2396,7 @@ Next battle_state_endPhaseWithEffect_80079A8(void) {
  * Asks the battle-state manager (battle_doBothTrackedIdsMatch_800B46C) whether the battle is finished,
  * using the magic key 0x12345678 as the query token. If it reports "not done",
  * there is nothing to do. Otherwise the battle scene is torn down
- * (sub_800B460), all battle structs including the battle statistics are
+ * (battle_resetLinkSyncFlags_800B460), all battle structs including the battle statistics are
  * copied back (battle_copyStructsIncludingBattleStats_800b2d8), and the
  * battle state's phase byte at offset 0x02 is set to 0x0C to trigger the
  * follow-up handler via battle_dispatchPhase_8007978.
@@ -2414,7 +2414,7 @@ Next battle_state_finishBattlePhase_80079d0(void) {
         RETURN_TO_CALLER();
     }
 
-    GUEST_CALL(sub_800B460);
+    GUEST_CALL(battle_resetLinkSyncFlags_800B460);
     GUEST_CALL(battle_copyStructsIncludingBattleStats_800b2d8);
 
     R0 = 0xC;

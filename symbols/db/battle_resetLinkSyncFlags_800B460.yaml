@@ -1,0 +1,59 @@
+name: battle_resetLinkSyncFlags_800B460
+address: '0x0800B460'
+kind: function
+previous_names:
+- sub_800B460
+status: probable
+summary: Clears the two EWRAM link-sync tracking words at 0x203F4A0 and 0x203F5A0 to zero; called at the
+  end of a battle phase and before/after waiting on link sync.
+interface: () -> void ; writes 0x00000000 to EWRAM word 0x203F4A0 and EWRAM word 0x203F5A0
+details: "Three-instruction routine: r0 := 0, then store r0 to the word at the address loaded from\n \
+  \ off_800B658 (resolves to dword_203F4A0) and to the word at off_800B65C (dword_203F5A0), and\n  return\
+  \ via `mov pc, lr`. The two cleared words live in EWRAM (0x02000000+ range) and are not\n  described\
+  \ in the provided struct definitions, so their meaning is inferred from callers: every\n  listed caller\
+  \ is a battle subsystem handler that either finishes a battle phase\n  (battle_state_finishBattlePhase_80079d0),\
+  \ waits on link sync (battle_waitLinkSync_8009478), or is\n  one of several unnamed battle phase handlers.\
+  \ The two 0x100-apart words (0x203F4A0 vs\n  0x203F5A0) are consistent with a \"shared last-seen tracked\
+  \ ID\" pair for the two link peers used\n  by battle_waitLinkSync_8009478 to confirm both GBAs see the\
+  \ same value. Captured-call exit\n  shows r0=0 and Z set, matching the `mov r0, #0` immediately before\
+  \ return; the may_write=['r0',\n  'r1'] in the contract is just the side effect of using r0/r1 as scratch.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mov r0, #0` then `str r0, [r1]` for both targets (lines 3-6) prove the routine writes zero
+    to the two pointers. - The two ldr-pool constants off_800B658/off_800B65C resolve to dword_203F4A0/dword_203F5A0
+    per the assembly comment. - The two targets are exactly 0x100 bytes apart (0x203F4A0, 0x203F5A0),
+    a layout consistent with a per-peer 16-byte link-sync record. - Every caller (battle_state_finishBattlePhase_80079d0,
+    battle_waitLinkSync_8009478, the four unnamed battle handlers) is a battle-phase/link-sync code path,
+    not chatbox or overworld code. - r0=0 on exit matches the final value of r0 before `mov pc, lr`, and
+    the flags -ZC- correspond to the str-not-eq of storing zero.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0800B460
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0800b460 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- The exact semantic of dword_203F4A0 / dword_203F5A0 (e.g. "last sync ID seen by peer A / peer B") is
+  inferred from caller context only; resolving it would require reading battle_waitLinkSync_8009478 and
+  the other callers' bodies.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f c6f1bc6f
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_800B460 -> battle_resetLinkSyncFlags_800B460
+  where: bn6f 1bd2afd1
+  tool: tools/rename_symbol.py

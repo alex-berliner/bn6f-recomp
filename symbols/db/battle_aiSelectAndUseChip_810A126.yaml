@@ -1,0 +1,76 @@
+name: battle_aiSelectAndUseChip_810A126
+address: '0x0810A126'
+kind: function
+previous_names:
+- sub_810A126
+status: probable
+summary: Story-Navi AI turn handler that either uses the selected battle chip or falls back to a basic
+  attack based on HP/threshold checks
+interface: '(r0 = some state byte (unused), r1 = this function''s address 0x0810a127 caller-side, r2 =
+  r5, r3 = r3, r5 = AIData ptr, r6 = AIState ptr, r7 = AIAttackVars ptr) -> r0 = 0 ; side effects: writes
+  object attack, AIState bytes, AIAttackVars fields'
+details: "- Entry pulls in AIData (r5), AIState (r6) and AIAttackVars (r7) from the parent caller's frame;\
+  \ the routine\n    itself only reloads a couple values from the stack (r4 is saved+restored, used for\
+  \ the version table).\n  - Fetches the chip the actor has chosen via battle_getSelectedChipForUse_800ED90(r5);\
+  \ if the result is\n    zero (no chip / r3 zero), or if the chip id is the special id 0x9F and the actor's\
+  \ HP > MaxHP/4, takes\n    the \"use chip\" path through sub_810A1B4/somethingWriteChipParams_80126E4/object_setAttack0/sub_800F322.\n\
+  \  - For the 0x9F chip, the HP gate is evaluated explicitly (ldrh r1,[r0,oBattleObject_HP] vs lsrs r2,2\
+  \ of\n    MaxHP). If the gate fails, control falls through to the basic-attack fallback rather than\
+  \ the chip path.\n  - Non-0x9F chip id branch first checks battle_getStateUnk40_800A704 (BattleState.Unk_40)\
+  \ against 0x12C,\n    skipping the chip use if below that threshold. Otherwise it executes the same\
+  \ use-chip sequence.\n  - When any of those branches succeed, AIState.Unk_00 is set to 0x10 and AIState.Unk_02\
+  \ is cleared\n    (strb 0x10 / strh 0 at oAIState_Unk_00/_Unk_02 via r6), indicating the next phase.\n\
+  \  - Fallback (no chip / low HP) writes damage, attack type 0xB and an \"Unk_30\" pointer pulled from\n\
+  \    AIData+0x60 into AIAttackVars (r7), then sets AIState.Unk_00 back to 0 and clears Unk_02. The damage\n\
+  \    value is read from `byte_8109F28`[oAIData.Version_16*4] and the small Unk_0c byte from `byte_8109F40`[Version_16],\n\
+  \    i.e. version-keyed AI attack tables.\n  - The function is small and primarily a dispatcher between\
+  \ \"use the queued chip\" and \"do a basic AI attack\"\n    when the queued chip is unavailable or the\
+  \ actor is low on HP / battle state is in early phase.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl battle_getSelectedChipForUse_800ED90` is the first call, with r0=r5 (AIData/battle obj
+    ptr), confirming the chip lookup. - `cmp r4, #0x9f` and the surrounding `ldrh r1,[r0,#oBattleObject_HP]`
+    / `lsr r2, r2, #2` (MaxHP/4) implement the 0x9F special-chip low-HP gate at loc_810A148. - `bl battle_getStateUnk40_800A704`
+    then `cmp r0, 0x12C` enforces a battle-state phase threshold for the generic chip branch (loc_810A162).
+    - The success path stores `mov r0,#0x10; strb r0,[r6,#oAIState_Unk_00]; mov r0,#0; strh r0,[r6,#oAIState_Unk_02]`
+    (loc_810A17A). - The fallback reads `ldrb r0,[r4,#oAIData_Version_16]` then `ldrb r1,[r1,r0]` from
+    `byte_8109F40` and `ldr r0,[r1,r0]` from `byte_8109F28`, storing into `oAIAttackVars_Unk_0c` / `oAIAttackVars_Damage`;
+    then `add r0,#0x60,r5` (AIData+0x60) -> `oAIAttackVars_Unk_30`, before `bl object_setAttack0` with
+    r0=0xB. - The contract''s out list (only r1/r5 plus the callee-saved set) plus the captured exit `r0=0,
+    Z=1` indicates a void-like dispatcher. - Captured entry r0=0x0C in every story2 trace points to a
+    constant AI state byte the caller sets before invoking, and r1=0x0810a127 is a return address shared
+    with the jump table at 0x0810A126+1, indicating this is a jumptable-style state entry.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0810A126
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, battlesweep, beastsp, fuzz, menus2, story2, story4, story5,
+    story6, story8, story9'
+  reproduce: 'grep -l ''^0810a126 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, battlesweep, beastsp, fuzz, menus2, story2, story4, story5, story6, story8,
+    story9
+open_questions:
+- Exact meaning of the 0x9F chip-id and which chip family it represents (boss move?) -- needs a chip-id
+  table lookup.
+- Why the 0x12C threshold for BattleState.Unk_40 gates chip use; what that counter actually counts (turn
+  counter, turn-into-battle frames?) isn't deducible here.
+- The version tables at byte_8109F40 / byte_8109F28 contents (per AIData.Version_16) and what damage values
+  they encode.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f c6f1bc6f
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_810A126 -> battle_aiSelectAndUseChip_810A126
+  where: bn6f 1bd2afd1
+  tool: tools/rename_symbol.py

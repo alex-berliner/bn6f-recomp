@@ -1498,10 +1498,10 @@ Next chatbox_uploadWindowTileGfx_804754C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_804758C ── */
-/* sub_804758C: thin wrapper that tail-calls mail_drawSelectedEntry_80478D4 (all caller registers
+/* ── mail_redrawSelectedEntry_804758C ── */
+/* mail_redrawSelectedEntry_804758C: thin wrapper that tail-calls mail_drawSelectedEntry_80478D4 (all caller registers
  * are preserved, results come straight from the callee). */
-Next sub_804758C(void) {
+Next mail_redrawSelectedEntry_804758C(void) {
     GUEST_CALL(mail_drawSelectedEntry_80478D4);
     RETURN_TO_CALLER();
 }

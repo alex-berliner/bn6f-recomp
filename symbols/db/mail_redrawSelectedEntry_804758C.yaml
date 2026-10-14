@@ -1,0 +1,57 @@
+name: mail_redrawSelectedEntry_804758C
+address: '0x0804758C'
+kind: function
+previous_names:
+- sub_804758C
+status: probable
+summary: Thin tail-call trampoline that simply re-renders the currently highlighted mail entry by jumping
+  into mail_drawSelectedEntry_80478D4 with no extra work.
+interface: '() -> r0 = result of mail_drawSelectedEntry_80478D4 ; side effects: redraws the selected mail
+  entry''s icon tiles, name strip and reader text (see callee).'
+details: "The function is a 3-instruction tail call: it pushes only {r5, lr}, branches to\n  mail_drawSelectedEntry_80478D4,\
+  \ then pops {r5, pc}, returning whatever the callee\n  returns in r0 (observed value 0x7 in all captured\
+  \ calls). No additional state is set\n  up before the call, so the only reason this wrapper exists is\
+  \ to switch lr into r5\n  (probably satisfying the register contract of the callee, which lists r5/r10\
+  \ as live\n  inputs) and to provide a distinct entry point for callers that want this single\n  semantic\
+  \ (\"redraw the highlighted mail entry\") without doing anything else.\n  All 40 captured invocations\
+  \ come from two callers, sub_8046D4C and sub_8047134,\n  both of which are themselves mail-reader handlers,\
+  \ confirming this sits inside\n  the mail-list/mail-reader flow rather than anywhere else in the toolkit.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- Assembly is exactly three Thumb instructions: push {r5,lr}; bl mail_drawSelectedEntry_80478D4;
+    pop {r5,pc} at 0x0804758c. - The single callee mail_drawSelectedEntry_80478D4 is itself described
+    as "Redraws the currently highlighted mail-list entry — its icon tiles, name strip, and the text shown
+    in the mail reader." - The wrapper preserves r5 and uses pc from the saved lr to return, so it is
+    a pure tail call (no extra logic). - Captured entry r0/r1/r2/r3 values are arbitrary (e.g. r0=5, r1=0,
+    r2=0x1c0 in one trace; r0=0, r1=0xb, r2=0x80 in several others) while exit r0 is consistently 0x7,
+    matching the callee''s return value. - Both callers (sub_8046D4C, sub_8047134) themselves accept r5/r10/lr
+    and operate in the mail reader, consistent with surrounding mail UI code.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0804758C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, beastsp, story2'
+  reproduce: 'grep -l ''^0804758c '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, beastsp, story2
+open_questions:
+- None — the function's behaviour is fully explained by its single tail call; the only minor unknown is
+  whether the wrapper exists purely for the r5/lr register convention or whether future code is expected
+  to be inserted before the bl.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f c6f1bc6f
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_804758C -> mail_redrawSelectedEntry_804758C
+  where: bn6f 1bd2afd1
+  tool: tools/rename_symbol.py

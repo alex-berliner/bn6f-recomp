@@ -1,0 +1,60 @@
+name: battleObject_copyBeastSpChipData_813B7EC
+address: '0x0813B7EC'
+kind: function
+previous_names:
+- sub_813B7EC
+status: probable
+summary: Copies 0x31 bytes of chip/buster data from a beastSP buffer (r7) into a battle object (r4).
+interface: (r0=r7=src buffer ptr, r1=r4=dest battle object ptr, r2=0x31) -> side effects only
+details: "Tail-end helper of the beastSP/custom-slot logic. The function does not read its incoming r0/r1\n\
+  \  from r0/r1 directly; instead it takes the pointers from callee-saved registers r7 (source) and\n\
+  \  r4 (destination), hard-codes a byte count of 0x31 in r2, then falls into `CopyBytes`. The\n  length\
+  \ 0x31 and source naming on the captured-call filenames (`beastsp_0080000_*`) match the\n  known size\
+  \ of the per-Navi beast-SP/Custom+Style slot payload in bn6; the destination appears\n  to be a `BattleObject`\
+  \ (or one of the slim T1/T3 variants) whose cursor/slot fields live in\n  the first 0x31 bytes. CopyBytes\
+  \ returns in r1 the source pointer (which is how the contract\n  explains the `out=['r1']` value), and\
+  \ the original capture traces show exit r0 with C set\n  (NS-C-Z) because CopyBytes leaves the Thumb\
+  \ carry flag from its final loop iteration; the\n  function itself is functionally void for the caller,\
+  \ which is why it restores lr via\n  `pop {pc}` instead of `bx lr`.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- Assembly `mov r0, r7` / `mov r1, r4` immediately before the call (`bn6f/asm/asm37_0.s:91`)
+    shows the src/dst pointers come from callee-saved r7 and r4, not from the incoming r0/r1. - `mov r2,
+    #0x31` hard-codes the copy length to 0x31 bytes, matching the beast-SP/slot payload size used throughout
+    beastSP handling code. - Captured-call filename `snap_beastsp_0080000_*.bin` plus entry r1=0 confirms
+    the destination is the beast-SP slot/object and the source is the long-lived beastSP buffer at 0x02000000
+    / 0x0200215a-style EWRAM region. - `pop {pc}` shows this is a `void`-style tail call; the `out=[''r1'']`
+    is purely the residual from CopyBytes (which has contract out=r2/r3 and leaves r1 unchanged) and is
+    not meaningful to the caller. - The direct callee is the well-known `CopyBytes_08000920` memmove-style
+    helper, used here in the documented "shift toward higher addresses" direction (src=r7 lower than dst=r4
+    in'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0813B7EC
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^0813b7ec '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- What kind of object exactly lives at the r4 destination (T1 BattleObject, BeastObject, or
+- beastSP slot wrapper) and whether the 0x31 bytes cover AIData/NaviStats rather than just
+- BattleObject head fields; checking what sits at `oBattleObject_Unk_5c` / ExtraVars start
+- versus `oAIData` would settle it.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f c6f1bc6f
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_813B7EC -> battleObject_copyBeastSpChipData_813B7EC
+  where: bn6f 1bd2afd1
+  tool: tools/rename_symbol.py

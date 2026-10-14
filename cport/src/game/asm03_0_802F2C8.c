@@ -2546,15 +2546,15 @@ Next battle_calcRelPosAndAdvanceTextboxBlink_8031C2A(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8031C42 ── */
-/* sub_8031C42(r0, r5): thin wrapper that chains three battle-helper calls.
+/* ── battle_aiPointLeftOfLineSideTest_8031C42 ── */
+/* battle_aiPointLeftOfLineSideTest_8031C42(r0, r5): thin wrapper that chains three battle-helper calls.
  *
  * The caller's r0/r5 are passed straight through to battle_calcRelPosToTarget_803172E; afterwards
  * a fixed parameter block (r2 = 0, r3 = 14, r4 = 14, r5 = 0) is set up for
  * math_pointLeftOfLineTest_80315DC, and whatever it leaves in r0/r2/r3/r4/r5 is handed on to
  * sub_8031B7C, whose results (registers and flags) become this function's
  * results. */
-Next sub_8031C42(void) {
+Next battle_aiPointLeftOfLineSideTest_8031C42(void) {
     GUEST_CALL(battle_calcRelPosToTarget_803172E);
 
     R2 = 0;

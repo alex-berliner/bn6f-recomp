@@ -1,0 +1,70 @@
+name: battleObject_dispatchActionByParam1_80C91FE
+address: '0x080C91FE'
+kind: function
+previous_names:
+- sub_80C91FE
+status: probable
+summary: Battle object action dispatcher that either runs a per-action sub-handler (selected by CurAction
+  on the related object) or destroys the object, with time-stop and battle-over guards.
+interface: (r5 = BattleObject*) -> side effects on r5 (CurStateActionPhaseAndPhaseInitialized), or jumps
+  into per-action handler via table at off_80C9234; flags Z/C/V from sub-handler may be visible to caller
+details: "- On entry pushes lr, then calls battle_isBattleOver. If the battle is over, branches to loc_80C922A\
+  \ which writes CUR_STATE_DESTROY into r5->CurStateActionPhaseAndPhaseInitialized and returns.\n  - Otherwise\
+  \ reads r5->Param1. If Param1 == 4 it falls through; else it loads r5->RelatedObject1Ptr->CurAction\
+  \ and compares to 0xc. If neither matches it also falls through to the destroy path.\n  - When Param1\
+  \ == 4 or CurAction == 0xc it calls battle_isTimeStop; if time-stop is active the function pops and\
+  \ returns without dispatching.\n  - Otherwise it indexes a 1-entry table at off_80C9234 using the object's\
+  \ CurAction (loaded again from r5->CurAction), and `bx r1`s into the resulting address (the +1 means\
+  \ the dispatch sets Thumb mode). The captured table at off_80C9234 only has one entry today (sub_80C9238+1),\
+  \ and the captured-call r0 values 6..9 imply sub_80C9238 returns small action codes that get propagated\
+  \ back to the caller via r0.\n  - The destruction at loc_80C922A writes a 32-bit CUR_STATE_DESTROY (0x8)\
+  \ into the u32 union CurStateActionPhaseAndPhaseInitialized and pops pc; it is a void-like epilogue.\n\
+  \  - The contract's \"may_write\" covers almost everything because the dispatched handler (sub_80C9238)\
+  \ is free to clobber caller-saved registers; this function itself only touches r0/r1 and writes the\
+  \ destroy value via r5.\n  - 40 captured invocations from beastSP replay all came from lr=080c91ac (the\
+  \ caller's tail), with r0=4 (Param1==4) on entry and r0 in {6,7,8,9} on return, consistent with the\
+  \ \"Param1==4\" branch always being taken here.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl battle_isBattleOver` then `bne loc_80C922A` shows early-out when the battle is over (loc_80C922A
+    writes CUR_STATE_DESTROY). - `ldrb r0, [r5,#oBattleObject_Param1]; cmp r0, #4; beq loc_80C9218` is
+    the Param1==4 fast path. - `ldr r0, [r5,#oBattleObject_RelatedObject1Ptr]; ldrb r0, [r0,#oBattleObject_CurAction];
+    cmp r0, #0xc` checks the related object''s CurAction against 0xc. - `bl battle_isTimeStop; bne locret_80C922E`
+    skips dispatch under time-stop (note `bne` after a function whose contract marks nz false on truthy,
+    so time-stop active => skip). - `ldr r1, off_80C9230` then `ldrb r0, [r5,#oBattleObject_CurAction];
+    ldr r1, [r1,r0]; mov lr, pc; bx r1` is a Thumb-mode jump-table dispatch indexed by CurAction. - All
+    40 captured calls enter with r0=4 (Param1) and exit with r0 in {6..9}, which matches "Param1==4 took
+    the dispatch path and the per-action handler returned a sub-action code". - `oBattleObject_CurStateActionPhaseAndPhaseInitialized`
+    is the 32-bit union at offset 0x8 of BattleObject per the BattleObject struct, matching the `str r0,
+    [r5,#...]` write of CUR_STATE_DESTROY (0x8).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080C91FE
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp'
+  reproduce: 'grep -l ''^080c91fe '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp
+open_questions:
+- What action 0xc on RelatedObject1Ptr actually represents (likely a "follow-up" or "secondary" action
+  triggered by the parent object).
+- The full contents of the jump table at off_80C9234 — currently only one entry (sub_80C9238) is seen
+  in this slice; other CurAction values either never reach here or share handlers.
+- Whether sub_80C9238 is the same routine for all callers or if there is a per-CurAction specialization.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f c6f1bc6f
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80C91FE -> battleObject_dispatchActionByParam1_80C91FE
+  where: bn6f 1bd2afd1
+  tool: tools/rename_symbol.py

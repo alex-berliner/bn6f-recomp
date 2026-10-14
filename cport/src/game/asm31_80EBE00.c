@@ -4038,10 +4038,10 @@ Next battle_objectTickWithExtraHandler_8109F6A(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8109F7E ── */
-/* sub_8109F7E: call the two init steps in sequence (battleObject_initAndRunAI_8016B02, then
+/* ── battleObject_runAIDispatcher_8109F7E ── */
+/* battleObject_runAIDispatcher_8109F7E: call the two init steps in sequence (battleObject_initAndRunAI_8016B02, then
  * battle_object_onAction8EndClearExtraVars_8109FA2) and return; results are whatever the callees leave behind. */
-Next sub_8109F7E(void) {
+Next battleObject_runAIDispatcher_8109F7E(void) {
     GUEST_CALL(battleObject_initAndRunAI_8016B02);
     GUEST_CALL(battle_object_onAction8EndClearExtraVars_8109FA2);
     RETURN_TO_CALLER();

@@ -1,0 +1,66 @@
+name: battleObject_runAIDispatcher_8109F7E
+address: '0x08109F7E'
+kind: function
+previous_names:
+- sub_8109F7E
+status: probable
+summary: 'Battle-object per-tick dispatcher: runs the object''s AI routine and, when action 8 ends, clears
+  the AI extra-vars/Param4 state.'
+interface: (r4 = toolkit, r5 = battle object, r10 = ?toolkit alias, lr = return) -> void (no r0..r3 returned
+  to caller; callee-saves restored)
+details: "- The function is a thin two-call shim. It first calls battleObject_initAndRunAI_8016B02, the\
+  \ project's AI init/run dispatcher (its contract mirrors what the game's per-object AI tick does), then\
+  \ calls battle_object_onAction8EndClearExtraVars_8109FA2 to release any extra-vars payload and zero\
+  \ Param4.\n  - Both callees read the active battle object from r5 and the toolkit/BattleState plumbing\
+  \ from r4/r10, matching the callees' contracts (`in=['r5','lr']` for the cleanup callee; `'r4','r5','r10','lr'`\
+  \ for the AI callee).\n  - The body is just `push {lr}` / two `bl` / `pop {pc}`, so there is no local\
+  \ state, no stack frame, and no register preservation besides lr. The contract's listed `out` registers\
+  \ (r1, r5) are simply whatever the second callee leaves behind when it tail-pops into the return; callers\
+  \ do not consume them as semantic returns (no callers section was provided, suggesting these are inline-style\
+  \ call sites rather than call-by-value APIs).\n  - Captured-call signatures (r0=`08109f7f` on entry\
+  \ — i.e. caller's PC + 0x1 — with r1=0x10, r2=0xff, r3=`02038598`, return r0=4) reflect the live AI\
+  \ state the dispatcher is configuring on this battle object; the `out=r0=4` is produced by the AI/init\
+  \ callee, not by this function.\n  - Action 8 in Mega Man Battle Network is the \"move/dodge\" AI slot;\
+  \ ending it cleanly implies the \"AI in progress\" cleanup path, which is why the cleanup callee wipes\
+  \ Param4 (the action slot) and the extra-vars reference.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `sub_8109F7E:` is exactly four instructions: `push {lr}`; `bl battleObject_initAndRunAI_8016B02`;
+    `bl battle_object_onAction8EndClearExtraVars_8109FA2`; `pop {pc}` (asm31.s:172649..172654). - Both
+    callees'' `in` contracts explicitly list `''r5'',''lr''` (cleanup) and `''r4'',''r5'',''r10'',''lr''`
+    (AI) — this function does not need r0..r3 itself, matching its empty body. - Captured-call entry r5
+    (carried through the calls) plus the project naming of callees ("AI init/run", "action-8 end cleanup")
+    identifies this as the per-frame AI tick for a battle object. - The callers section is blank in the
+    captured snapshot, but the function is short and uses tail-pop conventions typical of inline-style
+    dispatcher wrappers. - Return r0=4 (`exit: r0=00000004 flags=N---`) is the AI init/run callee''s documented
+    output value, not produced by this shim itself.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08109F7E
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, battlesweep, beastsp, story2, story6, story9'
+  reproduce: 'grep -l ''^08109f7e '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, battlesweep, beastsp, story2, story6, story9
+open_questions:
+- Exact caller population and how often this wrapper is invoked per AI frame (likely once per battle object
+  per tick, but unverified without the callers list).
+- What r10 holds here (the AI callee lists it as input; r10 is commonly a second toolkit/cur-battle-object
+  alias on this engine, but the captured register header does not include r10 values).
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f c6f1bc6f
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8109F7E -> battleObject_runAIDispatcher_8109F7E
+  where: bn6f 1bd2afd1
+  tool: tools/rename_symbol.py

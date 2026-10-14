@@ -1,0 +1,51 @@
+name: ai_getAIModeForMapGroup_808D084
+address: '0x0808D084'
+kind: function
+previous_names:
+- sub_808D084
+status: probable
+summary: Returns the AI mode selector for the current map group (3 for map group 0x85, otherwise MapNumber
+  byte).
+interface: () -> r0 = AI mode index (3 if MapGroup==0x85, else oToolkit_GameStatePtr->MapNumber)
+details: "Loads r10 (toolkit) and dereferences the GameStatePtr at oToolkit_GameStatePtr (offset 0x3c).\n\
+  \  Reads the MapGroup byte at oGameState_MapGroup (offset 0x4).\n  If MapGroup == 0x85, returns 3 in\
+  \ r0 (tail-call via `pop {pc}`).\n  Otherwise falls through to `ldrb r0, [r0,#5]`, returning the MapNumber\
+  \ byte at oGameState_MapNumber (offset 0x5).\n  Pure thumb-leaf (push {lr} then pop {pc}), no callees,\
+  \ no side effects beyond reading GameState.\n  Used heavily by surrounding sub_808CC.. range functions,\
+  \ suggesting AI sub-mode dispatch by location.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mov r0, r10` then `ldr r0, [r0,#oToolkit_GameStatePtr]` (oToolkit_GameStatePtr = 0x3c) loads
+    GameState. - `ldrb r1, [r0,#oGameState_MapGroup]` reads offset 0x4 of GameState (matches oGameState_MapGroup).
+    - `cmp r1, #0x85` compared against immediate 0x85. - `mov r0, #3` taken on equality, then `pop {pc}`
+    returns 3. - Fallthrough `ldrb r0, [r0,#5]` reads oGameState_MapNumber at offset 0x5. - Contract:
+    only r10 and lr read on entry; only r0 returned; no callees, no memory writes.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0808D084
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp, maps'
+  reproduce: 'grep -l ''^0808d084 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp, maps
+open_questions:
+- The semantic meaning of returning 3 for map group 0x85 versus the MapNumber byte is unclear; whether
+  this is an "AI mode", "battle variant", or "subsystem selector" requires checking the surrounding sub_808CC..
+  callers' switch tables.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f c6f1bc6f
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_808D084 -> ai_getAIModeForMapGroup_808D084
+  where: bn6f 1bd2afd1
+  tool: tools/rename_symbol.py

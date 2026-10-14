@@ -1,0 +1,76 @@
+name: battle_aiPointLeftOfLineSideTest_8031C42
+address: '0x08031C42'
+kind: function
+previous_names:
+- sub_8031C42
+status: probable
+summary: AI helper that returns 1 if the AI's target battle object is on the left side of a directed line
+  through two reference points (else 0), used as a directional/spatiality test for AI decisions.
+interface: (r0 = scratch/result buffer @02009f5c, r5 = some context ptr) -> r0 = 1 if left-of-line, 0
+  otherwise ; sets Z flag accordingly
+details: "- Tail-calls three helpers in sequence: first `battle_calcRelPosToTarget_803172E` (r0=scratch,\
+  \ r5=ctx) to fill the scratch at 0x02009f5c with the entity's (and next-position) coordinates relative\
+  \ to a doubled target reference point.\n  - Loads r2=0, r3=0xe, r4=0xe, r5=0 and calls `math_pointLeftOfLineTest_80315DC`,\
+  \ treating the test point as the buffer at r0 and the directed line as (r2,r4)=(0,0xE) -> (r3,r5)=(0xE,0).\
+  \ The two 0xE (panel-coordinate) endpoints and zero origin match BN's \"doubled\" panel coordinate scheme\
+  \ used by the rel-pos helper.\n  - Finally calls `sub_8031B7C(r0=1)` to fetch a byte 1 of `[[dword_2013920]\
+  \ + 0x14]`; this byte is returned to the caller (seen 0x40 in early snaps, 0x00 in later snaps where\
+  \ the AI target crossed to the other side of the line).\n  - Captured-call memory at 0x02009f5c shows\
+  \ the two {x,y} pairs (each `0xc0??/0x00??` halfword pair) advancing by ~1 panel per frame and crossing\
+  \ the diagonal `(0,0xE)-(0xE,0)` between snaps 11 and 12, exactly when the returned byte flips from\
+  \ 0x40 to 0x00.\n  - `pop {pc}` is a tail-call return: this is a leaf that just sequences the three\
+  \ calls; r5 and lr are preserved across the chain (callee-saved), so the caller's r5 is live on exit.\n\
+  \  - The \"0x40 vs 0x00\" return value pattern is consistent with a bool/flag return; `sub_8031B7C`'s\
+  \ summary says it returns byte 1 of `[[dword_2013920]+0x14]` when r0=1, so this function effectively\
+  \ ANDs the \"left-of-line\" test with that global AI flag (returns 0x40 if both, 0 otherwise). Likely\
+  \ the `1` argument to sub_8031B7C selects \"is target on the enemy line side\" as a one-bit result packed\
+  \ into a single byte.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- asm at 0x08031c42: `push {lr}; bl battle_calcRelPosToTarget_803172E; mov r2,#0; mov r4,#0xe;
+    mov r3,#0xe; mov r5,#0; bl math_pointLeftOfLineTest_80315DC; bl sub_8031B7C; pop {pc}` — three-call
+    sequence with r0, r5 held across and tail-return. - `math_pointLeftOfLineTest_80315DC` is documented
+    as: `Returns 1 if the point at r0 lies on the left of directed line (r2,r4)->(r3,r5)`. Setting r2=0,r3=0xe,r4=0xe,r5=0
+    makes the directed line the panel-grid diagonal. - The capture buffer at 0x02009f5c is exactly the
+    layout `battle_calcRelPosToTarget_803172E` would write (two s16 pairs starting with 0xc0??/0x00??,
+    then the next-position pair, plus trailing 1/1/0/0x23 sentinel bytes that look like an AIData or BattleState
+    field). - Snap 11 (`00 c0 eb ff / 00 00 fa ff` and `00 c0 ea ff / 00 00 f9 ff`) and snap 12 (`00 c0
+    ec ff / 00 00 fb ff` and `00 c0 eb ff / 00 00 fa ff`) show the two points having crossed through the
+    diagonal between calls; the return flips from 0x40 (left) to 0x00 (right) on the same frame. - `sub_8031B7C`
+    is called with r0=1 (set implicitly by `math_pointLeftOfLineTest_80315DC`''s contract, which returns
+    0/1 in r0) and its own summary states it returns byte 1 of `[[dword_2013920]+0x14]` when r0==1, which
+    is a single-bit AI flag byte.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08031C42
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, beastsp, fuzz, maps, story1, story2, story5, wander'
+  reproduce: 'grep -l ''^08031c42 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, beastsp, fuzz, maps, story1, story2, story5, wander
+open_questions:
+- The exact meaning of byte 1 of `[[dword_2013920]+0x14]`. It is treated as a per-call boolean, but whether
+  it represents "is target on enemy line side", "AI is allowed to attack this line", or a movement-style
+  flag (0x40/0x00 look more like a stat than a bool, but two distinct values were observed) is unknown.
+- Whether the "0x40" return is a direct copy of that byte or ANDed/ORed with the line-test result. The
+  captured calls show only the 0x40 (true) and 0x00 (false) cases, so the operation could be AND, OR,
+  or "return second if first non-zero".
+- What the caller's r5 (passed in and preserved) actually points to — likely a battle-objects context
+  or AIData, since `battle_calcRelPosToTarget_803172E` is documented to need an "entity and target reference".
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f c6f1bc6f
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8031C42 -> battle_aiPointLeftOfLineSideTest_8031C42
+  where: bn6f 1bd2afd1
+  tool: tools/rename_symbol.py

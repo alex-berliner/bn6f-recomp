@@ -1,0 +1,99 @@
+name: battleObject_jumpLandStep_8017768
+address: '0x08017768'
+kind: function
+previous_names:
+- sub_8017768
+status: probable
+summary: Per-frame update for a battle object's jump/landing sequence — initialises the hop on the first
+  tick, decays a hop timer while a button is held, reads a Z arc from a lookup table, and ends the hop
+  with a sound, Z=0 and CurState=CUR_STATE_UPDATE.
+interface: '(r5 = BattleObject*) -> void ; side effects: writes BattleObject fields (PhaseInitialized,
+  CollisionData flags, CurAnim/CurAnimCopy, Z, PanelX/PanelY, RelatedObject1Ptr, AIData+0x68), plays sound
+  effects (0x12E = takeoff, 0x125 = landing), reads joypad from AIData, increments byte_203EAE0[Alliance][3]
+  by 1 saturated.'
+details: "- First-call initialiser (PhaseInitialized == 0): calls sub_800F3CC, sets ObjectFlags1 OBJECT_FLAGS_USING_ACTION\
+  \ (0x400000), clears flag 0x41, runs battle_resetCollisionState_80101C4 + object_clearInvulnerableTime,\
+  \ plays SFX 0x12E, clears AI flags 0x20005F, resets PwrAtkState via battleObject_clearPwrAtkState_8012EA8.\n\
+  \  - If OBJECT_FLAGS_SLIDING (0x1000) is NOT set, commits FuturePanelX/Y into PanelX/Y, releases any\
+  \ reserved panel (object_removePanelReserve), recomputes pixel X/Y and Z = 0.\n  - Sets CurAnim=2, CurAnimCopy=0xFF,\
+  \ mirrors sprite via object_getFlip + sprite_setFlip, clears RelatedObject1Ptr and AIData+0x68 (timer\
+  \ field), and `byte_203EAE0[Alliance][3] += 1` (tableAddSaturatedByte_800AB46); finally stamps PhaseInitialized\
+  \ = 4.\n  - Per-frame tick: while AIData JoypadPressed is non-zero, decrements the s16 hop timer at\
+  \ CollisionData+0x2C and on reaching zero clears OBJECT_FLAGS_BUBBLED (0x80000000).\n  - Every tick\
+  \ reads CollisionData+0x2C, divides by 4, indexes into a 32-entry signed-byte arc table `byte_8017868`,\
+  \ shifts left 16 and stores it into BattleObject.Z — this is the Z arc of the jump.\n  - End-of-hop\
+  \ branch: when OBJECT_FLAGS_BUBBLED (0x80000000) is set, clears AI Unk_44 flags 0x1000003F, clears ObjectFlags1\
+  \ 0x400000, Z = 0, plays SFX 0x125, CurAnim = 0, CurAction = 8, and resets the CurPhaseAndPhaseInitialized\
+  \ halfword to 0 (returning the object to its standard update phase). Tail is `pop {pc}`.\nevidence:\
+  \ |\n  - `ldrb r0, [r5,#oBattleObject_PhaseInitialized]; tst r0, r0; bne loc_80177E4` — guards the init\
+  \ branch and branches past it once initialised.\n  - `ldr r0, dword_8017850; bl object_setFlag1` with\
+  \ constant 0x400000 → OBJECT_FLAGS_USING_ACTION.\n  - `mov r0, #0x2e; add r0, #0xff` → 0x12E takeoff\
+  \ SFX; the matching landing SFX uses `0x25; add r0, #0xff` → 0x125.\n  - `bl object_removePanelReserve;\
+  \ bl object_setCoordinatesFromPanels; bl object_updateCollisionPanels; mov r0, #0; str r0, [r5,#oBattleObject_Z]`\
+  \ after committing FuturePanel* → Panel*.\n  - `mov r0, #2; strb r0, [r5,#oBattleObject_CurAnim]; mov\
+  \ r0, #0xff; strb r0, [r5,#oBattleObject_CurAnimCopy]` — animation reset on hop start.\n  - `bl object_getFlip;\
+  \ bl sprite_setFlip` — re-mirrors sprite on entry.\n  - `ldr r1, [r5,#oBattleObject_AIDataPtr]; str\
+  \ r0, [r1,#oAIData_Unk_68]` clears AIData Unk_68 (a u32 hop/landing timer field).\n  - `ldrb r0, [r5,#oBattleObject_Alliance];\
+  \ mov r1, #3; mov r2, #1; bl tableAddSaturatedByte_800AB46` — bumps `byte_203EAE0[Alliance][3]`.\n \
+  \ - The Z arc is built by `lsr r1, r1, #2; mov r0, #0x1f; and r0, r1; ldr r1, off_8017864; ldrsb r0,\
+  \ [r1,r0]; lsl r0, r0, #0x10; str r0, [r5,#oBattleObject_Z]` — the table at byte_8017868 starts 0,1,2,3,4,4,5,5,6,6,6,5,4,3,2,1\
+  \ then wraps to 0xFF,0xFE,…,0,0 — a classic up-then-down parabola.\n  - `bl object_getFlag; mov r1,\
+  \ #1; lsl r1, r1, #0x1f; tst r0, r1; bne locret_8017846` — checks OBJECT_FLAGS_BUBBLED on every tick.\n\
+  \  - `ldr r0, dword_8017858; bl ClearAIData_Unk_44_Flag` with 0x1000003F plus `dword_801785C` 0x400000\
+  \ via object_clearFlag, then `mov r0, #0; strh r0, [r5,#oBattleObject_CurPhaseAndPhaseInitialized]`\
+  \ — exits back to base update phase.\n  - `pop {pc}` is a Thumb-1 tail-pop idiom (function ends without\
+  \ a normal `pop {lr}; bx lr`).\nuncertain: |\n  - Whether the CurAction = 8 value is \"landed/idle\"\
+  \ or some animation phase number; only one CurAction constant set in BattleObject (no enum label for\
+  \ 8) — settle by grepping callers/curAction constants.\n  - Exact semantics of AIData+0x68 and AIData\
+  \ Unk_44 mask 0x1000003F; no project constants exist yet.\n  - Who drives the bubbled flag on/off (it\
+  \ is only read, never written here).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0, [r5,#oBattleObject_PhaseInitialized]; tst r0, r0; bne loc_80177E4` — guards the
+    init branch and branches past it once initialised. - `ldr r0, dword_8017850; bl object_setFlag1` with
+    constant 0x400000 → OBJECT_FLAGS_USING_ACTION. - `mov r0, #0x2e; add r0, #0xff` → 0x12E takeoff SFX;
+    the matching landing SFX uses `0x25; add r0, #0xff` → 0x125. - `bl object_removePanelReserve; bl object_setCoordinatesFromPanels;
+    bl object_updateCollisionPanels; mov r0, #0; str r0, [r5,#oBattleObject_Z]` after committing FuturePanel*
+    → Panel*. - `mov r0, #2; strb r0, [r5,#oBattleObject_CurAnim]; mov r0, #0xff; strb r0, [r5,#oBattleObject_CurAnimCopy]`
+    — animation reset on hop start. - `bl object_getFlip; bl sprite_setFlip` — re-mirrors sprite on entry.
+    - `ldr r1, [r5,#oBattleObject_AIDataPtr]; str r0, [r1,#oAIData_Unk_68]` clears AIData Unk_68 (a u32
+    hop/landing timer field). - `ldrb r0, [r5,#oBattleObject_Alliance]; mov r1, #3; mov r2, #1; bl tableAddSaturatedByte_800AB46`
+    — bumps `byte_203EAE0[Alliance][3]`. - The Z arc is built by `lsr r1, r1, #2; mov r0, #0x1f; and r0,
+    r1; ldr r1, off_8017864; ldrsb r0, [r1,r0]; lsl r0, r0, #0x10; str r0, [r5,#oBattleObject_Z]` — the
+    table at byte_8017868 starts 0,1,2,3,4,4,5,5,6,6,6,5,4,3,2,1 then wraps to 0xFF,0xFE,…,0,0 — a classic
+    up-then-down parabola. - `bl object_getFlag; mov r1, #1; lsl r1, r1, #0x1f; tst r0, r1; bne locret_8017846`
+    — checks OBJECT_FLAGS_BUBBLED on every tick. - `ldr r0, dword_8017858; bl ClearAIData_Unk_44_Flag`
+    with 0x1000003F plus `dword_801785C` 0x400000 via object_clearFlag, then `mov r0, #0; strh r0, [r5,#oBattleObject_CurPhaseAndPhaseInitialized]`
+    — exits back to base update phase. - `pop {pc}` is a Thumb-1 tail-pop idiom (function ends without
+    a normal `pop {lr}; bx lr`).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08017768
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp'
+  reproduce: 'grep -l ''^08017768 '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp
+open_questions:
+- Whether the CurAction = 8 value is "landed/idle" or some animation phase number; only one CurAction
+  constant set in BattleObject (no enum label for 8) — settle by grepping callers/curAction constants.
+- Exact semantics of AIData+0x68 and AIData Unk_44 mask 0x1000003F; no project constants exist yet.
+- Who drives the bubbled flag on/off (it is only read, never written here).
+- 'status: probable'
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f c6f1bc6f
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8017768 -> battleObject_jumpLandStep_8017768
+  where: bn6f 1bd2afd1
+  tool: tools/rename_symbol.py

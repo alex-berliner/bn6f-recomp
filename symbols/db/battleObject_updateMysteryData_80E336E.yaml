@@ -1,0 +1,74 @@
+name: battleObject_updateMysteryData_80E336E
+address: '0x080E336E'
+kind: function
+previous_names:
+- sub_80E336E
+status: probable
+summary: 'Per-frame update for a battle object: bails out (sets CurState=DESTROY, calls sub_80E33D2) when
+  its ExtraVars submode is invalid, NaviStats transformation is out of range, or its target object''s
+  CurAction is past 0x10; otherwise ticks Timer, runs sprite_update, and toggles OBJECT_FLAG_VISIBLE every
+  other frame when a sub-flag is unset.'
+interface: '(r5 = BattleObject*, r10 = Toolkit*) -> void ; side effects: writes BattleObject->CurStateActionPhaseAndPhaseInitialized,
+  Timer, Header.Flags; calls sprite_update, battle_isPaused, GetBattleNaviStatsByte, sub_80E33D2'
+details: "- Reads BattleObject->ExtraVars[0xc] (offset 0x60+0xc = 0x6c). If == 1, fetches the object's\
+  \ alliance's NaviStats byte at offset 0x2c (NaviStats.Transformation) via GetBattleNaviStatsByte; only\
+  \ proceeds when value is in [0xB, 0x18]. The Transformation range 0xB..0x18 covers the 20 non-base transformations\
+  \ (Shield/Uncyclone/Beast transformations etc.), suggesting this is gating the update to a specific\
+  \ transformation set.\n  - If ExtraVars[0xc] == 2, it instead checks BattleObject->RelatedObject1Ptr->CurAction\
+  \ >= 0x10 (i.e. only tick when the parent action has reached its later phase).\n  - Once past those\
+  \ checks, calls battle_isPaused; bails (sets CurState=CUR_STATE_DESTROY=0x8 and calls sub_80E33D2) if\
+  \ battle is paused.\n  - Otherwise reads Timer (offset 0x20) and Timer2 (offset 0x22); increments Timer\
+  \ and stores back. If Timer >= Timer2, schedules destroy via sub_80E33D2.\n  - On a valid tick, calls\
+  \ sprite_update(r5) then sets OBJECT_FLAG_VISIBLE (0x02) in Header.Flags.\n  - If ExtraVars[8] (0x68)\
+  \ == 0, tests Timer's bit 1 (Timer & 2, i.e. every other 2-frame tick). On carry (bit set), it clears\
+  \ OBJECT_FLAG_VISIBLE again — producing a strobe/flash effect on alternate ticks when no related object\
+  \ is bound.\n  - No return value (pop {pc}); clobbers r0-r6, lr.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {lr}` / `pop {pc}` with no r0 write -> ARM calling convention, no return value. - `cmp
+    r0, #1` / `bne loc_80E3386` on `ldr r0, [r5,#oBattleObject_ExtraVars+0xc]` shows two distinct submode
+    branches (1 and 2). - `bl GetBattleNaviStatsByte` with `r0=Alliance, r1=0x2c` (NaviStats.Transformation)
+    and the subsequent `cmp r0,#0xb` / `cmp r0,#0x18` defines the legal transformation window. - `ldr
+    r0, [r5,#oBattleObject_RelatedObject1Ptr]` then `ldrb r0, [r0,#oBattleObject_CurAction]; cmp r0,#0x10`
+    shows the second branch gates on the parent object''s action phase. - `bl battle_isPaused` / `bne
+    locret_80E33D0` shows early-out when paused. - `ldrh r0, [r5,#oBattleObject_Timer]; add r0,#1; ldrh
+    r1, [r5,#oBattleObject_Timer2]; cmp r0,r1` is a counter against a deadline. - `mov r0, #CUR_STATE_DESTROY;
+    str r0, [r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]; bl sub_80E33D2` is the standard
+    "kill this object" pattern. - `bl sprite_update` then `ldrb r0, [r5,#oObjectHeader_Flags]; mov r1,#2;
+    orr r0,r1; strb r0,[r5,#oObjectHeader_Flags]` sets OBJECT_FLAG_VISIBLE. - `ldr r0,[r5,#oBattleObject_ExtraVars+8];
+    cmp r0,#0; bne locret_80E33D0` then `ldrh r0,[r5,#oBattleObject_Timer]; lsr r0,r0,#2; bcs locret_80E33D0`
+    (note: lsr by 2, not 1; carry set when bit 1 of original Timer was set) followed by `bic r0,r1; strb
+    r0,[r5,#oObjectHeader_Flags]` shows the alternate-frame clear of VISIBLE when ExtraVars[8] is zero.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080E336E
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp'
+  reproduce: 'grep -l ''^080e336e '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp
+open_questions:
+- 'Exact meaning of ExtraVars[0xc] submode values 1 vs 2: the transformation-window branch (1) vs the
+  parent-action branch (2) hints at two different object types sharing this update, but the specific object
+  type (looks like a "mystery data" / transformation-related BattleObject given the SNAKEARM_EV/BASS_CHIP_EV
+  constants in the header) is not pinned down.'
+- What sub_80E33D2 actually does (cleanup, particle spawn, etc.) — only its name remains unknown.
+- Why OBJECT_FLAG_VISIBLE strobes every 2 frames when ExtraVars[8] is null (likely a flashing animation
+  effect) is unconfirmed.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f c6f1bc6f
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80E336E -> battleObject_updateMysteryData_80E336E
+  where: bn6f 1bd2afd1
+  tool: tools/rename_symbol.py

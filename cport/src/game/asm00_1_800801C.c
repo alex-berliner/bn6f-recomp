@@ -603,7 +603,7 @@ Next battle_waitLinkSync_8009478(void) {
 
     if (R0 != 0) {
         /* Both sides agree: shut down the tracker and signal readiness. */
-        GUEST_CALL(sub_800B460);
+        GUEST_CALL(battle_resetLinkSyncFlags_800B460);
         GUEST_CALL(sub_800B444);
         ST16(state + 2, 4);
         R0 = 4;
@@ -2754,9 +2754,9 @@ Next sub_800B444(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_800B460 ── */
-/* sub_800B460: zero the 32-bit values at 0x203F4A0 and 0x203F5A0. */
-Next sub_800B460(void) {
+/* ── battle_resetLinkSyncFlags_800B460 ── */
+/* battle_resetLinkSyncFlags_800B460: zero the 32-bit values at 0x203F4A0 and 0x203F5A0. */
+Next battle_resetLinkSyncFlags_800B460(void) {
     ST32(A_dword_203F4A0, 0);
     ST32(A_dword_203F5A0, 0);
     RETURN_TO_CALLER();
