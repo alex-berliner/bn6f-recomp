@@ -2167,8 +2167,9 @@ Highlights:
 | 40    | 25                 | 23                        | 2               | 0       |
 | 41    | 25                 | 20                        | 5               | 0       |
 | 42    | 25                 | 20                        | 4               | 0       |
+| 43    | 25                 | 21                        | 4               | 0       |
 
-Running total: named 784, hypothesis-only 235, dropped 0 (of ~10,600 placeholders).
+Running total: named 805, hypothesis-only 235, dropped 0 (of ~10,600 placeholders).
 
 ## Batch 37 (2026-10-14)
 
@@ -2193,6 +2194,10 @@ Running total: named 784, hypothesis-only 235, dropped 0 (of ~10,600 placeholder
 ## Batch 42 (2026-10-14)
 
 25 functions: 20 renamed to probable, 4 left as hypothesis (sub_80EB79C, sub_810CC54, sub_810CA8E, sub_80D4472). One unusual name parse: sub_80A5AF8 had "battle_beastOutInit_80A5AF8 (status: hypothesis)" inside the name field — had to strip the parenthetical.
+
+## Batch 43 (2026-10-14)
+
+25 functions: 21 renamed to probable, 4 left as hypothesis (sub_80EB79C, sub_810CC54, sub_810CA8E, sub_810C0E4). Note: sub_80D4472 was promoted from hypothesis to probable this batch (was a hypothesis in batch 41, now LLM named it battleObject_initActorStateT4_80D4472). Also: LLM used a "details_extra:" block for sub_80E3B94 that the parser didn't handle; fixed manually.
 
 ## Session summary
 
