@@ -2106,6 +2106,8 @@ Highlights:
 - object: check enemy or ally panel
   (object_checkEnemyOrAllyPanel_800E680),
   finish collision hit reaction
+
+
   (object_finishCollisionHitReaction_801AD12);
 - game state: set unk-09 (gameState_setUnk09_8001172);
 - map name: run sequence (mapName_runSequence_811EC50);
@@ -2159,8 +2161,13 @@ Highlights:
 | 34    | 25                 | 20                        | 5               | 0       |
 | 35    | 25                 | 19                        | 6               | 0       |
 | 36    | 25                 | 24                        | 1               | 0       |
+| 37    | 25                 | 21                        | 0               | 0       |
 
-Running total: named 659, hypothesis-only 235, dropped 0 (of ~10,600 placeholders).
+Running total: named 680, hypothesis-only 235, dropped 0 (of ~10,600 placeholders).
+
+## Batch 37 (2026-10-14)
+
+25 functions: 21 renamed to probable, 4 left as hypothesis (sub_8083DF0, sub_810D808, sub_80C53FA, sub_80CC110). All renamed entries use the `battleObject_` / `sprite_` / `battle_` / `chatbox_` / `menu_` prefix conventions. The 4 hypothesis were re-visited; they remain uncertain and need a second pass.
 
 ## Session summary
 
