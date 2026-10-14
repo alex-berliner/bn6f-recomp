@@ -732,3 +732,63 @@ Highlights:
 | 15    | 25                 | 21                        | 4               | 0       |
 
 Running total: named 292, hypothesis-only 79, dropped 0 (of ~10,600 placeholders).
+
+## Batch 16 (2026-10-14)
+
+25 functions, 21 named + 4 hypothesis (sub_802C460, sub_8083DF0, sub_80A7912,
+sub_8119880 kept as comment only), renamed in recomp 9f3e1c42 (bn6f pushed;
+port ROM unchanged).
+
+Highlights:
+- object: attach to EUnk battle-object linked list
+  (object_attachToEUnkBattleObjectLinkedList_8003400);
+- battle: chip effect dispatcher (battle_chipEffectDispatcher_80109A4);
+- battle AI: try use chip from hand (ai_tryUseChipFromHand_8013236);
+- table: get anm-seq row index table entry (getAnmSeqRowIndexTableEntry_8018886);
+- cutscene weather: update (cutsceneWeather_update_808FE74);
+- battle object: dispatch run action by state
+  (battleObject_dispatchRunActionByState_80A6A16);
+- battle: check enemy in attack range and trigger
+  (battle_checkEnemyInAttackRangeAndTrigger_80A7B32),
+  check beast-SP trigger (battle_checkBeastSpTrigger_80A7BC0);
+- object: present collision and handle hit (object_presentCollisionAndHandleHit_80CA3A0);
+- battle object/AI: AI attack step move toward target
+  (battleObject_aiAttackStepMoveTowardTarget_80EB088);
+- battle AI attack: apply panel move (battle_aiAttack_applyPanelMove_80EB128);
+- battle AI: attack dispatch (battle_aiAttackDispatch_810ED70);
+- battle object: run triple sound dispatch
+  (battleObject_runTripleSoundDispatch_81176C0),
+  AI state jumptable dispatcher (battleObject_aiStateJumpTableDispatcher_8117EC8),
+  beast-SP dispatch action (battleObject_beastSpDispatchAction_8117F78);
+- battle beast-sp: dispatch to phase handler
+  (battle_beastsp_dispatchToPhaseHandler_8117FC4);
+- battle object: set beast-out phase and sprite
+  (battleObject_setBeastOutPhaseAndSprite_81182A4);
+- battle pack: pack chip into battle pack entry
+  (battle_packChipIntoBattlePackEntry_8120504);
+- object: resolve table entry wrapper (object_resolveTableEntryWrapper_8134548);
+- battle object: run beast status effect (battleObject_runBeastStatusEffect_81345B0);
+- battle: check scenario effect active (battle_checkScenarioEffectActive_8142190).
+
+## Tally update
+
+| batch | functions examined | named (renamed via record) | hypothesis-only | dropped |
+|-------|--------------------|---------------------------|-----------------|---------|
+| 1     | 25                 | 25                        | 0               | 0       |
+| 2     | 21                 | 20                        | 1               | 0       |
+| 3     | 25                 | 23                        | 2               | 0       |
+| 4     | 25                 | 21                        | 4               | 0       |
+| 5     | 25                 | 20                        | 5               | 0       |
+| 6     | 25                 | 21                        | 4               | 0       |
+| 7     | 25                 | 19                        | 6               | 0       |
+| 8     | 25                 | 20                        | 5               | 0       |
+| 9     | 25                 | 18                        | 7               | 0       |
+| 10    | 25                 | 14                        | 11              | 0       |
+| 11    | 25                 | 17                        | 8               | 0       |
+| 12    | 25                 | 15                        | 10              | 0       |
+| 13    | 25                 | 19                        | 6               | 0       |
+| 14    | 25                 | 19                        | 6               | 0       |
+| 15    | 25                 | 21                        | 4               | 0       |
+| 16    | 25                 | 21                        | 4               | 0       |
+
+Running total: named 313, hypothesis-only 83, dropped 0 (of ~10,600 placeholders).
