@@ -386,7 +386,7 @@ Next t1_0x2c_80C07BC(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80C07DC ── */
+/* ── battleObject_init_80C07DC ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r4, r5, r6, r7, r8, r9, r12; } call_sprite_decompressTemp_result;
 /* register form: generated wrapper: sprite_decompressTemp has no typed C interface yet */
@@ -554,8 +554,8 @@ static sub_80C07DC_out sub_80C07DC_init(u32 r4, u32 r5, u32 r7) {
     return out;
 }
 
-/* sub_80C07DC(r4, r5, r7, r10) -> r5, r8, r9, r10, r11, r12 */
-Next sub_80C07DC(void) {
+/* battleObject_init_80C07DC(r4, r5, r7, r10) -> r5, r8, r9, r10, r11, r12 */
+Next battleObject_init_80C07DC(void) {
     sub_80C07DC_out r = sub_80C07DC_init(R4, R5, R7);
     R5  = r.r5;
     R8  = r.r8;
@@ -1405,7 +1405,7 @@ Next sub_80C0DD8(void) {
  *
  * r5 holds a battle object. The object's current-state byte selects a
  * handler from the table at off_80C0E18:
- *   state 0 -> sub_80C0E24
+ *   state 0 -> battleObject_spawnOrUpdateFromRelated_80C0E24
  *   state 1 -> sub_80C0EE2
  *   state 2 -> object_freeMemory
  * The handler is entered with the state byte in r0 and the table entry
@@ -1435,11 +1435,11 @@ Next t1_0x2d_80C0E04(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80C0E24 ── */
-/* sub_80C0E24(r5 = battle object)
+/* ── battleObject_spawnOrUpdateFromRelated_80C0E24 ── */
+/* battleObject_spawnOrUpdateFromRelated_80C0E24(r5 = battle object)
  * If ExtraVars resolves to 2 (real Navi), set up the sprite/anim for that battle
  * object using RelatedObject1's stats; otherwise just mark the state and advance. */
-Next sub_80C0E24(void) {
+Next battleObject_spawnOrUpdateFromRelated_80C0E24(void) {
     u32 saved_r4 = R4;
 
     /* RelatedObject1 holds the underlying BattleNavi stats; read its NameID and

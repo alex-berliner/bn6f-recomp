@@ -806,9 +806,9 @@ Next object_removeCollisionData(void) {
  * Called when an object is present in a collision. Refreshes the object's
  * collision data block: records the new collision flags, clears one-shot hit
  * state unless time is currently stopped, wipes the per-object interaction
- * block, and finally runs the shared collision handler (sub_300777C) on the
+ * block, and finally runs the shared collision handler (object_updateCollisionPanels_300777C) on the
  * collision data.
- * Preserves r4-r7; returns with r0-r3 as left by sub_300777C. */
+ * Preserves r4-r7; returns with r0-r3 as left by object_updateCollisionPanels_300777C. */
 Next object_presentCollisionData(void) {
     u32 savedR4 = R4;
     u32 object = R5;
@@ -845,7 +845,7 @@ Next object_presentCollisionData(void) {
     /* Invoke the collision handler on the (reloaded, possibly updated)
      * collision data pointer. */
     R0 = LD32(object + oBattleObject_CollisionDataPtr);
-    GUEST_CALL(sub_300777C);
+    GUEST_CALL(object_updateCollisionPanels_300777C);
 
     R4 = savedR4;
     RETURN_TO_CALLER();
@@ -1222,9 +1222,9 @@ Next battle_spawnHitEffectAtArm_801A42E(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_801A45C ── */
+/* ── battle_handleCollisionCrouchSlideReset_801A45C ── */
 /* ---------------------------------------------------------------------------
- * sub_801A45C: counter-hit resolution for one battle object
+ * battle_handleCollisionCrouchSlideReset_801A45C: counter-hit resolution for one battle object
  * ------------------------------------------------------------------------- */
 
 /* Collision flag 0x40: this object was struck inside its counter window. */
@@ -1345,9 +1345,9 @@ static counter_hit_result_t resolve_counter_hit(u32 obj, u32 saved_r4, u32 saved
     return result;
 }
 
-/* sub_801A45C(r5 = battle object) -> r2 (0x40 on early out, else callee leftover),
+/* battle_handleCollisionCrouchSlideReset_801A45C(r5 = battle object) -> r2 (0x40 on early out, else callee leftover),
  * r4/r6 restored, r5/r7-r12 untouched here and left as the callees dropped them. */
-Next sub_801A45C(void) {
+Next battle_handleCollisionCrouchSlideReset_801A45C(void) {
     counter_hit_result_t result = resolve_counter_hit(R5, R4, R6);
     R4 = result.saved_r4;
     R6 = result.saved_r6;

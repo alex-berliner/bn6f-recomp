@@ -1,0 +1,78 @@
+name: battleObject_initObstacle_80D22B0
+address: '0x080D22B0'
+kind: function
+previous_names:
+- sub_80D22B0
+status: probable
+summary: Battle-object initializer that spawns an inanimate "obstacle" (no AI, no chip) with a shadow,
+  set panel coords/Z, 0x1F4 HP/MaxHP, 6000-frame timer, and a null-element collision; transitions CurState
+  to UPDATE on success.
+interface: '(r5 = BattleObject slot, r10 = Toolkit, r8 = ?globals) -> void ; side effects: writes the
+  battle object, allocates/links a CollisionData slot (or frees the object if allocation fails), runs
+  one collision-handler tick'
+details: '- Sets CurAnimAndCurAnimCopy = 0 then sprite_load(0x80, 0x10, 8), sprite_setAnimation(0), sprite_loadAnimationData,
+  sprite_update — installs placeholder sprite/animation.
+
+  - sprite_hasShadow turns on the shadow bit for the sprite.
+
+  - object_setCoordinatesFromPanels converts current panel coords into world X/Y.
+
+  - Z (oBattleObject_Z) cleared to 0; Z16 and Y16 each decremented by 1 (offset by 1 subpixel-equivalent);
+  future panel XY copied from current panel XY.
+
+  - NameID forced to 0xCE — by process of elimination that lives in the "obstacle/NPC" range since no
+  chip/AI pointer is assigned.
+
+  - HP = MaxHP = 0x1F4 (500); Timer = 6000 (0x1770).
+
+  - object_createCollisionData tries to obtain a collision slot; on failure, object_freeMemory destroys
+  this object and returns early (curState left at INITIALIZE=0, so the actor would not run).
+
+  - On success: object_setupCollisionData(r5, 0, r1=0xE=PrimaryElement?, r2=0xF, r3=3) followed by object_presentCollisionData
+  (runs the shared collision handler for the frame), then sets CurState = CUR_STATE_UPDATE (0x04). No
+  AIData is created and no chip/script is bound, matching a static obstacle rather than a virus or chip.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mov r0, #0x80; mov r1, #0x10; mov r2, #8; bl sprite_load` then `mov r0, #0; strh r0,[r5,#oBattleObject_CurAnimAndCurAnimCopy];
+    bl sprite_setAnimation` — loads sprite/animation index and zeroes the cached anim field. - `bl sprite_loadAnimationData`
+    then `bl sprite_update` then `bl sprite_hasShadow` — confirms a sprite animation pipeline and explicit
+    shadow enable. - `mov r0,#0; str r0,[r5,#oBattleObject_Z]` clears Z; `ldrh r0,[r5,#oBattleObject_PanelXY];
+    strh r0,[r5,#oBattleObject_FuturePanelXY]` mirrors current→future panel. - `ldrh ... oBattleObject_Z16;
+    sub r0,#1; strh ...` and same for Y16 — small Y/Z shifts. - `mov r0,#0xce; strh r0,[r5,#oBattleObject_NameID]`
+    — fixed NameID 0xCE (no chip assignment). - `mov r0,#0xfa; lsl r0,#1 -> 0x1F4` written to HP and MaxHP
+    (`oBattleObject_HP/MaxHP`). - Timer set to 6000 from `dword_80D231C = 0x1770`. - `bl object_createCollisionData`
+    then `tst r0,r0; bne loc_80D2306` — on null slot, `bl object_freeMemory; pop {pc}` aborts this object.
+    - `mov r1,#0xe; mov r2,#0xf; mov r3,#3; bl object_setupCollisionData` — collision flags/element config
+    for a passive obstacle. - `bl object_presentCollisionData` followed by `mov r0,#CUR_STATE_UPDATE;
+    strb r0,[r5,#oBattleObject_CurState]` — hands off to the standard per-frame collision handler and
+    parks the object in the UPDATE state.'
+  refs:
+  - bn6f/asm/asm31.s
+  reproduce: 'python3 tools/asmcat.py 0x080D22B0
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_initObstacle_80D22B0
+
+    '
+open_questions:
+- Why NameID = 0xCE specifically (a custom inline name entry vs. the standard name table) — would need
+  a cross-reference to NameID values produced by other init paths to confirm whether 0xCE denotes an "obstacle/inanimate"
+  class.
+- The exact meaning of object_setupCollisionData(r1=0xE, r2=0xF, r3=3); the named summary doesn't enumerate
+  the r1..r3 arguments, but the layout looks like collision-type/element/wall properties for an inanimate
+  non-attacking object.
+sources:
+- discovery session 2026-10-14 batch 41 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 13ab054c
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80D22B0 -> battleObject_initObstacle_80D22B0
+  where: bn6f ce204b1d
+  tool: tools/rename_symbol.py

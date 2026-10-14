@@ -1,0 +1,68 @@
+name: chatbox_renderLineSubtitleGfx_03007038
+address: '0x03007038'
+kind: function
+previous_names:
+- sub_3007038
+status: probable
+summary: Blits one chatbox text-line tile strip (3 u32 words = 12 tiles) from a per-line ROM template
+  into a destination slot table, masked to `0x3FF` tiles and right-rotated by an amount derived from the
+  line byte width.
+interface: '(r1 = line index, r6 = packed tile range/width metadata, r8 = dest slot base?, r12 = current)
+  -> r0..r3 trashed; no return to caller (void-like leaf). Side effects: writes to EWRAM at `unk_200BEA0`
+  (per-line slot table) and ROM reads at `byte_86ACD60`.'
+details: "- The function walks 12 lines (r6 counts down from 0x0B): for each, it pulls two u32s from `byte_86ACD60\
+  \ + r1*0x60 + (line*8)`, masks the second word down to 10 bits (`sub r4,#0x40 ; neg r4,r4` => `lsl r4,#(32-#10)`,\
+  \ i.e. `& 0x3FF`), and packs the bit-rotated tile ids (top 10 bits + bottom 22 bits) into a 3-word (12-byte\
+  \ = 12-tile) record at `*r2` (the table pulled from `unk_200BEA0[r6>>5*4]`). The `(r3)` byte picks up\
+  \ bits 11..20 and gets OR'd into the top word.\n  - `r6 & 0x1F` (= low 5 bits) is the bit-rotate shift\
+  \ count (`sub r3,r6,r4 ; lsrs r6,r0,r3`); `0x20 - r3` is the inverse shift to fill the next word.\n\
+  \  - `byte_8043CA4[r1]` (1 byte per chatbox slot, indexed by r1) sets the initial rotation amount `0x00..0x40`\
+  \ (the loop subtracts `#0x40` then negates so values are `0..0x40`).\n  - Reads: ROM template `byte_86ACD60`\
+  \ and `byte_8043CA4`; EWRAM table-of-destinations `unk_200BEA0`. Writes: 0xC bytes per line × 12 lines\
+  \ = 0x90 bytes into the resolved destination buffer, advancing `r2` by `+0x60` per line. `r3` doubles\
+  \ as both shift amount and the byte fetched from the per-line header table.\n  - The \"destinations\"\
+  \ slot table is an array of pointers at `unk_200BEA0`, indexed by `(r6>>5) * 4`, then `r2` reads `*r2`\
+  \ once before the loop → so `unk_200BEA0` is a pointer-to-array-of-records, one entry per 0x20 r6-units.\
+  \ This matches a \"next free slot\" allocator used by the chatbox text-line renderer (each chatbox line\
+  \ gets 12 tiles of tile-id data rotated by the panel position).\n  - Tail-recursive leaf: pops {r2-r4,r7}\
+  \ then {r1,r4-r7,pc}; preserves all caller-saved registers.\n  - All 5 callers (`chatbox_8043164`, `chatbox_804330C`,\
+  \ `chatbox_80434E0`, `chatbox_80436E8`, `chatbox_80438EC`) are unnamed chatbox functions likely handling\
+  \ different chatbox drawing paths that share this common tile-blit routine.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: "- `byte_86ACD60` is a ROM template per line, `mul r7, r1 ; add r7, r4` indexes it by line index\
+    \ (asm loc_3007038 lines 5-9).\n  - `byte_8043CA4[r1]` is a per-line panel-x offset (`ldrb r4,[r4,r1]`);\
+    \ subtracting 0x40 makes it signed bit-rotate amount.\n  - `sub r4,#0x40 ; neg r4,r4` computes `-(panel_x\
+    \ - 0x40) = 0x40 - panel_x` so values 0..0x40; `lsl r1,r4 ; lsr r1,r4` masks to 10 bits (one tile\
+    \ id).\n  - 12 iterations (`mov r6,#0xb`) of `add r7,#8` then 3x store (`str r6,[r2]` / `str r0,[r2,#4]`\
+    \ / `str r1,[r2,#8]`) = 12 tiles × 10-bit ids packed into 3 u32 = 30 bits stored + 2 unused = matches.\n\
+    \  - `add r2,#0x60` advances to next line slot (each line holds 12 tiles = 0xB... wait, 0x60 here\
+    \ is suspicious; 12 tiles * 2 bytes/tile = 0x18, so 0x60 likely is the stride between slots in the\
+    \ destination array).\n  - `unk_200BEA0` is loaded then base+(r6>>5)*4 — indexed by 0x20-unit chunks\
+    \ of r6 — matches a \"slot pointer\" array updated as source exhausts groups of 32 lines."
+  refs:
+  - bn6f/asm/asm38.s
+  reproduce: 'python3 tools/asmcat.py 0x03007038
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): chatbox_renderLineSubtitleGfx_03007038
+
+    '
+open_questions:
+- Exact semantics of `unk_200BEA0` (slot-table-of-pointers vs. array-of-records) and whether `byte_8043CA4`
+  is panel-x in tiles or half-pixels. The function's precise chatbox phase ("open", "scroll", "render
+  lines") isn't pinpointed — it could also serve battle-floating-text, which uses 12-tile lines too. Naming
+  uses `_ADDRESS` suffix because only one of these roles is certain.
+sources:
+- discovery session 2026-10-14 batch 41 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 13ab054c
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_3007038 -> chatbox_renderLineSubtitleGfx_03007038
+  where: bn6f ce204b1d
+  tool: tools/rename_symbol.py

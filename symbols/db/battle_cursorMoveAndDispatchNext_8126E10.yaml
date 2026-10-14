@@ -1,0 +1,80 @@
+name: battle_cursorMoveAndDispatchNext_8126E10
+address: '0x08126E10'
+kind: function
+previous_names:
+- sub_8126E10
+status: probable
+summary: 'In-battle cursor/page editor for the sentry/Navi wheel/folder (the "open submenu X" handler):
+  handles START/B cancel, horizontal cursor movement, and finally queues the next battle-object command.'
+interface: '(r2 = ?, r5/r10 = toolkit/BattleObject-ish context, r4/r6/r7 = callee-saved) -> r5/r8-r10/r12
+  preserved, r0/r1/r3 trashed; side effects: writes fields on the object ptr in r5, sets chatbox event
+  flag bits, plays selection sounds, tail-calls battle_dispatchNextCmd'
+details: 'r5 is the object/controller pointer for the battle object whose cursor state lives at offsets
+  0x0f/0x10/0x11; r10 is the Toolkit (loading JoypadPtr via oToolkit_JoypadPtr from it).
+
+  - Start/B pressed? -> call submenu_ConfirmExitAndFade(8) and set chatbox event flag 0x40, skip the rest.
+
+  - Else if state byte at +0x10 != 2 and chatbox flag 0x80 is clear, fall through (skip cursor/vert update).
+  It still falls into the loc_8126E68 vertical-value block if the cursor-state byte == 1.
+
+  - Else call sub_8127264 (cursor sub-step); if it returns NZ, jump past adjust to dispatch.
+
+  - Otherwise do horizontal cursor move: load Toolkit.JoypadPtr->LowSensitivityHeld and call menu_moveCursorLeftRight
+  with r1=byte at +0xF, r2=2, r3=byte at +0x10. Old cursor index is saved at +0x11, new one at +0x10.
+  On change play SOUND_SELECT_7A, write 0x10 to +0x2 (probably an animation/state tick flag), and OR 0x40
+  into eFlags2009F38.
+
+  - loc_8126E68 vertical-update branch only fires when byte at +0x10 == 1: load Toolkit.JoypadPtr->LowSensitivityHeld
+  and call menu_adjustCursorOrValue with r1=0x44, r2=0, r3=0 (cursor/value clamp in [0..N]).
+
+  - Tail-jump to battle_dispatchNextCmd_81272C4 then pop {r4,pc} -- so this is one update tick of the
+  "open submenu while in battle" UI handler.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- push/pop {r4,lr} -> bl IsButtonPressed with r0 = JOYPAD_START|JOYPAD_B catches the cancel
+    path: confirmed by `bl IsButtonPressed` plus `JOYPAD_START | JOYPAD_B` operands. - Cancel path calls
+    `submenu_ConfirmExitAndFade_811FB64` with r0=8 (one of its known arg values) and sets bit 0x40 in
+    eFlags2009F38 via `chatbox_set_eFlags2009F38`. - Cursor index fields are at +0x10 (current), +0x11
+    (previous snapshot, the same byte is also written back as `strb r1,[r5,#0x11]` then compared to the
+    returned r0) and +0x0F (max) -- visible from `ldrb r0,[r5,#0x10]` / `ldrb r3,[r5,#0x10]` / `ldrb r1,[r5,#0xf]`
+    / `strb r0,[r5,#0x10]` / `strb r1,[r5,#0x11]`. - r5 is dereferenced as a Toolkit-like pointer later:
+    `mov r0,r10` then `ldr r0,[r0,#oToolkit_JoypadPtr]` happens in the same function -- here r10 is Toolkit.
+    But the `ldrb r0,[r5,...]`, `strb r0,[r5,#0x10]`, `strb r0,[r5,#2]` cluster strongly suggests r5 (not
+    r10) is an object/state struct, while r10 is the Toolkit (separate). - The horizontal call passes
+    r1=state byte, r2=2, r3=state byte again; `menu_moveCursorLeftRight_811FA0C` is documented to take
+    exactly those position/min/cursor args. - Sound call uses a named constant `SOUND_SELECT_7A` (typical
+    "menu cursor moved" SFX). - Tail call to `battle_dispatchNextCmd_81272C4` confirmed at the very end:
+    `bl battle_dispatchNextCmd_81272C4` then `pop {r4,pc}`. - The -f lr at entry of the captured-call
+    snapshots is `0x08126cd0`, i.e. a caller inside the same range as the function (consistent with this
+    being a per-object update callback in a battle update loop).'
+  refs:
+  - bn6f/asm/asm33.s
+  reproduce: 'python3 tools/asmcat.py 0x08126E10
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battle_cursorMoveAndDispatchNext_8126E10
+
+    '
+open_questions:
+- Exact semantic of r5 (battle_object vs a dedicated submenu/battle-field UI struct) - the offsets 0x02/0x0f/0x10/0x11
+  don't match oBattleObject fields cleanly, so it is more likely a small UI/submenu state struct that
+  the caller's `r5` convention refers to.
+- Why the handler is split into a "horizontal" branch and a "vertical" branch gated on `+0x10 == 1` (this
+  likely corresponds to navigating between submenu columns vs adjusting a value, but exact column meaning
+  is unknown).
+- Whether the chatbox flag 0x40 is just "menu opened/changed" or also drives a submenu fade transition.
+sources:
+- discovery session 2026-10-14 batch 41 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 13ab054c
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8126E10 -> battle_cursorMoveAndDispatchNext_8126E10
+  where: bn6f ce204b1d
+  tool: tools/rename_symbol.py

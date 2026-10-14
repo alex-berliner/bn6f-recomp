@@ -1,0 +1,85 @@
+name: object_updateCollisionPanels_300777C
+address: '0x0300777C'
+kind: function
+previous_names:
+- sub_300777C
+status: probable
+summary: Walks a battle object's collision footprint and updates the panel(s) it occupies each frame,
+  with a second mode that scans the whole 6x3 grid.
+interface: '(r0 = CollisionData*) -> void ; side effects: panel data and per-panel collision state mutated
+  via sub_3007868 and _object_updatePanelParameters'
+details: '- The function takes the owning object''s CollisionData* in r0 (r5 is preserved across the call
+  as the struct base).
+
+  - If `oCollisionData_Region` does NOT have bit 0x80 set (`tst r1,#0x80; bne loc_30077D6`), it indexes
+  `PanelOffsetListsPointerTable` by `Region<<2` to get a per-region list of (dx,dy) panel offsets (terminated
+  by 0x7f).
+
+  - The base panel of the object is read from `oCollisionData_PanelX/Y` (0xa/0xb in CollisionData). A
+  flip-direction multiplier is computed via `object_getFlipDirection(alliance, flip)` and multiplied into
+  dx (`mul r0,r6`) so that the panel offsets are mirrored when the object faces the player''s side.
+
+  - For each offset, the resulting (col,row) is bounds-checked with `object_isValidPanel`; if valid, `sub_3007868(panelX,panelY,collisionData)`
+  is called (likely "mark/own the panel for this object" given the helper contract) followed by `_object_updatePanelParameters(panelX,panelY)`
+  which refreshes the panel''s visual/animation state.
+
+  - If the 0x80 bit of `Region` IS set, the function takes a different branch: it uses `byte_8019C34`
+  as a base for a 6x3 grid descriptor (two 32-bit words are loaded for the bounding region, then iterates
+  r6=1..6, r7=1..3). For each (col,row) it calls `object_checkPanelParameters(col,row)`; only when that
+  returns non-zero does it run `sub_3007868` and then `_object_updatePanelParameters`. Notice this second
+  branch erroneously calls `_object_updatePanelParameters(r7,r8)` instead of (r7,r6), so the (row,col)
+  pair fed to the per-panel updater is swapped relative to what the bounds check used.
+
+  - The whole-body branch is consistent with "reset/recompute panel ownership for a globally-positioned
+  collision" (e.g. an effect whose region uses the 0x80 selector to mean "scan the whole field"), while
+  the per-region branch is the common per-frame "this object stands on these panel(s)" update.
+
+  - Return contract is void-like: r0 is pushed/popped on the stack purely to preserve it (and r8) across
+  the calls; the function ends with `pop {r4-r7,pc}`.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r1,[r5,#oCollisionData_Region]` at 0x3007786 and `tst r1,#0x80; bne loc_30077D6` cleanly
+    split the function on bit 0x80 of Region. - Region index is consumed by `lsl r1,r1,#2; ldr r2,off_3007820
+    (=PanelOffsetListsPointerTable); ldr r4,[r2,r1]` showing it is a pointer table indexed by region.
+    - Termination sentinel `cmp r0,#0x7f; beq loc_300781A` after `ldrsb r0,[r4,r0]` matches the documented
+    `PanelOffsetListsPointerTable` (entries are signed-byte (dx,dy) pairs ending in 0x7F). - The pair
+    `sub_3007868(panelX,panelY,collisionData)` followed by `_object_updatePanelParameters(panelX,panelY)`
+    is the same two-call pattern for every offset, and the helpers'' one-liner summaries both touch panel
+    state. - `byte_8019C34` is dereferenced (`ldr r0,off_3007824; ldr r2,[r0]; ldr r3,[r0,#4]`) and then
+    the nested loops `mov r6,#1; cmp r6,#6; ble` and `mov r7,#1; cmp r7,#3; ble` walk exactly the 6x3
+    battle grid. - The 0x80 branch calls `object_checkPanelParameters(r6,r7)` (col,row) before claiming
+    the panel, while the non-0x80 branch has no such gate, indicating bit 0x80 toggles between "use object-local
+    footprint" and "scan whole 6x3 grid with predicate".'
+  refs:
+  - bn6f/asm/asm38.s
+  reproduce: 'python3 tools/asmcat.py 0x0300777C
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): object_updateCollisionPanels_300777C
+
+    '
+open_questions:
+- Exact meaning of sub_3007868 (claim panel, set owner, etc.); the function's only confirmed callee summary
+  is "(r0,r1,r2) -> r2" and that it writes to multiple registers, which fits a "set panel owner to r2"
+  pattern but is not certain.
+- The 0x80 branch is only seen in a single high-level caller (`object_presentCollisionData`); whether
+  bit 0x80 is set per-region statically (table data) or dynamically is unknown. Knowing what regions set
+  it would settle the branch's real-world trigger.
+- The swapped (r7,r8) vs (r6,r7) argument order in the second branch's `_object_updatePanelParameters`
+  call looks like a possible bug or intentional row-as-X for that helper; confirming what the helper does
+  with (x,y) would resolve it.
+sources:
+- discovery session 2026-10-14 batch 41 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 13ab054c
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_300777C -> object_updateCollisionPanels_300777C
+  where: bn6f ce204b1d
+  tool: tools/rename_symbol.py

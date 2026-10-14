@@ -1,0 +1,77 @@
+name: battleObject_spawnOrUpdateFromRelated_80C0E24
+address: '0x080C0E24'
+kind: function
+previous_names:
+- sub_80C0E24
+status: probable
+summary: Battle-object sub-state that initialises/swaps its sprite from the related object's Navi palette,
+  fires off dependent UI/effects tied to the related object's NameID, then hands off to the destroy-after-delay
+  sub-state.
+interface: '(r5 = self, r10 = toolkit) -> r0 = 0x6c28 or 0x6b88 ; side effects: mutates *self (Anim, flags,
+  related-object2 ptr fields), loads sprite/palette/animation on self, calls sub_80C0EE2 to schedule self-destruct'
+details: "This is the per-frame \"create/update\" entry for a small battle object that mirrors\nanother\
+  \ (the \"related\") battle object. Steps:\n  1. Read related object pointer from `*self + oBattleObject_RelatedObject1Ptr`,\
+  \ fetch\n     its `NameID` (offset `oBattleObject_NameID = 0x28`) and unpack the\n     {version, actor\
+  \ type, AI index} via `unpackVerActorTyAndAIIdx_800F29C`, storing\n     the actor-type byte into `self\
+  \ + oBattleObject_ExtraVars` (offset `0x60`).\n  2. If actor type != ACTOR_TYPE_PLAYER (2), jumps straight\
+  \ to teardown at\n     `loc_80C0ED8`: set `CurState = CUR_STATE_UPDATE (4)` and tail-call\n     `sub_80C0EE2`\
+  \ (which waits 4 frames then triggers an effect tied to\n     related->NameID and queues self for destruction).\n\
+  \  3. Otherwise (actor type == PLAYER), does the sprite setup:\n     - With r5 = related-object, reads\
+  \ two NaviStats bytes (`0x2c` Transformation\n       and `0x29` NaviIndex) via `GetBattleNaviStatsByte_AllianceFromBattleObject`,\n\
+  \       combines them through `chip_class_lookup_800FC9E`, calls `sprite_load(0x80,...)`,\n       `sprite_loadAnimationData`,\
+  \ `sprite_hasShadow`, and sets flag bit 0x02 on\n       self's `oObjectHeader_Flags`.\n     - Copies\
+  \ 12 bytes (3 words) from related+0x34 into self+0x34 (the XYZ velocity\n       block) via ldmia/stmia.\n\
+  \     - Recomputes palette index with `battle_pickPaletteIndexForNavi_801002C`\n       applied to related,\
+  \ then `sprite_setPalette` on self.\n     - Repeats the same two NaviStats reads + a `sub_8011420` call\
+  \ with r2=1 to\n       push a menu/UI control value (the function's contract says it dispatches one\n\
+  \       of two UI subroutines based on r0 vs r1).\n     - If `related->NaviStats[0x2c]` byte != 0, looks\
+  \ up `RelatedObject2Ptr`; if\n       non-null, sets its `Param3 = 1` and ORs `0x14` into its\n     \
+  \  `oObjectHeader_Flags`.\n  4. Finally: `object_getFlip()` -> `sprite_setFlip(...)`; sets `CurAnim\
+  \ =\n     3 + self->Param4` and writes `0xff` to `CurAnimCopy` (forces anim refresh);\n     then transitions\
+  \ to CUR_STATE_UPDATE and tail-calls `sub_80C0EE2`.\nThe captured exit values (`r0=0x6c28` vs `0x6b88`)\
+  \ look like scratch/NaviStats\npointers leaked through callee-save r5..r12 chain (the function itself\
+  \ returns\nnothing to callers — only r4/r5/r8..r12 survive in `out`).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: "- `cmp r0, #2 / bne loc_80C0ED8` shows the only conditional bypass path; the\n  `r0` came from\
+    \ `unpackVerActorTyAndAIIdx_800F29C` whose first byte is the\n  actor type, and 2 == ACTOR_TYPE_PLAYER\
+    \ in the AIData enum.\n- `ldr r4, [r5,#oBattleObject_RelatedObject1Ptr]; ldrh r0, [r4,#oBattleObject_NameID];`\n\
+    \  shows reading the related object and pulling its NameID (0x28).\n- Two adjacent `GetBattleNaviStatsByte_AllianceFromBattleObject`\
+    \ calls with\n  r1=0x2c and r1=0x29, with values pushed/popped across `chip_class_lookup_800FC9E`,\n\
+    \  reproduce the standard \"use chip code + navi index to load a sprite\" idiom.\n- `mov r0, #0x80;\
+    \ bl sprite_load` then `bl sprite_loadAnimationData` then\n  `bl sprite_hasShadow` is the standard\
+    \ sprite setup trio.\n- The LDM block `ldmia r0!,{r1-r3}` over `r3 = RelatedObject1Ptr + 0x34` then\n\
+    \  `stmia r0!,{r1-r3}` into `self + 0x34` copies three words verbatim (XYZ\n  velocities).\n- `orr\
+    \ r0, r1` with `r1 = #2` sets `OBJECT_FLAG_VISIBLE` (or bit 1) on\n  self's header.\n- `ldrb r0, [r5,#oBattleObject_Param4]`\
+    \ then `add r0, r0, #3 / strb r0,\n  [r5,#oBattleObject_CurAnim]` and `mov r0, #0xff / strb r0,\n\
+    \  [r5,#oBattleObject_CurAnimCopy]` is the documented \"force next-anim,\n  refresh copy\" tail used\
+    \ by other battle-object sub-states.\n- `bl sub_80C0EE2` right before `pop {r4,pc}` with `CUR_STATE_UPDATE`\
+    \ previously\n  written shows this hands off to the wait-4-frames-then-destroy phase."
+  refs:
+  - bn6f/asm/asm31.s
+  reproduce: 'python3 tools/asmcat.py 0x080C0E24
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_spawnOrUpdateFromRelated_80C0E24
+
+    '
+open_questions:
+- The exact identity of this object (e.g. is it the "Cross Fusion"/beast-out helper object, a transformation
+  FX, an ally summoned entity, etc.). Without a NameID-equality check or matching against the related
+  object more concretely, the precise battle feature it backs is guesswork; the assembly only proves "mirrors
+  related object's PLAYER-state sprite into self, then expires in 4 frames".
+- What `sub_8011420` is being told to do here (the r2=1, r1 = navi-index byte sequence) is opaque without
+  that callee's higher-level contract.
+sources:
+- discovery session 2026-10-14 batch 41 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 13ab054c
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80C0E24 -> battleObject_spawnOrUpdateFromRelated_80C0E24
+  where: bn6f ce204b1d
+  tool: tools/rename_symbol.py

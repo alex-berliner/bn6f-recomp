@@ -1243,7 +1243,7 @@ static void call_prep_right_edge(u32 tileset_id, u32 battle_obj) {
     R3 = (9u << 12) | 0x34Fu;
     R5 = 5;
     R7 = battle_obj;
-    GUEST_CALL(sub_81204C4);
+    GUEST_CALL(battle_fillChipPackEntries_81204C4);
     R4 = s4; R5 = s5; R6 = s6; R7 = s7;
 }
 

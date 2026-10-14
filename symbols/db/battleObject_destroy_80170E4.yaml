@@ -1,0 +1,64 @@
+name: battleObject_destroy_80170E4
+address: '0x080170E4'
+kind: function
+previous_names:
+- sub_80170E4
+status: probable
+summary: Destroy handler for a battle object — clears its collision state, charges, chips, AI/barrier,
+  sprite flip, decrements alliance, dispatches destroy events, and sets phase to 0x4 (CUR_STATE_UPDATE).
+interface: '(r5 = BattleObject*, r10 = Toolkit*) -> void ; side effects: many object fields overwritten;
+  calls sub-battle functions'
+details: 'Steps: clears the object''s collision region, then resets its collision-result, collision counter,
+  and PwrAtk (charge) state. Releases the slot it held via `releaseSlotByValue_801DC36`. Zeros `ChipsHeld`
+  (offset 0x1a) and writes `0xFFFF` to `Chip` (offset 0x2a, computed via `sub r0,#1`/`strh` from a `mov
+  r0,#0`). Recomputes the object''s facing via `object_getFlip` and pushes it to the sprite via `sprite_setFlip`.
+  Clears AI state and barrier with `battle_clearAIDataAndBarrier_801A7F4`. If `Param2` (offset 0x5) is
+  `< 1` (i.e. not a player/Navi actor), it decrements the alliance count and clears alive-actor turn-list
+  entries with `relatedToIsBattleOver_800A11C`. Calls `battle_dispatchDestroyEvents_802EF5C` (paired 0-then-1
+  destroy event). Finally writes `0x4` to `CurPhaseAndPhaseInitialized` (offset 0xa) — which is `CUR_STATE_UPDATE`
+  in the BattleObject''s `CurState` enum (the upper byte of the halfword). Function is called by `sub_80171CC`
+  (also unnamed), suggesting it is the destroy-state handler of a battle object dispatcher loop.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- Sequence of calls matches a teardown: `object_clearCollisionRegion` -> `battle_ClearObjectCollisionResult_801A5E2`
+    -> `battle_resetCollisionState_80101C4` -> `battleObject_clearPwrAtkState_8012EA8`. - `releaseSlotByValue_801DC36`
+    at 0x80170EC shows the object is being freed from a 6-entry slot table. - `mov r0,#0; strb r0,[r5,#oBattleObject_ChipsHeld]`
+    zeroes offset 0x1a; `sub r0,#1; strh r0,[r5,#oBattleObject_Chip]` writes 0xFFFF to offset 0x2a (Chip).
+    - `bl object_getFlip; bl sprite_setFlip` reproduces the object''s facing on its OAM, even during teardown.
+    - `bl battle_clearAIDataAndBarrier_801A7F4` then `ldrb r0,[r5,#oBattleObject_Param2]; cmp r0,#1; bge
+    loc_8017118` — only when Param2 < 1 (i.e. not a NAVI/PLAYER), `relatedToIsBattleOver_800A11C` is called
+    to update alliance alive count. - `bl battle_dispatchDestroyEvents_802EF5C` paired destroy-event dispatch.
+    - Final `mov r0,#4; strh r0,[r5,#oBattleObject_CurPhaseAndPhaseInitialized]` writes 0x4 to the CurPhaseAndPhaseInitialized
+    u16 (high byte = CurState = CUR_STATE_UPDATE). - Caller `sub_80171CC` (same in/out contract, takes
+    r5=object + r10=toolkit) is the obvious destroy-state dispatcher loop.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080170E4
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_destroy_80170E4
+
+    '
+open_questions:
+- Why the final phase is `CUR_STATE_UPDATE` (0x4) and not `CUR_STATE_DESTROY` (0x8); perhaps destroy is
+  signalled earlier (the Param2<1 check) and the function re-enters the update phase on next tick.
+- Whether the `releaseSlotByValue_801DC36` `r0` value passed by the caller is the object itself or its
+  slot index — the assembly passes `value 32` per the captured call snapshot, which is unusual for an
+  object pointer; this needs cross-referencing with `sub_80171CC`.
+- The `0x80` value seen in captured-call r2 looks like a sub-state ID passed in by the caller (`sub_80171CC`'s
+  jump-target sub-state index).
+sources:
+- discovery session 2026-10-14 batch 41 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 13ab054c
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80170E4 -> battleObject_destroy_80170E4
+  where: bn6f ce204b1d
+  tool: tools/rename_symbol.py

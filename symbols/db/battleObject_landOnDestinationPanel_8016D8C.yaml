@@ -1,0 +1,70 @@
+name: battleObject_landOnDestinationPanel_8016D8C
+address: '0x08016D8C'
+kind: function
+previous_names:
+- sub_8016D8C
+status: probable
+summary: Advances a battle object toward its reserved destination panel and snaps the FuturePanelX/Y,
+  releasing/re-reserving panels as it crosses panel boundaries.
+interface: in=(r5 = oBattleObject*) ; out= r4/r5/r6/r7 caller-saved, r0 not surfaced as a meaningful value
+  (write to memory only); no return to caller other than saving r4, jumps via `pop {r4,pc}`.
+details: 'Loads the object''s reserved destination (FuturePanelX, FuturePanelY) and converts it to 16.16
+  screen coordinates via object_getCoordinatesForPanels, saving x_target -> r2, y_target -> r4. It then
+  integrates velocity by adding the object''s XVelocity to its X (16.16) and asks IsR2BetweenR0AndR1 whether
+  the new X is on the correct side of the target; if not, same check is repeated on Y. If either axis
+  has now passed the target, control falls to loc_8016DBC: releases the panel reservation (object_removePanelReserve),
+  looks up the destination panel via object_getPanelDataOffset and inspects oPanelData_Type. When type!=7,
+  or the object''s collision PrimaryElement==2, it jumps to loc_8016DE4 (skip the PhaseInitialized bump).
+  Otherwise it increments PhaseInitialized. Then it decrements PhaseInitialized by 1; if the result is
+  >0, it tries to "step" the reserved panel by signed deltas (Unk_1c, Unk_1d offsets relative to the object)
+  and, only if battle_objectCheckPanelByAlliance_800E5AC allows, writes the new FuturePanelXY and re-calls
+  object_reservePanel. If the decrement hits 0, loc_8016E14 commits FuturePanelXY into PanelXY, recomputes
+  pixel coords (object_setCoordinatesFromPanels), refreshes collision (object_updateCollisionPanels),
+  and forces CurPhase=0x14 and Unk_0d=8 (marker that movement finished and the next phase should run).
+  When neither axis has crossed the target, loc_8016E2A simply re-syncs PanelX/PanelY from the current
+  world coords (object_setPanelsFromCoordinates) and updates collision, allowing the object to continue
+  sliding toward its destination. The function is `void`-shaped; the captured exit r0 values (0/3/8) are
+  callee trash from object_updateCollisionPanels, not meaningful returns.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0, [r5,#oBattleObject_FuturePanelX]; ldrb r1, [r5,#oBattleObject_FuturePanelY]; bl
+    object_getCoordinatesForPanels` - reads the reserved destination panel. - `ldr r1, [r5,#oBattleObject_X];
+    ldr r0, [r5,#oBattleObject_XVelocity]; add r0,r0,r1; str r0,[r5,#oBattleObject_X]` - integrates X
+    velocity one tick. - `bl IsR2BetweenR0AndR1` invoked on both axes around the destination coordinates
+    to decide if either target has been crossed. - On crossing, `bl object_removePanelReserve` followed
+    by `bl object_reservePanel` (after the future-panel may be advanced) - release/reserve the panel reservation
+    as the object moves. - `cmp r4, #7 ... cmp r0, #2 ... add r0,#1 / sub r0,#1` against `oBattleObject_PhaseInitialized`
+    - this is a phase-counter gated by panel type 7 (likely holy panel / invis panel) and PrimaryElement==2
+    (aqua). - Termination path writes `strh r0,[r5,#oBattleObject_PanelXY]; bl object_setCoordinatesFromPanels;
+    bl object_updateCollisionPanels; mov r0,#0x14; strb r0,[r5,#oBattleObject_CurPhase]; mov r0,#8; strb
+    r0,[r5,#oBattleObject_Unk_0d]` - the canonical "arrived at destination, advance phase" sequence. -
+    Slide-but-not-arrived path uses `bl object_setPanelsFromCoordinates; bl object_updateCollisionPanels`
+    - the standard "keep panel coords in sync with world coords each tick" helper pair.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08016D8C
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_landOnDestinationPanel_8016D8C
+
+    '
+open_questions:
+- Exact meaning of oBattleObject_Unk_0d=8 / CurPhase=0x14 - whether 0x14 is "wait/animation" or "post-move
+  idle" can be read once neighbouring phase handlers are analysed.
+- Semantics of oBattleObject_Unk_1c/Unk_1d signed offsets used to step FuturePanelXY - they look like
+  per-tick X/Y panel displacement, but their reset/initialisation isn't visible from this function.
+sources:
+- discovery session 2026-10-14 batch 41 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 13ab054c
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8016D8C -> battleObject_landOnDestinationPanel_8016D8C
+  where: bn6f ce204b1d
+  tool: tools/rename_symbol.py

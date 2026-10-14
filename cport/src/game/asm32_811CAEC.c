@@ -380,7 +380,7 @@ Next queueGFXTransfersFromTable_811EC68(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_811ED58 ── */
+/* ── startScreen_naviSelectTick_811ED58 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12; } call_LoadGFXAnim_result;
 /* register form: generated wrapper: LoadGFXAnim has no typed C interface yet */
@@ -443,7 +443,7 @@ static inline call_CopyBackgroundTiles_onNaviSelect_811F54C_result call_CopyBack
     return (call_CopyBackgroundTiles_onNaviSelect_811F54C_result){ R4, R5, R6, R7 };
 }
 
-/* sub_811ED58 (0x0811ED58) THUMB – PET-window animation tick
+/* startScreen_naviSelectTick_811ED58 (0x0811ED58) THUMB – PET-window animation tick
  * Advances the signed timer at state+0x10 by 4; on overflow reloads GFX
  * scripts, resets bookkeeping bytes, replays sprite frames, then always
  * runs the comm/tile-update tail. Returns the output registers. */
@@ -528,7 +528,7 @@ static pet_tick_result tick_pet_window(u32 state, u32 pet_comm,
 /* register form: r7/r8/r9/r10/r11/r12 are pass-through outputs that the
  * lifter did not classify as inputs, so the adapter must read them from
  * the global registers to supply the typed function. */
-Next sub_811ED58(void) {
+Next startScreen_naviSelectTick_811ED58(void) {
     pet_tick_result out = tick_pet_window(R5, R10, R7, R8, R9, R11, R12);
     R5 = out.r5;
     R7 = out.r7;
@@ -2184,15 +2184,15 @@ Next battle_buildChipFolderOamPack_81203E4(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_81204C4 ── */
-/* sub_81204C4(r0 = entry index, r1 = array base, r2 = dest pointer,
+/* ── battle_fillChipPackEntries_81204C4 ── */
+/* battle_fillChipPackEntries_81204C4(r0 = entry index, r1 = array base, r2 = dest pointer,
  *             r3 = battle_packChipIntoBattlePackEntry_8120504 param, r5 = number of entries (signed)):
  * Iterate over 32-byte battle-chip slots starting at base + index*32.
  * For each slot whose 16-bit field at +0x1C has bits[15:7] non-zero,
  * look up that chip's type byte and pass it to battle_packChipIntoBattlePackEntry_8120504 together
  * with an 8-byte dest slot.  Otherwise zero the dest slot.
  * Dest advances 8 bytes per entry; slot pointer advances 32 bytes. */
-Next sub_81204C4(void) {
+Next battle_fillChipPackEntries_81204C4(void) {
     s32  count = (s32)R5;
     u32  base  = R1 + R0 * 32;
     u32  dest  = R2;

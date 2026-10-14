@@ -1,0 +1,66 @@
+name: battleObject_tossUpdate_80C56B4
+address: '0x080C56B4'
+kind: function
+previous_names:
+- sub_80C56B4
+status: probable
+summary: Throws a battle object in an arc from (Param3,Param4) to (r5+0x34 target) over Param2 frames,
+  then spawns a hit effect and self-destructs; if the landing panel is solid, snaps to a collision-stuck
+  idle instead.
+interface: '(r5 = self) -> void ; side effects: mutates self''s X/Y/Z/XVelocity/YVelocity/ZVelocity/Timer/PhaseInitialized/CurAction/CurPhaseAndPhaseInitialized/CurStateActionPhaseAndPhaseInitialized
+  and Flags; may spawn an effect battle object'
+details: "1. On first entry (PhaseInitialized == 0) reads the target coords (r5+0x34 = oBattleObject_Coords.X/Y/Z)\
+  \ and calls\n   object_getCoordinatesForPanels(Param3,Param4) to get source 16.16 pixel coords (r5 points\
+  \ there).\n2. Calls math_getThrowSpeeds with the source/target 16.16 coords (Z component forced to 0),\
+  \ storing the\n   returned XVelocity/YVelocity/ZVelocity into the object's velocity fields, copies Param2\
+  \ into\n   oBattleObject_Timer, and sets PhaseInitialized=4 (one-shot init latch).\n3. Each frame decrements\
+  \ oBattleObject_Timer; while > 0 it integrates X/Y/Z += Velocity, applies a\n   constant downward Z\
+  \ acceleration of 0xffffa000 (≈ -0.6 in 16.16), then calls\n   object_setPanelsFromCoordinates and object_updateCollisionPanels.\
+  \ Every 8 ticks (Timer & 7 == 0\n   after the >>3 BCC test), it re-highlights the source panel via object_highlightPanel(Param3,Param4).\n\
+  4. When the timer hits 0 (or wraps negative via sub #1, bge on unsigned-equivalent), it force-aligns\n\
+  \   the object to its panels (Z cleared to 0) and calls object_isCurrentPanelSolid.\n5. If the landing\
+  \ panel is NOT solid: spawns a type-1 effect object (spawn_t1_0x0_EffectObject) at\n   r5+0x34 with\
+  \ r4=0x14, and transitions the object to CUR_STATE_DESTROY.\n6. If the landing panel IS solid: re-initializes\
+  \ (Timer=1, Timer2=1), clears the OBJECT_FLAG_VISIBLE\n   bit in oObjectHeader_Flags, sets collision\
+  \ region=1, CurAction=4, CurPhaseAndPhaseInitialized=0\n   (idle/stuck state), and bails out.\nOut register\
+  \ set lists r0..r7 in `out` but the function ends with `pop {r4,r6,r7,pc}`, so the caller\nobserves\
+  \ only NZCV plus the registers r4/r6/r7 it passed in (caller-saved r0/r1/r2/r3/r5 are clobbered\nby\
+  \ the helper calls).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: "- PhaseInitialized gate: `ldrb r0,[r5,#oBattleObject_PhaseInitialized]; tst r0,r0; bne loc_80C56E4`\n\
+    \  at 0x80C56B6+ shows a one-shot init branch.\n- Initial setup uses Param3/Param4 as source panel\
+    \ coords:\n  `ldrb r0,[r5,#oBattleObject_Param3]; ldrb r1,[r5,#oBattleObject_Param4]; bl object_getCoordinatesForPanels`\n\
+    - r5+0x34 is the X/Y/Z coords block per oBattleObject_Coords, and `add r0,r0,r5` then `ldmia r0!,{r1-r3}`\n\
+    \  feeds those into the throw-target args of math_getThrowSpeeds.\n- Velocities are stored at the\
+    \ documented oBattleObject_XVelocity(0x40)/YVelocity(0x44)/ZVelocity(0x48)\n  and ZVelocity is updated\
+    \ each frame with `add r1,r1,#0xffffa000` (constant downward gravity term).\n- Timer check `sub r0,#1;\
+    \ strh r0,[r5,#oBattleObject_Timer]; bge loc_80C572A` is the per-frame\n  countdown; on underflow\
+    \ it falls into the land/collide branch.\n- The 8-tick panel highlight test is the `lsr r0,#3; bcc\
+    \ locret_80C575E` (carry == bit 3) before the\n  `bl object_highlightPanel`.\n- Spawn effect branch:\
+    \ `bl spawn_t1_0x0_EffectObject` followed by `mov r0,#CUR_STATE_DESTROY; str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]`\n\
+    \  shows the destroy transition.\n- Solid-panel branch: `bne loc_80C570C` -> sets Timer=1, Timer2=1,\
+    \ clears OBJECT_FLAG_VISIBLE (mask\n  0x02) in oObjectHeader_Flags, calls `object_setCollisionRegion(1)`,\
+    \ writes CurAction=4 and\n  CurPhaseAndPhaseInitialized=0.\n- Captured callee `object_setCollisionRegion`\
+    \ confirmed as collision-region setter, matching the\n  collision-stuck behavior."
+  refs:
+  - bn6f/asm/asm31.s
+  reproduce: 'python3 tools/asmcat.py 0x080C56B4
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_tossUpdate_80C56B4
+
+    '
+sources:
+- discovery session 2026-10-14 batch 41 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 13ab054c
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80C56B4 -> battleObject_tossUpdate_80C56B4
+  where: bn6f ce204b1d
+  tool: tools/rename_symbol.py

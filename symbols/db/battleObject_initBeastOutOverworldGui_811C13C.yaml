@@ -1,0 +1,73 @@
+name: battleObject_initBeastOutOverworldGui_811C13C
+address: '0x0811C13C'
+kind: function
+previous_names:
+- sub_811C13C
+status: probable
+summary: Initialise the GUI/overworld object used to visualise the Navi's beast-out form, configuring
+  its sprite/animation/palette/priority and absolute on-battlefield coordinates.
+interface: (r5 = battle object ptr) -> side effects only; no value returned to callers
+details: 'Writes 0x23 into byte 0 of the battle object (likely the object''s CurState or a phase byte
+  at offset 0).
+
+  Calls initGuiSprite_8002770(r0=0x3e, r1=r5) to bind a sprite resource index of 0x3E to the object, then
+
+  sets animation=0, loads the animation data, and clears the shadow flag. Sets the sub-entry palette bank
+  to 0,
+
+  palette to 0, OAM priority to 3 (sprite_setPriority_8002E14), and then calls slotList_storeHalfwordAndClearField_800306C
+
+  with r0=0x390 to write a halfword value into the slot-table header selected by the resource index''s
+  high nibble
+
+  (this corresponds to one of the sub-records, used here to store 0x390 and clear a wider field).
+
+  Writes 0 into the +0xA byte of the sub-record (sprite_setSubRecordFieldA_8003060), writes 4 into the
+  battle
+
+  object''s CurAnim copy byte at offset +8 (strb r0, [r5,#8]), sets sprite x=0xD8 / y=7 (sprite_setCoordinates),
+
+  and finally tail-calls sub_811C18C to finish any remaining setup. Returns to the caller (pop {pc}) which
+
+  immediately follows the BL, indicating this is the initialiser phase dispatched via the CurState jumptable.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `strb r0, [r5]` with r0=#0x23 sets CurState/byte 0 to 0x23; in this codebase CurState 0x20+
+    values are the "bridge initialiser" jumptable entries. - `initGuiSprite_8002770(r0=0x3e, r1=r5)` binds
+    the 0x3E sprite resource index, the typical signature for a battle-object GUI/overworld visual element.
+    - `sprite_setCoordinates(0xd8, 7)` places the object at fixed on-battlefield coordinates (x=0xD8,
+    y=7). - `slotList_storeHalfwordAndClearField_800306C(0x390)` writes the halfword 0x390 into the sub-slot
+    selected by the resource nibble, used by battle objects as a stage/animation control word. - `strb
+    r0, [r5,#8]` with r0=4 stores the CurAnim copy value 4 in the secondary animation slot. - The function
+    ends with `pop {pc}` and is followed immediately by the address it returns to (`lr=0811c128`), confirming
+    this is a CurState 0x23 dispatcher entry invoked from the standard battle-object update loop. - The
+    `sub_811C18C` follow-up is most likely a per-tick or post-init setup tail-call that finishes frame-independent
+    configuration.'
+  refs:
+  - bn6f/asm/asm32.s
+  reproduce: 'python3 tools/asmcat.py 0x0811C13C
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_initBeastOutOverworldGui_811C13C
+
+    '
+open_questions:
+- The exact role of `sub_811C18C` (whether it is also an init helper or starts the running update) is
+  unknown; reading its body or its callers' use of the object would settle it.
+- Why byte 0 of the object is set to 0x23 instead of 0x00 (the standard CUR_STATE_INITIALIZE) is unclear
+  — it could be a beast-out-specific initialise phase index.
+sources:
+- discovery session 2026-10-14 batch 41 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 13ab054c
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_811C13C -> battleObject_initBeastOutOverworldGui_811C13C
+  where: bn6f ce204b1d
+  tool: tools/rename_symbol.py

@@ -1,0 +1,87 @@
+name: battle_fillChipPackEntries_81204C4
+address: '0x081204C4'
+kind: function
+previous_names:
+- sub_81204C4
+status: probable
+summary: Fills a contiguous run of 8-byte chip-pack entries (r2..r2+8*r0) from a chip list at r1 (records
+  of 0x20 bytes), keeping only entries whose high bit of the halfword at offset 0x1c is set, and zeroing
+  the rest
+interface: '(r0 = chipCount, r1 = *chipList0x20, r2 = *packEntries8, r3 = packEntryStructSize, r5 = chipRecStride?
+  maybe totalArg, lr) -> r0 = end-of-input struct? ; side effects: writes 8-byte pack entries to *r2'
+details: "- Saves r5 on the stack (slot used as the iteration limit `cmp r6, r0`), r4-r7+lr\n  - Pre-computes\
+  \ `r5 = r0*0x20 + r1` so r5 starts as the base of chipList0[i] and is stepped +0x20 per iteration; `r6`\
+  \ is the loop counter (0..chipCount), `r7 = r2` (running dest pointer), `r4 = r3` (passed through to\
+  \ pack)\n  - For each record at `[r5 + 0x1c]` (u16), shifts right by 7 and tests the low bit: if non-zero\
+  \ the slot is \"valid\", and the function calls `getChip8021DA8(r0 = chipID)` then `ldrb r0, [r0, #8]`\
+  \ (element byte of chip data record) and finally `battle_packChipIntoBattlePackEntry_8120504(r0=element?,\
+  \ r1=r7, r2=r4)`. Note r0 going into the pack call is the element byte, not the chip ID — the chip ID\
+  \ has been lost by this point, so the \"chip ID\" packed must come from r1/r2.\n  - If the bit is zero,\
+  \ it stores 0 at `[r7]` and `[r7+4]`, zeroing the whole 8-byte entry.\n  - Steps r5+=0x20, r7+=8, r6+=1;\
+  \ loops while r6 < r0 (the original chipCount).\n  - On all 40 captured calls, entry r0=0 (chipCount=0),\
+  \ r1 points at 0201d220 (chip list with 5 visible records each 0x20 bytes; pattern shows bit7 set on\
+  \ the first of every pair), r2=0201d84c (output pack entries), r3=0x934f (size/argument passed through\
+  \ to the pack helper). Returns r0=5 (the count of input records visible in the snapshot, suggesting\
+  \ chipCount was actually non-zero at runtime despite the snapshot showing r0=0; or r0 just holds a scratch).\
+  \ Given r0=0 entry but exit r0=5, the function clearly returns some derived value related to the number\
+  \ of records scanned.\n  - The captured input buffer is two concatenated 5-record lists (5 entries ×\
+  \ 8 bytes = 40 bytes, twice = 80 bytes; each entry's 0x1c byte reads as 0x80/0x34/0x00/0x28/0x0a repeating\
+  \ — note those are the high bytes of u16 chip-id-ish halfwords). So this looks like it processes a player\
+  \ pack (5 chips) twice in sequence (player + opponent, or two packs).\n  - The \"pack entry\" written\
+  \ to by the callee is 8 bytes (slot id, code A/B, element, ...) per the callee's summary, and zeroing\
+  \ 8 bytes on the no-bit path matches.\n  - Function is called from chip-pack related battle object render/upload\
+  \ paths (folder-edit, submenu, generic BG tile upload) — consistent with building chip-pack displays\
+  \ from chip-ID lists.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: "- Saves r5 on the stack (slot used as the iteration limit `cmp r6, r0`), r4-r7+lr\n  - Pre-computes\
+    \ `r5 = r0*0x20 + r1` so r5 starts as the base of chipList0[i] and is stepped +0x20 per iteration;\
+    \ `r6` is the loop counter (0..chipCount), `r7 = r2` (running dest pointer), `r4 = r3` (passed through\
+    \ to pack)\n  - For each record at `[r5 + 0x1c]` (u16), shifts right by 7 and tests the low bit: if\
+    \ non-zero the slot is \"valid\", and the function calls `getChip8021DA8(r0 = chipID)` then `ldrb\
+    \ r0, [r0, #8]` (element byte of chip data record) and finally `battle_packChipIntoBattlePackEntry_8120504(r0=element?,\
+    \ r1=r7, r2=r4)`. Note r0 going into the pack call is the element byte, not the chip ID — the chip\
+    \ ID has been lost by this point, so the \"chip ID\" packed must come from r1/r2.\n  - If the bit\
+    \ is zero, it stores 0 at `[r7]` and `[r7+4]`, zeroing the whole 8-byte entry.\n  - Steps r5+=0x20,\
+    \ r7+=8, r6+=1; loops while r6 < r0 (the original chipCount).\n  - On all 40 captured calls, entry\
+    \ r0=0 (chipCount=0), r1 points at 0201d220 (chip list with 5 visible records each 0x20 bytes; pattern\
+    \ shows bit7 set on the first of every pair), r2=0201d84c (output pack entries), r3=0x934f (size/argument\
+    \ passed through to the pack helper). Returns r0=5 (the count of input records visible in the snapshot,\
+    \ suggesting chipCount was actually non-zero at runtime despite the snapshot showing r0=0; or r0 just\
+    \ holds a scratch). Given r0=0 entry but exit r0=5, the function clearly returns some derived value\
+    \ related to the number of records scanned.\n  - The captured input buffer is two concatenated 5-record\
+    \ lists (5 entries × 8 bytes = 40 bytes, twice = 80 bytes; each entry's 0x1c byte reads as 0x80/0x34/0x00/0x28/0x0a\
+    \ repeating — note those are the high bytes of u16 chip-id-ish halfwords). So this looks like it processes\
+    \ a player pack (5 chips) twice in sequence (player + opponent, or two packs).\n  - The \"pack entry\"\
+    \ written to by the callee is 8 bytes (slot id, code A/B, element, ...) per the callee's summary,\
+    \ and zeroing 8 bytes on the no-bit path matches.\n  - Function is called from chip-pack related battle\
+    \ object render/upload paths (folder-edit, submenu, generic BG tile upload) — consistent with building\
+    \ chip-pack displays from chip-ID lists."
+  refs:
+  - bn6f/asm/asm32.s
+  reproduce: 'python3 tools/asmcat.py 0x081204C4
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battle_fillChipPackEntries_81204C4
+
+    '
+open_questions:
+- The exact semantic of the bit-7-of-0x1c test (probably a "this slot has a chip" validity flag in the
+  player's pack view).
+- Whether r3 is the pack entry's "slot" index or some other arg to the pack helper — the callee contract
+  says it takes (r0, r1, r2) and r0 goes out to be the element byte here.
+- The exit r0=5 with entry r0=0 is odd and likely means the contract's "in r0=0" is a snapshot artifact;
+  loop limit is loaded from stack slot holding the original r0.
+sources:
+- discovery session 2026-10-14 batch 41 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 13ab054c
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_81204C4 -> battle_fillChipPackEntries_81204C4
+  where: bn6f ce204b1d
+  tool: tools/rename_symbol.py

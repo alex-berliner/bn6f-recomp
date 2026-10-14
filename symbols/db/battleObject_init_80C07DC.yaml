@@ -1,0 +1,66 @@
+name: battleObject_init_80C07DC
+address: '0x080C07DC'
+kind: function
+previous_names:
+- sub_80C07DC
+status: probable
+summary: Initializes a battle object's per-spawn sprite setup (decompress, load, animate, palettize) then
+  chains into its first update tick.
+interface: '(r5 = BattleObject*) -> void ; side effects: writes BattleObject header flags, sprite state,
+  Z, palette, color shader, and CurStateActionPhaseAndPhaseInitialized; returns via sub_80C0840'
+details: "1. Calls sprite_decompressTemp(0x0C, 0x50) to ensure the sprite-decompression buffer is ready.\n\
+  \  2. Sets OBJECT_FLAG_VISIBLE (0x02) on the object's Flags byte at oObjectHeader_Flags.\n  3. Loads\
+  \ the object's normal sprite via sprite_load(0x80, 0x0C, 0x50) and tail-calls sprite_loadAnimationData\
+  \ to populate its animation script.\n  4. Enables shadow rendering via sprite_hasShadow and resets CurAnim/CurAnimCopy\
+  \ at offsets 0x10/0x11 to 0.\n  5. Sets animation 0 via sprite_setAnimation(0), reloads animation data,\
+  \ then recomputes X/Y from the current panel via object_setCoordinatesFromPanels.\n  6. Zeros the Z\
+  \ field at oBattleObject_Z (0x3C..0x3F), applies object_getFlip into sprite_setFlip so the sprite mirrors\
+  \ according to side.\n  8. Picks palette index 1 only when Param1 == 4, else 0, and stores it via sprite_setPalette;\
+  \ sets the color-shader id to 0x7FFF (palette-mask disable) via sprite_setColorShader.\n  9. Writes\
+  \ CUR_STATE_UPDATE (0x04) into CurStateActionPhaseAndPhaseInitialized (0x08..0x0B) and tail-calls sub_80C0840\
+  \ to run the per-action update and end-of-tick sprite flush.\nevidence: |\n  - `sprite_decompressTemp(0x0C,\
+  \ 0x50)` is the standard sprite-decompression buffer init (`bl sprite_decompressTemp`).\n  - `orr r0,\
+  \ r1` with r1=#2 against `[r5,#oObjectHeader_Flags]` sets OBJECT_FLAG_VISIBLE.\n  - `sprite_load(0x80,\
+  \ 0x0C, 0x50)` selects sprite id 0x80 of the loaded object.\n  - `strb r0,[r5,#oBattleObject_CurAnim]`\
+  \ and `[r5,#oBattleObject_CurAnimCopy]` reset animation state.\n  - `str r0,[r5,#oBattleObject_Z]` zeros\
+  \ the 32-bit Z field (offset 0x3C).\n  - Palette branch `cmp r1,#4; bne loc_80C0828; mov r0,#1` shows\
+  \ palette 1 is only chosen for Param1==4.\n  - `ldr r0,dword_80C083C` = 0x7FFF, fed into sprite_setColorShader,\
+  \ is the conventional \"no shader\" mask.\n  - `CUR_STATE_UPDATE` (=0x04) literal store at `[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]`\
+  \ transitions from init phase to update phase.\n  - Tail `bl sub_80C0840` hands off to the per-state\
+  \ dispatcher; sub_80C0840's summary explicitly says \"shared end-of-update processing\".\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: "- `sprite_decompressTemp(0x0C, 0x50)` is the standard sprite-decompression buffer init (`bl\
+    \ sprite_decompressTemp`).\n  - `orr r0, r1` with r1=#2 against `[r5,#oObjectHeader_Flags]` sets OBJECT_FLAG_VISIBLE.\n\
+    \  - `sprite_load(0x80, 0x0C, 0x50)` selects sprite id 0x80 of the loaded object.\n  - `strb r0,[r5,#oBattleObject_CurAnim]`\
+    \ and `[r5,#oBattleObject_CurAnimCopy]` reset animation state.\n  - `str r0,[r5,#oBattleObject_Z]`\
+    \ zeros the 32-bit Z field (offset 0x3C).\n  - Palette branch `cmp r1,#4; bne loc_80C0828; mov r0,#1`\
+    \ shows palette 1 is only chosen for Param1==4.\n  - `ldr r0,dword_80C083C` = 0x7FFF, fed into sprite_setColorShader,\
+    \ is the conventional \"no shader\" mask.\n  - `CUR_STATE_UPDATE` (=0x04) literal store at `[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]`\
+    \ transitions from init phase to update phase.\n  - Tail `bl sub_80C0840` hands off to the per-state\
+    \ dispatcher; sub_80C0840's summary explicitly says \"shared end-of-update processing\"."
+  refs:
+  - bn6f/asm/asm31.s
+  reproduce: 'python3 tools/asmcat.py 0x080C07DC
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_init_80C07DC
+
+    '
+open_questions:
+- 'The exact object type this is the spawn-init for (could be a generic virus spawn, a panel-spawn, or
+  a specific effect) isn''t pinned: would settle by inspecting callers and the r5 object type/header byte
+  at entry.'
+sources:
+- discovery session 2026-10-14 batch 41 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 13ab054c
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80C07DC -> battleObject_init_80C07DC
+  where: bn6f ce204b1d
+  tool: tools/rename_symbol.py

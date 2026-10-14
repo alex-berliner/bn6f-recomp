@@ -1,0 +1,80 @@
+name: battleObject_beastSpInit_8117EE8
+address: '0x08117EE8'
+kind: function
+previous_names:
+- sub_8117EE8
+status: probable
+summary: 'Initialise a BeastSP battle object: set type, load GUI sprite/animation, set priority 3, pick
+  a slot/halfword, write the initial coords, then dispatch the action.'
+interface: (r5 = BattleObject*) -> void ; sets r5+0x0..r5+0x14 from in-RAM table byte_8117F68 and off_8117F44,
+  side effects on r0..r4,r6..r9 via callees
+details: '1. Writes 0x23 into the object header byte at r5+0 (object_header_struct.Flags, the high bits
+  index into the header type - 0x23 is the BeastSP object type).
+
+  2. Calls initGuiSprite_8002770 with the GUI sprite resource pointer unk_201DD70 and r0=0x11, attaching
+  the BeastSP GUI sprite to the object.
+
+  3. sprite_setAnimation(0), sprite_loadAnimationData(), sprite_noShadow() to install anim 0 with no shadow.
+
+  4. sprite_setPriority_8002E14(3) to set OAM priority to 3.
+
+  5. Reads r5+4 (the object''s ListIndex/Index byte) as a 2-bit selector into off_8117F44, getting a halfword
+  {0x180,0x140,0x100,0xC0,0x80,0x40,0x0} and calling slotList_storeHalfwordAndClearField_800306C to write
+  it into the corresponding slot - this is the beast-SP charge/time budget that the action state will
+  consume.
+
+  6. sprite_setSubRecordFieldA_8003060(3) to set the sprite sub-record field +0xA = 3.
+
+  7. Sets r5+0x8 (CurState) = 4, r5+0x9 (CurAction) = 0, r5+0xA (CurPhase) = 0, so CurStateActionPhaseAndPhaseInitialized
+  is 0x00000004.
+
+  8. Reads r5+4 again as a 1-bit index into byte_8117F68 (16-bit halfwords {0xFFF6, 0x0008, 0x001A, 0x002C,
+  0x003E, 0x0050, 0x0062, 0x0000}) and stores it to r5+0x14 (FuturePanelX/FuturePanelY) - this places
+  each BeastSP variant on a fixed panel column on the enemy side.
+
+  9. sprite_setCoordinates(0xB8, panelY) places the sprite at x=0xB8 with the panel-derived y.
+
+  10. Finally bl battleObject_beastSpDispatchAction_8117F78 to enter the per-frame action dispatcher;
+  the function returns into the caller''s lr.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- mov r0,#0x23; strb r0,[r5] is the canonical header-type store for a BeastSP object, before
+    any sprite attach. - ldr r1,off_8117F60; bl initGuiSprite_8002770 attaches a known GUI sprite from
+    unk_201DD70 (the BeastSP SP-gauge overlay). - The halfword table off_8117F44 holds 0x180 down to 0x0
+    in 0x40 steps and is indexed by r5+4 (the object''s panel column byte) - matches the per-column SP
+    gauge size pattern. - byte_8117F68 halfwords 0xFFF6, 0x0008, 0x001A, 0x002C, 0x003E, 0x0050, 0x0062
+    are written into r5+0x14 which is the packed FuturePanelXY field per the BattleObject struct, so the
+    variant''s enemy-side starting column is fixed. - mov r0,#4; strb r0,[r5,#8] and the following strb
+    0/0 to r5+9/r5+0xA match CurState=4 (UPDATE), CurAction=0, CurPhase=0. - Final bl battleObject_beastSpDispatchAction_8117F78
+    and pop {pc} make this a one-shot init that hands control to the dispatcher; the function''s captured-call
+    contract (in r5/r10/lr, out r2/r3/r5) matches the dispatcher''s contract exactly. - sprite_setCoordinates(0xB8,
+    panelY) places BeastSP at x=0xB8 which is the fixed left/right slot for the SP gauge in the HUD.'
+  refs:
+  - bn6f/asm/asm32.s
+  reproduce: 'python3 tools/asmcat.py 0x08117EE8
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_beastSpInit_8117EE8
+
+    '
+open_questions:
+- The exact semantics of the halfword at off_8117F44 (charge count vs. pixel height) is not 100% pinned;
+  the table stepping 0x40 with 7 entries suggests gauge-segment counts, but whether r5+4 is the panel
+  column (0..6) or a smaller field would settle it.
+- r5+0x14 is assumed to be FuturePanelXY (packed). A direct field-symbol reference for BeastSP objects
+  would confirm which nibble holds x vs. y.
+sources:
+- discovery session 2026-10-14 batch 41 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 13ab054c
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8117EE8 -> battleObject_beastSpInit_8117EE8
+  where: bn6f ce204b1d
+  tool: tools/rename_symbol.py

@@ -1,0 +1,73 @@
+name: battleObject_beastSP_init_80A7DB8
+address: '0x080A7DB8'
+kind: function
+previous_names:
+- sub_80A7DB8
+status: probable
+summary: 'Init handler for a Beast-SP battle object: sets state to CUR_STATE_INITIALIZE (3), loads sprite
+  0x80/0x1c/0x4e, hooks the soul-weapon cursor camera coords into X/Y/Z, then falls through to the update
+  dispatcher.'
+interface: '(r5 = BattleObject, r10 = toolkit) -> void ; side effects: writes BattleObject[0x8] = 3, sprite
+  data, Coords X/Y/Z, OAM priority, then tail-calls the update dispatcher.'
+details: '- `strb r0, #3` to [r5] sets CurState (offset 0x8 per BattleObject struct) to 3 (CUR_STATE_INITIALIZE
+  variant).
+
+  - `sprite_load(0x80, 0x1c, 0x4e)` populates the sprite data attached at r5+0x90 (t1 object) using compressed
+  sprite slot 0x1C, id 0x80, sub-id 0x4E.
+
+  - Sets current animation index from `[r7+3]` (r7 is presumably the sprite data pointer carried alongside
+  r5), disables shadow via `sprite_noShadow`, then runs `sub_80A8020` (likely sprite setup helper given
+  the call site).
+
+  - Reads `ldrh r0, [r7+4]` (a weapon/soul cursor index) and feeds it to `GetSoulWeaponCursorCameraCoords`,
+  whose (r0,r1) returns the camera-space X/Y origin stored at [r5+0xc] / [r5+0x10] (BattleObject Coords
+  X/Y).
+
+  - Hard-codes Z = 0x00FA0000, then `checkZCoordModifiers_8031612` overwrites Z (offset 0x14) with the
+  per-region Z modifier for the cursor.
+
+  - `applyLayerEffectToOWObject_8035694` decides the OAM draw layer and `sprite_setPriority(4)` writes
+  priority 4.
+
+  - Sets CurAction (`[r5+0x9]`? — actually offset 0x8 was just stomped with CurState=3, so this strb #4
+  at offset 0x8 is CurState=4=CUR_STATE_UPDATE after the writes above).
+
+  - Tail-calls `battleObject_beastSP_battlerUpdate_80A7E14`, the state dispatcher.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `strb r0, [r5]` with `mov r0, #3` (line 2 of asm) matches the offset-0 CurState byte in `battle_object_struct`.
+    - `sprite_load(0x80, 0x1c, 0x4e)` followed by `sprite_setAnimation` from `[r7+3]` and `sprite_loadAnimationData`
+    is the canonical sprite attach recipe seen across battle object inits. - `GetSoulWeaponCursorCameraCoords`
+    is the only call returning camera X/Y (r0/r1) that are stored into Coords at offsets 0xc and 0x10.
+    - The Z-init constant `mov r2, #0xfa; lsl r2, r2, #0x10` -> `0x00FA0000` matches the documented 16.16
+    fixed-point format for Coords.Z. - Tail `pop {r4-r7,pc}` after `bl battleObject_beastSP_battlerUpdate_80A7E14`
+    makes the init flow directly into the state dispatcher. - Capture r0 entries equal `080a7db9` (Thumb+1
+    LR sentinel) across all 7 snaps, confirming a fixed caller; r2/r3 differ across runs, consistent with
+    per-instance state passed by the parent dispatcher.'
+  refs:
+  - bn6f/asm/asm29.s
+  reproduce: 'python3 tools/asmcat.py 0x080A7DB8
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_beastSP_init_80A7DB8
+
+    '
+open_questions:
+- The exact role of `[r7+3]` and `[r7+4]` (r7 likely a second related object or an AIData-style struct)
+  — verifying the pointer convention used by the rest of the Beast-SP module would settle it.
+- Whether `sub_80A8020` configures the sprite's `Unk_15` priority bits versus anim timing.
+sources:
+- discovery session 2026-10-14 batch 41 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 13ab054c
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80A7DB8 -> battleObject_beastSP_init_80A7DB8
+  where: bn6f ce204b1d
+  tool: tools/rename_symbol.py

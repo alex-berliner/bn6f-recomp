@@ -2813,7 +2813,7 @@ Next object_genericDestroy(void) {
  * offsets 0, 4 and 8:
  *
  *   off_8016CFC + 0 -> battleAdvanceObjectPhase_8016D08
- *   off_8016CFC + 4 -> sub_8016D8C
+ *   off_8016CFC + 4 -> battleObject_landOnDestinationPanel_8016D8C
  *   off_8016CFC + 8 -> battle_objectCountdownPhaseOrReset_8016E3C
  *
  * The handler is invoked with R0 = the state byte and R1 = the handler
@@ -2832,7 +2832,7 @@ Next battleObjectStateDispatcher_8016CE8(void) {
         GUEST_CALL(battleAdvanceObjectPhase_8016D08);
         break;
     case 4:
-        GUEST_CALL(sub_8016D8C);
+        GUEST_CALL(battleObject_landOnDestinationPanel_8016D8C);
         break;
     case 8:
         GUEST_CALL(battle_objectCountdownPhaseOrReset_8016E3C);
@@ -3099,13 +3099,13 @@ Next battleObject_updateSprite_8016E64(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80170E4 ── */
-/* sub_80170E4: tear down a battle object's active state and move it to phase 4.
+/* ── battleObject_destroy_80170E4 ── */
+/* battleObject_destroy_80170E4: tear down a battle object's active state and move it to phase 4.
  * r5 = battle object. Clears collision/collision results and AI data, releases
  * the object's chip slot, resets its held-chip/current-chip fields, reapplies
  * its sprite flip, then (unless Param2 says otherwise) marks the battle as
  * possibly over, and finally sets the object's phase to 4. */
-Next sub_80170E4(void) {
+Next battleObject_destroy_80170E4(void) {
     GUEST_CALL(object_clearCollisionRegion);
     GUEST_CALL(battle_ClearObjectCollisionResult_801A5E2);
     GUEST_CALL(battle_resetCollisionState_80101C4);

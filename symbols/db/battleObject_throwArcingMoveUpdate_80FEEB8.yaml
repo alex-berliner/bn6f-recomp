@@ -1,0 +1,71 @@
+name: battleObject_throwArcingMoveUpdate_80FEEB8
+address: '0x080FEEB8'
+kind: function
+previous_names:
+- sub_80FEEB8
+status: probable
+summary: Advances one frame of an AI-launched throw/arc move (e.g. cannon/anchor) for the battle object
+  in r5, integrating velocity, decaying Z velocity, and finishing by snapping the object to its destination
+  panel and marking it currently-moving.
+interface: '(r5 = battleObject, r7 = aiAttackVars) -> void ; side effects: writes r5 object X/Y/Z/Velocities,
+  PanelX/Y, FuturePanelX/Y, Z16, CollisionData flags/region, and r7 Unk_01/Unk_00/Unk_10'
+details: '- State byte at oAIAttackVars_Unk_01 gates a two-phase machine: 0 -> throw-init, non-zero ->
+  per-frame integration.
+
+  - Phase 0 (tst r0,r0 / bne): sets Unk_01=4, Unk_10=0x1e (30), reads r5->FuturePanelX/Y, calls object_getCoordinatesForPanels
+  to get target pixel coords, then math_getThrowSpeeds(r0=panelX,r1=panelY,r2=0,r3=0,r4=Unk_10,r6=0xFFFF6000,
+  accel/throw params) to compute initial XVelocity/YVelocity/ZVelocity which are stored back. r0 passed
+  to math_getThrowSpeeds is r5+0x34 (X field), aligning the integrator origin to current X.
+
+  - Phase 1 (loc_80FEEEA): adds XVelocity/YVelocity to X/Y and ZVelocity to Z, then subtracts 0xA000 (the
+  0xFFFF6000 delta) from ZVelocity each frame, applying gravity-like decay via object_setPanelsFromCoordinates
+  / object_updateCollisionPanels.
+
+  - Each tick decrements Unk_10; once it underflows (bge not taken), the object is snapped: FuturePanelX/Y
+  copied to PanelX/Y, object_removePanelReserve releases the destination, object_setCoordinatesFromPanels
+  re-anchors pixels, Z16 cleared, collision refreshed, OBJECT_FLAGS_CANNOT_SLIDE (0x40) cleared, OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT
+  (1<<19 = 0x80000) set via object_setFlag1, collision region set to 1, and Unk_00 set to 8 (probably
+  next AI state index). The gravity constant 0xFFFF6000 == -0xA000 in 16.16, matching Mega Man Battle
+  Network''s per-frame gravity for arc chips.
+
+  - r7 is the AIAttackVars block (offset inside AIData+0xA0..+0xF0), used to drive the timer/state of
+  the attack sub-phase.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- ldrb/strb r0,[r7,#oAIAttackVars_Unk_01] and oAIAttackVars_Unk_10 at loc_80FEEE0 identify
+    r7 as AIAttackVars. - ldrb FuturePanelX/Y then object_getCoordinatesForPanels shows the destination
+    panel is the throw target. - bl math_getThrowSpeeds with r6=0xFFFF6000 (dword_80FEF4C) and r4=Unk_10=0x1e
+    shows classic BN arc-throw init; storing r0/r1/r2 into XVelocity/YVelocity/ZVelocity confirms it.
+    - loc_80FEEEA subtracts 0xFFFF6000 (i.e. adds 0xA000) from ZVelocity each frame, the canonical per-frame
+    gravity for arc chips in BN. - Termination path: object_removePanelReserve, FuturePanel->Panel copy,
+    setCoordinatesFromPanels, Z16=0, updateCollisionPanels, clearFlag(0x40)/setFlag1(1<<CURRENTLY_MOVING_1_BIT)
+    and setCollisionRegion(1) match the standard "throw landed" finish. - OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT==19
+    -> 1<<19==0x80000; "mov r0,#1; lsl r0,r0,#OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT" produces exactly 0x80000.'
+  refs:
+  - bn6f/asm/asm31.s
+  reproduce: 'python3 tools/asmcat.py 0x080FEEB8
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_throwArcingMoveUpdate_80FEEB8
+
+    '
+open_questions:
+- Exact role of Unk_00=8 at exit (next AI jump-table index) and what AIAttackVars fields Unk_00/Unk_01
+  represent semantically; Unk_01=4 looks like a sub-state, not a generic "1".
+- Which chip/category (Cannon, Anchor, Wind, etc.) uses gravity 0xA000; could be determined by cross-referencing
+  the caller chip handler.
+sources:
+- discovery session 2026-10-14 batch 41 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 13ab054c
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80FEEB8 -> battleObject_throwArcingMoveUpdate_80FEEB8
+  where: bn6f ce204b1d
+  tool: tools/rename_symbol.py

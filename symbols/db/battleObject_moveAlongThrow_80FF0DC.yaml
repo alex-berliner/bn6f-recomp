@@ -1,0 +1,69 @@
+name: battleObject_moveAlongThrow_80FF0DC
+address: '0x080FF0DC'
+kind: function
+previous_names:
+- sub_80FF0DC
+status: probable
+summary: AI attack-vars sub-step that lobs the object along a parabolic trajectory toward its reserved
+  future panel, then settles on arrival.
+interface: (r5 = BattleObject*, r7 = AIAttackVars*) -> void ; writes object X/Y/Z, XVelocity/YVelocity/ZVelocity,
+  PanelX/PanelY, collision region, ObjectFlags1, AIAttackVars.Unk_01 and Unk_10/Unk_00
+details: '- Checks AIAttackVars.Unk_01 at `ldrb r0, [r7,#oAIAttackVars_Unk_01]`. If 0 (idle): writes 4
+  to Unk_01 and 0x1E (30) to Unk_10; reads the target (FuturePanelX, FuturePanelY) and calls object_getCoordinatesForPanels
+  to convert to 16.16 pixel position (target_x in r0, target_y in r1); computes throw speeds with math_getThrowSpeeds(XYZ_PANEL_R0+0x34,
+  target_x, target_y, 0, Unk_10, gravity=0xFFFF6000) and stores r0/r1/r2 into XVelocity/YVelocity/ZVelocity.
+
+  - Else (mid-air, Unk_01 != 0): integrates position by adding XVelocity/YVelocity/ZVelocity into X/Y/Z;
+  adds 0xFFFF6000 to ZVelocity (gravity); recomputes PanelX/Y from world position via object_setPanelsFromCoordinates
+  and object_updateCollisionPanels; decrements Unk_10 each frame.
+
+  - When Unk_10 underflows (sub followed by `bge` skipping the settle branch): copies FuturePanelX→PanelX,
+  FuturePanelY→PanelY; calls object_removePanelReserve(r5,r5), object_setCoordinatesFromPanels, clears
+  Z16 (hZVel), object_updateCollisionPanels, object_clearFlag(0x40 = OBJECT_FLAGS_CANNOT_SLIDE), object_setFlag1(1<<19
+  = OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT), object_setCollisionRegion(1); sets AIAttackVars.Unk_00 = 8 to
+  hand off to the next AI phase.
+
+  - Settles the object at the destination panel and frees its panel reservation.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0, [r7,#oAIAttackVars_Unk_01]` + `tst r0,r0` + `bne loc_80FF10E` is a one-time trajectory-setup
+    check. - `mov r0, #4` / `strb r0, [r7,#oAIAttackVars_Unk_01]` and `mov r0, #0x1e` / `strh r0, [r7,#oAIAttackVars_Unk_10]`
+    initialize phase index and 30-frame duration. - `bl object_getCoordinatesForPanels` followed by `add
+    r0, r0, #0x34` (built as `add r0,r0,r5` after `mov r0,#0x34`) builds the &Coords.X position pointer
+    for math_getThrowSpeeds; gravity is `dword_80FF170 = 0xFFFF6000` loaded into r6. - `math_getThrowSpeeds`
+    outputs are written into [oBattleObject_XVelocity], [oBattleObject_YVelocity], [oBattleObject_ZVelocity].
+    - loc_80FF10E integrates X/Y/Z by adding velocities, applies `add r1, r1, r0` with r0 = 0xFFFF6000
+    to ZVelocity (gravity), and calls object_setPanelsFromCoordinates + object_updateCollisionPanels.
+    - The settle path copies `FuturePanelX/Y` to `PanelX/Y`, calls `object_removePanelReserve`, `object_setCoordinatesFromPanels`,
+    writes 0 to `oBattleObject_Z16`, calls `object_updateCollisionPanels`, then `object_clearFlag(0x40)`
+    (OBJECT_FLAGS_CANNOT_SLIDE), `object_setFlag1(1<<OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT)` i.e. SET `OBJECT_FLAGS_CURRENTLY_MOVING_1`,
+    and `object_setCollisionRegion(1)`. - Final `mov r0,#8; strh r0,[r7,#oAIAttackVars_Unk_00]` advances
+    the AI phase.'
+  refs:
+  - bn6f/asm/asm31.s
+  reproduce: 'python3 tools/asmcat.py 0x080FF0DC
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_moveAlongThrow_80FF0DC
+
+    '
+open_questions:
+- Exact semantic of Unk_01==4 (any nonzero launches the integrator; the only nonzero seen in this code
+  is exactly 4, so other values weren't exercised here).
+- The AIAttackVars is at r7 — the exact role of `oAIAttackVars_Unk_00` next-state value 8 depends on a
+  sibling state table.
+sources:
+- discovery session 2026-10-14 batch 41 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 13ab054c
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80FF0DC -> battleObject_moveAlongThrow_80FF0DC
+  where: bn6f ce204b1d
+  tool: tools/rename_symbol.py

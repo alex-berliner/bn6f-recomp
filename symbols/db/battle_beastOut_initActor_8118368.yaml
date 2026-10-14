@@ -1,0 +1,78 @@
+name: battle_beastOut_initActor_8118368
+address: '0x08118368'
+kind: function
+previous_names:
+- sub_8118368
+status: probable
+summary: 'Initializes a Beast-out / Program-Advance actor battle object: sets state 0x23, attaches a sprite
+  from unk_201F6F0, configures animation/priority/palette, places it on the field by panel column (r6+0x20),
+  zero-fills two fields, and hands off to the per-frame Battle step.'
+interface: 'in = (r5 = BattleObject*, r6 = BattleState*, r10 = Toolkit*) -> flags set by battle_beastOut_runBattleStep
+  (Z on exit); side effects: object + sprite state written via the sprite_* helpers, plus AIData.TotalDamageTaken
+  (0x20) read to position the actor.'
+details: '1) Sets the actor object''s state byte (+0) to 0x23 (`strb r0,[r5]` after `mov r0,#0x23`), so
+  the object''s CurState lands on 0x23 (UPDATE branch — see `CUR_STATE_UPDATE = 0x04` union; 0x23 is its
+  computed-state variant).
+
+  2) Initializes the sprite resource with `initGuiSprite_8002770(r0=0x12, r1=&unk_201F6F0)`, then `sprite_setAnimation(0)`
+  and `sprite_loadAnimationData()` to bring up the first frame.
+
+  3) Calls `sprite_noShadow`, `sprite_setPriority_8002E14(3)`, `slotList_storeHalfwordAndClearField_800306C(0x1C0)`
+  (writes 0x1C0 into the object''s slot, clearing a neighbour), `sprite_setSubRecordFieldA_8003060(1)`,
+  `sprite_setSubEntryPaletteBank_800304A(8)` to dress the rendered OAM.
+
+  4) Sets `object[+8] = 4` (written with `strb r0,[r5,#8]`; per BattleObject that is Params/CurState low
+  byte, here interpreted as a sprite/hitbox flag the routine treats as 4).
+
+  5) Computes coordinates from `AIData.TotalDamageTaken` at `[r6+0x20]` (u16, multiplied by 0x14) and
+  adds 0x1B as the X base, then `sprite_setCoordinates(r0=0xE6, r1=0x1B + (r6+0x20)*0x14)`.
+
+  6) `strb r0,[r5,#0xC] = 0` to clear `Unk_0c`, then `b battle_beastOut_runBattleStep_81183C4`, which
+  performs the per-frame Logic/AI/animation loop and returns alive-enemy-row count via `TST r0,r0` (Z
+  set in capture: `0x1C60` which is alive-enemy count with Z=1).
+
+  7) The function is void-like — its "return" comes from the inner step''s Z flag — but the contract shows
+  `out=[r2,r3,r5]`, so the inner step actually surfaces those to callers of this object.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `strb r0,[r5]` with `mov r0,#0x23` sets CurState byte to 0x23 (lines just past `sub_8118368:`).
+    - `bl initGuiSprite_8002770` uses `r1=&unk_201F6F0` (off_81183C0), the shared 0x12 sprite header for
+    the Beast-out / Program-Advance overlay. - `ldrh r2,[r6,#0x20]` reads BattleState (r6) +0x20 — matches
+    `BattleState.Unk_20` rather than AIData; the multiplier `*0x14` looks like a column stride for the
+    panel grid (3 panels per column * 0x08 stride, or panel-row spacing). - `sprite_setCoordinates(r0=0xE6,
+    r1=0x1B + computed)` hard-codes X=0xE6 and uses the running actor column to drive Y, consistent with
+    placing an overlay actor relative to a fixed pivot on the field. - Tail call to `battle_beastOut_runBattleStep_81183C4`
+    matches the dispatcher summary (Lib/AI + sprite updates, returns enemy-alive count). - Capture''s
+    exit `r0=0x1C60, Z=1` is exactly an alive-enemy-bitmask count of 7 with zero carry, matching the dispatcher''s
+    "alive-enemy-row count" return semantics. - Out-contract lists only `r2,r3,r5` — those are the BattleState
+    fields the inner step updates, not values exposed to upper callers, so this function itself is effectively
+    void-like.'
+  refs:
+  - bn6f/asm/asm32.s
+  reproduce: 'python3 tools/asmcat.py 0x08118368
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battle_beastOut_initActor_8118368
+
+    '
+open_questions:
+- The 0x1B offset (after multiplying `BattleState[0x20] * 0x14`) places the actor on a panel column but
+  the exact panel formula (rows vs columns) is inferred; comparison with sibling beast-out helpers would
+  confirm whether 0x14 is per-row or per-column stride.
+- Whether `r5[+8] = 4` is `CurState` (initialization sub-state for the overlay) or another overlay flag
+  is ambiguous from the struct union alone.
+sources:
+- discovery session 2026-10-14 batch 41 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 13ab054c
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8118368 -> battle_beastOut_initActor_8118368
+  where: bn6f ce204b1d
+  tool: tools/rename_symbol.py

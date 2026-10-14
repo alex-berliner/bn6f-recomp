@@ -1,0 +1,73 @@
+name: startScreen_naviSelectTick_811ED58
+address: '0x0811ED58'
+kind: function
+previous_names:
+- sub_811ED58
+status: probable
+summary: 'PET/Navi-select start-screen per-frame tick: advances an init timer, then on maturity loads
+  GFX anim scripts, spawns eStruct records, and finally queues corner OAM, replays sprite frames, updates
+  the cursor pulse, initialises PET comm-save slots, and scrolls/redraws the BG (with the Navi overlay
+  redraw only after the init phase finishes).'
+interface: (r5 = startScreen state scratch, r10 = toolkit) -> side effects only; clobbers scratch regs
+  as listed
+details: 'Reads the s16 init counter at r5+0x10, adds 4, and stores it back (`add r0,#4 ; strh r0,[r5,#0x10]`).
+
+  If the new value is still negative (`blt loc_811ED8E`) it skips the init block and jumps to the per-frame
+  work.
+
+  In the init block it runs `LoadGFXAnim(byte_811EA68)` then `LoadGFXAnim(byte_811EAB8)` (two GFX anim
+  scripts), zeroes the init counter (r5+0x10), clears r5+0x9 and r5+0xe, sets r5+0xd = 2 and r5+0x0 =
+  4 (looks like a sprite anim slot reinit), then `battle_spawnEStructRecordsFromTable_80465A0(byte_811EB78)`
+  to spawn a 0xFF-terminated (id, slot, param) table.
+
+  Always-on work: `startScreen_queueFourCornerArrows_811F1B8`, `replaySpriteFrames_811F24C`, `battle_updateCursorPulsate_811F0C8`,
+  `petCommSaveInit_811F11C`, `CopyBackgroundTiles_PET_811EF70`.
+
+  If the s16 r5+0x10 is >= 0 it also calls `CopyBackgroundTiles_onNaviSelect_811F54C`, so the "Navi overlay
+  row swap-in" only happens after the init counter wraps to non-negative (i.e., exactly once after init
+  resets the timer to 0, exactly as the callee''s summary says: "when a Navi is selected").
+
+  The callee names (queueFourCornerArrows / replaySpriteFrames / updateCursorPulsate / CopyBackgroundTiles_onNaviSelect
+  / CopyBackgroundTiles_PET) and the byte_811EB78 table referenced by the spawn call all fit `eStruct`-driven
+  PET screen chaff (corner arrows, cursor, BG redraw), consistent with the start-screen / PET-menu subsystem.
+  `eS20047CC` carries an `Unk_56..Unk_60` cluster of small scalars matching the r5 writes seen here (0x0,
+  0x2, 0x4 at offsets 0x9, 0xd, 0x0/0xe), reinforcing r5 as start-screen scratch.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrsh r0,[r5,r1]` with `r1=0x10` then `add r0,#4 ; strh r0,[r5,#0x10]` at the head is an
+    init counter tick. - `blt loc_811ED8E` branches past the init block while the counter stays negative;
+    the per-frame-only callees (`updateCursorPulsate`, `petCommSaveInit`, `CopyBackgroundTiles_PET`) sit
+    after the label. - Two `LoadGFXAnim` calls followed by `battle_spawnEStructRecordsFromTable_80465A0(byte_811EB78)`
+    is the textbook start-of-screen init sequence (load GFX scripts then spawn eStruct table). - `cmp
+    r0,#0 ; blt locret_811EDA6` around `CopyBackgroundTiles_onNaviSelect_811F54C` gates the Navi overlay
+    redraw to post-init (r5+0x10 >= 0) only. - Strings `snap_story2_*.bin` show this function is called
+    from story2 with lr=0x0811ed2a and a fresh start-screen block at `0200f389`, supporting the "start
+    screen" reading.'
+  refs:
+  - bn6f/asm/asm32.s
+  reproduce: 'python3 tools/asmcat.py 0x0811ED58
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): startScreen_naviSelectTick_811ED58
+
+    '
+open_questions:
+- Exact layout of r5-scoped state (likely `eS20047CC` or another 0x64-byte start-screen struct); only
+  three byte writes seen here (offsets 0x9, 0xd, 0xe, 0x0), so the rest is inferred from callee signatures.
+  Walking the toolkit pointer at r10+0x34 (SubmenuPtr) into a ghidra `decompile` of the immediately surrounding
+  `r5 = *(r10+0x34)` setup would settle it.
+sources:
+- discovery session 2026-10-14 batch 41 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 13ab054c
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_811ED58 -> startScreen_naviSelectTick_811ED58
+  where: bn6f ce204b1d
+  tool: tools/rename_symbol.py

@@ -1,0 +1,86 @@
+name: pet_initNavCustMenuSubscreen_811EED0
+address: '0x0811EED0'
+kind: function
+previous_names:
+- sub_811EED0
+status: probable
+summary: 'Initializes the PET navi/customize sub-screen state: loads PET graphics, queues VRAM transfers,
+  plays the unselect cue, forces the navi icon to MegaMan (when story flag 163 is set and current PET
+  navi is 0), sets an internal sub-state byte, kicks the cursor pulse animation, resets PET-comm save
+  slots, and copies the PET background tiles.'
+interface: '() -> void ; side effects: VRAM/IWRAM graphics loads, M4A sound playback, [r5+1] = 8, toolkit
+  side state (cursor pulse, comm-save slots)'
+details: '- Mirrors the typical "init a sub-screen" recipe in this codebase: `copyMemory_8001850` (load
+  PET graphics block at 0x600D400 and 32 bytes at 0x3001B40), then `gfxTransfer_8033978` for font/sprite
+  queueing.
+
+  - `ClearPETMenuDataFlag(1)` clears the bit 0x01 of the PET menu data flags byte (per the callee''s contract).
+
+  - Plays `SOUND_UNSELECT_7C` via `PlaySoundEffect`.
+
+  - If `TestEventFlagFromImmediate(EVENT_163)` is set AND `GetCurPETNavi() == 0`, the code falls through
+  to the same label as the false branch — i.e. it does NOT change `CurPETNavi` in that case (the `bne
+  loc_811EEF8` jumps to the unconditional store). So `CurPETNavi` is left untouched either way; this is
+  a guard ensuring we don''t double-treat the case.
+
+  - Stores 0x08 into `[r5+1]` (offset 0x1 in the r5 toolkit scratch — an index/mode byte for the PET navi/customize
+  sub-screen jumptable).
+
+  - `battle_updateCursorPulsate_811F0C8` advances the cursor pulse animation state.
+
+  - `petCommSaveInit_811F11C` resets/initializes the PET-comm save slot table.
+
+  - `CopyBackgroundTiles_PET_811EF70` copies the PET sub-screen background tiles into VRAM.
+
+  - Tail-call return via `pop {pc}` (no `push {lr}`/`pop`).
+
+  - Return value: `r0 = 0xFFFFFFE0` observed in captured calls but that is debris in `r0` from callees
+  (ClearPETMenuDataFlag returns the previous flag byte XOR''d or so); the function is effectively void
+  per its out contract.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl copyMemory_8001850` immediately followed by `bl gfxTransfer_8033978` — the standard "PET/main-screen
+    graphics init" pair called from other PET sub-screen init funcs. - `mov r0, #1; bl ClearPETMenuDataFlag`
+    — argument 0x1 selects a flag bit per the callee''s contract. - `mov r0, #SOUND_UNSELECT_7C; bl PlaySoundEffect`
+    — plays the unselect SFX (the navi/customize menu is being entered from somewhere like the PET menu).
+    - `movflag EVENT_163 / bl TestEventFlagFromImmediate` reads the same story flag tested by other "PET
+    customize" entry points (consistent with navi-related toggling). - `bl GetCurPETNavi; cmp r0, #0;
+    bne loc_811EEF8` — checks the current PET navi; the branch lands on the same store that the fall-through
+    does, meaning the post-flag-check store is unconditional (no navi swap occurs here, contrary to what
+    a naive read suggests). - `mov r0, #8; strb r0, [r5,#1]` — writes 8 into the second byte of the r5
+    scratch, matching other PET-subscreen init functions that set an 8-state subindex. - `bl battle_updateCursorPulsate_811F0C8`
+    is the PET/navi cursor pulse per-frame hook (project summary confirms). - `bl petCommSaveInit_811F11C`
+    initializes PET-comm save slots. - `bl CopyBackgroundTiles_PET_811EF70` — name in the symbol table
+    literally says "CopyBackgroundTiles_PET". - `pop {pc}` means the function is entered via `push {lr};
+    ...; pop {pc}` pattern (it pushes only `lr`, not the local callee-saved set), used by sub-screen init
+    funcs that are themselves tail-call dispatched.'
+  refs:
+  - bn6f/asm/asm32.s
+  reproduce: 'python3 tools/asmcat.py 0x0811EED0
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): pet_initNavCustMenuSubscreen_811EED0
+
+    '
+open_questions:
+- The exact semantics of `[r5+1] = 8` — without confirming the struct held in r5 here the most we can
+  say is "the PET sub-screen jumptable index byte is set to 8"; a labeled struct definition for the PET-subscreen
+  scratch would settle this.
+- The captured-call exit `r0 = 0xFFFFFFE0` is not a real return value; a small callee (likely `ClearPETMenuDataFlag`
+  returning previous-bits, `0xE0`) trickles through the many `bl` calls that aren't fully audited. The
+  function itself does not produce a meaningful r0.
+sources:
+- discovery session 2026-10-14 batch 41 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 13ab054c
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_811EED0 -> pet_initNavCustMenuSubscreen_811EED0
+  where: bn6f ce204b1d
+  tool: tools/rename_symbol.py
