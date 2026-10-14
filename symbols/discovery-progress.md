@@ -1866,3 +1866,82 @@ Highlights:
 | 32    | 25                 | 17                        | 8               | 0       |
 
 Running total: named 577, hypothesis-only 219, dropped 0 (of ~10,600 placeholders).
+
+## Batch 33 (2026-10-14)
+
+25 functions, 19 named + 6 hypothesis (sub_8083DF0, sub_8086EA8, sub_80897E8,
+sub_80ED154, sub_810D808, sub_8141A70 kept as comment only), renamed in
+recomp 133a0839 (bn6f pushed; port ROM unchanged).
+
+Highlights:
+- battle: fill chip select row (battle_fillChipSelectRow_802C588);
+- battle: tick beast-SP (battle_tickBeastSp_808985A);
+- battle AI: set AI data unk-18 (ai_setAIDataUnk18_8089CB0);
+- battle: dispatch AI action by action
+  (battle_dispatchAIActionByAction_80A7E4C);
+- object: mr weather step (object_mrWeatherStep_80A94DC);
+- overworld map object: update layer priority for player Z
+  (owMapObject_updateLayerPriorityForPlayerZ_80A95EC);
+- battle object: throw and land action
+  (battleObject_throwAndLandAction_80C58E0);
+- object: run collision update (object_runCollisionUpdate_80C876C);
+- battle object: decide enemy Y target direction
+  (battleObject_decideEnemyYTargetDirection_80CBAFA);
+- battle object: attack vars tick exit timer
+  (battleObject_attackVars_tickExitTimer_80F1888);
+- battle AI attack: tick AI attack vars timer
+  (aiAttack_tickAiAttackVarsTimer_81097DC);
+- battle: AI attack dispatch (battle_aiAttackDispatch_810BFB8);
+- battle object: mark cracked or element hit
+  (battleObject_markCrackedOrElementHit_810F090);
+- battle: clear animation and free timer
+  (battle_clearAnimationAndFreeTimer_8112630);
+- battle beast-out: run battle step
+  (battle_beastOut_runBattleStep_81183C4);
+- folder edit: A-confirm press (folderEdit_AConfirmPress_8134A3C);
+- battle: reset IO pad scratch entries
+  (battle_resetIOPadScratchEntries_813BE8C);
+- startScreen: run jumptable
+  (startScreen_runJumpTable_813DA94);
+- battle object: run update routine
+  (battleObject_runUpdateRoutine_814E1FC).
+
+## Tally update
+
+| batch | functions examined | named (renamed via record) | hypothesis-only | dropped |
+|-------|--------------------|---------------------------|-----------------|---------|
+| 1     | 25                 | 25                        | 0               | 0       |
+| 2     | 21                 | 20                        | 1               | 0       |
+| 3     | 25                 | 23                        | 2               | 0       |
+| 4     | 25                 | 21                        | 4               | 0       |
+| 5     | 25                 | 20                        | 5               | 0       |
+| 6     | 25                 | 21                        | 4               | 0       |
+| 7     | 25                 | 19                        | 6               | 0       |
+| 8     | 25                 | 20                        | 5               | 0       |
+| 9     | 25                 | 18                        | 7               | 0       |
+| 10    | 25                 | 14                        | 11              | 0       |
+| 11    | 25                 | 17                        | 8               | 0       |
+| 12    | 25                 | 15                        | 10              | 0       |
+| 13    | 25                 | 19                        | 6               | 0       |
+| 14    | 25                 | 19                        | 6               | 0       |
+| 15    | 25                 | 21                        | 4               | 0       |
+| 16    | 25                 | 21                        | 4               | 0       |
+| 17    | 25                 | 21                        | 4               | 0       |
+| 18    | 25                 | 20                        | 5               | 0       |
+| 19    | 25                 | 17                        | 8               | 0       |
+| 20    | 25                 | 15                        | 10              | 0       |
+| 21    | 25                 | 18                        | 7               | 0       |
+| 22    | 25                 | 17                        | 8               | 0       |
+| 23    | 25                 | 14                        | 11              | 0       |
+| 24    | 25                 | 15                        | 10              | 0       |
+| 25    | 25                 | 19                        | 6               | 0       |
+| 26    | 25                 | 16                        | 9               | 0       |
+| 27    | 25                 | 15                        | 10              | 0       |
+| 28    | 25                 | 17                        | 8               | 0       |
+| 29    | 25                 | 13                        | 12              | 0       |
+| 30    | 25                 | 15                        | 10              | 0       |
+| 31    | 25                 | 15                        | 10              | 0       |
+| 32    | 25                 | 17                        | 8               | 0       |
+| 33    | 25                 | 19                        | 6               | 0       |
+
+Running total: named 596, hypothesis-only 225, dropped 0 (of ~10,600 placeholders).
