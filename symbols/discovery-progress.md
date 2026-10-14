@@ -1100,3 +1100,69 @@ Highlights:
 | 21    | 25                 | 18                        | 7               | 0       |
 
 Running total: named 404, hypothesis-only 117, dropped 0 (of ~10,600 placeholders).
+
+## Batch 22 (2026-10-14)
+
+25 functions, 17 named + 8 hypothesis (sub_8031C7C, sub_8083DF0, sub_8086EA8,
+sub_80897A6, sub_80E1670, sub_81185E4, sub_8118604, sub_8123BE0 kept as
+comment only), renamed in recomp f5bca610 (bn6f pushed; port ROM unchanged).
+
+Highlights:
+- battle object: apply fullscreen shake and camera bump
+  (battleObject_applyFullscreenShakeAndCameraBump_8031388);
+- battle: calc rel pos and advance textbox blink
+  (battle_calcRelPosAndAdvanceTextboxBlink_8031C2A);
+- game state: get protected bugfrags
+  (gameState_getProtectedBugfrags_803D0F4);
+- battle: update link state (battle_updateLinkState_803DEB4);
+- battle object: dispatch beast-out action
+  (battleObject_dispatchBeastOutAction_804CBA4);
+- beast-SP: spawn index dispatcher
+  (beastSp_spawnIndexDispatcher_804CC8E);
+- battle object: panel snapshot buffer init
+  (battleObject_panelSnapshotBufferInit_80A54F0);
+- overworld player: set direction anim from offset
+  (owPlayer_setDirectionAnimFromOffset_80A5974);
+- battle object: get damage element or palette
+  (battleObject_getDamageElementOrPalette_80C46CC);
+- battle AI: try chip attack (battle_aiTryChipAttack_810F1B6);
+- battle AI: snake arm tick step (battle_aiSnakeArmTickStep_8112A78);
+- battle object: apply AI data to attack table
+  (battleObject_applyAIDataToAttackTable_8123BC0);
+- battle object: run AI turn phase
+  (battleObject_runAITurnPhase_8123C00);
+- battle: update target panels all rows
+  (battle_updateTargetPanelsAllRows_813BD24);
+- battle: get AI data version fields
+  (battle_getAIDataVersionFields_81418E4);
+- pet: test is map group allowed (pet_testIsMapGroupAllowed_8141AA8);
+- cutscene: dispatch event flags (cutscene_dispatchEventFlags_8142618).
+
+## Tally update
+
+| batch | functions examined | named (renamed via record) | hypothesis-only | dropped |
+|-------|--------------------|---------------------------|-----------------|---------|
+| 1     | 25                 | 25                        | 0               | 0       |
+| 2     | 21                 | 20                        | 1               | 0       |
+| 3     | 25                 | 23                        | 2               | 0       |
+| 4     | 25                 | 21                        | 4               | 0       |
+| 5     | 25                 | 20                        | 5               | 0       |
+| 6     | 25                 | 21                        | 4               | 0       |
+| 7     | 25                 | 19                        | 6               | 0       |
+| 8     | 25                 | 20                        | 5               | 0       |
+| 9     | 25                 | 18                        | 7               | 0       |
+| 10    | 25                 | 14                        | 11              | 0       |
+| 11    | 25                 | 17                        | 8               | 0       |
+| 12    | 25                 | 15                        | 10              | 0       |
+| 13    | 25                 | 19                        | 6               | 0       |
+| 14    | 25                 | 19                        | 6               | 0       |
+| 15    | 25                 | 21                        | 4               | 0       |
+| 16    | 25                 | 21                        | 4               | 0       |
+| 17    | 25                 | 21                        | 4               | 0       |
+| 18    | 25                 | 20                        | 5               | 0       |
+| 19    | 25                 | 17                        | 8               | 0       |
+| 20    | 25                 | 15                        | 10              | 0       |
+| 21    | 25                 | 18                        | 7               | 0       |
+| 22    | 25                 | 17                        | 8               | 0       |
+
+Running total: named 421, hypothesis-only 125, dropped 0 (of ~10,600 placeholders).
