@@ -1,0 +1,69 @@
+name: battleObject_dispatchActionHandler_801B394
+address: '0x0801B394'
+kind: function
+previous_names:
+- sub_801B394
+status: probable
+summary: Applies a battle object's pending collision damage (white flash, hit SFX, HP subtraction, defeat/status
+  transitions) and then dispatches its CurAction handler from the caller-supplied table.
+interface: 'void battleObject_dispatchActionHandler(r0 = handler table (function pointers indexed by CurAction*4),
+  u32 r5 /* battle object */) : r0 r5 -> [r5 r10]'
+details: 'r0 (saved on the stack) is a table of action-handler addresses indexed by oBattleObject_CurAction*4;
+  r5 the battle object. First: r6 = CollisionDataPtr, r7 = AIDataPtr (unused here). If CollisionData.FinalDamage
+  (halfword at +0x80) is nonzero: sprite_forceWhitePalette, PlaySoundEffect(SOUND_UNK_85), object_subtractHP(FinalDamage)
+  (push/pop {r0} keeps the value across the sprite call). If CollisionData flags word (+0x70?) & 0xC800002,
+  HP is forced to 0. If ObjectFlags2 bit 0x8000 is clear and HP == 0, object_setFlag2(1) (defeated). ObjectFlags1
+  bit 0x100 (dead) goes straight to the dispatch tail. Status-transition cascade: Flag2 bit 0x1 -> clear,
+  object_setFlag1(0x8) (invulnerable), CurAction=2, phase cleared; Flag2 & 0xC00 or Flag1 & 0x2000 ->
+  sub_8018002 and return; Flag2 & 0x3000 or Flag1 & 0x30000000 -> sub_801813A and return. battle_isTimeStop:
+  dispatch only when CurAction==0, else sub_801823C. Normal path: Flag2 bit 0x100 -> clear, back up CurStateActionPhaseAndPhaseInitialized
+  into offset 0x5c, CurAction=5 phase 0, Unk_0d=0; else Flag1 bit 0x100000 -> CurAction=5. Tail: sprite_zeroColorShader,
+  hideSummonsWhenBlind_80181F6, then ldr r0,[r1, CurAction*4] / mov lr,pc / bx r0 into the caller''s handler.
+  All callers are battle-object update routines passing their own action-handler table (e.g. the PlayerObjectAIAttackJumptables
+  tables).
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: 'Body read line by line: the FinalDamage halfword at [r6,#0x80] with white palette + SOUND_UNK_85
+    + object_subtractHP, the 0xC800002 mask, the defeat/status cascade, and the CurAction*4 dispatch through
+    the stack-saved table.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'awk ''/sub_801B394:/{f=1} f{print} f&&/thumb_func_end/{exit}'' bn6f/asm/asm00_2.s
+
+    '
+  result: the body read as described above
+- method: caller-analysis
+  date: '2026-10-14'
+  detail: About 12 direct bl sites (battleObject_respawn_80D84DE and the banked player/navi update variants).
+  reproduce: 'grep -cn ''bl sub_801B394'' bn6f/asm/asm31.s
+
+    '
+  result: 12 direct call sites in bn6f/asm/asm31.s (first at :32625); captured calls lr=0801ba10
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp, chips, maps, story5, story6, story7'
+  reproduce: 'grep -l ''^0801b394 '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp, chips, maps, story5, story6, story7
+related:
+- battleObject_actionFlinch_80174FE
+- sub_80175B8
+- battleObject_respawn_80D84DE
+open_questions:
+- The game meaning of the CollisionData mask 0xC800002 and of the ObjectFlags2 bits 0xC00/0x3000/0x8000
+  handled in the cascade.
+sources:
+- discovery session 2026-10-14 (outside model hyper/glm-5.3-flash, build/repro/discover)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b29fc142
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801B394 -> battleObject_dispatchActionHandler_801B394
+  where: bn6f 6ea2baf9
+  tool: tools/rename_symbol.py

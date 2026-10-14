@@ -191,10 +191,10 @@ Next chatbox_checkAdvanceTextPrint_8040154(void) {
 #define COL_STRIDE         0x20
 #define CHAR_TABLE_STRIDE  8
 
-/* register form: calls sub_802FE28 outside this file, which has no typed C interface yet */
+/* register form: calls sprite_queueOamEntryThunk_802FE28 outside this file, which has no typed C interface yet */
 static void emit_oam(u32 attr01, u32 tile, u32 unused, u32 mode) {
     R0 = attr01; R1 = tile; R2 = unused; R3 = mode;
-    GUEST_CALL(sub_802FE28);
+    GUEST_CALL(sprite_queueOamEntryThunk_802FE28);
 }
 
 /* Emit 3 rows × 6 columns of OAM sprite entries for the chatbox text grid.
@@ -222,7 +222,7 @@ static void emit_chatbox_grid(u32 chatbox) {
 
 /* chatbox_emitTextGridOAM_804021C(r5 = ChatBoxProperties*)
  * Outputs r1 = input r12 (the epilogue pop sequence leaves r1 with the
- * originally-pushed r12 value).  r2/r3 are whatever sub_802FE28 leaves
+ * originally-pushed r12 value).  r2/r3 are whatever sprite_queueOamEntryThunk_802FE28 leaves
  * in them after the last GUEST_CALL. */
 Next chatbox_emitTextGridOAM_804021C(void) {
     u32 saved_r12 = R12;
@@ -620,13 +620,13 @@ static void queue_eight_word_aligned_gfx_transfer(u32 src, u32 dest, u32 size) {
     GUEST_CALL(QueueEightWordAlignedGFXTransfer);
 }
 
-/* register form: calls sub_802FE28 outside this file, which has no typed C interface yet */
+/* register form: calls sprite_queueOamEntryThunk_802FE28 outside this file, which has no typed C interface yet */
 static void call_sub_802FE28(u32 a1, u32 a2, u32 not_used, u32 a4) {
     R0 = a1;
     R1 = a2;
     R2 = not_used;
     R3 = a4;
-    GUEST_CALL(sub_802FE28);
+    GUEST_CALL(sprite_queueOamEntryThunk_802FE28);
 }
 
 /* Drives one frame of the chatbox ED-select animation: streams a tile row into VRAM,

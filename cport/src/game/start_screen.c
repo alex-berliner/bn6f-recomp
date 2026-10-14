@@ -236,13 +236,13 @@ static inline U32Pair call_SetEventFlagFromImmediate(u8 r0, u8 r1) {
     return (U32Pair){ R0, R1 };
 }
 
-/* register form: generated typed wrapper: sub_802FE28's signature is confident (symbols/db sub_802FE28.yaml, signature:) */
+/* register form: generated typed wrapper: sprite_queueOamEntryThunk_802FE28's signature is confident (symbols/db sprite_queueOamEntryThunk_802FE28.yaml, signature:) */
 static inline u8 call_sub_802FE28(u32 r0, u16 r1, u32 r2, u32 r3) {
     R0 = r0;
     R1 = r1;
     R2 = r2;
     R3 = r3;
-    GUEST_CALL(sub_802FE28);
+    GUEST_CALL(sprite_queueOamEntryThunk_802FE28);
     return R0;
 }
 
@@ -680,7 +680,7 @@ static void start_screen_do_random_script(void) {
     }
 }
 
-/* sub_802F8D8 */
+/* startScreen_updateFrame_802F8D8 */
 static void start_screen_update_frame(StartScreen *self) {
     u8 v = self->Unk_06 + 1;
     if (v >= 0x12) {

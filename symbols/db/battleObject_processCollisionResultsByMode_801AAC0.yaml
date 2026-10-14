@@ -1,0 +1,67 @@
+name: battleObject_processCollisionResultsByMode_801AAC0
+address: '0x0801AAC0'
+kind: function
+previous_names:
+- sub_801AAC0
+status: probable
+summary: 'Per-frame collision/damage processing pipeline for a battle object: the navi-AI variant that
+  skips battle_tickAiSelfDrain when the battle mode is 0xA, and applies the status effect unconditionally.'
+interface: 'void battleObject_processCollisionResultsByMode(u32 r5 /* battle object */) : r5 -> [r4 r5
+  r10]'
+details: 'Family variant dispatched as the action-phase handler of navi AI indexes 12-17 (entries 12-17
+  of off_80F2410, the per-AIIndex action table sub_80F2354 walks). Prologue and early-outs as the family:
+  sprite_clearFinalPalette, r7 = CollisionDataPtr, battle_getFlags bit 0 clear exits, object_removeCollisionData,
+  battle_isBattleOver, object flag 0x100 (dead). Then GetBattleMode: when it returns 0xA, battle_tickAiSelfDrain_8010230
+  is skipped (cmp #0xa / beq loc_801AB02). Otherwise the standard chain: battleObject_handleImpact_802CFF8,
+  hiveBlockHappensHere_802CEF4, battle_incrementAllianceStatOnCollisionHit_801A6B4, battle_buffTwoStatsPlus2OnEventF6_801A720,
+  applyChipAllianceEffect_8013AE4, sub_801AEB0, battle_applyFlattenHitStatus_800EB26, battleObject_applyStatusEffect_801A554
+  (unconditional, no NameID carve-out), sub_801A2CC, battle_toggleAllianceAndAccumulateCollisionToAiData_801A308,
+  object_calculateFinalDamage1, sub_801A420, battle_objectClearPendingHitIfCollisionProcessed_8010198,
+  battle_clearInvisFlashTimer_801A648, object_spawnHiteffect.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: 'Body read line by line: the family gates, the GetBattleMode cmp #0xa branch over battle_tickAiSelfDrain_8010230,
+    and the full tail chain with the unconditional battleObject_applyStatusEffect_801A554.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'awk ''/sub_801AAC0:/{f=1} f{print} f&&/thumb_func_end/{exit}'' bn6f/asm/asm00_2.s
+
+    '
+  result: the body read as described above
+- method: caller-analysis
+  date: '2026-10-14'
+  detail: 'No direct bl callers: the function is a .word entry (+1) of the navi per-AIIndex action table
+    off_80F2410, dispatched by sub_80F2354 (state 4 handler of sub_80F2330, the navi object''s per-state
+    dispatch) via mov lr,pc / bx.'
+  reproduce: 'grep -n ''sub_801AAC0+1'' bn6f/asm/asm31.s
+
+    '
+  result: entries 12-17 of off_80F2410 (bn6f/asm/asm31.s:124342-124347), the navi action table; captured
+    calls lr=080f2364 (inside sub_80F2354)
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battlesweep, beastsp, chips, story7'
+  reproduce: 'grep -l ''^0801aac0 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battlesweep, beastsp, chips, story7
+related:
+- battleObject_processCollisionResults_801A9B8
+- battleObject_processCollisionResultsForEnemy_801ABB8
+- battleObject_processCollisionResultsForPlayer_801AC6C
+open_questions:
+- What battle mode 0xA is (the value battle_tickAiSelfDrain_8010230 is skipped in).
+sources:
+- discovery session 2026-10-14 (outside model hyper/glm-5.3-flash, build/repro/discover)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b29fc142
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801AAC0 -> battleObject_processCollisionResultsByMode_801AAC0
+  where: bn6f 6ea2baf9
+  tool: tools/rename_symbol.py

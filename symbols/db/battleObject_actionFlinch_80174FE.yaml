@@ -1,0 +1,72 @@
+name: battleObject_actionFlinch_80174FE
+address: '0x080174FE'
+kind: function
+previous_names:
+- sub_80174FE
+status: probable
+summary: 'Flinch action handler (CurAction 3, ''on flinch'' in the PlayerObjectAIAttackJumptables annotation):
+  dispatches the AI, commits the pushed-back FuturePanel position, plays animation 1 for 23 frames, then
+  ends the action.'
+interface: 'void battleObject_actionFlinch(u32 r5 /* battle object */) : r5 -> [r5 r10] (captured exits
+  r0 = Timer countdown)'
+details: 'Entry 3 of the per-AIIndex action handler tables (PlayerObjectAIAttackJumptables / off_80EA52C
+  and its copies, annotated ''// on flinch // 0x03''), dispatched through sub_801B394''s CurAction dispatch.
+  First entry (oBattleObject_PhaseInitialized == 0): ai_dispatchByTypeAndIndex_800F3E8 runs the AI''s
+  reaction, then object_setFlag1(0x400400), battle_object_clearFlagsAndCollisionCounter_801A284, battleObject_clearHitFlags_801A29A,
+  battleObject_resetCollisionState_801A2B0, battle_resetCollisionState_80101C4, ClearAIDataUnk0x48Flag(0x20005f),
+  object_clearFlag(0x100041), sub_8012EA8. Unless ObjectFlags1 bit 0x1000 (sliding) is set, commits the
+  move: FuturePanelX/Y -> PanelX/Y, object_removePanelReserve, object_setCoordinatesFromPanels, object_updateCollisionPanels,
+  Z = 0. Then CurAnim=1 / CurAnimCopy=0xFF, sub_8011450, flip, RelatedObject1Ptr = 0, oAIData_Unk_68 =
+  0, tableAddSaturatedByte_800AB46(alliance, 3, 1), Timer = 0x17 (23 frames), PhaseInitialized = 4. Countdown:
+  decrements Timer each frame; when it goes negative, clears 0x400400, ClearAIData_Unk_44_Flag(0x3f),
+  CurAnim = 0, CurAction = 8, CurPhaseAndPhaseInitialized = 0.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: 'Body read line by line: the PhaseInitialized split, the 0x400400/0x100041 flag writes, the
+    FuturePanel commit guarded by bit 0x1000, Timer=0x17 / PhaseInitialized=4, and the countdown ending
+    in CurAction=8.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'awk ''/sub_80174FE:/{f=1} f{print} f&&/thumb_func_end/{exit}'' bn6f/asm/asm00_2.s
+
+    '
+  result: the body read as described above
+- method: caller-analysis
+  date: '2026-10-14'
+  detail: Entry 3 ('// on flinch // 0x03') of the action handler tables behind PlayerObjectAIAttackJumptables
+    (off_80EA52C and copies); dispatched via sub_801B394's CurAction table. Captured calls lr=0801ba10
+    (inside sub_801B394).
+  reproduce: 'grep -n ''sub_80174FE+1'' bn6f/asm/asm31.s
+
+    '
+  result: the '// on flinch // 0x03' entry and its copies in off_80EA52C/off_80EA550/... (bn6f/asm/asm31.s:108017ff)
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3,
+    story2, story4, story5, story7, story9'
+  reproduce: 'grep -l ''^080174fe '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3, story2, story4,
+    story5, story7, story9
+related:
+- battleObject_dispatchActionHandler_801B394
+- sub_80175B8
+- battle_endTurnMarkActed_8017888
+open_questions:
+- What the column-3 counter incremented via tableAddSaturatedByte_800AB46(alliance, 3, 1) counts (byte_203EAE0
+  table).
+sources:
+- discovery session 2026-10-14 (outside model hyper/glm-5.3-flash, build/repro/discover)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b29fc142
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80174FE -> battleObject_actionFlinch_80174FE
+  where: bn6f 6ea2baf9
+  tool: tools/rename_symbol.py

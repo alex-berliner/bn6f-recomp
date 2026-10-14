@@ -1,0 +1,70 @@
+name: pet_menuUpdateAndHandleExit_8005462
+address: '0x08005462'
+kind: function
+previous_names:
+- sub_8005462
+status: probable
+summary: 'Per-frame main state handler of the PET menu subsystem (game state 0x18): runs the PET scene
+  pipeline each tick and handles the exit modes - fade-out back to main state 0x28, or the final return
+  to the overworld.'
+interface: 'void pet_menuUpdateAndHandleExit(u32 r5 /* GameState */) : r5 -> [r4 r5 r6 r8 r9 r10 r11 r12]
+  (captured exits r0 = 0)'
+details: 'One-time gate: when ePETMenuData byte 0x8 (byte_200DF28) is 0 it stores 1 and calls sub_811EC50
+  (the subsystem''s five-step init) before the first frame. Every frame it runs the PET pipeline in fixed
+  order: dispatch_80339CC, sub_80039AA, sub_8003AFA, sub_80027B4, sub_800286C, sub_8003BF4, sub_8003E98,
+  npc_drawSprites_800467C, sub_8004298, sub_8004590, sub_8004934, event_runArmedCallback_80024AE. Exit
+  handling reads ePETMenuData byte 0x1 (byte_200DF21): mode 4 with a screen fade already active reloads
+  the menu gfx (copyMemory_8001850 to VRAM 0x600D400), zero-fills the 0x2009740/0x200F3A0 scratch structs,
+  calls pet_prepareMenuOnReturn_811F6C0, mainState_resetGameAndGoto28_8005524 (main state -> 0x28), TerminateGFXAnim(0x11),
+  sub_8046664 and chatbox_8040818; mode 4 without a fade starts the fade-out (SetScreenFade(0xC, 0x10)
+  after ho_811ED1C); mode 8 is the final exit to the overworld: writes 4 into oGameState_SubsystemIndex
+  (r5), 0 into oGameState+0xE, clears the OW player state bytes 0xD-0xF (owPlayer_ClearStateBytes_D_E_F_809E04C)
+  and clears event flags 742, 743, 962, 963.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: 'Body read line by line: the ePETMenuData+8 one-shot init, the fixed 12-call pipeline, the exit
+    modes 4 (with/without fade) and 8 (SubsystemIndex=4, owPlayer_ClearStateBytes_D_E_F_809E04C, flags
+    742/743/962/963).'
+  refs:
+  - bn6f/asm/asm00_1.s
+  reproduce: 'awk ''/sub_8005462:/{f=1} f{print} f&&/thumb_func_end/{exit}'' bn6f/asm/asm00_1.s
+
+    '
+  result: the body read as described above
+- method: caller-analysis
+  date: '2026-10-14'
+  detail: 'Reached through the game-state dispatch: .word sub_8005462+1 in the cbGameState_80050EC jumptable
+    (bn6f/asm/asm00_1.s:4419); captured calls lr=080050fc.'
+  reproduce: 'grep -n ''sub_8005462+1'' bn6f/asm/asm00_1.s
+
+    '
+  result: bn6f/asm/asm00_1.s:4419 (game-state jumptable entry)
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^08005462 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus2, menus3, story1, story2, story3,
+    story4, story5, story6, story7, story8, story9
+related:
+- gamestate_openPetMenuOnStartPress_8005AF4
+- pet_prepareMenuOnReturn_811F6C0
+- mainState_resetGameAndGoto28_8005524
+open_questions:
+- Who writes ePETMenuData byte 0x1 (the exit modes 4 and 8), to name the two exit paths precisely.
+sources:
+- discovery session 2026-10-14 (outside model hyper/glm-5.3-flash, build/repro/discover)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b29fc142
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8005462 -> pet_menuUpdateAndHandleExit_8005462
+  where: bn6f 6ea2baf9
+  tool: tools/rename_symbol.py

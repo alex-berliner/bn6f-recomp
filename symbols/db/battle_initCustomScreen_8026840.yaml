@@ -1,0 +1,75 @@
+name: battle_initCustomScreen_8026840
+address: '0x08026840'
+kind: function
+previous_names:
+- sub_8026840
+status: probable
+summary: 'One-time-per-run init of the battle custom (chip-select) screen: resets battle state words,
+  loads the chip-select tilemap/OBJ graphics, initialises the eS20364C0 state (NaviIndex, folder chip
+  count, selectable PET-Navi candidates) and advances the battle phase counter.'
+interface: 'void battle_initCustomScreen(void) : r10 (toolkit) -> [r2 r3 r4 r5 r6 r8 r9] (callee-saved
+  restored)'
+details: 'Reads oBattleState_Unk_07; on the first entry (==0) also zero-fills dword_20349A0 (0x14 bytes)
+  and calls battle_setUnk20349A5Flag_802A210. Always: ClearCustGauge, dispatch_801DACC(0x30172) and dispatch_801DACC(0x400),
+  clears mask 0x20130 in eStruct2035280 (flags_clearBits_eStruct2035280_801BED6). Reads NaviStats byte
+  0x29 (NaviIndex) for the actor; when sub_8029F70''s mode condition passes and the actor emotion is not
+  5, counts unmasked event flags (countUnmaskedEventFlags_8029EC8) and copies one of the two 0x258-byte
+  tilemap blobs (byte_86E625C vs byte_86E64B4) to unk_2035000, then stamps rectangles from the 6-byte-entry
+  table byte_8027B2C (x,y,w,h,flags; 0xFF sentinel) via sub_8027CCC. Zero-fills eS20364C0 (0x70 bytes)
+  and initialises it: +0x10/+0x11/+0x15 = NaviIndex, +4 = 1, +0xC = 0xFF, +0x18 = sub_8029EF8''s selectable
+  PET-Navi candidate list (when the mode condition holds and emotion != 5), +9 = 0x1A, halfword +0x20
+  = 0xFFFF. Increments oBattleState_Unk_07. byte_20364CC from the GetBattleMode lookup byte_80269BC (modes
+  2..5 -> 0..3, mode 8 -> 6, else 0xFF); on later passes, mode 5 with the emotion condition forces 5.
+  Then tickBeastOutCounter_802A49C, battle_updateBeastOutCounter_802A40C, battle_compactFolderChipList_802945A,
+  expireBattleFlag_802A646, battle_countFolderChips_8027D58 (count into eS20364C0+5), sub_8027E2C, sub_8028250,
+  sprite_CopyObjTilesToVramSlot_80281D4 + sub_8029CD4 (4 OBJ tile slots), sub_8028476, sub_8015940, battle_ClearPendingEventFlag_802A0EC.
+  Called once per custom-screen run by sub_8009338''s tick, which then polls sub_8026A28 until the screen
+  finishes and advances the battle state machine.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: 'Body read line by line: the Unk_07 first-entry gate, the tilemap blob copy and byte_8027B2C
+    stamping loop, the eS20364C0 init with NaviIndex and the sub_8029EF8 candidate list, the Unk_07 increment,
+    the byte_80269BC mode lookup, and the folder/beast-out tail.'
+  refs:
+  - bn6f/asm/asm03_0.s
+  reproduce: 'awk ''/sub_8026840:/{f=1} f{print} f&&/thumb_func_end/{exit}'' bn6f/asm/asm03_0.s
+
+    '
+  result: the body read as described above
+- method: caller-analysis
+  date: '2026-10-14'
+  detail: One direct bl site, inside sub_8009338 (bn6f/asm/asm00_1.s:13588); captured calls lr=0800934f.
+  reproduce: 'grep -n ''bl sub_8026840'' bn6f/asm/asm00_1.s
+
+    '
+  result: bn6f/asm/asm00_1.s:13588 (inside sub_8009338)
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^08026840 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+related:
+- sub_8026A28
+- eS20364C0
+- battle_compactFolderChipList_802945A
+open_questions:
+- What the byte_80269BC mode lookup (0..3/6/0xFF into byte_20364CC) selects, and which of the two tilemap
+  blobs corresponds to which condition.
+sources:
+- discovery session 2026-10-14 (outside model hyper/glm-5.3-flash, build/repro/discover)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b29fc142
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8026840 -> battle_initCustomScreen_8026840
+  where: bn6f 6ea2baf9
+  tool: tools/rename_symbol.py

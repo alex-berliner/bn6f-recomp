@@ -1,0 +1,62 @@
+name: battleObject_initRisingShot_80CAD4C
+address: '0x080CAD4C'
+kind: function
+previous_names:
+- sub_80CAD4C
+status: probable
+summary: 'Init handler of a forward-flying, slowly rising projectile: forward speed picked from the four-word
+  table byte_80CADCC by Param1, ZVelocity +1.0/frame, then hands off to the standard update; no sound,
+  no private updater.'
+interface: 'void battleObject_initRisingShot(u32 r5 /* battle object */) : r5 -> [r5 r8 r10]'
+details: 'Recomputes pixel coords from panels and stores 0xFF into oBattleObject_Z16 (halfword 0x3E).
+  XVelocity = object_getEnemyDirection() * byte_80CADCC[oBattleObject_Param1] (Param1*4 index; words 0x5A000,
+  0x6A000, 0x75000, 0x90000 = 5.6/6.6/7.3/9.0 px/frame in 16.16), ZVelocity = 0x10000 (1.0/frame, from
+  dword_80CADDC). sprite_load(0x80, 8, 0xD) + sprite_hasShadow, ObjectFlags |= 2 (visible), CurAnim =
+  CurAnimCopy = 0x17, sprite_setAnimation(0x17) + sprite_loadAnimationData, palette 0, flip per alliance.
+  Allocates collision data (frees the object on failure), object_setupCollisionData(4,5,3), hit effect
+  2, object_clearCollisionRegion, object_presentCollisionData once, CurState = CUR_STATE_UPDATE, return
+  (no tail-called updater, no PlaySoundEffect).
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: 'Body read line by line: the Z16=0xFF store, the speed-table multiply into XVelocity, ZVelocity
+    = 0x10000, sprite (0x80,8,0xD) + anim 0x17, collision (4,5,3) + hit effect 2, and the plain return.'
+  refs:
+  - bn6f/asm/asm31.s
+  reproduce: 'awk ''/sub_80CAD4C:/{f=1} f{print} f&&/thumb_func_end/{exit}'' bn6f/asm/asm31.s
+
+    '
+  result: the body read as described above
+- method: caller-analysis
+  date: '2026-10-14'
+  detail: 'No direct bl callers: the function is a .word entry (+1) of a state jumptable (bn6f/asm/asm31.s:40592).'
+  reproduce: 'grep -n ''sub_80CAD4C+1'' bn6f/asm/asm31.s
+
+    '
+  result: bn6f/asm/asm31.s:40592 (state-0 entry of its type's jumptable)
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battlesweep, beastsp, chips'
+  reproduce: 'grep -l ''^080cad4c '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battlesweep, beastsp, chips
+related:
+- battleObject_initFastLunge_80CE554
+- battleObject_initBriefCollisionObject_80C9BE8
+open_questions:
+- Which in-game attack this is (sprite resource 8/0xD, anim 0x17); what the 0xFF in oBattleObject_Z16
+  means for rendering.
+sources:
+- discovery session 2026-10-14 (outside model hyper/glm-5.3-flash, build/repro/discover)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b29fc142
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80CAD4C -> battleObject_initRisingShot_80CAD4C
+  where: bn6f 6ea2baf9
+  tool: tools/rename_symbol.py

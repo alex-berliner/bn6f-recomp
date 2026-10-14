@@ -2210,7 +2210,7 @@ static void call_subsystem_handler(u32 index, u32 game_state) {
     case 0x0C: GUEST_CALL(HandlesBattleMainUntilEndOfBattleThenTriggersEnterMap); break;
     case 0x10: GUEST_CALL(sub_800536E); break;
     case 0x14: GUEST_CALL(scene_nextOrUpdate_80053E4); break;
-    case 0x18: GUEST_CALL(sub_8005462); break;
+    case 0x18: GUEST_CALL(pet_menuUpdateAndHandleExit_8005462); break;
     case 0x1C: GUEST_CALL(sub_800555A); break;
     case 0x20: GUEST_CALL(scenario_finalizeFrameOrRestart_8005642); break;
     case 0x24: GUEST_CALL(sub_80056B8); break;
@@ -2690,9 +2690,9 @@ static void call_nullsub_8005B6A(void) {
     GUEST_CALL(nullsub_8005B6A);
 }
 
-/* register form: calls sub_8005AF4 outside this file, which has no typed C interface yet */
+/* register form: calls gamestate_openPetMenuOnStartPress_8005AF4 outside this file, which has no typed C interface yet */
 static void call_sub_8005AF4(void) {
-    GUEST_CALL(sub_8005AF4);
+    GUEST_CALL(gamestate_openPetMenuOnStartPress_8005AF4);
 }
 
 /* Per-frame overworld map update: cutscene, object movement, interactions,

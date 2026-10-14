@@ -680,11 +680,11 @@ static void call_zero_fill_gfx(void) { GUEST_CALL(ZeroFillGFX30025c0); }
 /* register form: calls toolkit_applyOverlayPalette_80015FC outside this file, which has no typed C interface yet */
 static void call_sub_80015FC(u32 arg) { R0 = arg; GUEST_CALL(toolkit_applyOverlayPalette_80015FC); }
 
-/* register form: sub_8046664 takes toolkit ptr in R7; callee may clobber R7 (preserved by outer fn) */
+/* register form: battle_resetEStructRecords_8046664 takes toolkit ptr in R7; callee may clobber R7 (preserved by outer fn) */
 static void call_sub_8046664(u32 toolkit) {
     u32 saved = R7;
     R7 = toolkit;
-    GUEST_CALL(sub_8046664);
+    GUEST_CALL(battle_resetEStructRecords_8046664);
     R7 = saved;
 }
 
@@ -825,7 +825,7 @@ static void pet_navi_scene_init(u32 scene, u32 toolkit) {
     ST8(scene + 1, 4);
     ST8(scene + 2, 0);
 
-    /* Setup callbacks (sub_8046664 reads toolkit via R7) */
+    /* Setup callbacks (battle_resetEStructRecords_8046664 reads toolkit via R7) */
     call_sub_8046664(toolkit);
     call_sub_81270D0();
     call_sub_8127800();
@@ -972,9 +972,9 @@ static void begin_fade_transition(u32 arg0, u32 arg1) {
     GUEST_CALL(sub_811BED4);
 }
 
-/* register form: calls sub_80465F8 outside this file, which has no typed C interface yet */
+/* register form: calls battle_updateEStructSprites_80465F8 outside this file, which has no typed C interface yet */
 static void menu_draw(void) {
-    GUEST_CALL(sub_80465F8);
+    GUEST_CALL(battle_updateEStructSprites_80465F8);
 }
 
 /* register form: calls battle_dispatchNextCmd_81272C4 outside this file, which has no typed C interface yet */
@@ -1004,9 +1004,9 @@ static void sub_81440D8_call(void) {
     GUEST_CALL(sub_81440D8);
 }
 
-/* register form: calls sub_8046664 outside this file, which has no typed C interface yet */
+/* register form: calls battle_resetEStructRecords_8046664 outside this file, which has no typed C interface yet */
 static void sub_8046664_call(void) {
-    GUEST_CALL(sub_8046664);
+    GUEST_CALL(battle_resetEStructRecords_8046664);
 }
 
 /* register form: calls ClearEventFlagFromImmediate outside this file, which has no typed C interface yet */
@@ -1807,9 +1807,9 @@ static void call_set_screen_fade(u32 a, u32 b) {
     GUEST_CALL(SetScreenFade);
 }
 
-/* register form: calls sub_8046664 outside this file, which has no typed C interface yet */
+/* register form: calls battle_resetEStructRecords_8046664 outside this file, which has no typed C interface yet */
 static void call_sub_8046664_sub_8127A1C(void) {
-    GUEST_CALL(sub_8046664);
+    GUEST_CALL(battle_resetEStructRecords_8046664);
 }
 
 /* register form: calls battle_setupSceneTiles_8127CB8 outside this file, which has no typed C interface yet */
@@ -1970,7 +1970,7 @@ Next sub_8127ACC(void) {
     GUEST_CALL(sub_8127FE4);
     GUEST_CALL(battle_checkSubFlags_8128280);
     GUEST_CALL(entity_runAllUpdateHandlers_80465BC);
-    GUEST_CALL(sub_80465F8);
+    GUEST_CALL(battle_updateEStructSprites_80465F8);
 
     RETURN_TO_CALLER();
 }
@@ -2129,9 +2129,9 @@ static void run_all_entity_update_handlers(void) {
     GUEST_CALL(entity_runAllUpdateHandlers_80465BC);
 }
 
-/* register form: calls sub_80465F8 outside this file, which has no typed C interface yet */
+/* register form: calls battle_updateEStructSprites_80465F8 outside this file, which has no typed C interface yet */
 static void scene_step_80465F8(void) {
-    GUEST_CALL(sub_80465F8);
+    GUEST_CALL(battle_updateEStructSprites_80465F8);
 }
 
 /* register form: calls IsScreenFadeActive outside this file, which has no typed C interface yet */
@@ -2140,9 +2140,9 @@ static u32 screen_fade_active_sub_8127C64(void) {
     return !ZERO_FLAG();          /* IsScreenFadeActive: Z set when no fade is running */
 }
 
-/* register form: calls sub_8046664 outside this file, which has no typed C interface yet */
+/* register form: calls battle_resetEStructRecords_8046664 outside this file, which has no typed C interface yet */
 static void scene_step_8046664(void) {
-    GUEST_CALL(sub_8046664);
+    GUEST_CALL(battle_resetEStructRecords_8046664);
 }
 
 /* register form: calls sub_8127EF4 outside this file, which has no typed C interface yet */
@@ -2528,13 +2528,13 @@ Next bg_ReloadBackgroundRegion_5_3_81281C0(void) {
 /* ── sub_81281E0 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r5, r6, r7; } call_sub_802FE28_result;
-/* register form: generated wrapper: sub_802FE28 has no typed C interface yet */
+/* register form: generated wrapper: sprite_queueOamEntryThunk_802FE28 has no typed C interface yet */
 static inline call_sub_802FE28_result call_sub_802FE28(u32 r0, u32 r1, u32 r2, u32 r3) {
     R0 = r0;
     R1 = r1;
     R2 = r2;
     R3 = r3;
-    GUEST_CALL(sub_802FE28);
+    GUEST_CALL(sprite_queueOamEntryThunk_802FE28);
     return (call_sub_802FE28_result){ R0, R5, R6, R7 };
 }
 
@@ -2549,7 +2549,7 @@ static inline call_sub_802FE28_result call_sub_802FE28(u32 r0, u32 r1, u32 r2, u
  *   - tile number: high halfword of word 0 of the record, bit 7 cleared,
  *     scaled by 4 and offset by base tile 0x210.
  *   - attr2: (0xA << 12) | (2 << 10) | tile = 0xA800 | tile.
- * Calls sub_802FE28(attr01, attr2, 0, 2) for each icon.
+ * Calls sprite_queueOamEntryThunk_802FE28(attr01, attr2, 0, 2) for each icon.
  * r5 is unchanged on return (it is saved/restored via push/pop in the original). */
 static u32 show_icon_sprites(u32 state) {
     u32 count = LD16(state + 0x1E);
@@ -3435,9 +3435,9 @@ static void sub_80015FC_call(u32 arg) {
     GUEST_CALL(toolkit_applyOverlayPalette_80015FC);
 }
 
-/* register form: calls sub_8046664 outside this file, which has no typed C interface yet */
+/* register form: calls battle_resetEStructRecords_8046664 outside this file, which has no typed C interface yet */
 static void sub_8046664_call_sub_8129248(void) {
-    GUEST_CALL(sub_8046664);
+    GUEST_CALL(battle_resetEStructRecords_8046664);
 }
 
 /* register form: calls scene_loadAndStartCutscene_812AF18 outside this file, which has no typed C interface yet */
@@ -3549,9 +3549,9 @@ static bool call_is_screen_fade_active(void) {
     return ZERO_FLAG();  /* Z set → fade active → beq taken → early return */
 }
 
-/* register form: calls sub_8046664 outside this file, which has no typed C interface yet */
+/* register form: calls battle_resetEStructRecords_8046664 outside this file, which has no typed C interface yet */
 static void call_init_cutscene_scene(void) {
-    GUEST_CALL(sub_8046664);
+    GUEST_CALL(battle_resetEStructRecords_8046664);
 }
 
 /* register form: calls clearStruct200BC30_803EBAC outside this file, which has no typed C interface yet */
@@ -3723,9 +3723,9 @@ static void run_entity_updates_sub_812933C(void) {
     GUEST_CALL(entity_runAllUpdateHandlers_80465BC);
 }
 
-/* register form: calls sub_80465F8 outside this file, which has no typed C interface yet */
+/* register form: calls battle_updateEStructSprites_80465F8 outside this file, which has no typed C interface yet */
 static void run_secondary_update(void) {
-    GUEST_CALL(sub_80465F8);
+    GUEST_CALL(battle_updateEStructSprites_80465F8);
 }
 
 /* register form: calls sub_812B29C outside this file, which has no typed C interface yet */
@@ -3801,7 +3801,7 @@ Next scene_runFadePopTick_8129400(void) {
      * continue driving the scene's normal update tick. */
     GUEST_CALL(IsScreenFadeActive);
     if (ZERO_FLAG() == 0) {
-        GUEST_CALL(sub_8046664);
+        GUEST_CALL(battle_resetEStructRecords_8046664);
         ST8(R5 + 0xD, 0);
         ST8(R5 + 0x02, 0x0C);
         GUEST_CALL(clearStruct200BC30_803EBAC);
@@ -3832,7 +3832,7 @@ Next scene_runFadePopTick_8129400(void) {
     /* Common per-frame tail: run entity handlers, refresh scene state,
      * then advance the screen-fade sequencer one tick. */
     GUEST_CALL(entity_runAllUpdateHandlers_80465BC);
-    GUEST_CALL(sub_80465F8);
+    GUEST_CALL(battle_updateEStructSprites_80465F8);
     R0 = 0x0D;
     GUEST_CALL(sub_812B29C);
 
@@ -3846,7 +3846,7 @@ Next scene_runFadePopTick_8129400(void) {
  * preserved: r6 r7 r8 r9 */
 Next sub_81295D8(void) {
     GUEST_CALL(entity_runAllUpdateHandlers_80465BC);
-    GUEST_CALL(sub_80465F8);
+    GUEST_CALL(battle_updateEStructSprites_80465F8);
 
     GUEST_CALL(IsScreenFadeActive);
     if (ZERO_FLAG()) {
@@ -4244,7 +4244,7 @@ Next sub_812977C(void) {
  *   clobbers: r0 r1 r2 r3 lr, nz c v */
 Next sub_81297C0(void) {
     GUEST_CALL(entity_runAllUpdateHandlers_80465BC);
-    GUEST_CALL(sub_80465F8);
+    GUEST_CALL(battle_updateEStructSprites_80465F8);
 
     GUEST_CALL(IsScreenFadeActive);
     if (!ZERO_FLAG()) {
@@ -5570,9 +5570,9 @@ static void run_entity_updates_sub_812AEC8(void) {
     GUEST_CALL(entity_runAllUpdateHandlers_80465BC);
 }
 
-/* register form: calls sub_80465F8 outside this file, which has no typed C interface yet */
+/* register form: calls battle_updateEStructSprites_80465F8 outside this file, which has no typed C interface yet */
 static void tick_secondary_handlers(void) {
-    GUEST_CALL(sub_80465F8);
+    GUEST_CALL(battle_updateEStructSprites_80465F8);
 }
 
 /* register form: calls IsScreenFadeActive outside this file, which has no typed C interface yet */

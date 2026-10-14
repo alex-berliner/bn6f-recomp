@@ -1,0 +1,59 @@
+name: battleObject_initBriefCollisionObject_80C9BE8
+address: '0x080C9BE8'
+kind: function
+previous_names:
+- sub_80C9BE8
+status: probable
+summary: 'Init handler of a short-lived shadowless sprite object: appears on its panel for about two frames
+  with a 0xFF (no-op) hit effect, then runs the standard update; no sound, no private updater.'
+interface: 'void battleObject_initBriefCollisionObject(u32 r5 /* battle object */) : r5 -> [r5 r8 r10]'
+details: 'Frees the object when object_isCurrentPanelValid fails. sprite_load(0x80, 0x14, 4) + sprite_noShadow,
+  ObjectFlags |= 2 (visible), CurAnim = CurAnimCopy = 0, sprite_setAnimation(0) + sprite_loadAnimationData,
+  oBattleObject_TimerAndTimer2 = 2 (a two-frame life), palette 0, flip per alliance, object_setCoordinatesFromPanels.
+  Allocates collision data (kept in r7; frees the object on failure), object_setupCollisionData(4,5,0),
+  object_setCollisionRegion(1), hit effect 0xFF, object_presentCollisionData once, CurState = CUR_STATE_UPDATE,
+  return - unlike its siblings there is no tail-called per-tick handler and no PlaySoundEffect anywhere
+  in the body.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: 'Body read line by line: the panel-validity free, sprite (0x80,0x14,4) + noShadow, TimerAndTimer2=2,
+    collision (4,5,0) + region 1 + hit effect 0xFF, and the plain return after the CUR_STATE_UPDATE store.'
+  refs:
+  - bn6f/asm/asm31.s
+  reproduce: 'awk ''/sub_80C9BE8:/{f=1} f{print} f&&/thumb_func_end/{exit}'' bn6f/asm/asm31.s
+
+    '
+  result: the body read as described above
+- method: caller-analysis
+  date: '2026-10-14'
+  detail: 'No direct bl callers: the function is a .word entry (+1) of a state jumptable (bn6f/asm/asm31.s:38316).'
+  reproduce: 'grep -n ''sub_80C9BE8+1'' bn6f/asm/asm31.s
+
+    '
+  result: bn6f/asm/asm31.s:38316 (state-0 entry of its type's jumptable)
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, beastsp, story8, story9'
+  reproduce: 'grep -l ''^080c9be8 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, beastsp, story8, story9
+related:
+- battleObject_initRisingShot_80CAD4C
+- battleObject_initPanelBreakBounce_80CA568
+open_questions:
+- What this object is in game terms (sprite resource 0x14/4); whether hit effect 0xFF means none.
+sources:
+- discovery session 2026-10-14 (outside model hyper/glm-5.3-flash, build/repro/discover)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b29fc142
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80C9BE8 -> battleObject_initBriefCollisionObject_80C9BE8
+  where: bn6f 6ea2baf9
+  tool: tools/rename_symbol.py

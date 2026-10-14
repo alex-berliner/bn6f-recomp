@@ -488,7 +488,7 @@ Next battle_runState4CountdownOrAdvance_80092C0(void) {
  *
  * The first time through (byte at +3 still clear), raise flag 4 in the
  * battle state's unk11 flag set, mark the sequence as started and run the
- * one-time setup in sub_8026840. Every frame then polls sub_8026A28:
+ * one-time setup in battle_initCustomScreen_8026840. Every frame then polls sub_8026A28:
  *   0 -> sequence still running, nothing to do this frame;
  *   2 -> run battle_stateGotoPhase14_800AABC (one final step) and return;
  *   otherwise the sequence is over: flag both fighters' AI data and switch
@@ -498,7 +498,7 @@ Next sub_8009338(void) {
         R0 = 4;
         GUEST_CALL(setBattleStateUnk11Flag_800A9CA);
         ST8(R5 + 3, 1);
-        GUEST_CALL(sub_8026840);
+        GUEST_CALL(battle_initCustomScreen_8026840);
     }
 
     GUEST_CALL(sub_8026A28);

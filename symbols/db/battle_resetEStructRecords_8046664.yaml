@@ -1,0 +1,144 @@
+name: battle_resetEStructRecords_8046664
+address: '0x08046664'
+kind: function
+status: probable
+summary: 'Reset step of the battle-overlay scene record array (eStructArr2008450): re-runs the record-array
+  init (battle_initEStructArr_804657C) after sub_80466AA, so scene ticks returning from a battle overlay
+  start from clean records.'
+interface: void sub_8046664(r2, r3, r4, r5, r6, r7, lr) -> returns c, v, r1, r2, r3, r4, r5, r6, r7, lr
+details: 'Pushes r4-r7 and lr, tail-calls nothing but sequentially bl''s sub_80466AA and then sub_804657C,
+  then pops r4-r7 and pc. It performs no work of its own: no registers are read or modified here beyond
+  what the callees do, and r4-r7 are preserved both here and (per the caller analysis) inside both callees.
+  The pairing suggests the two callees are the two halves of one update routine — e.g. a state/handler
+  pass followed by a draw or advance pass — for whatever object or subsystem both belong to. The caller
+  contract notes only c and v as flag outputs, both inherited from the callees'' last flag-setting operations;
+  r1 being listed as an output despite not being touched here implies one of the callees sets it meaningfully
+  for callers. Update 2026-10-14: the second callee is battle_initEStructArr_804657C (re-init of the 15x0x58
+  record array eStructArr2008450 that battle_updateEStructSprites_80465F8 walks every frame), and every
+  caller is a scene tick that also runs battle_updateEStructSprites_80465F8 - so this wrapper re-initialises
+  the record array before the next frame''s sprite pass (e.g. the PET-menu return path in pet_menuUpdateAndHandleExit-style
+  ticks).'
+evidence:
+- method: readable-c
+  date: '2026-10-08'
+  detail: Written by hyper/glm-5.3-flash through the convert workflow (6 attempt(s), run convert-20261008-220911);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 1 (start, chatbox, map
+    scripts and 10 more bn6f files)' --file leaves_farm_1.c sub_8046664
+- method: difftest
+  date: '2026-10-08'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8046664
+
+    ./wf verify --function sub_8046664 --snapshots build-snapshots'
+  result: 'captured calls: 36 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    0 out of domain (verify run convert-20261008-220911-verify-6)'
+- method: cpu-oracle
+  date: '2026-10-08'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8046664
+
+    ./wf verify --function sub_8046664 --snapshots build-snapshots'
+  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261008-220911-verify-6)
+- method: lockstep
+  date: '2026-10-08'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8046664
+
+    ./wf verify --function sub_8046664 --snapshots build-snapshots'
+  result: 8/8 routes identical (verify run convert-20261008-220911-verify-6)
+- method: coverage
+  date: '2026-10-08'
+  detail: 'Executed by: battles1, battlesweep, fuzz, maps, menus2, story1, story2, story3.'
+  reproduce: grep -l '^08046664 ' tools/traces/coverage/*.prof
+- method: caller-analysis
+  date: '2026-10-14'
+  detail: All direct bl callers are per-frame scene ticks that also call battle_updateEStructSprites_80465F8
+    (the 15x0x58 eStructArr2008450 walk); the pairing init-before-update matches a records reset on scene
+    (re)entry.
+  refs:
+  - bn6f/asm/asm00_1.s
+  - bn6f/asm/asm03_1_0.s
+  - bn6f/asm/asm03_1_1.s
+  - bn6f/asm/asm03_2.s
+  reproduce: grep -rn 'bl sub_8046664' bn6f/asm/asm00_1.s bn6f/asm/asm03_1_0.s bn6f/asm/asm03_1_1.s bn6f/asm/asm03_2.s
+  result: 11 direct call sites (asm00_1.s:4862, asm03_1_0.s:1461, asm03_1_1.s x8, asm03_2.s:2574)
+changes:
+- date: '2026-10-08'
+  what: readable C replacement in cport/src/game/leaves_farm_1.c
+  where: recomp dedad43
+  tool: tools/wf convert (hyper/glm-5.3-flash)
+- date: '2026-10-08'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 93f7a6ff
+  tool: tools/symdoc.py
+- date: '2026-10-09'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 220cf4fd
+  tool: tools/symdoc.py
+- date: '2026-10-10'
+  what: moved from cport/src/game/leaves_farm_1.c to cport/src/game/asm03_2.c by tools/layout.py (the
+    regroup of the model farm's files by bn6f source; the function's text unchanged)
+  where: recomp 6836d6c
+  tool: tools/layout.py
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b29fc142
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8046664 -> battle_resetEStructRecords_8046664
+  where: bn6f 6ea2baf9
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm03_2.c
+coverage:
+- battles1
+- battlesweep
+- fuzz
+- maps
+- menus2
+- story1
+- story2
+- story3
+open_questions:
+- What sub_80466AA is (it runs just before battle_initEStructArr_804657C in this wrapper).
+- Which of the two callees produces the returned r1 and the c/v flags, and whether callers actually consume
+  them or just tolerate them.
+sources:
+- tools/wf run convert-20261008-220911
+signature:
+  c: void sub_8046664(void)
+  params: []
+  ret:
+    reg: none
+    type: void
+  keep:
+  - r1
+  - r2
+  - r3
+  confidence: confident
+  decided_by: mechanical
+  evidence:
+  - 'contract (lifter, refined): may read nothing; result none'
+  - 'liveness over the assembly and callees (tools/sig/derive.py): reads nothing'
+  reproduce: python3 tools/sig/bounds.py && python3 tools/sig/derive.py && python3 tools/sig/ask.py run
+    && python3 tools/sig/ask.py merge
+  derived: '2026-10-12'
+stamp:
+  rom: rom:96da04965ad749ad
+  range: 0x08046664-0x08046670
+  contract: lr -> c v r1 r2 r3 r4 r5 r6 r7 lr; clobbers nz r0
+  callees:
+    sub_80466AA: r2 r3
+    battle_initEStructArr_804657C: c v r1 r2 r3 r4 r6 r7 lr
+  headers: 4a4ac7712e91
+  lifter: b9983df4534b
+  prompt: legacy
+  model: hyper/glm-5.3-flash
+  run: convert-20261008-220911
+  body: acd2fb6ee29d0465
+  installed: dedad43
+  stamped: '2026-10-10'
+previous_names:
+- sub_8046664

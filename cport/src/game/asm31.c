@@ -1632,7 +1632,7 @@ Next sub_80C0EE2(void) {
 
 /* ── battleObj_initSprite_80C3F00 ── */
 /* battleObj_initSprite_80C3F00: initialize a battle object's sprite (panels, sprite, anim, palette, flip),
- * set the state phase to CUR_STATE_UPDATE_sub_80C3F00, then tail-call sub_80C3F52. */
+ * set the state phase to CUR_STATE_UPDATE_sub_80C3F00, then tail-call t1_0x54_updateFromRelatedObject_80C3F52. */
 
 #define CUR_STATE_UPDATE_sub_80C3F00 4
 
@@ -1690,18 +1690,18 @@ static void call_sprite_setFlip(u32 flip) {
     GUEST_CALL(sprite_setFlip);
 }
 
-/* register form: calls sub_80C3F52 outside this file, which has no typed C interface yet.
+/* register form: calls t1_0x54_updateFromRelatedObject_80C3F52 outside this file, which has no typed C interface yet.
  * The original ends with `pop {r4-r7, pc}` whose loaded PC value is the SAVED lr pushed at
  * entry (the caller's lr, not a within-function address). We model that: this function is
  * tail-called by the adapter, which supplies the correct LR. */
-/* leftover unused: sub_80C3F52's r0 (battleObj_initSprite_80C3F00's callers read only r5) */
+/* leftover unused: t1_0x54_updateFromRelatedObject_80C3F52's r0 (battleObj_initSprite_80C3F00's callers read only r5) */
 static u32 call_sub_80C3F52(void) {
-    GUEST_CALL(sub_80C3F52);
+    GUEST_CALL(t1_0x54_updateFromRelatedObject_80C3F52);
     return R0;
 }
 
 /* Typed implementation. The original pops the caller-saved LR pushed at entry and jumps to it,
- * so the visible outputs are whatever R0..R7 end up as after sub_80C3F52, plus the saved R4..R7
+ * so the visible outputs are whatever R0..R7 end up as after t1_0x54_updateFromRelatedObject_80C3F52, plus the saved R4..R7
  * and LR restored from the stack frame. Since the helpers above already preserve R4..R7 and we
  * never touch them in typed code, only R0 matters here as a flag/source. */
 static u32 sub_80C3F00_typed(u32 obj_ptr) {
@@ -1743,7 +1743,7 @@ static u32 sub_80C3F00_typed(u32 obj_ptr) {
 
     call_sprite_setFlip(call_object_getFlip());
 
-    /* Mark the object as being in the update phase, then tail-call sub_80C3F52. */
+    /* Mark the object as being in the update phase, then tail-call t1_0x54_updateFromRelatedObject_80C3F52. */
     ST32(obj + oBattleObject_CurStateActionPhaseAndPhaseInitialized, CUR_STATE_UPDATE_sub_80C3F00);
 
     return call_sub_80C3F52();

@@ -1,0 +1,68 @@
+name: battleObject_initTrainArrowVariant_80C60CC
+address: '0x080C60CC'
+kind: function
+previous_names:
+- sub_80C60CC
+status: probable
+summary: 'Table-driven init handler of the train-arrow projectile family: Param1 selects one of the 0x10-byte
+  config entries at byte_80C6038 (sprite, element, velocities, collision params), entry 6 takes its look
+  from ExtraVars, then hands off to trainArrow_80C619C.'
+interface: 'void battleObject_initTrainArrowVariant(u32 r5 /* battle object */) : r5 -> [r5 r8 r10]'
+details: 'r6 = first word of oBattleObject_ExtraVars, r4 = oBattleObject_Param1; indexes byte_80C6038
+  with Param1*0x10 and stores the entry pointer into oBattleObject_RelatedObject1Ptr. Entry layout: +0/+1/+2
+  collision setup args, +3 Element, +4 hit effect, +5/+6 sprite ids for sprite_load(0x80, ...), +7 animation,
+  +8 -> ExtraVars+4, +9 new Param4 (palette source), +0xA shadow on/off, +0xB optional status effect,
+  +0xC X velocity word. Special case Param1 == 6: sprite ids from ExtraVars bytes 2/3 (r6>>0x10 / r6>>0x18),
+  animation from (r6>>4)&0xF, and when ExtraVars byte 3 == 0x23 the flip is set by sub_8002EAC instead
+  of object_getFlip/sprite_setFlip. Otherwise sprite_load + sprite_loadAnimationData, shadow per entry+0xA,
+  CurAnim = entry+7 / CurAnimCopy = 0xFF, ObjectFlags |= 2, flip, palette from Param4, Element = entry+3,
+  Param4 = entry+9, object_setPanelsFromCoordinates, XVelocity = object_getFrontDirection() * entry+0xC,
+  ExtraVars+4 = entry+8. Allocates collision data (frees the object on failure), object_setupCollisionData(entry+0..2),
+  hit effect entry+4, status effect entry+0xB when nonzero, object_presentCollisionData, ZVelocity = 0
+  (or 0xFFFEE000, descending, when oBattleObject_Param3 != 0), CurState = CUR_STATE_UPDATE, tail-call
+  trainArrow_80C619C.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: 'Body read line by line: the Param1*0x10 table indexing with the pointer stored to RelatedObject1Ptr,
+    the three cmp r4,#6 special cases, the entry fields feeding sprite/Element/velocity/collision setup,
+    the 0xFFFEE000 ZVelocity, and the trainArrow_80C619C tail call.'
+  refs:
+  - bn6f/asm/asm31.s
+  reproduce: 'awk ''/sub_80C60CC:/{f=1} f{print} f&&/thumb_func_end/{exit}'' bn6f/asm/asm31.s
+
+    '
+  result: the body read as described above
+- method: caller-analysis
+  date: '2026-10-14'
+  detail: 'No direct bl callers: the function is a .word entry (+1) of a state jumptable (bn6f/asm/asm31.s:30265).'
+  reproduce: 'grep -n ''sub_80C60CC+1'' bn6f/asm/asm31.s
+
+    '
+  result: bn6f/asm/asm31.s:30265 (state-0 entry of its type's jumptable)
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^080c60cc '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+related:
+- trainArrow_80C619C
+- battleObject_initFastLunge_80CE554
+open_questions:
+- What the seven byte_80C6038 entries correspond to in game terms (sprite ids, elements), and what ExtraVars
+  encoding variant Param1==6 carries.
+sources:
+- discovery session 2026-10-14 (outside model hyper/glm-5.3-flash, build/repro/discover)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b29fc142
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80C60CC -> battleObject_initTrainArrowVariant_80C60CC
+  where: bn6f 6ea2baf9
+  tool: tools/rename_symbol.py

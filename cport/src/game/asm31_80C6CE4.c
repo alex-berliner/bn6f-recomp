@@ -2014,7 +2014,7 @@ static void dispatch_battle_state(u32 r5) {
     R1 = LD32(A_off_80CA55C + state);
 
     switch (state) {
-        case 0: GUEST_CALL(sub_80CA568);           break;
+        case 0: GUEST_CALL(battleObject_initPanelBreakBounce_80CA568);           break;
         case 4: GUEST_CALL(sub_80CA61A);           break;
         case 8: GUEST_CALL(object_genericDestroy);  break;
     }
@@ -3511,7 +3511,7 @@ Next battleObject_respawn_80D84DE(void) {
     ST16(R5 + oBattleObject_HP, 1);
 
     R0 = A_off_80D8508;
-    GUEST_CALL(sub_801B394);
+    GUEST_CALL(battleObject_dispatchActionHandler_801B394);
 
     GUEST_CALL(object_presentCollisionData);
     GUEST_CALL(object_updateSpriteTimestop);

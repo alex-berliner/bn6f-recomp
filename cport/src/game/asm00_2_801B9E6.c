@@ -1741,13 +1741,13 @@ Next palette_QueueObjectPalettePair_801CDEC(void) {
 
     R0 = XFER_DST_A + slot;
     R1 = XFER_DATA_A;
-    GUEST_CALL(sub_802FE28);
+    GUEST_CALL(sprite_queueOamEntryThunk_802FE28);
 
     /* r2/r3 are not re-zeroed here: the original passes on whatever the
      * first call left in them. */
     R0 = XFER_DST_B + slot;
     R1 = XFER_DATA_B;
-    GUEST_CALL(sub_802FE28);
+    GUEST_CALL(sprite_queueOamEntryThunk_802FE28);
 
     R4 = inR4;
     R5 = inR5;
@@ -1985,13 +1985,13 @@ Next state_dispatchHandler_801CF0E(void) {
 /* ── sub_801CF3C ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r4, r5, r6, r7; bool z, n, c, v; } call_sub_802FE28_result_sub_801CF3C;
-/* register form: generated wrapper: sub_802FE28 has no typed C interface yet */
+/* register form: generated wrapper: sprite_queueOamEntryThunk_802FE28 has no typed C interface yet */
 static inline call_sub_802FE28_result_sub_801CF3C call_sub_802FE28_sub_801CF3C(u32 r0, u32 r1, u32 r2, u32 r3) {
     R0 = r0;
     R1 = r1;
     R2 = r2;
     R3 = r3;
-    GUEST_CALL(sub_802FE28);
+    GUEST_CALL(sprite_queueOamEntryThunk_802FE28);
     return (call_sub_802FE28_result_sub_801CF3C){ R0, R4, R5, R6, R7, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
 }
 

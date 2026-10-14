@@ -876,13 +876,13 @@ Next sub_803BB80(void) {
 /* ── sub_803BC7C ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r4, r5, r6, r7; } call_sub_802FE28_result_sub_803BC7C;
-/* register form: generated wrapper: sub_802FE28 has no typed C interface yet */
+/* register form: generated wrapper: sprite_queueOamEntryThunk_802FE28 has no typed C interface yet */
 static inline call_sub_802FE28_result_sub_803BC7C call_sub_802FE28_sub_803BC7C(u32 r0, u32 r1, u32 r2, u32 r3) {
     R0 = r0;
     R1 = r1;
     R2 = r2;
     R3 = r3;
-    GUEST_CALL(sub_802FE28);
+    GUEST_CALL(sprite_queueOamEntryThunk_802FE28);
     return (call_sub_802FE28_result_sub_803BC7C){ R4, R5, R6, R7 };
 }
 

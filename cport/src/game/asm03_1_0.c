@@ -412,13 +412,13 @@ Next onUpdateInInternet_8033B1E(void) {
 }
 
 /* ── sub_8033B80 ── */
-/* register form: calls sub_802FE28 outside this file, which has no typed C interface yet */
+/* register form: calls sprite_queueOamEntryThunk_802FE28 outside this file, which has no typed C interface yet */
 static void call_sub_802FE28_sub_8033B80(u32 a1, u16 a2, int a3, int a4) {
     R0 = a1;
     R1 = a2;
     R2 = a3;
     R3 = a4;
-    GUEST_CALL(sub_802FE28);
+    GUEST_CALL(sprite_queueOamEntryThunk_802FE28);
 }
 
 /* Address of the per-index offset table in guest ROM. Indexed at runtime by
@@ -427,7 +427,7 @@ static void call_sub_802FE28_sub_8033B80(u32 a1, u16 a2, int a3, int a4) {
 
 /* Apply the per-index offset and advance the state frame counter.
  * The byte at (byte_8033BB8 + state_byte + r0*0x18) is shifted left 16 and added
- * to a fixed base, forming the routine address handed to sub_802FE28.
+ * to a fixed base, forming the routine address handed to sprite_queueOamEntryThunk_802FE28.
  * The state's frame counter (byte at state+5) is then incremented and wrapped at 0x18. */
 static void apply_offset_and_tick(u32 index, u32 state_ptr) {
     u32 state_byte = LD8(state_ptr + 5);
@@ -453,7 +453,7 @@ Next sub_8033B80(void) {
  *
  * Queues the 0x80-byte graphics chunk belonging to the navi currently set on
  * the PET into VRAM at 0x06017380, then triggers the accompanying change
- * through sub_802FE28.  Normally the graphic index comes straight from
+ * through sprite_queueOamEntryThunk_802FE28.  Normally the graphic index comes straight from
  * GetCurPETNavi(); before event flag EVENT_163 has been set, a nonzero value
  * in byte_200AD04 overrides it with slot 12 instead. */
 Next sub_8033BE8(void) {
@@ -485,7 +485,7 @@ Next sub_8033BE8(void) {
     R1 = 0xC79C;
     R2 = 1;
     R3 = 0;
-    GUEST_CALL(sub_802FE28);
+    GUEST_CALL(sprite_queueOamEntryThunk_802FE28);
 
     RETURN_TO_CALLER();
 }
@@ -1135,13 +1135,13 @@ static void call_decompAndCopyData(u32 table) {
     GUEST_CALL(decompAndCopyData);
 }
 
-/* register form: calls sub_8046664 outside this file, which has no typed C interface yet.
+/* register form: calls battle_resetEStructRecords_8046664 outside this file, which has no typed C interface yet.
  * The original also passes the animation table in r3, and whatever r3 the callee leaves
  * behind is what callers of decompJackInAnimationGfx_8034314 see, so it is set here and
  * deliberately not restored afterwards. */
 static void call_sub_8046664(u32 table) {
     R3 = table;
-    GUEST_CALL(sub_8046664);
+    GUEST_CALL(battle_resetEStructRecords_8046664);
 }
 
 /* register form: calls sub_80465A0 outside this file, which has no typed C interface yet.
@@ -1206,9 +1206,9 @@ static inline call_entity_runAllUpdateHandlers_80465BC_result call_entity_runAll
 }
 
 typedef struct { u32 r0, r1, r2, r3, r8, r9, r10, r11, r12; bool z, n, c, v; } call_sub_80465F8_result;
-/* register form: generated wrapper: sub_80465F8 has no typed C interface yet */
+/* register form: generated wrapper: battle_updateEStructSprites_80465F8 has no typed C interface yet */
 static inline call_sub_80465F8_result call_sub_80465F8(void) {
-    GUEST_CALL(sub_80465F8);
+    GUEST_CALL(battle_updateEStructSprites_80465F8);
     return (call_sub_80465F8_result){ R0, R1, R2, R3, R8, R9, R10, R11, R12, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
 }
 
@@ -1236,7 +1236,7 @@ static UpdateWorldResult update_world_map(u32 state, u32 r10_in) {
     UpdateWorldResult res;
     /* register form: r4/r6/r7 are preserved by the caller but clobbered
      * by QueueWordAlignedGFXTransfer, CopyBackgroundTiles,
-     * entity_runAllUpdateHandlers_80465BC, and sub_80465F8, so snapshot
+     * entity_runAllUpdateHandlers_80465BC, and battle_updateEStructSprites_80465F8, so snapshot
      * them on entry and restore on exit. */
     u32 saved_r4 = R4;
     u32 saved_r6 = R6;

@@ -286,7 +286,7 @@ Next pet_initMenu_811EC10(void) {
     ST8(A_ePETMenuData + 0xA, R0);
     ST8(A_ePETMenuData + 0xB, R1);
 
-    GUEST_CALL(sub_8046664);
+    GUEST_CALL(battle_resetEStructRecords_8046664);
 
     /* the entry-side r4 was only scratch; the original pops it back */
     R4 = savedR4;
@@ -614,9 +614,9 @@ Next naviSelect_SetupBackgrounds_811EF0C(void) {
 }
 
 /* ── initPetSelectScreen_811EF28 ── */
-/* register form: calls sub_8046664 outside this file, which has no typed C interface yet */
+/* register form: calls battle_resetEStructRecords_8046664 outside this file, which has no typed C interface yet */
 static void call_sub_8046664_sub_811EF28(void) {
-    GUEST_CALL(sub_8046664);
+    GUEST_CALL(battle_resetEStructRecords_8046664);
 }
 
 /* register form: calls sub_80465A0 outside this file, which has no typed C interface yet */
@@ -905,17 +905,17 @@ struct ParamPair {
     u16 b;
 };
 
-/* register form: calls sub_802FE28 outside this file, which has no typed C interface yet */
+/* register form: calls sprite_queueOamEntryThunk_802FE28 outside this file, which has no typed C interface yet */
 static void call_sub_802FE28(u32 a, u16 b) {
     R0 = a;
     R1 = b;
     R2 = 0;
     R3 = 1;
-    GUEST_CALL(sub_802FE28);
+    GUEST_CALL(sprite_queueOamEntryThunk_802FE28);
 }
 
 /* Walk a block of (u32, u16) pairs laid out consecutively. The original increments
- * a counter from 0, calls sub_802FE28 for the current pair, advances the cursor by
+ * a counter from 0, calls sprite_queueOamEntryThunk_802FE28 for the current pair, advances the cursor by
  * 8 bytes, increments the counter, and loops while the counter is less than 2
  * (so it iterates twice, processing pairs at offsets 0 and 8). */
 static void load_pairs(u32 base) {
@@ -930,7 +930,7 @@ static void load_pairs(u32 base) {
     }
 }
 
-/* Initialize two sets of (u32, u16) parameter pairs by passing each through sub_802FE28. */
+/* Initialize two sets of (u32, u16) parameter pairs by passing each through sprite_queueOamEntryThunk_802FE28. */
 Next sub_811F1B8(void) {
     load_pairs(A_dword_811F1F0);
     load_pairs(A_dword_811F204);
@@ -939,10 +939,10 @@ Next sub_811F1B8(void) {
 
 /* ── sub_811F214 ── */
 /* sub_811F214: walk the three-entry table at dword_811F234 and hand each
- * (word0, word1) pair to sub_802FE28 as (a1, a2, 0, 1).
+ * (word0, word1) pair to sprite_queueOamEntryThunk_802FE28 as (a1, a2, 0, 1).
  *
  * The original keeps the table cursor in r7 and the entry index in r6 and
- * calls sub_802FE28 with those registers live, so the loop is driven through
+ * calls sprite_queueOamEntryThunk_802FE28 with those registers live, so the loop is driven through
  * the guest registers as well; r4-r7 are saved and restored exactly like the
  * original's push/pop. */
 Next sub_811F214(void) {
@@ -954,7 +954,7 @@ Next sub_811F214(void) {
         R1 = LD32(R7 + 4);   /* entry->word1 */
         R2 = 0;
         R3 = 1;
-        GUEST_CALL(sub_802FE28);
+        GUEST_CALL(sprite_queueOamEntryThunk_802FE28);
         R7 += 8;             /* next table entry */
     }
 
@@ -967,7 +967,7 @@ Next sub_811F214(void) {
 
 /* ── replaySpriteFrames_811F24C ── */
 /* replaySpriteFrames_811F24C: tick a counter at r5+0xC (clamped to max 3) and replay the first
- * (count+1) sprite/animation pairs into sub_802FE28. Each pair is two u32 entries
+ * (count+1) sprite/animation pairs into sprite_queueOamEntryThunk_802FE28. Each pair is two u32 entries
  * from the table at dword_811F278 (8 bytes per entry). */
 Next replaySpriteFrames_811F24C(void) {
     /* Bump the local tick counter, clamped so it never exceeds 3 (i.e. count 0..3). */
@@ -977,7 +977,7 @@ Next replaySpriteFrames_811F24C(void) {
         ST8(R5 + 0xC, count);
     }
 
-    /* Walk the table, replaying each entry via sub_802FE28(lo, hi, 0, 1); the first
+    /* Walk the table, replaying each entry via sprite_queueOamEntryThunk_802FE28(lo, hi, 0, 1); the first
      * entry always (the original tests the count only after a call). */
     u32 tbl = A_dword_811F278;
     u32 idx = 0;
@@ -986,7 +986,7 @@ Next replaySpriteFrames_811F24C(void) {
         R1 = LD32(tbl + 4);
         R2 = 0;
         R3 = 1;
-        GUEST_CALL(sub_802FE28);
+        GUEST_CALL(sprite_queueOamEntryThunk_802FE28);
 
         tbl += 8;
         idx += 1;
@@ -2227,7 +2227,7 @@ Next sub_81204C4(void) {
 /* sub_812053C:
  *   Ask sub_81205C0 for a value; if it came back non-negative, build an
  *   address/flag word (low 0x4000 on, top bits and 0x8000 cleared) and
- *   hand it to sub_802FE28 together with (0xC + original r1).
+ *   hand it to sprite_queueOamEntryThunk_802FE28 together with (0xC + original r1).
  *   inputs:  r0 r1 r2 lr
  *   outputs: nz c v r0 r1 r2 r3 lr
  *   preserved: r4 r5 r6 r7 */
@@ -2246,10 +2246,10 @@ Next sub_812053C(void) {
         R0 = (R0 & ~(u32)0xC0008000u) | (u32)0x4000u;
         /* mov r1, #0xc ; add r1, r1, r4 */
         R1 = 0xCu + saved_r1;
-        /* mov r2, #0 ; mov r3, #1 ; bl sub_802FE28 */
+        /* mov r2, #0 ; mov r3, #1 ; bl sprite_queueOamEntryThunk_802FE28 */
         R2 = 0;
         R3 = 1;
-        GUEST_CALL(sub_802FE28);
+        GUEST_CALL(sprite_queueOamEntryThunk_802FE28);
     }
 
     RETURN_TO_CALLER();
@@ -2319,7 +2319,7 @@ Next sub_8120618(void) {
 /* ── sub_812068C ── */
 /* sub_812068C(r0 = value, r1 = row, r2 = arg2, r3 = arg3):
  * Queries sub_81205C0 for a packed position; if one is found (result >= 0),
- * triggers sub_802FE28 with it, then queries sub_81205C0 again with the
+ * triggers sprite_queueOamEntryThunk_802FE28 with it, then queries sub_81205C0 again with the
  * position's high half moved down by 8. Callees observe r4 = row, r6 = arg3
  * and r7 = the queried position, as in the original. Preserves r4-r7 and
  * returns with the flags left by the final sub_81205C0 call. */
@@ -2344,11 +2344,11 @@ Next sub_812068C(void) {
     R7 = pos;
 
     if ((s32)pos >= 0) {
-        /* Found one: sub_802FE28(pos, row + 0x16, 0, 1). R0 already holds pos. */
+        /* Found one: sprite_queueOamEntryThunk_802FE28(pos, row + 0x16, 0, 1). R0 already holds pos. */
         R1 = row + 0x16;
         R2 = 0;
         R3 = 1;
-        GUEST_CALL(sub_802FE28);
+        GUEST_CALL(sprite_queueOamEntryThunk_802FE28);
     }
 
     /* Re-pack the position: low half unchanged, high half shifted down by 8. */

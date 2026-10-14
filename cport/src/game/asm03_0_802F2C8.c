@@ -29,15 +29,15 @@ Next resetPaletteScratch_802F2C8(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_802FE28 ── */
-/* sub_802FE28(r0..r3 = args for sprite_queueOamEntry, lr = return):
+/* ── sprite_queueOamEntryThunk_802FE28 ── */
+/* sprite_queueOamEntryThunk_802FE28(r0..r3 = args for sprite_queueOamEntry, lr = return):
  *   Thumb trampoline that tail-calls sprite_queueOamEntry in ARM mode while
  *   passing the same r0..r3 and lr unchanged, so the callee returns directly
  *   to this function's caller. */
-Next sub_802FE28(void) {
+Next sprite_queueOamEntryThunk_802FE28(void) {
     /* The original switches to sprite_queueOamEntry's ARM entry (+1 for Thumb
      * bit) by setting LR = return_pc and BXing there, which makes the callee's
-     * normal `pop {pc}` return straight to sub_802FE28's caller. */
+     * normal `pop {pc}` return straight to sprite_queueOamEntryThunk_802FE28's caller. */
     GUEST_CALL(sprite_queueOamEntry);
     RETURN_TO_CALLER();
 }

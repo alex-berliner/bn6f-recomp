@@ -1,0 +1,67 @@
+name: battle_updateEStructSprites_80465F8
+address: '0x080465F8'
+kind: function
+previous_names:
+- sub_80465F8
+status: probable
+summary: 'Per-frame sprite pipeline over the eStruct record array: for each of the 15 records whose flag
+  byte has bit 0x2 (active/visible), rescans hitboxes, reloads palette and the current anim frame''s tiles
+  when flagged, and rebuilds its render data.'
+interface: 'void battle_updateEStructSprites(void) : (nothing, only lr) -> [nz c v r0 r1 r2 r3 r4 r5 r6
+  r7 r8 r9 r12] (callee-saved restored)'
+details: 'Forces its saved argument to 0 (mov r0,#0 before the prologue; it is passed on to sub_8002694
+  as r0, with r1 = 0), then walks the 15 records of eStructArr2008450 with a 0x58-byte stride. Each record:
+  byte 0 is a flags byte, the ObjectSprite struct sits at +0x20. Records whose flags byte has bit 0x2
+  get, in order: battleObject_scanHitboxesAndSetFlags_80466D8(sprite) (mirror flags, on-screen flag, active-hitbox
+  mask); then the same flags byte gates the graphics work - bit 0x40 skips palette AND anim-frame tiles,
+  bit 0x80 skips only the palette, otherwise sprite_loadPalette_8002818; bit 0x20 is required for sprite_loadAnimFrameTiles_8002874;
+  finally sub_8002694(sprite, 0, 0) always runs (rebuilds the record''s render/OAM data). Called by essentially
+  every per-frame scene tick (PET menus, chip folder, battle submenus, world map, shop).
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: 'Body read line by line: the r0=0 forced argument, the 15-iteration 0x58-stride loop over eStructArr2008450,
+    the bit 0x2 gate, and the flag-gated palette/tiles/render sequence.'
+  refs:
+  - bn6f/asm/asm03_2.s
+  reproduce: 'awk ''/sub_80465F8:/{f=1} f{print} f&&/thumb_func_end/{exit}'' bn6f/asm/asm03_2.s
+
+    '
+  result: the body read as described above
+- method: caller-analysis
+  date: '2026-10-14'
+  detail: About 14 direct bl sites across the scene tick routines (pet_menu_runFrame_81237BC, pet_tickEntitiesAndExitToMap_812AEC8,
+    ChipTraderControl, battle submenu handlers, ...).
+  reproduce: 'grep -c ''bl sub_80465F8'' bn6f/asm/asm03_1_0.s bn6f/asm/asm03_1_1.s bn6f/asm/asm03_2.s
+
+    '
+  result: 14 direct call sites across the asm03_* scene files
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^080465f8 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus2, menus3, story1, story2, story3,
+    story4, story5, story6, story7, story8, story9
+related:
+- battle_resetEStructRecords_8046664
+- battle_initEStructArr_804657C
+- battleObject_scanHitboxesAndSetFlags_80466D8
+open_questions:
+- The exact semantics of record flag bits 0x20/0x40/0x80 (palette-dirty vs palette-locked readings) and
+  the role of sub_8002694's zeroed first argument.
+sources:
+- discovery session 2026-10-14 (outside model hyper/glm-5.3-flash, build/repro/discover)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b29fc142
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80465F8 -> battle_updateEStructSprites_80465F8
+  where: bn6f 6ea2baf9
+  tool: tools/rename_symbol.py

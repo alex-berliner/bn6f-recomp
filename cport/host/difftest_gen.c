@@ -187,7 +187,7 @@ static void gen_jump_table(Cpu *in, u32 (*rnd)(void)) {
 }
 
 /* scriptListRun_8001158 walks {command, argument} pairs to a zero command, queueing each through
- * sub_802FE28 (sprite_queueOamEntry). Random memory has no zero for kilobytes: the walk runs into the
+ * sprite_queueOamEntryThunk_802FE28 (sprite_queueOamEntry). Random memory has no zero for kilobytes: the walk runs into the
  * guest stack, where the original stops on a zero it pushed itself and the port, which pushes no
  * frame, runs off the end of IWRAM. Give it a short list, as the game's are. */
 static void gen_script_list_8001158(Cpu *in, u32 (*rnd)(void)) {

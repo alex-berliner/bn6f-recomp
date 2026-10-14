@@ -274,9 +274,9 @@ static void call_chipFolder_initGfx_812386C(void) {
     GUEST_CALL(chipFolder_initGfx_812386C);
 }
 
-/* register form: calls sub_8046664 outside this file, which has no typed C interface yet */
+/* register form: calls battle_resetEStructRecords_8046664 outside this file, which has no typed C interface yet */
 static void call_sub_8046664(void) {
-    GUEST_CALL(sub_8046664);
+    GUEST_CALL(battle_resetEStructRecords_8046664);
 }
 
 /* register form: calls sub_80465A0 outside this file, which has no typed C interface yet */
@@ -353,9 +353,9 @@ static void call_chipFolder_initGfx_812386C_sub_812349C(void) {
     GUEST_CALL(chipFolder_initGfx_812386C);
 }
 
-/* register form: calls sub_8046664 outside this file, which has no typed C interface yet */
+/* register form: calls battle_resetEStructRecords_8046664 outside this file, which has no typed C interface yet */
 static void call_sub_8046664_sub_812349C(void) {
-    GUEST_CALL(sub_8046664);
+    GUEST_CALL(battle_resetEStructRecords_8046664);
 }
 
 /* register form: calls sub_80465A0 outside this file, which has no typed C interface yet */
@@ -845,8 +845,8 @@ static u32 pet_menu_frame(void) {
     GUEST_CALL(sub_8123E58);
     /* register form: calls entity_runAllUpdateHandlers_80465BC outside this file, which has no typed C interface yet */
     GUEST_CALL(entity_runAllUpdateHandlers_80465BC);
-    /* register form: calls sub_80465F8 outside this file, which has no typed C interface yet */
-    GUEST_CALL(sub_80465F8);
+    /* register form: calls battle_updateEStructSprites_80465F8 outside this file, which has no typed C interface yet */
+    GUEST_CALL(battle_updateEStructSprites_80465F8);
     /* register form: calls IsScreenFadeActive outside this file, which has no typed C interface yet */
     GUEST_CALL(IsScreenFadeActive);
     if (!ZERO_FLAG()) {
@@ -1503,7 +1503,7 @@ Next submenu_subchip_dispatch_812407C(void) {
     }
 
     GUEST_CALL(entity_runAllUpdateHandlers_80465BC);
-    GUEST_CALL(sub_80465F8);
+    GUEST_CALL(battle_updateEStructSprites_80465F8);
     GUEST_CALL(sub_812453C);
     GUEST_CALL(background_updateSceneStrips_812475C);
 
@@ -2369,9 +2369,9 @@ static u32 call_sub_8125C08(void) {
     return R0;
 }
 
-/* register form: calls sub_8046664 outside this file, which has no typed C interface yet; clobbers r1 */
+/* register form: calls battle_resetEStructRecords_8046664 outside this file, which has no typed C interface yet; clobbers r1 */
 static void call_sub_8046664_sub_8124B5C(void) {
-    GUEST_CALL(sub_8046664);
+    GUEST_CALL(battle_resetEStructRecords_8046664);
 }
 
 /* register form: calls sub_80465A0 outside this file, which has no typed C interface yet */

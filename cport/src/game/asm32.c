@@ -905,16 +905,16 @@ Next sub_8116A28(void) {
 }
 
 /* ── sub_8116A44 ── */
-/* register form: calls sub_802FE28 outside this file, which has no typed C interface yet */
+/* register form: calls sprite_queueOamEntryThunk_802FE28 outside this file, which has no typed C interface yet */
 static void call_sub_802FE28(u32 a1, u32 a2, u32 notUsed, u32 a4) {
     R0 = a1;
     R1 = a2;
     R2 = notUsed;
     R3 = a4;
-    GUEST_CALL(sub_802FE28);
+    GUEST_CALL(sprite_queueOamEntryThunk_802FE28);
 }
 
-/* Drive sub_802FE28 over a packed table of (a1, a2) pairs. Each entry is 8 bytes:
+/* Drive sprite_queueOamEntryThunk_802FE28 over a packed table of (a1, a2) pairs. Each entry is 8 bytes:
  * a1 at offset 0, a2 at offset 4. notUsed is fixed at 0 and a4 at 1. */
 static void run_table(u32 base, u32 count) {
     for (u32 i = 0; i < count; i++) {
@@ -923,7 +923,7 @@ static void run_table(u32 base, u32 count) {
     }
 }
 
-/* Initialize three small table-driven groups of sub_802FE28 calls (3 + 3 + 2 entries). */
+/* Initialize three small table-driven groups of sprite_queueOamEntryThunk_802FE28 calls (3 + 3 + 2 entries). */
 static void init_three_tables(void) {
     run_table(A_dword_8116A94, 3);
     run_table(A_dword_8116AB0, 3);
@@ -2130,7 +2130,7 @@ static u32 call_object_getter(u32 obj_ptr, u32 index) {
     return result;
 }
 
-/* register form: calls sub_802FE28 outside this file, which has no typed C interface yet;
+/* register form: calls sprite_queueOamEntryThunk_802FE28 outside this file, which has no typed C interface yet;
    preserves R4-R7 per the caller's contract */
 static void play_sound_event(u32 sound_id, u16 packed_attr) {
     u32 s4 = R4, s5 = R5, s6 = R6, s7 = R7;
@@ -2138,7 +2138,7 @@ static void play_sound_event(u32 sound_id, u16 packed_attr) {
     R1 = packed_attr;
     R2 = 0;
     R3 = 3;
-    GUEST_CALL(sub_802FE28);
+    GUEST_CALL(sprite_queueOamEntryThunk_802FE28);
     R4 = s4; R5 = s5; R6 = s6; R7 = s7;
 }
 

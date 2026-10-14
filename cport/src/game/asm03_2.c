@@ -357,11 +357,11 @@ Next entity_runAllUpdateHandlers_80465BC(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8046664 ── */
-/* sub_8046664: run both halves of the (unspecified) update routine:
+/* ── battle_resetEStructRecords_8046664 ── */
+/* battle_resetEStructRecords_8046664: run both halves of the (unspecified) update routine:
  * first sub_80466AA, then battle_initEStructArr_804657C. All registers other than the
  * flags are preserved; r4-r7 are untouched here and by both callees. */
-Next sub_8046664(void) {
+Next battle_resetEStructRecords_8046664(void) {
     GUEST_CALL(sub_80466AA);
     GUEST_CALL(battle_initEStructArr_804657C);
     RETURN_TO_CALLER();
@@ -693,7 +693,7 @@ Next ShopControl(void) {
 /* ── battle_objectAdvanceCounterToState8_8046DDC ── */
 /* battle_objectAdvanceCounterToState8_8046DDC: advance the counter at (R5+8) by 2. Once it reaches 0x15,
  * clamp it there and move the object at R5 into state 8 (byte at R5+0).
- * Then runs sub_8047134 (which reads R5) and returns 0. */
+ * Then runs shopBuyMenu_updateFrame_8047134 (which reads R5) and returns 0. */
 Next battle_objectAdvanceCounterToState8_8046DDC(void) {
     u32 counter = (u32)LD8(R5 + 8) + 2;
 
@@ -704,7 +704,7 @@ Next battle_objectAdvanceCounterToState8_8046DDC(void) {
         ST8(R5, 8);
     }
 
-    GUEST_CALL(sub_8047134);
+    GUEST_CALL(shopBuyMenu_updateFrame_8047134);
 
     R0 = 0;
     SET_FLAGS_NZ(R0);
@@ -712,11 +712,11 @@ Next battle_objectAdvanceCounterToState8_8046DDC(void) {
 }
 
 /* ── sub_8046DF8 ── */
-/* sub_8046DF8: run two update passes (battleMenu_navigate_8047950 then sub_8047134) and
+/* sub_8046DF8: run two update passes (battleMenu_navigate_8047950 then shopBuyMenu_updateFrame_8047134) and
  * return 0. Always yields r0 = 0 with N/Z set accordingly. */
 Next sub_8046DF8(void) {
     GUEST_CALL(battleMenu_navigate_8047950);
-    GUEST_CALL(sub_8047134);
+    GUEST_CALL(shopBuyMenu_updateFrame_8047134);
 
     R0 = 0;
     SET_FLAGS_NZ(R0);
@@ -745,9 +745,9 @@ static void set_screen_fade(u32 a, u32 b) {
     GUEST_CALL(SetScreenFade);
 }
 
-/* register form: calls sub_8047134 outside this file, which has no typed C interface yet */
+/* register form: calls shopBuyMenu_updateFrame_8047134 outside this file, which has no typed C interface yet */
 static void call_sub_8047134(void) {
-    GUEST_CALL(sub_8047134);
+    GUEST_CALL(shopBuyMenu_updateFrame_8047134);
 }
 
 /* Drives the scramble-counter UI panel stored at `state_ptr`.
@@ -794,9 +794,9 @@ Next scramblePanel_tick_8046E06(void) {
 }
 
 /* ── dialogueEnd_unlockPlayer_8046E48 ── */
-/* register form: calls sub_8047134 outside this file, which has no typed C interface yet */
+/* register form: calls shopBuyMenu_updateFrame_8047134 outside this file, which has no typed C interface yet */
 static void sub_8047134_call(void) {
-    GUEST_CALL(sub_8047134);
+    GUEST_CALL(shopBuyMenu_updateFrame_8047134);
 }
 
 /* register form: calls IsScreenFadeActive outside this file, which has no typed C interface yet */
@@ -868,9 +868,9 @@ Next dialogueEnd_unlockPlayer_8046E48(void) {
 /* ── sub_8046E84 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r2, r3, r4, r5, r6, r8, r9, r10, r11, r12; bool c, v; } call_sub_8047134_result;
-/* register form: generated wrapper: sub_8047134 has no typed C interface yet */
+/* register form: generated wrapper: shopBuyMenu_updateFrame_8047134 has no typed C interface yet */
 static inline call_sub_8047134_result call_sub_8047134_sub_8046E84(void) {
-    GUEST_CALL(sub_8047134);
+    GUEST_CALL(shopBuyMenu_updateFrame_8047134);
     return (call_sub_8047134_result){ R2, R3, R4, R5, R6, R8, R9, R10, R11, R12, CARRY_FLAG(), OVERFLOW_FLAG() };
 }
 
@@ -921,7 +921,7 @@ typedef struct {
     u32 r11;
 } ChatboxTickResult;
 
-/* R5 = chatbox state pointer; toolkit in R10 is read by sub_8047134 via its wrapper.
+/* R5 = chatbox state pointer; toolkit in R10 is read by shopBuyMenu_updateFrame_8047134 via its wrapper.
  * Dispatches based on B-button press, the 0x20 chatbox flag, and current state. */
 static ChatboxTickResult chatbox_tick(u32 cb) {
     call_sub_8047134_result setup = call_sub_8047134_sub_8046E84();
@@ -974,9 +974,9 @@ Next sub_8046E84(void) {
 }
 
 /* ── chatbox_confirmShopPurchase_8046ED2 ── */
-/* register form: calls sub_8047134 outside this file, which has no typed C interface yet */
+/* register form: calls shopBuyMenu_updateFrame_8047134 outside this file, which has no typed C interface yet */
 static void call_refresh_chatbox(void) {
-    GUEST_CALL(sub_8047134);
+    GUEST_CALL(shopBuyMenu_updateFrame_8047134);
 }
 
 /* register form: calls chatbox_mask_eFlags2009F38 outside this file, which has no typed C interface yet */
@@ -1220,7 +1220,7 @@ Next chatbox_confirmShopPurchase_8046ED2(void) {
 /* ── chatbox_stepContextScript_8047028 ── */
 /* chatbox_stepContextScript_8047028: run the chatbox script attached to the dialogue context in R5.
  *
- * First updates some inter-frame state (sub_8047134), then, while the
+ * First updates some inter-frame state (shopBuyMenu_updateFrame_8047134), then, while the
  * 0x8 event flag is set, stores the text scroll speed into the context's
  * state byte and starts the script indexed from the context:
  *   - offset 0x12 (halfword) nonzero -> script #1,  speed 8
@@ -1231,7 +1231,7 @@ Next chatbox_confirmShopPurchase_8046ED2(void) {
  * Preserves R4-R7 and everything from R8 up.
  */
 Next chatbox_stepContextScript_8047028(void) {
-    GUEST_CALL(sub_8047134);
+    GUEST_CALL(shopBuyMenu_updateFrame_8047134);
 
     /* Proceed only while event flag 0x8 is set. */
     R0 = 8;
@@ -1290,24 +1290,24 @@ Next text_decompressMessageAssets_80471F8(void) {
  * 0xE002, columns 6-11 hold 0xE006, columns 12-17 hold 0xE00A. */
 #define COLUMN_COUNT 0x12
 
-/* register form: calls sub_802FE28 outside this file, which has no typed C interface yet */
+/* register form: calls sprite_queueOamEntryThunk_802FE28 outside this file, which has no typed C interface yet */
 static void emit_column(u32 packed, u16 entry) {
     R0 = packed;
     R1 = entry;
     R2 = 0;
     R3 = 0;
-    GUEST_CALL(sub_802FE28);
+    GUEST_CALL(sprite_queueOamEntryThunk_802FE28);
 }
 
 /* What one step leaves behind: the column's table halfword (r1, which
- * sub_802FE28 preserves), the advanced column counter (r2) and 0 (r3). */
+ * sprite_queueOamEntryThunk_802FE28 preserves), the advanced column counter (r2) and 0 (r3). */
 typedef struct {
     u16 entry;
     u32 next_column;
     u32 zero;
 } ColumnStep;
 
-/* Feed the packed pair and the current column's table entry to sub_802FE28,
+/* Feed the packed pair and the current column's table entry to sprite_queueOamEntryThunk_802FE28,
  * then advance the 18-column counter, wrapping back to 0 once it passes the
  * last column (the original compares signed, so negative counters are left
  * to keep incrementing). */
@@ -1326,7 +1326,7 @@ static ColumnStep advance_column(u32 upper, u32 lower, u32 column) {
 }
 
 /* sprite_emitColumnEntry_80472E8(r0 = upper halfword, r1 = lower halfword, r2 = column counter)
- * Passes the packed halves plus the column's table entry on to sub_802FE28,
+ * Passes the packed halves plus the column's table entry on to sprite_queueOamEntryThunk_802FE28,
  * and leaves the incremented (wrapped) counter in r2. r4-r7 and lr are
  * untouched, r0 is scratch. */
 Next sprite_emitColumnEntry_80472E8(void) {
@@ -1435,9 +1435,9 @@ static void call_zero_fill_gfx(void) {
     GUEST_CALL(ZeroFillGFX30025c0);
 }
 
-/* register form: calls sub_8046664 outside this file, which has no typed C interface yet */
+/* register form: calls battle_resetEStructRecords_8046664 outside this file, which has no typed C interface yet */
 static void call_init_sub_8046664(void) {
-    GUEST_CALL(sub_8046664);
+    GUEST_CALL(battle_resetEStructRecords_8046664);
 }
 
 /* register form: calls decompAndCopyData outside this file, which has no typed C interface yet */
@@ -2287,7 +2287,7 @@ Next sub_8049770(void) {
     R0 = 0x13;
     GUEST_CALL(toolkit_applyOverlayPalette_80015FC);
 
-    GUEST_CALL(sub_8046664);
+    GUEST_CALL(battle_resetEStructRecords_8046664);
     GUEST_CALL(copyData_8049A18);
 
     /* SetScreenFade(8, 0x10) -- fade-in: 8 frames, 0x10 step. */
@@ -3011,7 +3011,7 @@ Next sub_8049EBC(void) {
     R0 = 0x13;
     GUEST_CALL(toolkit_applyOverlayPalette_80015FC);
 
-    GUEST_CALL(sub_8046664);
+    GUEST_CALL(battle_resetEStructRecords_8046664);
     GUEST_CALL(copyData_804A0AC);
 
     /* SetScreenFade(speed=8, target=0x10) -- a two-tone screen fade in. */

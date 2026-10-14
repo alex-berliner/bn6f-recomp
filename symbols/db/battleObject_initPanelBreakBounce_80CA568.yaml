@@ -1,0 +1,64 @@
+name: battleObject_initPanelBreakBounce_80CA568
+address: '0x080CA568'
+kind: function
+previous_names:
+- sub_80CA568
+status: probable
+summary: 'Init handler of a bouncing panel-break attack object: breaks the panel it spawns on (or only
+  cracks it when the panel is already damaged or occupied), plays SFX 0xDA, sets up sprite and a hopping
+  trajectory, and hands off to the bounce updater sub_80CA61A.'
+interface: 'void battleObject_initPanelBreakBounce(u32 r5 /* battle object */) : r5 -> [r5 r8 r10]'
+details: 'Recomputes pixel coords from panel coords, spawns a dust effect at the object''s X/Y/Z (spawn_t1_0x0_EffectObject
+  with r4=0x30), then reads the panel''s status word (object_getPanelParameters): when bit 0x10 is CLEAR,
+  or any of the mask 0xF880080 bits is set (panel already damaged/occupied), it only calls sub_8109794
+  (crack the tile if allowed) and frees the object. Otherwise: object_breakPanel, PlaySoundEffect(0xDA),
+  sprite_load(0x80, 0xC, 0x33) + animation + shadow, CurAnim=0/CurAnimCopy=0xFF, palette 0, ObjectFlags
+  |= 2 (visible), flip per alliance, XVelocity = object_getFrontDirection() * 0x80000, Timer = 2, ZVelocity
+  = 0x80000 (upward hop); allocates collision data (frees the object on failure), object_setupCollisionData(4,5,1),
+  hit effect 5, object_presentCollisionData once, CurState = CUR_STATE_UPDATE, and tail-calls the bounce
+  physics updater sub_80CA61A.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: 'Body read line by line: the effect spawn, the panel-parameter branch (bit 0x10 clear -> crack
+    path via sub_8109794; bit set and mask 0xF880080 clear -> break), object_breakPanel + SFX 0xDA, the
+    0x80000 velocities, and the sub_80CA61A tail call.'
+  refs:
+  - bn6f/asm/asm31.s
+  reproduce: 'awk ''/sub_80CA568:/{f=1} f{print} f&&/thumb_func_end/{exit}'' bn6f/asm/asm31.s
+
+    '
+  result: the body read as described above
+- method: caller-analysis
+  date: '2026-10-14'
+  detail: 'No direct bl callers: the function is a .word entry (+1) of a state jumptable (bn6f/asm/asm31.s:39514).'
+  reproduce: 'grep -n ''sub_80CA568+1'' bn6f/asm/asm31.s
+
+    '
+  result: bn6f/asm/asm31.s:39514 (state-0 entry of its type's jumptable)
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, beastsp, fuzz, story2, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^080ca568 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, beastsp, fuzz, story2, story5, story6, story7, story8, story9
+related:
+- sub_80CA61A
+- object_breakPanel
+- sub_8109794
+open_questions:
+- Which in-game attack this is (sprite resource 0xC/0x33, SFX 0xDA not yet mapped).
+sources:
+- discovery session 2026-10-14 (outside model hyper/glm-5.3-flash, build/repro/discover)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b29fc142
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80CA568 -> battleObject_initPanelBreakBounce_80CA568
+  where: bn6f 6ea2baf9
+  tool: tools/rename_symbol.py

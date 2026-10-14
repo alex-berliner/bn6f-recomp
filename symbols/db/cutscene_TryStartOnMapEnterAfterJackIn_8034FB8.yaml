@@ -1,0 +1,67 @@
+name: cutscene_TryStartOnMapEnterAfterJackIn_8034FB8
+address: '0x08034FB8'
+kind: function
+previous_names:
+- sub_8034FB8
+status: probable
+summary: 'Map-enter trigger: when the map actually changed (number or group) or EVENT_1703 is pending
+  and no cutscene is running, starts the after-jack-in cutscene (or its EVENT_127 variant), then clears
+  the trigger flags.'
+interface: 'void cutscene_TryStartOnMapEnterAfterJackIn(void) : r10 (toolkit) -> [r0 r1 r2 r3] (captured
+  exits r0 = 0x80, the last flag id handled)'
+details: 'Reads GameState via the toolkit: if oGameState_MapNumber == oGameState_LastMapNumber it also
+  compares oGameState_MapGroup with oGameState_LastMapGroup; equal means no map change. On a changed map
+  (or when EVENT_1703 is set) and no cutscene script active (IsCutsceneScriptNonNull), it starts CutsceneScriptOnMapEnterAfterJackIn_809895C
+  via StartCutscene(script, 0) - unless EVENT_127 is also set, in which case the alternate script byte_80989C1
+  is started instead - then clears EVENT_1703 and EVENT_127. On the same-map / no-trigger / cutscene-busy
+  path it clears EVENT_1703, EVENT_1724 and EVENT_127 without starting anything. Called by every region''s
+  *_EnterMapGroup function right after the map is set up, so it runs once per map transition.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: 'Body read line by line: the MapNumber/LastMapNumber and MapGroup/LastMapGroup comparisons,
+    the EVENT_1703 gate, the IsCutsceneScriptNonNull guard, the EVENT_127 script switch (off_8035020 =
+    CutsceneScriptOnMapEnterAfterJackIn_809895C, off_8035024 = byte_80989C1), StartCutscene, and the flag
+    clears on both paths.'
+  refs:
+  - bn6f/asm/asm03_1_0.s
+  reproduce: 'awk ''/sub_8034FB8:/{f=1} f{print} f&&/thumb_func_end/{exit}'' bn6f/asm/asm03_1_0.s
+
+    '
+  result: the body read as described above
+- method: caller-analysis
+  date: '2026-10-14'
+  detail: 'No bl or .word references in the assembly: the *_EnterMapGroup functions reach it through the
+    map-script dispatcher; build-abi/graph.json lists 15 named callers (AquariumComp_EnterMapGroup, CentralArea_EnterMapGroup,
+    Comps1_EnterMapGroup, ...).'
+  reproduce: 'grep -n ''sub_8034FB8'' cport/src/lifted/dispatch_table.c
+
+    '
+  result: '[0x1A7DC] = sub_8034FB8 in the lifted dispatch table (map-script dispatch)'
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, beastsp, fuzz, maps, menus2, menus3, story1, story2, story4,
+    story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^08034fb8 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, beastsp, fuzz, maps, menus2, menus3, story1, story2, story4, story5, story6,
+    story7, story8, story9
+related:
+- cutscene_TryStartNotification_8035084
+- CutsceneScriptOnMapEnterAfterJackIn_809895C
+open_questions:
+- What EVENT_1724 marks (cleared only on the skip path) and what the byte_80989C1 variant script plays.
+sources:
+- discovery session 2026-10-14 (outside model hyper/glm-5.3-flash, build/repro/discover)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b29fc142
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8034FB8 -> cutscene_TryStartOnMapEnterAfterJackIn_8034FB8
+  where: bn6f 6ea2baf9
+  tool: tools/rename_symbol.py

@@ -1684,7 +1684,7 @@ Next battle_clearAIDataAndBarrier_801A7F4(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_801AC6C ── */
+/* ── battleObject_processCollisionResultsForPlayer_801AC6C ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r3; bool c, v; } call_sprite_clearFinalPalette_result;
 /* register form: generated wrapper: sprite_clearFinalPalette has no typed C interface yet */
@@ -1907,7 +1907,7 @@ static inline call_object_spawnHiteffect_result call_object_spawnHiteffect(u32 r
     return (call_object_spawnHiteffect_result){ R2, R3, R5, R6, R10, OVERFLOW_FLAG() };
 }
 
-/* sub_801AC6C: per-frame collision resolution for the active battle object.
+/* battleObject_processCollisionResultsForPlayer_801AC6C: per-frame collision resolution for the active battle object.
  *
  * Runs the full hit-response pipeline: clears the sprite palette, loads the
  * collision-data pointer, gates on battle flags / battle-over / object-ignore-
@@ -2054,7 +2054,7 @@ static CollisionOutputs handle_collision(u32 r4, u32 r5, u32 r6,
     return out;
 }
 
-Next sub_801AC6C(void) {
+Next battleObject_processCollisionResultsForPlayer_801AC6C(void) {
     u32 saved_r4 = R4, saved_r7 = R7;
     CollisionOutputs res = handle_collision(
         saved_r4, R5, R6, R8, R9, R10, R11, R12);

@@ -1,0 +1,67 @@
+name: battleObject_processCollisionResults_801A9B8
+address: '0x0801A9B8'
+kind: function
+previous_names:
+- sub_801A9B8
+status: probable
+summary: 'Per-frame collision/damage processing pipeline for a battle object: the base navi-AI variant,
+  skipping battleObject_applyStatusEffect for NameIDs 0x125-0x12A.'
+interface: 'void battleObject_processCollisionResults(u32 r5 /* battle object */) : r5 -> [r4 r5 r10]'
+details: 'Base variant of the per-frame post-collision pipeline; the action-phase handler of most navi
+  AI indexes (entries of off_80F2410 other than 5, 12-17 and 20-21). Prologue: sprite_clearFinalPalette,
+  r7 = oBattleObject_CollisionDataPtr; early-outs: battle_getFlags bit 0 clear (the pipeline only runs
+  when the bit is set), then object_removeCollisionData, battle_isBattleOver, object flag 0x100 (dead).
+  Chain: sub_801A802, sub_801A186, sub_801A36A, battle_tickAiSelfDrain_8010230, battleObject_handleImpact_802CFF8,
+  hiveBlockHappensHere_802CEF4, battle_incrementAllianceStatOnCollisionHit_801A6B4, battle_buffTwoStatsPlus2OnEventF6_801A720,
+  applyChipAllianceEffect_8013AE4, sub_801AEB0, battle_applyFlattenHitStatus_800EB26; then reads oBattleObject_NameID:
+  in the inclusive range 0x125-0x12A the battleObject_applyStatusEffect_801A554 call is skipped (cmp dword_801AA40=0x125
+  / dword_801AA44=0x12A). Tail: sub_801A2CC, battle_toggleAllianceAndAccumulateCollisionToAiData_801A308,
+  object_calculateFinalDamage1, sub_801A420, battle_objectClearPendingHitIfCollisionProcessed_8010198,
+  battle_clearInvisFlashTimer_801A648, object_spawnHiteffect.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: 'Body read line by line: the gate chain, the shared chain, and the NameID 0x125/0x12A branch
+    that skips only battleObject_applyStatusEffect_801A554.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'awk ''/sub_801A9B8:/{f=1} f{print} f&&/thumb_func_end/{exit}'' bn6f/asm/asm00_2.s
+
+    '
+  result: the body read as described above
+- method: caller-analysis
+  date: '2026-10-14'
+  detail: 'No direct bl callers: the function is a .word entry (+1) of the navi per-AIIndex action table
+    off_80F2410, dispatched by sub_80F2354 via mov lr,pc / bx.'
+  reproduce: 'grep -n ''sub_801A9B8+1'' bn6f/asm/asm31.s
+
+    '
+  result: about 19 entries of off_80F2410 (bn6f/asm/asm31.s:124330ff); captured calls lr=080f2364 (inside
+    sub_80F2354)
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp, chips'
+  reproduce: 'grep -l ''^0801a9b8 '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp, chips
+related:
+- battleObject_processCollisionResultsByMode_801AAC0
+- battleObject_processCollisionResultsForEnemy_801ABB8
+- battleObject_processCollisionResultsForPlayer_801AC6C
+open_questions:
+- Which game entities have NameIDs 0x125-0x12A (the objects exempted from battleObject_applyStatusEffect_801A554
+  here).
+sources:
+- discovery session 2026-10-14 (outside model hyper/glm-5.3-flash, build/repro/discover)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b29fc142
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801A9B8 -> battleObject_processCollisionResults_801A9B8
+  where: bn6f 6ea2baf9
+  tool: tools/rename_symbol.py

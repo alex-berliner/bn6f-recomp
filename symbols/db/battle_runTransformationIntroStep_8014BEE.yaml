@@ -1,0 +1,69 @@
+name: battle_runTransformationIntroStep_8014BEE
+address: '0x08014BEE'
+kind: function
+previous_names:
+- sub_8014BEE
+status: probable
+summary: 'Transformation-intro step for the player navi (state 2 of the off_8014AB4 step table): sets
+  up the new form''s sprite/name/per-form init, plays the log-in SFX, then after a 10-frame countdown
+  hands off to the turn-open processing.'
+interface: 'void battle_runTransformationIntroStep(u32 r5 /* battle object */, u32 r7 /* AIAttackVars
+  */) : r5 r7 -> [r5 r10]'
+details: 'Two-phase state machine keyed on oAIAttackVars_Unk_01 (r7 = the action''s AIAttackVars work
+  area). Phase 0 (Unk_01 == 0): zeroes oBattleObject_RelatedObject1Ptr and oAIData_Unk_68; reads NaviStats
+  NaviIndex (0x29) and Transformation (0x2C) via GetBattleNaviStatsByte_AllianceFromBattleObject (NaviIndex
+  fed with sub_801595E(alliance) through chip_class_lookup_800FC9E); loads sprite resource 0x80 (sprite_load/sprite_loadAnimationData/sprite_hasShadow),
+  sets animation, flip, forces white palette, recomputes pixel coords; stores the new Transformation value
+  into NaviStats byte 0x2C (SetBattleNaviStatsByte_AllianceFromBattleObject); if it is in 1..0x18, writes
+  it as the object''s text/name id (battle_setObjectTextId_8015B22) and dispatches one of 24 per-form
+  handlers via sub_8011268; plays two sound effects (SFX 0x8D and SOUND_LOG_IN_77); sets Unk_01 = 4 and
+  arms oAIAttackVars_Unk_10 = 0xA. Phase 1: decrements Unk_10 each frame and returns while it stays positive;
+  at 0 it calls battle_beginTurnOpenProcess_80144C0 and sub_80143A6, writes 0x80 into player NaviStats
+  byte 0x0E (battle_setPlayerNaviStatsField0E_8015BEC), clears the object''s invulnerability timer (object_clearInvulnerableTime),
+  and stores 0xC into oAIAttackVars_Unk_00 (the next step for the dispatcher).
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: 'Body read line by line: the Unk_01 phase split, the NaviStats 0x29/0x2C reads with the 1..0x18
+    range check before battle_setObjectTextId_8015B22 and the sub_8011268 dispatch, the two PlaySoundEffect
+    calls, the Unk_10 countdown, and the battle_beginTurnOpenProcess_80144C0 tail.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'awk ''/sub_8014BEE:/{f=1} f{print} f&&/thumb_func_end/{exit}'' bn6f/asm/asm00_2.s
+
+    '
+  result: the body read as described above
+- method: caller-analysis
+  date: '2026-10-14'
+  detail: State-2 entry of the 4-state step table off_8014AB4 (bn6f/asm/asm00_2.s:13569); captured exits
+    show r0 counting 9,8,7... (the Unk_10 countdown).
+  reproduce: 'grep -n ''sub_8014BEE+1'' bn6f/asm/asm00_2.s
+
+    '
+  result: bn6f/asm/asm00_2.s:13569 (off_8014AB4, third entry)
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^08014bee '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+related:
+- battle_beginTurnOpenProcess_80144C0
+- battle_setObjectTextId_8015B22
+open_questions:
+- Which of the 24 per-form handlers sub_8011268 dispatches to corresponds to which transformation (BeastOut
+  forms, CrossFusion).
+sources:
+- discovery session 2026-10-14 (outside model hyper/glm-5.3-flash, build/repro/discover)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b29fc142
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8014BEE -> battle_runTransformationIntroStep_8014BEE
+  where: bn6f 6ea2baf9
+  tool: tools/rename_symbol.py

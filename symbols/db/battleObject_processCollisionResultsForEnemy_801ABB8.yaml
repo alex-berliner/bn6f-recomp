@@ -1,0 +1,72 @@
+name: battleObject_processCollisionResultsForEnemy_801ABB8
+address: '0x0801ABB8'
+kind: function
+previous_names:
+- sub_801ABB8
+status: probable
+summary: 'Per-frame collision/damage processing pipeline for an enemy battle object (r5): the enemy-side
+  variant of the family, with a pause gate, AI hit hooks and HitModifierFinal flag reactions.'
+interface: 'void battleObject_processCollisionResultsForEnemy(u32 r5 /* battle object */) : r5 -> [r4
+  r5 r10] (nz c v r0-r3, r12 clobbered for callers)'
+details: 'Enemy variant of the per-frame post-collision pipeline (family: sub_801A9B8 / sub_801AAC0 /
+  sub_801AC6C). Prologue: sprite_clearFinalPalette, r7 = oBattleObject_CollisionDataPtr; early-outs: battle_getFlags
+  bit 0 clear, then object_removeCollisionData, battle_isBattleOver, battle_isPaused, and object flag
+  0x100 (dead). Middle: sub_801A802, sub_801A186, sub_801A36A, battle_objectDieOnCollisionHit_801A6D6,
+  battle_aiAimTwoColumnsAheadOnSpecialPanel_801A75A, battle_aiAddCounterFromCollision_8013B20, sub_801026A.
+  Then reads oCollisionData_HitModifierFinal: if (hm & 0x3c) != 0 - when bit 0x40 set, skipped if object
+  flag 0x40 already set, else object_setFlag2(0x100), object_clearFlag2(4) and oBattleObject_Unk_0f =
+  1; when bit 0x40 clear, skipped if flags & 0x100040, else object_setFlag2(0x10) and Unk_0f = 1. Tail
+  (unconditional status effect): battle_applyFlattenHitStatus_800EB26, battleObject_applyStatusEffect_801A554,
+  sub_801A2CC, battle_toggleAllianceAndAccumulateCollisionToAiData_801A308, object_calculateFinalDamage1,
+  sub_801A420, battle_objectClearPendingHitIfCollisionProcessed_8010198, battle_clearInvisFlashTimer_801A648,
+  object_spawnHiteffect. Sole caller: battle_8108F74 (virus/enemy per-frame update); captured calls all
+  lr=0801ac6f... wait, lr=0808f7f region: from battle_8108F74.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: 'Body read line by line: the gate chain (battle flags bit 0, battle over, paused, dead 0x100),
+    the enemy AI hook sequence, the HitModifierFinal 0x3c/0x40 branch with object_setFlag2 0x100/0x10
+    and Unk_0f=1, and the shared tail ending in object_spawnHiteffect.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'awk ''/sub_801ABB8:/{f=1} f{print} f&&/thumb_func_end/{exit}'' bn6f/asm/asm00_2.s
+
+    '
+  result: the body read as described above
+- method: caller-analysis
+  date: '2026-10-14'
+  detail: One direct bl site, inside battle_8108F74 (the virus/enemy per-frame update).
+  reproduce: 'grep -n ''bl sub_801ABB8'' bn6f/asm/asm31.s
+
+    '
+  result: bn6f/asm/asm31.s:170570 (inside battle_8108F74)
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story8, story9'
+  reproduce: 'grep -l ''^0801abb8 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus2, menus3, story2, story4, story5,
+    story6, story8, story9
+related:
+- battleObject_processCollisionResults_801A9B8
+- battleObject_processCollisionResultsByMode_801AAC0
+- battleObject_processCollisionResultsForPlayer_801AC6C
+- battle_8108F74
+open_questions:
+- The meaning of ObjectFlags2 bits 0x100/0x4/0x10 and oBattleObject_Unk_0f=1 written here (likely flinch/recoil
+  bookkeeping) - the consumers would settle it.
+sources:
+- discovery session 2026-10-14 (outside model hyper/glm-5.3-flash, build/repro/discover)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b29fc142
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801ABB8 -> battleObject_processCollisionResultsForEnemy_801ABB8
+  where: bn6f 6ea2baf9
+  tool: tools/rename_symbol.py

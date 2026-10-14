@@ -927,7 +927,7 @@ Next sub_81333A0(void) {
 
     /* Run the generic entity update pipeline */
     GUEST_CALL(entity_runAllUpdateHandlers_80465BC);
-    GUEST_CALL(sub_80465F8);
+    GUEST_CALL(battle_updateEStructSprites_80465F8);
 
     /* Post-update: type-specific effect spawning or cleanup */
     objType = LD8(R5 + 2);
@@ -1488,14 +1488,14 @@ static void entity_runAllUpdateHandlers_80465BC_call(void) {
     GUEST_CALL(entity_runAllUpdateHandlers_80465BC);
 }
 
-/* register form: calls sub_80465F8 outside this file, which has no typed C interface yet */
+/* register form: calls battle_updateEStructSprites_80465F8 outside this file, which has no typed C interface yet */
 static void sub_80465F8_call(void) {
-    GUEST_CALL(sub_80465F8);
+    GUEST_CALL(battle_updateEStructSprites_80465F8);
 }
 
-/* register form: calls sub_8046664 outside this file, which has no typed C interface yet */
+/* register form: calls battle_resetEStructRecords_8046664 outside this file, which has no typed C interface yet */
 static void sub_8046664_call(void) {
-    GUEST_CALL(sub_8046664);
+    GUEST_CALL(battle_resetEStructRecords_8046664);
 }
 
 /* register form: calls zeroFill_e2002230 outside this file, which has no typed C interface yet */

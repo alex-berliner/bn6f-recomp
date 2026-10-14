@@ -1,0 +1,76 @@
+name: battleObject_initNaviObject_8016F56
+address: '0x08016F56'
+kind: function
+previous_names:
+- sub_8016F56
+status: probable
+summary: 'Init-state handler of an enemy-navi battle object: loads its sprite/animation/palette/flip from
+  the enemy data record, sets element and secondary weakness, builds collision data with ability flags,
+  queues the name popup and advances to the update state.'
+interface: 'void battleObject_initNaviObject(u32 r5 /* battle object */) : r5 -> [r4 r5 r6 r7 r10] (r0
+  = CUR_STATE_UPDATE on the captured exits)'
+details: 'State-0 (init) handler of sub_80F2330''s jumptable, the per-state dispatch of the navi battle-object
+  type. First dispatches the actor-type handler (battle_dispatchActorHandlerByType_800F35C), then resolves
+  enemy data struct 1 via enemy_getStruct1 from oBattleObject_NameID: sprite_load(0x80, spriteIndex0,
+  spriteIndex1), shadow per the record''s HasShadow, CurAnim=0 / CurAnimCopy=0xFF, animation, palette
+  (getBattleObjectPalette_800F334) and flip (object_getFlip/sprite_setFlip). ORs the record''s Element
+  into oBattleObject_Element. When GetBattleMode()==6 and byte_80170A4[record Unk_04]==0, zeroes oBattleObject
+  offset 0x2c (damage/stamina counter disabler). Allocates collision data (object_createCollisionData;
+  frees the object on failure), configures it from enemy_getStruct2''s UnkFlags_03 (object_setupCollisionData,
+  default r1/r2/r3 = 1,2,2; flag 0x04 -> r1=0x10), sets the secondary element weakness (battleObject_SetSecondaryElementWeakness_8019F9E)
+  and maps UnkFlags_03 bits to ObjectFlags1 bits via object_setFlag1 (0x10->0x08000000, 0x08->0x02000000,
+  0x04/0x02/0x01 -> FLOATSHOE/AIRSHOE/SUPERARMOR-class bits). Calls sub_801DB84, stores battle_findPlayer(alliance^1)
+  into AIData field 0x78 (battle_SetObjectAIDataField78_800F318), applies panel-layout adjustments per
+  GetBattlePanelColumnPattern (0x38/0x30/0x3c -> DirectionFlip=0 + sub_800F2C6, else sub_800F2F0), queues
+  the enemy name popup (battle_objectNameIdToPopupHandler_8010DD0), computes player NaviStats MaxHP halfword
+  0x3e / 100 (svc 6 division) clamped to 1..10 into oAIData_Unk_0c, dispatches the actor''s AI (battle_dispatchActorByTypeAndAIIdx_800F378)
+  and writes CUR_STATE_UPDATE (4) into oBattleObject_CurStateActionPhaseAndPhaseInitialized.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: 'Body read line by line: the enemy-data sprite/palette/flip setup, the GetBattleMode==6 gate,
+    collision setup with the UnkFlags_03 bit mapping, the svc 6 division by 0x64 clamped to 0xa/1, and
+    the CUR_STATE_UPDATE store.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'awk ''/sub_8016F56:/{f=1} f{print} f&&/thumb_func_end/{exit}'' bn6f/asm/asm00_2.s
+
+    '
+  result: the body read as described above
+- method: caller-analysis
+  date: '2026-10-14'
+  detail: State-0 entry of sub_80F2330's CurState jumptable (off_80F2348), and a second .word reference
+    at bn6f/asm/asm31.s:170559.
+  reproduce: 'grep -n ''sub_8016F56+1'' bn6f/asm/asm31.s
+
+    '
+  result: bn6f/asm/asm31.s:124249 (off_80F2348) and 170559; captured exits all r0=4 (CUR_STATE_UPDATE)
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^08016f56 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+related:
+- sub_80F2330
+- battleObject_processCollisionResults_801A9B8
+- enemy_getStruct1
+open_questions:
+- The gameplay meaning of oAIData_Unk_0c (player MaxHP/100 clamped 1..10) and of the GetBattleMode==6
+  + byte_80170A4 gate.
+sources:
+- discovery session 2026-10-14 (outside model hyper/glm-5.3-flash, build/repro/discover)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b29fc142
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8016F56 -> battleObject_initNaviObject_8016F56
+  where: bn6f 6ea2baf9
+  tool: tools/rename_symbol.py

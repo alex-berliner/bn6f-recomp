@@ -1,0 +1,72 @@
+name: owPlayer_update_809D348
+address: '0x0809D348'
+kind: function
+previous_names:
+- sub_809D348
+status: probable
+summary: 'Per-frame update of the overworld player: resets the movement-step state, runs the movement-state
+  jumptable handler, resolves collisions/slip-run, updates layer and sprite priority, and feeds the walk/encounter
+  counters.'
+interface: 'void owPlayer_update(u32 r5 /* OWPlayerObject */) : r5 -> [r4 r5 r8 r9 r10 r11 r12] (captured
+  exits r0 = 0x80 is caller residue, not a return)'
+details: 'Zeroes oGameState_Unk_11 (via toolkit) and oOWPlayerObject_Unk_13 (twice), shifts the step history
+  Unk_0e->0x0f, Unk_0d->0x0e, clears Unk_0d, and copies X/Y/Z into NextX/NextY/NextZ. Then dispatches
+  off_809D450[oOWPlayerObject_JumptableIndex_09] (the six movement handlers ending in ow_player_processAction_809D75E)
+  via mov lr,pc / bx. When oOWPlayerObject_wallCollision_0c is set: clampPlayerPosition_809E3D6, checkCollision_8030b6a
+  on the Coords block; on a collision with EVENT_1716 set it manages the SlipRun flags (sets EVENT_173F,
+  clears EVENT_IN_SLIPRUN_STATE and EVENT_173E) and calls sub_809DE60. Always runs overworld_CheckPlayerAdvanceForwardTrigger_809E46E
+  and owPlayerInputTick_809DB60. When sub_809E3A2''s byte_2000AA8 gate is clear and InteractionLocked
+  is set and EVENT_BE4 clear: checkZCoordModifiers_8031612 on the Coords, result stored (shifted <<0x10)
+  into Z. On EVENT_1718: clears it and syncs pos/facing into 0x200ACE0 (owPlayer_809E0C8). Unless oOWPlayerObject_LayerIndexOverride
+  is set, applies applyLayerEffectToOWObject_8035694; always sprite_setPriority_8002E14. If owPlayer_isMoving_809DFA0
+  and no cutscene script active: adds Unk_13 to the walk counter at S2001c04+0x12 and subtracts it, clamped
+  at 0, from the counters at +0x24 and +0x28 (SneakRun / LocEnemy step counters). Finally sub_809DFC0
+  and sub_809DE98.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: 'Body read line by line: the state reset and NextX/Y/Z copy, the off_809D450 jumptable dispatch,
+    the wall-collision/slip-run block, the advance-forward and input ticks, the Z-modifier gate, the walk-counter
+    updates at S2001c04+0x12/0x24/0x28, and the pop {pc} (no return value).'
+  refs:
+  - bn6f/asm/ow_player.s
+  reproduce: 'awk ''/sub_809D348:/{f=1} f{print} f&&/thumb_func_end/{exit}'' bn6f/asm/ow_player.s
+
+    '
+  result: the body read as described above
+- method: caller-analysis
+  date: '2026-10-14'
+  detail: One direct bl site (bn6f/asm/ow_player.s:237) plus the .word sub_809D348+1 table entry at :143;
+    the caller is sub_809D270 in the same file.
+  reproduce: 'grep -n ''bl sub_809D348'' bn6f/asm/ow_player.s
+
+    '
+  result: bn6f/asm/ow_player.s:237 (inside sub_809D270)
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story1, story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^0809d348 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander
+related:
+- ow_player_processAction_809D75E
+- owPlayerInputTick_809DB60
+- clampPlayerPosition_809E3D6
+open_questions:
+- The roles of oGameState_Unk_11, the 0x0d/0x0e/0x0f byte chain, EVENT_1716/173E/173F, and of sub_809DFC0/sub_809DE98.
+sources:
+- discovery session 2026-10-14 (outside model hyper/glm-5.3-flash, build/repro/discover)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b29fc142
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_809D348 -> owPlayer_update_809D348
+  where: bn6f 6ea2baf9
+  tool: tools/rename_symbol.py

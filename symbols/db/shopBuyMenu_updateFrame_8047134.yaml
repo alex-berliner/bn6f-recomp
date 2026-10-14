@@ -1,0 +1,71 @@
+name: shopBuyMenu_updateFrame_8047134
+address: '0x08047134'
+kind: function
+previous_names:
+- sub_8047134
+status: probable
+summary: 'Per-frame update/render of the shop buy menu: runs the entity/state updates, rebuilds and draws
+  the 5-row purchasable-item list, draws the cursor and scroll arrows, and refreshes the background.'
+interface: 'void shopBuyMenu_updateFrame(u32 r5 /* menu state */) : r5 -> [r1-r10 r12] (callee-saved restored;
+  no caller-live return)'
+details: 'Runs one shop-menu frame from the menu state struct in r5 (toolkit in r10): (1) with r5 temporarily
+  replaced, call_sub_3005EBA(0, 0, 2, 0, 0x20, 0x14) - a 0x20x0x14 tile clear, likely the full BG tilemap;
+  (2) entity_runAllUpdateHandlers_80465BC, battle_updateEStructSprites_80465F8, dispatchStateHandler_81179AE;
+  (3) unless sub_80473E6 returns nonzero or halfword r5+0xe is set: when byte r5+0xd (rebuild flag) is
+  set it clears it, sub_8047B88(0) rebuilds the shop item list into byte_2019A00 and the returned count
+  is stored at r5+0x12; (4) menu_clampListScrollAfterCountChange_8047CB6 clamps cursor (+0x14) and scroll
+  (+0x18) to the count, copy_table_80469F0_to_202F800_8047CEC copies the ROM table, drawChipListFiveRows_8047594(scroll,
+  byte_2019A00) draws the rows, then sub_8047834, sub_804758C and background_LoadAreaTiles_8047800; (5)
+  decrements the toolkit RenderInfo halfwords 0x10 and 0x12 by 1 each frame; (6) unless the state byte
+  r5+0x0 is 4, 0xC or 0x10, emits the cursor sprite via sprite_emitColumnEntry_80472E8(0, (cursor*16)+8,
+  r5+0xb, 0) - a 16 px-per-row cursor; when the state byte is 8 the returned r2 is latched back into r5+0xb;
+  (7) scroll arrows: when count >= 5 and scroll != 0, sub_804722C(0x50, 3, 0); when count - scroll > 5,
+  sub_804722C(0x50, 0x55, 1) - the up/down arrow marks of a scrolling 5-row list. Callers are the chatbox
+  shop session handlers (chatbox_confirmShopPurchase_8046ED2, chatbox_stepContextScript_8047028, dialogueEnd_unlockPlayer_8046E48,
+  battle_objectAdvanceCounterToState8_8046DDC, scramblePanel_tick_8046E06).
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: 'Body read line by line: the sub_8047B88(0) rebuild with the count stored at r5+0x12, the drawChipListFiveRows_8047594(scroll,
+    byte_2019A00) call, the clamp helper, the cursor row*16+8 emit, and the two 0x50/0x55 scroll-arrow
+    calls.'
+  refs:
+  - bn6f/asm/asm03_2.s
+  reproduce: 'awk ''/sub_8047134:/{f=1} f{print} f&&/thumb_func_end/{exit}'' bn6f/asm/asm03_2.s
+
+    '
+  result: the body read as described above
+- method: caller-analysis
+  date: '2026-10-14'
+  detail: Six direct bl sites, all in the chatbox shop-session state handlers (bn6f/asm/asm03_2.s:1700-1837).
+  reproduce: 'grep -n ''bl sub_8047134'' bn6f/asm/asm03_2.s
+
+    '
+  result: bn6f/asm/asm03_2.s:1700, 1712, 1749, 1760, 1794, 1837
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, beastsp, story2'
+  reproduce: 'grep -l ''^08047134 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, beastsp, story2
+related:
+- sub_8047B88
+- drawChipListFiveRows_8047594
+- chatbox_confirmShopPurchase_8046ED2
+open_questions:
+- The exact effect of call_sub_3005EBA(0,0,2,0,0x20,0x14), and what the state-byte values 4/0xC/0x10 (cursor
+  hidden) correspond to in the shop flow.
+sources:
+- discovery session 2026-10-14 (outside model hyper/glm-5.3-flash, build/repro/discover)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b29fc142
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8047134 -> shopBuyMenu_updateFrame_8047134
+  where: bn6f 6ea2baf9
+  tool: tools/rename_symbol.py

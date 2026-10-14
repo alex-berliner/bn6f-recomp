@@ -1,0 +1,65 @@
+name: gamestate_openPetMenuOnStartPress_8005AF4
+address: '0x08005AF4'
+kind: function
+previous_names:
+- sub_8005AF4
+status: probable
+summary: 'From the overworld tick: on a fresh START press, with every blocker clear, boots or resumes
+  the PET menu subsystem by switching the game state to subsystem 0x18.'
+interface: 'void gamestate_openPetMenuOnStartPress(void) : r10 (toolkit) -> [r10]'
+details: 'Reads GameState from the toolkit and acts only when oGameState_SubsystemIndex == 4 (the overworld).
+  Guards, each bailing out: EVENT_1717_PLAYER_ADVANCE_FORWARD set, EVENT_IN_SLIPRUN_STATE set, sub_809E462''s
+  flag (oGameState_Unk_10) nonzero, warp_LoadCurrentAndReadUnk10_8005F28''s byte 0x10 nonzero. If TestPETMenuDataFlag(1)
+  is set (PET menu already initialised), it skips straight to the subsystem switch. Otherwise additionally
+  requires: a screen fade active (IsScreenFadeActive), no cutscene script loaded (IsCutsceneScriptNonNull),
+  chatbox event-flag bit 0x80 clear (chatbox_mask_eFlags2009F38), START newly pressed (IsButtonPressed(JOYPAD_START))
+  and EVENT_PET_DISABLED clear. Then PlaySoundEffect(SOUND_SELECT_79), updatePlayerGameState_800107A (snapshot
+  of the player''s position/facing), pet_initMenu_811EC10, scenario_initEffectState_8003962, zeroFill_8003AB2
+  (the 0x48-byte work struct at 0x2001010), and stores 0x18 into oGameState_SubsystemIndex (the cbGameState_80050EC
+  dispatch enters the PET menu next frame; its main state handler is sub_8005462).
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: 'Body read line by line: the SubsystemIndex==4 gate, the guard chain, the TestPETMenuDataFlag(1)
+    short-circuit, the START press check, the pet_initMenu_811EC10 boot sequence and the 0x18 store.'
+  refs:
+  - bn6f/asm/asm00_1.s
+  reproduce: 'awk ''/sub_8005AF4:/{f=1} f{print} f&&/thumb_func_end/{exit}'' bn6f/asm/asm00_1.s
+
+    '
+  result: the body read as described above
+- method: caller-analysis
+  date: '2026-10-14'
+  detail: One direct bl site, inside gamestate_OnMapUpdate_8005268 (the per-frame overworld tick).
+  reproduce: 'grep -n ''bl sub_8005AF4'' bn6f/asm/asm00_1.s
+
+    '
+  result: bn6f/asm/asm00_1.s:4625 (inside gamestate_OnMapUpdate_8005268)
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story1, story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^08005af4 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander
+related:
+- sub_8005462
+- pet_initMenu_811EC10
+- gamestate_OnMapUpdate_8005268
+open_questions:
+- The meaning of sub_809E462's oGameState_Unk_10 flag and of the warp byte 0x10 checked here.
+sources:
+- discovery session 2026-10-14 (outside model hyper/glm-5.3-flash, build/repro/discover)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b29fc142
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8005AF4 -> gamestate_openPetMenuOnStartPress_8005AF4
+  where: bn6f 6ea2baf9
+  tool: tools/rename_symbol.py
