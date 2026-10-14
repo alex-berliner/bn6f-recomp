@@ -1,0 +1,66 @@
+name: battleObject_chipSelectAnimTick_8029C08
+address: '0x08029C08'
+kind: function
+previous_names:
+- sub_8029C08
+status: probable
+summary: 'Per-frame chip-slot pulse animation step: pushes an OAM affine-transform record to the render
+  FIFO and walks the pulse phase byte of the chip-select object.'
+interface: '(r5 = *S20364C0, r10 = *Toolkit) -> void ; side effect: writes one 16-byte FIFO record (command
+  0xB782) and updates oS20364C0_Unk_0f pulse phase'
+details: "Entry reads [r5+1] (oS20364C0_JumpOffset01); the values 0x44 and 0x48 short-circuit\n  and force\
+  \ a render-info relative offset of 0, otherwise the base offset is taken\n  from `[r10->RenderInfoPtr\
+  \ + 0x18]`, clamped to <=0x67 via bgt early-out.\n  The base `(0x57 - that_u16) & 0x1FF` is assembled\
+  \ into the high half of a 32-bit\n  record and OR'd with `oS20364C0_Unk_0e << 25`, plus a fixed constant\
+  \ 0x800001FC.\n  The byte at `oS20364C0_Unk_0f` then nudges that value (subtract 1 for 2..6,\n  extra\
+  \ subtract 1 for 3..4, add 0x10000 for 5..11, subtract 0x10000 for 2..3).\n  The packed value plus a\
+  \ 0xB782 command tag is pushed through `fifo_pushRecord16_8009FF8`.\n  After the push, `oS20364C0_Unk_0f`\
+  \ is incremented (or wrapped to 0 when it\n  reaches 0x14) and the next affine-matrix pair is loaded\
+  \ from `byte_8029CAC`\n  (a sequence of byte pairs at offsets 0,2,4,...,0x40) and applied to the\n \
+  \ battle object's sprite via `sub_802FE7A(sprite_setAffineTransform_802FE7A)`.\n  Called as the trailing\
+  \ step of many chip-select / custom-menu / shuffle states\n  (sub_80271F8, sub_802728C, sub_802790C,\
+  \ sub_8027A58, scrollStrip_update_8026BF4, ...).\n  The captures call traces all show r5 pointing at\
+  \ the chip-select object (r5 has\n  the same 0x6c/0x60/0x65 seen across the same call sites).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- r5 is the live object pointer on every captured entry, with byte at +1 == JumpOffset01 (matches
+    S20364C0.inc definition oS20364C0_JumpOffset01). - r10 read for `[r10 + oToolkit_RenderInfoPtr]` =>
+    `ldrh r1,[r1,#0x18]` is consistent with RenderInfo offset 0x18 in the Toolkit (BattleState R; sub_802FE7A).
+    - Push through `fifo_pushRecord16_8009FF8` with arg r1 = 0xB782 marks this as the affine-transform
+    FIFO command (confirmed callee summary). - The `byte_8029CAC` table is a 20-pair X/Y sequence (40
+    bytes) consumed as `(index<<1) and (index<<1)+1` (visible at loc_8029C82). - oS20364C0_Unk_0f is a
+    counter: it grows until 0x14 then resets to 0 (loc_8029C82..loc_8029C8E), matching a per-frame pulse
+    phase counter. - The branch on JumpOffset01 being 0x44/0x48 selecting a "force identity" rendering
+    path is the only special-case consumer of those values.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08029C08
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^08029c08 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- Exact role of `oS20364C0_JumpOffset01` values 0x44 vs 0x48 (both go to the identity path; only a single-byte
+  diff and no other distinguishing logic in this routine).
+- What the rendered FIFO value's bottom bits encode (object index? tile id?) - the routine only computes
+  and pushes it, not consumes it.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 09ea8efa
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8029C08 -> battleObject_chipSelectAnimTick_8029C08
+  where: bn6f cff941c0
+  tool: tools/rename_symbol.py

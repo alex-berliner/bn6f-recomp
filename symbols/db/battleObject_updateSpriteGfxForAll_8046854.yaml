@@ -1,0 +1,67 @@
+name: battleObject_updateSpriteGfxForAll_8046854
+address: '0x08046854'
+kind: function
+previous_names:
+- sub_8046854
+status: probable
+summary: Iterates the 6 (0..5) battle-object sprite slots at byte_2011860 and, for each whose object-header
+  flag bit 0x02 is set, refreshes palette, anim-frame tiles and queues frame-piece sub-8002694
+interface: () -> r0 = 0 (always returns 0 in r0; no other return; all caller-saved regs trashed)
+details: "Iterates 6 sprite slots: r5 = base ptr byte_2011860, r7 = 0..5.\n  Each iteration adds 0x58\
+  \ to r5 to step through entries.\n  Loads byte at [r5] into r0 and tests bit 0x02 (tst r0, #2). Only\
+  \ when that bit is set\n  does it call the refresh helpers. So the byte is a per-slot \"needs gfx refresh\"\
+  \ flag\n  (or equivalently the OBJECT_FLAG_VISIBLE / 0x02 from ObjectHeader, since the slot's\n  first\
+  \ byte is the header flags).\n  The inner block (still per-slot, after checking flag):\n    - calls\
+  \ sub_804692C with r5+0x20 (the sprite sub-struct). Result bits tested:\n        bit 0x40 -> skip; bit\
+  \ 0x80 -> skip palette; fall through loads palette.\n        bit 0x20 set -> sprite_loadAnimFrameTiles_8002874(r5+0x20).\n\
+  \    - finally calls sub_8002694(0, 0, r5+0x20) which is the queueFramePiecesVia helper.\n  Layout:\
+  \ r5+0x20 is the ObjectSprite sub-struct (per BattleObject at loc=0x80 or\n  OverworldNPCObject at loc=0xa1).\
+  \ The 0x58 stride matches an OverworldMapObject\n  (0x78-0x20=0x58? actually 0x78 size) or perhaps a\
+  \ sprite descriptor table of 6\n  entries each 0x58 bytes; combined with the 0x20 offset, this looks\
+  \ like a\n  per-battle-actor sprite table. Given callers include 0x0814xxxx (beast-out / form-\n  change\
+  \ area, see snap_beastsp_* captures) and cb_8038AD0 (battle core), this is\n  most likely a per-actor\
+  \ sprite-table refresh.\n  Function saves r4-r7, r8/r9/r12 and returns 0 in r0 with all flags/Z cleared.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r5, off_8046928 // =byte_2011860` at 0x08046860 — base of 6-entry table. - Loop counter
+    `r7` 0..5 and stride `add r5, #0x58` (loc_80468A8) → 6 slots of 0x58 bytes. - `ldrb r0, [r5]; tst
+    r0, #2; beq loc_80468A8` — uses the per-slot flag byte, bit 0x02, as gate. - `add r5, #0x20` then
+    `bl sub_804692C` — passes r5+0x20 (sprite substruct) to a helper. - Bits tested on sub_804692C result:
+    0x40, 0x80, 0x20 — controls palette/skip/tiles paths. - `bl sprite_loadPalette_8002818` and `bl sprite_loadAnimFrameTiles_8002874`
+    confirmed by names. - Tail `bl sub_8002694` with r0=r1=0 matches "sub_8002694 ... sprite_queueFramePiecesViaSub".
+    - Return: `pop {r4-r7,pc}` and r0=0 in all 40 captured call exits, flags -ZC-. - Callers from battle
+    core / beast-out / form-change paths (cb_8038AD0, sub_808FEA4, sub_81419A0, sub_8142248, sub_8143482,
+    sub_8144048) are consistent with battle- time sprite refresh.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08046854
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^08046854 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The exact structure behind byte_2011860 (per-actor sprite table of 6 0x58-byte entries?)
+- isn't in the provided struct defs. sub_804692C's bit meanings (0x40/0x80/0x20) are
+- inferred from control flow; their semantic role ("no change" / "skip palette" /
+- '"tiles dirty") would be confirmed by reading sub_804692C. Whether the gate byte'
+- bit 0x02 corresponds to OBJECT_FLAG_VISIBLE (0x02 in ObjectHeader.Flags) or a
+- separate "needs gfx refresh" flag is also not fully resolvable without seeing how
+- the byte is set elsewhere.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 09ea8efa
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8046854 -> battleObject_updateSpriteGfxForAll_8046854
+  where: bn6f cff941c0
+  tool: tools/rename_symbol.py

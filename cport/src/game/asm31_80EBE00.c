@@ -3407,14 +3407,14 @@ Next nav_pickAdjacentPanel_80FE5EE(void) {
  * intact, matching the original mov-lr / bx-r1 dispatch pattern. */
 
 /* register form: dispatches to the battle-state handler identified by its byte-offset
- * in the 3-entry jump table (0 = battleObject_initNaviObject_8016F56, 4 = battle_8108F74, 8 = sub_8016C4E). */
+ * in the 3-entry jump table (0 = battleObject_initNaviObject_8016F56, 4 = battle_8108F74, 8 = battleObject_destroy_8016C4E). */
 static void call_battle_state_handler(u32 state) {
     if (state == 0)
         GUEST_CALL(battleObject_initNaviObject_8016F56);
     else if (state == 4)
         GUEST_CALL(battle_8108F74);
     else /* state == 8 */
-        GUEST_CALL(sub_8016C4E);
+        GUEST_CALL(battleObject_destroy_8016C4E);
 }
 
 /* register form: calls battleObject_updateSprite_8016E64 outside this file, which has no typed C interface yet

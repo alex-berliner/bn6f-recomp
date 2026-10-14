@@ -1,0 +1,80 @@
+name: battle_fadeOutAndDespawnSelfActor_801664E
+address: '0x0801664E'
+kind: function
+previous_names:
+- sub_801664E
+status: probable
+summary: Phase-gated per-frame tick for an in-battle actor that fades to white, then clears alliance targeting,
+  releases its panel reservation, removes itself from the alive-actor list, zeros its AIData+0x74, and
+  finally queues itself for destruction.
+interface: (r5 = self BattleObject; r10 = Toolkit) -> r0 non-zero ; side effects mutates self BattleObject
+  Timer / PhaseInitialized / CurState / ObjectHeader Flags, self AIData+0x74, sprite palette, alliance
+  target slot, alive-actor list, panel reservation.
+details: "- On first entry (PhaseInitialized==0) it does the spawn work: bails out if a timestop is active\n\
+  \    (`battle_isTimeStop`), otherwise ticks the battle sequence timer (`battle_bumpTimerAndReloadSubcount_800AE44`),\n\
+  \    loads r7 = self->AIDataPtr + 0x74 (a \"linked\" pointer slot) and calls `battle_spawnLinkedObject_80E1A6A`\n\
+  \    (which spawns a type-0x11 child object cross-linked via that AIData slot), then sets\n    self->Timer=0x20\
+  \ and PhaseInitialized=4.\n  - Loc_8016672 is the per-frame path: decrements self->Timer; while it remains\
+  \ >=0 the actor just stays\n    alive, and on every fourth tick (Timer & 3 == 0) it forces a white palette\
+  \ flash via\n    `sprite_forceWhitePalette(r5)` — the classic \"fading out\" effect.\n  - When Timer\
+  \ underflows (i.e. fade complete) the cleanup sequence runs:\n    * `battle_ClearAllianceTargetSlotIfSelf_802CDD0`\
+  \ — if any other actor had targeted self, clear that target slot.\n    * `object_removePanelReserve(FuturePanelX,\
+  \ FuturePanelY)` — give back the panel this object had reserved.\n    * `RemoveGivenAliveBattleActorFromList(self)`\
+  \ — drop self from the battle's alive player actor list.\n    * AIDataPtr->Unk_74 = 0 — clears the cross-link\
+  \ slot that was used to spawn the child.\n    * `battle_getObjectNameID_8011020` — pull the object's\
+  \ name ID; this also tail-calls sub_801102A.\n    * ObjectHeader.Flags &= ~0x02 — drops the \"visible\"\
+  \ flag.\n    * self->CurStateActionPhaseAndPhaseInitialized = CUR_STATE_DESTROY — schedules the next\
+  \ update phase to destroy self.\n  - The contract shows large \"in\" sets for r2/r3/r5/r10/lr because\
+  \ this is invoked via the battle object's\n    per-instance update dispatch (the captured-call entries\
+  \ show r0=curPhase, r1=this routine+1 (Thumb bit set),\n    r2=0x80, r3=3; these are the dispatcher\
+  \ calling convention, not real arguments).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `battle_isTimeStop` short-circuits the spawn step at ldrb+`tst`+`bne loc_8016672` on PhaseInitialized==0
+    path. - `mov r0,#0x20; strh r0,[r5,#oBattleObject_Timer]` and `mov r0,#4; strb r0,[r5,#oBattleObject_PhaseInitialized]`
+    set Timer=0x20 frames and PhaseInitialized=CUR_STATE_UPDATE once spawn is done. - `bl battle_spawnLinkedObject_80E1A6A`
+    after `ldr r7,[r5,#oBattleObject_AIDataPtr]; add r7,#0x74` links the spawn to AIData+0x74, and the
+    same slot is later cleared with `str r1,[r0,#oAIData_Unk_74]` proving that slot is the cross-link
+    back to the parent. - `bge loc_80166A4` plus `sub r0,#1; strh r0,[r5,#oBattleObject_Timer]` is a per-frame
+    countdown. - `lsr r0,r0,#2; bcc locret_80166AC` + `bl sprite_forceWhitePalette` fires only when bit
+    2 of the decremented timer clears, i.e. every 4th frame — the flash rhythm. - `str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]`
+    writes CUR_STATE_DESTROY (0x08), and `bic r0,r1` clears OBJECT_FLAG_VISIBLE (0x02) before destruction,
+    matching the documented `object_header_struct` flags. - Captured calls all share `r0=4, r1=0x0801664f,
+    r2=0x80, r3=3` with `lr=0x080165de`, consistent with a dispatch from a single owner (the CurPhase/PhaseInitialized
+    args match CUR_STATE_UPDATE = 0x04 and PhaseInitialized = 3 from the dispatcher). - The CONTEXT text
+    describes a related routine `080165de` as the calling dispatcher; this routine fits squarely as its
+    update callback.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801664E
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, battlesweep, beastsp, fuzz, menus2, menus3, story2, story4,
+    story5, story6, story8, story9'
+  reproduce: 'grep -l ''^0801664e '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, battlesweep, beastsp, fuzz, menus2, menus3, story2, story4, story5, story6,
+    story8, story9
+open_questions:
+- 'What type-0x11 child object spawns here: `battle_spawnLinkedObject_80E1A6A` is a type-0x11 link helper,
+  but the role (e.g. deletion VFX, stat tweak) is not pinned down.'
+- The exact semantic of `AIData+0x74` is unnamed in `AIData.inc` (just `u32 Unk_74`); we know it's a cross-link
+  pointer from the code, not what it logically represents.
+- Whether the captured-call exit `r0=0xf8` vs `r0=0x06` is caller-driven selection of a return code or
+  this routine is itself returning multiple values via dispatcher outputs — no caller side seen.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 09ea8efa
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801664E -> battle_fadeOutAndDespawnSelfActor_801664E
+  where: bn6f cff941c0
+  tool: tools/rename_symbol.py

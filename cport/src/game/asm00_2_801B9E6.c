@@ -1073,10 +1073,10 @@ Next nullsub_58(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_801BFEE ── */
-/* sub_801BFEE: enable (pass 1 to battle_loadChipPreviewGfxFromHandTable_801C002); all results (r0-r3, flags)
+/* ── battle_loadChipPreviewGfxInit_801BFEE ── */
+/* battle_loadChipPreviewGfxInit_801BFEE: enable (pass 1 to battle_loadChipPreviewGfxFromHandTable_801C002); all results (r0-r3, flags)
  * come straight from that call. */
-Next sub_801BFEE(void) {
+Next battle_loadChipPreviewGfxInit_801BFEE(void) {
     R0 = 1;
     GUEST_CALL(battle_loadChipPreviewGfxFromHandTable_801C002);
     RETURN_TO_CALLER();
@@ -1219,7 +1219,7 @@ Next renderHpDigits_801C296(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_801C304 ── */
+/* ── chatbox_uploadFrameTileGFX_801C304 ── */
 /* register form: calls QueueEightWordAlignedGFXTransfer outside this file, which has no typed C interface yet */
 static void queue_two_tiles(u32 src, u32 dst) {
     R0 = src;
@@ -1252,7 +1252,7 @@ static void decompress_portrait_tiles(u32 r4, u32 r5, u32 r7) {
     }
 }
 
-Next sub_801C304(void) {
+Next chatbox_uploadFrameTileGFX_801C304(void) {
     /* R3-R7 are inputs that the original preserves across the call (push/pop
      * restores them). R4, R5, R6, R7 are written by the function body, so we
      * write them back explicitly; R3 is never modified and must be preserved. */

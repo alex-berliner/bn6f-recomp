@@ -1,0 +1,70 @@
+name: battle_runBeastTransformationAction_8014A38
+address: '0x08014A38'
+kind: function
+previous_names:
+- sub_8014A38
+status: probable
+summary: 'Dispatch handler for an AIData beast-out/transform action: picks the per-state sub-routine based
+  on Alliance/NaviStats, clears the action flag if not applicable.'
+interface: side effects only (no return value to callers); reads r5 = AIData*, r7 = AIAttackVars*, reads/writes
+  AIData->Unk_48 flag, Alliance via r5, AIAttackVars->Unk_00
+details: "1. Loads BattleObject->Alliance from r5 and calls sub_801595E to derive some processed role/ID\
+  \ value (r0).\n  2. If r0 is outside [1..0x17] inclusive, calls ClearAIDataUnk0x48Flag with r0=0x80\
+  \ and returns.\n  3. Otherwise dispatches via 5 nested 4-entry tables (off_8014AB4..off_8014B04) indexed\
+  \ by r7->Unk_00. The cases are split by the value of sub_801595E's return:\n     - [0x14..0x17]: high\
+  \ Navi stats row (off_8014AF0 -> sub_801516C / 80151D4 / 80152C8 / 80153B0, plus battle_runTransformationIntroStep_8014BEE\
+  \ in the 0x17 group).\n     - [0x0e..0x13]: mid Navi stats (off_8014ADC) -> sub_8014F40/FA8/8015040/8015128.\
+  \ In this branch there's a further check: GetBattleNaviStatsByte_AllianceFromBattleObject with r1=0x2c\
+  \ (the NaviStats Transformation field); if the return > 0xa it falls through to the top table (off_8014B04\
+  \ -> sub_80153EC/44C/4C8/5CC), else the mid table.\n     - [0x0c..0x0b]: off_8014AC8 -> sub_8014D08/D70/E08/F04.\n\
+  \     - [0x01..0x0a]: default off_8014AB4 -> sub_8014B18/B98/battle_runTransformationIntroStep_8014BEE/sub_8014CC0.\n\
+  \  4. After the dispatched sub-routine returns, the caller GetAIDataUnk0x48Flag is read and tested against\
+  \ 0x80000 (test r0,r1); if zero, sub_801BCD0 is run. Otherwise early-return.\n  5. The function lives\
+  \ in sub_8017BC0 (snap_0801 prefix 0x17bd7 captured at LR), the main per-frame AI runner; r5 is the\
+  \ current AI/AIData, r7 is the AI's AttackVars block, both consistent with that caller's caller-save\
+  \ set (r8..r12 preserved).\n  The r0/r1 entry values 0x00000080 reflect 0x80 = the \"no-action\" sentinel\
+  \ from ClearAIDataUnk0x48Flag context; the second captured frame leaves r0=0x00080080 (or it passes\
+  \ through), and the subsequent runtime frames carry 0x80000-bit high bit set in flags (--C-) indicating\
+  \ the test passed (bit was already set).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0, [r5,#oBattleObject_Alliance]` reads alliance from the AI-side BattleObject. - sub_801595E
+    returns a value range-checked against 1, 0x18, 0x17, 0xd, 0xb; the boundaries match a Navi stats grade
+    table. - `ldrb r0, [r7,#oAIAttackVars_Unk_00]` indexes four 4-entry function tables (each `ldr r1,
+    [r1,r0]; bx r1`) confirmed by the five .word groups in the assembly. - `tst r0, 0x80000` followed
+    by `bne locret_8014AA6` short-circuits sub_801BCD0 when bit 0x80000 in AIData->Unk_48 is set. - Out-of-range
+    branch at loc_8014AA8 calls ClearAIDataUnk0x48Flag with constant 0x80, matching captured entry r0=0x80
+    in call 0. - Caller sub_8017BC0 has identical in-register set (r2/r4/r5/r8/r9/r10/r11/r12/lr) suggesting
+    this is the AI dispatch stage of a battle frame. - Combat-archive name "beastsp" and the BEV/PwrAtk
+    labels in AIData point to the beast-out / cross-transform mechanic that this state machine drives.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08014A38
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^08014a38 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The semantics of sub_801595E return r0 (looks like a Navi grade 0..0x17, but its summary is unknown).
+- Exact identity of each 4 sub-functions in the 5 tables; only the bytes are known, the labels are guesses
+  (battle_runTransformationIntroStep_8014BEE etc.).
+- Whether 0x80000 in AIData->Unk_48 means "this AIData is currently in beast mode" or "skip the next per-frame
+  step".
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 09ea8efa
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8014A38 -> battle_runBeastTransformationAction_8014A38
+  where: bn6f cff941c0
+  tool: tools/rename_symbol.py

@@ -1,0 +1,75 @@
+name: battleObject_loadBeastOutFormGfx_801CC34
+address: '0x0801CC34'
+kind: function
+previous_names:
+- sub_801CC34
+status: probable
+summary: Queues GFX/vram transfers for a battle object's beast-out form change and picks the emotion palette
+interface: '(r0 = emotionIdx (1-based), r4 = ?, r5 = BattleObject*, r10 = Toolkit*) -> r0 = emotionIdx
+  (unchanged) ; side effects: GFX/VRAM queued via QueueEightWordAlignedGFXTransfer; writes BattleObject+0x10
+  and +0x11'
+details: "- Saves {r0,r4,r7,lr} and reserves 0x30 bytes of stack (one preserved r0 plus scratch slots).\n\
+  \  - Loads a u8 from a small table at byte_801CDDC indexed by (r0 - 1) and stashes it at [sp] (emotion\
+  \ index 0 in, 1-based r0).\n  - Reads BattleObject+0x15 (FuturePanelY per struct) and compares with\
+  \ r0; if equal, skips the GFX transfer block at loc_801CC64.\n  - When different: computes src = byte_872D094\
+  \ + r0*0x100 and calls QueueEightWordAlignedGFXTransfer(src, 0x06017680, ...), then src2 = byte_872D014\
+  \ + (something)*0x80 with the same vram dest and a 0x80 size; writes 0xff to BattleObject+0x10 (CurAnim)\
+  \ marking the beast-out form anim reload.\n  - Calls battleObject_resolveEmotionPalette_801E6A8 with\
+  \ r4/r5/r6/r10 in the standard battle-object helper convention (returns r0 = emotion palette kind, 3\
+  \ meaning \"angry\").\n  - Reads BattleObject+0x17 (DirectionFlip) and, if it's 0xff AND the resolver\
+  \ returned 3, sets r1=1 (force \"angry\"); otherwise r1=0.\n  - Stores r1 into BattleObject+0x10 (CurAnim\
+  \ field), then loads [sp] (original emotion-idx u8), multiplies by 0x40, adds dword_872D694, then offsets\
+  \ by r1*0x20 (so the angry variant is 0x20 bytes into the bank) and blits 0x20 bytes into EWRAM byte_30016D0\
+  \ (an emotion-palette staging buffer) via QueueEightWordAlignedGFXTransfer.\n  - Caller (sub_801CADC)\
+  \ and its callee list, plus the obvious beast-out table pointers (byte_872D014, byte_872D094, dword_872D694)\
+  \ and the EWRAM target 0x030016d0, all line up with per-form GFX/palette upload on beast-out activation.\
+  \ \"BeastOut\" form-change is consistent with the snap name prefix `beastsp` (post-beast/spread-form\
+  \ snapshot) seen in the captured inputs.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `sub r0,#1` then `ldrb r0,[r1,r0]` from byte_801CDDC at `off_801CDD8`: 1-based->0-based table
+    lookup (size 6+1) into a per-form code. - `ldrb r1,[r5,#0x15]` and `cmp r2,r1`; the BattleObject struct
+    defines 0x15 as FuturePanelY, but here it is clearly being used as a per-object form/version byte
+    (not panel coords) because r0 is the parameter, not a coord. The field acts as the cached "current
+    emotion/form index" on the object. - `ldr r1,dword_801CD68 // =0x6017680` and two `QueueEightWordAlignedGFXTransfer`
+    calls with sizes r0*0x100 and #0x80 -> fixed VRAM dest 0x06017680 (block-based GFX/OBJ tile area in
+    BN6), characteristic of a tile-graphical upload. - `strb r0,[r5,#0x10]` with `#0xff` writes to BattleObject+0x10
+    (CurAnim) which is the form-cur-anim slot for the beast-out sprite. - Call to `battleObject_resolveEmotionPalette_801E6A8`
+    with callee''s documented contract using r4/r5/r6/r10 strongly implies the returned r0=3 is an emotion-palette
+    class ("angry"). - Final `QueueEightWordAlignedGFXTransfer` writes 0x20 bytes to `byte_30016D0`, EWRAM,
+    after indexing `dword_872D694 + emotionIdx*0x40 + r1*0x20`, exactly a palette-bank upload of the chosen
+    emotion row. - Captured-call lr=0x0801cb2b points into sub_801CADC, the documented caller; r0/r1 values
+    of 6/0xff/saved/etc match a beast-out activation path.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801CC34
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^0801cc34 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The semantic of BattleObject+0x15 being repurposed here as a form-id cache rather than FuturePanelY
+  is inferred from context; confirming it is unused for panel tracking on this object would settle it
+  (e.g. via the caller's setup).
+- The exact composition of the two source tables byte_872D014 (0x80 bytes) and byte_872D094 (r0*0x100
+  bytes) is unknown; whether the first is the OBJ tile data and the second is the palette (or vice versa)
+  would resolve the "why two transfers of different sizes to the same VRAM dest".
+- The meaning of r4 on entry (an AIData ptr? a battle-id?) is not directly attested.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 09ea8efa
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801CC34 -> battleObject_loadBeastOutFormGfx_801CC34
+  where: bn6f cff941c0
+  tool: tools/rename_symbol.py

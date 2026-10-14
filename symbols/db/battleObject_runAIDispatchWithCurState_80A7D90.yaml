@@ -1,0 +1,63 @@
+name: battleObject_runAIDispatchWithCurState_80A7D90
+address: '0x080A7D90'
+kind: function
+previous_names:
+- sub_80A7D90
+status: probable
+summary: Dispatches an AI actor's per-state handler via a 3-entry table indexed by `AIData+8`.
+interface: (r5 = AIData*, r10 = Toolkit*, lr = caller LR) -> r0 = result of indirect call ; r4-r10/LR
+  preserved (call-pushed)
+details: "1. Loads `r0 = AIData[AIData+4]` (a packed AI state id) and calls `sub_81428C2` with it;\n \
+  \    that helper returns in `r7` the resolved handler pointer (mask/transform on the\n     `CurAction`-style\
+  \ halfword), evidence: `ldrb r0, [r5,#4]` -> `bl sub_81428C2` -> `mov r7, r0`.\n  2. Computes another\
+  \ dispatch value from `r5+8` (an enum at AIData.Unk_08 just past\n     `CurState_CurAction`), `ldrb\
+  \ r1, [r5,#8]`, and uses it as an index into a small\n     3-entry Thumb table at `off_80A7DAC`: indices\
+  \ 0/1/2 point at `+1` of\n     `sub_80A7DB8`, `sub_80A7E14`, and `sub_80A7E0C` (so the targets are reached\n\
+  \     via Thumb `bx`, hence the `+1` trickiness in the table).\n  3. Loads the chosen entry via `ldr\
+  \ r0, [r0, r1]` then does the\n     `mov lr, pc` / `bx r0` Thumb-state-preservation dance to tail-call\
+  \ it without\n     disturbing the saved `lr`/r4-r7 pushed at entry.\n  4. Restores r4-r7 and returns\
+  \ via `pop {r4-r7, pc}`; effectively a `void`-style\n     trampoline that runs one of three AI subroutines\
+  \ picked by an AIData enum.\n  5. Per captured calls r0 entry is `0x080a7d91` (caller's `next PC` already\n\
+  \     one past `push`) and r1=0x3c matches an AIData packed state value seen across\n     many beastsP\
+  \ traces; r2 varies between `0x084c23b8` etc., consistent with\n     being passed through from the caller\
+  \ untouched into the dispatched handler.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0, [r5,#4] ; bl sub_81428C2 ; mov r7, r0` (entry of AIData byte dispatched through
+    helper at 0x081428c2) - `ldrb r1, [r5,#8]` is the index into the 3-entry table at off_80A7DAC - `mov
+    lr, pc ; bx r0` is the standard ARM7TDMI Thumb-interworking tail-call (table entries are `+1`) - Table
+    at off_80A7DAC lists `sub_80A7DB8+1`, `sub_80A7E14+1`, `sub_80A7E0C+1` (3 dispatched handlers) - `push
+    {r4-r7,lr} ... pop {r4-r7,pc}` frame shape indicates a void trampoline that returns whatever the tail-call
+    left in r0 - Captured exit flags `-Z--` and r0 values (e.g. 0x2118, 0x2058, 0x1f98) are returned solely
+    from the dispatched handler; this fn itself does not set NZ.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080A7D90
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^080a7d90 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The actual semantics of the 3 child handlers (DB8/E14/E0C) and what AIData+8's enum is - probably an
+  AI sub-phase or animation class, but the only field near 0x8 in AIData is `BeastOutAPwrAtk`/the BPwrAtk
+  cluster, so the precise role of that index is unconfirmed.
+- What `sub_81428C2` actually does with the byte at AIData+4 - some kind of state/id resolver, possibly
+  returning a function pointer that is then ignored (r7 only) while the call returns a value in r0 too?
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 09ea8efa
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80A7D90 -> battleObject_runAIDispatchWithCurState_80A7D90
+  where: bn6f cff941c0
+  tool: tools/rename_symbol.py

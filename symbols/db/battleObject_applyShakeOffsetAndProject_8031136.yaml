@@ -1,0 +1,76 @@
+name: battleObject_applyShakeOffsetAndProject_8031136
+address: '0x08031136'
+kind: function
+previous_names:
+- sub_8031136
+status: probable
+summary: Computes a delta between a passed-in battle object's two coords and the current camera-relative
+  offsets, zeroes it (or stores the deltas when both axes match a specific profile), then re-projects
+  the object via sprite_worldToScreenPos_80310EC.
+interface: '(r0 = battleObject*) -> r0 = &dword_200F3E0 ; side effects: writes camera deltas at (dword_200F3E0)+0x18/+0x1c,
+  calls sprite_worldToScreenPos_80310EC on r6'
+details: "Function prologue saves lr, sets r6 = r0 (the caller's battle object). It then loads the pointer\n\
+  \  at off_80311F0 (= dword_200F3E0, the global camera/transform block). It reads the object's two\n\
+  \  pre-cached \"previous\" coords from offsets 0x0/0x4 (r6,r0..r6,r4) and subtracts the corresponding\n\
+  \  values at r6+0xc/0x10 (current world coords). The differences are stored at (dword_200F3E0)+0x18\n\
+  \  and +0x1c (so they become the screen-space X/Y scroll deltas for this frame).\n\n  Branching logic:\n\
+  \    - If r2 (the X delta) > 0 AND r3 (the Y delta) > 0 AND r2 == r3, both deltas are KEPT as-is and\
+  \ the\n      function tails into a re-project of the object via sprite_worldToScreenPos_80310EC.\n \
+  \   - Otherwise both deltas are forced to 0 then sprite_worldToScreenPos_80310EC is called.\n\n  In\
+  \ all flows it eventually branches to loc_8031170 which performs `bl sprite_worldToScreenPos_80310EC`\n\
+  \  and then `pop {pc}`. No registers are preserved across the call besides r4-r7 (callee-saved in the\n\
+  \  Thumb EABI), so r2/r3 are scratch here; r7 carries the computed delta before the second store.\n\n\
+  \  The behavior matches a \"shake\" or \"filter\" pass where, when the object's x/y displacement from\
+  \ the\n  last frame is a positive exact match on both axes, that delta is fed straight through to the\
+  \ world->screen\n  projection; if not, the deltas are wiped to zero (no nudge). The captured calls always\
+  \ end with\n  r0 = dword_200F3E0 (= 0x0200F3E0), which is consistent with the function's final return\
+  \ value\n  being the dword_200F3E0 base pointer.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r0, off_80311F0 // =dword_200F3E0` loads the global camera block into r0. - `ldr r7,
+    [r6]` / `ldr r2, [r6,#0xc]`; `sub r7, r7, r2`; `str r7, [r0,#0x18]` : delta = obj[0] - obj[0xc] stored
+    as the X screen delta. - `ldr r2, [r6,#4]` / `ldr r7, [r6,#0x10]`; `sub r7, r7, r2`; `str r7, [r0,#0x1c]`
+    : delta = obj[4] - obj[0x10] stored as the Y screen delta. - `cmp r2, #0 / bgt loc_8031158 / blt loc_8031168`
+    and the matching `cmp r3, #0 / bgt loc_803115E` enforce "strict positive" on both axes; `cmp r2, r3
+    / bne loc_8031168` requires X==Y for the keep-del path, after which the same r2/r3 values are re-stored
+    via `str r2,[r0,#0x18]` / `str r3,[r0,#0x1c]`. - The fallthrough path at loc_8031168 zeros both offsets
+    (`mov r2,#0 / mov r3,#0` then `str r2,[r0,#0x18]; str r3,[r0,#0x1c]`). - Both paths converge at loc_8031170,
+    which does `bl sprite_worldToScreenPos_80310EC` then `pop {pc}`. - Captured-call exit r0 = 0x0200F3E0
+    (= dword_200F3E0) across all 6 snapshots, consistent with the pop {pc} returning to the caller''s
+    lr after the global pointer was last left in r0 by the `ldr` / `mov r0,#0` paths. - r6 is set from
+    r0 at entry and holds the battle-object pointer through the whole body, never reloaded.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08031136
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, beastsp, chips, fuzz, maps, menus2, story1, story2,
+    story3, story4, story5, story6, story8, story9, wander'
+  reproduce: 'grep -l ''^08031136 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, beastsp, chips, fuzz, maps, menus2, story1, story2, story3, story4,
+    story5, story6, story8, story9, wander
+open_questions:
+- The exact game meaning of "X delta strictly positive AND equal to Y delta" -- in the codebase this could
+  be a specific "tap/contact" or "match" detection that should not feed the screen shake, but evidence
+  is not strong enough to lock the meaning.
+- What fields [0..0x10] of the input object actually represent -- they are read and subtracted, but no
+  struct definition cleanly captures them in the supplied headers (BattleObject's coord region begins
+  at 0x34, so this may be a small legacy/auxiliary record or a per-frame update struct rather than a full
+  BattleObject).
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 09ea8efa
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8031136 -> battleObject_applyShakeOffsetAndProject_8031136
+  where: bn6f cff941c0
+  tool: tools/rename_symbol.py

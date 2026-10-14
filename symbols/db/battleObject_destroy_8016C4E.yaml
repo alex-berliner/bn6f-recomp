@@ -1,0 +1,79 @@
+name: battleObject_destroy_8016C4E
+address: '0x08016C4E'
+kind: function
+previous_names:
+- sub_8016C4E
+status: probable
+summary: Performs a battle object's destroy-phase cleanup (releases panel reserves, frees its collision
+  slot, decrements alliance counter, marks phase initialized=4, then drops the object).
+interface: '(r5 = BattleObject*; r10 = toolkit) -> void ; side effects: mutates battle object, AI data,
+  collision slot, panel reserves, alliance counter'
+details: "Guarded by `PhaseInitialized`: if non-zero on entry (`tst r0,r0` then `bne locret_8016C88`)\
+  \ the routine returns immediately, so this is the \"destroy phase\" handler invoked by the dispatcher's\
+  \ third pass.\n\n  Steps in order:\n  1. `RemoveBattleObjectPanelReserves` — releases every panel reserve\
+  \ owned by r5 on the 7x4 battlefield (in r5,r10).\n  2. Frees the object's collision slot via `object_freeCollisionData`\
+  \ (r5+oBattleObject_CollisionDataPtr is the offset pulled into r0).\n  3. `battle_DecrementAllianceCounterSlot4_800A104`\
+  \ — drops the matching per-alliance counter, provided the AIData flag at +0x0e doesn't suppress it.\n\
+  \  4. Snapshots the object's current HP into r1, then unconditionally stores 0xFF into AIData.Unk_0e\
+  \ (sentinel for \"destroyed\") *if* that byte wasn't already 0xFF — preserves the pre-existing HP read\
+  \ so the caller can use it on the 0xFF branch.\n  5. Writes 4 into `oBattleObject_PhaseInitialized`\
+  \ (CUR_STATE_DESTROY = 0x08 in the CurState byte, but the value 4 stored here means \"destroy-phase\
+  \ already ran this turn\").\n  6. If `oAIData_Unk_02` is non-zero, falls into `sub_800ED80` (the only\
+  \ call site I can see; r0 = r4 = AIDataPtr), which is presumably an AIData teardown, and then unconditionally\
+  \ calls `object_freeMemory` to release the battle-object slot.\n\n  In bn6f this slot is reached from\
+  \ a battle-object dispatcher switch (`CUR_STATE_DESTROY == 0x08`); the routine only has to be run once\
+  \ per object lifetime, which is exactly what `PhaseInitialized=4` enforces.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0,[r5,#oBattleObject_PhaseInitialized]; tst r0,r0; bne locret_8016C88` at +0x4..+0x8
+    — early-out when already initialised, classic "run-once per phase" guard. - `bl RemoveBattleObjectPanelReserves`
+    — tears down the object''s panel reservations as part of cleanup. - `ldr r0,[r5,#oBattleObject_CollisionDataPtr];
+    bl object_freeCollisionData` — frees the matching collision slot. - `bl battle_DecrementAllianceCounterSlot4_800A104`
+    — slot index = object''s alliance + 4 with an AIData-Unk_0e suppression. - `ldrb r0,[r4,#oAIData_Unk_0e];
+    cmp r0,#0xff; beq loc_8016C72; ldrh r1,[r5,#oBattleObject_HP]; mov r0,#0xff; strb r0,[r4,#oAIData_Unk_0e]`
+    — HP is loaded only on the not-already-0xFF branch and is dead by the time we reach `PhaseInitialized`
+    write, so it must be consumed by `sub_800ED80` / its callees; a sentinel write at +0x0e persists.
+    - `mov r0,#4; strb r0,[r5,#oBattleObject_PhaseInitialized]` — value 4 matches the `CUR_STATE_UPDATE`
+    constant in the BattleObject struct rather than `CUR_STATE_DESTROY`, so this is a "destroy phase has
+    been processed" flag, not a state mutation. - `ldrb r1,[r4,#oAIData_Unk_02]; cmp r1,#0; beq locret_8016C88`
+    — when `Unk_02 == 0` the AIData is not torn down and the slot is not freed (just returns after the
+    strb). - `mov r0,r4; beq loc_8016C84` followed by `bl sub_800ED80` (r0 = AIDataPtr) — passes the AIData
+    pointer to an AIData-side teardown helper. - `bl object_freeMemory` at the end releases the battle-object
+    slot. - All captured callers come from a single dispatcher (`lr = 08108f5c`) with r0 = 8 (state value)
+    and r2 = 0x02036830 (per-object dispatcher ctx), consistent with the `CUR_STATE_*` switch in a per-object
+    state machine.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08016C4E
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^08016c4e '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9
+open_questions:
+- The "8" passed in r0 in the captured calls isn't consumed by this body; it's almost certainly `CurState`
+  picked up by the dispatcher before the call. The exact selector for *which* battle-object functions
+  get routed here is unknown.
+- What `sub_800ED80` does (and what the HP saved at +0xe before the sentinel write is used for) would
+  clarify why the HP load sits in the not-0xFF branch.
+- Whether `PhaseInitialized = 4` is generally "destroy-done" vs. "next phase is CUR_STATE_UPDATE" needs
+  a wider look at the dispatcher.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 09ea8efa
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8016C4E -> battleObject_destroy_8016C4E
+  where: bn6f cff941c0
+  tool: tools/rename_symbol.py

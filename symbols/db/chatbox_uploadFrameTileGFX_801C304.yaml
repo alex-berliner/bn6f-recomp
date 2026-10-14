@@ -1,0 +1,76 @@
+name: chatbox_uploadFrameTileGFX_801C304
+address: '0x0801C304'
+kind: function
+previous_names:
+- sub_801C304
+status: probable
+summary: Chatbox text/frame GFX upload helper — copies 0x20 bytes (one tile row) from each of the 4 chatbox
+  GFX source slots to VRAM, skipping slot 0x0B, and chaining a second upload 0x80 bytes further into the
+  destination.
+interface: (r4 = arm, r5 = dest base in VRAM, r7 = index table base) -> r0 = dest end pointer ; r4/r5/r6/r7
+  preserved
+details: "- Indexed by [r4+8] (the chatbox sub-mode/frame selector). The arm value selects one of three\
+  \ tables at off_801C34C (off_801D854 / off_801D880 / off_801D8AC), which are arrays of 4 source pointers\
+  \ (`off_801D854` -> 4 ptr entries indexed by `off_801D854[r0]`).\n  - Loop `loc_801C310` walks r6 from\
+  \ 3 down to 0 inclusive, reading `ldrb r0, [r7,r6]` for each slot index. If the slot is 0x0B the upload\
+  \ is skipped (`beq loc_801C32A`); otherwise the table pointer at `[r4,r0*4]` (src) is fed with r5 (dst)\
+  \ and a size of 0x20 to `QueueEightWordAlignedGFXTransfer`, after which the same pair of registers are\
+  \ reused with src += 0x20 and dst += 0x80 for a second 0x20-byte copy (the \"second tile row\" half-tile\
+  \ shift used by GBA 4bpp graphics). \n  - r5 advances by 0x20 between iterations (r5 += 0x20), so over\
+  \ the four slots the destination block is contiguous 4 * 0x80 = 0x200 bytes after the loop finishes\
+  \ — matches one chatbox tile column set (4 tiles * 8 lines). \n  - r6 initialised to 3 and decremented\
+  \ via `sub r6,#1; bpl loc_801C310`, so iteration is `[r7+3] -> [r7+0]` exactly.\n  - The function never\
+  \ reads back r0 between the two queue calls; src advancement `add r0,r0,r2` is consistent with the size\
+  \ of 0x20 being passed back out as a pointer.\n  - Caller is sub_801C202 (the chatbox open/close driver),\
+  \ which calls this right after fixing up r5 (the VRAM base) and r7 (a pointer to the four tile-slot\
+  \ bytes) — see offset 0x08 in the chatbox struct (`BoxGfxLoadState_0F`/cur-gfx-load state) and the byte\
+  \ it loads via `ldrb r0,[r4,#8]`.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0,[r4,#8]` indexes `off_801C34C` to one of three source-table arrays; off_801C348
+    declares exactly three entries → matches the 3 "frame/mode" variants used by the chatbox open sequence.
+    - `mov r6,#3` and `bpl` exit ⇒ loops exactly 4 times; 4 entries per source table (`off_801D854/...D880/...D8AC`
+    all 4-wide). - `cmp r0,#0xb` / `beq loc_801C32A` shows slot 0x0B is the skip case — that is the slot
+    used by the chatbox to mean "no tile here, don''t overwrite VRAM". - Each iteration does two `QueueEightWordAlignedGFXTransfer`
+    calls with `r2 = 0x20` (`mov r2,#0x20`) and dst advances by `0x80` between them, so each slot copies
+    0x20+0x20 bytes split into two non-contiguous regions of the destination — typical of a 4bpp 8x8 tile
+    being split between tile-data and tile-row. - `add r5,#0x20` at the end of the loop, so r5 (the destination
+    pointer) walks 0x20 between slots; cumulative write span = 4 * 0x80 = 0x200 bytes — exactly one chatbox
+    GFX slot column. - Only direct callee is `QueueEightWordAlignedGFXTransfer` (`bl QueueEightWordAlignedGFXTransfer`),
+    and it appears twice per non-skipped slot. - The function returns r0 pointing at the end of the last
+    source region (the `add r0,r0,r2` after each first call) — i.e. the pointer past the second-row source,
+    which the caller sub_801C202 uses for its own bookkeeping.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801C304
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0801c304 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- The exact chatbox field that lives at [r4+8] isn't pinned to a struct entry; in Chatbox the closest
+  is `BoxGfxLoadState_0F` at 0x0F. The function being passed a pointer with a +8 field at offset 0x08
+  implies the chatbox struct is not the canonical `Chatbox` but likely a small "chatbox GFX uploader"
+  sub-struct (perhaps local to the loader routine). Confirming requires walking sub_801C202's setup code.
+- Whether the 0x0B skip constant is a literal "skip" magic or a real slot index that happens to be unused
+  needs to be confirmed by running the chatbox with that slot populated.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 09ea8efa
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801C304 -> chatbox_uploadFrameTileGFX_801C304
+  where: bn6f cff941c0
+  tool: tools/rename_symbol.py

@@ -1,0 +1,58 @@
+name: battle_scrollAccumulateStep_8031176
+address: '0x08031176'
+kind: function
+previous_names:
+- sub_8031176
+status: probable
+summary: Computes a per-step scroll delta for a battle object against a 16.16 fixed-point world offset,
+  then nudges its sprite by the camera scroll amount.
+interface: '(r0 = object*) -> r0 = sprite worldToScreenPos result ; side effects: writes two 16.16 scroll
+  deltas to dword_200F3E0+0x18/0x1c and converts the object''s sprite via sprite_worldToScreenPos_80310EC'
+details: "r6 = r0 (the object pointer); loads dword_200F3E0 (a render/scroll state struct) into r0.\n\
+  \  Reads the object's world coords (r6+0x0, r6+0x4 = X, Y) and subtracts the render state's offset at\
+  \ +0xc/+0x10 (probably render camera X/Y), writing the differences back into render_state+0x18/+0x1c\
+  \ as 16.16 deltas.\n  Then handles the equal negative case: if both deltas are negative and equal, keep\
+  \ them; otherwise zero them.\n  Tail-calls sprite_worldToScreenPos_80310EC with the object, which adjusts\
+  \ the sprite by the accumulated scroll. This is the per-object step of an object-nudge scroll that sub_8031478\
+  \ (camera scroll during battle transitions) drives.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r0, off_80311F0 // =dword_200F3E0` at 0x0803117c loads the render/scroll state base
+    - `ldr r2, [r6,#0xc]`/`ldr r2, [r6,#0x10]` and `ldr r7, [r6]`/`ldr r7, [r6,#4]` perform world-against-offset
+    subtraction writing to offsets +0x18/+0x1c - the negative/equal branch at loc_8031198..loc_80311B0
+    explicitly preserves a matched negative delta, otherwise zeros - tail-call `bl sprite_worldToScreenPos_80310EC`
+    matches its contract (in=[''r0'',''r5'',''r6'',''lr'']); the call is followed by `pop {pc}`, confirming
+    tail-call pattern - callers'' lr values (0x08031403, 0x080313b7) trace back to battle_setupMessageWindow_80313B0
+    / sub_80313FC / sub_8031478 which all sit in the battle transition scroll sequence described in the
+    project'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08031176
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, beastsp, chips, fuzz, maps, menus2, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^08031176 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, beastsp, chips, fuzz, maps, menus2, story1, story2, story3, story4,
+    story5, story6, story7, story8, story9, wander
+open_questions:
+- Why exactly dword_200F3E0 is treated as the global scroll accumulator (no struct definition matches
+  it) and what offsets +0x0c/+0x10 actually represent (likely a render-info X/Y or camera X/Y in 16.16).
+  Settled by reading the producer of dword_200F3E0.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 09ea8efa
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8031176 -> battle_scrollAccumulateStep_8031176
+  where: bn6f cff941c0
+  tool: tools/rename_symbol.py

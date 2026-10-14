@@ -1821,7 +1821,7 @@ Next camera_recenterAndSetCtrlBits_803135E(void) {
 /* ── sub_8031388 ── */
 /* sub_8031388(r0-r2 = parameters, r5 = parameter, r12 = state flags):
  * Runs the three-step sequence shared by this family of routines:
- *   1. sub_8031136 on the caller's r0-r2; its r0/r1 results are fed
+ *   1. battleObject_applyShakeOffsetAndProject_8031136 on the caller's r0-r2; its r0/r1 results are fed
  *      straight into step 2 (the original never reloads them),
  *   2. sub_8030E14 with the "unbounded" extent markers (r2 = r3 = -1),
  *      an extent count of 0x20, r5 = 0 and r6 = 1,
@@ -1836,7 +1836,7 @@ Next sub_8031388(void) {
     u32 arg0 = R0, arg1 = R1, arg2 = R2, arg5 = R5;
 
     /* Step 1: r0-r2 are passed through unchanged. */
-    GUEST_CALL(sub_8031136);
+    GUEST_CALL(battleObject_applyShakeOffsetAndProject_8031136);
 
     /* Step 2: r0/r1 still carry step 1's results here. */
     R2 = (u32)-1;
@@ -1880,7 +1880,7 @@ Next battle_setupMessageWindow_80313B0(void) {
     u32 savedR5 = R5;
 
     /* step 1: prepare state (reads r0-r2 and the r12 flag word) */
-    GUEST_CALL(sub_8031176);
+    GUEST_CALL(battle_scrollAccumulateStep_8031176);
 
     /* step 2: lay out into a 32x32 region with blank origin and one style */
     R2 = 0x20;
@@ -1918,7 +1918,7 @@ Next battle_runTextboxUpdateAndSetStateBit1_80313D4(void) {
     u32 flag_word = R12;
 
     /* First step: (reads r1 and the r12 state word) */
-    GUEST_CALL(sub_8031136);
+    GUEST_CALL(battleObject_applyShakeOffsetAndProject_8031136);
 
     /* Second step: called with r2 = 0x20, r3 = 0, r4 = -1, r5 = -1, r6 = 1
      * (fill/clear style parameters); r12 state word still live. */
@@ -1946,7 +1946,7 @@ Next battle_runTextboxUpdateAndSetStateBit1_80313D4(void) {
 }
 
 /* ── sub_80313FC ── */
-/* sub_80313FC: runs a three-step sequence (sub_8031176; sub_8030F7C with a fixed
+/* sub_80313FC: runs a three-step sequence (battle_scrollAccumulateStep_8031176; sub_8030F7C with a fixed
  * parameter set of 0x20/0x20/0x20/1; camera_moveByDelta_80310B0 with 0) and then sets bit 1 of
  * the state word passed in r12.  The caller's r0, r1, r2 and r5 are preserved
  * across the calls; the Z/N flags reflect the updated r12 value. */
@@ -1954,7 +1954,7 @@ Next sub_80313FC(void) {
     u32 inR0 = R0, inR1 = R1, inR2 = R2, inR5 = R5;
     u32 state = R12;
 
-    GUEST_CALL(sub_8031176);
+    GUEST_CALL(battle_scrollAccumulateStep_8031176);
 
     R2 = 0;
     R3 = 0x20;
@@ -1979,11 +1979,11 @@ Next sub_80313FC(void) {
 
 /* ── sub_8031420 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
-/* register form: generated wrapper: sub_8031136 has no typed C interface yet */
+/* register form: generated wrapper: battleObject_applyShakeOffsetAndProject_8031136 has no typed C interface yet */
 static inline u32 call_sub_8031136(u32 r0, u32 r5) {
     R0 = r0;
     R5 = r5;
-    GUEST_CALL(sub_8031136);
+    GUEST_CALL(battleObject_applyShakeOffsetAndProject_8031136);
     return R0;
 }
 
@@ -2025,7 +2025,7 @@ static inline call_sub_8030F04_result call_sub_8030F04(u32 r0, u32 r2, u32 r3, u
 /* Camera edge-scroll driver (sub_8031420).
  *
  * Scrolls the camera off the edge of one map and into the next, in two passes.
- * Each pass re-anchors the camera with sub_8031136, asks for a scroll delta
+ * Each pass re-anchors the camera with battleObject_applyShakeOffsetAndProject_8031136, asks for a scroll delta
  * (sub_8030E14 for the first pass, sub_8030F04 for the second), applies it
  * with camera_moveByDelta_80310B0, and folds the move's status flag (r3) into
  * the caller's r12 accumulator: bit 0 from the first pass, bit 1 from the
@@ -2101,11 +2101,11 @@ Next sub_8031420(void) {
 
 /* ── sub_8031478 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
-/* register form: generated wrapper: sub_8031176 has no typed C interface yet */
+/* register form: generated wrapper: battle_scrollAccumulateStep_8031176 has no typed C interface yet */
 static inline u32 call_sub_8031176(u32 r0, u32 r5) {
     R0 = r0;
     R5 = r5;
-    GUEST_CALL(sub_8031176);
+    GUEST_CALL(battle_scrollAccumulateStep_8031176);
     return R0;
 }
 
@@ -2131,11 +2131,11 @@ static inline call_camera_moveByDelta_80310B0_result_sub_8031478 call_camera_mov
     return (call_camera_moveByDelta_80310B0_result_sub_8031478){ R3, R4, R6, OVERFLOW_FLAG() };
 }
 
-/* register form: generated wrapper: sub_8031136 has no typed C interface yet */
+/* register form: generated wrapper: battleObject_applyShakeOffsetAndProject_8031136 has no typed C interface yet */
 static inline u32 call_sub_8031136_sub_8031478(u32 r0, u32 r5) {
     R0 = r0;
     R5 = r5;
-    GUEST_CALL(sub_8031136);
+    GUEST_CALL(battleObject_applyShakeOffsetAndProject_8031136);
     return R0;
 }
 

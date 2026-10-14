@@ -351,20 +351,20 @@ static void damage_player_leave_1hp(u32 player_index) {
     GUEST_CALL(battle_damagePlayerLeave1HP_8013FD0);
 }
 
-/* register form: sub_8029C08 reads r2-r7 as object method state carried across the
+/* register form: battleObject_chipSelectAnimTick_8029C08 reads r2-r7 as object method state carried across the
  * entire function's register flow (camera ptr in r2, scroll const in r3, etc.).
  * Typed C cannot express "value lives in a specific guest register across multiple calls." */
 static void s20364c0_finalize(u32 self) {
     R5 = self;
-    GUEST_CALL(sub_8029C08);
+    GUEST_CALL(battleObject_chipSelectAnimTick_8029C08);
 }
 
 /* Update the tile-scrolling battle object (S20364C0).
  * self:    pointer to the state struct (r5)
  * toolkit: global toolkit pointer (r10)
- * r4, r6:  caller-saved values that sub_8029C08 reads via those registers.
+ * r4, r6:  caller-saved values that battleObject_chipSelectAnimTick_8029C08 reads via those registers.
  * R2/R3 are written as guest registers inside the camera path because the game
- * passes them forward through multiple GUEST_CALLs to sub_8029C08. */
+ * passes them forward through multiple GUEST_CALLs to battleObject_chipSelectAnimTick_8029C08. */
 static void s20364c0_update(u32 self, u32 toolkit, u32 r4, u32 r6) {
     /* --- Initialization (only when state flag is zero) --- */
     if (LD8(self + oS20364C0_Unk_02) == 0) {
@@ -402,7 +402,7 @@ static void s20364c0_update(u32 self, u32 toolkit, u32 r4, u32 r6) {
     if (get_battle_mode_sub_8026B04() != 1) {
         u32 camera = LD32(toolkit + oToolkit_CameraPtr);
         ST32(camera + 0x34, LD32(camera + 0x34) - CAMERA_SCROLL_STEP);
-        /* register form: sub_8029C08 reads r2/r3 as accumulated register state; C locals
+        /* register form: battleObject_chipSelectAnimTick_8029C08 reads r2/r3 as accumulated register state; C locals
          * cannot flow into those guest registers through the intervening GUEST_CALLs */
         R2 = camera;
         R3 = CAMERA_SCROLL_STEP;
@@ -450,7 +450,7 @@ static void s20364c0_update(u32 self, u32 toolkit, u32 r4, u32 r6) {
     s20364c0_finalize(self);
 }
 
-/* sub_8026B04(r5=self, r10=toolkit, r4, r6=state for sub_8029C08) -> all regs + flags */
+/* sub_8026B04(r5=self, r10=toolkit, r4, r6=state for battleObject_chipSelectAnimTick_8029C08) -> all regs + flags */
 Next sub_8026B04(void) {
     s20364c0_update(R5, R10, R4, R6);
     RETURN_TO_CALLER();
@@ -476,7 +476,7 @@ static void call_clear_battle_state_unk11_flag(u32 bit) {
 
 /* register form: CopyBackgroundTiles takes 6 args in R0-R5 and clobbers R4-R7
  * which hold the loop's saved self/scroll state; R1-R3 output values flow into
- * the subsequent sub_8029C08 call as register arguments. */
+ * the subsequent battleObject_chipSelectAnimTick_8029C08 call as register arguments. */
 static void call_copy_bg_tiles(u32 j, u32 i, u32 block, u32 tile_ids, u32 j_size, u32 i_size) {
     u32 saved_r4 = R4, saved_r5 = R5, saved_r6 = R6, saved_r7 = R7;
     R0 = j; R1 = i; R2 = block; R3 = tile_ids; R4 = j_size; R5 = i_size;
@@ -497,12 +497,12 @@ static void call_sub_801E71C(u32 delta, u32 value) {
     GUEST_CALL(sub_801E71C);
 }
 
-/* register form: sub_8029C08 takes R2-R7 as register context. R2/R3 carry either
+/* register form: battleObject_chipSelectAnimTick_8029C08 takes R2-R7 as register context. R2/R3 carry either
  * the camera pointer + scroll constant (mode != 1) or opaque CopyBackgroundTiles
  * output (mode 1), which can only live in guest registers between the calls. */
 static void call_sub_8029C08(u32 self) {
     R5 = self;
-    GUEST_CALL(sub_8029C08);
+    GUEST_CALL(battleObject_chipSelectAnimTick_8029C08);
 }
 
 #define TILE_BLOCK_ALL_ZERO  ((u32)0x08026C88)
@@ -540,11 +540,11 @@ static void sub_8026BF4_impl(u32 self, u32 toolkit) {
 
     /* Outside battle mode 1, shift the camera Y by one tile-block (0x18000).
      * R2/R3 must hold the camera pointer and constant as register arguments
-     * for the sub_8029C08 call that follows. */
+     * for the battleObject_chipSelectAnimTick_8029C08 call that follows. */
     if (call_get_battle_mode() != 1) {
         u32 camera = LD32(toolkit + oToolkit_CameraPtr);
         ST32(camera + 0x34, LD32(camera + 0x34) + 0x18000);
-        /* register form: R2/R3 are register args consumed by sub_8029C08 below */
+        /* register form: R2/R3 are register args consumed by battleObject_chipSelectAnimTick_8029C08 below */
         R2 = camera;
         R3 = 0x18000;
     }
@@ -603,7 +603,7 @@ Next custMenuUpdateWaitSelectionState_8026CCC(void) {
 
         GUEST_CALL(custMenuSomeHandler_8028B74); /* (self, joypad) */
         GUEST_CALL(sub_8028820);
-        GUEST_CALL(sub_8029C08);                 /* (self) */
+        GUEST_CALL(battleObject_chipSelectAnimTick_8029C08);                 /* (self) */
         GUEST_CALL(sub_802899C);
         GUEST_CALL(battle_endingBgUpdate_8029D34);
 
@@ -633,7 +633,7 @@ Next chatbox_stateMaybeFinishText_8026E4C(void) {
     if (R0 != 0) {
         GUEST_CALL(sub_802A220);
         if (R0 == 0xFF) {
-            GUEST_CALL(sub_8029C08);
+            GUEST_CALL(battleObject_chipSelectAnimTick_8029C08);
             RETURN_TO_CALLER();
         }
         GUEST_CALL(chatbox_8040818);
@@ -645,7 +645,7 @@ Next chatbox_stateMaybeFinishText_8026E4C(void) {
     ST8(R5 + 1, 4);
     ST16(R5 + 2, 0);
 
-    GUEST_CALL(sub_8029C08);
+    GUEST_CALL(battleObject_chipSelectAnimTick_8029C08);
     RETURN_TO_CALLER();
 }
 
@@ -656,7 +656,7 @@ Next chatbox_stateMaybeFinishText_8026E4C(void) {
  * effect is active, 0 otherwise. It then dispatches through the handler
  * table at off_8026EBC, indexed by the kind byte at self+2, calling the
  * selected handler with the kind in R0, its own thumb pointer in R1,
- * self in R5 and the effect flag in R4. Finally it runs sub_8029C08 on
+ * self in R5 and the effect flag in R4. Finally it runs battleObject_chipSelectAnimTick_8029C08 on
  * the same object.
  *
  * R4 is only the effect flag for the duration of the calls; the caller's
@@ -666,7 +666,7 @@ Next chatbox_stateMaybeFinishText_8026E4C(void) {
  *   - effect present: N/Z from "movs r4, #4"
  *   - effect absent:  N/Z from "tst r0, #0x200000" (Z set)
  * C/V are untouched by both. The flags on return are whatever
- * sub_8029C08 leaves. */
+ * battleObject_chipSelectAnimTick_8029C08 leaves. */
 Next battle_updateObjectByKind_8026E98(void) {
     u32 self = R5;
     u32 saved_r4 = R4;
@@ -691,7 +691,7 @@ Next battle_updateObjectByKind_8026E98(void) {
     case 8: GUEST_CALL(sub_8026FAA); break;
     }
 
-    GUEST_CALL(sub_8029C08);
+    GUEST_CALL(battleObject_chipSelectAnimTick_8029C08);
     R4 = saved_r4;
     RETURN_TO_CALLER();
 }
@@ -885,11 +885,11 @@ static void chatbox_state_8027394(u32 self, u32 work, u32 state) {
     GUEST_CALL(sub_8027394);
 }
 
-/* register form: calls sub_8029C08 outside this file, which has no typed C interface yet */
+/* register form: calls battleObject_chipSelectAnimTick_8029C08 outside this file, which has no typed C interface yet */
 static void chatbox_common_update(void) {
     /* No argument: run with the r5 the state handler left behind, exactly as
-     * the original's "bl sub_8029C08" does (it never reloads r5). */
-    GUEST_CALL(sub_8029C08);
+     * the original's "bl battleObject_chipSelectAnimTick_8029C08" does (it never reloads r5). */
+    GUEST_CALL(battleObject_chipSelectAnimTick_8029C08);
 }
 
 /* Advance the battle chat window one frame: run the handler picked by the
@@ -1154,7 +1154,7 @@ Next sub_80273E4(void) {
  * Unless the chatbox "shown" flag (0x80 of eFlags2009F38) is set, reset the
  * textbox state: copy the stored line count/character at +0xD into the active
  * slot at +1 and clear the halfword at +2 (character timer/index).
- * Then update the textbox via sub_8029C08. */
+ * Then update the textbox via battleObject_chipSelectAnimTick_8029C08. */
 Next chatbox_resetTextStateIfHidden_80273EC(void) {
     R0 = 0x80;
     GUEST_CALL(chatbox_mask_eFlags2009F38);
@@ -1162,7 +1162,7 @@ Next chatbox_resetTextStateIfHidden_80273EC(void) {
         ST8(R5 + 1, LD8(R5 + 0xD));
         ST16(R5 + 2, 0);
     }
-    GUEST_CALL(sub_8029C08); /* self stays in r5 */
+    GUEST_CALL(battleObject_chipSelectAnimTick_8029C08); /* self stays in r5 */
     RETURN_TO_CALLER();
 }
 

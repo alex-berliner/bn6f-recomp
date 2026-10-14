@@ -2434,7 +2434,7 @@ Next battle_ResetObjectActionState_80165B8(void) {
  * - Otherwise tail-call the object's current phase handler, looked up in the
  *   table off_80165F0 by oBattleObject_CurPhase:
  *       phase 0 -> battle_teardownObject_80165F8
- *       phase 1 -> sub_801664E
+ *       phase 1 -> battle_fadeOutAndDespawnSelfActor_801664E
  *   The handler's results (R0, R1 and the flags) are passed straight through
  *   to our caller; the original achieves this by returning into a `pop {pc}`
  *   right after the handler returns. */
@@ -2458,7 +2458,7 @@ Next battle_objectUpdateDispatchPhase_80165C2(void) {
     if (phase == 0)
         GUEST_CALL(battle_teardownObject_80165F8);
     else                                   /* phase 1: the only other entry */
-        GUEST_CALL(sub_801664E);
+        GUEST_CALL(battle_fadeOutAndDespawnSelfActor_801664E);
 
     RETURN_TO_CALLER();
 }

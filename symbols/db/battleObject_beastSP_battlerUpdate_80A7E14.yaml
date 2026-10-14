@@ -1,0 +1,77 @@
+name: battleObject_beastSP_battlerUpdate_80A7E14
+address: '0x080A7E14'
+kind: function
+previous_names:
+- sub_80A7E14
+status: probable
+summary: Beast-SP battle object update dispatcher, picking one of six state handlers via an inline thumb-table
+  indexed by the object's CurState byte.
+interface: (r5 = toolkit BattleState ptr, r7 = battle object ptr, r10 = toolkit, lr = state update caller)
+  -> void ; no meaningful return written to r0
+details: "Saves r4-r7,lr. Loads the address of an inner table at 0x80A7E2C, then reads\n  the current\
+  \ state byte at `[r7,#6]` (BattleObject.Params / Param3, used as the\n  dispatcher index, since `r7`\
+  \ here is a BattleObject and Param3 is offset 0x6 per\n  the BattleObject struct). The dispatched handler\
+  \ address is read out of the\n  table, and the dispatcher does `mov lr, pc; bx r0` to call that handler\
+  \ in\n  Thumb mode (handlers listed in the table carry +1 so they are Thumb targets).\n  One of the\
+  \ dispatches (index 0) falls through to `bl sprite_update` after\n  setting r0 from the table pointer;\
+  \ the assembler placed the `bl sprite_update`\n  on the dispatch path that follows the register load.\
+  \ The function ends with\n  `pop {r4-r7,pc}`, matching the calling convention of `sub_80A7DB8` whose\
+  \ own\n  register contract lists this as a callee and which preserves r5/r7/r10/lr.\n  Concretely, captured\
+  \ calls show r0 holding EWRAM base addresses such as\n  0x02011f20 / 0x02011f98 (sprite-related buffers)\
+  \ and on entry from r7 is\n  consistently an object pointer; the dispatched state handler ultimately\n\
+  \  updates the beast-SP battle object via sprite_update or related sub-states\n  (sub_80A7E44, sub_80A7E4C,\
+  \ sub_80A7EDA, sub_80A7F58, sub_80A8006, sub_80A800A).\nevidence: |\n  - `push {r4-r7,lr}` / `pop {r4-r7,pc}`\
+  \ at function boundaries preserve the\n    toolkit (r10), object ptr (r7), battle state ptr (r5), and\
+  \ lr.\n  - `ldrb r1, [r7,#6]` reads Param3 from the BattleObject the caller loaded into r7.\n  - `ldr\
+  \ r0, off_80A7E28 ; ldr r0, [r0,r1]` plus `mov lr,pc ; bx r0` is the\n    canonical Thumb-mode table-jump\
+  \ dispatch.\n  - off_80A7E2C lists six handlers with the Thumb-bit set (`+1`), confirming\n    this\
+  \ is a six-entry state dispatcher.\n  - The only direct `bl` out of the function body is `bl sprite_update`,\
+  \ used\n    when the dispatcher result is the second table entry's path.\n  - Caller sub_80A7DB8 has\
+  \ matching in/out registers (r5/r7/r10/lr live; r2/r3/r8/r9/r10/r12 out),\n    so sub_80A7DB8 is the\
+  \ parent battle-object update loop invoked per-actor.\nuncertain: |\n  Which sub-state each table index\
+  \ maps to (Param3 value -> handler) is only known\n  by reading the six child functions. Whether `sub_80A8006`\
+  \ is a leave/terminate\n  handler (index 4) vs an in-battle update (index 5) is not visible from this\n\
+  \  dispatcher alone; checking `sub_80A7DB8`'s use of CurState or Anim values and\n  the asm of each\
+  \ handler would settle which beast-SP sub-states are which.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {r4-r7,lr}` / `pop {r4-r7,pc}` at function boundaries preserve the toolkit (r10), object
+    ptr (r7), battle state ptr (r5), and lr. - `ldrb r1, [r7,#6]` reads Param3 from the BattleObject the
+    caller loaded into r7. - `ldr r0, off_80A7E28 ; ldr r0, [r0,r1]` plus `mov lr,pc ; bx r0` is the canonical
+    Thumb-mode table-jump dispatch. - off_80A7E2C lists six handlers with the Thumb-bit set (`+1`), confirming
+    this is a six-entry state dispatcher. - The only direct `bl` out of the function body is `bl sprite_update`,
+    used when the dispatcher result is the second table entry''s path. - Caller sub_80A7DB8 has matching
+    in/out registers (r5/r7/r10/lr live; r2/r3/r8/r9/r10/r12 out), so sub_80A7DB8 is the parent battle-object
+    update loop invoked per-actor.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080A7E14
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^080a7e14 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- Which sub-state each table index maps to (Param3 value -> handler) is only known
+- by reading the six child functions. Whether `sub_80A8006` is a leave/terminate
+- handler (index 4) vs an in-battle update (index 5) is not visible from this
+- dispatcher alone; checking `sub_80A7DB8`'s use of CurState or Anim values and
+- the asm of each handler would settle which beast-SP sub-states are which.
+- 'status: probable'
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 09ea8efa
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80A7E14 -> battleObject_beastSP_battlerUpdate_80A7E14
+  where: bn6f cff941c0
+  tool: tools/rename_symbol.py

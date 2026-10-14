@@ -1,0 +1,66 @@
+name: battle_objectDestructOnHitPhase_80DA886
+address: '0x080DA886'
+kind: function
+previous_names:
+- sub_80DA886
+status: probable
+summary: 'Battle-object UPDATE handler that handles the moment the object takes a killing hit: tears down
+  its collision, spawns a destruction effect, plays a death SFX, and transitions the object to CUR_STATE_DESTROY.'
+interface: '(r5 = BattleObject*, r10 = Toolkit*) -> void ; side effects: writes oBattleObject_CurStateActionPhaseAndPhaseInitialized,
+  plays SFX 0x85, may spawn effect object, tears down collision.'
+details: "1. Calls object_removeCollisionData to clear this object's collision registration (r5).\n  2.\
+  \ Calls object_spawnCollisionEffect to spawn the per-frame hit/contact effect visuals.\n  3. Calls basicHandleBattleObjectDamage_801156A\
+  \ with r0=0 (no extra HP) to apply the hit; if the return is <0 (i.e. HP <= 0) the branch to loc_80DA8BA\
+  \ is taken, ending the object.\n  4. Otherwise, if the new collision's FlagsFromCollision at +0x70 has\
+  \ the 0x3f800000 bit set, again branch to destruction.\n  5. If not time-stopped (battle_isTimeStop\
+  \ returns false), dispatch via the per-CurAction jump table at off_80DA8DC (entries for 80DA8EC, 80DA908,\
+  \ 80DA956, and the linger/destroy phase 80DA974).\n  6. If time-stopped, fall back to object_presentCollisionData\
+  \ to keep collision interaction alive while frozen.\n  7. On destruction (loc_80DA8BA): reads three\
+  \ words from r5+0x34 (X, Y, Z 16.16 coords), spawns a type-4 effect object (spawn_t1_0x0_EffectObject)\
+  \ at that position, plays SOUND_UNK_85, clears the collision region, and writes CUR_STATE_DESTROY (0x08)\
+  \ to CurStateActionPhaseAndPhaseInitialized.\n  8. Final pop {pc} is a \"return\" via the saved LR —\
+  \ this is an action/phase function called from the action state machine entry in battle_initObject_80DA834.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl object_removeCollisionData` immediately on entry sets up the dying state. - `bl basicHandleBattleObjectDamage_801156A`
+    followed by `tst r0, r0` / `blt loc_80DA8BA` shows the death path is triggered when damage handler
+    returns negative. - The check `ldr r0, [r5,#oBattleObject_CollisionDataPtr]; ldr r0, [r0,#oCollisionData_FlagsFromCollision];
+    ldr r1, dword_80DAA24 // =0x3f800000; tst r0, r1; bne loc_80DA8BA` reads the collision''s FlagsFromCollision
+    and tests bit 0x3f800000 (an immediate-destruction flag from the damage pipeline). - `bl battle_isTimeStop`
+    / `bne loc_80DA8B4` selects between the action dispatch and object_presentCollisionData when frozen.
+    - `ldrb r0, [r5,#oBattleObject_CurAction]` then a 4-entry table at off_80DA8DC (entries +1 = thumb
+    targets 80DA8EC, 80DA908, 80DA956, 80DA974) implements the per-action phase dispatch. - `mov r0, #0x34;
+    add r0, r0, r5; ldmia r0!, {r1-r3}` reads X/Y/Z 16.16 from the Coords block (0x34..0x40). - `bl spawn_t1_0x0_EffectObject`
+    + `mov r0, #SOUND_UNK_85; bl PlaySoundEffect` + `bl object_clearCollisionRegion` + `mov r0, #CUR_STATE_DESTROY;
+    str r0, [r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]` is the explicit death sequence.
+    - Sole caller battle_initObject_80DA834 is described as "initializes a battle object ... then hands
+    off to the action state machine," consistent with this being one of those state-machine phases.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080DA886
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp, fuzz, menus3, story2, story6, story9'
+  reproduce: 'grep -l ''^080da886 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp, fuzz, menus3, story2, story6, story9
+open_questions:
+- Which CurAction values (0..3) correspond to which sub-handler, and what those sub-handlers actually
+  do. The exact semantics of the 0x3f800000 FlagsFromCollision bit (which damage effect triggers immediate
+  destruction). Whether the time-stop fallback actually re-enters the same dispatch on the next frame.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 09ea8efa
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80DA886 -> battle_objectDestructOnHitPhase_80DA886
+  where: bn6f cff941c0
+  tool: tools/rename_symbol.py

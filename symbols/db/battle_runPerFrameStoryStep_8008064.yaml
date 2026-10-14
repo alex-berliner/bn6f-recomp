@@ -1,0 +1,75 @@
+name: battle_runPerFrameStoryStep_8008064
+address: '0x08008064'
+kind: function
+previous_names:
+- sub_8008064
+status: probable
+summary: 'Story-step per-frame driver: ticks the battle navi AI joypads, kicks off a story-battle idle
+  "KindEffect" dispatch (skipping or applying effects when the battle is ending or has a specific battle-effect
+  flag), and falls back to a "no cross-net yet" path that resets navi status gfx + state.'
+interface: () -> void ; side effects on a per-battle state struct (r5), toolkit/r10 state, AI joypads,
+  navi status block, struct 0x2035280 field 0x26
+details: "Entry pushes only lr, then runs `battle_updateNaviAIJoypad_8012DFC` for both player indices\
+  \ (r0=0, then r0=1) to advance the per-frame virtual-joypad edge state.\n  Reads `r5[3]` (a per-step\
+  \ \"already-ran-this-tick\"/state flag); if non-zero it skips the dispatch block.\n  Otherwise it initializes\
+  \ the story step: writes `0x1e` to `r5[0x8]` (likely a frame counter / ttl) and sets `r5[3] = 4` (state\
+  \ 4: \"dispatched\").\n  Calls `battle_IsBattleEnding_800A97A`; if the end-of-battle sequence is active\
+  \ it dispatches KindEffect with effect id `0x294` (0xa5<<2 = 0x294, then -1 -> 0x293) at `r5[0xa]` and\
+  \ immediately calls `battle_dispatchKindEffect_801E792(0x10, r5)` (r5 is passed as the dispatch source\
+  \ ptr).\n  Otherwise it calls `GetBattleEffects` and checks bit `0x8`; if absent it dispatches `battle_dispatchKindEffect_801E792(0,\
+  \ 0)` (a no-op ping), else dispatches `battle_dispatchKindEffect_801E792(0xc, (r10)->BattleStatePtr[0x7])`.\n\
+  \  After that block, it always calls `comm_checkCrossNetBattleReady_801E754`; when the result is `0`\
+  \ (\"not ready\"), it explicitly clears the player's navi status (SetGfxAndStatus with id `0xff`, prev-id\
+  \ `0xffff`), clears a halfword on the 0x2035280 battle-status block (`setStruct2035280Field26_801E0C8`\
+  \ with `0xffff`), and writes `8` to `r5[0]` to put this story-step state machine back at state `8` (the\
+  \ \"waiting for cross-net\" entry state).\n  The function tail is `pop {pc}` (a TailCall-form restored\
+  \ pc), so it is a void per-frame tick.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {lr}` / `pop {pc}` at the top/bottom (asm00_1.s:10988,10999) and no outgoing return
+    value => void per-frame. - Two back-to-back `bl battle_updateNaviAIJoypad_8012DFC` with r0=0 then
+    r0=1 (asm00_1.s:10993,10995) ticking the player 0/1 AI joypad edge state. - `ldrb r0,[r5,#3]; tst
+    r0,r0; bne 0x80080B2` is a one-shot guard that skips the dispatch until r5[3] is reset; afterwards
+    `strh r0,[r5,#0x8]` writes `0x1e` and `strb r0,[r5,#3]` writes `4` (state 0x4 = "dispatched"). - `bl
+    battle_IsBattleEnding_800A97A` + immediate `mov r0,#0xa5; lsl r0,r0,#2; sub r0,#1; strh r0,[r5,#0xa]`
+    puts the KindEffect id `0x293` into the halfword at r5[0xa] before dispatching `battle_dispatchKindEffect_801E792(0x10,
+    r5)`. - `bl GetBattleEffects; mov r1,#8; tst r0,r1` checks battle-effect flag 0x8 to decide between
+    a (0xc, BattleState[0x7]) dispatch and a (0,0) no-op dispatch. - `bl comm_checkCrossNetBattleReady_801E754;
+    cmp r0,#0; bne 0x80080D0` skipping the navi-status-reset block when cross-net is already ready. -
+    `naviStatus_SetGfxAndStatus_801E724(0xff, 0)` and `setStruct2035280Field26_801E0C8(0xffff)` together
+    "blank" the player''s navi status gfx/id and the 0x2035280 status field 0x26; `str r0, [r5]` then
+    writes `8`, putting r5[0] at state `0x8` (the "await cross-net ready" re-entry). - `r10` is the toolkit
+    per the established convention (callees all take `in=[''r10'',''lr'']` or use `r10` to reach the toolkit/BattleState).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08008064
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^08008064 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9
+open_questions:
+- Exact meanings of r5[0..0xa] (size and layout of this story-step state struct); only inferred from byte/halfword
+  stores.
+- What `0x293` KindEffect encodes ("story-end" effect vs. story-battle-specific effect).
+- Why state `4` is written to r5[3] when the dispatch fires, and what value/test this corresponds to.
+- Whether the `(0,0)` dispatch is truly a no-op or registers a pending kind-effect to act on later.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 09ea8efa
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8008064 -> battle_runPerFrameStoryStep_8008064
+  where: bn6f cff941c0
+  tool: tools/rename_symbol.py

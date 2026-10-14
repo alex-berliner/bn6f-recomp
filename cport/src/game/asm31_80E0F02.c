@@ -1136,7 +1136,7 @@ Next nullsub_12(void) {
  * Jump table (off_80EA478, word-indexed by state byte):
  *   state 0 → playerObject_init_80172F0
  *   state 4 → playerObject_update_80EA484
- *   state 8 → sub_8016C4E
+ *   state 8 → battleObject_destroy_8016C4E
  */
 
 /* register form: calls playerObject_init_80172F0 outside this file, which has no typed C interface yet */
@@ -1151,10 +1151,10 @@ static void call_player_update(u32 state) {
     GUEST_CALL(playerObject_update_80EA484);
 }
 
-/* register form: calls sub_8016C4E outside this file, which has no typed C interface yet */
+/* register form: calls battleObject_destroy_8016C4E outside this file, which has no typed C interface yet */
 static void call_sub_8016C4E(u32 state) {
     R0 = state;
-    GUEST_CALL(sub_8016C4E);
+    GUEST_CALL(battleObject_destroy_8016C4E);
 }
 
 /* register form: calls sub_801BCF4 outside this file, which has no typed C interface yet */

@@ -1,0 +1,60 @@
+name: battle_loadChipPreviewGfxInit_801BFEE
+address: '0x0801BFEE'
+kind: function
+previous_names:
+- sub_801BFEE
+status: probable
+summary: Battle chip-preview GFx init trampoline that passes the "open chip preview" flag (=1) into sub_801C002,
+  which is the project's hand-table chip-preview GFX loader.
+interface: '(none — only uses callee-saved r4, r6, r7, r10, lr) -> void ; side effects: triggers the chip-preview
+  GFX load via r0=1'
+details: "The function is a 4-instruction leaf-like wrapper: push {lr}; mov r0, #1; bl sub_801C002; pop\
+  \ {pc}.\n  It hard-codes r0=1 and forwards execution to battle_loadChipPreviewGfxFromHandTable_801C002,\n\
+  \  using tail-call-pops {pc} as the return. The register contract shows it reads only r4/r6/r7/r10/lr\n\
+  \  (matching the surrounding Toolkit-style calling convention where r10 is oToolkit, r4/r6/r7 are\n\
+  \  general locals), and writes only those callee-saved registers plus r5 in addition. No return\n  value\
+  \ is observed in any capture (r0=0 with -ZC- flags on exit, with the captured r0=0 likely\n  being the\
+  \ value returned from sub_801C002, which we just discard).\n  The captured \"lr=0x0801bef8\" at call\
+  \ sites suggests this is invoked from inside the story2\n  (request-BBS / story flow) sub-system, with\
+  \ one common caller. The literal argument 1 presumably\n  selects the \"open / load\" mode for the chip-preview\
+  \ GFX drawer (as opposed to a \"close\" or other\n  mode). I drop the final `_ADDRESS` since the role\
+  \ is fully explained by the callee name and the\n  literal payload.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {lr}` / `pop {pc}` at sub_801BFEE+0 and +10 show this is a one-shot call trampoline
+    with no locals. - `mov r0, #1` at sub_801BFEE+2 hard-codes the single argument (#1) instead of letting
+    the caller pick a mode. - The sole direct call `bl battle_loadChipPreviewGfxFromHandTable_801C002`
+    makes this a forwarder to that loader. - Captured callers all have lr=0x0801bef8 (the same story2
+    caller), lr consistent across 40 captures. - Register contract: only callee-saved / arg registers
+    in/out; no scratch registers are listed as inputs, so it does not consume any argument.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801BFEE
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0801bfee '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- We don't see sub_801C002's body, so the meaning of literal `r0=1` is inferred from the callee's name
+- (and the fact that this trampoline hard-codes it). Settling it needs disassembly of sub_801C002 plus
+- a couple of sibling entries that pass other constants to the same target.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 09ea8efa
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801BFEE -> battle_loadChipPreviewGfxInit_801BFEE
+  where: bn6f cff941c0
+  tool: tools/rename_symbol.py

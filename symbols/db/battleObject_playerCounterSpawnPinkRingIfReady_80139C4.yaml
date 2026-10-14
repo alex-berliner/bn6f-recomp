@@ -1,0 +1,68 @@
+name: battleObject_playerCounterSpawnPinkRingIfReady_80139C4
+address: '0x080139C4'
+kind: function
+previous_names:
+- sub_80139C4
+status: probable
+summary: On a live player BattleObject, spawns the pink counter-hit ring (obj 0x5E) when the player is
+  in beast-out mode and the AIData+0x5c counter-target pointer is still unset.
+interface: '(r5 = *BattleObject, r10 = *Toolkit) -> void ; side effects: allocates obj 0x5E'
+details: "1. Loads the AIData pointer from the BattleObject's `AIDataPtr` slot into r7.\n  2. Early-returns\
+  \ if the object's HP is zero (`ldrh r0, [r5,#oBattleObject_HP]; tst r0,r0; beq locret_80139F4`).\n \
+  \ 3. Early-returns if `AIData.ActorType` is not `ACTOR_TYPE_PLAYER` (`cmp r0,#2; bne locret_80139F4`).\n\
+  \  4. Early-returns if `AIData.AIIndex` is greater than 0x0b (only the player-side AIIndex range can\
+  \ trigger).\n  5. Calls `callPossiblyGetBattleEmotion_8015B54(r0=alliance, r10=toolkit)`; early-returns\
+  \ if r0 != 2, i.e. the player is not in the emotion/transformation state whose value is 2 (beast-out\
+  \ / Soul Unity in BN6).\n  6. Recomputes r7 = AIData + 0x5c and early-returns if that pointer slot is\
+  \ non-zero — so the ring only spawns the first time a counter is scored in this beast-out state.\n \
+  \ 7. Calls `SpawnCounterPinkRingMaybe_80C4C12(r1=0x4, r2=mood, r3=0x10, r5=this, r7=&AIData.Unk_5c)`\
+  \ to spawn the pink counter ring over the counterattacked enemy and link it to this player object via\
+  \ the AIData+0x5c slot.\n  8. Pops r7,pc to return.\n  The four `mov r1,#4 / mov r3,#0x10` literal constants\
+  \ passed to the spawner are the encoded \"x=4, z=16\" placement params for the ring effect.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r7,[r5,#oBattleObject_AIDataPtr]` and the AIData field reads (`oAIData_ActorType`, `oAIData_AIIndex`)
+    come directly from the AIData struct at offsets 0x58, 0x0, 0x1. - `cmp r0,#ACTOR_TYPE_PLAYER` plus
+    `bgt 0xb` restricts to the controlled navi (`oAIData_AIIndex <= 0xb`). - `bl callPossiblyGetBattleEmotion_8015B54`
+    then `cmp r0,#2` confirms the call returns the current emotion/transformation state and only value
+    2 (beast-out / Soul Unity) is accepted. - `add r7,#oAIData_Unk_5c` + `ldr r0,[r7]; tst r0,r0; bne
+    locret_80139F4` shows the ring is gated on the AIData+0x5c pointer being NULL. - The callee `SpawnCounterPinkRingMaybe_80C4C12`''s
+    one-liner says it spawns the pink counter-hit ring (obj 0x5E) and links it to the scoring object —
+    exactly what the AIData+0x5c link enables. - All 40 captured-call snapshots share lr=0x080ea4b1 (player
+    object update), and the r1 buffer at 0x02036120 is zeroed with 0xFFFF bytes at 0x2a (HP/value slots),
+    consistent with a freshly-touched player AIData buffer.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080139C4
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^080139c4 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- The exact game-term for "emotion == 2" (beast-out vs Soul Unity vs a generic transformation enum) is
+  not nailed down; the wrapper `callPossiblyGetBattleEmotion_8015B54` only suggests it's a transformation/emotion
+  state.
+- The literal `r1=4 / r3=0x10` is encoded x/z for the spawner; whether 4 means "4 panels ahead" or panel
+  coordinates is unknown without more callers of the spawner.
+- The `r2` argument (described as "mood" by the spawner signature) is just whatever `callPossiblyGetBattleEmotion_8015B54`
+  left in r2; its precise role is not visible here.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 09ea8efa
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80139C4 -> battleObject_playerCounterSpawnPinkRingIfReady_80139C4
+  where: bn6f cff941c0
+  tool: tools/rename_symbol.py

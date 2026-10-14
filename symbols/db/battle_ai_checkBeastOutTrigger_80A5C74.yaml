@@ -1,0 +1,62 @@
+name: battle_ai_checkBeastOutTrigger_80A5C74
+address: '0x080A5C74'
+kind: function
+previous_names:
+- sub_80A5C74
+status: probable
+summary: Checks if a beast-out / fugit activation condition is met for a given AIData and sets its triggered
+  flag.
+interface: '(r5 = AIDataPtr, r10 = ToolkitPtr) -> r0 = bool (1 if triggered, else 0) ; side effect: stores
+  1 to AIDataPtr+0x24 when condition matches.'
+details: "- Prologue: `mov r4, #0` (default return = false).\n  - Calls `reqBBS_81409F4(r10)` and compares\
+  \ its return value against `0xc0`.\n  - If BBS request count is below 0xC0 the function short-circuits\
+  \ to return r4 (0). When `>= 0xC0` it caches the value into r7.\n  - Computes `r0 = r5 + 0xC` (i.e.\
+  \ address of `AIState->Unk_0c` inside `AIData`/AIState block; AIData Unk_0c/Unk_0d live at +0xc, AIState\
+  \ follows immediately at +0x20 in AIData but offset 0xc lines up with the AIData field whose match value\
+  \ comes from a coord trigger), then calls `checkCoordinateTrigger_8031a7a(r0)` which reads coordinate-trigger\
+  \ data from whatever pointer sits at AIData+0xc.\n  - Compares the coordinate-trigger return against\
+  \ the BBS request count cached in r7.\n  - On equal, sets r4=1 and writes `1` to `[r5, #0x24]`. Given\
+  \ the AIData layout, offset 0x24 sits inside the Joypad cluster (JoypadHeld @ 0x22, JoypadPressed @\
+  \ 0x24) — i.e. it stamps `JoypadPressed` to 1 as a \"flag the AI was just poked into beast-out\" signal.\n\
+  \  - Epilogue: returns r4 (0 or 1) in r0.\n  - The magic constant `0xC0` is the BBS \"request count\"\
+  \ threshold for activating the beast-jaw/zombie form swap animation.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl reqBBS_81409F4` followed by `cmp r0, #0xc0` / `blt loc_80A5C98` shows a hard threshold
+    against the live BBS request count. - `add r0, r0, r5` then `mov r0, #0xc` reaches `r5+0xC`, matching
+    AIData+0xC (Unk_0c), a 4-byte slot used as a coordinate-trigger/area ptr that the called helper reads.
+    - `cmp r7, r1` compares the BBS count with the coord-trigger return; equal branch sets r4=1. - `str
+    r4, [r5,#0x24]` writes the boolean back into AIData; offset 0x24 in AIData is `JoypadPressed` (u16),
+    consistent with "tell the AI a one-shot button was pressed". - Captured calls show r1 values `0x4
+    / 0x20` and r2 in `0x0844xxxx` (EWRAM-ish) consistent with coord-trigger lookup tables. - Snap `snap_beastsp_*.bin`
+    filename plus caller `sub_80A5B70` (which lives next to and calls into this region) suggests the "beastsp"
+    sequence — the beast-form spawn chain used by the AI controller.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080A5C74
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp, maps'
+  reproduce: 'grep -l ''^080a5c74 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp, maps
+open_questions:
+- Exact semantic of `AIData.JoypadPressed = 1` here (is it the B-press that swaps into BeastOut, or a
+  "trigger seen" flag?). Settling it requires the caller's subsequent use of `r5+0x24`.
+- Why 0xC0 BBS requests specifically (per-version tutorial/state marker).
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 09ea8efa
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80A5C74 -> battle_ai_checkBeastOutTrigger_80A5C74
+  where: bn6f cff941c0
+  tool: tools/rename_symbol.py

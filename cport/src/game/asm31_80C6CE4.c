@@ -3633,12 +3633,12 @@ static u32 call_battle_getFlags(void) {
     return R0;
 }
 
-/* register form: calls sub_80DA886 outside this file, which has no typed C interface yet */
+/* register form: calls battle_objectDestructOnHitPhase_80DA886 outside this file, which has no typed C interface yet */
 static void call_sub_80DA886(u32 r0, u32 r1, u32 r2) {
     R0 = r0;
     R1 = r1;
     R2 = r2;
-    GUEST_CALL(sub_80DA886);
+    GUEST_CALL(battle_objectDestructOnHitPhase_80DA886);
     /* R0-R2 and nz/c/v now hold this function's outputs */
 }
 
@@ -3699,7 +3699,7 @@ static void init_battle_object(u32 obj) {
     call_sub_80DA886(arg_r0, arg_r1, action);
 }
 
-/* battle_initObject_80DA834(r5 = battle object) -> void (outputs R0-R2, flags from sub_80DA886) */
+/* battle_initObject_80DA834(r5 = battle object) -> void (outputs R0-R2, flags from battle_objectDestructOnHitPhase_80DA886) */
 Next battle_initObject_80DA834(void) {
     init_battle_object(R5);
     RETURN_TO_CALLER();

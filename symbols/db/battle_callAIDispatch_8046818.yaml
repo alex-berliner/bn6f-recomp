@@ -1,0 +1,65 @@
+name: battle_callAIDispatch_8046818
+address: '0x08046818'
+kind: function
+previous_names:
+- sub_8046818
+status: probable
+summary: Iterates up to 5 AI slots in the battle dispatch table and dispatches handlers based on a per-slot
+  flag and sub-index; void, used as a per-frame AI tick.
+interface: '() -> void ; side effects: calls function pointers loaded from off_804679C[idx] via a hand-rolled
+  `bx r0` (push/pop r7 around it), preserves r4-r9/r12.'
+details: "- Loads r5 from `byte_2011860` (per the comment `// =byte_2011860`) and uses r5 as the base\
+  \ of an AI-slot table; r7 is the slot index.\n  - For each of 5 slots (cmp r7, #5 / blt): tests `ldrb\
+  \ r0, [r5]`; bit 0 (`#1`) selects whether the slot is \"active\". If not set, it skips the call.\n \
+  \ - When active, it reads `ldrb r1, [r5,#1]` (slot sub-index), does `lsl r1, r1, #2`, loads a function\
+  \ pointer from `off_804679C[r1]` into r0, then performs an indirect call by setting lr=pc, `bx r0` (with\
+  \ r7 pushed around the call so r7 survives). This is a classic Thumb trampoline that avoids BLX range\
+  \ limits.\n  - After each slot, it advances r5 by `0x58` (one slot stride) and bumps r7 by 1.\n  - Captured\
+  \ calls show the function reaches into EWRAM (`020118b8`, `0200df20`, `02001f6e`), and at exit r0=0,\
+  \ `-ZC-` flags held — there is no return value.\n  - The dispatch table at `off_804679C` is referenced\
+  \ (not in this file) and indexed by the second byte of each slot record. Callers include the BSP route\
+  \ handlers and `cb_8038AD0`.\n  - Structually: each 0x58-byte slot starts with a u8 \"active\" flag\
+  \ (bit0) and a u8 sub-index; remaining 0x56 bytes are opaque per-slot context passed implicitly (the\
+  \ trampoline preserves only r0/r1 across the call, so callees must consume their context from wherever\
+  \ r10/its toolkit pointers point).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `cmp r7, #5` at the loop bottom directly implies a 5-slot iteration. - `add r5, #0x58` between
+    iterations is the slot stride. - `ldrb r0, [r5]` plus `tst r0, #1` / `beq` skips the dispatch path
+    when bit0 is clear. - `ldrb r1, [r5,#1]; lsl r1, r1, #2; ldr r0, [r0,r1]` is a 4-byte table lookup
+    via `off_804679C` using the slot''s sub-index. - `push {r7}; mov lr, pc; bx r0; pop {r7}` is the canonical
+    Thumb-style indirect dispatch (lr=pc before bx). - Caller set is dominated by the BSP route chain
+    (`sub_81419A0/8142248/8143482/8144048`) plus `cb_8038AD0`, fitting a per-frame "tick AI for the live
+    battle state" role. - `byte_2011860` is an EWRAM base; the 0x58 stride points at a per-actor AI control
+    block that lives next to the AIData (compare ai_data_struct offsets; 0x58 matches `AIData.Unk_5c`-ish
+    range / `AIDataPtr + actor index * 0x58`).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08046818
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^08046818 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The exact meaning of `[r5]`'s bit0 and `[r5+1]`'s sub-index (what selects "this AI handler runs now")
+  is inferred from structure, not seen written here.
+- What `off_804679C` actually contains (jump table of which AIData sub-handlers) — needs the data section
+  to confirm.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 09ea8efa
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8046818 -> battle_callAIDispatch_8046818
+  where: bn6f cff941c0
+  tool: tools/rename_symbol.py
