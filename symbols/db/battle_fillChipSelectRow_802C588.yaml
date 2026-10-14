@@ -1,0 +1,56 @@
+name: battle_fillChipSelectRow_802C588
+address: '0x0802C588'
+kind: function
+previous_names:
+- sub_802C588
+status: probable
+summary: Writes a contiguous ascending halfword run (0xC1E8..) into a chip-select row buffer, 0x2A halfwords
+  wide.
+interface: '(r0 = dst halfword buffer) -> void ; side effects: none beyond writing 0x2A halfwords to [r0..r0+0x53]'
+details: "Loads the seed value 0xC1E8 (dword_802C598) into r1, then iterates r2 = 0x2A down to 0,\n  storing\
+  \ strh r1 at [r0], incrementing both the value (r1 += 1) and the destination by\n  one halfword (r0\
+  \ += 2) per step. The 0x40-byte capture of [r0 @ 03007d40] is zero-filled\n  before the call, but the\
+  \ function writes only halfwords; the post-call exit r0 = 03007d94\n  (= 0x03007d40 + 0x2A*2) is exactly\
+  \ the post-loop pointer, confirming the row length is\n  0x2A halfwords. The caller sub_802C044 (the\
+  \ chip-select initializer invoked from\n  battle_initChipSelect_802BD60) sets up r0 = the chip-select\
+  \ row buffer; this routine\n  is what primes that row's tile-id table with an ascending identity sequence\
+  \ starting\n  at 0xC1E8 (VRAM tile id 0xC1E8 = chip-gfx tile base for the first slot). Caller and\n\
+  \  callee contracts show it as void (only r0/r1/r2 are clobbered, lr saved, no return\n  value surfaced\
+  \ to callers).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r1, dword_802C598` with the literal `0xC1E8` at 0x802C598 - `mov r2, #0x2a` and the
+    strh loop terminate when r2 hits 0, writing exactly 0x2A halfwords - exit r0 = entry r0 + 0x2A*2 (0x03007d40
+    -> 0x03007d94) observed across all 6 captures - single direct caller is sub_802C044, which the project
+    names "battle_initChipSelect row helper"-style code path - 0xC1E8 matches the chip-select VRAM tile-id
+    base seen in battle UI dumps'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0802C588
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, beastsp, menus3, story2, story4, story5, story6, story7, story8,
+    story9'
+  reproduce: 'grep -l ''^0802c588 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, beastsp, menus3, story2, story4, story5, story6, story7, story8, story9
+open_questions:
+- Exact role of the ascending sequence (looks like identity tile-id fill, but the
+- destination could be a different table in the same row buffer). Settling would
+- require looking at what sub_802C044 does immediately after this call.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f c951b1b4
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_802C588 -> battle_fillChipSelectRow_802C588
+  where: bn6f 66c2a27e
+  tool: tools/rename_symbol.py

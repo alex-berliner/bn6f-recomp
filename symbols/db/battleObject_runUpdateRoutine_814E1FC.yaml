@@ -1,0 +1,60 @@
+name: battleObject_runUpdateRoutine_814E1FC
+address: '0x0814E1FC'
+kind: function
+previous_names:
+- sub_814E1FC
+status: probable
+summary: 'Tail thunk: invokes sub_814E0D0 with (r0=ActorType ptr, r1=AIData ptr), then sets AIData.Unk_0f=r3
+  result and OR-s 0xC into AIData byte 0; returns the actor-type pointer.'
+interface: '(r0 = ActorType-ish pointer, r1 = AIData pointer) -> r0 = same pointer ; side effect: AIData[0]
+  |= 0x0C, AIData[0xf] = r3 (from sub_814E0D0 return)'
+details: "Saves lr in r12, then calls sub_814E0D0 (\"battleObject_runUpdateRoutineAndAdvancePC\"). After\
+  \ the call, the low byte of r1 (which is the first byte of AIData — `ActorType`) is read and OR-ed with\
+  \ 0x0C and written back (`strb r3, [r1]` after setting `r3 = 0x0C | AIData[0]`). Then the byte r3 returned\
+  \ by 814E0D0 is stored into AIData+0xF (`Unk_0f`). Returns to the saved lr (it is a thunk: stores lr\
+  \ into r12 via `mov r12, lr; bl ...; bx r12`).\n  - byte[0] = ActorType (u8). OR-ing 0x0C sets the low\
+  \ nibble's bits 2 and 3 (0x0C = bits 2+3).\n  - byte[0xF] = Unk_0f storage for the routine's return\
+  \ value.\n  - The bytes that follow in the function are 0x00,0x00 (likely padding/thumb branch alignment).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mov r12, lr; ... bx r12` (asm:21738-21749) shows this is a thunk saving and restoring lr
+    verbatim. - `bl battleObject_runUpdateRoutineAndAdvancePC_814E0D0` is the only callee. - `strb r3,
+    [r1,#0xf]` writes the callee-return value to AIData+0xF (`AIData.Unk_0f`). - `ldrb r3,[r1]; mov r2,#0xc;
+    orr r3,r2; strb r3,[r1]` shows OR-ing 0x0C into byte 0 of the AIData struct (offset 0x0, the ActorType
+    field), without overwriting it. - Captured-call r1 values parse consistently as AIData-shaped: r1@02007f88
+    has `0x06, 0x00, 0x00, 0x00, 0x1c, 0x00, 0x0e, ...` and r1@02007f88+0x13..0x18 shows ASCII "XYZ@"
+    hinting these are AI/Jammer structs nearby; r1@02008078 contains the bytes `4B 4A 4B 40` — battle
+    chip X/Y/Z weights — evidence r1 touches ChipSelectionChips data tied to AIData. - Caller lr `0x0814e36d`
+    is `sub_814E36C` region; entry r0 is an `02010890`/wram ActorType struct whose first bytes contain
+    the linked-list "Prev/Next" pointer pair (`20 eb 18 08`/`7f 00 00 00`) typical of an Actor chain node.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0814E1FC
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story1, story2, story3, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0814e1fc '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9
+open_questions:
+- What the OR 0x0C into byte 0 semantically turns on. byte 0 is `ActorType`, so OR-ing 0x0C would mark
+  bits 2+3 of the type byte — plausible meaning of those bits is unknown (possibly encode a sub-state,
+  e.g. "alive + has AI"). Settling this needs a runtime trace with both before/after values.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f c951b1b4
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_814E1FC -> battleObject_runUpdateRoutine_814E1FC
+  where: bn6f 66c2a27e
+  tool: tools/rename_symbol.py

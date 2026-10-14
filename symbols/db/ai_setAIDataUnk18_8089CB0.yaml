@@ -1,0 +1,54 @@
+name: ai_setAIDataUnk18_8089CB0
+address: '0x08089CB0'
+kind: function
+previous_names:
+- sub_8089CB0
+status: probable
+summary: Stores the halfword from r0 into AIData+0x18 (Unk_18) of the AIData struct pointed to by r5.
+interface: '(r0 = halfword value, r5 = AIData*) -> (none, void); side effect: *(AIData* r5 + 0x18) = r0
+  as u16'
+details: "Single-instruction helper: `strh r0, [r5,#0x18]` followed by `mov pc, lr`. Takes a halfword\
+  \ value\n  in r0 and the address of an AIData struct (per the AIData.inc definition) in r5, then writes\n\
+  \  r0 to the Unk_18 byte pair (only the lower 16 bits matter since strh). Returns no value to\n  callers.\
+  \ The 17 caller functions live in 0x0808964C..0x08089C16, all of which are part of the\n  AI update\
+  \ flow for battle objects (their `in` contracts all list `r5`, which by convention is\n  the AIData\
+  \ pointer in this codebase — see AIData.inc and the battle AI caller pattern). The\n  variety of captured-call\
+  \ r0 values (0x0a, 0x05, 0x1e, 0x00, 0x1e, 0x00) shows Unk_18 is used\n  as a small enum/state/flag\
+  \ field rather than a numeric accumulator.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- Instruction `strh r0, [r5,#0x18]` at sub_8089CB0:1731 in asm23.s writes exactly one halfword
+    to offset 0x18 of the struct r5 points to. - AIData.inc defines `u8 Unk_18 // loc=0x18`, so this helper
+    updates that field. - Contract `in=[''r0'', ''r5'', ''lr''] out=[]` confirms the function takes a
+    value (r0) and a struct pointer (r5) and returns nothing (callee-saved / leaf via `mov pc, lr`). -
+    All 17 callers'' `in` contracts include `r5`, consistent with r5 being the per-actor AIData pointer
+    threaded through the AI update switch. - Captured-call r0 values are all small constants (0x00, 0x05,
+    0x0a, 0x1e), suggesting Unk_18 is a state/index/flag rather than a numeric accumulator.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08089CB0
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^08089cb0 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The semantic meaning of AIData.Unk_18 is unknown; resolving it would clarify what each caller
+- is configuring. Tracing the callers into the AI state machine would settle it.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f c951b1b4
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8089CB0 -> ai_setAIDataUnk18_8089CB0
+  where: bn6f 66c2a27e
+  tool: tools/rename_symbol.py

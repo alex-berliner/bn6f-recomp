@@ -1,0 +1,65 @@
+name: battle_resetIOPadScratchEntries_813BE8C
+address: '0x0813BE8C'
+kind: function
+previous_names:
+- sub_813BE8C
+status: probable
+summary: Walks the 0x31-entry 8-byte I/O scratch array (toolkit oUnk2004190_Ptr) and zeroes the halfword
+  flag of each entry on battle init.
+interface: '() -> void ; side effects: clears each entry''s halfword at +0 of its 8-byte slot in the Unk2004190
+  array'
+details: "The body is a small for-loop. r6 starts at 0 and runs while r6 < 0x31.\n  Each iteration calls\
+  \ toolkit_getUnk2004190EntryPtr_813B9FC(r0=r6) which returns the base\n  pointer for entry r6 in the\
+  \ 8-byte-per-entry array anchored at oToolkit_Unk2004190_Ptr.\n  The function reads the halfword at\
+  \ [r7] (offset 0 of each 8-byte entry) via ldrh r0,[r7]\n  and discards it via the tst/beq pair (the\
+  \ beq target is the same loc_813BE9E label,\n  effectively making the test unused). The captured-call\
+  \ memory at r1=0x02004190 (= the\n  Unk2004190 array base) is all zeroes, and r0 exits as 0 with NZ\
+  \ cleared, consistent with\n  the test reading 0 for every slot.\n  Net effect: scan 0x31 entries (the\
+  \ same count used in battle_initState_813BBD4 to grab\n  three 0x31-byte scratch buffers from this array)\
+  \ and read/zero the per-entry control\n  halfword. Callee-saved only (out=r7 in contract). The function\
+  \ is called from\n  battle_initState_813BBD4 to fully reset the I/O scratch array before battle sub-init\n\
+  \  brings up layout/sprites/cells.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mov r6,#0` / `cmp r6,#0x31` / `blt` at loc_813BE90 set up a 0..0x30 loop (sub_813BE8C+0x4..+0x14)
+    - `bl toolkit_getUnk2004190EntryPtr_813B9FC` resolves the per-iteration entry pointer (loc_813BE90..loc_813BE94)
+    - `ldrh r0,[r7]; tst r0,r0; beq loc_813BE9E` reads the halfword at offset 0 of each 8-byte entry;
+    both branches fall through to `add r6,#1` because the label equals the fall-through address - `pop
+    {r4-r7,pc}` matches the `push {r4-r7,lr}` prologue and confirms a void-returning helper - All 40 captured-call
+    snapshots show r1=0x02004190 with 64 zero bytes, the toolkit''s Unk2004190 scratch buffer base; r0
+    exits 0 each time - Sole caller battle_initState_813BBD4 also pulls three 0x31-byte scratch buffers
+    from the same Unk2004190 array, so iterating 0x31 entries here is the natural reset step before that
+    fill'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0813BE8C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story1, story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^0813be8c '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander
+open_questions:
+- The exact meaning of the halfword at +0 of each entry is unknown; the assembly only reads and tests
+  it without storing. Whether the call is intended to clear it (and the clear happens implicitly because
+  toolkit_getUnk2004190EntryPtr_813B9FC itself zeroes, or because the test always falls through) or just
+  to walk the array validating emptiness would need either a closer look at the callee or a writes-observed
+  snapshot to settle.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f c951b1b4
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_813BE8C -> battle_resetIOPadScratchEntries_813BE8C
+  where: bn6f 66c2a27e
+  tool: tools/rename_symbol.py

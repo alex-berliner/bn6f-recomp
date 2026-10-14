@@ -1,0 +1,73 @@
+name: object_runCollisionUpdate_80C876C
+address: '0x080C876C'
+kind: function
+previous_names:
+- sub_80C876C
+status: probable
+summary: Per-frame collision update entry for a battle object — tears down stale collision, spawns effects,
+  and dispatches to a per-action handler (or marks the object destroyed when the battle is over).
+interface: '(r5 = BattleObject*) -> void ; side effects: modifies the object, calls other object_*/battle_*
+  helpers, may clobber r0/r1/r2/r3/r4/r6/lr'
+details: "Pushes only {lr} so it can `pop {pc}` to return, and runs entirely off the `BattleObject*` kept\
+  \ in r5.\n\n  1. `bl object_removeCollisionData` — clears any prior frame's collision entry for this\
+  \ object.\n  2. `bl object_spawnCollisionEffect` — spawns the visual collision effect (spark/hit effect).\n\
+  \  3. `bl battle_isBattleOver` and `tst r0,r0; bne loc_80C87A6`. If the battle is over, it falls through\
+  \ to the destroy path:\n     - calls `object_clearCollisionRegion`,\n     - writes `CUR_STATE_DESTROY`\
+  \ (0x8) to `BattleObject.CurStateActionPhaseAndPhaseInitialized` (offset 0x8), then returns.\n  4. Otherwise\
+  \ it reads `BattleObject.CollisionDataPtr` (offset 0x54) and `CollisionData.FlagsFromCollision` (offset\
+  \ 0x70); if non-zero it calls `object_clearCollisionRegion` to drop the object out of its collision\
+  \ region.\n  5. Then loads `BattleObject.Param1` (offset 0x4). When Param1 == 4 it skips the timestop\
+  \ gate and goes straight to the dispatch.\n  6. Otherwise it calls `battle_isTimeStop`; if time is stopped\
+  \ (`bne loc_80C87A0`) it falls back to `object_presentCollisionData`, which refreshes the collision\
+  \ state without one-shot hit/status data.\n  7. If neither branch was taken (Param1==4 OR time not stopped)\
+  \ it loads `BattleObject.CurAction` (offset 0x9), uses `off_80C87B0/off_80C87B4` as a one-entry tail-call\
+  \ jump table to `sub_80C87B8+1`, i.e. dispatches into a per-action collision script.\n\n  Contract:\
+  \ only callee-saved r5/r7/r8/r10/lr are listed in `in`, and `out` lists r5/r7/r8, so callers see the\
+  \ object pointer and toolkit context still intact. No return value is documented.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- Function is a tiny tail-call frame: `push {lr}` ... `pop {pc}` at `0x080c876c` / `0x080c87AE`.
+    - `bl object_removeCollisionData` is the first call (`0x080c876e`), matches `object_removeCollisionData
+    (0x0801a00e)` [confirmed teardown helper]. - `bl object_spawnCollisionEffect (0x0801a0d4)` follows
+    immediately, matches the spawnCollisionEffect contract. - `bl battle_isBattleOver` (`0x0800a18e`)
+    plus `tst r0,r0; bne loc_80C87A6` implements the "battle ended → destroy" early branch. - `ldr r0,[r5,#oBattleObject_CollisionDataPtr]`
+    (0x54) and the dereference `[r0,#oCollisionData_FlagsFromCollision]` (0x70) read the per-frame collision
+    flags; `tst r0,r0; beq loc_80C878A; bl object_clearCollisionRegion` matches `object_clearCollisionRegion
+    (0x0801a074)`. - `ldrb r0,[r5,#oBattleObject_Param1]` (offset 0x4) plus `cmp r0,#4; beq loc_80C8796`
+    is the Param1==4 fast-path. - `bl battle_isTimeStop` (`0x0800a098`) with `bne loc_80C87A0` decides
+    whether to refresh normally; `b locret_80C87AE` vs `bl object_presentCollisionData` show the timestop
+    branch reuses the present-data helper instead of the per-action dispatch. - `off_80C87B0 -> off_80C87B4
+    -> sub_80C87B8+1` (`mov lr,pc; bx r1`) is the only indirect call and is reached only when Param1==4
+    OR timestop is not active, so the helper at 0x80C87B8 is the per-action handler this function delegates
+    to. - Destroy path writes `mov r0,#CUR_STATE_DESTROY; str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]`
+    (offset 0x8), exactly the CUR_STATE_DESTROY (0x8) constant from the BattleObject struct.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080C876C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp, chips'
+  reproduce: 'grep -l ''^080c876c '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp, chips
+open_questions:
+- The exact meaning of `Param1 == 4` is not pinned down by the assembly; it may be a per-object "ignore
+  timestop" flag set by spawn code. Reading all writers of offset 0x4 would settle it.
+- '`sub_80C87B8`''s role (per-action collision routine) is inferred from the jump table being keyed on
+  `CurAction`; that helper''s name/contract is not provided here.'
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f c951b1b4
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80C876C -> object_runCollisionUpdate_80C876C
+  where: bn6f 66c2a27e
+  tool: tools/rename_symbol.py

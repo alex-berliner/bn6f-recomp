@@ -1,0 +1,66 @@
+name: battle_tickBeastSp_808985A
+address: '0x0808985A'
+kind: function
+previous_names:
+- sub_808985A
+status: probable
+summary: Per-frame BeastOut/SP-cust cursor lockout/orchestration step for a battle actor; sets sub-action
+  byte and returns 1
+interface: '(r5 = AIData-like struct, r7 = battle state?, r10 = Toolkit) -> r0 = 1 ; side effects: writes
+  sub-action byte at [r5]'
+details: "Saves r4-r7,lr. Calls sub_8142C20(r0=0) -> r4 (a lockout-start index or similar),\n  then sub_814216E\
+  \ to read the current \"tick\" value into r0. If they differ, jump\n  to the tail (return 1, nothing\
+  \ done this frame). Otherwise it calls\n  battle_tickChipLockout_8089CB4 to decrement/advance the chip\
+  \ lockout; if that\n  decremented to zero, take the no-op tail. If sub_814216E's read now matches\n\
+  \  [r7,#0xc] (an \"all clear\" stamp), branch to the chip-selection branch:\n    - sub_8142ADA (timing/state\
+  \ check); if it returns Z set, we are still\n      charging: store 0x18 at [r5] then call sub_8089CDC\
+  \ (probably\n      sub_8089CDC-style register settle) and return.\n    - Otherwise BeastOut sub-action:\
+  \ store 0x3c at [r5].\n  If not clear, store 0x34 at [r5] (chip-locked sub-action). Always returns 1.\n\
+  \n  The three \"magic\" sub-action bytes (0x34 chip-locked, 0x18 charging, 0x3c\n  BeastOut) all live\
+  \ in offset 0x0 of the AIData-ish struct r5 (AIData+0x0 is\n  ActorType; here r5 likely points at a\
+  \ beast-sp scratch record, not AIData\n  itself, since captures consistently show lr=080895b8 from beastsp).\n\
+  \n  The function is the \"do something each vblank until the beast-sp window\n  closes\" driver for\
+  \ the Beast Out / Soul Pressure custom gauge.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl sub_8142C20` with r0=0 returns the current chip-lockout cursor snapshot used as a "has
+    anything changed since last frame" guard; `mov r4, r0` then `bl sub_814216E` reads another view, with
+    `cmp r0, r4`/`bne` skipping the rest of the frame on no-change (instruction at 0x808986c). - Direct
+    call to `battle_tickChipLockout_8089CB4` with `beq` falling through when nothing was decremented (instruction
+    at 0x8089872). - Compare-and-branch pattern against `[r7,#0xc]` (instruction at 0x808987a) suggests
+    r7+0xc is the AIData "Anger"-style or "all clear" sentinel, deciding between charging vs BeastOut
+    sub-actions. - The three stored bytes are 0x34 (chip lockout - "still locked"), 0x18 (charging - "PwrAtkCurChargeTime
+    != 0" sub-action), 0x3c (BeastOut committed). These match the AIData.Action sub-action byte conventions
+    used'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0808985A
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^0808985a '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The exact semantic of the three sub-action bytes (0x34/0x18/0x3c) - whether
+- 0x34 truly means "chip-locked", 0x18 means "charging", 0x3c means "BeastOut
+- fire" - is from naming conventions and would settle by tracing what
+- reads [r5,#0] in the rest of beastsp.
+- Whether [r7,#0xc] is the AIData Anger field or something else; knowing r7's
+- type here would lock it down.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f c951b1b4
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_808985A -> battle_tickBeastSp_808985A
+  where: bn6f 66c2a27e
+  tool: tools/rename_symbol.py

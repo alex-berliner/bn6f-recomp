@@ -1,0 +1,59 @@
+name: aiAttack_tickAiAttackVarsTimer_81097DC
+address: '0x081097DC'
+kind: function
+previous_names:
+- sub_81097DC
+status: probable
+summary: Tick AIAttackVars.Unk_10 countdown, run conditional callback each frame, exit attack when timer
+  hits zero or callback returns nonzero
+interface: (r7 = AIAttackVars ptr) -> side effects only (void-like)
+details: "Initializes r6 = 0. Each iteration:\n    - Loads [r7+0x2c] into r0 and [r7+0x28] into r1, then\
+  \ bx r1 (a function pointer/handler stored in AttackVars).\n      Convention: handler takes (arg in\
+  \ r0) and returns nonzero to indicate \"done\".\n    - If handler returned 0, decrements the halfword\
+  \ at [r7+0x10] (bge: loop again while >= 0).\n    - If handler returned nonzero OR the timer underflowed,\
+  \ exits the attack:\n        * First iteration (r6==0) calls object_exitAttackState.\n        * Subsequent\
+  \ iteration (r6!=0) calls the alternate object_exitAttackState_801171C which the project labels separately.\n\
+  \  r7 is preserved by being callee-saved in r7 per the contract (lr-save site preserves r6/lr only,\n\
+  \  but the function reads/writes r7 via the contract so the caller passes/keeps r7).\n  Side effects:\
+  \ invokes the function pointer stored at +0x28 with arg [r7+0x2c], decrements [r7+0x10],\n  and dispatches\
+  \ to one of two `object_exitAttackState` variants depending on a sticky r6 flag.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mov r6, #0` then re-entered path reuses `cmp r6, #0` to pick between two exit variants —
+    sticky loop guard across single re-entry. - `ldr r0, [r7,#0x2c]` / `ldr r1, [r7,#0x28]` then `bx r1`
+    is an indirect call through a function pointer in the AttackVars sub-struct (matches AIAttackVars
+    offsets Unk_28 / Unk_2c). - `ldrh r0, [r7,#0x10]` then `sub r0, #1` / `strh r0, [r7,#0x10]` decrements
+    Unk_10 by 1 per tick. - `tst r0, r0` then `bne loc_81097F4` — handler-returned-nonzero path joins
+    the timeout path. - `bge locret_8109802` — continue ticking while the counter is still non-negative.
+    - Calls `object_exitAttackState (0x08011714)` and `sub_801171C / object_exitAttackState_801171C` directly,
+    both helper exits.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x081097DC
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp'
+  reproduce: 'grep -l ''^081097dc '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp
+open_questions:
+- The semantics of AIAttackVars.Unk_28 (handler) and Unk_2c (arg) — what kind of predicate this callback
+  expresses.
+- Why two distinct `object_exitAttackState` variants are chosen by the r6 latch (likely "first exit path
+  vs. clean-up"); would resolve by reading those two callees.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f c951b1b4
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_81097DC -> aiAttack_tickAiAttackVarsTimer_81097DC
+  where: bn6f 66c2a27e
+  tool: tools/rename_symbol.py

@@ -99,9 +99,9 @@ static void call_sub_813BD24(void) {
     GUEST_CALL(battle_updateTargetPanelsAllRows_813BD24);
 }
 
-/* register form: calls sub_813BE8C outside this file, which has no typed C interface yet */
+/* register form: calls battle_resetIOPadScratchEntries_813BE8C outside this file, which has no typed C interface yet */
 static void call_sub_813BE8C(void) {
-    GUEST_CALL(sub_813BE8C);
+    GUEST_CALL(battle_resetIOPadScratchEntries_813BE8C);
 }
 
 /* register form: calls sub_813BEA8 outside this file, which has no typed C interface yet */

@@ -1,0 +1,60 @@
+name: battle_aiAttackDispatch_810BFB8
+address: '0x0810BFB8'
+kind: function
+previous_names:
+- sub_810BFB8
+status: probable
+summary: AI attack dispatcher that reads an AI attack-vars index and tails into one of several attack
+  handlers.
+interface: (r0 = junk/clobbered, r7 = AI/BattleObject base, r5/r6/r10/lr = preserved) -> r0 = whatever
+details: "push {lr}; loads a pointer-table base off_810BFC8 -> off_810BFCC, then ldrb r0,[r7,#oAIAttackVars_Unk_00]\n\
+  \  to fetch a small index (0..4) from the AI's AttackVars union struct (r7 is the AI/BattleObject base\
+  \ in\n  caller convention). It then loads the function pointer from the table at that index into r1,\
+  \ sets lr=pc\n  and `bx r1`, so the target is tail-called and returns straight into the caller's lr.\
+  \ The five entries\n  (off_810BFCC) are sub_810BFE0, sub_810C05C, sub_810C070, sub_810C0E4 and\n  genericAI_exitAttackStateAfterDelay_81097BA\
+  \ — i.e. four specialised AI attack sub-states and one\n  shared \"finish/leave the attack state after\
+  \ a delay\" fallback. r0 is the index on entry, which the\n  dispatcher passes through unchanged to\
+  \ the target (it is read into r0 via ldrb but never overwritten\n  before bx). The 40 captured calls\
+  \ show r0 in {0x02..0x0e}, consistent with multiple callers using\n  different AttackVars indices; r7\
+  \ is always the AI/BattleObject, r5/r6/r10/lr are preserved through\n  the tail call (per contract).\n\
+  interface: (r0 = junk/clobbered, r7 = AI/BattleObject base, r5/r6/r10/lr = preserved) -> r0 = whatever\n\
+  \  the tailed-into handler returns ; no own side effects beyond the tail-call\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {lr}` / `pop {pc}` with intermediate `mov lr, pc; bx r1` is the canonical Thumb tail-call
+    trampoline. - `ldr r1, off_810BFC8` then `ldr r1,[r1,r0]` where r0 came from `ldrb r0,[r7,#oAIAttackVars_Unk_00]`
+    dispatches through a small index in AIAttackVars.Unk_00. - off_810BFCC is a 5-entry function-pointer
+    table; four of the targets (sub_810BFE0, sub_810C05C, sub_810C070, sub_810C0E4) are anonymous siblings
+    in the same file, and the fifth (genericAI_exitAttackStateAfterDelay_81097BA) is the shared "end the
+    AI attack state" routine. - All 40 captured entry traces have r1=0x28, r2=0x80, r3=3 (likely a parent
+    caller''s AI tick params passed through r7-derived context), with r0 varying 2..14, matching varied
+    AttackVars indices across callers.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0810BFB8
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp'
+  reproduce: 'grep -l ''^0810bfb8 '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp
+open_questions:
+- The exact semantics of each of the five leaf states (FireArm/LongSword/Spreader/etc. vs. typed
+- BeastOut attacks). Reverse-engineering the four sub_810* siblings would settle it; the dispatcher
+- itself is unambiguous.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f c951b1b4
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_810BFB8 -> battle_aiAttackDispatch_810BFB8
+  where: bn6f 66c2a27e
+  tool: tools/rename_symbol.py

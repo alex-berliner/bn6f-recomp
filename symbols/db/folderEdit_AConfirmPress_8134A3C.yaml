@@ -1,0 +1,64 @@
+name: folderEdit_AConfirmPress_8134A3C
+address: '0x08134A3C'
+kind: function
+previous_names:
+- sub_8134A3C
+status: probable
+summary: Folder-edit helper that reacts to a freshly-pressed A button by incrementing a counter, swapping
+  or advancing two slot buffers at +0x44/+0x48, and playing the menu-select sound.
+interface: () -> r0 = bool (1 if A was just pressed and the gesture was handled, 0 otherwise)
+details: "Reads the toolkit register (r10) and the submenu/state pointer (r5) preserved from the caller.\n\
+  \  Calls IsButtonPressed(JOYPAD_A): when not newly pressed, returns 0 in r6 immediately.\n  When A is\
+  \ pressed, sets r6=1 and inspects byte at [r5,0x44]: if zero it uses 0x44/0x45 as the two\n  slot indices,\
+  \ otherwise it uses 0x48/0x49. Reads byte [r5,0x03], shifts right by 2, adds 1, and\n  stores the result\
+  \ back at the chosen index byte (this is the counter that increments per A press).\n  Then calls sub_8134ABC\
+  \ and branches on its return value vs. [r5,0x44]: if different, swaps the\n  two-byte pair (0x44<->0x48)\
+  \ by copying [r5+0x44] into [r5+0x49] and [r5+0x48] into [r5+0x45], then\n  dispatches sub_8134ADC;\
+  \ if equal, it advances both 0x45 and 0x49 by copying them from 0x44/0x48\n  respectively and dispatches\
+  \ sub_8134CF0.\n  On the no-swap-fallback path (the `tst r3, r3` falling through), it still calls sub_8134ABC\
+  \ and\n  PlaySoundEffect(SOUND_MENU_SELECT).\n  Returns r6 as the handled-flag through NZ in r0 (the\
+  \ `tst r0, r0; pop {pc}` epilogue).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mov r0, #JOYPAD_A; bl IsButtonPressed; beq loc_8134AB4` shows the function only does work
+    when A is freshly pressed (else returns r6=0). - The two immediate constants `0x44` and `0x48` are
+    repeatedly used to address `[r5]` byte slots, indicating a pair of one-byte fields in the caller''s
+    struct at offsets 0x44 and 0x48. - `ldrb r0, [r5,#3]; lsr r0, r0, #2; add r0, #1; strb r0, [r5,r2]`
+    shows the per-press counter increments each A press using a value derived from offset 0x03. - `bl
+    PlaySoundEffect` with `mov r0, #SOUND_MENU_SELECT` after the A branch matches the standard folder-edit
+    confirm chirp. - Both callees `sub_8134ABC`, `sub_8134ADC`, `sub_8134CF0` are unnamed; their contracts
+    all touch the same [r5]-rooted slots, consistent with staging/swap logic for a two-pane folder-edit.
+    - `push {lr}` ... `pop {pc}` and the matching caller r10 contract show this is a leaf-style helper
+    whose return is the handled-flag in r0.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08134A3C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, beastsp, maps, menus3, story4, story6, story8, story9'
+  reproduce: 'grep -l ''^08134a3c '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, beastsp, maps, menus3, story4, story6, story8, story9
+open_questions:
+- The exact meaning of the `[r5,0x44]/[r5,0x48]` pair (looks like two slot indices or cursors, but the
+  surrounding folder-edit struct isn't declared in the provided defs).
+- What sub_8134ABC/ADC/CF0 do internally — only their in/out contracts are visible.
+- 'Whether the `tst r3, r3` "fallback" path is the normal-swap path and the "equal" branch is the no-swap
+  path, or vice-versa; current code reads as: the swap path is taken when sub_8134ABC''s result differs
+  from [r5,0x44].'
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f c951b1b4
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8134A3C -> folderEdit_AConfirmPress_8134A3C
+  where: bn6f 66c2a27e
+  tool: tools/rename_symbol.py

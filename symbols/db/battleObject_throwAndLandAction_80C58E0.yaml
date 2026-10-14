@@ -1,0 +1,67 @@
+name: battleObject_throwAndLandAction_80C58E0
+address: '0x080C58E0'
+kind: function
+previous_names:
+- sub_80C58E0
+status: probable
+summary: 'Battle-object "throw" animation: phases 0 launches a gravity-affected projectile from its panel
+  X/Y toward panel coords stored in Param3/Param4, ticking timers/animation frames; on landing, snaps
+  position back, plays the hit SFX and hands off to CurAction 4.'
+interface: '(r5 = oBattleObject; r10 = toolkit) -> void ; side effects: writes XVelocity/YVelocity/ZVelocity,
+  Timer, CurAnim, PanelX/Y, Z and routes through panel helpers / collision-region setter.'
+details: "On entry reads CurPhase (offset 0xa). On phase 0 it bumps CurPhase to 1, reads Param3/Param4\
+  \ (offsets 0x6/0x7) and converts them to fixed-point pixel coords with `object_getCoordinatesForPanels`,\
+  \ then calls `math_getThrowSpeeds` with start (0x34 + r5), 0x30 (Timer reload), peak 0xb0000 and gravity\
+  \ 0xffffb000, storing the three velocities at XVelocity/YVelocity/ZVelocity (0x40/0x44/0x48). Every\
+  \ frame it adds velocities into X/Y/Z, applies gravity to ZVelocity, picks CurAnim (offset 0x10) from\
+  \ offsets 1..5 of an extras-style table based on the running Timer (>= 0x28 down to <4), and decrements\
+  \ Timer. When Timer underflows it copies Param3/Param4 into PanelX/PanelY, resets Z to 0x30000, calls\
+  \ `object_setCoordinatesFromPanels` + `object_updateCollisionPanels`, sets collision region 1 (`object_setCollisionRegion`\
+  \ with r0=1), CurAnim 5, plays sound 0x1d0 (`add r0,#0xff ; 0xd1 -> 0x1d0` then `PlaySoundEffect`),\
+  \ and sets CurAction = 4 with CurPhaseAndPhaseInitialized = 0. As a flourish, while Timer>=0 and bit3\
+  \ of (Timer>>3) is set, `object_highlightPanel` flashes the panel Param3/Param4.\n  The table at `byte_80C59A4`\
+  \ maps Timer thresholds to animation indices. Called as an action handler (presumably via the CurAction=3\
+  \ path) for a battle object that gets flung and lands on a target panel.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0,[r5,#oBattleObject_CurPhase]; cmp r0,#0; bne loc_80C590E` gates one-shot init. -
+    `ldrb r0,[r5,#oBattleObject_Param3]` / `ldrb r1,[r5,#oBattleObject_Param4]` followed by `bl object_getCoordinatesForPanels`
+    and `bl math_getThrowSpeeds` with r0=0x34+r5, r3=0xb0000, r6=0xffffb000 implements the parabolic launch.
+    - `strh r4,[r5,#oBattleObject_Timer]` with r4=0x30 sets the duration used later as the Timer that
+    decrements each frame until landing. - After Timer decrement `bge loc_80C598E` is false: it copies
+    Param3/Param4 into PanelX/Y, stores 0x30000 into Z, calls `object_setCoordinatesFromPanels`, `object_updateCollisionPanels`,
+    `object_setCollisionRegion` (r0=1), CurAnim=5, and `bl PlaySoundEffect` with r0=0x1d0 (computed via
+    `mov r0,#0xd1; add r0,#0xff`). - `mov r0,#4; strb r0,[r5,#oBattleObject_CurAction]; mov r0,#0; strh
+    r0,[r5,#oBattleObject_CurPhaseAndPhaseInitialized]` advances the action state machine. - Trailing
+    `lsr r0,#3; bcc locret_80C599C; bl object_highlightPanel` flashes the target panel every other 8-tick
+    interval.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080C58E0
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp'
+  reproduce: 'grep -l ''^080c58e0 '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp
+open_questions:
+- Which CurAction routes into this function (CurAction=3 inferred from the "phase 0 init then countdown"
+  pattern is consistent but not directly visible).
+- What the byte table at 0x80C59A4 actually represents; the assembly treats its indices as straight indices
+  into `ExtraVars` bytes 1..5, but the underlying object may use them differently.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f c951b1b4
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80C58E0 -> battleObject_throwAndLandAction_80C58E0
+  where: bn6f 66c2a27e
+  tool: tools/rename_symbol.py

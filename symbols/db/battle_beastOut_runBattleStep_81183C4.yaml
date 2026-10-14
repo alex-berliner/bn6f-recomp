@@ -1,0 +1,63 @@
+name: battle_beastOut_runBattleStep_81183C4
+address: '0x081183C4'
+kind: function
+previous_names:
+- sub_81183C4
+status: probable
+summary: Beast-out / Program-Advance dispatcher that runs the per-frame battle step for the current actor
+  (calls AI helper, sets sprite anim, loads animation data, updates sprite), then returns the alive-enemy-row
+  count.
+interface: '(r6 = BattleObject*, r10 = Toolkit*) -> r0 = alive-enemy-row count (0x1C60 baseline saved
+  in r5); side effects: r2/r3/r5 clobbered, all caller-saved regs touched, tail-call via r6->byte2 dispatch.'
+details: "- Reads `r6+2` (BattleObject.TypeAndSpriteOffset upper nibble, i.e. the Type field) via `ldrb\
+  \ r1,[r6,#2]` and loads a function pointer from `off_81183E8[index]` using `ldr r0,[r0,r1]` then `bx\
+  \ r0` (Thumb switch with `+1` for BLX targets).\n  - The 15-entry table at off_81183E8 dispatches on\
+  \ the actor's Type; entries include `sub_8118424` (some basic step), `beastOutOrProgramAdvanceSetTransform_811842C`\
+  \ (transform-set, used at 0, 11, 13), `sub_811847C`, `sub_81184A8` (used at 3, 8, 14), `sub_81184C0`,\
+  \ `sub_81184EC`, `sub_8118510` (used at 6, 10), `sub_8118550`, `sub_811857C`, `sub_81185A8`.\n  - After\
+  \ the dispatched helper runs, calls `battle_aiCountAliveEnemiesInRow_81185C0` (matches r6 BattleObject\
+  \ context; the callee signature returns a row count via r0), then `sprite_setAnimation` (with r0 = result\
+  \ of the AI helper, low byte as animation index), `sprite_loadAnimationData`, and `sprite_update`.\n\
+  \  - The captured-call exit r0=0x1C60 is consistent with \"row count\" returned by `sub_81185C0`; in\
+  \ the captured snaps the dispatch happens with r5/r6/r10/lr callee-saved by the parent.\n  - Caller\
+  \ `sub_8118368` has the same contract (in r5/r6/r10/lr, out r2/r3/r5) — looks like a per-frame battle\
+  \ actor update trampoline.\n  - The name uses `beastOut_` per the convention from sibling `beastOutOrProgramAdvanceSetTransform_811842C`\
+  \ and the table's role as actor-type dispatch. \"runBattleStep\" matches the loadAnimation+update tail.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r1,[r6,#2]` followed by `ldr r0,off_81183E4` then `ldr r0,[r0,r1]` and `bx r0` at +0/+4/+8/+c/+10
+    of `sub_81183C4` — Thumb switch on BattleObject.TypeAndSpriteOffset (ObjectHeader offset 0x2). - Jump
+    table at off_81183E8 contains 15 Thumb function pointers (each `+1`) dispatching on Type 0..14. -
+    Callee `sub_81185C0` name in the callees list is `battle_aiCountAliveEnemiesInRow_81185C0`, returning
+    r0; tail calls `sprite_setAnimation(r0)`, `sprite_loadAnimationData`, `sprite_update` set up the visual
+    frame. - Caller `sub_8118368` contract identical — top-of-loop actor step dispatcher. - `push {lr}`
+    / `pop {pc}` (no other callee-saves pushed) — pure tail-call dispatcher with no local frame.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x081183C4
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^081183c4 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- Whether the dispatcher index is the full Type byte (0..14) or only the upper nibble; `ldrb` of byte
+  2 suggests full byte but the table size 15 hints upper-nibble Type plus a fixed SpriteOffset? Decompiling
+  the helpers would settle the actual mapping.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f c951b1b4
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_81183C4 -> battle_beastOut_runBattleStep_81183C4
+  where: bn6f 66c2a27e
+  tool: tools/rename_symbol.py

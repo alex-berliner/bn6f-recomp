@@ -1292,12 +1292,12 @@ Next battleObject_removeElementAndFlagFromUpdateRoutine_814E1E8(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_814E1FC ── */
-/* sub_814E1FC: finish some state update on the structure pointed to by r1.
+/* ── battleObject_runUpdateRoutine_814E1FC ── */
+/* battleObject_runUpdateRoutine_814E1FC: finish some state update on the structure pointed to by r1.
  * Calls battleObject_runUpdateRoutineAndAdvancePC_814E0D0 (which produces a status byte in r3), stores that byte at
  * [r1+0xF], then sets the 0xC flag bits in the state byte at [r1].
  * Preserves the caller's return address in r12, as the original does. */
-Next sub_814E1FC(void) {
+Next battleObject_runUpdateRoutine_814E1FC(void) {
     u32 state = R1;
 
     R12 = LR; /* mov r12, lr: keep the return address across the call */

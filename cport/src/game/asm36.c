@@ -1113,10 +1113,10 @@ static inline call_sub_8133C0C_result call_sub_8133C0C(u32 r2, u32 r5) {
 }
 
 typedef struct { u32 r2, r5, r10; bool z, n; } call_sub_8134A3C_result;
-/* register form: generated wrapper: sub_8134A3C has no typed C interface yet */
+/* register form: generated wrapper: folderEdit_AConfirmPress_8134A3C has no typed C interface yet */
 static inline call_sub_8134A3C_result call_sub_8134A3C(u32 r5) {
     R5 = r5;
-    GUEST_CALL(sub_8134A3C);
+    GUEST_CALL(folderEdit_AConfirmPress_8134A3C);
     return (call_sub_8134A3C_result){ R2, R5, R10, ZERO_FLAG(), NEGATIVE_FLAG() };
 }
 
@@ -1332,9 +1332,9 @@ static bool guard_8133C0C_passed(void) {
     return ZERO_FLAG();
 }
 
-/* register form: calls sub_8134A3C outside this file, which has no typed C interface yet */
+/* register form: calls folderEdit_AConfirmPress_8134A3C outside this file, which has no typed C interface yet */
 static bool guard_8134A3C_passed(void) {
-    GUEST_CALL(sub_8134A3C);
+    GUEST_CALL(folderEdit_AConfirmPress_8134A3C);
     return ZERO_FLAG();
 }
 

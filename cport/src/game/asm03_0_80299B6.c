@@ -1984,12 +1984,12 @@ Next decodePackedIdFields_802C54C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_802C588 ── */
-/* sub_802C588(r0 = destination address):
+/* ── battle_fillChipSelectRow_802C588 ── */
+/* battle_fillChipSelectRow_802C588(r0 = destination address):
  * Fill 0x2A halfwords at r0 with the consecutive values 0xC1E8..0xC211.
  * Leaves r1 = 0xC212 (one past the last value written) and r2 = 0
  * (loop counter after exhaustion); r0 points past the filled range. */
-Next sub_802C588(void) {
+Next battle_fillChipSelectRow_802C588(void) {
     u32 dst   = R0;
     u32 value = 0xC1E8;
 

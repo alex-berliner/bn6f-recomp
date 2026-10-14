@@ -1,0 +1,61 @@
+name: startScreen_runJumpTable_813DA94
+address: '0x0813DA94'
+kind: function
+previous_names:
+- sub_813DA94
+status: probable
+summary: Dispatches one step of the title-screen state machine by indexing into a two-entry table stored
+  in EWRAM and calling the matching handler.
+interface: () -> r0 = handler return (0 on handled/continue, 1 on skipped/finished) ; may clobber r0-r3,
+  r5, r12, lr
+details: "- Reads a small EWRAM struct at `eS200BC50`, byte 0x2 (`ldrb r1, [r5,#0x2]`); if it equals 8\
+  \ the function short-circuits and returns 1.\n  - Otherwise it loads a pointer-table base from `off_813DAB4\
+  \ -> off_813DAB8`, indexes it by that same byte (a Thumb `ldr r0, [r0,r1]`) and tail-calls the chosen\
+  \ routine via `mov lr,pc; bx r0` (note the table entries store `sub_xxx+1` to switch to Thumb).\n  -\
+  \ The base default return is 1 (`mov r4, #1`); when the dispatched handler returns, r0 is overwritten\
+  \ with 0 (`mov r4, #0`), so a caller's `r0` indicates whether the table dispatch actually fired a handler.\
+  \ The two currently-known handlers are `sub_813DAC0` and `sub_813DADC` (only the first and second slot\
+  \ are present in the table).\n  - The caller `startScreen_AnimatePressStart_803E978` is in the title-screen\
+  \ flow; combined with the byte 0x8 \"PRESSTART\" sentinel test, this looks like a 2-state title-screen\
+  \ sub-dispatch (e.g. \"press start\" flashing vs. logo animation), with index 8 treated as \"do nothing\"\
+  .\n  - r5 holds the pointer to `eS200BC50` (the EWRAM title-screen scratch struct defined as `s_200BC50_struct`,\
+  \ size 0x10).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r1, [r5,#0x2]` against `eS200BC50` matches `s_200BC50_struct.Index00`+0x2, the next
+    documented byte inside the 0x10-byte struct. - `off_813DAB8` contains exactly two `.word sub_813DAC0+1`
+    and `.word sub_813DADC+1` entries (jump-table form using `+1` for Thumb dispatch). - `cmp r1, #8 /
+    beq loc_813DAAA` shows the value 8 is the early-exit case; r4 stays at the initial 1. - `mov lr,pc
+    / bx r0` after `ldr r0, [r0,r1]` is a textbook Thumb jump-table dispatch. - Caller is the only one
+    and lives in the title screen (`startScreen_AnimatePressStart_803E978`).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0813DA94
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3,
+    story1, story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^0813da94 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander
+open_questions:
+- What the two dispatched handlers actually do (they are unnamed stubs here), and which sub-states of
+  the title screen the values 0..7 vs. 8 represent; identifying `sub_813DAC0`/`sub_813DADC` would pin
+  down the role.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f c951b1b4
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_813DA94 -> startScreen_runJumpTable_813DA94
+  where: bn6f 66c2a27e
+  tool: tools/rename_symbol.py

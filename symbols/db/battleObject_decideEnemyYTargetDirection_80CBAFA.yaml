@@ -1,0 +1,57 @@
+name: battleObject_decideEnemyYTargetDirection_80CBAFA
+address: '0x080CBAFA'
+kind: function
+previous_names:
+- sub_80CBAFA
+status: probable
+summary: Decides whether the AI's Y-panel target should be above, below, or matching the closest enemy
+interface: (r5 = self BattleObject) -> out r1/r5 ; sets self->ExtraVars+4 to 1 (move up), -1 (move down),
+  or 0 (same row)
+details: "Reads self->Alliance (offset 0x16), XORs with 1 to get the opposing alliance id (0 or 1),\n\
+  \  multiplies by 5 and adds 1 to form a row index, then compares that against self->PanelX\n  (offset\
+  \ 0x12). If they don't match, the function returns without writing anything.\n  When they do match,\
+  \ calls battleObject_findClosestEnemyBattleObject_80103F8 with the\n  flipped alliance, takes the closest\
+  \ enemy BattleObject, and reads its PanelY (offset\n  0x13). Compares it to self->PanelY (offset 0x13):\
+  \ sets r2=1 if strictly less, r2=0 if\n  equal, otherwise subtracts 2 (r2 = -1). The resulting direction\
+  \ code is stored at\n  [r5 + oBattleObject_ExtraVars + 4]. This is consistent with an AI helper that\
+  \ wants to\n  move along Y toward/away from the nearest enemy before deciding what to do.\n  Callee\
+  \ name battleObject_findClosestEnemyBattleObject_80103F8 takes (r0 = alliance id,\n  r5 = self, r10\
+  \ = toolkit) per its contract.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0, [r5,#oBattleObject_Alliance]` at 0x80cbafe reads self alliance (offset 0x16) -
+    `eor r0, #1` then `mul r0, #5; add r0, #1` builds a "row-of-enemies" panel index for the opposing
+    side - `cmp r0, r1; bne locret` against self->PanelX guards work to the row the enemy spawns on -
+    `bl battleObject_findClosestEnemyBattleObject_80103F8` looks up the nearest opposing BattleObject
+    - `ldrb r0, [r0,#0x13]` reads the result''s PanelY, `ldrb r1, [r5,#oBattleObject_PanelY]` reads self''s
+    - the bgt/beq/`sub r2,#2` chain maps to {r2=1, r2=0, r2=-1} - `str r2, [r5,#oBattleObject_ExtraVars+4]`
+    (oBattleObject_ExtraVars is at 0x60, so slot 4 is a long) is the visible side effect'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080CBAFA
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp'
+  reproduce: 'grep -l ''^080cbafa '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp
+open_questions:
+- What the caller does with the signed direction code; the values {1, 0, -1} mapping to {above, same,
+  below}
+- is inferred from the `sub r2,#2` pattern, not from a named constant.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f c951b1b4
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80CBAFA -> battleObject_decideEnemyYTargetDirection_80CBAFA
+  where: bn6f 66c2a27e
+  tool: tools/rename_symbol.py

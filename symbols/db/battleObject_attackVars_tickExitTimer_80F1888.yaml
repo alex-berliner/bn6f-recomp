@@ -1,0 +1,58 @@
+name: battleObject_attackVars_tickExitTimer_80F1888
+address: '0x080F1888'
+kind: function
+previous_names:
+- sub_80F1888
+status: probable
+summary: Ticks an AIAttackVars countdown and exits the attack state when it elapses, else plays the victory/finish
+  anim on first entry.
+interface: '(r5 = battleObject*, r7 = AIData*) -> void ; side effects: writes AIData->AIAttackVars[].Unk_01
+  / Unk_10, BattleObject->CurAnim'
+details: "Operates on per-attack scratch space at AIData->AIAttackVars[0] (accessed via r7). On first\n\
+  \  call (Unk_01 == 0), sets Unk_01 = 4 to mark the \"started\" phase, sets CurAnim = 7 on the\n  battle\
+  \ object (the standard attack/victory finish animation, matching the AnimateVictoryAnim\n  0x7 used\
+  \ by the attack-exit path), and initialises the Unk_10 counter from AIData->Unk_0d\n  (latched via the\
+  \ Unk_0d field that AIData exposes at 0x0d). On subsequent calls it\n  decrements Unk_10; once the counter\
+  \ reaches 0 (BGT falls through) it calls\n  object_exitAttackState to leave the attack phase. Pops {pc}\
+  \ — no other return value\n  beyond the flags implied by the decrement/test.\ndetails-extra: |\n  The\
+  \ \"first call\" branch writes Unk_01=4 to suppress re-entry, the same hand-off used by\n  the attack-state\
+  \ exit chain, and the \"subsequent\" branch only decrements. Naming\n  captures the role: it is the\
+  \ per-frame \"end of attack\" tick living on AIAttackVars.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- ldrb r0, [r7,#oAIAttackVars_Unk_01] / tst r0,r0 / bne loc_80F189E: first-call gate - mov
+    r0,#4 ; strb r0,[r7,#oAIAttackVars_Unk_01]: marks Unk_01=4 on first frame - mov r0,#7 ; strb r0,[r5,#oBattleObject_CurAnim]:
+    sets CurAnim=7 (attack finish anim) - ldrb r0,[r7,#oAIAttackVars_Unk_0d] ; strh r0,[r7,#oAIAttackVars_Unk_10]:
+    copies Unk_0d into u16 timer Unk_10 - ldrh r0,[r7,#oAIAttackVars_Unk_10] ; sub r0,#1 ; strh r0,[r7,#oAIAttackVars_Unk_10]
+    ; bgt locret: tick - bl object_exitAttackState only when counter reached 0 - pop {pc}: tail return,
+    no caller-visible value'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080F1888
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp'
+  reproduce: 'grep -l ''^080f1888 '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp
+open_questions:
+- What semantics Unk_0d carries (likely a per-attack duration pulled from the chip/attack
+- table) and what Unk_01=4 means in the wider attack-state machine; cross-referencing the
+- callers of object_exitAttackState and any sibling handlers that share the AIAttackVars[0]
+- layout would confirm.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f c951b1b4
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80F1888 -> battleObject_attackVars_tickExitTimer_80F1888
+  where: bn6f 66c2a27e
+  tool: tools/rename_symbol.py

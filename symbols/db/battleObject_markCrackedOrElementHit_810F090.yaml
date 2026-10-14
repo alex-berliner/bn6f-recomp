@@ -1,0 +1,58 @@
+name: battleObject_markCrackedOrElementHit_810F090
+address: '0x0810F090'
+kind: function
+previous_names:
+- sub_810F090
+status: probable
+summary: If the BattleObject's CollisionData reports panel damage across multiple slots, set a "hit/cracked"
+  flag in ExtraVars (unless already flagged).
+interface: '(r5 = BattleObjectPtr) -> no meaningful return ; side effect: writes [r5 + oBattleObject_ExtraVars
+  + 4] = 1'
+details: "Loads r0 = [r5 + oBattleObject_CollisionDataPtr] (0x54) into the CollisionData struct.\n  Reads\
+  \ five u16 panel-damage fields PanelDamage1..5 (offsets 0x82, 0x84, 0x86, 0x88, 0x8a) and\n  accumulates\
+  \ them into r1. If the sum is zero, returns immediately (beq locret).\n  Otherwise loads [r5 + oBattleObject_ExtraVars]\
+  \ (0x60); if it is already 2 it returns without\n  touching anything (existing flag wins). Otherwise\
+  \ stores the literal 1 at\n  [r5 + oBattleObject_ExtraVars + 4] (offset 0x64), effectively setting a\
+  \ \"hit\" flag word\n  two slots into the ExtraVars array.\n  The function does not return any value\
+  \ to callers (out only r1 scratch + r4 callee-saved);\n  behaves void.\n  Snapshots all show entry r0=0810f091\
+  \ (Thumb+1, i.e. caller already pushed lr), r5 holds\n  the BattleObjectPtr, and exit r0 = 0x02038640\
+  \ with Z set, indicating no body executed\n  past the early-return in any captured beast-spawn context.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r0, [r5,#oBattleObject_CollisionDataPtr]` at +2 with r5 holding the BattleObject - five
+    `ldrh` loads at offsets 0x82..0x8a summed into r1 correspond exactly to CollisionData.PanelDamage1..PanelDamage5
+    - `tst r1, r1; beq locret_810F0BE` short-circuits on zero total panel damage - `ldr r0, [r5,#oBattleObject_ExtraVars];
+    cmp r0,#2; beq locret_810F0BE` skips when ExtraVars[0] already equals 2 - `mov r0,#1; str r0,[r5,#oBattleObject_ExtraVars+4]`
+    writes the marker 1 at offset 0x64 - entry lr=08109036 in all six captured calls hints the caller
+    is in the beast-spawn path (snap_beastsp_*) and reaches this routine after pushing lr into r5 context'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0810F090
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp'
+  reproduce: 'grep -l ''^0810f090 '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp
+open_questions:
+- Exact semantic name of the "1" written at offset 0x64 (e.g. "cracked", "element set",
+- '"pierced flag") — would need to see a reader of that byte to label it confidently.'
+- Why the value 2 at ExtraVars[0] causes a skip; could be an "already processed" latch.
+- No callees / no named callers available in this context; identifying the parent routine
+- (likely the beast-spawn object script) would pin down the role further.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f c951b1b4
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_810F090 -> battleObject_markCrackedOrElementHit_810F090
+  where: bn6f 66c2a27e
+  tool: tools/rename_symbol.py
