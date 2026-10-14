@@ -1,0 +1,61 @@
+name: battle_aiState_dispatchStateMachine_811E168
+address: '0x0811E168'
+kind: function
+previous_names:
+- sub_811E168
+status: probable
+summary: AI state-machine dispatcher that jumps (ARM-mode BX) to one of three handlers based on a sub-state
+  byte in the AIData pointed to by r5
+interface: '(r5 = AIData*, lr = return addr) -> r0 = AIData+0x8 byte used as index into 3-entry handler
+  table ; side effects: tail-bx into one of sub_811E18C / sub_811E1D4 / sub_811E1FA (Thumb), preserves
+  r5 (callee-saved)'
+details: "The function saves lr to pc on the stack (`push {lr}` / `pop {pc}`), reads the byte at\n  `(r5)+8`\
+  \ (BLeftAbility in AIData, loc=0x8) into r1, loads the base of `off_811E17C`\n  (a 3-entry Thumb-handler\
+  \ table) into r0, indexes it with that byte, sets `lr = pc`,\n  and BXes to the resulting Thumb address\
+  \ (note the `+1` on every entry to switch to\n  Thumb). There is no r6 use despite r6 being loaded with\
+  \ `eStruct2001010`; it is dead in\n  this stub and looks like an artifact of an earlier inlined version.\
+  \ r5 is preserved by\n  the call convention and points at the AIData struct. The three handlers\n  (sub_811E18C,\
+  \ sub_811E1D4, sub_811E1FA) almost certainly correspond to AI sub-states\n  (init/update/idle or similar).\
+  \ The captured-call snapshots show r5 tied to EWRAM\n  AIData (~0x087dc5a4 range, r2) with r1 == 8 (the\
+  \ byte index) and consistent r0/r3\n  inputs across the 40 samples; exit r0 = 0x78c and Z flag set,\
+  \ suggesting the handler\n  writes a small word (likely \"done / frame counter\") into AIData before\
+  \ returning.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r1, [r5,#8]` at asm32.s:32045 reads BLeftAbility (offset 0x8 in AIData struct) as the
+    dispatch index - `ldr r0, off_811E178` and `ldr r0, [r0,r1]` at 32043-32046 perform a 3-entry table
+    lookup (`off_811E17C` lists 3 handler addresses) - `mov lr, pc` + `bx r0` at 32047-32048 perform a
+    Thumb-state-preserving tail call to the chosen handler - All three table entries have `+1` (`sub_811E18C+1`,
+    `sub_811E1D4+1`, `sub_811E1FA+1`) confirming BX-to-Thumb semantics - Captured entry consistently shows
+    r1 = 8 and r5 → ~0x087d... (EWRAM AIData area), r2/r3 points at same struct, matching the [r5,#8]
+    read - `push {lr}` / `pop {pc}` make this a leaf dispatcher with no local stack frame - r6 loaded
+    with `eStruct2001010` but never referenced afterward → dead load, likely artifact'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0811E168
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^0811e168 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The exact meaning of index 0/1/2 (init / update / ?) requires reading sub_811E18C, sub_811E1D4, sub_811E1FA
+- Why r6 is loaded with `eStruct2001010` and ignored (cut-and-paste residue?)
+- What exit r0 = 0x78c means in callers (likely a cursor/frame value, not from this stub directly)
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 18c67962
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_811E168 -> battle_aiState_dispatchStateMachine_811E168
+  where: bn6f ffe506a3
+  tool: tools/rename_symbol.py

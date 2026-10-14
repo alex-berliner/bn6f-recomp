@@ -1,0 +1,58 @@
+name: battleObject_setSpriteUnk2cFlagsFromAIVersion_811E202
+address: '0x0811E202'
+kind: function
+previous_names:
+- sub_811E202
+status: probable
+summary: Builds a bitmask from AI versioning fields and writes it into the battle object's sprite Unk_2c.
+interface: '(r5 = current BattleObject*) -> void ; side effects: writes sprite field 0x2c on the object'
+details: "Caller context (sub_811E1D4) passes the BattleObject pointer in r5. This routine begins by calling\n\
+  \  sub_81418E4 (\"battle_getAIDataVersionFields_81418E4\"), which returns two u8 version-related fields\n\
+  \  (e.g. AIIndex/Version_16/Version_17 style) in r0 and r1.\n  It then takes a constant mask `0x1ffffff8`\
+  \ (low three bits cleared) and clears four bits from it:\n  - bit 0x1c (= bit 28), shifted down by r0\
+  \ (svc 6 result -> random-ish / pseudo-random?).\n  - bit 0x19 (= bit 25), shifted down by r1.\n  -\
+  \ bit 0x0f (= bit 15), shifted down by r0.\n  - bit 0x0c (= bit 12), shifted down by r1.\n  So the resulting\
+  \ r7 is `0x1ffffff8` with two bits derived from r0 and two bits derived from r1 cleared,\n  then handed\
+  \ off to `sprite_setUnk0x2c` (which writes field 0x2c of `oObjectSprite`, addressed through\n  the sprite\
+  \ ID nibble in the object header). Effectively this is a per-frame sprite-flags update\n  gated on AI\
+  \ versioning bits. The captured-call r0=0/r1=2/r2=(stack pointer or LR) match the typical\n  r5=object/r0=rand-style\
+  \ pattern, and r0 always becomes 0x0dffbf78 in the exit snapshot, which is the\n  assembled bitmask\
+  \ value after the four `bic`s, confirming the role.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl battle_getAIDataVersionFields_81418E4` (asm line for sub_81418E4) supplies the two version
+    bytes into r0/r1. - `svc 6` (bios Random) called twice (mov r1,#0xa; svc 6) -> r0, then svc 6 -> r0
+    again, providing the random-ish nibble selectors. - `ldr r7, dword_811E240 // =0x1ffffff8` is the
+    seed bitmask. - Four `bic r7, r2` instructions clear bits `0x1c<<r0`, `0x19<<r1`, `0x0f<<r0`, `0x0c<<r1`,
+    as listed above. - `bl sprite_setUnk0x2c` writes the resulting u32 into the sprite struct field at
+    offset 0x2c. - Exit captured r0=0x0dffbf78 matches `0x1ffffff8 & ~0x10000000 & ~0x02000000 & ~0x00008000
+    & ~0x00001000` = 0x0dffbf78, confirming both the mask seed and the four clear positions.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0811E202
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^0811e202 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- Why specifically these four bits (28,25,15,12) are chosen (likely visual/animation flags masked by
+- AI version differences); what `svc 6` represents in this context (BIOS Random or another SVC)
+- determines whether r0/v0 are truly random or merely platform ticks.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 18c67962
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_811E202 -> battleObject_setSpriteUnk2cFlagsFromAIVersion_811E202
+  where: bn6f ffe506a3
+  tool: tools/rename_symbol.py

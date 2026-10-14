@@ -1,0 +1,64 @@
+name: battleObject_beastOut_checkOrInit_80897A6
+address: '0x080897A6'
+kind: function
+previous_names:
+- sub_80897A6
+status: probable
+summary: Beast-Out AI/sub-behavior tick that, when not yet active, gates on chatbox state and either triggers
+  the Beast-Out scenario or starts the timer-driven Beast-Out state, writing state bytes to the AIData/AIState
+  pointed at by r5.
+interface: '(r0 = unused, r1 = unused, r2 = unused, r3 = unused, r5 = AIData/AIState object ptr) -> r0
+  = 1 (always) ; side effects: writes state fields in *r5, calls chatbox/Battle scenario helpers'
+details: "Reads `r5+0x13` (the AIState \"active\"/\"done\" flag, `oAIState+0x3` per `ai_state_struct`\
+  \ offset mapping into `AIData_Unk_13`); if nonzero, skips to the epilogue and returns 1.\n  If the chatbox\
+  \ flag word `0x2009F38` bit `0x80` is set (via `chatbox_mask_eFlags2009F38`), also skips (the chatbox\
+  \ is busy).\n  Calls `chatbox_GetState_8045F4C`; if the chatbox state is non-zero (mid-script), dispatches\
+  \ via `sub_8089D26`, sets `r5+0x0` (AIData byte 0 — likely a beast-out phase byte) to `0x0c`, and exits.\n\
+  \  Otherwise (chatbox idle): calls `sub_8089D0E`, the scenario helper pair `battle_getScenarioEffectStateField_81421D0`\
+  \ and `sub_81421B2`, then `sub_80468EC(1)`, `sub_8089CB0(0xa)`, and finally writes `0x20` to `r5+0x0`\
+  \ (AIData byte 0 — beast-out initiated flag) before returning 1.\n  The unconditional `mov r0, #1 ;\
+  \ pop {r4-r7,pc}` epilogue means the function always returns 1 to its caller.\n  Snapshot filename `snap_beastsp_0180000_*`\
+  \ and the AIData+AIState-r5+0x13 gating make this clearly the Beast-Out (Cross/BeastSP) per-frame kicker\
+  \ for the controlled Navi.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- All 40 capture snapshots are named `snap_beastsp_0180000_*.bin`, identifying this as the
+    BeastSP routine path. - `ldrb r0, [r5,#0x13]` then `tst r0, r0` + `bne loc_80897E4` (epilogue) → behaves
+    as an "already started" guard on AIData byte `Unk_13`. - `mov r0, #0x80`; `bl chatbox_mask_eFlags2009F38`;
+    `bne loc_80897E4` → blocks while bit 7 of chatbox event flags is set. - `bl chatbox_GetState_8045F4C`;
+    `cmp r0, #0`; `beq loc_80897C8` → branches when chatbox is idle (state 0). - Idle branch calls `sub_8089D0E`,
+    then `battle_getScenarioEffectStateField_81421D0` + `sub_81421B2` (scenario helper pair, scenario-effect
+    setup), then `sub_80468EC(1)` and `sub_8089CB0(0xa)`, and finally `strb 0x20, [r5]`. - Non-idle branch
+    calls `sub_8089D26`, sets `strb 0xc, [r5]`, and falls into the same epilogue. - Epilogue is `mov r0,
+    #1; pop {r4-r7,pc}` — always returns 1.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080897A6
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^080897a6 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- Exact identity of `sub_8089CB0` / `sub_8089D0E` / `sub_8089D26` / `sub_80468EC`; the function's behavior
+  follows what they're documented as here.
+- Whether r5 is strictly the AIData or the AIState sub-struct — the `+0x13` offset corresponds to `AIData_Unk_13`
+  (or the equivalent field within whatever sub-struct r5 addresses); byte 0 of the same struct stores
+  a phase byte (`0x0c` vs `0x20`).
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 18c67962
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80897A6 -> battleObject_beastOut_checkOrInit_80897A6
+  where: bn6f ffe506a3
+  tool: tools/rename_symbol.py

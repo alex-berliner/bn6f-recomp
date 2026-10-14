@@ -1,0 +1,60 @@
+name: owMapObject_updateBeastSpEncounter_80A7CEA
+address: '0x080A7CEA'
+kind: function
+previous_names:
+- sub_80A7CEA
+status: probable
+summary: 'Overworld map object tick for Beast SP encounter: checks bounds and starts the encounter, then
+  runs the standard sprite update.'
+interface: '(in: r5 = some object pointer; r10 = toolkit; lr = return) -> side effects only; r0/flags
+  may be clobbered via sprite_update'
+details: "The function is a thin wrapper used in the Beast SP (special \"beast\" overworld) loop. It first\n\
+  \  delegates to sub_80A7CFE (the only direct call named \"checkBoundsAndStartBeastSpEncounter\" in the\n\
+  \  caller/callee contract), then unconditionally calls sprite_update (0x080026c4), and returns via\n\
+  \  `pop {r4-r7,pc}`. Because r4-r7 are preserved and r0/r1 are not in the live-out contract for the\n\
+  \  caller (out is r2/r3), this is effectively a `void` per-frame tick for an OW map object that has\n\
+  \  a beast SP transition. The captured-call snapshots show entry r1 == 4 (NPC/list index-ish),\n  r2\
+  \ around 0x0203956x (EWRAM/OW object pointer), r3 == 0x40; the variable r0 exit values\n  (0x998/0x9fc)\
+  \ are typical of sprite_update's OAM bookkeeping.\n  No struct fields are read/written by this function\
+  \ directly — all reads happen through its\n  callees. The function is only invoked from sub_80A7CA4\
+  \ in the same module.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl owMapObject_checkBoundsAndStartBeastSpEncounter_80A7CFE` is the only logic call and its
+    name (per the caller sub_80A7CA4 summary) matches "check bounds and start Beast SP encounter". - `bl
+    sprite_update` at 0x080026c4 is the only other call, the per-frame sprite OAM/animator step. - `push
+    {r4-r7,lr}` / `pop {r4-r7,pc}` shows r4-r7 are callee-saved and the function tails out. - Out contract
+    is only r2/r3, with may_write including r0/r1, consistent with sprite_update''s out contract clobbering
+    r0/r1 but not propagating them to callers. - Caller sub_80A7CA4 has the same in/out contract and lives
+    in the same module (asm29.s), suggesting a small OW map object dispatcher that calls this each frame.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080A7CEA
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^080a7cea '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- What sub_80A7CFE actually checks (bounds, encounter roll, transition trigger) is unknown here
+- and would settle the exact "tick" semantics. Cross-referencing sub_80A7CFE's body would
+- confirm the "start encounter" half of the name.
+- Whether r5 is the OW map object itself or some sub-struct pointer is not visible from this
+- function alone.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 18c67962
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80A7CEA -> owMapObject_updateBeastSpEncounter_80A7CEA
+  where: bn6f ffe506a3
+  tool: tools/rename_symbol.py

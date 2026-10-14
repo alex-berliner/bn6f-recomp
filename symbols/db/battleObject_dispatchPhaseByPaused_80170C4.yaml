@@ -1,0 +1,57 @@
+name: battleObject_dispatchPhaseByPaused_80170C4
+address: '0x080170C4'
+kind: function
+previous_names:
+- sub_80170C4
+status: probable
+summary: If the battle is not paused, dispatches to a CurPhase-specific handler for the BattleObject in
+  r5 via a 2-entry tail-call table; otherwise returns immediately.
+interface: (r5 = BattleObject*, r10 = Toolkit) -> r0 = whatever the dispatched handler (sub_80170E4 /
+  sub_8017122) returns (a per-phase status/result byte)
+details: "- Pushes lr, calls battle_isPaused, branches to a `pop {pc}` early-return if the battle is paused\
+  \ (the NZ flag from battle_isPaused is checked by `bne locret_80170D6`).\n  - When not paused, loads\
+  \ a 1-word pointer (`off_80170DC`) from a `off_80170D8` literal pool entry; that word is the address\
+  \ of a 2-entry function table (only one entry is visible in this snippet: `sub_80170E4+1` at offset\
+  \ 0, `sub_8017122+1` at offset 4).\n  - Reads `CurPhase` (offset `oBattleObject_CurPhase` = 0xa) from\
+  \ `[r5]` into r0 (low byte), then `r1 = [r1 + r0]` indexes the table by phase.\n  - Sets `lr = pc` and\
+  \ `bx r1`, switching to ARM mode (handler addresses have the +1 Thumb bit set), so this is a tail-call\
+  \ into the selected phase function.\n  - Captured-call exits return small values (0x04, 0x13, 0x14,\
+  \ 0x16, 0xf8), consistent with a per-phase handler returning a result/status code rather than anything\
+  \ from this dispatcher itself.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl battle_isPaused` then `bne locret_80170D6` → `pop {pc}` shows the paused gate at 0x80170c6-0x80170d6.
+    - `ldrb r0, [r5,#oBattleObject_CurPhase]` reads `CurPhase` (offset 0xa in `battle_object_struct`)
+    from r5. - `ldr r1, [r1,r0]` + `mov lr, pc` + `bx r1` is the standard Thumb→ARM tail-call pattern.
+    - The tail table `off_80170DC` holds `sub_80170E4+1` and `sub_8017122+1`, indexing them by `CurPhase`
+    value. - Returned r0 values vary across snapshots (0x04..0xf8), matching the idea that the real work
+    happens in the dispatched handler, not here.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080170C4
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp, story7'
+  reproduce: 'grep -l ''^080170c4 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp, story7
+open_questions:
+- The two table targets `sub_80170E4` and `sub_8017122` are not disassembled in this snippet; their semantics
+  (initialize vs. update? two distinct phases?) are unknown and would settle what phase indices map to
+  which phase.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 18c67962
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80170C4 -> battleObject_dispatchPhaseByPaused_80170C4
+  where: bn6f ffe506a3
+  tool: tools/rename_symbol.py

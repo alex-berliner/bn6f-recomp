@@ -1,0 +1,70 @@
+name: object_destroyStep_80CE782
+address: '0x080CE782'
+kind: function
+previous_names:
+- sub_80CE782
+status: probable
+summary: Battle-object destruction step that tears down collision data, then either despawns or hands
+  off to a per-action dispatcher
+interface: '(r5 = BattleObject*, r10 = toolkit) -> void ; side effects: clears/writes the object''s collision
+  region, writes `oBattleObject_CurStateActionPhaseAndPhaseInitialized = CUR_STATE_DESTROY (0x8)`, and
+  may set `oBattleObject_CurStateActionPhaseAndPhaseInitialized` via the per-action dispatcher'
+details: "Pushes only `{r4,r7,lr}` so r5/r8/r10 survive as the live state.\n  Sequence:\n  1. `object_removeCollisionData`\
+  \ — drops any collision data the object still owns (Tail-invokes the ARM helper; lr-resets register\
+  \ contract also fits with prior shell that cached lr at 0x080ce718).\n  2. `object_spawnCollisionEffect`\
+  \ — emit hit/stun FX from the just-removed collision.\n  3. `battle_isBattleOver` (early-exit to `loc_80CE7B2`\
+  \ if non-zero).\n  4. Reads `oBattleObject_CollisionDataPtr` (loc 0x54) and flags at `oCollisionData_FlagsFromCollision`\
+  \ (loc 0x70); if the bitmask `0x0f800000` is set (flags OBJECT_FLAGS_FROZEN/SUPERARMOR/MOVE_COMPLETE/etc\
+  \ cluster) the object also exits to `loc_80CE7B2`.\n  5. Otherwise load `oBattleObject_CurAction` (loc\
+  \ 0x9), use it as index into a one-entry table that points at `sub_80CE7C4+1` (Thumb dispatch via `mov\
+  \ lr,pc ; bx r1`).\n  6. The dispatched callees then call `object_presentCollisionData` and `object_highlightCurrentCollisionPanels`\
+  \ and `pop {r4,r7,pc}`.\n  Exit path `loc_80CE7B2`: calls `object_clearCollisionRegion()` and stores\
+  \ `CUR_STATE_DESTROY (8)` to `oBattleObject_CurStateActionPhaseAndPhaseInitialized` (loc 0x8) so the\
+  \ next tick will run DESTROY.\n  Captured-call r2 = `0x02036778` is some EWRAM pointer passed through\
+  \ from the caller; r0/r3 = 4 (action index?) and exit r0 = 0x7f/0x08 hints the dispatcher path wrote\
+  \ back either a phase index or stored CUR_STATE_DESTROY after the presentCollision panel pass.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {r4,r7,lr}` plus callee contract `in=[''r4'',''r5'',''r7'',''r10'',''lr'']` for `object_removeCollisionData`
+    matches the "remove collision" first-step pattern. - The literal `0xf800000` is masked against `oCollisionData_FlagsFromCollision`
+    and corresponds to OBJECT_FLAGS_FROZEN (0x10000) through OBJECT_FLAGS_BUBBLED (0x80000000) minus low
+    set bits; only the high 0x0f800000 region matches ObjectFlags1 bits 16-23 (FROZEN, SUPERARMOR, UNDERSHIRT,
+    MOVE_COMPLETE, DRAG, ANGER, USING_ACTION, UNK_24) — used as a "stop doing collision work" guard. -
+    `mov r0, #CUR_STATE_DESTROY; str r0, [r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]` is
+    the literal destroy-step stash (CUR_STATE_DESTROY = 8 in the struct macro). - The jump-table hop (`off_80CE7BC
+    -> off_80CE7C0 -> sub_80CE7C4+1`) plus the post-dispatch calls to `object_presentCollisionData` +
+    `object_highlightCurrentCollisionPanels` is a textbook collision-presentation handler for an action
+    phase. - r5 is the BattleObject* (writeback through `oBattleObject_*`); r10 is the toolkit so `battle_isBattleOver`
+    can resolve.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080CE782
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp'
+  reproduce: 'grep -l ''^080ce782 '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp
+open_questions:
+- Which CurAction value(s) actually flow through this function — table only has one entry currently (`sub_80CE7C4+1`),
+  so most action indices likely never reach the dispatcher; the destruction branch dominates.
+- What sub_80CE7C4 does and why CurAction 0x04 is the special case (entry captured shows r0=4 on every
+  path).
+- Whether the `0x0f800000` mask is "halt collision" or "force destroy" — `bne loc_80CE7B2` only says "if
+  set, take the destroy branch".
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 18c67962
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80CE782 -> object_destroyStep_80CE782
+  where: bn6f ffe506a3
+  tool: tools/rename_symbol.py

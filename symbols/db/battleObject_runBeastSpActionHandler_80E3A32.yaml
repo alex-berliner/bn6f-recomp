@@ -1,0 +1,66 @@
+name: battleObject_runBeastSpActionHandler_80E3A32
+address: '0x080E3A32'
+kind: function
+previous_names:
+- sub_80E3A32
+status: probable
+summary: Beast-SP battle-object action dispatcher — if the object is dying/finished or its related target
+  is doing action 0xB, force CUR_STATE_DESTROY; otherwise (when Param3==1 or not time-stopped) jump into
+  the per-CurAction handler table at off_80E3A70.
+interface: (r5 = BattleObject*) -> void ; out=r0 only inside the per-action handler tail; no return value
+  consumed by the lone caller.
+details: "- Called from sub_80E39D0 (the Beast-SP battle-object update driver) with r5 = the BattleObject\
+  \ and r10 = Toolkit.\n  - First checks battle_isBattleOver; if true, writes CUR_STATE_DESTROY (0x08)\
+  \ into CurStateActionPhaseAndPhaseInitialized and returns.\n  - Otherwise loads oBattleObject_Param3:\
+  \ when it is 1 the dispatch is forced into the action-table branch; otherwise it inspects oBattleObject_RelatedObject1Ptr->oBattleObject_CurAction\
+  \ and only continues if that is 0xB (likely \"the target is doing the action this Beast-SP supports\"\
+  ).\n  - Then either re-checks Param3==1 or calls battle_isTimeStop; if not stopped, performs the indirect\
+  \ jump through off_80E3A70 using the object's own CurAction as the table index (mov lr,pc; bx r1), effectively\
+  \ tail-calling into sub_80E3A74+1 with Thumb bit set.\n  - Falls through to the CUR_STATE_DESTROY write\
+  \ on every \"skip\" path.\n  - The single entry in off_80E3A70 means CurAction values other than 0 are\
+  \ not routed here today — i.e. this stub only forwards a specific CurAction; the rest of the action\
+  \ handling lives elsewhere or isn't routed through this table.\n  - bx r1 with r1 = handler+1 sets Thumb\
+  \ mode, so the handler is Thumb code at 0x80E3A74.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl battle_isBattleOver` then `bne loc_80E3A64` shows early CUR_STATE_DESTROY exit on battle
+    end. - `ldrb r0, [r5,#oBattleObject_Param3]; cmp r0, #1; beq loc_80E3A4C` shows the Param3==1 fast-path.
+    - `ldr r0, [r5,#oBattleObject_RelatedObject1Ptr]; ldrb r0, [r0,#oBattleObject_CurAction]; mov r1,
+    #0xb; cmp r0, r1` shows the related object''s CurAction must be 0xB to continue. - `bl battle_isTimeStop`
+    confirms the time-stop gating on the non-Param3 branch. - `ldr r1, off_80E3A6C; ldrb r0, [r5,#oBattleObject_CurAction];
+    ldr r1, [r1,r0]; mov lr, pc; bx r1` is the classic Thumb-state indirect dispatch through a CurAction-indexed
+    table at 0x80E3A70. - `mov r0, #CUR_STATE_DESTROY; str r0, [r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]`
+    writes 0x08 to the state field on the skip path. - off_80E3A70 contains only `sub_80E3A74+1`, so today''s
+    table routes every CurAction to the same handler. - Sole caller sub_80E39D0 has contract in=[''r5'',''r10'',''lr'']
+    out=[''r5''] and calls this routine as the action dispatch for the Beast-SP object type.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080E3A32
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp'
+  reproduce: 'grep -l ''^080e3a32 '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp
+open_questions:
+- What Param3==1 semantically represents (likely "force dispatch even if related object isn't doing action
+  0xB", e.g. own-init or queued action) — would settle by reading oBattleObject for the Beast-SP type
+  and any code that sets Param3=1 before this call.
+- Whether the off_80E3A70 table is meant to grow with more CurAction handlers or whether sub_80E3A74 itself
+  re-dispatches on CurAction is unknown without disassembling 0x80E3A74.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 18c67962
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80E3A32 -> battleObject_runBeastSpActionHandler_80E3A32
+  where: bn6f ffe506a3
+  tool: tools/rename_symbol.py

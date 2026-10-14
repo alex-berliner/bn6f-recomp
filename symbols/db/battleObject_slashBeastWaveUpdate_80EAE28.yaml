@@ -1,0 +1,78 @@
+name: battleObject_slashBeastWaveUpdate_80EAE28
+address: '0x080EAE28'
+kind: function
+previous_names:
+- sub_80EAE28
+status: probable
+summary: 'Per-frame AI state update for a Slash Beast-style wave/beast-jump action: starts wind-up, then
+  on expiry picks a lock-on target and teleports the battle object to a chosen panel with a midpoint interpolation
+  and final landing animation.'
+interface: (r5 = *BattleObject, r7 = *AIData, r3 = *AIAttackVars scratch, r6 already preserved) -> void
+  ; updates AIAttackVars scratch, battle object's PanelX/PanelY/X/Y/Z, sets anim 4/0, sets word at r6+0x0
+  to 8 (frame counter)
+details: "- State machine uses r6 (the AIAttackVars scratch pointer) and checks `r6[1]`; if 0 it sets\
+  \ it to 1, calls sub_80E1654 + sub_80F02A2 (gate check, e.g. don't start if mystery-data unknown), and\
+  \ if sub_80F02A2 returns nonzero triggers `object_setAnimation(4)` (\"charge/wind-up\") then sets the\
+  \ halfword timer at r6+8 to 3.\n  - On subsequent ticks it decrements r6[8] (`ldrh r0,[r6,#8]; sub r0,#1;\
+  \ strh r0,[r6,#8]; bne locret`).\n  - When the timer hits 0 it does the actual lock-on / jump body:\n\
+  \    * `naviAi_changePanel_8013CC4` on the object's current panel (in-place panel-color/decay side effect).\n\
+  \    * Reads the player's NaviStats `Transformation` (offset 0x2C) — if 0x17 (Shark/Slash) or 0x18 (Beast)\
+  \ it bypasses the element/flag check and falls through to compute the target panels.\n    * Otherwise\
+  \ reads `object_getFlag` and tests bit `0xA000`; if that bit is set, uses no-input panels (r0=0). Else\
+  \ tries two helpers sub_80EAF1A / getSlashBeastWaveAttackLockonTypeMaybe_80EAF26 (both return a target-panel\
+  \ offset/idx stored in r4); if both return 0 the function computes a chip-based fallback by reading\
+  \ `AIAttackVars.Unk_14` (r7[0x14]) through `getChip8021DA8` and using `[r0+0x17]`.\n    * `sub_80E164A`\
+  \ then sets up inputs and `battle_beastJumpLockOn_8026554` returns whether a valid lock-on target exists;\
+  \ if not it falls back to keeping current panel.\n    * Saves the old `(PanelX,PanelY)` into r6[2..3],\
+  \ writes the chosen new panel into battle object at r5.\n  - After positioning, `object_setCoordinatesFromPanels`\
+  \ + `object_updateCollisionPanels` apply the change; if `AIAttackVars.Unk_2c` is nonzero and `GetBattlePanelColumnPattern`\
+  \ matches one of 0x31/0x23/0x33 it forwards to `sub_800F2FC` (column-pattern damage/tile rebuild).\n\
+  \  - Then performs a \"two-step\" interpolation: object_getCoordinatesForPanels of the *original* panel,\
+  \ then calls `sub_80EAFC2(r0,r1,objectZ, 8, ...)` to do an effect/move (push passed XYZ, then averaged\
+  \ with current object X/Y/Z via `asr r0,r0,#1` etc.), then second `sub_80EAFC2(avgX,avgY,avgZ, 0, ...)`\
+  \ — i.e. motion from old coords through the midpoint to the new landing.\n  - Finally `object_setAnimation(0)`,\
+  \ sets the halfword at r6+0 to 8 (state value), and returns. Caller presumably re-enters this function\
+  \ each tick.\n  - Heavily local-register convention: r5 = *BattleObject, r7 = *AIData, r6 = *AIAttackVars;\
+  \ callee-saves r4/r6 across the call.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `strb r2,[r5,#oBattleObject_PanelX]; strb r3,[r5,#oBattleObject_PanelY]` at 0x80EAEB0 writes
+    the new panel into BattleObject — confirms this is a battle-object AI update that moves it between
+    panels. - The repeated halfword countdown at r6[8] and the state byte at r6[1] (toggled 0->1 on first
+    call) make r6 an AI state scratch, and the contiguous references `[r6,#1]/#2/3/8/#0` match `AIAttackVars.Unk_00..0x17/...`
+    layout. - `naviAi_changePanel_8013CC4(r5_panelXY)` + `object_updateCollisionPanels` + `object_setCoordinatesFromPanels`
+    is the standard battle-AI panel-jump sequence in this codebase. - Constants `0x17`/`0x18` compared
+    against NaviStats offset 0x2C correspond to transform IDs (Shark=0x17, Beast=0x18 per BeastOut variables
+    in AIData/BN6), gating on beast-mode players. - `bl battle_beastJumpLockOn_8026554` plus its inlined
+    offset-0x17 read from `getChip8021DA8` + sub_80E164A + sub_80EAF1A + `getSlashBeastWaveAttackLockonTypeMaybe_80EAF26`
+    identify it as the slash-style beast wave jump attack. - Two `sub_80EAFC2` calls with XYZ pushed/spread:
+    first with r3=8 then with r3=0 is the "interpolate from old panel through midpoint to new panel" pattern.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080EAE28
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^080eae28 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The exact semantic of `sub_80EAF1A`, `getSlashBeastWaveAttackLockonTypeMaybe_80EAF26`, `sub_80E164A`,
+  `sub_80E1654`, `sub_80EAFC2` — none of these have confirmed names in this decomp. Settling them requires
+  caller analysis at their respective sites.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 18c67962
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80EAE28 -> battleObject_slashBeastWaveUpdate_80EAE28
+  where: bn6f ffe506a3
+  tool: tools/rename_symbol.py

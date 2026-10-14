@@ -1,0 +1,86 @@
+name: battleObject_runWindRecoveryState_8017122
+address: '0x08017122'
+kind: function
+previous_names:
+- sub_8017122
+status: probable
+summary: 'Per-frame update for the Wind-style recovery state of a battle object: on first entry, freezes
+  animation and spawns a linked wind effect + sparkle effect with an 0x5A-frame timer; once the timer
+  expires, releases any reserved panel, removes the actor from the alive list, clears alliance targeting,
+  and destroys the object.'
+interface: '(r5 = BattleObject*, r3/r10/lr not really inputs — r3 is destroyed, r10 = toolkit) -> void
+  ; side effects: writes to AIData, spawns two battle objects, removes panel reservation, removes the
+  actor from BattleState.AliveBattleActors, sets CUR_STATE_DESTROY.'
+details: "1. `ldrb r0, [r5, #oBattleObject_PhaseInitialized]; tst r0, r0; bne loc_8017168` — if the state\
+  \ has already been entered before (PhaseInitialized != 0), skip straight to the timer-tick path.\n \
+  \ 2. First entry (PhaseInitialized == 0): calls `battle_isTimeStop`; if a time-stop is active, returns\
+  \ immediately so the animation does not advance during stop (the assembly treats the not-zero return\
+  \ as \"do not enter the state\"). Otherwise clears `PreventAnim`, `RelatedObject1Ptr`, the AIData `Unk_68`\
+  \ slot, sets `CurAnim = 2`, then loads `r7 = AIDataPtr + 0x74` and calls `battle_spawnLinkedObject_80E1A6A`\
+  \ to spawn a type-0x11 linked object tied to that AI slot (consistent with the \"linked child + pointer\
+  \ slot\" semantics of that helper).\n  3. Reads three words from `BattleObject + 0x34` (X/Y/Z) into\
+  \ r1/r2/r3, adds `0x00200000` (0x20 lsl 16) to r3 (Z bump for the effect), and calls `spawn_t1_0x0_EffectObject`\
+  \ with `r4 = 3` (matching its contract's \"type-4 battle object, effect type 0\"). The two writes immediately\
+  \ after store `0x5A` (90) into the spawned effect's `Timer` and into the parent battle object's `Timer`.\
+  \ PhaseInitialized is set to 4 so the init block does not re-run.\n  4. loc_8017168: each call decrements\
+  \ `oBattleObject_Timer`. If it underflows (bge not taken): call `battle_ClearAllianceTargetSlotIfSelf_802CDD0`\
+  \ to drop any alliance slot pointing at this object, then `object_removePanelReserve` on the `FuturePanelXY`\
+  \ panel, then read `AIDataPtr->Unk_74` (the spawned linked object's slot, which was stored there by\
+  \ step 2's spawn) and call `sub_80E1A86` to set its field offset 8 to 8. Then `battle_getObjectNameID_8011020`\
+  \ (used only for its side-effect on r5; the captured r1=0x08017123 pattern shows it just feeds a name-id\
+  \ setup), then `RemoveGivenAliveBattleActorFromList(r5)` to drop this object from `BattleState.AliveBattleActors`.\
+  \ Finally clear the visible bit (`bic r0, #2` on `oObjectHeader_Flags`) and write `CUR_STATE_DESTROY`\
+  \ (0x08) into `oBattleObject_CurStateActionPhaseAndPhaseInitialized`, jumping to the return.\n  5. Otherwise\
+  \ (timer still running): `lsr r0, r0, #2; bcc locret_80171A4` — every 4th frame (when the new Timer\
+  \ value's bit 2 is set), call `sprite_forceWhitePalette(r5)`, producing the periodic white-flash effect\
+  \ during the 0x5A-frame wind-up.\n  6. The captured-call r0 pattern (0x16, 0xf8, 0x13 across the six\
+  \ snapshots) corresponds to the AI-stored effect spawn type varying between calls in the captured trace;\
+  \ this just reflects that callers pass differing effect parameters into r0 before entering, not a different\
+  \ return value contract.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- State-gating on `oBattleObject_PhaseInitialized` followed by a one-shot init block (`bne
+    loc_8017168`) and a tick path is the standard BN battle-object per-frame state shape. - `bl battle_isTimeStop;
+    bne locret_80171A4` — explicitly bails on time-stop before doing any writes. - Init writes `CurAnim
+    = 2`, `PreventAnim = 0`, clears `RelatedObject1Ptr` and `AIDataPtr->Unk_68`; then spawns a type-0x11
+    linked object via `battle_spawnLinkedObject_80E1A6A` using `AIDataPtr + 0x74` (Unk_74, a `BattleObject*`
+    slot per the AIData layout) as the pointer slot. - Spawns a second t4 effect with type-0 via `spawn_t1_0x0_EffectObject`
+    at coords `BattleObject.{X,Y,Z+0x00200000}` and effect-type param `r4 = 3`. - Both timers are set
+    to `0x5A` (90 frames ≈ 1.5 s at 60 fps) — consistent with a short recovery/wind animation. - Expiration
+    path: `battle_ClearAllianceTargetSlotIfSelf_802CDD0`, `object_removePanelReserve(FuturePanelXY)`,
+    `sub_80E1A86(AIDataPtr->Unk_74)` (mark the spawned child for cleanup), `battle_getObjectNameID_8011020`,
+    `RemoveGivenAliveBattleActorFromList(r5)`, then `bic r0, #2` of `oObjectHeader_Flags` (clear visible)
+    and `CUR_STATE_DESTROY` write. - Tick path `lsr r0,#2; bcc …; bl sprite_forceWhitePalette` fires a
+    white flash every 4 frames during the wind-up. - `RemoveGivenAliveBattleActorFromList` is the only
+    confirmed "removes self from alive list" helper and is the right name for `CUR_STATE_DESTROY` cleanup.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08017122
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp, story7'
+  reproduce: 'grep -l ''^08017122 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp, story7
+open_questions:
+- What kind of battle object this is the per-frame state of (the AI's `Unk_74` slot and the `r4 = 3` effect
+  parameter suggest a specific chip/family, but without a confirmed caller the object type isn't known);
+  whether `battle_getObjectNameID_8011020` is a required cleanup side-effect or vestigial. Settle by finding
+  the unique caller of this function (route coverage didn't include it) and inspecting what object id/type
+  spawns it.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 18c67962
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8017122 -> battleObject_runWindRecoveryState_8017122
+  where: bn6f ffe506a3
+  tool: tools/rename_symbol.py

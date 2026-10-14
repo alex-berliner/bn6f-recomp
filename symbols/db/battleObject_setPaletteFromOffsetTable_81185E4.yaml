@@ -1,0 +1,58 @@
+name: battleObject_setPaletteFromOffsetTable_81185E4
+address: '0x081185E4'
+kind: function
+previous_names:
+- sub_81185E4
+status: probable
+summary: For the battle object in r6, look up a palette id from a 16-bit table at 0x0201DA80 indexed by
+  (r6+0x3A)+(r6+0x38), subtract 0x90, and write that to the object's sprite palette via sprite_setPalette.
+interface: '(r6 = BattleObject*) -> void ; side effect: writes palette index into the object''s sprite
+  data'
+details: "- Saves lr; reads u16 at r6+0x3A and r6+0x38 (the \"selected chip\" / \"command\" pair typically\
+  \ used to index battle action lookup tables in BN6).\n  - Sums them, multiplies by 4, and indexes a\
+  \ table at 0x0201DA80 (`word_201DA80` via off_81186A4) to fetch a u16.\n  - Passes that u16-0x90 to\
+  \ `sub_813B780` (battleObject_getByIndex_813B780) which returns a pointer to a battle object; then reads\
+  \ byte 3 of that object.\n  - Subtracts 1 and calls `sprite_setPalette`, which stores the value in byte\
+  \ 4 of the sprite struct (per its summary).\n  - The function is `void`-like: r0 may be clobbered but\
+  \ no value is meant for the caller.\n  - Eight sibling helpers in the 0x0811842C..0x0811857C area all\
+  \ call this with r6 set up the same way, strongly suggesting a fan-out palette assignment for some per-turn\
+  \ battle action (e.g., attack palette per chip/command).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrh r0, [r6,#0x3a]` / `ldrh r1, [r6,#0x38]` are the two operand slots used as a combined
+    table index. - `add r0, r0, r1` then `lsl r0, r0, #2` matches the (offset+offset)*4 stride into `word_201DA80`
+    (table of 32-bit entries). - `sub r0, #0x90` shifts the lookup value down by 0x90 before `bl battleObject_getByIndex_813B780`,
+    consistent with this table mapping user-visible indices to internal battle object slot ids. - `ldrb
+    r0, [r0,#3]` then `sub r0, #1` is the standard pattern of reading a "color/palette" field and applying
+    it. - Final `bl sprite_setPalette` confirms the result is a palette index being committed to the sprite.
+    - All 8 callers (0x0811842C..0x0811857C) preserve r5/r6, the standard callee-save pair for "current
+    battle object" in this battle engine.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x081185E4
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^081185e4 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The exact meaning of fields at r6+0x38/0x3A and the entity returned by battleObject_getByIndex_813B780
+  (e.g., whether r6+0x3A is the chip being used this turn) would require seeing the table at 0x0201DA80
+  and battleObject_getByIndex_813B780 to confirm.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 18c67962
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_81185E4 -> battleObject_setPaletteFromOffsetTable_81185E4
+  where: bn6f ffe506a3
+  tool: tools/rename_symbol.py

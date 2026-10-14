@@ -1,0 +1,58 @@
+name: battle_setPlayerDirectionAndAnimFromAIState_80A5890
+address: '0x080A5890'
+kind: function
+previous_names:
+- sub_80A5890
+status: probable
+summary: Copies the AI state's direction/anim offset triple (offsets 0x7C..0x84) into the player battle
+  object and triggers a direction/anim update.
+interface: (r5 = player BattleObject*, r6 = AIData*) -> void ; side effects on player BattleObject at
+  offsets 0xC,0x10,0x14; calls owPlayer_setDirectionAnimFromOffset_80A5974
+details: 'Loads three u32 values from AIData+0x7C, +0x80, +0x84 via r3=0x7c with successive adds (mov
+  r3,#0x7c; ldr r0,[r6,r3]; add r3,#4; ldr r1,[r6,r3]; add r3,#4; ldr r2,[r6,r3]). These are stored into
+  the player BattleObject at r5+0xC, +0x10, +0x14 (str r0,[r5,#0xc]; str r1,[r5,#0x10]; str r2,[r5,#0x14]).
+  The BattleObject offsets 0xC..0x14 are Unk_0c/Unk_0d/Unk_0e (Element)/Unk_0f area; here written as 3
+  u32s, plausibly the "direction/anim offset" triplet (Direction/DirectionFlip blend + AnimSelect blob).
+  Then bl owPlayer_setDirectionAnimFromOffset_80A5974 re-derives the sprite from those values. r4/r5/r10/lr
+  pushed, callee restores r4/r5; r0 always returned 0 (movs r0,#0 from init or zero from str). Called
+  only from sub_80A57D0 / sub_80A5828 (the two AIData-state handlers right before/after they queue direction).
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- asm: `mov r3,#0x7c` then three `ldr` from `[r6,r3]` with `#4` bumps reads exactly AIData+0x7C,
+    +0x80, +0x84. - asm: three `str` to `[r5,#0xc]`/`#0x10`/`#0x14` are contiguous 12-byte write into
+    the BattleObject struct. - r5 by project convention (r5 = BattleObject, r6 = AIData, r10 = toolkit,
+    per caller contracts in= r4,r5,r6,r10,lr). - callee name `owPlayer_setDirectionAnimFromOffset_80A5974`
+    directly states what the post-write step does with the three values. - 40 captured call sites with
+    r0=0 throughout; consistent with `void` return.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080A5890
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp, maps'
+  reproduce: 'grep -l ''^080a5890 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp, maps
+open_questions:
+- What the three u32s at AIData+0x7C..+0x84 semantically are (anim/direction blob vs raw copy); would
+  settle by reading sub_80A5974 or labelling those AIData fields.
+- Whether r5 is the player's BattleObject specifically or a generic one in callers other than beastsp
+  snap path; the snap ids "beastsp" plus r5 incoming values suggest the controlled PET/navi.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 18c67962
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80A5890 -> battle_setPlayerDirectionAndAnimFromAIState_80A5890
+  where: bn6f ffe506a3
+  tool: tools/rename_symbol.py

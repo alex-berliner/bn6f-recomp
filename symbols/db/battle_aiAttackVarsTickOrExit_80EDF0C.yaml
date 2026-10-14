@@ -1,0 +1,65 @@
+name: battle_aiAttackVarsTickOrExit_80EDF0C
+address: '0x080EDF0C'
+kind: function
+previous_names:
+- sub_80EDF0C
+status: probable
+summary: 'AI attack-vars step: count down Unk_10, then on expiry clear the AI flag bits 0x1000/0x2000
+  (flip direction + refresh sprite/arm) and call object_exitAttackState.'
+interface: (r5 = BattleObject, r7 = AIAttackVars) -> void ; mutates AIData->Unk_44 (clears 0x1000|0x2000),
+  BattleObject->DirectionFlip, AIAttackVars->Unk_01/Unk_10, then arms/exits attack state
+details: "1. Test AIAttackVars->Unk_01 at [r7,oAIAttackVars_Unk_01]; if zero, this is the first tick of\
+  \ a new attack so set Unk_10 = 1 (mov r0,#1; strh r0,[r7,#0x10]) and Unk_01 = 4 (state-marker, mov r0,#4;\
+  \ strb r0,[r7,#0x01]).\n  2. Decrement Unk_10 by 1 each tick (ldrh r0,[r7,#0x10]; sub r0,#1; strh r0,[r7,#0x10]);\
+  \ while the result is >= 0 the function returns early (bge locret_80EDF4C).\n  3. When Unk_10 underflows,\
+  \ read AIData->Unk_44 via GetAIData_Unk_44_Flag and look for two mask bits stored in literal pools:\
+  \ dword_80EDF50 = 0x1000 and dword_80EDF54 = 0x2000.\n  4. If either bit is set, pick r2 = 0 (0x1000)\
+  \ or r2 = 1 (0x2000) — i.e. a \"direction\" value derived from which bit fired — and write it to BattleObject->DirectionFlip\
+  \ at [r5,oBattleObject_DirectionFlip] (strb r2,[r5,#0x17]), then call battleObject_refreshSpriteAndArm_800F2C6\
+  \ and battleRefreshTrackedObjectArmPos_801DBD4 to resync the sprite and the hand-position tracker.\n\
+  \  5. Always clear the combined mask 0x3000 (dword_80EDF58) from AIData->Unk_44 with ClearAIData_Unk_44_Flag\
+  \ and finish by calling object_exitAttackState, which walks the attack-state exit path on this object.\n\
+  \  Net effect: a per-attack ticker on the AIAttackVars sub-struct that, on countdown completion, optionally\
+  \ nudges DirectionFlip and refreshes the sprite/arm, then unconditionally tears down the attack state\
+  \ and clears the 0x1000/0x2000 latch bits.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0,[r7,#oAIAttackVars_Unk_01]; tst r0,r0; bne loc_80EDF1C` is the first-tick guard.
+    - `mov r0,#1; strh r0,[r7,#oAIAttackVars_Unk_10]` followed by `mov r0,#4; strb r0,[r7,#oAIAttackVars_Unk_01]`
+    initialises Unk_10 = 1 and stamps Unk_01 = 4 only on the first call. - `ldrh r0,[r7,#0x10]; sub r0,#1;
+    strh r0,[r7,#0x10]; bge locret_80EDF4C` is the decrement-and-return-while-non-negative loop. - `bl
+    GetAIData_Unk_44_Flag` returns the AI flag word; tests against `0x1000` (`dword_80EDF50`) and `0x2000`
+    (`dword_80EDF54`) select r2 = 0 or 1. - `strb r2,[r5,#oBattleObject_DirectionFlip]` writes that selector
+    into BattleObject offset 0x17 (oBattleObject_DirectionFlip). - `bl battleObject_refreshSpriteAndArm_800F2C6;
+    bl battleRefreshTrackedObjectArmPos_801DBD4` resync the sprite/arm after the flip. - `ldr r0,=0x3000;
+    bl ClearAIData_Unk_44_Flag; bl object_exitAttackState` clears both bits and exits the attack state
+    regardless of branch.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080EDF0C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp'
+  reproduce: 'grep -l ''^080edf0c '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp
+open_questions:
+- Exact semantic of Unk_01 = 4 (attack-vars phase byte) and of the 0x1000 vs 0x2000 bits (DAMAGE_ERASECROSS_SKULL_HIT
+  / DAMAGE_UNINSTALL in BattleObject->Damage, but here stored in AIData->Unk_44 — purpose unconfirmed).
+  What AI action calls into this tick is also unknown (no callers listed).
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 18c67962
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80EDF0C -> battle_aiAttackVarsTickOrExit_80EDF0C
+  where: bn6f ffe506a3
+  tool: tools/rename_symbol.py

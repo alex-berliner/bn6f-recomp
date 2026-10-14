@@ -1,0 +1,61 @@
+name: battleObject_snakeArmTick_80E1566
+address: '0x080E1566'
+kind: function
+previous_names:
+- sub_80E1566
+status: probable
+summary: 'Per-tick update for a SnakeArm-style extra battle object: toggles its pause flag, copies arm
+  world coords from a partner Navi, and frees the object if the battle ends or its targets are gone.'
+interface: (r5 = battle object) -> void ; may clear OBJECT_FLAG_PAUSE_UPDATE on the object and free it
+details: "- Clears bit 1 (OBJECT_FLAG_PAUSE_UPDATE) of the object's header flags up front, then re-asserts\
+  \ it only if its alliance is the local side AND its NaviStats Mood (0x29) is in the 0x0b..0x18 range\
+  \ — i.e. it is an allied/team-controlled SnakeArm that should stay paused.\n  - Returns immediately\
+  \ if the battle is time-stopped (`battle_isTimeStop`).\n  - If the battle is over (`battle_isBattleOver`\
+  \ non-zero) or `[ExtraVars+4]==0`, copies X/Y/Z (Coords at 0x34) from a partner object returned by `sub_80E1670`\
+  \ (which fills a stack buffer with the three enemy-side battle objects matching the object's alliance).\
+  \ For a partner whose NameID is in 0x173..0x178 and CurAnim == 0x4f, the (x,y) offset is taken as (0,0);\
+  \ otherwise the (x,y) of the arm slot 0x11 is fetched from `getBattleArmPositionMaybe_8018810`, Z gets\
+  \ +0x80000.\n  - Then `object_setPanelsFromCoordinates`/`object_isCurrentPanelValid`; if the panel is\
+  \ invalid it clears the pause-update flag again.\n  - If `[ExtraVars]==0` (no live target) or the battle\
+  \ is over, the object's state word is zeroed and `object_freeMemory` is called; otherwise `object_updateSpriteTimestop`\
+  \ runs the sprite tick.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `sub_80E1566` first does `ldrb r0,[r5,#oObjectHeader_Flags]; mov r1,#2; bic r0,r1; strb r0,...`
+    (clear bit 1) and re-`orr` only after the alliance+mood check at 0x80E159A — implements the conditional
+    pause. - The range check `cmp r0,#0xb / cmp r0,#0x18` on the byte fetched at NaviStats offset 0x29
+    (Mood) per the NaviStats struct definition, and the `battle_networkInvert(Alliance)` gate, identify
+    this as a player-side controlled "snake arm" extra. - The `NameID` 0x173..0x178 + `CurAnim==0x4f`
+    branch forces a zero (x,y) offset — the 0x4f anim is the catch/swing pose, so the arm anchors to the
+    Navi. - `getBattleArmPositionMaybe_8018810(r1=0x11, Alliance, DirectionFlip)` is exactly the call
+    shape for slot 0x11 of a Navi, and the +/-0x80000 Z tweak aligns the arm above the Navi. - Copying
+    three u32s at r4+0x34 into r5+0x34 is the standard Coords copy. - Final free path writes 0 to `[r5+ExtraVars]`
+    and calls `object_freeMemory` — typical teardown for an exhausted extra object.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080E1566
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^080e1566 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- What `[ExtraVars+0]` / `[ExtraVars+4]` actually encode; only `sub_80E1540`'s producer knows. Following
+  the producer would let me drop the "SnakeArm" label and name the exact chip/object.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 18c67962
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80E1566 -> battleObject_snakeArmTick_80E1566
+  where: bn6f ffe506a3
+  tool: tools/rename_symbol.py

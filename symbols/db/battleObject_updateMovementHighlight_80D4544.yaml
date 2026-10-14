@@ -1,0 +1,65 @@
+name: battleObject_updateMovementHighlight_80D4544
+address: '0x080D4544'
+kind: function
+previous_names:
+- sub_80D4544
+status: probable
+summary: 'Per-frame battle object update: re-highlights the panel under the object while its movement
+  timer has bit 0x4 clear, decrements the timer, and on expiry marks the object paused with CurAction=4
+  and clears CurPhase/PhaseInitialized.'
+interface: '(r5 = BattleObject*) -> void ; side effects: writes oBattleObject_Flags, oBattleObject_CurAction,
+  oBattleObject_CurPhaseAndPhaseInitialized; may call object_highlightPanel'
+details: "- Loads the 16-bit Timer at offset oBattleObject_Timer (0x20) and tests bit 0x4; if clear it\
+  \ reads the object's current panel coordinates (PanelX 0x12, PanelY 0x13) and invokes object_highlightPanel(r0=PanelX,\
+  \ r1=PanelY) to keep its panel marked as highlighted.\n  - Always decrements the Timer word by 1 (sub\
+  \ r0,#1 / strh to oBattleObject_Timer 0x20). The decrement uses the halfword at 0x20; if the lower byte\
+  \ of Timer2 (0x22) matters it is not touched here.\n  - If the decremented timer is still > 0 the function\
+  \ returns (pop {pc}); otherwise it sets OBJECT_FLAG_PAUSE_UPDATE (0x04 -> bits 0x02 in the Flags byte\
+  \ at oObjectHeader_Flags 0x00 via ORR with 2 - wait, see uncertainty) into oObjectHeader_Flags (0x00),\
+  \ forces CurAction (0x09) = 4, and writes 0 to CurPhaseAndPhaseInitialized (0x0a) so the next update\
+  \ starts at phase 0 with PhaseInitialized=false.\n  - The contract says callers see lr restored and\
+  \ r0..r3 clobbered; only r5 is in. Callee object_highlightPanel uses the same r0/r1 contract (panelX,\
+  \ panelY) and clobbers flags. No r4 is touched, so this is leaf-ish with one BL and one POP {pc}.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- "ldrh r0, [r5,#oBattleObject_Timer]" at asm offset ~+0 loads the 16-bit Timer field at offset
+    0x20. - "tst r0, r1" with r1=4 plus "bne loc_80D4556" gates the highlightPanel call on bit 0x4 of
+    Timer being clear. - "ldrb r0, [r5,#oBattleObject_PanelX] / ldrb r1, [r5,#oBattleObject_PanelY] /
+    bl object_highlightPanel" passes the object''s current panel to highlightPanel. - "ldrh r0, [r5,#oBattleObject_Timer]
+    / sub r0,#1 / strh r0,[r5,#oBattleObject_Timer]" decrements the timer each call. - "bgt locret_80D456E"
+    exits early if the timer remains > 0; otherwise the ORR-with-2 path arms the "finished" branch. -
+    "strb r0, [r5,#oBattleObject_CurAction]" with r0=4 sets CurAction to 4 on completion. - "strh r0,
+    [r5,#oBattleObject_CurPhaseAndPhaseInitialized]" with r0=0 clears CurPhase/PhaseInitialized.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080D4544
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp'
+  reproduce: 'grep -l ''^080d4544 '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp
+open_questions:
+- The ORR is with literal 2 (`mov r1,#2 ; orr r0,r1 ; strb r0,[r5,#oObjectHeader_Flags]`), but the project's
+  ObjectHeader defines OBJECT_FLAG_PAUSE_UPDATE as 0x04, not 0x02. So either the constant 0x02 here is
+  a different "done with movement" flag, or the struct constant is misnamed - the assembly itself clearly
+  sets bit 0x02 (i.e. what the project calls OBJECT_FLAG_VISIBLE) in the header byte, not bit 0x02 of
+  pause. Worth confirming against the real engine which bit means "movement finished, freeze this actor".
+- The Timer bit 0x4 being "highlight only while this bit is unset" is a behaviour inferred from the test/invert
+  branch, not labelled.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 18c67962
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80D4544 -> battleObject_updateMovementHighlight_80D4544
+  where: bn6f ffe506a3
+  tool: tools/rename_symbol.py
