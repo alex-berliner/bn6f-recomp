@@ -1,0 +1,67 @@
+name: battle_dispatchCustomJumptableByIndex_80A8208
+address: '0x080A8208'
+kind: function
+previous_names:
+- sub_80A8208
+status: probable
+summary: Trampoline that dispatches to one of three handlers based on an indexed byte from `r5`.
+interface: '(r5 = pointer to a struct whose +0x8 is a 3-entry jumptable index, r6 = EWRAM pointer unk_2000B40,
+  r0/r1/r4 passed through to the handler) -> (no return); side effects: jumps to `sub_80A822C`, `sub_80A827C`,
+  or `sub_80A829C` (selected by index byte)'
+details: "- Saves lr via `push {lr}` so it can return to its caller (asm `0x080a8208`).\n  - Loads `r6\
+  \ = unk_2000B40` (EWRAM pointer, only used as scratch storage for the indirect call) (asm `ldr r6, off_80A8228`).\n\
+  \  - Loads the address of the 3-entry jump table at `off_80A821C` into `r0` (asm `ldr r0, off_80A8218\
+  \ // =off_80A821C`).\n  - Reads an 8-bit index from `r5+8` into `r1` (asm `ldrb r1, [r5,#8]`); note\
+  \ the unusual `+8` suggests `r5` is something like a BattleObject whose `CurState` field happens to\
+  \ land at `+0x8` (see `battle_object_struct`: `CurState @ +0x8`).\n  - Indexes the 3-entry word table\
+  \ with `[r0 + r1*4]`, loads the function pointer into `r0`, sets `lr = pc` and `bx r0` to invoke the\
+  \ target (asm `mov lr, pc / bx r0`). All three table entries are tagged `+1` so the call lands in Thumb\
+  \ mode at `sub_80A822C+1`, `sub_80A827C+1`, `sub_80A829C+1`.\n  - The trampoline itself does not return\
+  \ through `lr`; the eventual target is expected to return directly via the `pop {pc}` that was pushed\
+  \ — actually `pop {pc}` here restores to the *caller's* return. So the call chain is: caller → this\
+  \ trampoline → one of the 3 handlers, where the handler returns to the trampoline's caller (the trampoline\
+  \ effectively just acts as a fixed-arg loader + indexed call).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {lr}` at the start, `pop {pc}` at the end confirm the trampoline returns on behalf
+    of the called handler (asm `0x080a8208` and `0x080a820e`). - `ldrb r1, [r5,#8]` selects one of 3 entries;
+    `off_80A821C` lists exactly 3 targets (asm `0x080a821c`..`0x080a8224`). - All three entries are stored
+    as `+1` (Thumb bit set), and `bx r0` is used with `mov lr, pc`, which is the standard Thumb-to-Thumb
+    indirect-call pattern (asm `0x080a821c`, `0x080a821e`). - `r6 = unk_2000B40` is loaded but never touched
+    by the trampoline itself, implying the targets rely on `r6` already being this EWRAM object (asm `0x080a820a`).
+    - `r5` survives the call (`r5` is in the contract''s `in`, not `may_write` for the trampoline''s logic),
+    consistent with the targets using `r5` as a context object. - The three targets `sub_80A822C`, `sub_80A827C`,
+    `sub_80A829C` live in `asm29.s` very close to the trampoline, which fits a custom-handler cluster
+    for one specific object type.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080A8208
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp, maps'
+  reproduce: 'grep -l ''^080a8208 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp, maps
+open_questions:
+- What struct `r5` points to and what the byte at `+0x8` semantically represents (looks like `CurState`
+  based on the `battle_object_struct` layout, but unconfirmed without a caller trace).
+- What the three targets actually do — they aren't named in the provided context. Listing them as a `dispatch`
+  table is solid; assigning per-entry meaning needs their bodies.
+- Why `r6` is preloaded with `unk_2000B40` (probably so the targets can read/write a shared EWRAM scratch,
+  but the trampoline never reads it).
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 22c74dca
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80A8208 -> battle_dispatchCustomJumptableByIndex_80A8208
+  where: bn6f 448690a3
+  tool: tools/rename_symbol.py

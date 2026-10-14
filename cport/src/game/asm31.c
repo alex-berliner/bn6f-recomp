@@ -2093,7 +2093,7 @@ Next battle_stateEnter_loadSprite0x80_80C4B48(void) {
     ST8(R5, LD8(R5) | 2);
 
     /* Ask which animation this state starts with (result in r1) and apply it. */
-    GUEST_CALL(sub_80C4C52);
+    GUEST_CALL(battleObject_decideDeathEffectKind_80C4C52);
     u32 anim = R1;
     ST8(R5 + oBattleObject_CurAnim, anim);
     ST8(R5 + oBattleObject_CurAnimCopy, anim);
@@ -2124,10 +2124,10 @@ Next battle_stateEnter_loadSprite0x80_80C4B48(void) {
 #define REL_FLAG_4      0x04u
 #define EXTRA_VARS_OFF  0x34u
 
-/* register form: calls sub_80C4C52 outside this file, which has no typed C interface yet */
+/* register form: calls battleObject_decideDeathEffectKind_80C4C52 outside this file, which has no typed C interface yet */
 static u32 get_new_anim(u32 obj) {
     R5 = obj;
-    GUEST_CALL(sub_80C4C52);
+    GUEST_CALL(battleObject_decideDeathEffectKind_80C4C52);
     return R1;
 }
 

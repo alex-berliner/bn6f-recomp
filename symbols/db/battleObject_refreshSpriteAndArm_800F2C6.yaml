@@ -1,0 +1,67 @@
+name: battleObject_refreshSpriteAndArm_800F2C6
+address: '0x0800F2C6'
+kind: function
+previous_names:
+- sub_800F2C6
+status: probable
+summary: Refresh the battle object's sprite facing/arm position each frame (player objects get a custom
+  arm-position write, others use the tracked-arm table).
+interface: '(r5 = battleObject) -> void ; side effects: updates the object''s sprite flip and arm-position
+  table entry'
+details: "1. Calls object_getFlip to compute the object's effective horizontal facing\n     (Alliance\
+  \ XOR DirectionFlip) and applies it with sprite_setFlip, mirroring\n     the sprite via the mask 0x30\
+  \ at sprite offsets 0x13/0x16.\n  2. Loads the object's AIDataPtr (offset 0x58 on BattleObject). If\
+  \ the pointer\n     is NULL, the function returns.\n  3. If AIData->ActorType == ACTOR_TYPE_PLAYER (2),\
+  \ the code takes a special\n     branch: it calls sub_8018856 with r0=3, then negates the returned value\n\
+  \     and forwards it to sub_801DC06 (which looks up a 6-slot, 8-byte work\n     table at 0x20352E0\
+  \ by the object's 32-bit id and patches two bytes —\n     the manual arm-position write used for the\
+  \ controllable Navi).\n  4. For any other actor type (virus or navi), it falls through to\n     battleRefreshTrackedObjectArmPos_801DBD4,\
+  \ which finds the same 6-slot\n     table and rewrites the stored x/y arm position so the HUD cursor/arm\n\
+  \     tracks the object's current coords.\n  5. The 22 captured calls all show r1 (a sprite struct)\
+  \ following the same\n     layout: bytes 0..0xE mostly zero, byte 0x0F = 0xFF (the same mark used\n\
+  \     when the cursor is hidden), and the rest zero — consistent with this\n     being called during\
+  \ a per-frame routine that also touches the cursor\n     sprite.\n  6. Many battle-actor update callers\
+  \ (snakearm AI, risky-honey update, the\n     0x800F2FC, 0x8014B18, 0x8014D08, 0x8014F40, 0x801516C,\
+  \ 0x80153EC,\n     0x801562C, 0x8015766, 0x8016F56, 0x802D738/950/ACC, 0x80D1FD8,\n     0x80EA1BC, 0x80EB79C/B98,\
+  \ 0x80EDF0C, 0x80EFDB2, 0x81096BA,\n     0x8113984/AB8, 0x8115EF4) all invoke it from inside their CurState\n\
+  \     update path, reinforcing the \"called every frame from each actor\"\n     pattern.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- "bl object_getFlip ; bl sprite_setFlip" at 0x0800f2c8-0x0800f2cc: the first two calls compute
+    and apply the sprite''s horizontal facing. - "ldr r0, [r5,#oBattleObject_AIDataPtr]" with the constant
+    0x58 matches the AIDataPtr offset in oBattleObject; the following "tst r0, r0 ; beq locret_800F2EE"
+    is the early-out when there is no AIData. - "ldrb r1, [r0,#oAIData_ActorType] ; cmp r1, #2" matches
+    ACTOR_TYPE_PLAYER (2) in the AIData struct. - The "bne" branch goes to "bl battleRefreshTrackedObjectArmPos_801DBD4"
+    which is already confirmed to be the routine that updates the 6-slot arm-position table for non-player
+    objects. - The "mov r0, #3 ; bl sub_8018856 ; neg r1, r1 ; bl sub_801DC06" path'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0800F2C6
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0800f2c6 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- The exact meaning of the value returned from sub_8018856 (r0=3 input)
+- and why it is negated before going into the table is not derivable
+- from this function alone; reading sub_8018856 would settle it.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 22c74dca
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_800F2C6 -> battleObject_refreshSpriteAndArm_800F2C6
+  where: bn6f 448690a3
+  tool: tools/rename_symbol.py

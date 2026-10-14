@@ -179,15 +179,15 @@ Next enemy_getStruct2(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_800F26C ── */
-/* sub_800F26C(r0 = enemy ID):
+/* ── enemy_getArmPosition_800F26C ── */
+/* enemy_getArmPosition_800F26C(r0 = enemy ID):
  * For IDs 0xCD..0xFF, return the 5-byte entry from the table byte_8021220
  * indexed by (ID - 0xCD). For any other ID, treat it as a regular enemy and
  * return the first two bytes of its struct (via enemy_getStruct1) with the
  * remaining outputs zeroed.
  * Outputs: r0..r4 (in the table path, r4 is the 5th byte; in the struct path
  * r4 is left untouched). */
-Next sub_800F26C(void) {
+Next enemy_getArmPosition_800F26C(void) {
     u32 id = R0;
 
     if ((u32)(id - 0xCD) > 0x32) {

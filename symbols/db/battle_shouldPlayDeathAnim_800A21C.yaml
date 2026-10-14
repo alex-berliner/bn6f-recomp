@@ -1,0 +1,56 @@
+name: battle_shouldPlayDeathAnim_800A21C
+address: '0x0800A21C'
+kind: function
+previous_names:
+- sub_800A21C
+status: probable
+summary: Returns 1 only when the battle is not time-stopped, not over, and the current anim state == 0x4000;
+  otherwise 0.
+interface: '() -> r0 = 1 if condition met else 0 ; side effects: reads toolkit (r10) state and a word
+  from sub_801DFE4; sets nz/c/v flags'
+details: "1. Saves lr and calls battle_isTimeStop; if true, returns 0 (time-stop blocks death anim).\n\
+  \  2. Calls battle_isBattleOver; if non-zero (battle over), returns 0.\n  3. Calls sub_801DFE4 which\
+  \ returns some battle-mode/state value in r0.\n  4. Compares that value against the constant 0x4000\
+  \ stored at dword_800A240.\n  5. If it does not match 0x4000, returns 0; otherwise returns 1.\n  6.\
+  \ Tail-returns via `pop {pc}` in both branches; only r0/lr are trashed, no other callee-saved regs pushed,\
+  \ matching the in/out contract.\n  The 0x4000 sentinel is read from a `.word 0x4000` data pool at the\
+  \ function's tail (dword_800A240), giving the concrete comparison value.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl battle_isTimeStop` then `bne loc_800A23A` → on time-stop, r0 = 0 is returned (time-stop
+    case at 0x800A23A loads r0 with 0). - `bl battle_isBattleOver` then `tst r0, r0` + `bne loc_800A23A`
+    → on non-zero r0 (battle over), returns 0. - `bl sub_801DFE4` then `ldr r1, dword_800A240 // =0x4000`
+    and `cmp r0, r1` `bne loc_800A23A` → equality with 0x4000 is required. - Success path: `mov r0, #1`
+    then `pop {pc}` returns 1; fall-through failure path at loc_800A23A `mov r0, #0` `pop {pc}` returns
+    0. - dword_800A240 lives right after the function (`.word 0x4000`), used only by this cmp.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0800A21C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp'
+  reproduce: 'grep -l ''^0800a21c '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp
+open_questions:
+- The semantic meaning of "0x4000" from sub_801DFE4 isn't decoded here; in-game it likely indicates a
+  specific battle state where the death animation should be allowed (e.g. a particular phase or victim-cooldown
+  value). Looking at sub_801DFE4's body would settle it. The "_shouldPlayDeathAnim" name is an educated
+  guess based on the "not over and not time-stopped" gating typical of finishing-blow / death anim checks
+  in BN.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 22c74dca
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_800A21C -> battle_shouldPlayDeathAnim_800A21C
+  where: bn6f 448690a3
+  tool: tools/rename_symbol.py

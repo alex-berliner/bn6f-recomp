@@ -1,0 +1,61 @@
+name: battle_runBeastOutIntro_801498E
+address: '0x0801498E'
+kind: function
+previous_names:
+- sub_801498E
+status: probable
+summary: Triggers and runs the fade/screen transition for the Beast Out pet-transformation intro and dispatches
+  the next battle step.
+interface: '(r5 = beast-state scratch, r10 = toolkit) -> r0 = 1 if fade is still active (exits early),
+  otherwise void-like ; side effects: starts a screen fade, writes [r5,#0] and [r5,#3], dispatches a battle
+  step'
+details: "Reads a stage byte at [r5,#3]; if non-zero (already started) it skips the fade kickoff.\n  Otherwise\
+  \ picks a fade mode via GetBattleMode: 0x6c for mode 1 (Beast Out intro),\n  0x40 otherwise, then calls\
+  \ SetScreenFade(mode, 0x10) and stores 4 at [r5,#3].\n  Once IsScreenFadeActive returns false (fade\
+  \ complete), calls\n  battle_IsBattleEnding_800A97A and selects a \"next battle dispatch\" constant\
+  \ by\n  battle mode: mode 1 -> 0x40A0; else if TestBattleFlag_0x40 is unset -> 0x4090, else\n  -> 0x24080.\
+  \ If IsBattleEnding was true, the constant is overwritten with 0x4080.\n  Finally calls dispatch_801DA48(constant)\
+  \ and stores 8 at [r5,#0] to advance the\n  controller's state. Returns r0=1 when it exits early while\
+  \ the fade is still\n  in progress; otherwise no useful result is left in r0. The constants\n  (0x40A0/0x4090/0x24080/0x4080)\
+  \ are battle-state / battle-result dispatch IDs.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- ldrb r0,[r5,#3]; tst r0,r0; bne loc_80149AE: only runs fade kickoff the first time. - bl
+    GetBattleMode; cmp r0,#1; ... mov r0,#0x6c else mov r0,#0x40: different fade modes per battle mode.
+    - mov r1,#0x10; bl SetScreenFade: SetScreenFade(fadeMode, 0x10). - mov r0,#4; strb r0,[r5,#3]: marks
+    stage 4 = fade requested. - bl IsScreenFadeActive; tst r0,r0; bne locret_80149EA: returns r0=1 while
+    fade is active. - bl battle_IsBattleEnding_800A97A; ... ldr r1,dword_80149F0/dword_80149F4/dword_80149F8/dword_80149FC:
+    chooses one of four dispatch constants by (battle mode, TestBattleFlag_0x40, IsBattleEnding). - bl
+    dispatch_801DA48 with the chosen constant: hands the next battle step off. - mov r0,#8; str r0,[r5]:
+    writes state value 8 to the r5 struct. - captured-call lr=0x080148d8 / sp=0x03007DA8 / r1=0x0801498F
+    consistent with this being called from a battle step controller at 0x080148d8 that pushes r5/r10.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801498E
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^0801498e '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The exact meaning of the four dispatch constants (0x40A0/0x4090/0x24080/0x4080) inside dispatch_801DA48
+  is unknown without more of its body.
+- What the u32 at [r5,#0] (state index) and u8 at [r5,#3] (sub-state) represent structurally; r5 looks
+  like a small per-battle-controller state struct but is not declared in the included struct headers.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 22c74dca
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801498E -> battle_runBeastOutIntro_801498E
+  where: bn6f 448690a3
+  tool: tools/rename_symbol.py

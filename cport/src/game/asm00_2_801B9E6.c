@@ -1082,10 +1082,10 @@ Next battle_loadChipPreviewGfxInit_801BFEE(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_801BFF8 ── */
-/* sub_801BFF8: invoke battle_loadChipPreviewGfxFromHandTable_801C002 with r0 = 0 and let its results
+/* ── battle_loadChipPreviewGfxDefault_801BFF8 ── */
+/* battle_loadChipPreviewGfxDefault_801BFF8: invoke battle_loadChipPreviewGfxFromHandTable_801C002 with r0 = 0 and let its results
  * (registers and flags) pass straight through to the caller. */
-Next sub_801BFF8(void) {
+Next battle_loadChipPreviewGfxDefault_801BFF8(void) {
     R0 = 0;
     GUEST_CALL(battle_loadChipPreviewGfxFromHandTable_801C002);
     RETURN_TO_CALLER();

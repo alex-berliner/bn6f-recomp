@@ -8,7 +8,7 @@
 #include "game.h"
 #include "runtime.h"
 
-/* ── sub_800801C ── */
+/* ── battle_runMainStep_800801C ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12; } call_sub_802DE5C_result;
 /* register form: generated wrapper: sub_802DE5C has no typed C interface yet */
@@ -39,8 +39,8 @@ static u32 dispatch_battle_object_state(void) {
     return LD8(state_base + (A_byte_203CA74 - 0x203CA70));
 }
 
-/* sub_800801C: r2 r3 r4 r6 r7 r10 lr (pass-through) -> r0 r2..r12 */
-Next sub_800801C(void) {
+/* battle_runMainStep_800801C: r2 r3 r4 r6 r7 r10 lr (pass-through) -> r0 r2..r12 */
+Next battle_runMainStep_800801C(void) {
     u32 caller_r5 = R5;          /* preserved via push/pop in the original */
     R0 = dispatch_battle_object_state();
     R5 = caller_r5;

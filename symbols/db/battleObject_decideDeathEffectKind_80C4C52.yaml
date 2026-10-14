@@ -1,0 +1,67 @@
+name: battleObject_decideDeathEffectKind_80C4C52
+address: '0x080C4C52'
+kind: function
+previous_names:
+- sub_80C4C52
+status: probable
+summary: Picks the death/disappear effect id (0xc or 0xd) for the related battle object based on its enemy
+  NameID.
+interface: (r5 = current BattleObject*) -> r1 = effect id ; no side effects
+details: "Reads the related object's pointer at oBattleObject_RelatedObject1Ptr and loads its\n  u16 NameID.\
+  \ Calls unpackVerActorTyAndAIIdx_800F29C to split that record into\n  (version, actor type, AI index);\
+  \ the AI index comes back in r1.\n  If AI index < 0x23, r1 stays at the default 0xc (already loaded\
+  \ before the call),\n  indicating the standard death effect. For values 0x24, 0x29..0x2e r1 is\n  bumped\
+  \ to 0xd (a different disappear effect); 0x23, 0x2f and 0x29..0x2e short\n  ranges retain 0xc. Comparison\
+  \ uses unsigned <, so the early-exit branch\n  (`blt locret`) keeps r1 = 0xc for the common case. The\
+  \ trailing `pop {pc}`\n  returns the chosen value in r1.\n  In effect this is a small lookup table over\
+  \ the AI index of the related\n  object that decides whether the current battle object should use effect\
+  \ 0xc\n  or 0xd (likely a \"vanish\" vs \"explode\" split, or generic vs elemental).\n  Note: the literal\
+  \ `0x23` is compared twice (redundant beq after blt is\n  unreachable when entering via the `cmp r0,\
+  \ #0x23 / beq` block, but not when\n  re-checking after `mov r0, r1`).\ndetails_uncertain: |\n  The\
+  \ 40 bytes of trailing data (off_80C4C78) are not used by this function;\n  they appear to be an aligned\
+  \ data block belonging to the surrounding\n  function. Caller battleObject_refreshAndMirrorRelated_80C4B84\
+  \ uses the\n  returned r1 to pick an effect index when freeing the related object.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r0, [r5,#oBattleObject_RelatedObject1Ptr]` then `ldrh r0, [r0,#oBattleObject_NameID]`
+    shows the input is the related object''s NameID (per BattleObject.inc offsets). - `bl unpackVerActorTyAndAIIdx_800F29C`
+    decomposes the NameID; r1 is the AI index on return. - `cmp r1, #0x23` / `blt locret_80C4C76` falls
+    through with r1 = 0xc only if r1 >= 0x23, otherwise returns 0xc anyway (default). The `mov r1, #0xc`
+    preceding the call sets the default. - `cmp r0, #0x24` -> loc_80C4C74 ; `cmp r0, #0x29` / `ble locret`
+    covers 0x24 and 0x29..0x2e -> `mov r1, #0xd`. - `cmp r0, #0x23` / `beq locret` (0x23 keeps 0xc) and
+    `cmp r0, #0x2f` / `beq locret` (0x2f keeps 0xc) explicitly carve out two more keep-0xc cases; everything
+    else also keeps 0xc.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080C4C52
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, battlesweep, beastsp, fuzz, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^080c4c52 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, battlesweep, beastsp, fuzz, menus2, menus3, story2, story4, story5, story6,
+    story7, story8, story9
+open_questions:
+- What 0xc/0xd actually mean (vanish vs explode, element-specific, etc.).
+- Whether the "default 0xc" semantics is really "vanish" and 0xd "special
+- vanish for named NPCs" – would settle by tracing where r1 is consumed
+- in the caller (battleObject_refreshAndMirrorRelated_80C4B84).
+- The trailing .word/.byte block at off_80C4C78 may belong to the caller
+- function table; ownership is not visible from this snippet alone.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 22c74dca
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80C4C52 -> battleObject_decideDeathEffectKind_80C4C52
+  where: bn6f 448690a3
+  tool: tools/rename_symbol.py

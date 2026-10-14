@@ -1,0 +1,78 @@
+name: battle_beastOutTick_80A5B70
+address: '0x080A5B70'
+kind: function
+previous_names:
+- sub_80A5B70
+status: probable
+summary: per-frame state machine that drives the player's Beast Out transformation and un-transformation
+  during battle
+interface: '(r5 = BeastOutAIData-like ctx, r6 = related BattleObject, r10 = toolkit) -> void ; side effects:
+  mutates ctx/r5 and BattleObject/r6 state, sets/clears event flags 0x5F2/0x5F3/0x5F4/0x17-0x7/PET_DISABLED/L_MESSAGE_ACTIVE,
+  ends with sub_80A6014 + sprite_update on r5''s sprite'
+details: "Entry: r6[5] is a sub-state (0/1/2/3) and r5[0x24] is a mode/phase (0/1). The function dispatches\n\
+  \  on r6[5]: 0/1 path handles normal transform flow, 3 hands off to sub_80A5EC8 (related cleanup/animation),\n\
+  \  while r6[5]==1 with r5[0x24]==1 takes a teardown branch (clears PET_DISABLED + L_MESSAGE_ACTIVE,\
+  \ then\n  either finishes Beast Out or invokes sub_80A5D48 on a sub-state==2 path). r5[7] is a \"transform\
+  \ allowed\" /\n  active flag; r5[9] is a small step counter that gates sub_80A5C74's \"Beast Out trigger\"\
+  \ check.\n  On a successful trigger (sub_80A5C9C returns 1 at 0x80A5BB0), it commits the transformation:\n\
+  \  copies r6[6]->r6[8], r5[6]->r6[6], r5[6]+1 -> r6[0xD], and writes 3 fixed-point coords from\n  r5[0xC/0x10/0x14]\
+  \ into r6+0x88/0x8C/0x90 (the BattleObject's X/Y/Z float block). Then it tests\n  flag 0x5F2 to pick\
+  \ between setting 0x5F3 (new transform path: also calls sub_80A5E8C and a BBS\n  request that sets event\
+  \ 0x17 bit 0x7) or just setting 0x5F4. The \"untransform / abort\" branch\n  (sub_80A5C9C returning\
+  \ anything other than 1 or 2) clears the same two flags and resets r5[9]/r5[0x24].\n  Every exit path\
+  \ falls through to sub_80A6014 then sprite_update on the object held in r5.\n  r5 looks like a small\
+  \ \"BeastOut controller\" struct (offsets 6,7,9,0xC,0x10,0x14,0x24); r6 is the\n  BattleObject being\
+  \ transformed (offsets 5,6,8,0xD,0x88,0x8C,0x90).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- r6[5] dispatch: `ldrb r4,[r6,#5]; cmp r4,#0; beq loc_80A5B82; cmp r4,#3; beq loc_80A5C5E`
+    at 0x80A5B72 - r5[0x24] secondary dispatch: `ldr r0,[r5,#0x24]; cmp r0,#1; beq loc_80A5C22` at 0x80A5B7A
+    - r5[7] is the "transform enabled" gate: `ldrb r0,[r5,#7]; cmp r0,#0; beq loc_80A5C62` at 0x80A5B82
+    - r5[9] is the trigger-progress counter: `ldrb r7,[r5,#9]; cmp r7,#0; bgt loc_80A5BB0` then `add r7,#1;
+    strb r7,[r5,#9]` at 0x80A5B98 - Trigger check call + flag set on r5[0x24]!=0 path: `bl battle_ai_checkBeastOutTrigger_80A5C74;
+    cmp r0,#0; beq loc_80A5C62; ldr r0,[r5,#0x24]; cmp r0,#0; beq loc_80A5C62; movflag EVENT_PET_DISABLED;
+    bl SetEventFlagFromImmediate; movflag EVENT_L_MESSAGE_ACTIVE; bl SetEventFlagFromImmediate` at 0x80A5B8E
+    - State 1 sub-dispatch on r4==1 vs r4==2 with the teardown that calls sub_80A5D48: `cmp r4,#1; bne
+    loc_80A5C48; ... b loc_80A5C62; ... bl sub_80A5D48; cmp r0,#1; beq loc_80A5C62` at 0x80A5C3C..0x80A5C58
+    - Sub-state 3 delegates to sub_80A5EC8: `bl sub_80A5EC8` at 0x80A5C5E - Commit block copies r6[6]->r6[8],
+    r5[6]->r6[6], r5[6]+1->r6[0xD], and three r5 fields to r6+0x88/0x8C/0x90: `ldrb r0,[r6,#6]; strb r0,[r6,#8];
+    ldrb r0,[r5,#6]; strb r0,[r6,#6]; add r0,#1; strb r0,[r6,#0xd]; mov r1,#0x88; ldr r0,[r5,#0xc]; str
+    r0,[r6,r1]; add r1,#4; ldr r0,[r5,#0x10]; str r0,[r6,r1]; add r1,#4; ldr r0,[r5,#0x14]; str r0,[r6,r1]`
+    at 0x80A5BDA..0x80A5C04 - EVENT_5F2 test forks to setting EVENT_5F3 + sub_80A5E8C + BBS req vs setting
+    EVENT_5F4: `movflag EVENT_5F2; bl TestEventFlagFromImmediate; bne loc_80A5C18; movflag EVENT_5F3;
+    bl SetEventFlagFromImmediate; bl sub_80A5E8C; bl reqBBS_setFlag_e17b0f7_8140A00; b loc_80A5C62; loc_80A5C18:
+    movflag EVENT_5F4; bl SetEventFlagFromImmediate` at 0x80A5C04..0x80A5C20 - Every path ends in `bl
+    sub_80A6014; bl sprite_update; pop {r4-r7,pc}` at 0x80A5C62..0x80A5C6A - Caller sub_80A5AF8 (also
+    in 0x80A5xxx, contract matches) is the only caller listed'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080A5B70
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp, maps'
+  reproduce: 'grep -l ''^080a5b70 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp, maps
+open_questions:
+- Exact meaning of r5's fields (offsets 0x6,0x7,0x9,0xC,0x10,0x14,0x24) and whether r6 really is a
+- BattleObject (offset 0x88/0x8C/0x90 fall in the AIData/ExtraVars range, not the standard Coords
+- block at 0x34). The BBS-request branch's caller-visible purpose ("sync story flag after Beast Out")
+- is plausible but inferred only from the flag name. Settling the r5 struct identity would confirm
+- whether this is "Beast Out tick" or a more general "transformation state machine" for the player's
+- PET (Mega/Beast/Giga).
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 22c74dca
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80A5B70 -> battle_beastOutTick_80A5B70
+  where: bn6f 448690a3
+  tool: tools/rename_symbol.py

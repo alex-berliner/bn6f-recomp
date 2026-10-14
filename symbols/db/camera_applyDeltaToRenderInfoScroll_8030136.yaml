@@ -1,0 +1,60 @@
+name: camera_applyDeltaToRenderInfoScroll_8030136
+address: '0x08030136'
+kind: function
+previous_names:
+- sub_8030136
+status: probable
+summary: Applies the camera's positional delta (Unk_04/Unk_06 minus Unk_08/Unk_0a) to the toolkit's RenderInfo
+  scroll register pair (Unk_10/12) and writes the same value to its offset copy (Unk_14/16).
+interface: '(r5 = Camera*, r10 = Toolkit*; uses both) -> no return value ; side effect: writes Toolkit->RenderInfo+0x10,
+  +0x12, +0x14, +0x16'
+details: "Reads four halfwords from the Camera struct pointed to by r5: Unk_04, Unk_06, Unk_08, Unk_0a.\n\
+  \  Computes a per-axis delta by subtracting the lower pair (Unk_08/0a) from the upper pair (Unk_04/06)\n\
+  \  with `sub r1, r1, r2` and `sub r4, r4, r2`.\n  Loads Toolkit (r10)->RenderInfoPtr and reads Unk_10\
+  \ and Unk_12 (the BG scroll/coordinate registers),\n  then adds the two deltas in turn and stores the\
+  \ new values both into Unk_10/12 (live registers\n  that get pushed to GBA display registers) and into\
+  \ the offset copy Unk_14/16. Strh/strh pattern at\n  the end. Returns via `mov pc, lr` (no callee save\
+  \ churn).\n  In effect, this advances the BG scroll position by the camera's inter-frame XY delta. Likely\
+  \ a\n  per-frame call wired into the camera update path so the field of view follows camera motion.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrh r1, [r5,#oCamera_Unk_04]` / `ldrh r2, [r5,#oCamera_Unk_08]` and `sub r1, r1, r2` produces
+    X delta; analogous pair for r4/r2 produces Y delta, matching BG scroll setup. - `ldr r0, [r10,#oToolkit_RenderInfoPtr]`
+    confirms r10 is Toolkit and o+0x8 is RenderInfoPtr. - `ldrh r6, [r0,#oRenderInfo_Unk_10]` / `ldrh
+    r7, [r0,#oRenderInfo_Unk_12]` are the live scroll values; `add` merges the delta computed above. -
+    `strh r6, [r0,#oRenderInfo_Unk_10]` and `strh r7, [r0,#oRenderInfo_Unk_12]` followed by the mirroring
+    writes to `oRenderInfo_Unk_14`/`oRenderInfo_Unk_16` show the offset-copy pattern repeatedly used in
+    this project (live registers plus a same-frame shadow copy). - `mov pc, lr` (no push/pop, no bl) shows
+    it is a leaf routine returning void.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08030136
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story1, story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^08030136 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander
+open_questions:
+- Exact role of Unk_04/06 vs Unk_08/0a on Camera (current scroll vs previous-frame scroll vs
+- shake offset) is unknown; would settle it by inspecting the camera updater that produces them.
+- Whether Unk_14/16 is consumed by VBlank copy or by the BG layer descriptors would tell us if
+- this is BG0/1/2/3 specific.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 22c74dca
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8030136 -> camera_applyDeltaToRenderInfoScroll_8030136
+  where: bn6f 448690a3
+  tool: tools/rename_symbol.py

@@ -442,7 +442,7 @@ Next GetVerActorTyAndAIIdx_80182B4(void) {
  * Computes one coordinate pair of an arm/part attachment point on a battle
  * object, mirrored to match the object's facing direction.
  *   - Ids 0xCD..0xFF are not a real arm slot: returns the fixed pair (0, 7).
- *   - Otherwise: sub_800F26C fetches the lookup base for the object pair,
+ *   - Otherwise: enemy_getArmPosition_800F26C fetches the lookup base for the object pair,
  *     getIndexedSignedBytePair_8018842 reads the signed (x, y) byte offsets
  *     for the given index, and object_getFlipDirection gives the mirror factor.
  * Returns r0 = x * flip, r1 = y, r2 = flip direction. r4-r6 preserved. */
@@ -460,10 +460,10 @@ Next getBattleArmPositionMaybe_8018810(void) {
         R5 = objA;
         R6 = objB;
 
-        GUEST_CALL(sub_800F26C);
+        GUEST_CALL(enemy_getArmPosition_800F26C);
         u32 base0 = R0, base1 = R1;
 
-        /* r2 = index (r4 still holds it; sub_800F26C preserves r4) */
+        /* r2 = index (r4 still holds it; enemy_getArmPosition_800F26C preserves r4) */
         R2 = R4;
         GUEST_CALL(getIndexedSignedBytePair_8018842);
         u32 offsetX = R0, offsetY = R1;

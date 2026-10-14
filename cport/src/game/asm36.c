@@ -2782,14 +2782,14 @@ Next sub_81353DC(void) {
 }
 
 /* ── sub_81353F0 ── */
-/* sub_81353F0: tail-call wrapper around sub_8134930.
+/* sub_81353F0: tail-call wrapper around battle_aiCheckPanelRangeAndDoAttack_8134930.
  * Calls it with the fixed parameters (0x24, 0xA5, 0x28) and chip/flag
  * argument 6, forwarding the caller's r1 in r3 and the caller's r0 in r7
- * (where sub_8134930 expects them). r4-r7 are preserved for the caller;
- * r0-r3 and the condition flags are whatever sub_8134930 left behind. */
+ * (where battle_aiCheckPanelRangeAndDoAttack_8134930 expects them). r4-r7 are preserved for the caller;
+ * r0-r3 and the condition flags are whatever battle_aiCheckPanelRangeAndDoAttack_8134930 left behind. */
 Next sub_81353F0(void) {
-    u32 r3_arg = R1;        /* caller's r1 becomes sub_8134930's r3 */
-    u32 r7_arg = R0;        /* caller's r0 becomes sub_8134930's r7 */
+    u32 r3_arg = R1;        /* caller's r1 becomes battle_aiCheckPanelRangeAndDoAttack_8134930's r3 */
+    u32 r7_arg = R0;        /* caller's r0 becomes battle_aiCheckPanelRangeAndDoAttack_8134930's r7 */
     u32 saved_r4 = R4, saved_r5 = R5, saved_r6 = R6, saved_r7 = R7;
 
     R0 = 0x24;
@@ -2798,7 +2798,7 @@ Next sub_81353F0(void) {
     R3 = r3_arg;
     R4 = 6;
     R7 = r7_arg;            /* r5/r6 pass through unchanged */
-    GUEST_CALL(sub_8134930);
+    GUEST_CALL(battle_aiCheckPanelRangeAndDoAttack_8134930);
 
     /* restore the callee-saved registers the original pops back */
     R4 = saved_r4;

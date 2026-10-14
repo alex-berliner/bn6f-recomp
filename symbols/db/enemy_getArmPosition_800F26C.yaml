@@ -1,0 +1,59 @@
+name: enemy_getArmPosition_800F26C
+address: '0x0800F26C'
+kind: function
+previous_names:
+- sub_800F26C
+status: probable
+summary: Resolves an arm/part slot id (0xCD..0xFF) to a 5-byte record of (x, y, ?, ?, ?) from a packed
+  table, or otherwise returns the AI struct's first two bytes for normal actor ids.
+interface: (r0 = slotOrActorIndex) -> r0 = x, r1 = y, r2 = ?, r3 = ?, r4 = ? ; no side effects
+details: "Entry: subtract 0xCD from r0 into r2; if r2 <= 0x32 (i.e. r0 in [0xCD..0xFF]), it is treated\
+  \ as a\n  special arm/part slot id. After the bounds check, the code redoes `sub r0, #0xcd`, multiplies\
+  \ by 5,\n  indexes `off_800F4D4` (= byte_8021220), and loads five bytes (offsets 0..4) into r0, r1,\
+  \ r2, r3,\n  r4. Otherwise it falls through to `bl enemy_getStruct1`, which resolves r0 to a per-actor\
+  \ struct,\n  then returns the first two bytes (ActorType at +0, AIIndex at +1) in r0/r1 and zeros r2/r3.\n\
+  \  Captured calls confirm the only-returned-tuple shape (exit r0 = 4, Z flag set) across both paths.\n\
+  \  Function is leaf-like (only `push {lr}` / `pop {pc}`), so it never modifies memory; callers treat\n\
+  \  the returned quintuple as an arm attachment offset record for sprite mirroring.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `sub r2, r0, #0xcd` followed by `cmp r2, #0x32` and `bls loc_800F286` cleanly partitions
+    slot ids >= 0xCD from normal actor ids (loc_800F26C). - Slow path: `bl enemy_getStruct1`; then `ldrb
+    r1, [r0,#1]; ldrb r0, [r0]` reads bytes 0 and 1 of the resolved struct (AIData.ActorType at 0x0 and
+    AIIndex at 0x1 per ai_data_struct) and `mov r2, #0; mov r3, #0` zeros the rest (loc_800F280..loc_800F284).
+    - Fast path: `sub r0, #0xcd; mov r1, #5; mul r0, r1` and `ldr r3, off_800F4D4; add r3, r3, r0` compute
+    a 5-byte table slot, then loads at offsets 0,1,2,4,3 into r0,r1,r2,r4,r3 (note the swap of bytes 3
+    and 4) (loc_800F286..loc_800F294). - All captured-call exits return r0 = 4 with Z set, consistent
+    with both paths returning a small value in r0 and a `mov r2/r3, #0` (or table load) for the rest.
+    - Caller `getBattleArmPositionMaybe_8018810` is described as returning a mirrored (x, y) offset of
+    an arm/part slot, matching the fast-path table lookup.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0800F26C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0800f26c '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- What the 5-byte record's bytes 2..4 actually represent (two of them swapped on load) and which
+- actor-id range below 0xCD the slow path is intended for would settle naming precision.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 22c74dca
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_800F26C -> enemy_getArmPosition_800F26C
+  where: bn6f 448690a3
+  tool: tools/rename_symbol.py

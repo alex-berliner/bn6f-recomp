@@ -4,61 +4,57 @@ kind: function
 previous_names:
 - sub_8017BC0
 status: probable
-summary: 'AI attack dispatcher: branches on the queued-AttackUnk_48 flag/word to run one of several attack
-  routines, often leaving the queued 0x1c AttackVars slot to run.'
-interface: '(r5 = battle object pointer) -> r0 = 0 ; side effects: clobbers AIData flag bits, clears/queues
-  an AttackVars slot, calls an attack routine (sub_8014A38 / sub_8015614 / sub_802D714 / sub_802D926 /
-  object_setAttack0) depending on the queued flag, then returns 0.'
-details: "Prologue: push {r4,r6,r7,lr}; r6 = r5->AIDataPtr (offset oBattleObject_AIDataPtr); r7 = r6 +\
-  \ 0xa0 — that's the AttackVars[0] base (AIData->AttackVars is at AIData+0xa0, see the AIData struct),\
-  \ so r7 addresses AIData+0xa0+oAIAttackVars_Unk_03.\n  Step 1: re-read GetAIDataUnk0x48Flag (the AIData->Unk_48\
-  \ word) and mask 0x80 → if set, jump to sub_8014A38 (a 4-arm-style attack run; the bit 0x80 case immediately\
-  \ tails out).\n  Otherwise mask 0x100 → sub_8015614; mask 0x1000 → sub_802D714; mask 0x2000 → write\
-  \ 0 to AttackVars+0x03 (`AIData+0xa0+0x03` = oAIAttackVars_Unk_03) and call sub_802D926. All four pop\
-  \ and return when they complete.\n  When none of those bits is set, switch to AIData->Unk_44 (GetAIData_Unk_44_Flag)\
-  \ for one-shot \"start an attack\" triggers:\n    - 0x4000: clear that bit, set Unk_48 |= 0x80, and\
-  \ call object_setAttack0(0x1c) (queues attack slot 0x1c).\n    - 0x40: clear that bit, set Unk_48 |=\
-  \ 0x100, copy r5->CurStateActionPhaseAndPhaseInitialized into r5->Unk_5c (only if Unk_5c is currently\
-  \ 0), then object_setAttack0(0x1c).\n    - LCDControl bit (loaded from off_8017CAC, the LCD I/O register\
-  \ address used as a literal 0x40000000): clear that bit, set Unk_48 |= 0x1000, object_setAttack0(0x1c).\
-  \ The label name is misleading — it's just a constant.\n    - 0x0 (low byte zero): clear that bit, set\
-  \ Unk_48 |= 0x2000, object_setAttack0(0x1c).\n  Fallthrough (no bit matched): plain pop/return with\
-  \ r0 = 0 (the captured-call exit flags are -Z--, i.e. mov r0,#0 was the last write).\n  Quirk: every\
-  \ \"trigger\" arm uses the same attack slot index 0x1c (probably \"this turn's attack\") and toggles\
-  \ exactly one AIData->Unk_48 bit before calling, suggesting this is the AI-side dispatcher that runs\
-  \ after ai_eventuallyRunsAIAttack_801AF44 has decided the queued attack should fire.\nevidence: |\n\
-  \  - \"ldr r6, [r5,#oBattleObject_AIDataPtr]\" plus \"mov r7, #0xa0; add r7, r7, r6\" points r7 at AIData+0xa0\
-  \ = AIData.AttackVars[0] base (struct AIData AttackVars at loc=0xa0).\n  - \"mov r1, #0x80; tst r0,\
-  \ r1; beq loc_8017BD8\" tests AIData.Unk_48 bit 7; the next three branches test 0x100, 0x1000, 0x2000\
-  \ against the same AIData.Unk_48 word (GetAIDataUnk0x48Flag is called four times).\n  - \"strb r0, [r7,#oAIAttackVars_Unk_03]\"\
-  \ stores 0 into AttackVars[0]+3 right before calling sub_802D926 — only this branch touches the AttackVars\
-  \ struct.\n  - \"ldr r1, off_8017C9C // =0x100\" / \"off_8017CA0 // =0x1000\" / \"off_8017CA4 // =0x2000\"\
-  \ / \"dword_8017CA8 // =0x4000\" / \"off_8017CAC // =LCDControl\" are the immediate bit masks for the\
-  \ AIData.Unk_44 arm chain.\n  - \"mov r0, #0x1c; bl object_setAttack0\" appears in every trigger arm,\
-  \ so the queued attack slot is consistently 0x1c.\n  - Captured-call exit r0=0 and -Z-- flags match\
-  \ the fall-through path that pops {r4,r6,r7,pc} without further stores.\n  - Sole named caller ai_eventuallyRunsAIAttack_801AF44\
-  \ sets up r5 as the battle object and shares the same r5/r8/r9/r10/r11/r12 save-set, confirming the\
-  \ \"AI eventually runs the attack\" pipeline.\nuncertain: |\n  The semantic meaning of each Unk_44/Unk_48\
-  \ bit (e.g. whether 0x4000 means \"queue attack because target locked\" vs \"queue attack because confuse\
-  \ timer expired\") and what each of sub_8014A38 / sub_8015614 / sub_802D714 / sub_802D926 actually performs\
-  \ — names here describe role only. Whether the LCDControl-named constant is genuinely meant to flag\
-  \ a hardware interrupt or is just an unused 0x40000000 sentinel reused as a bit mask is also unclear\
-  \ from the assembly alone.\n"
+summary: 'AI attack dispatcher: branches on the queued-AttackUnk_48 flag/word to run one of several attack routines,
+  often leaving the queued 0x1c AttackVars slot to run.'
+interface: '(r5 = battle object pointer) -> r0 = 0 ; side effects: clobbers AIData flag bits, clears/queues an AttackVars
+  slot, calls an attack routine (sub_8014A38 / sub_8015614 / sub_802D714 / sub_802D926 / object_setAttack0) depending
+  on the queued flag, then returns 0.'
+details: "Prologue: push {r4,r6,r7,lr}; r6 = r5->AIDataPtr (offset oBattleObject_AIDataPtr); r7 = r6 + 0xa0 — that's\
+  \ the AttackVars[0] base (AIData->AttackVars is at AIData+0xa0, see the AIData struct), so r7 addresses AIData+0xa0+oAIAttackVars_Unk_03.\n\
+  \  Step 1: re-read GetAIDataUnk0x48Flag (the AIData->Unk_48 word) and mask 0x80 → if set, jump to sub_8014A38\
+  \ (a 4-arm-style attack run; the bit 0x80 case immediately tails out).\n  Otherwise mask 0x100 → sub_8015614;\
+  \ mask 0x1000 → sub_802D714; mask 0x2000 → write 0 to AttackVars+0x03 (`AIData+0xa0+0x03` = oAIAttackVars_Unk_03)\
+  \ and call sub_802D926. All four pop and return when they complete.\n  When none of those bits is set, switch\
+  \ to AIData->Unk_44 (GetAIData_Unk_44_Flag) for one-shot \"start an attack\" triggers:\n    - 0x4000: clear that\
+  \ bit, set Unk_48 |= 0x80, and call object_setAttack0(0x1c) (queues attack slot 0x1c).\n    - 0x40: clear that\
+  \ bit, set Unk_48 |= 0x100, copy r5->CurStateActionPhaseAndPhaseInitialized into r5->Unk_5c (only if Unk_5c is\
+  \ currently 0), then object_setAttack0(0x1c).\n    - LCDControl bit (loaded from off_8017CAC, the LCD I/O register\
+  \ address used as a literal 0x40000000): clear that bit, set Unk_48 |= 0x1000, object_setAttack0(0x1c). The label\
+  \ name is misleading — it's just a constant.\n    - 0x0 (low byte zero): clear that bit, set Unk_48 |= 0x2000,\
+  \ object_setAttack0(0x1c).\n  Fallthrough (no bit matched): plain pop/return with r0 = 0 (the captured-call exit\
+  \ flags are -Z--, i.e. mov r0,#0 was the last write).\n  Quirk: every \"trigger\" arm uses the same attack slot\
+  \ index 0x1c (probably \"this turn's attack\") and toggles exactly one AIData->Unk_48 bit before calling, suggesting\
+  \ this is the AI-side dispatcher that runs after ai_eventuallyRunsAIAttack_801AF44 has decided the queued attack\
+  \ should fire.\nevidence: |\n  - \"ldr r6, [r5,#oBattleObject_AIDataPtr]\" plus \"mov r7, #0xa0; add r7, r7, r6\"\
+  \ points r7 at AIData+0xa0 = AIData.AttackVars[0] base (struct AIData AttackVars at loc=0xa0).\n  - \"mov r1,\
+  \ #0x80; tst r0, r1; beq loc_8017BD8\" tests AIData.Unk_48 bit 7; the next three branches test 0x100, 0x1000,\
+  \ 0x2000 against the same AIData.Unk_48 word (GetAIDataUnk0x48Flag is called four times).\n  - \"strb r0, [r7,#oAIAttackVars_Unk_03]\"\
+  \ stores 0 into AttackVars[0]+3 right before calling sub_802D926 — only this branch touches the AttackVars struct.\n\
+  \  - \"ldr r1, off_8017C9C // =0x100\" / \"off_8017CA0 // =0x1000\" / \"off_8017CA4 // =0x2000\" / \"dword_8017CA8\
+  \ // =0x4000\" / \"off_8017CAC // =LCDControl\" are the immediate bit masks for the AIData.Unk_44 arm chain.\n\
+  \  - \"mov r0, #0x1c; bl object_setAttack0\" appears in every trigger arm, so the queued attack slot is consistently\
+  \ 0x1c.\n  - Captured-call exit r0=0 and -Z-- flags match the fall-through path that pops {r4,r6,r7,pc} without\
+  \ further stores.\n  - Sole named caller ai_eventuallyRunsAIAttack_801AF44 sets up r5 as the battle object and\
+  \ shares the same r5/r8/r9/r10/r11/r12 save-set, confirming the \"AI eventually runs the attack\" pipeline.\n\
+  uncertain: |\n  The semantic meaning of each Unk_44/Unk_48 bit (e.g. whether 0x4000 means \"queue attack because\
+  \ target locked\" vs \"queue attack because confuse timer expired\") and what each of sub_8014A38 / sub_8015614\
+  \ / sub_802D714 / sub_802D926 actually performs — names here describe role only. Whether the LCDControl-named\
+  \ constant is genuinely meant to flag a hardware interrupt or is just an unused 0x40000000 sentinel reused as\
+  \ a bit mask is also unclear from the assembly alone.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- "ldr r6, [r5,#oBattleObject_AIDataPtr]" plus "mov r7, #0xa0; add r7, r7, r6" points r7 at
-    AIData+0xa0 = AIData.AttackVars[0] base (struct AIData AttackVars at loc=0xa0). - "mov r1, #0x80;
-    tst r0, r1; beq loc_8017BD8" tests AIData.Unk_48 bit 7; the next three branches test 0x100, 0x1000,
-    0x2000 against the same AIData.Unk_48 word (GetAIDataUnk0x48Flag is called four times). - "strb r0,
-    [r7,#oAIAttackVars_Unk_03]" stores 0 into AttackVars[0]+3 right before calling sub_802D926 — only
-    this branch touches the AttackVars struct. - "ldr r1, off_8017C9C // =0x100" / "off_8017CA0 // =0x1000"
-    / "off_8017CA4 // =0x2000" / "dword_8017CA8 // =0x4000" / "off_8017CAC // =LCDControl" are the immediate
-    bit masks for the AIData.Unk_44 arm chain. - "mov r0, #0x1c; bl object_setAttack0" appears in every
-    trigger arm, so the queued attack slot is consistently 0x1c. - Captured-call exit r0=0 and -Z-- flags
-    match the fall-through path that pops {r4,r6,r7,pc} without further stores. - Sole named caller ai_eventuallyRunsAIAttack_801AF44
-    sets up r5 as the battle object and shares the same r5/r8/r9/r10/r11/r12 save-set, confirming the
-    "AI eventually runs the attack" pipeline.'
+  detail: '- "ldr r6, [r5,#oBattleObject_AIDataPtr]" plus "mov r7, #0xa0; add r7, r7, r6" points r7 at AIData+0xa0
+    = AIData.AttackVars[0] base (struct AIData AttackVars at loc=0xa0). - "mov r1, #0x80; tst r0, r1; beq loc_8017BD8"
+    tests AIData.Unk_48 bit 7; the next three branches test 0x100, 0x1000, 0x2000 against the same AIData.Unk_48
+    word (GetAIDataUnk0x48Flag is called four times). - "strb r0, [r7,#oAIAttackVars_Unk_03]" stores 0 into AttackVars[0]+3
+    right before calling sub_802D926 — only this branch touches the AttackVars struct. - "ldr r1, off_8017C9C //
+    =0x100" / "off_8017CA0 // =0x1000" / "off_8017CA4 // =0x2000" / "dword_8017CA8 // =0x4000" / "off_8017CAC //
+    =LCDControl" are the immediate bit masks for the AIData.Unk_44 arm chain. - "mov r0, #0x1c; bl object_setAttack0"
+    appears in every trigger arm, so the queued attack slot is consistently 0x1c. - Captured-call exit r0=0 and
+    -Z-- flags match the fall-through path that pops {r4,r6,r7,pc} without further stores. - Sole named caller ai_eventuallyRunsAIAttack_801AF44
+    sets up r5 as the battle object and shares the same r5/r8/r9/r10/r11/r12 save-set, confirming the "AI eventually
+    runs the attack" pipeline.'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x08017BC0
@@ -67,19 +63,19 @@ evidence:
   result: the body read as described above
 - method: coverage
   date: '2026-10-14'
-  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
-    story2, story4, story5, story6, story7, story8, story9'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9'
   reproduce: 'grep -l ''^08017bc0 '' tools/traces/coverage/*.prof
 
     '
-  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
-    story4, story5, story6, story7, story8, story9
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2, story4, story5,
+    story6, story7, story8, story9
 open_questions:
-- The semantic meaning of each Unk_44/Unk_48 bit (e.g. whether 0x4000 means "queue attack because target
-  locked" vs "queue attack because confuse timer expired") and what each of sub_8014A38 / sub_8015614
-  / sub_802D714 / sub_802D926 actually performs — names here describe role only. Whether the LCDControl-named
-  constant is genuinely meant to flag a hardware interrupt or is just an unused 0x40000000 sentinel reused
-  as a bit mask is also unclear from the assembly alone.
+- The semantic meaning of each Unk_44/Unk_48 bit (e.g. whether 0x4000 means "queue attack because target locked"
+  vs "queue attack because confuse timer expired") and what each of sub_8014A38 / sub_8015614 / sub_802D714 / sub_802D926
+  actually performs — names here describe role only. Whether the LCDControl-named constant is genuinely meant to
+  flag a hardware interrupt or is just an unused 0x40000000 sentinel reused as a bit mask is also unclear from the
+  assembly alone.
 - 'status: probable'
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
@@ -92,3 +88,7 @@ changes:
   what: rename sub_8017BC0 -> battle_ai_dispatchQueuedAttacks_8017BC0
   where: bn6f 0fc2dd04
   tool: tools/rename_symbol.py
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 22c74dca
+  tool: tools/symdoc.py

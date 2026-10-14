@@ -1,0 +1,73 @@
+name: battle_runMainStep_800801C
+address: '0x0800801C'
+kind: function
+previous_names:
+- sub_800801C
+status: probable
+summary: 'Per-frame main battle step dispatcher: reads the toolkit''s battle step index and indirect-calls
+  the matching handler through a small jumptable stored at 0x08008038.'
+interface: '(uses r10 as toolkit; reads dword_203CA70[0] = CurStep, also [4] later) -> r0 = 0 ; side effects:
+  pops {r5,pc} and tail-bx''s into the chosen step handler'
+details: "1. Saves r5/lr, loads the EWRAM struct base at dword_203CA70 into r5\n     (`ldr r5, [pc, #off_8008060]`\
+  \ at 0x08008020).\n  2. Loads the CurStep byte with `ldrb r0, [r5]` (CurStep at offset 0x0).\n  3. Loads\
+  \ r1 with the base pointer of the dispatcher table (`off_8008038`,\n     located alongside in IWRAM;\
+  \ each entry is a Thumb address biased by +1 to\n     arm-bx). `ldr r1, [r1, r0]` indexes by CurStep\
+  \ (out-of-range values would\n     load garbage rather than trap, but callers keep the byte small).\n\
+  \  4. Sets `mov lr, pc; bx r1` so the table call is a tail-call into one of:\n       sub_800840C, battle_runPerFrameStoryStep_8008064,\n\
+  \       battle_updateMainFlow_80080D2, battle_runVictorySequence_80081A4,\n       sub_800825A, sub_80082DC,\
+  \ sub_800834A, sub_80083E4, sub_8008452,\n       battle_objAdvanceStateTimer_8008492 (all +1 in the\
+  \ table).\n  5. After control returns from the chosen handler, reads `[r5, #0x4]`\n     (`ldrb r0, [r5,#4]`\
+  \ -> byte_203CA74, presumably the next-step byte) and\n     exits via `pop {r5,pc}`, returning that\
+  \ byte in r0.\n  6. The single direct `bl sub_802DE5C` shown after `bx r1` is a disassembly\n     artefact\
+  \ from the table sitting in .text right after the dispatcher;\n     that BL is actually inside one of\
+  \ the dispatched slots, not part of\n     this function.\n  Captured-call snapshots all show entry r0=4\
+  \ (so the dispatcher selects\n  handler index 4 = `sub_800825A`) across every story-2 save; exit r0\
+  \ is the\n  byte at offset 0x4 of dword_203CA70 (zero for some, then 0x80 / flags -ZC-\n  for the later\
+  \ snaps where that byte holds 0x80).\n  The `bl sub_802DE5C` listed as a callee is therefore not actually\
+  \ executed\n  on the path through this dispatcher; it is the first instruction of the\n  slot whose\
+  \ table entry is sub_800825A+1.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r5,[pc,#...]` at start points `dword_203CA70`; `ldrb r0,[r5]` reads the CurStep byte
+    at its offset 0x0. - `ldr r1,[r1,r0]` indexes the jumptable at `off_8008038`, which is a hand-written
+    `.word sub_xxx+1` array of 10 Thumb entries (the +1 is the standard ARM-bx Thumb-bit encoding seen
+    throughout the ROM). - `mov lr,pc ; bx r1` is a textbook indirect tail-call into Thumb. - `ldrb r0,[r5,#4]`
+    after the call returns indicates the function''s r0 output is "next state" from the battle subsystem''s
+    small state struct at 0x203CA70. - The lr snapshots all return to 0x0800939f (sub_800938A + 1), consistent
+    with `sub_800938A` being this function''s only named caller and with the dispatcher being called from
+    there as a tail-call.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0800801C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0800801c '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9
+open_questions:
+- The exact meaning of byte_203CA74 returned in r0 (flags or step id);
+- would settle by looking at how sub_800938A interprets the r0 it gets
+- back from this call.
+- The disassembly comment listing `bl sub_802DE5C` as an intra-function
+- callee is suspect; that instruction almost certainly belongs to one of
+- the dispatched handlers (likely the sub_800825A slot whose first
+- instruction is the BL to sub_802DE5C).
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 22c74dca
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_800801C -> battle_runMainStep_800801C
+  where: bn6f 448690a3
+  tool: tools/rename_symbol.py

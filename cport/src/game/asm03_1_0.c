@@ -150,10 +150,10 @@ static void call_callback_noop_8033A7C(u32 self) {
     GUEST_CALL(callback_noop_8033A7C);
 }
 
-/* register form: calls sub_8033A80 outside this file, which has no typed C interface yet */
+/* register form: calls battle_initBattleStartOverlay_8033A80 outside this file, which has no typed C interface yet */
 static void call_sub_8033A80(u32 self) {
     R5 = self;
-    GUEST_CALL(sub_8033A80);
+    GUEST_CALL(battle_initBattleStartOverlay_8033A80);
 }
 
 /* register form: calls onUpdateInRealWorld_8033A96 outside this file, which has no typed C interface yet */
@@ -339,9 +339,9 @@ Next callback_noop_8033A7C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8033A80 ── */
-Next sub_8033A80(void) {
-    /* sub_8033A80: initialize/resume the three rendering sub-systems with argument 0.
+/* ── battle_initBattleStartOverlay_8033A80 ── */
+Next battle_initBattleStartOverlay_8033A80(void) {
+    /* battle_initBattleStartOverlay_8033A80: initialize/resume the three rendering sub-systems with argument 0.
      * Calls sprite_queueOamByFrameIndex_8033B80, battle_drawBattleStartOverlay_8033F80 and gfxTransfer_8033DA0 in sequence, each with r0 = 0. */
     R0 = 0;
     GUEST_CALL(sprite_queueOamByFrameIndex_8033B80);

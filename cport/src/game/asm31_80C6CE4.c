@@ -934,7 +934,7 @@ Next sub_80C90DC(void) {
     /* Look up the related object's name index, then fetch a (dx,dy) pair from
      * the motion table at index 0x1B. */
     R0 = LD16(other + oBattleObject_NameID);
-    GUEST_CALL(sub_800F26C);
+    GUEST_CALL(enemy_getArmPosition_800F26C);
     R2 = 0x1B;
     GUEST_CALL(getIndexedSignedBytePair_8018842);
 

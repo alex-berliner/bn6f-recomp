@@ -1,0 +1,59 @@
+name: battle_initBattleStartOverlay_8033A80
+address: '0x08033A80'
+kind: function
+previous_names:
+- sub_8033A80
+status: probable
+summary: Initializes the battle-start UI overlay by queuing its OAM tiles and PET navi tileset DMA, then
+  drawing the overlay frame 0.
+interface: '(r5 = *S2011E30, r10 = *Toolkit) -> none ; side effects: queues OAM, queues a 32-byte PET
+  navi tileset DMA into VRAM staging area at 0x030016D0, draws battle-start overlay'
+details: "Entry contract uses the toolkit pointer in r10 and the per-frame S2011E30 scratch in r5 (lr\
+  \ saved only as a passthrough).\n  The function unconditionally performs three steps with hard-coded\
+  \ 0 arguments: it queues OAM by frame index 0 via sprite_queueOamByFrameIndex_8033B80, draws the battle-start\
+  \ overlay via battle_drawBattleStartOverlay_8033F80 (also with frame index 0), then kicks off gfxTransfer_8033DA0\
+  \ which queues the PET navi tileset DMA transfer into the 0x30016D0 VRAM staging buffer.\n  The body\
+  \ uses a single leaf pattern: push {lr}; three `mov r0,#0; bl X` calls; pop {pc}, so there is no stack\
+  \ frame and no local state - it is a fixed-sequence initializer.\n  Despite being saved into r0 by the\
+  \ leaf return paths, exit r0 holds 0x086c18a0 in every captured sample (left from the last callee);\
+  \ no return value is meaningful to callers.\n  The captured-call snapshots all share the same r1=4,\
+  \ r2=0x0200df20 (an EWRAM pointer), r3=0x02001f6b and lr=0x08033a08 (the caller), confirming this is\
+  \ called once per frame from a fixed site during the battle intro sequence.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {lr}` / three `mov r0,#0; bl X` / `pop {pc}` shape at asm03_1_0.s:372 confirms a leaf
+    with hard-coded frame index 0. - Direct `bl gfxTransfer_8033DA0` with no setup matches the project''s
+    one-line summary "Queues a 32-byte PET navi tileset DMA transfer into the VRAM staging area at 0x30016D0".
+    - callee `sub_8033B80` summary "sprite_queueOamByFrameIndex" + immediate r0=0 matches the call pattern
+    for queuing OAM at frame 0. - callee `sub_8033F80` summary "battle_drawBattleStartOverlay" + immediate
+    r0=0 matches the call pattern for drawing the overlay at frame 0. - All 6 captured entry snapshots
+    have lr=0x08033a08, showing this is reached from a single fixed call site that has already populated
+    r5/r10 per the in-registers contract.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08033A80
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp, story4, story5, story6'
+  reproduce: 'grep -l ''^08033a80 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp, story4, story5, story6
+open_questions:
+- Whether the 0 argument is always strictly the frame index or also doubles as a sub-state for the OAM/draw
+  helpers. Settle by inspecting callers of sprite_queueOamByFrameIndex_8033B80 and battle_drawBattleStartOverlay_8033F80.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 22c74dca
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8033A80 -> battle_initBattleStartOverlay_8033A80
+  where: bn6f 448690a3
+  tool: tools/rename_symbol.py

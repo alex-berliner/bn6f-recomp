@@ -1,0 +1,57 @@
+name: battleObject_getByIndex_81428C2
+address: '0x081428C2'
+kind: function
+previous_names:
+- sub_81428C2
+status: probable
+summary: Returns a pointer to the nth BattleObject entry in the EWRAM `byte_2006670` array (8-byte stride).
+interface: (r0 = index) -> r0 = &byte_2006670[index*8] ; no side effects
+details: "Loads the base address of `byte_2006670` (EWRAM 0x02006670) into r5, multiplies the incoming\n\
+  \  index by 8, and returns the indexed pointer in r0. No other memory is touched; the routine\n  only\
+  \ computes a stride-8 lookup. r5 is preserved across the call (pushed/popped), so it is\n  effectively\
+  \ a scratch register that the contract surfaces.\n  Captured call sites pass small integer indices (0,\
+  \ 1, 3, 4, 5, 6...) and the returned r0\n  values form an 8-byte-spaced run: 0x02006670, 0x02006678,\
+  \ 0x02006688, 0x02006690, 0x02006698,\n  0x020066a0 — confirming the 8-byte stride. In BN6 each BattleObject\
+  \ slot is 0xD8 bytes\n  (`oBattleObject_Size`), so 0x02006670 is most likely a small accessor table\
+  \ (e.g. an array of\n  pointers/cursors) rather than a full BattleObject array, but the function only\
+  \ knows about\n  the 8-byte element size.\n  Callers `sub_80A7D90` and `sub_8142B28` look like the row/column\
+  \ setup loops of the\n  beast-out/spout-style panel grid (\"beastsp_0180000_*\" snapshots are taken\
+  \ from this code\n  region), which would naturally index a 6-wide grid.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r5, off_81428D0` followed by `.word byte_2006670` pins the base at 0x02006670. - `mov
+    r1, #8; mul r0, r1; add r0, r0, r5` is a literal `index*8 + base` computation. - Captured exit r0
+    values 0x02006670, 0x02006678, 0x02006688, 0x02006690, 0x02006698, 0x020066a0 increase by exactly
+    8 per increment of the input index, matching the formula. - `push {r4-r7,lr} ... pop {r4-r7,pc}` is
+    a leaf that only saves/restores callee-saved registers, consistent with a pure pointer-return helper.
+    - r5 is in the may_write set but is a scratch register inside the function (loaded from literal, never
+    used by the caller), so the only meaningful output is r0.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x081428C2
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^081428c2 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- What the 8-byte element represents at `byte_2006670` (pointer table? cursor slots? a
+- different struct?) is not visible from this routine alone; resolving the struct at
+- 0x02006670 in surrounding callers would settle it.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 22c74dca
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_81428C2 -> battleObject_getByIndex_81428C2
+  where: bn6f 448690a3
+  tool: tools/rename_symbol.py

@@ -1,0 +1,57 @@
+name: battleObject_perFrameUpdate_8142248
+address: '0x08142248'
+kind: function
+previous_names:
+- sub_8142248
+status: probable
+summary: 'Per-frame battle object update: clears a one-shot scenario flag, dispatches AI, and refreshes
+  sprites.'
+interface: () -> r0 = 0 (always returns 0)
+details: "Loads address eScenarioEffectState2000780 into r5. Calls sub_81422BE which returns Z in flags\n\
+  \  indicating whether the scenario effect state is \"active\". If inactive (bne to loc_8142272),\n \
+  \ jumps straight to the trailing call. If active, checks byte at +0x3 (eScenarioEffectState2000783);\n\
+  \  when non-zero it writes 0 to that byte (one-shot clear) and then calls sub_80468BA (no-arg)\n  followed\
+  \ by sub_80468C6(r0=3, r1=0, r2=0). It then falls through to call\n  battle_callAIDispatch_8046818 and\
+  \ battleObject_updateSpriteGfxForAll_8046854. Always calls\n  sub_8142C90 and returns 0. Lives in bn6f/asm/asm37_1.s:988\
+  \ with callee names that read\n  \"battle\" (AIDispatch, spriteGfx for all) and a sub_8142C90 helper.\
+  \ Likely invoked once per\n  frame from the battle subsystem dispatcher.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl sub_81422BE` at 0x08142250 with `bne loc_8142272` after it: early-exit when AI/scenario
+    state is inactive. - `ldrb r0, [r5,#0x3]` at 0x08142254 reads byte_2000783 in eScenarioEffectState2000780.
+    - `strb r0, [r5,#0x3]` at 0x0814225A clears that flag (one-shot pattern). - `bl sub_80468BA` then
+    `bl sub_80468C6` with r0=3,r1=0,r2=0 at 0x0814225E..0x08142266: a paired "set state then dispatch"
+    pair used by the engine elsewhere. - `bl battle_callAIDispatch_8046818` and `bl battleObject_updateSpriteGfxForAll_8046854`
+    at 0x08142268..0x0814226E are the per-frame AI + sprite refresh calls. - Captured calls all return
+    r0=0, flags=-ZC-, regardless of r0/r1/r2/r3 entry, consistent with the trailing `mov r0,#0; pop {r4-r7,pc}`
+    at 0x08142276.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08142248
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^08142248 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- What the "scenario effect state" +0x3 byte encodes; what sub_81422BE and sub_8142C90 do; what
+- the (3,0,0) triple passed to sub_80468C6 means. Looking at the matching pair near sub_80468BA
+- in another caller, or running the function under a battle trace that flips the +0x3 byte,
+- would settle it.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 22c74dca
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8142248 -> battleObject_perFrameUpdate_8142248
+  where: bn6f 448690a3
+  tool: tools/rename_symbol.py
