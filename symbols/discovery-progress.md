@@ -2073,6 +2073,52 @@ Highlights:
   (battle_beastSpExitOrFinishBattle_8135B54);
 - sound: set m4A control (sound_setM4AControl_814EE2C).
 
+## Batch 36 (2026-10-14)
+
+25 functions, 24 named + 1 promoted to probable (sub_803B91C kept as
+probable via comment update, was hypothesis before). All 24 renames
+verified against bn6f/asm and tools/traces/coverage. Sent to
+minimax/MiniMax-M3 (Hyper/zai were busy). Renamed in recomp 47dd0858
+(bn6f pushed; port ROM unchanged).
+
+Highlights:
+- battle: reset state if map changed or battle event flag
+  (battle_resetStateIfMapChangedOrBattleEventFlag_8000FAC),
+  set beast link flag (battle_setBeastLinkFlag_0802E112),
+  init emotion table entry (battle_initEmotionTableEntry_8046670);
+- battle: build chip pack from folder entries
+  (battle_buildChipPackFromFolderEntries_811FCB8),
+  play beast out sequence (battle_playBeastOutSequence_801E15C),
+  can use chip (battle_canUseChip_800AFBA),
+  compute enemy encounter rarity (battle_computeEnemyEncounterRarity_800EC80);
+- battle object: handle move alignment
+  (battleObject_handleMoveAlignment_81352A0),
+  scenario effect init player offset matrix
+  (battleObject_scenarioEffectInitPlayerOffsetMatrix_81429CA),
+  spawn hit effect at panel (battleObject_spawnHitEffectAtPanel_801A100),
+  step snake arm (battleObject_stepSnakeArm_800BA8A),
+  apply HP and handle special (battleObject_applyHPAndHandleSpecial_800E2FC),
+  per-frame update (battleObject_runPerFrameUpdate_801AA48),
+  run cur action state (battleObject_runCurActionState_801B878),
+  handle collision and status tick
+  (battleObject_handleCollisionAndStatusTick_801AB40),
+  remove from next list (battleObject_removeFromNextList_800AA40);
+- object: check enemy or ally panel
+  (object_checkEnemyOrAllyPanel_800E680),
+  finish collision hit reaction
+  (object_finishCollisionHitReaction_801AD12);
+- game state: set unk-09 (gameState_setUnk09_8001172);
+- map name: run sequence (mapName_runSequence_811EC50);
+- pack: has chip of code (pack_hasChipOfCode_8006EA4);
+- pet: sync navi active navi max HP
+  (pet_syncNaviActiveNaviMaxHP_803CE44);
+- save: write and verify EWRAM to SRAM
+  (save_writeAndVerifyEWRAMToSRAM_803F79E);
+- battle object: init AI chip queue slot
+  (battleObject_initAIChipQueueSlot_80468C6);
+- sub_803B91C: hypothesis -> probable (BG tile-id blit setup via
+  sub_8001890, indexes a 12-byte table).
+
 ## Tally update
 
 | batch | functions examined | named (renamed via record) | hypothesis-only | dropped |
@@ -2112,8 +2158,9 @@ Highlights:
 | 33    | 25                 | 19                        | 6               | 0       |
 | 34    | 25                 | 20                        | 5               | 0       |
 | 35    | 25                 | 19                        | 6               | 0       |
+| 36    | 25                 | 24                        | 1               | 0       |
 
-Running total: named 635, hypothesis-only 236, dropped 0 (of ~10,600 placeholders).
+Running total: named 659, hypothesis-only 235, dropped 0 (of ~10,600 placeholders).
 
 ## Session summary
 
