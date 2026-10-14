@@ -978,3 +978,60 @@ Highlights:
 | 19    | 25                 | 17                        | 8               | 0       |
 
 Running total: named 371, hypothesis-only 100, dropped 0 (of ~10,600 placeholders).
+
+## Batch 20 (2026-10-14)
+
+25 functions, 15 named + 10 hypothesis (sub_80315B8, sub_8031BE2, sub_803DEB4,
+sub_8083DF0, sub_8086EA8, sub_80A6FDC, sub_80A70FC, sub_80A82DC, sub_80E1670,
+sub_813BD90 kept as comment only), renamed in recomp abcd23cb (bn6f pushed;
+port ROM unchanged).
+
+Highlights:
+- battle: start cross net (battle_startCrossNet_800898C);
+- battle AI beast-SP: page step (battle_aiBeastSPageStep_80A5C9C);
+- battle object: update beast-out sprite
+  (battleObject_updateBeastOutSprite_80A704C),
+  pick beast-SP face (battleObject_pickBeastSpFace_80A708C),
+  beast step update (battleObject_beastStepUpdate_80A73A0),
+  AI spawn snake arm attack (battleObject_aiSpawnSnakeArmAttack_80F1808),
+  try start chip attack (battleObject_tryStartChipAttack_8112600);
+- battle object/GFX: tick color shader from extra vars
+  (battleObject_tickColorShaderFromExtraVars_81159DC);
+- submenu: dispatch by cur action (submenu_dispatchByCurAction_81196C4);
+- battle object: set coords from cutscene script
+  (battleObject_setCoordsFromCutsceneScript_811E3CC);
+- startScreen: queue four corner arrows
+  (startScreen_queueFourCornerArrows_811F1B8);
+- pet menu: draw status icons (pet_menu_drawStatusIcons_8123E58);
+- beastsp: dispatch handler (beastsp_dispatchHandler_81357C4);
+- battle: beast-out apply cross changes
+  (battle_beastOutApplyCrossChanges_813C06C);
+- battle object: scenario effect state address
+  (battleObject_scenarioEffectStateAddr_81421D8).
+
+## Tally update
+
+| batch | functions examined | named (renamed via record) | hypothesis-only | dropped |
+|-------|--------------------|---------------------------|-----------------|---------|
+| 1     | 25                 | 25                        | 0               | 0       |
+| 2     | 21                 | 20                        | 1               | 0       |
+| 3     | 25                 | 23                        | 2               | 0       |
+| 4     | 25                 | 21                        | 4               | 0       |
+| 5     | 25                 | 20                        | 5               | 0       |
+| 6     | 25                 | 21                        | 4               | 0       |
+| 7     | 25                 | 19                        | 6               | 0       |
+| 8     | 25                 | 20                        | 5               | 0       |
+| 9     | 25                 | 18                        | 7               | 0       |
+| 10    | 25                 | 14                        | 11              | 0       |
+| 11    | 25                 | 17                        | 8               | 0       |
+| 12    | 25                 | 15                        | 10              | 0       |
+| 13    | 25                 | 19                        | 6               | 0       |
+| 14    | 25                 | 19                        | 6               | 0       |
+| 15    | 25                 | 21                        | 4               | 0       |
+| 16    | 25                 | 21                        | 4               | 0       |
+| 17    | 25                 | 21                        | 4               | 0       |
+| 18    | 25                 | 20                        | 5               | 0       |
+| 19    | 25                 | 17                        | 8               | 0       |
+| 20    | 25                 | 15                        | 10              | 0       |
+
+Running total: named 386, hypothesis-only 110, dropped 0 (of ~10,600 placeholders).
