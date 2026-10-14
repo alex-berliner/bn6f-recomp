@@ -1,0 +1,59 @@
+name: sub_81421D0
+address: '0x081421D0'
+kind: function
+previous_names: []
+status: hypothesis
+summary: returns the byte at eScenarioEffectState2000780+0xb (an EWRAM scratch byte used by battle scenario effects)
+interface: () -> r0 = eScenarioEffectState2000780[0xb] ; no side effects
+details: "The function is a 4-instruction getter: it loads the pointer constant eScenarioEffectState2000780\n  into\
+  \ r5 via ldr from off_8142308, then performs a byte read at offset +0xb (i.e. r5[0xb]) into\n  r0, and immediately\
+  \ pops the saved frame and returns. There are no other register touches\n  beyond r0/r5 and the saved lr/r4-r7.\n\
+  \  The label eScenarioEffectState2000780 (a global EWRAM state struct) plus the offset 0xb is the\n  only state\
+  \ the function consults. None of the eight callers pass arguments, and the contract\n  lists only lr as `in`,\
+  \ which matches this being a pure leaf getter. The captured calls confirm\n  it: every entry has arbitrary r0-r3/sp\
+  \ values that the function ignores, and r0 on exit\n  carries the read byte (the snapshots show post-conditions\
+  \ and flags, but the assembly is a\n  plain `ldrb ...; pop {pc}` so the byte is exactly the live value).\n  The\
+  \ semantic role of byte 0xb inside eScenarioEffectState2000780 is not derivable from the\n  function itself; the\
+  \ eight callers (sub_8089704/89792/897A6, sub_80A86B4/A8748, sub_811E2B4/\n  E3CC, sub_81429CA) are unnamed battle\
+  \ helpers, so this is most likely a small flag/byte used\n  by the battle AI/scenario system. The closest struct\
+  \ field semantics known in this region\n  live in AIData (Unk_0b at +0xb in the AI data) and BattleState, but\
+  \ the EWRAM address\n  0x2000780 corresponds to a different EWRAM block (\"eScenarioEffectState2000780\"), so\
+  \ we\n  cannot tie it to a known field name without seeing the struct definition.\ndetails: |\n  Naming: \"battle_\"\
+  \ because all 8 callers live in the battle subsystem (sub_8089xxx, sub_80A8xxx\n  battle handlers, sub_811Exxx\
+  \ battle AI/handlers, sub_81429CA battle scenario) and the only\n  state consulted is an EWRAM scenario-effects\
+  \ block. \"_getScenarioEffectStateUnk0b\" reflects\n  the exact behaviour: byte at +0xb. The `_ADDRESS` suffix\
+  \ is kept because the role of byte\n  0xb is not pinned to a domain concept.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `sub_81421D0:` `ldr r5, off_8142308 // =eScenarioEffectState2000780` and `ldrb r0, [r5,#0xb]` (asm37_1.s:910)
+    — sole data access is the byte at +0xb of eScenarioEffectState2000780. - `pop {r4-r7,pc}` immediately after
+    the ldrb means r0 is the only data return, and r4-r7/lr are simply preserved — no other work happens. - Contract
+    `in=[''lr'']`, no other `in` registers; 0 direct callees — consistent with a leaf getter. - All 8 callers are
+    unnamed battle subsystem routines (ranges 08089xxx, 080A8xxx, 0811Exxx, 081429CA), matching the `battle_` prefix.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x081421D0
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^081421d0 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The semantic meaning of byte eScenarioEffectState2000780+0xb (e.g. scenario counter, beast
+- out flag, AI state mirror) is not determinable from this function. Reading the struct
+- definition of eScenarioEffectState2000780 (or seeing how the 8 callers branch on the
+- return value) would settle it; if you can dump the EWRAM struct at 0x2000780 and confirm
+- what 0xb is named, the function name should drop the `Unk0b` and the `_ADDRESS` suffix.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 2e79aac3
+  tool: tools/symdoc.py

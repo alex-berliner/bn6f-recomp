@@ -3,37 +3,37 @@ address: '0x080E1670'
 kind: function
 previous_names: []
 status: hypothesis
-summary: Initialise a stack-local list of allied/enemy BattleObject pointers (5-word slots) by collecting opponents
-  via object_getEnemyByNameRange, then zeroing the self-slot.
-interface: '(r5 = self BattleObject) -> r0 = 0 (always); side effects: writes 0x34 bytes of stack temp, mutates
-  self→RelatedObject1Ptr via sub_80E16CC'
-details: "- Allocates a 0x34-byte (13-word) temp buffer on the stack with r4 pointing at it.\n  - Reads self→oBattleObject_Alliance\
-  \ (offset 0x16, bool) into r3, EORs with 1 to flip it, so r3 = the *opposite* alliance (the enemy side from self's\
-  \ perspective).\n  - Calls object_getEnemyByNameRange(temp, 0, 0x1c3, flipped_alliance). r2=0x1c3 is the NameID\
-  \ range mask; the constant lives in dword_80E17E4. Returned enemy count is lsl'd*2 to index into temp as a u32\
-  \ slot, where 0 is then written (presumably clearing the slot reserved for self).\n  - Reads self→oBattleObject_RelatedObject1Ptr\
-  \ (offset 0x4c) into r1 and calls sub_80E16CC(temp, related1, 0/1/2) three times with each of the three plausible\
-  \ \"self-side\" values. The first matching call returns non-zero and short-circuits via the bne→loc_80E16BA fallthrough\
-  \ (all three bne's jump to the same epilogue, so only the first hit is acted on).\n  - Because r0 is unconditionally\
-  \ set to 0 immediately before sub_80E16CC is invoked the first time, and the callee contract declares r0 as the\
-  \ out, but the assembly's epilogue just `add sp; pop {pc}` — no explicit r0 write at exit — the function's effective\
-  \ return is whatever sub_80E16CC left in r0. With the three-call early-exit pattern, this looks like a lookup\
-  \ that records something (likely the local slot of self) into temp when found.\n  - The trailing byte_80E16C4\
-  \ constant (0xA0,0xA4,0xAC,0xB0,0xB4,0xB8,0xBC,0xFF) is referenced by `ldr r2, dword_80E17E4` but here the loaded\
-  \ immediate is 0x1c3, not the byte array — the byte array is unrelated trailing data emitted by the assembly listing.\n\
-  \  - Net effect: build an enemy list from the opposite alliance, zero the slot for self in that list, then probe\
-  \ RelatedObject1Ptr to populate additional context. The exact semantic of \"populate\" is hidden in sub_80E16CC.\n"
+summary: Resolve opposing-side enemies within an enemy-name ID range and store their object pointers into a caller-provided
+  4-entry table on the stack.
+interface: '(r5 = self BattleObject*, r6..r10 scratch) -> void ; stack: out [BattleObject*, BattleObject*, BattleObject*,
+  u8] indexed by alliance-flipping enemy name IDs, side-effect-only (caller-provided scratch + stack)'
+details: "Stack frame reserves 0x34 bytes used as a 4-slot u32 table (8*4=0x20 plus trailing bytes),\n  where index\
+  \ 0..2 receive BattleObject* of enemies (set to 0 if none) and the trailing bytes\n  appear to hold 7 enemy-name\
+  \ IDs (0xA0,0xA4,0xAC,0xB0,0xB4,0xB8,0xBC,0xFF) stored in `byte_80E16C4`.\n\n  1. Load `oBattleObject_Alliance`\
+  \ (off 0x16) from `r5` and XOR with 1 to get the opposing\n     alliance (friend<->enemy). This selects which\
+  \ list of name IDs to enumerate.\n  2. Call `object_getEnemyByNameRange(r4=table_ptr, r5=self?, r0=1=enable?,\
+  \ r1=0, r2=0x1c3 mask/range)`\n     - The literal 0x1c3 looks like a bitmask for the 7 name IDs in `byte_80E16C4`\n\
+  \       (0x80|0x40|0x20|0x10|0x08|0x04|0x02|0x01 = 0xFF, but 0x1c3 = 0b111_000_011 covers bits 0,1,6,7,8,9).\n\
+  \     Actually 0x1c3 = 0b1_1100_0011 - selects bits 0,1,6,7,8. The remaining `byte_80E16C4` IDs\n     (0xA4,0xAC,0xB0,0xB4,0xB8,0xBC\
+  \ = bits 2..5) are not covered; `r0=1` likely toggles \"include\n     viruses\" vs \"include navis\". Return:\
+  \ `r6 = bitmask` of which IDs had hits.\n  3. `r6<<2` -> word offset; for each set bit `i`, the table slot at\
+  \ `[r4+i*4]` is zeroed.\n  4. Three sequential calls to `sub_80E16CC(r0=arg0, r1=self->RelatedObject1Ptr (off\
+  \ 0x4c), r2=r4=table)`\n     with arg0 in {0,1,2}. Each call returns nonzero if it populated a slot. The bne's\
+  \ collapse\n     to a single fall-through (loc_80E16BA) regardless of which call succeeded.\n  5. Stack frame\
+  \ is torn down; function returns void-like.\n\n  Interpretation: this function appears to populate a list of valid\
+  \ enemy targets for\n  the AI/object, considering `self->RelatedObject1Ptr` (likely the player's controlled\n\
+  \  object). The 3 calls with hard-coded 0/1/2 likely represent virus slot indices or\n  target categories for\
+  \ the related object's enemies.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- `ldrb r3, [r5,#oBattleObject_Alliance]; eor r3, #1` flips the alliance byte at offset 0x16 (matches
-    struct BattleObject.Alliance). - `ldr r2, dword_80E17E4 // =0x1c3` is the NameID range parameter to object_getEnemyByNameRange.
-    - `lsl r3, r0, #2; add r3, r3, r4; str r0, [r3]` (with r0=0) zeroes a u32 slot of the stack temp at index =
-    returned enemy count. - `ldr r1, [r5,#oBattleObject_RelatedObject1Ptr]` (offset 0x4c) and three identical `bl
-    sub_80E16CC` calls with r0 = 0,1,2 indicate probing which of the three actor types self''s related-object points
-    to. - Three `bne loc_80E16BA` short-circuits all converge on the same epilogue at loc_80E16BA, so only the first
-    successful call has any side effect. - Stack reservation `sub sp, sp, #0x34` (= 13 words) is consistent with
-    a small fixed-capacity pointer list.'
+  detail: '- `ldrb r3,[r5,#oBattleObject_Alliance]` (off 0x16) + `eor r3,#1` clearly flips the alliance bit to query
+    the opposing side - `ldr r1,[r5,#oBattleObject_RelatedObject1Ptr]` (off 0x4c) reads self''s first related object
+    pointer; passed as r1 to every sub_80E16CC call - The literal pool at `byte_80E16C4` lists 7 enemy name IDs
+    (0xA0..0xBC) terminated with 0xFF - Stack reservation `sub sp,#0x34` is followed by writing 0 into `[r4+r6<<2]`,
+    indicating a u32 table on stack whose size matches ~0x20 bytes - `object_getEnemyByNameRange` name implies it
+    returns a list/bitmask of enemies in a given name-ID range - Three hard-coded calls with r0=0,1,2 to sub_80E16CC,
+    each consulting the same table, suggest iterating 3 enemy "slots" on the related object'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x080E1670
@@ -48,16 +48,21 @@ evidence:
     '
   result: beastsp
 open_questions:
-- What sub_80E16CC actually stores back into temp (and into *r1) is unknown without its body; whether this is a
-  "record self position" or "populate more enemy list entries" step can't be settled here.
-- The trailing byte_80E16C4 table (0xA0,0xA4,...) looks like a u16 jump/offset table to nearby functions but is
-  unreferenced in this routine; may belong to the surrounding caller or to sub_80E16CC.
-- Whether the 0x34-byte temp is `[ptr;7]` slots or something else is unclear; the only write is a single u32=0 at
-  index=enemy_count, suggesting ≤7 used slots, with byte_80E16C4 possibly indicating up to 7 valid NameID ranges.
+- Exact semantics of r0 in object_getEnemyByNameRange (count vs flags vs index) and
+- the meaning of 0x1c3 (still looks like a bitmask but doesn't fully match byte_80E16C4)
+- What sub_80E16CC actually does with (r0=slotIdx, r1=relatedObj, r2=table) - it likely
+- picks one of the table entries for that slot. Without its body, the function's higher-
+- level purpose is partially inferred.
+- 'Whether the returned r0 is meaningful: the contract says out=[''r0'',''r5''] but the'
+- assembly only does `pop {pc}` without a `mov r0,...`, so r0 likely returns whatever
+- the last sub_80E16CC set or remains clobbered.
+- The trailing `balign 4, 0` followed by `byte_80E16C4:` (8 bytes of data) being right
+- after `thumb_func_end` is unusual - it suggests this data may belong to a different
+- routine (sub_80E16CC?) but is physically co-located.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f ebaed976
+  where: bn6f 2e79aac3
   tool: tools/symdoc.py
