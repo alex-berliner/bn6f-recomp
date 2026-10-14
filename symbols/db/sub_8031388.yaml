@@ -1,132 +1,65 @@
 name: sub_8031388
 address: '0x08031388'
 kind: function
+previous_names: []
 status: hypothesis
-summary: Runs the family's three-step helper sequence (prepare, draw/iterate over an unbounded 0x20-entry extent,
-  finish) and then marks the r12 state flags as active by setting the low bit.
-interface: void sub_8031388(u32 arg0 /*r0*/, u32 arg1 /*r1*/, u32 arg2 /*r2*/, u32 arg5 /*r5*/); returns with r0-r2/r5
-  preserved (restored from stack), r12 |= 1, NZ set from the new r12 value, r3/r4/r6/r7-r9 whatever sub_80310B0
-  left.
-details: "A thin driver that chains three callees and never inspects their results except by threading step 1's\
-  \ r0/r1 into step 2:\n  1. sub_8031136 is called with the caller's r0-r2 unchanged.\n  2. sub_8030E14 is called\
-  \ with r2 = r3 = -1 (the \"unbounded\"/sentinel extent\n     markers), r4 = 0x20 (extent/entry count), r5 = 0,\
-  \ r6 = 1, and r0/r1 carried\n     over from step 1.\n  3. sub_80310B0 is called with r1 = 0 to finalize.\nAfter\
-  \ the sequence, it sets the low bit of r12 (the shared state-flags register used across this family of routines)\
-  \ via ORR, so the NZ flags report the new r12 value; c/v are whatever sub_80310B0 last left. r0, r1, r2 and r5\
-  \ are saved on entry (push {r0-r2,r5,lr}) and restored verbatim, so callers see their arguments untouched. The\
-  \ -1/-1 extent arguments and the fixed 0x20 count suggest a bulk-copy or bulk-iterate operation over at most 32\
-  \ entries with no explicit limit; the r12 bit-set pattern suggests this is one of several \"activate state\" wrappers\
-  \ in the same subsystem.\n"
+summary: Camera shake frame updater that does a 2D point-vs-line hit test to decide shake magnitude, then moves
+  the camera.
+interface: (r0 = camera?, r5 = shakestate?, r12 = flag/result word, lr = ret) -> r0 = camera?; sets a bit in r12
+  (0x1 ORed in)
+details: "1. The function saves incoming r0-r2, r5, lr via push so it can clobber them, then calls\n     `battleObject_applyShakeOffsetAndProject_8031136`\
+  \ (a \"shake offset + project\" helper) with\n     the saved first three regs (effectively passing the BattleObject/Coordinate\
+  \ triple that\n     was originally in r0..r2 plus the shake state in r5).\n  2. It loads constants into r2..r6\
+  \ to build a point/line segment: r2=0xFFFFFFFF (line's\n     start.x), r4=0x20 (a small positive, possibly a \"\
+  no-shake\" magnitude), r3=0xFFFFFFFF\n     (line's start.y), r5=0, r6=1 (line end y?).\n  3. `sub_8030E14` is\
+  \ the line-vs-point hit test; the contract says it returns (rx,ry) on hit\n     in r0/r1. The 0x20 in r4 plus\
+  \ r5/r6 are passed as the line/point parameters.\n  4. With r0=hit distance? and r1=0, `camera_moveByDelta_80310B0`\
+  \ is invoked to nudge the\n     camera by the (scaled) delta from the hit test. That callee's contract says it\
+  \ skips\n     the update when delta is zero, so this looks like a \"shake one tick if the projected\n     point\
+  \ crossed a line this frame\" routine.\n  5. Back in this function, r12 (saved across the bl chain) is ORed with\
+  \ 1 -- a \"shake\n     happened this frame\" flag is being recorded into a bitfield the caller owns.\n  6. Restores\
+  \ r0-r2, r5 and returns via `pop {r0-r2,r5,pc}`, so r0/r1/r2/r3/r5/r12 are\n     caller's \"in\" values refreshed\
+  \ from the stack (r5 is reloaded from the saved value).\n     Net output to caller: r0 preserved, r12 has bit0\
+  \ set, r1/r2/r3 trashed.\n  r0..r2 going in look like a 3D coordinate triple; the captured EWRAM dump at r0=0x02009f5c\n\
+  \  begins with two `00 80 e0 00` / `00 c0 e1 00` patterns that look like 16.16 fixed-point\n  XY pairs (e.g. 0xE0800000\
+  \ = -32.0-ish, then 0xE1C00000 ~= -32.0 in the other example),\n  consistent with the camera/BattleObject coordinate\
+  \ convention in this codebase.\n"
 evidence:
-- method: readable-c
-  date: '2026-10-09'
-  detail: Written by hyper/glm-5.3-flash through the convert workflow (1 attempt(s), run convert-20261009-033920);
-    reviewed by Claude before the commit.
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {r0-r2,r5,lr}` followed by the pop of the same set tells us r0-r2 are preserved outputs and r5
+    is a saved/restored callee-style value (r5 is in `in` and `out`). - The single bl to `camera_moveByDelta_80310B0`
+    is the only thing that mutates the camera; per its summary it "adds a delta plus the current scroll offsets,
+    skipping the update when the delta is zero." - The bl to `sub_8030E14` matches that callee''s contract: line-vs-point
+    hit test, with r0 (point), r2..r6 (line endpoints/dir) supplied exactly as required. - `mov r4, #0x20` is the
+    only "magnitude" constant present; everything else is 0/-1/1, consistent with a "did the projection cross a
+    screen-edge line" check that yields a small fixed-point pixel offset. - `orr r0, r1` after the call uses r1=1,
+    then stores back to r12, the "shake active" bitfield held by the caller.'
   refs:
-  - cport/src/game/asm03_0_802F2C8.c
-  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 19' --file leaves_farm_19.c sub_8031388
-- method: difftest
-  date: '2026-10-09'
-  detail: Readable vs lifted on the original's captured calls and on random inputs.
-  reproduce: './wf capture --function sub_8031388
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08031388
 
-    ./wf verify --function sub_8031388 --snapshots build-snapshots'
-  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
-    of domain (verify run convert-20261009-033920-verify-1)'
-- method: cpu-oracle
-  date: '2026-10-09'
-  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
-  reproduce: './wf capture --function sub_8031388
-
-    ./wf verify --function sub_8031388 --snapshots build-snapshots'
-  result: 1 compared, 0 differed, 23 out of domain (verify run convert-20261009-033920-verify-1)
-- method: lockstep
-  date: '2026-10-09'
-  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
-  reproduce: './wf capture --function sub_8031388
-
-    ./wf verify --function sub_8031388 --snapshots build-snapshots'
-  result: 8/8 routes identical (verify run convert-20261009-033920-verify-1)
+    '
+  result: the body read as described above
 - method: coverage
-  date: '2026-10-09'
-  detail: 'Executed by: battles1, fuzz, maps, story1, story2, story3, wander.'
-  reproduce: grep -l '^08031388 ' tools/traces/coverage/*.prof
-changes:
-- date: '2026-10-09'
-  what: readable C replacement in cport/src/game/leaves_farm_19.c
-  where: recomp 2d580b5
-  tool: tools/wf convert (hyper/glm-5.3-flash)
-- date: '2026-10-09'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 2cf3d3e6
-  tool: tools/symdoc.py
-- date: '2026-10-09'
-  what: doc comment (symdb block) at the definition
-  where: bn6f f5b08caa
-  tool: tools/symdoc.py
-- date: '2026-10-10'
-  what: moved from cport/src/game/leaves_farm_19.c to cport/src/game/asm03_0_802F2C8.c by tools/layout.py (the regroup of the model farm's files by bn6f source; the function's text unchanged)
-  where: recomp 6836d6c
-  tool: tools/layout.py
-readable_c: cport/src/game/asm03_0_802F2C8.c
-coverage:
-- battles1
-- fuzz
-- maps
-- story1
-- story2
-- story3
-- wander
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, beastsp, fuzz, maps, story1, story2, story3, story4, story5, story6,
+    story8, story9, wander'
+  reproduce: 'grep -l ''^08031388 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, beastsp, fuzz, maps, story1, story2, story3, story4, story5, story6, story8, story9,
+    wander
 open_questions:
-- Which subsystem sub_8031136/sub_8030E14/sub_80310B0 belong to (OAM/sprite batching, text, or effects) is not identifiable
-  from this wrapper alone.
-- Exact meaning of the r12 state-flags bit 0 ("active") and who clears or reads it.
-- What the fixed extent count 0x20 counts (entries, tiles, pixels?) and why r2/r3 are both set to the -1 sentinel.
-- Whether callers rely on r12 being returned, or only on the flag result.
+- The precise meaning of the 0x20 constant and which r0..r2 register is the camera
+- struct vs the BattleObject/coord triple (the push preserves them but we don't see any
+- field access inside the function).
+- Whether the bit set in r12 represents "shake this frame" or "this object was hit" --
+- callers' use of r12 would settle it.
 sources:
-- tools/wf run convert-20261009-033920
-signature:
-  c: void sub_8031388(u8 *r0, u8 *r5, u32 r12)
-  params:
-  - reg: r0
-    type: u8 *
-    name: r0
-  - reg: r5
-    type: u8 *
-    name: r5
-  - reg: r12
-    type: u32
-    name: r12
-  ret:
-    reg: none
-    type: void
-  keep:
-  - r3
-  - r12
-  confidence: confident
-  decided_by: mechanical
-  evidence:
-  - 'contract (lifter, refined): may read r0 r5 r12; result none'
-  - 'liveness over the assembly and callees (tools/sig/derive.py): reads r0 r12 r5'
-  - 'r0: captures: 40 calls, field eOWPlayerObject+0x1c'
-  - 'r5: captures: 40 calls, ram dword_2011D10'
-  - 'r12: captures: 40 calls, int 0x0'
-  reproduce: python3 tools/sig/bounds.py && python3 tools/sig/derive.py && python3 tools/sig/ask.py run && python3
-    tools/sig/ask.py merge
-  derived: '2026-10-12'
-stamp:
-  rom: rom:4a137aff9af92b79
-  range: 0x08031388-0x080313B0
-  contract: r0 r5 r12 lr -> r0 r1 r2 r3 r5 r12; clobbers nz c v r4 r6 r7 r8 r9 lr
-  callees:
-    sub_8031136: r0
-    sub_8030E14: r0 r1 r4 r6 r7 r8 r9
-    camera_moveByDelta_80310B0: c v r3 r4 r6
-  headers: 97915d37cb43
-  lifter: b9983df4534b
-  prompt: legacy
-  model: hyper/glm-5.3-flash
-  run: convert-20261009-033920
-  body: 513af686c35406ae
-  installed: 2d580b5
-  stamped: '2026-10-10'
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 5613775c
+  tool: tools/symdoc.py

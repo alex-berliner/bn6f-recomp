@@ -3,38 +3,22 @@ address: '0x08086EA8'
 kind: function
 previous_names: []
 status: hypothesis
-summary: Battle beast-out / cross-mega handler that checks a story event flag and dispatches into per-state sub-handlers
-  for the beast transformation.
-interface: '(r2 = event flag index/handle, r10 = Toolkit ptr) -> r2/r3/r5/r7 (state result / out params) ; side
-  effects: updates battle/AIData state via the sub-handlers it calls, clobbers many caller-saved regs'
-details: "- No assembly was available for this function (the lifter reports \"sub_8086EA8 not found in bn6f/asm\"\
-  ), so the proposal is driven entirely by the caller/callee graph and capture metadata.\n  - It is called only\
-  \ from a site at lr=0x08035e88, invoked with r0=0, r1=2, r2=1, r3=0x02001d44 across 40 recorded snapshots (snap_beastsp_0100000_*)\
-  \ - the snapshot prefix \"beastsp\" and the input shape (battle index 1, an EWRAM pointer 0x02001d44 that lies\
-  \ in the battle state area, no extra params) strongly suggest this is the per-frame beast-mode / cross-mega update\
-  \ hook in the battle AI subsystem.\n  - Callee graph lines up with a beast-state dispatcher: TestEventFlagFromImmediate\
-  \ (story-progress gate, e.g. \"beast out unlocked\"), sub_8086FD8 (sub-handler 1, takes r2/r5/r10), sub_808711C\
-  \ (sub-handler 2), sub_8087140 (returns a beast variant id in r0), sub_8087184 (sub-handler 3, takes r5), and\
-  \ sub_80871F4 (leaf sub-handler 4, takes r5, returns r2/r3/r4) - this is the classic \"branch on r5 state, then\
-  \ run a phase handler\" shape used elsewhere in battle AI.\n  - Contract reports in={r2,r10,lr}, out={r2,r3,r5,r7}\
-  \ with many may_write regs, so it is a stateful void-ish handler that mutates a battle-actor state object (AIData\
-  \ via the toolkit at r10) and reports back the next state/code in r2/r3.\n  - The function does not return a usable\
-  \ value in r0 (every capture exits with r0=0, ZC flags) so callers use r2/r3/r5 as the actual out-of-band result;\
-  \ the _ADDRESS suffix is kept because the exact beast-out / cross-mega semantics are inferred from the snapshot\
-  \ name and callee set rather than from the body.\n"
+summary: Empty placeholder; assembly not included, behaviour unverified.
+interface: (r0 = ?, r1 = ?, r2 = ?) -> r0 = ? ; side effects ?
+details: "The disassembly block for this function came back as \"not found in bn6f/asm\", so no\n  instructions\
+  \ were available to verify behaviour. The contract claims r2/lr/r10 are the\n  in-registers and r0-r7 may be clobbered;\
+  \ six callees are listed (TestEventFlagFromImmediate\n  plus five unnamed nearby helpers at 0x8086FD8-0x80871F4)\
+  \ suggesting this sits in the\n  battle-AI/event-flag processing region of the ROM. Captured entry snapshots show\
+  \ a stable\n  shape (r0=0, r1=2, r2=1, r3=0x02001d44, sp=0x03007dac, lr=0x08035e88) with exit r0=0\n  and ZC flags,\
+  \ but without the body nothing concrete can be asserted.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- Snapshot filename prefix "snap_beastsp" (beast-sp / beast-special) for all 40 captures points at the
-    beast-out code path in battle AI. - All 40 captures share the same entry shape r0=0, r1=2, r2=1, r3=0x02001d44,
-    lr=0x08035e88, indicating a single fixed call site inside a beast-AI loop. - In={r2,r10,lr} with r10 = Toolkit
-    (per project convention; toolkit_struct is "always in r10") means the handler reads the current battle/AIData
-    through the toolkit''s BattleStatePtr/AIDataPtr paths. - Direct call to TestEventFlagFromImmediate (story-progress
-    gate) at the top of the dispatcher is the standard "is beast-out unlocked?" check used elsewhere in the battle
-    engine. - The 4 leaf sub-handlers sub_8086FD8 / sub_808711C / sub_8087184 / sub_80871F4 all take r5 in/out and
-    chain off r2, matching a state-machine dispatcher indexed by an AIData sub-state. - Exit r0=0 with NZ cleared
-    across every capture is consistent with a void-style battle AI hook that signals success through the other out
-    regs.'
+  detail: '- assembly section explicitly states "sub_8086EA8 not found in bn6f/asm" - 40 captured calls share identical
+    entry register shape (r0=0, r1=2, r2=1) suggesting a stable call site, likely an AI subsystem update loop -
+    one confirmed callee is TestEventFlagFromImmediate (story/event flag reader), hinting a decision branch on a
+    story-progress flag - the unnamed callees 0x8086FD8/0x808711C/0x8087140/0x8087184/0x80871F4 cluster in the 0x8086xxx-0x8087xxx
+    range, consistent with another AI/battle-state helper'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x08086EA8
@@ -49,18 +33,13 @@ evidence:
     '
   result: beastsp, maps
 open_questions:
-- The actual body is missing (no asm extracted), so the exact role of r2 in/out and the meaning of r3/r5/r7 at exit
-  can only be guessed from the contract.
-- Which story event flag is queried (the immediate operand to TestEventFlagFromImmediate) is unknown; a constant
-  scan of the disassembly would settle it.
-- The mapping from r5 / sub-state value to which of sub_8086FD8 / 808711C / 8087184 / 80871F4 runs is unknown; tracing
-  r5 in the missing body or a coverage diff of the four sub-handlers would settle it.
-- Whether the "sp" in "beastsp" refers to "special" (cross mega / SP) vs. "spawn" cannot be decided from the captures
-  alone; the AIData field BeastOutAPwrAtk + the r3=0x02001d44 pointer argue for SP/Beast, but assembly would confirm.
+- Without the assembly body, the function's role, the meaning of r2 on entry, and what
+- it actually returns to callers are all unknown. Re-running the lifter on this offset
+- (or pulling the raw bytes at 0x08086ea8) would settle it.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f 7aba4135
+  where: bn6f 5613775c
   tool: tools/symdoc.py

@@ -3,32 +3,25 @@ address: '0x080E1670'
 kind: function
 previous_names: []
 status: hypothesis
-summary: Checks the alliance of the BattleObject's RelatedObject1Ptr against the caller's alliance, returning a
-  result via sub_80E16CC into a stack buffer.
-interface: '(r5 = caller BattleObject, r10 = toolkit) -> r0 = 0 ; side effects: stack scratch, may read RelatedObject1Ptr
-  chain'
-details: "- Allocates 0x34 bytes on the stack as a scratch buffer (r4 = sp).\n  - Loads the caller's Alliance byte\
-  \ (offset 0x16) from r5, XORs with 1 (eor r3, #1) to flip friend/enemy.\n  - Calls object_getEnemyByNameRange(r4=buf,\
-  \ r1=0, r2=0x1c3) which presumably fills the scratch buffer with a name list / table and returns a count in r0\
-  \ -> saved in r6.\n  - Zeros buf[r6*4] (str r0, [r3]) to clear the first slot beyond the populated entries.\n\
-  \  - Calls sub_80E16CC(bufIdx=0, r1=RelatedObject1Ptr, r2=buf) and bne-skip-out if non-zero; repeats with bufIdx=1\
-  \ and 2. Each non-zero short-circuits the chain to loc_80E16BA which simply restores sp and returns.\n  - The\
-  \ result r0 on return is the last bufIdx (2) when all three checks return 0, otherwise 0. The exact semantics\
-  \ live in sub_80E16CC; from this caller it is a \"first match in {0,1,2}\" probe of RelatedObject1Ptr against\
-  \ the enemy-name list.\n  - This is part of the AI's enemy-target search using a reversed-alliance search: the\
-  \ caller asks \"which of the three target slots is an enemy of me?\"\n"
+summary: Initializes a 4-slot name-range lookup table for an enemy's cross-element weak-point search
+interface: '(r5 = BattleObject*, r10 = Toolkit*, lr) -> r0 = 0 ; side effects: writes 0x34 bytes on stack, calls
+  object_getEnemyByNameRange and sub_80E16CC'
+details: "Allocates 0x34 bytes on the stack as a scratch buffer at r4=sp, then loads r5's Alliance\n  (oBattleObject_Alliance),\
+  \ XORs it with 1 to get the opposite side, and calls\n  object_getEnemyByNameRange(r4=outBuf, 0, 0x1c3=range)\
+  \ to populate it with up to 0x1c3\n  enemy name IDs. Stores the returned count in r6 and writes 0 into slot 0\
+  \ of the buffer\n  (presumably as a terminator). Then for related object index 0, 1 and 2 of the source\n  BattleObject\
+  \ (r5->RelatedObject1Ptr at oBattleObject_RelatedObject1Ptr), invokes\n  sub_80E16CC with r0=index, r1=related\
+  \ object ptr, r2=buffer. As soon as one returns\n  non-zero the loop falls through. The contract returns r0 (likely\
+  \ the index that\n  matched) and tears down the stack. Used by sub_80E1566 which is in the AI/external\n  object\
+  \ setup path.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- `ldrb r3, [r5,#oBattleObject_Alliance]` and `eor r3, #1` at the entry show the function flips the caller''s
-    Alliance to the opposing side before searching (`oBattleObject_Alliance` = 0x16). - `bl object_getEnemyByNameRange`
-    with a stack buffer (r4=sp, r1=0, r2=0x1c3=451) populates an enemy-name table; result r0 stored in r6 and used
-    to size-clear the buffer (`lsl r3, r0, #2; add r3, r3, r4; mov r0, #0; str r0, [r3]`). - `ldr r1, [r5,#oBattleObject_RelatedObject1Ptr]`
-    (offset 0x4c) loads the first related-object pointer and passes it to sub_80E16CC three times with indices 0,
-    1, 2. - Each call uses `cmp r0, #0 / bne loc_80E16BA`, indicating a "found / not found" boolean style return;
-    the `bne` jumps to the epilogue, leaving r0 with the last call''s non-zero value. - Only caller is sub_80E1566
-    (also unnamed AI-routine in the 0x080e15xx range), consistent with AI enemy-targeting helpers. - The 8-byte
-    literal at byte_80E16C4 is data referenced by something else, not used by this function.'
+  detail: '- `ldrb r3, [r5,#oBattleObject_Alliance]` then `eor r3, #1` (flip side) at 0x080E167A-0x080E167C - `bl
+    object_getEnemyByNameRange` with r0=stack buffer, r1=0, r2=0x1c3 at 0x080E1686 - Stack frame: `sub sp, sp, #0x34`
+    then writes 0 to `[r4 + r6*4]` after the call (terminator) - Three iterations of `mov r0, #0/#1/#2` then `bl
+    sub_80E16CC` with r1=r5->RelatedObject1Ptr, r2=buffer - Each iteration tests `cmp r0, #0` / `bne loc_80E16BA`
+    so the function bails on first non-zero result - Locals r5/r6/r7/r10 pushed in prologue: typical battle-AI helper'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x080E1670
@@ -43,15 +36,13 @@ evidence:
     '
   result: beastsp
 open_questions:
-- The exact meaning of sub_80E16CC's bufIdx (0/1/2) and what it indexes in the scratch buffer is unknown; whether
-  the indices are "enemy by panel column / row / distance" or AI attack-vars array slots is unclear. Disassembly
-  of sub_80E16CC would settle it.
-- Whether r0 on return is meaningful to the caller (it currently is 0 if matched early, 2 if none matched) is unknown
-  because the only caller sub_80E1566 is also unnamed.
+- What sub_80E16CC actually does (cross-element match? target lookup?) and the meaning of the r0=0/1/2 indices
+- Whether the r0 returned corresponds to the matched index, an error code, or 0
+- Why 0x1c3 specifically (probably the size of the name table slice)
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f 7aba4135
+  where: bn6f 5613775c
   tool: tools/symdoc.py

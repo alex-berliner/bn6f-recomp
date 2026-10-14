@@ -1,0 +1,53 @@
+name: sub_80897A6
+address: '0x080897A6'
+kind: function
+previous_names: []
+status: hypothesis
+summary: Per-frame AI behaviour step for the player's beast-out/spout-sp Navi in battle, conditionally advancing
+  sub-state and rewriting Unk_13 / state byte.
+interface: (r5 = battle object ptr, r7 = ...) -> r0 = 1 ; clobbers r1..r3, side-effect writes [r5+0x00]=0x0c or
+  [r5+0x00]=0x20 on different paths
+details: "- Saves r4-r7,lr.\n  - If [r5+0x13] is non-zero already, skips the body and just returns 1.\n  - Otherwise\
+  \ masks chatbox event flag 0x80 via chatbox_mask_eFlags2009F38; if that bit is set, returns 1.\n  - Calls chatbox_GetState_8045F4C.\
+  \ If the chatbox is currently open (state != 0), runs sub_8089D26 and sets the battle object Unk_13 (= [r5+0x13]\
+  \ but the asm stores to byte 0 [r5]) to 0xc, then exits.\n    Note: the two writes ([r5,#0] and [r5,#0x20]) correspond\
+  \ in struct layout to byte 0 (CurState area for object_header) or another field. Given the project's `strb r0,\
+  \ [r5]` is at offset 0, this is the object header byte; but the captured callers (snap_beastsp) show this being\
+  \ called from an AI/think function on the beast-out object.\n  - If chatbox state is 0, runs sub_8089D0E, battle_getScenarioEffectStateField_81421D0,\
+  \ sub_81421B2, then sub_80468EC(r0=1), sub_8089CB0(r0=0xa), and finally stores 0x20 to [r5].\n  - Always returns\
+  \ 1.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0, [r5,#0x13]; tst r0, r0; bne loc_80897E4` shows an early-out guard on the battle object''s
+    Unk_13 (matches AIData::Unk_13). - `bl chatbox_mask_eFlags2009F38` with r0=0x80 returns early when that chatbox
+    flag is set; matches the "do nothing while a chatbox event is queued" pattern. - Two `strb` writes at the end
+    of mutually exclusive branches (0xc vs 0x20) imply two distinct state transitions the object steps into. - Entry
+    lr=080895b8 in the captured snapshots points at a nearby AI dispatcher function for the beast/spout-spawn battle
+    objects. - Calls to `sub_8089D0E`, `sub_8089D26`, `sub_8089CB0` are clustered in this region with other beast-AI
+    helpers.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080897A6
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^080897a6 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- Whether [r5] is the high-level state byte vs. [r5+0x13] being checked separately is unclear; this looks like the
+  function may intentionally write a state that the early-out guard doesn't read.
+- True semantic of `0xc` vs `0x20` state values (animation? sub-state of beast-out?) needs context from callers;
+  tracing the surrounding dispatcher at 0x080895c0 would settle it.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 5613775c
+  tool: tools/symdoc.py
