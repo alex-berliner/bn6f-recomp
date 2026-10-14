@@ -1,0 +1,56 @@
+name: battleObject_getByIndex_813B780
+address: '0x0813B780'
+kind: function
+previous_names:
+- sub_813B780
+status: probable
+summary: Returns a pointer to the 0x10-byte battle-object descriptor slot in the global StructArr_813944C
+  indexed by r0.
+interface: (r0 = index) -> r0 = &StructArr_813944C[index*0x10] ; no side effects
+details: "Leaf accessor: ldr r1,=StructArr_813944C ; mov r2,#0x10 ; mul r0,r2 ; add r0,r0,r1 ; mov pc,lr.\n\
+  \  Effectively a typed element-of-array helper, indexing a global struct array at\n  StructArr_813944C\
+  \ whose elements are 0x10 bytes each. Returned pointer lands in r0.\n  Used as a quick way to fetch\
+  \ a small object-like slot (likely a battle-actor /\n  toolkit object reference) given an index. The\
+  \ function is void-like in the sense\n  that it does not change any caller-visible state other than\
+  \ r0 (and r2 as a scratch\n  constant), and returns through lr.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r1, off_813B78C` loads the base `StructArr_813944C` constant (0x0813b78C). - `mov r2,
+    #0x10` plus `mul r0, r2` then `add r0, r0, r1` is the canonical `&base[index*sizeof(elem)]` pattern
+    with elem size 0x10. - `mov pc, lr` is a tail-return, so r0 is the only meaningful return. - Captured
+    calls all show r0 as a small index (0x34, 0x8c) and r0 on exit as a pointer in the 0x0813xxxx range
+    (e.g. 0x0813978c, 0x08139d0c), consistent with landing inside the StructArr_813944C ROM/RAM region.
+    - Many of the heavyweight callers (applyNavicustPrograms_813C684, battleItems_countByType_813C584,
+    battle_categorizeRandomIds_813BC1C, sub_813BC98, sub_813BEA8, etc.) are toolkit/battle routines that
+    walk per-actor or per-slot tables — a natural consumer of an indexed slot accessor.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0813B780
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^0813b780 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- What the 0x10-byte element actually represents (a tiny struct, a {ptr,u32,u32,u32}
+- tuple, etc.) is not visible from this function alone; the surrounding struct
+- definitions list BattleObject with much larger sizes, so this is likely a parallel
+- side-table (a sub-array of references or compact slots), not a full BattleObject.
+- Inspecting StructArr_813944C's layout and the elements read by callers would settle it.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 12fbd516
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_813B780 -> battleObject_getByIndex_813B780
+  where: bn6f e008e389
+  tool: tools/rename_symbol.py

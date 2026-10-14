@@ -166,10 +166,10 @@ static inline call_object_setFlag2_result call_object_setFlag2(u32 r0, u32 r5) {
 }
 
 typedef struct { u32 r2, r3, r5, r6; } call_sub_801A200_result;
-/* register form: generated wrapper: sub_801A200 has no typed C interface yet */
+/* register form: generated wrapper: battleObject_onCollision_801A200 has no typed C interface yet */
 static inline call_sub_801A200_result call_sub_801A200(u32 r5) {
     R5 = r5;
-    GUEST_CALL(sub_801A200);
+    GUEST_CALL(battleObject_onCollision_801A200);
     return (call_sub_801A200_result){ R2, R3, R5, R6 };
 }
 
@@ -228,7 +228,7 @@ static void apply_damage_to_player(u32 player, u32 collision, u32 r10_val) {
         R2 = unpack_res.r2;
         call_PlaySoundEffect_applyDamageToPlayer_801ba12(sfx_id, unpack_res.r2);
 
-        /* r10_val is used only by the trailing sub_801A200 wrapper below. */
+        /* r10_val is used only by the trailing battleObject_onCollision_801A200 wrapper below. */
         (void)r10_val;
 
         if (hp_remaining != 0) {
@@ -1074,20 +1074,20 @@ Next nullsub_58(void) {
 }
 
 /* ── sub_801BFEE ── */
-/* sub_801BFEE: enable (pass 1 to sub_801C002); all results (r0-r3, flags)
+/* sub_801BFEE: enable (pass 1 to battle_loadChipPreviewGfxFromHandTable_801C002); all results (r0-r3, flags)
  * come straight from that call. */
 Next sub_801BFEE(void) {
     R0 = 1;
-    GUEST_CALL(sub_801C002);
+    GUEST_CALL(battle_loadChipPreviewGfxFromHandTable_801C002);
     RETURN_TO_CALLER();
 }
 
 /* ── sub_801BFF8 ── */
-/* sub_801BFF8: invoke sub_801C002 with r0 = 0 and let its results
+/* sub_801BFF8: invoke battle_loadChipPreviewGfxFromHandTable_801C002 with r0 = 0 and let its results
  * (registers and flags) pass straight through to the caller. */
 Next sub_801BFF8(void) {
     R0 = 0;
-    GUEST_CALL(sub_801C002);
+    GUEST_CALL(battle_loadChipPreviewGfxFromHandTable_801C002);
     RETURN_TO_CALLER();
 }
 

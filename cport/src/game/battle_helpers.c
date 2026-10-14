@@ -6,7 +6,7 @@
  * original's own captured calls and on random inputs; then checked with the
  * lockstep tests like all hand-written code. Model per function: GLM-5.3
  * (battle_isTimeStop, GetBattleMode, GetBattleNaviStatsByte_AllianceFrom-
- * BattleObject), Kimi K3 (unpackVerActorTyAndAIIdx_800F29C, sub_800C488, object_isValidPanel).
+ * BattleObject), Kimi K3 (unpackVerActorTyAndAIIdx_800F29C, battle_panelGridFinalizeOrPickDimension_800C488, object_isValidPanel).
  */
 #include "game.h"
 #include "runtime.h"
@@ -65,11 +65,11 @@ Next unpackVerActorTyAndAIIdx_800F29C(void) {
     RETURN_TO_CALLER();
 }
 
-/* sub_800C488: r1 = 0x1E0 (480) when GetBattleMode() reports mode 1, 0x258
+/* battle_panelGridFinalizeOrPickDimension_800C488: r1 = 0x1E0 (480) when GetBattleMode() reports mode 1, 0x258
  * (600) otherwise. Its callers (object.s) store r1 as a halfword at offset
  * 0x0E of the structure in r7, several next to 0x708 (1800) at 0x12, so
  * these are likely frame counts. r0, r2 and r3 keep their incoming values. */
-Next sub_800C488(void) {
+Next battle_panelGridFinalizeOrPickDimension_800C488(void) {
     /* r0/r2/r3 are preserved across this call, as the original's push/pop does */
     u32 savedR0 = R0, savedR2 = R2, savedR3 = R3;
 

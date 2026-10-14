@@ -2131,10 +2131,10 @@ static u32 get_new_anim(u32 obj) {
     return R1;
 }
 
-/* register form: calls sub_800EB6C outside this file, which has no typed C interface yet */
+/* register form: calls battle_findPlayerByAlliance_800EB6C outside this file, which has no typed C interface yet */
 static u32 check_alliance_valid(u32 alliance) {
     R0 = alliance;
-    GUEST_CALL(sub_800EB6C);
+    GUEST_CALL(battle_findPlayerByAlliance_800EB6C);
     return R0;
 }
 

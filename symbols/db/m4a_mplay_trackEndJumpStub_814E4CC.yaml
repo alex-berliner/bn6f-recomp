@@ -1,0 +1,63 @@
+name: m4a_mplay_trackEndJumpStub_814E4CC
+address: '0x0814E4CC'
+kind: function
+previous_names:
+- sub_814E4CC
+status: probable
+summary: Indirect-jump trampoline used as the track-end callback for m4a MPlay tracks; reaches the real
+  routine through r3.
+interface: (r0 = MPlayTrackInfo*, r1 = MPlayChannel*, r2 = 0x68736D53 'Smsh' tag, r3 = target_fn) -> r0
+  = ?, flags clobbered; tail-call into r3 with r4-r12/lr preserved.
+details: "Body is a single `bx r3` instruction (sub_814E4CC at 0x0814E4CC), so this function is purely\
+  \ a thunk.\n  Immediately followed by an alignment pad (two 0x00 bytes) and a small data table:\n  \
+  \  off_814E4D0 = byte_81C068C (some code/data blob in ROM)\n    off_814E4D4 = byte_3007FF0 (IWRAM address,\
+  \ the last word of IWRAM)\n    dword_814E4D8 = 0x68736D53 (\"Smsh\", the small 'S' tag that m4a uses\
+  \ to mark end-of-track callbacks).\n  The four bytes seen in every captured-call r2 (0x68736D53) — and\
+  \ the \"Smsh\"/`61 e2 14 08` (LE u32 = 0x0814e261) sitting just past the 'Smsh' tag in each\n    pointer\
+  \ target — match the structure of an m4a `MPlayTrackInfo` `trackEndCallback` slot ('Smsh' magic, then\
+  \ callback pointer). The caller (MPlayMain)\n    is documented as the m4a sequencer, and ply_note /\
+  \ sub_814E4DC are confirmed/unnamed m4a helpers, all consistent with this being part of the music driver.\n\
+  \  Rather than call a real function, MPlayMain loads the track-end entry from r0's struct and `bx`s\
+  \ to it; the function exists at this fixed address only so the\n    data table for `off_814E4D0/off_814E4D4/dword_814E4D8`\
+  \ lives at a known offset. Control returns via r3; this is a tail-call (no bx lr / no return).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `sub_814E4CC:` is literally `bx r3` (asm line 22146), so all "logic" happens in the caller-supplied
+    r3. - `dword_814E4D8: .word 0x68736D53` is the ASCII ''Smsh'' marker that m4a uses for end-of-track
+    callbacks; every captured call shows r2 == 0x68736d53. - Captured-call snapshots have the same bytes
+    53 6d 73 68 61 e2 14 08 immediately after the ''Smsh'' tag, i.e. a u32 LE pointer 0x0814E261 — that
+    is the offset right after `MPlayMain`''s call to this thunk, which is exactly where r3 is sourced
+    from. - All six example callsites share the same magic tag and pointer-to-callers; identifies this
+    as a shared jump-slot for the m4a driver. - The contract shows every caller''s callee-saved set (r4-r12,
+    lr) listed as `in` and `out`, which only makes sense for a tail-call dispatch.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0814E4CC
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story1, story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^0814e4cc '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander
+open_questions:
+- Whether `off_814E4D0` (`byte_81C068C`) and `off_814E4D4` (`byte_3007FF0`) are referenced anywhere or
+  are just adjacent constants — the disassembler shows no immediate consumer. Confirming uses of those
+  two words would pin down the exact role of 0x814E4CC beyond "m4a end-of-track callback trampoline".
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 12fbd516
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_814E4CC -> m4a_mplay_trackEndJumpStub_814E4CC
+  where: bn6f e008e389
+  tool: tools/rename_symbol.py

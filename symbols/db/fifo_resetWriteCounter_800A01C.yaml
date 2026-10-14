@@ -1,0 +1,55 @@
+name: fifo_resetWriteCounter_800A01C
+address: '0x0800A01C'
+kind: function
+previous_names:
+- sub_800A01C
+status: probable
+summary: Resets the FIFO ring-buffer write counter (byte_3000EA8, the write index of dword_3002180) to
+  0; companion to fifo_pushRecord16_8009FF8.
+interface: '(void) -> nz flags ; side effect: writes 0 to byte_3000EA8 (0x03000EA8)'
+details: "The function sets r0 = 0, loads the address 0x03000EA8 (byte_3000EA8 in IWRAM) into r1, then\n\
+  \  writes r0 as a 32-bit word to [r1], clearing that location to zero. It is a tail-call (`mov pc, lr`)\n\
+  \  returning to the caller with no preserved input, only the NZ flags clobbered by the `str` operation.\n\
+  \  All four callers are battle-state-related (battle_update_8007A44, initBattleStructsAndVram_80071D4,\n\
+  \  sub_8007B9C, sub_8007F4E), suggesting this is a small per-frame/per-transition reset of some\n  battle\
+  \ bookkeeping byte. The exact role of byte_3000EA8 is not in the supplied struct definitions,\n  so\
+  \ the \"SomeEWRAMByte\" hedge is honest; the contract `out=['nz']` plus writes to r0/r1 indicate\n \
+  \ the caller treats the call as void.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mov r0, #0` followed by `ldr r1, off_800A024 // =byte_3000EA8` and `str r0, [r1]` at lines
+    15403–15406 of asm00_1.s - Tail return via `mov pc, lr` (no stack frame, no callee) - All four direct
+    callers (`battle_update_8007A44`, `initBattleStructsAndVram_80071D4`, `sub_8007B9C`, `sub_8007F4E`)
+    are battle-subsystem routines, consistent with clearing a battle scratch byte - Captured calls always
+    exit with r0=0 and the Z flag set, matching `mov r0,#0` + `str` clobbering flags'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0800A01C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0800a01c '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- What byte_3000EA8 represents semantically (no struct entry in the provided definitions matches this
+  address). Settling it would mean locating read sites of 0x03000EA8 across the battle subsystem or finding
+  a matching named field in an unreleased struct header.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 12fbd516
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_800A01C -> fifo_resetWriteCounter_800A01C
+  where: bn6f e008e389
+  tool: tools/rename_symbol.py

@@ -652,10 +652,10 @@ Next fifo_pushRecord16_8009FF8(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_800A01C ── */
-/* sub_800A01C: clear the flag/state word at byte_3000EA8.
+/* ── fifo_resetWriteCounter_800A01C ── */
+/* fifo_resetWriteCounter_800A01C: clear the flag/state word at byte_3000EA8.
  * Returns r0 = 0, r1 = &byte_3000EA8, with Z set (result of "mov r0, #0"). */
-Next sub_800A01C(void) {
+Next fifo_resetWriteCounter_800A01C(void) {
     R0 = 0;
     R1 = A_byte_3000EA8;
     ST32(R1, R0);

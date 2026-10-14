@@ -883,24 +883,24 @@ Next owPlayer_setS200ace0_fixedAnimationSelect_809e13c(void) {
 /* ── owPlayer_RequestFixedAnimation_809E14C ── */
 /* owPlayer_RequestFixedAnimation_809E14C(r0 = fixed-animation id):
  * Called when the overworld player is told to play a fixed animation.
- * sub_809E462 decides whether that animation can take effect immediately:
+ * owPlayer_isBusyOrCutsceneActive_809E462 decides whether that animation can take effect immediately:
  *   - if it returns 0 (Z set), the id is written to the fixed-animation
  *     select byte at eStruct200ace0+2 (byte_200ACE2) and the event flag
  *     EVENT_1719 (bank 0x17, flag 0x19) is raised;
  *   - otherwise the request is deferred by parking the id in the byte at
  *     eStruct200ace0+0x1c (byte_200ACFC).
- * r4-r7 are preserved (the id is passed to sub_809E462 in r4/r7's struct
+ * r4-r7 are preserved (the id is passed to owPlayer_isBusyOrCutsceneActive_809E462 in r4/r7's struct
  * pointer, but both are restored before returning). */
 Next owPlayer_RequestFixedAnimation_809E14C(void) {
     u32 anim = R0;
     u32 saved_r4 = R4;
     u32 saved_r7 = R7;
 
-    R4 = anim;                  /* mov r4, r0: sub_809E462 reads r4 */
+    R4 = anim;                  /* mov r4, r0: owPlayer_isBusyOrCutsceneActive_809E462 reads r4 */
     R7 = A_eStruct200ace0;      /* ldr r7, =eStruct200ace0 */
 
-    /* sub_809E462 reports in Z whether the animation can be applied now. */
-    GUEST_CALL(sub_809E462); /* answers in Z; the original branches on it */
+    /* owPlayer_isBusyOrCutsceneActive_809E462 reports in Z whether the animation can be applied now. */
+    GUEST_CALL(owPlayer_isBusyOrCutsceneActive_809E462); /* answers in Z; the original branches on it */
 
     if (ZERO_FLAG()) {
         /* Approved: select the animation right away and flag the event. */
@@ -1350,12 +1350,12 @@ Next MakeOWPlayerInvisible(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_809E462 ── */
-/* sub_809E462:
+/* ── owPlayer_isBusyOrCutsceneActive_809E462 ── */
+/* owPlayer_isBusyOrCutsceneActive_809E462:
  * Reads the flag byte at oGameState_Unk_10 from the current game state.
  * Returns r0 = that byte, r1 = game state pointer, and sets NZ flags on it
  * so callers can branch on whether the flag is zero. */
-Next sub_809E462(void) {
+Next owPlayer_isBusyOrCutsceneActive_809E462(void) {
     u32 *toolkit = (u32 *)R10;
     u32 gameState = LD32((u32)toolkit + oToolkit_GameStatePtr);
 

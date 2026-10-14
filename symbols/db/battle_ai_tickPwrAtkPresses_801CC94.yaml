@@ -1,0 +1,65 @@
+name: battle_ai_tickPwrAtkPresses_801CC94
+address: '0x0801CC94'
+kind: function
+previous_names:
+- sub_801CC94
+status: probable
+summary: AI tick that, when any allied Navi bonus is active, randomly queues one or two "PwrAtk" button
+  presses (with a 12-tick inter-press delay) into AIData and refreshes a 0x20-byte blank GFX region.
+interface: '(r5 = *mut AIData, r10 = *Toolkit, lr) -> void ; side effects: writes AIData+PwrAtkState (0x1d),
+  AIData+Unk_15/Unk_0f/PwrAtkButton/Unk_38 areas; may call QueueEightWordAlignedGFXTransfer(0x20 zeros
+  -> 0x030016d0); pushes/pops r5; calls r10-anchored helpers'
+details: "Operating on the AIData pointer in r5 (the actor's AI block), the routine first checks\n  AIData.PwrAtkState\
+  \ at offset 0x1d. If 0 (inactive) and the cooldown AIData+0x38 has not\n  reached 1, it short-circuits.\
+  \ Otherwise it inspects Unk_15 (0x15) and Version_17 (0x17);\n  if Version_17 == 0xff or (Unk_15 ==\
+  \ 0 and PwrAtkButton@0x1e == 0), it falls through to the\n  activation check, which gets the player's\
+  \ BattleObject via\n  battle_preUpdateAndGetPlayerObject_80103EC, counts allied Navi bonuses with\n\
+  \  countActiveNaviBonuses_800FE52, and proceeds if any are set.\n  On activation it draws GetPositiveSignedRNGSecondary&1\
+  \ + 1 into PwrAtkState (so 1 or 2),\n  sets Unk_0f to 0xc (12) as a per-press timer, and stores Unk_38\
+  \ = 0x14 (20).\n  During the active phase, each tick decrements Unk_0f; when it reaches 0 the function\n\
+  \  decrements PwrAtkState and re-arms Unk_0f to 0xc. Every other Unk_0f tick (bit 1 set, ie\n  every\
+  \ 4th frame) it queues an 8-word aligned 0x20-byte zero GFX transfer from\n  byte_801CDA4 to byte_30016D0,\
+  \ presumably to clear the chip/PwrAtk display strip in battle.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0, [r5,#0x1d]` reads PwrAtkState as the dispatch field. - `countActiveNaviBonuses_800FE52`
+    followed by `cmp r0,#0 ; beq` gates the random press decision on the allied Navi having bonus stats.
+    - `bl GetPositiveSignedRNGSecondary ; mov r1,#1 ; and r1,r0 ; add r1,#1 ; strb r1,[r5,#0x1d]` records
+    a uniform random count of 1 or 2 press events. - `mov r0,#0xc ; strb r0,[r5,#0xf]` sets and re-arms
+    a 12-tick delay between presses. - `QueueEightWordAlignedGFXTransfer` with `r1 = byte_30016D0`, `r2
+    = 0x20`, source pointed via off_801CDA0 to `byte_801CDA4` (32 bytes of zero) clears a 32-byte graphics
+    region used by the in-battle panel. - The `tst r0,#2` mask (bit 1 of Unk_0f) and the `bne ... strh
+    r1,[r5,#0x38]` (writing 0x14 to AIData+0x38) and only `b` on the equal path together implement the
+    per-half-tick countdown state machine.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801CC94
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0801cc94 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- What AIData+0x15/0x17 conditions actually represent (Unk_15 is 0/non-zero; Version_17 0xff).
+- Why exactly 0x14 is written to AIData+0x38 and what consumer reads it. The semantic mapping
+- from "presses queued" to what gets executed by an attack selector — a wider trace of the
+- caller at 0x0801cadc would settle this.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 12fbd516
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801CC94 -> battle_ai_tickPwrAtkPresses_801CC94
+  where: bn6f e008e389
+  tool: tools/rename_symbol.py

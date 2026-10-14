@@ -1,0 +1,61 @@
+name: rfufunc_tailCallStub_814DA64
+address: '0x0814DA64'
+kind: function
+previous_names:
+- sub_814DA64
+status: probable
+summary: One-instruction Thumb tail-call stub that just `bx r1` to whatever the caller parked in r1 —
+  used as an RFU library indirect-call trampoline.
+interface: (r0 = scratch, r1 = target function pointer to `bx` into) -> returns whatever the callee returns
+  ; no side effect at this stub itself (it never executes any code after entry)
+details: "- The function is a single Thumb instruction `bx r1` preceded by the standard `thumb_func` /\
+  \ `thumb_func_end` glue and a NOP-padding halfword `0x46C0` (`mov r8, r8` style). This is exactly the\
+  \ shape of a global-IRQ/handler-dispatch stub seen at the bottom of GBA libraries.\n  - Callers (rfu_REQ_sendData,\
+  \ sub_8145D54, sub_814ECA0, sub_814ECB4, sub_814EEC0) all live in the RFU (wireless) subsystem (the\
+  \ `rfu_REQ_*` / `sio_*-style` 0x0814xxxx block), and their in-contracts consistently show they hand\
+  \ a function pointer in r1 with r0 as data. The stub never touches its own stack frame, never reads/writes\
+  \ memory, and never produces flags — yet flags and r0/r1/r2/r3/r4/r12 are in the `may_write` set simply\
+  \ because the lifter's contract propagates whatever the tail-callee returns.\n  - Because there is literally\
+  \ no code to cite, the safest summary is \"tail-call trampoline that jumps to whatever pointer the caller\
+  \ put in r1\". The single NOP halfword (`0x46C0`) is real and lives at 0x0814DA66.\n  - Drop-in IRT-style:\
+  \ pairs of callers put the same kind of stub at very similar offsets (0x0814DA64 etc.) so RFU command\
+  \ dispatch can choose between two tail targets from inlined branches.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `sub_814DA64:` at bn6f/asm/libs.s:20600 disassembles to `bx r1` then `.hword 0x46C0`, a hardware-level
+    tail-call. - All five callees (`rfu_REQ_sendData`, `sub_8145D54`, `sub_814ECA0`, `sub_814ECB4`, `sub_814EEC0`)
+    live in the 0x0814xxxx RFU/SIO region, making the subsystem attribution concrete rather than guessed.
+    - Caller in-contracts all put a `r1` parameter that is caller-supplied with no use before the call
+    site (consistent with handing it straight to the function pointer). - The `out`/`may_write` lists
+    include flags and the scratch GP registers purely because the lifter forwards whatever the tail target
+    clobbers, not because this stub touches them.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0814DA64
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story1, story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^0814da64 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander
+open_questions:
+- Without seeing the call-site code that loads r1 just before `bl sub_814DA64`, we cannot know which specific
+  RFU function the stub is currently pointing at for any given invocation; it is by design polymorphic.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 12fbd516
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_814DA64 -> rfufunc_tailCallStub_814DA64
+  where: bn6f e008e389
+  tool: tools/rename_symbol.py

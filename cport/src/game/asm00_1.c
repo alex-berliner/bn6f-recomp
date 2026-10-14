@@ -1309,9 +1309,9 @@ Next owMapObject_renderAll_8003BF4(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8003C70 ── */
-/* sub_8003C70: reset the something tracked by sub_80028C0 (r0 = 0 as its argument). */
-Next sub_8003C70(void) {
+/* ── battle_resetSpritePaletteCount_8003C70 ── */
+/* battle_resetSpritePaletteCount_8003C70: reset the something tracked by sub_80028C0 (r0 = 0 as its argument). */
+Next battle_resetSpritePaletteCount_8003C70(void) {
     R0 = 0;
     GUEST_CALL(sub_80028C0);
     RETURN_TO_CALLER();
@@ -1645,9 +1645,9 @@ Next FreeOverworldMapObject(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80049B0 ── */
-/* sub_80049B0: invoke sub_80028C0 with argument 5; result comes back in r2. */
-Next sub_80049B0(void) {
+/* ── battleObject_finishQueuedSpriteGroup_80049B0 ── */
+/* battleObject_finishQueuedSpriteGroup_80049B0: invoke sub_80028C0 with argument 5; result comes back in r2. */
+Next battleObject_finishQueuedSpriteGroup_80049B0(void) {
     R0 = 5;
     GUEST_CALL(sub_80028C0);
     RETURN_TO_CALLER();
@@ -2208,7 +2208,7 @@ static void call_subsystem_handler(u32 index, u32 game_state) {
     case 0x04: GUEST_CALL(gamestate_OnMapUpdate_8005268); break;
     case 0x08: GUEST_CALL(battle_init_80052D8); break;
     case 0x0C: GUEST_CALL(HandlesBattleMainUntilEndOfBattleThenTriggersEnterMap); break;
-    case 0x10: GUEST_CALL(sub_800536E); break;
+    case 0x10: GUEST_CALL(overworld_owMap_renderAndTickSubsystems_800536E); break;
     case 0x14: GUEST_CALL(scene_nextOrUpdate_80053E4); break;
     case 0x18: GUEST_CALL(pet_menuUpdateAndHandleExit_8005462); break;
     case 0x1C: GUEST_CALL(sub_800555A); break;
@@ -2962,7 +2962,7 @@ Next endBattleAndEnterMap_800531C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_800536E ── */
+/* ── overworld_owMap_renderAndTickSubsystems_800536E ── */
 /* Sound ids for the early warp cue, selected by the GameState byte at +5
  * (ROM table hword_80053E0: 0xE7, 0xEC). */
 static const u16 warp_entry_cues[2] = { 0xE7, 0xEC };
@@ -3037,8 +3037,8 @@ static void game_state_tick(u32 self) {
     }
 }
 
-/* sub_800536E(r5 = self) -> r8..r12 (left by the callees) */
-Next sub_800536E(void) {
+/* overworld_owMap_renderAndTickSubsystems_800536E(r5 = self) -> r8..r12 (left by the callees) */
+Next overworld_owMap_renderAndTickSubsystems_800536E(void) {
     game_state_tick(R5);
     RETURN_TO_CALLER();
 }
@@ -3519,10 +3519,10 @@ Next mainState_runFrame_8005814(void) {
 /* Highest trigger index checkCoordinateTrigger_8031a7a may report. */
 #define WARP_TRIGGER_MAX 0xF
 
-/* register form: calls sub_809E462 outside this file, which has no typed C interface yet.
+/* register form: calls owPlayer_isBusyOrCutsceneActive_809E462 outside this file, which has no typed C interface yet.
  * Answers in flags: Z set means the on-map update is ready for a warp to be checked. */
 static bool on_map_update_ready(void) {
-    GUEST_CALL(sub_809E462);
+    GUEST_CALL(owPlayer_isBusyOrCutsceneActive_809E462);
     return ZERO_FLAG();
 }
 
@@ -3653,7 +3653,7 @@ Next sub_80058D0(void) {
  *
  * Sets the two Gregar-story event flags, starts a screen fade, ticks the
  * countdown timer table, then hands control to subsystem 0x10 of the game
- * state machine (which drives sub_800536E via cbGameState_80050EC).
+ * state machine (which drives overworld_owMap_renderAndTickSubsystems_800536E via cbGameState_80050EC).
  *
  * Flag contract: NZ comes from the final `movs r0, #0x10` (R0 = 0x10, so
  * N=0 Z=0); C and V are whatever timer_tickCountdownTable_8035738 left
@@ -3746,9 +3746,9 @@ static u32 event_flag_set_checkThenStartBattle_8005A8C(u16 flag) {
     return !ZERO_FLAG();     /* NE = flag is set */
 }
 
-/* register form: calls sub_809E462 outside this file, which has no typed C interface yet */
+/* register form: calls owPlayer_isBusyOrCutsceneActive_809E462 outside this file, which has no typed C interface yet */
 static u32 sub_809E462_blocks_battle(void) {
-    GUEST_CALL(sub_809E462);
+    GUEST_CALL(owPlayer_isBusyOrCutsceneActive_809E462);
     return !ZERO_FLAG();     /* NE = the guard trips */
 }
 

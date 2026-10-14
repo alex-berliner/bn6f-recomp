@@ -1,0 +1,72 @@
+name: battle_loadChipPreviewGfxFromHandTable_801C002
+address: '0x0801C002'
+kind: function
+previous_names:
+- sub_801C002
+status: probable
+summary: Loads the per-slot chip icon GFX (0x80 bytes per entry, 6 slots) for the chip-selection preview
+  panel from the active-hand table, using either the chip database's sprite or a fixed "special effect"
+  override tile.
+interface: '(r0 = actor_side_tag: 0 or 1) -> r0 = 0 ; side effects: 6 DMA queue ops into VRAM at 0x6016a00..0x6016c80'
+details: "- Pushes r0 on the stack as the side tag (0 or 1) and walks r4 through dword_20352E0, a 6-entry\
+  \ x 8-byte table; r6 counts the 6 slots, r7 the destination VRAM cursor at 0x6016a00 advancing by 0x80\
+  \ per slot.\n  - Per slot: ldrb r0,[r4] (slot-active flag, skip if 0) then ldrb r0,[r4,#3] compared\
+  \ to the saved side tag (skip if mismatch) - so each entry is tagged with which side's chip preview\
+  \ it represents.\n  - Loads the chip-slots pointer at [r4,#4] and calls battle_getSelectedChipForUse_800ED90\
+  \ to obtain the selected chip ID (r0) plus a \"valid\" flag in r3; skip slot if r3 == 0.\n  - Special-case:\
+  \ when side tag is 1 AND (GetBattleMode()!=1 AND battle-effects bit 0x8 not set) - actually re-read:\
+  \ if (mode !=1) and (effects & 8) - the code goes to effect override using dword_872CE94 (a hardcoded\
+  \ 0x80-byte GFX blob, likely an \"AuraHead\"/Beast-Out or team-effect icon).\n  - Otherwise: chip ID\
+  \ is mapped to chip data via getChip8021DA8 (ChipData table at 0x8021DA8), and [data + 0x20] (a pointer\
+  \ field inside the 44-byte ChipData - matches the sprite GFX pointer / preview icon offset) becomes\
+  \ the GFX source.\n  - Calls QueueEightWordAlignedGFXTransfer with src, 0x6016a00+i*0x80, 0x80 to DMA\
+  \ 32x8 bytes per slot (a single 8x8 tile bank or 4-char panel of preview tiles).\n  - Returns 0 (likely\
+  \ just because exit captured from first callers). Likely called once per frame from a battle scene renderer.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {r0}` at start followed by `ldr r1, [sp]` makes the side tag persistent across the
+    loop body (asm line 26687/26693). - `mov r6, #6` and `sub r6, #1` plus `add r4, #8` shows a 6-iteration,
+    stride-8 walk over dword_20352E0 (asm loc_801C00C, loc_801C062). - `cmp r3, #0` after battle_getSelectedChipForUse_800ED90
+    uses that function''s "no chip selected" return in r3 to gate the slot. - `cmp r1, #1 ... bl GetBattleMode
+    / bl GetBattleEffects / mov r1,#8 / tst r0,r1` patterns the special-case on (mode==1) OR (effects
+    has bit 0x8) NOT-matching - i.e. only when not in mode 1 AND the effect bit is active (or possibly
+    the inverse, see details) we use dword_872CE94; otherwise the chip-data path. - `lsl r0, r0, #0x17`
+    then `lsr r0, r0, #0x17` masks chip ID to 9 bits (chip DB index range). - `ldr r0, [r0, #0x20]` after
+    getChip8021DA8 reads the GFX-pointer field at offset 0x20 in the ChipData record. - `QueueEightWordAlignedGFXTransfer(...
+    0x80)` and the per-iteration `add r7, #0x80` along with the constant 0x6016a00 base show VRAM tile-block
+    writing, slot-by-slot. - Caller sub_801BFEE (r0=1) and sub_801BFF8 (r0=0) tail-call this with the
+    two side tags; snap_story2 captured calls always pass r0=1, consistent with "render right-side chip
+    preview" being the asserted hot path.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801C002
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0801c002 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- 'The exact polarity of the (mode==1) vs (effects bit 0x8) override: the current read is "if both mode
+  != 1 AND bit 0x8 set, use the override tile", but it might be the other way around (override if EITHER
+  condition). Cross-checking semantics of BATTLE_EFFECTS_* would settle it.'
+- What dword_872CE94 actually depicts (which preview-icon override it corresponds to - BeastOut aura?
+  TeamBonus?) - needs the surrounding battle UI code.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 12fbd516
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801C002 -> battle_loadChipPreviewGfxFromHandTable_801C002
+  where: bn6f e008e389
+  tool: tools/rename_symbol.py

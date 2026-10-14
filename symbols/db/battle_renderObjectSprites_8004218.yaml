@@ -1,0 +1,65 @@
+name: battle_renderObjectSprites_8004218
+address: '0x08004218'
+kind: function
+previous_names:
+- sub_8004218
+status: probable
+summary: Per-frame, iterate the active battle-object list and project, ensure gfx, and queue visible sprite
+  frame pieces for each one (then record the post-group OBJ palette count).
+interface: (r10 = ToolkitPtr) -> r0 = 3 ; no other side-effectful return; clobbers nz/c/v + r0..r6
+details: "Loads the Toolkit (r10) and walks the array at dword_203A010 (interpreted as a pointer-to-pointer\
+  \ list, stepping by 4 each iteration). The outer bound is the byte at dword_203CA7C, used as a \"remaining\
+  \ slot count\" loop (`sub r6,#1; blt end`).\n  For each object pointer r5:\n    - If `r5->Flags & 0x02`\
+  \ (OBJECT_FLAG_VISIBLE) is set, the full path runs:\n        * `sprite_projectAndCull(r5+0x34)` (battle_object\
+  \ coords; 0x34 is X)\n        * `sprite_ensureGfxResident(3)` to make sure tiles+palette are loaded\n\
+  \        * `sprite_queueFramePieces(2, 0x40, r5+0x90)` (object_sprite_struct at offset 0x90)\n    -\
+  \ Else, the object's sprite-data Unk_24 dword is cleared to 0, and if bit 0x01 (OBJECT_FLAG_ACTIVE)\
+  \ is also set, only `sprite_projectAndCull` is called.\n  After all slots are processed, `sub_80028C0(3)`\
+  \ is called to commit the OBJ palette count for the last \"group\" (slot 3, the high priority back row).\n\
+  \  Note the dual use of r4: both a high register and a callee-saved stack slot. `r10` is preserved implicitly\
+  \ (saved to r6/pushed and restored into r12 slot).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- r10 is in the input contract but not touched at function entry; assembly never reads it,
+    only preserves it via push/pop via r12, suggesting the visible/active list address is sourced via
+    global pointers rather than the toolkit. - `off_80042C4 = dword_203A010` loaded into r7 then `ldr
+    r5,[r7]; add r7,#4` shows iteration over a 4-byte-stride array of object pointers. - `off_80042C0
+    = dword_203CA7C` loaded byte-wise into r6 and used as a 1-based loop counter (`sub r6,#1; blt loc_800427A`).
+    - `tst r2,#2; beq loc_800425A` plus `tst r2,#1` matches object-header Flags bits 0x01 (ACTIVE) and
+    0x02 (VISIBLE). - `add r0,#0x34` before calling `sprite_projectAndCull` matches `oBattleObject.X`
+    (Coords block starts at 0x34). - `add r5,#0x90` and `add r0,#0x90` is the offset of `oBattleObject_SpriteData`
+    in the battle object struct. - `mov r0,#3; bl sub_80028C0` after the loop matches the callee''s documented
+    behavior of recording the palette count in slot r0 (slot 3 = back layer). - `mov r1,#0x40` passed
+    to `sprite_queueFramePieces` is the standard OBJ layer / priority constant used for back-row battle
+    objects.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08004218
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^08004218 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- Why r10 (Toolkit) is in the input contract but never referenced inside the function. Possibly this is
+  called only from contexts that also have a valid toolkit, and the lifter over-approximated inputs.
+- The exact layout of the dword_203A010 array (number of groups, what other render layers look like).
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 12fbd516
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8004218 -> battle_renderObjectSprites_8004218
+  where: bn6f e008e389
+  tool: tools/rename_symbol.py

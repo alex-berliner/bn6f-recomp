@@ -1464,9 +1464,9 @@ static bool event_flag_set_sub_8034C36(u32 group, u32 flag) {
     return !ZERO_FLAG();          /* Z set when flag is NOT set */
 }
 
-/* register form: calls sub_809E462 outside this file, which has no typed C interface yet */
+/* register form: calls owPlayer_isBusyOrCutsceneActive_809E462 outside this file, which has no typed C interface yet */
 static bool func_809E462_nonzero(void) {
-    GUEST_CALL(sub_809E462);
+    GUEST_CALL(owPlayer_isBusyOrCutsceneActive_809E462);
     return !ZERO_FLAG();          /* Z set when result is 0 */
 }
 
@@ -1486,7 +1486,7 @@ static bool cutscene_script_nonnull(void) {
 }
 
 /* Gate check for player movement: returns true only when the screen is fading,
- * neither the advance-forward nor sliprun event flags are set, sub_809E462
+ * neither the advance-forward nor sliprun event flags are set, owPlayer_isBusyOrCutsceneActive_809E462
  * returns zero, chatbox mask 0x80 is clear, and no cutscene script is loaded. */
 static bool player_advance_allowed(void) {
     if (!screen_fade_active_sub_8034C36())
@@ -1526,9 +1526,9 @@ static bool event_flag_set_sub_8034C6E(u8 page, u8 bit) {
     return !ZERO_FLAG();   /* Z set → flag is clear */
 }
 
-/* register form: calls sub_809E462 outside this file, which has no typed C interface yet */
+/* register form: calls owPlayer_isBusyOrCutsceneActive_809E462 outside this file, which has no typed C interface yet */
 static bool sub_809E462_nonzero(void) {
-    GUEST_CALL(sub_809E462);
+    GUEST_CALL(owPlayer_isBusyOrCutsceneActive_809E462);
     return !ZERO_FLAG();
 }
 

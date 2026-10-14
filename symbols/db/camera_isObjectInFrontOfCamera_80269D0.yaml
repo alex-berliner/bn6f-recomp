@@ -1,0 +1,56 @@
+name: camera_isObjectInFrontOfCamera_80269D0
+address: '0x080269D0'
+kind: function
+previous_names:
+- sub_80269D0
+status: probable
+summary: 'Battle camera: returns 1 if the current battle actor (from r10''s BattleState) is in front of
+  the camera, else 0.'
+interface: () -> r0 = 0 or 1 (Z set on r0); no side effects beyond r0, r1, r3.
+details: "- Calls battle_GetObjectByteAt14_800A9E2 with r0=0 to read battleState+0x14 for index 0 (the\n\
+  \    byte used elsewhere for \"is object in front of camera\", per the caller context).\n  - ANDs the\
+  \ returned byte with 0x5 (mask of bits 0 and 2) and returns 1 if any of those bits\n    is set, else\
+  \ 0. The result ends up in r0 with Z flag set when r0 == 0.\n  - The captured-call snapshots show consistent\
+  \ r0/r1/r2/r3 values from camera_doShakeEffect\n    (the only caller), confirming the function is invoked\
+  \ unconditionally on camera-shake\n    frames and is just a quick predicate.\n  - The choice of `0x5`\
+  \ mask is the only \"magic\" here: it likely corresponds to \"alliance\n    bit(s)\" on the indexed\
+  \ battle object (bits 0 and 2 of Unk_14 in BattleState, where 0\n    typically = player row facing friend).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mov r0, #0` then `bl battle_GetObjectByteAt14_800A9E2` at 0x080269d4 - `mov r1, #5`; `and
+    r0, r1`; `beq locret_80269E0`; `mov r0, #1` at 0x080269d8-0x080269de - Single direct callee `battle_GetObjectByteAt14_800A9E2`
+    per the callees list - Caller `camera_doShakeEffect_80301e8` invokes this as part of a "cosmetic advance
+    that still shifts the next folder shuffle", matching a quick per-frame predicate - Captured exits
+    always r0=00000000 Z set, with the branch path returning 0; the non-taken path returns 1, consistent
+    with `beq … mov r0, #1`'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080269D0
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story1, story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^080269d0 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander
+open_questions:
+- Why exactly mask `0x5` (bits 0 and 2). Looking at BattleState+0x14 layout or
+- BattleObject.Alliance semantics would settle whether this is "in front of camera" vs
+- some other property (e.g. facing direction).
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 12fbd516
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80269D0 -> camera_isObjectInFrontOfCamera_80269D0
+  where: bn6f e008e389
+  tool: tools/rename_symbol.py

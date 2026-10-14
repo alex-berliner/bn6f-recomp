@@ -1,0 +1,81 @@
+name: object_tickStatusEffectTimers_800E730
+address: '0x0800E730'
+kind: function
+previous_names:
+- sub_800E730
+status: probable
+summary: Per-frame update for a battle object's status-effect timers (paralysis, blind, confuse, freeze,
+  superarmor, immobilize, anger, invuln) and the corresponding action resets in BattleObject + CollisionData.
+interface: '(r5 = battle object ptr, r10 = toolkit) -> r0 = 1 ; side effects: decrements several CollisionData
+  status timers, clears/raises ObjectFlags1/ObjectFlags2 bits, sets CurAction=4/6/7, resets CurPhaseAndPhaseInitialized
+  and Unk_5c snapshot, conditionally calls sub_80E09EE / sub_80E4B34 / sub_80E9BDC.'
+details: "At entry the function reads CollisionDataPtr into r6 and snapshots the current ObjectFlags2\
+  \ (object_getFlag2) into [sp].\n  It calls battle_isPaused; if true it returns immediately. Otherwise\
+  \ it ticks each status timer\n  (CollisionData offsets 0x1c, 0x2a, 0x2c, 0x1e, 0x22, 0x20=BlindTimer,\
+  \ 0x28) one frame at a time. When a timer\n  hits zero it clears the corresponding ObjectFlags1 bit\
+  \ (0x800=Paralyzed at 0x1c, 0x10000=Frozen at 0x2a,\n  0x80000000=Bubbled at 0x2c, 0x8000=Confused at\
+  \ 0x1e, 0x4000=Immobilized at 0x22, 0x2000=Blind at BlindTimer,\n  0x8=Invulnerable at 0x28) and zeros\
+  \ the timer plus any companion field (Unk_60 for Bubbled, Unk_48 for Confused,\n  Unk_4c for Blind).\
+  \ When the snapshot indicates the status is still active (bit set in saved flag2), the function\n  clears\
+  \ related ObjectFlags2 bits (0x88/0x180/0x30080/0x30088/0x20080/0x40/0x20), then snapshots the action\
+  \ phase\n  word into BattleObject+0x5c if it was zero, set CurAction to the matching value (4=Paralyzed,\
+  \ 6=Frozen/Bubbled,\n  7=Confused), reset CurPhaseAndPhaseInitialized, and clear the other two related\
+  \ timers. When the corresponding\n  ObjectFlags1 bit is not already set, it ORs it in via object_setFlag1\
+  \ and performs the same action+phase reset.\n  For Bubbled (offset 0x58 ptr), Frozen (offset 0x58 —\
+  \ wait, the code uses r6+0x60 before the SuperArmor path), and\n  Confused+SuperArmor (offset 0x48 ptr),\
+  \ it calls the unnamed sub_80E9BDC / sub_80E4B34 / sub_80E09EE once on the\n  first frame the condition\
+  \ is detected (the pointer field was zero). The function returns r0=1 to its caller.\n  Called twice\
+  \ per frame from ai_eventuallyRunsAIAttack_801AF44 and battle_801B1C4, with r5 set to a battle object\n\
+  \  and r10 to the toolkit — this is a per-object \"tick the status ailments\" routine.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- Entry loads r6 = [r5, oBattleObject_CollisionDataPtr] and saves the ObjectFlags2 word via
+    object_getFlag2 into [sp] (asm loc_800E730-800E73C). - Returns r0=1 in every captured call (snap_story2_*.bin).
+    - battle_isPaused gate at loc_800E744 short-circuits to loc_800E95C when the game is paused, matching
+    the per-frame contract. - Eight near-identical blocks of the form "ldrh r0,[r6,#off]; sub #1; strh;
+    bgt ... ; clear ObjectFlags1 bit; zero timer [+ reset companion field]" tick 0x1c/0x2a/0x2c/0x1e/0x22/0x20(BlindTimer)/0x28;
+    the bit constants are exactly the documented ObjectFlags1 enum values (0x800/0x10000/0x80000000/0x8000/0x4000/0x2000/0x8).
+    - Each block also tests the snapshot r1 (= saved ObjectFlags2) for the matching bit (0x8, 0x10000,
+    0x20000, 0x80) and clears a paired ObjectFlags2 mask (0x88, 0x30080, 0x30088, 0x20080, 0x40, 0x20).
+    - When forcing the action, it stores CurAction=4 (paralyzed), 6 (frozen/bubbled), or 7 (confused/superarmor)
+    and zeroes CurPhaseAndPhaseInitialized — exactly the pattern of restarting the object''s action when
+    its status interrupts it. - The "if (object_getFlag() & bit) bne; else object_setFlag1(bit)" idiom
+    at each block is the standard pattern for "ensure this flag is set", indicating the function guarantees
+    the status ObjectFlags1 bit is raised for as long as the timer is non-zero. - sub_80E09EE / sub_80E4B34
+    / sub_80E9BDC are only invoked once (guarded by the ptr field at r6+0x48/0x58/0x60 being zero), which
+    is a typical "first frame the effect applied" hook.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0800E730
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0800e730 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- The exact gameplay meaning of offsets 0x1c/0x2a/0x2c/0x1e/0x22/0x28 in CollisionData is not named in
+  the structs; the matching ObjectFlags1 bit names from CollisionData.inc are the working labels (paralysis/freeze/bubble/confuse/immobilize/blind/invuln)
+  but those assignments are inferred from the bit values.
+- r4 is set to 1 in the blind path and to 0 in the confused path before each sub_80E09EE call — purpose
+  of that selector unknown without seeing the callees.
+- The relationship between CurAction values 4/6/7 and the status is guessed from BN series conventions;
+  not directly confirmed by strings.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 12fbd516
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_800E730 -> object_tickStatusEffectTimers_800E730
+  where: bn6f e008e389
+  tool: tools/rename_symbol.py

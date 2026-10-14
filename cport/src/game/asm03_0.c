@@ -8,11 +8,11 @@
 #include "game.h"
 #include "runtime.h"
 
-/* ── sub_80269D0 ── */
-/* sub_80269D0: ask battle_GetObjectByteAt14_800A9E2 for a status value and reduce it to a boolean:
+/* ── camera_isObjectInFrontOfCamera_80269D0 ── */
+/* camera_isObjectInFrontOfCamera_80269D0: ask battle_GetObjectByteAt14_800A9E2 for a status value and reduce it to a boolean:
  * r0 = 1 if any of bits 0/2 (mask 5) is set, otherwise r0 = 0.
  * The call's carry/overflow flags pass through unchanged to the caller. */
-Next sub_80269D0(void) {
+Next camera_isObjectInFrontOfCamera_80269D0(void) {
     R0 = 0;
     GUEST_CALL(battle_GetObjectByteAt14_800A9E2);
 

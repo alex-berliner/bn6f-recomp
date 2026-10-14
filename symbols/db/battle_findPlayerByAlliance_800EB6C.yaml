@@ -1,0 +1,65 @@
+name: battle_findPlayerByAlliance_800EB6C
+address: '0x0800EB6C'
+kind: function
+previous_names:
+- sub_800EB6C
+status: probable
+summary: Returns 0 if the opposing alliance of `r0` has a player who's been blinded; else 1 (treats r0
+  as the requester's alliance bit, flips it, looks up that player, and tests for OBJECT_FLAGS_BLIND on
+  the found player).
+interface: '(r0 = requesterAlliance: bool) -> r0 = 0 when the opposing player is blind, 1 otherwise ;
+  side effects: clobbers r4/r5, also calls battle_networkInvert/battle_findPlayer/object_getFlag'
+details: "Reads Toolkit (via r10) to grab the BattleState pointer into r4 for the network-invert call.\n\
+  \  Saves r0 across the call, calls `battle_networkInvert(r0)` and tests result; if it was 0 (invert\
+  \ collapses), returns r0=1 (mov r0,#1 ; pop pc) without touching the player.\n  Otherwise XORs r0 with\
+  \ 1 (`mov r1,#1 ; eor r0,r1`) to flip the alliance bit and calls `battle_findPlayer(alliance)` returning\
+  \ a BattleObject* into r5.\n  If findPlayer returned NULL (`bne loc_800EB8C` is misread, actually `beq\
+  \ loc_800EB9A` jumps when Z set, meaning findPlayer returned NULL — wait assembly shows `bne loc_800EB8C\
+  \ ; b loc_800EB9A` so non-null goes to 8C, null jumps to 9A returning 1), it skips the flag check and\
+  \ returns 1.\n  When the player exists, calls `object_getFlag()` on it and tests bit 0x2000 (`OBJECT_FLAGS_BLIND`).\
+  \ If blind, returns r0=0; else falls through to r0=1.\n  Net return semantics: r0 = 0 iff (XORed alliance)\
+  \ player exists AND is blinded, else r0 = 1. Captured calls show this function is invoked from action\
+  \ dispatchers (chargeShotChargeObject_update, sub_80C9726 etc.) to decide whether the opposite-side\
+  \ player can be targeted.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `sub_800EB6C` reads `[r10,#oToolkit_BattleStatePtr]` to get BattleState* into r4 before invert.
+    - `bl battle_networkInvert` then `tst r0,r0 ; beq loc_800EB9A` short-circuits to return 1 when invert
+    gives 0. - `mov r1,#1 ; eor r0,r1` flips the alliance bit; `bl battle_findPlayer` looks up that side''s
+    player object. - `bl object_getFlag` reads the OBJ_FLAGS1 word, compared against `dword_800ECE4 =
+    0x2000` which equals OBJECT_FLAGS_BLIND in CollisionData.inc. - Return values observed: r0=1 across
+    all 40 captured calls, indicating the test for blind opponent generally failed. - Captured call site
+    (`lr=080e0e59` -> `chargeShotChargeObject_update_80E0E20`) and `sub_80C9726` (battle-object action
+    dispatcher) confirm this is a per-action gating check.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0800EB6C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0800eb6c '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9
+open_questions:
+- The exact intended meaning of the boolean return (is the answer "opponent is blind so act differently"
+  or "can the action proceed?"); 40/40 returns of 1 hint callers treat 0 as a negative/exception case.
+- Whether the early-return for invert==0 represents a non-battle state, a same-alliance check, or a bug
+  in the caller's pre-condition.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 12fbd516
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_800EB6C -> battle_findPlayerByAlliance_800EB6C
+  where: bn6f e008e389
+  tool: tools/rename_symbol.py

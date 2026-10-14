@@ -156,10 +156,10 @@ static u32 get_toolkit_entry_ptr(u32 entry_num) {
     return R0;
 }
 
-/* register form: calls sub_813B780 outside this file, which has no typed C interface yet */
+/* register form: calls battleObject_getByIndex_813B780 outside this file, which has no typed C interface yet */
 static u32 lookup_object_by_flag(u32 flag) {
     R0 = flag;
-    GUEST_CALL(sub_813B780);
+    GUEST_CALL(battleObject_getByIndex_813B780);
     return R0;
 }
 
@@ -242,10 +242,10 @@ static inline call_toolkit_getUnk2004190EntryPtr_813B9FC_result_sub_813BC98 call
 }
 
 typedef struct { u32 r0, r2; } call_sub_813B780_result_sub_813BC98;
-/* register form: generated wrapper: sub_813B780 has no typed C interface yet */
+/* register form: generated wrapper: battleObject_getByIndex_813B780 has no typed C interface yet */
 static inline call_sub_813B780_result_sub_813BC98 call_sub_813B780_sub_813BC98(u32 r0) {
     R0 = r0;
-    GUEST_CALL(sub_813B780);
+    GUEST_CALL(battleObject_getByIndex_813B780);
     return (call_sub_813B780_result_sub_813BC98){ R0, R2 };
 }
 
@@ -257,7 +257,7 @@ static inline call_sub_813B780_result_sub_813BC98 call_sub_813B780_sub_813BC98(u
  * Seven fixed slots (partners 0..6) reserve their entry ids, taken from
  * sub_813B9B4(id, 3) - 1, and every scanned id that is reserved is skipped.
  * For each unreserved id the record pointer comes from the toolkit helper; an
- * empty record (first 16-bit word 0) is skipped.  Otherwise sub_813B780 maps
+ * empty record (first 16-bit word 0) is skipped.  Otherwise battleObject_getByIndex_813B780 maps
  * the record to an item descriptor: a usable item (type byte == 0) bumps the
  * caller's per-index rank counter at [r0 + item index], while any other type
  * marks the entry in the global marker array as (entry + 1).
@@ -345,10 +345,10 @@ static inline call_toolkit_getUnk2004190EntryPtr_813B9FC_result_sub_813BEA8 call
 }
 
 typedef struct { u32 r0; } call_sub_813B780_result_sub_813BEA8;
-/* register form: generated wrapper: sub_813B780 has no typed C interface yet */
+/* register form: generated wrapper: battleObject_getByIndex_813B780 has no typed C interface yet */
 static inline call_sub_813B780_result_sub_813BEA8 call_sub_813B780_sub_813BEA8(u32 r0) {
     R0 = r0;
-    GUEST_CALL(sub_813B780);
+    GUEST_CALL(battleObject_getByIndex_813B780);
     return (call_sub_813B780_result_sub_813BEA8){ R0 };
 }
 
@@ -668,10 +668,10 @@ static u32 get_item_entry_ptr(u32 item_id) {
     return R0;
 }
 
-/* register form: calls sub_813B780 outside this file, which has no typed C interface yet */
+/* register form: calls battleObject_getByIndex_813B780 outside this file, which has no typed C interface yet */
 static u32 resolve_item_object(u32 item_index) {
     R0 = item_index;
-    GUEST_CALL(sub_813B780);
+    GUEST_CALL(battleObject_getByIndex_813B780);
     return R0;
 }
 

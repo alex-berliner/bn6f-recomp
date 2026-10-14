@@ -1,0 +1,57 @@
+name: battle_panelGridFinalizeOrPickDimension_800C488
+address: '0x0800C488'
+kind: function
+previous_names:
+- sub_800C488
+status: probable
+summary: Picks a panel-grid dimension constant for the player-side battle grid based on battle mode.
+interface: '(r10 = toolkit) -> r1 = 0x1E0 if GetBattleMode()==1 else 0x258, r0 unchanged; side effects:
+  flags N set on the r0==1 branch'
+details: "Pushes r0/r2/r3/lr, then loads r1 with the default 0x258 (\"longer\"/5×8 column-major\n  panel\
+  \ descriptor offset) via off_800C498. Calls GetBattleMode(r10); if the mode is 1\n  it overwrites r1\
+  \ with 0x1E0 (off_800C4B0) — likely the regular \"short\" 3×6 grid\n  used in standard battles. Otherwise\
+  \ the default 0x258 is kept. Returns via\n  `pop {r0,r2,r3,pc}` so r0/r2/r3 are preserved verbatim from\
+  \ the caller's frame.\n  No memory writes. The returned r1 is consumed by `battle_buildPlayerPanelGrid_800C4BC`\n\
+  \  as the panel-data stride/column count; `panelObject_update_800C380` calls it inline\n  before its\
+  \ own panel-array fill loop. The off-by-one between captured calls (flags Z\n  was sometimes set before,\
+  \ sometimes not) shows the path is conditional on\n  GetBattleMode() result, not the call-site context.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl GetBattleMode` at 0x0800c48c reaches the battle-mode getter. - `ldr r1, off_800C498 //
+    =0x258` followed by `cmp r0, #1` / `bne locret_800C496` shows the default r1 value and the conditional
+    override. - The override uses `off_800C4B0 // =0x1E0`, matching the second code path. - `pop {r0,r2,r3,pc}`
+    reveals r0/r2/r3 are caller-saved across the function — consistent with captured entry r0=0 across
+    all 40 calls. - Callers'' summaries reference "5×8 player-side battle panel grid" and "panel tile
+    state-machine update", both consistent with using a panel-grid stride.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0800C488
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0800c488 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- What the two constants (0x258 vs 0x1E0) actually represent — likely panel stride
+- bytes for "long" vs "short" player grids; would settle by reading how r1 is used
+- by battle_buildPlayerPanelGrid_800C4BC. The meaning of battle mode == 1 (could be
+- tutorial or a specific battle type) is also unverified.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 12fbd516
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_800C488 -> battle_panelGridFinalizeOrPickDimension_800C488
+  where: bn6f e008e389
+  tool: tools/rename_symbol.py

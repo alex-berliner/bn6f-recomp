@@ -1655,7 +1655,7 @@ Next sub_80C96C8(void) {
 /* sub_80C9726 (r5 = battle object):
  * Runs the handler for the object's current action, then manages the object's
  * "busy" flag bit (0x02): the bit is set as soon as the handler returns, and
- * cleared again unless the alliance check (sub_800EB6C) returns nonzero, or
+ * cleared again unless the alliance check (battle_findPlayerByAlliance_800EB6C) returns nonzero, or
  * when the related object's AI data reports flag 0x100000. r5 is preserved. */
 Next sub_80C9726(void) {
     u32 obj = R5;
@@ -1678,7 +1678,7 @@ Next sub_80C9726(void) {
     /* Unless the alliance check passes, the action is done already:
      * clear the busy flag again. */
     R0 = LD8(obj + oBattleObject_Alliance);
-    GUEST_CALL(sub_800EB6C);
+    GUEST_CALL(battle_findPlayerByAlliance_800EB6C);
     if (R0 == 0)
         ST8(obj + oObjectHeader_Flags, LD8(obj + oObjectHeader_Flags) & ~2u);
 

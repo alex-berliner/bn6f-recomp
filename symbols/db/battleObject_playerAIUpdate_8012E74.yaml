@@ -1,0 +1,59 @@
+name: battleObject_playerAIUpdate_8012E74
+address: '0x08012E74'
+kind: function
+previous_names:
+- sub_8012E74
+status: probable
+summary: 'Per-frame AI tick on the player''s AIData: if the battle isn''t over or paused, run the AI joypad
+  helpers; otherwise clear the four AI joypad latches.'
+interface: '(r5 = *AIData, r10 = *Toolkit) -> void ; side effects: writes AIData.JoypadHeld/Pressed/Up/Released'
+details: "Loads r4 = [r5 + oBattleObject_AIDataPtr] from the caller's saved BattleObject (r5).\n  Calls\
+  \ battle_isBattleOver. If true (battle is over, tst/bne loc_8012E90), zero-fills\n  oAIData_JoypadHeld\
+  \ (0x22), oAIData_JoypadReleased (0x28), oAIData_JoypadPressed (0x24)\n  and oAIData_JoypadUp (0x26)\
+  \ via strh r1,#0 and returns.\n  Otherwise calls battle_isPaused; if non-zero (paused) returns early\
+  \ without touching\n  the joypad fields. If not paused, calls sub_8012EA0 then sub_8012EBC (those populate\n\
+  \  the four AI joypad words for the player's BattleObject) and returns.\n  Popped registers {r4,r6,pc},\
+  \ so r5/r10/lr are preserved across the call as required by\n  its caller playerObject_update_80EA484.\
+  \ Function is effectively void; it never sets r0\n  for the caller (the exit r0=1 in the captured calls\
+  \ is whatever stale value the\n  preceding branch left in r0).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r4,[r5,#oBattleObject_AIDataPtr]` shows r5 is the caller-saved BattleObject and the
+    AI struct pointer is loaded into r4 for the zero-fill path. - `tst r0,r0`/`bne loc_8012E90` right
+    after `bl battle_isBattleOver` shows the "battle over" path is the one that clears the joypad fields.
+    - `bl battle_isPaused`/`bne locret_8012E8E` shows the "battle paused" path returns early without touching
+    the joypad fields. - The four `strh r1,[r4,#oAIData_…]` (offsets 0x22, 0x24, 0x26, 0x28) match the
+    AIData joypad latches in the AIData.inc struct definition. - Only caller listed is `playerObject_update_80EA484`,
+    which lives in the player BattleObject path; consistent with this being the player''s AI tick. - Exit
+    r0=1 in all captured snapshots is incidental: in the over-paused branch r0 holds battle_isPaused''s
+    return value (non-zero → true), and in the joypad-update branch it'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08012E74
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^08012e74 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- What sub_8012EA0 and sub_8012EBC specifically contribute (helper vs main writer of
+- the four joypad latches) — would settle by inspecting their bodies.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 12fbd516
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8012E74 -> battleObject_playerAIUpdate_8012E74
+  where: bn6f e008e389
+  tool: tools/rename_symbol.py

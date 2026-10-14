@@ -547,10 +547,10 @@ static u32 is_valid_panel(u32 col, u32 row) {
     return R0;
 }
 
-/* register form: calls sub_800C488 outside this file, which has no typed C interface yet */
+/* register form: calls battle_panelGridFinalizeOrPickDimension_800C488 outside this file, which has no typed C interface yet */
 static u32 compute_panel_attr(u32 tile_type) {
     R0 = tile_type;
-    GUEST_CALL(sub_800C488);
+    GUEST_CALL(battle_panelGridFinalizeOrPickDimension_800C488);
     return R1;
 }
 
@@ -624,7 +624,7 @@ static void build_battle_panels(u32 arg0, u32 col_mask, u32 r2_in, u32 r3_in) {
             ST8(dp + 0xA, (u8)col);
             ST8(dp + 0xB, (u8)row);
 
-            /* Offset 0x0E – computed tile attribute from sub_800C488 */
+            /* Offset 0x0E – computed tile attribute from battle_panelGridFinalizeOrPickDimension_800C488 */
             ST16(dp + 0xE, (u16)compute_panel_attr(LD8(A_byte_800C5B8 + idx)));
 
             /* Offset 0x12 – constant word 0x708 */

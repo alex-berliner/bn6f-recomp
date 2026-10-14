@@ -1,0 +1,71 @@
+name: ow_player_updateCollisionAndPos_809D800
+address: '0x0809D800'
+kind: function
+previous_names:
+- sub_809D800
+status: probable
+summary: 'Per-frame update of the overworld player object: write back next-position into current XYZ,
+  sync eStruct200ace0 mirror, choose animation/jumptable step, clamp into bbox, recompute Z, update layer
+  and sprite priority.'
+interface: '() -> void ; side effects: mutates OWPlayerObject in r5, eStruct200ace0, and calls into sprite/animation/collision
+  routines'
+details: "Function is called as part of the overworld player step (the captured calls all have lr=0x0809d376,\
+  \ i.e. an\n  external caller that has already set up r5 = OWPlayerObject pointer). It first commits\
+  \ the previously\n  computed NextX/NextY/NextZ (offsets 0x28/0x2c/0x30) into the live X/Y/Z (0x1c/0x20/0x24)\
+  \ of the player\n  object. Then it mirrors those values into eStruct200ace0 at offsets 0x08/0x0c/0x10.\n\
+  \  If eStruct200ace0+0x15 (fixOWPlayerAnim) is zero, it copies byte 0x02 of that struct\n  (owPlayerFixedAnimationSelect)\
+  \ into AnimationSelect of the player; otherwise it dispatches through a\n  small jumptable off_809D8B0\
+  \ (sub_809D470, sub_809D4DC, sub_809D61A, ow_player_processAction_809D75E,\n  self, sub_809D8F4) chosen\
+  \ by Unk_0b. After that, sub_809DF36 decides whether to load a 32-bit value\n  from byte_809D89C indexed\
+  \ by eStruct200ace0+0x01 into Unk_08 of the player. If the wallCollision_0c flag\n  is set, clampPlayerPosition_809E3D6\
+  \ runs, then checkCollision_8030b6a is invoked with the 0x1c-base\n  collision chunk of the player.\
+  \ The new X/Y/Z are written back into eStruct200ace0. If sub_809E3A2\n  returns Z=0 and the player is\
+  \ InteractionLocked and event flag EVENT_BE4 is not set, Z is recomputed\n  via checkZCoordModifiers_8031612.\
+  \ Finally, when LayerIndexOverride is zero, applyLayerEffectToOWObject_8035694\n  is called and the\
+  \ sprite priority is updated via sprite_setPriority_8002E14.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- r5 in/out contract plus usage of oOWPlayerObject_X/Y/Z/NextX/NextY/NextZ/AnimationSelect/Unk_0b/
+    Unk_08/wallCollision_0c/InteractionLocked/LayerIndexOverride in the assembly is consistent with "operate
+    on the overworld player object held in r5". - off_809D8AC -> eStruct200ace0; offsets 0x8/0xc/0x10
+    are written/read using the oS200ace0_PlayerX/Y/Z symbol names, confirming the struct mirror. - The
+    dispatch at 0x0809d828 uses off_809D8B0 with five entries (sub_809D470, sub_809D4DC, sub_809D61A,
+    ow_player_processAction_809D75E, this function itself, sub_809D8F4), all of which are player action
+    handlers, so the index is an action/state id of the player. - sub_809DF36 result is tested and only
+    then byte_809D89C (animation/state table) is read into oOWPlayerObject_Unk_08, matching a "decide
+    whether to update the per-action data" pattern. - sub_809E3A2 returns NZ for "use stored Z", and the
+    EVENT_BE4/TestEventFlagFromImmediate guard makes the Z recompute via checkZCoordModifiers_8031612
+    conditional on story progress.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0809D800
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^0809d800 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander
+open_questions:
+- The exact role of Unk_08 in the player (offset 0x08 of OWPlayerObject) is not declared; the loaded
+- 32-bit value from byte_809D89C may be a small per-action constant table. Settling it would need a
+- full eStruct200ace0 layout cross-reference and the action jumptable consumers.
+- The dispatch entry `sub_809D800+1` inside its own jumptable is unusual (recursive self-dispatch);
+- a real disassembly of the action handlers should clarify whether that is reachable in practice.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 12fbd516
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_809D800 -> ow_player_updateCollisionAndPos_809D800
+  where: bn6f e008e389
+  tool: tools/rename_symbol.py

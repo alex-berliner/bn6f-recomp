@@ -1,0 +1,62 @@
+name: owPlayer_isBusyOrCutsceneActive_809E462
+address: '0x0809E462'
+kind: function
+previous_names:
+- sub_809E462
+status: probable
+summary: Returns NZ if the overworld player is currently busy / a cutscene is running (GameState+0x10
+  != 0), used as a "do not interrupt" guard.
+interface: () -> nz = 1 if busy, 0 if idle (tst r0,r0) ; reads Toolkit->GameStatePtr +0x10, no side effects
+details: "- Loads Toolkit via r10 (r1 <- [r10 + oToolkit_GameStatePtr]) and reads a single byte at offset\n\
+  \    oGameState_Unk_10 (= 0x10). The struct field name is Unk_10, used as a generic \"player busy /\
+  \ cutscene\n    active\" flag byte.\n  - Returns the byte in r0 and leaves it in r0. Uses `tst r0,r0`\
+  \ so callers see Z when the byte is 0\n    (idle) and NZ when non-zero (busy). No memory writes; only\
+  \ r0 and nz are clobbered for callers.\n  - The contract \"in=[r10,lr], out=[nz]\" matches a pure leaf\
+  \ predicate: r10 is the Toolkit pointer\n    callee-preserved, lr is the usual return register, no other\
+  \ args.\n  - Caller pattern: every site is a gate that wants to skip side effects while the overworld\
+  \ player is\n    locked into a cutscene/animation. `checkThenStartBattle_8005A8C`, `check_playerCanAdvanceForward_8034C36`\n\
+  \    and `playerAdvanceForwardCheck_8034C6E` test it before letting a battle start or letting the player\n\
+  \    auto-advance. `sub_80058D0` (warp arming) and `sub_8005AF4` / `sub_8005B6E` use it to suppress\n\
+  \    warp/cutscene interaction while a transition is in flight. `owPlayer_RequestFixedAnimation_809E14C`\n\
+  \    blocks new fixed-anim requests while this flag is set, and several cutscene per-frame steppers\n\
+  \    (sub_80A5588, sub_80A7C58, sub_80A7CFE, sub_80A8424, sub_80A8DF0, sub_81419A0, sub_8083DF0) use\n\
+  \    it as part of the \"is something scripted happening?\" check.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {lr}` / `pop {pc}` -> leaf function with no stack locals. - `ldr r1, [r10, #oToolkit_GameStatePtr]`
+    -> reads GameStatePtr from the toolkit. - `ldrb r0, [r1, #oGameState_Unk_10]` -> reads the u8 Unk_10
+    field of GameState. - `tst r0, r0` -> sets Z when Unk_10 == 0, NZ otherwise; r0 holds the raw byte
+    for callers that also want the value (matches captured-call exit r0 = 0x00 with Z set in every shown
+    sample). - Captured calls all show r0=0 at exit and a Z flag, consistent with the byte being 0 at
+    the time the snap fired (so the routine is just the predicate, not the side effect itself).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0809E462
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story1, story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^0809e462 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander
+open_questions:
+- The exact semantic of GameState+0x10 (which kind of "busy"/"cutscene" it covers) is not pinned
+- down here; the callers' descriptions (bail on warp, suppress fixed-anim, etc.) all point at the
+- same overworld-lock idea, but a comment cross-referencing what writes Unk_10 would settle it.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 12fbd516
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_809E462 -> owPlayer_isBusyOrCutsceneActive_809E462
+  where: bn6f e008e389
+  tool: tools/rename_symbol.py

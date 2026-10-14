@@ -1,0 +1,71 @@
+name: battleObject_onCollision_801A200
+address: '0x0801A200'
+kind: function
+previous_names:
+- sub_801A200
+status: probable
+summary: Handles a battle-object collision event, clearing a "damage" state and lowering the Navi's mood
+  on the opposing side.
+interface: (r5 = attacker BattleObjectPtr, r10 = ToolkitPtr) -> void ; no return value (clobbers r2,r3,r4,r5,r6;
+  leaves flags undefined)
+details: "Runs only while the battle is still going (early-out via battle_isBattleOver, `tst r0,r0`/`bne`).\
+  \ Loads the\n  attacker's CollisionDataPtr (r4) and reads its u16 flags at offset 0x90. Bails out when\
+  \ both the low and\n  high 16 bits are zero, or when the high bit 0x8000 (likely OBJECT_FLAGS_DEAD)\
+  \ is set. Reads the attacker's\n  Alliance byte, XORs it with 1 to get the target side (r6), and checks\
+  \ the opposing Navi's `Transformation`\n  byte (0x2c). If it is 0, 0xB or 0xC, two state-check helpers\
+  \ (sub_801445C / sub_8014490) must both\n  return non-zero; only then does it write 0xFF to the opposing\
+  \ NaviStats' offset 0x0E via\n  battle_setPlayerNaviStatsField0E_8015BEC. Always (when the function\
+  \ isn't bailed out at the top) it\n  reads the u16 value at CollisionData+0x8E and subtracts it as the\
+  \ mood penalty via\n  navi_DecreaseMood_8015C12, passing the attacker's Alliance.\n  - Operands touched:\
+  \ BattleObject.CollisionDataPtr+0x90 (u16), BattleObject.Alliance (0x16),\n    NaviStats+0x2c (Transformation),\
+  \ NaviStats+0x0E (writer), NaviStats+0x0E Mood (via DecreaseMood),\n    CollisionDataPtr+0x8E (mood\
+  \ penalty amount).\n  - Called from applyDamageToPlayer_801BA12 (immediately after applying collision\
+  \ damage) and from\n    battle_801B1C4 (a battle-step routine), so it acts as the per-collision follow-up\
+  \ that books the\n    \"mood drop / transformation-clear\" reaction.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- Early-out on battle over: `bl battle_isBattleOver` / `tst r0,r0` / `bne locret_801A256`.
+    - CollisionData+0x90 read: `ldr r4,[r5,#oBattleObject_CollisionDataPtr]` then `ldrh r1,[r4,r2]` with
+    `mov r2,#0x90`. - Bitmask 0x8000 test: `ldr r2,dword_801A524` (constant pool 0x8000) and `tst r1,r2`
+    then `beq loc_801A24C`; the previous `tst r1,r1` / `beq loc_801A24C` skips when zero. - Opposing side
+    derived from `ldrb r0,[r5,#oBattleObject_Alliance]` / `eor r0,r2` with `mov r2,#1`. - Transformation
+    read on opponent: `mov r1,#oNaviStats_Transformation` (= 0x2c) / `bl GetBattleNaviStatsByte`. - Transformation
+    0/0xB/0xC branch: `cmp r2,#0` / `beq loc_801A236`; `cmp r2,#0xb` / `beq loc_801A236`; `cmp r2,#0xc`
+    / `bne loc_801A24C`. - Two state checks: `bl sub_801445C` / `bne loc_801A24C`, then `bl sub_8014490`
+    / `bne loc_801A24C`. - NaviStats 0x0E write: `mov r1,#0xff` / `bl battle_setPlayerNaviStatsField0E_8015BEC`
+    (writes 0xFF there). - Always-on mood drop: `mov r1,#0x8e` / `ldrh r1,[r4,r1]` reads the u16 at CollisionData+0x8E;
+    `ldrb r0,[r5,#oBattleObject_Alliance]` then `bl navi_DecreaseMood_8015C12`. - Caller applyDamageToPlayer_801BA12
+    confirms it runs as the post-damage reaction step on r5.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801A200
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0801a200 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- Exact meaning of the 0x90 bitmask 0x8000 (likely OBJECT_FLAGS_DEAD or a "this hit already counted" flag).
+- What sub_801445C / sub_8014490 actually gate (presumably per-side state checks tied to the
+- transformation IDs 0/0xB/0xC). Naming them would settle it.
+- Whether the 0x0E write of 0xFF is "clear transformation" or "queue a transformation-cancel flag";
+- the callee name suggests the latter.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 12fbd516
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801A200 -> battleObject_onCollision_801A200
+  where: bn6f e008e389
+  tool: tools/rename_symbol.py

@@ -1,0 +1,78 @@
+name: playerAI_tryExecuteAttackChip_800FB54
+address: '0x0800FB54'
+kind: function
+previous_names:
+- sub_800FB54
+status: probable
+summary: 'Player AI: if A-pressed/held, try to fire the queued attack chip for the controlled battle object,
+  clearing the pending-input flag and returning the chosen chip id, damage and attack boost.'
+interface: (r5 = *BattleObject, r10 = *Toolkit) -> r0 = chip id (u16), r1 = damage (u16), r2 = attack
+  boost (u16); side effects mutate AIData+0x44 flags, AIData+0xA0 AttackVars and call object_setAttack2
+  / useChipRelated_80127C0 / sub_80117BA / sub_8012CB2.
+details: "Loads r7 = r5->oBattleObject_AIDataPtr + 0xA0 (start of AttackVars). Calls object_getFlag on\
+  \ the object's collision data; if its 0x1000 bit is already set the function bails out early with r0\
+  \ = 0xFFFF (treated as a sentinel \"no chip\"). Otherwise reads AIData Unk_44 flags via GetAIData_Unk_44_Flag\
+  \ into r4 and tests the 0x1000C mask: bit 0x4 (A-pressed) plus bit 0x8 (A-held). On a tie it also bails\
+  \ with 0xFFFF. If bit 0x8 is set it proceeds to resolve an attack:\n   - Calls getBattleObjectStateInfo_800EDD0\
+  \ (r0 = r5 = *BattleObject) then getChip8021DA8 to fetch the chip record. For chip element 0x0A it selects\
+  \ BeastOutAPwrAtk (AIData+0x11) and writes 0 to AttackVars+0x14; otherwise it picks the normal APwrAtk\
+  \ (AIData+0x5).\n   - Compare the chosen attack id against a small set of fixed ids (0x18, 0xFF, 0xD,\
+  \ 0x1F, 0x20, 0x29, 0x2D, 0x5). id==0x18 dispatches sub_8012CB2 then falls through to useChipRelated_80127C0\
+  \ / object_setAttack2; ids 0xD/0x1F/0x20/0x29/0x2D/0x5 force r0=1 and skip the sub_80117BA path, going\
+  \ straight to useChipRelated_80127C0 then object_setAttack2. id==0xFF is a no-op (r0 already 0) and\
+  \ joins the useChipRelated path.\n   - Other ids store 0 into AttackVars+0x04, call sub_80117BA(attackId)\
+  \ -> chipId, then object_setAttack2; if the resulting lookup returns 0x52 or (0x41 and the navi stats\
+  \ alliance byte == 0xF) it sets AttackVars+0x1d to 1.\n   - After the chip-fire path, reads AttackVars+0x1b\
+  \ and, if non-zero OR navi-stats byte 0x2c in [0xB,0x18], writes the chip-id-derived value into AttackVars+0x1d.\n\
+  \   - Tail: ClearAIData_Unk_44_Flag(r5, 0x1000C), then returns three words popped from AttackVars (chip\
+  \ id at +0x14, damage at +0x8, attack boost at +0x6). Caller playerAI_sub_80F0354 uses these to continue\
+  \ AI handling.\n  Push/pop {r4,r7,lr}: r4 and r7 are callee-saved scratch, r10/lr in contract preserved\
+  \ by caller convention.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {r4,r7,lr}` / `pop {r4,r7,pc}` show the function consumes/produces only r4 and r7 as
+    scratch (rest preserved by caller). - Early bail with `ldr r0, dword_800FC2C // =0xFFFF` at loc_800FB70
+    when `tst r0, r1` (0x1000) finds the OBJECT_FLAGS_GUARD-class bit set, signalling "already attacking".
+    - `ldr r4, [r5,#oBattleObject_AIDataPtr]`; `bl GetAIData_Unk_44_Flag`; mask `0x1000C` collapses A-press
+    (0x4) and A-held (0x8) into one check; missing both goes through the same bail. - Chip element check:
+    `ldrb r0, [r0,#6]` (chip record +6 = element) `cmp r0, #0xa bne loc_800FB9A`; in the Beast-out branch
+    `ldrb r1, [r1,#oAIData_BeastOutAPwrAtk]` selects the Beast-out BPwrAtk entry; the normal path uses
+    `ldrb r1, [r1,#oAIData_APwrAtk]`. - Tail comment `ldr r0, dword_800FED4 // =0x1000c` / `bl ClearAIData_Unk_44_Flag`
+    clears the very bits the entry checked. - Final `ldrh r0, [r7,#oAIAttackVars_Unk_14]`, `ldrh r1, [r7,#oAIAttackVars_Damage]`,
+    `ldrh r2, [r7,#oAIAttackVars_AttackBoost]` map exactly to the structs in AIData.inc (AttackVars +0x14,
+    +0x08, +0x06). - Caller playerAI_sub_80F0354 takes r1/r2 in its out set, consistent with this function
+    populating damage and attack boost into r1/r2. - Captured call site (`lr=080f052b`, called from inside
+    playerAI_sub_80F0354) confirms r5 must already be the calling battle object and r10 the toolkit —
+    exactly the player-AI register convention.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0800FB54
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0800fb54 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9
+open_questions:
+- The semantic meaning of the fixed-id set (0xD/0x1F/0x20/0x29/0x2D/0x5) — names not visible in the assembly;
+  mapping them to real chip names would settle the "shortcut" role of that branch.
+- Whether sub_8012CB2 genuinely corresponds to a chip id 0x18 (e.g. a Hero Sword / elemental sword), or
+  just a regular attack handler reused here.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 12fbd516
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_800FB54 -> playerAI_tryExecuteAttackChip_800FB54
+  where: bn6f e008e389
+  tool: tools/rename_symbol.py

@@ -1,0 +1,72 @@
+name: overworld_owMap_renderAndTickSubsystems_800536E
+address: '0x0800536E'
+kind: function
+previous_names:
+- sub_800536E
+status: probable
+summary: 'Overworld per-frame tick: drives the PET-menu dispatcher, scenario/sprite/owMapObject/battle
+  pipelines, runs the armed callback, and counts down a per-map post-enter-map jingle delay (plays 0x9E
+  or 0x71 SSEs) before triggering a map warp.'
+interface: (r5 = * GameState, r10 = * Toolkit) -> void (caller-saved r4-r7, r10; only branch flags and
+  the screen-fade wait are observable side-effects on r5->Unk_68)
+details: "Called once per overworld frame from cbGameState. Unconditional prologue runs the full subsystem\n\
+  \  pipeline (PET menu dispatcher 80339CC, scenario/jump-table 80039AA, overworld object dispatcher\n\
+  \  8003AFA, sprite flush 80027B4, palette count reset 800286C, sprite-render 8003BF4, battle object\n\
+  \  teardown 8003E98, NPC sprites 800467C, queued sprite/group finalizers 8004298/8004590, sprite\n \
+  \ enqueue 8004934) and the armed callback at 80024AE. Only then does it consult\n  IsScreenFadeActive;\
+  \ the screen-fade branch is the post-enter-map countdown:\n    ldr r0,[r5,#oGameState_Unk_68] (offset\
+  \ 0x68); sub r0,#1; blt -> finished (warp to map_80053D2)\n    str r0,[r5,#0x68]; cmp #0x29 -> PlaySoundEffect(0x71=0x72+0xff);\
+  \ cmp #0x9E -> if MapGroup <=1:\n      PlaySoundEffect(hword_80053E0[MapGroup]) where the table holds\
+  \ {0xE7,0xEC}. So while a screen\n      fade is in progress, decrement Unk_68 (acts as a \"busy-enter\"\
+  \ tick counter); at 0x29 play\n      SSE 0x71; at 0x9E play the per-map-group jingle (Offensive/Neutral\
+  \ routes in MMBN6). When\n      the counter underflows, call chatbox_8040818 then map_triggerEnterMapOnWarp_8005C04,\
+  \ which\n      finalises the warp (per its callee docstring) and clears the warp animation event. Sub_68\
+  \ is\n  the GameState field added beyond the SavedCoords block (Size 0x80); it is reused here as the\n\
+  \  in-fade tick value. exit pops {pc}, no explicit return value.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- push {lr} / pop {pc}: leaf-like tick routine returning to caller via stored lr. - `bl IsScreenFadeActive
+    ... beq locret_80053DA`: frames where fade is active skip the countdown block entirely, so the routine
+    also runs on every non-fade frame without effect. - `ldr r0,[r5,#oGameState_Unk_68]` followed by `sub
+    r0,#1; str r0,[r5,#0x68]`: GameState+0x68 is used as a down-counter that persists across frames. -
+    `cmp r0,#0x29 ... mov r0,#0x72 add r0,#0xff ... bl PlaySoundEffect`: at tick 0x29, request SSE id
+    0x71 (0x72+0xFF), the "door closing" jingle that conventionally plays when entering a map. - `cmp
+    r0,#0x9E ... ldrb r0,[r5,#5] cmp r0,#1 ... ldrh r0,[r1,r0]` + table `hword_80053E0: 0xE7, 0xEC`: at
+    tick 0x9E (mid-counter) play SSE 0xE7 or 0xEC depending on GameState.MapGroup at offset 0x5, matching
+    the two-map-group per-area jingle pattern. - Underflow branch (`blt loc_80053D2`) calls `chatbox_8040818`
+    then `map_triggerEnterMapOnWarp_8005C04`, which by callee docstring clears the warp animation and'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0800536E
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, beastsp, fuzz, maps, menus2, story1, story2, story3, story4, story5, story6,
+    story8, story9, wander'
+  reproduce: 'grep -l ''^0800536e '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, beastsp, fuzz, maps, menus2, story1, story2, story3, story4, story5, story6, story8,
+    story9, wander
+open_questions:
+- The semantic role of GameState+0x68 (it doubles as a u32 here but is unnamed in GameState.inc);
+- it could be a generic scratch timer reused for the post-enter-map countdown rather than a
+- dedicated "wait before warp" field.
+- Whether the call site is purely per-frame vs. only called while SubsystemIndex selects the
+- overworld handler (callee summaries imply the latter, but no caller dump was provided).
+- The exact meaning of the 0xE7/0xEC SSE ids (could be area-2/area-3 jingles rather than area
+- '0/1). The fact that GameState[5]=MapNumber (1..) is compared with #1 only is unusual.'
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 12fbd516
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_800536E -> overworld_owMap_renderAndTickSubsystems_800536E
+  where: bn6f e008e389
+  tool: tools/rename_symbol.py

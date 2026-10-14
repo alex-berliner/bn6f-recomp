@@ -1,0 +1,71 @@
+name: owPlayer_checkJumpLandingAccumulateFacing_809DFC0
+address: '0x0809DFC0'
+kind: function
+previous_names:
+- sub_809DFC0
+status: probable
+summary: OW player jumptable step that, while not yet fully landed, ORs the player's current facing direction
+  bits into a per-step landing accumulator at r5+0x56, and finalizes the landing (sets oOWPlayerObject_Unk_18=0xa)
+  once all 8 facing bits are seen.
+interface: '(r5 = OWPlayerObjectPtr) -> void ; side effects: writes [r5+0x56] (byte), [r5+0x18] (halfword)
+  on full landing'
+details: "Reads r5->oOWPlayerObject_JumptableIndex_09 (offset 0x9). Only proceeds with the accumulation\
+  \ path\n  when that index equals 4 (CUR_STATE_UPDATE per oBattleObject) or 8 (CUR_STATE_DESTROY per\
+  \ oBattleObject\n  comment; in OWPlayerObject context this matches the \"landed\" half of the jump arc).\
+  \ Otherwise jumps\n  to the short-circuit branch that clears the accumulator.\n  In the matching path,\
+  \ calls owPlayer_isMoving_809DFA0 to gate on the player having finished its\n  current step; only after\
+  \ that returns false does it OR in the new facing bit.\n  The accumulator at r5+0x56 is a byte, ORed\
+  \ with `byte_809DFFC[ FacingDirection ]`. That table maps\n  0..7 directions to single-bit values 0x1,\
+  \ 0x2, 0x4, 0x6, 0x8, 0xC, 0x4, 0x8 (note two pairs share a\n  value, so reaching 0xF is the real \"\
+  all distinct bits collected\" condition, not a simple 8-step\n  counter). When the ORed byte equals\
+  \ 0xF the function writes 0xA to oOWPlayerObject_Unk_18 (halfword\n  at offset 0x18) and zeros the accumulator\
+  \ -- this is the \"landed\" trigger state.\n  Otherwise the function returns with the accumulator holding\
+  \ the running bitmask of facing directions\n  observed during the jump. Sub_809D348, the only caller,\
+  \ is the OW player main step routine and reads\n  r5+0x56 / r5+0x18 in nearby code, which is consistent\
+  \ with this being a per-step sub-state.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0, [r5,#oOWPlayerObject_JumptableIndex_09]` followed by `cmp r0, #4` / `cmp r0, #8`
+    selects only the two steady-state jumptable values (assembly lines 3-6). - `bl owPlayer_isMoving_809DFA0`
+    then `tst r0, r0` / `beq loc_809DFDC` shows the "still moving" case falls through to clear the accumulator
+    (line 9-11), matching a "wait until step done before sampling facing". - `ldrb r2, [r5,#oOWPlayerObject_FacingDirection]`
+    and `ldrb r1, [r7,r2]` index `byte_809DFFC` which is 8 bytes -- exactly one entry per FacingDirection
+    value (lines 14-16, 27-34). - `orr r0, r1` / `strb r0, [r5,r3]` ORs the new bit into r5+0x56 (a byte,
+    r3=0x56); `cmp r0, #0xf` then `beq` the finalize branch shows 0xF is the completion sentinel (lines
+    17-19). - On completion: `mov r0, #0xa; strh r0, [r5,#oOWPlayerObject_Unk_18]` sets the post-landing
+    state code to 0xA, and `strb r0, [r5,r3]` (with r0=0) clears the accumulator (lines 20-22).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0809DFC0
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story1, story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^0809dfc0 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander
+open_questions:
+- The exact meaning of oOWPlayerObject_Unk_18 == 0xA is not provable from this function alone; a
+- follow-up read of sub_809D348's handling of [r5+0x18] would confirm whether 0xA is "landed, ready
+- to resume normal control" or a cutscene-script handoff.
+- The FacingDirection -> bit mapping in byte_809DFFC has two duplicates (entries 0x4 and 0x6 both
+- yield 0x4, 0x5 and 0x7 both yield 0x8), so 0xF being the completion condition is consistent but
+- not the only reading; verifying the player only cycles through 4 distinct facings per jump would
+- confirm 0xF really is the "fully turned around mid-jump" sentinel.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 12fbd516
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_809DFC0 -> owPlayer_checkJumpLandingAccumulateFacing_809DFC0
+  where: bn6f e008e389
+  tool: tools/rename_symbol.py
