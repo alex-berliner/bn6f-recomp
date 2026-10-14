@@ -917,3 +917,64 @@ Highlights:
 | 18    | 25                 | 20                        | 5               | 0       |
 
 Running total: named 354, hypothesis-only 92, dropped 0 (of ~10,600 placeholders).
+
+## Batch 19 (2026-10-14)
+
+25 functions, 17 named + 8 hypothesis (sub_80315B8, sub_8083DF0, sub_80A70FC,
+sub_80A73A0, sub_80A82DC, sub_80E1670, sub_81196C4, sub_813C06C kept as
+comment only), renamed in recomp e62a32c1 (bn6f pushed; port ROM unchanged).
+
+Highlights:
+- battle object: steal chip from enemy navi
+  (battleObject_stealChipFromEnemyNavi_8010740),
+  mark used action (battleObject_markUsedAction_80143A6);
+- startScreen: run beast cutscene (startScreen_runBeastCutscene_8086FD8);
+- battle: load beast-SP dmg (battle_loadBeastSpDmg_809BA14);
+- battle object: step beast-out (battleObject_stepBeastOut_80A6F78),
+  copy PwrAtk fields to temp buffer
+  (battleObject_copyPwrAtkFieldsToTempBuffer_80A7238);
+- battle beast-sp: set AI template stats
+  (battle_beastsp_setAITemplateStats_80A775C);
+- battle object: update sprite mosaic and exit if not scaled
+  (battleObject_updateSpriteMosaicAndExitIfNotScaled_80C461C);
+- battle AI attack: handle move direction timer and start new attack
+  (aiAttack_handleMoveDirectionTimerAndStartNewAttack_80EB502),
+  walk forward then attack (aiAttack_walkForwardThenAttack_80ED7A2);
+- battle object: advance AI step move
+  (battleObject_advanceAIStepMove_810986E);
+- battle AI attack vars: run key-item trap step
+  (aiAttackVars_runKeyItemTrapStep_8109DEC);
+- submenu: update chip palette (submenu_updateChipPalette_81197B4);
+- chatbox: init folder name display buffer
+  (chatbox_initFolderNameDisplayBuffer_81202FC);
+- battle object: run update handler by type
+  (battleObject_runUpdateHandlerByType_8123514),
+  dispatch update by state (battleObject_dispatchUpdateByState_8133200);
+- battle: get scenario effect state field
+  (battle_getScenarioEffectStateField_81421D0).
+
+## Tally update
+
+| batch | functions examined | named (renamed via record) | hypothesis-only | dropped |
+|-------|--------------------|---------------------------|-----------------|---------|
+| 1     | 25                 | 25                        | 0               | 0       |
+| 2     | 21                 | 20                        | 1               | 0       |
+| 3     | 25                 | 23                        | 2               | 0       |
+| 4     | 25                 | 21                        | 4               | 0       |
+| 5     | 25                 | 20                        | 5               | 0       |
+| 6     | 25                 | 21                        | 4               | 0       |
+| 7     | 25                 | 19                        | 6               | 0       |
+| 8     | 25                 | 20                        | 5               | 0       |
+| 9     | 25                 | 18                        | 7               | 0       |
+| 10    | 25                 | 14                        | 11              | 0       |
+| 11    | 25                 | 17                        | 8               | 0       |
+| 12    | 25                 | 15                        | 10              | 0       |
+| 13    | 25                 | 19                        | 6               | 0       |
+| 14    | 25                 | 19                        | 6               | 0       |
+| 15    | 25                 | 21                        | 4               | 0       |
+| 16    | 25                 | 21                        | 4               | 0       |
+| 17    | 25                 | 21                        | 4               | 0       |
+| 18    | 25                 | 20                        | 5               | 0       |
+| 19    | 25                 | 17                        | 8               | 0       |
+
+Running total: named 371, hypothesis-only 100, dropped 0 (of ~10,600 placeholders).
