@@ -26,7 +26,10 @@ main tree's commit when it starts:
      blocks, unlike out-of-domain trials where the original itself faults); between the builds a per-function
      probe runs each converted member against its lifted original on its own captured calls, comparing the
      member's whole contract (every register and flag its callers rely on, farm.contract_of) as the verify
-     difftest does; lockstep on the 16 routes;
+     difftest does; a member with no captured calls of its own gets 300 random-input trials against its
+     lifted original (a trial counts only when the original completes it), and a member with neither
+     captured calls nor a probe (no adapter the tool can build) blocks — it would land unchecked;
+     lockstep on the 16 routes;
      the CPU oracle at the entry points (reported);
   4. on a pass: tools/convert/prereview.py on each member's function (outside models), then a commit in the
      worktree with symbols/db (tools/sig/record_subsystem.py, new entries for members that had none),
@@ -316,9 +319,9 @@ def check(job: str, tree: str, file: str, entries: list[str], members: list[str]
         unit_entries: dict[str, set[str]] = {}
         for n, e in g["entries"].items():
             unit_entries.setdefault(e["unit"], set()).add(n)
-        extra, names = adapters_from_protos(json.load(open(table_path)), [m for m in members if m not in entries],
-                                            unit_entries, covered)
-        pf, note = probe_names(tree, path, code, extra, names, env, denv)
+        extra, names, left_out = adapters_from_protos(json.load(open(table_path)), [m for m in members if m not in entries],
+                                                      unit_entries, covered)
+        pf, note = probe_names(tree, path, code, extra, names, env, denv, unprobed=left_out, strict=True)
         sh(f"python3 tools/lifter/lift.py --bn6f {MAIN}/bn6f --out cport/src/lifted --inc cport/include "
            f"--overrides cport/src/game", tree, env=env, timeout=1800)
         pn = [note]
@@ -436,12 +439,31 @@ def probe_fails(name: str, lines: list[str], tree: str) -> list[str]:
     return real
 
 
-def probe_adapters(code: str, skip: set[str], members: list[str]) -> tuple[str, list[str]]:
+def unprobed_fails(names: list[str]) -> list[str]:
+    """A converted member with neither captured calls nor a probe (the tool built no difftest adapter
+    for it) would land with no check at all: the whole-file difftest runs only the entry points, the
+    captured-call probe has nothing to replay, and the farm cannot tell from here whether the CPU
+    oracle's entry states reach it (chatbox_8040CD0: the C was invented — the original queues GFX
+    transfers — it had no captured calls, so no probe ran, and only the CPU oracle caught it)."""
+    if not names:
+        return []
+    return ["No check at all for " + " ".join(names) + ": the tool built no difftest adapter for them "
+            "(no comment or name in the C matches the game's, the prototype does not match the signature's "
+            "registers, or the code does not override every entry of the member's unit), and they have no "
+            "captured calls to replay. Every converted member needs a check before the job can pass: give "
+            "each a prototype the tool can match so the random-input difftest runs it against its lifted "
+            "original, or keep it as the original — or show the CPU oracle covers it."]
+
+
+def probe_adapters(code: str, skip: set[str], members: list[str]) -> tuple[str, list[str], list[str]]:
     """Temporary `Next` adapters for the internal functions, so the difftest can run each against its lifted
     original on that function's own captured calls (only in the probe build, never installed). A C function
     is matched to its game name by a comment naming it right above it, or by its name containing the game's
     name or address; its parameters to the signature's registers in order (a `toolkit` parameter is r10, a
-    `T **p` one a cursor: the address of a local holding the register)."""
+    `T **p` one a cursor: the address of a local holding the register). The third list is the members no
+    adapter could be built for (they get no probe: see unprobed_fails); members skipped on purpose (the
+    entry points, a multi-entry unit the lifter refuses to override partly, a `Next` the code already has)
+    are not in it."""
     final = json.load(open(os.path.join(SIG, "final.json")))
     g = json.load(open(os.path.join(MAIN, "build-abi/graph.json")))["entries"]
     multi = {e["unit"] for n, e in g.items() if n != e["unit"]}      # units with a second entry: left out
@@ -450,16 +472,17 @@ def probe_adapters(code: str, skip: set[str], members: list[str]) -> tuple[str, 
         if m.group(3).startswith("call_"):
             continue
         defs[m.group(3)] = (m.group(1) or "", m.group(4).strip())
-    out, names = [], []
+    out, names, nomatch = [], [], []
     for game in members:
-        if game in skip or game not in final or game in multi or re.search(rf"^Next {game}\(void\)", code, re.M):
+        if game in skip or game in multi or re.search(rf"^Next {game}\(void\)", code, re.M):
             continue
         addr = re.search(r"_([0-9A-Fa-f]{7})$", game)
         fn = next((f for f, (c, _p) in defs.items() if re.match(rf"\s*{re.escape(game)}\b", c)), None) or \
             next((f for f in defs if game in f or (addr and f.endswith("_" + addr.group(1)))), None) or \
             next((f for f in defs if addr and f in (game[:-8] + "_impl", game[:-8])), None)
-        sig = (final[game].get("chosen") or {}).get("params")
-        if not fn or sig is None:
+        sig = (final.get(game, {}).get("chosen") or {}).get("params")
+        if game not in final or not fn or sig is None:
+            nomatch.append(game)
             continue
         ps = [] if defs[fn][1] in ("", "void") else [q.strip() for q in defs[fn][1].split(",")]
         regs = [sp["reg"].upper() for sp in sig]
@@ -483,6 +506,7 @@ def probe_adapters(code: str, skip: set[str], members: list[str]) -> tuple[str, 
             else:
                 args.append(f"({t}){reg}")
         if not ok or regs:
+            nomatch.append(game)
             continue
         rt = re.search(rf"static\s+(?:inline\s+)?([\w\s\*]+?)\s*\b{fn}\(", code).group(1).strip()
         ret = ((final[game].get("chosen") or {}).get("ret") or {}).get("reg", "none")
@@ -493,21 +517,30 @@ def probe_adapters(code: str, skip: set[str], members: list[str]) -> tuple[str, 
             call = f"U32Pair p_ = {call}; R0 = p_.r0; R1 = p_.r1"
         out.append(f"Next {game}(void) {{ {' '.join(pre)} {call}; {' '.join(post)} RETURN_TO_CALLER(); }}")
         names.append(game)
-    return "\n#ifdef DIFFTEST\n" + "\n".join(out) + "\n#endif\n", names
+    return "\n#ifdef DIFFTEST\n" + "\n".join(out) + "\n#endif\n", names, nomatch
 
 
 def probe(tree: str, file: str, entries: list[str], env: dict, denv: dict, members: list[str]) -> tuple[list[str], list[str]]:
-    """Each internal function against its lifted original on its own captured calls. What counts as a
-    divergence is the function's contract (farm.contract_of, what the verify difftest compares):
-    memory, the return target, SP, and every register and flag the contract gives the callers — not
-    only the result registers the adapter writes (an internal function's registers are its callers'
-    business, and the callers read them)."""
+    """Each internal function against its lifted original: on its own captured calls, and, when it has
+    none, on random inputs (a trial counts only when the lifted original completes it — the same rule
+    the whole-file check got in c8d6d3f8). What counts as a divergence is the function's contract
+    (farm.contract_of, what the verify difftest compares): memory, the return target, SP, and every
+    register and flag the contract gives the callers — not only the result registers the adapter
+    writes (an internal function's registers are its callers' business, and the callers read them).
+    A converted member with neither captured calls nor a probe blocks: it would land unchecked
+    (chatbox_8040CD0's invented C — the original queues GFX transfers — had no captured calls, so no
+    probe ran, and only the CPU oracle caught it)."""
     path = os.path.join(tree, "cport/src/game", file)
     code = open(path).read()
-    extra, names = probe_adapters(code, set(entries), members)
-    names = [n for n in names if os.path.isdir(os.path.join(tree, "build-snapshots", n))]
-    if not names:
-        return [], ["probe: no internal function with captured calls"]
+    extra, adapted, nomatch = probe_adapters(code, set(entries), members)
+    multi = {e["unit"] for n, e in json.load(open(os.path.join(MAIN, "build-abi/graph.json")))["entries"].items()
+             if n != e["unit"]}
+    probes = set(adapted) | {m for m in members if m not in set(entries) | multi
+                             and re.search(rf"^Next {re.escape(m)}\(void\)", code, re.M)}   # the model's own adapters
+    if not probes:
+        return unprobed_fails(nomatch), ["probe: no internal function the tool can probe"]
+    with_snaps = sorted(n for n in probes if os.path.isdir(os.path.join(tree, "build-snapshots", n)))
+    no_snaps = sorted(probes - set(with_snaps))
     open(path, "w").write(code + extra)
     try:
         rc, out = sh(f"python3 tools/lifter/lift.py --bn6f {MAIN}/bn6f --out cport/src/lifted --inc cport/include "
@@ -516,8 +549,8 @@ def probe(tree: str, file: str, entries: list[str], env: dict, denv: dict, membe
         if rc:
             return [], [f"probe: did not build ({out.strip().splitlines()[-1][:200] if out.strip() else '?'})"]
         diff = os.path.join(tree, "cport/host/build-probe-host/difftest")
-        bad, ok = [], 0
-        for n in names:
+        bad, ok, rand = [], 0, 0
+        for n in with_snaps:
             rc, out = sh([diff, "-S", os.path.join(tree, "build-snapshots", n), n], os.path.join(tree, "cport"),
                          env=denv, timeout=1800)
             real = probe_fails(n, out.splitlines(), tree)
@@ -528,9 +561,24 @@ def probe(tree: str, file: str, entries: list[str], env: dict, denv: dict, membe
                            f"the original; " + " | ".join(detail))
             else:
                 ok += 1
-        note = f"probe: {ok}/{len(names)} internal functions match their originals on their own captured calls"
-        return ([f"Internal functions that do not do what their assembly does (each run alone from the original "
-                 f"game's captured calls of it, against its lifted original):\n" + "\n".join(bad)] if bad else []), [note]
+        for n in no_snaps:
+            rc, out = sh([diff, "-n", "300", n], os.path.join(tree, "cport"), env=denv, timeout=1800)
+            real = probe_fails(n, out.splitlines(), tree)
+            summary = [l for l in out.splitlines() if l.startswith(n + " ")]
+            if real or "FAIL" in " ".join(summary):
+                detail = [l.strip() for l in out.splitlines() if "first diff" in l or "differs" in l
+                          or re.match(r"\s+r\d+: lifted", l) or "inputs:" in l][:8]
+                bad.append(f"{n} (no captured calls of it; random inputs): {(summary or ['?'])[-1].strip()}; "
+                           + " | ".join(detail))
+            else:
+                rand += 1
+        note = f"probe: {ok}/{len(with_snaps)} internal functions match their originals on their own captured calls"
+        if no_snaps:
+            note += (f"; {rand}/{len(no_snaps)} with no captured calls match on 300 random inputs "
+                     f"(a trial counts only when the lifted original completes it)")
+        fails = ([f"Internal functions that do not do what their assembly does (each run alone from the original "
+                  f"game's captured calls of it, against its lifted original):\n" + "\n".join(bad)] if bad else [])
+        return fails + unprobed_fails(nomatch), [note]
     finally:
         open(path, "w").write(code)
         sh(f"python3 tools/lifter/lift.py --bn6f {MAIN}/bn6f --out cport/src/lifted --inc cport/include "
@@ -845,16 +893,19 @@ def callees_first(members: list[str], g: dict) -> list[str]:
 
 
 def adapters_from_protos(table: dict, names: list[str], unit_entries: dict[str, set[str]] | None = None,
-                         covered: set[str] | None = None) -> tuple[str, list[str]]:
+                         covered: set[str] | None = None) -> tuple[str, list[str], list[str]]:
     """Probe adapters (DIFFTEST only) built from the tool's own prototypes: no guessing. A member whose
     unit has more entries than the adapters at hand cover (a second entry the subsystem never enters from
-    outside) is left out: the lifter refuses an override that does not define every entry of its unit."""
-    out, done = [], []
+    outside) is left out: the lifter refuses an override that does not define every entry of its unit.
+    The third list is the members no adapter was built for (they get no probe: see unprobed_fails)."""
+    out, done, left_out = [], [], []
     for game in names:
         t = table.get(game)
         if not t:
+            left_out.append(game)
             continue
         if unit_entries and covered is not None and unit_entries.get(game, {game}) - covered:
+            left_out.append(game)
             continue
         pre, args, post = [], [], []
         for q in t["params"]:
@@ -874,7 +925,7 @@ def adapters_from_protos(table: dict, names: list[str], unit_entries: dict[str, 
             call = f"U32Pair p_ = {call}; R0 = p_.r0; R1 = p_.r1"
         out.append(f"Next {game}(void) {{ {' '.join(pre)} {call}; {' '.join(post)} RETURN_TO_CALLER(); }}")
         done.append(game)
-    return "\n#ifdef DIFFTEST\n" + "\n".join(out) + "\n#endif\n", done
+    return "\n#ifdef DIFFTEST\n" + "\n".join(out) + "\n#endif\n", done, left_out
 
 
 def stubs_from_protos(table: dict, pending: list[str], code: str) -> str:
@@ -915,11 +966,21 @@ def stubs_from_protos(table: dict, pending: list[str], code: str) -> str:
     return "\n#ifdef DIFFTEST\n" + "\n".join(out) + "\n#endif\n"
 
 
-def probe_names(tree: str, path: str, code: str, extra: str, names: list[str], env: dict, denv: dict) -> tuple[list[str], str]:
-    """The probe on given adapters (see probe())."""
-    names = [n for n in names if os.path.isdir(os.path.join(tree, "build-snapshots", n))]
+def probe_names(tree: str, path: str, code: str, extra: str, names: list[str], env: dict, denv: dict,
+                unprobed: list[str] | None = None, strict: bool = False) -> tuple[list[str], str]:
+    """The probe on given adapters (see probe()): the members with captured calls on those, the members
+    without on 300 random inputs (a trial counts only when the lifted original completes it). UNPROBED
+    are the members no adapter was built for; in a whole-file check (strict) that blocks — the member
+    would land with no check at all — within a chunk it is only a note (a later chunk may still cover
+    the unit's other entries)."""
+    with_snaps = [n for n in names if os.path.isdir(os.path.join(tree, "build-snapshots", n))]
+    no_snaps = [n for n in names if n not in with_snaps]
+    unprobed = sorted(set(unprobed or ()))
     if not names:
-        return [], "probe: none of them has captured calls"
+        note = "probe: none of them has captured calls"
+        if unprobed:
+            note += "; no adapter for " + " ".join(unprobed)
+        return (unprobed_fails(unprobed) if strict else []), note
     open(path, "w").write(code + extra)
     try:
         rc, out = sh(f"python3 tools/lifter/lift.py --bn6f {MAIN}/bn6f --out cport/src/lifted --inc cport/include "
@@ -929,8 +990,8 @@ def probe_names(tree: str, path: str, code: str, extra: str, names: list[str], e
             lines = [l for l in out.splitlines() if "error" in l.lower() or "override" in l]
             return ["the probe build failed:\n" + "\n".join((lines or out.splitlines())[-15:])], "probe: no build"
         diff = os.path.join(tree, "cport/host/build-probe-host/difftest")
-        bad = []
-        for n in names:
+        bad, ok, rand = [], 0, 0
+        for n in with_snaps:
             rc, out = sh([diff, "-S", os.path.join(tree, "build-snapshots", n), n], os.path.join(tree, "cport"),
                          env=denv, timeout=1800)
             real = probe_fails(n, out.splitlines(), tree)
@@ -938,9 +999,27 @@ def probe_names(tree: str, path: str, code: str, extra: str, names: list[str], e
                 detail = [l.strip() for l in out.splitlines() if "first diff" in l or "differs" in l
                           or re.match(r"\s+r\d+: lifted", l) or "inputs:" in l][:8]
                 bad.append(f"{n}: {len(real)} of its captured calls end differently from the original: " + " | ".join(detail))
-        return ([f"Functions that do not do what their assembly does (each run alone from the original game's "
-                 f"captured calls of it, against its lifted original; `lifted` is the original's value, `hand` "
-                 f"yours):\n" + "\n".join(bad)] if bad else []), f"probe: {len(names) - len(bad)}/{len(names)} match"
+            else:
+                ok += 1
+        for n in no_snaps:
+            rc, out = sh([diff, "-n", "300", n], os.path.join(tree, "cport"), env=denv, timeout=1800)
+            real = probe_fails(n, out.splitlines(), tree)
+            summary = [l for l in out.splitlines() if l.startswith(n + " ")]
+            if real or "FAIL" in " ".join(summary):
+                detail = [l.strip() for l in out.splitlines() if "first diff" in l or "differs" in l
+                          or re.match(r"\s+r\d+: lifted", l) or "inputs:" in l][:8]
+                bad.append(f"{n} (no captured calls of it; random inputs): {(summary or ['?'])[-1].strip()}; "
+                           + " | ".join(detail))
+            else:
+                rand += 1
+        note = f"probe: {ok}/{len(with_snaps)} match their originals on their own captured calls"
+        if no_snaps:
+            note += f"; {rand}/{len(no_snaps)} with no captured calls match on 300 random inputs"
+        if unprobed:
+            note += "; no adapter for " + " ".join(unprobed) + (" — they get no check at all" if strict else "")
+        fails = ([f"Functions that do not do what their assembly does (each run alone against its lifted "
+                  f"original; `lifted` is the original's value, `hand` yours):\n" + "\n".join(bad)] if bad else [])
+        return fails + (unprobed_fails(unprobed) if strict else []), note
     finally:
         open(path, "w").write(code)
 
@@ -1040,10 +1119,10 @@ def run_job_chunked(name: str) -> None:
                     for n, e in g["entries"].items():
                         unit_entries.setdefault(e["unit"], set()).add(n)
                     pending = [n for n in table if n not in chunk]
-                    extra, names = adapters_from_protos(table, [n for n in chunk if n not in entries],
-                                                        unit_entries, covered)
+                    extra, names, left_out = adapters_from_protos(table, [n for n in chunk if n not in entries],
+                                                                  unit_entries, covered)
                     pf, note = probe_names(tree, path, cur, extra + stubs_from_protos(table, pending, cur),
-                                           names, env, denv)
+                                           names, env, denv, unprobed=left_out)
                     fails += pf
                 log(name, f"chunk {k} ({len(chunk)}) {model} round {rnd}: {'pass' if not fails else 'fail: ' + fails[0][:160]} {note}")
                 if not fails:
@@ -1174,6 +1253,35 @@ def selfcheck(_a) -> None:
            fails("probe_a", ["  f trial 5: C flag differs"]), [])
         eq("probe: other lines stay out",
            fails("probe_a", ["probe: 3/3 internal functions match", "f: ok  (3 snapshots, 3 runs, 0 failures, 0 out-of-domain)"]), [])
+
+    # a member with no captured calls gets random-input trials; one with no adapter at all blocks
+    with tempfile.TemporaryDirectory() as tree:
+        os.makedirs(os.path.join(tree, "build-snapshots/sub_3006C38"))
+        code = ("/* sub_3006C38: adds one. */\n"
+                "static u32 sub_3006C38_impl(u32 a) { return a + 1; }\n"
+                "/* nothing matches probe_none. */\n"
+                "static u32 unrelated(u32 a) { return a; }\n")
+        extra, names, nomatch = probe_adapters(code, set(), ["sub_3006C38", "probe_none"])
+        eq("probe_adapters: the matchable member got an adapter", names, ["sub_3006C38"])
+        eq("probe_adapters: the unmatchable one is reported", nomatch, ["probe_none"])
+        eq("probe_adapters: the adapter reads the signature's register and writes the result",
+           "R0 = (u32)sub_3006C38_impl((u32)R0)" in extra, True)
+
+        table = {"probe_b": {"params": [{"reg": "r0", "type": "u32", "io": False, "name": "a"}],
+                             "ret": {"type": "u32", "reg": "r0"}, "cname": "probe_b_impl",
+                             "decl": "Next probe_b(void)"}}
+        extra, done, left_out = adapters_from_protos(table, ["probe_b", "probe_none"])
+        eq("adapters_from_protos: built from the prototype", done, ["probe_b"])
+        eq("adapters_from_protos: no prototype, no adapter", left_out, ["probe_none"])
+        extra, done, left_out = adapters_from_protos(
+            table, ["probe_b"], {"probe_b": {"probe_b", "probe_b_1"}}, {"probe_b"})
+        eq("adapters_from_protos: a unit entry the adapters do not cover leaves the member out",
+           left_out, ["probe_b"])
+        eq("unprobed_fails: none, no failure", unprobed_fails([]), [])
+        f = unprobed_fails(["probe_none"])
+        eq("unprobed_fails: one blocking failure naming the member and the ways out",
+           (len(f), "probe_none" in f[0], "random-input difftest" in f[0], "CPU oracle" in f[0]),
+           (1, True, True, True))
     if bad:
         for b in bad:
             print("selfcheck: " + b)
