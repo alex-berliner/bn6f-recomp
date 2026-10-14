@@ -1,0 +1,51 @@
+name: sub_81419A0
+address: '0x081419A0'
+kind: function
+previous_names: []
+status: hypothesis
+summary: Top-level per-frame handler for the overworld PET "Beast Spam"/BeastOut gating check that, given clean
+  input, either processes inputs (sub_8141A10) or finishes a sequence (sub_8141A70) — i.e. tick of `eStruct2001010`
+  while no cutscene/screen-fade/subsystem block is active and not paused.
+interface: (r0..r3 not inputs; toolkit in r10) -> r0 = 0 ; no other returns
+details: "Loads `r5 = eStruct2001010`. Calls `sub_8141AA8`; if it returns NZ, jumps to exit. Otherwise checks `eStruct2001010+3`:\
+  \ if non-zero, clears it to 0 and calls `sub_80468BA`, then `sub_80468C6(0x1,0x0,0x0)` and `sub_80468C6(0x2,0x1,0x0)`\
+  \ (two acknowledgement writes). Always calls `sub_8046818`, `sub_8046854`, then `sub_811E0BA`. Bails on any of:\
+  \ cutscene script active (`IsCutsceneScriptNonNull`), overworld player busy/cutscene active (`owPlayer_isBusyOrCutsceneActive_809E462`),\
+  \ screen fade active (`IsScreenFadeActive`), chatbox flag 0x80 set (`chatbox_mask_eFlags2009F38`), or `GameState->SubsystemIndex\
+  \ != 4`. If `SubsystemIndex == 4`, calls `sub_8141AD2`: if it returns NZ, falls into `sub_8141A70`; else `sub_8141A10`.\
+  \ Always returns r0=0.\n  Reads offset `0x3` of `eStruct2001010` (the 4-byte EWRAM struct at 0x02001010). Reads\
+  \ `tk->GameStatePtr + oGameState_SubsystemIndex`.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- callee `sub_8141AA8` returns early when NZ (`bne loc_8141A0C`). - offset 3 of `eStruct2001010` is read/cleared
+    on first-frame init (`ldrb r0,[r5,#0x3]`; `strb r0,[r5,#0x3]`). - `sub_8046818` and `sub_8046854` are unconditional
+    every tick after init. - guards: `IsCutsceneScriptNonNull`/`owPlayer_isBusyOrCutsceneActive_809E462`/`IsScreenFadeActive`/`chatbox_mask_eFlags2009F38`
+    all early-out at `loc_8141A0C` on NZ or non-NZ respectively. - `SubsystemIndex == 4` gate: `cmp r0,#4 / bne
+    loc_8141A0C` matches `GameState->SubsystemIndex`. - branching after `sub_8141AD2` chooses `sub_8141A10` (NZ==0
+    path) vs `sub_8141A70` (NZ path). - return is always `mov r0,#0 / pop {r4-r7,pc}`. - caller `tk` pointer observed
+    in r10 on entry; `lr=08003b1a` (a per-frame hook table entry).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x081419A0
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^081419a0 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The semantic role of `eStruct2001010` (state machine / sub-tick). What `sub_80468C6(1,0,0)` / `sub_80468C6(2,1,0)`
+  acknowledge is not clear from this function alone; would settle by reading the two writes' callees.
+- 'status: probable'
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 09ea8efa
+  tool: tools/symdoc.py

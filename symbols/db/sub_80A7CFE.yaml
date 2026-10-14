@@ -1,0 +1,71 @@
+name: sub_80A7CFE
+address: '0x080A7CFE'
+kind: function
+previous_names: []
+status: hypothesis
+summary: Overworld trigger that, if the player is inside an X/Y rectangle (relative to the OWPlayerObject) and the
+  conditions are clear, sets event flag 0x1731 and starts a beast-sp related cutscene.
+interface: (no explicit args; r5 holds a small script-param struct, r10 = Toolkit) -> no return ; may start a cutscene.
+details: "1. The function dereferences r10 to get the GameState and then OverworldPlayerObjectPtr (offset 0x18 ->\
+  \ ptr at 0x1c -> OWPlayerObject).\n  2. It loads four signed constants from `dword_80A7D78`..`dword_80A7D84`:\
+  \ 0xE0000 / 0xE0000 / 0x1C0000 / 0x1C0000 - effectively the inclusive bounds `[-0xE0000, +0x1C0000]` on both X\
+  \ and Y (signed 16.16 fixed-point).\n  3. Reads OWPlayerObject coords at offsets 0x1c (X), 0x20 (Y) and adds the\
+  \ negative offset (r2 += X - 0xE0000, r3 += Y - 0xE0000), then subtracts the script's coords from r5+0xc/0x10,\
+  \ producing (scriptRelX, scriptRelY).\n  4. Bails out (locret_80A7D70) unless both r2 and r3 are in `[0, 0x1C0000]`;\
+  \ this is a 2D bounding-box \"player is near script trigger\" test.\n  5. Reads `chatbox_mask_eFlags2009F38(0x80)`,\
+  \ IsCutsceneScriptNonNull, owPlayer_isBusyOrCutsceneActive_809E462, and `IsScreenFadeActive`; bails out if any\
+  \ of them is true (no chatbox flag 0x80, no active cutscene script, player not busy, screen-fade IS active ->\
+  \ beq to locret - so it only fires when no cutscene is playing and a screen-fade is NOT active).\n  6. Sets event\
+  \ flag 0x1731 via `SetEventFlagFromImmediate` (this is a story flag; per captured file names it is a beast-sp\
+  \ chapter flag).\n  7. Reads the OWPlayerObject's Unk_24 field (offset 0x24 in OWPlayerObject - which is the third\
+  \ coord/Z) into r4. Compares it with `[r5+0x14]` (a 32-bit value stored in the caller-supplied r5 struct).\n \
+  \ 8. Branch on equality:\n     - If equal -> `StartCutscene(byte_8089E44 /*CutsceneScript*/, r5)` (param = r5\
+  \ itself).\n     - If not equal -> calls `sub_81420B0()` then compares its return to r4; if equal -> `StartCutscene(byte_8089FD8\
+  \ /*CutsceneScript*/, r5)` else bail.\n  9. Pop and return; writes only r5 in/out (r4-r7 and lr are saved by the\
+  \ prologue/epilogue; r5 is the only callee-saved that the caller relies on - per the contract).\n  10. r5 is a\
+  \ small struct that contains: 0xc/0x10 = trigger coords, 0x14 = trigger value. The caller sub_80A7CEA hands in\
+  \ r5 with these fields preloaded (snap shows r5 = 02039568 in run 1, 0203957c in others - both look like EWRAM\
+  \ params). The two different CutsceneScript addresses picked on equality of `[r5+0x14]` to OWPlayerObject+0x24\
+  \ suggest two branches of a \"beast spawn\" cutscene.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r7, [r7,#oToolkit_GameStatePtr]` then `[r7,#oGameState_OverworldPlayerObjectPtr]` (offsets 0x3c
+    then 0x18) at asm:5339-5342 identify the player object deref chain. - `dword_80A7D78 = 0xE0000`, `dword_80A7D7C
+    = 0xE0000`, `dword_80A7D80 = 0x1C0000`, `dword_80A7D84 = 0x1C0000` (asm data block) - these define the 2D bbox
+    bounds. - The four branches `blt locret_80A7D70` (after sub r2,r0) and `bgt locret_80A7D70` (after cmp r2,r0
+    / cmp r3,r1) implement the "in [min, max]" test. - `mov r0, #0x80` followed by `bl chatbox_mask_eFlags2009F38`
+    -> bne bail shows it tests chatbox/cutscene flag bit 0x80. - Sequence of `bl IsCutsceneScriptNonNull` / `bl
+    owPlayer_isBusyOrCutsceneActive_809E462` / `bl IsScreenFadeActive` with `beq locret_80A7D70` on the last one
+    means: must have NO cutscene script, player NOT busy, and a fade IS active before continuing. - `movflag EVENT_1731`
+    + `bl SetEventFlagFromImmediate` set story flag 0x1731. - The two `StartCutscene` calls with different `byte_8089E44`/`byte_8089FD8`
+    script addresses show two scripted outcomes picked by `[r5+0x14]` matching OWPlayerObject+0x24. - Captured-call
+    file name prefix `snap_beastsp_*` corroborates the beast-sp chapter association but is not part of the assembly.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080A7CFE
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^080a7cfe '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The semantic of `[r5+0x14]` (which is "current Z" / "current map index"?) and OWPlayerObject+0x24 (Z coord per
+  the struct) - the assembly shows only an equality check; the meaning of which script is picked per value is not
+  visible here.
+- The role of `sub_81420B0()` in the second branch is opaque; it is called and its return is compared, but the function
+  summary only says it reads/writes a wide register range.
+- Whether r5 holds a struct allocated by the caller or is one of the OWMapObject fields (e.g., an OverworldMapObject's
+  interaction area struct) is not determinable from this function alone - the caller sub_80A7CEA would settle it.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 09ea8efa
+  tool: tools/symdoc.py

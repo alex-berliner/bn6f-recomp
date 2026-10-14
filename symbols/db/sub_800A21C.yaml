@@ -1,0 +1,51 @@
+name: sub_800A21C
+address: '0x0800A21C'
+kind: function
+previous_names: []
+status: hypothesis
+summary: Returns whether the B-to-skip-turn shortcut should be accepted this frame (battle running, not over, not
+  time-stopped, and sub_801DFE4 returns 0x4000)
+interface: () -> r0 = 1 if skip-battle shortcut should fire, else 0 ; no side effects
+details: "1. Saves lr with `push {lr}`; this is a Thumb leaf using `pop {pc}` as the return idiom.\n  2. Calls battle_isTimeStop;\
+  \ if it is non-zero (time-stop active), falls through to loc_800A23A which returns 0 (no skip).\n  3. Calls battle_isBattleOver;\
+  \ `tst r0, r0`; if non-zero (battle over), returns 0.\n  4. Calls sub_801DFE4 (a small helper, contract `out=['r0']`);\
+  \ compares its result to the constant 0x4000; if they differ, returns 0.\n  5. Only when none of those early-out\
+  \ conditions hit does it `mov r0, #1` and `pop {pc}` to return true.\n  The four conditions together form a single\
+  \ boolean AND. The only global state implied is the Toolkit in r10 (the two battle_* callees use r10). The literal\
+  \ 0x4000 presumably corresponds to a specific input-event bitmask or key state fetched by sub_801DFE4; its identity\
+  \ is the main uncertainty.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- Assembly at 0x0800a21c is 9 meaningful instructions: four conditional branches each going to the same
+    `mov r0, #0` epilogue. - battle_isTimeStop at 0x0800a18e is labeled as time-stop query; the very first `bne`
+    after it bypasses the success path, confirming a non-zero (= time-stop active) means "do not skip". - battle_isBattleOver
+    at 0x0800a0a0 (NB assembly shows 0x0800a18e is `battle_isTimeStop`, 0x0800a0a0 is `battle_isBattleOver`); a
+    non-zero result also bypasses the success path. - sub_801DFE4 is the only other callee; its `out=[''r0'']` contract
+    matches the immediate `ldr r1, dword_800A240` + `cmp r0, r1` comparison. - The `dword_800A240 = 0x4000` is the
+    sole literal compared against; this is the discriminating constant. - The three callers all only take `r5/r10/lr`
+    in, matching the contract that this is a state query that needs the Toolkit but consumes no other arguments.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0800A21C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp'
+  reproduce: 'grep -l ''^0800a21c '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp
+open_questions:
+- What sub_801DFE4 actually returns and why the magic 0x4000 (presumably B-button status, or a battle-state identifier
+  like "player turn / Custom Screen closed" mask) gates the skip. Decompiling sub_801DFE4 or cross-referencing its
+  callee graph would settle it.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 09ea8efa
+  tool: tools/symdoc.py

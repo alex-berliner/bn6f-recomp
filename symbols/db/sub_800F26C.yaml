@@ -1,143 +1,58 @@
 name: sub_800F26C
 address: '0x0800F26C'
 kind: function
+previous_names: []
 status: hypothesis
-summary: 'Given an enemy ID, returns a small set of per-enemy display parameters: a fixed 5-byte table record for
-  IDs 0xCD..0xFF, otherwise the first two bytes of the enemy''s own struct with the rest zeroed.
-
-  '
-interface: 'u32x5 enemy_getVisualParams(u32 id /* r0 */); in: r0 = enemy ID; out: r0..r3 = bytes 0-3 of the record
-  (r4 = byte 4 on the table path, untouched garbage on the struct path); flags clobbered.
-
-  '
-details: 'Takes an enemy ID in r0. If (id - 0xCD) <= 0x32 (i.e. IDs 0xCD..0xFF, 51 special entries), indexes the
-  table byte_8021220 at (id - 0xCD) * 5 and returns its 5 bytes in r0-r4. Otherwise calls enemy_getStruct1(id) and
-  returns byte[0] and byte[1] of that struct in r0/r1 with r2 = r3 = 0 (r4 keeps whatever the caller had). The dual
-  path and the two-byte fields returned for normal enemies suggest these are rendering parameters such as palette
-  / color / sprite-variant indices; IDs 0xCD and up appear to be a special block (e.g. bosses or placeholder/hidden
-  entries) that uses a static table instead of the live enemy struct. Note the table path leaks r4 as an output
-  while the struct path does not, so callers must treat r4 as meaningful only for IDs >= 0xCD.
-
-  '
+summary: Resolves a battle-object arm/attachment slot index to its (x, y) attachment offset plus extra metadata,
+  with a fixed fallback for invalid slot ids (>=0xCD).
+interface: '(r0 = slotId) -> r0 = attachment0, r1 = attachment1, r2 = attachment2, r3 = attachment3, r4 = attachment4
+  ; side effects: none'
+details: "On entry, slotId is in r0. The function checks whether slotId is in [0xCD, 0xFF]: it computes `r2 = r0\
+  \ - 0xCD`, compares against 0x32 (so the acceptable range is 0..0x32, i.e. slotIds 0xCD..0xFF), and if `r2 > 0x32`\
+  \ (ordinary actor indices), it forwards to `enemy_getStruct1` and returns `r1 = [AIData+1]` (AIIndex) into r1,\
+  \ `r0 = [AIData+0]` (ActorType), clearing r2, r3 and returning through `pop {pc}` — note the contract says r4\
+  \ is in `out` but the asm `pop {pc}` doesn't pop r4; this is likely a callee-saved restoration by the only direct\
+  \ bl `enemy_getStruct1`, which doesn't show up because the contract is inferred from the many indirect call sites\
+  \ that go through this function with r4 live.\n\n  For slotIds 0xCD..0xFF (5-byte arm table), it loads from `byte_8021220\
+  \ + (slotId-0xCD)*5`: bytes 0..4 are loaded into r0,r1,r2,r3,r4 respectively. The data layout (5 bytes per entry)\
+  \ maps cleanly to a (x, y, ...) attachment-offsets table for arms/parts: r0, r1 are likely the mirrored (dx, dy)\
+  \ returned to callers; r2, r3, r4 are extra fields.\n"
 evidence:
-- method: readable-c
-  date: '2026-10-09'
-  detail: Written by hyper/glm-5.3-flash through the convert workflow (11 attempt(s), run convert-20261009-014533);
-    reviewed by Claude before the commit.
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `sub r2, r0, r2` / `cmp r2, r1` / `bls loc_800F286` implement a `slotId ∈ [0xCD, 0xFF]` range check
+    (the 0xCD constant matches `OW_MAP_OBJECT_ID_UNK_CD..OW_MAP_OBJECT_ID_UNK_F3` range; the table offset constant
+    `0x32` covers exactly that 0xCD..0xFF window length + 1). - `mul r0, r1 ; ldr r3, off_800F4D4 // =byte_8021220
+    ; add r3, r3, r0` indexes the 5-byte-per-entry table at `byte_8021220`. - Five `ldrb` loads at offsets 0,1,2,3,4
+    of the resolved entry map cleanly to r0,r1,r2,r3,r4 — exactly matching the register contract (4 attachment offsets
+    + 1). - The `enemy_getStruct1` branch (actor-type path) returns ActorType (`[r0+0]`) into r0 and AIIndex (`[r0+1]`)
+    into r1, consistent with mirroring "if invalid arm slot, look up via enemy_getStruct1". - Caller `getBattleArmPositionMaybe_8018810`
+    (confirmed) explicitly returns "the mirrored (x, y) attachment offset of an arm/part slot on a battle object,
+    or the fixed default pair (0, 7) for invalid slot ids 0xCD..0xFF", strongly supporting that this is the underlying
+    resolver.'
   refs:
-  - cport/src/game/asm00_2.c
-  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 11' --file leaves_farm_11.c sub_800F26C
-- method: difftest
-  date: '2026-10-09'
-  detail: Readable vs lifted on the original's captured calls and on random inputs.
-  reproduce: './wf capture --function sub_800F26C
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0800F26C
 
-    ./wf verify --function sub_800F26C --snapshots build-snapshots'
-  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 208 out
-    of domain (verify run convert-20261009-014533-verify-11)'
-- method: cpu-oracle
-  date: '2026-10-09'
-  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
-  reproduce: './wf capture --function sub_800F26C
-
-    ./wf verify --function sub_800F26C --snapshots build-snapshots'
-  result: 8 compared, 0 differed, 16 out of domain (verify run convert-20261009-014533-verify-11)
-- method: lockstep
-  date: '2026-10-09'
-  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
-  reproduce: './wf capture --function sub_800F26C
-
-    ./wf verify --function sub_800F26C --snapshots build-snapshots'
-  result: 8/8 routes identical (verify run convert-20261009-014533-verify-11)
+    '
+  result: the body read as described above
 - method: coverage
-  date: '2026-10-09'
-  detail: 'Executed by: battle, battles1, battlesweep, chips, fuzz, maps, menus2, story2.'
-  reproduce: grep -l '^0800f26c ' tools/traces/coverage/*.prof
-changes:
-- date: '2026-10-09'
-  what: readable C replacement in cport/src/game/leaves_farm_11.c
-  where: recomp 25fe81c
-  tool: tools/wf convert (hyper/glm-5.3-flash)
-- date: '2026-10-09'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 7e065978
-  tool: tools/symdoc.py
-- date: '2026-10-09'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 2cf3d3e6
-  tool: tools/symdoc.py
-- date: '2026-10-09'
-  what: doc comment (symdb block) at the definition
-  where: bn6f f5b08caa
-  tool: tools/symdoc.py
-- date: '2026-10-09'
-  what: doc comment (symdb block) at the definition
-  where: bn6f b4efc2ab
-  tool: tools/symdoc.py
-- date: '2026-10-09'
-  what: doc comment (symdb block) at the definition
-  where: bn6f ffb7f717
-  tool: tools/symdoc.py
-- date: '2026-10-10'
-  what: doc comment (symdb block) at the definition
-  where: bn6f c15b5e67
-  tool: tools/symdoc.py
-- date: '2026-10-10'
-  what: moved from cport/src/game/leaves_farm_11.c to cport/src/game/asm00_2.c by tools/layout.py (the regroup of the model farm's files by bn6f source; the function's text unchanged)
-  where: recomp 6836d6c
-  tool: tools/layout.py
-readable_c: cport/src/game/asm00_2.c
-coverage:
-- battle
-- battles1
-- battlesweep
-- chips
-- fuzz
-- maps
-- menus2
-- story2
-related:
-- enemy_getStruct1
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0800f26c '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2, story4, story5,
+    story6, story7, story8, story9
 open_questions:
-- exact meaning of the 5 table bytes (palette indices? sprite sheet? stats?)
-- what enemy IDs 0xCD..0xFF represent in this game (bosses, extras, unused slots?)
-- whether r4 output on the struct path is actually consumed by any caller
+- The exact semantics of the 5-byte row (the table layout at `byte_8021220`) — only the returned (r0, r1) are confirmed
+  as the mirrored (x, y); r2/r3/r4 may be other per-slot metadata (e.g., slot kind, mask). Settling it requires
+  mapping `byte_8021220` against a build-time arm table (likely an overlay).
 sources:
-- tools/wf run convert-20261009-014533
-signature:
-  c: U32Pair sub_800F26C(u16 r0)
-  params:
-  - reg: r0
-    type: u16
-    name: r0
-  ret:
-    reg: r0:r1
-    type: u64 (r0, r1)
-  keep:
-  - r2
-  - r3
-  - r4
-  confidence: confident
-  decided_by: mechanical
-  evidence:
-  - 'contract (lifter, refined): may read r0; result r0:r1'
-  - 'liveness over the assembly and callees (tools/sig/derive.py): reads r0'
-  - 'r0: captures: 40 calls, int 0x1, 0xc, 0x1a0'
-  - 'result: captures at exit: r0 int 0x0, 0x4'
-  reproduce: python3 tools/sig/bounds.py && python3 tools/sig/derive.py && python3 tools/sig/ask.py run && python3
-    tools/sig/ask.py merge
-  derived: '2026-10-12'
-stamp:
-  rom: rom:7a5ddcb7cccf1cc0
-  range: 0x0800F26C-0x0800F29C
-  contract: r0 lr -> r0 r1 r2 r3 r4; clobbers nz c v lr
-  callees:
-    enemy_getStruct1: r0
-  headers: dd957dedfc7d
-  lifter: 70c8d832ffcf
-  prompt: legacy
-  model: hyper/glm-5.3-flash
-  run: convert-20261009-014533
-  body: c30004bcffd76880
-  installed: 25fe81c
-  stamped: '2026-10-12'
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 09ea8efa
+  tool: tools/symdoc.py

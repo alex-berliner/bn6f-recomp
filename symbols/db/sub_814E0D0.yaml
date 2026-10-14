@@ -3,31 +3,27 @@ address: '0x0814E0D0'
 kind: function
 previous_names: []
 status: hypothesis
-summary: Reads the next script command byte from a battle-object script stream and advances the script pointer,
-  validating the decoded opcode.
-interface: '(r1 = script state / context object) -> r0 = r1 (unchanged), r3 = validated opcode byte; side effects:
-  advances the script cursor at [r1+0x40] by one, may clear r0 in sub_814E0B6 when the address is out of RAM range.'
-details: "The function begins with `ldr r2, [r1, #0x40]`, loading the current script-cursor word\n  from offset\
-  \ 0x40 in the r1 object. `add r3, r2, #1` then computes the post-increment\n  cursor, which is stored back via\
-  \ `str r3, [r1, #0x40]`. The pre-increment cursor r2 is\n  dereferenced as a byte (`ldrb r3, [r2]`) to fetch the\
-  \ next opcode, and execution falls\n  through to `sub_814E0B6` (the lone direct callee) which validates the byte.\
-  \ After the\n  range check in sub_814E0B6, r3 holds either the just-fetched opcode (when the cursor was\n  in\
-  \ RAM, 0x02000000-0x03FFFFFF) or 0 when the cursor was invalid.\n  The assembly is aligned and ends with `thumb_func_end`,\
-  \ suggesting this is a tiny shared\n  inline helper rather than a separately called function — the fall-through\
-  \ into\n  sub_814E0B6 means it is essentially the prefix of that routine when invoked through the\n  `bl sub_814E0B6`\
-  \ style callers. Captured-call snapshots show r1 pointing at battle-object\n  sized structures (around 0x58 bytes\
-  \ visible at @0x02010890 with a script-pointer word\n  at offset 0x40), and the cursor stored at +0x40 advances\
-  \ between captures\n  (0x0818ea69 -> 0x0818d971 -> ...), consistent with an in-progress script walk.\n"
+summary: Advances the routine pointer at [r1+0x40] and reads the byte it points to, returning it in r3 with a validity
+  check on the original pointer.
+interface: (r1 = object-like state struct) -> r0 = r1 (preserved by tail-call), r2 = old pointer, r3 = byte at *oldPointer
+  ; side effects updates the script/routine pointer at [r1+0x40]
+details: "Loads the current routine pointer from offset 0x40 of the structure in r1 (`ldr r2, [r1,#0x40]`),\n  advances\
+  \ a local copy by one (`add r3, r2, #1`), stores the incremented value back to [r1+0x40] so the\n  next call advances\
+  \ further, then loads the byte at the original r2 (`ldrb r3, [r2]`) and tail-calls\n  sub_814E0B6. The callee\
+  \ range-checks r2 (RAM pointer test) and clears r3 if invalid, otherwise leaves\n  the byte in r3. r0 is preserved\
+  \ across the tail-call (B rather than BL) because the caller is going\n  to overwrite it anyway. The +0x40 offset\
+  \ in callers' state structs (e.g. BattleObject at oBattleObject+X,\n  Chatbox struct) holds a forward-iterating\
+  \ script cursor — this is the classic MMBN \"fetch next\n  command byte\" idiom.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- `ldr r2, [r1, #0x40]` at sub_814E0D0 loads the 32-bit script cursor from r1+0x40. - `add r3, r2, #1`
-    / `str r3, [r1, #0x40]` advances and writes back the cursor. - `ldrb r3, [r2]` reads the byte at the pre-increment
-    cursor into r3. - `b sub_814E0B6` falls through to the range-check helper; its contract says it clears r3 when
-    r2 isn''t a RAM pointer. - Captured-call entry r1 (e.g. 0x020080c8, 0x02007ee8) shows the value at +0x40 changing
-    across snapshots (0x0818ea69, 0x0818d971, 0x0818dfdc, 0x0818e205, 0x0818e4fd, 0x0818e862), showing the script
-    pointer is consumed and advances per call. - Caller `sub_814E1FC` is hypothesised to store the r3 result at
-    [r1+0xF] and `sub_814E21C` to use it as a state byte, both consistent with sub_814E0D0 returning a decoded opcode.'
+  detail: '- `ldr r2, [r1,#0x40]` at sub_814E0D0 reads an offset-0x40 routine cursor from r1 - `add r3, r2, #1`
+    / `str r3, [r1,#0x40]` post-increments that cursor back into the struct - `ldrb r3, [r2]` then loads the byte
+    the original r2 pointed to - `b sub_814E0B6` is a tail call (no lr save), so r0/r1/r2 are call-clobbered as
+    documented - callee summary states sub_814E0B6 "range-checks the value in r2 ... clears r3 to signal invalid"
+    - callers consistently pass (r1 = some struct) and consume r3 as a script byte, e.g. sub_814E210 "stores the
+    byte result it leaves in r3 at [r1+0x1B]", and chatbox_PrintBuffer_WriteNextGlyph_814E234 "Fetches the next
+    glyph code from the text stream ... flagging the record as holding a glyph"'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x0814E0D0
@@ -44,12 +40,13 @@ evidence:
   result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1, story2, story3,
     story4, story5, story6, story7, story8, story9, wander
 open_questions:
-- Whether this is its own function or just an inline snippet of sub_814E0B6 (no `bx lr`,
-- falls through unconditionally). Naming should probably stay suffixed until that's settled.
+- Whether all callers actually treat the byte as a script opcode vs. something else (chatbox
+- interprets it as glyph code minus 0x40, others use it as state ordinal). Settled by tracing
+- what value the byte takes in each caller context.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f a1dd9fb3
+  where: bn6f 09ea8efa
   tool: tools/symdoc.py
