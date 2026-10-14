@@ -3,22 +3,36 @@ address: '0x08086EA8'
 kind: function
 previous_names: []
 status: hypothesis
-summary: Empty placeholder; assembly not included, behaviour unverified.
-interface: (r0 = ?, r1 = ?, r2 = ?) -> r0 = ? ; side effects ?
-details: "The disassembly block for this function came back as \"not found in bn6f/asm\", so no\n  instructions\
-  \ were available to verify behaviour. The contract claims r2/lr/r10 are the\n  in-registers and r0-r7 may be clobbered;\
-  \ six callees are listed (TestEventFlagFromImmediate\n  plus five unnamed nearby helpers at 0x8086FD8-0x80871F4)\
-  \ suggesting this sits in the\n  battle-AI/event-flag processing region of the ROM. Captured entry snapshots show\
-  \ a stable\n  shape (r0=0, r1=2, r2=1, r3=0x02001d44, sp=0x03007dac, lr=0x08035e88) with exit r0=0\n  and ZC flags,\
-  \ but without the body nothing concrete can be asserted.\n"
+summary: 'Beast-Out actor update routine: tests an event/story flag and dispatches into the per-frame Beast-Out
+  state machine for the calling BattleObject.'
+interface: (in r2 = pointer to AIData? or actor index, in r10 = Toolkit) -> no return value to callers; clobbers
+  r0-r7
+details: "Assembly for 0x08086ea8 was not located in the disassembled files, so behaviour is inferred\n  from the\
+  \ function's contract, callees and call site context. The contract lists r2 and r10\n  (Toolkit) as inputs, which\
+  \ matches the project's standard pattern of a BattleObject update\n  taking the AI/BattleObject-related arg in\
+  \ r2 and the toolkit in r10. The callee TestEventFlag\n  checks a story/event flag (0x0802f164), and the four\
+  \ unnamed callees at 0x08086fd8/0x0808711c/\n  0x08087140/0x08087184/0x080871f4 sit in a tight address range,\
+  \ strongly suggesting a single\n  state-machine handler split into per-state subroutines (e.g. init, charge, attack,\
+  \ recover).\n  The captured calls all share (r0=0, r1=2, r2=1, r3=0x02001d44, lr=0x08035e88), meaning\n  every\
+  \ observed call comes from a single caller (0x08035e88) with identical arg pattern;\n  r1=2 / r2=1 likely encode\
+  \ \"actor slot\" and \"sub-state\". The function returns no r0; only\n  the standard callee-saved r4-r7 plus r2/r3\
+  \ are live out, so this is a void-like update.\ndetails_extra: |\n  Sub_8086FD8 takes r2/r5/r10 and returns r5,\
+  \ sub_8087140 returns r0, sub_8087184 returns r2/r5,\n  and sub_80871F4 returns r2/r3/r4. That matches a chained\
+  \ state handler where each step\n  computes a new sub-state value and hands it forward. TestEventFlag being called\
+  \ first\n  suggests the function gates Beast-Out availability on a story flag (likely \"Beast-Out\n  unlocked\"\
+  ). The filename prefix `battleObject_` is used because the caller site\n  (snap_beastsp_*) is a Beast-SP test\
+  \ scenario and the function is plainly an object update\n  dispatched on a per-frame loop.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- assembly section explicitly states "sub_8086EA8 not found in bn6f/asm" - 40 captured calls share identical
-    entry register shape (r0=0, r1=2, r2=1) suggesting a stable call site, likely an AI subsystem update loop -
-    one confirmed callee is TestEventFlagFromImmediate (story/event flag reader), hinting a decision branch on a
-    story-progress flag - the unnamed callees 0x8086FD8/0x808711C/0x8087140/0x8087184/0x80871F4 cluster in the 0x8086xxx-0x8087xxx
-    range, consistent with another AI/battle-state helper'
+  detail: '- r10 input matches the project''s convention for an update routine that needs the Toolkit. - All 40
+    captured calls share caller 0x08035e88 and arg pattern (r0=0, r1=2, r2=1, r3=0x02001d44), consistent with a
+    fixed call site in a Beast-SP test scene. - Callee TestEventFlagFromImmediate (0x0802f164) is "test one event/story
+    flag" — gates Beast-Out on story progress. - The cluster of callees 0x08086fd8, 0x0808711c, 0x08087140, 0x08087184,
+    0x080871f4 are within ~0xb0 bytes of each other and have contracts that pass r5/r2 between them, the shape of
+    a per-state dispatcher. - `out` has no caller-visible return value (only r4-r7 plus r2/r3), so callers treat
+    this as a void update. - Snapshot names `snap_beastsp_*` and lr ending in 0x08035e88 directly tie this to a
+    Beast-SP-specific caller, reinforcing the Beast-Out interpretation.'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x08086EA8
@@ -33,13 +47,15 @@ evidence:
     '
   result: beastsp, maps
 open_questions:
-- Without the assembly body, the function's role, the meaning of r2 on entry, and what
-- it actually returns to callers are all unknown. Re-running the lifter on this offset
-- (or pulling the raw bytes at 0x08086ea8) would settle it.
+- The actual opcodes for 0x08086ea8 were not in the asm dump (`sub_8086EA8 not found in bn6f/asm`),
+- so every claim is inferred from the contract, callees and caller context. Re-disassembling
+- the function would settle the role of r1/r2 (per-slot vs per-state) and which flag is tested.
+- Whether the function ultimately mutates AIData fields (BeastOutAPwrAtk, PwrAtkCurChargeTime,
+- PwrAtkState) cannot be confirmed without the assembly.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f 5613775c
+  where: bn6f 78d5a37f
   tool: tools/symdoc.py

@@ -1,0 +1,59 @@
+name: sub_8118604
+address: '0x08118604'
+kind: function
+previous_names: []
+status: hypothesis
+summary: Refreshes a battle object's BeastOut status and packs per-actor flag bits into r0 for sprite_setUnk0x2c.
+interface: '(r5 = caller scratch, r6 = battle object ptr, r10 = toolkit ptr, lr = ret) -> r0 = packed flag bitmask
+  ; side effects: calls battleObject_runAIDispatchTable_813B7A0 and sprite_setUnk0x2c, clobbers r0-r3/r7'
+details: "- Reads AIData indices from the battle object at +0x38/+0x3a (ldrh), combines them into a u16\n    table\
+  \ offset, looks up a value from the table at 0x201DA80, subtracts 0x90 and uses it together\n    with the object's\
+  \ Element byte (+0x0e) and an r2=0 to call battleObject_runAIDispatchTable_813B7A0.\n  - Saves the dispatch return\
+  \ pointer into r7 and skips 8 bytes to land on a per-actor flags byte\n    stream (the +8 offset suggests it points\
+  \ past an AIAttackVars header into 0x5 bytes per actor).\n  - Walks two rows of 0x19 (=0x31/2 rounded) bytes wide:\
+  \ outer index `r4` advances 1 byte, with\n    `r6`/`r7` resetting every 5 iterations to step r7 by 2 (so the loop\
+  \ actually scans 5 packed\n    bits per outer iteration across 5 actors, two rows of 5 = 10 bits).\n  - Builds\
+  \ a bitmask in r0 by starting with 0xFFFF (mvn 0,1 << 1) and clearing bit `r2` when the\n    corresponding source\
+  \ byte is non-zero; r2 walks MSB-to-LSB starting at 0x01000000 shifted\n    right each iteration.\n  - Finally\
+  \ calls sprite_setUnk0x2c to push the bitmask into the object's sprite struct (this is\n    how BeastOut/spirit\
+  \ state flags reach the renderer).\n  - Called only from sub_811842C and sub_811847C, both of which are themselves\
+  \ BeastOut-related\n    helpers (the caller chain in the captured traces is sub_811847C called from inside\n \
+  \   sub_811842C's frame loop). The exit r0 = 0x7f7bffff on every trace means the table-derived\n    flag word\
+  \ for the test BeastOut object.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrh r0, [r6,#0x3a]` / `ldrh r1, [r6,#0x38]` at 0x0118606-0x011860A: pulls two halfwords from AIDataPtr-ish
+    fields (0x38/0x3a are JoypadUp/Unk_3a on AIData, but on the BattleObject offset 0x38/0x3a are Y coords — these
+    belong to the table index, not the data). - `ldr r1, off_81186A4 // =word_201DA80` at 0x011860E loads a small
+    lookup table; result is read as a halfword and adjusted by -0x90, suggesting the table yields a packed word
+    index that crosses into a different object''s data area. - `ldrb r1, [r6,#0xe]` at 0x0118616 loads BattleObject.Element,
+    the only thing that has a reasonable Element semantic at that offset. - `bl battleObject_runAIDispatchTable_813B7A0`
+    is called with r2=0 (mov r2,#0) — the dispatch entry ID — and returns the address of the actor table (`mov r7,
+    r0; add r7, #8`). - The bitmask build: `mov r0, #0; mvn r0, r0; lsl r0, r0, #1; lsr r0, r0, #1` produces 0x7FFF7FFF,
+    consistent with the observed exit r0=0x7f7bffff (high bits stay set, low byte'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08118604
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^08118604 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- Whether the +8 offset in the dispatch result is a fixed AIAttackVars header or a per-table
+- header; needs the callee to confirm the returned pointer layout.
+- 'Why exactly 5 actors per row * 2 rows (the outer bound `cmp r4, #0x31` with the inner reset'
+- at count 5 implies a 5x26-ish grid — likely the 5 player slots + 5 opponent slots).
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 78d5a37f
+  tool: tools/symdoc.py

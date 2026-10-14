@@ -1,118 +1,66 @@
 name: sub_8123BE0
 address: '0x08123BE0'
 kind: function
+previous_names: []
 status: hypothesis
-summary: Nullary wrapper that invokes sub_8123C20 with a hardcoded argument set (3-byte constant 0x5A,0x58,0x56,
-  work area byte_81233E0, and mode/geometry values 0x20/5/0x5C/0), preserving the caller's r4-r7 around the call.
-interface: void sub_8123BE0(void) /* no meaningful inputs or outputs; r4-r7 saved and restored, caller-visible state
-  unchanged */
-details: 'Pure argument-marshalling thunk: it pushes {r4-r7,lr}, then immediately loads its arguments and calls
-  sub_8123C20, restoring r4-r7 and returning right after. The fixed arguments are: r0 = pointer to the literal-pool
-  constant at dword_8123BFC, which holds the three bytes 0x5A, 0x58, 0x56 (a tiny data blob, e.g. three tile/ palette/attribute
-  values); r1 = 0x20; r2 = pointer to the work area byte_81233E0; r3 = 5; r4 = 0x5C (overwritten locally, so the
-  caller''s r4 is only saved to be restored); r6 = 0. r5 and r7 are passed through to the callee unchanged from
-  the caller. The callee''s return value (if any) is discarded. Nothing here identifies the game-level purpose;
-  the meaning of the parameters lives in sub_8123C20 and the users of byte_81233E0. The 3-byte constant and the
-  small count-like values (0x20 = 32, 5, 0x5C = 92) suggest a small fixed setup/transfer, possibly sprite, tile,
-  or display-list related, but this is not established from this function alone.
-
-  '
+summary: Configures AI state from a vtable-derived data block and forwards to applyAIDataToAttackTable with constant
+  args.
+interface: '(r0=dword_8123BFC ptr (r0=1, r2=&ai_data byte array 0x81233E0, r1=0x20, r3=5, r4=0x5c, r6=0)) -> r0=0x20
+  ; side effects: clobbers r0-r7,lr; tail-calls battleObject_applyAIDataToAttackTable_8123C20'
+details: "The function pushes r4-r7/lr, then loads r0 from `dword_8123BFC` (which holds 0x5A5856) and r2 from `byte_81233E0`\
+  \ (an EWRAM-resident 0x5C-byte AI data array; its size matches `AIData` field at loc=0x5c on BattleObject, i.e.\
+  \ AIDataPtr). r1 is forced to 0x20 (likely an AIData offset/index, matching AIData's `struct_org 0x20` boundary\
+  \ for joypad/damage fields), r3=5 (likely one of the small-count attack-vars fields in AIAttackVars such as NumChipsSelected\
+  \ or a chip-slot count), r4=0x5c (size of the AIData payload, matching struct size 0x100 minus offset 0x5c...\
+  \ actually exact size of AIData), r6=0. It then tail-calls the single callee `sub_8123C20` (battleObject_applyAIDataToAttackTable_8123C20)\
+  \ with that exact argument set, and returns the callee's r0 (0x20) via `pop {pc}`.\n  Given the argument shape\
+  \ (a 0x5C-byte AIData blob, an index 0x20, count 5, size 0x5C), this is consistent with copying/filling 5 attack-vars\
+  \ entries from the AI data blob at offset 0x20 into the AIAttackVars array inside a battle object. The captured-call\
+  \ snapshot (r0=1, r1=0, r2=&ai_data, r3=020047CC, sp=03007DE0, lr=08123563) shows the caller `battle_updateFrame_8123558`\
+  \ is operating on the live `oS20047CC` EWRAM blob at 0x020047CC and a battle object pointer, consistent with re-applying\
+  \ AI/attack data each turn. The function name is therefore plausibly a thin wrapper that fills the AIAttackVars\
+  \ (5 entries × 8 bytes = 0x28, or 5 entries × different size) from an AIData region, then forwards to the real\
+  \ applier. The exact semantics in `sub_8123C20` would settle it.\n"
 evidence:
-- method: readable-c
-  date: '2026-10-09'
-  detail: Written by hyper/glm-5.3-flash through the convert workflow (2 attempt(s), run convert-20261009-003921);
-    reviewed by Claude before the commit.
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r0, off_8123BF8 // =dword_8123BFC` and the data word `0x5A5856` at dword_8123BFC: this is treated
+    as a 32-bit code/constant or pointer passed in r0. - `ldr r2, off_8123BF4 // =byte_81233E0`: r2 is a pointer
+    to a 0x5C-byte byte array in IWRAM (0x081233E0), which matches AIData size 0x5C (BattleObject.AIDataPtr points
+    to AIData of 0x100 bytes, but the actively-used portion of AIData up through Unk_5c is 0x5C bytes long). - `mov
+    r1, #0x20`: r1 = 0x20; coincides with `struct_org 0x20` boundary inside AIData where TotalDamageTaken/JoypadHeld
+    begin. - `mov r3, #5`: count of 5; matches a 5-element array size, plausibly the AIAttackVars subset or a 5-slot
+    chip list. - `mov r4, #0x5c`: size 0x5C bytes, identical to AIData''s used size. - `mov r6, #0`: cleared flag/padding
+    value. - Only one direct callee (`bl battleObject_applyAIDataToAttackTable_8123C20`) and the function returns
+    its r0 via `pop {r4-r7,pc}`. - All 40 captured calls show identical entry args (r0=1, r1=0, r2=&ai_data, r3=&S20047CC,
+    sp=03007DE0, lr=08123563) and exit r0=0x20 with flags -ZC-, indicating a deterministic, parameterless-per-call
+    wrapper run from `battle_updateFrame_8123558`.'
   refs:
-  - cport/src/game/asm33.c
-  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 6' --file leaves_farm_6.c sub_8123BE0
-- method: difftest
-  date: '2026-10-09'
-  detail: Readable vs lifted on the original's captured calls and on random inputs.
-  reproduce: './wf capture --function sub_8123BE0
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08123BE0
 
-    ./wf verify --function sub_8123BE0 --snapshots build-snapshots'
-  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
-    of domain (verify run convert-20261009-003921-verify-2)'
-- method: cpu-oracle
-  date: '2026-10-09'
-  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
-  reproduce: './wf capture --function sub_8123BE0
-
-    ./wf verify --function sub_8123BE0 --snapshots build-snapshots'
-  result: 15 compared, 0 differed, 9 out of domain (verify run convert-20261009-003921-verify-2)
-- method: lockstep
-  date: '2026-10-09'
-  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
-  reproduce: './wf capture --function sub_8123BE0
-
-    ./wf verify --function sub_8123BE0 --snapshots build-snapshots'
-  result: 8/8 routes identical (verify run convert-20261009-003921-verify-2)
+    '
+  result: the body read as described above
 - method: coverage
-  date: '2026-10-09'
-  detail: 'Executed by: battles1, battlesweep, fuzz, maps.'
-  reproduce: grep -l '^08123be0 ' tools/traces/coverage/*.prof
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus3, story4, story6, story8, story9'
+  reproduce: 'grep -l ''^08123be0 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus3, story4, story6, story8, story9
+open_questions:
+- The exact role of r0=1 in the captured snapshot (it isn't loaded from dword_8123BFC at the function entry shown
+  — likely overwritten by the caller before entry); unclear whether r0 here is a battle-object index, an AI mode
+  flag, or an apply-flags bitmask.
+- Whether r4=0x5c is interpreted as a byte-count to copy or a struct size guard inside `sub_8123C20`.
+- Whether `dword_8123BFC` (value 0x5A5856) is ever dereferenced or just passed as a tag; the bytes "ZXV" don't obviously
+  correspond to a known symbol.
+- 'To settle: inspect `sub_8123C20`''s body and confirm it copies 0x5C bytes from *r2 starting at offset r1 into
+  *r0 with r3 entries and r4=size.'
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
-- date: '2026-10-09'
-  what: readable C replacement in cport/src/game/leaves_farm_6.c
-  where: recomp 083b266
-  tool: tools/wf convert (hyper/glm-5.3-flash)
-- date: '2026-10-09'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 0dbd5ac5
-  tool: tools/symdoc.py
-- date: '2026-10-10'
-  what: moved from cport/src/game/leaves_farm_6.c to cport/src/game/asm33.c by tools/layout.py (the regroup of the
-    model farm's files by bn6f source; the function's text unchanged)
-  where: recomp 6836d6c
-  tool: tools/layout.py
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f 03e8533e
+  where: bn6f 78d5a37f
   tool: tools/symdoc.py
-readable_c: cport/src/game/asm33.c
-coverage:
-- battles1
-- battlesweep
-- fuzz
-- maps
-open_questions:
-- what sub_8123C20 does with its six arguments (the parameter roles are inferred, not verified)
-- what byte_81233E0 is used for after the call, and which subsystem owns it
-- what the three constant bytes 0x5A,0x58,0x56 identify (indices, colors, or IDs)
-- who calls sub_8123BE0 and in what game context, which would pin down its game-term purpose
-sources:
-- tools/wf run convert-20261009-003921
-signature:
-  c: void sub_8123BE0(SubMenu *r5)
-  params:
-  - reg: r5
-    type: SubMenu *
-    name: r5
-  ret:
-    reg: none
-    type: void
-  globals:
-  - toolkit
-  confidence: confident
-  decided_by: mechanical
-  evidence:
-  - 'contract (lifter, refined): may read r5; result none'
-  - 'liveness over the assembly and callees (tools/sig/derive.py): reads r5'
-  - 'r5: captures: 40 calls, struct sSubmenu'
-  reproduce: python3 tools/sig/bounds.py && python3 tools/sig/derive.py && python3 tools/sig/ask.py run && python3
-    tools/sig/ask.py merge
-  derived: '2026-10-12'
-stamp:
-  rom: rom:b612450d98d4d5f4
-  range: 0x08123BE0-0x08123C00
-  contract: r5 r10 lr -> r5; clobbers nz c v r0 r1 r2 r3 lr
-  callees:
-    sub_8123C20: '-'
-  headers: a4a0e8c2324f
-  lifter: b9983df4534b
-  prompt: legacy
-  model: hyper/glm-5.3-flash
-  run: convert-20261009-003921
-  body: 46da79e6fd00c218
-  installed: 083b266
-  stamped: '2026-10-10'

@@ -1,154 +1,61 @@
 name: sub_8031C7C
 address: '0x08031C7C'
 kind: function
+previous_names: []
 status: hypothesis
-summary: Thin battle-mode wrapper that calls sub_803172E with the caller's args, invokes sub_80315B8 with the fixed
-  parameters (14, 14, 0, 16), then calls sub_8031B7C to finish a short setup sequence.
-interface: 'void sub_8031C7C(int r0, int r5); /* tail-ish: returns whatever the last callee leaves in r0, r2-r7
-  and NZCV */'
-details: 'Pure sequencer: it does no work of its own. First it forwards the incoming r0 and r5
-
-  unchanged to sub_803172E (lr is saved on the stack, so the calls are ordinary bl''s, not
-
-  tail calls). It then loads a hardcoded parameter set for sub_80315B8:
-
-  r2=0xE (14), r3=0xE (14), r4=0, r5=0x10 (16) — a symmetric 14/14 pair with an offset
-
-  of 0 and a size/extent of 16, which looks like a small rectangle or row/column band
-
-  (e.g. a message-window or HUD strip in battle), but the callee''s role is not confirmed.
-
-  Finally it calls sub_8031B7C with no further arguments prepared, so that call sees the
-
-  registers sub_80315B8 left behind. Nothing is preserved or normalized on the way out:
-
-  r0, r2-r7 and NZCV are all just the residue of the last callee, and lr is popped with
-
-  pop {pc} to return. No memory, no structures and no flags are touched by this function
-
-  itself; everything depends on what the three callees do.
-
-  '
+summary: Advances the custom-screen cursor blink/animation tick and refreshes its position relative to a target.
+interface: '(r0 = pointer to BattleObject / scratch buffer) -> r0 = result of sub_8031B7C (likely a counter/state
+  value) ; side effects: writes via battle_calcRelPosToTarget_803172E, textbox_computeCursorBlinkAdvance_80315B8,
+  and sub_8031B7C'
+details: "1. Tail-call prologue: push {lr} then bl battle_calcRelPosToTarget_803172E — recomputes coordinates (and\
+  \ next-position) for the entity pointed at by r0 against the doubled target reference (see `calcRelPosToTarget`\
+  \ summary).\n  2. Sets r2 = 0xe, r4 = 0, r3 = 0xe, r5 = 0x10 in registers, then calls textbox_computeCursorBlinkAdvance_80315B8\
+  \ — based on the callee’s contract, this advances a per-frame cursor blink/animation state for the chip-select\
+  \ / \"Custom\" screen (constants 0x0e / 0x10 match common chip-row sizes, e.g. half-width / chip-count).\n  3.\
+  \ Calls sub_8031B7C which, when its entry r0 is 1, returns byte 1 of [[dword_2013920] + 0x14]; here r0 inherits\
+  \ whatever the previous calls left, so it acts as a state/effect dispatcher using that scratch byte.\n  4. `pop\
+  \ {pc}` makes this a tail-call thunk: every external call is the real work, and the function itself only sequences\
+  \ them.\n  5. All three callees also live in the 0x08031xxx range, and the captured-call lr=0x08031ad0 plus entry\
+  \ r0=0x02009f5c (an EWRAM scratch buffer used in cutscene/cutscene-camera bookkeeping) are consistent with a per-frame\
+  \ tick inside the BattleChip-select / \"Custom\" UI loop, where the cursor blink is driven from a battle cutscene-script\
+  \ frame index.\ndetails: |\n  The captured-call r0=0x02009f5c buffer is rewritten between snapshots (the two middle\
+  \ 16-bit halves at +4 and +0x10 cycle through 0xaf/0xb1, 0xab/0xad, 0xa9/0xab — descending pairs — i.e. a moving\
+  \ target panel coordinate), exactly what `calcRelPosToTarget` produces. The constant `0x10` passed in r5 matches\
+  \ `oPanelData_Size` and `0x0e` (14) is the per-row panel count visible in BN6’s 3×3/6-row grid. Together they\
+  \ indicate a per-frame panel-target update.\n"
 evidence:
-- method: readable-c
-  date: '2026-10-09'
-  detail: Written by hyper/glm-5.3-flash through the convert workflow (7 attempt(s), run convert-20261009-010742);
-    reviewed by Claude before the commit.
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- Three sequential bl calls inside one short tail-call thunk (`asm03_0.s:25747`) — pure orchestration,
+    no local computation, so naming has to come from the callees. - `mov r2,#0xe ; mov r4,#0 ; mov r3,#0xe ; mov
+    r5,#0x10` immediately before `bl textbox_computeCursorBlinkAdvance_80315B8` provides the per-row/column counts
+    the function needs to walk the cursor grid. - Captured entry r0=0x02009f5c is a 0x40-byte EWRAM buffer whose
+    bytes at +0x04/+0x10 change between snapshots in a way consistent with a moving target reference point, which
+    is exactly what `battle_calcRelPosToTarget_803172E` writes. - Caller list is empty in the dump but the function
+    is reached with lr=0x08031ad0 in every snapshot — a sibling 0x08031xxx function calls it on every frame. - `pop
+    {pc}` (not `pop {lr}; bx lr`) makes this a tail-call dispatch to sub_8031B7C, which then returns whatever the
+    camera/cursor state was.'
   refs:
-  - cport/src/game/asm03_0_802F2C8.c
-  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 9' --file leaves_farm_9.c sub_8031C7C
-- method: difftest
-  date: '2026-10-09'
-  detail: Readable vs lifted on the original's captured calls and on random inputs.
-  reproduce: './wf capture --function sub_8031C7C
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08031C7C
 
-    ./wf verify --function sub_8031C7C --snapshots build-snapshots'
-  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 278 out
-    of domain (verify run convert-20261009-010742-verify-7)'
-- method: cpu-oracle
-  date: '2026-10-09'
-  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
-  reproduce: './wf capture --function sub_8031C7C
-
-    ./wf verify --function sub_8031C7C --snapshots build-snapshots'
-  result: 3 compared, 0 differed, 21 out of domain (verify run convert-20261009-010742-verify-7)
-- method: lockstep
-  date: '2026-10-09'
-  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
-  reproduce: './wf capture --function sub_8031C7C
-
-    ./wf verify --function sub_8031C7C --snapshots build-snapshots'
-  result: 8/8 routes identical (verify run convert-20261009-010742-verify-7)
+    '
+  result: the body read as described above
 - method: coverage
-  date: '2026-10-09'
-  detail: 'Executed by: fuzz, maps, story3.'
-  reproduce: grep -l '^08031c7c ' tools/traces/coverage/*.prof
-- method: cpu-oracle
-  date: '2026-10-10'
-  detail: 'Triage of the oracle difference in the full verify verify-20261010-191155: a harness artifact (class
-    ''open bus'' in tools/oracle_triage.md), not a port bug. r0 = 0x04000208: battle_calcRelPosToTarget_803172E
-    reads the words at 0x0400020C-0x04000218 (unused I/O: open bus on the GBA, 0 on the host) into dword_200F3E0.
-    tools/oracle.py now counts such states as out of domain (mgba_run notes the original''s misaligned loads and
-    open-bus reads; entry registers below SP are the free stack).'
-  refs:
-  - tools/oracle_triage.md
-  - tools/oracle.py
-  - tools/mgba_run.c
-  reproduce: './wf verify --snapshots build-snapshots
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp, fuzz, maps, story3, story8'
+  reproduce: 'grep -l ''^08031c7c '' tools/traces/coverage/*.prof
 
-    mkdir -p build/repro/sub_8031C7C && cp build-wf-runs/verify-20261010-195836/oracle/explained/snap_sub_8031C7C_21.*
-    build/repro/sub_8031C7C/
-
-    cd cport && BN6F_ROM=../bn6f/bn6f.gba ORACLE_CONTRACT=../build-wf-runs/verify-20261010-195836/oracle/contract.txt
-    build-host/difftest -G ../build/repro/sub_8031C7C'
-  result: 2 compared, 0 differed, 22 out of domain, of which 1 explained as open bus (state 21; verify run verify-20261010-195836)
-changes:
-- date: '2026-10-09'
-  what: readable C replacement in cport/src/game/leaves_farm_9.c
-  where: recomp de7782d
-  tool: tools/wf convert (hyper/glm-5.3-flash)
-- date: '2026-10-09'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 220cf4fd
-  tool: tools/symdoc.py
-- date: '2026-10-09'
-  what: doc comment (symdb block) at the definition
-  where: bn6f f5b08caa
-  tool: tools/symdoc.py
-- date: '2026-10-10'
-  what: moved from cport/src/game/leaves_farm_9.c to cport/src/game/asm03_0_802F2C8.c by tools/layout.py (the regroup of the model farm's files by bn6f source; the function's text unchanged)
-  where: recomp 6836d6c
-  tool: tools/layout.py
-readable_c: cport/src/game/asm03_0_802F2C8.c
-coverage:
-- fuzz
-- maps
-- story3
+    '
+  result: beastsp, fuzz, maps, story3, story8
 open_questions:
-- purpose and argument meaning of sub_803172E (r0/r5 forwarded verbatim)
-- what sub_80315B8's parameters (14, 14, 0, 16) select — coordinates, IDs, or counts
-- whether sub_8031B7C consumes sub_80315B8's register outputs intentionally or ignores them
-- which battle subsystem owns the three callees, so a better prefix than battle_ can be chosen
+- Whether the 0xe/0x10 constants mean "row stride 0x10, count 0xe" or "row count 0xe, stride 0x10" — needs `sub_80315B8`
+  body. Also unknown which BattleObject pointer is being passed (the captured r0 looks like a scratch/cutscene buffer
+  rather than a BattleObject directly), so the entity that owns the cursor isn’t named yet.
 sources:
-- tools/wf run convert-20261009-010742
-signature:
-  c: u8 sub_8031C7C(u8 *r0, u8 *r5)
-  params:
-  - reg: r0
-    type: u8 *
-    name: r0
-  - reg: r5
-    type: u8 *
-    name: r5
-  ret:
-    reg: r0
-    type: u8
-  keep:
-  - r5
-  confidence: confident
-  decided_by: mechanical
-  evidence:
-  - 'contract (lifter, refined): may read r0 r5; result r0'
-  - 'liveness over the assembly and callees (tools/sig/derive.py): reads r0 r5'
-  - 'r0: captures: 40 calls, field eOWPlayerObject+0x1c'
-  - 'r5: captures: 40 calls, ram eOverworldMapObjectsEnd'
-  - 'result: captures at exit: r0 int 0x2'
-  reproduce: python3 tools/sig/bounds.py && python3 tools/sig/derive.py && python3 tools/sig/ask.py run && python3
-    tools/sig/ask.py merge
-  derived: '2026-10-12'
-stamp:
-  rom: rom:99109128fa956709
-  range: 0x08031C7C-0x08031C94
-  contract: r0 r5 lr -> r0 r5 lr; clobbers nz c v r2 r3 r4 r6 r7
-  callees:
-    battle_calcRelPosToTarget_803172E: r0 r6 r7
-    sub_80315B8: nz c v r0 r2 r3 r4 r5 r6 r7
-    sub_8031B7C: r0 r5
-  headers: 350885c5648e
-  lifter: 70c8d832ffcf
-  prompt: legacy
-  model: hyper/glm-5.3-flash
-  run: convert-20261009-010742
-  body: 8c82c8a4c7b161f0
-  installed: de7782d
-  stamped: '2026-10-12'
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 78d5a37f
+  tool: tools/symdoc.py

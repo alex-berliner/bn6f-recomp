@@ -1,0 +1,63 @@
+name: sub_81185E4
+address: '0x081185E4'
+kind: function
+previous_names: []
+status: hypothesis
+summary: Loads a BattleObject's palette index from a global u16 table indexed by an AIData-derived offset, looks
+  up the BattleObject, and sets its sprite palette.
+interface: (r5 = AIData? base, r6 = related battle object, lr = return) -> void (r0 only used as scratch, returned
+  0)
+details: "Steps:\n  1. `ldrh r0, [r6,#0x3a]` and `ldrh r1, [r6,#0x38]` read two u16s from the object pointed to\
+  \ by r6 (likely AIData fields Unk_38 and Unk_3a — panel/index pair).\n  2. Adds them: `r0 = r0 + r1`, then shifts\
+  \ left 2 (`lsl r0, r0, #2`), so it indexes a table of u16 entries by (Unk_3a + Unk_38) * 2 — but lsl by 2 makes\
+  \ each entry 4 bytes; with `ldrh` that means it indexes a u16 array as if each slot were 2 bytes... actually the\
+  \ lsl #2 doubles the offset so combined with `ldrh [r0+table]` it reads `word_201DA80[(Unk_3a + Unk_38) * 2]`.\n\
+  \  3. Loads the u16 from `off_81186A4` (`word_201DA80`), subtracts `0x90`, then calls `battleObject_getByIndex_813B780`\
+  \ (which probably returns a battle-object pointer keyed by index).\n  4. Reads `ldrb r0, [r0,#3]` (battle-object\
+  \ offset 3 — the SpriteOffset half of TypeAndSpriteOffset, per ObjectHeader.inc).\n  5. Subtracts 1 (`sub r0,\
+  \ #1`) and calls `sprite_setPalette(palette)`. So the sprite palette index comes from object field offset 3 minus\
+  \ 1.\n\n  All 8 captured calls come from this function (`lr=08118477`, matching one of the unnamed callers). r5/r6\
+  \ are callee-saved, so the caller does not expect them to be clobbered. Exit r0=0 suggests `sub r0, #1` produced\
+  \ a small result (likely palette index 0 after the subtraction) and the return is not meaningful.\n\n  The \"\
+  0x90\" subtract is consistent with a sentinel \"no object\" index (e.g. `0x90` being an out-of-range guard); without\
+  \ knowing getByIndex semantics it's unclear whether subtract-then-getByIndex is correct or whether the subtract\
+  \ belongs to the index.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- r6+#0x38 and r6+#0x3a read as u16 at offsets that exactly match `AIData.Unk_38` and `AIData.Unk_3a`
+    per the AIData struct definition (both loc=0x38/0x3a, u16). - The r5/r6/r10 caller pattern with r6 referencing
+    u16s at 0x38/0x3a is consistent with AIData-style access; one of the 8 callers likely stages r6 to point at
+    `AIDataPtr` of some BattleObject. - `battleObject_getByIndex_813B780` (callee contract: `in=[''r0''] out=[''r0'',''r2'']`)
+    takes an index in r0 and returns an object pointer — matches the typical "index in -> object out" pattern. -
+    `[r0,#3]` after the lookup reads the low byte of the SpriteOffset half of `TypeAndSpriteOffset` (ObjectHeader
+    at offset 2–3 of a BattleObject); sprite_setPalette stores r0 in sprite struct byte 4 per the callee summary.
+    - `off_81186A4 -> word_201DA80` is the constant table; combined read pattern is a 4-byte-stride indexed u16
+    lookup. - 40 captured calls all originate from `lr=08118477` (one of the listed callers) and show no input args
+    in r0–r3 (consistent with `r5/r6` carrying state).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x081185E4
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^081185e4 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The exact object type r6 points to (likely AIData, but could be a small wrapper).
+- 'The semantics of the `sub r0, #0x90` before `getByIndex`: index-sentinel vs. palette bias.'
+- What the two summed u16s represent (Unk_38 + Unk_3a of AIData could be a row+col index, a frame counter pair,
+  etc.).
+- Why the same caller in 40 captures shows identical args — the captured frames may all sample the same game tick.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 78d5a37f
+  tool: tools/symdoc.py
