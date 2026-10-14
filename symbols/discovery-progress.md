@@ -1573,3 +1573,69 @@ Highlights:
 | 28    | 25                 | 17                        | 8               | 0       |
 
 Running total: named 517, hypothesis-only 179, dropped 0 (of ~10,600 placeholders).
+
+## Batch 29 (2026-10-14)
+
+25 functions, 13 named + 12 hypothesis (sub_8010C50, sub_8028894, sub_8031BFA,
+sub_8083DF0, sub_8086EA8, sub_808CF8C, sub_808D060, sub_80E386A, sub_810CE1A,
+sub_810CF4A, sub_810D808, sub_813BE8C kept as comment only), renamed in
+recomp 999afe5a (bn6f pushed; port ROM unchanged).
+
+Highlights:
+- battle: reset link sync flags (battle_resetLinkSyncFlags_800B460);
+- battle object: jump/land step
+  (battleObject_jumpLandStep_8017768);
+- battle AI: point-left-of-line side test
+  (battle_aiPointLeftOfLineSideTest_8031C42);
+- mail: redraw selected entry (mail_redrawSelectedEntry_804758C);
+- battle object: init battle field tiles and SFX timer
+  (battleObject_initBattleFieldTilesAndSfxTimer_804C770);
+- battle: check player actor story flag
+  (battle_checkPlayerActorStoryFlag_808CC10);
+- battle: check locked event table
+  (battle_checkLockedEventTable_808CDC4);
+- battle AI: get AI mode for map group
+  (ai_getAIModeForMapGroup_808D084);
+- battle object: dispatch action by param 1
+  (battleObject_dispatchActionByParam1_80C91FE),
+  update mystery data (battleObject_updateMysteryData_80E336E),
+  run AI dispatcher (battleObject_runAIDispatcher_8109F7E);
+- battle AI: select and use chip (battle_aiSelectAndUseChip_810A126);
+- battle object: copy beast-SP chip data
+  (battleObject_copyBeastSpChipData_813B7EC).
+
+## Tally update
+
+| batch | functions examined | named (renamed via record) | hypothesis-only | dropped |
+|-------|--------------------|---------------------------|-----------------|---------|
+| 1     | 25                 | 25                        | 0               | 0       |
+| 2     | 21                 | 20                        | 1               | 0       |
+| 3     | 25                 | 23                        | 2               | 0       |
+| 4     | 25                 | 21                        | 4               | 0       |
+| 5     | 25                 | 20                        | 5               | 0       |
+| 6     | 25                 | 21                        | 4               | 0       |
+| 7     | 25                 | 19                        | 6               | 0       |
+| 8     | 25                 | 20                        | 5               | 0       |
+| 9     | 25                 | 18                        | 7               | 0       |
+| 10    | 25                 | 14                        | 11              | 0       |
+| 11    | 25                 | 17                        | 8               | 0       |
+| 12    | 25                 | 15                        | 10              | 0       |
+| 13    | 25                 | 19                        | 6               | 0       |
+| 14    | 25                 | 19                        | 6               | 0       |
+| 15    | 25                 | 21                        | 4               | 0       |
+| 16    | 25                 | 21                        | 4               | 0       |
+| 17    | 25                 | 21                        | 4               | 0       |
+| 18    | 25                 | 20                        | 5               | 0       |
+| 19    | 25                 | 17                        | 8               | 0       |
+| 20    | 25                 | 15                        | 10              | 0       |
+| 21    | 25                 | 18                        | 7               | 0       |
+| 22    | 25                 | 17                        | 8               | 0       |
+| 23    | 25                 | 14                        | 11              | 0       |
+| 24    | 25                 | 15                        | 10              | 0       |
+| 25    | 25                 | 19                        | 6               | 0       |
+| 26    | 25                 | 16                        | 9               | 0       |
+| 27    | 25                 | 15                        | 10              | 0       |
+| 28    | 25                 | 17                        | 8               | 0       |
+| 29    | 25                 | 13                        | 12              | 0       |
+
+Running total: named 530, hypothesis-only 191, dropped 0 (of ~10,600 placeholders).
