@@ -1,111 +1,51 @@
 name: sub_81345D4
 address: '0x081345D4'
 kind: function
+previous_names: []
 status: hypothesis
-summary: Parameterless wrapper that invokes sub_813468C with one hard-coded argument set (0x5A, 0x20, 0x20, 0x12,
-  table byte_81331F4, flag 0x40000000) and passes the caller's r5/r7 through untouched.
-interface: void sub_81345D4(void); // inputs r5, r7 forwarded to sub_813468C; no meaningful return value (r4-r7
-  preserved)
-details: 'Trivial thunk: sets r0=0x5A (90), r1=0x20 (32), r2=0x20 (32), r3=0x12 (18), loads r4 with the address
-  of the data table byte_81331F4, loads r6 with the literal-pool word 0x40000000 (a single flag bit, likely a mode/option
-  flag for the callee), leaves r5 and r7 exactly as the caller set them, then tail-calls sub_813468C. r4-r7 are
-  pushed/popped around the call so all of them are preserved for the caller; only r0-r3, lr and the flags are clobbered.
-  Since the callee''s behavior is not yet documented, the game-level meaning of the constants (dimensions 32x32
-  with values 90 and 18? an index/count pair? a data table of 90+18 entries?) is unknown; the presence of a byte
-  table pointer plus a 32/32 pair suggests some kind of resource or buffer description being handed to a general-purpose
-  worker routine.
-
-  '
+summary: Reset a battle-object shield/status-effect slot using a table lookup and return its previous value.
+interface: '(r5 = toolkit (held in callee), r10 = toolkit) -> r0 = previous content of byte_81331F4[0x5a] (shield/status-effect
+  kind); side effects: writes byte_81331F4[0x5a] = 0 via the callee.'
+details: "The function is a small wrapper. It hard-codes an index (0x5a) into a 0x20-byte structure pointed to by\
+  \ the literal\n  byte_81331F4 (`ldr r4, off_81346F4 // =byte_81331F4`), passes (byte_81331F4 + 0x5a) as the actor\
+  \ pointer, and\n  forwards to `battleObject_updateShieldOrStatusEffect_813468C` with the parameters (r0=actor,\
+  \ r1=0x20,\n  r2=0x20, r3=0x12). r6 is preloaded with 0 (`ldr r6, byte_81346FC // =0x0`), which is the 5th argument\
+  \ to the\n  callee (held in r6 in its contract). The callee reads byte_81331F4[0x5a] (a state/flag kind for an\
+  \ in-flight\n  shield/status effect entry), clears or updates it, and returns the prior value in r0 — captured\
+  \ exit values in\n  snapshots (0x50, 0x40, 0x11, 0x62, 0x52, 0x42, …) match distinct shield/effect kind IDs. Because\
+  \ r0 is live on\n  exit, callers receive the cleared/effected kind back; r4–r7 are callee-saved and restored via\
+  \ the matched\n  `push {r4-r7,lr}` / `pop {r4-r7,pc}`.\n"
 evidence:
-- method: readable-c
-  date: '2026-10-09'
-  detail: Written by hyper/glm-5.3-flash through the convert workflow (2 attempt(s), run convert-20261009-005437);
-    reviewed by Claude before the commit.
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mov r0, #0x5a ; mov r1, #0x20 ; mov r2, #0x20 ; mov r3, #0x12` (asm36.s:8863) fixes the call shape
+    into the callee. - `ldr r4, off_81346F4 // =byte_81331F4` plus the named callee `battleObject_updateShieldOrStatusEffect_813468C`
+    confirms the callee operates on byte_81331F4 at offset 0x5a. - `ldr r6, byte_81346FC // =0x0` provides the 5th
+    argument that the callee''s contract marks as `in: r6`. - Captured exit r0 values are small distinct integers
+    (0x50/0x40/0x11/0x62/0x52/0x42 …) consistent with a shield/effect-kind field being read back, not with HP/damage.
+    - All four callers (sub_81333A0, sub_8133A68, sub_8133B18, sub_8133B74) live in the AI/turn-handling region
+    around 0x08133xxx, implying this is part of per-turn reset of an effect slot.'
   refs:
-  - cport/src/game/asm36.c
-  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 8' --file leaves_farm_8.c sub_81345D4
-- method: difftest
-  date: '2026-10-09'
-  detail: Readable vs lifted on the original's captured calls and on random inputs.
-  reproduce: './wf capture --function sub_81345D4
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x081345D4
 
-    ./wf verify --function sub_81345D4 --snapshots build-snapshots'
-  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 193 out
-    of domain (verify run convert-20261009-005437-verify-2)'
-- method: cpu-oracle
-  date: '2026-10-09'
-  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
-  reproduce: './wf capture --function sub_81345D4
-
-    ./wf verify --function sub_81345D4 --snapshots build-snapshots'
-  result: 11 compared, 0 differed, 13 out of domain (verify run convert-20261009-005437-verify-2)
-- method: lockstep
-  date: '2026-10-09'
-  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
-  reproduce: './wf capture --function sub_81345D4
-
-    ./wf verify --function sub_81345D4 --snapshots build-snapshots'
-  result: 8/8 routes identical (verify run convert-20261009-005437-verify-2)
+    '
+  result: the body read as described above
 - method: coverage
-  date: '2026-10-09'
-  detail: 'Executed by: battles1, maps.'
-  reproduce: grep -l '^081345d4 ' tools/traces/coverage/*.prof
-changes:
-- date: '2026-10-09'
-  what: readable C replacement in cport/src/game/leaves_farm_8.c
-  where: recomp 92f325c
-  tool: tools/wf convert (hyper/glm-5.3-flash)
-- date: '2026-10-09'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 0dbd5ac5
-  tool: tools/symdoc.py
-- date: '2026-10-10'
-  what: moved from cport/src/game/leaves_farm_8.c to cport/src/game/asm36.c by tools/layout.py (the regroup of the model farm's files by bn6f source; the function's text unchanged)
-  where: recomp 6836d6c
-  tool: tools/layout.py
-readable_c: cport/src/game/asm36.c
-coverage:
-- battles1
-- maps
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, beastsp, maps, menus3, story4, story6, story8, story9'
+  reproduce: 'grep -l ''^081345d4 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, beastsp, maps, menus3, story4, story6, story8, story9
 open_questions:
-- what sub_813468C actually does and what subsystem it belongs to (sprite, text, menu, battle, etc.)
-- meaning of the fixed arguments 0x5A, 0x20, 0x20, 0x12
-- contents and format of the table at byte_81331F4
-- why r5 and r7 are forwarded unchanged — do callers set them to pointers, indices, or mode values?
-- meaning of the flag word 0x40000000 passed in r6
+- The exact semantics of `0x20/0x20/0x12` (likely "clear field 0x20 with value 0 and length 0x12", or an opcode
+- pair); disassembling `battleObject_updateShieldOrStatusEffect_813468C` would settle whether r0 returns the
+- prior kind or something else (e.g. a hit-flags word).
 sources:
-- tools/wf run convert-20261009-005437
-signature:
-  c: void sub_81345D4(SubMenu *r5)
-  params:
-  - reg: r5
-    type: SubMenu *
-    name: r5
-  ret:
-    reg: none
-    type: void
-  globals:
-  - toolkit
-  confidence: confident
-  decided_by: mechanical
-  evidence:
-  - 'contract (lifter, refined): may read r5; result none'
-  - 'liveness over the assembly and callees (tools/sig/derive.py): reads r5'
-  - 'r5: captures: 40 calls, struct sSubmenu'
-  reproduce: python3 tools/sig/bounds.py && python3 tools/sig/derive.py && python3 tools/sig/ask.py run && python3
-    tools/sig/ask.py merge
-  derived: '2026-10-12'
-stamp:
-  rom: rom:69fdbc36dae42b41
-  range: 0x081345D4-0x081345E8
-  contract: r5 r10 lr -> r4 r5 r6 r7; clobbers nz c v r0 r1 r2 r3 lr
-  callees:
-    sub_813468C: nz c v r0 r1 r2 r3 lr
-  headers: 9ac4ea9ec57b
-  lifter: b9983df4534b
-  prompt: legacy
-  model: hyper/glm-5.3-flash
-  run: convert-20261009-005437
-  body: 6c4ca97bf1f0ad09
-  installed: 92f325c
-  stamped: '2026-10-10'
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 87c09f6c
+  tool: tools/symdoc.py

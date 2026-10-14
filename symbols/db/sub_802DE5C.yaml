@@ -3,28 +3,28 @@ address: '0x0802DE5C'
 kind: function
 previous_names: []
 status: hypothesis
-summary: If the 0x40 battle flag is set, recalculates the Pressure-style chip picks by calling sub_802E2C4 first
-  with argument 0 (likely clears the previous selection), then with 1 (likely commits the new one).
-interface: '() -> void ; side effects: calls sub_802E2C4 twice with r0 = 0 then r0 = 1 when battle flag 0x40 is
-  set'
-details: "Pushes lr, calls TestBattleFlag_0x40 in r10 (Toolkit/BattleState), branches over both calls if the\n \
-  \ bit is clear (beq locret_802DE70 → pop {pc}). When set, it loads r0 = 0 and bl sub_802E2C4, then\n  r0 = 1 and\
-  \ bl sub_802E2C4 again before restoring lr via pop {pc}. No other registers are used by\n  this function and r1..r3,\
-  \ r4..r10 are listed only as out preserves from the callees (no writes of\n  its own). The 40 captured snapshots\
-  \ all show r1 / r2 / r3 carrying opaque params for the caller,\n  while exit r0 stays at the constant 0 used as\
-  \ the immediate to sub_802E2C4, consistent with this\n  being a thin \"trigger side-effect when X\" stub. The\
-  \ two sub_802E2C4 calls with 0 and 1 read like a\n  setup/commit pair (e.g. begin / end update) for something\
-  \ driven by flag 0x40.\n"
+summary: When the 0x40 battle flag is set, sequentially runs two battle sub-routines (with r10 toolkit), first with
+  r0=0 then r0=1.
+interface: '(r10 = Toolkit*) -> void ; side effects: calls TestBattleFlag_0x40 and up to two calls to sub_802E2C4'
+details: "Tests the 0x40 bit of the current battle-state flag word via TestBattleFlag_0x40.\n  If that bit is not\
+  \ set, returns immediately (pop {pc}).\n  If the bit is set, sets r0=0 and calls sub_802E2C4, then sets r0=1 and\
+  \ calls sub_802E2C4 again.\n  No return value is exposed to callers; out list contains only callee-saved registers\
+  \ and r1-r3 (which are sub_802E2C4's documented outputs), so this is effectively a `void` helper.\n  Lives in\
+  \ the battle subsystem (asm03), uses the r10 toolkit convention, and is invoked from early battle per-frame dispatch\
+  \ (sub_800801C) and the chip-select related dispatchers (sub_8008950, sub_8008D60), suggesting it triggers battle-end-of-turn\
+  \ bookkeeping (counter/flag update + an after-effect) gated on a battle-state flag.\n  The bit being tested is\
+  \ the 0x40 bit of the battle-state flag word (the same word where bits 0x20/0x10 mark other turn end conditions);\
+  \ without the 0x40 flag set the body is skipped entirely.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- `bl TestBattleFlag_0x40` at 0x0802de60 and `beq locret_802DE70` show a flag-gated branch. - `mov r0,
-    #0` immediately before `bl sub_802E2C4`, then `mov r0, #1` before the second call at 0x0802de66 and 0x0802de6a
-    — a paired 0/1 invocation pattern. - No other register is loaded between the callees, so r0 is the only argument.
-    - Captured-call exit r0 = 0 in 6/6 samples (4 with Z set) — function returns 0 immediately when TestBattleFlag_0x40
-    returned false, otherwise returns whatever the second sub_802E2C4 left in r0 (also 0 in the captured slice).
-    - Callers sub_800801C / sub_8008950 / sub_8008D60 are battle-side helpers that hold r10 (Toolkit) live and have
-    battle state in flight, fitting a battle-side trigger.'
+  detail: '- `bl TestBattleFlag_0x40` then `beq locret_802DE70` is the gate; the named callee targets the 0x40 bit
+    of the battle flag word. - `mov r0, #0` / `bl sub_802E2C4` followed by `mov r0, #1` / `bl sub_802E2C4` shows
+    two staged calls passing 0 then 1 in r0. - Caller `sub_800801C` has r10 in its `in` contract and produces a
+    return value in r0, matching a battle-step dispatcher. - Callers `sub_8008950` and `sub_8008D60` carry r10 and
+    consume/produce the wide battle state, consistent with battle chip-select turn dispatchers. - Captured calls
+    show diverse r0/r1/r2/r3 values (0x00000001, 0x02036828, 0x00008463, etc.), confirming this routine does not
+    depend on specific argument conventions itself but only on the toolkit.'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x0802DE5C
@@ -41,13 +41,13 @@ evidence:
   result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3, story2, story4, story5,
     story6, story7, story8, story9
 open_questions:
-- What sub_802E2C4(0) and sub_802E2C4(1) actually do (begin vs end update of what). Inspecting
-- sub_802E2C4 (0x0802e2c4) and following its callees would settle the role and let the function
-- drop its `_ADDRESS` suffix.
+- What sub_802E2C4 actually does with r0=0 vs r0=1 — naming it "run special turn events" is an inference from the
+  gating flag, the r10 toolkit context, and the (0, 1) two-stage call pattern. Disassembling sub_802E2C4 would settle
+  the role.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f d4179034
+  where: bn6f 87c09f6c
   tool: tools/symdoc.py

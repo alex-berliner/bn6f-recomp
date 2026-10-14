@@ -1,133 +1,65 @@
 name: sub_812053C
 address: '0x0812053C'
 kind: function
+previous_names: []
 status: hypothesis
-summary: Builds a low "0x4000"-flagged VRAM/palette-ish word from sub_81205C0's result and dispatches it via sub_802FE28
-  with a small index offset.
-interface: '(u32 r0, u32 r1, u32 r2, u32 lr) -> u32 r0; flags out: N,Z,C,V'
-details: 'Saves r4..r7 and lr. Copies caller''s r1 into r4. Calls sub_81205C0 with r3=0 (no args besides the implicit
-  one). If r0 is negative the function returns immediately. Otherwise it masks off bits 0xC0008000 of r0, ORs in
-  constant "0x4000" (from byte_8120564), then computes r1 = 0xC + original_r1, sets r2 = 0, r3 = 1, and calls sub_802FE28
-  (a "do thing with id" style dispatcher that takes a tag/flags word, an index, two control ints). Behavior on the
-  negative branch is just an early return; the 0x4000 flag is the only bit forced on, and 0x8000 plus the top two
-  bits 0xC000 are explicitly cleared -- a narrow window. sub_81205C0 is the producer of the bits, so this function
-  is a thin post-processor that funnels its output into the sub_802FE28 dispatcher.
-
-
-  Register form, old prompt; queued for retype (the farm''s prompt 6505961c4798, register-form C allowed; tools/abi/retype_queue.tsv).'
+summary: Build and queue a single OAM entry derived from a 4th field of a battle-related object (called from per-battle-object
+  sprite list code).
+interface: '(r0 = some index/kind, r1 = pointer/0x8160, r2 = packed data with 0xC bits = animation/OAM offset 0x37,
+  r3 = 0x020047CC pointer) -> r0 = 0xFF on early return, else result of sub_81205C0; side effects: queues OAM via
+  sprite_queueOamEntryThunk_802FE28'
+details: "- Saves r4-r7 and lr; copies r1 into r4 for later reuse.\n  - r3 cleared to 0 then calls sub_81205C0(r0,\
+  \ r1, r2, 0). If that returns negative (blt), the function bails out with r0 still in r0 from the call.\n  - On\
+  \ success, takes the return value in r0, masks it with 0xC0008000 (`bic r0, r1`), ORs in the byte at byte_8120564\
+  \ (= 0) — so those two ops are effectively clearing bit31|bit30|bit15 and OR'ing 0. After these the value is reformatted\
+  \ as if it were an OAM attribute word.\n  - Computes r1 = 0xC + r4 (offsets into the source buffer held in r1's\
+  \ saved copy by 12 bytes — likely the per-object OAM list pointer plus 12, i.e. the next OAM slot).\n  - Calls\
+  \ sprite_queueOamEntryThunk_802FE28(r0_attr, r1_slotptr, 0, 1) to commit the OAM.\n  - The captured calls all\
+  \ share r0=4, r1=0x8160, r2=0x00ba0037, r3=0x020047CC and exit with r0=0xFF, meaning the r0<0 path is the captured\
+  \ execution in those snapshots; the OAM-queueing path is only taken when sub_81205C0 returns >=0.\n  - sub_81205C0\
+  \ is a sibling helper here (un-analyzed) that seems to fetch/build a packed OAM word from a per-object source;\
+  \ this function then masks two reserved bits and ORs in a tile-base/affine flag (0), selects the next OAM slot\
+  \ from a saved pointer, and pushes it.\n  - r0 exits 0xFF in the captured path because the early return does not\
+  \ re-clobber r0 after the blt — but per contract, sub_81205C0 returned the 0xFF (or that is its negative value),\
+  \ so callers see 0xFF on the failure path.\n"
 evidence:
-- method: readable-c
-  date: '2026-10-12'
-  detail: Written by minimax/MiniMax-M3+old through the convert workflow (2 attempt(s), run convert-20261012-121941);
-    reviewed by Claude before the commit.
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl sub_81205C0` then `tst r0, r0; blt locret_812055E` shows sub_81205C0''s signed return gates the
+    OAM enqueue (`sub_81205C0` not yet analyzed, but its signed return controls the path). - `ldr r1, dword_8120560
+    // =0xc0008000; bic r0, r1; ldr r1, byte_8120564 // =0x0; orr r0, r1` masks the high 2 bits and bit 15 of the
+    packed OAM word, then OR''s a zero (so the visible effect is just clearing the masked bits). - `mov r1, #0xc;
+    add r1, r1, r4` adds 0xC to a saved copy of the input r1, consistent with advancing a packed OAM list pointer
+    by 3 u32s (12 bytes) per entry. - Final `bl sprite_queueOamEntryThunk_802FE28` with r2=0, r3=1 enqueues a single
+    OAM entry; the helper''s name in the dump already says it takes a u32 attr, a u16 slot ptr, an unused int, and
+    an a4. - Captured entry r1=0x8160 with r2=0x00ba0037 (low byte 0x37 = an OAM tile id-ish, upper byte 0xba carries
+    attr2 bits) and r3=0x020047CC matches a per-frame battle state pointer. - Captured r0=4 across all 40 samples
+    is consistent with a per-iteration "kind/anim offset" being the same each captured frame, but the body treats
+    it as opaque.'
   refs:
-  - cport/src/game/asm32_811CAEC.c
-  reproduce: ./wf convert --subsystem 'functions from the model farm, old prompt, set 28' --file inbox_farm_old_28.c
-    sub_812053C
-- method: difftest
-  date: '2026-10-12'
-  detail: Readable vs lifted on the original's captured calls and on random inputs.
-  reproduce: './wf capture --function sub_812053C
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0812053C
 
-    ./wf verify --function sub_812053C --snapshots build-snapshots'
-  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 52 out of
-    domain (verify run convert-20261012-121941-verify-2)'
-- method: cpu-oracle
-  date: '2026-10-12'
-  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
-  reproduce: './wf capture --function sub_812053C
-
-    ./wf verify --function sub_812053C --snapshots build-snapshots'
-  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261012-121941-verify-2)
-- method: lockstep
-  date: '2026-10-12'
-  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
-  reproduce: './wf capture --function sub_812053C
-
-    ./wf verify --function sub_812053C --snapshots build-snapshots'
-  result: 16/16 routes identical (verify run convert-20261012-121941-verify-2)
+    '
+  result: the body read as described above
 - method: coverage
-  date: '2026-10-12'
-  detail: 'Executed by: battles1, battles2, battlesweep, fuzz, maps, menus3, story4, story6, story8, story9.'
-  reproduce: grep -l '^0812053c ' tools/traces/coverage/*.prof
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus3, story4, story6, story8, story9'
+  reproduce: 'grep -l ''^0812053c '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus3, story4, story6, story8, story9
+open_questions:
+- The exact meaning of r0 ("kind" 4) and what the masked bits (0xC0008000) clear; sub_81205C0 is un-analyzed and
+  its return value is the only thing reformatted here.
+- Whether the "r4 = r1" copy is the OAM slot buffer base or some other context; the literal 0xC stride is the strongest
+  hint that r1 pointed at a 12-byte-per-entry OAM list.
+- Why the early return path leaves r0 = 0xFF — is that sub_81205C0's own error code being preserved (the blt doesn't
+  write r0) or did some preceding call produce it?
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
-- date: '2026-10-12'
-  what: readable C replacement in cport/src/game/asm32_811CAEC.c
-  where: recomp efe7331
-  tool: tools/wf convert (minimax/MiniMax-M3+old)
-- date: '2026-10-13'
-  what: doc comment (symdb block) at the definition
-  where: bn6f bce1cfe1
-  tool: tools/symdoc.py
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f 68d712e5
+  where: bn6f 87c09f6c
   tool: tools/symdoc.py
-readable_c: cport/src/game/asm32_811CAEC.c
-coverage:
-- battles1
-- battles2
-- battlesweep
-- fuzz
-- maps
-- menus3
-- story4
-- story6
-- story8
-- story9
-open_questions:
-- What kind of object the low/high bits of r0 represent (tile index? palette slot? VRAM bank?) and what sub_81205C0
-  actually queries.
-- Meaning of the "0x4000" forced bit and of the offset 0xC added to r1 (could be a header / palette-base offset).
-- Whether r2 is genuinely unused by sub_802FE28 or carries an attribute the disassembler's stub left as 0.
-- Why the negative-r0 branch is treated as "nothing to do" rather than an error.
-- 'Retype: register form, old prompt; queued for retype (tools/abi/retype_queue.tsv), to be converted again as typed
-  C (stages S3/S4)'
-sources:
-- tools/wf run convert-20261012-121941
-- recomp efe7331
-signature:
-  c: U32Pair sub_812053C(u8 r0, u16 r1, u32 r2)
-  params:
-  - reg: r0
-    type: u8
-    name: r0
-  - reg: r1
-    type: u16
-    name: r1
-  - reg: r2
-    type: u32
-    name: r2
-  ret:
-    reg: r0:r1
-    type: u64 (r0, r1)
-  keep:
-  - r2
-  - r3
-  confidence: confident
-  decided_by: mechanical
-  evidence:
-  - 'contract (lifter, refined): may read r0 r1 r2; result r0:r1'
-  - 'liveness over the assembly and callees (tools/sig/derive.py): reads r0 r1 r2'
-  - 'r0: captures: 40 calls, int 0x4'
-  - 'r1: captures: 40 calls, int 0x8160'
-  - 'r2: captures: 40 calls, int 0xba0037'
-  - 'result: captures at exit: r0 int 0xff'
-  reproduce: python3 tools/sig/bounds.py && python3 tools/sig/derive.py && python3 tools/sig/ask.py run && python3
-    tools/sig/ask.py merge
-  derived: '2026-10-12'
-stamp:
-  rom: rom:4d2fc176e255ebc1
-  range: 0x0812053C-0x08120568
-  contract: r0 r1 r2 lr -> nz c v r0 r1 r2 r3 lr; clobbers -
-  callees:
-    sub_81205C0: nz c v r0 r1 r2 r3 r4 r6 lr
-    sub_802FE28: nz c v r0 r4 r5 r6 r7 lr
-  headers: 34f5df5aecdc
-  lifter: 5faf6f159ab6
-  prompt: 6505961c4798
-  model: minimax/MiniMax-M3+old
-  run: convert-20261012-121941
-  body: 23465959dac31bef
-  installed: efe7331
-  stamped: '2026-10-12'

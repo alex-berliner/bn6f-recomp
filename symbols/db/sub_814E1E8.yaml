@@ -1,164 +1,64 @@
 name: sub_814E1E8
 address: '0x0814E1E8'
 kind: function
+previous_names: []
 status: hypothesis
-summary: Runs the check in sub_814E0D0 and writes its status, biased by 0x40, plus flag bits 0x0C into a state struct.
-interface: void recordCheckResultInState(void); // no direct args; callee sub_814E0D0 leaves the state struct pointer
-  in r1; returns to caller via r12; clobbers r2, r3 and flags (c/v from SUB, nz from ORR)
-details: 'Thin wrapper around sub_814E0D0. It first copies lr into r12 so it can return through r12 (a calling pattern
-  shared with the callee). After the guest call, sub_814E0D0 has left a status byte in r3 and the address of a state
-  struct in r1. The wrapper subtracts 0x40 from the status byte (so a returned 0x40 is recorded as 0, i.e. the raw
-  value looks like "result + 0x40") and stores it at struct+0x0E, the struct''s result field. It then reads the
-  struct''s header byte at struct+0x00, ORs in the flag bits 0x0C, and writes it back, marking the struct with the
-  "checked" bits 0x0C. The ORR result is left in r3 and flags are set as by the original instructions. The meaning
-  of the status byte, the bias constant 0x40, and the identity of the state struct are not known from this wrapper
-  alone; they depend entirely on what sub_814E0D0 computes.
-
-  '
+summary: Advances the battle object's update routine's script PC, then sets bit 0x0C in the object flags and subtracts
+  0x40 from the BattleObject.Element field.
+interface: '(r0 = battleObject, r1 = scriptContext/AIState) -> r0 = battleObject ; side effects: writes [r1+0xE]
+  (subtract 0x40), ORs 0xC into [r0 object flags], preserves r4-r11/lr per contract'
+details: "Uses `mov r12, lr; bx r12` tail-call pattern into `sub_814E0D0` (named `battleObject_runUpdateRoutineAndAdvancePC_814E0D0`),\
+  \ which\n  presumably drives the object's per-action update step and advances its script PC.\n  After that call,\
+  \ the function performs two fixed patches on the battle object/AI state pair:\n    - `sub r3, #0x40; strb r3,\
+  \ [r1,#0xe]` — reads byte at [r1], subtracts 0x40, stores back at [r1+0xE]. Given r1 in captured\n      calls\
+  \ points at an AIState-shaped buffer (offset 0xE exists), this is most plausibly masking the state field (e.g.,\n\
+  \      clearing the high bit) — though subtracting 0x40 from the *previous* byte and writing at +0xE is an odd\
+  \ pairing.\n    - `ldrb r3, [r1]; orr r3, #0xc; strb r3, [r1]` — ORs 0x0C into the byte at [r1]; given BattleObject's\
+  \ first byte is the\n      `ObjectHeader.Flags` field, this sets bits 0x2 (VISIBLE) and 0x4 (PAUSE_UPDATE) — i.e.,\
+  \ the object becomes visible and\n      update is paused.\n  Returns r0 = original battleObject (per captured-call\
+  \ exits: r0=02010890 unchanged). The function is invoked from a script\n  dispatch loop (lr=0814E36D) with r2\
+  \ holding a script-byte pointer and r3 the address right after `sub_814E1E8`'s own\n  pointer (0814E1E9) — strongly\
+  \ suggesting this is itself an opcode-handler shim that lives in a script jumptable.\n"
 evidence:
-- method: readable-c
-  date: '2026-10-08'
-  detail: Written by hyper/glm-5.3-flash through the convert workflow (9 attempt(s), run convert-20261008-230952);
-    reviewed by Claude before the commit.
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mov r12, lr; bl sub_814E0D0; ... bx r12` at asm offsets 0x21716..0x21722 shows the tail-call wrapper
+    pattern. - The callee `sub_814E0D0` is named `battleObject_runUpdateRoutineAndAdvancePC_814E0D0` and takes r1=script
+    context. - `sub r3, #0x40; strb r3, [r1,#0xe]` at 0x2171C..0x21720 — subtracts 0x40 from a byte derived from
+    [r1] and stores at offset 0xE. - `ldrb r3, [r1]; mov r2, #0xc; orr r3, r2; strb r3, [r1]` at 0x21722..0x2172A
+    — ORs 0x0C into [r1]. Combined with BattleObject''s `ObjectHeader.Flags` at offset 0, bits 0x2 (VISIBLE) and
+    0x4 (PAUSE_UPDATE) are set. - Captured-call lr=0814E36D and r2 holding script-pos pointers (0818e865, 0818e974,
+    0818e073, 0818e8c2, etc.) are consistent with a script-handler-shim calling convention used elsewhere in BN6.
+    - Exit r0 = 02010890 (unchanged from entry) and r1 = 02008028/...; flags show --C- on most exits because the
+    `sub r3,#0x40` sets carry.'
   refs:
-  - cport/src/game/libs.c
-  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 3' --file leaves_farm_3.c sub_814E1E8
-- method: difftest
-  date: '2026-10-08'
-  detail: Readable vs lifted on the original's captured calls and on random inputs.
-  reproduce: './wf capture --function sub_814E1E8
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0814E1E8
 
-    ./wf verify --function sub_814E1E8 --snapshots build-snapshots'
-  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
-    of domain (verify run convert-20261008-230952-verify-9)'
-- method: cpu-oracle
-  date: '2026-10-08'
-  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
-  reproduce: './wf capture --function sub_814E1E8
-
-    ./wf verify --function sub_814E1E8 --snapshots build-snapshots'
-  result: 1 compared, 0 differed, 23 out of domain (verify run convert-20261008-230952-verify-9)
-- method: lockstep
-  date: '2026-10-08'
-  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
-  reproduce: './wf capture --function sub_814E1E8
-
-    ./wf verify --function sub_814E1E8 --snapshots build-snapshots'
-  result: 8/8 routes identical (verify run convert-20261008-230952-verify-9)
+    '
+  result: the body read as described above
 - method: coverage
-  date: '2026-10-08'
-  detail: 'Executed by: battle, battles1, battlesweep, chips, fuzz, maps, menus2, story1, story2, story3, wander.'
-  reproduce: grep -l '^0814e1e8 ' tools/traces/coverage/*.prof
-changes:
-- date: '2026-10-08'
-  what: readable C replacement in cport/src/game/leaves_farm_3.c
-  where: recomp e9cb27b
-  tool: tools/wf convert (hyper/glm-5.3-flash)
-- date: '2026-10-08'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 3d824122
-  tool: tools/symdoc.py
-- date: '2026-10-10'
-  what: moved from cport/src/game/leaves_farm_3.c to cport/src/game/libs.c by tools/layout.py (the regroup of the model farm's files by bn6f source; the function's text unchanged)
-  where: recomp 6836d6c
-  tool: tools/layout.py
-readable_c: cport/src/game/libs.c
-coverage:
-- battle
-- battles1
-- battlesweep
-- chips
-- fuzz
-- maps
-- menus2
-- story1
-- story2
-- story3
-- wander
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^0814e1e8 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1, story2, story3,
+    story4, story5, story6, story7, story8, story9, wander
 open_questions:
-- what check sub_814E0D0 performs and what its status codes mean
-- which subsystem owns the state struct written at r1 (offsets 0x00 header and 0x0E result)
-- why the status is biased down by "0x40" before being stored
-- who reads the "0x0C" header bits afterwards
+- Whether r1 here is the BattleObject itself (so [r1] = ObjectHeader.Flags, [r1+0xE] = Element) or a separate AIState/script
+- 'context buffer; the captured calls show different concrete addresses for r0 (02010890, always the same) and r1
+  (varies: 02008028,'
+- 02008078, 02007f38), which is more consistent with r0 = BattleObject and r1 = a per-action script/state buffer.
+  Resolving the
+- 'layout of the script context would settle whether the `sub #0x40` truly clears an upper bit of Element or modifies
+  something'
+- else at +0xE.
 sources:
-- tools/wf run convert-20261008-230952
-signature:
-  c: none (returns elsewhere)
-  params:
-  - reg: r0
-    type: u8 *
-    name: r0
-  - reg: r1
-    type: u8 *
-    name: r1
-  - reg: r4
-    type: u32
-    name: r4
-  - reg: r5
-    type: u8 *
-    name: r5
-  - reg: r6
-    type: u8
-    name: r6
-  - reg: r7
-    type: u8 *
-    name: r7
-  - reg: r8
-    type: u8 *
-    name: r8
-  - reg: r9
-    type: u8 *
-    name: r9
-  - reg: r11
-    type: u8
-    name: r11
-  ret:
-    reg: none
-    type: void
-  globals:
-  - toolkit
-  keep:
-  - r4
-  - r5
-  - r6
-  - r7
-  - r8
-  - r9
-  - r10
-  - r11
-  - r12
-  confidence: none
-  decided_by: '-'
-  evidence:
-  - 'contract (lifter, refined): may read r0 r1 r4 r5 r6 r7 r8 r9 r11; result none'
-  - 'liveness: not run (a computed jump or a call through an unseen pointer)'
-  - 'r0: captures: 40 calls, ram off_2010890'
-  - 'r1: captures: 40 calls, ram unk_2006EF8+0xff0, unk_2006EF8+0x1040, unk_2006EF8+0x1090, unk_2006EF8+0x10e0 (stride
-    0x50)'
-  - 'r4: captures: 40 calls, int 0x0'
-  - 'r5: captures: 40 calls, ram unk_2006EF8+0xff0, unk_2006EF8+0x1040, unk_2006EF8+0x1090, unk_2006EF8+0x10e0 (stride
-    0x50)'
-  - 'r6: captures: 40 calls, int 0x2, 0x3, 0x4, 0x5'
-  - 'r7: captures: 40 calls, ram off_2010890'
-  - 'r8: captures: 40 calls, ram iSoundInfo'
-  - 'r9: captures: 40 calls, ram sub_3005FFA+0x1'
-  - 'r11: captures: 40 calls, int 0x1, 0x3, 0x7, 0xf'
-  - 'returns somewhere other than its caller (lifter): no C signature'
-  reproduce: python3 tools/sig/bounds.py && python3 tools/sig/derive.py && python3 tools/sig/ask.py run && python3
-    tools/sig/ask.py merge
-  derived: '2026-10-12'
-stamp:
-  rom: rom:694053728a6df767
-  range: 0x0814E1E8-0x0814E1FC
-  contract: r0 r1 r4 r5 r6 r7 r8 r9 r10 r11 lr -> r4 r5 r6 r7 r8 r9 r10 r11 r12 lr; clobbers nz c v r0
-    r1 r2 r3
-  callees:
-    sub_814E0D0: nz c v r0 r2 r3
-  headers: 73f45134baca
-  lifter: 70c8d832ffcf
-  prompt: legacy
-  model: hyper/glm-5.3-flash
-  run: convert-20261008-230952
-  body: 8292ff3808b91ba6
-  installed: e9cb27b
-  stamped: '2026-10-12'
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 87c09f6c
+  tool: tools/symdoc.py

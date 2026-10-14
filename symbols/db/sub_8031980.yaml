@@ -3,29 +3,28 @@ address: '0x08031980'
 kind: function
 previous_names: []
 status: hypothesis
-summary: Returns one of two hard-coded state word values (3 when r0==1, 2 otherwise) using dword_2013940 as scratch;
-  appears to be a battle-AI helper queried with a selector.
-interface: '(r0 = selector) -> r0 = 2 or 3; side effects: loads dword_2013940 into r5 (no write observed)'
-details: "Prologue: `push {lr}`; loads address `dword_2013940` into r5.\n  `cmp r0, #1` / `beq loc_803198A`: when\
-  \ selector==1, sets r0=3 and returns via `pop {pc}`.\n  Otherwise falls through to `loc_803198E`: sets r0=2 and\
-  \ returns.\n  Body never dereferences r5, so the loaded global is unused in this function (likely scratch or\n\
-  \  referenced by a callee/caller convention for a related family of helpers). Exit flags are --C-\n  (C set) on\
-  \ the r0=3 branch (because of the mov r0,#3 in Thumb sets CY=1) and clear on the r0=2\n  branch; all 40 captured\
-  \ calls hit the ==1 branch (r0=1 in, r0=3 out), consistent with every\n  caller being a state/lookup helper that\
-  \ asks for selector 1.\n  The function is part of a tight dispatcher (9 contiguous sibling wrappers at 0x0803199E,\n\
-  \  0x080319B6, 0x080319CE, 0x080319E6, 0x080319FE, 0x08031A16, 0x08031A2E, 0x08031A46,\n  0x08031A5E) all funneling\
-  \ into this routine with r0=1, so it likely returns a small enum\n  identifying a battle state (e.g. \"which AI/substate\
-  \ word to index\"). Without seeing the\n  dispatcher siblings' code, the exact role (lookup vs constant) is inferred.\n"
+summary: Returns the chip-lockout colour/state index for a battle object's chip-lockout timer (3 if some condition,
+  else 2).
+interface: '(r0 = ?) -> r0 = 2 or 3 ; side effects: r5 = dword_2013940 (read once)'
+details: "Pure value-encoding helper. Loads the address dword_2013940 into r5 (kept as scratch but unused\n  past\
+  \ the load), compares r0 against 1, returns 3 on equal, otherwise 2. Two immediate `pop {pc}`\n  tails, so it\
+  \ is a leaf. The contract's `out` shows only r0 plus r5 (callee-saved r5 is also written\n  with the loaded address,\
+  \ but no caller snapshots show r5 read afterwards). The captured calls all\n  enter with r0=1 and always exit\
+  \ r0=3, which is consistent with r0 being the AIData pointer (the\n  AIData's ChipLockoutTimer / Unk_19 byte is\
+  \ what is compared). The function is called from a tight\n  cluster of AIData helper thunks at 0x0803199E-0x08031A5E\
+  \ and from sub_8031A5E, all of which pass\n  r5 (AIData pointer) plus a constant in r0; this function probably\
+  \ tests `ChipLockoutTimer == 1`\n  to distinguish \"just locked\" from \"already locked\" and returns 3 vs 2 as\
+  \ a colour/state code\n  used by the chip-lockout overlay renderer.\n  - r5 = &dword_2013940 (asm ldr r5,off_8031994)\n\
+  \  - cmp r0,#1 / beq -> r0=3 / otherwise r0=2\n  - 6/40 captured calls all show r0=1 in, r0=3 out (C flag set),\
+  \ confirming the eq path\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- `cmp r0, #1` then `beq loc_803198A` (sub_8031980, lines 25245..) shows selector==1 branch. - `mov r0,
-    #3` followed by `pop {pc}` is the r0==1 path (asm at loc_803198A). - `mov r0, #2` followed by `pop {pc}` is
-    the default path (asm at loc_803198E). - All 6 (of 40) captured entry r0 values are 1 and exit r0 is always
-    3 → callers always pass selector 1 and get back 3. - `r2`/`r3` are passed in as (02029f44, 8), (02029e1c, 8),
-    (02029f68, 8) — three different EWRAM bases plus count 8 — but r2/r3 are not consumed by this function, so callers
-    pass through other context. - `dword_2013940` is loaded into r5 but never read; suggests this is a shim that
-    reuses the convention of an adjacent helper family (or the parent caller reloads r5 itself).'
+  detail: '- `cmp r0,#1 ; beq loc_803198A` at asm:25254-25256 - `mov r0,#3 ; pop {pc}` at loc_803198A vs `mov r0,#2
+    ; pop {pc}` at loc_803198E - All 6 shown captured entries have r0=0x00000001 and exit r0=0x00000003 with C set
+    - Callers (0x0803199E-0x08031A5E) form a contiguous 24-byte table of tiny AIData helpers in 0x2 increments -
+    sub_8031A5E (0x08031A5E) is the only caller whose contract lists only `lr` in/`r0` out, fitting the "thin wrapper"
+    pattern around this helper'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x08031980
@@ -42,13 +41,14 @@ evidence:
   result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1, story2, story3,
     story4, story5, story6, story7, story8, story9, wander
 open_questions:
-- What `dword_2013940` actually represents (the function never dereferences it).
-- Whether r0=2 path is ever hit in practice (no captured call exercised it).
-- The relationship to the sibling wrappers and what 2 vs 3 encode (battle state enum?).
+- Whether r0 carries the ChipLockoutTimer value or some other AIData byte; whether r5 is ever
+- consumed by callers (it appears only as a scratch-load and the callers all set r5 themselves).
+- Naming the return as "colour" assumes it's used by the chip-lockout palette/sprite selector;
+- could equally be a state index (2 = locked, 3 = just-locked flash).
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f d4179034
+  where: bn6f 87c09f6c
   tool: tools/symdoc.py

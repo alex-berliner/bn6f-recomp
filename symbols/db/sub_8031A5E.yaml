@@ -3,24 +3,28 @@ address: '0x08031A5E'
 kind: function
 previous_names: []
 status: hypothesis
-summary: Tiny battle helper that calls sub_8031980 with r0=1 and returns its result in r0.
-interface: () -> r0 = result of sub_8031980(1) ; no other side effects (only lr is pushed/popped)
-details: "Three-instruction tail-call to sub_8031980. Loads r0 = 1, branches with link to sub_8031980,\n  then returns\
-  \ via `pop {pc}` (so lr was the only saved register). The result is whatever\n  sub_8031980 returns for r0=1 (per\
-  \ its current hypothesis, it returns 3 if the input is 1,\n  else 2). All 6 sample invocations show r0=3 on exit,\
-  \ consistent with a \"passes a fixed\n  argument 1\" wrapper. The captured-call context shows lr=08031902 for\
-  \ every sample, so this\n  wrapper sits right before the call site at 08031902; given the surrounding code is\
-  \ in\n  the battle/AI subsystem (AIData structures captured at r0 ~ 020058ac / 02005984 / 02005ce4),\n  the wrapper\
-  \ is most likely a small accessor used from an AI handler — possibly the\n  \"number of frames / phase count\"\
-  \ or similar constant lookup that always wants the value\n  for AIIndex-like input 1.\n"
+summary: Initializes an AI sub-state for an enemy/virus battle actor by calling the type-3 init helper with selector
+  1
+interface: () -> r0 = state word returned by sub_8031980
+details: "Tail-calls sub_8031980 with r0=1 and returns its result. The wrapper is a 3-instruction\n  function (push\
+  \ {lr}; mov r0,#1; bl sub_8031980; pop {pc}) used to forward selector 1\n  into the battle-AI init helper. sub_8031980\
+  \ returns 3 when r0==1, 2 otherwise (per its\n  hypothesis), so this wrapper always returns 3. The contract lists\
+  \ only lr as input and\n  r0 as output, matching the \"void-like\" wrapper that simply forwards a constant. The\n\
+  \  captured calls all show the function being invoked from 0x08031902 (story2 dispatch\n  context) with pointer\
+  \ args in r0/r1/r2 (likely BattleObject + AIDataPtr layouts) and\n  always returning r0=3 with carry set; r0 is\
+  \ not the \"answer\" itself but rather the\n  state word the caller stores into AIData+0x80 (AIState) or similar.\
+  \ The single callee\n  is the central battle-AI state-init dispatcher that this wrapper just hard-codes to\n \
+  \ selector 1 (a specific AI type/strategy among the choices the dispatcher handles).\n  Without a caller list,\
+  \ the exact strategy this represents (e.g., \"stand and attack\",\n  \"support\", \"flee\") is unknown; it is\
+  \ one of the AI sub-initializers the dispatcher\n  exposes.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- assembly: `mov r0, #1` / `bl sub_8031980` / `pop {pc}` at 0x08031a5e - callee `sub_8031980` per its
-    own contract takes r0 and returns 2 or 3 in r0 - all 6 captured calls exit with r0=0x3 and lr=08031902, confirming
-    the wrapper returns a fixed value derived from sub_8031980(1) - caller''s saved lr at entry (08031902) sits
-    4 bytes after this wrapper, consistent with a `bl` from that site - AIData-like structs in r0 across all 6 captures
-    place this code in the AI/battle area'
+  detail: '- assembly is exactly `push {lr}; mov r0,#1; bl sub_8031980; pop {pc}`, so the only behavior is "call
+    sub_8031980 with constant selector 1 and return its r0" - callee contract `in=[''r0'',''lr''] out=[''r0'']`
+    confirms r0 is both the selector input and the return value - all 40 captured calls return r0=3 with the carry
+    flag set, which is the value sub_8031980 produces when its input r0==1 - caller LR 0x08031902 recurs in every
+    sample, suggesting a single dispatch site in the story2/AI path that routes through several such wrappers'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x08031A5E
@@ -37,13 +41,14 @@ evidence:
   result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1, story2, story3,
     story4, story5, story6, story7, story8, story9, wander
 open_questions:
-- the exact semantic meaning of "value 1" (which AI state field, or actor-type slot)
-- cannot be told from this stub alone; cross-referencing sub_8031980's callers with
-- AIData field meanings would settle it
+- what selector 1 actually maps to in the AI sub-state machine (no callers or named
+- callees are listed, and sub_8031980 itself is only a hypothesis)
+- whether r0 is a state-id to be stored or just a bool "success" flag (the flags
+- '"--C-" pattern and fixed value 3 hint at the former)'
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f d4179034
+  where: bn6f 87c09f6c
   tool: tools/symdoc.py

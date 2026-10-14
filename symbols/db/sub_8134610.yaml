@@ -1,0 +1,71 @@
+name: sub_8134610
+address: '0x08134610'
+kind: function
+previous_names: []
+status: hypothesis
+summary: Per-frame OAM submit for a battle object — wraps queueOamFromTableRow, optionally advancing its anim frame
+  index.
+interface: (no in regs; object ptr in r5, toolkit ptr in r10, per "void-like" contract) -> no out to callers
+details: "Pushes {r4, lr} and one stack slot. Reads a flag byte at r5+0x44 (the AIData header region of a BattleObject\
+  \ per the oBattleObject\n  layout where 0x44 lines up with `BattleObject.AIDataPtr`/the AIData-flag area off the\
+  \ per-object AIData); when zero, the function\n  bails to the epilogue without touching OAM (loc_8134686).\n \
+  \ When the flag is set, it indexes a per-table-row array at byte_813470C using r5+0x40 (the object's AIData `Unk_40`\
+  \ / ID index) shifted\n  left by 2 (i.e. table of u32s or pointers). The deref gives a base offset that is then\
+  \ adjusted by the 16.16 X (`r5+0x18` sign-extended\n  halfword → `lsl #3` to bring 16.16 units into pixel scale)\
+  \ — i.e. the object is shifted horizontally with its own X position.\n  Then it composes a (X, Y) pair: r0 = base_minus_x\
+  \ in 16.16, r1 = 0x18 + ((r5+0x3e)+(r5+0x3c) - either r5+0x2e or r5+0x24 depending on\n  r5+0x40 == 2). The two\
+  \ Y candidates are halfwords `Unk_2e` (AIData) or `JoypadPressed` (r5+0x24) plus the Z halfword (`r5+0x3c`). The\n\
+  \  constraint `0 <= ((0x3e)+(0x3c) - selected) <= 6` decides whether to queue OAM at all this frame; otherwise\
+  \ it again jumps to\n  epilogue (loc_8134686).\n  Once the position is accepted, the (Y in r1, computed X in r0)\
+  \ is OR'd into one register via `orr r0,r1` after\n  `mul r2, r3` (×0x10 stride) — leaving `r1` carrying a tile/anim\
+  \ slot offset. Constant `0x20003` (`dword_81346F8`) plus the byte at\n  `r5+0x16` (low byte of `AllianceAndDirectionFlip`\
+  \ on BattleObject) and `byte_81331F4` then drive\n  `battleObject_queueOamFromTableRow_811FAF4` to push the OAM\
+  \ entry.\n  After it returns, the function reads `r5+0x16` and computes `(byte >> 4) - 1`. When that is non-zero\
+  \ the frame index is left alone; when\n  it equals zero, `sub_8120CC8` (table lookup; the caller passes index\
+  \ from `[sp] >> 4`) gets called with a table pointer from\n  `dword_81331FC`, and the resulting u8 replaces `r5+0x16`'s\
+  \ low nibble via `strb r0, [r5,#0x16]` (the path through loc_813467A\n  re-merges the high nibble with the new\
+  \ low nibble). Net: this is a routine that (a) decides whether the object is visible vertically\n  given a Y window,\
+  \ (b) calls queueOamFromTableRow, and (c) on a particular frame slot (high nibble == 0) advances the OAM/anim\
+  \ index\n  via a small lookup table.\n  Caller sub_81333A0 appears to drive the per-object anim/sprite update\
+  \ loop.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0, [r5,#0x44]` + `tst r0,r0` + `beq loc_8134686` shows an enabled-flag gate before any OAM work.
+    - `[r5,#0x40] lsl #2; ldr r0, [r2,r1]` indexes a u32 table at byte_813470C by a per-object ID, suggesting a
+    slot/anim-row table. - `[r5,#0x18]` read as `ldrsh` and `lsl #3` converts the 16.16 X into pixels (each unit
+    = 8 px). - The two `ldrh` reads from `r5+0x3e, r5+0x3c, r5+0x2e, r5+0x24` then `add; sub` show a (Z + offset)
+    Y computation where `cmp r3,#2; beq` selects JoypadPressed vs AIData.Unk_2e as the carrier; the `blt loc_8134686;
+    cmp r2,#6; bgt loc_8134686` window is a Y-band cull. - `bl battleObject_queueOamFromTableRow_811FAF4` with `dword_81346F8
+    = 0x20003` and `[r5,#0x16]` reused as a flag/param byte. - After the call, `lsr r1, r1, #4; sub r1, #1; bne
+    loc_813467A` and `strb r0, [r5,#0x16]` show the high-nibble == 0 branch that loads the next anim index via `sub_8120CC8`.
+    - Only caller listed is `sub_81333A0`, consistent with a per-object update step that fans out across all live
+    battle objects.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08134610
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, beastsp, maps, menus3, story4, story6, story8, story9'
+  reproduce: 'grep -l ''^08134610 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, beastsp, maps, menus3, story4, story6, story8, story9
+open_questions:
+- The exact meaning of the byte at r5+0x44 (which the struct doc shows as part of AIData, not BattleObject directly)
+  is unclear;
+- the table referenced at byte_813470C is unknown without live captures of the full table.
+- Whether the Y window (0..6) corresponds to a per-frame Y scroll position or to attack animation state cannot be
+  confirmed
+- from the assembly alone. Capturing a battle with a known Animate would settle this.
+- The full contents of dword_81331FC (the table fed to sub_8120CC8 when the high nibble == 0) is not visible here.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 87c09f6c
+  tool: tools/symdoc.py

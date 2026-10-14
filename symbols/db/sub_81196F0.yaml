@@ -1,121 +1,61 @@
 name: sub_81196F0
 address: '0x081196F0'
 kind: function
+previous_names: []
 status: hypothesis
-summary: Battle-object state sync/rollback stub — copies primary HP/ID/position fields to their backups, or rolls
-  the backup forward to current values when the gate (sub_8119880) flags them stale, marking state=4.
-interface: void sub_81196F0(u32 *battleObj /* r5 */) -> preserves r4-r9, returns current pos in r0 and sub_8119438's
-  flags; clobbers r0-r3, r12, lr.
-details: "Acts on a battle-object struct at *r5 with fields:\n  +0x09 state byte (set to 4 when backup is stale\
-  \ and rewritten)\n  +0x0C current unit ID (byte)\n  +0x0D backup unit ID (byte)\n  +0x0E current HP (u16)\n  +0x10\
-  \ backup HP (u16)\n  +0x18 current position (u16)\n  +0x1A backup position (u16)\nTwo paths:\n  • sub_8119880\
-  \ returns Z=0 (gate pass): runs sub_8119438 (frame tick), then unconditionally\n    mirrors 0x0E→0x10, 0x0C→0x0D,\
-  \ 0x18→0x1A and returns the current position in r0.\n  • sub_8119880 returns Z=1 (gate fail): compares current\
-  \ HP/ID/pos against their\n    backups; on any mismatch, copies current→backup and writes state=4. If all three\n\
-  \    match, returns the backup ID in r0 with Z=1 preserved.\nFlag handling is the read non-obvious point: the\
-  \ gate-fail path uses local CMPs to\nbuild its own Z sequence (pos→hp→id), so the final Z reflects the ID comparison\n\
-  (or the most recent mismatching CMP). CPSR survives the ldrh/strh/ldrb/strb copies in\nboth paths. Pushes r4-r7,lr;\
-  \ preserves r4-r9."
+summary: Compares the chip-panel submenu's current chip fields (+0xC/E/18) against the previous render and re-renders
+  the chip image/text only on change, otherwise writes a "frame" stamp at +0x9.
+interface: (r0 = caller's tail-call frame setup word, low bit = selector; r5 = active submenu ptr from r10 toolkit;
+  r10 = Toolkit*) -> void ; no value returned to callers (only caller-saved r4–r9 clobbered, lr popped as pc).
+details: "- Entry contract takes the flags.nz set by the tail-call from 0x081196D0 (`sub_81196D0`) which selects\
+  \ the \"new chip chosen\" branch (`beq loc_811970A`).\n  - First calls `sub_8119880`, whose description says it\
+  \ compares the two submenu status bytes (+0xE and +0xF) and returns Z if equal. NZ means the two bytes differ\
+  \ and re-rendering is required.\n  - When NZ (mismatch): invokes `chipPanel_renderChipGfxAndText_8119438` to redraw,\
+  \ then commits three fields into the \"last rendered\" shadow region: copies +0xE (current selected chip id, u16)\
+  \ to +0x10, +0xC (chip slot index, u8) to +0xD, and +0x18 (chip code, u16) to +0x1A — i.e. stores the just-rendered\
+  \ values as the new comparison baseline.\n  - When Z (no change from last frame): loads the shadowed previous-chip\
+  \ fields into r3/r4/r1 (chip id, slot idx, chip code), compares against the current +0xE/+0xC/+0x18; if any differ\
+  \ (bne at 0x8119722), commit the same three stores and additionally write 4 at +0x9 (the submenu \"needs redraw\"\
+  \ / counter byte at `oSubMenu+9`). If equal, returns immediately.\n  - The +0x9 = 4 write is the only oddity in\
+  \ the steady-state path — looks like a \"frame id\" stamp used by something downstream; the captured-call exits\
+  \ (r0 = 4 vs 0xFF) suggest one caller cares about +0x9 via byte at the end (`b locret_811972C` falls through,\
+  \ but the +0x4 is set only via `strb r0, [r5,#9]`).\n  - The lr-pop-as-pc tail-call return suggests this is never\
+  \ called from a `bl` expecting a return value — more like a \"step\" function possibly inlined in a jumptable.\n"
 evidence:
-- method: readable-c
-  date: '2026-10-11'
-  detail: Written by hyper/qwen3.8-flash through the convert workflow (2 attempt(s), run convert-20261011-001230);
-    reviewed by Claude before the commit.
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- callee `chipPanel_renderChipGfxAndText_8119438` is only reached when `sub_8119880` returns NZ, consistent
+    with "only re-render on change" semantics. - Assembly mirrors `+0xE -> +0x10`, `+0xC -> +0xD`, `+0x18 -> +0x1a`
+    at 0x8119716–0x811971E (strh/strb/strh) followed by `b locret_811972C` — these are the "snapshot the just-rendered
+    state" stores. - Steady-state path at loc_811970A reads the snapshot back (ldrh r4,[r5,#0xe]; ldrb r6,[r5,#0xc];
+    ldrh r3,[r5,#0x18]; ldrh r1,[r5,#0x1a]) and `cmp`s each against the current equivalent. - `beq locret_811972C`
+    after the three cmp''s means return-without-write when nothing changed. - The `mov r0, #4; strb r0, [r5,#9]`
+    at 0x8119728 is the only writer of submenu byte +9 in this function. - Captured-call exit r0 values (4 on story2_0;
+    0xFF on story2_1..13) match the two branches'' loose tail-call behavior — though r0 is set inside the chip-render
+    callee, not here; the MayWrite flags on r0 here are due to the `bl` rather than a local mov. The 4-exit case
+    (story2_0) is the special one.'
   refs:
-  - cport/src/game/asm32_8119438.c
-  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 54' --file inbox_farm_54.c sub_81196F0
-- method: difftest
-  date: '2026-10-11'
-  detail: Readable vs lifted on the original's captured calls and on random inputs.
-  reproduce: './wf capture --function sub_81196F0
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x081196F0
 
-    ./wf verify --function sub_81196F0 --snapshots build-snapshots'
-  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 299 out
-    of domain (verify run convert-20261011-001230-verify-2)'
-- method: cpu-oracle
-  date: '2026-10-11'
-  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
-  reproduce: './wf capture --function sub_81196F0
-
-    ./wf verify --function sub_81196F0 --snapshots build-snapshots'
-  result: 15 compared, 0 differed, 9 out of domain (verify run convert-20261011-001230-verify-2)
-- method: lockstep
-  date: '2026-10-11'
-  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
-  reproduce: './wf capture --function sub_81196F0
-
-    ./wf verify --function sub_81196F0 --snapshots build-snapshots'
-  result: 16/16 routes identical (verify run convert-20261011-001230-verify-2)
+    '
+  result: the body read as described above
 - method: coverage
-  date: '2026-10-11'
-  detail: 'Executed by: battles1, battles2, maps, menus3, story2, story4, story6, story8, story9.'
-  reproduce: grep -l '^081196f0 ' tools/traces/coverage/*.prof
-changes:
-- date: '2026-10-11'
-  what: readable C replacement in cport/src/game/asm32_8119438.c
-  where: recomp a045c21
-  tool: tools/wf convert (hyper/qwen3.8-flash)
-- date: '2026-10-11'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 27d1cdb8
-  tool: tools/symdoc.py
-- date: '2026-10-13'
-  what: doc comment (symdb block) at the definition
-  where: bn6f bce1cfe1
-  tool: tools/symdoc.py
-readable_c: cport/src/game/asm32_8119438.c
-coverage:
-- battles1
-- battles2
-- maps
-- menus3
-- story2
-- story4
-- story6
-- story8
-- story9
-related:
-- sub_8119880
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, beastsp, maps, menus3, story2, story4, story6, story8, story9'
+  reproduce: 'grep -l ''^081196f0 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, beastsp, maps, menus3, story2, story4, story6, story8, story9
 open_questions:
-- Identity/purpose of sub_8119880 (gate predicate) and sub_8119438 (per-frame updater).
-- Exact meaning of state=4 at +0x09 — likely a "backup-just-overwritten" sentinel consumed elsewhere.
-- Whether the gate-fail path is the rollback direction or a one-shot promotion to backup.
-- Caller relationship that requires r4-r7 preservation (push/pop) but only r5/r10 are contract inputs.
+- Whether r5 in this frame is the SubMenu* ptr or something else (toolkit r10 -> oSubMenu = +0x34 ptr, then r5 set
+  previously in the caller's tail-call prologue). Without seeing the 0x081196D0 prologue, the exact semantic of
+  r5 offset semantics is inferred only from "+0x9 and +0xC" appearing in `sub_menu_struct` and `chipPanel_renderChipGfxAndText`.
+- The meaning of byte +0x9 == 4 written only when previous-vs-current fields differ is unknown.
 sources:
-- tools/wf run convert-20261011-001230
-- recomp a045c21
-signature:
-  c: void sub_81196F0(u8 *r5)
-  params:
-  - reg: r5
-    type: u8 *
-    name: r5
-  ret:
-    reg: none
-    type: void
-  globals:
-  - toolkit
-  confidence: confident
-  decided_by: mechanical
-  evidence:
-  - 'contract (lifter, refined): may read r5; result none'
-  - 'liveness over the assembly and callees (tools/sig/derive.py): reads r5'
-  - 'r5: captures: 40 calls, ram eStructArr2008450'
-  reproduce: python3 tools/sig/bounds.py && python3 tools/sig/derive.py && python3 tools/sig/ask.py run && python3
-    tools/sig/ask.py merge
-  derived: '2026-10-12'
-stamp:
-  rom: rom:e09ddf3b2112b657
-  range: 0x081196F0-0x08119730
-  contract: nz r5 r10 lr -> r5 r10 r11; clobbers nz c v r0 r1 r2 r3 r12 lr
-  callees:
-    sub_8119880: nz
-    chipPanel_renderChipGfxAndText_8119438: r5 r10 r11
-  headers: a75261713acf
-  lifter: 70c8d832ffcf
-  prompt: unknown
-  model: hyper/qwen3.8-flash
-  run: convert-20261011-001230
-  body: 8e17e198d03e6c1a
-  installed: a045c21
-  stamped: '2026-10-12'
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 87c09f6c
+  tool: tools/symdoc.py

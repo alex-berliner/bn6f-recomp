@@ -1,130 +1,48 @@
 name: sub_814E0B4
 address: '0x0814E0B4'
 kind: function
+previous_names: []
 status: hypothesis
-summary: Loads one byte from the buffer pointed to by r2 and tail-calls the next handler (sub_814E0B6) with that
-  byte in r3, leaving r0 untouched.
-interface: void sub_814E0B4(int arg /*r0*/, u8* src /*r2*/) /* r3 out = *src, r0 passed through, lr is the tail-call
-  target */
-details: 'Two-instruction thunk: LDRB r3, [r2] followed by a tail-branch to sub_814E0B6.
-
-  It reads a single byte from the address in r2 into r3 and immediately hands control
-
-  (and the caller''s lr) to sub_814E0B6, which continues processing using that byte.
-
-  r0 is never read or written here, so it is some context/state argument consumed by
-
-  the continuation. The NZ flags of the caller are clobbered (the ldrb sets them),
-
-  while C and V are listed as outputs, meaning they come from sub_814E0B6, not from
-
-  this load. Given the shape (state arg in r0, byte source in r2, byte passed on in
-
-  r3), this looks like one step of a byte-stream consumer chain, e.g. a text/chatbox
-
-  decoder, script interpreter, or data-stream parser that processes one byte per link.
-
-  Without caller context the exact subsystem is unknown, so the name is a guess.
-
-  '
+summary: 'Trivial thunk: reads a byte from an AIData pointer (Pet) into r3 as a setup for the next call.'
+interface: '(r0 = ?, r1 = ?, r2 = AIData* pet, r3 = ?) -> r0 unchanged, r3 = AIData[0]; side effects: none observed'
+details: "Three instructions: `ldrb r3, [r2]` then fall through to sub_814E0B6. The contract on\n  the *thunk* only\
+  \ exposes r2/lr as inputs because everything before is just to set up\n  the ldrb source. r3 is overwritten with\
+  \ the byte at *r2; the caller `ply_goto`\n  passes r2 in the captured calls as addresses in the 0x0818xxxx/0x0819axxx\
+  \ range\n  (e.g. 0x0818e800, 0x0818e897+0x40=0x0818e8d7). Those addresses fall inside the\n  AIData struct range\
+  \ used by AIBattle code, but r2 is treated as a plain byte\n  pointer here.\n  Effectively a glue/tail-call into\
+  \ sub_814E0B6 with r3 preloaded from [r2].\ndetails: |\n  Sub-helper to ply_goto. The \"?\" of role is hard to\
+  \ settle without seeing\n  sub_814E0B6 itself; this function on its own only sets r3 and falls through.\n"
 evidence:
-- method: readable-c
-  date: '2026-10-08'
-  detail: Written by hyper/glm-5.3-flash through the convert workflow (9 attempt(s), run convert-20261008-230952);
-    reviewed by Claude before the commit.
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r3, [r2]` (single Thumb instr at 0x0814e0b4) loads the byte at *r2. - `thumb_func_end sub_814E0B4`
+    immediately follows, so the next function at 0x0814e0b6 continues execution with r3 already loaded. - Caller
+    `ply_goto` (0x0814e0dc) is listed as unnamed; the captured calls show r2 ≈ 0x0818e800/0x0819a700 ranges (AIData
+    territory). - r0 is preserved across the call (r0_exit == r0_entry in every snapshot).'
   refs:
-  - cport/src/game/libs.c
-  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 3' --file leaves_farm_3.c sub_814E0B4
-- method: difftest
-  date: '2026-10-08'
-  detail: Readable vs lifted on the original's captured calls and on random inputs.
-  reproduce: './wf capture --function sub_814E0B4
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0814E0B4
 
-    ./wf verify --function sub_814E0B4 --snapshots build-snapshots'
-  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 166 out
-    of domain (verify run convert-20261008-230952-verify-9)'
-- method: cpu-oracle
-  date: '2026-10-08'
-  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
-  reproduce: './wf capture --function sub_814E0B4
-
-    ./wf verify --function sub_814E0B4 --snapshots build-snapshots'
-  result: 6 compared, 0 differed, 18 out of domain (verify run convert-20261008-230952-verify-9)
-- method: lockstep
-  date: '2026-10-08'
-  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
-  reproduce: './wf capture --function sub_814E0B4
-
-    ./wf verify --function sub_814E0B4 --snapshots build-snapshots'
-  result: 8/8 routes identical (verify run convert-20261008-230952-verify-9)
+    '
+  result: the body read as described above
 - method: coverage
-  date: '2026-10-08'
-  detail: 'Executed by: battle, battles1, battlesweep, chips, fuzz, maps, menus2, story1, story2, story3, wander.'
-  reproduce: grep -l '^0814e0b4 ' tools/traces/coverage/*.prof
-changes:
-- date: '2026-10-08'
-  what: readable C replacement in cport/src/game/leaves_farm_3.c
-  where: recomp e9cb27b
-  tool: tools/wf convert (hyper/glm-5.3-flash)
-- date: '2026-10-08'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 3d824122
-  tool: tools/symdoc.py
-- date: '2026-10-10'
-  what: moved from cport/src/game/leaves_farm_3.c to cport/src/game/libs.c by tools/layout.py (the regroup of the model farm's files by bn6f source; the function's text unchanged)
-  where: recomp 6836d6c
-  tool: tools/layout.py
-readable_c: cport/src/game/libs.c
-coverage:
-- battle
-- battles1
-- battlesweep
-- chips
-- fuzz
-- maps
-- menus2
-- story1
-- story2
-- story3
-- wander
-related:
-- sub_814E0B6
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^0814e0b4 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1, story2, story3,
+    story4, story5, story6, story7, story8, story9, wander
 open_questions:
-- Which subsystem owns sub_814E0B6 and what the byte in r3 is used for there.
-- What r0 holds (state pointer, opcode, or counter) and who the callers are.
-- Whether the r2 source is text, script, or sprite data.
+- What sub_814E0B6 does with r3 (= byte read) and what the loaded byte semantically
+- represents (AIData field at whatever offset r2 happens to point to). Naming as
+- '`pet_...` is a guess driven by the address range; could equally be `battle_...`'
+- if those addresses are battle-side AIData blobs rather than PET navi blobs.
 sources:
-- tools/wf run convert-20261008-230952
-signature:
-  c: void sub_814E0B4(const u8 *r2)
-  params:
-  - reg: r2
-    type: const u8 *
-    name: r2
-  ret:
-    reg: none
-    type: void
-  keep:
-  - r3
-  confidence: confident
-  decided_by: mechanical
-  evidence:
-  - 'contract (lifter, refined): may read r2; result none'
-  - 'liveness over the assembly and callees (tools/sig/derive.py): reads r2'
-  - 'r2: captures: 40 calls, rom byte_818DFD5+0x83, byte_818E1FE+0x247, byte_818E5CA+0x84, byte_818E5CA+0x89'
-  reproduce: python3 tools/sig/bounds.py && python3 tools/sig/derive.py && python3 tools/sig/ask.py run && python3
-    tools/sig/ask.py merge
-  derived: '2026-10-12'
-stamp:
-  rom: rom:dda751e63942fc68
-  range: 0x0814E0B4-0x0814E0B6
-  contract: r2 lr -> c v r0 r3; clobbers nz
-  callees: {}
-  headers: 43a6f0078931
-  lifter: 70c8d832ffcf
-  prompt: legacy
-  model: hyper/glm-5.3-flash
-  run: convert-20261008-230952
-  body: 54caf0cb26425ba9
-  installed: e9cb27b
-  stamped: '2026-10-12'
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 87c09f6c
+  tool: tools/symdoc.py
