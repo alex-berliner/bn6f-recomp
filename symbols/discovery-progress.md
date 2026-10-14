@@ -384,3 +384,46 @@ Highlights:
 | 8     | 25                 | 20                        | 5               | 0       |
 
 Running total: named 169, hypothesis-only 27, dropped 0 (of ~10,600 placeholders).
+
+## Batch 9 (2026-10-14)
+
+25 functions, 18 named + 7 hypothesis (sub_800A21C, sub_800F26C, sub_8083DF0,
+sub_80A7CFE, sub_80C4C52, sub_81419A0, sub_814E0D0 kept as comment only),
+renamed in recomp a335cab1 (bn6f pushed; port ROM unchanged).
+
+Highlights:
+- battle/AI main-frame: per-frame story step (battle_runPerFrameStoryStep_8008064),
+  beast transformation action (battle_runBeastTransformationAction_8014A38);
+- battle object: player counter pink-ring spawn
+  (battleObject_playerCounterSpawnPinkRingIfReady_80139C4),
+  fade-out and despawn self actor (battle_fadeOutAndDespawnSelfActor_801664E),
+  destroy (battleObject_destroy_8016C4E),
+  chip-preview GFX init (battle_loadChipPreviewGfxInit_801BFEE),
+  beast-out form GFX load (battleObject_loadBeastOutFormGfx_801CC34),
+  chip-select anim tick (battleObject_chipSelectAnimTick_8029C08),
+  apply shake offset and project (battleObject_applyShakeOffsetAndProject_8031136),
+  scroll accumulate step (battle_scrollAccumulateStep_8031176),
+  call AI dispatch (battle_callAIDispatch_8046818),
+  update sprite GFX for all (battleObject_updateSpriteGfxForAll_8046854),
+  AI check beast-out trigger (battle_ai_checkBeastOutTrigger_80A5C74),
+  run action subroutine dispatch (battleObject_runActionSubroutineDispatch_80A6A62),
+  run AI dispatch with cur state (battleObject_runAIDispatchWithCurState_80A7D90),
+  beast-SP battler update (battleObject_beastSP_battlerUpdate_80A7E14),
+  destruct on hit phase (battle_objectDestructOnHitPhase_80DA886);
+- chatbox: upload frame-tile GFX (chatbox_uploadFrameTileGFX_801C304).
+
+## Tally update
+
+| batch | functions examined | named (renamed via record) | hypothesis-only | dropped |
+|-------|--------------------|---------------------------|-----------------|---------|
+| 1     | 25                 | 25                        | 0               | 0       |
+| 2     | 21                 | 20                        | 1               | 0       |
+| 3     | 25                 | 23                        | 2               | 0       |
+| 4     | 25                 | 21                        | 4               | 0       |
+| 5     | 25                 | 20                        | 5               | 0       |
+| 6     | 25                 | 21                        | 4               | 0       |
+| 7     | 25                 | 19                        | 6               | 0       |
+| 8     | 25                 | 20                        | 5               | 0       |
+| 9     | 25                 | 18                        | 7               | 0       |
+
+Running total: named 187, hypothesis-only 34, dropped 0 (of ~10,600 placeholders).
