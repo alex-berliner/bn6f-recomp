@@ -1166,3 +1166,64 @@ Highlights:
 | 22    | 25                 | 17                        | 8               | 0       |
 
 Running total: named 421, hypothesis-only 125, dropped 0 (of ~10,600 placeholders).
+
+## Batch 23 (2026-10-14)
+
+25 functions, 14 named + 11 hypothesis (sub_8083DF0, sub_8086EA8, sub_80897A6,
+sub_80A5890, sub_80A7CEA, sub_80E1670, sub_81185E4, sub_8118604, sub_811E168,
+sub_811E202, sub_8123BE0 kept as comment only), renamed in recomp 11f05b0d
+(bn6f pushed; port ROM unchanged).
+
+Highlights:
+- battle: update chip select init (battle_updateChipSelectInit_80094B6),
+  dispatch by index (battle_dispatchByIndex_80099A4),
+  run battle step (battle_runBattleStep_8009B20);
+- battle chip-select: chip select step (battle_chipSelectStep_802BDC0);
+- chatbox: render battle cursor step
+  (chatbox_renderBattleCursorStep_8031C7C);
+- battle AI: story sub-3 (battle_aiStorySub3_8031C94);
+- battle: run battle frame for cyberworld
+  (battle_runBattleFrameForCyberWorld_808FEA4);
+- reqBBS: update bobbing camera and play chime
+  (reqBBS_updateBobbingCameraAndPlayChime_80A55D4);
+- battle object: dispatch cur action
+  (battleObject_dispatchCurAction_80A7C84);
+- battle object: run action dispatcher
+  (battleObject_runActionDispatcher_80E19F4);
+- battle: dispatch object state (battle_dispatchObjectState_811E024);
+- submenu: subchip tick OAM and advance anim table
+  (submenu_subchip_tickOamAndAdvanceAnimTable_81244EC);
+- battle: load navicust program table
+  (battle_loadNavicustProgramTable_813BD10);
+- battle object: increment unk-200431C counter for matching objects
+  (battleObject_incrementUnk200431cCounterForMatchingObjects_813BE38).
+
+## Tally update
+
+| batch | functions examined | named (renamed via record) | hypothesis-only | dropped |
+|-------|--------------------|---------------------------|-----------------|---------|
+| 1     | 25                 | 25                        | 0               | 0       |
+| 2     | 21                 | 20                        | 1               | 0       |
+| 3     | 25                 | 23                        | 2               | 0       |
+| 4     | 25                 | 21                        | 4               | 0       |
+| 5     | 25                 | 20                        | 5               | 0       |
+| 6     | 25                 | 21                        | 4               | 0       |
+| 7     | 25                 | 19                        | 6               | 0       |
+| 8     | 25                 | 20                        | 5               | 0       |
+| 9     | 25                 | 18                        | 7               | 0       |
+| 10    | 25                 | 14                        | 11              | 0       |
+| 11    | 25                 | 17                        | 8               | 0       |
+| 12    | 25                 | 15                        | 10              | 0       |
+| 13    | 25                 | 19                        | 6               | 0       |
+| 14    | 25                 | 19                        | 6               | 0       |
+| 15    | 25                 | 21                        | 4               | 0       |
+| 16    | 25                 | 21                        | 4               | 0       |
+| 17    | 25                 | 21                        | 4               | 0       |
+| 18    | 25                 | 20                        | 5               | 0       |
+| 19    | 25                 | 17                        | 8               | 0       |
+| 20    | 25                 | 15                        | 10              | 0       |
+| 21    | 25                 | 18                        | 7               | 0       |
+| 22    | 25                 | 17                        | 8               | 0       |
+| 23    | 25                 | 14                        | 11              | 0       |
+
+Running total: named 435, hypothesis-only 136, dropped 0 (of ~10,600 placeholders).
