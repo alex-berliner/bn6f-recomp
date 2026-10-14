@@ -1,0 +1,63 @@
+name: battle_advanceUnk40IfFlagSet_800A6A6
+address: '0x0800A6A6'
+kind: function
+previous_names:
+- sub_800A6A6
+status: probable
+summary: Each frame, if battle isn't paused/over/time-stopped and `oBattleState_Unk_32` bit 0 is set,
+  increment `oBattleState_Unk_40` (clamped to 0x8c9f).
+interface: (no args; r10 = Toolkit ptr) -> r0/r1/r2/r3 clobbered as temporaries, no meaningful return
+details: "- Saves lr, calls battle_isTimeStop/jumps to epilogue if non-zero (battle-time-stopped frames\
+  \ don't tick the counter).\n  - Calls battle_isPaused and battle_isBattleOver, bailing on either (so\
+  \ paused/over battles also don't tick).\n  - Calls battle_getFlags (returns the halfword at oBattleState_Unk_32),\
+  \ tests bit 0 (`tst r0, #1`); if cleared, bails.\n  - Loads the BattleStatePtr via the toolkit (`ldr\
+  \ r0, [r10, #oToolkit_BattleStatePtr]`), then loads the u32 at offset `oBattleState_Unk_40`, increments\
+  \ it, compares to constant `0x8c9f` (loaded from `dword_800A93C`); if it reaches/exceeds the cap, replaces\
+  \ with `0x8c9f`; otherwise stores the incremented value.\n  - Str r1, [r0, #oBattleState_Unk_40] then\
+  \ pop {pc}. No caller-readable result.\n  - The four sibling callers (sub_80080D2/855E/89CC/8DDC) all\
+  \ look like per-frame battle subsystems; this is one of the per-frame tickers that gates on a specific\
+  \ battle-state bit.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl battle_isTimeStop` -> `bne locret_800A6D6` (time-stop bailout) at 0x800A6AA-0x800A6AC
+    - `bl battle_isPaused` / `bl battle_isBattleOver` follow the same pattern at 0x800A6AE-0x800A6B4 -
+    `bl battle_getFlags` returns oBattleState_Unk_32; `mov r1, #1`; `tst r0, r1`; `beq locret_800A6D6`
+    checks bit 0 of that halfword (0x800A6B6-0x800A6BC) - `ldr r0, [r10, #oToolkit_BattleStatePtr]` ->
+    `ldr r1, [r0, #oBattleState_Unk_40]` at 0x800A6BE-0x800A6C2 matches the toolkit->BattleState->Unk_40
+    chain - `add r1, #1`; `ldr r2, dword_800A93C // =0x8c9f`; `cmp r1, r2`; `blt loc_800A6D4`; `mov r1,
+    r2` (clamp) then `str r1, [r0, #oBattleState_Unk_40]` at 0x800A6C2-0x800A6D4 implements increment-with-cap
+    - Captured calls show identical input/output snapshots across snap_story2_0..13, consistent with a
+    per-frame idempotent-tick function called many times'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0800A6A6
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0800a6a6 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9
+open_questions:
+- The semantic meaning of `oBattleState_Unk_40` and of flag bit 0 at `oBattleState_Unk_32` — both are
+  unnamed in the headers. The structural role (per-frame increment, capped at 0x8c9f, gated on Unk_32
+  bit 0) is clear, but the in-game purpose (counter for turns? panel turns? time-limit for a mode?) cannot
+  be derived from this function alone — comparing against a sibling function that resets it on match end
+  would settle it.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7d574411
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_800A6A6 -> battle_advanceUnk40IfFlagSet_800A6A6
+  where: bn6f 4ab63ce3
+  tool: tools/rename_symbol.py

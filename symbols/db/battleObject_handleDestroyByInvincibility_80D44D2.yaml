@@ -1,0 +1,65 @@
+name: battleObject_handleDestroyByInvincibility_80D44D2
+address: '0x080D44D2'
+kind: function
+previous_names:
+- sub_80D44D2
+status: probable
+summary: Battle-object death handler (CurAction==0) that tears down collision, fires the death hit, then
+  transitions the object into the destroy state.
+interface: (r5 = battleObject, r10 = toolkit) -> void ; may clobber r0-r3/r7 per ARM ABI
+details: "Steps:\n  1. Calls object_removeCollisionData on r5 to detach the object from collision\n  \
+  \   regions (the trampoline preserves r4/r5/r7/r10).\n  2. Calls object_spawnCollisionEffect to play\
+  \ the death VFX/panel effect tied\n     to the just-removed data.\n  3. Calls battle_isBattleOver; if\
+  \ the battle is over, jumps to the\n     clear-and-destroy tail.\n  4. Calls basicHandleBattleObjectDamage_801156A\
+  \ with r0=2 (death-element\n     damage flag) and tests the returned value + 1: if zero (i.e. the\n\
+  \     object actually died this call), spawns a t1 EffectObject at the object's\n     world coords (r0\
+  \ = r5+oCoords, r1-r3 = X/Y/Z from ldmia at +0x34..+0x3c,\n     r4 = 0x000e0000) and then falls through\
+  \ to destroy.\n  5. Reads collision-data flag bit `0xf800000`; if any of those bits are set\n     (the\
+  \ object was killed by an \"uncounterable\" status like\n     OBJECT_FLAGS_FROZEN/IMMOBILIZED/SUPERARMOR/etc.)\
+  \ also falls through to\n     destroy.\n  6. If not killed and time is not stopped, reads CurAction\
+  \ and dispatches via\n     the jump table at off_80D4534 to one of sub_80D4544 / sub_80D4570 /\n   \
+  \  sub_80D45EC / sub_80D4604 (action sub-states), after which it runs\n     object_presentCollisionData\
+  \ and returns.\n  7. Destroy tail: clears the collision region byte, sets CurAction = 8\n     (CUR_STATE_DESTROY),\
+  \ resets CurPhaseAndPhaseInitialized = 0, and returns.\n\n  Notably this function preserves the convention\
+  \ that r5 is the battle object\n  pointer and r10 is the toolkit; it does not push/pop r5/r10 so callers\
+  \ must\n  restore them. The push {r4,r7,lr} only protects r4/r7/lr.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl object_removeCollisionData` then `bl object_spawnCollisionEffect` immediately at entry
+    matches the "tear down + spawn death FX" pattern. - `battle_isBattleOver` early-out to the destroy
+    tail (`bne loc_80D4520`) skips per-action handling when the battle has already ended. - `basicHandleBattleObjectDamage_801156A`
+    is called with r0=2 (death element) and the `add r0, #1` / `beq loc_80D450E` shows that a zero return
+    means "this object died from the damage". - The `ldmia r0!, {r1-r3}` at loc_80D450E reads 12 bytes
+    from `r5 + 0x34`, which is `oBattleObject_Coords` (X/Y/Z fixed-point), used as the spawn position
+    for `spawn_t1_0x0_EffectObject`. - `r4 = 0` then `lsl r4, r4, #0x10` -> r4 = 0x00000000, but the next
+    `add r3, r3, r4` is a no-op; the meaningful `0xe` is passed to the spawner as'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080D44D2
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp'
+  reproduce: 'grep -l ''^080d44d2 '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp
+open_questions:
+- What the four sub-action handlers (sub_80D4544/4570/45EC/4604) actually do
+- per CurAction value, and whether the `0xf800000` mask is checked for a
+- specific "death by status" condition versus a more general "ignore this
+- object now" condition. Reading those four sub-handlers would settle it.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7d574411
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80D44D2 -> battleObject_handleDestroyByInvincibility_80D44D2
+  where: bn6f 4ab63ce3
+  tool: tools/rename_symbol.py

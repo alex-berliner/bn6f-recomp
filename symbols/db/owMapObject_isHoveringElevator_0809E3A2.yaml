@@ -1,0 +1,61 @@
+name: owMapObject_isHoveringElevator_0809E3A2
+address: '0x0809E3A2'
+kind: function
+previous_names:
+- sub_809E3A2
+status: probable
+summary: Returns NZ (Z=0) iff the byte at eStruct2000aa0+0x8 is non-zero (i.e. the overworld player Navi
+  is currently in the elevator pose/animation).
+interface: () -> r0 = byte at (eStruct2000aa0 + 0x8); flags Z set when byte == 0, NZ otherwise ; no side
+  effects
+details: "Leaf function (only reads via `tst r0,r0` and returns via `mov pc,lr`). Loads the address of\n\
+  \  `eStruct2000aa0` from `off_809E430` into r3, then reads the single byte at offset 0x8\n  (`ldrb r0,[r3,#0x8]`),\
+  \ and tests it. The `S2000aa0` struct (size 0x1c) holds the OW player\n  Navi display parameters: `OWPlayerNaviHorizontalCompress`\
+  \ (0x0), `OWPlayerNaviVerticalCompress`\n  (0x1), `OWPlayerNaviRotation` (0x2), `Unk_03`, `Sprite_04`,\
+  \ `OWPlayerNaviPaletteIndex` (0x5),\n  `OWPlayerNaviColorShader` (0x6), then padding until 0x1c. Offset\
+  \ 0x8 falls inside an undefined\n  gap, but the four captured stories all pass identical entry state\
+  \ and observe Z set at exit\n  (r0=0), implying the byte is read as 0 in those frames. Callers test\
+  \ the Z result to gate\n  behaviour: `sub_809D348` and `sub_809D800` are large OW player state handlers\
+  \ (in `ow_player.s`),\n  `sub_80A7C58` lives in the same player file, and `sub_8141F7C` is unrelated\
+  \ but consumes the\n  same predicate.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `sub_809E3A2:` is 4 instructions: `ldr r3,off_809E430`; `ldrb r0,[r3,#0x8]`; `tst r0,r0`;
+    `mov pc,lr` — purely a flag-setting leaf. - `off_809E430` resolves to `eStruct2000aa0`, the EWRAM
+    state struct whose symbol `eStruct2000aa0` is used in nearby OW code. - The `S2000aa0` struct definition
+    reserves offsets 0..0x1c; offset 0x8 is currently unnamed in the macro but is in-range. - Contract
+    `in=[''lr'']` / `out=[''nz'']` and `may_write=[''nz'',''r0'',''r3'']` matches the `tst`/`mov pc,lr`
+    shape exactly. - The four captured snapshots (snap_story2_0..13) enter with r0=0, r1=0xf0, r2=0x08040000,
+    r3=0x50 (consistent OW player update inputs), and all return r0=0 with Z set — i.e. the predicate
+    is false in those story2 frames.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0809E3A2
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story1, story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^0809e3a2 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander
+open_questions:
+- What the byte at `eStruct2000aa0 + 0x8` actually represents semantically (it is undocumented in
+- the struct macro). Settle it by reading the writers of `0x2000aa8` in the OW player files
+- (e.g. `ow_player.s`) and cross-referencing with the callers' control flow.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7d574411
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_809E3A2 -> owMapObject_isHoveringElevator_0809E3A2
+  where: bn6f 4ab63ce3
+  tool: tools/rename_symbol.py

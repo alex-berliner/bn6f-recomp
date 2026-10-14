@@ -1,0 +1,75 @@
+name: owPlayer_runSlipRunOrEngine_0809D61A
+address: '0x0809D61A'
+kind: function
+previous_names:
+- sub_809D61A
+status: probable
+summary: 'Overworld player slip-run substate: gates each frame on the EVENT_1716/EVENT_IN_SLIPRUN_STATE
+  flags, dispatches via Unk_0a jumptable between slip-run and engine tick, and otherwise routes the player
+  into normal per-frame updates (advance/forward, idle, tile-interaction) before ending the slip-run if
+  conditions warrant.'
+interface: '(r5 = oOWPlayerObject*, r10 = oToolkit*) -> void ; side effects: writes the overworld player
+  jumptable index via owPlayer_setJumptableIndex09AndOthers_809e004, may clear oOWPlayerObject_Unk_0a,
+  may end slip-run state, may set EVENT_173F via callees'
+details: "1. Saves lr and tests EVENT_1716. If EVENT_1716 is set, it additionally tests EVENT_IN_SLIPRUN_STATE;\
+  \ if either test comes back set (the two beq/bne branch out to the slip-run entry at loc_809D646) the\
+  \ function enters the slip-run path. Otherwise (neither flag set) it falls through to loc_809D630.\n\
+  \  2. At loc_809D630 it calls sub_809D9E0 and, if that returns non-zero, inspects FacingDirection (offset\
+  \ 0x10) and Unk_11 on the player object. If they differ it clears oOWPlayerObject_Unk_0a to 0 (which\
+  \ dispatches into calledWhenUsingSlipRun_809D6BC next frame).\n  3. At loc_809D646 (the slip-run dispatch)\
+  \ it loads the 2-entry table at off_809D6B0 indexed by oOWPlayerObject_Unk_0a and bx's to either calledWhenUsingSlipRun_809D6BC\
+  \ or sub_809D730. The two path values are stored with +1 offsets to switch to Thumb mode.\n  4. If the\
+  \ slip-run gate isn't engaged (sub_809D9E0 returned zero), it calls sub_809DF28 — the per-frame dispatcher\
+  \ that bypasses a real handler when the player's substate is locked at 0x10.\n  5. If sub_809DF28 returns\
+  \ non-zero, the function clears the byte at [r7+1] (a counter that was loaded out of r7 before the sub\
+  \ call — appears to gate the slip-run entry counter), writes 0x10 to the player's jumptable index (the\
+  \ locked state), and ends the slip-run.\n  6. Otherwise it tests ow_gatePendingTileInteraction_809DED4;\
+  \ if a pending tile interaction was returned it sets the player's jumptable index to 0x0c and exits.\n\
+  \  7. If the \"player advance forward\" event (EVENT_1717_PLAYER_ADVANCE_FORWARD) is set it sets the\
+  \ player's jumptable index to 0x14 and finalizes the slip-run.\n  8. Otherwise if the overworld object's\
+  \ state halfword at +0x4c has bit 0x10 it routes to the standard 0x04 handler; otherwise sub_809DB02\
+  \ is consulted and, on a zero return, the player's jumptable index is set to 0 (idle). All of these\
+  \ end by calling oowExitSlipRun_809DDF0 to leave the slip-run gate.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- push {lr} / pop {pc} at start/end confirms leaf function returning into caller. - movflag
+    EVENT_1716 / TestEventFlagFromImmediate at 0x0809D620 confirms EVENT_1716 is tested as a flag input.
+    - beq loc_809D630 / bne loc_809D646 form the gate: (EVENT_1716 set) OR (EVENT_IN_SLIPRUN_STATE set)
+    ⇒ slip-run path. - ldrb r0,[r5,#oOWPlayerObject_FacingDirection] / ldrb r1,[r5,#oOWPlayerObject_Unk_11]
+    at 0x0809D63A show the player object in r5. - ldr r7, off_809D6B8 / ldr r7,[r7,r0] / mov lr,pc / bx
+    r7 at 0x0809D648 implements the Unk_0a jumptable dispatch; off_809D6B0 holds two +1-encoded Thumb
+    targets. - strb r0,[r5,#oOWPlayerObject_Unk_0a] / strb r0,[r7,#1] show the slip-run cleared on completion.
+    - owPlayer_setJumptableIndex09AndOthers_809e004 is used with constants 0x10 (locked), 0x0c (tile-interaction),
+    0x14 (forward), 0x04 (standard), and 0x00 (idle) — the slip-run state machine.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0809D61A
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, beastsp, fuzz, maps, menus2, menus3, story1, story2, story3,
+    story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0809d61a '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, beastsp, fuzz, maps, menus2, menus3, story1, story2, story3, story4, story5,
+    story6, story7, story8, story9
+open_questions:
+- The semantics of "slip-run" in this game aren't fully clear from the captured scenarios; the function
+  name and the meaning of [r7+1] are inferred rather than confirmed.
+- sub_809D9E0, sub_809DB02, and sub_809DF28 are unnamed, so their exact role in deciding slip-run vs.
+  normal-frame branching is partially inferred from the gate semantics.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7d574411
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_809D61A -> owPlayer_runSlipRunOrEngine_0809D61A
+  where: bn6f 4ab63ce3
+  tool: tools/rename_symbol.py

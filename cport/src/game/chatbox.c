@@ -815,7 +815,7 @@ static void sprite_render_sequence(u32 chatbox, u32 sprite_ptr,
     R0 = 0;
     R1 = 3;
     R5 = sprite_ptr;
-    GUEST_CALL(sub_8002694);
+    GUEST_CALL(sprite_queueFramePiecesViaSub_8002694);
 }
 
 /* chatbox_update_mugshot: drive one step of the mugshot fade and render the sprite. */

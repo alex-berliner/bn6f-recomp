@@ -1,0 +1,74 @@
+name: owMapObject_handlePlayerInteract_809D9E0
+address: '0x0809D9E0'
+kind: function
+previous_names:
+- sub_809D9E0
+status: probable
+summary: 'Overworld player interaction handler: builds a target XYZ ahead of the player''s facing direction,
+  runs the coordinate trigger check (e.g. examining an NPC/object via the A button), and packs the resulting
+  "interaction" bits into the OW player''s `Unk_4c` word, also updating `Unk_0d` / `FacingDirection` on
+  no-input.'
+interface: (uses r5=OWPlayer, r10=Toolkit) -> r0 unused, r2 carries result ; sets OWPlayer.Unk_4c, OWPlayer.Unk_0d,
+  OWPlayer.FacingDirection
+details: "Entry: r5 = OWPlayerObject*, r10 = Toolkit*, lr = return address.\n  Reads `eStruct200ace0.fixOWPlayerAnim_15`\
+  \ (byte at +0x15). If nonzero, takes the second branch\n  (loc_809DA98) which never calls the coordinate\
+  \ trigger / event-flag tests, just builds Unk_4c\n  from r1 = word at +0x18 of the same struct (treated\
+  \ as `Joypad.Pressed`-like value).\n  Main path (fixOWPlayerAnim_15 == 0):\n    - Skips entirely while\
+  \ IsScreenFadeActive is set (loc_809DA94 -> r0=0).\n    - If EVENT_PLAYER_CAN_MOVE is clear, output\
+  \ r0=0.\n    - If EVENT_1717_PLAYER_ADVANCE_FORWARD is set, also output r0=0.\n    - If a cutscene script\
+  \ is running (`IsCutsceneScriptNonNull`), output r0=0.\n    - Saves FacingDirection to Unk_11.\n   \
+  \ - If JOYPAD_START is in Pressed, output r0=0.\n    - If JOYPAD_A is in Pressed: builds a 3-word coordinate\
+  \ struct on the stack frame\n      (sp = player X,Y,Z plus a per-direction offset loaded from off_809DC0C\
+  \ indexed by FacingDirection*4),\n      calls checkCoordinateTrigger_8031a7a; stores the low byte of\
+  \ its return into OWPlayer.Unk_0d\n      and sets Toolkit.GameState->Unk_11 = 1 (lock movement).\n \
+  \   - Otherwise fall through to read `Toolkit.GameState->SubsystemIndex` (byte+1n).\n      Index `(r2\
+  \ >> 4) & 0xf` indexes byte_809DAD8 to set bits 0..3, plus bit 4 (0x10) and conditional\n      bit 5\
+  \ (0x20) based on SubsystemIndex bit 1.\n    - Final Unk_4c = (r0 from the above) | (r2 from coord trigger\
+  \ if any); then if low nibble is nonzero,\n      `FacingDirection = (low nibble) - 1` (an old direction\
+  \ value is stored).\n    - The two paths merge at loc_809D90 (add sp,#0xc; pop {pc}) and at the `strh\
+  \ r0,[r5,r3]` (`r3=0x4c`).\n  Stack frame is 12 bytes used as the 3-word coord trigger arg block.\n\
+  \  Side effects: writes OWPlayer.Unk_11, OWPlayer.Unk_0d, OWPlayer.Unk_4c, OWPlayer.FacingDirection,\n\
+  \  Toolkit.GameState->Unk_11 (movement lock), and conditionally calls checkCoordinateTrigger.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- ldrb r0,[r7,#oS200ace0_fixOWPlayerAnim_15]; tst r0,r0; bne loc_809DA98 -- branch on the fixOWPlayerAnim
+    flag at S200ace0.+0x15. - bl IsScreenFadeActive ; beq loc_809DA94 -- skip while fade active. - movflag
+    EVENT_PLAYER_CAN_MOVE ; bl TestEventFlagFromImmediate ; beq loc_809DA82 -- bail when player-move flag
+    is unset. - movflag EVENT_1717_PLAYER_ADVANCE_FORWARD ; bl TestEventFlagFromImmediate ; bne loc_809DA94
+    -- bail when player-forced-forward flag set. - bl IsCutsceneScriptNonNull ; bne loc_809DA94 -- bail
+    during a cutscene. - ldrb r0,[r5,#oOWPlayerObject_FacingDirection] ; strb r0,[r5,#oOWPlayerObject_Unk_11]
+    -- snapshot FacingDirection into Unk_11. - ldrh r1,[r7,#oJoypad_Pressed] ; tst with JOYPAD_START/--JOYPAD_A
+    paths. - ldrb r0,[r5,#oOWPlayerObject_FacingDirection] ; lsl r0,#2 ; ldr r7,off_809DBBC ;'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0809D9E0
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story1, story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^0809d9e0 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander
+open_questions:
+- Exact meaning of the low-nibble -> FacingDirection mapping (which nibble value means "up/down/left/right")
+- is not nailed down here; the constant table byte_809DAD8 is the only ground truth for the conversion
+- and would be confirmed by tracing the callers that consume Unk_4c.
+- Whether Unk_4c carries "intended facing direction (0..3)" + flags (start pressed? in-event?) vs an
+- interaction-result code is unclear; only the consumers of Unk_4c would settle it.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7d574411
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_809D9E0 -> owMapObject_handlePlayerInteract_809D9E0
+  where: bn6f 4ab63ce3
+  tool: tools/rename_symbol.py

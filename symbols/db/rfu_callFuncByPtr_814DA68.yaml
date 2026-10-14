@@ -1,0 +1,59 @@
+name: rfu_callFuncByPtr_814DA68
+address: '0x0814DA68'
+kind: function
+previous_names:
+- sub_814DA68
+status: probable
+summary: Thumb trampoline that branches to the function pointer passed in r2 (tail-call), used to dispatch
+  registered RFU callbacks
+interface: (none read) -> none returned (r0 from r2 may propagate via `bx r2`); no memory side effects
+details: "Only two instructions: `bx r2` followed by a NOP for alignment, with the section marker `thumb_func_end\
+  \ sub_814DA68`.\n  Because it is `bx` (not `bl`), it does not push a return address and the caller cannot\
+  \ rely on `lr` being preserved;\n  this is the typical \"load the function pointer into r2 and tail-call\
+  \ into it\" pattern, which is how many of the listed\n  callers load an entry from an RFU slot table\
+  \ before invoking it.\n  Entry r2 in the captured call is 0x0814fe35 (within the libraries.s range),\
+  \ and the captured exit r0 is 0x081a1285,\n  consistent with the target having returned its own value\
+  \ untouched through the trampoline.\n  All callers come from the RFU/STWI library block (STWI_init,\
+  \ STWI_intr_timer, STWI_restart_Command,\n  rfu_CB_defaultCallback, rfu_STC_REQ_callback, sub_81461B0,\
+  \ sub_814FBFC, sub_814FD54, sub_814FD74), which all\n  pass the function pointer to invoke in r2.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bn6f/asm/libs.s:20610` shows the body is exactly `bx r2` then `nop` and a thumb_func_end
+    marker. - r2 of the captured call (0x0814fe35) is a code address, not data, matching the `bx r2` use.
+    - Every named caller lives in the RFU/STWI area (rfu_CB_defaultCallback @0x081494f8, rfu_STC_REQ_callback
+    @0x081494b8, STWI_init @0x0814ca44, STWI_intr_timer @0x0814c908, STWI_restart_Command @0x0814cb90),
+    all of which dispatch to a function pointer they keep in a slot. - The contract''s `in=[''r1'',''r2'',''lr'']`
+    is the artefact of how the caller arranges its dispatch (a2 points to the slot, r2 = function pointer);
+    there are no callee-saved register pushes/stores in this function.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0814DA68
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story1, story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^0814da68 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander
+open_questions:
+- Whether the linker should instead treat this as `__aeabi_atexit`-style plumbing or a `bx r2` thunk is
+- cosmetic; nothing else is observable. Settled simply by confirming every call site loads r2 with the
+  same
+- kind of function-pointer value.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7d574411
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_814DA68 -> rfu_callFuncByPtr_814DA68
+  where: bn6f 4ab63ce3
+  tool: tools/rename_symbol.py

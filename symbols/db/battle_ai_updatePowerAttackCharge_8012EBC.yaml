@@ -1,0 +1,65 @@
+name: battle_ai_updatePowerAttackCharge_8012EBC
+address: '0x08012EBC'
+kind: function
+previous_names:
+- sub_8012EBC
+status: probable
+summary: Advances the AI battle object's power-attack (B/A-button) charge timer when not time-stopped
+  and the AI is holding the appropriate button.
+interface: '(r5 = AIDataPtr, r10 = toolkit/BattleStatePtr) -> void ; side effects: mutates AIData PwrAtkButton,
+  PwrAtkCurChargeTime, PwrAtkState'
+details: "Reads the AI's AIDataPtr from the battle object at [r5+0x58] (oBattleObject_AIDataPtr).\n  Bails\
+  \ out immediately if battle_isTimeStop returns nonzero (time-stop freezes this).\n  Calls returnBoolIfAIDataFlagsAreSet_8012F3E\
+  \ to confirm the AI is currently holding its\n  power-attack button; if not, clears PwrAtkButton/PwrAtkCurChargeTime/PwrAtkState\
+  \ to 0 and exits.\n  Otherwise reads the current button id from PwrAtkButton, asks DeterminePowerAttackChargeTime\n\
+  \  for the required charge length r7, then inspects bits in the AI's 0x44 word via\n  GetAIData_Unk_44_Flag.\
+  \ Bit 0x60000 (the A-vs-B button mask) gates which branch runs:\n    - 0x20000 set: button is set to\
+  \ 1; on a transition from 1 or 0 it resets cur/state.\n    - 0x40000 set: button is set to 2; on a transition\
+  \ from 2 or 0 it resets cur/state.\n  Every entry that survives those branches (including the dead-code\
+  \ \"0\" branch) increments\n  PwrAtkCurChargeTime. Once cur >= 10 it writes r3=1 (\"charging\") and\
+  \ once cur >= r7 (full)\n  clamps cur to r7 and writes r3=2 (\"fully charged\"). Finally strb r3 into\
+  \ PwrAtkState and\n  restores r4/r6/r7/lr.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- ldr r4, [r5,#oBattleObject_AIDataPtr] then bl battle_isTimeStop; bne locret (asm:00) shows
+    time-stop early-out. - bl returnBoolIfAIDataFlagsAreSet_8012F3E ; beq loc_8012F34 (asm:00) shows the
+    no-button branch that zeroes Button/CurChargeTime/State. - ldrb r0, [r4,#oAIData_PwrAtkButton] ; bl
+    DeterminePowerAttackChargeTime ; mov r7,r0 (asm:00) shows the charge cap is computed from the configured
+    PwrAtkButton. - tst r0, 0x60000 / 0x20000 / 0x40000 with strb r1, [r4,#oAIData_PwrAtkButton] (asm:00)
+    selects button 1 vs 2 from AI flag bits. - add r0,#1 ; strb r0,[r4,#oAIData_PwrAtkCurChargeTime] ;
+    cmp r0,#0xa ; blt ; mov r3,#1 ; cmp r0,r7 ; blt ; strb r7,[r4,#oAIData_PwrAtkCurChargeTime] ; mov
+    r3,#2 (asm:00) matches the "charging then fully charged" two-stage state machine. - Final strb r3,[r4,#oAIData_PwrAtkState]
+    followed by pop {r4,r6,r7,pc} (asm:00) commits state.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08012EBC
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^08012ebc '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9
+open_questions:
+- Why r10 is in the in-register contract (no AIData access uses it; presumably callers pass
+- BattleStatePtr in r10 and battle_isTimeStop reads it).
+- The exact mapping between the 0x20000/0x40000 bits and the B vs A button halves is inferred
+- from the strb r1,#1 / strb r1,#2 writes; matching these against the AIData PwrAtkButton enum
+- would settle it.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7d574411
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8012EBC -> battle_ai_updatePowerAttackCharge_8012EBC
+  where: bn6f 4ab63ce3
+  tool: tools/rename_symbol.py

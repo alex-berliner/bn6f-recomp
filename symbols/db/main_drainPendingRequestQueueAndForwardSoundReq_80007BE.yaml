@@ -1,0 +1,64 @@
+name: main_drainPendingRequestQueueAndForwardSoundReq_80007BE
+address: '0x080007BE'
+kind: function
+previous_names:
+- sub_80007BE
+status: probable
+summary: Drains the battle tick jump-table queue at dword_200A490, calling each pending function pointer
+  with its parameters, then plays any queued sound request via sound_8000808.
+interface: '() -> void ; side effects: clobbers dword_200A490 (the pending-request queue), calls each
+  queued function pointer, may push to sound_8000808''s pending SSEQ queue (dword_200A490 / sound queue).'
+details: "- Loads r5 = dword_200A490 (pending-request queue state). Reads r7 = [r5] (a count or flag).\n\
+  \  - If r7 != 0, increments byte_200A494 (a counter, capped at 0x1a via `cmp r0,#0x1a; blt ...; mov\
+  \ r0,#0`), writes 0 to dword_200A498, then walks a small per-frame jump table at r5+0xc: each iteration\
+  \ pulls 4 words (r0-r3) and the last (r3) is a function pointer saved in lr via `mov lr,r4; bx r3` (saving\
+  \ r10 around the call). r7 is decremented until it reaches 0. This pattern matches a per-frame queue\
+  \ of (a0..a3, fn) entries.\n  - After processing the table, sets [r5] = 0 and reads dword_200A498 (a\
+  \ sound/SSEQ request pointer). If non-NULL, dequeue and forward it to sound_8000808 (the SSEQ request\
+  \ enqueue helper).\n  - The single direct callee is sound_8000808 (confirmed). The bx-via-lr tail-call\
+  \ functions inside the loop are not seen as direct `bl` targets, so this dispatcher is a fan-in for\
+  \ several sub-frame callbacks set up by battle code.\n  - Called once per main loop tick (from main_,\
+  \ 0x080002bc) and consistent across 40 captures with r0=0200a870 (BattleState / BattleObject-related),\
+  \ r1=0; r2 toggles 6 vs 1 between captures (likely a frame/tick argument).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r5, dword_200A490_p` / `ldr r7, [r5]` shows a counter lives in the pending-request struct.
+    - `ldmia r6!, {r0-r3}` followed by `mov lr,r4; bx r3` is the classic (a0,a1,a2,a3,fn) thunk-dispatch
+    loop, walking r5+0xc through 4-word slots. - `bl sound_8000808` after draining matches the comment
+    that sound_8000808 appends a 16-byte sound request to the queue at dword_200A490; here the value at
+    dword_200A498 is the pre-built request handle. - Main loop callsite (main_ at 0x080002bc) is the only
+    direct caller, executed once per tick. - Captured exit r0=0 and -ZC- flags (no live return value)
+    support a void contract.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080007BE
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story1, story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^080007be '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander
+open_questions:
+- Exact semantic of dword_200A498 (pointer to a 16-byte pre-built sound request) and what field of byte_200A494
+  is being indexed; the `0x1a` cap is opaque without more callers.
+- The bump/drain happens even when the count `[r5]` is 0 (the `byte_200A494` increment and zeroing of
+  dword_200A498 occur before the count check), suggesting the loop is gated by a "running" flag at +0
+  while the table is always advanced — disambiguating that needs more callers.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7d574411
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80007BE -> main_drainPendingRequestQueueAndForwardSoundReq_80007BE
+  where: bn6f 4ab63ce3
+  tool: tools/rename_symbol.py

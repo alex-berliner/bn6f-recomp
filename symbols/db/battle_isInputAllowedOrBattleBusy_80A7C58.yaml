@@ -1,0 +1,69 @@
+name: battle_isInputAllowedOrBattleBusy_80A7C58
+address: '0x080A7C58'
+kind: function
+previous_names:
+- sub_80A7C58
+status: probable
+summary: Returns 1 (busy/locked-out) if any of chatbox-flag 0x80, an active cutscene script, busy OW player/cutscene,
+  a screen fade, or a non-zero beast-sp flag is set; otherwise returns 0.
+interface: () -> r0 = 1 if battle input should be locked out, 0 if free; ZF=1 when r0=0, ZF=0 when r0=1
+details: "Initializes r4=1 (locked). Calls chatbox_mask_eFlags2009F38(0x80); if the 0x80 bit of eFlags2009F38\
+  \ is set (bne taken) it stays locked. Otherwise calls IsCutsceneScriptNonNull and bne on its result.\
+  \ Otherwise calls sub_809E462 (owPlayer_isBusyOrCutsceneActive_809E462 per the callee list) and bne.\
+  \ Otherwise calls IsScreenFadeActive and beq (only locked when fade is *not* active -- meaning a fade\
+  \ in progress means input is allowed? actually beq on the \"fade not active\" branch goes to the 1-stay\
+  \ path, so the function only stays locked when fade IS active). Finally calls sub_809E3A2 (beast-sp\
+  \ / eStruct2000aa0 byte 8) and beq -- i.e. stays locked when that byte is non-zero. Only if every check\
+  \ comes back \"no\" does it fall through to `mov r4, #0` at loc_80A7C7E. The captured call snapshots\
+  \ all have r0=1 at exit regardless of the entry r0/r1, which matches the contract: r0=1 means \"battle\
+  \ is busy, don't accept input\". The condition polarity on IsScreenFadeActive and sub_809E3A2 (beq staying\
+  \ in the 1/locked state) is the only mildly non-obvious thing: it actually says \"treat the lock as\
+  \ still active when a fade is in progress or the beast-sp flag is non-zero\", which in practice the\
+  \ lock covers all of those combined OR'd.\n  Used by 80A7A40/80A7AA4/80A7B32/80A7BC0, which are themselves\
+  \ the inputs/busy-state helpers in the battle input pipeline; this is the aggregator of \"is something\
+  \ else currently driving the player / screen\" so the player's battle input can be ignored. The captured\
+  \ calls (snap_beastsp_0140000_*) all have lr values 0x080a7b39 / 0x080a7bc7 which fall inside sub_80A7B32\
+  \ / sub_80A7BC0 in the caller list.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- r4 := 1, then five conditional branches each `b{cond} loc_80A7C7E` (the lock-keep label)
+    before any fall-through to `mov r4, #0` (asm29.s:5245-5264). - `mov r0, #0x80; bl chatbox_mask_eFlags2009F38;
+    bne loc_80A7C7E` -> bit 0x80 of eFlags2009F38 forces "locked". - `bl IsCutsceneScriptNonNull; bne
+    loc_80A7C7E` -> an active cutscene script forces "locked". - `bl sub_809E462; bne loc_80A7C7E` (named
+    by project as owPlayer_isBusyOrCutsceneActive_809E462) -> busy OW player or cutscene forces "locked".
+    - `bl IsScreenFadeActive; beq loc_80A7C7E` -> a fade in progress keeps the lock; no fade is the only
+    path that lets the next check run. - `bl sub_809E3A2; beq loc_80A7C7E` -> the eStruct2000aa0 byte
+    (beast-sp / eStruct2000aa0.8) being non-zero keeps the lock. - `tst r0, r0; pop {r4-r7,pc}` -> returns
+    r4 (= r0) and the Z flag mirrors r0==0. - All 6 captured-call snapshots have exit r0=1; entry r0 varies
+    (return addr 0x80a7b33/0x80a7bc7 or 0), confirming the function overrides its argument and returns
+    its own boolean.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080A7C58
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^080a7c58 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- 'Whether the caller''s captured r0 (sometimes 0x80a7b33, sometimes 0) is meaningful: looks like the
+  callers are calling with the saved LR or a function-pointer tail, not actually passing that value as
+  an argument; the function ignores r0-r3 and only uses r10 (toolkit) for the chatbox call. The exact
+  semantic of "0x80" bit in eFlags2009F38 (some battle-input-blocked flag) is not nailed down.'
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7d574411
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80A7C58 -> battle_isInputAllowedOrBattleBusy_80A7C58
+  where: bn6f 4ab63ce3
+  tool: tools/rename_symbol.py

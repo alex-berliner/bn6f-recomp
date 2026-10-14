@@ -1,0 +1,60 @@
+name: battleObject_chargeShotChargeObject_playChargeSounds_80E0F5E
+address: '0x080E0F5E'
+kind: function
+previous_names:
+- sub_80E0F5E
+status: probable
+summary: Plays the buster-charge SFX at the right charge stage for a charge-shot object, or stays silent
+  if the controller does not own the charge input.
+interface: '(r5 = ChargeShotBattleObjectPtr) -> (no return used by caller); side effects: may call PlaySoundEffect
+  for SOUND_BUSTER_CHARGE or SOUND_UNK_72'
+details: "Reads r5's RelatedObject1Ptr (oBattleObject_RelatedObject1Ptr, 0x4c) and that object's AIDataPtr\
+  \ (0x58), then looks at AIData.PwrAtkButton (0x1e). If PwrAtkButton is 1 (A button) or 2 (B button),\
+  \ it fetches RelatedObject1's Alliance (0x16) and XORs it via battle_networkInvert. If the resulting\
+  \ \"network-inverted\" value is non-zero (i.e. the local controller does not own this charge), the routine\
+  \ returns without playing a sound.\n  Otherwise (or when PwrAtkButton is not 1/2) it consults the charge\
+  \ object's own ExtraVars (0x60+): word at ExtraVars+0x14 acts as a charge stage. If stage==1 and ExtraVars+0x18==0,\
+  \ it plays SOUND_BUSTER_CHARGE. If stage==2 and ExtraVars+0x18==1, it plays SOUND_UNK_72. Any other\
+  \ combination just returns. Because it uses `pop {pc}` and never writes r0 into anything the caller\
+  \ reads, it behaves void-like.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {lr}` / `pop {pc}` at 0x80e0f5e and 0x80e0f9e show a leaf void-like helper. - `ldrb
+    r0, [r2, #oAIData_PwrAtkButton]` reads offset 0x1e from AIData (per AIData struct). - `cmp r0, #1
+    / #2` and the `beq loc_80E0F6E` chain gate the controller-ownership check to A/B. - `ldrb r0, [r1,
+    #oBattleObject_Alliance]` reads offset 0x16 of RelatedObject1, passed to battle_networkInvert; `tst
+    r0, r0; bne locret_80E0F9E` makes the non-local case silent. - `ldr r0, [r5, #oBattleObject_ExtraVars+0x14]`
+    and `ExtraVars+0x18` index into the charge object''s ExtraVars (0x60). - `cmp r0, #1 / #2` plus the
+    second-level `cmp r0, #0` / `#1` against ExtraVars+0x18 match the two SFX branches: SOUND_BUSTER_CHARGE
+    and SOUND_UNK_72. - Only caller listed is chargeShotChargeObject_update_80E0E20, which is invoked
+    from the charge-shot object update path.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080E0F5E
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^080e0f5e '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9
+open_questions:
+- The exact meaning of the ExtraVars+0x14 stage and ExtraVars+0x18 sub-state fields of the charge object
+  is inferred; a struct definition for that battle object would settle it.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7d574411
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80E0F5E -> battleObject_chargeShotChargeObject_playChargeSounds_80E0F5E
+  where: bn6f 4ab63ce3
+  tool: tools/rename_symbol.py

@@ -1,0 +1,65 @@
+name: battleObject_syncVisualStateFromRelatedObject_80B863A
+address: '0x080B863A'
+kind: function
+previous_names:
+- sub_80B863A
+status: probable
+summary: Copies visual state (flag bits, color shader, final palette, mosaic/alpha, flip) from the linked
+  related object onto this BattleObject and dispatches a sub-action handler.
+interface: (r5 = BattleObject*, r10 = Toolkit*) -> void ; side effects update self BattleObject sprite
+  block and tail-call CurAction handler
+details: "Loads r4 = RelatedObject1Ptr from the current BattleObject (r5). Copies flag bit 0x02 from r4's\n\
+  \  ObjectHeader.Flags into self's ObjectHeader.Flags (clearing self's bit 0x02 first via `mvn r1,#2;\
+  \ and`).\n  Then performs a chain of \"read from r4, write to r5\" syncs: ColorShader (sprite_getColorShader/setColorShader),\n\
+  \  FinalPalette (sprite_getFinalPalette/setFinalPalette), sprite flag 0x10 + renderInfo high byte\n\
+  \  (obj_getSpriteFlag10AndRenderInfoHigh_8002F3E -> loc_8002F02), DirectionFlip byte copy, Flip derived\
+  \ via\n  object_getFlip -> sprite_setFlip, and Mosaic/scaling parameters via sprite_getMosaicScalingParameters\
+  \ ->\n  sprite_setAlpha. Finally loads CurAction from the BattleObject and uses an off-table at 0x80B8698\n\
+  \  (entries for actions 0,1,2 -> sub_80B86A4/86C4/86D4) then `mov lr,pc; bx r1; pop {pc}` to tail-call\n\
+  \  the handler in ARM mode. The push/pop of lr as `pop {pc}` in Thumb equates to a tail-return when\
+  \ CurAction\n  is out of range and the bx doesn't return.\ndetails: |\n  Step-by-step: (1) copy flag\
+  \ bit 0x02 from RelatedObject1Ptr to self; (2) copy color shader; (3) copy\n  final palette; (4) copy\
+  \ sprite 0x10 flag and render info high byte; (5) copy DirectionFlip byte; (6)\n  recompute & apply\
+  \ horizontal flip; (7) copy mosaic/scaling & apply alpha; (8) jump-table dispatch on\n  CurAction into\
+  \ sub_80B86A4/86C4/86D4. The push {lr}/pop {pc} with only lr saved means the action\n  handler must\
+  \ return here to pop pc — so this is effectively a non-returning dispatcher in practice\n  (the action\
+  \ handlers loop back or self-destroy).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r4, [r5,#oBattleObject_RelatedObject1Ptr]` loads the linked object pointer. - `mvn r1,#2;
+    and r0,r1` clears self header bit 0x02, then `and r1,r2; orr r0,r1; strb` merges bit from r4. - All
+    sprite_* pairs (get → set) operate on `r0` from RelatedObject1Ptr first, then `r0` defaults to r5
+    for the setter (sprite_setColorShader uses r5 from contract). - `bl object_getFlip; bl sprite_setFlip`
+    uses r5 (set as r0 before by `bl object_getFlip`... actually r0 is set by the prior `bl` chain that
+    left r0 as r5; `object_getFlip` reads r5). - `ldrb r0,[r5,#oBattleObject_CurAction]; ldr r1,[r1,r0];
+    mov lr,pc; bx r1; pop {pc}` is the classic Thumb→ARM tail-call switch on CurAction. - Jump table at
+    off_80B8698 lists three entries (+1 for Thumb→ARM bit): sub_80B86A4, sub_80B86C4, sub_80B86D4.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080B863A
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp'
+  reproduce: 'grep -l ''^080b863a '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp
+open_questions:
+- What the three action sub-handlers (sub_80B86A4/C4/D4) actually do — whether they are idle/active/destroy
+- phases or different visual sync modes. The exact semantics of "related object" here (is it always a
+- parent/owner, or sometimes a target?) is also unverified beyond the naming.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7d574411
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80B863A -> battleObject_syncVisualStateFromRelatedObject_80B863A
+  where: bn6f 4ab63ce3
+  tool: tools/rename_symbol.py

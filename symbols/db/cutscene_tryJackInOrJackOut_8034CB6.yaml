@@ -1,0 +1,75 @@
+name: cutscene_tryJackInOrJackOut_8034CB6
+address: '0x08034CB6'
+kind: function
+previous_names:
+- sub_8034CB6
+status: probable
+summary: Overworld cutscene handler that, when the L button is pressed and the player stands on a jack-in/jack-out
+  spot, starts the corresponding jack-in or jack-out cutscene (or plays the can't-jack-in sound).
+interface: '() -> r0 = 0 if a cutscene was started, 1 otherwise ; side effects: may play SOUND_CANT_JACK_IN
+  or call StartCutscene with one of two cutscene scripts.'
+details: "Early-outs via `IsNotSlipRunningAndNotInCutscene` (bails to the `mov r0,#1; pop` path) and via\
+  \ the held joypad L flag (==0x100, checked against `JoypadPtr->Held` at offset 2). Also bails if event\
+  \ flag 1727 is already set (`TestEventFlagFromImmediate`).\n  Loads the current MapGroup from `GameStatePtr->MapGroup`.\
+  \ If MapGroup >= 0x80 the `CutsceneScriptAskJackOut_80988E4` cutscene is started (this is the \"ask\
+  \ to jack out\" branch); otherwise it walks the `dword_8034D6C` table (entries of `u16 MapGroup; u32\
+  \ ZOffset` terminated by 0xFF) to look up the player Z offset to add when testing coordinates.\n  Builds\
+  \ a temporary 3-word coordinate record from `OverworldPlayerObjectPtr->X/Y/Z` plus the table's Z offset,\
+  \ calls `checkCoordinateTrigger_8031a7a` (which returns a panel/coordinate trigger index, with 0x40\
+  \ subtracted and the result range-checked against 0..0x18, i.e. 0x40..0x58). The resulting index is\
+  \ then offset by 0x16D0 and tested via `TestEventFlag`; if unset, byte `GameStatePtr->Unk_64[index]`\
+  \ is read and used as the low byte of the param (high byte is `index<<8`) handed to `StartCutscene(CutsceneScriptJackIn_8098824,\
+  \ param)`. If any of those checks fail, it plays `SOUND_CANT_JACK_IN` instead. Always returns 0 in the\
+  \ success path and 1 in the failure/no-input path.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl IsNotSlipRunningAndNotInCutscene` / `beq loc_8034D52` at sub_8034CB6 entry gates execution.
+    - `ldrh r2,[r2,#2]` + `ldr r3,off_8034D5C // 0x100` + `tst r3,r2` checks JOYPAD_L on `Toolkit->JoypadPtr->Held`.
+    - `movflag EVENT_1727` + `bl TestEventFlagFromImmediate` + `bne loc_8034D52` enforces the "already-jacked-in"
+    guard. - `ldrh r4,[r7,#oGameState_MapGroup]` and `ldrb r7,[r7,#oGameState_MapGroup]` followed by `cmp
+    r7,#0x80; bge loc_8034D4C` selects jack-out branch (map group >= 0x80). - `off_8034D64 // CutsceneScriptAskJackOut_80988E4`
+    is loaded in the `>=0x80` path and passed to `StartCutscene`. - Table loop at `loc_8034CE2` walks
+    `dword_8034D6C` (entries of `u16 map_id; u32 z_offset`, terminated by 0xFF) to get the Z offset for
+    the current map. - Player X/Y/Z loaded from `OverworldPlayerObjectPtr` (offsets 0x1c/0x20/0x24) and
+    pushed on the stack as a 3-word coords struct; Z is offset by `r6` (the table value). - `bl checkCoordinateTrigger_8031a7a`
+    followed by `sub r0,#0x40; blt ...; cmp r0,#0x18; bge ...` clamps the returned trigger to 0..0x18.
+    - `ldr r2,off_8034D58 // 0x16D0; add r0,r0,r2` then `bl TestEventFlag` flags the per-spot "available"
+    event. - `ldrb r1,[r7,r4]` (from `GameStatePtr->Unk_64` at offset 0x64) used as low byte of `r1` with
+    `lsl r4,r4,#8; orr r1,r4` to pack the param for `StartCutscene(CutsceneScriptJackIn_8098824, param)`.
+    - `off_8034D60 // CutsceneScriptJackIn_8098824` and `off_8034D64 // CutsceneScriptAskJackOut_80988E4`
+    confirm the two cutscene scripts. - Failure path plays `SOUND_CANT_JACK_IN` via `PlaySoundEffect`,
+    exit path returns 1; success path returns 0.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08034CB6
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story1, story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^08034cb6 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander
+open_questions:
+- The exact meaning of the `r4` index (0..0x18 = the 24 jack-in spots per area) and the semantics of `GameStatePtr->Unk_64[r4]`
+  (probably a "destination/jack-in variant" selector). Knowing what each of the 24 entries of `dword_8034D6C`
+  maps to in story terms would let us confirm this is the "press L to jack in/out" overworld trigger rather
+  than, say, an area-specific event. The `>=0x80` MapGroup branch and `CutsceneScriptAskJackOut_80988E4`
+  strongly suggest this is the BN6 jack-out prompt, but the precise cutscene param packing deserves a
+  check against story scripts.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7d574411
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8034CB6 -> cutscene_tryJackInOrJackOut_8034CB6
+  where: bn6f 4ab63ce3
+  tool: tools/rename_symbol.py

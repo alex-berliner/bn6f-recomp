@@ -941,7 +941,7 @@ Next battle_getPlayerAIData_8010022(void) {
  * pointer arrives in R0 (other inputs pass through to the helpers).
  * Reads the battle-stats byte at offset 0x2C: for the two cross/beast
  * transformed states (0x17..0x18) sub_8016A38 handles the sprite, otherwise
- * sub_801002C computes the palette index (returned in R0/R1) and it is
+ * battle_pickPaletteIndexForNavi_801002C computes the palette index (returned in R0/R1) and it is
  * applied with sprite_setPalette. */
 Next battle_refreshNaviSpritePaletteFromForm_80100EC(void) {
     R1 = 0x2C;
@@ -952,7 +952,7 @@ Next battle_refreshNaviSpritePaletteFromForm_80100EC(void) {
         GUEST_CALL(sub_8016A38);
     } else {
         /* normal form: pick the palette, then apply it */
-        GUEST_CALL(sub_801002C);
+        GUEST_CALL(battle_pickPaletteIndexForNavi_801002C);
         SYNC_SNAP(R0, R1);
         GUEST_CALL(sprite_setPalette);
         SYNC_CHECK(0x801010A, R0, R1);

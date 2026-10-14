@@ -357,10 +357,10 @@ Next rfu_setTimerInterrupt(void) {
  * work area, and — if the callback slot is armed (bit 3 of the work area's
  * status byte) — forwards the request to its handler.
  *
- * Flag outputs: on the dispatch path they are whatever sub_814DA68 leaves;
+ * Flag outputs: on the dispatch path they are whatever rfu_callFuncByPtr_814DA68 leaves;
  * on the skip path they come from the arm-bit test (CMP against 0).
  * r4/r5 are preserved: the original pushes them around the call and pops
- * them back (sub_814DA68 sees reqCmd in r4 and srcId in r5).
+ * them back (rfu_callFuncByPtr_814DA68 sees reqCmd in r4 and srcId in r5).
  *
  * Note on the return: the original exits with `pop {r4,r5}` / `pop {r0}` /
  * `bx r0`.  Because its push saved lr as the third word, that `pop {r0}`
@@ -388,7 +388,7 @@ Next rfu_STC_REQ_callback(void) {
         R2 = LD32(LD32(A_dword_2010CC8));
         R4 = reqCmd;
         R5 = srcId;
-        GUEST_CALL(sub_814DA68);
+        GUEST_CALL(rfu_callFuncByPtr_814DA68);
         R4 = inR4;    /* original pops r4/r5 back over the callee's values */
         R5 = inR5;
     } else {

@@ -1201,10 +1201,10 @@ Next owPlayer_setS2000AA0Param0x4_809e314(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_809E3A2 ── */
-/* sub_809E3A2: test the flag byte at byte_2000AA8 (eStruct2000aa0 + 8).
+/* ── owMapObject_isHoveringElevator_0809E3A2 ── */
+/* owMapObject_isHoveringElevator_0809E3A2: test the flag byte at byte_2000AA8 (eStruct2000aa0 + 8).
  * Outputs: r3 = eStruct2000aa0 base address, Z flag set iff the byte is 0. */
-Next sub_809E3A2(void) {
+Next owMapObject_isHoveringElevator_0809E3A2(void) {
     R3 = A_eStruct2000aa0;
     R0 = LD8(A_eStruct2000aa0 + 8); /* byte_2000AA8 */
     SET_FLAGS_NZ(R0);

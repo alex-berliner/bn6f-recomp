@@ -1,0 +1,71 @@
+name: battle_dispatchObjectUpdateOrEffect_81333A0
+address: '0x081333A0'
+kind: function
+previous_names:
+- sub_81333A0
+status: probable
+summary: 'Battle object dispatcher: jumps to one of five per-object update handlers (by [r5+2].Type),
+  runs shared post-update steps (entity handler loop, eStruct sprites), then conditionally spawns one
+  of three battle effects.'
+interface: (r5 = current battle object pointer, r10 = toolkit, lr = ret) -> void ; tail-calls update handler;
+  tail-calls entity/sprite update; conditionally tail-calls one of sub_81345D4, battle_spawnFixedArgEffect_wrapper_81345E8,
+  sub_8134610 (Type != 0xC, [r5+3] != 0xC), or sub_81345FC (Type == 0xC, [r5+3] != 0)
+details: "- Reads [r5+2] (object header's TypeAndSpriteOffset high nibble = Type) at 0x081333AE; multiplies\
+  \ it as an index into the off_81333EC dispatch table containing 5 function pointers (battle_objectUpdate_8133400,\
+  \ sub_81337C4, sub_8133434, sub_8133484, sub_8133788) and tail-calls the selected one via `mov lr, pc;\
+  \ bx r0` at 0x081333B4.\n  - Then unconditionally calls battle_setFieldsFromObj_81340FC, sub_8134490,\
+  \ entity_runAllUpdateHandlers_80465BC, and battle_updateEStructSprites_80465F8 at 0x081333BA-0x081333C2.\n\
+  \  - After that, re-reads [r5+2] (0x081333C4): if Type == 0xC, branch to loc_81333DA (0x081333D2), which\
+  \ checks [r5+3]==0 to early-return; otherwise calls sub_81345FC.\n  - The other branch (Type != 0xC)\
+  \ at 0x081333CA first checks if [r5+3] == 0xC; if so, skips the three-effect spawn (loci_81333E4 early-return),\
+  \ else at 0x081333CC tail-calls sub_81345D4, battle_spawnFixedArgEffect_wrapper_81345E8, and sub_8134610\
+  \ in sequence.\n  - The contract says in includes r5 (the caller's r5 is preserved across the tail-calls\
+  \ since the bx chain doesn't touch it), and the lr is preserved via the thumb BX/LR trampoline pattern.\n\
+  \  - Captured exits consistently show r0=0, flags -Z--, confirming no return-value contract.\n  - 40\
+  \ snap entries with identical r0/r1/r2/r3 (081333a1 thumb bit, 0x04, 0x0, 0x02001c04) and matching exit\
+  \ state demonstrate the dispatch is invoked once per battle-object tick from a stable caller (sub_813320C\
+  \ lr) with consistent environment.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r1, [r5,#2]` at 0x081333AE reads object Type from r5 offset +2 (object_header_struct.TypeAndSpriteOffset
+    high nibble). - `off_81333EC` defines 5 words whose entries are stored `+1` for Thumb bit set, listed
+    at 0x081333EC. - `mov lr, pc; bx r0` at 0x081333B2 is the canonical Thumb tail-call pattern; no lr
+    push means it is a jump, not a call. - `cmp r0, #0xc; beq loc_81333DA` at 0x081333C8 and `cmp r0,
+    #0xc; beq locret_81333E4` at 0x081333D2 separate the 0xC-Type vs other-Type dispatch. - All four effect-spawn
+    wrappers (sub_81345D4, battle_spawnFixedArgEffect_wrapper_81345E8, sub_8134610, sub_81345FC) take
+    r5/r10 live, matching the dispatcher''s `in=[''r5'',''r10'',...]` contract. - 40 captured calls all
+    show identical entry/exit values, confirming one well-defined call site with a stable environment.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x081333A0
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, beastsp, maps, menus3, story4, story6, story8, story9'
+  reproduce: 'grep -l ''^081333a0 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, beastsp, maps, menus3, story4, story6, story8, story9
+open_questions:
+- Whether off_81333EC's index is the upper nibble or the lower nibble of [r5+2]; the code does `ldrb r1,[r5,#2]`
+  and indexes a 5-entry table, but only constants 0..4 appear in the dispatch fall-throughs (the 0xC path
+  is intercepted above), strongly suggesting either indexing by upper nibble of a packed byte OR a separate
+  "TypeAndSpriteOffset" mask not visible here. The exact masking (high vs low nibble) would settle which
+  battle-object Type set maps to which handler.
+- What each of the 5 handlers does; only the first one (battle_objectUpdate_8133400) has a name hint.
+- Whether sub_81345D4/45E8/4610 are sequential independent effect spawns or one combined "spawn chain"
+  is not clear from this dispatch alone.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7d574411
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_81333A0 -> battle_dispatchObjectUpdateOrEffect_81333A0
+  where: bn6f 4ab63ce3
+  tool: tools/rename_symbol.py

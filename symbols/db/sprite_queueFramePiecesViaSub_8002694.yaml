@@ -1,0 +1,58 @@
+name: sprite_queueFramePiecesViaSub_8002694
+address: '0x08002694'
+kind: function
+previous_names:
+- sub_8002694
+status: probable
+summary: Thumb↔ARM veneer that tail-calls sprite_queueFramePieces on the IWRAM sprite
+interface: '(r0 = sprite param, r1 = chatbox mugshot?, r2/r3/.. = preserved) -> returns whatever sprite_queueFramePieces
+  returns; side effects: queues OAM for the current animation frame'
+details: 'Pushes lr, loads the address `sprite_queueFramePieces+1` (Thumb bit set) into r2, moves pc into
+  lr, and bx''s r2 — i.e. an ARM↔Thumb trampoline. The single byte of real work is the bx. pop {pc} restores
+  lr into pc, so the function is `bx` to sprite_queueFramePieces, not a normal bl. Registers r0/r1 are
+  passed through; r2/r3 and r5 are unchanged on entry (callee treats r5 as a callee-saved param per its
+  contract). The exit r0 = 0x80000000 with Z+C set just reflects sprite_queueFramePieces''s return; the
+  captured calls all show r1=0, with r2=0x480 then r2 = EWRAM addresses (0x086cc0ef/0x086cc0f9/...) consistent
+  with chatbox state. Callers (chatbox_8040B8C and two unnamed chatbox subsystem sites 0x080465f8, 0x08046854)
+  use this as the per-tick mugshot sprite OAM submit.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- The only Thumb instructions in the body are `push {lr}; ldr r2, [off_80026A0]; mov lr, pc;
+    bx r2; pop {pc}` (asm00_0.s:5605), which is a textbook ARM/Thumb interworking trampoline. - `off_80026A0`
+    holds exactly `sprite_queueFramePieces+1` (assembly comment), confirming the tail-call target. - Contract
+    in registers `r0, r1, r5, lr` matches what `sprite_queueFramePieces` lists in its own contract. -
+    All three callers (`chatbox_8040B8C`, `0x080465f8`, `0x08046854`) sit in chatbox rendering code, consistent
+    with submitting OAM pieces for a mugshot sprite. - Captured-call r1=0 across all six samples plus
+    exit r0=0x80000000 -ZC- matches sprite_queueFramePieces''s known behaviour.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08002694
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story1, story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^08002694 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander
+open_questions:
+- Nothing material; the function is just a veneer. The exact sprite that lives behind r0 (chatbox mugshot
+  vs another sprite) would be settled by reading the call sites' r0 setter.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7d574411
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8002694 -> sprite_queueFramePiecesViaSub_8002694
+  where: bn6f 4ab63ce3
+  tool: tools/rename_symbol.py

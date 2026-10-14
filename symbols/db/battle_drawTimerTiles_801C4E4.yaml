@@ -1,0 +1,64 @@
+name: battle_drawTimerTiles_801C4E4
+address: '0x0801C4E4'
+kind: function
+previous_names:
+- sub_801C4E4
+status: probable
+summary: Draws BG tile-id patterns (story-sequence 2 related) based on a counter threshold
+interface: '(r5 = some battle-state ptr, r10 = toolkit) -> void ; side-effect: writes BG tile-id map blocks
+  via bg_write* helpers'
+details: "- Calls battle_IsBattleEnding_800A97A first; if true, returns immediately.\n  - Loads a u16\
+  \ counter from [r5+0x20]. If >= 0x4000, performs an incrementing tile-row pattern (increments [r5],\
+  \ mod 0x70, then uses lower 2 bits biased by a 0x9232 tile-id base, plus another row from `byte_801C6C0`\
+  \ indexed by bit 3 of the counter).\n  - If the counter < 0x4000, it tiles a region with base tile 0x9222\
+  \ (length 0x10 cols x 1 row), conditionally adds a second row at base 0x922a when a bit at position\
+  \ 0xa is set in the counter, and finally writes a single tile whose id is `0x9222 + (counter>>7 & 7)\
+  \ + ((counter>>7)>>3)` via bgmap_WriteTileIdAtBlock_800187C at coordinates (0xd, 1).\n  - r5 holds a\
+  \ small per-state struct (offset 0 is a byte counter that wraps at 0x70; offset 0x20 is a u16 progress\
+  \ counter). r10 is the toolkit used by all the bg_* callees.\n  - The function is called from snap_story2_*\
+  \ frames with r0=this_function+1 (Thumb LSB trick), indicating it is invoked through an indirect dispatch\
+  \ table whose entry holds 0x0801c4e5.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `battle_IsBattleEnding_800A97A` is the very first callee; if r0 != 0 the function `bne locret_801C574`
+    exits. - `[r5, #0x20]` is read as a halfword (`ldrh r6, [r5,#0x20]`) and compared to 0x4000 — this
+    is the threshold gating the two visual branches. - In the >= 0x4000 branch `[r5]` is a byte incremented
+    each frame, wrapping from 0x70 back to 0 (`add r6,#1; cmp r6,#0x70; blt; mov r6,#0`). - In that same
+    branch `call_sub_3005EBA` is invoked with r3=0x9232+r0&3 (4 wide), then `bg_writeTileIdRow_80018E0`
+    is invoked with r3=byte_801C6C0+`r6&8` (4 wide); result is a small 4-tile row update, identifying
+    this as a per-frame animation draw. - In the <0x4000 branch `call_sub_3005EBA` is invoked twice (0x9222
+    base, 0x10 wide; and 0x922a base only when `(r6>>0xa)!=0`), then a single tile is written via `bgmap_WriteTileIdAtBlock_800187C`
+    at (0xd, 1). - Captured-call r0 is `0x0801c4e5` (=this_func|1), confirming indirect-via-Thumb-LSB
+    dispatch from a story2 snapshot handler (lr=0x0801bf7c).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801C4E4
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0801c4e4 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9
+open_questions:
+- What object `r5` actually points to — not a known battle/Toolkit struct; the (0x20 counter, 0 incrementer
+  at 0) shape is unusual and might be local to story2 state.
+- The semantic role of the <0x4000 vs >=0x4000 split (likely a "build up" vs "running animation" phase
+  for a story2 background reveal, but the precise mapping is unknown).
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7d574411
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801C4E4 -> battle_drawTimerTiles_801C4E4
+  where: bn6f 4ab63ce3
+  tool: tools/rename_symbol.py

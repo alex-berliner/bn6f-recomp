@@ -1,0 +1,64 @@
+name: battle_pickPaletteIndexForNavi_801002C
+address: '0x0801002C'
+kind: function
+previous_names:
+- sub_801002C
+status: probable
+summary: Returns a palette index computed from a battle object's Navi (B-side) stats and AI data, used
+  to recolor a navi sprite palette.
+interface: (r5 = battleObject) -> r0 = palette index ; no other side effects (callee-saved r4/r7 restored)
+details: "Loads AIDataPtr from the battle object in r5 (oBattleObject_AIDataPtr) and branches on ActorType.\n\
+  \  For ActorType == 0 (virus) it also takes the \"fast path\" early-out via sub_800FD0A; for other types\
+  \ it returns 0.\n  For ActorType == 2 (player-controlled navi) it reads three NaviStats bytes via GetBattleNaviStatsByte_AllianceFromBattleObject\n\
+  \  (offsets 0x29, 0x2c, 0x0e, 0x10 on the player's NaviStats) plus a per-battle flag from GetAIDataUnk0x48Flag,\
+  \ and combines them:\n    base = 0/1/2/4 (defaulted via lookup at byte_80203EA when Stats[0x2c] ∈ {0,\
+  \ 0x0b, 0x0c}),\n    addend = Stats[0x10] * 5 (+0x12 if non-zero),\n    with extra branches when AI\
+  \ Unk0x48 bit 0x200 is set or Stats[0x2c] == 0, and when Stats[0x0e] == 0xff.\n  Result is the palette\
+  \ slot used by battle_refreshNaviSpritePaletteFromForm_80100EC and the 0x0e29..0x10 NaviStats-driven\
+  \ palette updaters.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- ldr r7, [r5,#oBattleObject_AIDataPtr] at 0x8010030 dereferences the AIDataPtr field of a
+    BattleObject (r5 is the standard battle-object register). - ldrb r0, [r7,#oAIData_ActorType]; cmp
+    r0,#2 / bne loc_801009C at 0x8010034-0x801003A. - For ActorType==2: GetBattleNaviStatsByte_AllianceFromBattleObject
+    called with r1 = 0x29, 0x2c, 0x0e, 0x10 — these are NaviStats offsets (Mood, Transformation, custom-level,
+    Folder1Reg per the NaviStats struct). - bl GetAIDataUnk0x48Flag at 0x801004C, then tst r0, #0x200
+    at 0x801004E selects an alternate branch (Cross/BeastOut-style behavior). - Lookup table at byte_80100A8
+    (after the alignment padding; immediate operand embedded) used as `ldrb r4,[r1,r0]` at 0x8010068 —
+    palette mapping indexed by a NaviStats field. - Path that calls sub_800FD0A returns with pop {r4,r7,pc},
+    i.e. an alternative palette handler. - Final mov r0,r4 ; pop {r4,r7,pc} at 0x801009E-0x80100A0: returns
+    r4 in r0. With nothing else returned to the caller in the contract, this matches a "compute and return
+    in r0" function. - The only confirmed caller battle_refreshNaviSpritePaletteFromForm_80100EC uses
+    the return as a palette index (its summary says it "updates a battle object''s navi sprite palette
+    ... using ... computed palette").'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801002C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0801002c '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- Whether the function is solely for player navi or also for non-player; the only explicit handler branch
+  is the early-out sub_800FD0A, suggesting the other ActorType paths may live elsewhere or are simply
+  a fallback 0.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7d574411
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801002C -> battle_pickPaletteIndexForNavi_801002C
+  where: bn6f 4ab63ce3
+  tool: tools/rename_symbol.py

@@ -1494,7 +1494,7 @@ Next sub_80C0E24(void) {
         {
             u32 prev_r5 = R5;
             R5 = related1;
-            GUEST_CALL(sub_801002C);
+            GUEST_CALL(battle_pickPaletteIndexForNavi_801002C);
             R5 = prev_r5;
             GUEST_CALL(sprite_setPalette);
         }

@@ -1,0 +1,63 @@
+name: m4a_ply_trampoline_814ECA0
+address: '0x0814ECA0'
+kind: function
+previous_names:
+- sub_814ECA0
+status: probable
+summary: tail-call trampoline for an MPlay note dispatch (MPlayMain / ply_note → common helper)
+interface: (r0 = ???) -> returns whatever the indirect helper returns via a tail jump
+details: "The function pushes only lr, loads an IWRAM pointer from the literal pool at off_814ECB0\n \
+  \ (which points at off_30055F8 — note 30055F8 lies in the 0x03005xxx sound-engine window),\n  dereferences\
+  \ that pointer into r1, and then invokes rfufunc_tailCallStub_814DA64\n  (a generic `r0 = address-of(pushed-lr);\
+  \ bx` stub from the libm4a/GBAsyscall overlay).\n\n  On return it pops the saved value into r0 and `bx\
+  \ r0`, which is effectively the\n  libm4a \"indirect call to a function-pointer stored in IWRAM, returning\
+  \ through that\n  pointer's own lr\". The `bl` therefore never returns to this frame in practice —\n\
+  \  the \"return\" pops would only ever fire if the helper itself returned.\n\n  Concretely the callers\
+  \ (MPlayMain / ply_note) use the same `push {lr}; bl xxxxx; pop {pc}`\n  recipe for many SFX/music indirect-dispatch\
+  \ entries, so this routine is best read as\n  \"call the function whose pointer lives at IWRAM 0x030055F8\"\
+  .\n\n  The captured-call r0 values (0x03005600, 0x03004610, 0x03004690, …) are not used\n  inside this\
+  \ stub; they belong to the caller context (probably an MPlay track header\n  or Voice struct being processed\
+  \ by MPlayMain).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {lr}; …; pop {r0}; bx r0` at 0x0814ECA0 / 0x0814ECA8-ACE8: classic indirect-call trampoline
+    that branches to whatever address was loaded. - `ldr r1, off_814ECB0; ldr r1, [r1]` loads the literal
+    `off_30055F8` (IWRAM offset 0x030055F8) and dereferences it once, producing the function pointer used
+    by the tail-call stub. - Direct callee `rfufunc_tailCallStub_814DA64` is itself a "save lr, bl caller,
+    bx lr" trampoline, matching the same idiom used throughout libm4a. - Both callers are libm4a: MPlayMain
+    (the per-frame sequencer) and ply_note (per-tick note handler), confirming this is inside the music
+    engine, not gameplay code. - Captured-call sites (`snap_story2_*.bin`) all sit inside MPlayMain/ply_note
+    paths; lr = 0x0814e69f (which is inside MPlayMain) is consistent with being called from the sequencer
+    loop.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0814ECA0
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story1, story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^0814eca0 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander
+open_questions:
+- What exact struct lives at 0x030055F8 (the `off_30055F8` literal is unresolved at the
+- link-time level the lifter was given, so we cannot name the field). Knowing which
+- m4a callback table sits there (likely `MPlayExt*` or `MPlayId callback`) would let
+- us rename this to e.g. `m4a_callExtCallbackAt30055F8_814ECA0` and drop the suffix.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7d574411
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_814ECA0 -> m4a_ply_trampoline_814ECA0
+  where: bn6f 4ab63ce3
+  tool: tools/rename_symbol.py

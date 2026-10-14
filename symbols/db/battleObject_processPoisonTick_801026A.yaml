@@ -1,0 +1,66 @@
+name: battleObject_processPoisonTick_801026A
+address: '0x0801026A'
+kind: function
+previous_names:
+- sub_801026A
+status: probable
+summary: Per-frame poison-tick handler for the current battle object — decrements a per-AIData poison
+  counter and applies 1 HP once the counter hits its table-based period.
+interface: '(r5 = current battle object, r10 = toolkit) -> r0 = 0 ; side effects: subtracts 1 HP from
+  the object via object_subtractHP when the poison counter elapses; clears the counter on early exit and
+  on reset'
+details: "1. Early-outs if battle_isTimeStop() or battle_isPaused() returns NZ, so poison cannot tick\
+  \ during time-stop or while the battle is paused (bl battle_isTimeStop / bl battle_isPaused + bne locret).\n\
+  \  2. Loads r4 = AIDataPtr from r5 + oBattleObject_AIDataPtr (r5 is the live battle object), and ldrh\
+  \ HP from r5 + oBattleObject_HP.\n  3. Skips the tick entirely when HP <= 1 (cmp r0,#1; ble locret)\
+  \ — this is the standard \"do not kill from poison\" guard.\n  4. Reads the poison-tick period table\
+  \ at byte_80102A4 (8 entries: 0,40,35,30,25,20,15,10) indexed by AIData + oAIData_Unk_12. If the period\
+  \ is 0, jumps to the reset path (mov r0,#0; strb r0,[r4,#oAIData_Unk_09]) — the field is then treated\
+  \ as \"not poisoned\" and the counter is cleared.\n  5. Otherwise increments AIData + oAIData_Unk_09,\
+  \ compares against the period; if the counter has not yet reached the period, returns. Once the counter\
+  \ >= period, calls object_subtractHP(r5, 1) which clamps HP at 0, then falls through to reset oAIData_Unk_09\
+  \ to 0.\n  6. The per-object period byte oAIData_Unk_12 effectively picks a poison damage cadence (faster\
+  \ ticks = more damage per second). oAIData_Unk_09 is the elapsed-ticks counter.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- bl battle_isTimeStop / bl battle_isPaused with bne early-out: poison does not tick during
+    timestop or pause. - ldr r4,[r5,#oBattleObject_AIDataPtr] + ldrh/cmp HP and the ble guard: skip when
+    HP<=1 to avoid poison-kill. - ldrb r0,[r4,#oAIData_Unk_12] + ldrb r0,[r1,r0] over byte_80102A4 = {0,40,35,30,25,20,15,10}:
+    selects a per-object period in (presumably) frames. - ldrb r3,[r4,#oAIData_Unk_09] / add r3,#1 / strb
+    r3,[r4,#oAIData_Unk_09] / cmp r3,r0: increment and compare elapsed ticks to the period. - mov r0,#1
+    ; bl object_subtractHP when counter reaches period: applies exactly 1 HP of poison damage when the
+    period elapses. - Fallthrough strb r0,[r4,#oAIData_Unk_09] = 0: resets the counter after the damage
+    tick (and on the "period==0" path), consistent with a periodic tick model. - All 40 captured snap_story2
+    entries enter with r0=r1=0 and exit with r0=0 — no caller-visible return value; function is effectively
+    void w.r.t. callers (the `out r0` in the contract is just the mov r0,#0 it stores internally).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801026A
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, battlesweep, beastsp, fuzz, menus2, menus3, story2, story4,
+    story5, story6, story8, story9'
+  reproduce: 'grep -l ''^0801026a '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, battlesweep, beastsp, fuzz, menus2, menus3, story2, story4, story5, story6,
+    story8, story9
+open_questions:
+- What writes oAIData_Unk_12 in the first place (i.e. which battle effect sets the poison period index)
+  — no callee here does so. A poisoning routine elsewhere is the trigger.
+- Why only the first table entry is 0 vs. the others; the 0 entry is used as a "no poison" sentinel.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7d574411
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801026A -> battleObject_processPoisonTick_801026A
+  where: bn6f 4ab63ce3
+  tool: tools/rename_symbol.py

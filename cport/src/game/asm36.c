@@ -899,12 +899,12 @@ Next gfx_fillAllBandedTilemaps_81330AC(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_81333A0 ── */
-/* sub_81333A0: dispatch a battle object's type-specific update handler,
+/* ── battle_dispatchObjectUpdateOrEffect_81333A0 ── */
+/* battle_dispatchObjectUpdateOrEffect_81333A0: dispatch a battle object's type-specific update handler,
  * then sync fields, run entity handlers, and apply post-update effects.
  * R5 = object pointer; object byte [R5+2] is the type (pre-scaled by 4 as
  * a word-table offset), byte [R5+3] is a sub-type/flag. */
-Next sub_81333A0(void) {
+Next battle_dispatchObjectUpdateOrEffect_81333A0(void) {
     /* Jump table dispatch: type values 0,4,8,0xC,0x10 index a 5-entry
      * word table of update handlers. */
     u32 objType = LD8(R5 + 2);

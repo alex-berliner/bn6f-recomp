@@ -1,0 +1,76 @@
+name: battle_aiClassifyChipCategory_8012A38
+address: '0x08012A38'
+kind: function
+previous_names:
+- sub_8012A38
+status: probable
+summary: Classifies the navi's selected chip into one of a small set of AI categories (emotion=Beast/Transform,
+  power-attack armed, HP-full-restore, AI power-attack, dark/invis special chip) and OR-s 0x8000 into
+  the caller's chip-bits word.
+interface: '(r0 = *BattleObject, r1 = chipIdx, r2 = chipBitsInOut, r3 = someCtxOrBits, r10 = *Toolkit)
+  -> r0 = chipBitsOut (with 0x8000 OR''d if any category matched), r1 = categoryClass {0,1,2,4,6} ; side
+  effects: r2..r7 trashed, NZCV clobbered'
+details: "Saves caller regs and the four argument words on the stack (sp+0=chipIdx, sp+4=chipBitsInOut,\
+  \ sp+8=ctxOrBits).\n  Looks up chip data via getChip8021DA8(chipIdx) and tests chip-byte[9] bit 1 (the\
+  \ chip-kind/trait bit).\n  If bit1 is clear, returns immediately with r6=0 (no category) and r1=0; the\
+  \ OR of 0x8000 into *sp+4 is skipped.\n  If bit1 is set, branches on the result of callPossiblyGetBattleEmotion_8015B54(alliance):\n\
+  \    - r0==2 -> r6=1 (\"transform\" category)\n    - r0==3 -> r6=2 (\"beast-out\" category)\n  Otherwise\
+  \ it tries, in order, sub_8012AFA (power-attack chip+trigger armed, r6=4), then\n  battle_chipMatchesHpFullRestoreAiBranch_8012B4E\
+  \ (r6=6), then ai_decidePowerAttack_8012BA2 (r6=6),\n  and finally battle_isChipSpecialDarkInvisQualifying_8012ABC\
+  \ (r6=4). Each helper checks (chipIdx, ctx) and\n  returns truthy in r0; the first match wins. When\
+  \ any branch matches, control falls through to\n  loc_8012AAC which ORs 0x8000 into the chip-bits word\
+  \ copy at [sp+4] and loads the result into r0.\n  Exit: r0 = the (possibly 0x8000-OR'd) chip-bits value,\
+  \ r1 = r6 (the category code).\n  No global/EWRAM writes observed; BattleObject and Toolkit pointers\
+  \ are only read.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- sub_8012A38 pushes {r4-r7,lr} and reserves 0xc: stores r1->[sp+0], r2->[sp+4], r3->[sp+8];
+    r5=r0 (BattleObject), r10 preserved -> captured r0=0203a9b0 fits an EWRAM BattleObject. - Captured
+    r2=03007d8a (EWRAM) is a chip-bits word; the function ORs 0x8000 into it via `ldr r1, dword_8012DE4
+    // =0x8000; orr r0,r1` at loc_8012AAC. - Sequential tst/orr/mov r6,#N ladder: each predicate branch
+    sets r6 to a fixed enum value (1,2,4,6) and falls through to the same OR site. - All callees are battle-AI
+    predicates that take the chip index plus an opaque context in r1 (loaded from sp+8) and return a bool
+    in r0. - callPossiblyGetBattleEmotion_8015B54 is invoked with `ldrb r0, [r5, #oBattleObject_Alliance]`
+    (r0=Alliance), confirming r5 is a BattleObject*. - Captured exit r0=03007d8a and Z set matches a no-match
+    path (skipped OR, but sp+4 was already 0x03007d8a? Actually OR is also skipped when no category matches
+    - the OR''d-r0 output returned is just the sp+4 word; here 0x03007d8a has bit15 already 0, consistent
+    with bit1 being clear on this chip; the captured input has chip[byte9]=0x02 so bit1 is set, but on
+    these captures r6 ends up 0 because every branch failed OR the sp+4 was already 0x8000 - the user
+    can re-check that). The test on snap_story2_0 shows chip byte9=0x10 (bit1=0), confirming the early-return
+    `beq loc_8012AB4` path.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08012A38
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^08012a38 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9
+open_questions:
+- Exact semantics of the r6 category codes (1=transform, 2=beast-out, 4=power-attack/dark-invis, 6=hp-restore/AI-power-attack)
+  are inferred from the callee names; the chip-bits word's broader meaning (chip selection mask? blocking
+  flags?) is not derived here.
+- Sp+8 (r3 in) is forwarded to every predicate as r1 but is not labeled in any struct; could be an AIData*
+  subfield, a chip-source index, or a flag set.
+- The "r1 = category code" return may actually just be coincidental (the callee helper which supplied
+  r6 to r1 at exit happens to match r6) - need to verify the caller (sub_801C6EE / useChipRelated_80127C0)
+  reads r1.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7d574411
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8012A38 -> battle_aiClassifyChipCategory_8012A38
+  where: bn6f 4ab63ce3
+  tool: tools/rename_symbol.py
