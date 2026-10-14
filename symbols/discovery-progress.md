@@ -427,3 +427,43 @@ Highlights:
 | 9     | 25                 | 18                        | 7               | 0       |
 
 Running total: named 187, hypothesis-only 34, dropped 0 (of ~10,600 placeholders).
+
+## Batch 10 (2026-10-14)
+
+25 functions, 14 named + 11 hypothesis (sub_8026B04, sub_8031980, sub_8031A5E,
+sub_8083DF0, sub_80A5AD4, sub_80A7CFE, sub_81353F0, sub_81419A0, sub_8142B28,
+sub_814E0D0, sub_814F3A4 kept as comment only), renamed in recomp 3623877a
+(bn6f pushed; port ROM unchanged).
+
+Highlights:
+- battle main-frame: per-frame step (battle_runMainStep_800801C),
+  should-play-death-anim check (battle_shouldPlayDeathAnim_800A21C);
+- battle object: refresh sprite and arm (battleObject_refreshSpriteAndArm_800F2C6),
+  beast-out intro run (battle_runBeastOutIntro_801498E),
+  chip-preview GFX default (battle_loadChipPreviewGfxDefault_801BFF8),
+  camera apply delta to render info scroll (camera_applyDeltaToRenderInfoScroll_8030136),
+  init battle start overlay (battle_initBattleStartOverlay_8033A80),
+  beast-out tick (battle_beastOutTick_80A5B70),
+  dispatch custom jumptable by index (battle_dispatchCustomJumptableByIndex_80A8208),
+  decide death effect kind (battleObject_decideDeathEffectKind_80C4C52),
+  AI check panel range and do attack (battle_aiCheckPanelRangeAndDoAttack_8134930),
+  per-frame update (battleObject_perFrameUpdate_8142248),
+  get by index (battleObject_getByIndex_81428C2);
+- enemy: get arm position (enemy_getArmPosition_800F26C).
+
+## Tally update
+
+| batch | functions examined | named (renamed via record) | hypothesis-only | dropped |
+|-------|--------------------|---------------------------|-----------------|---------|
+| 1     | 25                 | 25                        | 0               | 0       |
+| 2     | 21                 | 20                        | 1               | 0       |
+| 3     | 25                 | 23                        | 2               | 0       |
+| 4     | 25                 | 21                        | 4               | 0       |
+| 5     | 25                 | 20                        | 5               | 0       |
+| 6     | 25                 | 21                        | 4               | 0       |
+| 7     | 25                 | 19                        | 6               | 0       |
+| 8     | 25                 | 20                        | 5               | 0       |
+| 9     | 25                 | 18                        | 7               | 0       |
+| 10    | 25                 | 14                        | 11              | 0       |
+
+Running total: named 201, hypothesis-only 45, dropped 0 (of ~10,600 placeholders).
