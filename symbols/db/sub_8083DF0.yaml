@@ -3,33 +3,17 @@ address: '0x08083DF0'
 kind: function
 previous_names: []
 status: hypothesis
-summary: Loader/dispatcher for gfx-anim subcommands (loads gfx-anim scripts into GFXAnimState slots, reads story
-  event flags, and advances a per-state step counter)
-interface: '(r10 = toolkit) -> nz ; side effects: r2/r3/r4/r5/r7/r8/r9/r12 clobbered, event flags at 0x17.x tested/set/cleared,
-  BBS request flag 0x17:7 manipulated, GFXAnimState entries populated via sub_8083F80/4080/4180/4214/42D8'
-details: "Top-level entry of a gfx-anim \"step\" driver. After pushing r4-r9 and r12 it reads the\n  cutscene state's\
-  \ `originalCutsceneScriptPos_40` and checks whether it currently\n  matches the L-Message sentinel (cutscene_checkOriginalCutsceneScriptPos_8036F40)\
-  \ or\n  the AskJackOut script (cutscene_checkOriginalCutsceneScriptPos_8036F58), then\n  routes through ClearEventFlagFromImmediate\
-  \ / SetEventFlagFromImmediate /\n  TestEventFlagFromImmediate on the story event byte. Event byte 0x17 bit 0x7\
-  \ is\n  cleared/queried via reqBBS_setFlag_e17b0f7_8140A00 and reqBBS_clearFlag_8140A0C\n  to coordinate the BBS-request\
-  \ gating used by the cutscene. The bulk of the\n  routine is a switch over a per-call step/phase byte that fans\
-  \ out to gfx-anim\n  loaders (load_gfx_anim_8083FC0, .4068, .3FFC) and state-steppers\n  (sub_8083F80, sub_8084080,\
-  \ sub_8084180, sub_8084214, sub_80842D8); the shared\n  struct_copy_80840C4 is the per-frame memcpy used by those\
-  \ steppers. The\n  final `sub_809E462` call is the per-frame chokepoint that walks whatever the\n  loaders queued.\
-  \ Returns nz as a generic \"kept running\" / per-state active\n  boolean. The assembly for the body was not located\
-  \ in the ROM in this\n  project snapshot (asm listing is empty), so the ordering above is inferred\n  from callee\
-  \ names and r10-as-toolkit contract.\n"
+summary: GFX animation init helper that loads an animation frame value or sets a script/cutscene flag; called by
+  multiple init_gfx_anim_* routines and story/cutscene flag helpers.
+interface: '() -> r0 = unknown ; side effects: unknown'
+details: "GFX animation init helper that loads an animation frame value or sets a script/cutscene flag.\n\nevidence:\
+  \ |\n  - Called by init_gfx_anim_8083FC0, init_gfx_anim_8083FFC, init_gfx_anim_8084068\n  - Called by story/cutscene\
+  \ flag helpers\n\nuncertain: |\n  - The body wasn't extracted from the ROM, so specific operations are not visible.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- contract: in=[''r10'',''lr''] matches the project''s "r10 is always toolkit" convention (toolkit_struct
-    keeps CutsceneStatePtr at 0x10 and EventFlagsPtr at 0x44) - callees Clear/Set/TestEventFlagFromImmediate operate
-    on story event bytes, consistent with a cutscene script that branches on story progress - two cutscene_checkOriginalCutsceneScriptPos_*
-    callees imply the routine first checks the cutscene state''s saved script pointer (CutsceneState.originalCutsceneScriptPos_40)
-    before doing anything else - load_gfx_anim_8083FC0/.3FFC/.4068 + struct_copy_80840C4 + sub_8083F80/4080/4180/4214/42D8
-    form a tightly coupled gfx-anim stepper cluster all sharing r5 - reqBBS_setFlag_e17b0f7_8140A00 / reqBBS_clearFlag_8140A0C
-    both target event byte 0x17 bit 7, matching the routine''s cutscene-coordination role - final sub_809E462 is
-    unnamed with in=[''r10'',''lr''] out=[''nz''] and is the natural'
+  detail: '- Called by init_gfx_anim_8083FC0, init_gfx_anim_8083FFC, init_gfx_anim_8084068 - Called by story/cutscene
+    flag helpers'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x08083DF0
@@ -44,18 +28,12 @@ evidence:
     '
   result: beastsp, story5, story6
 open_questions:
-- Assembly body is missing from this project snapshot ("sub_8083DF0 not found in
-- bn6f/asm"); the step-dispatch table layout (which byte indexes which helper) and
-- the exact GFXAnimState slot indexing cannot be read from instructions here
-- Identifying which of the 5 sub_8083F80-style helpers correspond to which gfx-anim
-- opcodes requires the body to confirm switch indices
-- Whether the routine is called from the cutscene main loop, the BBS request handler,
-- or both is not resolvable without callers
-- 'status: probable'
+- The body wasn't extracted from the ROM, so specific operations are not visible.
+- 'status: hypothesis'
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f 09ea8efa
+  where: bn6f 22c74dca
   tool: tools/symdoc.py

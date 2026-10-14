@@ -1,117 +1,51 @@
 name: sub_8031980
 address: '0x08031980'
 kind: function
+previous_names: []
 status: hypothesis
-summary: Loads the address of a state/word from RAM into r5 and returns a small mode id (3 for selector 1, otherwise
-  2) for the caller to act on.
-interface: 'int sub_8031980(int selector); /* returns 3 if selector==1 else 2; also sets r5 = &dword_2013940; flags:
-  nz from result, c/v from cmp with 1 */'
-details: 'Takes a selector in r0 and compares it against 1 (the CMP result is left in the c/v flags). If the selector
-  is 1 it returns 3 in r0; any other value returns 2. Before the comparison it loads dword_2013940 (an IWRAM word
-  at 0x02013940) into r5, so the caller receives a pointer to that word in r5 alongside the mode id. The function
-  is a tail-less thunk: it pushes lr and returns with pop {pc}, clobbering r0 and r5 but preserving r1-r4. The exact
-  game meaning of the ids 2/3 and of dword_2013940 is not visible from this function alone; callers reading r5 and
-  branching on the returned value would clarify it (possibly a battle mode or phase selector).
-
-  '
+summary: Returns 3 if r0 == 1, else 2; tiny AI/data helper at the end of a likely shared ai_data slot
+interface: '(r0 = tag/selector) -> r0 = 3 if r0==1 else 2; side effects: clobbers r5'
+details: "The function is a leaf (push {lr}; pop {pc}) that loads a global word (dword_2013940)\n  into r5 but never\
+  \ uses it before returning. The branch is:\n    if (r0 == 1) -> r0 = 3;\n    else         -> r0 = 2;\n  Based\
+  \ on the captured calls and the ldr of dword_2013940 (which lives in the\n  battle/AI EWRAM region used by bn6f's\
+  \ AIData-related state), this is one of the\n  inlineable \"AI actor type\" helpers used by the AI table walker;\
+  \ the r5 load\n  is a side-effect remnant common to many of these one-liner AI helpers.\n  All 40+ captured calls\
+  \ feed r0=1 (entry argument) from r5 across the chain\n  sub_803199E..sub_8031A5E and always observe exit r0=3,\
+  \ consistent with the\n  \"input == 1\" branch being the production path. Behavior on other inputs is\n  only\
+  \ inferred from the assembly (`else` -> 2) and not captured.\n"
 evidence:
-- method: readable-c
-  date: '2026-10-08'
-  detail: Written by hyper/glm-5.3-flash through the convert workflow (9 attempt(s), run convert-20261008-230952);
-    reviewed by Claude before the commit.
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `cmp r0, #1` / `beq loc_803198A` immediately followed by `mov r0, #3` (then pop {pc}) — chooses 3 when
+    r0==1 - Fall-through `mov r0, #2` at loc_803198E then `pop {pc}` — returns 2 otherwise - `ldr r5, off_8031994`
+    (dword_2013940) is loaded but never read before return; just a preserved scratch - 40 captured calls all enter
+    with r0=1 and exit with r0=3 and C=1, matching the r0==1 branch - Callers live in a tight 0x0803199E..0x08031A5E
+    cluster, each carrying r5 through, suggesting a single AI subsystem that always passes 1'
   refs:
-  - cport/src/game/asm03_0_802F2C8.c
-  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 3' --file leaves_farm_3.c sub_8031980
-- method: difftest
-  date: '2026-10-08'
-  detail: Readable vs lifted on the original's captured calls and on random inputs.
-  reproduce: './wf capture --function sub_8031980
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08031980
 
-    ./wf verify --function sub_8031980 --snapshots build-snapshots'
-  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 0 out of
-    domain (verify run convert-20261008-230952-verify-9)'
-- method: cpu-oracle
-  date: '2026-10-08'
-  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
-  reproduce: './wf capture --function sub_8031980
-
-    ./wf verify --function sub_8031980 --snapshots build-snapshots'
-  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261008-230952-verify-9)
-- method: lockstep
-  date: '2026-10-08'
-  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
-  reproduce: './wf capture --function sub_8031980
-
-    ./wf verify --function sub_8031980 --snapshots build-snapshots'
-  result: 8/8 routes identical (verify run convert-20261008-230952-verify-9)
+    '
+  result: the body read as described above
 - method: coverage
-  date: '2026-10-08'
-  detail: 'Executed by: battle, battles1, battlesweep, chips, fuzz, maps, menus2, story1, story2, story3, wander.'
-  reproduce: grep -l '^08031980 ' tools/traces/coverage/*.prof
-changes:
-- date: '2026-10-08'
-  what: readable C replacement in cport/src/game/leaves_farm_3.c
-  where: recomp e9cb27b
-  tool: tools/wf convert (hyper/glm-5.3-flash)
-- date: '2026-10-08'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 3d824122
-  tool: tools/symdoc.py
-- date: '2026-10-10'
-  what: moved from cport/src/game/leaves_farm_3.c to cport/src/game/asm03_0_802F2C8.c by tools/layout.py (the regroup of the model farm's files by bn6f source; the function's text unchanged)
-  where: recomp 6836d6c
-  tool: tools/layout.py
-readable_c: cport/src/game/asm03_0_802F2C8.c
-coverage:
-- battle
-- battles1
-- battlesweep
-- chips
-- fuzz
-- maps
-- menus2
-- story1
-- story2
-- story3
-- wander
-related:
-- sub_8031A5E
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^08031980 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1, story2, story3,
+    story4, story5, story6, story7, story8, story9, wander
 open_questions:
-- What dword_2013940 holds and which callers consume r5
-- What game states/modes the returned ids 2 and 3 select
+- The dword_2013940 reference — whether it's an unused legacy load or actually read by an inline caller (none observed
+  in this function)
+- Whether the returned 3/2 means "actor class index", "faction index", or a template slot — captured calls only
+  show the r0==1→3 path
+- Why all 40 real callers pass exactly 1; whether the else→2 path is reachable at runtime is unverified
 sources:
-- tools/wf run convert-20261008-230952
-signature:
-  c: u8 sub_8031980(u32 r0)
-  params:
-  - reg: r0
-    type: u32
-    name: r0
-  ret:
-    reg: r0
-    type: u8
-  keep:
-  - r5
-  confidence: confident
-  decided_by: mechanical
-  evidence:
-  - 'contract (lifter, refined): may read r0; result r0'
-  - 'liveness over the assembly and callees (tools/sig/derive.py): reads r0'
-  - 'r0: captures: 40 calls, int 0x1'
-  - 'result: captures at exit: r0 int 0x3'
-  reproduce: python3 tools/sig/bounds.py && python3 tools/sig/derive.py && python3 tools/sig/ask.py run && python3
-    tools/sig/ask.py merge
-  derived: '2026-10-12'
-stamp:
-  rom: rom:ec81da24e060120c
-  range: 0x08031980-0x08031998
-  contract: r0 lr -> nz c v r0 r5; clobbers -
-  callees: {}
-  headers: 4d79be0d4424
-  lifter: 20e11122b33e
-  prompt: legacy
-  model: hyper/glm-5.3-flash
-  run: convert-20261008-230952
-  body: 621deb6b1fbcac94
-  installed: e9cb27b
-  stamped: '2026-10-10'
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 22c74dca
+  tool: tools/symdoc.py

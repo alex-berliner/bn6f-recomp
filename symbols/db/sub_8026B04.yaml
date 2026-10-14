@@ -1,140 +1,70 @@
 name: sub_8026B04
 address: '0x08026B04'
 kind: function
+previous_names: []
 status: hypothesis
-summary: Drives the tile-animation/wipe state of a battle custom-menu object, scrolling tiles and the camera, then
-  transitions to either the wait-selection or trigger-selection phase.
-interface: void sub_8026B04(u32 self /* r5 */, u32 toolkit /* r10 */, u32 r4, u32 r6 /* forwarded into sub_8029C08
-  */); clobbers r0 r1 r2 r3 r8 r9 r11 r12 lr, flags
-details: 'Operates on an object whose base is in r5 (referencing fields `0x40`, `0x44`, `oS20364C0_Unk_02`, `oS20364C0_Unk_0c`,
-  `oS20364C0_JumpOffset01`); the toolkit `oToolkit_RenderInfoPtr`, `oToolkit_CameraPtr`, `oToolkit_BattleStatePtr`
-  are read via r10. On the first entry with `Unk_02 == 0`, it plays sound `SOUND_SELECT_79`, writes 0x78 into `RenderInfo+0x18`
-  and `self+0x40`, calls `sub_801E71C`, `dispatch_801DACC(0x80)`, `sub_801E0A0(0xF, 0)`, sets `self+0x44 = 0xF`,
-  and stashes 0x78 in `self+oS20364C0_Unk_02`. The render loop walks `((4 & progress) >> 2) + 1` rows worth of a
-  0x14-column tilemap (stride 0x1e) sourced from `unk_2035000`, writing each tile id via `bgmap_WriteTileIdAtBlock_800187C`.
-  When battle mode is not 1, it subtracts 0x18000 from `Camera+0x34`. On completion (`progress == 0`), if `BattleState+0x07
-  == 1` it calls `RetrieveAndRenderEnemyVirusNamesInBattle_801E574`, else it damages both players at 1 HP via `battle_damagePlayerLeave1HP_8013FD0`.
-  It then picks the next state: `Unk_0c == 0xFF` -> JUMP_OFFSET_WAIT_SEL (4); `Unk_0c != 5` -> JUMP_OFFSET_TRIGGER
-  (0x2C); `Unk_0c == 5` with `BattleState+7 >= 5` -> WAIT_SEL, otherwise TRIGGER. Ends by invoking `sub_8029C08`
-  and returning. Sub_8029C08 consumes r4/r6 (caller-saved), which is reflected in the interface.'
+summary: Cust-menu animation tick that pulses the player's HP-bar/value and either finalises the chip-select or
+  jumps to the next menu phase (Lose or WaitSelect) based on the player's HP remaining.
+interface: '(r5 = *S20364C0 self) -> ; side effects: sounds, chatbox state, BG tile draws at unk_2035000, camera
+  Y, render info, state writes into S20364C0 and the battle state'
+details: "Walk-through of the only entry path (Unk_02 == 0):\n    * Plays SOUND_SELECT_79 and primes render-info+0x18\
+  \ with 0x78.\n    * Clears the chatbox via sub_801E71C(0), runs dispatch_801DACC(0x80), then sub_801E0A0(0xf,0).\n\
+  \    * Initialises self counters: Unk_44=0xf, Unk_40=0x78, Unk_02<-1.\n  Frame loop (loc_8026B38..loc_8026BC2):\n\
+  \    * Computes countdown slot = (Unk_40-0xC) & 4 / 4 + 1 (so 1..4), iterates a small inner loop writing tile\
+  \ ids taken from unk_2035000 via bgmap_WriteTileIdAtBlock_800187C three tiles wide, 0x14 rows tall.\n    * Decrements\
+  \ Unk_44 each outer iter; the BG seems to be the HP/element bar at unk_2035000.\n    * Decrements Unk_40 by 0xC\
+  \ each frame and, in non-battle-mode-1, slides camera Y by -0x18000.\n    * When Unk_40 reaches 0, refreshes render-info+0x18\
+  \ and sub_801E71C(0x78-Unk_40_pre), i.e. tracks the new count.\n  Once the pull-back ends:\n    * If BattleState->Unk_07\
+  \ == 1 (real battle): re-render virus names via RetrieveAndRenderEnemyVirusNamesInBattle_801E574.\n    * Else:\
+  \ scratch two 1-HP damage hits to the player via battle_damagePlayerLeave1HP_8013FD0 (two calls, args 0 then 1).\n\
+  \    * If self->Unk_0c != 0xff and Unk_0c != 5 (or BattleState->Unk_07 < 5), jump to Unk_JumpOffset01 = 0x2c with\
+  \ state 0 (trigger sub_802728C). Otherwise jump to Unk_JumpOffset01 = 4 with state 0 (trigger custMenuUpdateWaitSelectionState_8026CCC).\n\
+  \    * Finally runs battleObject_chipSelectAnimTick_8029C08.\n  Observable effect: a 0x78-tick countdown that\
+  \ visually drains a HP bar (0x78/0xC frames spread across 4 tile rows from unk_2035000) and either ends in \"\
+  you can still fight\" (jump to the redraw names path + selection state) or \"you're dead / reward lost\" path\
+  \ (another jump + chip-menu damage ticks).\n"
 evidence:
-- method: readable-c
-  date: '2026-10-10'
-  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261010-223925);
-    reviewed by Claude before the commit.
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0,[r5,#0x2]` (`oS20364C0_Unk_02`) `cmp r0,#0; bne loc_8026B38` -> the first block runs once,
+    the rest is per-frame. - `mov r0,#SOUND_SELECT_79 ; bl PlaySoundEffect` (0x8026B12) and `strh 0x78,[r1,#oToolkit_RenderInfoPtr+0x18]`
+    tie an audio cue to a render-info field write. - `sub_801E71C(0)` then `dispatch_801DACC(0x80)` then `sub_801E0A0(0xf,0)`
+    is the standard reset-chatbox trio seen elsewhere in the cust menu flow. - `mov r0,#0xf ; str r0,[r5,#0x44]
+    / mov r0,#0x78 ; str r0,[r5,#0x40] / strb r0,[r5,#0x2]` sets a 15-step inner counter and a 0x78 frame outer
+    countdown. - Inner loop reads `ldrh r3,[r4]` from `off_8026DAC -> unk_2035000` plus `#0x1e` row stride, three
+    columns (`r2=3`), `0x14` rows (`r7=0x14`), so it redraws a 3x20 tile slice of the HP/element bar. - `sub r0,#0xc
+    ; push {r0,r4,r6,r7} ... bl GetBattleMode ; cmp r0,#1` -> non-battle-mode path adds `-0x18000` to camera Y (`ldr
+    r3,dword_8026CC8 ; sub r1,r3`) producing the upward pull-back camera move during the countdown. - When the count
+    expires the function consults `BattleState->Unk_07` (`ldrb r0,[r0,#7]`) to choose between rendering virus names
+    (real battle) and dealing two 1-HP leave-one scratches (non-real battle). - The selection between transition
+    to `0x2c`/state 0 and `4`/state 0 (`mov r0,#0x2c strb r0,[r5,#0x1] / mov r0,#4 strb r0,[r5,#0x1]` and `mov r0,#0
+    strh r0,[r5,#0x2]`) is the dispatcher cue to `custMenuMainMaybe_8026A88` calling either sub_802728C or custMenuUpdateWaitSelectionState_8026CCC.
+    - Final `bl battleObject_chipSelectAnimTick_8029C08` is shared with adjacent cust-menu update functions.'
   refs:
-  - cport/src/game/asm03_0.c
-  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 39' --file inbox_farm_39.c sub_8026B04
-- method: difftest
-  date: '2026-10-10'
-  detail: Readable vs lifted on the original's captured calls and on random inputs.
-  reproduce: './wf capture --function sub_8026B04
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08026B04
 
-    ./wf verify --function sub_8026B04 --snapshots build-snapshots'
-  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
-    of domain (verify run convert-20261010-223925-verify-4)'
-- method: cpu-oracle
-  date: '2026-10-10'
-  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
-  reproduce: './wf capture --function sub_8026B04
-
-    ./wf verify --function sub_8026B04 --snapshots build-snapshots'
-  result: 5 compared, 0 differed, 19 out of domain (verify run convert-20261010-223925-verify-4)
-- method: lockstep
-  date: '2026-10-10'
-  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
-  reproduce: './wf capture --function sub_8026B04
-
-    ./wf verify --function sub_8026B04 --snapshots build-snapshots'
-  result: 16/16 routes identical (verify run convert-20261010-223925-verify-4)
+    '
+  result: the body read as described above
 - method: coverage
-  date: '2026-10-10'
-  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story2, story4,
-    story5, story6, story7, story8, story9.'
-  reproduce: grep -l '^08026b04 ' tools/traces/coverage/*.prof
-changes:
-- date: '2026-10-10'
-  what: readable C replacement in cport/src/game/asm03_0.c
-  where: recomp 9704c25
-  tool: tools/wf convert (hyper/qwen3.8-flash)
-- date: '2026-10-11'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 27d1cdb8
-  tool: tools/symdoc.py
-readable_c: cport/src/game/asm03_0.c
-coverage:
-- battle
-- battles1
-- battles2
-- battlesweep
-- chips
-- fuzz
-- maps
-- menus2
-- menus3
-- story2
-- story4
-- story5
-- story6
-- story7
-- story8
-- story9
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^08026b04 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2, story4, story5,
+    story6, story7, story8, story9
 open_questions:
-- Exact identity of the object type S20364C0 (a battle cut-in / custom-menu subcontroller?).
-- What `oS20364C0_Unk_0c == 0xFF` semantically represents (e.g., a parent script flag) and what the 5/0xFF branches
-  encode in this custom-menu flow.
-- Why the camera scroll is skipped only when `GetBattleMode() == 1` (which battle mode that is).
+- Whether the 0x78/0xC countdown tracks HP pixels or just a generic fade; certainty would require unk_2035000's
+  tile layout and its consumer in VRAM.
+- What `self->Unk_0c` (0xff vs 5 vs other) really represents — likely "remaining battles in the row" or similar
+  cust-screen counter — but the struct hint only labels it `Unk_0c`. Tracking how sub_802728C and custMenuUpdateWaitSelectionState_8026CCC
+  handle Unk_JumpOffset01 would confirm which side of the branch is "you lost all HP" vs "OK to proceed".
 sources:
-- tools/wf run convert-20261010-223925
-- recomp 9704c25
-signature:
-  c: void sub_8026B04(S20364C0 *self)
-  params:
-  - reg: r5
-    type: S20364C0 *
-    name: self
-  ret:
-    reg: none
-    type: void
-  globals:
-  - toolkit
-  keep:
-  - r2
-  - r3
-  - r4
-  - r6
-  - r8
-  - r9
-  - r10
-  confidence: confident
-  decided_by: mechanical
-  evidence:
-  - 'contract (lifter, refined): may read r2 r4 r5 r6; result none'
-  - 'liveness over the assembly and callees (tools/sig/derive.py): reads r5'
-  - 'r5: captures: 40 calls, struct eS20364C0'
-  - 'r5: readable: s20364c0_update(u32 self) in cport/src/game/asm03_0.c'
-  reproduce: python3 tools/sig/bounds.py && python3 tools/sig/derive.py && python3 tools/sig/ask.py run && python3
-    tools/sig/ask.py merge
-  derived: '2026-10-12'
-stamp:
-  rom: rom:e27aec30d39210db
-  range: 0x08026B04-0x08026BF4
-  contract: r2 r4 r5 r6 r10 lr -> r2 r3 r4 r5 r6 r8 r9 r10 r11 r12; clobbers nz c v r0 r1 lr
-  callees:
-    PlaySoundEffect: nz c v r1 r2 r3 r4 r5 r6 r7 r10 lr
-    sub_801E71C: '-'
-    dispatch_801DACC: nz c v r0 r1 r2 r3 r4 r5 r6 r7 r8 r9 r10 r11 r12 lr
-    sub_801E0A0: v r1 r2 r3 r4 r5 r6 r7 r8 r9 r10 r11 r12
-    bgmap_WriteTileIdAtBlock_800187C: nz c v r0 r1 r2
-    GetBattleMode: r0 lr
-    RetrieveAndRenderEnemyVirusNamesInBattle_801E574: r2 r3 r4 r5 r6 r8 r9 r10 r11 r12
-    battle_damagePlayerLeave1HP_8013FD0: r2 r3 r4 r5 r6 r10
-    sub_8029C08: nz c v r0 r1 r2 r3 r4 r5 r6 r7 lr
-  headers: bfa0f2095557
-  lifter: 70c8d832ffcf
-  prompt: 8ad67e179f33
-  model: hyper/qwen3.8-flash
-  run: convert-20261010-223925
-  body: 6dfcb265eba523a6
-  installed: 9704c25
-  stamped: '2026-10-12'
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 22c74dca
+  tool: tools/symdoc.py

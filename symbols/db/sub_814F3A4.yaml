@@ -1,139 +1,55 @@
 name: sub_814F3A4
 address: '0x0814F3A4'
 kind: function
+previous_names: []
 status: hypothesis
-summary: Mode-selecting packed/single-byte LUT lookup with linear interpolation between adjacent packed entries,
-  used as a generic helper across multiple subsystems.
-interface: 'u32 interpLutLookup_814F3A4(u8 mode, u8 index, u8 frac); /* inputs: r0=mode, r1=index, r2=frac, r3/r4/r5/r6/r7/lr=unused;
-  outputs: r0=result, r1=lr (return), r2=0 or frac, r3=table addr, r12=frac (interp path) or frac (simple); flags
-  set by final add (interp: add(interp, 0x800); simple: add(idx, table_addr)) */'
-details: "Two branches selected by `mode` (r0):\n  * mode == 4 (\"simple\"): clamps `index` to range [0..0x3B] (clamped\
-  \ to 0 if <=0x14, else index-0x15); returns the byte at `byte_81C0640 + clamped_index`. r2 and r12 keep the original\
-  \ `frac` byte; r3 unchanged.\n  * other modes (\"packed\"): clamps `index` to range [0..0x82] (clamped to 0 if\
-  \ <=0x23, else index-0x24; `frac` forced to 0 if idx<=0x23 and to 0xFF if idx saturated at 0x82). Each byte of\
-  \ `byte_81C05A4` is a packed entry: low nibble indexes an s16 in the pool `byte_81C0628` (scaled <<1), high nibble\
-  \ is an arithmetic shift amount (ASR). Decodes entry at idx and idx+1, then returns `va + ((frac * (vb-va)) >>\
-  \ 8) + 0x800` (a fixed-point linear interpolation), with final `adds` setting nz/c/v from the +0x800.\nOutput\
-  \ registers: r0=result, r1=return address popped, r2=0 on interp path (frac on simple), r3=`byte_81C05A4` on interp\
-  \ path (passthru on simple), r12=`frac` always. r4-r7 preserved. r4 holds TABLE_S16 (`byte_81C0628`) and r5 holds\
-  \ the clamped index / frac scratch inside the function.\nTables involved: `byte_81C05A4` (packed entries), `byte_81C0628`\
-  \ (s16 pool), `byte_81C0640` (simple byte LUT). The exact consumer (battle, map, sprite, etc.) is not deducible\
-  \ from this function alone - several call sites exist and reuse the same helper for unrelated contexts.\n"
+summary: Computes a screen-x or screen-y position from a panel coordinate and a fixed-point table, used by battle-object
+  positioning code.
+interface: '(r0 = selector: 4 = single-table branch, otherwise double-table; r1 = raw panel coord; r2 = unused (saved
+  to r12)) -> r0 = position with 0x800 bias ; side effects: none'
+details: "Computes a screen-x or screen-y position from a panel coordinate\n  and a fixed-point table.\n"
 evidence:
-- method: readable-c
-  date: '2026-10-10'
-  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261010-231345);
-    reviewed by Claude before the commit.
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `lsl r0, r0, #0x18; lsr r0, r0, #0x18` — r0 is a small selector byte; `cmp r0, #4; bne loc_814F3DC`
+    shows one of two branches is taken when r0 == 4. - `lsl r1, r1, #0x18; lsr r5, r1, #0x18` — r1 is treated as
+    a u8 panel index, then offset into either `byte_81C0640` (r0==4 path) or `byte_81C05A4` (otherwise) by `r5`.
+    - `loc_814F3C0` clamps `r5` to `[0,0x3b]` after subtracting 0x15 (i.e. inputs 0x15..0xa6 → 0..0x91), and `loc_814F3E8`
+    clamps `r5` to `[0,0x82]` after subtracting 0x24 (i.e. inputs 0x24..0xa6 → 0..0x82), suggesting two valid panel
+    ranges (the second range being wider). - `ldr r4, off_814F448 // =byte_81C0628` is read as a `ldrsh` table of
+    16-bit signed offsets; entries are indexed by the low nibble of each table byte (`and r0, r2; lsl r0, r0, #1`).
+    - High-nibble interpolation: `asr r0, r6, #4` (then used as `mul r0, r7`/`asr r0, r0, #8`) implements a linear
+    interpolation between two adjacent table entries weighted by the upper nibble (i.e. 0..15 → 0..1 step of 1/256
+    after `asr #8`). - Final bias `mov r1, #0x80; lsl r1, r1, #4; add r0, r0, r1` adds 0x800 — the well-known fixed-point-center
+    bias used by battle screen-coordinate helpers (e.g. panel centre = 0x800). - `r3` saved at entry (`r3 = 0814f3a5`)
+    is the Thumb return address and shows this is called from `0x0814e725` (lr in captured calls); r2 is moved into
+    r12 but is otherwise unused on the r0==4 branch, hinting at a parameter that became vestigial in this version.
+    - The single captured call snapshot `snap_story2_12.bin` uses r0=2 → 0x758 (i.e. 0x800 - 0xa8), consistent with
+    the negative-direction interpretation of the same formula.'
   refs:
-  - cport/src/game/libs.c
-  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 40' --file inbox_farm_40.c sub_814F3A4
-- method: difftest
-  date: '2026-10-10'
-  detail: Readable vs lifted on the original's captured calls and on random inputs.
-  reproduce: './wf capture --function sub_814F3A4
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0814F3A4
 
-    ./wf verify --function sub_814F3A4 --snapshots build-snapshots'
-  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 0 out of
-    domain (verify run convert-20261010-231345-verify-4)'
-- method: cpu-oracle
-  date: '2026-10-10'
-  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
-  reproduce: './wf capture --function sub_814F3A4
-
-    ./wf verify --function sub_814F3A4 --snapshots build-snapshots'
-  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261010-231345-verify-4)
-- method: lockstep
-  date: '2026-10-10'
-  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
-  reproduce: './wf capture --function sub_814F3A4
-
-    ./wf verify --function sub_814F3A4 --snapshots build-snapshots'
-  result: 16/16 routes identical (verify run convert-20261010-231345-verify-4)
+    '
+  result: the body read as described above
 - method: coverage
-  date: '2026-10-10'
-  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story1, story2,
-    story3, story4, story5, story6, story7, story8, story9, wander.'
-  reproduce: grep -l '^0814f3a4 ' tools/traces/coverage/*.prof
-changes:
-- date: '2026-10-10'
-  what: readable C replacement in cport/src/game/libs.c
-  where: recomp 9fdb4a7
-  tool: tools/wf convert (hyper/qwen3.8-flash)
-- date: '2026-10-11'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 27d1cdb8
-  tool: tools/symdoc.py
-readable_c: cport/src/game/libs.c
-coverage:
-- battle
-- battles1
-- battles2
-- battlesweep
-- chips
-- fuzz
-- maps
-- menus2
-- menus3
-- story1
-- story2
-- story3
-- story4
-- story5
-- story6
-- story7
-- story8
-- story9
-- wander
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^0814f3a4 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1, story2, story3,
+    story4, story5, story6, story7, story8, story9, wander
 open_questions:
-- Which game subsystem actually owns mode 4 vs the interpolation modes (the LUTs `byte_81C05A4`, `byte_81C0628`,
-  `byte_81C0640` are shared, so naming this `battle_*` or `sprite_*` without a known caller is speculation).
-- Meaning of each non-4 mode value - mode is treated as a boolean here, but the routine may be invoked with mode
-  values beyond 4 that just fall into the same interpolation branch.
-- Intended semantics of the +0x800 bias on the interpolated result (rounding offset vs domain offset).
+- Whether r0 is a "kind" selector (X vs Y vs two formulas) or a "length/table selector"; r0==2 produces a result
+  on the other side of 0x800 from r0==1 — feels like direction (X positive/negative) but unclear without more callers.
+- 'r2''s original meaning: it is propagated to r12 and only used as the multiplier on the interp delta — possibly
+  the side (left/right or up/down) or a frame counter.'
 sources:
-- tools/wf run convert-20261010-231345
-- recomp 9fdb4a7
-signature:
-  c: s16 sub_814F3A4(u8 mode, u8 val, u8 pan)
-  params:
-  - reg: r0
-    type: u8
-    name: mode
-  - reg: r1
-    type: u8
-    name: val
-  - reg: r2
-    type: u8
-    name: pan
-  ret:
-    reg: r0
-    type: s16
-  keep:
-  - r12
-  confidence: confident
-  decided_by: model+mechanical (minimax/MiniMax-M3)
-  evidence:
-  - 'contract (lifter, refined): may read r0 r1 r2; result r0'
-  - 'liveness: not run (a computed jump or a call through an unseen pointer)'
-  - 'r0: captures: 40 calls, int 0x1, 0x2, 0x3, 0x4'
-  - 'r1: captures: 40 calls, int 0x28, 0x32, 0x34, 0x3e'
-  - 'r2: captures: 40 calls, int 0x0, 0x20, 0x40'
-  - 'result: captures at exit: r0 int 0x0, 0x15, 0x1c9, 0x483'
-  - 'model minimax/MiniMax-M3: All three registers are read as bytes before any write; result is computed in r0
-    and returned via r1 epilog.'
-  reproduce: python3 tools/sig/bounds.py && python3 tools/sig/derive.py && python3 tools/sig/ask.py run && python3
-    tools/sig/ask.py merge
-  derived: '2026-10-12'
-stamp:
-  rom: rom:1936ca610a67462f
-  range: 0x0814F3A4-0x0814F44C
-  contract: r0 r1 r2 lr -> r0 r4 r5 r7 r12; clobbers nz c v r1 r2 r3
-  callees: {}
-  headers: 0307d2d0fa00
-  lifter: 70c8d832ffcf
-  prompt: 8ad67e179f33
-  model: hyper/qwen3.8-flash
-  run: convert-20261010-231345
-  body: edc4d9931bdef115
-  installed: 9fdb4a7
-  stamped: '2026-10-12'
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 22c74dca
+  tool: tools/symdoc.py

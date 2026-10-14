@@ -1,0 +1,58 @@
+name: sub_8142B28
+address: '0x08142B28'
+kind: function
+previous_names: []
+status: hypothesis
+summary: Returns the overworld map object's `Unk_4` field when the passed `r5` describes a Beast-Out player Navi
+  (ActorType=0, AIIndex=0xF) standing on the same panel as the OW player and the type matches; otherwise returns
+  0.
+interface: '(r5 = pointer to a Beast-Out AIData-like record) -> r0 = u16 panel-data value or 0 ; side effects: writes
+  r0 (used as trash by callers), flags NZ depend on the read at `[r0,#4]`'
+details: "1. Loads `[r5]` into r0 and skips the entire body unless it is non-zero (`tst r0, r0; beq loc_8142B4C`);\
+  \ r4 is pre-zeroed.\n  2. Reads `[r5,#1]` and only continues if it equals 0xF (`cmp r0, #0xf; bne loc_8142B4C`).\n\
+  \  3. Calls `ReadOWPlayerObjectCoords` to fetch OW player position into r1/r2/r3 and reads the stored X from `[r5,#0x14]`\
+  \ (16.16 fixed point).\n  4. Compares the stored X with the player's integer X (`cmp r0, r2; bne loc_8142B4C`).\n\
+  \  5. Reads `[r5,#4]` (an `eOverworldMapObjects` index) and passes it to `sub_81428C2`, which returns a pointer\
+  \ to a map object whose `+4` halfword is loaded into r4 (`ldrh r4, [r0,#4]`).\n  6. Falls through to `mov r0,\
+  \ r4; tst r0, r0` which sets r0 to the panel-data value (or 0) and sets Z accordingly; the `tst` is the function's\
+  \ documented out-flag contract.\n  7. The early-return label (`loc_8142B4C`) loads the r4 result into r0 and tests\
+  \ it; the function is essentially a Beast-Out Link Navi \"is the player standing on an OW map object panel that\
+  \ has panel data?\" gate used by callers `sub_8142A84` and `sub_8142B04`.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mov r4, #0` then `ldrh r4, [r0,#4]` indicates r4 is the success return value loaded as a u16. - `ldrb
+    r0, [r5]; ...; ldrb r0, [r5,#1]; cmp r0, #0xf` matches ActorType!=0 + AIIndex==0xF checks (AIData.ActorType
+    loc=0, AIIndex loc=1). - `ldr r0, [r5,#0x14]` is at offset 0x14 relative to r5; in OWObjectCoords layout `0x14`
+    is `Z`, but the captured cases compare it to `r2` from `ReadOWPlayerObjectCoords` which returns X/Y/Z; the specific
+    field semantics here are inferred, not proven. - `bl ReadOWPlayerObjectCoords` at 0x8142B40 confirms overworld
+    coords are pulled in; clarkfile `snap_beastsp_*` traces fire only when the player is on this panel. - `bl sub_81428C2`
+    then `ldrh r4, [r0,#4]` shows the callee returns a pointer whose +4 holds the returned value. - `beq` chain
+    on each early condition means failure returns the cleared r4=0 with Z set.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08142B28
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^08142b28 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- Whether `[r5,#0x14]` is X, Y, or Z and whether the `cmp r0, r2` is actually matching on Z or some other axis;
+  the captured entry/exit traces don't dump r1/r2/r3 so this can only be settled by reanalyzing the caller `sub_8142A84`/`sub_8142B04`.
+- 'What `[r5,#4]` actually indexes into: the literal lives next to a `eOverworldMapObjects` data word, so it is
+  treated as an OW map object ID/table index, but the table semantics inside `sub_81428C2` are unverified.'
+- 'Why `r0` is set up with `mov r0, #1` after the very first load (the constant appears unused for the compare and
+  may be dead code or part of a removed path).'
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 22c74dca
+  tool: tools/symdoc.py

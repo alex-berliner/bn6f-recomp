@@ -1,0 +1,59 @@
+name: sub_80A5AD4
+address: '0x080A5AD4'
+kind: function
+previous_names: []
+status: hypothesis
+summary: Thunk that dispatches to one of three AIData update routines indexed by `AIData.Unk_04` (the AI phase byte),
+  tail-called with `r5 = AIData*`, `r10 = toolkit`, and return through `unk_2011A90`.
+interface: (r0 = , r1 = , r5 = AIData*, r10 = toolkit, lr = return) -> r0 = subroutine return; r2/r3/r4/r5/r8/r9/r10/r12
+  preserved
+details: "- Loads `r6 = unk_2011A90` (a \"return / cleanup\" word) but never actually pushes it, since the routine\
+  \ does\n    `push {lr}` then `pop {pc}`.\n  - Loads a pointer table at `off_80A5AE8` containing three Thumb targets:\n\
+  \    `[0]=sub_80A5AF8`, `[1]=sub_80A5B70`, `[2]=sub_80A5C6C` (note the +1 Thumb bit set in the table).\n  - Reads\
+  \ `AIData.Unk_04` via `ldrb r1, [r5,#8]` and indexes that table: `r0 = [off_80A5AE8 + r1]`.\n  - Performs an ARM-style\
+  \ indirect call (`mov lr, pc; bx r0`) so the dispatcher and callee are in different\n    ISA modes (this is a\
+  \ classic \"switch to Thumb\" bridge, which is why the table entries are stored with the\n    Thumb bit set).\n\
+  \  - The `pop {pc}` then returns to the original caller that pushed LR — but because the routine\n    tail-calls\
+  \ into the target, the return path goes through the target's `bx lr`, meaning this is a\n    hand-coded trampoline\
+  \ rather than a wrapper.\n  - Naming hint: AIData struct has many \"Unk_xx\" bytes; the byte at offset 0x8 in\
+  \ AIData is `BLeftAbility`\n    per the struct, but here it is clearly being used as a 3-way dispatch index. This\
+  \ is a common pattern\n    in the AI tick to select between e.g. \"use chip\", \"move to panel\", \"switch form\"\
+  \ phases, matching\n    other engine code that treats that byte as a phase/init sub-state.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r1, [r5,#8]` indexes a 3-entry table → 3-way dispatch (`off_80A5AE8` lists 3 targets). - `mov
+    lr, pc; bx r0` is an ARM→Thumb interworking bridge; targets stored with +1 Thumb bit. - `r5` is preserved (used
+    as a non-scratch base pointer) and r10 (`toolkit`) is preserved across the jump, consistent with `AIData` being
+    at r5 and the toolkit being at r10 (engine convention). - The function pushes only `{lr}` and pops to `pc`,
+    making this effectively a tail-call trampoline. - `r0` on exit in captures is 0x30c4 / 0x3024 — these are the
+    actual return values from one of the three callees (their callers see r0 as some kind of code/state, not from
+    this function).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080A5AD4
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp, maps'
+  reproduce: 'grep -l ''^080a5ad4 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp, maps
+open_questions:
+- 'Which of the three targets corresponds to which AIData phase: reading the bodies of sub_80A5AF8,'
+- sub_80A5B70, sub_80A5C6C would pin down whether index 0/1/2 maps to "chip select", "movement",
+- '"beast-out", etc.'
+- The semantic meaning of `AIData[8]` (BLeftAbility vs phase) — could be repurposed as a dispatch
+- index in this routine; a wider survey of AIData writes would settle it.
+- '`off_80A5AF4 -> unk_2011A90` is loaded but unused; possibly a "pending return slot" the original'
+- author reserved for a future tail-return.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 22c74dca
+  tool: tools/symdoc.py

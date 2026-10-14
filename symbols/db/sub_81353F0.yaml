@@ -1,123 +1,52 @@
 name: sub_81353F0
 address: '0x081353F0'
 kind: function
+previous_names: []
 status: hypothesis
-summary: Thin wrapper that tail-calls sub_8134930 with fixed parameters (0x24, 0xA5, 0x28) and argument 6, forwarding
-  two caller values through.
-interface: void sub_81353F0(u32 arg0 /* -> callee r7 */, u32 arg1 /* -> callee r3 */); clobbers r0-r3 and flags,
-  preserves r4-r7
-details: 'Pure trampoline: pushes r4-r7+lr, moves the caller''s r0 into r7 and r1 into r3,
-
-  loads r0=0x24 (36), r1=0xA5 (165), r2=0x28 (40), r4=6, and calls sub_8134930,
-
-  then pops r4-r7 back into pc. r5 and r6 pass through to the callee unchanged.
-
-  The C note describes 6 as a "chip/flag argument", suggesting the target is
-
-  battle/chip related, but the meaning of the fixed constants 0x24, 0xA5 and
-
-  0x28 is not visible from this wrapper alone. Game-level behavior depends
-
-  entirely on what sub_8134930 does with these arguments.
-
-  '
+summary: Thin per-frame wrapper that calls sub_8134930 with fixed opcode parameters (0x24, 0xa5, 0x28) on a battle
+  object.
+interface: (r0 = ?, r1 = ?, r5 = ?, lr) -> r2 = ?, r3 = ?, r5 = preserved, r6 = ? ; side effects via sub_8134930
+details: "Pushes r4-r7 and lr, copies r0 into r7 (unused after) and r1 into r3. Sets up three immediates\n  (#0x24,\
+  \ #0xa5, #0x28) and r4 = 6, then tail-calls sub_8134930 with the original r0/r1 as args\n  in addition to r2=0x28\
+  \ and r3=r1 (saved from r1). Pops r4-r7 and returns via pc.\n  No local computation is visible here — every action\
+  \ is delegated to sub_8134930. The literal\n  opcode 0x24 / 0xa5 / 0x28 / arg 6 combination looks like a fixed\
+  \ sub-command header.\n  Captured entries show r0 ∈ {5,6} (an object index) and r1 ∈ {0,1} (an alliance flag /\
+  \ sub-id);\n  exits return r0 ∈ {0x20,0x40}, consistent with sub_8134930 doing a state transition.\n  The function\
+  \ is called from multiple battle-object update sites (object update, submenu scene,\n  joypad scene, etc.) but\
+  \ never appears on a \"hot\" route that the project names — coverage hit\n  count is 0 listed, suggesting it may\
+  \ be a leftover/edge-case dispatch helper. The captured call\n  lrs (0x08133429 / 0x08133431) match the two neighbouring\
+  \ call sites inside battle_objectUpdate_8133400,\n  which the project calls \"Per-frame update tick for a battle\
+  \ object\".\n"
 evidence:
-- method: readable-c
-  date: '2026-10-09'
-  detail: Written by hyper/glm-5.3-flash through the convert workflow (2 attempt(s), run convert-20261009-005437);
-    reviewed by Claude before the commit.
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {r4-r7,lr}` ... `pop {r4-r7,pc}` shows a leaf-style wrapper with callee-saved restore. - `mov
+    r7, r0` and `mov r3, r1` show r0/r1 are passed through (r7 is never read again). - Three immediates (#0x24,
+    #0xa5, #0x28) plus `mov r4, #6` set up r0..r4 as inputs for sub_8034930. - `bl sub_8134930` is the only call:
+    the function body is purely forwarding. - Captured entry r0=5/6 + entry r1=0/1 and exit r0=0x20/0x40 with r5/r6
+    preserved match a battle-object helper invoked from battle_objectUpdate_8133400. - All six listed callers share
+    the battle-object update theme (objectUpdate, submenu, scene step, joypad scene).'
   refs:
-  - cport/src/game/asm36.c
-  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 8' --file leaves_farm_8.c sub_81353F0
-- method: difftest
-  date: '2026-10-09'
-  detail: Readable vs lifted on the original's captured calls and on random inputs.
-  reproduce: './wf capture --function sub_81353F0
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x081353F0
 
-    ./wf verify --function sub_81353F0 --snapshots build-snapshots'
-  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 299 out
-    of domain (verify run convert-20261009-005437-verify-2)'
-- method: cpu-oracle
-  date: '2026-10-09'
-  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
-  reproduce: './wf capture --function sub_81353F0
-
-    ./wf verify --function sub_81353F0 --snapshots build-snapshots'
-  result: 1 compared, 0 differed, 23 out of domain (verify run convert-20261009-005437-verify-2)
-- method: lockstep
-  date: '2026-10-09'
-  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
-  reproduce: './wf capture --function sub_81353F0
-
-    ./wf verify --function sub_81353F0 --snapshots build-snapshots'
-  result: 8/8 routes identical (verify run convert-20261009-005437-verify-2)
+    '
+  result: the body read as described above
 - method: coverage
-  date: '2026-10-09'
-  detail: 'Executed by: battles1, maps.'
-  reproduce: grep -l '^081353f0 ' tools/traces/coverage/*.prof
-changes:
-- date: '2026-10-09'
-  what: readable C replacement in cport/src/game/leaves_farm_8.c
-  where: recomp 92f325c
-  tool: tools/wf convert (hyper/glm-5.3-flash)
-- date: '2026-10-09'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 0dbd5ac5
-  tool: tools/symdoc.py
-- date: '2026-10-10'
-  what: moved from cport/src/game/leaves_farm_8.c to cport/src/game/asm36.c by tools/layout.py (the regroup of the model farm's files by bn6f source; the function's text unchanged)
-  where: recomp 6836d6c
-  tool: tools/layout.py
-readable_c: cport/src/game/asm36.c
-coverage:
-- battles1
-- maps
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, beastsp, maps, menus3, story4, story6, story8, story9'
+  reproduce: 'grep -l ''^081353f0 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, beastsp, maps, menus3, story4, story6, story8, story9
 open_questions:
-- what sub_8134930 does and what 0x24, 0xA5, 0x28 mean there
-- whether argument 6 selects a chip id, battle flag, or mode
-- who calls this wrapper and with what r0/r1 values
+- The real meaning of sub_8134930's arguments (0x24 / 0xa5 / 0x28 / 6) is opaque without that
+- function's body, so the "subsystem prefix" here is inferred from callers only.
+- Whether this is genuinely unused or just rare on the captured routes; coverage listed 0.
 sources:
-- tools/wf run convert-20261009-005437
-signature:
-  c: void sub_81353F0(u8 r0, bool r1, SubMenu *r5)
-  params:
-  - reg: r0
-    type: u8
-    name: r0
-  - reg: r1
-    type: bool
-    name: r1
-  - reg: r5
-    type: SubMenu *
-    name: r5
-  ret:
-    reg: none
-    type: void
-  keep:
-  - r2
-  - r3
-  confidence: confident
-  decided_by: mechanical
-  evidence:
-  - 'contract (lifter, refined): may read r0 r1 r5; result none'
-  - 'liveness over the assembly and callees (tools/sig/derive.py): reads r0 r1 r5'
-  - 'r0: captures: 40 calls, int 0x5, 0x6'
-  - 'r1: captures: 40 calls, int 0x0, 0x1'
-  - 'r5: captures: 40 calls, struct sSubmenu'
-  reproduce: python3 tools/sig/bounds.py && python3 tools/sig/derive.py && python3 tools/sig/ask.py run && python3
-    tools/sig/ask.py merge
-  derived: '2026-10-12'
-stamp:
-  rom: rom:ce08147bbb997eba
-  range: 0x081353F0-0x08135404
-  contract: r0 r1 r5 lr -> r2 r3 r5 r6; clobbers nz c v r0 r1 lr
-  callees:
-    sub_8134930: r2 r3 r5
-  headers: ec991eda5490
-  lifter: 70c8d832ffcf
-  prompt: legacy
-  model: hyper/glm-5.3-flash
-  run: convert-20261009-005437
-  body: 44ef360b90ba5760
-  installed: 92f325c
-  stamped: '2026-10-12'
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 22c74dca
+  tool: tools/symdoc.py
