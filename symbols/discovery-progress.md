@@ -2164,8 +2164,9 @@ Highlights:
 | 37    | 25                 | 21                        | 0               | 0       |
 | 38    | 25                 | 19                        | 6               | 0       |
 | 39    | 25                 | 22                        | 3               | 0       |
+| 40    | 25                 | 23                        | 2               | 0       |
 
-Running total: named 721, hypothesis-only 235, dropped 0 (of ~10,600 placeholders).
+Running total: named 744, hypothesis-only 235, dropped 0 (of ~10,600 placeholders).
 
 ## Batch 37 (2026-10-14)
 
@@ -2178,6 +2179,10 @@ Running total: named 721, hypothesis-only 235, dropped 0 (of ~10,600 placeholder
 ## Batch 39 (2026-10-14)
 
 25 functions: 22 renamed to probable, 3 left as hypothesis (sub_8141F7C, sub_80EB79C, sub_81237E0). 6 of the 22 renames were hypothesis revisits that the LLM successfully promoted this batch. All renamed entries use the standard prefix conventions (`battleObject_`, `battle_`, `owMapObject_`, `owPlayer_`, `weatherComp_`, `scene_`, `object_`, `overworldObject_`, `soulWeapons_`).
+
+## Batch 40 (2026-10-14)
+
+25 functions: 23 renamed to probable, 2 left as hypothesis (sub_80EB79C, sub_801A45C). 6 of the 23 renames were hypothesis revisits that the LLM successfully promoted. Subsystems covered: battle beast-sp/snakearm/aura/variousinits, chip-folder screen state, OW map object spawning, bus-station sequence, battle damage flags.
 
 ## Session summary
 
