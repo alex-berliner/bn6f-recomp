@@ -1,0 +1,66 @@
+name: soulWeapons_apply_8142510
+address: '0x08142510'
+kind: function
+previous_names:
+- sub_8142510
+status: probable
+summary: 'Applies the SoulWeapons (Beast Out / Soul Unleash) map state: clears per-weapon flags, spawns
+  overworld objects, drives the BBS request flag and value, and starts the matching cutscene.'
+interface: '(no args — uses r10 = Toolkit) -> void ; side effects: many event flags cleared/set, one OW
+  map object spawned per unacquired slot, BBS flag e17b0f7 set, AIData.Unk_15 set from a per-map table,
+  and possibly StartCutscene(byte_8089448, 0)'
+details: "- The contract says in=['r10','lr'] and out has only callee-saved and live regs, so nothing\
+  \ meaningful is returned to the caller — treat as void-like.\n  - Initialises the SoulWeapons bitmap:\
+  \ SetEventFlagRangeFromImmediate(EVENT_1650, 24) clears bits EVENT_1650..EVENT_1671 to zero the per-area\
+  \ SoulWeapons state.\n  - If the player's current weapon (battle_getSoulWeaponBase_81427CE) is not yet\
+  \ flagged as collected (TestEventFlag), the function returns immediately — early-out at locret_81425FC.\n\
+  \  - Walks the per-map entries table at off_814230C[r4] (each 4 bytes: [u16 flag, u8 unk, u8 pad]).\
+  \ r6 is set to 0/1 based on EVENT_740 (set_flag_e_740). While r6==0, copies the first entry's flag into\
+  \ the SoulWeapons state buffer at 0x2006670+0x4 and two byte fields (offsets +2/+3) — likely initialising\
+  \ the \"active weapon\" mirror.\n  - For each entry, if the matching EVENT_(0x1650+r4) is not yet set,\
+  \ spawns an OW map object 0x0F (SpawnOverworldMapObject(0xf)) and clears the event flag — i.e. spawning\
+  \ the SoulWeapons shard/object and resetting the per-area flag.\n  - After the loop, calls reqBBS_setFlag_e17b0f7_8140A00\
+  \ to flag the BBS quest tracker, and runs sub_8036E86(0x21) (BBS request state machine step).\n  - If\
+  \ EVENT_28 is unset AND GetSoulWeaponsMapIndex() < 6, calls loc_80353EA — gating the first-time available-area\
+  \ branch.\n  - Then unconditionally writes Toolkit.GameStatePtr[0x3c]->Unk_15 = byte_8142610[mapIdx]\
+  \ (a per-map 0x2D/0x3C/0x96 init table) — appears to seed the player's default SoulUnleash state for\
+  \ the area.\n  - If EVENT_744 is set, calls StartCutscene(byte_8089448, 0) — the SoulWeapons cutscene\
+  \ intro.\n  - Finally clears EVENT_740, 742, 743, 746, 747 to clean up the area-local storage.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- "movflag EVENT_1650; mov r2, #0x18; bl SetEventFlagRangeFromImmediate" at 0x08142512 zeroes
+    24 SoulWeapons area flags. - "bl battle_getSoulWeaponBase_81427CE; ... bl TestEventFlag; beq locret_81425FC"
+    returns early when no weapon is equipped. - "ldr r7, off_8142600 // =off_814230C; lsl r0, r0, #2;
+    ldr r7, [r7,r0]" picks a 4-byte stride row from the map-indexed table. - Inner loop "SpawnOverworldMapObject(0xf);
+    ... ClearEventFlag(0x1650+r4)" — spawns the shard and clears the corresponding event flag. - "bl reqBBS_setFlag_e17b0f7_8140A00"
+    sets BBS event flag and the matching BBS state "sub_8036E86(0x21)". - "ldr r0, [r10,#0x3c]; strb r1,
+    [r0,#0x15]" writes a single-byte GameState/AIData field from the per-map byte_8142610 table (values
+    0x2D/0x3C/0x96 visible in the data block). - "bl StartCutscene // script byte_8089448" after "TestEventFlagFromImmediate
+    EVENT_744". - Five "ClearEventFlagFromImmediate" calls to EVENT_740/742/743/746/747 at the tail.'
+  refs:
+  - bn6f/asm/asm37_1.s
+  reproduce: 'python3 tools/asmcat.py 0x08142510
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): soulWeapons_apply_8142510
+
+    '
+open_questions:
+- Exact meaning of the EVENT_28 / GetSoulWeaponsMapIndex < 6 branch (loc_80353EA) and what 0x2006670 maps
+  to in the project's struct definitions.
+- What sub_8142166 / sub_8142178 / sub_8142734 / sub_814278C / sub_81427A4 actually do — none of them
+  are confirmed in the callee list, so the per-entry setup logic is described mechanically from the assembly
+  only.
+sources:
+- discovery session 2026-10-14 batch 39 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 2472d785
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8142510 -> soulWeapons_apply_8142510
+  where: bn6f 0d61d225
+  tool: tools/rename_symbol.py

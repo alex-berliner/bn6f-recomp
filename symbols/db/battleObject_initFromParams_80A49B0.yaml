@@ -1,0 +1,80 @@
+name: battleObject_initFromParams_80A49B0
+address: '0x080A49B0'
+kind: function
+previous_names:
+- sub_80A49B0
+status: probable
+summary: 'Initialise an OverworldNPCObject-style object (r5) from a per-object parameter table (r7): load
+  its sprite, set animation/no-shadow, then conditionally apply Z-coord/layer priority and a sprite priority/palette,
+  before stamping CurState=4 and calling the post-event hook event_80A4A08.'
+interface: '(r5 = object base, r7 = params table) -> void ; side effects: mutates r5''s header/sprite
+  and writes object field 0x8 = 4, 0x6 = 0, 0x7 = 0'
+details: "- `push {lr}` only (no callee-saved frame): the contract reports r4/r5/r8/r9/r10/r12/r2/r3 in\
+  \ `out`, which means those are read off the saved-r4 context — this is consistent with the function\
+  \ being entered after a frame was already set up by a caller; only lr is saved here.\n  - Loads a sprite\
+  \ with r0=0x80, r1=[r7+0] (sprite id nibble?), r2=[r7+1] (`sprite_load` contract: `in=['r0','r1','r2','r5','lr']`).\n\
+  \  - `ldrb r0, [r7,#2]` → `sprite_setAnimation` writes the object's current animation index.\n  - `sprite_loadAnimationData`\
+  \ and `sprite_noShadow` follow unconditionally (so the params table provides only base sprite + animation\
+  \ + a flag to disable shadow only when r7[3]!=0xFF... actually noShadow is called before the `cmp r0,#0xff`\
+  \ test).\n  - The conditional (`cmp r7[3],#0xff ; bne loc_80A49E8`) decides whether to run `checkZCoordModifiers_8031612`\
+  \ and `applyLayerEffectToOWObject_8035694` (both typical OW-object setup helpers) on `r5+0xc` (the Coords\
+  \ block per `overworld_npc_object_struct`, where X=0x24..Z=0x2c; here `r5+0xc` is consistent with a\
+  \ smaller object header — `overworld_player_object_struct` puts Z at 0x24 and `r5+0xc` lands inside\
+  \ the Coords region). It saves and restores `[r5+0x14]` around the calls (a save-stack slot typical\
+  \ of layered rendering).\n  - `sprite_setPriority_8002E14` is unconditional, then `[r7+4]` → `sprite_setUnk0x2c`\
+  \ (a per-object sprite config word), and `[r7+8]` → `sprite_setPalette` (palette index).\n  - Final\
+  \ writes stamp `*(r5+8) = 4`, `*(r5+6) = 0`, `*(r5+7) = 0` and tail-call `event_80A4A08` before `pop\
+  \ {pc}`. The `=4` written at +8 matches `enum8 CurState` (`CUR_STATE_UPDATE=0x04`) for either `overworld_npc_object_struct`\
+  \ or `overworld_player_object_struct`.\n  - Callee `event_80A4A08` shares the same `(r5,r10,lr)` input\
+  \ contract, suggesting it is the per-event continuation invoked right after this init.\n  - The `pop\
+  \ {pc}` (no `bx`/link) and absence of stack-frame setup indicate this is a tail-called leaf in a wider\
+  \ per-event dispatcher; r4/r8/r9/r10/r12 are spill registers the caller already preserved.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mov r0,#0x80 ; ldrb r1,[r7] ; ldrb r2,[r7,#1] ; bl sprite_load` shows r7 is a small per-object
+    param blob feeding the sprite subsystem. - `ldrb r0,[r7,#2] ; bl sprite_setAnimation` consumes the
+    next byte as the animation index. - `bl sprite_noShadow` then `ldrb r0,[r7,#3] ; cmp r0,#0xff ; bne
+    loc_80A49E8` shows byte 3 is a "has extra Z/layer setup?" sentinel (0xFF skips). - `add r0,r5,#0xc
+    ; bl checkZCoordModifiers_8031612` / `bl applyLayerEffectToOWObject_8035694` and the save/restore
+    of `[r5+0x14]` around them match the OW object Z+layer init idiom. - `bl sprite_setPriority_8002E14`
+    then `ldr r0,[r7,#4] ; bl sprite_setUnk0x2c` then `ldrb r0,[r7,#8] ; bl sprite_setPalette` show the
+    rest of the param table (4 bytes padding + 4 bytes at +4, byte at +8) configures OAM priority/sprite
+    extra/palette. - `mov r0,#4 ; strb r0,[r5,#8]` writes `CUR_STATE_UPDATE` into the object. - `bl event_80A4A08`
+    with `pop {pc}` shows this function returns to a different `lr` than the entry one — the original
+    `lr` saved by `push {lr}` is consumed by `pop {pc}`, so the entry `lr=0x080a499a` is the original
+    call site. - Captured calls all show `r0` on entry being a return address (`0x080a49b1`/`0x080a49b1`
+    etc., the post-push/bl location) and `r3` sometimes being an EWRAM pointer (`0x02001f68` in stories
+    10-12), matching r7 in some callsites being a pointer to a heap/EWRAM-loaded param table rather than
+    a fixed location.'
+  refs:
+  - bn6f/asm/asm29.s
+  reproduce: 'python3 tools/asmcat.py 0x080A49B0
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_initFromParams_80A49B0
+
+    '
+open_questions:
+- Whether `r5` points to `OverworldNPCObject` (size 0xd8) or `OWPlayerObject` (size 0xc8) — both put `CurState`
+  at +8; we cannot tell from the assembly alone.
+- Exact identity/format of the r7 parameter table (its length and meaning beyond byte 8 are unknown —
+  the function only consumes bytes 0..3 and 4,8).
+- Whether `r7` is a stack-resident local from the caller or an EWRAM pointer — captured-call evidence
+  shows `r3=0x00000040` in some cases (likely 64-byte aligned EWRAM/IRAM) and `r3=0x02001f68` in others,
+  suggesting two callers pass different things in r3 that may or may not equal r7.
+- Why `r4/r8/r9/r10/r12` are reported as `out` even though this function doesn't touch them in the visible
+  instructions; most likely the contract is a fall-through artifact of how the caller-jumped code was
+  unwound (lr was popped as pc).
+sources:
+- discovery session 2026-10-14 batch 39 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 2472d785
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80A49B0 -> battleObject_initFromParams_80A49B0
+  where: bn6f 0d61d225
+  tool: tools/rename_symbol.py

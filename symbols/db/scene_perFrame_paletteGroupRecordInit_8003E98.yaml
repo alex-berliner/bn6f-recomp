@@ -1,0 +1,54 @@
+name: scene_perFrame_paletteGroupRecordInit_8003E98
+address: '0x08003E98'
+kind: function
+previous_names:
+- sub_8003E98
+status: probable
+summary: Records the current queued-sprite palette count into group slot 1 once per frame, then returns.
+interface: '() -> r0 = 1 ; side effects: writes byte_200F389 + 1 to sprite group counter; tail-only dead
+  init branch is unreachable'
+details: "Entry is push {lr}; mov r0, #1; bl sprite_recordPaletteCountToGroupSlot_80028C0; pop {pc}.\n\
+  \  The callee copies dword_200F340 (current queued-sprite palette count) into byte array byte_200F389\
+  \ at slot r0 (=1), so this is \"record palette count into group 1 for this frame\".\n  The contract\
+  \ returns no caller-visible result; the post-pop 'mov r0, #0' / clear-loop / 'mov pc, lr' sequence (0x8003EA6..0x8003EB6)\
+  \ is unreachable tail code (after the function has already returned via pop {pc}). The tail would have\
+  \ iterated 0x20 T1BattleObject entries starting at eT1BattleObject0 and zeroed object_sprite+0x24 of\
+  \ each, but no caller reaches it because of the pop {pc}.\n  Lives across all the overworld/PET/battle\
+  \ per-frame handlers that pass lr through.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- asm: `push {lr}`; `mov r0, #1`; `bl sprite_recordPaletteCountToGroupSlot_80028C0`; `pop {pc}`
+    at 0x8003E98..0x8003EA4 - callee summary: `sprite_recordPaletteCountToGroupSlot_80028C0` writes dword_200F340
+    into byte_200F389[r0] - 40 captured callers all enter with r0=0, r1=1, r2 pointing into the byte_200F389
+    area (used/cleared by the callee) - exit state in all 40 samples: r0=1, flags --C-, consistent with
+    the constant mov r0,#1 before the call surviving the callee - struct BattleObject/object_sprite+0x24
+    corresponds to oObjectSprite_Unk_24 in the ObjectSprite struct, an internally-indexed sprite field
+    - tail code: `mov r0,#0; ldr r3,=eT1BattleObject0; ... cmp r0,#0x20; blt loc_8003EA6; mov pc,lr` immediately
+    after `pop {pc}` -- a dead path because lr was already popped'
+  refs:
+  - bn6f/asm/asm00_1.s
+  reproduce: 'python3 tools/asmcat.py 0x08003E98
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): scene_perFrame_paletteGroupRecordInit_8003E98
+
+    '
+open_questions:
+- Why this palette group count needs recording on every per-frame pipeline step (battle, overworld, PET,
+  scenario, chatbox) -- looks like a per-frame sprite palette bookkeeping sweep across all of these subsystems.
+  Whether byte slot 1 is genuinely "group 1" or some other agreed slot is not provable from this function
+  alone. The dead tail's clear-loop purpose (zeroing oObjectSprite+0x24 across 0x20 T1 battle objects)
+  is also unknown.
+sources:
+- discovery session 2026-10-14 batch 39 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 2472d785
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8003E98 -> scene_perFrame_paletteGroupRecordInit_8003E98
+  where: bn6f 0d61d225
+  tool: tools/rename_symbol.py

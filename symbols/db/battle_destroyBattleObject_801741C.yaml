@@ -1,0 +1,90 @@
+name: battle_destroyBattleObject_801741C
+address: '0x0801741C'
+kind: function
+previous_names:
+- sub_801741C
+status: probable
+summary: 'Resets a battle object to its post-destroy / dormant state: clears its collision region/state,
+  PwrAtk charge, AI data, slot reservation, future-panel reservation, chip counters, sprite flip, alliance
+  bookkeeping, and dispatches destroy-subevents; marks CurPhaseAndPhaseInitialized with phase 4.'
+interface: (r5 = oBattleObject*, r10 = oToolkit*) -> r1 (clobbered), r5 (preserved) ; no meaningful return;
+  tailcalls render/cleanup subevents and tail-pops
+details: "Step-by-step (assembly at 0x0801741c):\n  1. `push {lr}`; calls a sequence of subroutines that\
+  \ all act on the battle object pointed to by r5.\n  2. `bl object_clearCollisionRegion` — clears the\
+  \ collision-region byte on the battle object's collision data.\n  3. `bl battle_ClearObjectCollisionResult_801A5E2`\
+  \ — zeros the per-hit/collision-result fields in the CollisionData.\n  4. `bl battle_resetCollisionState_80101C4`\
+  \ — zeroes the collision counter and clears the in-collision bit.\n  5. `bl battleObject_clearPwrAtkState_8012EA8`\
+  \ — drops the held-charge state.\n  6. `bl releaseSlotByValue_801DC36` — frees the six-entry slot in\
+  \ some slot table whose value matches r5 (the slot that the object previously occupied).\n  7. `mov\
+  \ r0,#0; strb r0,[r5,#oBattleObject_ChipsHeld] (=0x1a)` — clears ChipsHeld to 0.\n  8. `sub r0,#1; strh\
+  \ r0,[r5,#oBattleObject_Chip (=0x2a)]` — writes 0xFFFF (semantically \"no chip\") into the held-chip\
+  \ word.\n  9. `bl object_getFlip` returns the sprite's facing bit; `bl sprite_setFlip` syncs bits 0x10/0x20\
+  \ on the embedded `ObjectSprite`.\n  10. `ldrb r0,[r5,#oBattleObject_FuturePanelX (0x14)]; ldrb r1,[r5,#oBattleObject_FuturePanelY\
+  \ (0x15)]; bl object_removePanelReserve` — releases the panel slot the object had reserved for its queued\
+  \ move.\n  11. `bl battle_clearAIDataAndBarrier_801A7F4` — zeros `oAIData_Unk_60` and clears the Barrier\
+  \ flag.\n  12. Loads `r2 = [r5,#oBattleObject_AIDataPtr (0x58)]`; if `Unk_58` (=0x58) of AIData is non-zero,\
+  \ zero it (drops a pointer, e.g. freed target/parent ref).\n  13. Branch on `oBattleObject_Param2 (0x5)`:\
+  \ if `Param2 < 1` (i.e. == 0), calls `relatedToIsBattleOver_800A11C` to decrement the alliance member\
+  \ count and clear entries from `oBattleState.AliveBattleActors`. Otherwise skip (preserve membership).\n\
+  \  14. `bl battle_dispatchDestroyEvents_802EF5C` — if battle flag 0x40 is set, fires the paired \"destroy\"\
+  \ sub-events (0 then 1) into the object's destroy handler.\n  15. `mov r0,#4; strh r0,[r5,#oBattleObject_CurPhaseAndPhaseInitialized\
+  \ (0xa)]` — leaves CurPhase=4 with PhaseInitialized clear, the post-destroy \"finished\" sentinel.\n\
+  \  16. `pop {pc}` (tail-return via lr).\n  Net effect: takes a battle object whose CurState has been\
+  \ switched to DESTROY (8) and tears down all per-actor state so the slot can be reclaimed/garbage-collected,\
+  \ leaving it marked \"phase 4 done\".\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {lr}` / `pop {pc}` at 0x0801741c / 0x0801746a frame the body as a single leaf-call
+    sequence with no callee-saved register restores (consistent with a thin destroy wrapper). - `bl object_clearCollisionRegion`
+    then `bl battle_ClearObjectCollisionResult_801A5E2` (both confirmed to operate on r5=BattleObject)
+    establish this function operates on a BattleObject. - `bl battle_resetCollisionState_80101C4` (clear
+    in-collision bit) and `bl battleObject_clearPwrAtkState_8012EA8` (clear PwrAtk) further enforce "wipe
+    transient per-actor state". - `bl releaseSlotByValue_801DC36` (frees the slot whose value equals r5)
+    confirms it''s a destroy/release, not an init. - `strb r0,[r5,#oBattleObject_ChipsHeld]` (=0x1a) and
+    `strh r0,[r5,#oBattleObject_Chip]` (=0x2a) — explicit zeroing of the two chip inventory fields to
+    "no chips held". - `bl object_getFlip` / `bl sprite_setFlip` show that the sprite facing is reasserted
+    (likely because the destroy animation has a flip baked in and we want the resting sprite to mirror
+    correctly). - `ldrb r0,[r5,#oBattleObject_FuturePanelX (0x14)]; ldrb r1,[r5,#oBattleObject_FuturePanelY
+    (0x15)]; bl object_removePanelReserve` — releases the panel reserve, only meaningful if we''re disposing
+    of the actor (not if we''re initiating). - `ldr r2,[r5,#oBattleObject_AIDataPtr (0x58)]; ldr r1,[r2,#oAIData_Unk_58];
+    tst r1,r1; beq loc_801745A` followed by `str r1,[r2,#oAIData_Unk_58]` (after moving 0 into r1) — exactly
+    the "null this pointer if still set" disposal pattern. - `ldrb r0,[r5,#oBattleObject_Param2 (0x5)];
+    cmp r0,#1; bge loc_8017464` — gates `relatedToIsBattleOver_800A11C` on Param2; that callee decrements
+    the alliance member count, so Param2 distinguishes "leave alliance roster" vs "keep membership" (e.g.
+    summoner vs spawned). - `bl battle_dispatchDestroyEvents_802EF5C` description in callee list ("paired
+    0 then 1 signal to destroy sub-event handler") directly ties the function to a destroy code path.
+    - `mov r0,#4; strh r0,[r5,#oBattleObject_CurPhaseAndPhaseInitialized (0xa)]` — CurPhase=4 with PhaseInitialized=0
+    is the standard post-destroy sentinel; matches the convention seen across battle-object state machines.
+    - Contract `in=[''r5'',''r10'',''lr''] out=[''r1'',''r5'']` confirms r5 stays preserved (object pointer,
+    used by caller), r10 stays (toolkit), r1 is an incidental scratch. - Captured call shows r0=0, r1=0x0801741d
+    (return address), r2=0xf0 (likely last-phase sentinel), r3=0x0203aa40 (an AIData pointer); exit `r0=4`,
+    `C` flag set — matches the final `mov r0,#4; strh r0,...` and the resulting carry status from `pop
+    {pc}`.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801741C
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battle_destroyBattleObject_801741C
+
+    '
+open_questions:
+- Whether `Param2` is the sub-event kind (0/1+ = different destroy paths) or a "is summoned minion" flag
+  — only the byte-level branch behavior is clear.
+- What `oAIData_Unk_58` actually points to (must be a separately-allocated pointer that must be freed/nulled,
+  otherwise the `tst`/`str` would not exist).
+- Whether `releaseSlotByValue_801DC36` is the per-frame battle-object-slot allocator or something else;
+  current captured call samples don't include a second invocation to corroborate.
+sources:
+- discovery session 2026-10-14 batch 39 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 2472d785
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801741C -> battle_destroyBattleObject_801741C
+  where: bn6f 0d61d225
+  tool: tools/rename_symbol.py

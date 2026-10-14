@@ -473,12 +473,12 @@ static void decomp_and_copy(u32 list) {
     GUEST_CALL(decompAndCopyData);
 }
 
-/* register form: calls sub_8123300 outside this file, which has no typed C interface yet */
+/* register form: calls battle_loadTileGridByNavi_8123300 outside this file, which has no typed C interface yet */
 static void load_network_text_script(u32 ptr_table, u32 script_area, u32 decomp_buffer) {
     R0 = ptr_table;
     R1 = script_area;
     R2 = decomp_buffer;
-    GUEST_CALL(sub_8123300);
+    GUEST_CALL(battle_loadTileGridByNavi_8123300);
 }
 
 /* register form: calls CopyBackgroundTiles outside this file, which has no typed C interface yet
@@ -1943,12 +1943,12 @@ static inline call_decompAndCopyData_result call_decompAndCopyData(u32 r0) {
 }
 
 typedef struct { u32 r7; } call_sub_8123300_result;
-/* register form: generated wrapper: sub_8123300 has no typed C interface yet */
+/* register form: generated wrapper: battle_loadTileGridByNavi_8123300 has no typed C interface yet */
 static inline call_sub_8123300_result call_sub_8123300(u32 r0, u32 r1, u32 r2) {
     R0 = r0;
     R1 = r1;
     R2 = r2;
-    GUEST_CALL(sub_8123300);
+    GUEST_CALL(battle_loadTileGridByNavi_8123300);
     return (call_sub_8123300_result){ R7 };
 }
 
@@ -2016,12 +2016,12 @@ Next sub_8133EC0(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_81340DC ── */
-/* sub_81340DC: run the update routine for the data at byte_813314C, then, if
+/* ── battle_spawnChipSelectHeaderEntries_81340DC ── */
+/* battle_spawnChipSelectHeaderEntries_81340DC: run the update routine for the data at byte_813314C, then, if
  * battle struct slot 3 currently exists, reposition its sprite to (0xC0, 3)
  * (with the caller's r2/r3 and the struct pointer passed through to
  * sprite_setCoordinates). Preserves r4-r7 like the original's push/pop. */
-Next sub_81340DC(void) {
+Next battle_spawnChipSelectHeaderEntries_81340DC(void) {
     u32 savedR4 = R4, savedR5 = R5, savedR6 = R6, savedR7 = R7;
 
     R0 = A_byte_813314C;

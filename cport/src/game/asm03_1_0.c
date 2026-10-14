@@ -366,7 +366,7 @@ Next onUpdateInRealWorld_8033A96(void) {
     R0 = 0;
     GUEST_CALL(battle_drawBattleStartOverlay_8033F80);
 
-    GUEST_CALL(sub_8033BE8);
+    GUEST_CALL(battleObject_queueRealWorldNaviIconOAM_8033BE8);
 
     R0 = 0;
     GUEST_CALL(gfxTransfer_8033DA0);
@@ -380,8 +380,8 @@ Next onUpdateInRealWorld_8033A96(void) {
  *   1. sprite_queueOamByFrameIndex_8033B80 with r0 = 0
  *   2. battle_drawBattleStartOverlay_8033F80 with r0 = 0
  *   3. updateChipSlotGfx_8033C68
- *   4. sub_8033BE8
- * Register state (r0-r3, flags) after the call is whatever sub_8033BE8 leaves. */
+ *   4. battleObject_queueRealWorldNaviIconOAM_8033BE8
+ * Register state (r0-r3, flags) after the call is whatever battleObject_queueRealWorldNaviIconOAM_8033BE8 leaves. */
 Next battle_resetState_8033AC4(void) {
     R0 = 0;
     GUEST_CALL(sprite_queueOamByFrameIndex_8033B80);
@@ -390,7 +390,7 @@ Next battle_resetState_8033AC4(void) {
     GUEST_CALL(battle_drawBattleStartOverlay_8033F80);
 
     GUEST_CALL(updateChipSlotGfx_8033C68);
-    GUEST_CALL(sub_8033BE8);
+    GUEST_CALL(battleObject_queueRealWorldNaviIconOAM_8033BE8);
 
     RETURN_TO_CALLER();
 }
@@ -448,15 +448,15 @@ Next sprite_queueOamByFrameIndex_8033B80(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8033BE8 ── */
-/* sub_8033BE8: swap in the current PET navi's battle graphic set.
+/* ── battleObject_queueRealWorldNaviIconOAM_8033BE8 ── */
+/* battleObject_queueRealWorldNaviIconOAM_8033BE8: swap in the current PET navi's battle graphic set.
  *
  * Queues the 0x80-byte graphics chunk belonging to the navi currently set on
  * the PET into VRAM at 0x06017380, then triggers the accompanying change
  * through sprite_queueOamEntryThunk_802FE28.  Normally the graphic index comes straight from
  * GetCurPETNavi(); before event flag EVENT_163 has been set, a nonzero value
  * in byte_200AD04 overrides it with slot 12 instead. */
-Next sub_8033BE8(void) {
+Next battleObject_queueRealWorldNaviIconOAM_8033BE8(void) {
     /* Which navi is currently set on the PET? */
     GUEST_CALL(GetCurPETNavi);
     u32 navi = R0;

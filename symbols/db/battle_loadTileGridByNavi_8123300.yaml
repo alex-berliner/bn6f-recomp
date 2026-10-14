@@ -1,0 +1,68 @@
+name: battle_loadTileGridByNavi_8123300
+address: '0x08123300'
+kind: function
+previous_names:
+- sub_8123300
+status: probable
+summary: Picks the per-PET-navi tile grid blob from a small table, LZ77-decompresses it into a staging
+  buffer, then copies the post-header payload into a destination buffer using the fastest legal width.
+interface: (r0 = *LZ77-table *, r1 = *outBuffer, r2 = *stagingBufferWithHeader) -> r0 = ptr just past
+  staging header (r2+4)
+details: "- On entry, r0 is a small array of LZ77 source pointers (one per supported state).\n  - r7 is\
+  \ initialised to 0x30 (the default byte offset into that table) and the function asks\n    sub_8123360\
+  \ (`battle_isCurPETNaviPresent_8123360`) which of two PET-navi slots is \"active\";\n    if it returns\
+  \ non-zero, r7 is replaced by `(GetCurPETNavi() * 4)`, picking the alternate slot.\n    This matches\
+  \ r1 in the captured call @0x0201bf20 holding slot data and the routine's\n    \"PET-navi variant\"\
+  \ behaviour.\n  - `ldr r0, [r1, r7]` then loads the compressed blob pointer from that table slot.\n\
+  \  - `SWI_LZ77UnCompReadNormalWrite8bit(decompressed_into_staging_buffer, r2+0..)` fills r2\n    in\
+  \ place; the LZ77 header has a 4-byte \"decompressed size\" word, so the function reads\n    `[r1]`\
+  \ (the header), shifts it right by 8 (dropping the low byte), subtracts 4, and uses\n    the remaining\
+  \ word as the payload byte count to memcpy from `r2+4` into `r1` (the\n    caller's destination buffer).\n\
+  \  - The function then picks CopyBytes / CopyHalfwords / CopyWords / CopyByEightWords based\n    on\
+  \ the payload alignment (`&1`, `&2`, `&0x1F`), the same progressive-fast-path ladder\n    the BIOS mem-copy\
+  \ wrappers expose.\n  - After copy the function returns `r0 = r2+4` (staging payload base), which is\
+  \ the value\n    observed in the captured-call exit (`r0 = 0x02013a04` while staging = 0x02013a00).\n\
+  \  - The eight callers (`battle_setupSceneTiles`, `chipFolder_initGfx`,\n    `initTitleScreens`, `saveMenu_config_textscript`,\
+  \ `sub_8133EC0`, `sub_8137ACC`,\n    `subchip_initGfx`, `textScript_loadAndRunEmbeddedArchive`) all\
+  \ match the established\n    pattern of \"build a tile-descriptor array, decompress scene graphics,\
+  \ then blit a\n    30×20 background grid into tile block 1\"; this routine provides the actual grid\n\
+  \    contents (a per-navi variant of the empty/background tile grid).\n  - Likely side effect: writes\
+  \ destination buffer (`r1` caller arg) of size header>>8 - 4\n    bytes; staging buffer (r2) is completely\
+  \ overwritten by the LZ77 SWI.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: "- `mov r7, #0x30` -> default table slot offset; `lsl r7, r0, #2` (after GetCurPETNavi) is\n\
+    \  the alternate slot offset.\n- `bl sub_8123360` -> \"is current PET navi present\"; gate for the\
+    \ alternate slot. - `bl SWI_LZ77UnCompReadNormalWrite8bit` with `(decompressed, r2)` shows blob goes\
+    \ to staging. - `lsr r2, r2, #8; sub r2, #4` -> payload size = (header>>8) - 4 = standard EX-BN6\n\
+    \  LZ77 wrapper layout (size in header bits 8..31).\n- The `tst r3, r2` ladder against `#1`, `#2`/`#3`,\
+    \ `#0x1F` selects Copy* variants with\n  increasing transfer widths.\n- Captured-call exit r0 = 0x02013a04\
+    \ = r2+4 with r2=0x02013a00 confirms \"returns payload pointer\". - All eight named callers use this\
+    \ routine immediately before blitting a 30x20 grid into\n  tile block 1, matching the function's role\
+    \ as the grid source."
+  refs:
+  - bn6f/asm/asm33.s
+  reproduce: 'python3 tools/asmcat.py 0x08123300
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battle_loadTileGridByNavi_8123300
+
+    '
+open_questions:
+- Exact form of the r1 table on entry (r0 in caller is the table base, but the `ldr r1, [sp]` reload +
+  `[r1, r7]` indirection suggests the table sits inside a wider record pointed to by r1 at the caller;
+  the 0x40B of memory dumped at *r1 looks like a descriptor rather than the table itself).
+- What `sub_8123360` actually checks (only the callee name is known, not its semantics beyond "navi present").
+sources:
+- discovery session 2026-10-14 batch 39 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 2472d785
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8123300 -> battle_loadTileGridByNavi_8123300
+  where: bn6f 0d61d225
+  tool: tools/rename_symbol.py

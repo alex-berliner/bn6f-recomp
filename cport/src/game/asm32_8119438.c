@@ -1153,7 +1153,7 @@ Next sprite_scaleShrinkStep_811A160(void) {
  * handler from the handler table at off_811A1AC and that handler runs
  * first (the original leaves the table entry itself in r0 and the type
  * byte in r1 when it jumps to it). Afterwards two shared update passes,
- * sub_811A29C and sub_811A2EC, run; r0/r1 flow out of the last one.
+ * object_updateSpriteUnk0x2cFromMenuState_811A29C and sub_811A2EC, run; r0/r1 flow out of the last one.
  * The table currently contains a single entry, submenu_updateChipPreviewSprite_811A1B0. */
 Next object_runUpdateDispatch_811A190(void) {
     u32 type = LD8(R5 + 9);
@@ -1164,7 +1164,7 @@ Next object_runUpdateDispatch_811A190(void) {
     GUEST_CALL(submenu_updateChipPreviewSprite_811A1B0);
 
     /* Shared update passes. */
-    GUEST_CALL(sub_811A29C);
+    GUEST_CALL(object_updateSpriteUnk0x2cFromMenuState_811A29C);
     GUEST_CALL(sub_811A2EC);
 
     RETURN_TO_CALLER();
@@ -1411,7 +1411,7 @@ Next menu_getTableEntryForStateIndex_811A268(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_811A29C ── */
+/* ── object_updateSpriteUnk0x2cFromMenuState_811A29C ── */
 /* register form: calls sprite_getUnk0x2c outside this file, which has no typed C interface yet */
 static u32 sprite_get_unk2c(void) {
     GUEST_CALL(sprite_getUnk0x2c);
@@ -1459,7 +1459,7 @@ static u32 apply_sprite_tweak(void) {
     return 0;
 }
 
-Next sub_811A29C(void) {
+Next object_updateSpriteUnk0x2cFromMenuState_811A29C(void) {
     apply_sprite_tweak();
     RETURN_TO_CALLER();
 }

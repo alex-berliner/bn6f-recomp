@@ -106,11 +106,11 @@ static void ow_player_dispatch_action(u32 player_obj) {
     }
 }
 
-/* register form: calls sub_809DF28 outside this file, which has no typed C interface yet */
+/* register form: calls owPlayer_isJumptableIndex09At0x10_0809DF28 outside this file, which has no typed C interface yet */
 static u32 call_scene_transition_check(void) {
     R0 = PENDING_ANIM_NONE;
     R7 = A_eStruct200ace0;
-    GUEST_CALL(sub_809DF28);
+    GUEST_CALL(owPlayer_isJumptableIndex09At0x10_0809DF28);
     /* Original next instruction: tst r0,r0 (sets N,Z; C,V unchanged from callee) */
     SET_FLAGS_NZ(R0);
     return R0;
@@ -556,8 +556,8 @@ Next ow_tryTileInteraction_809DF00(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_809DF28 ── */
-/* sub_809DF28(r5 = OWPlayerObject*)
+/* ── owPlayer_isJumptableIndex09At0x10_0809DF28 ── */
+/* owPlayer_isJumptableIndex09At0x10_0809DF28(r5 = OWPlayerObject*)
  *
  * Overworld player per-frame dispatcher. Inspects the player's current
  * substate (jumptable index field). Substate 0x10 is the "locked /
@@ -570,7 +570,7 @@ Next ow_tryTileInteraction_809DF00(void) {
  *   outputs: r0, r7, c, v
  *   clobbers: nz
  */
-Next sub_809DF28(void) {
+Next owPlayer_isJumptableIndex09At0x10_0809DF28(void) {
     /* Original: push {lr} ... pop {pc}. Preserve lr across the call
      * so that owMapObject_checkPlayerFacingFreeze_809DF36's pop {pc} returns to our caller. */
     u32 saved_lr = LR;

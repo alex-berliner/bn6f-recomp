@@ -1,0 +1,70 @@
+name: battleObject_queueRealWorldNaviIconOAM_8033BE8
+address: '0x08033BE8'
+kind: function
+previous_names:
+- sub_8033BE8
+status: probable
+summary: Battle-context helper that swaps in the correct "real-world navi" OAM tile/palette for the current
+  PET navi and queues one GFX sprite transfer.
+interface: '(r10 = toolkit) -> r0 = 0xff ; side effects: QueueWordAlignedGFXTransfer (0x80-byte src ->
+  0x06017380), sprite_queueOamEntryThunk(0x40120006, 0xC79C, 1)'
+details: "Walked-through callsite (snap_story2_*.bin) shows r0=0, r1=0200ad04, r2=1, r3=0 and an exit\
+  \ with r0=0xff, so r0 is purely scratch and r0=0xff on exit is incidental (it is the value left in r0\
+  \ by the OAM thunk). The \"[r1 @0200ad04]\" capture shows the game-state-shaped scratch buffer (fields\
+  \ b4 00, 0c 00 01 00, 3b 04 08 10 match GameState/related).\n\n  1. Calls GetCurPETNavi -> r4 = CurPETNavi\
+  \ (PET_NAVI_* enum 0..6).\n  2. movflag EVENT_163 / TestEventFlagFromImmediate: tests the story/flag\
+  \ event-bit pattern, and notZero_eByte200AD04 also tests another \"is-active\" byte. If EVENT_163 is\
+  \ unset AND byte_200AD04 is 0 (beq path), execution falls through with r4 = CurPETNavi. Otherwise (the\
+  \ common path taken in the snaps, which exit with r0=0xff meaning an OAM was queued) r4 is forced to\
+  \ 0xC (an extra slot in the icon table). Note 0xC is also a valid table index (the table has 13 entries\
+  \ off_8033C24[0..0xC]).\n  3. `lsl r4, r4, #2` -> index into table off_8033C24, which is a static 13-entry\
+  \ pointer table of 0x80-sized tile blobs in IWRAM/ROM (byte_86C1B20, byte_86C1BA0, byte_86C1C20, byte_86C1CA0,\
+  \ byte_86C1D20, byte_86C1DA0 repeated/extended). One entry per PET navi (megaman..falzar/beast variants).\n\
+  \  4. QueueWordAlignedGFXTransfer(src=table[r4], dst=0x06017380 (VRAM), size=0x80) -> uploads the 4bpp\
+  \ tile (32 tiles, 16x16 navi icon frame) for the chosen navi.\n  5. sprite_queueOamEntryThunk(0x40120006,\
+  \ 0xC79C, 1, 0) -> queues an OAM entry (attr0=0x4000 (disabled/hidden) | 0x1000 | 0x2000? actually 0x4000+0x1000+0x0006\
+  \ = Y-coord affine-disable word; combined with 0xC79C for attr1/2) into the OAM ring for the \"real-world\
+  \ navi\" icon slot in VRAM at the tile base just written.\n  6. pop {pc}: leaf tail via push {lr}/pop\
+  \ {pc}; preserves no callee-saved registers per contract.\n\n  Callers: battle_resetState_8033AC4 (re-initializes\
+  \ the four per-frame battle draw helpers), onUpdateInRealWorld_8033AF0's caller onUpdateInRealWorld_8033A96\
+  \ (per-frame: queueRealWorld draw call), sub_8033AF0 (intermediate). These are the standard \"draw the\
+  \ real-world navi standing in the field\" helpers in battle mode.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl GetCurPETNavi` at 0x8033BEE returns PET_NAVI into r4, naming this a PET-navi-driven draw.
+    - 13-entry table off_8033C24 with 0x80-byte pointers (one per navi index 0..0xC) used as the source
+    of `QueueWordAlignedGFXTransfer` with size 0x80. - VRAM dest 0x06017380 is in the high OAM tile region;
+    size 0x80 = 32 tiles, fits a 4bpp 16x16 OAM frame. - `EVENT_163`-style conditional AND `notZero_eByte200AD04`
+    force r4=0xC, mapping the "no story flag set yet" state to a default navi icon. - OAM thunk args 0x40120006
+    (attr0/1 lower half) and 0xC79C (attr1/2 higher half = tile-id/shape) match MMBN-style OAM attribute
+    packing for a 32x32 or 16x32 sprite. - Caller onUpdateInRealWorld_8033A96 explicitly described as
+    "real-world update logic + queues a graphics transfer"; this routine is one such transfer. - Exit
+    r0=0xff in all snaps comes from the OAM thunk writing 0xff to r0 (the documented return from sprite_queueOamEntry
+    routines), confirming this is the matched observed exit behavior.'
+  refs:
+  - bn6f/asm/asm03_1_0.s
+  reproduce: 'python3 tools/asmcat.py 0x08033BE8
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_queueRealWorldNaviIconOAM_8033BE8
+
+    '
+open_questions:
+- Exact OAM slot (tile-id 0xC79C -> needs the local OAM layout table).
+- Whether EVENT_163 corresponds to "intro/dream-cutscene story flag" and what semantics flipping it has
+  — only confirmed by name pattern, not by a flag-id list.
+- Whether the icon shown is for the player's navi vs. the opponent — table repetition suggests partner/falcon
+  variants but cross-naming would need a flag list.
+sources:
+- discovery session 2026-10-14 batch 39 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 2472d785
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8033BE8 -> battleObject_queueRealWorldNaviIconOAM_8033BE8
+  where: bn6f 0d61d225
+  tool: tools/rename_symbol.py

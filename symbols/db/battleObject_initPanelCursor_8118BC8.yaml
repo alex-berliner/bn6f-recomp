@@ -1,0 +1,77 @@
+name: battleObject_initPanelCursor_8118BC8
+address: '0x08118BC8'
+kind: function
+previous_names:
+- sub_8118BC8
+status: probable
+summary: Initialise a battle-object sprite for the in-battle panel-cursor graphic (animation 0, OAM prio
+  3, 0x1E0 slot, palette 0) and run one update tick.
+interface: '(r5 = BattleObject*, r6 = parent context) -> void ; side effects: mutates the sprite fields
+  (Unk_0, CurAnim/Unk_0c/d, palette, OAM prio, x/y), then tails the per-type update'
+details: "- `strb r0, [r5]` with r0=0x23 writes 0x23 into object byte +0 (object_header.Flags); given\
+  \ 0x02 is OBJECT_FLAG_VISIBLE and 0x20 is UPDATE_DURING_TIMESTOP, this is setting the sprite-visible+timestop\
+  \ flag pair.\n  - `initGuiSprite_8002770(0x13, unk_2021FF0)` is called with a 16-bit resource/template\
+  \ id and a pointer in IWRAM, after which the standard GUI-sprite setup has been run on the object at\
+  \ r5.\n  - `sprite_setAnimation(0)` then `sprite_loadAnimationData()` so the slot starts on frame 0\
+  \ of its first animation and pulls the tile/OAM data in.\n  - `sprite_noShadow()` clears the shadow\
+  \ bit on the sprite struct.\n  - `sprite_setPriority_8002E14(3)` makes the cursor sit above most other\
+  \ in-battle sprites.\n  - `slotList_storeHalfwordAndClearField_800306C(0x1E0)` writes 0x1E0 into a slot\
+  \ in the high-nibble-selected 16-byte record (the sprite-data sub-entry's \"extra\"/status halfword).\n\
+  \  - `sprite_setSubRecordFieldA_8003060(4)` and `sprite_setSubEntryPaletteBank_800304A(6)` set the sub-record\
+  \ byte +0xA and the high nibble of the bank byte (palette bank = 6) respectively, then `sprite_setPalette(0)`\
+  \ sets byte +4 of the sprite to 0 (palette 0).\n  - `strb r0, [r5,#8]` with r0=4 sets CurState=4 (CUR_STATE_UPDATE,\
+  \ the standard per-frame \"alive and ticking\" state).\n  - The x/y write uses `r6+0x20` (a halfword\
+  \ index into something the parent context holds) multiplied by 0x14, added to a base of 0x1B, and `0x80,\
+  \ 0x1B`-ish coordinates are written via `sprite_setCoordinates`. So the cursor is placed on a specific\
+  \ panel column derived from the parent.\n  - `strb 0xFF, [r5,#0xc]` and `strb 0xFF, [r5,#0xd]` clear\
+  \ (or set \"no-anim\" / \"uninitialised\" markers in) the CurAnimCopy / animation fields.\n  - Finally\
+  \ `battleObject_updateByType_8118C2C` is tail-called so the per-type animation/jump dispatch runs once\
+  \ after the init.\n  - The \"panel cursor\" role is consistent with: CurAnim 0, a single halfword index\
+  \ from a parent context at +0x20 multiplied by 0x14, an OAM priority high enough to sit over the playing\
+  \ field, a low bank/palette, and a name that puts this directly next to `battleObject_updateByType_8118C2C`\
+  \ in the battle object code.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mov r0, #0x23; strb r0, [r5]` sets byte +0 of the object to 0x23 (visible | update-during-timestop)
+    at 0x08118bcc. - `mov r0, #0x13; ldr r1, off_8118C28; bl initGuiSprite_8002770` initialises a GUI
+    sprite using resource id 0x13 and IWRAM ptr `unk_2021FF0` at 0x08118bd0-0x8118bd8. - `bl sprite_setAnimation`
+    with r0=0 then `bl sprite_loadAnimationData` resets the animation to 0 and reloads its data. - `bl
+    sprite_noShadow` and `bl sprite_setPriority_8002E14` with r0=3 at 0x08118be6 set OAM priority 3. -
+    `bl slotList_storeHalfwordAndClearField_800306C` with r0=0x1E0 from `off_8118C24` writes 0x1E0 into
+    the slot''s halfword. - `bl sprite_setSubRecordFieldA_8003060` r0=4 and `bl sprite_setSubEntryPaletteBank_800304A`
+    r0=6 configure the sub-record, then `bl sprite_setPalette` r0=0 sets the palette. - `mov r0, #4; strb
+    r0, [r5,#8]` writes CurState=4 (CUR_STATE_UPDATE) at 0x08118c04. - `ldrh r2, [r6,#0x20]; mov r3, #0x14;
+    mul r2, r3; add r1, r1, r2` reads a halfword from the parent context at offset 0x20, multiplies it
+    by 0x14, and uses the result as an x-offset (panel column → pixel column lookup), matching a panel-cursor
+    placement. - `mov r0, #0xff; strb r0, [r5,#0xc]; strb r0, [r5,#0xd]` zeroes the CurAnim/CurAnimCopy
+    fields at 0x08118c14. - Tail-call `bl battleObject_updateByType_8118C2C` followed by `pop {pc}` (Thumb-form
+    return) at 0x08118c1a-0x8118c20.'
+  refs:
+  - bn6f/asm/asm32.s
+  reproduce: 'python3 tools/asmcat.py 0x08118BC8
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_initPanelCursor_8118BC8
+
+    '
+open_questions:
+- The exact meaning of byte 0x23 (which flag combination) is inferred from the OBJECT_FLAG_* constants;
+  not directly verified.
+- The semantic of `r6+0x20` is not pinned to a struct field here; the caller chain is empty in the supplied
+  metadata, so "panel column" is the best fit given the *0x14 scaling (one BN6 panel is 0x14 pixels wide
+  in OAM coordinates).
+- Why `0xFF` is written into bytes 0xc/0xd rather than 0 is unclear (could be a sentinel meaning "no previous
+  animation", or a different field reused for the cursor).
+sources:
+- discovery session 2026-10-14 batch 39 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 2472d785
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8118BC8 -> battleObject_initPanelCursor_8118BC8
+  where: bn6f 0d61d225
+  tool: tools/rename_symbol.py

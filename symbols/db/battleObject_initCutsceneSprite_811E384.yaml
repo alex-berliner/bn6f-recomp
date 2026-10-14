@@ -1,0 +1,67 @@
+name: battleObject_initCutsceneSprite_811E384
+address: '0x0811E384'
+kind: function
+previous_names:
+- sub_811E384
+status: probable
+summary: Initialises the GUI sprite attached to a battle object (slot type 0x23, sprite 0x36) — sets animation
+  0, palette 0, OAM priority 0, no shadow, palette bank 0xA, OAM slot table entry 0x280, and coordinates
+  taken from the active cutscene script slot 0.
+interface: '(r5 = BattleObject*, r6 = ?, r10 = Toolkit*) -> void ; side effects: writes many sprite/state
+  fields on the object at r5 plus performs a cutscene-script coordinate lookup'
+details: "1. Stores 0x23 into the object's CurAction byte at [r5] (`strb r0, [r5]` then `mov r0, #0x23`),\
+  \ preparing it as a GUI sprite object of subtype 0x36.\n  2. Calls initGuiSprite_8002770(0x23, 0x36)\
+  \ to populate the new sprite slot with animation metadata for sprite 0x36.\n  3. Sets current animation\
+  \ to 0, loads animation data, and turns the shadow off via sprite_noShadow — the no-shadow flag is required\
+  \ so the extra GUI sprite renders cleanly on top of the normal battle art.\n  4. sprite_setSubEntryPaletteBank_800304A(0xA)\
+  \ and slotList_storeHalfwordAndClearField_800306C(0x280) wire the OAM slot (slot index nibble in byte\
+  \ +2 selects a 16-byte OAM record; 0x280 is the standard OBJ-affine-backed sprite slot index 0x40 +\
+  \ bank 0x0). sprite_setSubRecordFieldA_8003060(0) then zeroes the extra field.\n  5. sprite_setPriority_8002E14(0)\
+  \ and sprite_setPalette(0) make the object always render behind tiles (priority 0) and use palette bank\
+  \ 0.\n  6. `strb r0, [r5,#8]` with r0=4 writes the value 4 into CurState — by the BattleObject union,\
+  \ this is `CUR_STATE_DESTROY` style \"phase\" or the destruct/init code; given r5 is just being initialised\
+  \ it is more likely CurState-related bookkeeping (bit 2 set) so the object can be drawn immediately.\n\
+  \  7. Finally tail-calls battleObject_setCoordsFromCutsceneScript_811E3CC which moves the sprite to\
+  \ the position of cutscene script slot 0 (subtracting 0x14/0x10 + 8 per the callee's contract), letting\
+  \ a battle object inherit a cutscene actor's X/Y for gui overlay purposes.\n  8. The contract is genuinely\
+  \ void: r0 is set to scratch values throughout (e.g. 0x1AC on exit) but never returned meaningfully;\
+  \ callees all clobber r0/r2/r3 freely and r4-r7/lr are not saved — the body is a leaf-ish setup sequence.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `strb r0, [r5]` with r0=0x23 sets CurAction of the battle object at r5. - `bl initGuiSprite_8002770`
+    with r0=0x23/r1=0x36 registers sprite table index 0x36. - `bl sprite_setAnimation` and `bl sprite_loadAnimationData`
+    with r0=0 reset anim. - `bl sprite_noShadow` is the only "no" helper — the GUI sprite intentionally
+    drops the shadow. - 0x280 stored into slotList matches what other battle GUI objects (e.g. cursor/preview)
+    use; 0xA palette bank also matches the typical "extra GUI" bank in bn6. - `strb r0, [r5,#8]` writes
+    4 at offset 8 (CurState/CurAction union region), consistent with setting an active/visible flag so
+    the object is immediately drawn. - Tail-call to battleObject_setCoordsFromCutsceneScript_811E3CC confirms
+    the cutscene-script slot 0 coordinate lookup. - The save of only `lr` (push {lr}; pop {pc}) shows
+    the function consumes r5/r6/r10 but returns nothing meaningful.'
+  refs:
+  - bn6f/asm/asm32.s
+  reproduce: 'python3 tools/asmcat.py 0x0811E384
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_initCutsceneSprite_811E384
+
+    '
+open_questions:
+- 'The exact purpose of value 4 at [r5,#8]: it lands in the CurState/CurAction union (offset 8) but whether
+  it is CurState''s "update" (0x04) or some local flag cannot be settled without seeing callers.'
+- What r6 carries on entry is undocumented by the contract; other battleObject_ helpers commonly take
+  a child/sibling object in r6, but no callee here actually reads it.
+- Whether this routine is "battle" or "cutscene" prefixed is uncertain — `battleObject_` matches the r5=battleObject
+  convention plus the GUI sprite usage, but no callers are recorded to confirm.
+sources:
+- discovery session 2026-10-14 batch 39 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 2472d785
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_811E384 -> battleObject_initCutsceneSprite_811E384
+  where: bn6f 0d61d225
+  tool: tools/rename_symbol.py

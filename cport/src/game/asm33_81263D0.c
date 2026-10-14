@@ -1173,18 +1173,18 @@ static void decompAndCopyData_call(u32 initRefs) {
     GUEST_CALL(decompAndCopyData);
 }
 
-/* register form: calls sub_8123300 outside this file, which has no typed C interface yet */
+/* register form: calls battle_loadTileGridByNavi_8123300 outside this file, which has no typed C interface yet */
 static void sub_8123300_call(u32 script_table, u32 dst, u32 decomp_buf) {
     R0 = script_table;
     R1 = dst;
     R2 = decomp_buf;
-    GUEST_CALL(sub_8123300);
+    GUEST_CALL(battle_loadTileGridByNavi_8123300);
 }
 
 /* Build the unknown_20096E0 dispatch table by reading the per-entry header
  * (a source/size pair from off_8127160), inflating it through getKeyedTableEntry_811FB84, and
  * copying the 12 bytes that follow into the table. Then run the two
- * decompAndCopyData initializers and finally sub_8123300 with the script list. */
+ * decompAndCopyData initializers and finally battle_loadTileGridByNavi_8123300 with the script list. */
 static void build_dispatch_table_and_init(void) {
     u32 dst = A_unk_20096E0;
     u32 src = A_off_8127160;
@@ -2244,12 +2244,12 @@ static void decompress_data(u32 init_refs) {
     GUEST_CALL(decompAndCopyData);
 }
 
-/* register form: calls sub_8123300 outside this file, which has no typed C interface yet */
+/* register form: calls battle_loadTileGridByNavi_8123300 outside this file, which has no typed C interface yet */
 static void decompress_text_table(u32 table, u32 text_dest, u32 decomp_buf) {
     R0 = table;
     R1 = text_dest;
     R2 = decomp_buf;
-    GUEST_CALL(sub_8123300);
+    GUEST_CALL(battle_loadTileGridByNavi_8123300);
 }
 
 /* register form: calls CopyBackgroundTiles outside this file, which has no typed C interface yet */
@@ -5770,8 +5770,8 @@ Next loadDecompressedAsset_812AF78(void) {
 /* ── textScript_loadAndRunEmbeddedArchive_812AF84 ── */
 /* textScript_loadAndRunEmbeddedArchive_812AF84: decompress the embedded text archive (byte_812B168) into the
  * decomp buffer, then hand the decompressed script (eTextScript201BA20) and
- * its descriptor (off_812AFE4) to the text-script engine (sub_8123300).
- * Result registers (r1-r7) are whatever sub_8123300 leaves behind. */
+ * its descriptor (off_812AFE4) to the text-script engine (battle_loadTileGridByNavi_8123300).
+ * Result registers (r1-r7) are whatever battle_loadTileGridByNavi_8123300 leaves behind. */
 Next textScript_loadAndRunEmbeddedArchive_812AF84(void) {
     /* Decompress the packed data blob into work RAM. */
     R0 = A_byte_812B168;
@@ -5781,7 +5781,7 @@ Next textScript_loadAndRunEmbeddedArchive_812AF84(void) {
     R0 = A_off_812AFE4;
     R1 = A_eTextScript201BA20;
     R2 = A_eDecompBuffer2013A00;
-    GUEST_CALL(sub_8123300);
+    GUEST_CALL(battle_loadTileGridByNavi_8123300);
 
     RETURN_TO_CALLER();
 }

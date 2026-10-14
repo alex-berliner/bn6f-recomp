@@ -1,0 +1,54 @@
+name: battleObject_initBeastOutSprite_8118EA8
+address: '0x08118EA8'
+kind: function
+previous_names:
+- sub_8118EA8
+status: probable
+summary: 'Initialises a battle object''s sprite for a BeastOut-state visual: GUI sprite init, animation,
+  palette, priority, and a per-actor coordinate table lookup.'
+interface: '(r5 = battle object, r6 = secondary context) -> void ; side effects: writes object/sprite
+  fields, sets up OAM, no return value to caller'
+details: "Sets object header byte 0 to 0x23 (bits 1+2+4+0x20 = active|visible|pause_update|unk_20).\n\
+  \  Calls `initGuiSprite_8002770(r0=0x17, r1=unk_20226F0)` to bring up a GUI sprite with a 0x17\n  parameter.\n\
+  \  Reads byte 0xF from the secondary context (`[r6,#0xf]`) as the actor index; uses it both as\n  the\
+  \ animation index (`sprite_setAnimation`) and to select a (x,y) pair from a hard-coded\n  3-entry table\
+  \ at `byte_8118F0C`:\n    index 0 -> (0x4F, 0x60),  index 1 -> (0x47, 0x60),  index 2 -> (0x47, 0x58).\n\
+  \  Then `sprite_setCoordinates(r0=x, r1=y)`, also writing 0x4 into `[r5,#8]` (CurState value,\n  likely\
+  \ CUR_STATE_UPDATE).\n  Sprite-load-animation-load, no-shadow follow, priority=0, storeHalfword 0x220\
+  \ via the slot\n  selector, sub-record field +0xA = 4, sub-entry palette bank = 4, palette = 0, and\n\
+  \  `sprite_setObjWindowMode` complete the OAM configuration.\n  Finally tail-calls `sub_8118F14` with\
+  \ no arguments and `pop {pc}` to return.\n  Caller is `0x08118e92` (one observed), suggesting this is\
+  \ invoked from a beastOut/object\n  init list. r5 holds the battle object being configured; r6 looks\
+  \ like a secondary object\n  or per-actor context whose byte 0xF picks the sprite variant.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mov r0,#0x23; strb r0,[r5]` writes 0x23 into object header byte 0 - `ldrb r0,[r6,#0xf]`
+    reads actor index from r6 offset 0xF - `lsl r0,r0,#1; add r2,r2,r0` and the ldrb of two bytes show
+    a 2-byte table lookup - `byte_8118F0C: .byte 0x4F,0x60, 0x47,0x60, 0x47,0x58, 0x00,0x00` is the x,y
+    table indexed by actor - `strb r0,[r5,#8]` writes 0x4 to CurState - off_8118F00 = 0x220, off_8118F04
+    = unk_20226F0 - Captured call entry: r5 used as object ptr, r6 as 0x02022244 (looks like EWRAM struct)'
+  refs:
+  - bn6f/asm/asm32.s
+  reproduce: 'python3 tools/asmcat.py 0x08118EA8
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_initBeastOutSprite_8118EA8
+
+    '
+open_questions:
+- What `unk_20226F0` points to (likely a small GUI sprite descriptor table). What lives at r6; r6 holds
+  a struct from which byte 0xF is an actor variant used for both animation index and coordinates. What
+  `sub_2218F14` adds (probably animation/playback for the configured sprite).
+sources:
+- discovery session 2026-10-14 batch 39 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 2472d785
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8118EA8 -> battleObject_initBeastOutSprite_8118EA8
+  where: bn6f 0d61d225
+  tool: tools/rename_symbol.py

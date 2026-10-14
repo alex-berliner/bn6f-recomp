@@ -37,7 +37,7 @@ Next ho_80A4984(void) {
     R0 = LD32(A_jt_80A49A0 + selector);
 
     switch (selector) {
-    case 0x0: GUEST_CALL(sub_80A49B0);   break;
+    case 0x0: GUEST_CALL(battleObject_initFromParams_80A49B0);   break;
     case 0x4: GUEST_CALL(event_80A4A08); break;
     case 0x8: GUEST_CALL(sub_80A4A90);   break;
     }
@@ -45,7 +45,7 @@ Next ho_80A4984(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80A49B0 ── */
+/* ── battleObject_initFromParams_80A49B0 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r4, r5; } call_sprite_load_result_sub_80A49B0;
 /* register form: generated wrapper: sprite_load has no typed C interface yet */
@@ -209,8 +209,8 @@ static u32 init_field_sprite(u32 obj, u32 cfg) {
     return ev.r2;
 }
 
-/* sub_80A49B0(r5 = sprite object, r7 = config block, r10 = [layer ctx]) -> r2 */
-Next sub_80A49B0(void) {
+/* battleObject_initFromParams_80A49B0(r5 = sprite object, r7 = config block, r10 = [layer ctx]) -> r2 */
+Next battleObject_initFromParams_80A49B0(void) {
     R2 = init_field_sprite(R5, R7);
     RETURN_TO_CALLER();
 }

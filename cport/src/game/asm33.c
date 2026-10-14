@@ -8,7 +8,7 @@
 #include "game.h"
 #include "runtime.h"
 
-/* ── sub_8123300 ── */
+/* ── battle_loadTileGridByNavi_8123300 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r4; } call_sub_8123360_result;
 /* register form: generated wrapper: sub_8123360 has no typed C interface yet */
@@ -109,12 +109,12 @@ static void decompress_navi_graphic(u32 bank_table, u32 dest_buf, u32 out_buf) {
     }
 }
 
-/* sub_8123300(r0 = bank_table, r1 = dest_buf, r2 = out_buf)
+/* battle_loadTileGridByNavi_8123300(r0 = bank_table, r1 = dest_buf, r2 = out_buf)
  * Loads/decompresses the current Navi's tile graphic into dest_buf. r1 and r2 are
  * preserved across every callee, so they pass through unchanged. r4 and r7 are also
  * preserved (r4 never appears in the body; r7 is a scratch the inner code restores
  * from the stack). */
-Next sub_8123300(void) {
+Next battle_loadTileGridByNavi_8123300(void) {
     u32 dest_buf = R1;
     u32 out_buf  = R2;
 
@@ -1016,12 +1016,12 @@ static void decompress_copy_data(u32 table) {
     GUEST_CALL(decompAndCopyData);
 }
 
-/* Register form: calls sub_8123300 outside this file, which has no typed C interface yet */
+/* Register form: calls battle_loadTileGridByNavi_8123300 outside this file, which has no typed C interface yet */
 static void load_text_script_block(u32 table, u32 dest, u32 buffer) {
     R0 = table;
     R1 = dest;
     R2 = buffer;
-    GUEST_CALL(sub_8123300);
+    GUEST_CALL(battle_loadTileGridByNavi_8123300);
 }
 
 /* Register form: calls CopyBackgroundTiles outside this file, which has no typed C interface yet */
@@ -1857,12 +1857,12 @@ static void decomp_and_copy(u32 table) {
     GUEST_CALL(decompAndCopyData);
 }
 
-/* register form: calls sub_8123300 outside this file, which has no typed C interface yet */
+/* register form: calls battle_loadTileGridByNavi_8123300 outside this file, which has no typed C interface yet */
 static void setup_text_script(u32 comp_texts, u32 text_script, u32 decomp_buffer) {
     R0 = comp_texts;
     R1 = text_script;
     R2 = decomp_buffer;
-    GUEST_CALL(sub_8123300);
+    GUEST_CALL(battle_loadTileGridByNavi_8123300);
 }
 
 /* register form: calls CopyBackgroundTiles outside this file, which has no typed C interface yet.

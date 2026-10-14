@@ -1,0 +1,75 @@
+name: weatherComp_spawnPlayerAfterReset_808F8AC
+address: '0x0808F8AC'
+kind: function
+previous_names:
+- sub_808F8AC
+status: probable
+summary: After the Mr. Weather comp reset cutscene, places the overworld player sprite back on screen
+  at sprite 0x80 (palette index 3, animation 0x14), copies their current map coords into the player's
+  Next-coords with Z forced to 0x40, clears interaction-lock, and primes a latched state byte — returning
+  0 when done.
+interface: '() -> r0 = 0 ; side effects: loads sprite 0x80/anim 0x1c on the OW player object, sets s2000aa0
+  fields, writes NextX/NextY/NextZ=0x40 and propagates new position to the player object, clears InteractionLocked,
+  writes 4 via loc_809E306'
+details: "Pushes only {r5,lr}; r10 is the toolkit pointer (confirmed callee ReadOWPlayerObjectCoords takes\
+  \ r10).\n  Calls owPlayer_setS2000AA0Param0x4 with #3 (Sprite_04 = 3).\n  Resolves r5 = toolkit->GameStatePtr->OverworldPlayerObjectPtr;\
+  \ loads sprite (0x80, 0x1c) into it via sprite_load, sets current animation to AnimSelect=0x14 (ldrb\
+  \ [r5,#0x14]), then sprite_loadAnimationData / sprite_noShadow / sprite_update.\n  Reads s2000aa0 byte\
+  \ at offset 0x1c via off_808F8FC->off_808F5D4 and forwards it to SetOWPlayerNaviPaletteIndex.\n  ReadOWPlayerObjectCoords\
+  \ fills r0..r3 with X/Y/Z; then ldr r2,=0x40 ; lsl r2,r2,#0x10 -> r2 = 0x00400000, which is exactly\
+  \ Z encoded as fixed-point by overworld_player_object_struct (Z is u32 at loc=0x24, fully integer-shifted\
+  \ by <<16). The other coords come from the current player object.\n  owPlayer_copyCoordsToNextCoordsWritePlayerCoordsThenIndirectlySetPlayerCoordsMaybe_809e188\
+  \ backs the current position to NextX/NextY and writes (r0,r1,r2=Z=0x40) into the live Coords block;\
+  \ the comment in the callee's name (and the overworld_player_object_struct showing X=0x1c, Y=0x20, Z=0x24,\
+  \ NextX=0x28...) fits.\n  owPlayer_clearInteractionLocked_809e23c clears InteractionLocked at +0x17.\n\
+  \  Ends with `mov r0,#4 ; bl loc_809E306`, so loc_809E306 is called with the freshly-reset Coords and\
+  \ argument 4 appears to be a sub-state or jump-table selector; out r0 = 0 (\"done\"). The contract says\
+  \ out=['r2'] only — meaning r2 was propagated to caller for reuse, not a return value.\n  Single caller\
+  \ weatherComp_putPlayerBack_808F810 frames this as the \"player rebuild\" step after the Mr. Weather\
+  \ comp reset writes flag 0xBE4; this function is the part that actually puts the sprite on screen and\
+  \ parks the player at a fixed Z.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mov r0, #3 ; bl owPlayer_setS2000AA0Param0x4_809e314` sets Sprite_04 to 3 (palette selector
+    slot). - `ldr r5,[r5,#oToolkit_GameStatePtr] ; ldr r5,[r5,#oGameState_OverworldPlayerObjectPtr]` matches
+    toolkit->GameState->OWPlayerObject. - `mov r0,#0x80 ; mov r1,#0x1c ; mov r2,#0x6c ; bl sprite_load`
+    loads the player sprite slot with anim 0x1c. - `ldrb r0,[r5,#0x14] ; bl sprite_setAnimation` matches
+    OWPlayerObject.AnimationSelect at loc=0x14. - `ldr r1,off_808F8FC ; ldr r1,[r1] ; ldrb r0,[r1,#0x1c]`
+    indexes s2000aa0 (struct size 0x1c) at the byte right past the struct, which fits the existing pattern
+    of an extra scratch byte used by SetOWPlayerNaviPaletteIndex. - `mov r2,#0x40 ; lsl r2,r2,#0x10` yields
+    0x00400000; OWPlayerObject.Z is u32 at loc=0x24 so 0x40 in the lower half == fixed-point Z=0x40 (one
+    tile unit). - `bl owPlayer_copyCoordsToNextCoordsWritePlayerCoordsThenIndirectlySetPlayerCoordsMaybe_809e188`
+    followed by `bl owPlayer_clearInteractionLocked_809e23c` clears +0x17 (InteractionLocked). - Final
+    `mov r0,#0 ; pop {r5,pc}` — caller-facing return is 0 ("reset complete"), caller contract in=[''r10'',''lr'']
+    out=[''r2''] confirms the function is void-like (no value returned to caller besides the implicit
+    z flag).'
+  refs:
+  - bn6f/asm/asm25.s
+  reproduce: 'python3 tools/asmcat.py 0x0808F8AC
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): weatherComp_spawnPlayerAfterReset_808F8AC
+
+    '
+open_questions:
+- The exact role of the trailing `mov r0,#4 ; bl loc_809E306` — whether 4 is a state id, a sub-jumptable
+  offset, or a flag (0x4) for the OW player state at +0x08 — isn't inferrable from this function alone.
+  Comparing to other cuts at loc_809E306 would settle it.
+- 'Whether SetOWPlayerNaviPaletteIndex is being asked to "set" or to "read+set" is implicit from the order:
+  the function first reads s2000aa0+0x1c then calls SetOWPlayerNaviPaletteIndex(r0) without further use
+  — looks like a one-shot copy from a temp byte.'
+- Why sprite 0x80 specifically vs reusing an already-loaded sprite slot — could be the "MegaMan after
+  reset" sprite; matching values across the Mr. Weather comp sub_jumptable would confirm.
+sources:
+- discovery session 2026-10-14 batch 39 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 2472d785
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_808F8AC -> weatherComp_spawnPlayerAfterReset_808F8AC
+  where: bn6f 0d61d225
+  tool: tools/rename_symbol.py

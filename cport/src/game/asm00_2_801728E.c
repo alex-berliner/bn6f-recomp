@@ -43,7 +43,7 @@ done:
 /* Phase handler addresses as stored in the original's jump table at off_801740C.
  * The table is indexed by the raw CurPhase byte, so the phases count 0, 4, 8, 0xC;
  * the stored values carry the Thumb bit. */
-#define PHASE_HANDLER_00 0x0801741Du /* sub_801741C + 1 */
+#define PHASE_HANDLER_00 0x0801741Du /* battle_destroyBattleObject_801741C + 1 */
 #define PHASE_HANDLER_04 0x0801746Fu /* sub_801746E + 1 */
 #define PHASE_HANDLER_08 0x080174ABu /* battle_objectTickTimerAndSetPhaseC_80174AA + 1 */
 #define PHASE_HANDLER_0C 0x080174BFu /* battle_tickIntroState_80174BE + 1 */
@@ -60,13 +60,13 @@ static void force_white_palette(void) {
     GUEST_CALL(sprite_forceWhitePalette);
 }
 
-/* register form: calls sub_801741C outside this file, which has no typed C interface yet.
+/* register form: calls battle_destroyBattleObject_801741C outside this file, which has no typed C interface yet.
  * The original loads the chosen handler's address into r1 before jumping to it, and a
  * handler may leave r1 untouched, so r1 must carry that address into the call. */
 static void run_phase_00(u32 phase) {
     R0 = phase;
     R1 = PHASE_HANDLER_00;
-    GUEST_CALL(sub_801741C);
+    GUEST_CALL(battle_destroyBattleObject_801741C);
 }
 
 /* register form: calls sub_801746E outside this file, which has no typed C interface yet.

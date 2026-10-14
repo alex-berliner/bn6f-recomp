@@ -1,0 +1,72 @@
+name: battleObject_stepInitializeChainedCollision_80C52D0
+address: '0x080C52D0'
+kind: function
+previous_names:
+- sub_80C52D0
+status: probable
+summary: Per-frame init/update handler for a battle object that owns a chained child collision-data block,
+  syncing its panel coordinates then transitioning to UPDATE.
+interface: (r5 = battleObj, r10 = toolkit, r4/r8 preserved) -> void ; reads/writes r5-battleObj and its
+  CollisionData; pres r4/r8 for caller
+details: "1. Calls object_isCurrentPanelValid(r5); if the object's current panel is invalid, branch to\
+  \ free-and-exit.\n  2. Reads `PanelX`/`PanelY` ([r5,#oBattleObject_PanelX] / +1) and resolves them to\
+  \ 16.16 pixel X/Y via object_getCoordinatesForPanels, storing back at oBattleObject_X / oBattleObject_Y\
+  \ (u32:u32).\n  3. Allocates a CollisionData slot via object_createCollisionData (returns the slot ptr\
+  \ in r7). If allocation fails (`tst r0,r0` after `bne`), branches to free-and-exit (object_freeMemory,\
+  \ then pop {pc}).\n  4. Loads Param4 (r1) and Param3 (r2) and the ExtraVars[0] ptr ([r5,#oBattleObject_ExtraVars])\
+  \ into r3 and calls object_setupCollisionData(r0=?, r1=Param4, r2=Param3, r3=ExtraVars ptr). [Note:\
+  \ object_setupCollisionData takes r0 as &collision, r1 as self type flags arg, r2 as target flags arg\
+  \ — here r0 is whatever was left in r0 after createCollisionData (likely collision ptr), and Param4/Param3\
+  \ are passed as type args.]\n  5. Copies Param1 (r5+#4) into CollisionData.Region ([r7,#oCollisionData_Region]).\n\
+  \  6. Calls object_setCollisionHitEffect with Param2 ([r5,#oBattleObject_Param2] = +5) to set hit-effect.\n\
+  \  7. If ExtraVars[4] ([r5,#oBattleObject_ExtraVars+4]) != 0, calls object_setCollisionStatusEffect1(r0=that\
+  \ word).\n  8. If ExtraVars[8] ([r5,#oBattleObject_ExtraVars+8]) != 0, calls sub_801A4D0(r0=ExtraVars[8],\
+  \ r1=ExtraVars[0xc]).\n  9. Calls object_presentCollisionData (r5's collision refresh handler), then\
+  \ sets `oBattleObject_CurStateActionPhaseAndPhaseInitialized = CUR_STATE_UPDATE` (=4).\n  10. Tail-calls\
+  \ battle_object_stepLifetimeDestroyOnHit_80C532E then returns via `pop {pc}`.\n  Captured callers from\
+  \ `snap_story2_*.bin` all enter with lr=0x080c52bc, which is the chase object dispatcher; r5 was preserved\
+  \ across the call (caller-callee contract preserves r5). The function behaves as the \"chained-collision\"\
+  \ flavor of the standard battle-object init step (a sibling to other 80C52D0-style handlers); the parent\
+  \ uses Param1=region, Param2=hit effect, Param3/Param4=type tables, ExtraVars[0..0xC]=three extra collision-arg\
+  \ words used to set status effect and to invoke sub_801A4D0.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {lr}` then `pop {pc}`; no r4/r5 push — confirms r5/r10 are preserved by global contract
+    and r0..r3 are scratch. - `bl object_isCurrentPanelValid` on r5, then `beq loc_80C52F0` — skip-to-free
+    path when invalid panel. - `ldrb r0,[r5,#oBattleObject_PanelX] / +1 ; bl object_getCoordinatesForPanels
+    ; str r0/r1,[r5,#oBattleObject_X / +4]` — converts panel (col,row) to fixed-point coords, stores back.
+    - `bl object_createCollisionData ; mov r7,r0 ; tst r0,r0 ; bne loc_80C52F6` — fail-to-allocate also
+    free. - `bl object_freeMemory ; pop {pc}` (loc_80C52F0) is the shared error/exit path used by both
+    branches. - `ldrb r1,[r5,#oBattleObject_Param4] / Param3 / ldr r3,[r5,#oBattleObject_ExtraVars] ;
+    bl object_setupCollisionData` — wires collision type tables from Param3/Param4 and ExtraVars[0]. -
+    `ldrb r1,[r5,#oBattleObject_Param1] ; strb r1,[r7,#oCollisionData_Region]` — copies param 1 to collision
+    Region. - `ldrb r0,[r5,#oBattleObject_Param2] ; bl object_setCollisionHitEffect` — sets hit-effect.
+    - Two guarded calls keyed off `ldr r0,[r5,#oBattleObject_ExtraVars+4]` (status effect) and `+8 / +0xc`
+    (sub_801A4D0). - `bl object_presentCollisionData` then `mov r0,#CUR_STATE_UPDATE ; str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]`
+    — finally transitions the object out of INIT. - `bl battle_object_stepLifetimeDestroyOnHit_80C532E`
+    — the "lifetime / destroy-on-hit" shared step taken right after init completes.'
+  refs:
+  - bn6f/asm/asm31.s
+  reproduce: 'python3 tools/asmcat.py 0x080C52D0
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_stepInitializeChainedCollision_80C52D0
+
+    '
+open_questions:
+- Which exact battle object type this is (chained-collision object). The captured snap_story2 calls all
+  enter from a single caller at 0x080c52bc with r5 preserved; the parent caller and which chip/feature
+  spawns this object is what would confirm its identity.
+sources:
+- discovery session 2026-10-14 batch 39 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 2472d785
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80C52D0 -> battleObject_stepInitializeChainedCollision_80C52D0
+  where: bn6f 0d61d225
+  tool: tools/rename_symbol.py

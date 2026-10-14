@@ -1,0 +1,66 @@
+name: battle_initNaviCustomizerScene_81356F4
+address: '0x081356F4'
+kind: function
+previous_names:
+- sub_81356F4
+status: probable
+summary: 'Initialize / boot the Navi Customizer battle scene: clear VRAM/palette/GFX, configure fade,
+  reset e-struct records, install the BattleObject table, and play the customizer BGM.'
+interface: '() -> void ; side effects: clears VRAM (0x6000000-0x600DFFF), zeroes IWRAM 0x3001960 and BG
+  tile block at 0x30025C0, configures toolkit RenderInfo, zeroes toolkit->Unk2009740, configures toolkit->Unk200f3a0,
+  installs screen fade (mode 4,0x10), resets battle e-struct records, zeroes a large battle-state block
+  in [r5], stores the indexed table pointer at sub-state offset 0x44, then runs sub_8135B94 / sub_813BAA8
+  / sub_813676C / sub_813660C / sub_813C1C0 / sub_81362F8 / sub_8135D8C / sub_8135D9C, spawns the e-struct
+  records at byte_8135628, and starts BGM SONG_NAVI_CUSTOMIZER.'
+details: "- Saves only lr (no r4-r11). Uses r5 as a base pointer for the battle scene record/sub-state\
+  \ (>=0x44 bytes) for the rest of the function.\n  - zeroFillVRAM + ZeroFill_byte_3001960 + ZeroFillGFX30025c0\
+  \ reset every render-side buffer. dword_81357BC = 0xDF40 is stored to RenderInfo+0 (likely a tilemap\
+  \ base/disp cnt); subsequent stores of 0 to +0x10..+0x1a clear six other render-info halfwords.\n  -\
+  \ zeroFill_e2009740 + writes into toolkit->Unk200f3a0_Ptr set up a fixed palette/layout for the customizer\
+  \ (writes 0x2F/0x3F/0x3F to offsets +9/+a/+b; 6/+3 to +3/+2; 0/+0xF0 to +7/+6; 0xE to +6). Matches the\
+  \ project's \"scratch struct\" pattern.\n  - Direct writes at [r5]+0x1, +0x2 (+0x17/+0xc/+0x13/+0x1e..+0x26/+0x3a/+0x30/+0x32/+0xd/+0xe/+0x14)\
+  \ zero a large block; the highest offset 0x3A and the 0x30/0x32 word imply r5 points to a 0x3C+ byte\
+  \ scene-state struct.\n  - sub_813B920 return is stored at [r5]+0x10 (mode byte); CheckKeyItem(0x71)\
+  \ result is stored at [r5]+0xf (key-item bool: 0x71 is likely \"has-beat-game\"-style). getIndexedDataTable_813B9E0\
+  \ result is stored at [r5]+0x44 (table ptr field).\n  - sub_813BAA8 / sub_813676C / sub_813660C(r0=0)\
+  \ / sub_813C1C0 / sub_81362F8 / sub_8135D8C / sub_8135D9C chain the standard init steps; sub_813660C\
+  \ takes 0 (the \"init\" arg, vs the running frame). battle_spawnEStructRecordsFromTable_80465A0 takes\
+  \ &byte_8135628 (the local e-struct spawn table near this code), creating type-9 records in eStructArr2008450.\
+  \ Finally PlayMusic(SONG_NAVI_CUSTOMIZER).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- zeroFillVRAM/ZeroFill_byte_3001960/ZeroFillGFX30025c0 at the top match every other battle-scene
+    init pattern (e.g. video reset startup). - toolikt_renderInfo write of 0xDF40 and clearing offsets
+    +0x10..+0x1a is a fixed RenderInfo setup. - toolikt->Unk200f3a0_Ptr writes match the canonical "configure
+    scratch struct" sequence used elsewhere. - sub_813B920 result at [r5]+0x10 (CurAnim or a state byte)
+    and CheckKeyItem(0x71) result at [r5]+0xf (a "key item owned" flag) match an init step that needs
+    both a numeric mode and a key-item availability flag. - sub_813B9E0 index table pointer stored at
+    offset 0x44 (a "data table" ptr field typical of these scenes). - battle_spawnEStructRecordsFromTable_80465A0
+    called with off_81357C0 = byte_8135628, a local 0xFF-terminated table by the project naming. - PlayMusic
+    with constant SONG_NAVI_CUSTOMIZER literal at the very end identifies the screen. - The "Reset step"
+    sub_8046664 between fade and zero-fill clears overlay-scene records coming back from a battle.'
+  refs:
+  - bn6f/asm/asm36.s
+  reproduce: 'python3 tools/asmcat.py 0x081356F4
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battle_initNaviCustomizerScene_81356F4
+
+    '
+open_questions:
+- Exact identity of the r5 base struct (size >0x44); only 0x44 is confirmed used here.
+- Meaning of the scratch-struct bytes (0x2F, 0x3F/0x3F, 6, 0xF0, 0xE) at Unk200f3a0; appear palette/tilemap
+  related but purpose is inferred.
+sources:
+- discovery session 2026-10-14 batch 39 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 2472d785
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_81356F4 -> battle_initNaviCustomizerScene_81356F4
+  where: bn6f 0d61d225
+  tool: tools/rename_symbol.py

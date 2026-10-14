@@ -1414,12 +1414,12 @@ Next sub_8003E18(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8003E98 ── */
-/* sub_8003E98: invoke the battle-object reset routine in mode 1
+/* ── scene_perFrame_paletteGroupRecordInit_8003E98 ── */
+/* scene_perFrame_paletteGroupRecordInit_8003E98: invoke the battle-object reset routine in mode 1
  * (the code following the pop {pc} in the original — a loop zeroing the
  * SpriteData of every eT1BattleObject slot — is unreachable and omitted).
  * No outputs; all registers may be clobbered. */
-Next sub_8003E98(void) {
+Next scene_perFrame_paletteGroupRecordInit_8003E98(void) {
     R0 = 1;
     GUEST_CALL(sprite_recordPaletteCountToGroupSlot_80028C0);
     RETURN_TO_CALLER();
@@ -2645,9 +2645,9 @@ static void call_sub_8003BF4_gamestate_OnMapUpdate_8005268(void) {
     GUEST_CALL(owMapObject_renderAll_8003BF4);
 }
 
-/* register form: calls sub_8003E98 outside this file, which has no typed C interface yet */
+/* register form: calls scene_perFrame_paletteGroupRecordInit_8003E98 outside this file, which has no typed C interface yet */
 static void call_sub_8003E98_gamestate_OnMapUpdate_8005268(void) {
-    GUEST_CALL(sub_8003E98);
+    GUEST_CALL(scene_perFrame_paletteGroupRecordInit_8003E98);
 }
 
 /* register form: calls npc_drawSprites_800467C outside this file, which has no typed C interface yet */
@@ -2801,9 +2801,9 @@ static void call_sub_8003BF4(void) {
     GUEST_CALL(owMapObject_renderAll_8003BF4);
 }
 
-/* register form: calls sub_8003E98 outside this file, which has no typed C interface yet */
+/* register form: calls scene_perFrame_paletteGroupRecordInit_8003E98 outside this file, which has no typed C interface yet */
 static void call_sub_8003E98(void) {
-    GUEST_CALL(sub_8003E98);
+    GUEST_CALL(scene_perFrame_paletteGroupRecordInit_8003E98);
 }
 
 /* register form: calls npc_drawSprites_800467C outside this file, which has no typed C interface yet */
@@ -2969,7 +2969,7 @@ static const u16 warp_entry_cues[2] = { 0xE7, 0xEC };
 
 /* register form: calls the overworld per-frame update/draw routines
  * (dispatch_80339CC, scenario_runEffectStateJumptable_80039AA, object_dispatchByType_8003AFA, sprite_setRenderFlushState_80027B4, sprite_resetPaletteCount_800286C,
- * owMapObject_renderAll_8003BF4, sub_8003E98, npc_drawSprites_800467C, sprite_finalizeBattleSpriteGroupQueue_8004298,
+ * owMapObject_renderAll_8003BF4, scene_perFrame_paletteGroupRecordInit_8003E98, npc_drawSprites_800467C, sprite_finalizeBattleSpriteGroupQueue_8004298,
  * sprite_finishGroup_8004590, owMapObject_queueSprites_8004934, event_runArmedCallback_80024AE) outside this
  * file, which have no typed C interface yet */
 static void run_overworld_updates(void) {
@@ -2979,7 +2979,7 @@ static void run_overworld_updates(void) {
     GUEST_CALL(sprite_setRenderFlushState_80027B4);
     GUEST_CALL(sprite_resetPaletteCount_800286C);
     GUEST_CALL(owMapObject_renderAll_8003BF4);
-    GUEST_CALL(sub_8003E98);
+    GUEST_CALL(scene_perFrame_paletteGroupRecordInit_8003E98);
     GUEST_CALL(npc_drawSprites_800467C);
     GUEST_CALL(sprite_finalizeBattleSpriteGroupQueue_8004298);
     GUEST_CALL(sprite_finishGroup_8004590);
@@ -3062,8 +3062,8 @@ static void call_sub_800286C_sub_80053E4(void) { GUEST_CALL(sprite_resetPaletteC
 /* register form: calls owMapObject_renderAll_8003BF4 outside this file, which has no typed C interface yet */
 static void call_sub_8003BF4_sub_80053E4(void) { GUEST_CALL(owMapObject_renderAll_8003BF4); }
 
-/* register form: calls sub_8003E98 outside this file, which has no typed C interface yet */
-static void call_sub_8003E98_sub_80053E4(void) { GUEST_CALL(sub_8003E98); }
+/* register form: calls scene_perFrame_paletteGroupRecordInit_8003E98 outside this file, which has no typed C interface yet */
+static void call_sub_8003E98_sub_80053E4(void) { GUEST_CALL(scene_perFrame_paletteGroupRecordInit_8003E98); }
 
 /* register form: calls npc_drawSprites_800467C outside this file, which has no typed C interface yet */
 static void call_npc_draw_sprites(void) { GUEST_CALL(npc_drawSprites_800467C); }
@@ -3288,9 +3288,9 @@ static void call_sub_8003BF4_sub_8005642(void) {
     GUEST_CALL(owMapObject_renderAll_8003BF4);
 }
 
-/* register form: calls sub_8003E98 outside this file, which has no typed C interface yet */
+/* register form: calls scene_perFrame_paletteGroupRecordInit_8003E98 outside this file, which has no typed C interface yet */
 static void call_sub_8003E98_sub_8005642(void) {
-    GUEST_CALL(sub_8003E98);
+    GUEST_CALL(scene_perFrame_paletteGroupRecordInit_8003E98);
 }
 
 /* register form: calls npc_drawSprites_800467C outside this file, which has no typed C interface yet */
@@ -3469,7 +3469,7 @@ Next mainState_runFrame_8005814(void) {
     GUEST_CALL(sprite_setRenderFlushState_80027B4);
     GUEST_CALL(sprite_resetPaletteCount_800286C);
     GUEST_CALL(owMapObject_renderAll_8003BF4);
-    GUEST_CALL(sub_8003E98);
+    GUEST_CALL(scene_perFrame_paletteGroupRecordInit_8003E98);
     GUEST_CALL(npc_drawSprites_800467C);
     GUEST_CALL(sprite_finalizeBattleSpriteGroupQueue_8004298);
     GUEST_CALL(sprite_finishGroup_8004590);

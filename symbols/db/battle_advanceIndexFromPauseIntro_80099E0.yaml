@@ -1,0 +1,56 @@
+name: battle_advanceIndexFromPauseIntro_80099E0
+address: '0x080099E0'
+kind: function
+previous_names:
+- sub_80099E0
+status: probable
+summary: Battle state step that, after a battle is paused mid-introduction, finishes the intro by spawning
+  the type-4 enemy object and enemy objects, plays battle music, then advances BattleState Index_00 from
+  pause intro (4) to either the next state or returns to the chip-select dispatch.
+interface: '(r5 = BattleStatePtr) -> void ; side effects: writes to BattleState Unk_03/Unk_02/Index_01/Unk_02_03/Unk_1a,
+  may play music, pause battle, set event flag 0x1735, set request bits at dword_20352C0'
+details: "- On entry, reads BattleState_Unk_03 (r5+0x03). If zero (first entry), increments Unk_1a or\
+  \ loads it from BattleSettings+5 depending on whether GetBattleEffects()&0x400 is set, then calls battle_spawnType4ObjectWithActiveFlag_80E06F8,\
+  \ battle_SpawnEnemyObjects_8007358, PauseBattle, battle_applyNaviStatTableEntry_8014178; finally chooses\
+  \ a music id (0x15 if effects&0x8, else BattleSettings+2) and PlayMusic unless id==0x63, then sets Unk_03=4\
+  \ and exits.\n  - On the second entry (Unk_03 nonzero), if BattleState_Unk_02 is zero, calls sub_8009A68\
+  \ and sets Unk_02=4; then waits for the battle-state Unk_5c bit2 (battle_getStateUnk5c_800139A result\
+  \ >>2 bcc) before dispatching: dispatch_801DA48(1), eStruct2035280_SetRequestBits_801BECC(1), EVENT_1735\
+  \ set (with r4=0x24 if event already set, else r4=4), writes r4 to BattleState Index_01, zeros BattleState\
+  \ Unk_02_03 (halfword at r5+2).\n  - r10 is Toolkit (per callees reading r10); r5 holds BattleStatePtr.\n\
+  \  - The \"intro\" framing matches typical BN6 patterns: state=0->4 spawns/setup; state=4->idle pauses\
+  \ then dispatches the next BattleController tick.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0, [r5,#oBattleState_Unk_03]` and `bne loc_8009A30` gate the two-stage behaviour on
+    this byte. - First stage: `bl battle_spawnType4ObjectWithActiveFlag_80E06F8`, `bl battle_SpawnEnemyObjects_8007358`,
+    `bl PauseBattle`, `bl battle_applyNaviStatTableEntry_8014178`, then `bl PlayMusic` with id derived
+    from `BattleSettings+5`/`BattleSettings+2` (or 0x15). - Second stage: `bl battle_getStateUnk5c_800139A`
+    then `lsr r0,#2; bcc locret` is the wait-for-flag pattern. - On completion: `mov r0,#1; bl dispatch_801DA48`
+    and `bl eStruct2035280_SetRequestBits_801BECC` set the next state/dispatch, with r4 chosen from EVENT_1735
+    check (`TestEventFlagFromImmediate`). - Writes to r5: `strb r0,[r5,#oBattleState_Unk_03]`, `oBattleState_Unk_02`,
+    `oBattleState_Index_01`, `strh r0,[r5,#oBattleState_Unk_02_03]`.'
+  refs:
+  - bn6f/asm/asm00_1.s
+  reproduce: 'python3 tools/asmcat.py 0x080099E0
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battle_advanceIndexFromPauseIntro_80099E0
+
+    '
+open_questions:
+- Exact semantic of EVENT_1735 branching (why 0x24 vs 4 for Index_01) — would need an external symbol
+  map for EVENT_1735 to settle.
+sources:
+- discovery session 2026-10-14 batch 39 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 2472d785
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80099E0 -> battle_advanceIndexFromPauseIntro_80099E0
+  where: bn6f 0d61d225
+  tool: tools/rename_symbol.py

@@ -1,0 +1,71 @@
+name: owMapObject_mrWeatherInit_80A9458
+address: '0x080A9458'
+kind: function
+previous_names:
+- sub_80A9458
+status: probable
+summary: 'Initialize the Mr. Weather overworld NPC object (r5): set up sprite 0x80/anim 0, compute a position
+  from sub_80A9570, clear event 0xBFC, and jump to either the "active" sub-init or the normal step fn
+  depending on event 0xBFB and the per-instance 0xBF4 flag.'
+interface: (r5 = owMapObject self, r10 = ToolkitPtr, lr) -> void
+details: "Sets CurState = 3 (`strb r0,[r5]` with r0=3) — but note that r5 starts out pointing at `object_header`,\
+  \ so offset 0 refers to `Flags`; combined with `owMapObject_updateLayerPriorityForPlayerZ` later this\
+  \ looks like a Mr. Weather standard init.\n  Calls `sprite_load(0x80, 0x1c, 0x6b)` then `sprite_setAnimation(0)`,\
+  \ `sprite_loadAnimationData`, `sprite_noShadow` (so the default render starts with no shadow), then\
+  \ `sprite_setPriority_8002E14(2)`.\n  Calls `sub_80A9570` (returns a pointer in r4) and copies X/Y/Z\
+  \ (16.16 fixed-point: each loaded as u16 then shifted left by 16) from r4+0/+2/+4 into `[r5+0xc]/[r5+0x10]/[r5+0x14]`\
+  \ (Coords.X/Y/Z on an OverworldMapObject). Also copies a u8 from r4+7 → `[r5+4]` (probably ZReach /\
+  \ height), then calls `sprite_setPalette` with that byte, then sets `[r5+7]` (= npc/object magic) from\
+  \ r4+6. If `[r5+7]` is non-zero it enables shadow via `sprite_hasShadow` and applies `owMapObject_updateLayerPriorityForPlayerZ_80A95EC`\
+  \ so the sprite composites correctly against the player.\n  Always clears story event 0xBFC (`ClearEventFlagFromImmediate`)\
+  \ and zeroes `[r5+0x24]` (Coords/related timer slot).\n  Branches on event 0xBFB: if set AND `sub_80A9628`\
+  \ (the per-instance 0xBF4 flag test, checks flag 0xBF4 + index byte) returns non-zero, sets `[r5+8]\
+  \ = 0xc` (special CurState value) and calls `sub_80A9568`. Otherwise sets `[r5+8] = 4` (the standard\
+  \ CUR_STATE_UPDATE value) and tail-calls `object_mrWeatherStep_80A94DC`. The 0xc branch appears to be\
+  \ a \"weather already triggered this visit\" branch; 0x4 enters the normal step loop. Notably 0xBF4+instance\
+  \ is the per-NPC Mr.-Weather \"visited/done\" flag (same family as 0xBF4..0xBFF likely used for the\
+  \ Green Town/Cyber Town/Beach Comp weather monitors in BN6).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mov r0,#3 ; strb r0,[r5]` and `[r5+8] = 0xc`/`0x4` later show CurState/Flags writes via
+    r5. - `bl sprite_load` with `r0=0x80,r1=0x1c,r2=0x6b` is the Mr. Weather sprite load. - `lsl r0,r0,#0x10`
+    after a `ldrh` then `str r0,[r5,#0xc]` etc. is the 16.16 fixed-point X/Y/Z write pattern. - `movflag
+    EVENT_BFC` → `ClearEventFlagFromImmediate` is invoked unconditional. - `movflag EVENT_BFB` → `TestEventFlagFromImmediate`
+    + `beq` chooses between `sub_80A9568` path and `object_mrWeatherStep_80A94DC` path; the additional
+    `bl sub_80A9628` corresponds to `TestEventFlag(byte_80A9648[[r5+4]])` per its description ("flag 0x0BF4
+    + instance index"). - Field offsets r4+6 → `[r5+7]` and r4+7 → `[r5+4]` then `bl sprite_setPalette`
+    matches an `OverworldMapObject` init pattern: `LayerIndexOverride`-ish or shadow toggle byte → sprite
+    palette/shadow config.'
+  refs:
+  - bn6f/asm/asm29.s
+  reproduce: 'python3 tools/asmcat.py 0x080A9458
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): owMapObject_mrWeatherInit_80A9458
+
+    '
+open_questions:
+- What offset 0x7 of r5 is exactly (no equivalent field in `overworld_map_object_struct` between header
+  end and Coords start at 0xc; OWMapObject is 0x78 with sprite data at 0x40). r5+0x24 also doesn't line
+  up with anything in the published struct; this function may actually be operating on an `OverworldNPCObject`
+  rather than `OverworldMapObject`, since `OverworldNPCObject` has CurState at +8, palette at +0x16, sprite-data
+  at +0xa1, and more room between header and Coords (0x24). Cross-checking the caller/callee contracts
+  (`owMapObject_updateLayerPriorityForPlayerZ_80A95EC`) actually expects an `OverworldMapObject`, so the
+  r5+0xc/r5+0x10/r5+0x14 writes are probably `Coords.X/Y/Z` of `overworld_map_object_struct` — but r5+0x24
+  and r5+7 don't have matching fields. Need to confirm struct layout and which struct type Mr. Weather
+  really uses.
+- Whether the "0xc" CurState is "show forecast briefly then hand off" or "already-claimed" — only decompiling
+  `sub_80A9568` and `object_mrWeatherStep_80A94DC` would settle it.
+sources:
+- discovery session 2026-10-14 batch 39 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 2472d785
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80A9458 -> owMapObject_mrWeatherInit_80A9458
+  where: bn6f 0d61d225
+  tool: tools/rename_symbol.py

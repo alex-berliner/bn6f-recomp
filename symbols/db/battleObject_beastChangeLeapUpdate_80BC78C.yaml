@@ -1,0 +1,75 @@
+name: battleObject_beastChangeLeapUpdate_80BC78C
+address: '0x080BC78C'
+kind: function
+previous_names:
+- sub_80BC78C
+status: probable
+summary: Drives the "Beast Change" leap-and-spawn effect on a beast form's object, flashing the palette
+  white, arcing the object across the field, then freeing it and spawning the follow-up effect object
+  on its tile.
+interface: (r5 = battleObject, r10 = toolkit, r2 = battleState, lr = ret) -> void ; writes the object's
+  palette/timer/position/ExtraVars, plays a sound, spawns a type-4 effect, and frees the original object
+details: "Two-state object update, gated by oBattleObject_CurAction (byte at +0x9):\n    - Action 0 (initial\
+  \ flash): force white palette, decrement Timer; when Timer hits 0, clear the\n      forced-palette high\
+  \ nibble, set Timer=0x0a, set CurAction=1.\n    - Action 1 (leap across panels): decrement Timer; on\
+  \ first underrun, mark ExtraVar+0x14 sentinel\n      and play sound 0x8c. Then count down an internal\
+  \ hop counter at oBattleObject+0x62 each tick.\n      While that counter is still positive, refresh\
+  \ pixel coordinates via\n      object_setCoordinatesFromPanels, get the facing direction multiplier,\
+  \ and integrate position\n      from ExtraVars: X += (ExtraVar(28)+YVelocity+hop) * sign, Y += ExtraVar(+0xc),\
+  \ Z starts at 0 and\n      gains ExtraVar(+0xc) and ExtraVar(+0x10), and YVelocity (ExtraVar+0x08) is\
+  \ flipped each step\n      (the neg/str pair at the bottom of the block) so it decelerates and bounces\
+  \ the object upward.\n      Timer is reset to 2 so each integration tick happens every other frame.\n\
+  \    - When the hop counter reaches 0: look up the object's NameID (via battle_getObjectNameID_8011020),\n\
+  \      get its panel coordinates, convert to screen pixels (object_getCoordinatesForPanels), spawn a\n\
+  \      type-4 battle object with effect type 0 (spawn_t1_0x0_EffectObject) at those coordinates with\n\
+  \      the panel-X panel-Y passed in r3, set bit 2 on the spawned object's Flags (i.e. flag 0x04\n \
+  \     \"PAUSE_UPDATE\"), then free the originating beast object via object_freeMemory.\n  In all paths\
+  \ object_updateSprite is called via the loc_80BC816 tail. Trajectory maths clearly\n  integrate extra\
+  \ vars +0x4..+0x10 as a parabolic arc; the YVelocity negation each step is the\n  vertical-velocity\
+  \ bounce. Captured calls all return with r0=1 and the carry flag set, matching the\n  Timer-byte / NewObjectFlags\
+  \ pathways.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: "- `ldrb r0, [r5,#oBattleObject_CurAction]` / `tst r0, r0` / `bne loc_80BC7AC` → two CurAction\
+    \ states. - `bl sprite_forceWhitePalette` immediately in action 0; `bl sprite_clearFinalPalette` after\
+    \ Timer==0\n  in action 0 confirms the white flash is a transient sprite-palette effect.\n- `mov r0,\
+    \ #0x8c ; bl PlaySoundEffect` only fires once per invocation (guarded by the ExtraVar+0x14\n  sentinel\
+    \ `tst r0, r0 ; bne loc_80BC7C4`), i.e. a single SFX at the leap's first frame.\n- `mov r1, #0xa ;\
+    \ strh r1, [r5,#oBattleObject_Timer]` then transition to action 1 ⇒ a 10-frame\n  pre-leap flash.\n\
+    - `mov r0, #0x62 ; ldrh r1, [r5,r0] ; sub r1, #1 ; ... cmp r1, #0 ; ble loc_80BC81C` ⇒ a hop counter\n\
+    \  at offset 0x62 of the battle object that runs to zero.\n- `mul r0, r1 / mul r0, r2 / mul r0, r3`\
+    \ followed by `add r0, r0, r1` with the object YVelocity and\n  hop-counter ⇒ integration step; `ldr\
+    \ r1, [r5,#oBattleObject_ExtraVars+4]` and `+0xc`/`+0x10` give\n  the (X,Y,Z) impulses per step.\n\
+    - `neg r1, r1 ; str r1, [r5,r0]` after each tick: the arc decelerates vertically by negating the\n\
+    \  YVelocity each step.\n- Tail `bl spawn_t1_0x0_EffectObject` + `ldrb r1, [r0,#oObjectHeader_Flags]\
+    \ ; orr r1, r2 ; strb r1, ...`\n  confirms spawning a single t4 effect object with PAUSE_UPDATE (0x04)\
+    \ set on its Flags byte.\n- Final `bl object_freeMemory` is called on the original beast object (r5\
+    \ unchanged), matching the\n  \"self-destructing effect\" pattern. The captured-call snapshots (snap_beastsp_*)\
+    \ all show lr=0x80bc65c\n  on a beast-form related caller path with r5=0x02036778, consistent with\
+    \ this being the beast-form\n  spawn object's update."
+  refs:
+  - bn6f/asm/asm31.s
+  reproduce: 'python3 tools/asmcat.py 0x080BC78C
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_beastChangeLeapUpdate_80BC78C
+
+    '
+open_questions:
+- The exact value stored at oBattleObject+0x62 and the precise meaning of ExtraVars[0x4..0x14] are not
+  named in the struct (they sit inside the t1 ExtraVars region). Knowing what initialized them in the
+  spawn-time constructor would confirm "hop steps remaining" vs "arc duration". Tracing the caller at
+  0x080bc65c would settle it.
+sources:
+- discovery session 2026-10-14 batch 39 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 2472d785
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80BC78C -> battleObject_beastChangeLeapUpdate_80BC78C
+  where: bn6f 0d61d225
+  tool: tools/rename_symbol.py

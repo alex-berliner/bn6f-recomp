@@ -1,0 +1,86 @@
+name: overworldObject_spawnFromScenarioEffectIndex_80A8748
+address: '0x080A8748'
+kind: function
+previous_names:
+- sub_80A8748
+status: probable
+summary: Initialize/sync an overworld map object whose sprite depends on the current scenario/effect index
+  (Beast/Link style); positions it relative to the player, plays an optional SFX, and runs one sprite
+  update.
+interface: '(r5 = owoPtr, r10 = toolkit) -> r0 = scenario/effect index byte (0xE8 sentinel) ; side effects:
+  writes object+0x0, +0x14 (panel coords), +0xC (spr layer), object sprite, plays optional sound effect'
+details: "- Function is registered/used in the ObjectHandler jumptable based on entry r0 (the asm starts\
+  \ one byte in due to a `push`, but the contract/route is the standard object-handler entry).\n  - Calls\
+  \ battle_getScenarioEffectStateField_81421D0 to fetch a \"mode\" byte from the scenario/effect EWRAM\
+  \ struct (eScenarioEffectState2000780 byte 0xB), only when the object's existing +0x4 flag byte is zero\
+  \ (`ldrb r0,[r5,#4]`; `tst r0,r0`; `bne` skips the fetch otherwise). The fetched byte is reused as a\
+  \ table index for both `byte_80A87B0` (4-byte sprite/animation+extra row) and `byte_80A87C8` (2-byte\
+  \ SFX halfwords).\n  - Sets CurState to 3 (strb r0,#3 at [r5] -> likely \"active/await\" phase; CurState\
+  \ offset is +0x0 in this layout, not the standard BattleObject CurState — caller frame suggests a non-battle\
+  \ object type here).\n  - sprite_load is called with r0=tileBase 0x80, r1=byte_80A87B0[index+0], r2=byte_80A87B0[index+1];\
+  \ sprite_setAnimation gets byte_80A87B0[index+2]; sprite_loadAnimationData is the standard sprite-anim-data\
+  \ loader; sprite_noShadow disables shadow rendering; sprite_setPriority_8002E14 sets the OAM priority\
+  \ from r0 (priority comes from a globals value loaded earlier — likely 1).\n  - ReadOWPlayerObjectCoords\
+  \ copies the player X/Y (r0/r1) and Z (r2) into the object; r2 is stored into [r5,#0x14] which is a\
+  \ single u32 field (FuturePanelXY at +0x14 in the OWMapObject layout is consistent with panel coords,\
+  \ not battle coords). Then `applyLayerEffectToOWObject_8035694(object+0xC)` chooses the BG layer for\
+  \ the object's sprite from +0xC area.\n  - Reads [r5,#0x14] back, adds `(byte_80A87B0[index+3] << 16)`\
+  \ and stores again — adds a per-index Z-bias in upper 16 bits (panel layers use the upper 16 bits of\
+  \ the packed coord in many routines).\n  - Halfword `r0 = byte_80A87C8[index]`, branch if zero, else\
+  \ PlaySoundEffect(r0): table-driven conditional SFX.\n  - strb r0,#4 at [r5,#8]: writes a \"4\" into\
+  \ what the struct definition of OverworldNPCObject calls CurState at offset 0x8 (standard \"active update\"\
+  \ entry). Combined with `strb r0,#3 at [r5]` near the top, the object being driven is almost certainly\
+  \ an OW NPC object (offset 0 is its object_header Flags, not state) — value 3 is written to Flags (probably\
+  \ with active+visible bits), and value 4 to CurState (=CUR_STATE_STANDARD).\n  - sprite_update finalizes\
+  \ the first render of the freshly-loaded sprite/animation, then returns.\n  - One-shot init for an OW\
+  \ NPC spawned from a script-triggered scenario state (Beast/Link/WaterFall etc.). Re-running for the\
+  \ same object is a no-op because [r5,#4] != 0 short-circuits the scenario byte reload.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0,[r5,#4]; tst r0,r0; bne loc_80A8754; bl battle_getScenarioEffectStateField_81421D0`
+    at 0x80a874e — guards the mode fetch behind a flag/non-zero on the object header (offset 4 here =
+    ObjectHeader.Index, used as "already initialized" gate). - `bl battle_getScenarioEffectStateField_81421D0`
+    (probable name) returns a byte from the scenario/effect state; the immediate next use is as a table
+    index (`lsl r0,r0,#2`) into `byte_80A87B0`, plus `lsl r6,r6,#1` into `byte_80A87C8` — index reused
+    for both sprite and SFX tables. - `bl ReadOWPlayerObjectCoords` is the named "loads overworld player
+    X/Y/Z" helper; its r2 return is stored to [r5,#0x14], matching an OW map object storage slot for a
+    packed panel/coord. - `bl applyLayerEffectToOWObject_8035694` called with `r0 = r5+0xC`; the callee
+    decides per-map region layer first, hence the slot +0xC. - The Z bias math (`ldrb r1,[r7,#3]; lsl
+    r1,r1,#0x10; add r0,r0,r1; str r0,[r5,#0x14]`) adds a u8 << 16 to the stored coord — consistent with
+    adding a layer-id in the upper 16 bits of a u32 coord. - `bl PlaySoundEffect` is gated on `ldrh r0,[r0,r6];
+    tst r0,r0; beq loc_80A87A2` — only entries with a non-zero SFX id play; the table is therefore deliberately
+    sparse. - `strb r0,#4 at [r5,#8]` matches OverworldNPCObject.CurState=CUR_STATE_STANDARD (offset +8,
+    value 4) — strong indicator the driven object is an OW NPC (the very top `strb r0,#3 at [r5]` would
+    then be ObjectHeader.Flags = 0x03, i.e. ACTIVE|VISIBLE). - Captured call shows `r0=0x080a8749, r1=0,
+    r2=0x02039398 (EWRAM scenario/effect struct), r3=0x40, lr=0x080a8734` — caller lives in the OW object
+    subsystem (0x080a8xxx), not battle. Object handler frame, not battle handler.'
+  refs:
+  - bn6f/asm/asm29.s
+  reproduce: 'python3 tools/asmcat.py 0x080A8748
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): overworldObject_spawnFromScenarioEffectIndex_80A8748
+
+    '
+open_questions:
+- Exact identity of the OW map object at r5 (NPC vs MapObject vs PlayerObject is most consistent with
+  NPC given offset 0x8 CurState + 0x4 ObjectHeader.Index gate).
+- What triggers `Index +0x4` becoming non-zero on a retry — likely set on first success by the caller
+  or a sibling function; not visible in this code.
+- Whether the sprite table at byte_80A87B0 holds 4-byte rows of (baseTile, subTile, animIdx, zBias) for
+  each scenario effect — the math is consistent, but it isn't confirmed by symbols.
+- Meaning of "scenario effect" index returned by battle_getScenarioEffectStateField — likely a Beast-Out
+  / Cross-Change / BugFrag / similar state byte.
+sources:
+- discovery session 2026-10-14 batch 39 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 2472d785
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80A8748 -> overworldObject_spawnFromScenarioEffectIndex_80A8748
+  where: bn6f 0d61d225
+  tool: tools/rename_symbol.py

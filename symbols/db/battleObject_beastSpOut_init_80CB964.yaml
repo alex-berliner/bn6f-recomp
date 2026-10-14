@@ -1,0 +1,100 @@
+name: battleObject_beastSpOut_init_80CB964
+address: '0x080CB964'
+kind: function
+previous_names:
+- sub_80CB964
+status: probable
+summary: BeastSpOut battle-object INIT state — initialises sprite/collision, spawns the throw-release
+  effect if sprite load fails, otherwise sets HP/collision and a launch X-velocity toward the opposing
+  side, then advances to CUR_STATE_UPDATE.
+interface: '(r5 = self) -> void ; side effects: writes self->oBattleObject_*, calls object_setCoordinatesFromPanels
+  / battleObject_initSpriteAndCollision_8011504 / object_setCollisionHitEffect / object_setCollisionStatusEffect1
+  / object_presentCollisionData / object_getFrontDirection / PlaySoundEffect / sub_80E5B88 / spawn_t1_0x0_EffectObject
+  / object_freeMemory.'
+details: "1) Recomputes pixel coords from the current panel grid (object_setCoordinatesFromPanels). 2)\
+  \ Tries to load sprite/animation and install collision data with init args 0x01021025 / 0x0C0D0000 (battleObject_initSpriteAndCollision_8011504).\
+  \ If it returns 0 (failure path), it copies three words from self+0x34..0x3c into r1-r3 (the spawn-effect\
+  \ param triad that hand-off to Object_freeMemory), spawns a type-1 effect-object (spawn_t1_0x0_EffectObject)\
+  \ and then frees the object itself (object_freeMemory) — destroying the FAILING spawn. 3) On success:\
+  \ sets OBJECT_FLAG_VISIBLE (0x02) in oObjectHeader_Flags, sets HitEffect=2 (object_setCollisionHitEffect),\
+  \ copies Param1 into both HP and MaxHP, sets sprite palette 0 (sprite_setPalette), sets StatusEffectBase=0x60\
+  \ (object_setCollisionStatusEffect1), runs collision-present (object_presentCollisionData), reads front-direction\
+  \ multiplier (object_getFrontDirection) and stores product with self->oBattleObject_ExtraVars[0] into\
+  \ XVelocity, stores random (~0x280000 low half) into Timer2, plays SE 0x24+FF=0x123... wait `mov r0,\
+  \ #0x24; add r0, #0xff` ⇒ 0x24 + 0xFF = 0x123 (PlaySoundEffect), calls sub_80E5B88 with oBattleObject_ExtraVars[0x10],\
+  \ increments *oBattleObject_ExtraVars[8], stores self into *oBattleObject_ExtraVars[0xc], and finally\
+  \ sets CurState = CUR_STATE_UPDATE (0x4).\nevidence: |\n  - object_setCoordinatesFromPanels called first\
+  \ to inspect sprites before loading (push {r4,lr}; bl object_setCoordinatesFromPanels).\n  - battleObject_initSpriteAndCollision_8011504\
+  \ args r0=0x01021025, r1=0x0C0D0000; tst r0,r0;bne ⇒ branches into the failure-spawn path (`loc_80CB98E`\
+  \ after the bne means success is the fall-through to 80CB98E, while r0==0 is the failure-spawn path)\
+  \ (ldr r0, dword_80CBB34; ldr r1, dword_80CBB38; bl battleObject_initSpriteAndCollision_8011504; tst\
+  \ r0, r0; bne loc_80CB98E).\n  - Failure path ldmia r0! {r1-r3} from r5+0x34, r4 = 0x100000, then bl\
+  \ spawn_t1_0x0_EffectObject and bl object_freeMemory (mov r0, #0x34; add r0, r0, r5; ldmia r0!, {r1-r3};\
+  \ mov r4, #0x10; lsl r4, r4, #0x10; add r3, r3, r4; mov r4, #0x14; bl spawn_t1_0x0_EffectObject; bl\
+  \ object_freeMemory).\n  - Success sets OBJECT_FLAG_VISIBLE (mov r1,#2; orr r0,r1; strb r0,[r5,#oObjectHeader_Flags])\
+  \ and HitEffect 2 (mov r0,#2; bl object_setCollisionHitEffect).\n  - HP/MaxHP taken from Param1 (ldrb\
+  \ r0,[r5,#oBattleObject_Param1]; strh r0,[r5,#oBattleObject_HP]; strh r0,[r5,#oBattleObject_MaxHP]).\n\
+  \  - StatusEffectBase 0x60, palette 0 (mov r0,#0x60; bl object_setCollisionStatusEffect1; mov r0,#0;\
+  \ bl sprite_setPalette).\n  - XVelocity = front-direction × ExtraVars[0] (bl object_getFrontDirection;\
+  \ ldr r1,[r5,#oBattleObject_ExtraVars]; mul r0,r1; str r0,[r5,#oBattleObject_XVelocity]).\n  - Timer2\
+  \ random 0x0280000 low half stored as u16 (svc 6 with r0=0x280000; strh r0,[r5,#oBattleObject_Timer2]).\n\
+  \  - SE 0x123 played (mov r0,#0x24; add r0,#0xff; bl PlaySoundEffect ⇒ r0=0x123).\n  - sub_80E5B88 called\
+  \ with ExtraVars[0x10]; *ExtraVars[8] incremented; *ExtraVars[0xc] = self; CurState = CUR_STATE_UPDATE\
+  \ (ldr r0,[r5,#oBattleObject_ExtraVars+0x10]; bl sub_80E5B88; ldr r0,[r5,#oBattleObject_ExtraVars+8];\
+  \ ldr r1,[r0]; add r1,#1; str r1,[r0]; ldr r0,[r5,#oBattleObject_ExtraVars+0xc]; str r5,[r0]; mov r0,#CUR_STATE_UPDATE;\
+  \ strb r0,[r5,#oBattleObject_CurState]).\n  - LR=0x080cb90c, snap filename \"snap_beastsp_*\" → this\
+  \ is the BeastSp/BeastSpOut INIT handler; r5/r6/r7/r8/r10 contract matches an INIT entrypoint curving\
+  \ an oT3BattleObject self.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- object_setCoordinatesFromPanels called first to inspect sprites before loading (push {r4,lr};
+    bl object_setCoordinatesFromPanels). - battleObject_initSpriteAndCollision_8011504 args r0=0x01021025,
+    r1=0x0C0D0000; tst r0,r0;bne ⇒ branches into the failure-spawn path (`loc_80CB98E` after the bne means
+    success is the fall-through to 80CB98E, while r0==0 is the failure-spawn path) (ldr r0, dword_80CBB34;
+    ldr r1, dword_80CBB38; bl battleObject_initSpriteAndCollision_8011504; tst r0, r0; bne loc_80CB98E).
+    - Failure path ldmia r0! {r1-r3} from r5+0x34, r4 = 0x100000, then bl spawn_t1_0x0_EffectObject and
+    bl object_freeMemory (mov r0, #0x34; add r0, r0, r5; ldmia r0!, {r1-r3}; mov r4, #0x10; lsl r4, r4,
+    #0x10; add r3, r3, r4; mov r4, #0x14; bl spawn_t1_0x0_EffectObject; bl object_freeMemory). - Success
+    sets OBJECT_FLAG_VISIBLE (mov r1,#2; orr r0,r1; strb r0,[r5,#oObjectHeader_Flags]) and HitEffect 2
+    (mov r0,#2; bl object_setCollisionHitEffect). - HP/MaxHP taken from Param1 (ldrb r0,[r5,#oBattleObject_Param1];
+    strh r0,[r5,#oBattleObject_HP]; strh r0,[r5,#oBattleObject_MaxHP]). - StatusEffectBase 0x60, palette
+    0 (mov r0,#0x60; bl object_setCollisionStatusEffect1; mov r0,#0; bl sprite_setPalette). - XVelocity
+    = front-direction × ExtraVars[0] (bl object_getFrontDirection; ldr r1,[r5,#oBattleObject_ExtraVars];
+    mul r0,r1; str r0,[r5,#oBattleObject_XVelocity]). - Timer2 random 0x0280000 low half stored as u16
+    (svc 6 with r0=0x280000; strh r0,[r5,#oBattleObject_Timer2]). - SE 0x123 played (mov r0,#0x24; add
+    r0,#0xff; bl PlaySoundEffect ⇒ r0=0x123). - sub_80E5B88 called with ExtraVars[0x10]; *ExtraVars[8]
+    incremented; *ExtraVars[0xc] = self; CurState = CUR_STATE_UPDATE (ldr r0,[r5,#oBattleObject_ExtraVars+0x10];
+    bl sub_80E5B88; ldr r0,[r5,#oBattleObject_ExtraVars+8]; ldr r1,[r0]; add r1,#1; str r1,[r0]; ldr r0,[r5,#oBattleObject_ExtraVars+0xc];
+    str r5,[r0]; mov r0,#CUR_STATE_UPDATE; strb r0,[r5,#oBattleObject_CurState]). - LR=0x080cb90c, snap
+    filename "snap_beastsp_*" → this is the BeastSp/BeastSpOut INIT handler; r5/r6/r7/r8/r10 contract
+    matches an INIT entrypoint curving an oT3BattleObject self.
+
+    - The captured-call LR 0x080cb90c and snap file prefix `snap_beastsp_0050000_*.bin` strongly identify
+    this as the BeastSp/BeastSpOut battle object''s INIT handler. - The struct constants used (CUR_STATE_UPDATE,
+    oBattleObject_ExtraVars offsets) and the `ExtraVars` slots [0] = X-velocity scale, [8/0xc] = runtime
+    book-keeping pointers, [0x10] = custom hook fit a "beast-spit" projectile launch.'
+  refs:
+  - bn6f/asm/asm31.s
+  reproduce: 'python3 tools/asmcat.py 0x080CB964
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_beastSpOut_init_80CB964
+
+    '
+open_questions:
+- Exact meaning of oBattleObject_ExtraVars[8/0xc/0x10] (parent owner / shared counter / animation hook).
+  Probably needs cross-reference with sub_80E5B88 and the caller in 0x080cb90c.
+- Sound effect index 0x123 is "assumed beast-out spout sound", not 100% confirmed against the SE table.
+sources:
+- discovery session 2026-10-14 batch 39 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 2472d785
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80CB964 -> battleObject_beastSpOut_init_80CB964
+  where: bn6f 0d61d225
+  tool: tools/rename_symbol.py

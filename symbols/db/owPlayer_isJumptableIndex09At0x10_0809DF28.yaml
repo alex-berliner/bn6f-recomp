@@ -1,0 +1,68 @@
+name: owPlayer_isJumptableIndex09At0x10_0809DF28
+address: '0x0809DF28'
+kind: function
+previous_names:
+- sub_809DF28
+status: probable
+summary: Returns 0 in r0 if the overworld player's JumptableIndex_09 is 0x10, otherwise falls through
+  to another handler (r7) which presumably clears the running flag and advances the main jumptable.
+interface: (none — uses r5=OWPlayerObject, lr) -> r0 = 0 when the player is in sub-state 0x10 (idle/main
+  advance), else falls into loc_809DF3A which manipulates r0/r7 and returns ; may_write r0, r7, NZ/CV
+  flags.
+details: "- Pushes only lr; callee-saved r7 is loaded from constant pool off_809DF40 = 0x0200ace0 (eStruct200ace0)\
+  \ at the very top, so r7 holds a pointer to that EWRAM struct across the call.\n  - `ldrb r0, [r5, #oOWPlayerObject_JumptableIndex_09]`\
+  \ reads the player's sub-state byte at offset 0x09 of OWPlayerObject (r5).\n  - `cmp r0, #0x10 ; bne\
+  \ loc_809DF3A` — when the sub-state is not 0x10 the function jumps to the unnamed loc_809DF3A (still\
+  \ under the loaded r7), which is in-lined as a \"true\" continuation; the lifter counts it as a direct\
+  \ bl because the link is set up via `push {lr}`/`pop {pc}`.\n  - When r0 == 0x10 the function returns\
+  \ r0 = 0 immediately via `mov r0, #0 ; pop {pc}`. Returning 0 is conventionally a \"no action / don't\
+  \ advance / 0 progress to caller\" signal; every observed captured call also exits with r0 = 0.\n  -\
+  \ The non-0x10 path goes through loc_809DF3A, which presumably performs the \"clear 0x10-locked pending\
+  \ slot and advance main jumptable index to 0x10\" behaviour the caller's summary describes, but that\
+  \ body lives at 0x0809df3a and is not part of this function's instruction stream.\n  - Five caller summaries\
+  \ (owPlayer_jumpTableDispatchWithAdvanceClear_809D8F4, owPlayer_runSlipRunOrEngine_0809D61A, owPlayer_tickPerFrame_809D4DC,\
+  \ ow_player_perFrameSubstateDispatcher_809D470, ow_player_processAction_809D75E) all describe dispatching\
+  \ through this function while a 0x10 sub-state is held; the return-0 short-circuit means the sub-state\
+  \ is treated as a \"stay/handled\" status that should not cause further state advancement in those callers.\n\
+  \  - 40 captured calls with identical (r0=0,r1=1,r2=02006530,r3=0x4c) arguments from story2_* matches\
+  \ confirm this is a steady-state dispatcher call used every frame across many snapshots.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {lr}` followed by `pop {pc}` shows a tail-call style return; the function is a one-instruction
+    "predicate" wrapper. - `ldrb r0, [r5, #oOWPlayerObject_JumptableIndex_09]` directly reads the named
+    player sub-state byte (offset 0x09 in OWPlayerObject). - `cmp r0, #0x10` is the only comparison in
+    the function: the constant 0x10 matches the value discussed in the caller "OWPlayerObject.Unk_0a /
+    advance to 0x10" descriptions. - `bne loc_809DF3A` is the explicit else-branch: the equal path (sub-state
+    IS 0x10) returns 0; the not-equal path delegates to the unnamed continuation at 0x0809df3a. - `mov
+    r0, #0 ; pop {pc}` is the explicit r0=0, lr-as-pc return that all 40 captured calls observe (exit
+    r0=0x00000000, flags N--- i.e. just NZ/C/V cleared). - `ldr r7, off_809DF40 // =eStruct200ace0` ties
+    the inlined callee''s addressing to the eStruct200ace0 ewram block (whose fields player coords and
+    `fixOWPlayerAnim_15` map naturally to the "player advance" terminology in the caller summaries).'
+  refs:
+  - bn6f/asm/ow_player.s
+  reproduce: 'python3 tools/asmcat.py 0x0809DF28
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): owPlayer_isJumptableIndex09At0x10_0809DF28
+
+    '
+open_questions:
+- The exact role of r7 beyond "hold eStruct200ace0 while falling into loc_809DF3A" can't be pinned down
+  from these two visible instructions; reading loc_809DF3A would settle what the fall-through actually
+  mutates and confirm whether r7 is read before being overwritten.
+- Whether the caller treats the r0=0 return as "skip advancing the main jumptable index" (i.e. WAIT) versus
+  "advance to 0x10/handled" is ambiguous from the callee alone; a quick read of owPlayer_jumpTableDispatchWithAdvanceClear_809D8F4's
+  branch on the returned r0 would settle it.
+sources:
+- discovery session 2026-10-14 batch 39 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 2472d785
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_809DF28 -> owPlayer_isJumptableIndex09At0x10_0809DF28
+  where: bn6f 0d61d225
+  tool: tools/rename_symbol.py

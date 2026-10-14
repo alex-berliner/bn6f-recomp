@@ -1,0 +1,70 @@
+name: battleObject_beastSp_init_811E26C
+address: '0x0811E26C'
+kind: function
+previous_names:
+- sub_811E26C
+status: probable
+summary: Initializes the player BattleObject sprite used during Beast Out / Cross Fusion and runs its
+  first frame update
+interface: (r5 = ptr to player's BattleObject) -> void ; mutates r5's object header (offset 0x08=0x04/CUR_STATE_UPDATE,
+  byte 0x05=animation), sprite data (animation/palette/priority/flags), and ExtraVars[0x08]=0x04 ; falls
+  into per-frame update at end
+details: "- Sets object header state to 0x23: high nibble 0x2 (CUR_STATE_UPDATE), low nibble 0x3 (battle_object_struct\
+  \ CurState/CurAction). Object is taken out of CUR_STATE_INITIALIZE.\n  - Calls loc_8002774 with r0=0x33\
+  \ (likely \"init sprite sub-record\" routine) to perform sub-sprite setup.\n  - Copies CurAnim (byte\
+  \ +4 of object) to +5 (CurAnimCopy), then calls sprite_setAnimation(CurAnim) and sprite_loadAnimationData\
+  \ to (re)install the animation frames from the object's attached sprite data.\n  - Calls sprite_noShadow\
+  \ to mark the object so its sprite renders without a shadow.\n  - Sets palette bank 0xB on the sprite\
+  \ sub-entry, then slotList_storeHalfwordAndClearField_800306C(0x290) which writes 0x290 into a halfword\
+  \ field keyed by the slot selector in object byte +2.\n  - Clears sprite sub-record field A and OAM\
+  \ priority (sprite_setPriority_8002E14(0)).\n  - Sets palette index to 0 via sprite_setPalette.\n  -\
+  \ Writes 0x04 into object offset 0x08 low byte — but byte 0x08 is already CurState per struct (0x04=CUR_STATE_UPDATE),\
+  \ suggesting this writes ExtraVars[0] (since ExtraVars starts at +0x60; alternatively some other small\
+  \ object) — actually with the immediate match this is most likely ExtraVars[0] (a small slot within\
+  \ ExtraVars). The struct comment notes ExtraVars locations differ between object types; 0x04 here is\
+  \ likely a small \"BeastSp timer\" or sub-state.\n  - Tail-calls battleObject_beastSp_update_811E2B4\
+  \ to do the per-frame sprite work (flip-state, optional sprite/animation reload, cutscene-driven coordinate\
+  \ offset). Return via `pop {pc}` from sub_811E26C returns through the update caller frame.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `strb r0, [r5]` with r0=0x23 → writes 0x23 into BattleObject.Flags/CurState area, which combines
+    CurState (high nibble 0x2=CUR_STATE_UPDATE) and CurAction (low nibble 0x3). - `bl loc_8002774` with
+    r0=0x33 → standard 2-pass init helper invoked with same r0 pattern as other sprite initializers. -
+    `ldrb r0, [r5,#4]` (BattleObject CurAnim offset) → `strb r0, [r5,#5]` (CurAnimCopy), then `bl sprite_setAnimation`/`sprite_loadAnimationData`
+    shows it copies and reinstalls the animation from the linked sprite data. - `bl sprite_noShadow` directly
+    followed by palette/priority/`setPalette` zeroing is the canonical "fresh Beast sprite bring-up" sequence.
+    - `ldr r0, off_811E2B0 // =0x290` → `slotList_storeHalfwordAndClearField_800306C` plants the constant
+    0x290 in a slotList entry. - Tail `bl battleObject_beastSp_update_811E2B4` + `pop {pc}` shows this
+    is the one-shot initializer that immediately enters the per-frame routine; the callee''s own summary
+    mentions "Beast Out / Cross Fusion player''s battle object sprite each frame", confirming identity.
+    - Captured calls show entry r0=0811e26d (lr push artifact), r1=0, and a uniform exit r0=0x5e0 with
+    Z set, which matches a small init that leaves r0 holding an init-result constant/flags (0x5E0 used
+    elsewhere in beast-related code).'
+  refs:
+  - bn6f/asm/asm32.s
+  reproduce: 'python3 tools/asmcat.py 0x0811E26C
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_beastSp_init_811E26C
+
+    '
+open_questions:
+- Exact meaning of the 0x23 written at object +0x08 (CurState/CurAction combo).
+- What the 0x290 halfword written by `slotList_storeHalfwordAndClearField` represents semantically (likely
+  a sprite/scale/transform field for the Beast sprite).
+- Whether the `mov r0,#4; strb r0,[r5,#8]` truly lands in ExtraVars or in some other small slot — the
+  +0x08 field of the standard BattleObject is CurState, but with value 0x04 (CUR_STATE_UPDATE) that's
+  a harmless re-write, so it might be re-asserting CurState.
+sources:
+- discovery session 2026-10-14 batch 39 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 2472d785
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_811E26C -> battleObject_beastSp_init_811E26C
+  where: bn6f 0d61d225
+  tool: tools/rename_symbol.py

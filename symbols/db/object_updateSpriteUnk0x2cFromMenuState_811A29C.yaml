@@ -1,0 +1,60 @@
+name: object_updateSpriteUnk0x2cFromMenuState_811A29C
+address: '0x0811A29C'
+kind: function
+previous_names:
+- sub_811A29C
+status: probable
+summary: Per-frame object update pass that adjusts the object's sprite 0x2c flag bits from the active
+  menu state and a per-index byte in byte_8124B1C.
+interface: (r5 = Toolkit* or Object-like record) -> void ; may write r0..r7 (r0 contains intermediate
+  flag word reused by callees)
+details: "The function is called from object_runUpdateDispatch_811A190 as one of the shared update passes\
+  \ after the type-specific handler.\n  1. Calls menu_getTableEntryForStateIndex_811A268 which packs the\
+  \ menu state into r0 (pointer/?), r1, r2.\n  2. If r0 == 0 OR (r2 != 0 with r1 == 0) ... actually the\
+  \ branch logic: if r0 != 0 AND (r2 == 0 AND r1 == 0) is FALSE → falls to loc_811A2CA (the \"clear most\
+  \ bits, set 0x3e\" branch). Otherwise loc_811A2AE is taken when at least one of r0, r1, r2 is non-zero.\n\
+  \  3. In the loc_811A2AE path: takes a byte from byte_8124B1C indexed by (r0 - 0x140), builds a mask\
+  \ using that nibble with 0x7E ORed and 0x40 shifted by the byte, and stores into sprite Unk_0x2c via\
+  \ sprite_setUnk0x2c. So bit 0x3e of sprite+0x2c is forced on and one other bit (selected by byte_8124B1C)\
+  \ is forced off.\n  4. In the loc_811A2CA path: loads sprite Unk_0x2c via sprite_getUnk0x2c, masks out\
+  \ 0x7E, sets 0x3E, and writes back via sprite_setUnk0x2c — i.e. \"no menu: clear bits 1..6 of the flag\
+  \ byte, set bits 1..5\".\n  Net effect: this function maintains the bits 0x3E/0x7E of an object's sprite\
+  \ state word based on the active menu state — used to drive a frame-level sprite flag (likely visibility/animation\
+  \ flag for menu-affected objects during battle/custom screens).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- callee sprite_getUnk0x2c returns the field at offset 0x2c of the sprite record (assembly:
+    ldr/str patterns via helper bl). - callee sprite_setUnk0x2c writes that field with r0 passed in (assembly:
+    `bl sprite_setUnk0x2c` after bit manipulation). - bit manipulation at 811A2B4..811A2C2: `orr r0, r1`
+    with r1=0x7e, `lsr r2, r4`, `bic r0, r2` — clear one bit shifted by byte_8124B1C. - alternative fall-through
+    path at loc_811A2CA: `bic r0, r1` (r1=0x7E) then `orr r0, r1` (with 0x3e) — forces high bits on for
+    sprite 0x2c. - caller object_runUpdateDispatch_811A190 is a "Per-frame update dispatcher for one object"
+    and calls this as a shared pass after the type handler. - data refs: off_811A2DC -> byte_8124B1C (table
+    indexed by r0 - 0x140).'
+  refs:
+  - bn6f/asm/asm32.s
+  reproduce: 'python3 tools/asmcat.py 0x0811A29C
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): object_updateSpriteUnk0x2cFromMenuState_811A29C
+
+    '
+open_questions:
+- Which object+state combination this is actually meant for (custom-screen related; the `byte_8124B1C`
+  table isn't documented in the struct dump).
+- The semantic meaning of bits 0x7E of sprite offset 0x2c (could be OAM attribute bits, mirroring/visibility,
+  or animation flags).
+- Why r1/r2 from menu_getTableEntryForStateIndex_811A268 matter at all — only r0 is used in both branches.
+sources:
+- discovery session 2026-10-14 batch 39 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 2472d785
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_811A29C -> object_updateSpriteUnk0x2cFromMenuState_811A29C
+  where: bn6f 0d61d225
+  tool: tools/rename_symbol.py
