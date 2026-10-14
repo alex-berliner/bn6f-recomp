@@ -1,0 +1,75 @@
+name: sub_80A7912
+address: '0x080A7912'
+kind: function
+previous_names: []
+status: hypothesis
+summary: 'Per-frame BeastOut driver: syncs velocity/position scratch with the AIData scratch, runs a state sub-jump
+  table, then writes the results back and refreshes the sprite.'
+interface: (r5 = battleObject, r6 = AIData scratch view, r10 = toolkit, r7 = script cursor ptr) -> r2/r3/r10 live
+  for caller; r0/r1 clobbered
+details: "- The function begins by saving r4-r7/lr and copying three u32s from [r6+0x8..0x10] into [r5+0xc..0x14];\
+  \ given the BattleObject layout, r5+0xc/0x10/0x14 correspond to Z_3c and XVelocity/YVelocity slots (the caller\
+  \ evidently treats r6 as an AIData-like scratch it wants reflected onto the object's movement block before the\
+  \ step).\n  - It then enters `loc_80A7920`, a loop: read `Unk_04` of the BattleObject (object header `Index`)\
+  \ into r0 and call sub_8142050 (which the contract shows takes r0 in, so it does something with that index; the\
+  \ caller's r7 is a script cursor pointing at bytes, and `ldrb r0,[r6]; add r7,r7,r0; ldrb r1,[r7]` advance-then-read\
+  \ is the bytecode dispatch: r0 is the prior op's step size, r7 walks the script, r1 is the next opcode).\n  -\
+  \ The opcode is dispatched through `off_80A7950` (7 entries: sub_80A79DC/..7A40/..7AA4/..7AD4/..7AE0/..7AFA/..7B32).\
+  \ The jump is performed with `mov lr,pc; bx r0` so each handler is treated as Thumb via the `+1` in the table;\
+  \ the `bne loc_80A7920` after the bx falls through only when the bx did not switch states (i.e. the handler left\
+  \ Z clear via bx semantics — `bx` to a Thumb handler with LR set up to return to the `bne`).\n  - Once the inner\
+  \ state machine returns (handler did not loop back), it bl `sub_80A7BC0` (called after the dispatch loop ends\
+  \ in the captured-call context — its contract matches a \"post-step finalize\" that consumes r10/r5).\n  - Then\
+  \ the three u32s from [r5+0xc..0x14] are written back into [r6+0x8..0x10], mirroring the initial copy — the scratch\
+  \ view is refreshed from the object's movement block after the step.\n  - Finally `bl sprite_update` updates the\
+  \ object's sprite using the object's header + sprite offset (per sprite_update's contract), and the function pops\
+  \ back with r2/r3/r10 marked live.\n  - Naming: the function is clearly a wrapper that drives one of the 7 sub-states\
+  \ of a BeastOut object (the parent sub_80A78E0 is the outer dispatcher for some beast-related object — sub_80A7912\
+  \ is called with r5/r6 setup that strongly resembles a per-frame object+scratch pair). The 0x3c4 exit r0 in captured\
+  \ calls is whatever sub_80A7BC0 left behind and is not the function's own return value (it is a side effect of\
+  \ the inner finalize).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r0,[r6,#8]; str r0,[r5,#0xc]` and the next two pairs move three u32s from r6+0x8/0xc/0x10 to r5+0xc/0x10/0x14,
+    matching the BattleObject Z/Velocity layout (offsets 0x3c/0x40/0x44) — except r5+0xc is in the middle of Coords
+    (X@0x34, Y@0x38, Z@0x3c) — so r5 likely points earlier than a normal BattleObject, OR the offsets 0xc/0x10/0x14
+    are a scratch struct prepended to the object; without more context this is unclear. - `ldrb r0,[r5,#4]` reads
+    BattleObject header `Index` (offset 4) and passes it to `sub_8142050`, whose contract says it consumes r0. -
+    `ldrb r0,[r6]; add r7,r7,r0; ldrb r1,[r7]` is the classic advance-then-dispatch pattern: r0 = previous opcode''s
+    operand (step size), r7 += step, r1 = new opcode. - `off_80A7950` holds 7 entries, all with `+1` to enter Thumb
+    mode; each maps an opcode to a sub-handler in 80A79DC..80A7B32 — exactly the 7-step structure of a BeastOut
+    animation/action script. - `bne loc_80A7920` placed immediately after the `bx r0` is what causes the script-state
+    handlers to loop: when a handler returns by branching back (b/bx without setting flags), the inline `bne` re-runs
+    the loop top; when the dispatcher falls out (handler returned with `bx lr` to a state where Z is set), execution
+    continues to `bl sub_80A7BC0`. - Final `bl sprite_update` updates the object''s sprite after the movement step,
+    consistent with the standard pattern of "compute motion, then update sprite". - Captured r0=0x3c4 on exit matches
+    sub_80A7BC0''s last return value (not this function''s; the function is void-like in its contract — only r2/r3/r10
+    are live, no scalar return).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080A7912
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^080a7912 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- 'What r6 actually points to: the offsets 0x8/0xc/0x10 read from r6 don''t match any obvious AIData slot, and AIData
+  fields at those offsets (Unk_40/44/48) are u32s that could hold scratch movement values but the symbols are unknown.'
+- What r7 (script cursor) points to and where it is initialized in the caller (sub_80A78E0) — without seeing sub_80A78E0's
+  body we can't tell if r7 is the script pointer itself or a cursor into a larger script table.
+- The exact role of sub_8142050 and sub_80A7BC0; both are unknown and could meaningfully rename this function once
+  their bodies are read.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c862a66
+  tool: tools/symdoc.py

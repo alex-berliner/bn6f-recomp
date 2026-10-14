@@ -3,31 +3,34 @@ address: '0x08083DF0'
 kind: function
 previous_names: []
 status: hypothesis
-summary: 'Substate/dispatch inside the BBS-style chatbox/result cutscene: tests cutscene script sentinels, sets/clears
-  the request-BBS flag at 0x2001F68 bit 0x7, and loads+animates the request-bbs GFX via a sequence of helpers.'
-interface: (r10 = toolkit) -> side-effects only; preserves r4-r9/r12 per contract
-details: "The callee set makes the role fairly clear: it drives a small request-BBS flow\n  (reqBBS_setFlag_e17b0f7_8140A00\
-  \ is \"BBS request handler that sets event flag 0x7 in event\n  byte 0x17 (memory address 0x2001F68)\") paired\
-  \ with reqBBS_clearFlag_8140A0C, plus two\n  \"cutscene_checkOriginalCutsceneScriptPos\" sentinels (L-Message\
-  \ and AskJackOut), so this\n  function only runs in those specific cutscene-script contexts. It then chains three\n\
-  \  load_gfx_anim_* helpers (8083FC0 / 8083FFC / 8084068) plus a struct_copy and a half-dozen\n  other 8083xxx/8084xxx\
-  \ helpers, suggesting it steps the request-BBS animation/animation-setup\n  across multiple frames. TestEventFlagFromImmediate\
-  \ / SetEventFlagFromImmediate /\n  ClearEventFlagFromImmediate are used to gate the states. The bare r10/lr in-contract\
-  \ and the\n  full set of callee-saved r4-r9/r12 in out matches a leaf step function whose caller is the\n  higher-level\
-  \ BBS GUI state machine; nothing concrete on a return value. No assembly was\n  emitted into the dump (\"sub_8083DF0\
-  \ not found in bn6f/asm\"), so the role is inferred only\n  from the callee graph and call-site shape.\n"
+summary: BBS request dispatcher that reads/clauses the request entry, asks the cutscene engine which script sent
+  it, and routes to the appropriate per-request handler (set/clear flag, NSF animation loaders, set-event-flag helpers).
+interface: (r10 = eToolkit ptr, lr = return) -> flags nz ; side effects on r0-r9/r12, EWRAM via r10, calls a chain
+  of subsystem helpers
+details: "- Standalone function body is missing from the lifted asm (`sub_8083DF0 not found in bn6f/asm`).\n  -\
+  \ The caller/callee graph shows it switches on the BBS request slot's index field (likely oReqBBS2001150.Unk_04\
+  \ / Unk_28) and dispatches:\n      * reqBBS_setFlag_e17b0f7_8140A00 (set event-flag 0x7 of byte 0x17) for one\
+  \ branch.\n      * reqBBS_clearFlag_8140A0C (clear the matching event flag) as its complement.\n      * load_gfx_anim_8083FC0\
+  \ / load_gfx_anim_8083FFC / load_gfx_anim_8084068 plus struct_copy_80840C4 / sub_8083F80 / sub_8084080 / sub_8084180\
+  \ / sub_8084214 / sub_80842D8 for graphical request slots (likely NSF/avatar-loading BBS requests).\n  - cutscene_checkOriginalCutsceneScriptPos_8036F40\
+  \ and cutscene_checkOriginalCutsceneScriptPos_8036F58 are consulted to decide whether the originating cutscene\
+  \ script is the L-Message or \"AskJackOut\" sentinel; their nz result likely steers which gfx/anim helper is invoked.\n\
+  \  - sub_809E462 is invoked as another branch terminator (probably a \"default/no-op\" handler).\n  - Reads/writes\
+  \ std event flags via SetEventFlagFromImmediate / ClearEventFlagFromImmediate / TestEventFlagFromImmediate; those\
+  \ routines gate on the byte id and bit id passed in r0/r1.\n  - The contract writes `nz`, so the boolean decision\
+  \ (which branch was taken, or whether a flag was set/cleared) propagates to the caller — typical of a BBS state-machine\
+  \ hander returning \"handled yes/no\" to the BBS subsystem dispatcher.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- In-contract r10+lr only, no argument registers: a state-step callback, not a free function. - Direct
-    call to reqBBS_setFlag_e17b0f7_8140A00 (confirmed to set flag 0x7 at 0x2001F68, the BBS request byte) and to
-    reqBBS_clearFlag_8140A0C: ties the function to the BBS-request flag, not the generic battle/cutscene flow. -
-    Calls to cutscene_checkOriginalCutsceneScriptPos_8036F40 (L-Message sentinel) and cutscene_checkOriginalCutsceneScriptPos_8036F58
-    (AskJackOut sentinel): the function deliberately branches on whether the saved cutscene pointer is the L-Message
-    or AskJackOut script, so this only fires inside those cutscenes. - Three siblings load_gfx_anim_8083FC0 / 8083FFC
-    / 8084068 plus struct_copy_80840C4 and sub_8083F80 / sub_8084080 / sub_8084180 / sub_8084214 / sub_80842D8:
-    this is a chunk of the request-bbs GFX/animation subsystem (addresses clustered in 8083xxx-8084xxx). - sub_809E462
-    is the only non-bbs callee: probably the standard "advance chatbox/cutscene"'
+  detail: '- Confirmed callees for SetEventFlagFromImmediate / ClearEventFlagFromImmediate / TestEventFlagFromImmediate
+    (event-flag helpers) listed in callees. - reqBBS_setFlag_e17b0f7_8140A00 is the only other "confirmed" BBS request
+    callee and its project summary literally describes it as a "BBS request handler that sets event flag 0x7 in
+    event byte 0x17". - cutscene_checkOriginalCutsceneScriptPos_8036F40 and _8036F58 summaries both mention comparing
+    the cutscene state''s saved original script pointer to known BBS-triggering scripts. - Multiple load_gfx_anim_*
+    callees at addresses near sub_8083DF0 (0x8083FC0/FFC/4068) suggest this function owns a small family of NSF
+    / BBS animation loaders. - The contract: in r10 (toolkit), in lr; out only callee-saved r4/r5/r7/r8/r9/r12 +
+    r2/r3 (scratch) + nz; matches the standard EWRAM-via-r10 subsystem-handler signature used elsewhere in bn6f.'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x08083DF0
@@ -42,17 +45,13 @@ evidence:
     '
   result: beastsp, story5, story6
 open_questions:
-- Whether the function is "advance the BBS request animation each tick" vs. "initialize the
-- BBS GUI on entering the cutscene", because no callers or assembly were supplied. Callee
-- load_gfx_anim_8083FC0 / 8083FFC / 8084068 might be a one-shot setup rather than per-frame;
-- getting the matching caller graph would settle this.
-- 'Exact return semantics: contract lists many callee-saved registers but no caller-visible'
-- return value, so it is void-like, but without assembly we cannot confirm whether
-- nz is genuinely set or just a transient flag from one of the test-event calls.
+- No assembly was available; the exact decision tree (which request index maps to which callee) cannot be verified.
+  Re-deriving the asm and cross-checking the cmp against reqBBS2001150.Unk_04 / Unk_28 would settle the dispatch
+  table.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f 147865dc
+  where: bn6f 9c862a66
   tool: tools/symdoc.py
