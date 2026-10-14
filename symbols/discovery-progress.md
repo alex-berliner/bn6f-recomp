@@ -677,3 +677,58 @@ Highlights:
 | 14    | 25                 | 19                        | 6               | 0       |
 
 Running total: named 271, hypothesis-only 75, dropped 0 (of ~10,600 placeholders).
+
+## Batch 15 (2026-10-14)
+
+25 functions, 21 named + 4 hypothesis (sub_802C460, sub_8083DF0, sub_8119880,
+sub_8120504 kept as comment only), renamed in recomp c9a0f86d (bn6f pushed;
+port ROM unchanged).
+
+Highlights:
+- battle: dispatch post-move substate (battle_dispatchPostMoveSubstate_8008950);
+- object: exit attack state (object_exitAttackState_801171C);
+- battle object: compute AI step forward delta-X
+  (battleObject_computeAIStepForwardDeltaX_8018856),
+  update sprite anim if changed (battleObject_updateSpriteAnimIfChanged_801BCD0);
+- battle sound: play counter hit sound (battle_playCounterHitSound_801C5F4);
+- battle event: eStruct2035280 post-event (battle_eStruct2035280_postEvent_801E0A0);
+- table: get current entry column count (table_GetCurrentEntryColumnCount_80317FA);
+- battle: lottery step (battle_lotteryStep_809AB20);
+- battle AI: dispatch by AI-data-B-left ability
+  (battle_aiDispatchByAIDataBLeftAbility_80A78B8);
+- battle object: clear action phase unk-09 (battleObject_clearActionPhaseUnk09_80A7E44);
+- battle AI/attack: check mystery data unk (battle_aiAttack_checkMysteryDataUnk_80F02A2);
+- battle AI: dispatch AI state (battle_object_dispatchAIState_8113124);
+- battle gauge: update cust gauge (battle_updateCustGauge_8116720);
+- battle pack: synthesize pack entry from chip search result
+  (battle_synthesizePackEntryFromChipSearchResult_811FF54);
+- sprite: queue two OAM entries (sprite_queueTwoOamEntries_81205C0);
+- pet menu: draw character stat block (pet_menu_drawCharacterStatBlock_8123C98);
+- battle object: tick OAM sub flag anim slot
+  (battleObject_tickOamSubFlagAnimSlot_81282C0),
+  run action shield or status effect (battleObject_runActionShieldOrStatusEffect_81345D4);
+- battle state: get player cur state (battle_getPlayerCurState_8137884);
+- battle object: empty stub (battleObject_emptyStub_8142C90);
+- m4a: mplay track handler (mplay_trackHandler_814ECB4).
+
+## Tally update
+
+| batch | functions examined | named (renamed via record) | hypothesis-only | dropped |
+|-------|--------------------|---------------------------|-----------------|---------|
+| 1     | 25                 | 25                        | 0               | 0       |
+| 2     | 21                 | 20                        | 1               | 0       |
+| 3     | 25                 | 23                        | 2               | 0       |
+| 4     | 25                 | 21                        | 4               | 0       |
+| 5     | 25                 | 20                        | 5               | 0       |
+| 6     | 25                 | 21                        | 4               | 0       |
+| 7     | 25                 | 19                        | 6               | 0       |
+| 8     | 25                 | 20                        | 5               | 0       |
+| 9     | 25                 | 18                        | 7               | 0       |
+| 10    | 25                 | 14                        | 11              | 0       |
+| 11    | 25                 | 17                        | 8               | 0       |
+| 12    | 25                 | 15                        | 10              | 0       |
+| 13    | 25                 | 19                        | 6               | 0       |
+| 14    | 25                 | 19                        | 6               | 0       |
+| 15    | 25                 | 21                        | 4               | 0       |
+
+Running total: named 292, hypothesis-only 79, dropped 0 (of ~10,600 placeholders).
