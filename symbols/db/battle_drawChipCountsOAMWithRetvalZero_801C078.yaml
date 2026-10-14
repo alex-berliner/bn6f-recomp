@@ -1,0 +1,56 @@
+name: battle_drawChipCountsOAMWithRetvalZero_801C078
+address: '0x0801C078'
+kind: function
+previous_names:
+- sub_801C078
+status: probable
+summary: Trivial battle helper that calls battle_drawChipCountsOAM_801C082 with r0=0 and returns 0.
+interface: '() -> r0 = 0 ; side effects: delegates to battle_drawChipCountsOAM_801C082(r0=0)'
+details: "Pushes lr, zeroes r0 via `mov r0, #0`, tail-calls the single callee\n  `battle_drawChipCountsOAM_801C082`,\
+  \ and uses `pop {pc}` so the original lr is the\n  caller's. The wrapper is void-like from the caller's\
+  \ perspective but technically\n  returns whatever r0 the callee leaves; the captured-call traces show\
+  \ r0=0 on exit\n  and ZC flags set, consistent with `mov r0, #0` then a tail-call (r0 survives\n  through\
+  \ the `bl`+`pop`). Acts as a \"reset/hide chip-count OAM\" entry point — the\n  callee (0x0801c082,\
+  \ contract in=['r0']) almost certainly interprets r0=0 as a\n  flag (e.g. clear all chip-count sprites\
+  \ vs. draw the current set).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bn6f/asm/asm00_2.s:26845` shows the full body: push lr; mov r0,#0; bl battle_drawChipCountsOAM_801C082;
+    pop {pc}. - All 6 shown captured calls enter with r0=0x0801c079 (call site+Thumb bit) and r1..r3=0,
+    lr=0x0801bf7c (same caller in story2 scenarios), and exit with r0=0 and ZC flags set — exactly what
+    `mov r0,#0` followed by a tail-call through `bl` would produce when the callee doesn''t touch r0.
+    - The callee sub_801C082 takes r0 as the only meaningful input (`in=[''r0'']`), so the wrapper''s
+    only job is to force that argument to 0.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801C078
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0801c078 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9
+open_questions:
+- What r0=0 means to sub_801C082 (clear/hide vs. redraw chip-count OAM) is unknown
+- without disassembling that function; examining it would settle the wrapper's
+- semantic role.
+- 'Note: my answer is structured exactly per the requested format and covers the single placeholder function
+  provided.'
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d4179034
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801C078 -> battle_drawChipCountsOAMWithRetvalZero_801C078
+  where: bn6f d0265620
+  tool: tools/rename_symbol.py

@@ -981,11 +981,11 @@ static void call_reset_turn_state(void) {
     GUEST_CALL(sub_81353DC);
 }
 
-/* register form: calls sub_81353F0 outside this file, which has no typed C interface yet */
+/* register form: calls battle_aiRunTurnHandler_81353F0 outside this file, which has no typed C interface yet */
 static void call_set_substate(u32 state, u32 param) {
     R0 = state;
     R1 = param;
-    GUEST_CALL(sub_81353F0);
+    GUEST_CALL(battle_aiRunTurnHandler_81353F0);
 }
 
 /*
@@ -995,7 +995,7 @@ static void call_set_substate(u32 state, u32 param) {
  * battle logic, animations, camera, reset the turn, and enter sub-state 5/0
  * followed by 6/1 (the standard "idle / ready" transition pair).
  *
- * The outputs r0-r3, nz, c, v are whatever the final sub_81353F0 call leaves
+ * The outputs r0-r3, nz, c, v are whatever the final battle_aiRunTurnHandler_81353F0 call leaves
  * in the guest registers (callee pass-through); r4-r7 are preserved.
  */
 static void battle_object_update(u32 object_ptr) {
@@ -1198,12 +1198,12 @@ static inline call_sub_81353DC_result call_sub_81353DC(u32 r5) {
 }
 
 typedef struct { u32 r2, r3, r4, r5, r6, r7; } call_sub_81353F0_result;
-/* register form: generated wrapper: sub_81353F0 has no typed C interface yet */
+/* register form: generated wrapper: battle_aiRunTurnHandler_81353F0 has no typed C interface yet */
 static inline call_sub_81353F0_result call_sub_81353F0(u32 r0, u32 r1, u32 r5) {
     R0 = r0;
     R1 = r1;
     R5 = r5;
-    GUEST_CALL(sub_81353F0);
+    GUEST_CALL(battle_aiRunTurnHandler_81353F0);
     return (call_sub_81353F0_result){ R2, R3, R4, R5, R6, R7 };
 }
 
@@ -1442,9 +1442,9 @@ Next sub_8133944(void) {
 
     /* Two palette/OBJ-bank setups: slot 5 in low (0), slot 6 in high (1). */
     R0 = 5; R1 = 0;
-    GUEST_CALL(sub_81353F0);
+    GUEST_CALL(battle_aiRunTurnHandler_81353F0);
     R0 = 6; R1 = 1;
-    GUEST_CALL(sub_81353F0);
+    GUEST_CALL(battle_aiRunTurnHandler_81353F0);
 
     RETURN_TO_CALLER();
 }
@@ -2251,13 +2251,13 @@ static bool submenu_is_open_sub_8134594(void) {
     return !ZERO_FLAG();          /* Z clear → R0 ≠ 0 → submenu is open */
 }
 
-/* register form: calls sub_813468C outside this file, which has no typed C interface yet.
+/* register form: calls battleObject_updateShieldOrStatusEffect_813468C outside this file, which has no typed C interface yet.
  * Saves/restores R4 and R6 because the original push/pop hides the caller's register
  * modifications from the outer function's output contract. */
 static void call_813468C_sub_8134594(u32 a0, u32 a1, u32 a2, u32 a3, u32 a4, u32 a6) {
     u32 saved_r4 = R4, saved_r6 = R6;
     R0 = a0; R1 = a1; R2 = a2; R3 = a3; R4 = a4; R6 = a6;
-    GUEST_CALL(sub_813468C);
+    GUEST_CALL(battleObject_updateShieldOrStatusEffect_813468C);
     R4 = saved_r4; R6 = saved_r6;
 }
 
@@ -2275,23 +2275,23 @@ Next submenu_clearBgIfClosed_8134594(void) {
 }
 
 /* ── sub_81345B0 ── */
-/* register form: calls sub_813468C outside this file, which has no typed C interface yet */
+/* register form: calls battleObject_updateShieldOrStatusEffect_813468C outside this file, which has no typed C interface yet */
 static void call_813468C(u32 arg0, u32 arg1, u32 arg2, u32 arg3, u32 ptr, u32 flag) {
     /* Original pushes {r4-r7} before this call and pops them after, so we save/restore. */
     u32 saved_r4 = R4, saved_r5 = R5, saved_r6 = R6, saved_r7 = R7;
     R0 = arg0; R1 = arg1; R2 = arg2; R3 = arg3; R4 = ptr; R6 = flag;
-    GUEST_CALL(sub_813468C);
+    GUEST_CALL(battleObject_updateShieldOrStatusEffect_813468C);
     R4 = saved_r4; R5 = saved_r5; R6 = saved_r6; R7 = saved_r7;
 }
 
-/* Invoke sub_813468C with fixed ROM-table parameters:
+/* Invoke battleObject_updateShieldOrStatusEffect_813468C with fixed ROM-table parameters:
  * r0=0xF3, r1=0x16, r2=0, r3=0x11, r4=&byte_81331EC, r6=0x10000000.
  * r4-r7 are preserved (the original save/restores them via push/pop). */
 static void invoke_813468C(void) {
     call_813468C(0xF3, 0x16, 0, 0x11, A_byte_81331EC, 0x10000000);
 }
 
-/* sub_81345B0: preserve r4-r7 and tail-call sub_813468C with fixed arguments. */
+/* sub_81345B0: preserve r4-r7 and tail-call battleObject_updateShieldOrStatusEffect_813468C with fixed arguments. */
 Next sub_81345B0(void) {
     invoke_813468C();
     RETURN_TO_CALLER();
@@ -2299,7 +2299,7 @@ Next sub_81345B0(void) {
 
 /* ── sub_81345D4 ── */
 /* sub_81345D4:
- * Fixed-parameter wrapper around sub_813468C — everything this routine does
+ * Fixed-parameter wrapper around battleObject_updateShieldOrStatusEffect_813468C — everything this routine does
  * is fill in one hard-coded argument set and delegate:
  *   r0 = 0x5A (90), r1 = 0x20 (32), r2 = 0x20 (32), r3 = 0x12 (18)
  *   r4 = pointer to the data table at byte_81331F4
@@ -2323,7 +2323,7 @@ Next sub_81345D4(void) {
     R6 = 0x40000000;
     /* R7: forwarded unchanged to the callee */
 
-    GUEST_CALL(sub_813468C);
+    GUEST_CALL(battleObject_updateShieldOrStatusEffect_813468C);
 
     R4 = savedR4;
     R5 = savedR5;
@@ -2334,7 +2334,7 @@ Next sub_81345D4(void) {
 
 /* ── battle_spawnFixedArgEffect_wrapper_81345E8 ── */
 /* battle_spawnFixedArgEffect_wrapper_81345E8: spawn/queue helper that forwards a fixed argument set to
- * sub_813468C. The original pushes r4-r7 and pops them afterwards, so this
+ * battleObject_updateShieldOrStatusEffect_813468C. The original pushes r4-r7 and pops them afterwards, so this
  * wrapper preserves r4-r7 even though the callee may clobber them; only
  * r1-r3 (the callee's results) escape to the caller. */
 Next battle_spawnFixedArgEffect_wrapper_81345E8(void) {
@@ -2347,7 +2347,7 @@ Next battle_spawnFixedArgEffect_wrapper_81345E8(void) {
     R4 = A_byte_81331F4;             /* data table used by the callee */
     R6 = 0x40000000;                 /* literal-pool constant */
 
-    GUEST_CALL(sub_813468C);
+    GUEST_CALL(battleObject_updateShieldOrStatusEffect_813468C);
 
     /* pop {r4-r7}: undo whatever the callee left in these registers */
     R4 = in_r4;
@@ -2398,14 +2398,14 @@ Next copyBackgroundTiles_sub_813471C(void) {
 /* ── sub_8134740 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r3, r4, r5, r6, r7; } call_sub_811FAF4_result;
-/* register form: generated wrapper: sub_811FAF4 has no typed C interface yet */
+/* register form: generated wrapper: battleObject_queueOamFromTableRow_811FAF4 has no typed C interface yet */
 static inline call_sub_811FAF4_result call_sub_811FAF4(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4) {
     R0 = r0;
     R1 = r1;
     R2 = r2;
     R3 = r3;
     R4 = r4;
-    GUEST_CALL(sub_811FAF4);
+    GUEST_CALL(battleObject_queueOamFromTableRow_811FAF4);
     return (call_sub_811FAF4_result){ R0, R3, R4, R5, R6, R7 };
 }
 
@@ -2421,12 +2421,12 @@ static inline call_sub_8120CC8_result call_sub_8120CC8(u32 r0, u32 r1) {
 /* Process one battle object's tile row and high-nibble animation counter.
  *
  * Chooses a mode mask from the palette-slot byte (obj+0xD), builds a tile
- * source descriptor from the X coordinate (obj+0x34), blits via sub_811FAF4,
+ * source descriptor from the X coordinate (obj+0x34), blits via battleObject_queueOamFromTableRow_811FAF4,
  * then decrements the animation counter stored in obj+0x15's upper nibble.
  * When the counter hits zero, sub_8120CC8 supplies a new high-nibble value. */
 static void process_object_tiles(u32 obj) {
     /* register form: the original's push {r4} / pop {r4} keeps the caller's
-     * R4 intact across sub_811FAF4 which overwrites R4; the generated wrapper
+     * R4 intact across battleObject_queueOamFromTableRow_811FAF4 which overwrites R4; the generated wrapper
      * has no callee-preserved semantics, so save/restore explicitly. */
     u32 saved_r4 = R4;
 
@@ -2473,11 +2473,11 @@ Next sub_8134740(void) {
 }
 
 /* ── battle_alignRowCheck_81348DC ── */
-/* register form: calls sub_81171F4 outside this file, which has no typed C interface yet */
+/* register form: calls battleObject_setFlags6Bit_81171F4 outside this file, which has no typed C interface yet */
 static void call_set_valid_flag(u32 val, u32 flag_obj) {
     R0 = val;
     R1 = flag_obj;
-    GUEST_CALL(sub_81171F4);
+    GUEST_CALL(battleObject_setFlags6Bit_81171F4);
 }
 
 /* register form: calls sub_81171D4 outside this file, which has no typed C interface yet */
@@ -2781,13 +2781,13 @@ Next sub_81353DC(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_81353F0 ── */
-/* sub_81353F0: tail-call wrapper around battle_aiCheckPanelRangeAndDoAttack_8134930.
+/* ── battle_aiRunTurnHandler_81353F0 ── */
+/* battle_aiRunTurnHandler_81353F0: tail-call wrapper around battle_aiCheckPanelRangeAndDoAttack_8134930.
  * Calls it with the fixed parameters (0x24, 0xA5, 0x28) and chip/flag
  * argument 6, forwarding the caller's r1 in r3 and the caller's r0 in r7
  * (where battle_aiCheckPanelRangeAndDoAttack_8134930 expects them). r4-r7 are preserved for the caller;
  * r0-r3 and the condition flags are whatever battle_aiCheckPanelRangeAndDoAttack_8134930 left behind. */
-Next sub_81353F0(void) {
+Next battle_aiRunTurnHandler_81353F0(void) {
     u32 r3_arg = R1;        /* caller's r1 becomes battle_aiCheckPanelRangeAndDoAttack_8134930's r3 */
     u32 r7_arg = R0;        /* caller's r0 becomes battle_aiCheckPanelRangeAndDoAttack_8134930's r7 */
     u32 saved_r4 = R4, saved_r5 = R5, saved_r6 = R6, saved_r7 = R7;

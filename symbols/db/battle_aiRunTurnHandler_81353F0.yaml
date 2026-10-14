@@ -1,0 +1,62 @@
+name: battle_aiRunTurnHandler_81353F0
+address: '0x081353F0'
+kind: function
+previous_names:
+- sub_81353F0
+status: probable
+summary: Dispatches an AI turn action (r0=row/action id) with r1 (often a 0/1 sub-mode) into the AI panel-range/attack
+  routine using constants 0x24, 0xA5, 0x28, 6.
+interface: (r0 = action index [5..6], r1 = sub-flag [0..1], r5 = caller's object/AIData, lr = caller's
+  lr) -> r0 = result bitmask/status word ; no other return registers per contract
+details: "- Single basic block. Saves r4-r7+lr, copies r0->r7, r1->r3, then loads r0=0x24, r1=0xA5, r2=0x28,\
+  \ r4=6, and tail-calls battle_aiCheckPanelRangeAndDoAttack_8134930.\n  - The fixed args 0x24/0xA5/0x28/6\
+  \ are constant for every captured call (only r0/r1 vary as 5,0 or 6,1), so this is a thin typed entry\
+  \ point into the AI attack dispatcher.\n  - It is called from six battle-object update paths (battle_objectUpdate_8133400,\
+  \ sub_8133484, sub_81337E8 submenu, sub_81338D4, sub_8133944 menu scene, sub_8133D64) — i.e., per-frame\
+  \ battle tick, menu and submenu flow — consistent with an AI turn-handler stub that the host object\
+  \ forwards its action byte and a player/navi flag into.\n  - Exit returns r0 (e.g., 0x20 / 0x40) which\
+  \ matches the r0 contract of the underlying ai routine; the named result is just whatever that callee\
+  \ returns.\n  - Because the contract lists r2/r3/r5/r6 as live out (preserved by callee-save? actually\
+  \ written) and flags clobbered, treat as a void-like stub; r0 is the only true return.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- Assembly at 0x081353f0: only `bl battle_aiCheckPanelRangeAndDoAttack_8134930`; no other logic,
+    so the function is purely a parameter-shuffling trampoline. - Captured entry r0 values {5, 6} and
+    r1 values {0, 1} (snap_battles1_0..13) show two fixed call shapes; combined with hard-coded r0=0x24
+    r1=0xA5 r2=0x28 r4=6, the args 5/0 and 6/1 are the only varying inputs. - Return r0 in {0x20, 0x40}
+    with Z set suggests a bitmask/status from the AI attack path (0x20 = 0x1<<5, 0x40 = 0x1<<6), consistent
+    with reporting a result back to the per-frame object update. - All six callers are battle-scene object
+    update/step functions (confirmed caller battle_objectUpdate_8133400 plus menu/submenu handlers), matching
+    an "AI turn handler invoked each frame" role. - r5 is in the contract (in) but the function does not
+    use it directly; it must be passed through to the callee for it to read object context (the AIData
+    pointer at BattleObject+0x58, per AIData struct).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x081353F0
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, beastsp, maps, menus3, story4, story6, story8, story9'
+  reproduce: 'grep -l ''^081353f0 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, beastsp, maps, menus3, story4, story6, story8, story9
+open_questions:
+- What the 0x24/0xA5/0x28/6 literals represent inside battle_aiCheckPanelRangeAndDoAttack_8134930 (likely
+  AIData sub-fields / element / target panel params) — confirming would require reading 8134930.
+- The exact meaning of the (5,0) vs (6,1) r0/r1 pair (e.g., "B-press attack vs A-press attack" or "B-attack
+  vs A-attack").
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d4179034
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_81353F0 -> battle_aiRunTurnHandler_81353F0
+  where: bn6f d0265620
+  tool: tools/rename_symbol.py

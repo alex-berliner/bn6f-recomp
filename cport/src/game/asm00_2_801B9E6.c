@@ -1101,10 +1101,10 @@ Next battle_RequestEndBattle_801C06E(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_801C078 ── */
-/* sub_801C078: entry point that invokes the main routine with r0 = 0
+/* ── battle_drawChipCountsOAMWithRetvalZero_801C078 ── */
+/* battle_drawChipCountsOAMWithRetvalZero_801C078: entry point that invokes the main routine with r0 = 0
  * (no arguments); all results come straight from battle_drawChipCountsOAM_801C082. */
-Next sub_801C078(void) {
+Next battle_drawChipCountsOAMWithRetvalZero_801C078(void) {
     R0 = 0;
     GUEST_CALL(battle_drawChipCountsOAM_801C082);
     RETURN_TO_CALLER();

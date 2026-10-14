@@ -1,0 +1,55 @@
+name: battle_getBeastOutAvailability_81422BE
+address: '0x081422BE'
+kind: function
+previous_names:
+- sub_81422BE
+status: probable
+summary: Returns 0 only when the current soul-weapon beast is unlocked and its required event flags are
+  set; otherwise 1.
+interface: '() -> r0 = bool (0 = beast available, 1 = unavailable) ; side effects: clobbers r0-r3,r4-r7'
+details: "Tests the PET menu data flag (bit 1 via TestPETMenuDataFlag with r0=1) and bails to \"unavailable\"\
+  \ if not set.\n  Calls GetSoulWeaponsMapIndex to get the soul-weapon slot index (0..7, or 0xff if none);\
+  \ if 0xff returns 1.\n  Calls sub_81427CE to get a base event flag, tests it via TestEventFlag, bails\
+  \ to 1 on miss.\n  Uses the slot index (r4) doubled as a word offset into byte_81422F8 (the 0x0686..0x068D\
+  \ story/event flags table,\n  exactly 8 entries x 2 bytes), reads the per-soul-weapon flag and tests\
+  \ it; bails to 1 on miss.\n  Otherwise returns 0. The function looks like the gate used by the \"Beast\
+  \ Out\" PET menu option to decide\n  whether to show/enable beast transformation.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mov r0, #1; bl TestPETMenuDataFlag; bne loc_81422F0` -> early 1 if PET-menu flag bit 1 not
+    set. - `bl GetSoulWeaponsMapIndex; mov r4,r0; cmp r4,#0xff; beq loc_81422F0` -> 1 if no soul weapon
+    equipped/known. - `bl sub_81427CE; mov r0,r0; bl TestEventFlag; beq loc_81422F0` -> base-event check.
+    - `lsl r4,r4,#1; ldrh r0,[r1,r4]` with r1 = off_81422F4 = byte_81422F8, table of u16s 0x0686,0x0687,0x0688,0x0689,0x068A,0x068B,0x068C,0x068D
+    (8 entries). - `bl TestEventFlag; beq loc_81422F0` then `mov r0,#0; pop {r4-r7,pc}` -> return 0 only
+    on full success. - `loc_81422F0: mov r0,#1; pop {r4-r7,pc}` -> default-return value is 1. - All 40
+    captured calls return r0=1 with --C-; consistent with caller behaviour where the function normally
+    returns 1 (i.e. beast out is blocked) at these capture sites.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x081422BE
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^081422be '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- Whether r10 (toolkit) is actually used by the function itself or only saved/restored as part of the
+  calling convention. The function is a thin wrapper around three flag tests, so the in='r10' likely just
+  reflects the capture.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d4179034
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_81422BE -> battle_getBeastOutAvailability_81422BE
+  where: bn6f d0265620
+  tool: tools/rename_symbol.py

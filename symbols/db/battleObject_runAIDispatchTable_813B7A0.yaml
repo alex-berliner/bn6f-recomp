@@ -1,0 +1,63 @@
+name: battleObject_runAIDispatchTable_813B7A0
+address: '0x0813B7A0'
+kind: function
+previous_names:
+- sub_813B7A0
+status: probable
+summary: 'Battle AI dispatcher: looks up the caller''s battle object, picks an AIData field (0x8 or 0xc)
+  based on event flag 0x2660+actorIndex, then tail-calls through a 4-entry thunk table.'
+interface: '(r0 = actorIndex, r1 = dispatchId) -> r0 = unk_2009F00 ; side effects: reads battle object
+  AIData, tests event flag, tail-jumps to dispatchId[0..3]'
+details: "- r0 (actorIndex) saved into r4, r1 (dispatchId) saved into r6.\n  - Calls sub_813B780 (battleObject_getByIndex_813B780)\
+  \ with r0=actorIndex, r7=returned object ptr.\n  - Builds event flag id = 0x2660 + actorIndex, calls\
+  \ TestEventFlag; if flag clear r2=8 else r2=0xc.\n  - Loads a u32 from battle object at [r7+r2]; this\
+  \ is either AIData offset 0x8 or 0xc. Note: r7 is overwritten by `ldr r7, [r7,r2]` and then immediately\
+  \ by `ldr r4, off_813B7E4`, so the loaded value is unused — likely a slot/field that gets advanced (8\
+  \ vs 0xc) before the dispatch jump.\n  - The dispatchId (r6) is used as a 4-byte indexed lookup into\
+  \ off_813B7D0 which contains 4 Thumb+1 thunks (sub_813B7EC, sub_813B7FC, sub_813B818, sub_813B830);\
+  \ control jumps there via `mov lr,pc; bx r0`.\n  - Returns r0 = unk_2009F00 (loaded via off_813B7E4)\
+  \ and pops {r4,r6,r7,pc}. The four thunks share this epilogue, each having ended by returning r4=unk_2009F00.\n\
+  \  - The `TestEventFlag` branch chooses which AIData field (likely different \"AI plan\" or \"phase\"\
+  \ table) to consume before dispatching.\n  - Caller r0=0x34 in all captured samples (actorIndex 0x34),\
+  \ and exit r0=unk_2009F00 consistently — the dispatcher is the BeastSP \"run AI plan\" entry.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl battleObject_getByIndex_813B780` at sub_813B7A0+8 looks up by index. - `ldr r1, dword_813B7E8
+    // =0x2660; add r1, r1, r4` constructs flag id = 0x2660 + actorIndex. - `bl TestEventFlag` then `beq
+    loc_813B7BC; mov r2, #0xc` selects 0xc vs the default 8 loaded just above. - `ldr r7, [r7,r2]` reads
+    an AIData-sized field from the battle object. - `ldr r0, off_813B7D0 // =off_813B7D4; lsl r1, r6,
+    #2; ldr r0, [r0,r1]; mov lr,pc; bx r0` is the 4-way tail-call dispatch on r6. - `ldr r4, off_813B7E4
+    // =unk_2009F00 ... mov r0, r4; pop {r4,r6,r7,pc}` returns the global unk_2009F00. - Caller context
+    (sub_8117820/.../sub_813BD90 etc.) and snap_beastsp_* tags indicate this is invoked during the Beast/SP
+    battle AI tick; r0=0x34 is the SP-related actorIndex used by that code path.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0813B7A0
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^0813b7a0 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- What the four thunks (sub_813B7EC/813B7FC/813B818/813B830) actually do — they share the unk_2009F00
+  epilogue and likely implement the four AI phases (init/run/idle/finish). Also whether r2=0x8 vs 0xc
+  selects AIData.Unk_08 (some AI pointer) or skips past something else is not fully verifiable without
+  a near-field, since the loaded `ldr r7, [r7,r2]` result is immediately overwritten before any observable
+  side effect.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d4179034
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_813B7A0 -> battleObject_runAIDispatchTable_813B7A0
+  where: bn6f d0265620
+  tool: tools/rename_symbol.py

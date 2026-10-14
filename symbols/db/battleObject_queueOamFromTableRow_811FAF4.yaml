@@ -1,0 +1,69 @@
+name: battleObject_queueOamFromTableRow_811FAF4
+address: '0x0811FAF4'
+kind: function
+previous_names:
+- sub_811FAF4
+status: probable
+summary: Looks up an OAM tile/attribute pair from r3 (u16 table) by r2 (row index, sign-extended), queues
+  one sprite OAM entry via sprite_queueOamEntryThunk_802FE28 and returns the next row index (r2/2+1) —
+  i.e. walks the descriptor table by one row.
+interface: '(r0 = packed X|Y render bits, r1 = packed 16-bit position+flags, r2 = signed row/entry index
+  (low bits used), r3 = ptr to u16 descriptor table) -> r0 = next row index ((index2>>1)+1) ; side effects:
+  calls sprite_queueOamEntryThunk_802FE28'
+details: "Splits r1 into three u16 fields on the stack: high half -> [sp], low byte -> [sp+8], bits 8..15\
+  \ -> [sp+4] (a Z byte / partial attrs).\n  Sign-masks r2 into r7 (lsl 1; lsr 1) so negative indexes\
+  \ are clamped to >=0; if r0<0 the function returns r7 without queueing.\n  When r0 >= 0, r4 = r0 | r6\
+  \ (so X bits get ORed with the stack-high field for shape/affine) and r6 = r4 (saved X).\n  If r2's\
+  \ high bit (r2>>31) is set, reads the toolkit r10->CurFramePtr u16 and forces the function to *return*\
+  \ (no OAM) unless frame & 3 == 0 — a per-2-frames skip on the top bit (used as an \"even-frames only\"\
+  \ gate).\n  Otherwise: r2<<=1 (word stride). Loads halfword [r3+r2]; if it equals 0xFFFF (the sentinel),\
+  \ backs up two bytes; if zero, falls back to [r3] (the row-0 entry); otherwise uses the entry directly.\
+  \ Resulting row*2 is kept in r7, then r7 = (r7>>1) + 1 → returns the *next* row index for the caller\
+  \ to feed back in.\n  Final call to sprite_queueOamEntryThunk_802FE28(a1=r0|r2<<10, a2=r0_packed, a4=stack\
+  \ fields) with r3=stack u16. The function is a per-frame sprite blit helper used by battle object OAM\
+  \ builders and the spawn/affine-object systems.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `lsl r1, r1, #0x10; lsr r1, r1, #0x10; mov r7, #0xff; and r7, r1; str r7, [sp,#8]` — extracts
+    the low byte of r1 into the 4th arg slot. - `lsr r1, r1, #8; str r1, [sp,#4]` — extracts bits 8..15
+    of r1. - `mov r6, r1; lsr r6, r6, #0x10; str r6, [sp]` — saves the high half of r1 for the shape/affine
+    byte. - `mov r7, r2; lsl r7, #1; lsr r7, #1` — sign-masking r2 to clear the high-bit row-skip flag.
+    - `cmp r0, #0; blt loc_811FB5A` — short-circuit when r0 is negative. - `orr r4, r0; ... orr r0, r2`
+    — r0 packed with the high byte from stack (attribut-like field). - `lsr r0, r2, #0x1f; beq loc_811FB2A`
+    — top bit of r2 is a "skip this frame" gate; inside, `tst r0, r1; beq loc_811FB5A` with r1=3 reads
+    the frame counter to skip 3 of every 4 frames when set. - `lsl r2, r2, #1; ldrh r0, [r3,r2]` then
+    compare with 0xFFFF sentinel (`dword_811FB60`) and the zero-fallback to `[r3]` (loc_811FB3A / loc_811FB42)
+    — table-based OAM descriptor lookup with end-of-table sentinel. - `mov r7, r2; lsr r7, #1; add r7,
+    #1` then `mov r0, r7` — return r7 = (index+1) so the caller can pass it back next frame. - `bl sprite_queueOamEntryThunk_802FE28`
+    (only callee) — final OAM enqueue.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0811FAF4
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0811faf4 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus2, menus3, story1, story2, story3,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- Exact meaning of the two unpacked u16 args ([sp+4]/[sp+8]) isn't pinned to a specific OAM attribute
+  bit layout; what the top bit of r2 represents (skip gate vs. attribute flag) is only inferred from the
+  captured r2 values 0/2/3.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d4179034
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_811FAF4 -> battleObject_queueOamFromTableRow_811FAF4
+  where: bn6f d0265620
+  tool: tools/rename_symbol.py

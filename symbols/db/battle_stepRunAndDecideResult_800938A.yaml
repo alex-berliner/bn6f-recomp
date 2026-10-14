@@ -1,0 +1,92 @@
+name: battle_stepRunAndDecideResult_800938A
+address: '0x0800938A'
+kind: function
+previous_names:
+- sub_800938A
+status: probable
+summary: 'Drives the "pre-result / run-away" sub-phase of battle: validates chip hand, runs the inner
+  battle step, and then decides which battle-result code (0x8, 0x10, 0x14, 0x18, 0x1c, 0x20) to store
+  into BattleState.Index_01.'
+interface: '(no args via registers; toolkit/BattleState ptr in r10) -> r0 = 0 ; side effects: writes BattleState.Unk_03,
+  BattleState.Index_01, BattleState.Unk_02_03, BattleState.Unk_1e, clears dword_203CA70 record, calls
+  several battle helpers.'
+details: "- Entry guard: `ldrb r0, [r5,#oBattleState_Unk_03]` (r5 holds the BattleState pointer; `push\
+  \ {r4,lr}` only saves r4) - if it is 0, `clearDword_203CA70Record_80084C0` is called and 0x4 is written\
+  \ to `BattleState.Unk_03` to mark \"init done\".\n  - Then `battle_runMainStep_800801C` runs the actual\
+  \ battle sub-step.\n  - `someChipHandValidationHappensHere_800B090` returns a battle-flow status in\
+  \ r0.\n  - r0 == 6 -> writes 0x8 to `BattleState.Index_01` and 0 to `BattleState.Unk_02_03`, then returns.\n\
+  \  - r0 == 0 -> early return (no result change).\n  - Otherwise: writes `oBattleState_Unk_07` into `eOWPlayer+3`\
+  \ (`eStruct200A008_setUnk03`), then branches on r0 == 1 vs r0 == 2:\n    - r0 == 1 path: `setTwoStructs_800A840(1)`,\
+  \ run `sub_800AF84`, store its byte at `BattleState.Unk_1e`, call `eStruct200A008_setUnk00`, run `sub_800B6F2`\
+  \ (pending-event list firing), then pick r2 = 0x18 / 0x1c / 0x20 based on `GetBattleMode()` (4/5/8),\
+  \ otherwise check `GetBattleEffects()` bit 0x2 -> r2 = 0x14, or bit 0x400 -> leave r2 = 0x10, else consult\
+  \ `sub_800AF50` and force r2 = 0x10 only when it returns 1 (r0 == 0 or r0 == 2 collapse to r2 = 0x14\
+  \ at loc_8009452).\n    - r0 == 2 path: similar, using `setTwoStructs_800A840(2)`, the same `sub_800AF84`/`eStruct200A008_setUnk00`\
+  \ calls, but it checks GetBattleEffects bits 0x8 and 0x2 -> collapses to r2 = 0x14, otherwise 0x10 /\
+  \ 0x14 via the same `sub_800AF50` check.\n  - r0 == anything else (not 1/2/6/0) falls straight to `loc_8009452`\
+  \ with r2 = 0x14.\n  - `loc_8009454`: `strb r2, [r5,#oBattleState_Index_01]` then zero `BattleState.Unk_02_03`,\
+  \ r0 = 0, return via `pop {r4,pc}`.\n  - The chosen constants stored to `BattleState.Index_01` (0x10,\
+  \ 0x14, 0x18, 0x1c, 0x20) and the chip-hand validation, BattleMode/BattleEffects branching, plus the\
+  \ `BattleState.Unk_1e` write and pending-event flush strongly suggest this routine handles the \"flee\
+  \ / battle-flow result\" sub-state that decides which battle-result codebook entry to jump into next\
+  \ (one of the standard battle-result codes).\n  - Although `eOWPlayer` and `200A008` are touched, the\
+  \ structure being modified is actually the battle's secondary struct at 0x0200A008 (the chip-hand /\
+  \ player-area struct), not the overworld player object - the helpers `eStruct200A008_setUnk00`/`setUnk03`\
+  \ are reused as convenient mutators.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {r4,lr}` + use of r5 for the BattleState pointer is consistent with `r10` (toolkit)
+    being used to derive `r5` before this call (caller-supplied r5). - `ldrb r0, [r5,#oBattleState_Unk_03]`
+    then `strb r0, [r5,#oBattleState_Unk_03]` at 0x08009390 and 0x08009396 show the "first call init"
+    guard that sets Unk_03 = 4 and pairs with `clearDword_203CA70Record_80084C0` at 0x0800938A. - Direct
+    `cmp r0, #6` / `bne loc_80093B0` at 0x080093A2 selects the "set Index_01 = 8" branch (battle-result
+    code 8) when the chip-hand validator reports 6. - `setTwoStructs_800A840(1)` at 0x080093D2 and `setTwoStructs_800A840(2)`
+    at 0x0800941C are the two "battle result = 1/2" book-keeping calls; combined with `BattleState.Index_01
+    = 0x10/0x14/0x18/0x1c/0x20`, these are the standard battle-end codebook entries. - `GetBattleMode()`
+    switch at 0x080093E0..0x080093F0 (4 -> 0x18, 5 -> 0x1c, 8 -> 0x20) plus `GetBattleEffects()` bit checks
+    0x2 / 0x400 at 0x080093F4..0x08009404 show how `r2` (the chosen BattleState.Index_01) is selected
+    from mode/effect context. - `sub_800AF50` at 0x08009408 with the explicit `cmp r0, #0` / `cmp r0,
+    #2` collapse-to-0x14 logic at 0x0800940C..0x08009410 mirrors the same idiom in the r0==2 path at 0x0800943A..0x08009442,
+    indicating both paths share the same codebook resolution helper. - Final write `strb r2, [r5,#oBattleState_Index_01]`
+    at 0x08009454 and `strh r0, [r5,#oBattleState_Unk_02_03]` (with r0 = 0) at 0x08009456 are the canonical
+    "advance BattleState to the chosen result sub-state" trailing sequence. - The repeated `bl sub_800AF84
+    ; strb r0, [r5,#oBattleState_Unk_1e]` pattern at 0x080093D6 and 0x08009420, followed by `bl eStruct200A008_setUnk00`
+    and (in the r0==1 path only) `bl sub_800B6F2`, matches the post-fight pending-event flush flow described
+    in those callees'' summaries. - All 40 captured entry frames show the standard caller (r0=0xC, r1=0x0800938B+1
+    = lr into this function, r3 = 0x02036828 = dword_203CA70 region, lr=0x08009164 = a fixed caller in
+    the battle subsystem), confirming this is on the battle hot path.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0800938A
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0800938a '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9
+open_questions:
+- Whether r5 holds `BattleStatePtr` directly or the toolkit `r10` is being used to derive it - the contract
+  lists r10 as a preserved callee-clobber and the caller sets up r5; the precise caller is not in the
+  project, so the field role ("Unk_03 sentinel", "Unk_07", "Unk_1e") is still inferred from the offset
+  names.
+- The semantic meaning of `BattleState.Index_01` = 0x10/0x14/0x18/0x1c/0x20 (which battle-result codebook
+  entry each maps to, e.g. flee-success vs forfeit vs disconnect) is not provable from this routine alone
+  - it would require cross-referencing the dispatch jumptable that consumes `Index_01`.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d4179034
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_800938A -> battle_stepRunAndDecideResult_800938A
+  where: bn6f d0265620
+  tool: tools/rename_symbol.py

@@ -1,0 +1,58 @@
+name: battleObject_setFlags6Bit_81171F4
+address: '0x081171F4'
+kind: function
+previous_names:
+- sub_81171F4
+status: probable
+summary: Sets or clears bit 1 of the byte at offset 0x6 of the eStructArr2008450 entry whose index is
+  in r1, depending on the flag in r0; bails out if the entry is not in use.
+interface: '(r0 = bool flag, r1 = entry index into eStructArr2008450) -> no return value ; side effect:
+  bit 1 of entry[idx].Unk_06 is OR''d or BIC''d'
+details: "Saves the original r0 onto the stack. Calls getStructFrom2008450(r1) which returns NZ\n  from\
+  \ the in-use byte of the entry and puts the entry base pointer in r1. If the entry\n  is not in use\
+  \ (BEQ to loc_8117214) the function returns without touching anything.\n  Otherwise it loads the existing\
+  \ byte at entry+6 into r2, prepares mask r3=#2 and the\n  saved r0 (which has been `tst r0,r0` to set\
+  \ Z). If r0 was non-zero it ORs the bit\n  into r2 (loc_8117210 path); if r0 was zero it BICs the bit\
+  \ (loc_8117212 path), and\n  stores the resulting byte back to entry+6. The contract says nothing is\
+  \ returned to\n  callers (only callee-saved r2/r3/r5 plus NZ/C/V are live), so it is void-like.\n  The\
+  \ 0x58-byte record at 0x2008450 is not exposed as a named struct in the project,\n  so the bit being\
+  \ toggled is best described as \"Unk_06 bit 1\". Based on the calling\n  pattern in battle_alignRowCheck_81348DC,\
+  \ this likely toggles an alignment-related\n  flag, but that's not provable from this function alone.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl getStructFrom2008450` is the only call; callee returns NZ from the in-use byte and the
+    entry base in r1 (per callee contract). - `beq loc_8117214` short-circuits the write when the entry
+    is not in use. - `mov r3, #2` plus `orr r2, r3` / `bic r2, r3` shows the bit being set/cleared is
+    bit 1. - `strb r2, [r1,#6]` writes the modified byte back at offset 0x6 of the entry. - `tst r0, r0`
+    / `bne loc_8117210` uses the LSB of the caller''s flag (r0) to choose set-vs-clear. - All 40 captured
+    calls show r0=0 / Z set on exit, meaning the typical call passes flag=0 (clearing the bit) at the
+    end of battle_alignRowCheck_81348DC.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x081171F4
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^081171f4 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- What the 0x58-byte struct at 0x2008450 actually represents (no struct definition is provided for it);
+  identifying it would let us rename the bit and drop the _ADDRESS suffix. Also unclear which real-world
+  game state this bit controls.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d4179034
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_81171F4 -> battleObject_setFlags6Bit_81171F4
+  where: bn6f d0265620
+  tool: tools/rename_symbol.py

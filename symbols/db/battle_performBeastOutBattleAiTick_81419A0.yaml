@@ -1,0 +1,74 @@
+name: battle_performBeastOutBattleAiTick_81419A0
+address: '0x081419A0'
+kind: function
+previous_names:
+- sub_81419A0
+status: probable
+summary: Beast-SP Battle AI per-frame dispatch (init sub-mode, run AI, conditionally run sub-routines)
+  returning 0.
+interface: (r10 = ToolkitPtr) -> r0 = 0 ; updates r4–r7/r8/r9/r12, calls many subsystems, may call chatbox_mask_eFlags2009F38
+details: "Reads `eStruct2001010` (a per-subsystem state struct at 0x02010100) into r5 and asks `sub_8141AA8`\
+  \ (next-subsystem mode helper) whether a transition is needed; if no, falls through. Otherwise clears\
+  \ `eStruct2001010+3`, runs two `sub_80468C6` setup calls (`(1,0,0)` then `(2,1,0)` — likely Beast-SP\
+  \ on/off and player/state selects), then continues.\n  Common tail (run regardless when no transition):\
+  \ `sub_8046818` (battle AI dispatch — wrapper), `sub_8046854` (battleObject_updateSpriteGfxForAll —\
+  \ refresh OAM for every BattleObject), and `sub_811E0BA` (likely battle housekeeping — possibly background\
+  \ anims/effects).\n  If no cutscene script is active (`IsCutsceneScriptNonNull`), OW player isn't busy\
+  \ (`owPlayer_isBusyOrCutsceneActive_809E462` returns Z), and a screen-fade is in progress (`IsScreenFadeActive`\
+  \ returns Z), it reads the chatbox/event-flag word (`chatbox_mask_eFlags2009F38` with `r0=0x80`). When\
+  \ the flag bit is *not* set, checks `GameState->SubsystemIndex == 4` (Battle subsystem). If yes, calls\
+  \ `sub_8141AD2` (likely \"is Beast-SP initialized?\"); based on its NZ result it picks `sub_8141A10`\
+  \ (Beast-SP tick) or `sub_8141A70` (Beast-SP init or alternate branch).\n  Always returns 0. The `snap_beastsp_*.bin`\
+  \ frames captured all enter with `r0=0x081419a1` (the low bit set — Thumb `+1` mode, typical of the\
+  \ call-site odd address), `r1=0x10`, `r2=1`, `r3=0x02001f6e`, and exit with `r0=0` — consistent with\
+  \ this being a Beast-SP-mode loop of the main battle ticker.\n  EWRAM touched: `eStruct2001010` (`off_8141B14`);\
+  \ chatbox/event-flag word at `eFlags2009F38`; GameState pointer via Toolkit.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r5, off_8141B14 // =eStruct2001010` shows the EWRAM struct this function uses as scratch
+    state. - `bl sub_8046818` and `bl battleObject_updateSpriteGfxForAll_8046854` are standard battle-frame
+    calls (refresh sprites, run one AI tick). - `bl IsCutsceneScriptNonNull` / `bl owPlayer_isBusyOrCutsceneActive_809E462`
+    / `bl IsScreenFadeActive` form the standard "should we run real battle logic now?" gate used elsewhere
+    in battle tickers. - `bl chatbox_mask_eFlags2009F38` with `r0=0x80` plus the `bne` branch suggests
+    "if the player didn''t yet toggle Beast-SP mode this frame, skip." `cmp r0, #4` against `SubsystemIndex`
+    confirms Battle subsystem gating. - `sub_8141A10` / `sub_8141A70` / `sub_8141AA8` / `sub_8141AD2`
+    form a small sibling cluster at 0x8141A10–0x8141AD2; their proximity in IWRAM and the `bne` dispatcher
+    pattern match an exclusive Beast-SP sub-state machine (off → init → tick). - Snapshots all enter from
+    a single call-site (lr=0x08003b1a, near Beast-SP hook), and consistently return r0=0 → void-like main-loop
+    tick. - `bl sub_80468C6` twice with args (1,0,0) and (2,1,0) right after the mode switch matches "when
+    entering Beast-SP, set two related flags (e.g. battle-Type=Beast, dual-Navi on)."'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x081419A0
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^081419a0 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- Exact role of `sub_80468BA` (called between clear and the two `sub_80468C6`); could be something like
+  "play Beast-SP enter sfx" or "broadcast a UI event."
+- The semantics of `eStruct2001010+3` (likely a "is-beast-mode-transitioning" or "beast-mode-armed" byte)
+  — not visible from this function alone.
+- Whether `sub_8046818` is the canonical "battle AI tick" or only Beast-SP AI; `sub_811E0BA`'s role (only
+  ever called in this Beast-SP branch, never seen in the canonical beastsp_0140000_N paths' tail apparently)
+  leaves some doubt, though it appears common to this caller.
+- What the matching standard-mode battle ticker calls at the same return address — would settle why this
+  is split off.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d4179034
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_81419A0 -> battle_performBeastOutBattleAiTick_81419A0
+  where: bn6f d0265620
+  tool: tools/rename_symbol.py

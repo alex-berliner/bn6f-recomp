@@ -285,7 +285,7 @@ static void run_state_phase_handler(u32 table_offset)
     case 0x00: GUEST_CALL(battle_runBattleIntroSpawnStep_80091F0); break;
     case 0x04: GUEST_CALL(battle_dispatchStatePhase_80092A0); break;
     case 0x08: GUEST_CALL(sub_8009338); break;
-    case 0x0C: GUEST_CALL(sub_800938A); break;
+    case 0x0C: GUEST_CALL(battle_stepRunAndDecideResult_800938A); break;
     case 0x10: GUEST_CALL(battle_DispatchStatePhase_800945C); break;
     case 0x14: GUEST_CALL(battle_initFadeToBattleResult_80094DA); break;
     case 0x18: GUEST_CALL(sub_800951E); break;

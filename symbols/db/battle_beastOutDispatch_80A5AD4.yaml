@@ -1,0 +1,66 @@
+name: battle_beastOutDispatch_80A5AD4
+address: '0x080A5AD4'
+kind: function
+previous_names:
+- sub_80A5AD4
+status: probable
+summary: Beast-Out AI dispatch table that calls one of three per-state handlers based on the AIData sub-state
+  byte at r5+8.
+interface: (r5 = AIState* or AIData*, r10 = Toolkit*, lr = return) -> void
+details: "Reads a byte from r5+8 (offset 0x8 in the AIState struct is CurState based on the AIState layout,\
+  \ but the surrounding context — there is a dedicated `battle_beastOutTick_80A5B70` plus two siblings\
+  \ — strongly suggests this is the per-frame Beast-Out sub-state dispatch). Loads `off_80A5AE8`, an inline\
+  \ jump table of three Thumb targets, indexes it by the byte at r5+8, sets `lr = pc` and `bx`s into it.\
+  \ Then `pop {pc}` returns — i.e. the function tail-pops the saved LR into PC, so this is a one-shot\
+  \ tail call. The dispatch entries (with `+1` for Thumb bit) are:\n  - index 0 → `sub_80A5AF8`\n  - index\
+  \ 1 → `battle_beastOutTick_80A5B70` (a real-named sibling, confirming the Beast-Out interpretation)\n\
+  \  - index 2 → `sub_80A5C6C`\n  `r6` is loaded with `unk_2011A90` but never otherwise touched in this\
+  \ short body; the ldr is hoisted state that some callee expects. Caller lr 0x08004916 across the captured\
+  \ set indicates a single call site that runs every frame of a Beast-Out sequence and returns 0x30C4\
+  \ (or 0x3024 in one sample) in r0 as a battle-side sentinel value.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r1, [r5,#8]` reads the dispatch index from offset 8 of r5 (asm:1704). - `ldr r0, [r0,r1]`
+    indexes a 3-entry Thumb jump table stored at `off_80A5AE8` (asm:1705, asm:1717-1719) with targets
+    `sub_80A5AF8+1`, `battle_beastOutTick_80A5B70+1`, `sub_80A5C6C+1`. - The middle entry is the already-named
+    `battle_beastOutTick_80A5B70` (provided in the callee list), which names the Beast-Out context. -
+    `mov lr, pc` / `bx r0` (asm:1707-1708) is the canonical Thumb tail-call-via-jump-table idiom. - `push
+    {lr}` / `pop {pc}` (asm:1702, asm:1709) shows a tail-jump: callee returns straight to the original
+    caller, no return value plumbed back; matches `out` having only callee-saved registers. - Captured-entry
+    lr=0x08004916 is identical across all 6 snapshots — a single recurring call site in the per-frame
+    battle dispatcher. - `r6 <- unk_2011A90` (asm:1703) is loaded but unused in this body; consistent
+    with callee expectations (the unknown struct lives at 0x02011A90 in IWRAM). - Exit r0 = 0x30C4 (or
+    0x3024) is a sentinel handled by the caller; flags become -Z-- reflecting a normal return comparison
+    at the caller.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080A5AD4
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp, maps'
+  reproduce: 'grep -l ''^080a5ad4 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp, maps
+open_questions:
+- 'What `r5` actually points to: AIData (where offset 0x8 is `BLeftAbility`) or AIState (where offset
+  0x8 is `Unk_08`) is unclear from this snippet alone. The byte being used as a 3-valued sub-state index
+  argues it is a small state field, not BLeftAbility, so AIState is the better fit but not confirmed.'
+- The role of `unk_2011A90` (loaded into r6 but untouched here) and what it carries into the callees.
+- Whether index 0 (`sub_80A5AF8`) is the init phase and index 2 (`sub_80A5C6C`) is the cleanup/end phase,
+  vs. some other ordering — would settle on reading the three callees.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d4179034
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80A5AD4 -> battle_beastOutDispatch_80A5AD4
+  where: bn6f d0265620
+  tool: tools/rename_symbol.py

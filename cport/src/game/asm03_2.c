@@ -3387,8 +3387,8 @@ Next sub_804A230(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_804A24C ── */
-/* sub_804A24C: looks up a byte at the dword_804A25C table using r0 as the index,
+/* ── chatbox_getTextScriptPointerByIndex_804A24C ── */
+/* chatbox_getTextScriptPointerByIndex_804A24C: looks up a byte at the dword_804A25C table using r0 as the index,
  * then returns unk_2001850 + that byte. r4-r7 and flags are preserved per the
  * register contract. */
 static u32 lookup_table_entry(u32 index) {
@@ -3397,7 +3397,7 @@ static u32 lookup_table_entry(u32 index) {
 }
 
 /* register form: thin adapter - typed body lives in lookup_table_entry. */
-Next sub_804A24C(void) {
+Next chatbox_getTextScriptPointerByIndex_804A24C(void) {
     R0 = lookup_table_entry(R0);
     RETURN_TO_CALLER();
 }

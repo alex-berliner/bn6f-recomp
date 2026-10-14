@@ -1,0 +1,72 @@
+name: owMapObject_checkBoundsAndStartBeastSpEncounter_80A7CFE
+address: '0x080A7CFE'
+kind: function
+previous_names:
+- sub_80A7CFE
+status: probable
+summary: 'Overworld interaction trigger: if the player is inside a fixed 0xE0000..0x1C0000 X/Y box and
+  conditions hold (no chatbox 0x80, no cutscene, no busy player, not faded), set event flag 0x1731 and
+  start the BeastSp encounter cutscene (script selected by player id).'
+interface: (r5 = unknown 0x14-byte param for StartCutscene) -> void ; uses overworld player coords from
+  tk->GameState
+details: "Reads r10 (Toolkit) → GameStatePtr → OverworldPlayerObjectPtr to get the OW player's on-map\
+  \ fixed-point\n  coords at +0x1c (X) and +0x20 (Y). Subtracts constants from dword_80A7D78/7C, then\
+  \ checks the player is\n  within the half-open box [0xE0000 .. 0x1C0000] on both axes (signed compare/ble/blt\
+  \ pattern, so it\n  bails on locret_80A7D70 if outside). If still in-range: chatbox_mask_eFlags2009F38(0x80)\
+  \ must be clear,\n  IsCutsceneScriptNonNull must be false, owPlayer_isBusyOrCutsceneActive_809E462 must\
+  \ be false, and\n  IsScreenFadeActive must be true (fade NOT active via `beq` to early-out means \"\
+  NOT active\" — i.e. fade\n  is finished) before continuing.\n  Sets story event flag 0x1731 via SetEventFlagFromImmediate\
+  \ (the flag word passed in r0/r1 is named\n  `movflag EVENT_1731`).\n  Reads the player's slot id from\
+  \ OWPlayerObject+0x24 into r4, compares with the caller's discriminator\n  at [r5+0x14]: if equal, starts\
+  \ cutscene script byte_8089E44 with param r5; otherwise calls sub_81420B0,\n  compares its return to\
+  \ r4, and on match starts cutscene script byte_8089FD8 with param r5. The caller\n  (sub_80A7CEA) feeds\
+  \ multiple per-OW-player interaction areas (snap_*_0140000 shows param r5 points at\n  0x02039568..0x0203957c,\
+  \ each entry carrying an id at +0x14), so this routine picks the right cutscene\n  depending on which\
+  \ OW player slot is overlapping the trigger box.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r7,[r10,#oToolkit_GameStatePtr]; ldr r7,[r7,#oGameState_OverworldPlayerObjectPtr]` (top
+    of asm29.s:5356) confirms Toolkit→GameState→OWPlayer fetch - `ldr r2,[r7,#0x1c]` / `ldr r3,[r7,#0x20]`
+    is OWPlayerObject X/Y (per oOverworldPlayerObject.Coords at 0x1c/0x20) - `dword_80A7D78=0xE0000`,
+    `dword_80A7D7C=0xE0000`, `dword_80A7D80=0x1C0000`, `dword_80A7D84=0x1C0000` define the axis-aligned
+    bounding box and `cmp r2,r0` / `bgt locret` enforces it. - `movflag EVENT_1731` + `bl SetEventFlagFromImmediate`
+    sets story flag 0x1731. - 4 guards: `chatbox_mask_eFlags2009F38(0x80)==0`, `IsCutsceneScriptNonNull()==false`,
+    `sub_809E462==false`, `IsScreenFadeActive==true` (`beq locret` so we keep going only when fade IS
+    active… actually z-set means active off; assemble=beq earlyout ⇒ we proceed when fade-NOT-active).
+    - `ldr r4,[r7,#0x24]` pulls from OWPlayerObject+0x24 (matches player id field semantics); compared
+    against `[r5,#0x14]` (caller''s per-entry id) to pick byte_8089E44 vs sub_81420B0→byte_8089FD8.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080A7CFE
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^080a7cfe '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- Which exact game-state this trigger fires in (the box at 0xE0000..0x1C0000 looks like a fixed map
+- region — possibly a BeastSp spawn area in BeastSp map). Knowing the map+coords `0xE0000..` on the
+- live map would pin it down.
+- What `sub_81420B0` does (it returns something used to discriminate the player slot before starting
+- one of two scripts).
+- The exact meaning of the two CutsceneScripts byte_8089E44 / byte_8089FD8 (intro vs. battle-start
+- variant likely).
+- Whether the "IsScreenFadeActive" guard is inverted from how I read it; tracing IsScreenFadeActive's
+- return convention in full would settle it.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d4179034
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80A7CFE -> owMapObject_checkBoundsAndStartBeastSpEncounter_80A7CFE
+  where: bn6f d0265620
+  tool: tools/rename_symbol.py

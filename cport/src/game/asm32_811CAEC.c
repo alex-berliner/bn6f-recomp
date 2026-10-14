@@ -1026,7 +1026,7 @@ Next getCurrentMapBgm_811F290(void) {
 /* ── sub_811F508 ── */
 /* sub_811F508(r10 = ?, r5 = ?, lr):
  * Chip/custom-data handler invoked during a frame.
- * Reads r5->0x10 flag; if zero, dispatches to sub_811FAF4 with a packed arg,
+ * Reads r5->0x10 flag; if zero, dispatches to battleObject_queueOamFromTableRow_811FAF4 with a packed arg,
  * decrements r5->0xB timer, and reloads it via sub_8120CC8 when it hits zero.
  *
  * Output: R7 (preserved register, untouched by this function).
@@ -1048,8 +1048,8 @@ Next sub_811F508(void) {
     u32 saved_r4 = R4;
     R4 = 0x40000000u;                      /* dword_811F544 */
 
-    GUEST_CALL(sub_811FAF4);
-    /* sub_811FAF4 returns in R0. */
+    GUEST_CALL(battleObject_queueOamFromTableRow_811FAF4);
+    /* battleObject_queueOamFromTableRow_811FAF4 returns in R0. */
     u32 result = R0;
     R4 = saved_r4;
 
@@ -1983,7 +1983,7 @@ Next sub_81202B4(void) {
  * blank text box tile in the requested palette: `r3` halfwords starting at r1,
  * and the same number starting at r1 + 2*r4. Afterwards both end cursors and
  * the remaining length (r4 - r3) are handed to sub_81202B4, which keeps
- * filling from there; sub_804A24C is called in between with what is left of
+ * filling from there; chatbox_getTextScriptPointerByIndex_804A24C is called in between with what is left of
  * the counter (normally 0) and r6 = 0.
  * Note the fill is a do/while: even a count of 0 (or below) writes one
  * halfword per run, matching the original's sub/bgt loop.
@@ -2004,15 +2004,15 @@ Next sub_8120348(void) {
         runB += 2;
     } while (--count > 0);
 
-    /* sub_804A24C(count leftover, ..., fill, end cursors, r5, 0, r7) */
+    /* chatbox_getTextScriptPointerByIndex_804A24C(count leftover, ..., fill, end cursors, r5, 0, r7) */
     R1 = fill;
     R2 = runA;
     R3 = runB;
     R4 = (u32)count;
     R6 = 0;
-    GUEST_CALL(sub_804A24C);
+    GUEST_CALL(chatbox_getTextScriptPointerByIndex_804A24C);
 
-    /* sub_81202B4(r1 as left by sub_804A24C, end cursors, fill, r4 - r3, 0) */
+    /* sub_81202B4(r1 as left by chatbox_getTextScriptPointerByIndex_804A24C, end cursors, fill, r4 - r3, 0) */
     R2 = runA;
     R3 = runB;
     R4 = fill;

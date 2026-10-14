@@ -983,7 +983,7 @@ Next RealClearChain(void) {
 /* ── sub_814E09C ── */
 /* sub_814E09C: convert/copy the 36-word table at off_81C0418 into the buffer
  * whose address arrives in r0. Each word is fetched and then passed through
- * sub_814E0B6 (destination pointer in r0, source address in r2, word value in
+ * battleObject_validateScriptPointer_814E0B6 (destination pointer in r0, source address in r2, word value in
  * r3; the converted word comes back in r3) before being stored. Like the
  * original, r12 is left holding the return address. */
 Next sub_814E09C(void) {
@@ -999,7 +999,7 @@ Next sub_814E09C(void) {
         R2 = src;
         R3 = word;
         R12 = ret;
-        GUEST_CALL(sub_814E0B6);
+        GUEST_CALL(battleObject_validateScriptPointer_814E0B6);
 
         ST32(dest, R3);
         dest += 4;
@@ -1012,16 +1012,16 @@ Next sub_814E09C(void) {
 
 /* ── sub_814E0B4 ── */
 /* sub_814E0B4(r0 = arg, r2 = pointer): read the byte at *r2 into r3 and
- * tail-call sub_814E0B6, which continues the work with that byte.
+ * tail-call battleObject_validateScriptPointer_814E0B6, which continues the work with that byte.
  * r0 is passed through untouched; flags and results come from the callee. */
 Next sub_814E0B4(void) {
     R3 = LD8(R2);
-    GUEST_CALL(sub_814E0B6);
+    GUEST_CALL(battleObject_validateScriptPointer_814E0B6);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_814E0B6 ── */
-/* sub_814E0B6(r0 preserved, r2 = value to check, r3):
+/* ── battleObject_validateScriptPointer_814E0B6 ── */
+/* battleObject_validateScriptPointer_814E0B6(r0 preserved, r2 = value to check, r3):
  * Range-check r2 and clear r3 when it is not an acceptable address.
  * Always returns with r0 unchanged. Flags reflect the last check performed:
  *   - if r2 has bit 25 set (>= 0x02000000) the check passes untouched and the
@@ -1029,7 +1029,7 @@ Next sub_814E0B4(void) {
  *   - otherwise r2 is compared against the ROM constant off_81C0418; values
  *     below it fail (r3 = 0, flags from the comparison's MOV after it),
  *   - values at/above it are split on bit 14 (r2 >> 14) before r3 is cleared. */
-Next sub_814E0B6(void) {
+Next battleObject_validateScriptPointer_814E0B6(void) {
     u32 addr = R2;
     u32 saved_r0 = R0; /* the original pushes/pops r0 around its scratch use */
 
@@ -1134,7 +1134,7 @@ Next ply_pend(void) {
 
 /* ── sub_814E168 ── */
 /* sub_814E168: refresh two halfword fields of the object whose address
- * sub_814E0D0 returns in r0. Field +0x1C receives the callee's r3 doubled;
+ * battleObject_runUpdateRoutineAndAdvancePC_814E0D0 returns in r0. Field +0x1C receives the callee's r3 doubled;
  * field +0x20 receives that doubled value scaled by the halfword at +0x1E
  * (an 8.8 fixed-point multiply: (doubled * scale) >> 8).
  * The original saves its return address into r12 and returns through it,
@@ -1145,7 +1145,7 @@ Next ply_pend(void) {
 Next sub_814E168(void) {
     R12 = LR;   /* mov r12, lr — the original returns via bx r12 */
 
-    GUEST_CALL(sub_814E0D0);
+    GUEST_CALL(battleObject_runUpdateRoutineAndAdvancePC_814E0D0);
 
     u32 obj = R0;
 
@@ -1163,17 +1163,17 @@ Next sub_814E168(void) {
 }
 
 /* ── sub_814E17C ── */
-/* sub_814E17C(r1 = object, remaining inputs forwarded to sub_814E0D0):
- * Runs sub_814E0D0, which computes a byte value in r3 from the object state.
+/* sub_814E17C(r1 = object, remaining inputs forwarded to battleObject_runUpdateRoutineAndAdvancePC_814E0D0):
+ * Runs battleObject_runUpdateRoutineAndAdvancePC_814E0D0, which computes a byte value in r3 from the object state.
  * That byte is written to offset 0xA of the object, and the flag byte at
  * offset 0 gets its 0xC bits forced on (object marked as ...).
  * Returns r2 = 0xC, r3 = updated flag byte; NZ flags come from the ORR.
- * r1 and r12 pass through unchanged (sub_814E0D0 preserves both). */
+ * r1 and r12 pass through unchanged (battleObject_runUpdateRoutineAndAdvancePC_814E0D0 preserves both). */
 Next sub_814E17C(void) {
-    R12 = LR; /* sub_814E0D0 preserves r12; it still holds our return address */
+    R12 = LR; /* battleObject_runUpdateRoutineAndAdvancePC_814E0D0 preserves r12; it still holds our return address */
 
     u32 obj = R1;
-    GUEST_CALL(sub_814E0D0);
+    GUEST_CALL(battleObject_runUpdateRoutineAndAdvancePC_814E0D0);
 
     ST8(obj + 0xA, R3);      /* store the computed byte */
 
@@ -1189,7 +1189,7 @@ Next sub_814E17C(void) {
 /* loadNextQueuedParams_814E190(r0 = owner struct, r1 = work struct):
  * Read the next entry index from the byte queue at r1+0x40, then fetch the
  * three words of that 12-byte entry from the table pointed to by r0+0x30.
- * Each word is passed through sub_814E0B6 and stored to r1+0x24/0x28/0x2C.
+ * Each word is passed through battleObject_validateScriptPointer_814E0B6 and stored to r1+0x24/0x28/0x2C.
  * Like the original, this uses r12 to hold the return address (mov r12, lr;
  * bx r12), so r12 must be set to the incoming LR before returning. */
 Next loadNextQueuedParams_814E190(void) {
@@ -1203,29 +1203,29 @@ Next loadNextQueuedParams_814E190(void) {
     R2 = entry;
 
     R3 = LD32(entry + 0);
-    GUEST_CALL(sub_814E0B6);
+    GUEST_CALL(battleObject_validateScriptPointer_814E0B6);
     ST32(R1 + 0x24, R3);
 
     R3 = LD32(entry + 4);
-    GUEST_CALL(sub_814E0B6);
+    GUEST_CALL(battleObject_validateScriptPointer_814E0B6);
     ST32(R1 + 0x28, R3);
 
     R3 = LD32(entry + 8);
-    GUEST_CALL(sub_814E0B6);
+    GUEST_CALL(battleObject_validateScriptPointer_814E0B6);
     ST32(R1 + 0x2C, R3);
 
     RETURN_TO_CALLER();
 }
 
 /* ── battleObj_runUpdateAndSetActive_814E1C0 ── */
-/* battleObj_runUpdateAndSetActive_814E1C0: run sub_814E0D0's update for the object pointer in r1, then
+/* battleObj_runUpdateAndSetActive_814E1C0: run battleObject_runUpdateRoutineAndAdvancePC_814E0D0's update for the object pointer in r1, then
  * store the byte result it leaves in r3 at offset 0x12 and set the low two
  * bits of the object's status byte (marking it active/updated).
  * Returns to the caller; flags come from the final ORR. */
 Next battleObj_runUpdateAndSetActive_814E1C0(void) {
     R12 = LR;                    /* the original returns through a saved copy of LR */
 
-    GUEST_CALL(sub_814E0D0);
+    GUEST_CALL(battleObject_runUpdateRoutineAndAdvancePC_814E0D0);
 
     {
         u32 obj = R1;            /* object pointer, preserved by the callee */
@@ -1243,15 +1243,15 @@ Next battleObj_runUpdateAndSetActive_814E1C0(void) {
 
 /* ── sprite_moveYUp64AndMarkDirty_814E1D4 ── */
 /* sprite_moveYUp64AndMarkDirty_814E1D4: adjust an object's Y coordinate and mark it as changed.
- * Calls sub_814E0D0 to compute a value (R1 = object pointer, R3 = value),
+ * Calls battleObject_runUpdateRoutineAndAdvancePC_814E0D0 to compute a value (R1 = object pointer, R3 = value),
  * stores value - 0x40 (shifted up 64 pixels/units) into the object's
  * field at +0x14, then sets the low two bits of the object's byte at +0x00
  * (its "dirty"/state flags) so the change is picked up.
  * Returns via the saved LR in R12, as the original does with `bx r12`. */
 Next sprite_moveYUp64AndMarkDirty_814E1D4(void) {
-    R12 = LR;                     /* sub_814E0D0 clobbers LR; keep our return address */
+    R12 = LR;                     /* battleObject_runUpdateRoutineAndAdvancePC_814E0D0 clobbers LR; keep our return address */
 
-    GUEST_CALL(sub_814E0D0);      /* R1 = object ptr, R3 = computed value */
+    GUEST_CALL(battleObject_runUpdateRoutineAndAdvancePC_814E0D0);      /* R1 = object ptr, R3 = computed value */
 
     SET_FLAGS_CMP(R3, 0x40);      /* SUBS r3, #0x40 */
     R3 -= 0x40;
@@ -1266,7 +1266,7 @@ Next sprite_moveYUp64AndMarkDirty_814E1D4(void) {
 }
 
 /* ── sub_814E1E8 ── */
-/* sub_814E1E8: run the check performed by sub_814E0D0, then record its
+/* sub_814E1E8: run the check performed by battleObject_runUpdateRoutineAndAdvancePC_814E0D0, then record its
  * outcome in the state struct whose address is left in r1:
  *   - the status byte returned in r3, biased down by 0x40, is stored
  *     as the result field at offset 0x0E;
@@ -1275,7 +1275,7 @@ Next sprite_moveYUp64AndMarkDirty_814E1D4(void) {
 Next sub_814E1E8(void) {
     R12 = LR; /* the original branches back through r12 */
 
-    GUEST_CALL(sub_814E0D0);
+    GUEST_CALL(battleObject_runUpdateRoutineAndAdvancePC_814E0D0);
 
     /* store the callee's status byte, biased down by 0x40 */
     u32 result = R3 - 0x40;
@@ -1294,7 +1294,7 @@ Next sub_814E1E8(void) {
 
 /* ── sub_814E1FC ── */
 /* sub_814E1FC: finish some state update on the structure pointed to by r1.
- * Calls sub_814E0D0 (which produces a status byte in r3), stores that byte at
+ * Calls battleObject_runUpdateRoutineAndAdvancePC_814E0D0 (which produces a status byte in r3), stores that byte at
  * [r1+0xF], then sets the 0xC flag bits in the state byte at [r1].
  * Preserves the caller's return address in r12, as the original does. */
 Next sub_814E1FC(void) {
@@ -1302,7 +1302,7 @@ Next sub_814E1FC(void) {
 
     R12 = LR; /* mov r12, lr: keep the return address across the call */
 
-    GUEST_CALL(sub_814E0D0); /* leaves the new status byte in R3 */
+    GUEST_CALL(battleObject_runUpdateRoutineAndAdvancePC_814E0D0); /* leaves the new status byte in R3 */
 
     ST8(state + 0xF, R3);
 
@@ -1315,20 +1315,20 @@ Next sub_814E1FC(void) {
 }
 
 /* ── sub_814E210 ── */
-/* sub_814E210: wrapper around sub_814E0D0 — calls it, then stores the byte
+/* sub_814E210: wrapper around battleObject_runUpdateRoutineAndAdvancePC_814E0D0 — calls it, then stores the byte
  * result it leaves in r3 at [r1 + 0x1B]. Everything else (including r0 and
  * the flags left by the callee) passes through unchanged; returns to the
  * caller's original return address, kept in r12 like the original does. */
 Next sub_814E210(void) {
     R12 = LR;
-    GUEST_CALL(sub_814E0D0);
+    GUEST_CALL(battleObject_runUpdateRoutineAndAdvancePC_814E0D0);
     ST8(R1 + 0x1B, R3);
     RETURN_TO_CALLER();
 }
 
 /* ── sub_814E21C ── */
 /* sub_814E21C:
- * Calls sub_814E0D0 (which fills r1 with a record pointer and r3 with the
+ * Calls battleObject_runUpdateRoutineAndAdvancePC_814E0D0 (which fills r1 with a record pointer and r3 with the
  * record's current/new state value), then syncs the state byte at [r1+0x18]:
  * if it differs from r3, the new value is written back and the low nibble of
  * the byte at [r1] is set to 0xF (marking the record as "needs refresh").
@@ -1336,7 +1336,7 @@ Next sub_814E210(void) {
  * CMP r0, r3 on the equal path, ORR on the update path. */
 Next sub_814E21C(void) {
     R12 = LR;
-    GUEST_CALL(sub_814E0D0);
+    GUEST_CALL(battleObject_runUpdateRoutineAndAdvancePC_814E0D0);
 
     R0 = LD8(R1 + 0x18);
     SET_FLAGS_CMP(R0, R3);
@@ -1352,14 +1352,14 @@ Next sub_814E21C(void) {
 
 /* ── chatbox_PrintBuffer_WriteNextGlyph_814E234 ── */
 /* chatbox_PrintBuffer_WriteNextGlyph_814E234: emit one character into the print buffer at r1.
- * Calls sub_814E0D0 to fetch the next glyph code (returned in r3),
+ * Calls battleObject_runUpdateRoutineAndAdvancePC_814E0D0 to fetch the next glyph code (returned in r3),
  * stores the adjusted glyph index (code - 0x40) at [r1+0xC], then sets
  * bits 0x0C of the state byte at [r1] to mark that a glyph was written.
  * Preserves r1 and r12 across the call; returns to the original caller. */
 Next chatbox_PrintBuffer_WriteNextGlyph_814E234(void) {
     R12 = LR; /* original return address; handed back unchanged on exit */
 
-    GUEST_CALL(sub_814E0D0); /* -> R3 = glyph code */
+    GUEST_CALL(battleObject_runUpdateRoutineAndAdvancePC_814E0D0); /* -> R3 = glyph code */
 
     /* SUBS r3, #0x40: adjust the code and keep its carry/overflow flags,
      * since the ORR below only refreshes nz. */
@@ -1837,7 +1837,7 @@ static void init_cgb_sound(u32 sound_buf) {
     ST32(state_ptr + 0x1C, sound_buf);
     ST32(state_ptr + 0x28, (A_CgbSound | 1));
     ST32(state_ptr + 0x2C, (A_soundStartChannel_814F44C | 1));
-    ST32(state_ptr + 0x30, (A_sub_814F3A4 | 1));
+    ST32(state_ptr + 0x30, (A_battle_calcPanelScreenCoord_814F3A4 | 1));
     ST8(state_ptr + 0x0C, 0);
 
     /* Zero-fill the 256-byte buffer (64 × 32-bit, fixed source/dest) */
@@ -1970,8 +1970,8 @@ Next m4aSoundVSync(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_814F3A4 ── */
-/* sub_814F3A4 – packed-table interpolation lookup.
+/* ── battle_calcPanelScreenCoord_814F3A4 ── */
+/* battle_calcPanelScreenCoord_814F3A4 – packed-table interpolation lookup.
  *
  * mode (r0 byte) selects the table.
  *  Mode 4: clamp index to byte_81C0640 (simple 1-byte LUT).
@@ -2055,8 +2055,8 @@ static struct LookupResult do_lookup(u32 mode, u32 index, u32 frac, u32 r3_in)
     return res;
 }
 
-/* sub_814F3A4(r0=mode, r1=index, r2=frac, r3=passthru, lr) */
-Next sub_814F3A4(void) {
+/* battle_calcPanelScreenCoord_814F3A4(r0=mode, r1=index, r2=frac, r3=passthru, lr) */
+Next battle_calcPanelScreenCoord_814F3A4(void) {
     struct LookupResult lr_ = do_lookup(
         (R0 << 24) >> 24, (R1 << 24) >> 24, (R2 << 24) >> 24, R3);
     R0 = lr_.r0;  R1 = LR;  R2 = lr_.r2;  R3 = lr_.r3;  R12 = lr_.r12;

@@ -1,0 +1,65 @@
+name: battleObject_validateScriptPointer_814E0B6
+address: '0x0814E0B6'
+kind: function
+previous_names:
+- sub_814E0B6
+status: probable
+summary: Validates an incoming script-position pointer (r2) by zeroing r3 if the address is outside the
+  in-RAM script range, leaving r0 and r1 untouched.
+interface: '(r0 = scratch/preserved, r1 = scratch/preserved, r2 = candidate pointer to validate, lr =
+  return) -> r0 = preserved, r3 = 0 when r2 is outside the allowed range, else r3 untouched; side effects:
+  none observable (push/pop of r0 only)'
+details: "Saves r0 on the stack, then shifts r2 right by 0x19 to test whether any of the top\n  three\
+  \ bits is set. If non-zero (i.e. the candidate address is a non-RAM value), r3 is\n  forced to 0 and\
+  \ execution jumps to the pop/return. Otherwise r2 is compared against\n  the base of the script table\
+  \ `off_81C0418` (loaded via the literal pool at\n  off_814E0CC): if r2 < base, r3 is zeroed; if r2 ==\
+  \ 0 (i.e. low 14 bits clear the\n  other branch `lsr r2,#0xe` / `beq`), r3 is also zeroed. Otherwise\
+  \ r3 survives as the\n  caller's value. Original r0 is restored from the stack and the routine returns\n\
+  \  via `bx lr`.\n\n  In effect, the routine ensures that `r3` is zeroed when r2 lies outside the script\n\
+  \  region `off_81C0418` (and is not in IWRAM/ROM-mapped ranges). Callers (notably\n  loadNextQueuedParams_814E190\
+  \ and sub_814E0D0) feed `r3` through subsequent tables,\n  using the zero result to short-circuit a\
+  \ branch.\n\n  Per-call captures show r0/r1 untouched (the saved r0 is restored), and r3 may be\n  observed\
+  \ as 0 on exit only in the failure snapshots (the lifter's exit r3 not\n  shown above; the `out=['r0','r3']`\
+  \ contract implies the zeroed r3 propagates).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {r0}` then `pop {r0}` shows r0 is preserved across the call (asm push/pop at sub_814E0B6)
+    - `lsr r0, r2, #0x19` / `bne loc_814E0C8` short-circuits for any address with bits >= 0x02000000 set
+    - `ldr r0, off_814E0CC // =off_81C0418` loads the script-table base used as the lower bound check
+    - `cmp r2, r0` / `bcc loc_814E0C6` and `lsr r0, r2, #0xe` / `beq loc_814E0C8` are the two fallback
+    zero paths - `mov r3, #0` at loc_814E0C6 is the only mutation of r3 in the routine - 40 captured invocations
+    all leave r0 equal to its entry value and r1 untouched (no write to r1 anywhere in the body) - Caller
+    `loadNextQueuedParams_814E190` description confirms r3''s zero/non-zero outcome is later consumed
+    as a guard'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0814E0B6
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story1, story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^0814e0b6 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander
+open_questions:
+- The exact downstream meaning of a zeroed r3 — whether it represents "null command",
+- '"script end", or "invalid pointer" — is not pinned down here; matching r3 in the'
+- exit captures would settle it (snap_story2_0 shows the failure path returning
+- with --C-, while later captures show ---- entry/exit).
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d4179034
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_814E0B6 -> battleObject_validateScriptPointer_814E0B6
+  where: bn6f d0265620
+  tool: tools/rename_symbol.py

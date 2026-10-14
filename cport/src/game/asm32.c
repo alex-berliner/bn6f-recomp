@@ -3373,10 +3373,10 @@ static u32 lookup_script_entry(u32 index, u32 obj_ptr, u32 script_data) {
     return R0;
 }
 
-/* register form: calls sub_804A24C outside this file, which has no typed C interface yet */
+/* register form: calls chatbox_getTextScriptPointerByIndex_804A24C outside this file, which has no typed C interface yet */
 static u32 advance_event_script(u32 value) {
     R0 = value;
-    GUEST_CALL(sub_804A24C);
+    GUEST_CALL(chatbox_getTextScriptPointerByIndex_804A24C);
     return R0;
 }
 

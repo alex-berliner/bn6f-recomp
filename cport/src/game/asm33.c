@@ -1379,14 +1379,14 @@ Next sub_8123D54(void) {
 /* ── sub_8123D98 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r4, r5, r6, r7; } call_sub_811FAF4_result;
-/* register form: generated wrapper: sub_811FAF4 has no typed C interface yet */
+/* register form: generated wrapper: battleObject_queueOamFromTableRow_811FAF4 has no typed C interface yet */
 static inline call_sub_811FAF4_result call_sub_811FAF4(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4) {
     R0 = r0;
     R1 = r1;
     R2 = r2;
     R3 = r3;
     R4 = r4;
-    GUEST_CALL(sub_811FAF4);
+    GUEST_CALL(battleObject_queueOamFromTableRow_811FAF4);
     return (call_sub_811FAF4_result){ R0, R4, R5, R6, R7 };
 }
 
@@ -1402,20 +1402,20 @@ static inline call_sub_8120CC8_result call_sub_8120CC8_sub_8123D98(u32 r0, u32 r
 /* sub_8123D98 - refresh one battle-object spawn slot.
  *
  * Register roles on entry:
- *   r0 = page      : high 16 bits of the descriptor word for sub_811FAF4
+ *   r0 = page      : high 16 bits of the descriptor word for battleObject_queueOamFromTableRow_811FAF4
  *   r1 = offset    : low 16 bits base of that descriptor
  *   r2 = table_idx : index into a u16 weight table kept inside the object
  *                    array; 0 means "no table shift"
  *   r3 = slot_off  : offset of the slot byte within the object array (r5)
- *   r4 = fwd_r3    : forwarded as r3 to sub_811FAF4
+ *   r4 = fwd_r3    : forwarded as r3 to battleObject_queueOamFromTableRow_811FAF4
  *   r5 = base      : object array pointer
- *   r6 = fwd_r4    : forwarded as r4 to sub_811FAF4
+ *   r6 = fwd_r4    : forwarded as r4 to battleObject_queueOamFromTableRow_811FAF4
  *
  * The slot byte is laid out as (tier << 4) | kind. The kind nibble is
- * produced by sub_811FAF4 (with an immediate sub_8120CC8 refill stored into
+ * produced by battleObject_queueOamFromTableRow_811FAF4 (with an immediate sub_8120CC8 refill stored into
  * the slot when the old tier was 1), the tier nibble is the old tier minus
  * one. The original preserves r4 with push/pop, so this helper returns it
- * for the adapter to restore - the sub_811FAF4 wrapper leaves its own
+ * for the adapter to restore - the battleObject_queueOamFromTableRow_811FAF4 wrapper leaves its own
  * argument in the machine R4. */
 static u32 refresh_spawn_slot(u32 page, u32 offset, u32 table_idx, u32 slot_off,
                               u32 fwd_r3, u32 base, u32 fwd_r4) {
@@ -1456,7 +1456,7 @@ static u32 refresh_spawn_slot(u32 page, u32 offset, u32 table_idx, u32 slot_off,
 /* sub_8123D98(r0 page, r1 offset, r2 table_idx, r3 slot_off,
  *             r4 fwd_r3, r5 base, r6 fwd_r4) -> no outputs
  *
- * The sub_811FAF4 wrapper overwrites the machine R4 with its fifth argument,
+ * The battleObject_queueOamFromTableRow_811FAF4 wrapper overwrites the machine R4 with its fifth argument,
  * but this function must preserve the caller's r4 (the original's pop {r4}).
  * So R4 is read as an argument before the call and written back afterwards
  * with the value the typed function returns. */
@@ -1920,12 +1920,12 @@ Next subchip_initGfx_81243B0(void) {
 /* sub_81244EC(r5 = entity ptr, r10 = ?):
  * Per-frame entity update. Loads the active flag at +0xC; if zero, do nothing.
  * Otherwise packs an effect descriptor and dispatches a render/animation call
- * (sub_811FAF4), then decrements a timer at +0x12; when it hits zero, calls
+ * (battleObject_queueOamFromTableRow_811FAF4), then decrements a timer at +0x12; when it hits zero, calls
  * sub_8120CC8 to fetch a new (state, duration) pair that is stored at +0xD
  * and +0x12 respectively. */
 Next sub_81244EC(void) {
     /* The original pushes {r4, lr} and uses r4 = 0x40000000 as an argument
-     * to sub_811FAF4, then pops r4 back, preserving it for the caller. */
+     * to battleObject_queueOamFromTableRow_811FAF4, then pops r4 back, preserving it for the caller. */
     u32 saved_r4 = R4;
     R4 = 0x40000000;
     u32 saved_lr = LR;
@@ -1943,7 +1943,7 @@ Next sub_81244EC(void) {
     R1 = 0x10002;
     R2 = LD8(R5 + 0xD);
     R3 = A_byte_8123F34;
-    GUEST_CALL(sub_811FAF4);
+    GUEST_CALL(battleObject_queueOamFromTableRow_811FAF4);
 
     /* Decrement timer at +0x12 and test for zero. */
     u8 duration = LD8(R5 + 0x12) - 1;

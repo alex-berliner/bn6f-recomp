@@ -1,0 +1,76 @@
+name: owPlayer_applyCountdownUpdate_809D5C4
+address: '0x0809D5C4'
+kind: function
+previous_names:
+- sub_809D5C4
+status: probable
+summary: 'Per-tick handler that runs when the overworld player''s countdown is still active: reads a Z-coordinate
+  modifier (notably "shoes on a given Z layer"), gates a doubling case on event flag EVENT_1716, and slides
+  the player by Unk_38/Unk_3c shifted by the chosen Z layer.'
+interface: '(r5 = OWPlayerObject*) -> void ; side effects: writes Unk_13, X, Y on the player object via
+  r5'
+details: "Called from somewhere in the OW player tick chain (callee `owPlayer_TickCountdownOrWait_809DDCC`\
+  \ reports whether the 16-bit Unk_18 countdown has expired; the lr 0x0809d4fc points at a parent in `ow_player`).\n\
+  \  If the countdown is still active (r0 != 0): compute r0 = r5 + 0x1c and call `checkZCoordModifiers_8031612`,\
+  \ which by contract returns a Z-layer index in r1 (1 means \"doubled/elevated\"; 0 means base). r2 =\
+  \ shift count, r3 = Unk_13 value to write. Default path sets r2=0, r3=1 (shift 0, write 1). If r1==1,\
+  \ set r2=1, r3=2 (write 2). Then, only on that elevated branch, additionally test EVENT_1716 via `TestEventFlagFromImmediate`;\
+  \ if the flag is unset, fall back to the default (r2=0, r3=1). After the conditional, store r3 into\
+  \ `oOWPlayerObject_Unk_13` (offset 0x13). Then load `oOWPlayerObject_Unk_38`/`Unk_3c`, LSL by r2 (0\
+  \ or 1), and add them to X/Y respectively; store back. This implements a one-tile horizontal/vertical\
+  \ nudge per tick where the magnitude (Unk_38/Unk_3c) doubles when on the elevated Z layer, gated by\
+  \ EVENT_1716.\n  If the countdown expired (r0 == 0): copy `oOWPlayerObject_NextX/NextY/NextZ` into X/Y/Z\
+  \ (snap to target tile).\n  Returns via `pop {pc}` (Tail-call style with the saved LR pushed first).\
+  \ The function's contract is essentially void: caller doesn't read r0 (the parent tick loop at 0x809d4fc\
+  \ just continues), and r5/r8/r9/r12 are written but restored by the caller.\ndetails_evidence_quirks:\
+  \ The assembly does `push {lr}` ... `pop {pc}` so this is a leaf-style caller; the value in r0 from\
+  \ `owPlayer_TickCountdownOrWait_809DDCC` is the only branch discriminator. The `push {r3}` / `pop {r3}`\
+  \ around `TestEventFlagFromImmediate` exists solely to save r3 across that call (since r3 holds the\
+  \ Unk_13 value to write).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {lr}` ... `pop {pc}` shows the function is called as a leaf in the player tick chain
+    (line `sub_809D5C4:` and exit). - `bl owPlayer_TickCountdownOrWait_809DDCC` followed by `tst r0, r0;
+    beq loc_809D60C` is the only branch: expired vs in-progress tick (`0x809D5CC`). - `mov r0, #0x1c;
+    add r0, r0, r5; bl checkZCoordModifiers_8031612` then `cmp r1, #1` uses r1 as the returned Z-modifier
+    (call contract says r1 is out). - `movflag EVENT_1716; bl TestEventFlagFromImmediate` plus `beq loc_809D5F4`
+    (the default-write block) gates the elevated branch on story progress EVENT_1716 being set. - `strb
+    r3, [r5,#oOWPlayerObject_Unk_13]` then `ldr r0, [r5,#oOWPlayerObject_Unk_38]; lsl r0, r2; ... add
+    ... str` and same for `Unk_3c`/Y implement the conditional nudge. - `loc_809D60C`: `ldr r0, [r5,#oOWPlayerObject_NextX]`
+    etc., then `str r0, [r5,#oOWPlayerObject_X]; str r1, [r5,#oOWPlayerObject_Y]; str r2, [r5,#oOWPlayerObject_Z]`
+    snap to target coords on countdown expiry. - All 40 captured snapshots show identical entry (r0=4,
+    r1=2, r2=2, r3=0x4c, lr=0x809d4fc) and exit (r0=0x8000, flags cleared), consistent with a stable per-frame
+    handler that the parent tick chain calls every frame during this state.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0809D5C4
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles2, beastsp, chips, fuzz, maps, menus2, story1, story2, story3,
+    story4, story5, story6, story8, story9, wander'
+  reproduce: 'grep -l ''^0809d5c4 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles2, beastsp, chips, fuzz, maps, menus2, story1, story2, story3, story4, story5,
+    story6, story8, story9, wander
+open_questions:
+- The exact semantics of `Unk_13` (1 vs 2) — looks like a "step/animation frame index" but is unverified.
+- The exact meaning of `Unk_38`/`Unk_3c` — used here as the per-tick displacement, possibly the slide
+  vector magnitude (one tile in fixed-point units).
+- What EVENT_1716 represents narratively (likely a story-progress / location-unlock flag for an elevated
+  Z layer). Settling it would require scanning the EVENT flag definitions.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d4179034
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_809D5C4 -> owPlayer_applyCountdownUpdate_809D5C4
+  where: bn6f d0265620
+  tool: tools/rename_symbol.py

@@ -1,0 +1,63 @@
+name: chatbox_getTextScriptPointerByIndex_804A24C
+address: '0x0804A24C'
+kind: function
+previous_names:
+- sub_804A24C
+status: probable
+summary: Resolves a text-script index to a pointer in the text-script pool at EWRAM 0x02001850 via a 0x40-byte
+  LUT at 0x0804a25c, returning a u8* into the pool.
+interface: (r0 = textScriptIndex) -> r0 = u8* into unk_2001850 pool ; clobbers r0, r1; preserves r4-r7
+details: "- Saves callee-saved r4-r7 and lr; tail-pops them as the function return (push {r4-r7,lr} /\
+  \ pop {r4-r7,pc}).\n  - Loads r1 = dword_804A25C (the LUT constant 0x00402000), then ldrb r1, [r1, r0]\
+  \ reads a byte at offset r0 into that LUT.\n  - Loads r0 = unk_2001850 (the EWRAM pool base at 0x02001850)\
+  \ and returns r0 + byte.\n  - The 52-byte LUT at byte_804A264 contains pairs (high, low) of u16 values:\
+  \ 0xC3B0..0xC3CB interleaved with 0xC24x/0xC25x entries, plus 0xFFFF terminators — these look like u16\
+  \ tile/code IDs used to lookup script handles/strings.\n  - Captured entries show r0=0 on most paths;\
+  \ many callers pass the text-script index from chatbox_state (TextScriptIdx at oChatbox+1). The function\
+  \ is therefore an indexed access into a chatbox text-script table rather than anything battle-specific\
+  \ despite the calling context.\n  - All 40 callers route through chatbox/battle script dispatchers (battle_dispatchEventScript_8119018,\
+  \ the chatbox fill helper sub_8120348, etc.), all of which use it as `getTextScriptEntry(idx)`.\ndetails:\
+  \ |\n  Status heuristic: probable for \"indexed text-script handle resolver\"; the surrounding 0xFFFF-terminated\
+  \ byte pairs hint at a short list of script IDs.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {r4-r7,lr}` / `pop {r4-r7,pc}` at asm03_2.s:7225/7227 confirms a tail-return preserving
+    r4-r7. - `ldrb r1, [r1, r0]` with r1 = dword_804A25C (0x00402000) is a u8 lookup table indexed by
+    the input. - `ldr r0, off_804A260 // =unk_2001850` then `add r0, r0, r1` returns base + byte — pointer
+    into EWRAM pool. - Captured entry r0 = 0 across all 40 snapshots, exit r0 = 0x02001850 (the pool base)
+    when index = 0 (offset byte = 0), matches `r0 = base + 0`. - Caller battle_dispatchEventScript_8119018
+    [confirmed] resolves the action-byte script type via this function and tail-calls the text-script
+    interpreter, confirming it returns a script pointer/handle.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0804A24C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus3, story4, story6,
+    story8, story9'
+  reproduce: 'grep -l ''^0804a24c '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus3, story4, story6, story8, story9
+open_questions:
+- Whether the returned pointer is dereferenced once by callers (handle -> ptr dereference) or used directly;
+  the captured return value being the pool base rather than a deref suggests callers dereference it themselves.
+- Whether dword_804A25C (0x00402000) is a real address constant or a pool-relative LUT; given callers
+  all sit in the 0x0811xxxx range and dword sits at 0x0804a25c, this is a ROM LUT loaded via literal pool
+  — the 0x00402000 is the literal pool word contents (probably a numeric LUT base encoded as a label),
+  not an absolute address. Confirming the actual symbol resolution would settle the layout.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d4179034
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_804A24C -> chatbox_getTextScriptPointerByIndex_804A24C
+  where: bn6f d0265620
+  tool: tools/rename_symbol.py

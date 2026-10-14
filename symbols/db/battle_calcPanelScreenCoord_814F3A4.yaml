@@ -1,0 +1,72 @@
+name: battle_calcPanelScreenCoord_814F3A4
+address: '0x0814F3A4'
+kind: function
+previous_names:
+- sub_814F3A4
+status: probable
+summary: Computes a BattleChip damage value by looking up the chip's row in a damage table and scaling
+  by a row-level multiplier.
+interface: (r0 = row type 0..6, r1 = chip index, r2 = slot/level index 0..3) -> r0 = final damage (raw
+  value + 0x800) ; no side effects
+details: "- Trims r0 to 8 bits, r1 to 8 bits (kept in r5), r2 to 8 bits (kept in r12).\n  - When r0 ==\
+  \ 4 (Mega row), the function takes a separate branch: r1 is clamped to [0, 0x14] (lower half) or shifted\
+  \ into [0, 0x3B] (upper half, with a 0x3B cap), then a single byte is read from byte_81C0640 + r5 and\
+  \ returned directly through the final 0x800 add-back.\n  - For all other row types, r1 is mapped into\
+  \ [0, 0x23] -> 0 (with row-level multiplier r12 cleared) or shifted into [0, 0x82] (capped), and a second\
+  \ cap path sets r12 = 0xFF (the row-level multiplier saturates to maximum).\n  - The two relevant bytes\
+  \ from byte_81C05A4[r5] and byte_81C05A4[r5+1] are each split into a low nibble (paired through byte_81C0628\
+  \ as s16) and a high nibble (used as a signed shift). The function returns the difference (low_of(r5+1)\
+  \ shifted by high_of(r5+1)) - (low_of(r5) shifted by high_of(r5)) — i.e. the \"delta\" of a damage curve\
+  \ sampled at consecutive indices, then multiplied by the row-level multiplier r12 (8.8 fixed-point via\
+  \ `mul r7,r0` then `asr r0,r0,#8`), plus a base offset, plus 0x800.\n  - The final `add r0, #0x800`\
+  \ (`lsl r1,r1,#4` then add) appears to be a damage-unit round-and-offset constant; returned values from\
+  \ the captures (~0x483..0x758) match the in-game damage magnitudes seen in the row 1/2/3 chip curves.\n\
+  \  - Caller chain `lr=0814e725` from snap_story2* indicates the damage calculation sits inside the battle\
+  \ damage handler called when a BattleChip is being resolved for the story2 battle setup.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `cmp r0,#4` at 0x0814f3b8 selects the Mega row shortcut; the alternate path uses different
+    clamp constants and reads a different table at byte_81C0640. - `ldr r0,off_814F3D8 ; =byte_81C0640`
+    (Mega row) and `ldr r3,off_814F444 ; =byte_81C05A4` (standard rows) reference ROM data tables; the
+    corresponding s16 lookup table is `byte_81C0628` via `ldrsh r1,[r0,r7]` at 0x0814f414. - Byte splitting
+    (`and r0,r2 ; lsl r0,r0,#1`) and arithmetic shift (`asr r0,r6`) of the upper nibble implement the
+    standard "nibble-lookup damage curve" pattern. - `mul r7,r0` then `asr r0,r0,#8` (0x0814f430) is a
+    8.8 fixed-point multiply with the row multiplier (r12/r7 used as multiplier). - Captured entry values:
+    r0 ∈ {1, 2}, r1 from 0x32..0x4f (chip ID in the standard row), r2 = 0 (slot) — all consistent with
+    a chip-damage calculation per row/slot. - Returned r0 values 0x0483, 0x0641, 0x0720, 0x0758 are 11-bit-ish
+    values typical of in-game damage fields (note `DAMAGE_NOTHING = 0x800` is the same 0x800 offset added
+    at the end).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0814F3A4
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story1, story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^0814f3a4 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander
+open_questions:
+- The exact row mapping (r0 = 1 -> ?, r0 = 2 -> ?). The captures show row=1 used in 0x32..0x4c range and
+  row=2 only at 0x4f; without more callers I can't pin which game rows those correspond to.
+- 'The semantic of the second cap branch (the one that sets r12=0xFF): is it an "overflow/max" indicator,
+  or a level boost? Inspecting the damage table byte_81C05A4 contents and the row 0/5/6 calls would confirm.'
+- Why the function tail pops only r4-r7 and uses `pop {r1}; bx r1` to return — it's a Thumb tail-call
+  idiom; the calling convention shown in the contract matches standard callee-saved r4/r5/r7/r12.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d4179034
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_814F3A4 -> battle_calcPanelScreenCoord_814F3A4
+  where: bn6f d0265620
+  tool: tools/rename_symbol.py

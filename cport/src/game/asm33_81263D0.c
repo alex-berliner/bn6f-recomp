@@ -2381,7 +2381,7 @@ Next sub_8127EF4(void) {
 /* fieldEntityTileAnimTick_8127F54(r5 = entity, r10, lr):
  *   Per-frame update for an entity on the field: if it is no longer active
  *   (flags cleared or state id == 0x0C terminator), bail out. Otherwise load
- *   an affine-bg parameter block from the entity, push it through sub_811FAF4
+ *   an affine-bg parameter block from the entity, push it through battleObject_queueOamFromTableRow_811FAF4
  *   along with the tile index in the col/row table, then tick the entity's
  *   duration timer. When the timer hits zero, pull the next (tile, duration)
  *   pair from the dword_8127980 sequence via sub_8120CC8 and store them back. */
@@ -2394,7 +2394,7 @@ Next fieldEntityTileAnimTick_8127F54(void) {
     if (LD8(entity + 0x02) == 0x0C)      RETURN_TO_CALLER();
 
     /* Build the affine-bg setup word and forward it (plus the tile id and
-     * the per-column tile table) to sub_811FAF4. The 0x40000000 constant
+     * the per-column tile table) to battleObject_queueOamFromTableRow_811FAF4. The 0x40000000 constant
      * is passed to the callee as the destination/base argument; r4 must
      * end up back at the caller's value. */
     {
@@ -2409,7 +2409,7 @@ Next fieldEntityTileAnimTick_8127F54(void) {
         R2 = tile_id;
         R3 = A_byte_8127978;
         R4 = 0x40000000;
-        GUEST_CALL(sub_811FAF4);
+        GUEST_CALL(battleObject_queueOamFromTableRow_811FAF4);
         R4 = saved_r4;
     }
 
@@ -3222,7 +3222,7 @@ Next sub_8128B34(void) {
 
 /* ── battleObjectAffineEnqueue_8128B4C ── */
 /* battleObjectAffineEnqueue_8128B4C: Battle object rendering entry — pack a tile/affine descriptor and
- * submit it via the affine-OBJ queue (sub_811FAF4). Reads the battle-object
+ * submit it via the affine-OBJ queue (battleObject_queueOamFromTableRow_811FAF4). Reads the battle-object
  * "visible" flag at +0x1E; if unset, returns immediately. Outputs the resulting
  * tile attribute byte back into the object at +0xC.
  *
@@ -3258,7 +3258,7 @@ Next battleObjectAffineEnqueue_8128B4C(void) {
     R2 = LD8(R5 + 0xC);
     R3 = (u32)A_byte_8128678;
     R4 = 0x40000000;
-    GUEST_CALL(sub_811FAF4);
+    GUEST_CALL(battleObject_queueOamFromTableRow_811FAF4);
     ST8(R5 + 0xC, (u8)R0);
 
 done:
@@ -6210,7 +6210,7 @@ Next sub_812B4AC(void) {
 /* ── sprite_drawIfFlagSet_812B504 ── */
 /* sprite_drawIfFlagSet_812B504(r5 = pointer to an object):
  * Test the flag byte at r5+0x1B for bit 4 (0x10). If set, invoke
- * sub_811FAF4 with a fixed argument block (0xC80008, 0x20004, 0,
+ * battleObject_queueOamFromTableRow_811FAF4 with a fixed argument block (0xC80008, 0x20004, 0,
  * &dword_8129184, 0x80004000); otherwise return immediately.
  * r0 and r1 are always written (the load and the #0x10 happen before
  * the branch), r4 is preserved around the call, and on the early-exit
@@ -6233,7 +6233,7 @@ Next sprite_drawIfFlagSet_812B504(void) {
         R3 = A_dword_8129184;
         R4 = 0x80004000;
 
-        GUEST_CALL(sub_811FAF4);
+        GUEST_CALL(battleObject_queueOamFromTableRow_811FAF4);
 
         R4 = savedR4;   /* the original pushes/pops r4 around the call */
     }

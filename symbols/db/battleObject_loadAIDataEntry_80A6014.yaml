@@ -1,0 +1,61 @@
+name: battleObject_loadAIDataEntry_80A6014
+address: '0x080A6014'
+kind: function
+previous_names:
+- sub_80A6014
+status: probable
+summary: copies one AI data entry (HP/Element/Param1-3) from a BattleObject into an AIData scratch slot
+interface: '(r5 = BattleObject*, r6 = AI scratch buffer in EWRAM) -> no return; side effect: writes 3
+  bytes + 3 dwords into the scratch buffer'
+details: "Loads the EWRAM base `byte_2000EC0` (an AIData scratch region) into r7. The BattleObject's index\
+  \ byte\n  (`ldrb r4, [r5,#4]` — ObjectHeader.Index) is reused as a slot offset.\n\n  Three bytes are\
+  \ copied from the BattleObject into slot-base+0xa/0xe/0x12 + index:\n    - [r5,#0x24]  (HP byte per\
+  \ BattleObject struct)      -> scratch byte  0xa\n    - [r5,#7]     (Param4)                       \
+  \       -> scratch byte  0xe\n    - [r5,#6]     (Param3)                              -> scratch byte\
+  \  0x12\n\n  Then three dwords are copied from the BattleObject at offsets 0x88/0x8c/0x90 (sprite-related\
+  \ regs)\n  into scratch dwords at offsets 0xd4/0xd8/0xdc — these are the word-sized fields of the same\
+  \ scratch\n  row used by the `PtrTable_80A6050` animation scripts that immediately follow this routine's\n\
+  \  `off_80A604C` table.\n\n  Caller `sub_80A5B70` invokes this in a per-row/dust animation setup, packing\
+  \ the AI/HP/Element and\n  sprite-transform words into the per-actor AI scratch slot so the script table\
+  \ can be replayed.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r7, off_80A604C // =byte_2000EC0` — scratch base is EWRAM `0x02000EC0` - `ldrb r4, [r5,#4]`
+    — r4 holds ObjectHeader.Index (BattleObject offset 0x4), used as slot - `strb r0, [r7,r1]` with r1=0xa+r4/0xe+r4/0x12+r4
+    — per-slot byte offsets into the scratch - `[r5,#0x24]` is `HP` in `battle_object_struct`; `Param3/Param4`
+    are at +6/+7 - `[r6,#0x88]/[r6,#0x8c]/[r6,#0x90]` -> `[r7,#0xd4]/.../0xdc` — three dwords copied across,
+    matching the sprite-region fields of BattleObject - only caller is `sub_80A5B70`, and the table+lists
+    right after the `off_80A604C` data at `byte_2000EC0` (`PtrTable_80A6050`, the per-script byte blobs
+    `byte_80A61BC`...) confirm the layout in EWRAM is the AI scratch slot already known to host dust/animation
+    scripts - contract `out=[''r5'']` (no caller-visible return value) makes this a void/setup helper,
+    consistent with a "load one row" routine'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080A6014
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp, maps'
+  reproduce: 'grep -l ''^080a6014 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp, maps
+open_questions:
+- The exact field semantics of the three dword fields (0x88/0x8c/0x90 — likely sprite X/Y/anchor or
+- ExtraVars + offset). Settling it requires identifying the producer of those fields in sub_80A5B70.
+- The "_ADDRESS" suffix is kept because the role ("AI slot init for one BattleObject") is inferred from
+- scratch layout rather than a confirmed symbol name.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d4179034
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80A6014 -> battleObject_loadAIDataEntry_80A6014
+  where: bn6f d0265620
+  tool: tools/rename_symbol.py
