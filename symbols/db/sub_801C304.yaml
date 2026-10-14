@@ -1,140 +1,58 @@
 name: sub_801C304
 address: '0x0801C304'
 kind: function
+previous_names: []
 status: hypothesis
-summary: Decompresses four battle-portrait tile pairs into VRAM, selecting the source table by an effect index,
-  skipping tile index 0xB.
-interface: 'inputs: r3: preserved (input, untouched, must survive); r4: effect-index struct (byte at +8 selects
-  one of three source-pointer tables); r5: destination VRAM pointer (advances by 0x20 per tile pair); r7: pointer
-  to four tile-index bytes (walked from offset 3 down to 0); lr: return address; outputs: r3: preserved; r4: clobbered
-  in body (rebased to the resolved source table), caller-visible; r5: final dst pointer (advanced four times by
-  0x20); r6: clobbered (loop counter, caller-visible); r7: clobbered (caller-visible); flags: nz, c, v clobbered'
-details: 'Effect index = byte at r4+8; multiplied by 4 and used to fetch a pointer from
-
-  off_801C34C (-> off_801D854 / off_801D880 / off_801D8AC, three sub-tables).
-
-  Loop index `i` runs 3..0 over the four tile-index bytes at r7+i. For any
-
-  tile index != 0xB, the function reads a base source pointer from the chosen
-
-  sub-table and queues two 0x20-byte (32-byte) word-aligned DMA transfers:
-
-  the first to dst, the second to dst+0x80. r5 advances by 0x20 per iteration
-
-  regardless, so skipping 0xB still reserves that tile slot. r3 is pushed and
-
-  popped, so callers can rely on r3 surviving.
+summary: Queues GFX tile uploads for a battle object's next animation frame, dispatching per-state source tables
+  and skipping slot 0xb
+interface: '(r4 = *object, r7 = *memory_base, r5 = vram_dest) -> r0 = final source pointer (after 0x40 bytes consumed
+  per element) ; side effects: 2 GFX transfers enqueued per non-skipped slot'
+details: 'Loads the object''s CurState byte at r4[8], multiplies by 4 to index a top-level table (off_801C34C),
+  and reads the entry into r4. Then for r6 = 3..0 it reads a byte at [r7+r6]; if the byte is 0xb the slot is skipped,
+  otherwise it''s used (×4) to index another table at [r4+byte*4] yielding a tile source pointer. For each slot
+  two QueueEightWordAlignedGFXTransfer calls of size 0x20 are issued: the first advances dest by 0x20 and src by
+  0, the second advances src by another 0x20 (add r0 += 0x20) and dest by 0x80 (add r1 += 0x80) — typical for moving
+  to the next row of 4-tile-wide sprites. The 4-iteration loop with 0x20-byte destination increments matches loading
+  4 sub-cells. r5 is the initial VRAM destination and is itself incremented by 0x20 each iteration, so the function
+  likely returns a "where the next animation chunk starts" pointer in r0 while moving the cursor forward.
 
   '
 evidence:
-- method: readable-c
-  date: '2026-10-11'
-  detail: Written by minimax/MiniMax-M3 through the convert workflow (2 attempt(s), run convert-20261011-101418);
-    reviewed by Claude before the commit.
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0, [r4,#8]` at 0x0801c30a reads the CurState byte (BattleObject offset 0x8) - Two-level indexed
+    dispatch: top table at off_801C34C indexed by CurState, then `ldr r0, [r4,r0]` performs sub-dispatch on the
+    byte read from [r7+r6] - Loop body: two consecutive `bl QueueEightWordAlignedGFXTransfer` calls each with `r2=#0x20`
+    (size 0x20 = one 8×8 tile row of 4bpp); dest advances 0x20 then 0x80 (lsl implicit) - Counter `r6` starts at
+    3, decremented, branch `bpl loc_801C310` → 4 iterations - `cmp r0, #0xb; beq loc_801C32A` shows explicit skip
+    for value 0xb - Final pop `{r3-r6,pc}` skips restoring r4-r7 — but caller wrote r4 in, so r4 is preserved across
+    the call (callee-saved via live-out declaration) - callee `QueueEightWordAlignedGFXTransfer` enqueues 8-word-aligned
+    DMA-style VRAM copy'
   refs:
-  - cport/src/game/asm00_2_801B9E6.c
-  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 76' --file inbox_farm_76.c sub_801C304
-- method: difftest
-  date: '2026-10-11'
-  detail: Readable vs lifted on the original's captured calls and on random inputs.
-  reproduce: './wf capture --function sub_801C304
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801C304
 
-    ./wf verify --function sub_801C304 --snapshots build-snapshots'
-  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 299 out
-    of domain (verify run convert-20261011-101418-verify-2)'
-- method: cpu-oracle
-  date: '2026-10-11'
-  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
-  reproduce: './wf capture --function sub_801C304
-
-    ./wf verify --function sub_801C304 --snapshots build-snapshots'
-  result: 2 compared, 0 differed, 22 out of domain (verify run convert-20261011-101418-verify-2)
-- method: lockstep
-  date: '2026-10-11'
-  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
-  reproduce: './wf capture --function sub_801C304
-
-    ./wf verify --function sub_801C304 --snapshots build-snapshots'
-  result: 16/16 routes identical (verify run convert-20261011-101418-verify-2)
+    '
+  result: the body read as described above
 - method: coverage
-  date: '2026-10-11'
-  detail: 'Executed by: battle, battles1, battles2, battlesweep, chips, fuzz, maps, menus2, menus3, story2, story4,
-    story5, story6, story7, story8, story9.'
-  reproduce: grep -l '^0801c304 ' tools/traces/coverage/*.prof
-changes:
-- date: '2026-10-11'
-  what: readable C replacement in cport/src/game/asm00_2_801B9E6.c
-  where: recomp 5c8470e
-  tool: tools/wf convert (minimax/MiniMax-M3)
-- date: '2026-10-11'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 27d1cdb8
-  tool: tools/symdoc.py
-readable_c: cport/src/game/asm00_2_801B9E6.c
-coverage:
-- battle
-- battles1
-- battles2
-- battlesweep
-- chips
-- fuzz
-- maps
-- menus2
-- menus3
-- story2
-- story4
-- story5
-- story6
-- story7
-- story8
-- story9
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0801c304 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2, story4, story5,
+    story6, story7, story8, story9
 open_questions:
-- What struct r4 points to (the +8 byte selects an "effect"/slot).
-- Why tile index 0xB is treated specially (likely "no tile / transparent" marker for portrait frames).
-- Is r4 after the call meaningful to the caller, or just incidentally trashed?
+- The exact identity of the 4-byte array at r7 (looks like an anim-frame source index table)
+- What 0xb represents (idle? skip anim?)
+- The 0x80 stride between second transfers looks like it skips to the next "column block" of tiles — whether this
+  corresponds to a 32x32 or 64x32 sprite layout is unclear
+- Caller sub_801C202 was unnamed so the broader story2 transition pipeline is unknown
 sources:
-- tools/wf run convert-20261011-101418
-- recomp 5c8470e
-signature:
-  c: void sub_801C304(u8 *r4, u16 *r5, u8 *r7)
-  params:
-  - reg: r4
-    type: u8 *
-    name: r4
-  - reg: r5
-    type: u16 *
-    name: r5
-  - reg: r7
-    type: u8 *
-    name: r7
-  ret:
-    reg: none
-    type: void
-  confidence: confident
-  decided_by: mechanical
-  evidence:
-  - 'contract (lifter, refined): may read r4 r5 r7; result none'
-  - 'liveness over the assembly and callees (tools/sig/derive.py): reads r4 r5 r7'
-  - 'r4: captures: 40 calls, ram byte_203EB50, byte_203EB60+0x4, byte_203EB60+0x18'
-  - 'r4: readable: decompress_portrait_tiles(u32 r4) in cport/src/game/asm00_2_801B9E6.c'
-  - 'r5: captures: 40 calls, vram 0x6016600, 0x6016700, 0x6016800'
-  - 'r5: readable: decompress_portrait_tiles(u32 r5) in cport/src/game/asm00_2_801B9E6.c'
-  - 'r7: captures: 40 calls, ram end_file_3007B00+0x2a8'
-  - 'r7: readable: decompress_portrait_tiles(u32 r7) in cport/src/game/asm00_2_801B9E6.c'
-  reproduce: python3 tools/sig/bounds.py && python3 tools/sig/derive.py && python3 tools/sig/ask.py run && python3
-    tools/sig/ask.py merge
-  derived: '2026-10-12'
-stamp:
-  rom: rom:91cf883edd15edc2
-  range: 0x0801C304-0x0801C368
-  contract: r4 r5 r7 lr -> r3 r4 r5 r6 r7; clobbers nz c v r0 r1 r2 lr
-  callees:
-    QueueEightWordAlignedGFXTransfer: nz c v r3 r4 r5 r6 r7
-  headers: 306bf6a20510
-  lifter: 70c8d832ffcf
-  prompt: 8ad67e179f33
-  model: minimax/MiniMax-M3
-  run: convert-20261011-101418
-  body: eddb367da812501d
-  installed: 5c8470e
-  stamped: '2026-10-12'
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a1dd9fb3
+  tool: tools/symdoc.py

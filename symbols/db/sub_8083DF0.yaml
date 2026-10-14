@@ -3,42 +3,31 @@ address: '0x08083DF0'
 kind: function
 previous_names: []
 status: hypothesis
-summary: 'cutscene/gfx-anim state step: tests original-cutscene-script sentinels, toggles event flags, and runs
-  one of several load_gfx_anim_* / struct_copy helpers'
-interface: '(r10 = Toolkit*) -> flags nz ; side effects: may clear/set event flags 0x17/0x07, may invoke load_gfx_anim_8083FC0
-  / 8083FFC / 8084068, sub_8083F80, sub_8084080, sub_8084180, sub_8084214, sub_80842D8, struct_copy_80840C4, sub_809E462,
-  and reqBBS flag helpers'
-details: "Pure Thumb entry stub; the lifter could not recover assembly (`sub_8083DF0 not found in bn6f/asm`),\n\
-  \  so the only ground truth is the callee set and the live-out register contract (`out` carries\n  r2/r3/r4/r5/r7/r8/r9/r12\
-  \ plus the nz flag, plus r10 is read but not listed as live-out, meaning\n  the toolkit pointer is preserved by\
-  \ the AAPCS callee-saved convention).\n  Callee list groups into three concerns:\n  1) Cutscene-sentinel tests:\
-  \ `cutscene_checkOriginalCutsceneScriptPos_8036F40` (L-Message script) and\n     `_8036F58` (AskJackOut script).\
-  \ These both return `nz` in r2; the function itself returns only\n     `nz` to its caller, so it must fold those\
-  \ checks (likely with the locally produced nz) before\n     branching into the per-case helpers.\n  2) Event-flag\
-  \ ops: `ClearEventFlagFromImmediate`, `SetEventFlagFromImmediate`, `TestEventFlagFromImmediate`\n     (generic\
-  \ two-byte flag r0=byte, r1=bit) and the named BBS wrappers `reqBBS_setFlag_e17b0f7_8140A00`\n     (set 0x17/0x07)\
-  \ and `reqBBS_clearFlag_8140A0C` (clear the same byte/flag 0x7 of event 0x17).\n     Together they strongly suggest\
-  \ the function tracks and toggles a single BBS/request bit\n     tied to whether the L-Message or AskJackOut cutscene\
-  \ is currently queued, and re-asserts or\n     clears event 0x17/0x07 accordingly.\n  3) Gfx-anim loaders: `load_gfx_anim_8083FC0`,\
-  \ `load_gfx_anim_8083FFC`, `load_gfx_anim_8084068`,\n     `struct_copy_80840C4` (r5=ptr in/out copier), and `sub_8083F80`/`sub_8084080`/`sub_8084180`/\n\
-  \     `sub_8084214`/`sub_80842D8` — all of which take r5 (an animation/struct base ptr) and clobber\n     the\
-  \ same r2/r3/r4/r5/r8/r9/r12 set, indicating they advance a per-frame GFX-anim state machine\n     into a destination\
-  \ struct. `sub_809E462` is the only non-r5 helper and only touches nz, so it\n     is likely a small \"is anim\
-  \ done?\" predicate.\n  Given the cutscene checks + flag toggle + anim-load grouping, this is best read as the\
-  \ per-frame\n  step of a GFX-anim driver that decides which anim slot to advance (or whether to start a\n  cutscene-bound\
-  \ L-Message/RequestBBS anim) based on the saved cutscene script pointer.\n"
+summary: Cutscene-time handler that tests event flags then drives GFX anims and request-BBS flag updates for a BBS
+  request screen
+interface: (r10 = Toolkit ptr) -> side effects only; no return value to callers
+details: "The function lives in a cutscene/render region (callees take g/rn, see Toolkit at r10). It branches on\n\
+  \  TestEventFlagFromImmediate to gate which branch it takes; the two cutscene_checkOriginalCutsceneScriptPos_*\n\
+  \  helpers at 0x8036f40/0x8036f58 inspect the saved original cutscene script pointer to detect the L-Message\n\
+  \  and AskJackOut sentinels, deciding whether to display the request BBS screen or jack-out animation.\n  Sets/Clears\
+  \ immediate event flags via Set/ClearEventFlagFromImmediate to mutate story progress, and calls\n  reqBBS_setFlag_e17b0f7_8140A00\
+  \ / reqBBS_clearFlag_8140A0C to flip the corresponding event-byte flag.\n  Drives GFX anim updates by calling\
+  \ the load_gfx_anim_8083FC0 / 8083FFC / 8084068 / 8084080 / sub_8083F80 /\n  struct_copy_80840C4 / sub_8084180\
+  \ / sub_8084214 / sub_80842D8 chain and finally sub_809E462 (unnamed BBS\n  draw step). Touches the BBS request\
+  \ subsystem (event byte 0x17 at 0x2001F68), cutscene state (script\n  pos at 0x40), and an OAM/GFX anim state\
+  \ struct.\n  No callers listed in route coverage, suggesting it is itself a state-handler called from a jumptable\n\
+  \  entry tied to cutscene state / BBS request display.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- Assembly section is empty (`sub_8083DF0 not found in bn6f/asm`); no instruction-level evidence available.
-    - `in` only lists r10 (Toolkit) and lr, so the function is `void`-ish to its caller (returns only `nz`). - The
-    two `cutscene_checkOriginalCutsceneScriptPos_*` callees are the only cutscene-aware callees and their names
-    imply branch decisions inside this function. - `reqBBS_setFlag_e17b0f7_8140A00` and `reqBBS_clearFlag_8140A0C`
-    are paired, indicating the function both arms and disarms the same BBS flag depending on state. - The r5-driven
-    callees all share the same `r2/r3/r4/r5/r8/r9/r12` may_write set, matching how the GFXAnimState (`oGFXAnimState`
-    0x18 bytes) is stepped; the function likely holds a base pointer to one or more such states in r5 across the
-    call. - `struct_copy_80840C4` is r5-only and writes only r0/r1, consistent with copying a small anim descriptor
-    into the active state when starting a new anim.'
+  detail: '- Both TestEventFlagFromImmediate and Set/ClearEventFlagFromImmediate are called, indicating branching
+    and updating of story-progress flags. - cutscene_checkOriginalCutsceneScriptPos_8036F40 and 0x8036F58 compare
+    the cutscene_state.original CutsceneScriptPos_40 (per CutsceneState struct) to L-Message and AskJackOut script
+    sentinels. - reqBBS_setFlag_e17b0f7_8140A00 sets event byte 0x17 flag 0x7 at memory address 0x2001F68 and reqBBS_clearFlag_8140A0C
+    is its clear counterpart; both indicate BBS request flag manipulation. - load_gfx_anim_8083FC0/FFC/4068 plus
+    struct_copy_80840C4 and sub_8083F80/4080/4180/4214/42D8 form a GFX anim setup / draw chain. - sub_809E462 is
+    the final step that returns only `nz`, consistent with a small BBS draw/update tail. - in=''r10,lr'' out lacks
+    r0-r3 in contract, so the function is `void`-like (no return value to caller).'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x08083DF0
@@ -53,15 +42,14 @@ evidence:
     '
   result: beastsp, story5, story6
 open_questions:
-- The exact layout of the function (no assembly recovered) and which r5 callee runs in which case.
-- Whether r10 is r5 at entry or r5 is loaded from r10 (e.g. r5 = r10 + some offset into a per-cutscene table).
-- Whether `sub_809E462` is the anim-done predicate or something else; without assembly we cannot tell.
-- Reconstructing this requires locating the function in the disassembly (it is missing from
-- bn6f/asm) or running the route so the lifter captures a real call edge.
+- Exact jumptable offset/role within the BBS request cutscene handler is unknown; identifying which
+- event flag bits drive which branch and which anim index is selected per branch would settle it.
+- No callers were observed in route coverage, so it is not known whether this is called once per frame
+- during the BBS request or only on enter. A caller disassembly listing would resolve it.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f 742e7bfe
+  where: bn6f a1dd9fb3
   tool: tools/symdoc.py

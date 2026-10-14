@@ -1,0 +1,68 @@
+name: sub_813468C
+address: '0x0813468C'
+kind: function
+previous_names: []
+status: hypothesis
+summary: Spawns/initializes a child battle object/effect with a packed spawn coordinate (x derived from caller's
+  int offset, y from r1, z from param r2), passing derived params, table data byte_81331F4, a packed position word,
+  and r5-relative lookup bytes through sub_811FAF4.
+interface: '(r0 = packed x? or base offset, r1 = y, r2 = z, r3 = some param, r4 = some param, r5 = battle object
+  ptr, r6 = data table, r10 = toolkit) -> r0 = updated byte at r5[r3] ; side effects: writes back to r5[r3] (lo
+  nibble + shifted hi nibble), calls sub_811FAF4 and possibly sub_8120CC8'
+details: "- Saves r1,r2,r3,r4,r6 to stack locals (sp+0..0x10).\n  - Reads r5[0x18] as a signed halfword, shifts\
+  \ left by 3 (= *8), then subtracts from r0 and shifts r0 left by 16 to form the high 16 bits of a packed coordinate.\n\
+  \  - If r2 (z) is non-zero, loads a u16 from r5[r2]; otherwise uses 0. That value is multiplied by 0x10 (16) and\
+  \ added to r1 (y). Result OR'd into r0 (low half), forming a packed (high, low) value passed to sub_811FAF4 as\
+  \ a single 32-bit argument.\n  - Loads dword_81346F8 (=0x20003) into r1, reads byte r5[r3] from sp+8, stores it\
+  \ at sp+0x14; r2 = r5[r3] & 0xF; r3 = sp[0xc]; r4 = sp[0x10] (i.e., r3_orig and r6 from call). Calls sub_811FAF4.\n\
+  \  - After the call, if ((orig byte >> 4) - 1) == 0, calls sub_8120CC8 with table dword_81331FC, replacing the\
+  \ low byte of r5[r3] with the lookup result.\n  - Always writes r5[r3] = (lookup_result<<4) | (orig_byte & 0xF).\n\
+  \  - Caller-saved out regs (r0,r1,r2,r3,flags) propagated; callee-saved r4/r5/r6 restored via r5 (callee-saved)\
+  \ and r4 popped into pc.\n  - The table byte_81331F4 (off_81346F4) and 0x20003 constant suggest spawn arguments\
+  \ for a child effect.\n  - The sub_8120CC8 lookup is gated by (hi_nibble == 1), meaning only objects whose high\
+  \ nibble of their param byte == 1 get translated through the table — likely a sprite-id remap table.\n  - The\
+  \ function is invoked by several thunks (sub_81345B0, sub_81345D4, sub_81345E8, sub_81345FC) that pass fixed object\
+  \ ids (0xE7, 0xF3, 0xF0) and panel coordinates (16,16,32,42,...) consistent with battle-effect spawning.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `sub sp, sp, #0x1c` + five `str` ops saving r1,r2,r3,r4,r6 to local slots shows the function takes
+    at least 5 caller-supplied parameters. - `ldrsh r1, [r5,r1]` with r1=0x18 and `lsl r1, r1, #3` then `sub r0,
+    r0, r1` shows r5 is the battle object and offset 0x18 (likely related to its position/animation) is used to
+    derive x. - `lsl r0, r0, #0x10` + `orr r0, r1` at the end of the packed-coord construction builds a 16.16-style
+    fixed point coordinate. - `tst r3, r3` / `ldrh r2, [r5,r3]` at loc_81346B0 demonstrates an optional base offset
+    for z being read from r5. - `mul r2, r3` where r3 was set to 0x10 shows z is multiplied by 16 (panel-to-pixel
+    ratio). - Constant `dword_81346F8 = 0x20003` and the `orr` of low word of (y + z*16) into r0 form the standard
+    "packed spawn coord" argument for the spawn routine. - `ldr r1, [sp,#0x14]` / `lsr r1, r1, #4` / `sub r1, #1`
+    / `bne loc_81346E0` skips the table lookup unless the original param byte''s high nibble == 1. - `off_8134718
+    = dword_81331FC` is passed to sub_8120CC8 (the table-lookup callee), confirming a sprite-id remap step. - Captured
+    exit r0 values (`0xFFFFFF..F0`, `0x50`, `0x20`, `0x10`, `0xB0`) are consistent with masked byte writes back
+    to r5[r3]. - The constant byte_81331F4 at off_81346F4 is loaded as r6 (third argument block, in sp+0x10) and
+    forwarded into sub_811FAF4 — typical of a sprite-data table.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0813468C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, beastsp, maps, menus3, story4, story6, story8, story9'
+  reproduce: 'grep -l ''^0813468c '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, beastsp, maps, menus3, story4, story6, story8, story9
+open_questions:
+- Exact role of sub_811FAF4 (spawn vs. animation-register vs. palette); the constant 0x20003 and packed coord suggest
+  it constructs an OAM/OBJ entry for the child effect, but without the callee's body I can only describe the contract.
+- Whether r5 is the parent battle object (the parent whose `0x18` is read for x-offset) or a sprite header — most
+  likely battle_object given the project uses it in the spawn flow.
+- Why only hi_nibble==1 entries are remapped; could be "internal" vs "external" sprite categories or an effect-class
+  filter.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a1dd9fb3
+  tool: tools/symdoc.py
