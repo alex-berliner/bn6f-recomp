@@ -1,0 +1,67 @@
+name: battleObject_sprOutWindTick_8116BFC
+address: '0x08116BFC'
+kind: function
+previous_names:
+- sub_8116BFC
+status: probable
+summary: 'Per-frame tick for a SprOut "wind" sub-record: nudges the sub-record''s +0xC time field up/down
+  by 2, advances the allied sprite''s palette animation, and queues destruction (CurAction = CUR_STATE_DESTROY)
+  once the wind has fully expired.'
+interface: '(r5 = BattleObject*, r7 = byte ptr to a record/cur-state byte) -> void; side effect: may write
+  [r5+9] (CurAction) = 0x08, plus whatever the two callees mutate'
+details: "- `bl record_adjustNthSubRecordFieldC_8116C40` walks the \"record\" structure attached to this\
+  \ battle object and adjusts the 16-bit field at +0xC of its Nth sub-record by ±2, clamped to 0x16..0x1E\
+  \ (so the field counts down/up between 0x16 and 0x1E, used as a per-frame \"wind remaining\" timer).\n\
+  \  - `bl sub_8116C78` then advances the per-frame palette animation of the allied battle sprite (it\
+  \ is gated on the alliance matching the caller's, so it only animates the friend-side SprOut sprites\
+  \ here).\n  - After both calls, it reads `[r7]` (a record state byte, e.g. the wind's CurState or a\
+  \ record's \"alive\" flag) and, if it equals 0x8 (CUR_STATE_DESTROY already set or about to), it overwrites\
+  \ `[r5+9]` (= BattleObject.CurAction per BattleObject.inc) with 0x8, marking the object for destruction\
+  \ next frame.\n  - The \"8 == CUR_STATE_DESTROY\" check is the standard battle-object destroy arming\
+  \ pattern (see the enum at BattleObject.inc `CurState`).\n  - r0 ends as 4 in all captures because the\
+  \ first arg passed to 8116C40 is 4 and it (or the next callee) leaves it that way; the function does\
+  \ not actually return r0 to callers — it is leaf-void, only the `pop {pc}` tail-call style suggests\
+  \ an inlined chaser.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl record_adjustNthSubRecordFieldC_8116C40` summary names the +0xC 16-bit field and the
+    0x16..0x1E clamp, matching the wind-record pattern. - `bl sub_8116C78` summary calls it the allied-sprite
+    palette-animation advance, gating on alliance. - `ldrb r0, [r7]; cmp r0, #8; bne locret_8116C10; mov
+    r0, #8; strb r0, [r5,#9]` literally writes 0x8 to r5+9 only when r7[0] == 0x8, which is the destroy-state
+    path. - BattleObject.inc enum `CurState` defines `CUR_STATE_DESTROY, 0x08` and offset 0x9 is `CurAction`,
+    so `strb r0, [r5,#9]` with r0=8 stores CUR_STATE_DESTROY into CurAction. - Caller-side in the captured
+    frames has r5 pointing to a SprOut wind BattleObject (snap_story2_*.bin, scene story2 = SprOut), r7
+    to a record state byte. - r0=4 in all captured exits is the original arg to 8116C40 (sub-record index
+    4) and is incidentally preserved as the "return" — callers do not consume it.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08116BFC
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^08116bfc '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus2, menus3, story1, story2, story3,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- Exact identity of the "wind" record (which record the Nth sub-record refers to) is not pinned down;
+  only the +0xC 16-bit clamped-field behavior is clear.
+- Whether the `r7[0] == 8` test is "already destroy-pending" or "wind finished" is inferred from naming,
+  not proven — could be settled by looking at which other call site arms r7 to 8.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 4b6ad669
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8116BFC -> battleObject_sprOutWindTick_8116BFC
+  where: bn6f 25419b15
+  tool: tools/rename_symbol.py

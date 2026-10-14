@@ -1,0 +1,68 @@
+name: battle_aiAttackTickBeastSp_8014CC0
+address: '0x08014CC0'
+kind: function
+previous_names:
+- sub_8014CC0
+status: probable
+summary: Per-tick AI attack update that cancels the Beast Out spam (atkvars Unk_10) once elapsed and tears
+  down its state.
+interface: '(r5 = ActorBattleObjectPtr, r6 = ?, r7 = ActorAIDataPtr, r10 = ToolkitPtr, lr = caller) ->
+  r0 = new Alliance value passed to sub_800AB2E ; side effects: edits ActorAIData->AttackVars offsets
+  0x01 and 0x10, clears AIData bits 0x80 / 0x80000, AIData->Unk_44 bits 0x80008600, battle-state flags
+  0x20, then calls object_exitAttackState'
+details: "Initial guard: ldrb r0,[r7,#oAIAttackVars_Unk_01]; tst r0,r0; bne loc_8014CD0 — when AttackVars\
+  \ byte 0x01 hasn't been primed yet, it seeds AttackVars_Unk_01 = 4 and AttackVars_Unk_10 = 0x14 (a 0x14-frame\
+  \ window, matching the count-downs seen across consecutive captured snapshots: 0x13, 0x12, ..., 0x06).\n\
+  \  Each call decrements AttackVars_Unk_10 (`sub r0,#1 / strh r0,... / bge locret_8014CFE`) and returns\
+  \ while it is still >=0; the captured snapshots show the field decreasing monotonically through r0 in\
+  \ r0={0x13,0x12,0x09,0x08,0x07,0x06}.\n  When the counter underflows: ldrb r0,[r5,#oBattleObject_Alliance],\
+  \ mov r1,#0xb, mov r2,#1, bl sub_800AB2E (the captured-call r0=0x0c / r1/lr out of band match this same\
+  \ template across calls, so sub_800AB2E is likely an \"object state/Alliance\" resolver). It then clears\
+  \ bit 0x80 in AIData via ClearAIDataUnk0x48Flag, clears bit 0x20 in BattleState via battle_clearFlags,\
+  \ clears bits 0x80000 in AIData, clears bits 0x80008600 in AIData->Unk_44 (where bit 0x8600 looks like\
+  \ a BeastOut/transform flag pair), and finally bl object_exitAttackState to leave the attack state cleanly.\n\
+  \  Callee ordering and the AttackVars prefix tell us this is the dedicated per-actor tick for the \"\
+  beast spam\" / counterattack-style move that MMBN6 uses (the captured-call snapshot name `snap_beastsp_*`\
+  \ corroborates).\n  The \"_ADDRESS\" suffix is kept: while the role is clearly \"end the beast-out counter\
+  \ timer and clean up\", the exact bit meanings (0x80, 0x80000, 0x80008600, 0x20) are inferred from context.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrh r0,[r7,#oAIAttackVars_Unk_10]; sub r0,#1; strh r0,[r7,#oAIAttackVars_Unk_10]; bge locret_8014CFE`
+    — explicit 16-bit countdown of an AttackVars halfword at offset 0x10. - Initial priming writes `mov
+    r0,#0x14 / strh r0,[r7,#0x10]` and `mov r0,#4 / strb r0,[r7,#0x01]` — seeds a 0x14-tick window once.
+    - Captured-call r0 progresses {0x13,0x12,0x09,0x08,0x07,0x06} across snapshots snap_beastsp_0/1/10/11/12/13
+    — matches a countdown that terminates when r0 goes negative. - ClearAIDataUnk0x48Flag(0x80) and ClearAIDataUnk0x48Flag(0x80000)
+    (both via `dword_8014D00`) clear bits in AIData->Unk_48. - ClearAIData_Unk_44_Flag(0x80008600) clears
+    bits in AIData->Unk_44 (mask includes 0x8000 and 0x800 + 0x600; combined high bits look like beast-out
+    / transformation flags). - battle_clearFlags(0x20) clears an Unk_11-style battle flag (0x20 = BATTLE_STATE_UNK_11_FLAG_UNK_BIT_05).
+    - `bl object_exitAttackState` is the explicit teardown of the AI''s current attack action.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08014CC0
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^08014cc0 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- Exact semantics of bit 0x80000 in AIData->Unk_48 and the 0x80008600 mask in AIData->Unk_44 (Beast Out
+  related but not directly confirmed by symbol).
+- What sub_800AB2E(r0=Alliance, r1=0xb, r2=1) actually does — only known by signature; would settle with
+  its decomp.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 4b6ad669
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8014CC0 -> battle_aiAttackTickBeastSp_8014CC0
+  where: bn6f 25419b15
+  tool: tools/rename_symbol.py

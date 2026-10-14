@@ -1,0 +1,59 @@
+name: battle_bustingLevelCategoryForEffect_800AF84
+address: '0x0800AF84'
+kind: function
+previous_names:
+- sub_800AF84
+status: probable
+summary: Picks a busting-level category (0/1/2) for sub_800AC20 based on battle-effects flags and battle
+  state's Unk_0d byte, then forwards to sub_800AC20.
+interface: '(r0 = unused, r1 = unused, r10 = Toolkit ptr) -> r0 = category arg for sub_800AC20 (0, 1,
+  or 2); side effects: clobbers r0/r1/r2/r3 and the C/V flags'
+details: "Reads the battle-effects bitmask via GetBattleEffects. If bit 0x8 is set, branches to\n  loc_800AFA0\
+  \ which calls battle_getStateByteNibbles_800A832, XORs its r0 (low nibble of\n  BattleState.Unk_1f)\
+  \ against 1 if it isn't 1, then sets r0=2 and forwards to sub_800AC20.\n  Otherwise it tests bit 0x1\
+  \ of the effects mask: r0=0/1, r2=0, r1=0, r3=1 are set up, and\n  the tst r2,r3 -> beq loc_800AFB4\
+  \ picks 0 or 1 before falling through to the same\n  sub_800AC20 call. sub_800AC20 uses the (r0,r1)\
+  \ category to compute the busting level.\n  The function takes no real arguments via r0/r1 in the snapshots\
+  \ (caller passes 1, 0x0200a008),\n  so the r0/r1 inputs are not used by this routine itself.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl GetBattleEffects` at 0x0800af8a reads battle-effects bitmask - `mov r1, #8; tst r0, r1;
+    bne loc_800AFA0` tests bit 0x8 of effects mask - At loc_800AFA0: `bl battle_getStateByteNibbles_800A832`
+    returns low/high nibble of Unk_1f in r0/r1 - `ldrb r1, [r1,#oBattleState_Unk_0d]` at 0x0800afac reads
+    BattleState.Unk_0d - `cmp r0, #1; beq loc_800AFB2; mov r2, #1; eor r1, r2` flips the Unk_0d byte when
+    low nibble != 1 - `mov r0, #2` at 0x0800afb0 sets category 2 in the bit-0x8 branch - In the else branch:
+    `mov r2, r0; mov r0, #0; mov r1, #0; mov r3, #1; tst r2, r3` selects category 0 or 1 based on bit
+    0x1 - `bl sub_800AC20` at 0x0800afb4 forwards (r0, r1) to sub_800AC20, which the callee docstring
+    says uses these to pick the busting level per category - Captured-call r0 returns vary (0x4, 0x6,
+    0x7, 0xa) and match the sub_800AC20 return range noted in its summary'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0800AF84
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0800af84 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9
+open_questions:
+- Why r1 is ever written with the XORed Unk_0d value when the documented sub_800AC20 contract
+- treats r1 as the second category arg; the call site at 0x0800afb4 is "bl sub_800AC20" so r1 is
+- passed verbatim. Need sub_800AC20's body to confirm it uses r1 in the bit-0x8 path.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 4b6ad669
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_800AF84 -> battle_bustingLevelCategoryForEffect_800AF84
+  where: bn6f 25419b15
+  tool: tools/rename_symbol.py

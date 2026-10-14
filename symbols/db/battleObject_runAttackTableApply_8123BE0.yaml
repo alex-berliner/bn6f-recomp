@@ -1,0 +1,62 @@
+name: battleObject_runAttackTableApply_8123BE0
+address: '0x08123BE0'
+kind: function
+previous_names:
+- sub_8123BE0
+status: probable
+summary: Thin AI-attack dispatcher that applies AIData to the attack table for the current battle-object
+  phase
+interface: '(r5 = AIData struct-ish state via toolkit, r10 = toolkit) -> r0 = 0x20 ; side effects: calls
+  battleObject_applyAIDataToAttackTable_8123C20'
+details: "Sets up arguments and immediately tail-calls battleObject_applyAIDataToAttackTable_8123C20.\n\
+  \  - r0 <- dword_8123BFC (constant 0x5A5856, looks like a packed mask/index pair)\n  - r1 = 0x20 (32,\
+  \ matches AIData.Unk_40 struct_org in AIData.inc — the start of the AI input block)\n  - r2 = byte_81233E0\
+  \ (likely a script/table byte stream)\n  - r3 = 5 (a small loop count / table index)\n  - r4 = 0x5c\
+  \ (AIData.Unk_5c offset, a pointer field)\n  - r6 = 0\n  Then `bl battleObject_applyAIDataToAttackTable_8123C20`.\
+  \ The wrapper only books these values into argument registers.\n  Captured calls show all 40 entry snapshots\
+  \ with identical regs (r0=1, r1=0, r2=0x081233d8, r3=0x020047cc) and exit r0=0x20 — but those r0-r3\
+  \ are never used here, only the wrapper's own immediates are. The `1` / `0` / `0x020047cc` is what r5\
+  \ was preserved from the caller (r5 keeps game/AIData context). Snapshot consistency confirms this is\
+  \ per-frame, called from the same place each tick.\n  All three callers are battle update hot-paths\
+  \ (battle_updateFrame_8123558 and two mode-2 step drivers), which matches an \"evaluate AI / apply attack\
+  \ table once per frame\" role.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl battleObject_applyAIDataToAttackTable_8123C20` at the only non-prologue instruction,
+    single callee. - `mov r1, #0x20` matches AIData struct_org 0x20 (joypad/AI input block start). - `mov
+    r4, #0x5c` matches AIData.Unk_5c (ptr field). - `mov r3, #5` is a small literal consistent with a
+    4-to-8 table index, not a generic flag. - All 40 snapshots identical (r0=1, r1=0, r2=0x081233d8, r3=0x020047cc)
+    => called from the same per-frame site, consistent with frame-driven AI processing. - Callers are
+    battle_updateFrame and its mode-2 step sub-routines (0x8123558, 0x8123574, 0x81235A4) — all per-frame
+    battle object drivers. - Exit r0=0x20 mirrors the `mov r1, #0x20` produced into r0 by the callee (sub_8123C20''s
+    out contract is empty, so r0 is whatever it leaves).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08123BE0
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus3, story4, story6,
+    story8, story9'
+  reproduce: 'grep -l ''^08123be0 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus3, story4, story6, story8, story9
+open_questions:
+- Exact semantics of constant 0x5A5856 (looks like ASCII "ZXV" reversed or a bitmask) and of byte_81233E0
+  — resolving sub_8123C20's body would settle this.
+- Whether r4=0x5c is consumed by the callee or just passed through.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 4b6ad669
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8123BE0 -> battleObject_runAttackTableApply_8123BE0
+  where: bn6f 25419b15
+  tool: tools/rename_symbol.py

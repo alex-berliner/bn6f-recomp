@@ -1,0 +1,57 @@
+name: sprite_getShadowOffsetForFrame_80030BA
+address: '0x080030BA'
+kind: function
+previous_names:
+- sub_80030BA
+status: probable
+summary: Look up the per-frame (dx, dy) shadow offset entry for a sprite given the current frame index.
+interface: (r0 = spriteDataPtr?, r1 = frameIndex) -> r0 = dx, r1 = dy (or both 0 if missing/none)
+details: "Saves r4-r7/lr; r0 is the ObjectHeader/T-Something base (kept in r5). Reads\n  `oObjectHeader_TypeAndSpriteOffset`\
+  \ (high nibble = Type), shifts left 4 to get a\n  spriteData offset in 0x10-byte units and adds it to\
+  \ the base to land on the\n  per-sprite ObjectSprite block. Loads the sprite's `Unk_20` (frame table\
+  \ base-ish\n  ptr) and `Unk_1c+0xc` (stride? or table 2 base), combines them via\n  `r3 = Unk_18 + *(Unk_1c+0xc)`,\
+  \ indexes with `idx = *(Unk_20)` *4 to read an entry,\n  then adjusts r2 in-place with `r2 += r3` so\
+  \ that subsequent byte reads walk\n  entries of 5 bytes each (so this is a [u8 frame; s8 dx; s8 dy;\
+  \ ?; ?] style table).\n  Iterates from r4=0 forward while `byte0 != 0xFF`; when r4 == r1 (requested\
+  \ frame\n  index), reads two bytes at +1/+2 as signed dx/dy and returns them. If the loop\n  hits the\
+  \ 0xFF terminator first it returns (0,0). The \"frame 0xFF\" sentinel acts\n  as table end; r1 is therefore\
+  \ a small index into the shadow/anchor table.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r3, [r5,#oObjectHeader_TypeAndSpriteOffset]; lsr r3,#4; lsl r3,#4; add r5,r5,r3` matches
+    the documented "Type*0x10 sprite slot" pattern. - `ldr r3,[r5,#oObjectSprite_Unk_20]` followed by
+    `ldrb r2,[r3]; lsl r2,r2,#2` treats `Unk_20` as a u8 stride *4 table indexed by frame. - Loop `cmp
+    r3,#0xff; beq end` over 5-byte records (`add r2,#5`) is a classic terminator-walked table. - Success
+    path does `ldrsb r0,[r2,#1]; ldrsb r1,[r2,#2]` — signed 16-bit pair returned in r0/r1, consistent
+    with a 2D offset. - Fall-through (`mov r0,#0; mov r1,#0; pop {pc}`) returns zeros when the requested
+    frame index is absent.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080030BA
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp'
+  reproduce: 'grep -l ''^080030ba '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp
+open_questions:
+- Exact semantics of the [r3,r2]/[Unk_18 + Unk_1c+0xc] indirection and of bytes
+- +3..+4 of each record. Settling it needs to see what populates
+- '`Unk_18/Unk_1c/Unk_20` for a known sprite, and what sub_80B8932 does with the'
+- returned dx/dy.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 4b6ad669
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80030BA -> sprite_getShadowOffsetForFrame_80030BA
+  where: bn6f 25419b15
+  tool: tools/rename_symbol.py

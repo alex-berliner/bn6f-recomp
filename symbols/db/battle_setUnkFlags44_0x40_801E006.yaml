@@ -1,0 +1,55 @@
+name: battle_setUnkFlags44_0x40_801E006
+address: '0x0801E006'
+kind: function
+previous_names:
+- sub_801E006
+status: probable
+summary: Sets bit 0x40 in the eStruct2035280 flags word (offset 0x44) to mark some battle state flag.
+interface: '(none) -> r0 = 0x40 ; side effect: ORs 0x40 into eStruct2035280+0x44 via flagSetBits_eStruct2035280_801BEB8'
+details: "Three instructions: push lr; mov r0,#1; lsl r0,r0,#6 (so r0 = 0x40); bl flagSetBits_eStruct2035280_801BEB8;\
+  \ pop {pc}.\n  The callee flagSetBits_eStruct2035280_801BEB8 ORs r0 into eStruct2035280+0x44 and returns\
+  \ the updated word in r2\n  (per its contract: in=['r0','lr'] out=['nz','r1','r2']). The captured-call\
+  \ exit shows r0 = 0x40 every time and\n  flags cleared (the popped pc leaves -ZC- clear), so the caller\
+  \ treats the return as discarded. The action is\n  simply \"raise bit 0x40 of eStruct2035280's UnkFlags_44\"\
+  . The semantic meaning of bit 0x40 within\n  UnkFlags_44 is not known here — the struct only defines\
+  \ the field as flags32 with no named constants beyond\n  the 0x60 size cap.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mov r0, #1` followed by `lsl r0, r0, #6` at 0x0801e00a-0x0801e00c produces r0 = 0x40. -
+    `bl flagSetBits_eStruct2035280_801BEB8` is the only callee; its description states it ORs r0 into
+    eStruct2035280+0x44. - Struct2035280.inc shows `flags32 UnkFlags_44 // loc=0x44` at offset 0x44 of
+    eStruct2035280, exactly where the callee writes. - All 40 captured entries have lr=0x0801da60, suggesting
+    a single caller (story2 dispatcher in battle code) repeatedly sets this flag. - Exit r0 = 0x40 in
+    every capture, consistent with r0 being untouched by the callee and the caller ignoring it.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801E006
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0801e006 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9
+open_questions:
+- What bit 0x40 of eStruct2035280+0x44 represents in battle flow (only one bit is being set here, while
+- other bits are managed elsewhere). Identifying the named caller (the snap_story2_*.bin lr=0x0801da60)
+  and
+- looking at adjacent state transitions there would settle the semantic meaning.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 4b6ad669
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801E006 -> battle_setUnkFlags44_0x40_801E006
+  where: bn6f 25419b15
+  tool: tools/rename_symbol.py

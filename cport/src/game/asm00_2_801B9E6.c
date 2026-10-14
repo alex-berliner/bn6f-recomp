@@ -2601,8 +2601,8 @@ Next chatbox_openMessageWindow_801DFEA(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_801E006 ── */
-/* sub_801E006: wrapper that invokes flagSetBits_eStruct2035280_801BEB8 with the argument 0x40
+/* ── battle_setUnkFlags44_0x40_801E006 ── */
+/* battle_setUnkFlags44_0x40_801E006: wrapper that invokes flagSetBits_eStruct2035280_801BEB8 with the argument 0x40
  * (built as mov r0,#1; lsl r0,r0,#6).
  *
  * The immediate LSL is the last flag-setting instruction of this function
@@ -2610,7 +2610,7 @@ Next chatbox_openMessageWindow_801DFEA(void) {
  * after the call, so its flag effects must be reproduced:
  *   result 0x40 -> N=0, Z=0; shifted-out bit 26 of 1 -> C=0.
  * SET_FLAGS_ADD(R0, 0) yields exactly that carry/N/Z combination. */
-Next sub_801E006(void) {
+Next battle_setUnkFlags44_0x40_801E006(void) {
     R0 = 1 << 6;              /* argument for flagSetBits_eStruct2035280_801BEB8 */
     SET_FLAGS_ADD(R0, 0);     /* flags as left by `lsl r0, r0, #6` */
     GUEST_CALL(flagSetBits_eStruct2035280_801BEB8);

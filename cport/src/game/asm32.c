@@ -29,7 +29,7 @@ Next sub_810D970(void) {
 /* ── sub_810D998 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r1, r4, r5, r6, r7, r8, r9, r10, r11, r12; } call_sub_810DAF0_result;
-/* register form: generated wrapper: sub_810DAF0 has no typed C interface yet */
+/* register form: generated wrapper: battle_enemyAI_preCheckChipUsage_810DAF0 has no typed C interface yet */
 static inline call_sub_810DAF0_result call_sub_810DAF0(u32 r4, u32 r5, u32 r7, u32 r8, u32 r9, u32 r11, u32 r12) {
     R4 = r4;
     R5 = r5;
@@ -38,14 +38,14 @@ static inline call_sub_810DAF0_result call_sub_810DAF0(u32 r4, u32 r5, u32 r7, u
     R9 = r9;
     R11 = r11;
     R12 = r12;
-    GUEST_CALL(sub_810DAF0);
+    GUEST_CALL(battle_enemyAI_preCheckChipUsage_810DAF0);
     return (call_sub_810DAF0_result){ R0, R1, R4, R5, R6, R7, R8, R9, R10, R11, R12 };
 }
 
 /* sub_810D998: advance one step of the enemy AI state machine.
- * Calls a pre-check (sub_810DAF0); if it returns nonzero the AI is paused
+ * Calls a pre-check (battle_enemyAI_preCheckChipUsage_810DAF0); if it returns nonzero the AI is paused
  * and no handler runs. Otherwise the state byte stored in the AI block
- * (at the modified r6 from sub_810DAF0) indexes a four-entry jump table
+ * (at the modified r6 from battle_enemyAI_preCheckChipUsage_810DAF0) indexes a four-entry jump table
  * whose handler runs in-place and sets the output registers.
  * r4 and r6 are preserved by push/pop: they always equal the entry values. */
 
@@ -546,15 +546,15 @@ Next ai_8113038(void) {
  *   clobbers (unused by callers): nz c v r0 r2 r3 r4 r6 r7 lr
  *   preserved: -
  *
- * Trivial two-call tail sequence: call sub_8113114, then call sub_8016B02,
+ * Trivial two-call tail sequence: call sub_8113114, then call battleObject_initAndRunAI_8016B02,
  * and return to the caller. The original uses a `pop {pc}` to do the
- * return, but since sub_8016B02 does not consume LR from the stack, the
+ * return, but since battleObject_initAndRunAI_8016B02 does not consume LR from the stack, the
  * net effect on guest-visible state is identical to a normal call-return
  * followed by RETURN_TO_CALLER().
  */
 Next sub_81130E4(void) {
     GUEST_CALL(sub_8113114);
-    GUEST_CALL(sub_8016B02);
+    GUEST_CALL(battleObject_initAndRunAI_8016B02);
     RETURN_TO_CALLER();
 }
 
@@ -1132,7 +1132,7 @@ Next sub_8116B00(void) {
 Next sprite_dispatchVariantUpdate_8116B9C(void) {
     switch (LD8(R5 + 9)) {
     case 0: GUEST_CALL(sprite_fallingObjectStepDown_8116BC0); break; /* off_8116BB4[0] */
-    case 4: GUEST_CALL(sub_8116BFC); break; /* off_8116BB4[1] */
+    case 4: GUEST_CALL(battleObject_sprOutWindTick_8116BFC); break; /* off_8116BB4[1] */
     case 8: GUEST_CALL(sprite_scrollStepAndCullOffscreen_8116C14); break; /* off_8116BB4[2] */
     }
 
@@ -1173,13 +1173,13 @@ Next sprite_fallingObjectStepDown_8116BC0(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8116BFC ── */
-/* sub_8116BFC(r4, r5 = state object, r6, r7 = state byte ptr):
+/* ── battleObject_sprOutWindTick_8116BFC ── */
+/* battleObject_sprOutWindTick_8116BFC(r4, r5 = state object, r6, r7 = state byte ptr):
  * Runs the two phase-update helpers (record_adjustNthSubRecordFieldC_8116C40, sub_8116C78), then checks
  * the byte at [r7]; if it has reached 8, store 8 into [r5+9] as well.
  * Leaves r0 = the loaded byte (or 8 on the store path) and the flags from
  * the final CMP/MOV for the caller to branch on. */
-Next sub_8116BFC(void) {
+Next battleObject_sprOutWindTick_8116BFC(void) {
     GUEST_CALL(record_adjustNthSubRecordFieldC_8116C40);
     GUEST_CALL(sub_8116C78);
 
@@ -2123,7 +2123,7 @@ static u32 call_object_getter(u32 obj_ptr, u32 index) {
     switch (index) {
     case 0: GUEST_CALL(battle_getObjectPairOddByteClamped8_811774C); break;
     case 1: GUEST_CALL(sub_8117764); break;
-    default: GUEST_CALL(sub_8117768); break;
+    default: GUEST_CALL(battle_clampEnemyCountByBattleStartProgress_8117768); break;
     }
     u32 result = R0;
     R4 = s4; R5 = s5; R6 = s6; R7 = s7;

@@ -2145,8 +2145,8 @@ Next sub_800AE54(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_800AF84 ── */
-/* sub_800AF84: choose a battle-mode pair and hand it to sub_800AC20.
+/* ── battle_bustingLevelCategoryForEffect_800AF84 ── */
+/* battle_bustingLevelCategoryForEffect_800AF84: choose a battle-mode pair and hand it to sub_800AC20.
  *
  *   If battle effect bit 3 (0x8) is clear:
  *     mode = effect bit 0 (0 or 1), arg1 = 0, r3 = 1, r2 = raw effects value.
@@ -2156,7 +2156,7 @@ Next sub_800AE54(void) {
  *
  * r4-r7 and r10 pass through untouched; everything else is whatever
  * sub_800AC20 leaves behind. */
-Next sub_800AF84(void) {
+Next battle_bustingLevelCategoryForEffect_800AF84(void) {
     GUEST_CALL(GetBattleEffects);
     u32 effects = R0;
 
@@ -2432,10 +2432,10 @@ static u32 battle_state_query(u32 val, u32 offset) {
     return R0;
 }
 
-/* register form: calls sub_80200A4 outside this file, which has no typed C interface yet */
+/* register form: calls battle_requestSetBattleMode_80200A4 outside this file, which has no typed C interface yet */
 static void battle_sfx_call(u32 id) {
     R0 = id;
-    GUEST_CALL(sub_80200A4);
+    GUEST_CALL(battle_requestSetBattleMode_80200A4);
 }
 
 /* Fill count halfword-slots starting at addr with the given value. */
@@ -2618,10 +2618,10 @@ Next battle_copyStructsIncludingBattleStats_800b2d8(void) {
  * Copies the 0x50-word battle work buffer and the current Navi's stats
  * block (0x64 words) into their backup buffers, writes a "data valid"
  * marker word, snapshots a small 0x10-word block, and finally invokes
- * sub_80200A4(0x32) to finish the snapshot.
+ * battle_requestSetBattleMode_80200A4(0x32) to finish the snapshot.
  *
  * Inputs:  r3 (unused), r10 = toolkit pointer, lr = return address.
- * Outputs: r2/r3 and the c/v flags as left by the final sub_80200A4 call. */
+ * Outputs: r2/r3 and the c/v flags as left by the final battle_requestSetBattleMode_80200A4 call. */
 Next battle_backupStateForRestart_800B3A2(void) {
     /* Back up the 0x50-word battle work area. */
     R0 = A_byte_20366C0;
@@ -2649,7 +2649,7 @@ Next battle_backupStateForRestart_800B3A2(void) {
 
     /* Run the snapshot post-processing step. */
     R0 = 0x32;
-    GUEST_CALL(sub_80200A4);
+    GUEST_CALL(battle_requestSetBattleMode_80200A4);
 
     RETURN_TO_CALLER();
 }
@@ -2715,8 +2715,8 @@ Next transferBattleHandNaviStats_800B3D8(void) {
 /* ── sub_800B428 ── */
 /* sub_800B428:
  * Reinitializes the record whose pointer lives at dword_203CBE4 (via sub_802C8FA),
- * writes the marker word 0x1F2F3F4F to dword_203CBE0, then invokes sub_80200A4
- * with mode 4. sub_80200A4's r1-r3 results pass straight through to our caller. */
+ * writes the marker word 0x1F2F3F4F to dword_203CBE0, then invokes battle_requestSetBattleMode_80200A4
+ * with mode 4. battle_requestSetBattleMode_80200A4's r1-r3 results pass straight through to our caller. */
 Next sub_800B428(void) {
     /* Reset/clear the structure at dword_203CBE4. */
     R0 = A_dword_203CBE4;
@@ -2727,7 +2727,7 @@ Next sub_800B428(void) {
 
     /* Continue with operation mode 4; r1-r3 are left exactly as the callee set them. */
     R0 = 4;
-    GUEST_CALL(sub_80200A4);
+    GUEST_CALL(battle_requestSetBattleMode_80200A4);
 
     RETURN_TO_CALLER();
 }

@@ -1,0 +1,71 @@
+name: pet_tryStartRandomEncounterStep_808CB0C
+address: '0x0808CB0C'
+kind: function
+previous_names:
+- sub_808CB0C
+status: probable
+summary: Overworld per-frame step that drives the random-encounter progress (PET-Navi footsteps / "LocEnemy"
+  state) and may start the encounter cutscene.
+interface: '(no input args, r10 = Toolkit) -> side effects: may set state in 0x2000B40 area, play SE 0x13B,
+  start a cutscene via StartCutscene; nothing returned in r0/r1.'
+details: "- Loads a pointer from dword_808CA44 into r5 (state struct at 0x2000B40 base; r5+0xc/0x3/0x1a/0x1c).\n\
+  \  - Tests event flag 0x9D6 (PET menu data bit via sub_808D11C gate) and 0x9D8; if not set, or if we're\
+  \ on map 0x85 and not flag-set, plays sound_8000672(0x1f, 0x13b) — likely the LocEnemy alert SFX.\n\
+  \  - Skips SFX when TestPETMenuDataFlag(1) is true or when state byte [r5+0xc] is non-zero.\n  - Captures\
+  \ OW player X/Y from ReadOWPlayerObjectCoords (>>16 to integer), stores them into [r5+0x1a]/[r5+0x1c]\
+  \ as the encounter origin point, and seeds a 0x20 countdown byte at [r5+0x3].\n  - Every frame decrements\
+  \ [r5+0x3]; when it hits zero, calls sub_808CCAC to roll an encounter and resets the countdown to 0x20.\n\
+  \  - Calls sub_808CD04 — if it returns nonzero (a \"force encounter now\" condition), calls sub_808CD24;\
+  \ otherwise clears event flag 0xBF1, runs sub_808CFB8, and if that returned 1, runs sub_808D108 (a different\
+  \ \"try\" path, probably SneakRun/LocEnemy variant).\n  - Finally calls sub_808CC34 — if nonzero, treats\
+  \ its return as a CutsceneScript pointer and hands it to StartCutscene(scriptPtr, paramInR0) to launch\
+  \ the encounter cutscene.\n  - The contract's \"void\"-like out set (no r0/r1) and the absence of captured\
+  \ callers indicates this is invoked once per VBlank from the overworld subsystem (PET/main loop), not\
+  \ a callable library routine.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- r5 ← [dword_808CA44] (asm `ldr r5, [r5]`) gives the persistent encounter state struct at
+    0x2000B40. - `TestPETMenuDataFlag(1)` (loc_808CB3C entry) matches bn6 PET menu flag checks used elsewhere
+    for "random encounters enabled / Navi menu open". - `ReadOWPlayerObjectCoords` then `asr r0,r0,#0x10`
+    strips fixed-point to integer coords, stored at [r5+0x1a]/0x1c — clearly saving the encounter origin.
+    - `strb r0, [r5,#3]` of 0x20 then a per-frame `sub r0,#1` / `strb r0,[r5,#3]` is a classic frame-countdown
+    pattern for random encounters. - `sub_808CCAC` is called only when the countdown hits zero — its return
+    drives whether the encounter happens. - `mov r0, #0x1f; ldr r1, dword_808CB98 // =0x13B; bl sound_8000672`
+    is a sound-effect trigger; 0x13B is reused by 808CA44-area callers. - `ClearEventFlagFromImmediate(EVENT_BF1)`
+    resets the "force battle" / "LocEnemy in progress" flag. - Final `bl sub_808CC34` + `bl StartCutscene`
+    uses sub_808CC34''s return as the CutsceneScript* (StartCutscene takes (script*, u32)) — exactly how
+    battle-trigger cutscenes launch. - `TestEventFlagFromImmediate(EVENT_9D8)` plus the `cmp r1, #0x85
+    / beq` early-out ties this to a specific map and is consistent with the only encounters in the 0x85
+    region (Cyber City / random-encounter zone in BN6 Falzar).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0808CB0C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^0808cb0c '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- Whether EVENT_9D6 vs EVENT_9D8 distinction is "PET menu data byte" vs "LocEnemy flag" or vice versa
+  — only the flag indices are visible, not names.
+- Exact semantics of sub_808CCAC/sub_808CD04/sub_808CD24/sub_808CFB8/sub_808D108 — they roll the encounter
+  and decide forced vs sneak-run paths, but the asm at this level only shows the dispatch.
+- Who calls this routine (the contract lists no callers); almost certainly wired into the overworld main-loop
+  jumptable, but the caller site is not in the provided context.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 4b6ad669
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_808CB0C -> pet_tryStartRandomEncounterStep_808CB0C
+  where: bn6f 25419b15
+  tool: tools/rename_symbol.py

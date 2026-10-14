@@ -1,0 +1,68 @@
+name: battleObject_initPlayerMaxHPFromStats_80141C8
+address: '0x080141C8'
+kind: function
+previous_names:
+- sub_80141C8
+status: probable
+summary: Initializes a player BattleObject's HP and MaxHP from NaviStats, optionally clamps MaxHP by a
+  battle-effect flag, and conditionally triggers sub_801E0BC for the enemy-side network invert.
+interface: '(r5 = *BattleObject) -> (flags Z) ; side effects: writes [r5+0x24..0x27] (HP/MaxHP) and may
+  call sub_801E0BC'
+details: "1. Calls GetBattleNaviStatsHword_AllianceFromBattleObject(r1=0x42) to fetch the player's current\
+  \ HP hword from the NaviStats block indicated by the BattleObject's alliance; stores the result both\
+  \ into r5+oBattleObject_HP (0x24) and oBattleObject_MaxHP (0x26), so HP and MaxHP start equal.\n  2.\
+  \ Calls GetBattleEffects and tests bit 2 (mask 0x4). If clear, calls GetBattleNaviStatsHword_AllianceFromBattleObject(r1=0x40)\
+  \ and overwrites only the HP (0x24) field with that secondary hword, leaving MaxHP untouched (typical\
+  \ \"if some effect is active, also pull in CurHP from elsewhere\").\n  3. Reads the BattleObject's Alliance\
+  \ byte (0x16), then calls battle_networkInvert; if the result is non-zero (i.e. local alliance is the\
+  \ \"enemy\" side, the invert flips to non-zero) it falls through to call sub_801E0BC before returning.\n\
+  \  4. Returns via `pop {pc}` with only the Z flag live for the caller (no r0/r1 results are propagated\
+  \ back, matching the contract's out=[r2,r6] but those are scratch/clobber).\n  5. Called only from playerObject_init_80172F0\
+  \ as part of constructing the player's BattleObject, so the \"Alliance\" check appears to be the standard\
+  \ \"is this object the player?\" guard used elsewhere (battle_networkInvert XORs with battle-state byte\
+  \ and returns 0 for the local side, non-zero for opponents).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl GetBattleNaviStatsHword_AllianceFromBattleObject` at 0x080141CC with r1=0x42, then `strh
+    r0,[r5,#0x24]; strh r0,[r5,#0x26]` — overwrites both HP and MaxHP from one stats hword (NaviStats.unk_0x42..0x44
+    area per NaviStats struct). - `bl GetBattleEffects` then `mov r1,#4; tst r0,r1` — explicit bit-2 (mask
+    0x4) gate; fall-through path overwrites only `[r5,#0x24]` with a second stats hword (r1=0x40). - `ldrb
+    r0,[r5,#0x16]` reads oBattleObject_Alliance (per BattleObject.inc Alliance field at 0x16); followed
+    by `bl battle_networkInvert` (confirmed: XORs with a battle-state byte to identify "enemy of local
+    player"). - `bne locret_80141F2` skips the conditional `bl sub_801E0BC` when the inverted alliance
+    is zero (local player side). - Sole caller playerObject_init_80172F0 has r5 in its in-register set,
+    matching the convention that r5 holds the *BattleObject being constructed. - Captured-call snapshots
+    all show r0=0 entry, exit r0=0x2004 with Z set, lr=0x0801736f (return into playerObject_init_80172F0),
+    confirming this is a leaf-ish init helper.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080141C8
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^080141c8 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- What exactly the second hword (r1=0x40 path) corresponds to in NaviStats — likely CurHP vs MaxHP, but
+  the exact mapping (and what the masked-out "0x4" battle-effect bit represents, e.g. FullCust or similar)
+  cannot be confirmed from this function alone. Settling it would require tracing the indices 0x40 and
+  0x42 inside GetBattleNaviStatsHword_AllianceFromBattleObject.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 4b6ad669
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80141C8 -> battleObject_initPlayerMaxHPFromStats_80141C8
+  where: bn6f 25419b15
+  tool: tools/rename_symbol.py

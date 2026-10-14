@@ -232,7 +232,7 @@ Next eStruct200BC30_dispatchStateHandler_801FEEE(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80200A4 ── */
+/* ── battle_requestSetBattleMode_80200A4 ── */
 /* Set the "value" byte of eStruct203F7D8 and OR the "flags" byte with 1.
  * Returns 1 in r1, leaves r3 pointing at eStruct203F7D8. */
 static void set_struct_byte_and_flag(u8 value) {
@@ -241,7 +241,7 @@ static void set_struct_byte_and_flag(u8 value) {
     ST8(base + 2, LD8(base + 2) | 1);
 }
 
-Next sub_80200A4(void) {
+Next battle_requestSetBattleMode_80200A4(void) {
     set_struct_byte_and_flag((u8)R0);
     R1 = 1;
     R3 = A_eStruct203F7D8;

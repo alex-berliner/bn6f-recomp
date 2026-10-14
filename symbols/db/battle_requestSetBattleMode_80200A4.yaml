@@ -1,0 +1,62 @@
+name: battle_requestSetBattleMode_80200A4
+address: '0x080200A4'
+kind: function
+previous_names:
+- sub_80200A4
+status: probable
+summary: Posts a battle-mode/flags update into eStruct203F7D8 (writes mode byte at +3 and OR=1 into flags
+  byte at +2); r0 returns 1.
+interface: '(r0 = request code) -> r0 = 1 ; side effects: store 1 byte to (eStruct203F7D8+3), read-modify-write
+  (eStruct203F7D8+2) |= 1'
+details: "Loads the address of `eStruct203F7D8` from the literal pool at `off_8020130`.\n  Stores the\
+  \ low byte of the incoming r0 into `[eStruct203F7D8 + 0x3]` (acts like\n  a \"request\" or \"mode\"\
+  \ queue slot).\n  Loads `[eStruct203F7D8 + 0x2]`, ORs with 1 (so the low bit/pending flag is always\n\
+  \  raised), and stores it back — i.e. it sets a sticky \"request pending\" bit.\n  Sets r1 = 1 and returns\
+  \ r0 = 1 to the caller (the assembly ends with `mov pc, lr`\n  after the OR store, with r1 left at 1\
+  \ and r0 left at 1; the lifter sees r0/r1\n  written).\n  Leaf function: no callees, no stack frame,\
+  \ no other registers or memory touched.\n  Caller `sub_800B428` describes it as \"issues a mode-4 request\
+  \ to the state/screen\n  manager at sub_80200A4\", which matches: request code in r0, mode byte stored\
+  \ at +3,\n  pending flag (bit 0 of +2) raised.\n  Other callers (`battle_backupStateForRestart_800B3A2`,\n\
+  \  `battle_initBattleStateBuffer_800B144`) call it with simple scalar codes too\n  (0x3e, 0x32, 0x04),\
+  \ consistent with a queued-request dispatch helper.\ndetails_evidence_ref: assembly lines `ldr r3, off_8020130`,\
+  \ `strb r0,[r3,#0x3]`,\n  `ldrb r0,[r3,#0x2]`, `orr r0,r1`, `strb r0,[r3,#0x2]`, `mov r1,#1`, `mov pc,lr`.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r3, off_8020130 ; =eStruct203F7D8` (asm01.s:432) — selects a known EWRAM struct. - `strb
+    r0, [r3,#0x3]` writes the incoming request byte into struct+3. - `ldrb r0,[r3,#0x2]` then `orr r0,r1`
+    (r1=1) then `strb r0,[r3,#0x2]` sets the pending bit at +2. - Captured exit r0 = 1 across all entries,
+    matching r1=1 left as the only effect on caller-visible regs. - Caller `sub_800B428` summary already
+    calls this a "mode-4 request" posting helper. - No callees, no stack, leaf (`mov pc, lr`) — pure single-struct
+    side-effect.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080200A4
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^080200a4 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- Exact meaning of eStruct203F7D8 byte +3 (mode index? request id?) and the
+- flag bits at +2; knowing the struct definition would confirm the field names.
+- Whether bit 0 of +2 is "pending" or "mode-set"; settle by inspecting the
+- struct definition for eStruct203F7D8 and any consumer that polls/clears it.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 4b6ad669
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80200A4 -> battle_requestSetBattleMode_80200A4
+  where: bn6f 25419b15
+  tool: tools/rename_symbol.py

@@ -1,0 +1,53 @@
+name: battle_clampEnemyCountByBattleStartProgress_8117768
+address: '0x08117768'
+kind: function
+previous_names:
+- sub_8117768
+status: probable
+summary: Clamps enemy (virus) count for the battle by checking progress flag 0x75 (min 4, max 8 viruses)
+interface: (r10 = toolkit, lr = return) -> r0 = clamped enemy count (4..8)
+details: "Pushes lr, sets r0 = 0x75 (a flag/index passed to CheckKeyItem), calls CheckKeyItem, then clamps\n\
+  \  its return value to the inclusive range [4, 8]: if the result is < 4 it returns 4, if > 8 it\n  returns\
+  \ 8, otherwise the original value. The captured calls show a constant lr=0x081176ee (the\n  caller)\
+  \ and a stable exit of r0=4 in the recorded frames, meaning in those snapshots the\n  underlying flag\
+  \ was below 4 and the clamp raised it to the minimum 4. No global state is\n  written by this function\
+  \ itself; it is a pure getter + clamp on a battle-progress flag.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mov r0, #0x75; bl CheckKeyItem` selects which progress key item / flag to inspect (asm lines
+    1-2). - `cmp r0, #4; bge loc_8117778` followed by `mov r0, #4` on the fall-through path enforces a
+    minimum of 4 (lines 3-5). - `cmp r0, #8; ble locret_811777E` followed by `mov r0, #8` enforces a maximum
+    of 8 (lines 6-8). - r10/lr are callee-saved on entry but unused inside; consistent with a leaf helper
+    that takes only the toolkit (r10) for CheckKeyItem. - Captured exit r0=4 across all shown battle snapshots,
+    matching the clamp floor when the flag is small.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08117768
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, beastsp, fuzz, maps, menus3, story4, story6'
+  reproduce: 'grep -l ''^08117768 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, beastsp, fuzz, maps, menus3, story4, story6
+open_questions:
+- Exact meaning of key item 0x75 in CheckKeyItem (battle-progress flag / story milestone) — settled by
+  reading CheckKeyItem and the surrounding battle-setup caller at 0x081176ee.
+- Whether this is virus count, enemy-side actor count, or another battle-array length — the constant 4..8
+  range strongly suggests virus battle size limits in BN6, but the precise consumer of the return value
+  isn't visible from this function alone.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 4b6ad669
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8117768 -> battle_clampEnemyCountByBattleStartProgress_8117768
+  where: bn6f 25419b15
+  tool: tools/rename_symbol.py

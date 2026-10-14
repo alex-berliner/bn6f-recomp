@@ -1559,12 +1559,12 @@ Next battle_aiData_processStreamByte_814E7CC(void) {
     RETURN_TO_CALLER(); /* original returns via `bx r12` with r12 == lr */
 }
 
-/* ── sub_814E7E0 ── */
-/* sub_814E7E0: wrapper around streamReadNextByte_814E7C0.
+/* ── battle_aiData_readNextByteIntoVersion_814E7E0 ── */
+/* battle_aiData_readNextByteIntoVersion_814E7E0: wrapper around streamReadNextByte_814E7C0.
  * Calls streamReadNextByte_814E7C0, stores its byte result at [r1 + 0x17], and — when the
  * result is zero — follows up with battle_aiData_resetVersionAndChargeFlags_814E7A4 before returning to the caller
  * (the return address is kept in r12 across both calls). */
-Next sub_814E7E0(void) {
+Next battle_aiData_readNextByteIntoVersion_814E7E0(void) {
     R12 = LR;                       /* mov r12, lr: remember where to return */
 
     GUEST_CALL(streamReadNextByte_814E7C0);
@@ -1825,7 +1825,7 @@ static void init_cgb_sound(u32 sound_buf) {
     u32 fp = A_off_3005570;
     ST32(fp + 0x20, (A_sub_814FBFC | 1));
     ST32(fp + 0x44, (A_battle_aiData_processStreamByte_814E7CC | 1));
-    ST32(fp + 0x4C, (A_sub_814E7E0 | 1));
+    ST32(fp + 0x4C, (A_battle_aiData_readNextByteIntoVersion_814E7E0 | 1));
     ST32(fp + 0x70, (A_sub_814FD54 | 1));
     ST32(fp + 0x74, (A_sub_814E758 | 1));
     ST32(fp + 0x78, (A_SampleFreqSet_814EDC0 | 1));

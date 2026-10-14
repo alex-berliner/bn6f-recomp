@@ -1,0 +1,55 @@
+name: battleObject_phaseTickToNext_80D458C
+address: '0x080D458C'
+kind: function
+previous_names:
+- sub_80D458C
+status: probable
+summary: 'BattleObject phase tick: if not yet initialized, seed Timer from Param2; each call decrements
+  Timer and on reaching zero, reset Timer to 8 and set CurPhaseAndPhaseInitialized to 4.'
+interface: (r5 = BattleObject*) -> r0 = leftover Timer; side effects writes BattleObject->PhaseInitialized,
+  Timer, CurPhaseAndPhaseInitialized
+details: 'Pushes {lr}, no callee-saved spills. Reads PhaseInitialized (oBattleObject+0xb); if 0, sets
+  it to 1 and copies Param2 (oBattleObject+0x5, byte) into Timer (oBattleObject+0x20, u16). Always decrements
+  Timer; if result > 0 returns. Otherwise reloads Timer with 8 and writes 4 into the u16 CurPhaseAndPhaseInitialized
+  (oBattleObject+0xa) which sets CurState=UPDATE (0x4) and PhaseInitialized=0, advancing the object to
+  its update phase next frame. Returns the post-decrement Timer in r0 (and flags).
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0, [r5,#oBattleObject_PhaseInitialized]` at 0x80d458e and the `bne loc_80D459C` skip
+    the seed block - `mov r0, #1; strb r0, [r5,#oBattleObject_PhaseInitialized]` matches bool8 PhaseInitialized
+    at oBattleObject+0xb - `ldrb r0, [r5,#oBattleObject_Param2]; strh r0, [r5,#oBattleObject_Timer]` (0x80d4594–0x80d4598)
+    seeds Timer at oBattleObject+0x20 from Param2 at +0x5 - `ldrh r0, [r5,#oBattleObject_Timer]; sub r0,
+    #1; strh r0, [r5,#oBattleObject_Timer]; bgt locret_80D45AC` is a countdown that exits while positive
+    - `mov r0, #8; strh r0, [r5,#oBattleObject_Timer]; mov r0, #4; strh r0, [r5,#oBattleObject_CurPhaseAndPhaseInitialized]`
+    reloads to 8 frames and writes CurState=CUR_STATE_UPDATE (0x4) with PhaseInitialized bit cleared (0x4
+    low byte at offset 0xa) - `pop {pc}` is a Thumb tail-return idiom (bx lr via pop)'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080D458C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp'
+  reproduce: 'grep -l ''^080d458c '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp
+open_questions:
+- What phase this tick belongs to (i.e. which initializer or action owns Param2) is unknown; callers would
+  tell us. The contract says callers section is empty here, so we can't anchor the role from call sites.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 4b6ad669
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80D458C -> battleObject_phaseTickToNext_80D458C
+  where: bn6f 25419b15
+  tool: tools/rename_symbol.py

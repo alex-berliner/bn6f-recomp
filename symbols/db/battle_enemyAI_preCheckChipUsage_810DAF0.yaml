@@ -1,0 +1,62 @@
+name: battle_enemyAI_preCheckChipUsage_810DAF0
+address: '0x0810DAF0'
+kind: function
+previous_names:
+- sub_810DAF0
+status: probable
+summary: 'Battle enemy AI pre-check: if the actor has a chip selected for use and the battle state''s
+  Unk_40 has reached 0x12C, write chip params, set attack 0 and reset state, signalling the AI to pause
+  its state handler.'
+interface: '(r5 = BattleObject*, r10 = BattleState*) -> r0 = bool pauseAI ; side effects: writes AI params,
+  sets attack index to 0, resets selected chip state, may advance BattleState-derived counters'
+details: "- Saves r4/r6/lr, sets r6=0 (default \"do not pause AI\").\n  - Calls battle_getSelectedChipForUse_800ED90(r0=r5)\
+  \ to fetch the chip the actor in r5 has queued for use. If the returned chip (r3) is nonzero, the function\
+  \ takes the chip-low-byte path.\n  - Masks the returned chip id down to a byte (lsl #0x17 / lsr #0x17,\
+  \ i.e. (r0 & 0xFF)) into r4.\n  - Calls battle_getStateUnk40_800A704() to read the current value of\
+  \ BattleState.oBattleState_Unk_40 (r10). If it is < 0x12C (300), the AI is allowed to proceed (skip).\n\
+  \  - Otherwise calls somethingWriteChipParams_80126E4(r0=r4) to write the chip params from the selected\
+  \ chip id, then object_setAttack0() to push attack index 0 on the actor, then sub_800F322() to clear/reset\
+  \ the chip-usage state on the actor.\n  - Sets r6=1 indicating \"AI should pause this tick\" and falls\
+  \ through to the exit which returns r6 in r0.\n  - The caller sub_810D998 treats a nonzero return as\
+  \ \"pause\", and a zero return as \"run the AI state's jump table entry\".\n  - Net effect: a one-shot\
+  \ gate that, once the battle has advanced past frame/counter 0x12C and the actor has a chip selected,\
+  \ consumes the chip (writes params, attack0, clears state) and pauses AI for this frame.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mov r6, #0` then final `mov r0, r6` shows return value is the r6 bool (sub_810DAF0:6, sub_810DAF0:30).
+    - `bl battle_getSelectedChipForUse_800ED90` then `tst r3, r3; beq loc_810DB1C` shows the gate is "selected
+    chip present" (sub_810DAF0:8-10). - `bl battle_getStateUnk40_800A704` then `cmp r0, #0x12c; blt loc_810DB1C`
+    shows the second gate is BattleState.oBattleState_Unk_40 >= 0x12C (sub_810DAF0:14-17). - The triple
+    `bl somethingWriteChipParams_80126E4 / bl object_setAttack0 / bl sub_800F322` before `mov r6, #1`
+    is the consumption sequence (sub_810DAF0:18-22). - Caller sub_810D998 comment confirms: nonzero return
+    pauses AI, zero runs the state jump table (callers). - All six captured snap_story9_* invocations
+    return r0=0 (flags -Z--), i.e. the threshold 0x12C has not been reached on those story9 frames, consistent
+    with the pre-check semantics.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0810DAF0
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp, story4, story6, story9'
+  reproduce: 'grep -l ''^0810daf0 '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp, story4, story6, story9
+open_questions:
+- What oBattleState_Unk_40 actually counts (frame counter, turn counter, action-counter). Settled by reading
+  writers of BattleState+0x40.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 4b6ad669
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_810DAF0 -> battle_enemyAI_preCheckChipUsage_810DAF0
+  where: bn6f 25419b15
+  tool: tools/rename_symbol.py

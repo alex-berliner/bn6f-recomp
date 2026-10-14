@@ -1,0 +1,70 @@
+name: battle_aiData_readNextByteIntoVersion_814E7E0
+address: '0x0814E7E0'
+kind: function
+previous_names:
+- sub_814E7E0
+status: probable
+summary: Reads one byte from the battle stream and stores it into AIData.Version_17, resetting version/charge
+  flags when the byte is zero.
+interface: '(r0 = AIDataPtr, r1 = StreamPtr) -> r0 = AIDataPtr ; side effects: writes AIData.Version_17;
+  on zero, calls battle_aiData_resetVersionAndChargeFlags_814E7A4(r1)'
+details: "- Tail-call dispatcher: stores lr in r12 then BX r12 at the end so all callees (including stream\
+  \ reader) return to the caller's caller.\n  - Reads one byte via streamReadNextByte_814E7C0(r1) which\
+  \ writes the result into r2/r3; the result (r3) is stored into [r1 + 0x17] -> StreamBase+0x17 (the stream\
+  \ control block has its version-ish slot here).\n  - If that byte is non-zero, control jumps straight\
+  \ to `loc_814E7F0` (the tail-return) and the helper is not called.\n  - If the byte is zero, falls through\
+  \ to battle_aiData_resetVersionAndChargeFlags_814E7A4 which re-initialises a small sub-range starting\
+  \ at StreamBase+0x16/0x17 (the project-named \"version and charge flags\" reset for the AI/stream pair).\n\
+  \  - Captured entry r0 (0x02010890) and r1 (0x02007ee8/0x7f38/0x7f88) look like AIData and an inline\
+  \ per-actor stream/state struct (the 0x17 offset and reset are exactly the Version_17 slot in the AIData\
+  \ layout documented as loc=0x17, but the store here is to r1+0x17, so r1 is the stream/version record,\
+  \ not the AIData in r0).\n  - The 0x17 write and zero-check are consistent with a \"consume next control\
+  \ byte, fall back to a defaults reset on terminator (0)\" pattern used by the per-actor AI byte streams\
+  \ in story2 scenes.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mov r12, lr` followed by `bx r12` makes the function a tail-call trampoline; callees return
+    to this function''s caller (sub_814E36D observed in captured-call lr). - `bl streamReadNextByte_814E7C0`
+    is called with r1 as the only argument and r3 holds the returned byte per its contract. - `strb r3,
+    [r1,#0x17]` writes the just-read byte at offset 0x17 of the r1 struct; in captured memory the r1 block
+    starts with the same 0x80 00 ... 0xC4 00 ... layout seen across all snaps, confirming a stable stream-control
+    record. - `cmp r3, #0` / `bne loc_814E7F0` skips the reset on non-zero bytes; the reset (sub_814E7A4)
+    is the "battle_aiData_resetVersionAndChargeFlags_814E7A4" per the unnamed callee summary (writes Version_17
+    area, etc.). - Snap story2_10 vs story2_0 differ only in the AIData in r0 (e.g. APwrAtk/Charge area),
+    but the r1 stream record''s 0x17 byte stays within the documented Version_17 slot context; the helper
+    is the canonical place that clears it. - Tail BX r12 + caller lr = sub_814E36D (named battle context)
+    supports a battle_ subsystem prefix.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0814E7E0
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story1, story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^0814e7e0 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander
+open_questions:
+- 'Exact semantic of byte 0x00: whether it really means "no more per-turn instructions, reset state for
+  next turn" or is some sentinel like "end of action list". Looking at the caller sub_814E36D''s role
+  (the AI dispatch loop) would settle this.'
+- Whether the "Version_17" naming actually matches; the store is at r1+0x17, and AIData.Version_17 is
+  at AIData+0x17, so the stream record in r1 is parallel to (and likely pointed at by) AIData.Version
+  fields. Need a cross-reference from r0's AIData to r1 to confirm the relation.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 4b6ad669
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_814E7E0 -> battle_aiData_readNextByteIntoVersion_814E7E0
+  where: bn6f 25419b15
+  tool: tools/rename_symbol.py

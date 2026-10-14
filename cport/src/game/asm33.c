@@ -417,9 +417,9 @@ static void call_8123bc0(void) {
     GUEST_CALL(battleObject_applyAIDataToAttackTable_8123BC0);
 }
 
-/* register form: calls sub_8123BE0 outside this file, which has no typed C interface yet */
+/* register form: calls battleObject_runAttackTableApply_8123BE0 outside this file, which has no typed C interface yet */
 static void call_8123be0(void) {
-    GUEST_CALL(sub_8123BE0);
+    GUEST_CALL(battleObject_runAttackTableApply_8123BE0);
 }
 
 /* register form: calls battleObject_runAITurnPhase_8123C00 outside this file, which has no typed C interface yet */
@@ -488,7 +488,7 @@ Next sub_8123574(void) {
 
     /* Chain of setup routines (they read r5 implicitly via R5). */
     GUEST_CALL(battleObject_applyAIDataToAttackTable_8123BC0);
-    GUEST_CALL(sub_8123BE0);
+    GUEST_CALL(battleObject_runAttackTableApply_8123BE0);
     GUEST_CALL(battleObject_runAITurnPhase_8123C00);
     GUEST_CALL(sub_8123D70);
 
@@ -1310,14 +1310,14 @@ Next battleObject_applyAIDataToAttackTable_8123BC0(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8123BE0 ── */
-/* sub_8123BE0: thin wrapper around battleObject_applyAIDataToAttackTable_8123C20 with a fixed argument set.
+/* ── battleObject_runAttackTableApply_8123BE0 ── */
+/* battleObject_runAttackTableApply_8123BE0: thin wrapper around battleObject_applyAIDataToAttackTable_8123C20 with a fixed argument set.
  * r0 points at the 3-byte constant in the literal pool (dword_8123BFC =
  * 0x5A5856), r2 at the byte_81233E0 work area; the remaining arguments
  * (0x20, 5, 0x5C, 0) select its mode/geometry. The callee's r4/r6
  * arguments are set locally — the caller's r4-r7 are saved around the
  * call and restored on return. */
-Next sub_8123BE0(void) {
+Next battleObject_runAttackTableApply_8123BE0(void) {
     u32 r4 = R4, r5 = R5, r6 = R6, r7 = R7;
 
     R0 = A_dword_8123BFC; /* source data: the three bytes 0x5A, 0x58, 0x56 */

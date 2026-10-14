@@ -1,0 +1,69 @@
+name: battleObject_initAndRunAI_8016B02
+address: '0x08016B02'
+kind: function
+previous_names:
+- sub_8016B02
+status: probable
+summary: Battle object per-frame handler that initializes an object's AI on first call, dispatches its
+  AI handler, then commits a pending state transition if one was staged in Unk_5c
+interface: '(r5 = BattleObject*, r10 = Toolkit*) -> void ; side effects: clears OBJECT_FLAGS_INVULNERABLE
+  in the collision data, dispatches AI, resets collision state, mutates object fields'
+details: "1. Reads the byte at r5+0xb (CurPhaseAndPhaseInitialized, low byte = PhaseInitialized) and branches\n\
+  \     to loc_8016B20 if non-zero, so the initialization block runs only once per object.\n  2. In the\
+  \ init block: loads r0 = 0x100000 (OBJECT_FLAGS_INVULNERABLE) and calls\n     object_clearFlag on r5's\
+  \ collision data, then tail-calls\n     battle_dispatchActorAIByTypeAndAIIdx_800F394 (which selects\
+  \ an AI handler by actor type\n     + AI index using the 3-entry handler table the dispatcher holds)\
+  \ and finally\n     battle_resetCollisionState_80101C4 to clear collision counters/flags.\n  3. Stores\
+  \ NULL into r5+0x4c (RelatedObject1Ptr) and writes 0x04 into r5+0xb\n     (PhaseInitialized=0, CurPhase=4)\
+  \ so the dispatcher runs CUR_STATE_UPDATE next time.\n  4. loc_8016B20: calls object_getFlag to fetch\
+  \ the current ObjectFlags1 word from the\n     collision data, masks bit 0x800 (OBJECT_FLAGS_PARALYZED),\
+  \ and returns early if set.\n  5. Otherwise reads r5+0x5c (Unk_5c) and stores it into r5+0x8 (CurStateActionPhaseAndPhaseInitialized)\n\
+  \     then zeros r5+0x5c — i.e. commits a pending state transition that some earlier AI step\n     parked\
+  \ there. Return path uses `pop {pc}` (thumb_func_end style), confirming leaf behavior.\n  6. Callers\
+  \ (sub_8109F7E, sub_810A5D6, sub_810BBF6, sub_810D5A6, sub_810FD70, sub_81130E4) are\n     themselves\
+  \ the per-actor-type update routines that get invoked from the per-actor loop in the\n     battle subsystem;\
+  \ each loads the current actor into r5 and calls this.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- r5 is the live BattleObject across the whole body (every load/store uses r5+offset), matching
+    the r5-set-by-caller contract of every caller. - `ldrb r0, [r5,#oBattleObject_PhaseInitialized]` then
+    `tst r0, r0` / `bne loc_8016B20` shows the once-per-object init guard; writing 0x04 to that same byte
+    is the CUR_STATE_UPDATE transition. - `ldr r0, dword_8016BD4 // =0x100000` followed by `bl object_clearFlag`
+    and the callee''s documented contract ("Clears the given bit(s) of a battle object''s ObjectFlags1
+    in its collision data") matches the 0x100000 = OBJECT_FLAGS_INVULNERABLE constant from CollisionData.inc.
+    - `bl battle_dispatchActorAIByTypeAndAIIdx_800F394` matches the "shared actor dispatcher" callee summary.
+    - `bl battle_resetCollisionState_80101C4` matches the documented "Resets a battle object''s collision
+    state, zeroing a collision counter and clearing its ''in collision'' flag bit". - Masking with `mov
+    r1, #1; lsl r1, r1, #0xb` yields 0x800, which is OBJECT_FLAGS_PARALYZED. - The `mov r0, #0; str r0,
+    [r5,#oBattleObject_RelatedObject1Ptr]` clears the 0x4c pointer.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08016B02
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, battlesweep, beastsp, story2, story5, story6, story9'
+  reproduce: 'grep -l ''^08016b02 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, battlesweep, beastsp, story2, story5, story6, story9
+open_questions:
+- The exact semantics of Unk_5c and what writes to it (which AI handler stages the transition) are
+- not visible in this function. Tracing the dispatcher to find which sub-AI writes 0x5c would settle it.
+- Whether OBJECT_FLAGS_INVULNERABLE is intentionally cleared on every actor each frame (or whether
+- a different object header bit is meant) cannot be confirmed without seeing what the AI handler
+- expects.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 4b6ad669
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8016B02 -> battleObject_initAndRunAI_8016B02
+  where: bn6f 25419b15
+  tool: tools/rename_symbol.py
