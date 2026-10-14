@@ -147,3 +147,58 @@ tool: continued from batch 2 (tools/asmcat.py).
 | 3     | 25                 | 23                        | 2               | 0       |
 
 Running total: named 68, hypothesis-only 3, dropped 0 (of ~10,600 placeholders).
+
+## Batch 4 (2026-10-14)
+
+25 functions, 21 named + 4 hypothesis (sub_80007BE, sub_801002C, sub_8033B80,
+sub_8083DF0 kept as comment only), renamed in recomp ddca5267 (bn6f e008e389
+comments + renames; port ROM unchanged).
+
+Highlights:
+- sprite/render layer: reset and finish helpers (battle_resetSpritePaletteCount_8003C70,
+  battle_renderObjectSprites_8004218, battle_updateSprites_8004510,
+  battleObject_finishQueuedSpriteGroup_80049B0);
+- overworld render/tick: overworld_owMap_renderAndTickSubsystems_800536E;
+- FIFO helper: fifo_resetWriteCounter_800A01C (companion to the
+  fifo_pushRecord16_8009FF8 named in batch 3);
+- battle/AI layer: object-status timers (object_tickStatusEffectTimers_800E730),
+  player-by-alliance finder (battle_findPlayerByAlliance_800EB6C),
+  try-execute attack-chip (playerAI_tryExecuteAttackChip_800FB54),
+  battleObject player-AI update (battleObject_playerAIUpdate_8012E74),
+  battleObject on-collision (battleObject_onCollision_801A200),
+  chip-preview GFX load (battle_loadChipPreviewGfxFromHandTable_801C002),
+  AI pwr-atk-presses tick (battle_ai_tickPwrAtkPresses_801CC94),
+  panel-grid finalize (battle_panelGridFinalizeOrPickDimension_800C488);
+- camera: in-front-of-camera predicate (camera_isObjectInFrontOfCamera_80269D0);
+- overworld player: collision/pos update (ow_player_updateCollisionAndPos_809D800),
+  jump-landing accumulate facing (owPlayer_checkJumpLandingAccumulateFacing_809DFC0),
+  busy/cutscene-active gate (owPlayer_isBusyOrCutsceneActive_809E462);
+- battle object lookup: by-index (battleObject_getByIndex_813B780);
+- audio: m4a MPlay track-end trampoline (m4a_mplay_trackEndJumpStub_814E4CC);
+- RFU wireless: send-data tail-call thunk (rfufunc_tailCallStub_814DA64).
+
+Hypothesis entries:
+- sub_80007BE: sound_dispatchAndPlayPendingSoundRequest_80007BE (not enough
+  evidence - the function's interaction with the sound queue isn't yet visible
+  from the assembly).
+- sub_801002C: battleObject_computePaletteSlotForNavi_801002C (carried from
+  batch 3 - too many unverified struct field names to commit).
+- sub_8033B80: battle_queueBattleStartingOamEntry_8033B80 (the OAM animation
+  pointer table is not yet documented).
+- sub_8083DF0: reqBBS_init_gfxAndPostBBSFlags_8083DF0 (body in a region the
+  lifter could not disassemble; callee set suggests ReqBBS init/update but
+  the function's exact role cannot be verified).
+
+Note: pre-existing leftover failure in cport/src/game/asm32.c:185 is not in
+this commit's scope (the call there predates batch 1).
+
+## Tally update
+
+| batch | functions examined | named (renamed via record) | hypothesis-only | dropped |
+|-------|--------------------|---------------------------|-----------------|---------|
+| 1     | 25                 | 25                        | 0               | 0       |
+| 2     | 21                 | 20                        | 1               | 0       |
+| 3     | 25                 | 23                        | 2               | 0       |
+| 4     | 25                 | 21                        | 4               | 0       |
+
+Running total: named 89, hypothesis-only 7, dropped 0 (of ~10,600 placeholders).
