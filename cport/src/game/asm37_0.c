@@ -141,11 +141,11 @@ Next battle_initState_813BBD4(void) {
 #define ID_SLOTS     7
 #define ID_SENTINEL  0xFF
 
-/* register form: calls sub_813B9B4 outside this file, which has no typed C interface yet */
+/* register form: calls battle_checkItemFlagFor_813B9B4 outside this file, which has no typed C interface yet */
 static u32 get_random_id(u32 index, u32 count) {
     R0 = index;
     R1 = count;
-    GUEST_CALL(sub_813B9B4);
+    GUEST_CALL(battle_checkItemFlagFor_813B9B4);
     return R0;
 }
 
@@ -225,11 +225,11 @@ Next battle_categorizeRandomIds_813BC1C(void) {
 /* ── sub_813BC98 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r3; } call_sub_813B9B4_result;
-/* register form: generated wrapper: sub_813B9B4 has no typed C interface yet */
+/* register form: generated wrapper: battle_checkItemFlagFor_813B9B4 has no typed C interface yet */
 static inline call_sub_813B9B4_result call_sub_813B9B4(u32 r0, u32 r1) {
     R0 = r0;
     R1 = r1;
-    GUEST_CALL(sub_813B9B4);
+    GUEST_CALL(battle_checkItemFlagFor_813B9B4);
     return (call_sub_813B9B4_result){ R0, R3 };
 }
 
@@ -255,7 +255,7 @@ static inline call_sub_813B780_result_sub_813BC98 call_sub_813B780_sub_813BC98(u
 /* Scan the 0x31 ally/entry records for the current battle.
  *
  * Seven fixed slots (partners 0..6) reserve their entry ids, taken from
- * sub_813B9B4(id, 3) - 1, and every scanned id that is reserved is skipped.
+ * battle_checkItemFlagFor_813B9B4(id, 3) - 1, and every scanned id that is reserved is skipped.
  * For each unreserved id the record pointer comes from the toolkit helper; an
  * empty record (first 16-bit word 0) is skipped.  Otherwise battleObject_getByIndex_813B780 maps
  * the record to an item descriptor: a usable item (type byte == 0) bumps the
@@ -653,11 +653,11 @@ static u32 get_indexed_data_table(u32 index) {
     return R0;
 }
 
-/* register form: calls sub_813B9B4 outside this file, which has no typed C interface yet */
+/* register form: calls battle_checkItemFlagFor_813B9B4 outside this file, which has no typed C interface yet */
 static u32 lookup_battle_item(u32 col, u32 row) {
     R0 = col;
     R1 = row;
-    GUEST_CALL(sub_813B9B4);
+    GUEST_CALL(battle_checkItemFlagFor_813B9B4);
     return R0;
 }
 

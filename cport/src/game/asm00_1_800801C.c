@@ -93,9 +93,9 @@ static u32 battle_800A8B2(u32 phase_mode) { /* register form: calls sub_800A8B2,
     GUEST_CALL(sub_800A8B2);
     return R0;
 }
-static void comm_801E792(u32 value) { /* register form: calls sub_801E792, which has no typed C interface yet (noted by the tool) */
+static void comm_801E792(u32 value) { /* register form: calls battle_dispatchKindEffect_801E792, which has no typed C interface yet (noted by the tool) */
     R0 = value;
-    GUEST_CALL(sub_801E792);
+    GUEST_CALL(battle_dispatchKindEffect_801E792);
 }
 static u32 cross_net_battle_ready(void) { /* register form: calls comm_checkCrossNetBattleReady_801E754, which has no typed C interface yet (noted by the tool) */
     GUEST_CALL(comm_checkCrossNetBattleReady_801E754);
@@ -287,7 +287,7 @@ static void run_state_phase_handler(u32 table_offset)
     case 0x08: GUEST_CALL(sub_8009338); break;
     case 0x0C: GUEST_CALL(sub_800938A); break;
     case 0x10: GUEST_CALL(battle_DispatchStatePhase_800945C); break;
-    case 0x14: GUEST_CALL(sub_80094DA); break;
+    case 0x14: GUEST_CALL(battle_initFadeToBattleResult_80094DA); break;
     case 0x18: GUEST_CALL(sub_800951E); break;
     case 0x1C: GUEST_CALL(sub_8009552); break;
     case 0x20: GUEST_CALL(sub_8009594); break;

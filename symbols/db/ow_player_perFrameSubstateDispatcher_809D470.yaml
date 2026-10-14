@@ -1,0 +1,73 @@
+name: ow_player_perFrameSubstateDispatcher_809D470
+address: '0x0809D470'
+kind: function
+previous_names:
+- sub_809D470
+status: probable
+summary: Overworld player's per-frame sub-state dispatcher that picks one of five JumptableIndex_09 sub-states
+  based on event/state flags and writes the chosen state via owPlayer_setJumptableIndex09AndOthers_809e004.
+interface: '(r5 = overworld player object ptr, r10 = toolkit ptr) -> void ; side effects: overwrites r5+oOWPlayerObject_JumptableIndex_09
+  (or its pending slot at +0x0b), may write +0x0a, +0x09, +0x14 fields on the player; no caller-visible
+  return value'
+details: "Reads r5+oOWPlayerObject_Unk_0a and, when zero, snapshots the current FacingDirection into AnimationSelect\
+  \ and primes Unk_0a with 4 (one-time init at the start of each frame's path).\n  Then chains five conditional\
+  \ state-set calls, each of which writes a different sub-state id through owPlayer_setJumptableIndex09AndOthers_809e004:\n\
+  \    - event_TestPlayerAdvanceForward_809DB50 -> 0x14 (player advance forward)\n    - overworldObj_testStateBit10_809DAF8\
+  \    -> 0x04 (overworld object bit 0x10 set)\n    - sub_809DB02                            -> 0x08\n\
+  \    - ow_gatePendingTileInteraction_809DED4  -> 0x0c (pending tile interaction)\n    - sub_809DF28\
+  \ (player per-frame handler) -> 0x10, and only in that branch also writes 0 to r7+1 before returning\n\
+  \  The first matching condition wins (short-circuit `beq` chain); if none match the function just returns.\
+  \ The literal 0x2000AA0 at the tail is a stray word from a sibling routine in the same translation unit\
+  \ (ow_player.s), not a pointer used by this function.\n  All callees operate on r5 (overworld player)\
+  \ and r10 (toolkit), matching the standard toolkit convention; r5/r10 are restored via the surrounding\
+  \ caller.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- 0x0809D470 push {r4,lr} ... pop {r4,pc} / no `pop {r4,pc}` ever loads a result: function
+    is void-like. - `ldrb r0,[r5,#oOWPlayerObject_Unk_0a]` then `tst r0,r0` / `bne loc_809D484`: checks
+    a per-frame init flag on the player object. - `ldrb r0,[r5,#oOWPlayerObject_FacingDirection]` then
+    `strb r0,[r5,#oOWPlayerObject_AnimationSelect]`: copies facing into animation select when the init
+    flag was 0. - `mov r0,#4 ; strb r0,[r5,#oOWPlayerObject_Unk_0a]`: latches the init flag at 4 so this
+    branch is skipped next time. - `bl event_TestPlayerAdvanceForward_809DB50` / `beq loc_809D492` followed
+    by `mov r0,#0x14 ; bl owPlayer_setJumptableIndex09AndOthers_809e004`: queues sub-state 0x14 when the
+    advance-forward request is set. - `bl overworldObj_testStateBit10_809DAF8` / `bne ...` then `mov r0,#4
+    ; bl owPlayer_setJumptableIndex09AndOthers_809e004`: queues sub-state 4 when object state bit 0x10
+    is set. - `bl sub_809DB02` -> `mov r0,#8 ; bl owPlayer_setJumptableIndex09AndOthers_809e004`: queues
+    sub-state 8 on its truthy return. - `bl ow_gatePendingTileInteraction_809DED4` -> `mov r0,#0xc ; bl
+    owPlayer_setJumptableIndex09AndOthers_809e004`: queues sub-state 0xc when a tile interaction was actually
+    dispatched. - `bl sub_809DF28` then on truthy `mov r0,#0 ; strb r0,[r7,#1]` and `mov r0,#0x10 ; bl
+    owPlayer_setJumptableIndex09AndOthers_809e004`: queues the "locked/skip" sub-state 0x10 and clears
+    a sibling byte at r7+1 (matches sub_809DF28''s documented "player substate jumptable index 0x10" path).
+    - Captured call frames in snap_story2_*.bin show entry r5-region access and exit r0=0 with Z set,
+    consistent with the `mov r0,#0` in the final branch.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0809D470
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story1, story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^0809d470 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander
+open_questions:
+- The actual identity of Unk_0a and the four dispatched sub-states (4, 8, 0xc, 0x10, 0x14) beyond what
+  owPlayer_setJumptableIndex09AndOthers_809e004 already implies; the meaning of the r7+1 clear in the
+  final branch.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 742e7bfe
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_809D470 -> ow_player_perFrameSubstateDispatcher_809D470
+  where: bn6f 57429803
+  tool: tools/rename_symbol.py

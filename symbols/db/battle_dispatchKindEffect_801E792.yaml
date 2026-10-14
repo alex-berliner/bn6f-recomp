@@ -1,0 +1,79 @@
+name: battle_dispatchKindEffect_801E792
+address: '0x0801E792'
+kind: function
+previous_names:
+- sub_801E792
+status: probable
+summary: 'Kicks off a battle sub-effect (intro/effect animation) identified by a kind byte: guards re-entry
+  via eStruct2035280+0x40 bit 0x8000, allocates a sprite slot, picks the per-kind handler from off_801E944,
+  runs it, then arms the eStruct request bit.'
+interface: '(r0 = kind, r1 = aux/param1, r2 = aux/param2, r3 = aux/param3) -> r0 = 0 on success, 1 if
+  the effect is already busy or no slot was free; side effects: writes 9 bytes at byte_2036840, sets eStruct2035280+0x40
+  bit 0x8000, calls dispatch_801DA48(0x8000) and dispatch_801DACC(0x100) when kind==0x24'
+details: "1. Saves r0..r3 on stack and tests dword at eStruct2035280+0x40 against 0x8000; if already set,\
+  \ returns r0=1 (busy).\n  2. Loads the per-effect scratch struct at `byte_2036840` and zeroes offset\
+  \ 0 and offset 7 (an in-progress byte and a state byte).\n  3. Calls `sub_802FE48` to claim one of 16\
+  \ ID slots; if it returns 0xFF (all taken) returns r0=1. The chosen slot is stored at +6.\n  4. Calls\
+  \ `sprite_setAffineTransform_802FE7A(slot, 0, 0x40, 0xe0)` to initialise the associated sprite.\n  5.\
+  \ Picks the \"kind\": if (r0==0 && r1!=0) the kind comes from r1, otherwise from the original r0; if\
+  \ still zero defaults to 0x30. The chosen kind is stored at byte_2036841.\n  6. Indexes the kind table\
+  \ at `pt_801EF84` (an array of {u16 data; u8 func_index} sized by kind) — loads `data` into word_2036842\
+  \ and `func_index` into byte_2036848.\n  7. Uses func_index*4 to read a function pointer from `off_801E944`\
+  \ and tail-calls (`mov lr,pc; bx r6`) into it, passing the four original stack-saved arguments verbatim.\
+  \ Each per-kind handler is expected to do its own teardown and clear the eStruct2035280+0x40 0x8000\
+  \ bit.\n  8. After the handler returns, ORs 0x8000 into eStruct2035280+0x40 via `eStruct2035280_SetRequestBits_801BECC`,\
+  \ dispatches 0x8000 through `dispatch_801DA48`, and additionally calls `dispatch_801DACC(0x100)` when\
+  \ kind==0x24 (an extra second-stage dispatch for that one kind).\n  9. Returns r0=0 on the success path;\
+  \ the r0=1 path also returns 1.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- Guard: `tst r0, r3` with r0=0x8000 against `[r3,#0x40]` where r3=off_801E824=eStruct2035280,
+    and the early-exit to loc_801E81C that returns r0=1 - Busy-byte block: `mov r2,#0; strb r2,[r5]; strb
+    r2,[r5,#7]` zeroes two state bytes at byte_2036840/byte_2036847 - Slot allocation: `bl sub_802FE48`
+    returns the slot in r0 which is `strb r0,[r5,#6]` (=byte_2036846) and is then passed as the first
+    arg of `sprite_setAffineTransform_802FE7A(r0=slot, r1=0, r2=0x40, r3=0xe0)` - Kind picking: explicit
+    `cmp r0,#0` / `cmp r1,#0` with the fallback `mov r0,#0x30; str r0,[sp]` shows r0/r1 are OR''d into
+    a single kick-off kind; the chosen kind is written to `strb r0,[r5,#1]` - Per-kind handler dispatch:
+    `ldr r1,=pt_801EF84; ldr r4,[r1,r0]; ldrh r0,[r4]; strh r0,[r5,#2]; ldrb r0,[r4,#2]; strb r0,[r5,#8];
+    lsl r0,r0,#2; ldr r6,=off_801E944; ldr r6,[r6,r0]` followed by `mov lr,pc; bx r6` with r0..r3 restored
+    from the stack — clearly a tail-call into a function-pointer table indexed by per-kind code - Arms
+    request bit: `mov r0,#1; lsl r0,r0,#0xf; bl eStruct2035280_SetRequestBits_801BECC` then `bl dispatch_801DA48`
+    - Special case: `ldrb r0,[r5,#1]; cmp r0,#0x24; bne ...; mov r0,#1; lsl r0,r0,#8; bl dispatch_801DACC`
+    shows kind 0x24 uniquely triggers a second dispatch with mask 0x100 - Caller `object_drawChipName`
+    is post-battle phase step that "advances the object''s action phase once the alliance is ready", consistent
+    with sub_801E792 being a per-battle-subsystem "start next sub-effect" kicker'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801E792
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0801e792 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9
+open_questions:
+- The exact meaning of "kind" (intro vs. side-effect vs. ending vs. victory) — the choice of 0x24 special-case
+  plus the many callers from sub_8008064/sub_80081A4/sub_800825A (post-battle wait) hint these are battle-phase
+  sub-effects, but no symbol at off_801E944 is in the provided snippets. Decompiling off_801E944 (the
+  fn table) and pt_801EF84 (the kind records) would name each kind unambiguously.
+- Whether r1 (when non-zero) is an alternate kind code or a "force sub-id" override — the assembly uses
+  it as a kind but the conditions (`cmp r0,#0; cmp r1,#0; beq loc_801E7D8`) suggest r1 only takes effect
+  when r0 is zero, possibly "no specified kind, force this one"
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 742e7bfe
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801E792 -> battle_dispatchKindEffect_801E792
+  where: bn6f 57429803
+  tool: tools/rename_symbol.py

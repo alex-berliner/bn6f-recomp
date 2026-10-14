@@ -1,0 +1,59 @@
+name: battle_drawChipSelectFighterNames_81200EC
+address: '0x081200EC'
+kind: function
+previous_names:
+- sub_81200EC
+status: probable
+summary: Fills a tile block with chip-name tiles for the battle select screen names row
+interface: (r0 = rowCount, r1 = destBaseTilesBlock, r2 = srcStringsOrDstForZero, r3 = baseTile | (0x200<<16))
+  -> r0 = 5 ; side effects writes tile buffer at r1+(i*0x20) with chip-name font glyphs
+details: "Walks (r5) = r1 + r0 * 0x20 entries; for each entry offset 0x1c (u16) holds a chip-id with the\n\
+  \  high bit (bit 15) as a present-flag. When set, it indexes into TextScriptChipNames tables:\n  entries\
+  \ 0x137 / 0x139 use hard-coded pointers unk_2001186 / unk_200119E (player/Navi name\n  scripts in chip-name\
+  \ script tables) and others index via off_8120178 (TextScriptChipNames0/1).\n  For each present entry\
+  \ it calls sub_81202B4 (the \"Expand text to font tile pairs, base-tile\n  offset\" callee) with r4\
+  \ = [sp] = (r3<<12)|0x200 and writes 8 tile words starting at r5's row.\n  When bit 15 is clear, it\
+  \ instead WordFills 0x20 bytes at r2 with 0, advancing both r2 and r3 by\n  0x10 each iteration. Result\
+  \ is r0 = 5 (always). Called from drawBattleBackground_8123AB8 in\n  the chip-select screen row layout.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mul r0, r3` (mov r3,#0x20 then mul r0,r3) computes stride of 0x20 bytes per row at r1: r0
+    = row count, r1 = tile-base dest, r2 = (alt) zero-fill dest, r3 = baseTile index - `ldrh r1, [r5,#0x1c];
+    lsr r1, r1, #7; tst r1, r1` reads chip-id (u16) at +0x1c with bit 15 as present flag - `ldr r0, off_8120178
+    / dword_8120184 / dword_8120188` selects between TextScriptChipNames0/1 and the player/Navi name scripts
+    (unk_2001186 / unk_200119E) - `ldr r4, [sp]; push {r5}; mov r5, #8; bl sub_81202B4` invokes the "Expand
+    text -> two u16 arrays" helper with base offset r4 and tile-count 8 - `mov r0, r2; mov r1, #0x20;
+    mov r2, #0; bl WordFill` zero-fills 0x20 bytes for entries with bit 15 clear - All 40 captured calls
+    with r3=0xb (= baseTile 0x200|0xb0000 nibble) match a chip-select layout row of 5 names - Caller drawBattleBackground_8123AB8
+    description matches "decompress five tile regions of battle background" - this function is for the
+    chip-name overlay row in that same draw'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x081200EC
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus3, story4, story6,
+    story8, story9'
+  reproduce: 'grep -l ''^081200ec '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus3, story4, story6, story8, story9
+open_questions:
+- Exact role of unk_2001186 / unk_200119E (0x137/0x139 special-case references); whether r2 is a
+- separate "empty" buffer or r1/r2 alias the same tile block with row stride; what r5 stored at [sp+4]
+- originally holds in callers.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 742e7bfe
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_81200EC -> battle_drawChipSelectFighterNames_81200EC
+  where: bn6f 57429803
+  tool: tools/rename_symbol.py

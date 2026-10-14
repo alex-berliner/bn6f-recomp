@@ -1,0 +1,77 @@
+name: battleObject_aiHandleChipsAndFlinchZ_80F0608
+address: '0x080F0608'
+kind: function
+previous_names:
+- sub_80F0608
+status: probable
+summary: 'Per-frame AI tick for a Navi battle object: charges/picks the next chip, advances chip cooldown
+  timers, and (when not flinch-bubbled or action 0x50) snaps Z to 0 or to 0x140000.'
+interface: (r5 = BattleObject*, r10 = Toolkit*) -> void ; side effects on r5->CurAction-derived state,
+  r5->Z, AIData->PwrAtkCurChargeTime and chip-charge halfword in the BattleHand slot
+details: "1. Returns early if battle_isPaused() != 0 (the bne loc_80F068C path skips the chip logic and\
+  \ falls through).\n  2. Reads NaviStats byte 0x29 (NaviIndex) for the object's alliance. If it is 5,\
+  \ looks up the object's alliance-team\n     entry via battle_getObjectAllianceTeam_800F49E, indexes\
+  \ a table at 0x802136D by that team id to obtain the\n     per-team chip-charge cap into r6 (initial\
+  \ 0x64 = 100). If the team id is out of range vs the table size at\n     0x8021300, no chip work happens.\n\
+  \  3. Otherwise reads NaviStats byte 0x2C (Transformation). If transformation is 5 (BeastOut) or 0x11\
+  \ the chip path\n     runs; otherwise not.\n  4. Resolves the BattleHand slot for the object via getBattleHandAddr_8010018(r5->Alliance),\
+  \ loads the equipped\n     chip's u16 id at offset (slotCount*1 + 2) and looks it up in the chip database\
+  \ via getChip8021DA8. The\n     chip's byte 9 must have bit 0x2 set, and byte 4 must equal 1 (i.e. only\
+  \ \"standard\" taggable chips count).\n  5. Reads the per-slot charge halfword at offset (slotCount*1\
+  \ + 0x26). If it is already >= the cap (r6) nothing\n     happens. Otherwise if AIData->PwrAtkButton\
+  \ == 1 and AIData->PwrAtkCurChargeTime >= 0xF, sets\n     PwrAtkCurChargeTime = 0x0A. Then unconditionally\
+  \ writes (charge+1) back to the slot's u16 (or 0 if the\n     button-charge branch fell through without\
+  \ updating).\n  6. Falls through to the second half: reads NaviStats 0x29 and 0x2C again. If 0x29 !=\
+  \ 0 bail; if 0x2C == 0x18\n     (a specific transformation state) forces r5->Z = 0x140000; else if CurAction\
+  \ != 0x50 and object_getFlag\n     doesn't have 0x80000000 (OBJECT_FLAGS_BUBBLED) set, writes r5->Z\
+  \ = 0; leaves Z alone if bubbled or in\n     action 0x50.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- Early-out on battle_isPaused at the very top: `bl battle_isPaused` / `bne loc_80F068C`. -
+    `mov r6, #0x64` initialises the chip-charge cap, then the 5/0x11 transformations keep it while other
+    values branch over: `cmp r0, #5` / `cmp r0, #0x11` (`GetBattleNaviStatsByte_AllianceFromBattleObject`
+    calls at offset 0x29 and 0x2c correspond to NaviStats.NaviIndex and NaviStats.Transformation in `navi_stats_struct`).
+    - Per-team cap table: `ldr r1, off_80F06F4 // =byte_802136D` / `ldrb r6, [r1,r0]`, gated by reading
+    the table-size pointer at `byte_8021300` and a `blt` against it. - Chip lookup path: `bl getBattleHandAddr_8010018`
+    -> reads slot count byte, indexes the u16 chip id at `(slot*1)+2`, `bl getChip8021DA8`, then checks
+    `ldrb r1, [r0,#9]` with `tst r1, #2` and `ldrb r1, [r0,#4]` `cmp r1, #1`. - Slot charge field at `(slot*1)+0x26`:
+    `ldrh r0, [r4]` / `cmp r0, r6` / `bge loc_80F068C`, and the PwrAtkButton/PwrAtkCurChargeTime access
+    through `ldr r2, [r5,#oBattleObject_AIDataPtr]` then `ldrb r0, [r2,#oAIData_PwrAtkButton]` and `ldrb
+    r0, [r2,#oAIData_PwrAtkCurChargeTime]` matches AIData offsets 0x1E and 0x1B. - Z handling writes 0
+    or 0x140000 (`dword_80F06F8 = 0x80000000` mask vs `OBJECT_FLAGS_BUBBLED` in CollisionData; `dword_80F06FC
+    = 0x140000` stored into `oBattleObject_Z`). - CurAction 0x50 skip: `ldrb r0, [r5,#oBattleObject_CurAction]`
+    / `cmp r0, #0x50` / `beq locret_80F06BA`.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080F0608
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^080f0608 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- Why 0x29 (NaviIndex) must be non-zero to reach the Z branch (likely "only real players/navis, not enemies/objects").
+- What NaviIndex 5 / Transformation 5/0x11/0x18 mean semantically (BeastOut vs Link/Beast modes) — the
+  constants line up with documented Mega/Mega/Giga transformation values, but the table at 0x802136D is
+  per-team and not yet identified.
+- Why the routine is run while battle_isPaused returns true for the chip portion but not for the Z portion
+  (it just falls through).
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 742e7bfe
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80F0608 -> battleObject_aiHandleChipsAndFlinchZ_80F0608
+  where: bn6f 57429803
+  tool: tools/rename_symbol.py

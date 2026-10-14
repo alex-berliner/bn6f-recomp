@@ -1189,7 +1189,7 @@ static void call_prep_wide(u32 tileset_id, u32 battle_obj) {
     R3 = 0xB;
     R5 = 5;
     R7 = battle_obj;
-    GUEST_CALL(sub_81200EC);
+    GUEST_CALL(battle_drawChipSelectFighterNames_81200EC);
     R4 = s4; R5 = s5; R6 = s6; R7 = s7;
 }
 
@@ -1230,7 +1230,7 @@ static void call_prep_mid_strip(u32 tileset_id, u32 battle_obj) {
     R3 = (0xBu << 12) | 0x216u;
     R5 = 5;
     R7 = battle_obj;
-    GUEST_CALL(sub_8120458);
+    GUEST_CALL(battle_loadChipIconSlots_8120458);
     R4 = s4; R5 = s5; R6 = s6; R7 = s7;
 }
 

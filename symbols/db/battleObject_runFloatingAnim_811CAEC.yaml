@@ -1,0 +1,68 @@
+name: battleObject_runFloatingAnim_811CAEC
+address: '0x0811CAEC'
+kind: function
+previous_names:
+- sub_811CAEC
+status: probable
+summary: Per-frame battle object update that advances a floating/oscillation effect (rotates sprite, scales,
+  and offsets coords by sin/cos), decrementing a frames-left counter and bumping the +0xC counter when
+  done.
+interface: '(r5 = BattleObject*) -> r0 = 0/1 (done flag) ; side effects: mutates BattleObject +0x9, +0x10,
+  +0x14, +0x16, +0x18, +0x1a, +0x1c, +0x1e, writes sprite scale and position, and increments a 32-bit
+  counter at +0xC by 0xE.'
+details: "- On first entry when r5[0x9] is 0 it sets the \"active\" flag and snapshots initial rotation/scale\
+  \ from a params table at the word returned by sub_811CC68 (offsets +2/+6/+8/+A/+C into that table copied\
+  \ to r5 +0x10, +0x16, +0x18, +0x1C, +0x1E).\n  - Each frame it reads an angle (halfword) from that table\
+  \ at +0x4, takes sin/cos from math_sinTable/math_cosTable, scales by the r5+0x16 value added to r5+0x14\
+  \ (angle accumulator), shifts right by 4, and stores the two vector components on the stack.\n  - Decrement\
+  \ r5+0x1A by r5+0x1C (scale decay) with a floor at 0, sets the sprite scale via sprite_setScaleParameters\
+  \ (sprite_setScaleParameters called with hi/lo bytes of r5+0x1A as parameters), and then advances r5+0x16\
+  \ by r5+0x18 and r5+0x1C by r5+0x1E.\n  - Adds the stored sin/cos deltas onto the sprite's current x/y\
+  \ via sprite_getCoordinates/sprite_setCoordinates (as 16.16 fixed point arithmetic, then asr by 16 to\
+  \ get back to integer).\n  - Decrements r5+0x10 frames counter; on underflow clears the active flag,\
+  \ zeroes the counter, calls counter_addU32_r5Plus0C_811CC60 with amount 0xE to advance the global step\
+  \ counter, and returns 1; otherwise returns 0.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- First-time setup at "ldrb r0,[r5,#9] ; tst r0,r0 ; bne loc_811CB12" followed by "mov r0,#1
+    ; strb r0,[r5,#9]" sets an active flag at BattleObject+0x9. - "bl sub_811CC68" returns r5+0xC; subsequent
+    ldrh/strh pairs copy offsets +2, +6, +8, +0xA, +0xC of that word into r5 fields 0x10/0x16/0x18/0x1C/0x1E
+    (lines just after bne). - math_sinTable/math_cosTable are referenced via off_811CC6C/off_811CC70 with
+    `ldrsh` table lookups (sin/cos pair). - "sub r2,r2,r1 ; cmp r2,#0 ; bge loc_811CB4E ; mov r2,#0" +
+    "strh r2,[r5,#0x1a]" + scale parameter passed to sprite_setScaleParameters clearly implement a scale
+    that decays toward zero. - "ldr r0,[r5,#0x10] ; sub r0,#1 ; str r0,[r5,#0x10] ; bge loc_811CB9C ;
+    mov r0,#0 ; strb r0,[r5,#9] ; str r0,[r5,#0x10] ; mov r0,#0xe ; bl counter_addU32_r5Plus0C_811CC60
+    ; mov r0,#1" shows the duration counter and the +0xE bump via counter_addU32_r5Plus0C_811CC60. - Use
+    of sprite_getCoordinates/sprite_setCoordinates in the middle block is the standard per-frame sprite
+    position update pattern.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0811CAEC
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp, maps, menus2, story1, story2, story4, story5, story8'
+  reproduce: 'grep -l ''^0811caec '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp, maps, menus2, story1, story2, story4, story5, story8
+open_questions:
+- The exact semantic of the effect (e.g. whether it represents floating bob, swoop-in, or outro for a
+  particular battle object kind) cannot be determined from this function alone; the parent caller table
+  and BattleObject type usage in callers would settle it. The 0xE advance via counter_addU32_r5Plus0C_811CC60
+  strongly hints at a scripted "step" in a battle object's animation/script progression, but the specific
+  event isn't labelled.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 742e7bfe
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_811CAEC -> battleObject_runFloatingAnim_811CAEC
+  where: bn6f 57429803
+  tool: tools/rename_symbol.py

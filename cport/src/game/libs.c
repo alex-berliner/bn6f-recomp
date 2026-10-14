@@ -1829,7 +1829,7 @@ static void init_cgb_sound(u32 sound_buf) {
     ST32(fp + 0x70, (A_sub_814FD54 | 1));
     ST32(fp + 0x74, (A_sub_814E758 | 1));
     ST32(fp + 0x78, (A_SampleFreqSet_814EDC0 | 1));
-    ST32(fp + 0x7C, (A_sub_814E4DC | 1));
+    ST32(fp + 0x7C, (A_sound_stopAllChannelsInBank_814E4DC | 1));
     ST32(fp + 0x80, (A_sub_814F228 | 1));
     ST32(fp + 0x84, (A_sub_814F2F0 | 1));
 

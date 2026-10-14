@@ -1,0 +1,63 @@
+name: battle_checkItemFlagFor_813B9B4
+address: '0x0813B9B4'
+kind: function
+previous_names:
+- sub_813B9B4
+status: probable
+summary: Reads one byte from the toolkit's 0x200414c array at offset (r0 + r1*7) and returns its value/zero-flag
+  through r0.
+interface: '(r0 = item index, r1 = some other index/argument, r10 = toolkit ptr) -> r0 = byte at that
+  offset ; side effects: none (pure load via tail-return)'
+details: "- `mov r3, r10` then `ldr r3, [r3,#oToolkit_Unk200414c_Ptr]` (offset 0x58) loads the\n    pointer\
+  \ to whatever array/structure is anchored at EWRAM 0x200414c.\n  - `mov r2,#7; mul r1,r2` multiplies\
+  \ r1 by 7 (a stride of 7 bytes per r1-unit).\n  - `add r0,r0,r1` adds the r0 term to that scaled r1;\
+  \ together this addresses\n    `(r0 + 7*r1)` within the pointed array.\n  - `ldrb r0,[r3,r0]` returns\
+  \ the byte there in r0.\n  - `tst r0,r0` then `mov pc,lr` tail-returns, leaving r0 holding that byte\
+  \ and\n    the Z flag set iff it was zero.\n  - Naming reflects the indexed probe into the toolkit's\
+  \ 0x200414c array; the\n    callers (per-item-type tallies, ID categorisation, ally/entry scans) all\n\
+  \    treat the byte as a boolean flag (\"has/is\"), so this is a small lookup,\n    not a full struct\
+  \ read. The 0x7 stride hints each r1-bucket holds 7\n    contiguous items (or 7 categories), with r0\
+  \ selecting within the bucket.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r3, [r3, #oToolkit_Unk200414c_Ptr]` (asm37_0.s:389) — fixed offset 0x58 maps to the
+    toolkit slot named `Unk200414c_Ptr` in Toolkit.inc. - `mov r2,#7; mul r1,r2` (asm37_0.s:390-391) shows
+    the per-r1 stride is 7 bytes. - `ldrb r0,[r3,r0]` followed by `tst r0,r0` (asm37_0.s:393-394) — only
+    a single byte is consumed and the boolean is exposed via r0/Z, matching callers that gate on the Z
+    flag (sub_813C06C etc.). - Caller battleItems_countByType_813C584 / sub_813BC98 iterate many r1 values
+    over a 0x31-entry grid; a per-item byte-flag is consistent with their per-tally / per-rank write-back
+    pattern. - All 6 captured entry points show r1=3 with r0 in {3,4,5,6} and three different r3 contexts
+    (EWRAM/EWRAM-immediate), consistent with probing a fixed r1-bucket across a small set of r0 offsets.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0813B9B4
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story1, story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^0813b9b4 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander
+open_questions:
+- Whether the byte truly is a "has/usable item" flag or some other property;
+- none of the callers' summaries state the semantic exactly.
+- Why the r1 stride is 7 specifically (7 categories? 7 partner IDs? 7-element
+- sub-array?). Settled by labelling the Unk200414c struct, which the struct
+- dump does not include.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 742e7bfe
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_813B9B4 -> battle_checkItemFlagFor_813B9B4
+  where: bn6f 57429803
+  tool: tools/rename_symbol.py

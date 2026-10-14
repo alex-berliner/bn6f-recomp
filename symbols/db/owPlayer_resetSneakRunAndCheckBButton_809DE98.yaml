@@ -1,0 +1,57 @@
+name: owPlayer_resetSneakRunAndCheckBButton_809DE98
+address: '0x0809DE98'
+kind: function
+previous_names:
+- sub_809DE98
+status: probable
+summary: Overworld player helper that clears SlipRun/related story flags when a guard story flag is set,
+  otherwise only clears the SlipRun cancel flag unless B is held
+interface: '() -> ; side effects: clears story/event flags via ClearEventFlagFromImmediate'
+details: "Pushes {lr} only. Tests EVENT_1716 with TestEventFlagFromImmediate; if zero (guard\n  story\
+  \ flag NOT set), clears three flags: EVENT_IN_SLIPRUN_STATE, EVENT_173E,\n  EVENT_173F, then returns.\
+  \ If EVENT_1716 is set, falls through to read the\n  Toolkit (r10) -> oToolkit_JoypadPtr -> oJoypad_Held\
+  \ (u16) and test JOYPAD_B. If\n  B is held, returns immediately; otherwise clears EVENT_173F and returns.\n\
+  \  Net effect: when not in the guarded \"slip run\" cutscene path, always wipe the\n  slip-run state;\
+  \ when in that path, only wipe EVENT_173F unless the player is\n  holding B (which presumably cancels\
+  \ the slip run early).\n  Captured-call exit r0=0x80 across all 40 frames is the return address upper\n\
+  \  byte being observed after restoring pc; the function itself writes no caller-\n  visible r0 (contract\
+  \ out=[]).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- asm line `movflag EVENT_1716` / `bl TestEventFlagFromImmediate` / `bne loc_809DEBE` (the
+    only event test) drives the branch. - asm lines `ClearEventFlagFromImmediate` called for EVENT_IN_SLIPRUN_STATE,
+    EVENT_173E, EVENT_173F in the not-set path; only EVENT_173F in the set path. - asm `mov r0, r10` ;
+    `ldr r0, [r0,#oToolkit_JoypadPtr]` ; `ldrh r0, [r0,#oJoypad_Held]` ; `mov r1, #JOYPAD_B` ; `tst r0,
+    r1` ; `bne locret_809DED2` reads held B and bails out. - callee summaries match: ClearEventFlagFromImmediate
+    "Clear one event flag", TestEventFlagFromImmediate "Test one event flag". - contract in=[''r10'',''lr'']
+    confirms only the toolkit pointer is needed.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0809DE98
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story1, story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^0809de98 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander
+open_questions:
+- Exact meaning of EVENT_1716 / EVENT_173E / EVENT_173F / EVENT_IN_SLIPRUN_STATE — only their names from
+  constants, not their story meaning. Settled by flag-doc tables or by chasing the callers' call sites.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 742e7bfe
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_809DE98 -> owPlayer_resetSneakRunAndCheckBButton_809DE98
+  where: bn6f 57429803
+  tool: tools/rename_symbol.py

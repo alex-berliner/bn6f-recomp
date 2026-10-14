@@ -1,0 +1,57 @@
+name: libSIOControlPoll_81445F8
+address: '0x081445F8'
+kind: function
+previous_names:
+- sub_81445F8
+status: probable
+summary: link-cable SIO control tick (EWRAM at eTimerEnable200F460) polled each frame by the global handler
+interface: '() -> ; side effects: mutates EWRAM bytes eTimerEnable200F450/454/460..474 and (via libSIOControlStart)
+  the SIO hardware'
+details: "The function is the registered global handler (unk_200A284 dispatcher at 0x0803de72) that\n\
+  \  runs each vblank/int. It treats eTimerEnable200F460 as a small state struct:\n    -F460: enabled\
+  \ flag\n    -F461: sub-state (2 or 4 are the active branches)\n    -F462/F463/F471: other per-link state\
+  \ bytes\n    -F450/F454: poll counters\n  With F460 enabled and F461==2 it calls libSIOControlStart,\
+  \ then bumps F450 (a \"tries\" counter);\n  once F450 reaches 6 it switches a result byte to 2 and clears\
+  \ F462/F463/F471. With F461==4 the\n  branch consults F46D/F472 first, sets F475=1 when both conditions\
+  \ hold, then falls into the\n  libSIOControlStart/bump/clear path. The disabled branch (F460==0) handles\
+  \ F461==2|4 by just\n  bumping F450 and on >6 stamping F475 with state-dependent values (2 when F461==4)\
+  \ before\n  clearing F462/F463/F471. Caller restores its own lr from a table at 0x0803DE81.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- callee is libSIOControlStart at 0x0814474c, matched to SIO control hardware init - state
+    byte at eTimerEnable200F460 is read as a boolean enable (`ldrb r3,[r4]; cmp #0; beq loc_8144664`)
+    - F450 is compared against 6 after `add r0,#1; strb r0,[r1]` -> classic retry/poll counter - F454
+    must be 2 for the bump-clear sequence (`ldrb r2,[r0]; cmp r2,#2; bne loc_8144690`) - stores 0x01 and
+    0x02 to F475 in mutually exclusive branches, looks like a status code - caller sub_803DE72 reads handler
+    from unk_200A284 and tail-calls into here at 0x0803de81'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x081445F8
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story1, story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^081445f8 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander
+open_questions:
+- what each F46x byte actually represents (would settle it by reading the sibling libSIO routine 81444xx
+  and the SIO register map); the captured traces all show r1=0 and a fixed lr=0x0803de81 so we don't see
+  a meaningful variation in callers.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 742e7bfe
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_81445F8 -> libSIOControlPoll_81445F8
+  where: bn6f 57429803
+  tool: tools/rename_symbol.py

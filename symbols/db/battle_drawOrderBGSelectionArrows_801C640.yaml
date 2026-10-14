@@ -1,0 +1,69 @@
+name: battle_drawOrderBGSelectionArrows_801C640
+address: '0x0801C640'
+kind: function
+previous_names:
+- sub_801C640
+status: probable
+summary: Renders the battle BG tile-id blocks and arrow indicators used by the turn-order selection BG
+  overlay
+interface: '(r5 = *Toolkit, r10 = ?, lr) -> r0 = ?, nz/c/v ; side effects: queue GFX transfers and write
+  BG tile-ids'
+details: "Walks an EWRAM pointer (r5) that holds a Toolkit-shaped or AIData-shaped block (fields read\n\
+  \  at +0x18, +0x20). Bails out early if `battle_IsBattleEnding_800A97A` returns true. Otherwise:\n \
+  \   1. Calls `call_sub_3005EBA` twice (with the second call only when `AIData.Timer(u16 @ +0x20)`\n\
+  \       has bits 0x400 or higher): the first writes the tile block header info (tile base 0x9222)\n\
+  \       to BG map block 7,1,3 with a 0x10-sized transfer; the second uses base 0x922a and\n       rewrite\
+  \ r5=1 (an \"if any timer bit set above 0xa bits\" branch).\n    2. If the low 16 bits of the Timer\
+  \ field are != 0x4000, picks a tile-id by `(timer >> 7) % 8`\n       and writes one entry through `bgmap_WriteTileIdAtBlock_800187C`,\
+  \ picking the row from\n       `(timer >> 10)`.\n    3. Uses the u8 at `r5+0x18` (clamped `>= 2` first,\
+  \ then `--`) to compute an offset into\n       `byte_86E1CD8`, multiplies by 0x20 (32 bytes), then queues\
+  \ a 32-byte-aligned GFX copy\n       from that pointer to `unk_3001A80` via `QueueEightWordAlignedGFXTransfer`.\
+  \ This is the\n       arrow/spinner strip animation data.\n  Net behaviour: refreshes the tiny arrow\
+  \ strip tiles in the BG map based on `r5[+0x18]` index\n  and the current Timer value; typically called\
+  \ once per frame from the battle subsystem.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl battle_IsBattleEnding_800A97A` / `cmp r0,#0` / `bne locret_801C6AE` → early-out when
+    ending - Two calls to `call_sub_3005EBA` with `(r0=7,r1=1,r2=3,r3=0x9222)` and `(r0=7,r1=1,r2=3,r3=0x922a)`
+    → queue a tile-id stream into BG block 7 at rows 1..3 - `ldrh r6,[r5,#0x20]` / `lsr r4,r6,#0xa` /
+    `cmp r4,#0` / `beq loc_801C678` → uses bits 10+ of AIData Timer to gate second transfer - `cmp r0,#0x4000`
+    / `beq loc_801C696` / `(timer>>7)&7` to choose tile id, `(timer>>7)>>3` for row → individual BG tile
+    writes through `bgmap_WriteTileIdAtBlock_800187C` - `ldrb r3,[r5,#0x18]` / `cmp r3,#0` / `bne loc_801C69E`
+    then `sub r3,#2` → index N= (r5[0x18] ?: r5[0x18]-2), used to index `byte_86E1CD8` in 0x20-byte steps
+    - `bl QueueEightWordAlignedGFXTransfer` from `byte_86E1CD8 + N*0x20` to `unk_3001A80` → 0x20-byte
+    GFX transfer - Embedded tile-id table at `byte_801C6C0` (0x9236..0x923d) confirms the script-strip
+    data being placed in BG attribute area near 0x9230 - Stored constants `0x4000`, `0x9222`, `0x922a`,
+    `0x9232` are BG tile-id base addresses for the BG-map area this hook targets'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801C640
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp'
+  reproduce: 'grep -l ''^0801c640 '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp
+open_questions:
+- The exact meaning of `r5` (looks like a battle-context block that overlays onto the Toolkit
+- battle_actors/turn-order table; one field is `Timer` at +0x20 — likely AIData-style) is not
+- certain without a caller.
+- Whether `r5[+0x18]` is "turn order cursor" vs "act-now actor index" vs a panel-data index —
+- the code clamps to >=2 only when it's zero, suggesting row=0 is special-cased.
+- Callers list is empty in the dump, so this needs to be matched against the battle-frame
+- jumptable to confirm role.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 742e7bfe
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801C640 -> battle_drawOrderBGSelectionArrows_801C640
+  where: bn6f 57429803
+  tool: tools/rename_symbol.py

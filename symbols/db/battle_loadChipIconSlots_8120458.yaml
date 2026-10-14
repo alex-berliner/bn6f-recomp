@@ -1,0 +1,68 @@
+name: battle_loadChipIconSlots_8120458
+address: '0x08120458'
+kind: function
+previous_names:
+- sub_8120458
+status: probable
+summary: Loads per-battle icon slot descriptors (chip ID + alt code) for a list of battle objects into
+  an out buffer.
+interface: '(r0 = startIndex, r1 = basePtr, r2 = outSlotsPtr, r3 = altCode, r5 = count) -> void ; side
+  effect: writes 2 u16 per slot to r2 (id, id+1)'
+details: "Walks `count` battle-object-sized (0x20) entries starting at `basePtr + startIndex*0x20`,\n\
+  \  reading the halfword at offset 0x1c. The high bit (0x80) is the \"valid\" flag; the low 7\n  bits\
+  \ are a chip index. For each valid entry it looks up the chip via getChip8021DA8 and\n  scans the first\
+  \ 3 bytes of the chip record for an index matching the low-7 bits (i.e. finds\n  which of the three\
+  \ element variants this chip ID maps to). It then writes two u16 to the\n  outSlotsPtr at index `i`:\
+  \ the chip ID (low7 << 1) + altCode, and that ID+1 (the standard\n  MegaMan battle-chip icon glyph pair).\
+  \ For invalid entries it writes two zeros.\n\n  Out buffer layout per slot is therefore (u16 code, u16\
+  \ codePlus1) at stride 4. The\n  `altCode` (r3) is added to the first halfword only (see `add r4, r3`\
+  \ after `lsl r4,#1`).\n  r2 is zero-filled with `ZeroFillByHalfword(r2, 0xe)` (= 14 halfwords = 7 slots\
+  \ max)\n  before the loop, so the loop only ever overwrites the first `count` slots.\n\n  Called from\
+  \ drawBattleBackground_8123AB8, menuCopyBackgroundTiles_804A7C0, and several\n  sub_812D3E4/sub_81304EC/sub_81341A0/sub_8134310\
+  \ menu helpers, suggesting the result feeds\n  into BG chip-icon tile uploads tied to a battle field/menu\
+  \ tileset.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mul r0, r5` with r5=0x20 and `add r5, r0, r1` -> base = startIndex*0x20 + basePtr - `ldrh
+    r1,[r5,#0x1c]` reads the chip-ID halfword at +0x1c of the entry (battle-object ExtraVars region, fits
+    with chip icon data offset) - `lsr r0, r1, #7; tst r0, r0` -> high bit is the "has icon" flag - `and
+    r4, r1, #0x7f` -> chip index is the low 7 bits - `bl getChip8021DA8` returns the 44-byte chip record;
+    loop reads bytes 0..2 to find which element variant slot this chip occupies (`ldrb r1,[r0,r2]; cmp
+    r1, r4`) - `lsl r4, r4, #1; add r4, r3` builds the icon-tile code (chip_id<<1 + altCode) - `strh r4,[r7,r0]`
+    and `strh r4+1,[r7,r0+2]` -> writes the (code, code+1) pair into outSlots - Zero-filled path writes
+    two u16 zeros at the same offset - r5 incremented by 0x20, r6 (slot index) compared against count
+    in r5_caller -> exactly one icon-slot per source entry'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08120458
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus3, story4, story6,
+    story8, story9'
+  reproduce: 'grep -l ''^08120458 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus3, story4, story6, story8, story9
+open_questions:
+- Exact semantics of r3 (`altCode` / element variant offset) and how callers pick it; the
+- chip-record byte scan only goes 0..2, so likely uses index within first 3 fields of the
+- chip entry (probably element/types).
+- The 0x1c halfword's upper bit may be a broader "filled" flag and the low 7 bits a packed
+- chip ID with element code, not a literal chip database index. Naming the helper
+- '"loadChipIconSlots" is consistent with the assembly but the precise struct/field meaning'
+- rests on the battle-object struct's 0x1c being a chip-icon descriptor.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 742e7bfe
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8120458 -> battle_loadChipIconSlots_8120458
+  where: bn6f 57429803
+  tool: tools/rename_symbol.py

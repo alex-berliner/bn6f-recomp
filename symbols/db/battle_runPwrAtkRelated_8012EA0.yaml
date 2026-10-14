@@ -1,0 +1,56 @@
+name: battle_runPwrAtkRelated_8012EA0
+address: '0x08012EA0'
+kind: function
+previous_names:
+- sub_8012EA0
+status: probable
+summary: tail-call passthrough that runs the PWR-atk / joypad-related update
+interface: (in = r5, r10, lr) -> out r0 = result of pwrAtkRelated_readsFromJoypad_8012FC8 ; no side effects
+  beyond callee
+details: "The function body is literally `push {lr}; bl pwrAtkRelated_readsFromJoypad_8012FC8; pop {pc};`\
+  \ - a Thumb\n  tail-call wrapper that calls pwrAtkRelated_readsFromJoypad_8012FC8 and returns whatever\
+  \ that returns via\n  r0. It preserves r5/r10 across the call (callee-saved) and writes nothing of its\
+  \ own. The sole caller is\n  sub_8012E74 which has the same in/out contract (r5/r10/lr), suggesting\
+  \ it is the parent step in the same\n  battle/joypad chain (e.g. a per-frame \"process power-attack\
+  \ input\" sequence). All 40 captured calls (story2\n  snapshots) come in with r1 = 02001b80 (a battle-subsystem\
+  \ EWRAM pointer - likely a per-actor joypad/AIData\n  array), r2 = 8 (loop count / actor slot count)\
+  \ and r3 = 02034880; r0 is zero on entry and remains zero with\n  -ZC- flags on exit, matching a void-style\
+  \ update whose final r0 happens to be 0 from the inner routine.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- Entire body is `push {lr}; bl pwrAtkRelated_readsFromJoypad_8012FC8; pop {pc};` at sub_8012EA0
+    - callee name explicitly `pwrAtkRelated_readsFromJoypad_8012FC8` in the captured call list - contract
+    in = r5/r10/lr, out = r5/r10 matches a pure tail-call wrapper preserving callee-saved regs - all 40
+    captured calls share identical args (r1=02001b80, r2=8, r3=02034880) suggesting per-frame use - lr=08012e8b
+    on every capture matches sub_8012E74 (the sole caller) returning into its `pop {pc}` site'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08012EA0
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^08012ea0 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9
+open_questions:
+- What pwrAtkRelated_readsFromJoypad_8012FC8 actually does (write input into AIData.Joypad* fields, run
+- charge timer, etc.) - that would settle whether sub_8012EA0 is just a relocatable trampoline or a named
+- per-frame step.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 742e7bfe
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8012EA0 -> battle_runPwrAtkRelated_8012EA0
+  where: bn6f 57429803
+  tool: tools/rename_symbol.py

@@ -1,0 +1,69 @@
+name: owPlayer_ApplyKnockbackOrSnapToTarget_809D730
+address: '0x0809D730'
+kind: function
+previous_names:
+- sub_809D730
+status: probable
+summary: 'Overworld player per-frame move handler: if the countdown has not finished, integrates the cached
+  X/Y velocities into the player''s coordinates and marks the per-tick state as 2; otherwise snaps the
+  player onto the precomputed target X/Y/Z.'
+interface: '(r5 = OWPlayerObject*) -> ; side effects: writes Unk_38/Unk_3c delta into X/Y (and sets Unk_13
+  = 2), or copies NextX/Y/Z into X/Y/Z of the OW player object'
+details: "- Single caller chain in the snapshots returns lr=0x0809d650, which sits inside the player tick\
+  \ jump table; r5 holds the OWPlayerObject base (consistent with the project convention seen in `ow_player.s`).\n\
+  \  - Calls `owPlayer_TickCountdownOrWait_809DDCC` and branches on its return: zero means the countdown\
+  \ is still pending and a \"wait\" state is needed.\n  - On non-zero return (countdown done): `X += Unk_38`\
+  \ and `Y += Unk_3c` (the `Unk_38`/`Unk_3c` fields look like per-frame X/Y deltas), then `Unk_13 = 2`\
+  \ (per-frame sub-state 2 = \"moving / applying velocity\"). Returns via `pop {pc}`.\n  - On zero return\
+  \ (countdown still running, wait state): copies `NextX -> X`, `NextY -> Y`, `NextZ -> Z` so the player\
+  \ visually snaps onto the target grid cell each frame, with no change to `Unk_13`.\n  - Note: this differs\
+  \ from the typical pattern where the \"done\" branch would apply the deltas. Here the non-zero (done)\
+  \ return applies the per-tick delta and the zero (not-done / wait) return snaps to target. That matches\
+  \ `owPlayer_TickCountdownOrWait_809DDCC`'s contract (it reports \"not done\" via zero only when the\
+  \ 0xC00000 status bits are set).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl owPlayer_TickCountdownOrWait_809DDCC` at 0x0809d732 followed by `tst r0, r0` / `beq loc_809D750`
+    (asm:746). - On the `beq` not taken: `ldr r0, [r5,#oOWPlayerObject_Unk_38]` then `ldr r1, [r5,#oOWPlayerObject_X]`,
+    `add r1, r1, r0`, `str r1, [r5,#oOWPlayerObject_X]` — direct addition of Unk_38 into X (same pattern
+    repeated with Unk_3c into Y). - After the two add/stores, `mov r0, #2` / `strb r0, [r5,#oOWPlayerObject_Unk_13]`
+    writes the per-tick state byte 2. - On the `beq` taken path (`loc_809D750`): three `ldr … NextX/Y/Z`
+    then three `str … X/Y/Z` to overwrite the current coords with the target NextX/Y/Z. - Function saved/restores
+    only `lr` via `push {lr}` / `pop {pc}`, so r5 is the implicit "this" pointer (OWPlayerObject*), consistent
+    with the project''s r5-base calling convention. - Captured calls all share `lr=0x0809d650`, `sp=0x03007db4`,
+    identical r0-r3 — i.e., it is always called from the same per-frame player update site.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0809D730
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, beastsp, fuzz, maps, menus2, menus3, story1, story2, story3,
+    story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0809d730 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, beastsp, fuzz, maps, menus2, menus3, story1, story2, story3, story4, story5,
+    story6, story7, story8, story9
+open_questions:
+- The semantics of "non-zero return = apply delta, zero return = snap to target" (rather than the reverse)
+  is unusual; it might actually be that `owPlayer_TickCountdownOrWait_809DDCC` reports 1 while waiting
+  and 0 when the countdown has fully expired, but the contract comment says the opposite. Verifying `owPlayer_TickCountdownOrWait_809DDCC`'s
+  exact return convention would settle it.
+- Whether `Unk_38`/`Unk_3c` are velocities, per-tick displacements, or knockback deltas (e.g. for being
+  pushed by an object) is unknown — depends on what writes them upstream.
+- Meaning of `Unk_13 = 2` (per-frame state byte) is not documented in the OWPlayerObject struct.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 742e7bfe
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_809D730 -> owPlayer_ApplyKnockbackOrSnapToTarget_809D730
+  where: bn6f 57429803
+  tool: tools/rename_symbol.py

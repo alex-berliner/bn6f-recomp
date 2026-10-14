@@ -2172,19 +2172,19 @@ Next sub_803DE5C(void) {
 }
 
 /* ── sub_803DE72 ── */
-/* register form: calls sub_81445F8 outside this file, which has no typed C interface yet;
+/* register form: calls libSIOControlPoll_81445F8 outside this file, which has no typed C interface yet;
    the game function reads r0 (handler pointer) and writes back r0–r3 plus condition flags. */
 static void check_and_call_handler(void) {
     u32 handler = LD32(A_unk_200A284);
     R0 = handler;
     if (handler != 0) {
-        GUEST_CALL(sub_81445F8);
+        GUEST_CALL(libSIOControlPoll_81445F8);
     } else {
         SET_FLAGS_NZ(0);   /* replicates tst r0,r0 with r0==0: Z set, N/C/V clear */
     }
 }
 
-/* sub_803DE72: if the global handler at unk_200A284 is non-null, invoke sub_81445F8
+/* sub_803DE72: if the global handler at unk_200A284 is non-null, invoke libSIOControlPoll_81445F8
  * (which reads r0 = that handler); otherwise return with r0 = 0 and flags from tst. */
 Next sub_803DE72(void) {
     check_and_call_handler();

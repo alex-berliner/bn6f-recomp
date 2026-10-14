@@ -1,0 +1,75 @@
+name: owPlayer_tickPerFrame_809D4DC
+address: '0x0809D4DC'
+kind: function
+previous_names:
+- sub_809D4DC
+status: probable
+summary: 'Overworld player per-frame dispatcher: handles the player-object interaction probe first; otherwise
+  picks the next player jumptable index based on per-frame checks (gate/tile interaction, door advance,
+  advance-forward event, bit-0x10 state).'
+interface: '(r5 = OWPlayerObjectPtr, r10 = ToolkitPtr, lr) -> r0 = result of the chosen sub-check (zero/non-zero
+  as flags); side effects: writes oOWPlayerObject_Unk_0a, sometimes oOWPlayerObject_Unk_13, and oOWPlayerObject_JumptableIndex_09
+  (or its pending slot) via owPlayer_setJumptableIndex09AndOthers_809e004; reads oOWPlayerObject_FacingDirection
+  and oOWPlayerObject_Unk_11.'
+details: "1. Pushes lr only (tail-call chain via `pop {pc}`).\n  2. Calls sub_809D9E0 (owMapObject_handlePlayerInteract_809D9E0).\
+  \ If non-zero, compares FacingDirection (+0x10) against Unk_11 (+0x11); when they differ, it clears\
+  \ Unk_0a (+0x0a), then reads Unk_0a as an index into the two-handler jumptable at off_809D554 and tail-calls\
+  \ the chosen handler.\n  3. If the interact handler returned 0, calls sub_809DF28 (overworld player\
+  \ per-frame dispatcher). When that returns non-zero, it stores 0 to [r7,#1] (some short on the dispatcher\
+  \ scratch), sets the jumptable index to 0x10 (locked/skip-this-tick) via owPlayer_setJumptableIndex09AndOthers_809e004,\
+  \ and returns.\n  4. Otherwise asks ow_gatePendingTileInteraction_809DED4; on success, sets jumptable\
+  \ index 0xc (gate/door).\n  5. Otherwise calls sub_809DB02; on success, sets jumptable index 0x8.\n\
+  \  6. Otherwise tests the EVENT_1717_PLAYER_ADVANCE_FORWARD queue via event_TestPlayerAdvanceForward_809DB50;\
+  \ if set, sets jumptable index 0x14.\n  7. Otherwise tests the overworld-object state bit 0x10 via overworldObj_testStateBit10_809DAF8;\
+  \ if clear, sets jumptable index 0; if set, falls through.\n  8. The fall-through path is a no-op self-store\
+  \ of oOWPlayerObject_Unk_13.\n  9. The function never returns a meaningful value to its own caller (per\
+  \ contract, only callee-saved and scratch regs are live; `out` lists no caller return).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl owMapObject_handlePlayerInteract_809D9E0` is the first call and gates the interact jumptable
+    path (asm loc_809D4DC..loc_809D4F2). - The jump table at off_809D554 has two entries (sub_809D560+1,
+    sub_809D5C4+1) and the index is `ldrb r0,[r5,#oOWPlayerObject_Unk_0a]`, so the slot is the player''s
+    Unk_0a. - `strb r0,[r5,#oOWPlayerObject_Unk_0a]` with r0=0 clears it when FacingDirection != Unk_11.
+    - `owPlayer_setJumptableIndex09AndOthers_809e004` is called with literal constants 0x10, 0xc, 0x8,
+    0x14, 0 — those are the player''s main jumptable indices it transitions to. - `bl sub_809DF28` is
+    the overworld player per-frame dispatcher (its summary states it bypasses handler when substate is
+    0x10). - `bl ow_gatePendingTileInteraction_809DED4`, `bl sub_809DB02`, `bl event_TestPlayerAdvanceForward_809DB50`,
+    `bl overworldObj_testStateBit10_809DAF8` are the four cascaded sub-checks that decide the next jumptable
+    index. - `pop {pc}` confirms the function returns through the saved lr — there is no real "return
+    value" being pushed back to the caller. - Captured-call r3=0x020047cc (eS20047CC) and r1 ranging over
+    EWRAM blocks (0x12c000, 0x174000, 0x17c000, 0x184000, 0x18c000) at lr=0x0809d376 show this is reached
+    from the overworld per-frame main loop on multiple maps; lr points inside the ow per-frame scheduler,
+    not a battle/chat caller.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0809D4DC
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles2, beastsp, chips, fuzz, maps, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story8, story9, wander'
+  reproduce: 'grep -l ''^0809d4dc '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles2, beastsp, chips, fuzz, maps, menus2, menus3, story1, story2, story3, story4,
+    story5, story6, story8, story9, wander
+open_questions:
+- The semantic meaning of each jumptable index value (0x8/0xc/0x10/0x14) — names like "door-enter", "advance",
+  "skip-this-tick" are inferred from neighbouring matches and the sub_809DF28 summary; the only instruction
+  that pins them is the literal passed to owPlayer_setJumptableIndex09AndOthers_809e004.
+- The two off-table handlers at sub_809D560 / sub_809D5C4 are still unnamed; their roles (presumably "turn
+  to face NPC vs keep walking") would settle the interact jumptable semantics.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 742e7bfe
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_809D4DC -> owPlayer_tickPerFrame_809D4DC
+  where: bn6f 57429803
+  tool: tools/rename_symbol.py

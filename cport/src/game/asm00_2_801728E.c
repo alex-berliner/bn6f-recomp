@@ -1789,7 +1789,7 @@ static inline call_battle_buffTwoStatsPlus2OnEventF6_801A720_result call_battle_
 }
 
 typedef struct { u32 r5, r7, r8, r9, r10, r11, r12; } call_sub_80139F6_result;
-/* register form: generated wrapper: sub_80139F6 has no typed C interface yet */
+/* register form: generated wrapper: battleObject_applyStatusEffectOnTurnEnd_80139F6 has no typed C interface yet */
 static inline call_sub_80139F6_result call_sub_80139F6(u32 r5, u32 r6, u32 r7, u32 r8, u32 r9, u32 r11, u32 r12) {
     R5 = r5;
     R6 = r6;
@@ -1798,7 +1798,7 @@ static inline call_sub_80139F6_result call_sub_80139F6(u32 r5, u32 r6, u32 r7, u
     R9 = r9;
     R11 = r11;
     R12 = r12;
-    GUEST_CALL(sub_80139F6);
+    GUEST_CALL(battleObject_applyStatusEffectOnTurnEnd_80139F6);
     return (call_sub_80139F6_result){ R5, R7, R8, R9, R10, R11, R12 };
 }
 
@@ -1875,10 +1875,10 @@ static inline void call_battle_runObjectAI_80143FC(u32 r5) {
 }
 
 typedef struct { u32 r2; } call_sub_80142DC_result;
-/* register form: generated wrapper: sub_80142DC has no typed C interface yet */
+/* register form: generated wrapper: battleObject_checkAngerTrigger_80142DC has no typed C interface yet */
 static inline call_sub_80142DC_result call_sub_80142DC(u32 r5) {
     R5 = r5;
-    GUEST_CALL(sub_80142DC);
+    GUEST_CALL(battleObject_checkAngerTrigger_80142DC);
     return (call_sub_80142DC_result){ R2 };
 }
 

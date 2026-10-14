@@ -1,0 +1,66 @@
+name: sound_stopAllChannelsInBank_814E4DC
+address: '0x0814E4DC'
+kind: function
+previous_names:
+- sub_814E4DC
+status: probable
+summary: Stops all currently-playing sound channels in the sound bank when bit 0x80 of its flags is set
+interface: '(r0 = ignored, r1 = sound bank struct ptr) -> r0 = saved LR (tail-call-style return); side
+  effects: clears each channel''s state, calls m4a_mplay_trackEndJumpStub per channel'
+details: "r1 holds a pointer to a sound-bank-like struct. Reads the byte at offset 0 (r1->Unk_00) and\
+  \ tests bit 0x80 (\"enable/stop all\" flag). If the bit is clear the function early-exits (only restores\
+  \ lr and bx's).\n  If set, it loads the head of a singly-linked list of channels at offset 0x20 (r5\
+  \ = r1, r4 = *(r1+0x20)). Iterates while r4 != NULL:\n    - reads channel byte at +0; if 0, skips the\
+  \ per-channel cleanup (just zeroes +0x2c)\n    - reads channel+1 and masks with 7; if non-zero (channel\
+  \ is active/owned) it pulls byte_3007FF0, dereferences it twice (gMPlayTable or equivalent), then jumps\
+  \ into m4a_mplay_trackEndJumpStub_814E4CC passing the channel's +0x2c pointer\n    - stores 0 into channel+0\
+  \ and channel+0x2c\n    - then walks the channel's \"next\" pointer at +0x34: if it points back to the\
+  \ current channel it zeroes +0x34; otherwise follows +0x34 as the next entry. Stops when the list drains.\n\
+  \  Finally writes the (now-NULL) tail pointer back to r1+0x20.\n  The exit r0 = original saved lr (0x0814f213\
+  \ in the snapshots) confirms this is a \"pop {r0}; bx r0\" tail return pattern; the function returns\
+  \ control to the caller of its caller.\n  Channel shape seen: byte flags at +0, sub-state bits 0..2\
+  \ at +1, ptr at +0x2c (likely a track/voice struct), next ptr at +0x34.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r1, [r5]; tst r0,#0x80; beq loc_814E51E` — gates whole routine on bit 0x80 of bank
+    byte 0 - `ldr r4, [r5,#0x20]` — bank holds head of channel list at +0x20 - `ldrb r0,[r4]; cmp r0,#0`
+    — channel+0 must be non-zero before doing the "track end" call - `ldrb r0,[r4,#1]; and r0,#7` — low
+    3 bits of channel+1 gate the call (presumably "playing" sub-state) - `ldr r3,off_814E524 == byte_3007FF0;
+    ldr r3,[r3]; ldr r3,[r3,#0x2c]; bl sub_814E4CC` — pulls a global (m4a-related) and passes its +0x2c
+    into m4a_mplay_trackEndJumpStub_814E4CC - `strb r6,[r4]; str r6,[r4,#0x2c]` — zeros channel byte+ptr
+    after teardown - `ldr r0,[r4,#0x34]; cmp r0,r4; bne loc_814E516` — channels form a list via +0x34;
+    self-loop is treated as end and writes NULL - exit snapshots all show r0=0x0814f213 matching the saved
+    LR and Z flag set from the final `str r4,[r5,#0x20]` (`str` to zero clears Z; consistent) - callers
+    are the sound/track subsystem (sound_814F104, sub_814F1E8, sub_814F228), reinforcing the "stop bank"
+    interpretation'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0814E4DC
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story1, story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^0814e4dc '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander
+open_questions:
+- The exact identity of the byte_3007FF0 global and the channel struct (offsets 0,1,0x2c,0x34) — they
+  look like libmm4a's CChannel struct but the project doesn't publish that header. Settled by identifying
+  m4a's RAM globals.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 742e7bfe
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_814E4DC -> sound_stopAllChannelsInBank_814E4DC
+  where: bn6f 57429803
+  tool: tools/rename_symbol.py

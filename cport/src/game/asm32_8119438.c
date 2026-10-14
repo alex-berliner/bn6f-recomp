@@ -3241,7 +3241,7 @@ Next install_object_state_handler_811CA1C(void) {
  * and refresh the object's sprite.
  *
  * Jump table at 0x0811CAC4 (7 × 4-byte entries, thumb-bit set):
- *   0: sub_811CAEC
+ *   0: battleObject_runFloatingAnim_811CAEC
  *   4: timerCountdown_step_811CBA0
  *   8: battle_matchTrackedSpriteAndShrink_811CBD0
  *  12: sub_811CC02
@@ -3259,14 +3259,14 @@ Next sub_811CA94(void) {
         state_offset = LD16(R0);
 
         switch (state_offset) {
-            case  0: GUEST_CALL(sub_811CAEC);                                            break;
+            case  0: GUEST_CALL(battleObject_runFloatingAnim_811CAEC);                                            break;
             case  4: GUEST_CALL(timerCountdown_step_811CBA0);                            break;
             case  8: GUEST_CALL(battle_matchTrackedSpriteAndShrink_811CBD0);             break;
             case 12: GUEST_CALL(sub_811CC02);                                            break;
             case 16: GUEST_CALL(battle_initObjectSpriteAndStartAnimation_811CC0C);       break;
             case 20: GUEST_CALL(sub_811CC26);                                            break;
             case 24: GUEST_CALL(sub_811CC3A);                                            break;
-            default: GUEST_CALL(sub_811CAEC);                                            break;
+            default: GUEST_CALL(battleObject_runFloatingAnim_811CAEC);                                            break;
         }
     } while (!ZERO_FLAG());
 

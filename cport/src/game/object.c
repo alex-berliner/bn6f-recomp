@@ -252,13 +252,13 @@ static u32 network_invert(u32 alliance) {
     return R0;
 }
 
-/* register form: calls sub_801E792 outside this file, which has no typed C interface yet */
+/* register form: calls battle_dispatchKindEffect_801E792 outside this file, which has no typed C interface yet */
 static void chip_display_write(u32 display_type, u32 damage, u32 extra, u32 chip_idx) {
     R0 = display_type;
     R1 = damage;
     R2 = extra;
     R3 = chip_idx;
-    GUEST_CALL(sub_801E792);
+    GUEST_CALL(battle_dispatchKindEffect_801E792);
 }
 
 /* register form: calls PlaySoundEffect outside this file, which has no typed C interface yet */

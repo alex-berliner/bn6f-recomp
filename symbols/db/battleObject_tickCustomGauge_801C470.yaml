@@ -1,0 +1,67 @@
+name: battleObject_tickCustomGauge_801C470
+address: '0x0801C470'
+kind: function
+previous_names:
+- sub_801C470
+status: probable
+summary: Drives the player's custom gauge forward each frame; on hitting 0x4000 sets the battle-flags
+  custom-full bit and plays the full-gauge SFX.
+interface: '(no args; r10 = battle toolkit) -> void ; side effects: reads/writes r5+0x20/0x22, sets battle
+  flags, plays SE 0x8F'
+details: "Early-exits (no-op) when battle is paused, time-stopped, or the custom-gauge \"full\" flag (bit\
+  \ 1 of\n  battle state flags halfword at oBattleState_Unk_32) is already set. Otherwise adds the per-frame\n\
+  \  joypad-held delta in r5+0x22 (the AIData-style \"joypad held since last frame\" counter; r5 is some\n\
+  \  per-object/AI struct) into r5+0x20 (the running custom-gauge accumulator, mirroring the AIData's\n\
+  \  TotalDamageTaken slot). Clamps r5+0x20 to 0x4000 (the MMBN6 custom-gauge max). When the clamp\n \
+  \ actually fires and the battle is not in its end sequence, ORs 0x2 into the battle state flags\n  halfword\
+  \ (via battle_setFlags(2)) and triggers PlaySoundEffect(0x8F) — the classic \"custom gauge\n  full\"\
+  \ jingle. The r5 struct offset pattern (0x20 running total + 0x22 per-frame delta) matches\n  AIData's\
+  \ TotalDamageTaken (0x20) / JoypadHeld (0x22), but in context r5 is more likely a\n  battle-state sub-struct\
+  \ (chatbox or some per-player tracker) since the function also touches\n  battle_setFlags; without further\
+  \ context I'm guessing.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl battle_isPaused` / `bne locret` at 0x0801c474 short-circuits when paused (matches "no-op
+    while paused") - `bl battle_isTimeStop` / `bne locret` at 0x0801c47a short-circuits during time-stop
+    - `bl battle_getFlags` then `tst r0, #2` at 0x0801c480/0x0801c484 confirms the gauge-full bit (bit
+    1 of oBattleState_Unk_32) is the idempotence guard - `ldrh r0,[r5,#0x22]` / `ldrh r1,[r5,#0x20]` /
+    `add r0,r0,r1` / `strh r0,[r5,#0x20]` at 0x0801c48a..0x0801c492 is the per-frame accumulate - `cmp
+    r0, #0x4000` / `blt locret` then `strh r2,[r5,#0x20]` at 0x0801c498..0x0801c49c clamps the accumulator
+    to 0x4000 - `bl battle_IsBattleEnding_800A97A` / `cmp r0,#0` / `bne locret` at 0x0801c4a0..0x0801c4a6
+    skips the side-effects when battle is in its end phase - `mov r0,#2` / `bl battle_setFlags` at 0x0801c4a8
+    sets the "custom full" bit - `mov r0,#0x8f` / `bl PlaySoundEffect` at 0x0801c4ac/0x0801c4ae plays
+    SE 0x8F (the gauge-full cue) - Captured calls all show `r0=0801c471` entry and `r0=1` exit with NZ;
+    C flag is unchanged (initial exit value `--C-` matches entry), suggesting the function falls into
+    the locret path with `r0` previously loaded to 1 (the battle_getFlags return value when bit 1 was
+    already set), so this particular capture is the "already full" early-exit.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801C470
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0801c470 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9
+open_questions:
+- What r5 actually points to. The AIData offsets (0x20/0x22) match cleanly, but r5 is callee-saved here
+  and
+- the function lives next to chatbox code; the linked caller (none listed) would settle it.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 742e7bfe
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801C470 -> battleObject_tickCustomGauge_801C470
+  where: bn6f 57429803
+  tool: tools/rename_symbol.py

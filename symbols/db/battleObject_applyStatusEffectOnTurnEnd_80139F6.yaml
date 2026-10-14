@@ -1,0 +1,70 @@
+name: battleObject_applyStatusEffectOnTurnEnd_80139F6
+address: '0x080139F6'
+kind: function
+previous_names:
+- sub_80139F6
+status: probable
+summary: Applies a per-turn status/elemental effect (e.g. poison, paralyze, freeze, root, blind, soft-delete)
+  to the navi represented by `r5`'s BattleObject using the byte at `CollisionData+0xA4/0xA5`.
+interface: (r5 = BattleObject*, r10 = Toolkit*, ...caller-saved r4..r12/lr) -> void
+details: "Reads the per-turn status byte at `CollisionData+0xA4` (struct offset `oBattleObject_CollisionDataPtr\
+  \ + 0xA4`, the `InflictedBugs` field / status-effect slot). If zero, jumps to the post-handler refresh.\
+  \ Otherwise also reads `+0xA5` (damage/effect-parameter byte) and dispatches:\n  * `0x18` / `0x19` (poison-related):\
+  \ adds the param to the alliance's poison/stamina counter, capped at 7.\n  * `0x54`: read a hword counter\
+  \ from navi stats, add param.\n  * `0xFF` (transform/HUD-related): set new param 0x14, compute +4 cap,\
+  \ write to alliance stats.\n  * `0xFE` / `0xFA` / `0xF9` / `0xF5`: write fixed pairs of bytes into navi\
+  \ stats (0x12, 0x13) — counts/state by effect kind.\n  * `0xFB`: calls `sub_8014080` (bubble/invis-style\
+  \ turn ticker).\n  * `0xF8`: calls `sub_80140EE`, writes into BattleObject AIData at offset 0x34 (Anger\
+  \ = 0x100000 | r3), spawns battle text via `sub_80E08C4` (script id 0x0E), then plays SE 0x8E (Anger\
+  \ text/SFX).\n  After most branches, if the original status byte was < 0x64, calls `SetBattleNaviStatsByte_AllianceFromBattleObject`\
+  \ to store a result, then `sub_801393A` + `sub_801469C` to commit follow-on side effects, and finally\
+  \ `sub_800FF5E` to refresh the AI/Navi stats from the alliance table.\n  Lives in the per-turn end-of-turn\
+  \ pipeline alongside `sub_800FF5E`; the captured callers all use it right after damage/turn processing.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `r5` is the BattleObject (r5 is the standard "current object" reg here; callees `sub_8014080`,
+    `sub_80140EE`, `sub_801393A`, `sub_801469C` all read r5). - `ldr r4, [r5,#oBattleObject_CollisionDataPtr]`
+    plus the `0xA4`/`0xA5` byte reads target `CollisionData+0xA4` which the struct labels `InflictedBugs`
+    (a per-turn status byte by convention). - Callee `GetBattleNaviStatsByte_AllianceFromBattleObject`
+    is invoked on a per-effect basis to fetch counter values to mutate, matching a "decrement counters
+    / apply effect" pattern. - The `0xF8` branch''s `dword_8013CB0 = 0x100000` ORed into r3 of the AIData
+    write (`r5 + 0x34` = `AIData.Anger` per the AIData struct, loc=0x34) and SE 0x8E play match the in-game
+    "Anger Up!" feedback. - Final `bl sub_800FF5E` is the AI/Navi-stats refresh that the callee summary
+    describes as "Refreshes the battling Navi''s AI data block ... from the alliance''s navi-stats table
+    each turn/setup." - Captured call sites have `lr=0801acbb` (the looped caller `sub_801AC6C`), typical
+    of a per-frame/per-turn battle tick, with `r3=02034080` (a BattleObject pointer) and `r0=ff` exit
+    meaning nothing is returned to the caller (void). - Switch table keys 0x18/0x19/0x54/0xF5/0xF8/0xF9/0xFA/0xFB/0xFE/0xFF
+    cover the classic navi status ailments; 0x64 is the threshold above which the post-effect side write
+    is skipped.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080139F6
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^080139f6 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9
+open_questions:
+- Exact meaning of each switch value (which ailment vs which counter is incremented). The 0x18/0x19 pair,
+  the 0xFF (0x14) reparam branch, and 0xF8 "Anger" branch can be confirmed with data tables; the others
+  (0x54, 0xF5/F9/FA/FE) would need either navi-stats field labels or runtime traces.
+- Whether `sub_801393A` / `sub_801469C` are generic "decrement bug timers" or ailment-specific follow-ups.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 742e7bfe
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80139F6 -> battleObject_applyStatusEffectOnTurnEnd_80139F6
+  where: bn6f 57429803
+  tool: tools/rename_symbol.py

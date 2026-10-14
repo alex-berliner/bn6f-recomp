@@ -1,0 +1,74 @@
+name: battleObject_syncSpriteFromRelatedObject_80B8932
+address: '0x080B8932'
+kind: function
+previous_names:
+- sub_80B8932
+status: probable
+summary: Syncs the battle object's sprite state from its RelatedObject1Ptr (copy pose/sprite-fields, palette,
+  alpha, flip) and advances its animation when not time-stopped.
+interface: (r5 = BattleObject*, r10 = Toolkit*) -> r0..r7/lr clobbered, no meaningful return to caller
+details: "- Saves r4/r6/lr. r6 holds the result of object_getFrontDirection() (the +/-1 X multiplier).\n\
+  \  - r4 = r5->RelatedObject1Ptr. Copies three words from related-object+0x34 to self->+0x34 (the Coords\
+  \ block X/Y/Z 16.16 ints — X/Y int16 + lower halves).\n  - Bumps self->Y16 and self->Z16 by +0x20/+0x1F\
+  \ (lifts the object slightly on Y/Z while the related object is being shown).\n  - Calls sub_80030BA(related,\
+  \ 1) and uses its 16.16 return (r0:r1) as a (dx, dy) delta, multiplied by r6 (direction) on X; then\
+  \ adds (dx,dy) to self->X/self->Y.\n  - Merges flag bit 0x02 from related->ObjectHeader.Flags into self->ObjectHeader.Flags\
+  \ (mask ~2, OR with (related & 2)).\n  - Propagates color shader, palette, render-info-hi/spUnk_10 bit,\
+  \ mosaic/scaling, and flip state from the related object onto self, including DirectionFlip when oBattleObject_ExtraVars\
+  \ is NULL (i.e. non-T1/T4 variant).\n  - object_updateSprite is invoked only when the battle is not\
+  \ time-stopped AND self->RelatedObject1Ptr->CollisionDataPtr->ObjectFlags1 has none of the bits in 0x80110c00\
+  \ (the PAUSE_UPDATE/STOP_SPRITE_UPDATE/INVIS/INACTIVE bits).\n  - A tail call to object_freeMemory exists\
+  \ but is unreachable (falls through after `b locret_80B89DA`).\nevidence: |\n  - `ldr r4, [r5,#oBattleObject_RelatedObject1Ptr]`\
+  \ and the surrounding ldmia/stmia at +0x34 copy X/Y/Z fields.\n  - `add r0, #0x20` / `#0x1f` writes\
+  \ to oBattleObject_Y16 / oBattleObject_Z16 — offset matches Y16/Z16 fields in BattleObject.\n  - `mvn\
+  \ r2, r2 ; mov r3, #2 ; ... orr r1, r2 ; strb r1, [r5,#oObjectHeader_Flags]` shows the &2 bit-merge\
+  \ of ObjectHeader flags.\n  - The conditional branch on `cmp r0, #0 ; bne loc_80B89B4` against oBattleObject_ExtraVars\
+  \ (NULL only for oBattleObject) gates the DirectionFlip/flip copy; T1/T4 objects have ExtraVars so they\
+  \ skip.\n  - `bl object_getFlip ; bl sprite_setFlip` and `bl sprite_setAlpha` after `bl sprite_getMosaicScalingParameters`\
+  \ show the per-frame sprite-state propagation.\n  - `bl battle_isTimeStop ; bne locret_80B89DA` short-circuits\
+  \ object_updateSprite during time-stop.\n  - The AND mask `dword_80B8A14 = 0x80110c00` matches bits\
+  \ 0x2 = OBJECT_FLAGS_INVIS, 0x4 = OBJECT_FLAGS_UNK_4, 0x100 = OBJECT_FLAGS_DEAD, 0x80000 = OBJECT_FLAGS_MOVE_COMPLETE\
+  \ etc. — used to skip the update when paused/dead/invis/etc.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r4, [r5,#oBattleObject_RelatedObject1Ptr]` and the surrounding ldmia/stmia at +0x34
+    copy X/Y/Z fields. - `add r0, #0x20` / `#0x1f` writes to oBattleObject_Y16 / oBattleObject_Z16 — offset
+    matches Y16/Z16 fields in BattleObject. - `mvn r2, r2 ; mov r3, #2 ; ... orr r1, r2 ; strb r1, [r5,#oObjectHeader_Flags]`
+    shows the &2 bit-merge of ObjectHeader flags. - The conditional branch on `cmp r0, #0 ; bne loc_80B89B4`
+    against oBattleObject_ExtraVars (NULL only for oBattleObject) gates the DirectionFlip/flip copy; T1/T4
+    objects have ExtraVars so they skip. - `bl object_getFlip ; bl sprite_setFlip` and `bl sprite_setAlpha`
+    after `bl sprite_getMosaicScalingParameters` show the per-frame sprite-state propagation. - `bl battle_isTimeStop
+    ; bne locret_80B89DA` short-circuits object_updateSprite during time-stop. - The AND mask `dword_80B8A14
+    = 0x80110c00` matches bits 0x2 = OBJECT_FLAGS_INVIS, 0x4 = OBJECT_FLAGS_UNK_4, 0x100 = OBJECT_FLAGS_DEAD,
+    0x80000 = OBJECT_FLAGS_MOVE_COMPLETE etc. — used to skip the update when paused/dead/invis/etc. status:
+    probable'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080B8932
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp'
+  reproduce: 'grep -l ''^080b8932 '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp
+open_questions:
+- Exact semantics of sub_80030BA's 16.16 return aren't fully visible here; the (dx,dy) consumed looks
+  like a per-frame velocity/delta from the related object.
+- Whether the unreachable `bl object_freeMemory` is dead code or a relocated tail (compiler artifact)
+  is unclear from this snippet alone.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 742e7bfe
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80B8932 -> battleObject_syncSpriteFromRelatedObject_80B8932
+  where: bn6f 57429803
+  tool: tools/rename_symbol.py

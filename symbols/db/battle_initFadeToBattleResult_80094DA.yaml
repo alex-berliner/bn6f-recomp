@@ -1,0 +1,64 @@
+name: battle_initFadeToBattleResult_80094DA
+address: '0x080094DA'
+kind: function
+previous_names:
+- sub_80094DA
+status: probable
+summary: Drives a battle-end fade-out and hands off to the post-battle state when the fade finishes.
+interface: (no input registers from caller) -> r0 = fade colour slot (1 or 4) on the first entry, nothing
+  afterwards ; sets oBattleState_Unk_03 and oBattleState_Index_00
+details: "Called every frame while the battle main loop sits in battle state Index_00 = 8 (the comment\
+  \ in the\n  source labels this as \"trigger sub_8007B80 via battle_main_8007800\").\n\n  First entry\
+  \ path (oBattleState_Unk_03 == 0): asks battle_countOpponentActorsWithNameIdInRange_800A7A6\n  whether\
+  \ any opponent actors have a NameID in [0x173, 0x17e]; if so, reads the low nibble of\n  BattleState.Unk_1f\
+  \ via battle_getStateByteNibbles_800A832 and, when that nibble is 1, picks\n  fade colour slot r0=4\
+  \ (a specific tint), otherwise falls through to the normal r0=0xc slot.\n  Calls SetScreenFade(r0, 0x10),\
+  \ stores 4 into oBattleState_Unk_03 to mark \"fade armed\" and returns.\n\n  Second entry path (oBattleState_Unk_03\
+  \ != 0): polls IsScreenFadeActive; once the fade is no\n  longer active, musicGameState_8000784 swaps\
+  \ the music state, FreeAllObjectsOfSpecifiedTypes\n  is called with r0=0x1a to tear down remaining battle\
+  \ objects, and 8 is stored into\n  oBattleState_Index_00 to switch the battle main state machine into\
+  \ the post-fade handler.\ndetails: |\n  The two constant ranges (0x173-0x17e NameIDs and the high-nibble\
+  \ check of Unk_1f) suggest the\n  early branch only triggers for a particular family of opponent actors\
+  \ (the NameIDs correspond\n  to specific Navi/virus entries).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- oBattleState_Unk_03 being tested and stored: `ldrb r0, [r5,#oBattleState_Unk_03]`, `tst r0,
+    r0`, `strb r0, [r5,#oBattleState_Unk_03]` - NameID range scan: `ldr r1, =0x173 ; ldr r2, =0x17e ;
+    bl battle_countOpponentActorsWithNameIdInRange_800A7A6` - High-nibble gate via battle_getStateByteNibbles_800A832
+    and the literal `cmp r0, #1` - Fade colour slot selection: `mov r0, #4` vs `mov r0, #0xc`, then `bl
+    SetScreenFade` with `r1 = #0x10` - Fade polling and handoff: `bl IsScreenFadeActive ; beq locret_800951C`,
+    `bl musicGameState_8000784`, `mov r0, #0x1a ; bl FreeAllObjectsOfSpecifiedTypes`, `mov r0, #8 ; str
+    r0, [r5,#oBattleState_Index_00]` - All 31 captured-call entries share the same `r1=080094db ; r2=0000ffff
+    ; r3=02036828` setup from the battle main loop, and exit with r0=1 or 4 matching the two chosen fade
+    slots'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080094DA
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^080094da '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9
+open_questions:
+- Which specific opponent NameIDs 0x173..0x17e gate the alternate fade colour, and what Unk_1f's
+- high nibble semantically represents; the comment "trigger sub_8007B80 via battle_main_8007800"
+- is from the source annotation and was not directly confirmed by this function's code.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 742e7bfe
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80094DA -> battle_initFadeToBattleResult_80094DA
+  where: bn6f 57429803
+  tool: tools/rename_symbol.py
