@@ -2172,15 +2172,15 @@ Next battleRefreshTrackedObjectArmPos_801DBD4(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_801DC06 ── */
-/* sub_801DC06(r0 = value byte, r1 = amount byte, r5 = id):
+/* ── battleObject_setCustomGaugeBarAnimate_801DC06 ── */
+/* battleObject_setCustomGaugeBarAnimate_801DC06(r0 = value byte, r1 = amount byte, r5 = id):
  * Scans the 6-slot registry at dword_20352E0 (8 bytes per slot: +0 "in use"
  * flag, +4 id word) for an active slot whose id matches r5.  On a hit, stores
  * r0 at slot+1 and r1-8 at slot+2, and returns with r0 = value, r1 = amount-8.
  * If no slot matches, returns r0 = 1.  r4/r6/r7 are preserved (pushed/popped);
  * r2 ends as the last "in use" byte read and r3 as the remaining-slot count
  * (0 when the scan ran out of slots). */
-Next sub_801DC06(void) {
+Next battleObject_setCustomGaugeBarAnimate_801DC06(void) {
     u32 value = R0;   /* byte written to slot+1 on a hit */
     u32 amount = R1;  /* slot+2 receives amount - 8 */
     u32 id = R5;      /* id being looked up */

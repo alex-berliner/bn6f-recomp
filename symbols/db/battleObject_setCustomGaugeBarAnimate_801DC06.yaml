@@ -1,0 +1,72 @@
+name: battleObject_setCustomGaugeBarAnimate_801DC06
+address: '0x0801DC06'
+kind: function
+previous_names:
+- sub_801DC06
+status: probable
+summary: Searches a small 6-entry custom-gauge animation slot table for an entry matching the caller's
+  battle-object pointer (r5) and, if found, stores the requested panel coords and panel-index byte into
+  that slot.
+interface: '(r0 = animId/u8, r1 = panelX | (panelY<<8)) -> r0 = 1 if no match found (slot scan exhausted),
+  else r0 = passed-in animId ; side effects: writes to the matched entry in the dword_20352E0 6-entry
+  slot table at +1 (anim id) and +2 (panelX-1, panelY-1)'
+details: "1. Saves (r0, r1) to the stack as scratch, loads r4 = dword_20352E0 (the 6-slot custom-gauge\n\
+  \     animation table), and uses r3 as a down counter initialised to 6.\n  2. The slot loop: ldrb r2,[r4];\
+  \ cmp r2,#0; if zero the entry is free/inactive and is skipped;\n     otherwise ldr r0,[r4,#4]; cmp\
+  \ r0,r5; if the embedded battle-object pointer equals the\n     caller's r5 (BattleObject*), this slot\
+  \ is the target.\n  3. Each iteration advances r4 by 8 and decrements r3; if r3 underflows to zero the\
+  \ function\n     returns r0 = 1 (no match) without modifying the table.\n  4. On match: restores r0\
+  \ and r1 from the stack, subtracts 8 from r1 to convert the panelY\n     word into panelX|(panelY<<8)\
+  \ (lower byte +0, upper byte +2 -> decrements panelX by 1 and\n     panelY by 1; i.e. subtracts 8 from\
+  \ the packed coord), then strb r0,[r4,#1] (anim id)\n     and strb r1,[r4,#2] (packed panel coord) into\
+  \ the slot.\n  5. Does not touch the battle object in r5; r5 is used purely as a lookup key. Return\
+  \ value on\n     match path is the original r0 (anim id), as r0 is reloaded from the stack before return.\n\
+  \  6. Captured callers all pass r0=8 and r1=0xFFFFFFD0 (=0xC8 in u8 view packed) with r5 the\n     current\
+  \ BattleObject*; the snapshot scripts show N flag set on return, consistent with\n     r0 staying 0x08\
+  \ and the final strb/return path leaving N=1.\n  7. Naming: a \"custom-gauge bar animation\" entry gets\
+  \ rebound to a new panel; consistent with\n     the AIData/BattleObject subsystem where custom-gauge\
+  \ bars track their target panel.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- asm loc_801DC12: `ldrb r2,[r4]; cmp r2,#0; beq loc_801DC1E` then `ldr r0,[r4,#4]; cmp r0,r5`
+    shows the loop scans a table for an entry whose +4 u32 equals the caller''s r5 (BattleObject*). -
+    asm `mov r3,#6` plus `add r4,#8; sub r3,#1; bne loc_801DC12` fixes the table at exactly 6 8-byte entries
+    (48 bytes), pointing at dword_20352E0. - asm loc_801DC28: `sub r1,#8; strb r0,[r4,#1]; strb r1,[r4,#2]`
+    writes a u8 anim id at +1 and a u8 panel coord at +2; subtracting 8 from the u16 packs panelX-1 and
+    panelY-1 (since 8 == 1 + 8*1). - asm `mov r0,#1; b loc_801DC32` sets the no-match return value to
+    1 (taken after r3 underflow). - All 6 captured call sites share r0=0x08, r1=0xFFFFFFD0 (packed -48
+    / 0xC8 panel offset), and r5 as BattleObject*; r0 returns 0x08 unchanged. - Caller list (sub_8014BEE
+    / sub_8014E08 / sub_8015040 / sub_80152C8 / sub_80154C8 / sub_801562C / sub_8015766 / sub_800F2C6
+    / playerObject_init_80172F0) are all in the'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801DC06
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0801dc06 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- 'Exact meaning of slot +0 byte (compared against #0) — likely an "active/anim id" or'
+- generation tag rather than a separate field; needs a wider call-site survey to confirm.
+- Whether the table at dword_20352E0 is dedicated to custom-gauge animations specifically,
+- or shared with other per-object animations; field +3,+4..+7 are unread here.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 353d80a9
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801DC06 -> battleObject_setCustomGaugeBarAnimate_801DC06
+  where: bn6f 57a30947
+  tool: tools/rename_symbol.py

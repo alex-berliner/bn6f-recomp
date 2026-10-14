@@ -1,0 +1,99 @@
+name: battleObject_dispatchCmdSpawnChild_812730C
+address: '0x0812730C'
+kind: function
+previous_names:
+- sub_812730C
+status: probable
+summary: Spawns a queued child battle-object entry from a CMD_B spawn dispatch, queueing an OAM row via
+  battleObject_queueOamFromTableRow and, when the spawned object's high-nibble cell id was 0, picking
+  a replacement cell id via a 0xFF-terminated lookup table.
+interface: '(r0 = packed spawn id (high half: command id; low half: cell table index? actually r0 carries
+  a packed value), r1 = ptr to child-cell-id array base (multiplied by r2-derived index), r2 = offset
+  into the cell table (in bytes from a base ptr in r5), r3 = offset into some "object state byte" (read/written
+  via r5 base), r4 = table row id to feed to the OAM queue, r5 = base ptr for [r2] byte read and [r3]
+  byte read/write (the battle state / actor scratch?), r6 = copied into r6? r10 = toolkit, r7 = OAM id)
+  -> r0 = the new low-nibble cell id (the packed byte at [r5+r3] recomposed as (new_hi_nibble<<4 | old_lo_nibble));
+  also NZCV, r1-r3, r5-r7, lr clobbered. Side effects: writes one byte at [r5+r3] (twice), one word at
+  [r5+r3] via strb; calls into battleObject_queueOamFromTableRow_811FAF4 and sub_8120CC8.'
+details: "- Saves r4,lr and allocates 0x1c bytes of stack; spills r1,r2,r3,r4,r6 to sp+0..0x10.\n  - `lsl\
+  \ r0,r0,#0x10` -> r0 is treated as a packed halfword; upper 16 bits will hold the command id portion,\
+  \ lower 16 the OAM-related id portion.\n  - If r3 is zero, sets r2 = 0; otherwise loads a u16 from [r5+r3]\
+  \ (`ldrh r2,[r5,r3]`) and uses it as an index.\n  - Multiplies that index by 0x10 and adds r1, producing\
+  \ `r1 = r1 + index*0x10` (the row stride inside the child cell-id table).\n  - `orr r0,r1` -> ORs the\
+  \ row pointer into the low half of r0, producing r0 = packed_word with the table row's effective address\
+  \ in the low 16 bits.\n  - Loads constant 0x20002 into r1 from dword_812736C; this constant gets fed\
+  \ to battleObject_queueOamFromTableRow_811FAF4 as the second argument.\n  - Loads the byte at [r5+r2]\
+  \ (which is the prior cell table value), stashes a copy at sp+0x14.\n  - Takes low 4 bits (`and r2,#0xf`)\
+  \ as the \"old lo nibble\", keeps the original byte in sp+0x14 for the high-nibble check.\n  - Calls\
+  \ battleObject_queueOamFromTableRow_811FAF4 with r0 = packed id, r1 = 0x20002, r2 = low nibble of [r5+r2],\
+  \ r3 = sp+0xc (which holds the saved r4 value = the table row id), r4 = sp+0x10 (= saved r6), r10 =\
+  \ toolkit, lr = return.\n  - After the call, takes r1 from sp+0x14 (= the original [r5+r3] byte from\
+  \ the start), `lsr r1,#4` then `sub r1,#1`. So r1 ends up = (hiNibble - 1).\n  - If hiNibble was 0 (i.e.\
+  \ (hiNibble-1) underflowed to all-ones => `bne` not taken), then:\n      - r1 <- r7 (the OAM id parameter\
+  \ from the caller).\n      - Calls sub_8120CC8 (which is a u8-table lookup with 0xFF terminator: `t[i]`\
+  \ or `t[0]` when `t[i]==0xFF`), and stores the resulting byte back to [r5+r2] (the same offset used\
+  \ earlier for the byte read).\n  - In the merge block: re-reads the byte at [r5+r2] (now possibly updated\
+  \ by the table lookup), masks low 4 bits, ORs in the shifted r1 (= hiNibble<<4), and strb`s the recombined\
+  \ byte back to [r5+r2]. So the final byte at [r5+r2] is `(new_lo_nibble | (hiNibble << 4))`, where `new_lo_nibble`\
+  \ is either the old low nibble (when hiNibble != 0) or the value returned by sub_8120CC8 (when hiNibble\
+  \ == 0).\n  - Returns r0 = the recomposed byte at [r5+r2] (the post-store readback of the merged byte),\
+  \ per `ldrb r0,[r5,r2]` after the merge. NZCV reflects that load.\n  - Caller battle_dispatchNextCmd_81272C4\
+  \ sits in the battle-object command dispatcher; this function handles one of the CMD_B branches (the\
+  \ \"spawn a child battle object whose cell id is taken from a small table\" branch).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {r4,lr}` + 0x1c stack frame with r1..r6 spilled (`str r1,[sp]`..`str r6,[sp,#0x10]`):
+    a private helper that needs to preserve those registers across the indirect calls. - `ldrh r2,[r5,r3]`
+    and `mul r2,#0x10` then `add r1,r1,r2`: row-stride = 0x10, classic for a small u16-indexed table of
+    16-byte entries, confirms r1 is a pointer to such a table base. - `ldr r1,dword_812736C // =0x20002`:
+    a known constant parameter for the OAM queue. - `ldrb r2,[r5,r2]` (with r2 then being r3 reused as
+    the same offset) reads the same byte as the earlier high-half read; the high half (>>4) minus 1 is
+    the discriminator that gates the table-lookup branch. - `sub r1,#1; bne loc_8127358`: the only `bne`
+    here is when (hiNibble - 1) != 0, i.e. when hiNibble != 1 AND hiNibble != 0; hiNibble == 0 produces
+    (hiNibble-1) == 0xFFFFFFFF which is non-zero, so the branch IS taken for hiNibble == 0 (i.e. when
+    (hiNibble-1) underflows). Re-reading carefully: `lsr r1,#4` then `sub r1,#1`. For hiNibble=0, (0-1)
+    = -1 = 0xFFFFFFFF != 0, so bne IS taken -- the lookup path runs only when hiNibble == 1 exactly. The
+    store path always recomposes the byte. - `bl battleObject_queueOamFromTableRow_811FAF4` is the OAM/graphics
+    queue callee, confirming the function queues an OAM sprite table row (r3 was the row id stored at
+    sp+0xc = original r4). - `bl sub_8120CC8` confirmed to be a u8 table lookup with 0xFF terminator;
+    used to translate an "OAM/cell id" via a small index table when the hiNibble condition hits. - Caller
+    battle_dispatchNextCmd_81272C4 description: "Queues the next battle-object command for the object
+    being updated, choosing between CMD_A and CMD_B based on the object''s state bytes" -> this is a CMD_B
+    sub-handler that spawns a child object. - Captured-call exit r0 values (0x50, 0x40, 0x11, 0x62, 0x52,
+    0x42) all look like packed cell bytes (lo4 | (hi4 << 4)) with various high halves -- consistent with
+    returning the merged byte. - sub_8127944 is the only other caller, suggesting this is a generic "dispatch
+    a child object cell" helper shared between the two command branches.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0812730C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp, menus3, story2'
+  reproduce: 'grep -l ''^0812730c '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp, menus3, story2
+open_questions:
+- The exact semantics of r0's packed layout (which half is the "command id" vs "OAM id") and whether the
+  0x10 stride table is the OAM row table or some object-list table.
+- Whether r2 (when non-zero) is being used as a u16 index vs an absolute offset -- the `ldrh r2,[r5,r3]`
+  could be either.
+- The role of the constant 0x20002 (looks like a flag/bitmask for the OAM queue).
+- What r7 actually contains -- the captured calls don't show it; it is presumably the OAM id used as the
+  lookup-table index when hiNibble == 1.
+- Settling these would require naming battleObject_queueOamFromTableRow_811FAF4 and inspecting sub_8127944.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 353d80a9
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_812730C -> battleObject_dispatchCmdSpawnChild_812730C
+  where: bn6f 57a30947
+  tool: tools/rename_symbol.py

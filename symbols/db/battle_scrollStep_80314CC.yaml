@@ -1,0 +1,70 @@
+name: battle_scrollStep_80314CC
+address: '0x080314CC'
+kind: function
+previous_names:
+- sub_80314CC
+status: probable
+summary: Applies a battle camera scroll step, blending a line-vs-point shake/projection check and a line-vs-wedge
+  secondary test, accumulating results into r12.
+interface: '(r0 = BattleObjectPtr, r1 = ?, r2 = ?, r5 = ?, r12 = accumulator) -> r0 = BattleObjectPtr
+  ; side effects: camera X/Y may move, r12 accumulates hit bits'
+details: "Pushes lr plus the working triple (r0, r1, r2) and r5 onto the stack so it survives the helper\
+  \ calls.\n  Calls battleObject_applyShakeOffsetAndProject_8031136 to compute some shake/projection-related\
+  \ values into r0/r1/r2.\n  Loads r2 = -1 (effectively r2 = 0xFFFFFFFF), r4 = 0x20, r3 = -1, r5 = 0,\
+  \ r6 = 0, then calls sub_8030E14 (line-vs-point hit test) returning hit coords in (r0, r1) with on-miss\
+  \ returning (0,0); r3 here encodes the direction/state flag.\n  Calls camera_moveByDelta_80310B0 with\
+  \ r1 = 0 (no additional delta) to apply accumulated camera offset.\n  ORs the low bit of r3 (the hit\
+  \ flag) into r12, then compares r3 against 1; if equal, returns early (locret_803151E) — i.e. a \"no\
+  \ further scroll needed\" branch where the initial line hit already triggered the full step.\n  Otherwise\
+  \ re-pushes the saved working regs and calls battle_scrollAccumulateStep_8031176, sets r2 = 0, r4 =\
+  \ 0x20, r3 = 0x20, r5 = 0x20, r6 = 0 and tail-calls sub_8030F7C (line vs wedge test) via loc_803150A\
+  \ → loc_803150E, then camera_moveByDelta_80310B0 again with delta 0, ORs (r3 << 1) into r12 and returns.\n\
+  \  The captured r0 pointer (0x02009f5c, sizeof ~0x40) looks like a small battle/camera related state\
+  \ — the first 16 bytes (packed 16.16 fixed coords) change between snapshots consistent with camera/scroll\
+  \ accumulation.\n  Combined effect: a two-phase camera/scroll step where r12 collects bit0 from the\
+  \ line-vs-point test and bit1 from the line-vs-wedge test, used by callers to know which scroll conditions\
+  \ fired this frame.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- Entry: r0 = 0x02009f5c (small 0x40-byte camera/scroll-ish state), r12 is in the contract
+    out list but never re-initialized — caller passes an accumulator. - `bl battleObject_applyShakeOffsetAndProject_8031136`
+    performs the per-object projection/shake offset (callee''s summary). - `sub r2, #1` then `mov r4,
+    #0x20`, `sub r3, #1` prepare the (r2=−1, r3=−1, r4=0x20) signature passed to sub_8030E14 — consistent
+    with its line-vs-point contract (in contains r2/r3/r4/r5/r6). - `mov r1, #0` then `bl camera_moveByDelta_80310B0`
+    — applies an extra (zero) delta to the camera each pass, per its summary. - `cmp r3, #1` / `beq locret_803151E`
+    short-circuits when the first hit-test returned its "fully done" sentinel. - The second branch sets
+    r2=0, r4=0x20, r3=0x20, r5=0x20, r6=0 for sub_8030F7C (its in list is exactly those), then ORs `r3
+    << 1` into r12, mirroring the earlier `orr r0, r1` (r3 low bit) — distinct bits for each test result.
+    - `pop {pc}` at locret_803151E — function returns to its original lr (callers handle r12 as the result
+    accumulator; r0 is preserved across both early-return paths via push/pop of {r0-r2, r5}).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080314CC
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, beastsp, chips, fuzz, maps, story1, story2, story3, story4,
+    story5, story6, story8, story9, wander'
+  reproduce: 'grep -l ''^080314cc '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, beastsp, chips, fuzz, maps, story1, story2, story3, story4, story5, story6,
+    story8, story9, wander
+open_questions:
+- The exact meaning of r12's accumulated bits (probably scroll-trigger flags consumed by the caller),
+  and what value of r3 == 1 means in sub_8030E14's return convention — settling this needs reading the
+  caller's consumption of r12 and sub_8030E14's hit-test body.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 353d80a9
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80314CC -> battle_scrollStep_80314CC
+  where: bn6f 57a30947
+  tool: tools/rename_symbol.py

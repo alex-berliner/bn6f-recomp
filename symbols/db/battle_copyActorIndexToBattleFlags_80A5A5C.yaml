@@ -1,0 +1,53 @@
+name: battle_copyActorIndexToBattleFlags_80A5A5C
+address: '0x080A5A5C'
+kind: function
+previous_names:
+- sub_80A5A5C
+status: probable
+summary: Copies the actor's BButton (CurAction) byte from the AIData struct into a battle-side flag buffer.
+interface: '(r5 = AIDataPtr) -> void ; side effect: writes one byte to 0x2000EC0'
+details: "Loads the address of byte_2000EC0 (in EWRAM) into r1, reads the byte at\n  [r5 + #0x9] into\
+  \ r0, stores it at [r1], then returns via `pop {pc}` (a Thumb\n  tail-call style epilogue). The offset\
+  \ 0x9 on the AIData struct corresponds\n  to `CurAction`; the destination byte sits in EWRAM at 0x02000EC0,\
+  \ which is\n  inside the BattleObject/AIData helper region. The function is called from\n  sub_80A5828\
+  \ with r5 = AIDataPtr (per the contract), suggesting it is part\n  of the beast-SP / navi-custom-gauntlet\
+  \ AI dispatch and forwards the\n  selected \"BButton\" action index into a shared buffer that the per-actor\n\
+  \  script interpreter reads.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0, [r5, #9]` reads AIData+9 (CurAction per AIData struct definition). - `ldr r1, off_80A5A68`
+    resolves to byte_2000EC0 in EWRAM (0x02000EC0). - `strb r0, [r1]` writes that byte into the buffer
+    at 0x2000EC0. - `push {lr}` / `pop {pc}` is a Thumb leaf-return idiom consistent with a void helper.
+    - The captured calls all share `lr=080a5883`, i.e. this routine is invoked from the same site in sub_80A5828
+    every time the captured battle fires, which is consistent with a per-update hook that re-broadcasts
+    the current CurAction.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080A5A5C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp, maps'
+  reproduce: 'grep -l ''^080a5a5c '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp, maps
+open_questions:
+- What byte_2000EC0 actually represents (it sits inside the larger EWRAM block used by
+- BattleObject helpers, but no struct currently names offset 0xEC0). Settling it would
+- require looking at every other reader of byte_2000EC0 in the ROM, or a named label in
+- the matching bn6f symbols file.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 353d80a9
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80A5A5C -> battle_copyActorIndexToBattleFlags_80A5A5C
+  where: bn6f 57a30947
+  tool: tools/rename_symbol.py

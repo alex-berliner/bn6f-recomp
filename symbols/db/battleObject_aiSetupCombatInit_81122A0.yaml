@@ -1,0 +1,81 @@
+name: battleObject_aiSetupCombatInit_81122A0
+address: '0x081122A0'
+kind: function
+previous_names:
+- sub_81122A0
+status: probable
+summary: AI combat-init dispatcher that picks the initial attack script based on the object's collision
+  flags, sets up AIState/AttackVars, and saves the spawn panel coordinates into ExtraVars.
+interface: '(void battle object in r5, AIState in r6, AIAttackVars in r7, AIData in r4, toolkit in r10)
+  -> r0 = 0 ; side effects: writes AIState.Unk_00/04/0c, AIState.Unk_08, BattleObject.ExtraVars[0..0xf],
+  AIAttackVars.Unk_10/18/28/2c, and the object''s Param1'
+details: "1. Reads the object's collision ObjectFlags1 via object_getFlag and tests bit mask 0xa000 (OBJECT_FLAGS_FROZEN|OBJECT_FLAGS_BUBBLED\
+  \ | OBJECT_FLAGS_PARALYZED); if set, jumps into the \"frozen/bubbled\" branch (loads script byte_811223C,\
+  \ sets AIState.Unk_04=1, AIAttackVars.Unk_10=0x3c, then sets attack id 9 and exits via loc_811233A).\n\
+  \  2. Otherwise calls sub_81123EC to test whether the enemy is \"ready to be attacked\"; if it returns\
+  \ 0, takes the \"engage\" branch: loads script byte_8112224, AIState.Unk_04=4, calls sub_8112648, then\
+  \ indexes a per-version table (byte_8112260) by AIData.Version_16 to pick AIAttackVars.Unk_10 before\
+  \ setting attack id 9 and saving panel coords.\n  3. If sub_81123EC returns non-zero (target not yet\
+  \ engageable), calls sub_8112630 then sub_81124D4; on r0==0 (special case), writes AIAttackVars.Unk_18=0x12,\
+  \ AIAttackVars.Unk_28= sub_81123EC+1, then sub_8112666 (action notify).\n  4. Otherwise increments the\
+  \ AIState Unk_16 timer; once it reaches 0x3c (60 frames), it uses FindBattleActorsWithNonzeroParam_ReturnCountAndSum\
+  \ with IDs 0x6c,0x79,0x7e to look for a free enemy slot. If none, sets ExtraVars+0xc=1 (queued-attack\
+  \ flag), AIAttackVars.Unk_18=5, then resolves the closest opposite-alliance battle object with sub_80103F8\
+  \ (r0=Alliance^1) and stores the pointer at AIAttackVars.Unk_2c, sets AIAttackVars.Unk_28= sub_81124F2+1,\
+  \ notifies via sub_8112666, and bumps AIState.Unk_00 to 8 (move-to-target phase).\n  5. In every \"\
+  fall-through\" tail (loc_811233A) it clears AIState.Unk_08 and returns 0.\n\n  The structure offsets\
+  \ are clearly visible: r4 = oAIData, r5 = oBattleObject, r6 = oAIState, r7 = oAIAttackVars (the convention\
+  \ used by every other AI script around 0x08112xxx). Saving PanelX/PanelY into ExtraVars+0/4 is the \"\
+  remember spawn panel\" idiom used by AI scripts to compute Manhattan walks later.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- register contract r4=AIData, r5=battle object, r6=AIState, r7=AIAttackVars, r10=toolkit matches
+    the standard AI script ABI used across sub_81123EC/81124D4/8112630/8112648/8112666. - `bl object_getFlag`
+    returns the first collision ObjectFlags1 word (per the confirmed callee), then `tst r0,#0xa000` checks
+    the FROZEN|BUBBLED|PARALYZED combination (0x8000|0x1000|0x0800 = 0xa000). - `strb r0,[r6,#oAIState_Unk_04]`
+    and `strb r0,[r6,#oAIState_Unk_00]` (offsets 0x04, 0x00) show the AIState phase/sub-phase updates.
+    - `strh r0,[r7,#oAIAttackVars_Unk_10]` writes the attack-script index chosen from the per-version
+    table `byte_8112260` indexed by `AIData.Version_16`. - `mov r0,#9; bl object_setAttack0` sets the
+    attack id to 9 (the sword swing) on the engagement branches. - `ldrb r0,[r5,#oBattleObject_PanelX];
+    str r0,[r5,#oBattleObject_ExtraVars]; ldrb r1,[r5,#oBattleObject_PanelY]; str r1,[r5,#oBattleObject_ExtraVars+4]`
+    literally stores PanelX/PanelY into the first 8 bytes of ExtraVars. - `bl FindBattleActorsWithNonzeroParam_ReturnCountAndSum`
+    with `0x6c,0x79,0x7e` enumerates actors of those IDs and returns count; used to test whether any of
+    those actor types are alive. - `mov r0,#1; str r0,[r5,#oBattleObject_ExtraVars+0xc]` is the "queued
+    attack" flag at offset 0xc in ExtraVars. - `ldrb r0,[r5,#oBattleObject_Alliance]; mov r1,#1; eor r0,r1;
+    bl sub_80103F8` flips alliance and asks the "find closest opposite-ally battle object" helper, storing
+    the pointer at `oAIAttackVars_Unk_2c`. - `mov r0,#8; strb r0,[r6,#oAIState_Unk_00]` advances Unk_00
+    from 4 to 8 (move-to-target phase). - the `pop {pc}` (thumb tail) shows it returns 0 to the caller
+    (r0 was set to 0 at loc_811233A on the fall-through path; otherwise the flag-sensitive branches set
+    r0 to 0/1 implicitly via tst/cmp).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x081122A0
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp'
+  reproduce: 'grep -l ''^081122a0 '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp
+open_questions:
+- the exact identity of the per-version table byte_8112260 (chip/code script?) and the meaning of byte_8112224/byte_811223C
+  (the script blobs) - these would settle whether the "engage" branch is a real "strike now" path vs.
+  a "wait/approach" path.
+- 'the meaning of sub_81123EC/sub_81124D4/sub_8112630/sub_8112648/sub_8112666: their contracts say "in
+  r5,lr out r0" so they almost certainly consult the same battle object in r5; the names "engageable",
+  "tickTimer", "setupCombat", "notifyAction" are inferred from how this function uses their return values.'
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 353d80a9
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_81122A0 -> battleObject_aiSetupCombatInit_81122A0
+  where: bn6f 57a30947
+  tool: tools/rename_symbol.py

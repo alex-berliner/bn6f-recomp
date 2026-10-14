@@ -1,0 +1,72 @@
+name: battleObject_initSpriteAndCollision_8011504
+address: '0x08011504'
+kind: function
+previous_names:
+- sub_8011504
+status: probable
+summary: Loads a battle object's sprite/animation, sets its shadow flag, installs a collision-data slot,
+  configures collision data and horizontal flip, returning 1 on success.
+interface: '(r0 = packed sprite/anim/shadow params, r1 = packed collision-init params, r5 = BattleObject*,
+  r10 = Toolkit*) -> r0 = 1 on success, 0 if no collision slot was free ; side effects: writes CurAnim/CurAnimCopy
+  on the object, allocates/links a CollisionData block, populates it, sets sprite flip bits.'
+details: "Decodes four byte fields out of the two packed r0/r1 inputs by shifting+lsr:\n  - r0 bits 23..16\
+  \ -> sprite id passed to sprite_load (constant 0x80 as second arg),\n  - r0 bits 31..24 -> shadow toggle\
+  \ (bit 0x80 of the post-shift byte; `tst r0,r0; beq` picks sprite_noShadow vs sprite_hasShadow),\n \
+  \ - r0 bits 15..8  -> initial CurAnim (stored at oBattleObject_CurAnim; oBattleObject_CurAnimCopy is\
+  \ forced to 0xFF).\n  - r1 bits 23..16 / 15..8 / 7..0 feed object_setupCollisionData's three collision-init\
+  \ bytes.\n  After allocating a CollisionData slot via object_createCollisionData, if it returns 0 (no\
+  \ free slot) the function pops with r0=0; otherwise it tail-completes with object_setupCollisionData,\
+  \ reads the object's effective facing via object_getFlip, applies sprite_setFlip, and pops with r0=1.\
+  \ Always uses r5 as the BattleObject* (typical r5 is the toolkit/this-object convention) and r10 as\
+  \ the Toolkit; r6/r7 just cache the two packed input words. r0=0x80 forced second argument to sprite_load\
+  \ is the \"placeholder when not found\" branch handle described by sprite_load.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- asm: `mov r6,r0` / `mov r7,r1` then `lsl r1,r6,#0x10; lsr r1,r1,#0x18` and `lsl r2,r6,#0x18;
+    lsr r2,r2,#0x18` are the two bytes fed into sprite_load, with r0 hard-coded to 0x80 (`mov r0,#0x80`).
+    - asm: `lsr r0,r6,#0x18; tst r0,r0; beq loc_8011528` selects between sprite_hasShadow (r0 high byte
+    nonzero) and sprite_noShadow (zero), matching the shadow-bit decode. - asm: `lsl r0,r6,#8; lsr r0,r0,#0x18;
+    strb r0,[r5,#oBattleObject_CurAnim]` then `mov r0,#0xff; strb r0,[r5,#oBattleObject_CurAnimCopy]`
+    initialize the animation fields of the BattleObject in r5. - asm: `bl object_createCollisionData`;
+    `tst r0,r0; bne loc_8011540` then `pop {r6,r7,pc}` (early r0=0 exit when no slot) shows allocation
+    is the gate for success. - asm: `lsr r1,r7,#0x18; lsl r2,r7,#8; lsr r2,r2,#0x18; lsl r3,r7,#0x10;
+    lsr r3,r3,#0x18; bl object_setupCollisionData` repacks three r7 bytes into r1/r2/r3 exactly matching
+    that callee''s documented (r0,r1,r2,r3) signature. - asm: final `bl object_getFlip` → `bl sprite_setFlip`
+    then `mov r0,#1; pop {r6,r7,pc}` is the success path. - The one captured call from snap_story2_0.bin
+    comes from lr=0x080da847 (in/around battle_initObject_80DA834), entry r0=0x0100100c and r1=0x0e0f0300
+    decode to: high byte 0x01 -> shadow yes, sprite id 0x00, anim 0x10 (oBattleObject_CurAnim=0x10), and
+    r1 high/mid/low bytes 0x0e/0x0f/0x03 -> the three collision-init params, exit r0=1 confirms successful
+    collision allocation. - Callers all look like BattleObject init entry points (`battle_initObject_80DA834`,
+    `airspinObject_init_80D8908`, `riskyHoneyObject_init_80D30F4`, etc.) where r5 holds the new object
+    pointer.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08011504
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp, chips, fuzz, menus3, story2, story6, story9'
+  reproduce: 'grep -l ''^08011504 '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp, chips, fuzz, menus3, story2, story6, story9
+open_questions:
+- The exact semantics of the low byte 0x80 passed to sprite_load (placeholder ID vs. robot sprite id)
+  and which nibble of r1 ends up in which of r1/r2/r3 of object_setupCollisionData (the three bytes are
+  extracted, but the order/role of each within setupCollisionData is hidden inside that callee). Whether
+  the shadow-bit decode is `!=0` or specifically `bit7` cannot be told from `tst r0,r0` alone; observation
+  of more callers' r0 high bytes vs. shadow usage would settle it.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 353d80a9
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8011504 -> battleObject_initSpriteAndCollision_8011504
+  where: bn6f 57a30947
+  tool: tools/rename_symbol.py

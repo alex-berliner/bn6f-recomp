@@ -1,0 +1,67 @@
+name: chatbox_renderGlyph_8127580
+address: '0x08127580'
+kind: function
+previous_names:
+- sub_8127580
+status: probable
+summary: Renders one glyph chunk into the chatbox/text tile area at a given palette offset.
+interface: '(r0 = glyphIndex, r1 = paletteOffset, r2 = VRAM tile dest, r3 = toolkit text renderer state,
+  r4..r7/r10/lr = toolkit live) -> r0 = 0xB or 0x4 (sub-renderer return) ; side effect: text-gfx base
+  ptr published via renderTextGfx_8045F8C, plus tile write into r2+r1/r0 region'
+details: "Tiny thunk that just rearranges the five caller-supplied arguments and tail-calls\n  renderTextGfx_8045F8C:\n\
+  \    r0 -> r3, r1 -> r7 (used later as palette offset addition), r2 -> r3, r3 -> r0, r4 -> r2.\n  It\
+  \ also fixes up two callee-saved regs to constants before the call: r5 = 0xB\n  (renderer \"render this\
+  \ many cells of one chunk\" constant used inside renderTextGfx_8045F8C)\n  and r4 becomes r4 + paletteOffset\
+  \ so that the destination pointer is offset by the\n  paletteOffset, and r7 becomes r0 (new r3, the\
+  \ toolkit text-renderer state) added to that\n  paletteOffset for the base. r6 is loaded from `dword_86A5D60`\
+  \ (the toolkit's static text-gfx\n  pointer / \"publish base pointer into the toolkit text-renderer\
+  \ state\" step). The function\n  returns whatever renderTextGfx_8045F8C returns; callers ignore it (it\
+  \ is `void`-like from\n  the caller's perspective). Captured calls return 0xB (BG-slot 8/9 chip render\
+  \ caller)\n  or 0x4 (textbox print caller, where the per-character renderer inside the chunk\n  count\
+  \ returns 4 = \"no more chars\").\n  Used both by battle_renderChipSlots_81275C8 (chip slot render,\
+  \ three calls with palette\n  offsets 0x000 / 0x400 / 0x800, r0 = glyph index, r2 = 0x06009000 BG tile\
+  \ dest) and by\n  sub_8127718 / sub_8127788 (chatbox per-glyph render during text streaming, r2 typically\n\
+  \  0x0600A000 tile dest).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {r4-r7,lr}` / `pop {r4-r7,pc}` at 0x08127582 and 0x0812759C: function only preserves
+    r4-r7, no locals. - `ldr r6, off_81275A0 // =dword_86A5D60` at 0x08127584: loads the toolkit text-gfx
+    base pointer required by renderTextGfx_8045F8C. - `mov r4, #0xb` / `mov r5, #2` at 0x08127594: hard-coded
+    render-loop constants used by the sub-renderer; 0xB matches the value returned in two of the captured
+    calls. - Argument shuffle `mov r7, r1 / mov r1, r0 / mov r0, r3 / mov r3, r2 / mov r2, r4` at 0x08127586..0x08127590
+    plus `add r2, r2, r7 / add r3, r3, r7` shows the function offsets the toolkit text-renderer base and
+    the destination by the paletteOffset (r1) and forwards to renderTextGfx_8045F8C. - Sole callee is
+    `renderTextGfx_8045F8C`, and that function''s summary says it publishes a text-graphics base pointer
+    and hands off to the renderer at sub_3006B94, which matches both chatbox tile streaming and BG chip-slot
+    glyph rendering. - Captured `exit r0=0xB` from snap_story2_0/1 (BG chip-slot render caller with palette
+    offsets 0x000/0x400) and `exit r0=0x4` from snap_story2_10..13 (chatbox streaming caller) are exactly
+    the constants renderTextGfx_8045F8C returns.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08127580
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp, menus3, story2'
+  reproduce: 'grep -l ''^08127580 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp, menus3, story2
+open_questions:
+- Whether the constant in r4 (`r4 + paletteOffset`) really is meant to be the per-call destination offset
+  rather than a separate text-renderer slot id; reading the body of renderTextGfx_8045F8C would settle
+  what arguments 2/3 actually mean.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 353d80a9
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8127580 -> chatbox_renderGlyph_8127580
+  where: bn6f 57a30947
+  tool: tools/rename_symbol.py

@@ -4,31 +4,29 @@ kind: function
 previous_names:
 - sub_80E16CC
 status: probable
-summary: Decides a target panel (high byte = direction, low byte = column) for a battle object's step/move
-  toward a chosen enemy/ally.
-interface: (r0 = actorType, r1 = battleObject ptr, r2 = unknown) -> r0 = result of sub_80E1704 ; side
-  effects (BattleObject->PanelX read/written via path constants)
-details: "Saves r4/r6/r7/lr. r6 = r1 (the BattleObject), r7 = r2.\n  Branches on r0 == 2 (ACTOR_TYPE_PLAYER\
-  \ per AIData.ActorType): packs the object's current\n  PanelX into a u16 whose high byte is PanelX and\
-  \ low byte is PanelX (`lsl r1,r4,#8; orr r4,r1`\n  gives r4 = (PanelX<<8)|PanelX), so the target column\
-  \ equals the current column.\n  Otherwise reads BattleObject.Alliance and BattleObject.DirectionFlip,\
-  \ XORs them with r0 to\n  decide which side of the field is \"behind\": if `Alliance ^ DirectionFlip\
-  \ ^ r0 == 0` the\n  target is one panel to the right of PanelX with high byte = 6 (`0x600 | (PanelX+1)`);\
-  \ else\n  one panel to the left with high byte = 1 (`((PanelX-1)<<8) | 1`).\n  Then unconditionally\
-  \ tail-calls sub_80E1704(r4, r6, r7) which actually applies the move.\n  Returns whatever sub_80E1704\
-  \ returns in r0. r4 is left as the chosen (dir<<8|column) value\n  (caller-saved by the callee-restored\
-  \ r4 in this function's contract).\n"
+summary: Decides a target panel (high byte = direction, low byte = column) for a battle object's step/move toward
+  a chosen enemy/ally.
+interface: (r0 = actorType, r1 = battleObject ptr, r2 = unknown) -> r0 = result of sub_80E1704 ; side effects (BattleObject->PanelX
+  read/written via path constants)
+details: "Saves r4/r6/r7/lr. r6 = r1 (the BattleObject), r7 = r2.\n  Branches on r0 == 2 (ACTOR_TYPE_PLAYER per\
+  \ AIData.ActorType): packs the object's current\n  PanelX into a u16 whose high byte is PanelX and low byte is\
+  \ PanelX (`lsl r1,r4,#8; orr r4,r1`\n  gives r4 = (PanelX<<8)|PanelX), so the target column equals the current\
+  \ column.\n  Otherwise reads BattleObject.Alliance and BattleObject.DirectionFlip, XORs them with r0 to\n  decide\
+  \ which side of the field is \"behind\": if `Alliance ^ DirectionFlip ^ r0 == 0` the\n  target is one panel to\
+  \ the right of PanelX with high byte = 6 (`0x600 | (PanelX+1)`); else\n  one panel to the left with high byte\
+  \ = 1 (`((PanelX-1)<<8) | 1`).\n  Then unconditionally tail-calls sub_80E1704(r4, r6, r7) which actually applies\
+  \ the move.\n  Returns whatever sub_80E1704 returns in r0. r4 is left as the chosen (dir<<8|column) value\n  (caller-saved\
+  \ by the callee-restored r4 in this function's contract).\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- `cmp r0,#2 / bne loc_80E16DE` (asm31.s:88367-88368): switch keyed on the actor-type tag.
-    - `ldrb r4,[r6,#oBattleObject_PanelX]; lsl r1,r4,#8; orr r4,r1` (88369-88371): player path packs PanelX
-    into both bytes. - `ldrb r1,[r6,#oBattleObject_Alliance]; ldrb r2,[r6,#oBattleObject_DirectionFlip];
-    eor r1,r2; eor r0,r1; bne loc_80E16F4` (88373-88378): XOR test vs Alliance/DirectionFlip to pick side.
-    - `add r4,#1; mov r1,#6; lsl r1,r1,#8; orr r4,r1` (88381-88384): forward move r4 = 0x600 | (PanelX+1).
-    - `sub r4,#1; lsl r4,r4,#8; mov r1,#1; orr r4,r1` (88387-88390): backward move r4 = ((PanelX-1)<<8)
-    | 1. - `bl sub_80E1704; pop {r4,r6,r7,pc}` (88392-88394): tail-call to the actual step applier; r0
-    returned through to caller.'
+  detail: '- `cmp r0,#2 / bne loc_80E16DE` (asm31.s:88367-88368): switch keyed on the actor-type tag. - `ldrb r4,[r6,#oBattleObject_PanelX];
+    lsl r1,r4,#8; orr r4,r1` (88369-88371): player path packs PanelX into both bytes. - `ldrb r1,[r6,#oBattleObject_Alliance];
+    ldrb r2,[r6,#oBattleObject_DirectionFlip]; eor r1,r2; eor r0,r1; bne loc_80E16F4` (88373-88378): XOR test vs
+    Alliance/DirectionFlip to pick side. - `add r4,#1; mov r1,#6; lsl r1,r1,#8; orr r4,r1` (88381-88384): forward
+    move r4 = 0x600 | (PanelX+1). - `sub r4,#1; lsl r4,r4,#8; mov r1,#1; orr r4,r1` (88387-88390): backward move
+    r4 = ((PanelX-1)<<8) | 1. - `bl sub_80E1704; pop {r4,r6,r7,pc}` (88392-88394): tail-call to the actual step
+    applier; r0 returned through to caller.'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x080E16CC
@@ -43,10 +41,10 @@ evidence:
     '
   result: beastsp
 open_questions:
-- What r2/r7 carries (likely a column mask / object reference passed straight to the callee); what the
-  high-byte constants 6 and 1 encode (probably movement direction flags the callee interprets); and whether
-  2 really means the human player or some other actor-type enumerator — settling it needs the AIIndex
-  / ActorType usage in nearby AI code and the body of sub_80E1704.
+- What r2/r7 carries (likely a column mask / object reference passed straight to the callee); what the high-byte
+  constants 6 and 1 encode (probably movement direction flags the callee interprets); and whether 2 really means
+  the human player or some other actor-type enumerator — settling it needs the AIIndex / ActorType usage in nearby
+  AI code and the body of sub_80E1704.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
@@ -58,3 +56,7 @@ changes:
   what: rename sub_80E16CC -> battleObject_computeMoveTargetPanel_80E16CC
   where: bn6f 25419b15
   tool: tools/rename_symbol.py
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 353d80a9
+  tool: tools/symdoc.py

@@ -3598,11 +3598,11 @@ static void call_set_coords_from_panels(void) {
     GUEST_CALL(object_setCoordinatesFromPanels);
 }
 
-/* register form: calls sub_8011504 outside this file, which has no typed C interface yet */
+/* register form: calls battleObject_initSpriteAndCollision_8011504 outside this file, which has no typed C interface yet */
 static u32 call_sub_8011504(u32 collision_a, u32 collision_b) {
     R0 = collision_a;
     R1 = collision_b;
-    GUEST_CALL(sub_8011504);
+    GUEST_CALL(battleObject_initSpriteAndCollision_8011504);
     return R2;
 }
 

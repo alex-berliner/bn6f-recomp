@@ -1,0 +1,75 @@
+name: battleObject_finishAndDespawn_80CE5F0
+address: '0x080CE5F0'
+kind: function
+previous_names:
+- sub_80CE5F0
+status: probable
+summary: 'Tear down the current battle object: clear its collision flags/region, optionally spawn a 0x34-byte-aligned
+  "destroy" effect from its coords, and mark its state as DESTROY.'
+interface: (r5 = battle object) -> void ; clobbers r0/r1/r4/r5/r6/r7/r10 via the callees
+details: "Entry contract has r5 holding the BattleObject pointer (per struct).\n  Steps in order:\n  1.\
+  \ Calls object_removeCollisionData to drop the collision record for this object (r4/r5/r7/r10 are callee-saved).\n\
+  \  2. Calls object_spawnCollisionEffect.\n  3. Calls battle_isBattleOver; if battle is over, branches\
+  \ to loc_80CE620 to spawn a destroy effect (see below).\n  4. Calls battle_isTimeStop; if time-stopped,\
+  \ branches to loc_80CE61A which calls object_presentCollisionData and returns (`pop {pc}`).\n  5. Otherwise\
+  \ loads r5->CollisionDataPtr->FlagsFromCollision and tests it. If non-zero, branches to loc_80CE62C\
+  \ (skip spawn-effect).\n  6. Else loads r5->CurAction into r0 and uses it to index the small jump table\
+  \ at 0x80CE644, which dispatches to sub_80CE64C (action 0) or sub_80CE690 (action 1) via `bx r1`. The\
+  \ table only lists two entries, so CurAction must be 0 or 1 here.\n  loc_80CE620 (battle-over path)\
+  \ reads three words from r5+0x34 (X, Y, Z), sets r4=0x14, and calls spawn_t1_0x0_EffectObject which\
+  \ spawns a type-4 battle object with effect type 0 using r4=0x14 (likely a particle/burst ID) at the\
+  \ object's coords.\n  loc_80CE62C is the common cleanup tail: reads r5->ObjectHeader.Flags, clears bit\
+  \ 1 (OBJECT_FLAG_VISIBLE), calls object_clearCollisionRegion to remove it from any collision region,\
+  \ sets r5->CurStateActionPhaseAndPhaseInitialized = CUR_STATE_DESTROY (0x08), and returns via `pop {pc}`.\n\
+  \  All returns are `pop {pc}` (tail-pop), matching a void function with no caller restore needed beyond\
+  \ r5/r8/r10 (the only preserved-in/out regs).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl object_removeCollisionData` first instruction after `push {lr}`. - `bl object_spawnCollisionEffect`
+    immediately follows (per callees'' contracts). - `bl battle_isBattleOver` + `tst r0,r0` + `bne loc_80CE620`
+    — only branches into destroy-effect path when battle is over. - `bl battle_isTimeStop` + `bne loc_80CE61A`
+    — when time is stopped, control falls into `bl object_presentCollisionData` then `pop {pc}`. - `ldr
+    r1, off_80CE640` then `ldrb r0,[r5,#oBattleObject_CurAction]` then `ldr r1,[r1,r0]; bx r1` — direct
+    dispatch on CurAction via the 2-entry jump table at off_80CE644 (`sub_80CE64C+1`, `sub_80CE690+1`).
+    - `ldr r0,[r5,#oBattleObject_CollisionDataPtr]` then `ldr r0,[r0,#oCollisionData_FlagsFromCollision]`
+    (offset 0x70) then `tst r0,r0` + `bne loc_80CE62C` — when no per-frame collision flags, take the per-action
+    dispatch; otherwise skip to cleanup. - loc_80CE620 reads `r5+0x34` three times via `ldmia r0!,{r1-r3}`
+    which matches BattleObject X/Y/Z block (loc=0x34..0x3f) and forwards them to `spawn_t1_0x0_EffectObject`
+    with r4=0x14. - Cleanup tail uses `ldrb r0,[r5,#oObjectHeader_Flags]; mov r1,#2; bic r0,r1; strb r0,[r5,#oObjectHeader_Flags]`
+    (clears OBJECT_FLAG_VISIBLE), then `bl object_clearCollisionRegion`, then writes `CUR_STATE_DESTROY
+    (0x08)` into CurStateActionPhaseAndPhaseInitialized. - Captured-call exit r0 = 0x02038790 (collision
+    region table base EWRAM) confirms object_clearCollisionRegion ran.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080CE5F0
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp'
+  reproduce: 'grep -l ''^080ce5f0 '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp
+open_questions:
+- What `sub_80CE64C` (CurAction==0) and `sub_80CE690` (CurAction==1) do exactly; they're presumably the
+  per-action "finish" hooks (visual/sound + despawn prep), but without disassembly of them we can't name
+  them.
+- Whether loc_80CE620's spawn effect is meant only for "battle just ended" cleanup or a generic death
+  VFX. The captured calls show both 0x2038790 (some EWRAM) and 0x2038838 as r0 on exit, suggesting two
+  distinct collision-region buffers targeted depending on path.
+- Whether the CurAction dispatch should fall through to cleanup (loc_80CE62C) after running — `bx r1`
+  doesn't tail back here, so we assume the callees either return or never return.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 353d80a9
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80CE5F0 -> battleObject_finishAndDespawn_80CE5F0
+  where: bn6f 57a30947
+  tool: tools/rename_symbol.py

@@ -1,0 +1,60 @@
+name: battle_toggleBattleScreenFadeOrSomething_80148EC
+address: '0x080148EC'
+kind: function
+previous_names:
+- sub_80148EC
+status: probable
+summary: 'Drives the post-battle intro/outro fade-out for turn-end-of-beast-sp behaviour: kicks the screen
+  fade, dispatches a large flag payload, then waits for it to finish and dispatches the next payload.'
+interface: (r5 = S20047CC*, r10 = toolkit) -> no return value ; writes S20047CC+0x1, S20047CC+0x2, S20047CC+0x3
+  and triggers SetScreenFade / dispatch_801DACC.
+details: "Reads [r5+3]; if non-zero the routine just falls through. Otherwise it picks\n  a fade colour\
+  \ based on `GetBattleMode()` (0x70 vs 0x44), calls\n  `SetScreenFade(0x70|0x44, 0x10)` to start the\
+  \ fade, dispatches `0x4000`\n  through `dispatch_801DACC`, then writes `[r5+3] = 4` to mark the fade\
+  \ as\n  in-progress. On the next call it waits for `IsScreenFadeActive()` to go\n  false, then re-evaluates\
+  \ `GetBattleMode()` and `TestBattleFlag_0x40` to\n  pick another fade colour (0xa0 / 0x90 / 0x20080),\
+  \ dispatches that as a\n  second payload through `dispatch_801DACC`, and finally sets `[r5+1] = 4`\n\
+  \  and `[r5+2] = 0`. The two `.word` constants (`0x4000`, `0x20080`) sit\n  near the call site at `dword_8014940`.\n\
+  \  r5 is the `S20047CC` block; +1/+2/+3 control the small state machine that\n  the larger battle driver\
+  \ polls each tick; r10 is the toolkit so the\n  helpers have globals to read from.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0, [r5,#3]; tst r0, r0` shows the S20047CC+3 gate; `strb r0, [r5,#3]` (mov r0,#4;
+    strb) writes 4 back as the "started" sentinel. - `bl GetBattleMode; cmp r0,#1` + `mov r0,#0x70` /
+    `mov r0,#0x44` (lines around `loc_8014900`) picks the fade colour based on mode==1. - `bl SetScreenFade`
+    immediately follows with r1=0x10 to start the fade, matching the SetScreenFade contract. - `ldr r0,
+    dword_8014940 / .word 0x4000` and `bl dispatch_801DACC` queues the first payload. - After `IsScreenFadeActive`
+    returns zero, the second branch loads `0x20080` from `dword_80149EC` and again calls `dispatch_801DACC`.
+    - `[r5,#1] = 4` and `[r5,#2] = 0` writes the S20047CC+1/+2 fields that the battle driver consumes;
+    S20047CC is annotated with the call site at `080014EC`. - `TestBattleFlag_0x40` chooses between fade
+    colours `0x90` and `0x20080` even when mode!=1, so the fade path clearly also depends on battle state
+    flags.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080148EC
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^080148ec '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- What the two `dispatch_801DACC` payloads (0x4000, 0x20080, plus the battle-mode-driven `0xa0` / `0x90`)
+  actually trigger isn't visible from this routine alone; understanding the `0x4000` bitmask in `dispatch_801DACC`
+  is needed to name the phase (start-of-beast-sp vs. cleanup) precisely.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 353d80a9
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80148EC -> battle_toggleBattleScreenFadeOrSomething_80148EC
+  where: bn6f 57a30947
+  tool: tools/rename_symbol.py

@@ -1,0 +1,55 @@
+name: pet_drawBattleChipCursorOam_8127374
+address: '0x08127374'
+kind: function
+previous_names:
+- sub_8127374
+status: probable
+summary: For the PET menu cursor entity, queue one OAM entry of its battle-chip cursor sprite at its current
+  position.
+interface: (r5 = ptr to PET-menu cursor entity) -> side effects only; queues an OAM entry.
+details: "- Reads entity's word at +0x1e (cmp #4; blt early-out): cursor is only drawn once a state threshold\
+  \ is met.\n  - Loads signed bytes at +0x0d and +0x0e (PanelX/PanelY in BattleObject), subtracts them\
+  \ and shifts left by 3 to derive a pixel delta to add into the halfword at +0x32 (object Y coord 16.16\
+  \ high half).\n  - Then `lsl r0,#16; orr r1,#0x14` packs the new 16.16 coord (low 16 bits forced to\
+  \ 0x14) for the OAM submitter.\n  - Calls object_computeAndQueueOamEntry_811FA98 with the OAM tile+attr\
+  \ constant 0x20002, the entity's state at +0x1e, the joypad at +0x24, sprite size 4 and OAM slot 0x4c/0x34,\
+  \ which queues a single OAM entry for the cursor.\n  - Touches only this entity; identical captured\
+  \ arguments across 40 calls confirm it's the per-tick cursor redraw.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrh r0,[r5,#0x1e]; cmp r0,#4; blt locret_81273A6` (state gate at 0x8127378-0x812737C).
+    - `ldrsb r0,[r5,r1]; ldrsb r2,[r5,r3]` with r1=0xd, r3=0xe reads signed PanelX/PanelY (per BattleObject
+    struct). - `sub r0,r0,r2; lsl r0,#3; ldrsh r1,[r5,r2]` with r2=0x32, then `strh r0,[r5,r2]` updates
+    the Y half-coord using the panel delta. - `orr r0,r1; ldr r1,dword_81273A8` packs 0x14 into low bits
+    and supplies the OAM attribute/tile constant 0x20002. - `bl object_computeAndQueueOamEntry_811FA98`
+    with the standard OAM-submit signature. - Caller pet_menuScreenTick_8126FF0 runs each tick of the
+    PET screen; this function is hit 40 times across snapshots, consistent with per-tick redraw.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08127374
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp, menus3, story2'
+  reproduce: 'grep -l ''^08127374 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp, menus3, story2
+open_questions:
+- The exact meaning of the +0x1e threshold (>=4) and of offset +0x32 (Y16.16 high half) could be confirmed
+  by looking at the BattleObject consumer around +0x34/+0x38. The captured call samples all share identical
+  r0-r3 values, so the live-arg variation is currently unknown.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 353d80a9
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8127374 -> pet_drawBattleChipCursorOam_8127374
+  where: bn6f 57a30947
+  tool: tools/rename_symbol.py

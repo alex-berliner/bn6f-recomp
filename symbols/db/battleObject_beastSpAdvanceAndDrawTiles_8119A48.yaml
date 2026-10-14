@@ -1,0 +1,69 @@
+name: battleObject_beastSpAdvanceAndDrawTiles_8119A48
+address: '0x08119A48'
+kind: function
+previous_names:
+- sub_8119A48
+status: probable
+summary: Per-step Beast SP meter/bar advance that draws/replaces the bar's tile strip and pings SFX 0x7E
+  every 4 increments when the chatbox flag is clear.
+interface: (r5 = beastSp state ptr, r10 = toolkit) -> side effects only (modifies r5->state, copies BG
+  tiles, plays SFX)
+details: "Bumps a u16 counter at [r5+0x10] by adding 2 to it. Computes the cap as [r5+0x14] shifted left\n\
+  \  by 2. While the counter has not reached the cap, r2 is set to 0x28 (a width in tiles); no further\n\
+  \  work is done this tick and we fall through to the tile copy with r2 = 0x28.\n  Once the counter has\
+  \ met/exceeded the cap, r2 becomes the carry value (initial [r5+0x10] before\n  bumping, i.e. the post-overflow\
+  \ portion). A stride counter at [r5+0x18] is incremented and\n  every time its low 2 bits are 0 (so\
+  \ every 4 calls), if chatbox event flag 0x80 (`& eFlags2009F38`)\n  is clear (Z), SFX `SOUND_UNK_7E`\
+  \ is played.\n  Then unconditionally `CopyBackgroundTiles(j=0x12, i=0xd, tileBlock32x32=0, tile_ids=hword_8119904,\n\
+  \  j_size=0xa, i_size=2)` is called to overwrite the bar's tile strip with r2 as a height param\n  (r2\
+  \ is passed via {push r2,r5} so the called function sees a tile-block parameter).\n  Finally if [r5+0x4]\
+  \ is 0, `sub_8119AA0(0x12, 0xF, [r5+0x10]>>2)` is called to update a secondary\n  related tile strip;\
+  \ otherwise the helper is skipped. The guard at [r5+0x4] likely distinguishes\n  which side of the meter\
+  \ is being updated (player vs enemy/peak value state).\n  r5 returned with the post-increment state\
+  \ pointer; r2/r3/r10 live-on for the caller per contract.\n  The function is `void` (no return value\
+  \ pushed to caller).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r1, [r5,#0x10]; add r1, #2; str r1, [r5,#0x10]` — counter at +0x10 is incremented by
+    2 (so units are half-pixels or quarter-tiles). - `ldr r3, [r5,#0x14]; lsl r3, r3, #2; cmp r1, r3;
+    bge` — cap = +0x14<<2; loop is gated by comparison. - `ldr r4, [r5,#0x18]; add r4, #1; str r4, [r5,#0x18];
+    mov r3, #3; and r4, r3` — stride counter at +0x18, masked by 3 to fire every 4 updates. - `mov r0,
+    #0x80; bl chatbox_mask_eFlags2009F38; bne loc_8119A76; mov r0, #SOUND_UNK_7E; bl PlaySoundEffect`
+    — chatbox flag 0x80 gate then SFX 0x7E. - `mov r0, #0x12; mov r1, #0xd; mov r2, #0; ldr r3, off_8119A9C;
+    mov r4, #0xa; mov r5, #2; bl CopyBackgroundTiles` — reuses BG-tile helper to repaint tile block 0
+    starting at (0x12, 0xd), 0xa×2 tile window from tile-id table `hword_8119904`. - `ldrb r0, [r5,#0x4];
+    tst r0, r0; bne locret_8119A9A` — gate by flag at +0x4. - Final `bl sub_8119AA0` mirrors first call
+    but uses (0x12, 0xF) and `r2>>2` as third param, matching the side:cap ratio used elsewhere as a 4-tile
+    period. - Caller is `sub_81199C0` (a Beast-SP per-frame pump) and is reached via 0x081199db from the
+    beastsp snapshots; the metric name fields ("BeastOutAPwrAtk", "PwrAtkCurChargeTime", "PwrAtkState",
+    "PwrAtkButton" in AIData) point at the cross-transform SP-charge meter.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08119A48
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^08119a48 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- Layout of the r5 state record (offsets 0x4 / 0x10 / 0x14 / 0x18) and what the SOUND_UNK_7E 4-step cadence
+  represents inside the bar's animation.
+- What `sub_8119AA0` ultimately draws and which player's meter is being updated (the [r5+0x4] gate hints
+  at side 0 vs side 1).
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 353d80a9
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8119A48 -> battleObject_beastSpAdvanceAndDrawTiles_8119A48
+  where: bn6f 57a30947
+  tool: tools/rename_symbol.py

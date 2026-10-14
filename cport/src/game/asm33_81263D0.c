@@ -982,9 +982,9 @@ static void menu_anim_tick(void) {
     GUEST_CALL(battle_dispatchNextCmd_81272C4);
 }
 
-/* register form: calls sub_8127374 outside this file, which has no typed C interface yet */
+/* register form: calls pet_drawBattleChipCursorOam_8127374 outside this file, which has no typed C interface yet */
 static void menu_state_tick(void) {
-    GUEST_CALL(sub_8127374);
+    GUEST_CALL(pet_drawBattleChipCursorOam_8127374);
 }
 
 /* register form: calls IsScreenFadeActive outside this file, which has no typed C interface yet */
@@ -1224,7 +1224,7 @@ Next initTitleScreens_81270D0(void) {
 }
 
 /* ── battle_dispatchNextCmd_81272C4 ── */
-/* register form: calls sub_812730C outside this file, which has no typed C interface yet;
+/* register form: calls battleObject_dispatchCmdSpawnChild_812730C outside this file, which has no typed C interface yet;
  * preserves R4 (declared preserved output) across the callee via save/restore */
 static u32 call_sub_812730C(u32 source, u32 type, u32 param, u32 flag, u32 pool_off) {
     u32 saved_r4 = R4;
@@ -1232,7 +1232,7 @@ static u32 call_sub_812730C(u32 source, u32 type, u32 param, u32 flag, u32 pool_
     R4 = A_byte_81268FC;
     R6 = pool_off;
     R7 = A_dword_81268F8;
-    GUEST_CALL(sub_812730C);
+    GUEST_CALL(battleObject_dispatchCmdSpawnChild_812730C);
     R4 = saved_r4;
     return R0;
 }
@@ -1401,7 +1401,7 @@ Next background_drawSceneSection_81275A8(void) {
 }
 
 /* ── battle_renderChipSlots_81275C8 ── */
-/* register form: calls sub_8127580 outside this file, which has no typed C interface yet */
+/* register form: calls chatbox_renderGlyph_8127580 outside this file, which has no typed C interface yet */
 static void render_chip_slot(u32 slot_index, u32 palette_offset,
                              u32 sel_byte, u32 toolkit_addr) {
     u32 saved_r4 = R4;
@@ -1411,7 +1411,7 @@ static void render_chip_slot(u32 slot_index, u32 palette_offset,
     R2 = 0x6009000;
     R3 = A_eTextScript201BF20;
     R4 = A_unk_2018A00;
-    GUEST_CALL(sub_8127580);
+    GUEST_CALL(chatbox_renderGlyph_8127580);
     R4 = saved_r4;
 }
 
@@ -1579,9 +1579,9 @@ Next battle_buildPetNaviList_8127638(void) {
  * to print and r5+0x26 the index one past the last pending one; when they are
  * equal there is nothing to do. Otherwise up to four characters are rendered,
  * each as a 0x200-byte slice at successively higher VRAM offsets, by calling
- * sub_8127580. Characters with code >= 0x40 are first passed through
+ * chatbox_renderGlyph_8127580. Characters with code >= 0x40 are first passed through
  * sub_8127760 (extended/control character handling), which may adjust the
- * code left in r0 before it is forwarded to sub_8127580.
+ * code left in r0 before it is forwarded to chatbox_renderGlyph_8127580.
  *
  * r4-r7 are work registers here but must be restored for the caller, so their
  * entry values are saved and written back on exit. */
@@ -1607,7 +1607,7 @@ Next sub_8127718(void) {
             R2 = 0x600A000;
             R3 = A_TextScript873EA50;
             R4 = A_byte_2019A00;
-            GUEST_CALL(sub_8127580);
+            GUEST_CALL(chatbox_renderGlyph_8127580);
 
             R7 += 1;               /* advance to the next character */
             R6 += 0x200;           /* advance to the next VRAM slice */

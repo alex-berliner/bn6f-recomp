@@ -4101,7 +4101,7 @@ Next sub_80C6C14(void) {
             u32 action = LD8(R5 + oBattleObject_CurAction);
             R1 = LD32(A_off_80C6C58 + action * 4);
             if (action == 0)
-                GUEST_CALL(sub_80C6C6A);
+                GUEST_CALL(battleObject_kind0x16SnakearmStep_80C6C6A);
             else
                 GUEST_CALL(battleObject_dyingTickDespawn_80C6CBA);
 
