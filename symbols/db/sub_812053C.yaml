@@ -3,39 +3,28 @@ address: '0x0812053C'
 kind: function
 previous_names: []
 status: hypothesis
-summary: Build and queue a single OAM entry derived from a 4th field of a battle-related object (called from per-battle-object
-  sprite list code).
-interface: '(r0 = some index/kind, r1 = pointer/0x8160, r2 = packed data with 0xC bits = animation/OAM offset 0x37,
-  r3 = 0x020047CC pointer) -> r0 = 0xFF on early return, else result of sub_81205C0; side effects: queues OAM via
-  sprite_queueOamEntryThunk_802FE28'
-details: "- Saves r4-r7 and lr; copies r1 into r4 for later reuse.\n  - r3 cleared to 0 then calls sub_81205C0(r0,\
-  \ r1, r2, 0). If that returns negative (blt), the function bails out with r0 still in r0 from the call.\n  - On\
-  \ success, takes the return value in r0, masks it with 0xC0008000 (`bic r0, r1`), ORs in the byte at byte_8120564\
-  \ (= 0) — so those two ops are effectively clearing bit31|bit30|bit15 and OR'ing 0. After these the value is reformatted\
-  \ as if it were an OAM attribute word.\n  - Computes r1 = 0xC + r4 (offsets into the source buffer held in r1's\
-  \ saved copy by 12 bytes — likely the per-object OAM list pointer plus 12, i.e. the next OAM slot).\n  - Calls\
-  \ sprite_queueOamEntryThunk_802FE28(r0_attr, r1_slotptr, 0, 1) to commit the OAM.\n  - The captured calls all\
-  \ share r0=4, r1=0x8160, r2=0x00ba0037, r3=0x020047CC and exit with r0=0xFF, meaning the r0<0 path is the captured\
-  \ execution in those snapshots; the OAM-queueing path is only taken when sub_81205C0 returns >=0.\n  - sub_81205C0\
-  \ is a sibling helper here (un-analyzed) that seems to fetch/build a packed OAM word from a per-object source;\
-  \ this function then masks two reserved bits and ORs in a tile-base/affine flag (0), selects the next OAM slot\
-  \ from a saved pointer, and pushes it.\n  - r0 exits 0xFF in the captured path because the early return does not\
-  \ re-clobber r0 after the blt — but per contract, sub_81205C0 returned the 0xFF (or that is its negative value),\
-  \ so callers see 0xFF on the failure path.\n"
+summary: spawns a damage-number OAM overlay for a battle object given an effect descriptor
+interface: '(r0 = damageEffectId, r1 = oamSlot/battleObject?, r2 = packed(oamIndex|flags)|0x37, r3 = oS20047CCptr)
+  -> r0 = 0xFF ; side effects: queues OAM via sprite_queueOamEntryThunk_802FE28'
+details: "Stub. Pushes r4-r7; saves r1 in r4, zeroes r3, calls sub_81205C0 with (r0,r1,r2,r3=0).\n  If sub_81205C0\
+  \ returns negative (BLT locret), bail out. Otherwise it strips the OBJ-mode\n  attribute bits 0xC000_8000 from\
+  \ r0 and ORs in `byte_8120564` (=0), then forms a tile attribute\n  word with `0xC << (r4*4)` placed in r1 (looks\
+  \ like `add r1,r1,r4` builds a 4-bit-per-slot\n  selector; `mov r1,#0xc` → `add r1,r1,r4` → r1=0xC+r4, presumably\
+  \ the tile-count shift),\n  passing (r0, r1, r2=0, r3=1) to sprite_queueOamEntryThunk_802FE28.\n  The captured\
+  \ entry r1=0x8160, r2=0x00BA0037, and exit r0=0xFF strongly suggest this is a\n  \"spawn damage-number sprite\"\
+  \ path used in battle: r0 carries a damage/effect id (cleared to\n  0xFF for the caller), r1 a battle object pointer,\
+  \ r2 a packed OAM-attrs/shape word\n  (0xBA0037 looks like OBJ-affine/SIZE_8x32 + tile base), and r3 points at\
+  \ oS20047CC\n  (battle sub-state at 0x020047CC per captured calls).\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- `bl sub_81205C0` then `tst r0, r0; blt locret_812055E` shows sub_81205C0''s signed return gates the
-    OAM enqueue (`sub_81205C0` not yet analyzed, but its signed return controls the path). - `ldr r1, dword_8120560
-    // =0xc0008000; bic r0, r1; ldr r1, byte_8120564 // =0x0; orr r0, r1` masks the high 2 bits and bit 15 of the
-    packed OAM word, then OR''s a zero (so the visible effect is just clearing the masked bits). - `mov r1, #0xc;
-    add r1, r1, r4` adds 0xC to a saved copy of the input r1, consistent with advancing a packed OAM list pointer
-    by 3 u32s (12 bytes) per entry. - Final `bl sprite_queueOamEntryThunk_802FE28` with r2=0, r3=1 enqueues a single
-    OAM entry; the helper''s name in the dump already says it takes a u32 attr, a u16 slot ptr, an unused int, and
-    an a4. - Captured entry r1=0x8160 with r2=0x00ba0037 (low byte 0x37 = an OAM tile id-ish, upper byte 0xba carries
-    attr2 bits) and r3=0x020047CC matches a per-frame battle state pointer. - Captured r0=4 across all 40 samples
-    is consistent with a per-iteration "kind/anim offset" being the same each captured frame, but the body treats
-    it as opaque.'
+  detail: '- `mov r4,r1 ; mov r3,#0 ; bl sub_81205C0` — saves r1 (battle object?), zeros r3, defers to sub_81205C0
+    for the prep work. - `tst r0,r0 ; blt locret_812055E` — early-exit on negative result, classic success/fail
+    gate. - `ldr r1,dword_8120560 ; bic r0,r1` followed by `ldr r1,byte_8120564 ; orr r0,r1` — strips the OBJ-bank
+    bits and re-ORs a constant zero, building a clean tile-attr word for OAM. - `bl sprite_queueOamEntryThunk_802FE28`
+    — directly calls the OAM-queue helper. - Captured calls consistently r0=4, r1=0x8160, r2=0x00BA0037, r3=0x020047CC
+    (=oS20047CC), exit r0=0xFF — matches "spawn a damage-number OAM frame for an in-battle effect, return 0xFF as
+    a sentinel".'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x0812053C
@@ -50,16 +39,13 @@ evidence:
     '
   result: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus3, story4, story6, story8, story9
 open_questions:
-- The exact meaning of r0 ("kind" 4) and what the masked bits (0xC0008000) clear; sub_81205C0 is un-analyzed and
-  its return value is the only thing reformatted here.
-- Whether the "r4 = r1" copy is the OAM slot buffer base or some other context; the literal 0xC stride is the strongest
-  hint that r1 pointed at a 12-byte-per-entry OAM list.
-- Why the early return path leaves r0 = 0xFF — is that sub_81205C0's own error code being preserved (the blt doesn't
-  write r0) or did some preceding call produce it?
+- Exact meaning of r4 (likely a battle-object index into the panel/slot array, given the
+- '`#0xc + r4` shift) and what byte_8120564+dword_8120560 combine to encode.'
+- What sub_81205C0 actually computes/validates; resolving it would pinpoint the effect id.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f 87c09f6c
+  where: bn6f 03e8533e
   tool: tools/symdoc.py

@@ -2,23 +2,29 @@ name: sub_814E0B4
 address: '0x0814E0B4'
 kind: function
 previous_names: []
-status: hypothesis
-summary: 'Trivial thunk: reads a byte from an AIData pointer (Pet) into r3 as a setup for the next call.'
-interface: '(r0 = ?, r1 = ?, r2 = AIData* pet, r3 = ?) -> r0 unchanged, r3 = AIData[0]; side effects: none observed'
-details: "Three instructions: `ldrb r3, [r2]` then fall through to sub_814E0B6. The contract on\n  the *thunk* only\
-  \ exposes r2/lr as inputs because everything before is just to set up\n  the ldrb source. r3 is overwritten with\
-  \ the byte at *r2; the caller `ply_goto`\n  passes r2 in the captured calls as addresses in the 0x0818xxxx/0x0819axxx\
-  \ range\n  (e.g. 0x0818e800, 0x0818e897+0x40=0x0818e8d7). Those addresses fall inside the\n  AIData struct range\
-  \ used by AIBattle code, but r2 is treated as a plain byte\n  pointer here.\n  Effectively a glue/tail-call into\
-  \ sub_814E0B6 with r3 preloaded from [r2].\ndetails: |\n  Sub-helper to ply_goto. The \"?\" of role is hard to\
-  \ settle without seeing\n  sub_814E0B6 itself; this function on its own only sets r3 and falls through.\n"
+status: probable
+summary: 'Thumb entry stub: loads a byte from *r2 into r3 then tail-merges into sub_814E0B6'
+interface: '(r2 = ptr) -> r0 = r0 ; r3 = *(u8*)r2 ; side effects: none beyond the load'
+details: "The function is one instruction long: `ldrb r3, [r2]`. There is no bx/bl/b exit visible here — the next\n\
+  \  assembly line is `thumb_func_end sub_814E0B4`, meaning the real body is the immediately following\n  function\
+  \ `sub_814E0B6` (which the lifter shows as a direct bl target in the callee list). This is the\n  classic BN split-Arm/Thumb\
+  \ pattern where the ARM-side entry point reads one byte at *r2 (a\n  script/opcode pointer) into r3 so the Thumb\
+  \ body can switch on it without needing to re-load it.\n  The captured entry snapshots consistently show r2 pointing\
+  \ into ROM (0x0818xxxx/0x0819xxxx range)\n  and r3 on exit mirrors the byte read from *r2 (e.g. snap_story2_0:\
+  \ r2=0x0818e897, r3=0xE8 on entry\n  and the byte at that address is 0xE8 in the AIData-shaped capture buffer\
+  \ at r1). All 40 captured\n  calls return with r0 unchanged and flags = ----, consistent with just a single ldrb.\
+  \ The lone\n  caller `ply_goto` is itself an ARM/Thumb trampoline (lr returns into ARM at 0x0814e0f5), explaining\n\
+  \  why this stub exists.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- `ldrb r3, [r2]` (single Thumb instr at 0x0814e0b4) loads the byte at *r2. - `thumb_func_end sub_814E0B4`
-    immediately follows, so the next function at 0x0814e0b6 continues execution with r3 already loaded. - Caller
-    `ply_goto` (0x0814e0dc) is listed as unnamed; the captured calls show r2 ≈ 0x0818e800/0x0819a700 ranges (AIData
-    territory). - r0 is preserved across the call (r0_exit == r0_entry in every snapshot).'
+  detail: '- `ldrb r3, [r2]` is the only real instruction at 0x0814e0b4 (libs.s:21471). - The callee list''s only
+    entry is `sub_814E0B6` at 0x0814e0b6 — the very next address — so this function is a Thumb entry stub whose
+    body is the function after it. - All 6 captured exits show flags = ---- and r0 unchanged, matching a single
+    ldrb with no compare. - All entry r2 values are ROM addresses in 0x0818xxxx / 0x0819xxxx (script/opcode streams),
+    and exit r3 equals the byte at that r2 (e.g. snap_story2_0 r2=0x0818e897 -> r3=0xE8). - Sole caller `ply_goto`
+    (0x0814e0dc) is a stub returning via lr=0x0814e0f5 in ARM mode, the standard BN trampoline pattern that needs
+    a Thumb-side reload of r3 from *r2.'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x0814E0B4
@@ -35,14 +41,13 @@ evidence:
   result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1, story2, story3,
     story4, story5, story6, story7, story8, story9, wander
 open_questions:
-- What sub_814E0B6 does with r3 (= byte read) and what the loaded byte semantically
-- represents (AIData field at whatever offset r2 happens to point to). Naming as
-- '`pet_...` is a guess driven by the address range; could equally be `battle_...`'
-- if those addresses are battle-side AIData blobs rather than PET navi blobs.
+- Why r3 specifically is loaded here (versus r0/r1) and whether sub_814E0B6 reuses this r3 or
+- reloads it. Knowing what sub_814E0B6 dispatches on would pin down whether r3 is the opcode or a
+- counter.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f 87c09f6c
+  where: bn6f 03e8533e
   tool: tools/symdoc.py

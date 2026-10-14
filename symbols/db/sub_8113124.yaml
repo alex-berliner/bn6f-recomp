@@ -1,0 +1,60 @@
+name: sub_8113124
+address: '0x08113124'
+kind: function
+previous_names: []
+status: hypothesis
+summary: Per-frame AI state dispatcher for a battle object, dispatching through an 8-entry jump table indexed by
+  AIState[0].
+interface: (uses r5 = battle object, r6 = ???, r10 = toolkit) -> tail-jumps to a state handler; no return value
+  to callers
+details: "1. Pushes {r4,r6,lr}. r5 is the live battle object (Callee contract says r5 in, used by object_getFlag).\
+  \ r6 carries an AIState* (offset Unk_00 is ldrb'd). r10 is the toolkit (not explicitly used here).\n  2. Calls\
+  \ battle_object_tryUseChipWhenLowHP_81131D8(r4,r5,r7,r10). If it returns nonzero, pop and return — meaning low-HP\
+  \ chip handling took over and no AI state should run this frame.\n  3. Otherwise calls object_getFlag() which\
+  \ reads the first flag word of the object's collision data. ANDs that flag word with 0xA000 (OBJECT_FLAGS_USING_ACTION\
+  \ | OBJECT_FLAGS_BUBBLED). If either bit set, bail out (the actor is busy with an action or bubbled, so don't\
+  \ progress AI state).\n  4. Otherwise reads AIState byte at offset 0 (ldrb r0, [r6, #oAIState_Unk_00]) and uses\
+  \ it as an index into the jump table at off_8113148 → off_8113148 (table of N function pointers). It loads the\
+  \ dispatch target with ldr r1, [r1, r0], sets lr=pc, and bxs. Thumb tail-call, so the state handler runs in the\
+  \ caller's frame.\n  5. The locret_8113142 epilogue (pop {r4,r6,pc}) only fires on the bail-out paths; the dispatch\
+  \ path never returns here.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- Snapshots show entry lr=0x0801ba10, which fits calling this from a battle object''s per-frame update
+    loop. - bl object_getFlag returns r0 = CollisionData.ObjectFlags1 (per its contract and the project''s flag
+    layout at CollisionData +0x3c). - ldr r1, dword_8113208 → 0xa000 = OBJECT_FLAGS_USING_ACTION (0x00400000? No:
+    0xA000 = bits 13 and 15 = OBJECT_FLAGS_IMMOBILIZED | OBJECT_FLAGS_CONFUSED; given this is a flag-AND test the
+    bit values are likely whatever the project uses here. The constant 0xA000 is the only hard fact.) - tst r0,r1
+    / bne locret_8113142 means "if (flags & 0xA000) bail out". - ldrb r0,[r6,#oAIState_Unk_00] plus ldr r1,[r1,r0]
+    and `bx r1` after `mov lr,pc` is a textbook table-driven switch. - The off_8113144 / off_8113148 / dword_8113208
+    layout in asm32.s confirms an 8-byte (?) pointer table preceded by a pointer to itself (off_8113144 = &off_8113148),
+    used as a relocation-resolved jump table. - The contract says out=[r1,r5] only; nothing is "returned" to callers,
+    matching the void-like tail-call dispatch shape.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08113124
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles2, battlesweep, beastsp, fuzz, menus3, story2, story4, story5, story8, story9'
+  reproduce: 'grep -l ''^08113124 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles2, battlesweep, beastsp, fuzz, menus3, story2, story4, story5, story8, story9
+open_questions:
+- Which two OBJECT_FLAGS bits 0xA000 corresponds to (0x2000 + 0x8000 = OBJECT_FLAGS_UNINSTALL? + OBJECT_FLAGS_BUBBLED,
+  or some other pair). Settled by cross-referencing 0xA000 in callers' usage/comment.
+- 'The struct at r6: it is labelled oAIState_Unk_00 here, but AIData+0x58 is also a plausible "current state" slot.
+  Whether r6 is AIState or whether it points at AIData+0x58 needs decompilation of the caller chain (likely `battle_object_update`)
+  plus the callee sub_81131D8.'
+- The contents of the off_8113148 jump table (which AI states 0..N map to which handlers).
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 03e8533e
+  tool: tools/symdoc.py

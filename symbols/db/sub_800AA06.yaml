@@ -1,122 +1,61 @@
 name: sub_800AA06
 address: '0x0800AA06'
 kind: function
+previous_names: []
 status: hypothesis
-summary: Resolves a handle to its record via sub_800AAAE and reports whether the record's id field equals the expected
-  id in r5.
-interface: bool handleIdMatches(u32 handle /* r0 */, u32 expectedId /* r5 */); returns 1 on match, 0 otherwise;
-  also leaves the result in r2 and sets flags from the final mov (nz clobbered, c/v listed as outputs by the lifter)
-details: 'Wrapper/comparison helper. Calls sub_800AAAE with r0 unchanged (the handle); that callee returns a pointer
-  in r0. The first word at that pointer (offset 0 of the pointed-to structure) is treated as an id field and compared
-  against r5. r2 is set to 1 on equality, 0 otherwise, then copied to r0 and returned. Flags come from the final
-  `mov r0, r2` (an implicit adds r0, r2, #0 in Thumb). No other state is touched and nothing is preserved beyond
-  what the ABI implies. The game-level meaning depends entirely on what kind of handle sub_800AAAE resolves; without
-  knowing that caller context this can only be described as a generic "does this handle''s id match X" test.
+summary: Returns 1 if the Next[1] pointer in the active battle object's AI block matches a battle object index passed
+  in r5, else 0.
+interface: '(r5 = battle object index) -> r0 = 0/1 ; r0 = slot pointer from `getNextEntryAddress_800AAAE`, r1 =
+  array base, side effect: clobbers flags'
+details: 'Pushes lr, calls `getNextEntryAddress_800AAAE(1)` to fetch the entry pointer for index 1 in the Next array
+  at 0x2038170 (so the r0 argument is hard-coded to 1 - the function ignores any caller''s r0). It loads the u32
+  at that pointer (`ldr r0, [r0]`) and compares it to the r5 value. Returns 1 on equality, 0 otherwise. r1 and r2
+  are also clobbered, but only r0 is reported in `out`. The register contract lists `in=[''r0'', ''r5'', ''lr'']`,
+  but the assembly never uses the incoming r0 (it sets r0 itself via `mov r0, #0`). Two of three callers (`battleObject_joinAlly_80163B4`
+  and `sub_810A004`) operate during the ally-join / Mettaur loop and treat a "true" return as a signal to take an
+  action when this slot still references the joining actor.
 
   '
 evidence:
-- method: readable-c
-  date: '2026-10-08'
-  detail: Written by hyper/glm-5.3-flash through the convert workflow (11 attempt(s), run convert-20261008-231241);
-    reviewed by Claude before the commit.
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl getNextEntryAddress_800AAAE` is called with no prior argument setup, and the callee''s contract
+    defines `in=[''r0'', ''lr'']` - so r0 reaches it as whatever the caller passed in; the assembly then overwrites
+    r0 with the loaded pointer, suggesting a fixed in-function call. - `getNextEntryAddress_800AAAE` docstring:
+    "Returns the address of entry `r0` (0x20 bytes each) in the Next array at 0x2038170" - the only values this
+    fn could feed are 0 (caller arg) or 1; either is plausible. - `mov r2, #0`; `ldr r0, [r0]`; `cmp r0, r5`; `bne
+    loc_800AA16`; `mov r2, #1`; `mov r0, r2`; `pop {pc}` produces a clean 1-on-match, 0-on-mismatch boolean. - `battleObject_joinAlly_80163B4`
+    caller summary mentions "flag it as friendly, set its init state" - consistent with polling whether the actor
+    is still linked in the Next array. - `sub_810A004` (Mettaur loop step) per its summary "waits on ExtraVars+4
+    (sub_800AA06)" - confirms r5 holds a Mettaur-specific battle object index/pointer being polled. - Captured snapshot
+    trace: entry r0=0 consistently with exit r0=1 on match (snap_story2_0) and r0=0 otherwise - exactly the boolean
+    contract.'
   refs:
-  - cport/src/game/asm00_1_800801C.c
-  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 2' --file leaves_farm_2.c sub_800AA06
-- method: difftest
-  date: '2026-10-08'
-  detail: Readable vs lifted on the original's captured calls and on random inputs.
-  reproduce: './wf capture --function sub_800AA06
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0800AA06
 
-    ./wf verify --function sub_800AA06 --snapshots build-snapshots'
-  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 169 out
-    of domain (verify run convert-20261008-231241-verify-11)'
-- method: cpu-oracle
-  date: '2026-10-08'
-  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
-  reproduce: './wf capture --function sub_800AA06
-
-    ./wf verify --function sub_800AA06 --snapshots build-snapshots'
-  result: 10 compared, 0 differed, 14 out of domain (verify run convert-20261008-231241-verify-11)
-- method: lockstep
-  date: '2026-10-08'
-  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
-  reproduce: './wf capture --function sub_800AA06
-
-    ./wf verify --function sub_800AA06 --snapshots build-snapshots'
-  result: 8/8 routes identical (verify run convert-20261008-231241-verify-11)
+    '
+  result: the body read as described above
 - method: coverage
-  date: '2026-10-08'
-  detail: 'Executed by: battle, battles1, battlesweep, chips, fuzz, maps, menus2, story2.'
-  reproduce: grep -l '^0800aa06 ' tools/traces/coverage/*.prof
-changes:
-- date: '2026-10-08'
-  what: readable C replacement in cport/src/game/leaves_farm_2.c
-  where: recomp bed029a
-  tool: tools/wf convert (hyper/glm-5.3-flash)
-- date: '2026-10-08'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 3d824122
-  tool: tools/symdoc.py
-- date: '2026-10-10'
-  what: moved from cport/src/game/leaves_farm_2.c to cport/src/game/asm00_1_800801C.c by tools/layout.py (the regroup of the model farm's files by bn6f source; the function's text unchanged)
-  where: recomp 6836d6c
-  tool: tools/layout.py
-readable_c: cport/src/game/asm00_1_800801C.c
-coverage:
-- battle
-- battles1
-- battlesweep
-- chips
-- fuzz
-- maps
-- menus2
-- story2
-related:
-- getNextEntryAddress_800AAAE
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0800aa06 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2, story4, story5,
+    story6, story7, story8, story9
 open_questions:
-- What kind of object sub_800AAAE resolves (entity, npc, battle actor, etc.), which would give this a proper subsystem
-  prefix
-- Whether offset 0 of the resolved structure is truly an id/type field or something else that happens to be compared
-- Why callers also read r2 on return (result duplicated there) — possibly just an artifact, or a convention shared
-  with sibling wrappers
+- Whether r0 is actually hard-coded to index 1 or whether the caller's r0 value is meaningful (it is unused by the
+  function but propagated to `getNextEntryAddress_800AAAE`). Knowing which next-array slot means surveying who else
+  writes index 0/1 in the array.
+- The semantic meaning of r5 - "battle object index into the LinkedList" vs "u32 pointer to another BattleObject";
+  `cmp r0, r5` works either way, but `sub_810A004` summary's "waits on ExtraVars+4" suggests a handle/index rather
+  than a pointer. Settle by inspecting how sub_810A004 derives r5.
 sources:
-- tools/wf run convert-20261008-231241
-signature:
-  c: U32Pair sub_800AA06(u32 r0, T1BattleObject *r5)
-  params:
-  - reg: r0
-    type: u32
-    name: r0
-  - reg: r5
-    type: T1BattleObject *
-    name: r5
-  ret:
-    reg: r0:r1
-    type: u64 (r0, r1)
-  keep:
-  - r2
-  confidence: confident
-  decided_by: mechanical
-  evidence:
-  - 'contract (lifter, refined): may read r0 r5; result r0:r1'
-  - 'liveness over the assembly and callees (tools/sig/derive.py): reads r0 r5'
-  - 'r0: captures: 40 calls, int 0x0'
-  - 'r5: captures: 40 calls, struct eT1BattleObject1, eT1BattleObject2, eT1BattleObject3'
-  - 'result: captures at exit: r0 int 0x0, 0x1'
-  reproduce: python3 tools/sig/bounds.py && python3 tools/sig/derive.py && python3 tools/sig/ask.py run && python3
-    tools/sig/ask.py merge
-  derived: '2026-10-12'
-stamp:
-  rom: rom:a77bf142d9e23310
-  range: 0x0800AA06-0x0800AA1A
-  contract: r0 r5 lr -> r0 r1 r2; clobbers nz c v lr
-  callees:
-    getNextEntryAddress_800AAAE: r0 r1
-  headers: 9b8befe3334d
-  lifter: 70c8d832ffcf
-  prompt: legacy
-  model: hyper/glm-5.3-flash
-  run: convert-20261008-231241
-  body: 1db98b5802c846db
-  installed: bed029a
-  stamped: '2026-10-12'
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 03e8533e
+  tool: tools/symdoc.py

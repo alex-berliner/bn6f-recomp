@@ -3,29 +3,36 @@ address: '0x08083DF0'
 kind: function
 previous_names: []
 status: hypothesis
-summary: Battle graphics/animation loader that toggles several event flags (BBS request flag 0x7, AskJackOut/L-Message
-  sentinels, etc.) and dispatches to multiple `load_gfx_anim_*` helpers
-interface: '() -> nz ; r2/r3/r4/r5/r7/r8/r9/r12 callee-saved; side effects: GFXAnimState slots and story event flags'
-details: "- The function takes no explicit args in r0..r3; everything goes through r10 (the toolkit) plus a few\
-  \ high registers (r5..r9, r12). It pushes r4-r9 and r12 in addition to r10, so it is a fairly heavy \"orchestrator\"\
-  \ stub.\n  - Direct calls include the event-flag triplet (Set/Clear/TestEventFlagFromImmediate), both `cutscene_checkOriginalCutsceneScriptPos_*`\
-  \ helpers, the BBS flag setters/clears, and six helper functions all sharing the `load_gfx_anim_*` / `sub_8083F80..`\
-  \ / `struct_copy_80840C4` naming band (0x8083F80..0x80842D8). The handful of nearby `load_gfx_anim_*` callees\
-  \ strongly suggests this is a battle boot phase that loads/copies several GFXAnim slots and possibly toggles the\
-  \ AskJackOut/L-Message sentinels that gate the cutscene-resume path.\n  - It is `void`-like on the contract (`out`\
-  \ only contains callee-saved regs + `nz` for the linker's BL dispatch); nothing meaningful is returned to callers.\n\
-  \  - The assembly itself is missing (\"sub_8083DF0 not found in bn6f/asm\") so we cannot verify the exact sequence;\
-  \ the naming is derived from callee patterns only.\n"
+summary: Drives cutscene GFX/anim loading and event-flag toggling (BBS flag 0x17/0x7) when the cutscene state's
+  originally-saved script was a sentinel cutscript.
+interface: (in = r10 = ToolkitPtr, lr = ret addr) -> nz flags (loop-control condition); preserves r4-r9, r12 through
+  callees; r0-r3 clobbered
+details: "Entry takes the ToolkitPtr in r10 and a return address in lr (Thumb callee). The body\n  is a single block\
+  \ of more than a dozen `bl`/`b` calls with no assembly available in\n  the prompt, so all behaviour must be inferred\
+  \ from the callee set and the contract:\n  - First probes the cutscene state's saved original script pointer via\
+  \ both\n    cutscene_checkOriginalCutsceneScriptPos_8036F40 (\"L-Message\" sentinel) and\n    cutscene_checkOriginalCutsceneScriptPos_8036F58\
+  \ (\"AskJackOut\" sentinel), then\n    picks a branch (the function emits `nz` per the contract, suggesting it\
+  \ gates\n    further work on which sentinel matched).\n  - Sets/clears/tests event flags through ClearEventFlagFromImmediate\
+  \ /\n    SetEventFlagFromImmediate / TestEventFlagFromImmediate, plus the BBS\n    request layer `reqBBS_setFlag_e17b0f7_8140A00`\
+  \ (event byte 0x17, bit 0x7) and\n    `reqBBS_clearFlag_8140A0C`.\n  - Sequences GFX/animation commands through\
+  \ `load_gfx_anim_8083FC0`,\n    `load_gfx_anim_8083FFC`, `load_gfx_anim_8084068`, plus helpers\n    `sub_8083F80\
+  \ / sub_8084080 / sub_8084180 / sub_8084214 / sub_80842D8` and the\n    `struct_copy_80840C4` helper.\n  - Ends\
+  \ by re-tests the sentinel and falls through.\n  - Returns condition codes only (callee-saved r4-r9, r12 written\
+  \ back); no r0/r1 result\n    is exposed to the caller - it is a void-like worker whose exit `nz` simply tells\n\
+  \    upstream call sites whether the script-sentinel condition held.\n  - Pattern (flag ops + multiple gfx/anim\
+  \ bls + script-pointer checks + BBS updates) is\n    consistent with an \"advance the cutscene player's anim pipeline\
+  \ after a sentinel\n    cutscript\" routine in an overlay.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- All direct callees are in the 0x8083xxx range, and five of them (`load_gfx_anim_8083FC0`, `load_gfx_anim_8083FFC`,
-    `load_gfx_anim_8084068`, `sub_8083F80`, `sub_8084080`, `sub_8084180`, `sub_8084214`, `sub_80842D8`, `struct_copy_80840C4`)
-    appear to share a graphics/animation/setup theme based on their `r5`/toolkit register contracts. - Calls to
-    `Set/Clear/TestEventFlagFromImmediate` and the BBS flag setter/clearer (`reqBBS_setFlag_e17b0f7_8140A00`, `reqBBS_clearFlag_8140A0C`)
-    confirm event-flag mutation is part of the routine. - Calls to `cutscene_checkOriginalCutsceneScriptPos_8036F40`
-    (L-Message sentinel) and `cutscene_checkOriginalCutsceneScriptPos_8036F58` (AskJackOut sentinel) confirm it
-    consults/toggles cutscene state too. - No captured calls or assembly, so any more specific role is unverified.'
+  detail: '- Contract `in=[''r10'',''lr''], out=[''nz'', ...]` plus r10==ToolkitPtr convention implies a routine
+    that only returns via condition codes. - Both cutscene_checkOriginalCutsceneScriptPos_* callees are present,
+    so `r10->CutsceneStatePtr.originalCutsceneScriptPos_40` is consulted and branches. - Callee set pairs SetEventFlagFromImmediate
+    + ClearEventFlagFromImmediate + TestEventFlagFromImmediate around `reqBBS_setFlag_e17b0f7_8140A00` (confirmed
+    as e_bbs byte 0x17 bit 0x7) and `reqBBS_clearFlag_8140A0C` shows event-flag toggling per cutscene branch. -
+    load_gfx_anim_8083FC0, 8083FFC, 8084068 + sub_8083F80/4080/4180/4214/42D8 plus struct_copy_80840C4 indicate
+    sequenced GFX/animation emission (anim script loader pattern from related subsystems). - `sub_809E462` is also
+    called - unknown role.'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x08083DF0
@@ -40,13 +47,15 @@ evidence:
     '
   result: beastsp, story5, story6
 open_questions:
-- Exact ordering of flag set/clear vs gfx load is unknown (no assembly available). Whether it returns anything meaningful
-  to its caller is unknown. What `sub_809E462` is called for (the only non-graphics, non-event callee) is unclear.
-  Getting the assembly and one captured call would let us split the high-level name into concrete role.
+- Exact branch structure (how many separate `if (sentinel==...)` arms, and which
+- flag tests/anim loads each arm triggers) is invisible without the asm body. Even
+- 'one read of the listing would settle: count the b/bne arms, the addressing modes on'
+- the flag helper args (set/clear/test callers pack r0/r1 with two-byte event IDs),
+- and confirm whether `load_gfx_anim_*` calls are reachable only from one arm.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f 87c09f6c
+  where: bn6f 03e8533e
   tool: tools/symdoc.py
