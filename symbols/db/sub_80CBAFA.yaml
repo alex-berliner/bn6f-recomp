@@ -1,0 +1,74 @@
+name: sub_80CBAFA
+address: '0x080CBAFA'
+kind: function
+previous_names: []
+status: hypothesis
+summary: (hypothesis) If the current BattleObject is on its alliance's starting/front column, compare its PanelY
+  against the nearest enemy BattleObject's PanelY (from battleObject_findClosestEnemyBattleObject_80103F8) and store
+  a {-1,0,+1} signed row delta in the BattleObject's ExtraVars+4 slot; no-op otherwise.
+interface: in r5 = self BattleObject, r10 = Toolkit ; out no documented caller-visible return (only r1/r5 preserved
+  per the contract; r0 ends as 1 in captures but is not annotated as live) ; writes self->ExtraVars+4 (signed -1/0/+1)
+  only when self->PanelX equals 1 (ally side) or 5 (opponent side); r2 is clobbered for the comparison result; no
+  other side effects observed
+details: "1. push {lr}; tail-return via pop {pc} pattern (this is a leaf helper the caller `sub_80CBA34`/`sub_80CBA52`\
+  \ invokes inline).\n  2. Reads self->Alliance (0x16), XORs with 1 to flip alliance, multiplies by 5 and adds 1\
+  \ to get the expected \"front column panel X\" for that side: alliance 0 → 1, alliance 1 → 5. Tested at 0x80cbafc\
+  \ against self->PanelX (0x12). If the object is not on the front row for its side, the function returns immediately\
+  \ and writes nothing.\n  3. Only on a match: pushes the Alliance, repositions to self->PanelY (0x13). Calls battleObject_findClosestEnemyBattleObject_80103F8\
+  \ with the flipped-alliance value, receiving the nearest enemy BattleObject in r0.\n  4. Hard-codes PanelY==1\
+  \ as a special case that keeps r2=1 (the \"ahead of me by one row, no equal case here\" branch).\n  5. Otherwise\
+  \ loads the enemy's PanelY from [r0,#0x13] (same offset, BattleObject union) into r0 and compares to self->PanelY\
+  \ in r1: if equal, r2=0 (loc_80CBB2E); if r0 > r1 (enemy \"behind\" self in row order), r2 was 1 then decremented\
+  \ by 2 → -1; if r0 <= r1, r2 remains +1. The cmp/bgt sequence is the classic two-way signed compare that yields\
+  \ a {-1,0,+1} relative-row signal.\n  6. Stores r2 into self->ExtraVars+4 (str r2,[r5,#oBattleObject_ExtraVars+4]).\
+  \ r2 fits s32 because all source PanelY are bytes (0..2 on a 3-wide grid) so the only values seen are -1/0/+1.\n\
+  \  Observed in callers: the contract shows r1 out is \"live\"; in the captures r0 ends as 1, but that's the side\
+  \ effect of the calling convention rather than a meaningful return — consistent with being a void-like helper.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- "ldrb r0,[r5,#oBattleObject_Alliance]; mov r1,#1; eor r0,r1" + "mov r1,#5; mul r0,r1; add r0,#1" →
+    byte XOR 1 → {0,1}, ×5 +1 = {1,5}; the two front-column values for a 3-col × 3-row BN grid (panels 0..2 each
+    axis), one per alliance. - "cmp r0,r1; bne locret_80CBB32" against self->PanelX at oBattleObject_PanelX (=0x12):
+    early-out if not on front column. - "bl battleObject_findClosestEnemyBattleObject_80103F8" provides the nearest
+    enemy BattleObject in r0; the function then reads [r0,#0x13], exactly oBattleObject_PanelY. - "mov r2,#1; ...
+    cmp r0,r1; beq loc_80CBB2E; sub r2,#2; ... mov r2,#0" yields {-1,0,+1} for (r0<r1, r0==r1, r0>r1) read in this
+    order — but note the bgt on r0,r1 means r2 stays +1 when r0 is not greater, and only becomes -1 when r0 > r1
+    (i.e., enemy PanelY > self PanelY). Read literally that''s "r2 = +1 if enemy not ahead, 0 if exactly aligned,
+    -1 if enemy is on a higher row". - "str r2,[r5,#oBattleObject_ExtraVars+4]" — the only memory write; matches
+    the contract''s may_write of [r5,...]. - Callers and callee are unnamed in this drop; sub_80CBA34/sub_80CBA52
+    both look like upstream BeastOut/SoulWeaver-related decision steps given the captured file prefix `snap_beastsp_…`,
+    but I can''t confirm the subsystem from the supplied summaries.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080CBAFA
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp'
+  reproduce: 'grep -l ''^080cbafa '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp
+open_questions:
+- Exact semantic of the stored {-1,0,+1} (signed "row delta to enemy" vs "stepping direction" vs "row-rank compare");
+  the function does not sign-extend, just stores the literal r2.
+- Whether r0=1 on exit is meaningful or just the residual of the last arithmetic op (no caller-visible meaning is
+  annotated).
+- Per-instance offset of oBattleObject_ExtraVars (T1/T3 use 0x2c size, T4 uses 0x1c; "+4" lands at different bytes
+  in each variant). Pending identification of which BattleObject variant the callers pass (likely t3 given the BeastOut
+  context, but not certain).
+- The two callers (0x80cba34, 0x80cba52) and the callee battleObject_findClosestEnemyBattleObject_80103F8 need one-line
+  project summaries before the subsystem prefix and prefix choice can be locked in.
+- 'Captured calls 1, 10, 11, 12, 13 enter with r0=0 r2=5 r3=3 (which is the matching "opponent alliance on PanelX=5"
+  case the first branch tests for), while entry #0 has r0=r1=0x80 — probably a different object type being passed
+  as `r5` — that asymmetry would be clarified with names for the two callers.'
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 09ad1b28
+  tool: tools/symdoc.py

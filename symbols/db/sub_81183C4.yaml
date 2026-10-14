@@ -1,0 +1,70 @@
+name: sub_81183C4
+address: '0x081183C4'
+kind: function
+previous_names: []
+status: hypothesis
+summary: Dispatches a per-actor "beast out / program advance" transform step on the r5 BattleObject by jumping through
+  an off_81183E8 table indexed by the object's Type byte.
+interface: '(no r0..r3 args from callers) -> void ; r5 = BattleObject, r6 = ?, r10 = Toolkit; side effects: dispatches
+  sprite/animation updates on the BattleObject'
+details: "- Saves lr, loads the address of the jump table `off_81183E8` (via `off_81183E4`) into r0, then reads\
+  \ `r6[2]` as a u8 into r1.\n  - The jump-table lookup is `ldr r0, [r0, r1]`, so `r0 = tableBase + r1*4` then the\
+  \ code tail-calls that pointer through `mov lr, pc; bx r0` (Thumb +1 switches). Each entry is stored as `func+1`\
+  \ so BX targets the actual Thumb entry.\n  - After the dispatched handler returns to the inline call site, the\
+  \ function unconditionally runs:\n      `bl battle_aiCountAliveEnemiesInRow_81185C0` (purely a side-effect call\
+  \ using the standard in-r5/in-r6 contract; result discarded)\n      `bl sprite_setAnimation`      // (u8 a1) ->\
+  \ void   – using the just-updated animation index\n      `bl sprite_loadAnimationData` // tail-call style: header-skip\
+  \ then call _sprite_loadAnimationData\n      `bl sprite_update`            // advance the sprite state machine\n\
+  \  - Net behaviour: dispatch one of 15 transform / beast-out / program-advance sub-steps on the actor pointed\
+  \ to by r5/r6, then refresh its animation/animation data/sprite. The branches in the table (sub_8118424, beastOutOrProgramAdvanceSetTransform_811842C\
+  \ x3, sub_811847C, sub_81184A8 x3, sub_81184C0, sub_81184EC, sub_8118510 x2, sub_8118550, sub_811857C, sub_81185A8)\
+  \ are the per-state step handlers.\n  - `r6[2]` is read as a state/phase selector – given the only caller is the\
+  \ surrounding `sub_8118368` \"beastsp\" sequence, this is the per-actor transform phase byte.\n  - `r0` after\
+  \ exit is `0x1c60` in every captured call because the tail of the function re-reads r0 from `r0 = [r0,r1]` (last\
+  \ dispatch) or because r0 isn't used after the dispatcher; the constant 0x1c60 is just the residual jump-table\
+  \ word that ends up in r0 after the final `bx r0` is consumed by the tail calls (register contract says out includes\
+  \ r5/r6/r10-preserved + r2/r3 scratch).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r0, off_81183E4 ; ldrb r1, [r6,#2] ; ldr r0, [r0,r1] ; mov lr, pc ; bx r0` at 0x081183c4 implements
+    an indirect Thumb dispatch through a 15-entry table at off_81183E8. - The table contains `sub_8118424+1`, `beastOutOrProgramAdvanceSetTransform_811842C+1`,
+    `sub_811847C+1`, `sub_81184A8+1`, `sub_81184C0+1`, `sub_81184EC+1`, `sub_8118510+1`, `sub_81184A8+1`, `sub_8118550+1`,
+    `sub_811857C+1`, `sub_8118510+1`, `beastOutOrProgramAdvanceSetTransform_811842C+1`, `sub_81185A8+1`, `beastOutOrProgramAdvanceSetTransform_811842C+1`,
+    `sub_81184A8+1` – most slots share `beastOutOrProgramAdvanceSetTransform_811842C` and `sub_81184A8` (transform-related).
+    - Trailing `bl`s are the four confirmed sprite helpers (`sprite_setAnimation`, `sprite_loadAnimationData`, `sprite_update`)
+    plus the battle row-count helper `battle_aiCountAliveEnemiesInRow_81185C0`, exactly the same wrap-up the caller
+    `sub_8118368` itself does. - The function is only ever called from `sub_8118368` (the unnamed `beastsp` step
+    driver) and never returns to r5/r6/r10-changing code, consistent with this being one stage of that state machine.
+    - Captured entry r0 = 0x081183c5 in most samples (= the address of this function with Thumb bit set, i.e. lr=0x08118352
+    for the return, the standard pattern when `sub_8118368` did `bl 0x081183c4; ...` and immediately wrote the return
+    into lr).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x081183C4
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^081183c4 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The exact meaning of `r6[2]` as an index – is it `BattleObject.CurState` (offset 8)? No, offset 2 isn't a known
+  BattleObject field; r6 may be the AI-side companion struct (the index is named in another tagged `r6` symbol).
+  Needs cross-reference with `sub_8118368` and the AI struct layout to confirm.
+- Why exactly 15 entries – the upper bound on `r6[2]` and what each handler does is opaque from this single function
+  alone; reading any of sub_8118424 / sub_811847C / sub_81184A8 / sub_81184C0 / sub_81184EC / sub_8118510 / sub_8118550
+  / sub_811857C / sub_81185A8 would settle the phase meaning.
+- The contract claims `r6` is read-only but `r0`/`r1` may be clobbered; the dispatcher actually writes r0 first,
+  so its pre-call value (other than the table-base load) is undefined.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 09ad1b28
+  tool: tools/symdoc.py

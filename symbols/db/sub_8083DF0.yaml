@@ -3,41 +3,28 @@ address: '0x08083DF0'
 kind: function
 previous_names: []
 status: hypothesis
-summary: Cutscene/talk-script runner driven by event flags 0x17B0 and 0x17B1 (L-message/ask-jack-out) that prepares
-  the related GFX animation, manages story progress flags, and dispatches the correct sub-flow via a per-script
-  helper set.
-interface: '(r10 = toolkit ptr) -> r0 = nz ; clobbers many caller-saved regs; side effect: mutates cutscene state,
-  event flags, and several battle/GFX state structs in EWRAM.'
-details: "Entry contract lists only r10 (toolkit) and lr, so the function takes no explicit argument\n  and returns\
-  \ a boolean-ish flag in r0 (the `nz` clobber indicates a test/set used by callers).\n  The callee list shows the\
-  \ routine first probes the cutscene state's originally-saved script\n  position via `cutscene_checkOriginalCutsceneScriptPos_8036F40`\
-  \ (L-message sentinel) and\n  `cutscene_checkOriginalCutsceneScriptPos_8036F58` (AskJackOut sentinel) — i.e. the\
-  \ script that\n  was interrupted is the L-message or \"Ask to jack out\" cutscript, both stored at\n  `CutsceneState.originalCutsceneScriptPos_40`\
-  \ (oCutsceneState + 0x40).\n\n  It then manipulates story flags through `ClearEventFlagFromImmediate` /\n  `SetEventFlagFromImmediate`\
-  \ / `TestEventFlagFromImmediate` (0x2001F00-range event bit array,\n  see reqBBS_setFlag_e17b0f7_8140A00 for the\
-  \ exact storage at 0x2001F68). The two named BBS\n  helpers (`reqBBS_setFlag_e17b0f7_8140A00` sets event byte\
-  \ 0x17 bit 0x7, and\n  `reqBBS_clearFlag_8140A0C` clears the same bit) are the \"remember the player dismissed\
-  \ the\n  L-message this frame\" / \"consume that request\" pair the routine uses to drive the\n  re-execution.\n\
-  \n  Three `load_gfx_anim_*` callees (0x8083FC0/0x8083FFC/0x8084068) and three private helpers\n  (sub_8083F80,\
-  \ sub_8084080, sub_8084180, sub_8084214, sub_80842D8) are dispatched to load\n  the appropriate GFX animation\
-  \ state (`struct GFXAnimState` at oGFXAnimState, size 0x18) for\n  the chatbox / L-button prompt, the \"ask to\
-  \ jack out\" dialog, or the regular overworld L\n  message. `struct_copy_80840C4` (in r5, no out) is a struct-to-struct\
-  \ copy, and\n  `sub_809E462` returns nz, used as a \"should we run the flow now\" guard.\n\n  No assembly was\
-  \ available in the lift (the asm blob is `None:None`), so the precise\n  control flow / which helper corresponds\
-  \ to which branch is reconstructed from the\n  callee set; r5 is the dominant input register to most helpers,\
-  \ suggesting a `r5` pointer\n  to a per-script state struct (likely a small EWRAM struct indexed off the cutscene\
-  \ state).\n"
+summary: Insufficient evidence — assembly was not present in the provided dump for this address.
+interface: in = r10 (Toolkit, per project convention), lr ; out = nz, r2, r3, r4, r5, r7, r8, r9, r12 ; caller-visible
+  side effects unknown
+details: "The block labelled `## assembly: None:None` for sub_8083DF0 contains only the\n  comment `; sub_8083DF0\
+  \ not found in bn6f/asm`. Without the lifted instructions I\n  cannot verify register usage, memory accesses,\
+  \ branches, or constants inside this\n  function. Indirect inference from the callee list alone is too weak to\
+  \ pick a\n  specific role.\n  Callee composition hints it lives in the BBS / event-flag / cutscene neighbourhood\n\
+  \  (reqBBS_clearFlag_8140A0C, reqBBS_setFlag_e17b0f7_8140A00, TestEventFlagFromImmediate /\n  SetEventFlagFromImmediate\
+  \ / ClearEventFlagFromImmediate, cutscene_checkOriginalCutsceneScriptPos_8036F40\n  and _8036F58, sub_809E462,\
+  \ plus four other load_gfx_anim_* / sub_ helpers in 0x8083F80..0x80842D8).\n  But \"BBS/cutscene/event-flag area\"\
+  \ is too broad to be a probable name.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- Toolking pointer in r10 and references to `cutscene_checkOriginalCutsceneScriptPos_*` confirm the routine
-    is a cutscene-script driver (oCutsceneState at +0x40 holds the saved original script pointer compared by both
-    0x8036F40 and 0x8036F58). - The two `cutscene_checkOriginalCutsceneScriptPos_*` callees match the L-Message
-    and AskJackOut scripts per their one-line summaries, so the function specifically targets those two script IDs.
-    - `reqBBS_setFlag_e17b0f7_8140A00` (set event byte 0x17 bit 0x7) and `reqBBS_clearFlag_8140A0C` (clear same)
-    are direct callers, indicating the routine services BBS requests tied to event flag 0x17B0/0x17B1. - Three `load_gfx_anim_*`
-    callees + matching anonymous `sub_8083*` helpers, all sharing the same in/out contract `(r5, lr) -> {r2,r3,r5,r8,r9,r12}`,
-    suggest three parallel "render this GFX animation" sub-flows keyed off a state pointer in r5.'
+  detail: '- The provided `## assembly` block for sub_8083DF0 contains only `; sub_8083DF0 not found in bn6f/asm`;
+    no instructions, no constants, no branch targets. - The caller list for this function is empty in the input,
+    so I cannot bootstrap a role from callers either. - r10 is the Toolkit under project convention (Toolkit.inc
+    documents `// toolkit struct, always in r10`), so the function reads from the r10 ptr table — which is consistent
+    with every callee here also taking `r10`, but this is true of almost every function in the engine and is not
+    discriminating. - The four unnamed helpers sub_8083F80, sub_8084080, sub_8084180, sub_8084214, sub_80842D8 in
+    the callee list sit at 0x8083F80..0x80842D8, i.e. immediately after 0x8083DF0, suggesting this function is part
+    of a tightly clustered module — but the cluster has no single obvious theme beyond "flags + cutscene + gfx anim".'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x08083DF0
@@ -52,17 +39,14 @@ evidence:
     '
   result: beastsp, story5, story6
 open_questions:
-- No assembly was provided for this function (the lifter reports "sub_8083DF0 not found in
-- bn6f/asm"), so the exact branch structure, the meaning of r5, and which `sub_8083*`
-- helper corresponds to which of (L-message, AskJackOut, regular) are inferred from the
-- callee set only. Disassembling the function at 0x08083DF0 would settle it.
-- Whether the routine is invoked from the BBS dispatcher, the cutscene tick, or both
-- (callers list is empty) is unknown; populating the caller table would clarify the
-- trigger.
+- Everything. Settling this requires the actual Thumb listing for 0x08083DF0 (with captured-call r0..r3, the 0x40-byte
+  EWRAM/IWRAM dumps from r0/r1, and the route hit counts) so I can read constants and branch targets directly. With
+  the assembly, a probable name should fall out quickly; without it any name I gave would have been a guess dressed
+  up as analysis.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f eb748819
+  where: bn6f 09ad1b28
   tool: tools/symdoc.py

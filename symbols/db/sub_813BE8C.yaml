@@ -3,29 +3,23 @@ address: '0x0813BE8C'
 kind: function
 previous_names: []
 status: hypothesis
-summary: Iterates 0x31 entries in the toolkit's Unk2004190 array, loading each entry's pointer and discarding the
-  first u16; appears to be a no-op clear/reset pass for those battle I/O scratch buffers during battle init.
-interface: (no args) -> (no return; preserves r10)
-details: "Function called only from battle_initState_813BBD4. Loop counter r6 runs 0..0x30 (inclusive, 0x31 iterations).\n\
-  \  Each iteration calls toolkit_getUnk2004190EntryPtr_813B9FC(index=r6), which returns the address of the\n  8-byte\
-  \ entry in the oToolkit_Unk2004190_Ptr table. The first halfword at [r7] is loaded into r0 and tested\n  with\
-  \ `tst r0, r0; beq loc_813BE9E`, but loc_813BE9E is the fallthrough that simply does `add r6, #1;\n  cmp r6, #0x31;\
-  \ blt` -- the conditional branch always targets it, so nothing is actually done with the\n  loaded value. No memory\
-  \ writes occur, no callee-side effects beyond the pointer load. Looks like either\n  dead code or a vestigial\
-  \ reset pass that was once clearing entries. The 0x31 count matches the three\n  0x31-byte I/O scratch buffers\
-  \ mentioned in the caller's summary, and the array is 8 bytes/entry, so 0x31\n  entries = ~0x188 bytes which is\
-  \ consistent with three such buffers. Keep the suffix because the function\n  has no observable effect.\n"
+summary: Iterates 0x31 entries in the toolkit's Unk2004190 8-byte-array and, for each, reads the first halfword
+  (likely a "in-use" flag) into r0 each iteration.
+interface: '(r10 = toolkit) -> no caller-visible return; side effects: only volatile (loop reads toolkit array).'
+details: "Sets r6=0 and loops r6 in [0, 0x31). Each iteration: r0=r6, calls toolkit_getUnk2004190EntryPtr_813B9FC\n\
+  \  which returns r7=&entry[r6]. Then ldrh r0,[r7] reads the entry's first u16, tst r0,r0 / beq loc_813BE9E\n \
+  \ (the beq target is the increment), and falls through to the same increment either way. Body has no store,\n\
+  \  so the function is effectively a no-op scan/poll over 49 slots of Unk2004190 (matches \"0x31-byte I/O scratch\n\
+  \  buffers\" comment in the caller). Likely a debug/diagnostic or a placeholder for something that was compiled\n\
+  \  out; the read+beq suggests it was originally checking entry flags.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- `mov r6, #0` then `cmp r6, #0x31; blt loc_813BE90` shows a 0x31-iteration loop over entry indices.
-    - `bl toolkit_getUnk2004190EntryPtr_813B9FC` with r0=r6 yields the per-entry pointer in r7, per that callee''s
-    contract: "Returns the address of entry `index` in the 8-byte-per-entry array whose base pointer is held in
-    the toolkit struct at oToolkit_Unk2004190_Ptr." - `ldrh r0, [r7]; tst r0, r0; beq loc_813BE9E` reads the first
-    u16 of each entry, but loc_813BE9E is the fallthrough to the next iteration (no store, no other use of r0),
-    so the read is discarded. - Caller battle_initState_813BBD4 sets up "three 0x31-byte I/O scratch buffers pulled
-    from the toolkit" and then calls this immediately after; 0x31 iterations of an 8-byte stride array is consistent.
-    - No stores to memory; r0 is the only "may_write" candidate and is dead.'
+  detail: '- mov r6,#0 / add r6,#1 / cmp r6,#0x31 / blt -> counts 0..0x30 (asm37_0.s:1151..1155) - bl toolkit_getUnk2004190EntryPtr_813B9FC
+    with r0=index returns base of 8-byte entry (confirmed callee) - ldrh r0,[r7] reads first u16 of entry; tst r0,r0
+    ; beq to increment target shows the only branch is empty - Only confirmed caller battle_initState_813BBD4 references
+    0x31-byte I/O scratch buffers, fitting the 0x31 count - All captured snap_story2 entries show r1=0x02004190
+    (toolkit->Unk2004190_Ptr base) on entry, matching the callee path'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x0813BE8C
@@ -42,13 +36,13 @@ evidence:
   result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1, story2, story3,
     story4, story5, story6, story7, story8, story9, wander
 open_questions:
-- Whether the function is intentionally a no-op (a placeholder for a future per-entry init) or a leftover
-- from a removed reset step. A nearby sibling in the same init that does write to these entries would
-- confirm intent; nothing in the captured-call snapshots shows writes either.
+- Whether this ever did something with r0 (flags) — likely the loop body was a `bne` to a handler that got DCE'd.
+- Static analysis of a non-stripped binary or a sibling revision (BN5/BN6 Gregar) would settle whether the
+- branch target held a real handler.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f eb748819
+  where: bn6f 09ad1b28
   tool: tools/symdoc.py

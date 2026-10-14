@@ -1,0 +1,57 @@
+name: sub_80897E8
+address: '0x080897E8'
+kind: function
+previous_names: []
+status: hypothesis
+summary: When the chatbox flag 0x80 is clear and the chip lockout timer has expired, fades the screen white and
+  starts a Beast-Out cancel/exit transition by storing 0x24 into the object byte pointed to by r5.
+interface: (r5 = pointer to a battle/AIData state byte) -> r0 = 1 ; no other observable side effects on caller-visible
+  regs
+details: "Pushes r4-r7/lr, tests eFlags2009F38 bit 0x80 via `chatbox_mask_eFlags2009F38`. If that bit is set (Z\
+  \ clear after\n  the test, so the AND result was non-zero), the function bails out via the loc_8089804 epilogue\
+  \ returning 1.\n  Otherwise it calls `battle_tickChipLockout_8089CB4` and bails if that returns 0 (timer not elapsed).\
+  \ If both\n  the chatbox flag is clear and the chip lockout tick says the timer is done, the function sets r0=4,\
+  \ r1=0xff\n  and calls `SetScreenFade(4, 0xff)` (a white-out fade), then stores the immediate 0x24 into `[r5]`,\
+  \ which is\n  the byte at offset 0 of whatever struct/byte-array r5 points to (consistent with kicking off a Beast-Out\n\
+  \  cancel/exit state). The function always returns 1 in r0.\n  Inferred: the `0x24` value is a Beast-Out \"begin\
+  \ cancellation / exit\" substate id written into the object's\n  state byte; r5 is a pointer to the active Navi\
+  \ (player) AIData/battle-object state.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mov r0, #0x80` then `bl chatbox_mask_eFlags2009F38` -> tests bit 0x80 of the event-flag word - `bne
+    loc_8089804` -> short-circuits when bit 0x80 is set - `bl battle_tickChipLockout_8089CB4` / `beq loc_8089804`
+    -> second guard, requires the chip-lockout timer to have ticked - `mov r0, #4; mov r1, #0xff; bl SetScreenFade`
+    -> triggers a fade-out (4 typically = fade-to-white, 0xff = max step) - `mov r0, #0x24; strb r0, [r5]` -> writes
+    the literal 0x24 into the byte at the address in r5 - `mov r0, #1; pop {r4-r7,pc}` -> unconditional r0=1 return
+    - All 6 captured calls in `snap_beastsp_0180000_*.bin` (Beast-Out-related snapshot) show the same entry r0=0x080897e9
+    (thumb bit set), r1=0x080895c0, consistent with a per-frame Beast-Out state handler'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080897E8
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^080897e8 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- 'The exact struct that r5 points to: r5 comes from the caller (r5 is callee-saved here). The captured calls don''t
+  show r5 because it''s saved/restored across the call; the trace only shows r0..r3 on entry.'
+- 'Why 0x24 is the right substate id: needs the caller''s struct definition to confirm offset 0 is the substate
+  / CurState field. The BattleObject''s `CurState` is at offset 0x8, so r5 is unlikely to be a plain BattleObject*;
+  it''s more likely a small scratch/state struct, the player''s AIData (offset 0 of AIData is `ActorType`), or a
+  per-frame Beast-Out state record. No offset read into r5 is visible here.'
+- Whether the r0=1 return value carries a specific meaning to the caller (e.g., "transition started") or is just
+  a constant true.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 09ad1b28
+  tool: tools/symdoc.py

@@ -3,41 +3,32 @@ address: '0x0810D808'
 kind: function
 previous_names: []
 status: hypothesis
-summary: One update tick of a SnakeArm-style battle object, selecting the next panel along its arm and resetting
-  the object's wait timer.
-interface: (r0..r3 not meaningful, caller saves its own state; returns r1 = scratch, r5 = pointer of true owning
-  battle object for the caller) -> void-like for callers
-details: "Snaps from the captured-call profile: every entry comes in with r1 = 0x0810d809 (= this function + 1,\
-  \ i.e. caller is passing a pool/scratch pointer with Thumb bit set), r2 = 0x80, r3 = 3, and the same lr (0x0810d7f0)\
-  \ — clearly invoked from a tight per-object loop in a single caller, presumably a \"snake-arm\" or SnakeArm-like\
-  \ object whose params (0x80 = Param1, 3 = Param3) identify which arm segment / step counter to advance. The callees\
-  \ tell the rest of the story:\n    - object_getFrontDirection -> reads r5 (the live battle object) and returns\
-  \ ±1 facing multiplier.\n    - object_setCounterTime(r0, r5, r10) -> writes the per-step counter timer on the\
-  \ same object.\n    - object_setFlag1 -> sets a bit in the object's CollisionData ObjectFlags1 (likely OBJECT_FLAGS_MOVE_COMPLETE\
-  \ / USING_ACTION).\n    - highlightPanelIfSomeCondition_8109660 -> takes r0..r3 (panel (x, y), sideSign, base)\
-  \ and highlights matching grid panels.\n    - battle_ResetObjectTimerTo8_80C4072 -> resets the +8 (CurState) wait/counter\
-  \ timer to 8 frames.\n    - sub_80C5578 -> shared per-step battle helper (the r1 = 0x0810d809 input matches its\
-  \ pool pointer).\n  Reads `r5`, `r7`, `r10` and writes `r5` live, consistent with: r5 = the active battle object,\
-  \ r7 = a panel/base-coordinate pair, r10 = Toolkit. Returns r0 = 0x24/0x25/0x7F depending on call (story6_0..13),\
-  \ so the exit r0 encodes a \"next panel index / column choice\" — values 0x24..0x7F fit a panel column selector\
-  \ or curAnim index. The whole function is one arm-step iteration that highlights the next valid panel(s), sets\
-  \ the action timer, marks MOVE_COMPLETE/USING_ACTION and re-arms the 8-frame wait so the parent loop calls it\
-  \ again next tick.\n"
+summary: Battle object hook that resets the object's timer, ORs a flag bit, updates a counter and highlights a panel
+  range relative to the object's facing direction.
+interface: (r0 = unused, r1 = thispc+1 (called via tail-call), r2 = ?, r3 = ?, r4/r5/r7/r10 = preserved object/toolkit;
+  lr = return) -> r0 = counter value (0x24..0x7f), r1 = panel side-sign, r5 = preserved; NZCV clobbered
+details: "Assembly is not present in the provided slice (\"sub_810D808 not found in bn6f/asm\"), so the\n  description\
+  \ is reconstructed only from the register contract, callee list and 40 captured\n  call snapshots.\n  Looks like\
+  \ a per-frame AI/panel step for a battle object whose this-pointer comes in via r1\n  with bit 0 set (r1 = 0x0810d809\
+  \ = sub_810D808 | 1, i.e. Thumb callee entered with BX-style\n  tail call). It calls battle_ResetObjectTimerTo8_80C4072\
+  \ on r0, then object_setCounterTime\n  (contract uses r0, r5, r10), then object_setFlag1 to OR a flag into the\
+  \ object's\n  CollisionData, then highlightPanelIfSomeCondition_8109660 using object_getFrontDirection\n  (r5)\
+  \ to derive a +1/-1 side-sign, and finally writes a small monotonic counter into r0\n  (0x24, 0x25, 0x7f, ...\
+  \ observed). Exits with r1 carrying the side-sign and r5 intact\n  (r5 is listed in `in` and `out`, so it is preserved\
+  \ across the call).\n  The captured-return counters (0x24, 0x25, 0x7f) are consistent with a per-tick value that\n\
+  \  ramps up to 0x7f and possibly wraps; the function is `void`-ish from the caller's POV\n  (r0 is not a \"real\"\
+  \ return - it is a state value the caller might read).\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- All 6 shown captured calls share r1 = 0x0810d809 (this function + 1), r2 = 0x80, r3 = 3, lr = 0x0810d7f0
-    → single caller, single per-object scratch pattern, not general entry. - r1 = 0x0810d809 (= sub_810D808 + 1,
-    Thumb-bit set) is a value, not a stack slot — the callees that take r0..r3 (highlightPanelIfSomeCondition) and
-    the unnamed sub_80C5578 are seeing this exact 4-tuple; consistent with a "step descriptor" being threaded through.
-    - Exit r0 values 0x24 / 0x25 / 0x7F in story6_0..13 differ per call → function computes/returns a value dependent
-    on object state, not a constant. - Caller lr = 0x0810d7f0 (right before this function) → embedded arm-step caller,
-    very small loop, consistent with a "next arm tile" updater. - object_setCounterTime contract explicitly lists
-    r5 (battle object) and r10 (Toolkit) as inputs → r5 is the live battle object, r10 is Toolkit, matching the
-    assembly''s save/restore of r4/r5/r7/r10/lr. - battle_ResetObjectTimerTo8_80C4072 writes field +8 = CurState/CurAction
-    area → arms the wait loop for the next iteration. - highlightPanelIfSomeCondition + object_getFrontDirection
-    + object_setFlag1 → classic "move one panel toward the enemy side, mark panels on the grid, flag the action
-    as complete" combo for a movement/spread-type object.'
+  detail: '- callee list: battle_ResetObjectTimerTo8_80C4072, object_setCounterTime, object_setFlag1, highlightPanelIfSomeCondition_8109660,
+    object_getFrontDirection, sub_80C5578 — all battle-object helpers, none of them chatbox/map. - entry r1 = 0x0810d809
+    in every snapshot (= sub_810D808 | 1) is the classic Thumb "function is entered via a tail-call to address+1"
+    pattern. - exit r0 values: 0x25, 0x24, 0x7f, 0x7f, 0x7f, 0x7f — small monotonic counters that saturate at 0x7f,
+    matching an internal frame/walk counter. - flags transition --C- on most exits (carry set) and -ZC- on the 0x7f
+    exits, matching a saturating "cmp #0x80" or similar. - object_getFrontDirection is in the callee list and its
+    contract reads r5; combined with highlightPanelIfSomeCondition_8109660, this strongly implies a panel highlighting
+    pass that walks panels in the direction the object is facing.'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x0810D808
@@ -52,16 +43,16 @@ evidence:
     '
   result: battlesweep, beastsp, story4, story6
 open_questions:
-- Exact arm-shape/identifier this represents (SnakeArm vs. BassGS-like row-spread vs. copy-deletion); Param1 = 0x80
-  / Param3 = 3 is the main clue but only naming-style match would settle it.
-- What the exit r0 actually encodes (panel column? curAnim? collision index?); field/struct offset would settle
-  it.
-- Why the function does not appear in the asm directory yet (`sub_810D808 not found in bn6f/asm`) — possibly in
-  an overlay / non-included file; would resolve once the asm is in tree.
+- 'Exact role: could be a generic "tick + rehighlight valid move panels" or something'
+- specific to a chip/element (e.g. SnakeArm-style panel range). Without the assembly we
+- cannot tell.
+- The high byte of the side-sign in r1 is unknown.
+- Reading the actual disassembly (file not present in the supplied slice) would settle
+- the role and let us drop the `_ADDRESS` suffix.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f eb748819
+  where: bn6f 09ad1b28
   tool: tools/symdoc.py
