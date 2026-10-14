@@ -563,3 +563,60 @@ Highlights:
 | 12    | 25                 | 15                        | 10              | 0       |
 
 Running total: named 233, hypothesis-only 63, dropped 0 (of ~10,600 placeholders).
+
+## Batch 13 (2026-10-14)
+
+25 functions, 19 named + 6 hypothesis (sub_800AA06, sub_8083DF0, sub_8113124,
+sub_812053C, sub_81345D4, sub_814E0B4 kept as comment only), renamed in
+recomp 2c497203 (bn6f pushed; port ROM unchanged).
+
+Highlights:
+- overworld object: within-box check (signed)
+  (overworldObject_withinBoxCheck_signed_80011D6);
+- battle AI: clear PwrAtk state from battle object
+  (ai_clearPwrAtkStateFromBattleObject_801011A);
+- battle main-frame: run controller step (battle_runControllerStep_801483C),
+  init object story flags (battle_initObjectStoryFlags_801C984);
+- battle HUD/state: get total damage taken for actor
+  (battle_getTotalDamageTakenForActor_801DFE4),
+  set navi status GFX (battle_setNaviStatusGfx_801E71C);
+- battle GFX: load GFX chunk by selector with rows
+  (battle_loadGfxChunkBySelectorWithRows_802868C);
+- custMenu: dispatch state (custMenu_dispatchState_802A2B0);
+- battle object: run AI script (battleObject_runAIScript_802DE5C);
+- camera: clamp to bounds (battle_clampCameraToBounds_80300AC);
+- battle object/collision: collision project ray
+  (battleObject_collisionProjectRay_8031048);
+- battle AI: index to actor count (battle_aiIndexToActorCount_8031980);
+- battle object/chip: get chip lock colour one
+  (battleObject_getChipLockColourOne_8031A5E);
+- map entry: on update (mapEntry_onUpdate_80A5268);
+- battle OAM: queue OAM entries for battle-object state shadow
+  (battle_queueOamEntriesForBattleObjectStateShadow_8116A44);
+- submenu: update panel chip info if dirty
+  (submenu_updatePanelChipInfoIfDirty_81196F0);
+- object: resolve table entry by index (object_resolveTableEntryByIndex_8134538);
+- battle object/OAM: queue OAM panel grid
+  (battleObject_queueOamPanelGrid_8134610);
+- battle object: remove element and flag from update routine
+  (battleObject_removeElementAndFlagFromUpdateRoutine_814E1E8).
+
+## Tally update
+
+| batch | functions examined | named (renamed via record) | hypothesis-only | dropped |
+|-------|--------------------|---------------------------|-----------------|---------|
+| 1     | 25                 | 25                        | 0               | 0       |
+| 2     | 21                 | 20                        | 1               | 0       |
+| 3     | 25                 | 23                        | 2               | 0       |
+| 4     | 25                 | 21                        | 4               | 0       |
+| 5     | 25                 | 20                        | 5               | 0       |
+| 6     | 25                 | 21                        | 4               | 0       |
+| 7     | 25                 | 19                        | 6               | 0       |
+| 8     | 25                 | 20                        | 5               | 0       |
+| 9     | 25                 | 18                        | 7               | 0       |
+| 10    | 25                 | 14                        | 11              | 0       |
+| 11    | 25                 | 17                        | 8               | 0       |
+| 12    | 25                 | 15                        | 10              | 0       |
+| 13    | 25                 | 19                        | 6               | 0       |
+
+Running total: named 252, hypothesis-only 69, dropped 0 (of ~10,600 placeholders).
