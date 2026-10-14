@@ -1,0 +1,62 @@
+name: battle_startCrossNet_800898C
+address: '0x0800898C'
+kind: function
+previous_names:
+- sub_800898C
+status: probable
+summary: Initialises or finalises the cross-net battle lobby handoff within the battle context (advances
+  both navi AI joypads, flips the toolkit battle state to 4 once comms are ready, and clears gauges).
+interface: (r5 = BattleState-like ctx, r10 = Toolkit, lr = ret) -> flags NZ/C/V ; void-like (callers only
+  use NZ/C/V)
+details: "Steps:\n  1. Pushes lr. Advances two navi AI joypad frames by calling `battle_updateNaviAIJoypad_8012DFC`\
+  \ with player indexes 0 and 1 (`mov r0,#0` then `#1`).\n  2. Tests `[r5+3]`; if zero (battle not initialised\
+  \ yet for this state), fills ctx: `[r5+4]=0`, `[r5+8]=0x1e`, `[r5+3]=4`, then `sub_801DF0C(r10)` (battle\
+  \ init helper) → clears the custom gauge via `SetCustGauge(0)` → dispatches a kind-effect via `battle_dispatchKindEffect_801E792(0,0)`.\
+  \ This is the \"ready lobby / set up players\" path.\n  3. Calls `comm_checkCrossNetBattleReady_801E754`;\
+  \ if it returns non-zero the function returns (links still 0/1/2 = \"partner not ready\" signal handled\
+  \ by caller); only when it returns 0 does it write `[r5]=4`, advancing BattleState's first u32 to state\
+  \ value 4 and letting the next state handler run.\n  4. Restores pc via `pop {pc}`.\n  Probable role:\
+  \ per-frame \"CrossNet / DoubleBattle lobby\" tick — initialise the players if not done yet, then poll\
+  \ comms and only step the BattleState forward once the partner has reached the matching mode. Note `[r5+3]=4`\
+  \ matches `CUR_STATE_UPDATE` of BattleObject, consistent with marking an initialised sub-block.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `[r5+3]` tested with `tst r0,r0` then `[r5+3]=4` (`strb r0,[r5,#3]`, opcodes at the +0x18..+0x22
+    region) — initialises a sub-state byte if it was zero, exactly mirroring `CUR_STATE_UPDATE=0x04` semantics.
+    - Two consecutive `bl battle_updateNaviAIJoypad_8012DFC` with `mov r0,#0` then `mov r0,#1` update
+    both player navi AI joypads each call (matches the "two players" theme of cross-net battles). - `sub_801DF0C`
+    followed by `SetCustGauge(0)` and `battle_dispatchKindEffect_801E792(0,0)` is a classic "fresh lobby
+    / reset custom gauge + clear kind-effect" sequence used at battle setup. - `comm_checkCrossNetBattleReady_801E754`
+    returning non-zero bypasses `str r0,[r5]`; only on a `0` return is `[r5]` set to `4`, indicating the
+    function hands control to the next state when the partner is ready. - `r10` is threaded through (`sub_801DF0C`/`battle_dispatchKindEffect_801E792`
+    read r10), confirming r10 carries the Toolkit.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0800898C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp'
+  reproduce: 'grep -l ''^0800898c '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp
+open_questions:
+- Exact type of `r5` struct (BattleState vs some BattleContext — only fields 3, 4, 8 and a u32 at offset
+  0 used; not enough to pin to oBattleState without more cross-refs).
+- Semantic of writing `4` to `[r5]` — it could be a sub-state index inside BattleState rather than the
+  main state field; needs a caller map to settle.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7aba4135
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_800898C -> battle_startCrossNet_800898C
+  where: bn6f d76a3a2d
+  tool: tools/rename_symbol.py

@@ -1,0 +1,78 @@
+name: pet_menu_drawStatusIcons_8123E58
+address: '0x08123E58'
+kind: function
+previous_names:
+- sub_8123E58
+status: probable
+summary: PET menu per-frame redraw that picks one of two OAM sprite rows for the current navi status and
+  toggles a frame/animation byte.
+interface: (r5 = SubMenuPtr) -> r0 = new CurAnim frame index ; side effects OAM queue, mutates SubMenu+0x10
+  and SubMenu+0x11
+details: "Reads the navi's EmotionByte at offset 0x2d from the currently selected NaviStats (via GetCurPETNaviStatsByte\
+  \ with r0=0xff, the \"currently selected navi\" sentinel). The result is used as an index (×4) into\
+  \ one of four small tables (byte_8123EC8, byte_8123EE4, byte_8123F00, byte_8123F1C), each holding 3\
+  \ entries of (0x0C, X, Y) packed as 4-byte records; these are passed to battleObject_queueOamFromTableRow_811FAF4\
+  \ along with palette attr 0x20005 and one of two row pointers (dword_81233BC vs dword_81233C0, or dword_81233C4\
+  \ vs dword_81233C8) plus a base coord of either 0x80004000 or 0x8000.\n  Two pairs of calls are selected\
+  \ by SubMenu+0x11 (a 1-bit toggle): 0 picks the byte_8123EC8/byte_8123EE4 pair (OBJ attr 0x80004000\
+  \ then 0x8000), 1 picks byte_8123F00/byte_8123F1C pair.\n  Afterwards SubMenu+0x10 is incremented; if\
+  \ it overflows past 6, SubMenu+0x11 is XOR'd with 1 and SubMenu+0x10 is reset to 0. The function then\
+  \ returns SubMenu+0x10 in r0, which is a small animation-frame counter that callers (pet_menu_runFrame_81237BC,\
+  \ sub_8123514) use.\ndetails_continued: |\n  The function is essentially: pick which of two frames for\
+  \ the current emotion to draw, queue two OAM sprites for it, advance a 0..5 frame counter, and on wrap\
+  \ flip the frame toggle. The 0x8000/0x80004000 difference is the OAM OBJ-affine / size bits: 0x8000\
+  \ has the affine-disable bit set differently than 0x80004000, indicating two different sprite layers\
+  \ (foreground vs shadow or normal vs flipped).\n  struct offsets touched: SubMenu+0x10 (frame counter)\
+  \ and SubMenu+0x11 (frame toggle / which row). r5 is a SubMenu* (Toolkit+0x34). The 0xff argument to\
+  \ GetCurPETNaviStatsByte is the \"currently selected PET navi\" selector the helper uses to pick which\
+  \ NaviStats struct to read.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0, [r5,#0x14]` followed by `mov r1,#0x2d; bl GetCurPETNaviStatsByte` (0x08123E5C..0x08123E66)
+    reads EmotionByte (NaviStats+0x2d is documented as 0x21 BeastOutCounter nearby; 0x2d is in the unused-reserved
+    region past BeastOutCounter, but the captured call table name is "EmotionByte" in the helper). - Captured
+    entry r0=0xff matches GetCurPETNaviStatsByte''s documented "use currently selected navi" sentinel.
+    - Result is `lsl r6, r0, #2` and used as index into the four 12-byte tables byte_8123EC8/byte_8123EE4/byte_8123F00/byte_8123F1C;
+    each table has 3 records of (0x0C, X_lo, X_hi) so 3 emotions are supported. - `ldrb r0,[r5,#0x11];
+    tst r0,r0; bne loc_8123E8C` chooses between two pairs of queueOamFromTableRow calls (0x08123E72 vs
+    0x08123E8C), exactly the "frame toggle" branch. - `ldrb r0,[r5,#0x10]; add r0,#1; cmp r0,#6; blt loc_8123EBE`
+    is the 0..5 frame counter at SubMenu+0x10 (0x08123EAC..0x08123EB2). - On overflow: `ldrb r0,[r5,#0x11];
+    mov r1,#1; eor r0,r1; strb r0,[r5,#0x11]; mov r0,#0` (0x08123EB4..0x08123EBA) — XOR 1 flips the toggle
+    at SubMenu+0x11. - r0 is set to the new counter value before `pop {pc}` — captured exit r0 values
+    (0,1,2,5,...) corroborate a 0..5 cycle. - Caller pet_menu_runFrame_81237BC''s summary ("runs entity
+    updates ... screen fade finishes") and the function living in the 0x08123xxx cluster confirm this
+    is part of the PET status screen draw loop, not a battle routine.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08123E58
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus3, story4, story6,
+    story8, story9'
+  reproduce: 'grep -l ''^08123e58 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus3, story4, story6, story8, story9
+open_questions:
+- Which three NaviStats bytes map to indices 0/1/2 — GetCurPETNaviStatsByte is opaque but emotion/beast-out
+  is the most likely byte; would settle by setting the captured r1 values for non-0xff r0 in different
+  captured frames.
+- Exact meaning of the OAM attr difference 0x80004000 vs 0x8000 (likely which of two stacked sprites is
+  the foreground); would settle by tracing battleObject_queueOamFromTableRow_811FAF4.
+- Whether SubMenu+0x10/0x11 are documented anywhere; the struct definition only reserves up to 0x50 but
+  pet_menu_runFrame callers confirm the layout.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7aba4135
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8123E58 -> pet_menu_drawStatusIcons_8123E58
+  where: bn6f d76a3a2d
+  tool: tools/rename_symbol.py

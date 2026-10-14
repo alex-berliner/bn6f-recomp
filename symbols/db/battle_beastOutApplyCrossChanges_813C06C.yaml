@@ -1,0 +1,66 @@
+name: battle_beastOutApplyCrossChanges_813C06C
+address: '0x0813C06C'
+kind: function
+previous_names:
+- sub_813C06C
+status: probable
+summary: Iterates the battle slot table for the beast-out forms, swaps in matched chip/animation pairs
+  into `unk_30019E0` when the active navi owns the appropriate flag.
+interface: '(r0 = ?, r1 = ?, r2 = modeFlag, r10 = toolkit) -> r0 = 0 ; side effects: writes to unk_30019E0
+  entry table'
+details: "Allocates 0xc bytes on stack to stash the original r2 (the mode flag passed in by sub_8136B10),\
+  \ a pointer to the chip-id row (byte_813C1A4) and the cached \"checked item flag\" word.\n  The function\
+  \ picks one of two parallel tables by the value of r2: byte_813C188 holds animation slots and byte_813C1A4\
+  \ holds chip-id slots (both 14-byte stride via `mul r2, #0xe`). It also preloads `byte_813C14C`, a 49-entry\
+  \ table of remap indices used by sub_813C4C8.\n  Calls `battle_checkItemFlagFor_813B9B4(r1)` to obtain\
+  \ a 1..N flag id, then loops r4 over 0..0x30 scanning the toolkit's Unk200414c_Ptr byte list (`ldrb\
+  \ r0,[r6,r4]`). For each non-zero entry it calls `toolkit_getUnk2004190EntryPtr_813B9FC(idx-1)` to fetch\
+  \ a u16, looks up a battle object via `battleObject_getByIndex_813B780(u16)`, reads a per-object byte\
+  \ at offset 3, doubles it, and hands it (plus the cached flag) to sub_813C4A8/sub_813C4C8 which together\
+  \ pick a remap slot from byte_813C14C.\n  When the slot returned by sub_813C4C8 is non-zero, it stores\
+  \ either the row-0 (animation) or row-1 (chip) u16 from the chosen table into `unk_30019E0 + 2*slot`.\
+  \ If `curAnimCopy` (object[1]) is non-zero it also overwrites the +2 word of that entry with the second\
+  \ table value, suggesting the two u16 words form an anim/chip pair.\n  Returns 0 (r0) on exit and clobbers\
+  \ r4-r7 only for the caller.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `str r2,[sp,#4]` and later `ldr r2,[sp] rescue 4` confirm r2 is the mode-select flag toggling
+    the constants 0x4142/0x51e4 vs 0x522e/0x35c3 (`loc_813C0D4`/`loc_813C0DE`). - `mul r2, r3` with `mov
+    r3,#0xe` and the `off_813C180`/`off_813C184` (byte_813C188/byte_813C1A4) tables show two parallel
+    14-byte stride tables indexed by that mode flag. - `bl battle_checkItemFlagFor_813B9B4` plus `toolkit_getUnk2004190EntryPtr_813B9FC`
+    and `battleObject_getByIndex_813B780` give the per-slot battle object whose byte 3 (and byte 1, in
+    the loc_813C0F8 path) drives the index passed to sub_813C4A8. - The inner loop counter `cmp r4,#0x31`
+    plus the `ldrb r0,[r6,r4]` byte-walk is consistent with scanning the 0x31-byte Unk200414c slot list
+    held by the toolkit. - `strh r1,[r2]`/`strh r1,[r2,#2]` into `unk_30019E0 + lsl r3,#1` writes a u16
+    pair into the RAM region. - All callees live in the battle/AI/object subsystem (`battle_checkItemFlagFor_813B9B4`,
+    `battleObject_getByIndex_813B780`, `toolkit_getUnk2004190EntryPtr_813B9FC`), and the LR 0x08136B3F
+    points at the beast-out driver in `sub_8136B10`.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0813C06C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^0813c06c '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The exact semantics of r0/r1 on entry are unknown (only r2 is captured); calling convention suggests
+  r0 may be unused and r1 may be the beast-out variant index. Whether unk_30019E0 is the actual beast-out
+  cross-reference table or a chip/anim pair buffer would settle the meaning of the two-word stores.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7aba4135
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_813C06C -> battle_beastOutApplyCrossChanges_813C06C
+  where: bn6f d76a3a2d
+  tool: tools/rename_symbol.py

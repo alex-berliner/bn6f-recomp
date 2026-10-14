@@ -1,0 +1,67 @@
+name: battleObject_tickColorShaderFromExtraVars_81159DC
+address: '0x081159DC'
+kind: function
+previous_names:
+- sub_81159DC
+status: probable
+summary: Per-frame counter that decrements a BattleObject ExtraVar and, every 2nd tick while the battle
+  is running and not paused, refreshes sprite color-shader id 0xF.
+interface: '(r5 = BattleObject*) -> (void) ; side effect: writes oBattleObject_ExtraVars+4 and calls sprite_setColorShader
+  on the object''s sprite block'
+details: "1. Pushes lr and immediately returns if the battle is paused (battle_isPaused returns nonzero\
+  \ -> `bne locret_8115A00`).\n  2. Returns early if a time-stop effect is active (battle_isTimeStop returns\
+  \ nonzero).\n  3. Loads the byte at BattleObject+0x64 (oBattleObject_ExtraVars + 4, i.e. the 5th byte\
+  \ of the ExtraVars array) into r0. If it is already 0, returns.\n  4. Subtracts 1 from that counter\
+  \ and stores it back at the same offset (`str r0, [r5, #oBattleObject_ExtraVars+4]`).\n  5. Tests r0\
+  \ & 2; if the new low bits are not 2 (i.e. the counter has not reached a \"multiple of 4 + 2\" boundary),\
+  \ returns without further work.\n  6. Otherwise writes shader id 0xF into r0 and invokes sprite_setColorShader(r0=0xF,\
+  \ r5=BattleObject) — which the callee then routes through the object's high-nibble sprite index to update\
+  \ the matching sprite block's color-shader slot.\n  So this is effectively an \"every other tick of\
+  \ a per-object down counter triggers a color-shader reapplied with id 0xF\" tick used by some battle\
+  \ objects (likely those with a flashing/invisibility aura that the extra-var counter paces).\ndetails:\
+  \ |\n  Note: the disassembled source line `ldr r0, [r5,#oBattleObject_ExtraVars+4]` corresponds to offset\
+  \ 0x64 in the default BattleObject (ExtraVars starts at 0x60, so +4 = 0x64). The function never modifies\
+  \ r4-r10, r11, so the caller's saved registers are untouched. The actual return-value contract is void-like.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {lr}` ... `pop {pc}` at loc_81159DC / locret_8115A00 -> function has no saved-reg live
+    range and no useful r0 return. - `bl battle_isPaused` ; `bne locret_8115A00` (first two lines): early-exit
+    when battle is paused. - `bl battle_isTimeStop` ; `bne locret_8115A00`: early-exit when time stop
+    is in effect. - `ldr r0, [r5,#oBattleObject_ExtraVars+4]` then `cmp r0, #0` ; `beq locret_8115A00`:
+    only runs while ExtraVars[4] > 0. - `sub r0, #1` ; `str r0, [r5,#oBattleObject_ExtraVars+4]`: persists
+    the decremented counter. - `mov r1, #2` ; `tst r0, r1` ; `beq locret_8115A00`: only does the shader
+    call when the new low 2 bits are non-zero (i.e. only every other decrement). - `mov r0, #0xf` ; `bl
+    sprite_setColorShader`: pushes shader id 0xF into the sprite block routed by `r5`. - callee contract
+    `sprite_setColorShader(in=r0,r5)` matches the in-args placed here.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x081159DC
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp'
+  reproduce: 'grep -l ''^081159dc '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp
+open_questions:
+- Which BattleObject type uses this (the offset `ExtraVars+4` is the same absolute offset 0x64 for oBattleObject
+  and falls in the ExtraVars array for oT1BattleObject/oT3BattleObject/oT4BattleObject alike). Whether
+  it is a t1/t3/t4-only callback or generic could be settled by tracing the object whose vtable/curstate
+  dispatches it.
+- The semantic meaning of shader id 0xF here (e.g., invisibility flash vs. damage-flash) is not visible
+  from this function alone.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7aba4135
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_81159DC -> battleObject_tickColorShaderFromExtraVars_81159DC
+  where: bn6f d76a3a2d
+  tool: tools/rename_symbol.py

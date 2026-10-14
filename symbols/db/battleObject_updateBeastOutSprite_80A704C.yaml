@@ -1,0 +1,61 @@
+name: battleObject_updateBeastOutSprite_80A704C
+address: '0x080A704C'
+kind: function
+previous_names:
+- sub_80A704C
+status: probable
+summary: Swaps the beast-out form sprite/animation on a battle object when its target panel changes.
+interface: (r5 = BattleObjectPtr) -> void
+details: "r5 holds the BattleObject. The function reads the object's current target coords from\n  [r5+0x24]/[r5+0x28]\
+  \ (X/Y, 16.16) and the previous target from [r5+0x0C]/[r5+0x10], subtracts\n  them and tail-calls sub_800118A\
+  \ which classifies the relative direction (return 0..N-1).\n  The result indexes a small table at byte_80A7084\
+  \ (8 entries: 1,1,0,3,2,0,0,0) yielding the\n  beast-out animation index for that direction. If it differs\
+  \ from the cached value at\n  [r5+0x2C] the new animation is applied via sprite_setAnimation, the per-direction\
+  \ animation\n  data is (re)loaded with sprite_loadAnimationData, and sprite_noShadow clears the shadow\
+  \ flag.\n  The chosen anim is then cached back into [r5+0x2C] so subsequent calls with no panel change\n\
+  \  early-out. r4 only holds the classified direction across the table lookup.\n  Captured calls confirm\
+  \ most invocations re-enter with the same args and exit with r0=1\n  (table found, no anim change needed)\
+  \ and only the first call per direction actually applies.\n  Likely called once per frame from the beast-out\
+  \ battle object update loop (sub_80A6F78).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- ldr r0,[r5,#0x24]; ldr r1,[r5,#0x28]; ldr r2,[r5,#0xc]; ldr r3,[r5,#0x10] (sub r0,r0,r2;
+    sub r1,r1,r3) reads current and previous target X/Y, matching X/Y at 0x24/0x28 and the smaller "previous"
+    pair at 0x0c/0x10 in BattleObject - bl sub_800118A then cmp r0,#0; beq locret - returns a direction
+    class (0 = "no change") - ldr r0,=byte_80A7084; ldrb r0,[r0,r4]; ldr r1,[r5,#0x2c]; cmp r0,r1; beq
+    locret - looks up the new anim and compares with the cached one at 0x2c - bl sprite_setAnimation;
+    bl sprite_loadAnimationData; bl sprite_noShadow - the three calls to apply the new animation, load
+    its tiles and disable the shadow - str r4,[r5,#0x2c] caches the applied anim so repeat calls early-out
+    - Captured exit r0=1 for repeat invocations confirms the early-out path returns 1 (new table entry
+    was 1 in the table) when the cached value already matches - Only caller is sub_80A6F78, which in turn
+    is invoked from the beast-out/object update'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080A704C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^080a704c '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The exact classification returned by sub_800118A (0..7). The 8-byte table at byte_80A7084
+- plus the early-out on r0==0 strongly suggest it returns a signed direction class (e.g.
+- N..N with 0 meaning "same panel"); capturing the return value for distinct r0/r1 inputs
+- would pin it down.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7aba4135
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80A704C -> battleObject_updateBeastOutSprite_80A704C
+  where: bn6f d76a3a2d
+  tool: tools/rename_symbol.py

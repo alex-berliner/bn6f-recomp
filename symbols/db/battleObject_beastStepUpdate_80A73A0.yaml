@@ -1,0 +1,63 @@
+name: battleObject_beastStepUpdate_80A73A0
+address: '0x080A73A0'
+kind: function
+previous_names:
+- sub_80A73A0
+status: probable
+summary: Per-frame Beast-out movement step for a battle object (sliding on its X or Y slot by a slot-width
+  delta, clamped to the lane bounds), with optional sub-state advancement.
+interface: (r5 = battle object, r10 = toolkit) -> void ; reads/writes battle object +0x5..+0x10,+0x18,+0x1c;
+  calls render projector at +0xc
+details: "Loads the object's coords block (+0xC) into the camera projector at sub_8003694 to get the\n\
+  \  projected Z used as the per-frame step. Computes `r0 = Unk_06 + 1` from Param3, but only when\n \
+  \ the projector returns in-viewport AND Param3 >= 3 (compare `cmp r1,#3 / blt / mov r0,#1`).\n  Stores\
+  \ that boolean back into object+0x7 (`strb r0,[r5,#7]`).\n  Calls sub_80A743C; if it returns 1, increments\
+  \ Param3 (object+0x6). Then, depending on the\n  in-viewport flag just stored, either runs sub_80A7454\
+  \ (off-screen path) or sub_80A74A8\n  (on-screen path), followed by sub_80A7514. The off-screen branch\
+  \ also zeros Param3 back to 0.\n  After that, sub_80A7590 returns a slot-pixel delta into r2. Reads\
+  \ the lane clamps from object\n  +0x18 (X clamp) / +0x1c (Y clamp) and Param2 (object+0x5) selects the\
+  \ slot axis/mode (0..3):\n  0 = +X clamped to +0x18; 1 = +Y clamped to +0x1c; 2 = -X clamped to +0x18;\
+  \ 3 = -Y clamped to +0x1c.\n  The result is stored back into either X (+0xc) or Y (+0x10).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mov r0,r5; add r0,#0xc; bl sub_8003694` — projector called with object''s coords block,
+    matching battle-object +0xC layout (`u0 Coords // loc=0x34` would be wrong; here r5 is a battle object
+    so +0xC is Param3/Param4 area, but the call still uses +0xC as a pointer to coords for the projector).
+    - `ldrb r1,[r5,#6]; cmp r1,#3; blt 0x80A73B8; mov r0,#1` — Param3 >= 3 promotes the visible flag.
+    - `strb r0,[r5,#7]` — stores the visibility/state byte at Param4. - `bl sub_80A743C; cmp r0,#1; bne
+    0x80A73E4` — gating of the state-advance path. - `ldrb r0,[r5,#6]; add r0,#1; strb r0,[r5,#6]` — Param3
+    increment when sub_80A743C==1. - The two mutually exclusive branches call sub_80A7454 vs sub_80A74A8
+    based on the just-stored visibility flag (`cmp r0,#0; bne 0x80A73D8`); sub_80A7514 always runs after.
+    - `ldrb r4,[r5,#5]; cmp r4,#0..3` — Param2 selects the slot axis (X vs Y) and sign (add vs sum). -
+    `ldr r6,[r5,#0x18]; ldr r7,[r5,#0x1c]` — clamp sources (X bound / Y bound). - `ldr r0,[r5,#0xc] /
+    [r5,#0x10]; add/sub r0,r0,r2; cmp r0,r6/r7; bge/ble; mov r0,r6/r7` —'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080A73A0
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^080a73a0 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- What sub_80A743C / sub_80A7454 / sub_80A74A8 / sub_80A7514 / sub_80A7590 actually do
+- (e.g., animation, panel step, sound). Knowing whether the delta from sub_80A7590 is in pixels
+- or world-units, and whether +0x18/+0x1c are lane indices vs pixel bounds, would let the name
+- drop the `_ADDRESS` suffix.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7aba4135
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80A73A0 -> battleObject_beastStepUpdate_80A73A0
+  where: bn6f d76a3a2d
+  tool: tools/rename_symbol.py

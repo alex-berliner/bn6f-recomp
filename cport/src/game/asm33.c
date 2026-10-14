@@ -841,8 +841,8 @@ static u32 pet_menu_frame(void) {
     GUEST_CALL(sfx_playChipUseSound_8123A50);
     /* register form: calls pet_menu_drawCharacterStatBlock_8123C98 outside this file, which has no typed C interface yet */
     GUEST_CALL(pet_menu_drawCharacterStatBlock_8123C98);
-    /* register form: calls sub_8123E58 outside this file, which has no typed C interface yet */
-    GUEST_CALL(sub_8123E58);
+    /* register form: calls pet_menu_drawStatusIcons_8123E58 outside this file, which has no typed C interface yet */
+    GUEST_CALL(pet_menu_drawStatusIcons_8123E58);
     /* register form: calls entity_runAllUpdateHandlers_80465BC outside this file, which has no typed C interface yet */
     GUEST_CALL(entity_runAllUpdateHandlers_80465BC);
     /* register form: calls battle_updateEStructSprites_80465F8 outside this file, which has no typed C interface yet */

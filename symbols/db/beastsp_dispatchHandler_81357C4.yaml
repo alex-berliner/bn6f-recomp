@@ -1,0 +1,66 @@
+name: beastsp_dispatchHandler_81357C4
+address: '0x081357C4'
+kind: function
+previous_names:
+- sub_81357C4
+status: probable
+summary: Dispatches a beast-sp (beast-out special) battle update handler selected by a type byte, then
+  runs the standard entity/sprite tick
+interface: '(r5 = beastsp context, r5+0x2 = type byte) -> r0 = 0 ; side effects: jumps through handler
+  table, then calls entity_runAllUpdateHandlers_80465BC and battle_updateEStructSprites_80465F8'
+details: "- Saves lr; loads a pointer to an off-table (off_81357E0) into r0 and the type byte at r5+0x2\
+  \ into r1 (assembly: `ldr r0, off_81357DC; ldrb r1, [r5,#2]; ldr r0, [r0,r1]`).\n  - Indirectly dispatches\
+  \ via `mov lr, pc; bx r0` (Thumb-to-Thumb tail-call via lr+pc/bx) to one of 15 handlers: sub_813581C,\
+  \ sub_8135830, sub_81358FC, sub_8135918, sub_8135938, sub_813594C, sub_8135968, sub_81359A0, sub_8135A10,\
+  \ sub_813594C (dup), sub_8135A24, sub_81368D4, sub_8135A44, sub_8135AF8, sub_8135B38. Note entries 0\
+  \ and 9 both go to sub_813594C.\n  - The asm after the dispatch contains two `bl` instructions and one\
+  \ `pop {pc}` (asm file at lines after the dispatch); the lifter/header labelled the post-bl sequence\
+  \ as the parent function body, but those two BLs are not reachable from the type-table dispatch and\
+  \ form a separate small routine at the same address slot — they unconditionally call entity_runAllUpdateHandlers_80465BC\
+  \ and battle_updateEStructSprites_80465F8 then return via `pop {pc}`.\n  - Snap files (snap_beastsp_0080000_*)\
+  \ enter with r0=081357c5 (i.e. bit0 set => Thumb), r1=00000004, r2=0, r3=02001c04, lr=081356e0; on exit\
+  \ r0=0 with -ZC- flags. Identical across 6 captured snapshots suggests a stable wrapper.\n  - The `0x4`\
+  \ value in r1 is consistent with the lower nibble of a type/state selector (matching the way the dispatch\
+  \ index is loaded as a byte then word-indexed), but the dispatch actually uses `[r5,#2]`, so r1 is just\
+  \ payload — likely a sub-action or argument the handler ignores at this level.\n  - Naming uses \"beastsp\"\
+  \ from the snapshot file names (snap_beastsp_*) and the wider bn6f \"beast-sp / beast out special\"\
+  \ handler family.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- Instruction `ldrb r1, [r5,#2]` shows the dispatch index comes from byte 0x2 of the r5 struct.
+    - `ldr r0, off_81357DC; ldr r0, [r0,r1]` is an indirect function-pointer load indexed by the type
+    byte. - `mov lr, pc; bx r0` is a Thumb bx-via-lr indirect call to the selected sub. - The data at
+    off_81357E0 contains 15 Thumb-typed pointers (+1) into the 8135xxx range, all under one umbrella.
+    - Snap files labelled snap_beastsp_* repeatedly enter with lr=081356e0 (caller) and exit with r0=0,
+    -ZC- flags, consistent with a dispatcher that runs then returns. - The two `bl` lines after the dispatch
+    match the known signatures of entity_runAllUpdateHandlers_80465BC and battle_updateEStructSprites_80465F8
+    exactly (per callee listing).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x081357C4
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^081357c4 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- Whether the two BL calls truly belong to this function or to a sibling fragment sharing the same slot;
+  only one of the two `pop {pc}` paths is exercised and the lifter collapsed both into the same entry.
+  Tracing the 081356e0 caller and stepping past the dispatch would settle it.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7aba4135
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_81357C4 -> beastsp_dispatchHandler_81357C4
+  where: bn6f d76a3a2d
+  tool: tools/rename_symbol.py

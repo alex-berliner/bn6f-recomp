@@ -399,9 +399,9 @@ static inline call_sub_80465A0_result call_sub_80465A0(u32 r0) {
 }
 
 typedef struct { u32 r5, r7; } call_sub_811F1B8_result;
-/* register form: generated wrapper: sub_811F1B8 has no typed C interface yet */
+/* register form: generated wrapper: startScreen_queueFourCornerArrows_811F1B8 has no typed C interface yet */
 static inline call_sub_811F1B8_result call_sub_811F1B8_sub_811ED58(void) {
-    GUEST_CALL(sub_811F1B8);
+    GUEST_CALL(startScreen_queueFourCornerArrows_811F1B8);
     return (call_sub_811F1B8_result){ R5, R7 };
 }
 
@@ -604,7 +604,7 @@ Next battle_state_tick_811EE98(void) {
  * for the PET display and the navi select screen. No arguments, no results;
  * r0-r3/flags are whatever the last callee leaves behind. */
 Next naviSelect_SetupBackgrounds_811EF0C(void) {
-    GUEST_CALL(sub_811F1B8);
+    GUEST_CALL(startScreen_queueFourCornerArrows_811F1B8);
     GUEST_CALL(sub_811F214);
     GUEST_CALL(battle_updateCursorPulsate_811F0C8);
     GUEST_CALL(petCommSaveInit_811F11C);
@@ -631,9 +631,9 @@ static void call_LoadGFXAnim(void *script) {
     GUEST_CALL(LoadGFXAnim);
 }
 
-/* register form: calls sub_811F1B8 outside this file, which has no typed C interface yet */
+/* register form: calls startScreen_queueFourCornerArrows_811F1B8 outside this file, which has no typed C interface yet */
 static void call_sub_811F1B8(void) {
-    GUEST_CALL(sub_811F1B8);
+    GUEST_CALL(startScreen_queueFourCornerArrows_811F1B8);
 }
 
 /* register form: calls sub_811F214 outside this file, which has no typed C interface yet */
@@ -899,7 +899,7 @@ Next petCommSaveInit_811F11C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_811F1B8 ── */
+/* ── startScreen_queueFourCornerArrows_811F1B8 ── */
 struct ParamPair {
     u32 a;
     u16 b;
@@ -931,7 +931,7 @@ static void load_pairs(u32 base) {
 }
 
 /* Initialize two sets of (u32, u16) parameter pairs by passing each through sprite_queueOamEntryThunk_802FE28. */
-Next sub_811F1B8(void) {
+Next startScreen_queueFourCornerArrows_811F1B8(void) {
     load_pairs(A_dword_811F1F0);
     load_pairs(A_dword_811F204);
     RETURN_TO_CALLER();

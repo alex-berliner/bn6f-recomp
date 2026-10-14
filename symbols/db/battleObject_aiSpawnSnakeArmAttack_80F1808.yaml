@@ -1,0 +1,64 @@
+name: battleObject_aiSpawnSnakeArmAttack_80F1808
+address: '0x080F1808'
+kind: function
+previous_names:
+- sub_80F1808
+status: probable
+summary: 'Drives the AI "snake-arm" sub-attack over a few frames: starts it (sets phase 4, animation 0x10,
+  SFX 0x0B), waits 0x1E frames, then spawns the collision region at the front panel of `r5` and a type-1/0
+  effect at the mirrored front panel offset.'
+interface: (r5 = BattleObject*, r7 = AIAttackVars*) -> void ; mutates r5's CurAnim, r7's Unk_01/Unk_10/Unk_00,
+  plays SFX, spawns a collision region and an effect object
+details: "- First entry checks `oAIAttackVars_Unk_01`. If zero, transitions into the attack: writes 4\
+  \ to `Unk_01` (a phase/state flag), sets `oBattleObject_CurAnim = 0x10` on the actor, calls `PlaySoundEffect(0x0B)`\
+  \ (the immediate `add r0,#0xff` is just to build 0x0B), and initializes `oAIAttackVars_Unk_10` to 0x1E\
+  \ (a 30-frame countdown).\n  - On subsequent entries, the countdown at `Unk_10` is decremented. When\
+  \ it hits 0x14 (20), the action fires: a collision region is spawned in front of `r5` (`object_getFrontDirection()`\
+  \ + `PanelX` for x, `PanelY` for y, region parameters from `Unk_02`, `Damage`, and `AttackBoost+Damage`\
+  \ of the AIAttackVars, with param0=0x700FF11, param1=1). Immediately after, an effect object is spawned\
+  \ at the mirrored front column (flip*0x100 + 0x33) translated to screen coords with the panel x/y and\
+  \ offset Z=0x100000 via `spawn_t1_0x0_EffectObject`.\n  - When the countdown reaches 0, writes 8 to\
+  \ `Unk_00` (a done/complete state for the AI sub-state machine) and returns.\n  - In all other cases\
+  \ it simply returns without further work.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0,[r7,#oAIAttackVars_Unk_01]; tst r0,r0; bne loc_80F1826` — first-time guard using
+    the AIAttackVars substate. - `strb r0,[r7,#oAIAttackVars_Unk_01]` with r0=4, `strb r0,[r5,#oBattleObject_CurAnim]`
+    with r0=0x10, and `bl PlaySoundEffect` after `add r0,#0xff` to make r0=0x0B — sets phase, anim, and
+    SFX. - `strh r0,[r7,#oAIAttackVars_Unk_10]` with r0=0x1E then `sub r0,#1; strh r0,[r7,#oAIAttackVars_Unk_10]`
+    — initializes and decrements a 30-frame timer. - `cmp r0,#0x14; beq loc_80F183A` — fire-on-frame-20
+    branch that spawns the collision region and effect. - `ldr r4,dword_80F1880` (0x700FF11) and `ldr
+    r7,dword_80F1884` (1) passed (along with front-panel coordinates computed from `r5`) to `object_spawnCollisionRegion`
+    — hard-coded collision params match a generic damage hitbox. - `cmp r0,#0; bgt locret_80F187E` then
+    `strh r0,[r7,#oAIAttackVars_Unk_00]` with r0=8 — sets completion state 8 when timer expires. - Spawned
+    effect at offset column `flip*0x100 + 0x33` is the mirrored "arm tip" visual that lines up with the
+    hitbox in front of the actor.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080F1808
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp'
+  reproduce: 'grep -l ''^080f1808 '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp
+open_questions:
+- Exact attack this belongs to (the 0x700FF11/0x1 region params and the mirrored 0x33-column effect are
+  not unambiguously named in any header); verifying which AI attack pattern calls this would settle it.
+  A matching `bl sub_80F1808` in an AI attack handler would pin it down.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7aba4135
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80F1808 -> battleObject_aiSpawnSnakeArmAttack_80F1808
+  where: bn6f d76a3a2d
+  tool: tools/rename_symbol.py

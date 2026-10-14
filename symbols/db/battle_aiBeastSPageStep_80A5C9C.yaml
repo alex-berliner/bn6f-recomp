@@ -1,0 +1,63 @@
+name: battle_aiBeastSPageStep_80A5C9C
+address: '0x080A5C9C'
+kind: function
+previous_names:
+- sub_80A5C9C
+status: probable
+summary: 'Drives one step of an AIData''s "Beast SP" text-page sub-state: starts the text script the first
+  time, then polls chatbox state to finish and unlock the player.'
+interface: '(r5 = AIDataPtr, r10 = ToolkitPtr) -> r0 = 2 while running, 1 if page ended cleanly, 0 if
+  chatbox flag 0x80 was already cleared at entry ; side effects: locks/unlocks OW player and clears eFlags2009F38
+  dialogue busy state'
+details: "- On first call (r5->offset 0xa == 0): runs sub_80A5CE4 (likely page-init), then\n    owPlayer_lockPlayerForNonNPCDialogue_809E0B0,\
+  \ then sub_80A5E44 (likely sets up\n    the script/state field), then calls reqBBS_RunTextScriptWhoAmI(r0=0,\
+  \ r1=r5->0x6\n    = BButton copy). Increments the step counter at r5+0xa and returns 2.\n  - On subsequent\
+  \ calls (r5+0xa > 0): checks chatbox_mask_eFlags2009F38 with bit 0x80;\n    if still set, returns 2\
+  \ (still busy). Otherwise polls chatbox_GetState_8045F4C:\n    state==0 -> r0=1 (page ended normally);\
+  \ else r0=0 (cancelled or alternative exit).\n    In both endings, clears the step counter (r5+0xa =\
+  \ 0) and calls\n    owPlayer_unlockPlayerAfterNonNPCDialogue_809E122 to free the player.\n  - Uses r5\
+  \ (callee-saved) as the per-actor AIData pointer; r10 is the toolkit\n    required by the dialogue helpers.\
+  \ The return value matches the AIData\n    sub-state pattern (2 = busy, 1 = done, 0 = done-with-skip)\
+  \ used by sibling\n    sub-states of sub_80A5B70.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- ldrb r4, [r5,#0xa] then cmp/bgt at the top tests a per-actor step counter stored at AIData+0xa
+    (assembly line: `ldrb r4,[r5,#0xa]`). - First-entry path: `bl sub_80A5CE4` then `bl owPlayer_lockPlayerForNonNPCDialogue_809E0B0`
+    followed by `bl sub_80A5E44`, then `bl reqBBS_RunTextScriptWhoAmI` with r0=0 and r1 = byte at [r5,#6]
+    (AIData.BButton per the AIData struct). - Polling path: `mov r0,#0x80 ; bl chatbox_mask_eFlags2009F38`
+    then `bne loc_80A5CDE` (still busy -> return 2); on clear, `bl chatbox_GetState_8045F4C` and the r4=0/1
+    selection then `strb r1,[r5,#0xa]` (clears step counter) and `bl owPlayer_unlockPlayerAfterNonNPCDialogue_809E122`.
+    - All captured call sites have lr=0x080a5bb5, i.e. the parent dispatcher sub_80A5B70 repeatedly calls
+    this per AIData. - File naming `snap_beastsp_*` from the captured-call traces corroborates the'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080A5C9C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^080a5c9c '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- Exact semantics of sub_80A5CE4 and sub_80A5E44 are not in this evidence; the
+- '"init / setup" split is inferred from call ordering relative to the player-lock'
+- and the script-launch helpers.
+- Whether r4=1 vs r4=0 distinguishes "page closed normally" vs "player
+- cancelled / advanced" is inferred from chatbox_GetState returning 0 vs nonzero;
+- a second chatbox state value mapping would confirm.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7aba4135
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80A5C9C -> battle_aiBeastSPageStep_80A5C9C
+  where: bn6f d76a3a2d
+  tool: tools/rename_symbol.py

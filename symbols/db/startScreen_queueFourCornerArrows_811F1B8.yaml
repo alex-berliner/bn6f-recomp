@@ -1,0 +1,55 @@
+name: startScreen_queueFourCornerArrows_811F1B8
+address: '0x0811F1B8'
+kind: function
+previous_names:
+- sub_811F1B8
+status: probable
+summary: Queues four corner-arrow OAM tiles (top-left + top-right + bottom-left + bottom-right) for the
+  PET/Navi-select screen overlay.
+interface: () -> void ; queues four 8x8 OAM sprites via sprite_queueOamEntryThunk_802FE28 using two paired
+  descriptor tables (r0=tilePtr/u16 attr, r2=0, r3=1)
+details: "Two near-identical loops, each iterating twice over a 4-entry table of {u32 tilePtr, u16 attr}\
+  \ pairs.\n  First table starts at dword_811F1F0: entries 0x40044011/0xC385, 0x40000000/0xC311, then\
+  \ pads 0x24.\n  Second table starts at dword_811F204: entries 0x4078406E/0xC380, 0x4000006E/0xC398,\
+  \ then 0xC384/0.\n  Each call passes (tilePtr, attr, 0, 1) to sub_802FE28 (sprite_queueOamEntryThunk),\
+  \ so it\n  hard-codes r3=1. The four OAM tiles correspond to the four triangular \"corner arrow\" sprites\n\
+  \  used on the PET/Navi-select screen edge frame. Pure side-effect helper called from both\n  init/refresh\
+  \ paths and the per-frame tick of that screen.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- Two back-to-back `cmp r6,#2` / `blt` loops over pairs of 8-byte {ptr, u16} records (loc_811F1BE,
+    loc_811F1D6). - Each iteration calls sub_802FE28 with (r0=[r7], r1=[r7+4], r2=0, r3=1) — same `r3=1`
+    constant seen in sprite OAM submit helpers. - All four callers are PET/Navi-select screen setup/teardown/tick
+    functions (initPetSelectScreen_811EF28, naviSelect_SetupBackgrounds_811EF0C, sub_811ED58, sub_811EDB4).
+    - Packed tile attrs 0x85C3, 0xC311, 0xC380, 0xC398, 0xC384 are typical OAM attr0/attr1 words (shape/affine/palette
+    bits).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0811F1B8
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0811f1b8 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus2, menus3, story1, story2, story3,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- Why exactly two passes (likely one for the PET half of the select screen and one for the Navi half)
+  and which screen-corner each entry maps to; comparing tile gfx with the screen border would settle it.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7aba4135
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_811F1B8 -> startScreen_queueFourCornerArrows_811F1B8
+  where: bn6f d76a3a2d
+  tool: tools/rename_symbol.py

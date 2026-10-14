@@ -1,0 +1,63 @@
+name: battleObject_pickBeastSpFace_80A708C
+address: '0x080A708C'
+kind: function
+previous_names:
+- sub_80A708C
+status: probable
+summary: For a Beasts+ beastman-style battle object, picks the facing-table entry (0 or 1) based on the
+  horizontal angle between two positions stored on the object and writes it to oBattleObject+0x30.
+interface: '(r5 = BattleObject*) -> r0 = 0x0001C000 ; side effects: writes oBattleObject+0x30'
+details: "Loads two (x, y) fixed-point pairs from the object at +0x24/+0x28 and +0xC/+0x10,\n  then subtracts\
+  \ the second set from the first and calls calcAngle_800117C (BIOS ArcTan2)\n  to obtain a direction\
+  \ byte in [0..255]. If the result is 0x20 (down) it selects\n  table index 0; if 0xA0 (up) it selects\
+  \ index 1; otherwise it uses the default index 0.\n  The chosen index is shifted left by 2 and used\
+  \ to look up a u32 in the 8-byte constant\n  pool at 0x80A70B8 (entries 0x00000000 and 0x0001C000),\
+  \ which is then stored at\n  r5->+0x30. That field is read by callers as a u16/VariantFlag-style value;\
+  \ the\n  captured calls show r0 ending at 0x0001C000 in the \"up\" branch.\n  This is consistent with\
+  \ how Mega Man Battle Network battle objects keep a small\n  variant/state selector used by BeastOut/sp-form\
+  \ variants to choose which sprite\n  table or facing animation set to use. The function leaves r0 holding\
+  \ the value\n  just stored, suitable for further dispatch.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- ldr r0,[r5,#0x24]; ldr r1,[r5,#0x28] (object pos); ldr r2/r3 from [r5,#0xc]/[r5,#0x10] (second
+    pos); sub r0,r0,r2 / sub r1,r1,r3 — gives a delta vector. - bl calcAngle_800117C — confirmed BIOS
+    ArcTan2 wrapper returning a direction byte in r0. - cmp r0,#0x20 (down), cmp r0,#0xa0 (up): exactly
+    the two axis-aligned vertical directions, which fits "pick a face by which way you came". - csel/beq
+    into loc_80A70A8 setting r1=1, otherwise r1=0; then lsl r1,r1,#2; ldr r0,[off_80A70B4] — index a u32
+    table at 0x80A70B8. - byte_80A70B8 contains 0x00000000,0x0001C000 in the two u32 slots, matching the
+    captured exit values in the snap_beastsp_*.bin traces (r0=0x0001C000 when r1=1). - Single caller sub_80A6F78
+    sits next to it in the same AIData/BeastSp sub-tree; a snapped "beastsp" path name reinforces "Beasts+"
+    targeting. - r5 is conventionally the BattleObject pointer in this region (it indexes oBattleObject
+    offsets like 0x24/0x28/0xC/0x10/0x30).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080A708C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^080a708c '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The exact meaning of 0x1C000 and 0x0000 written at +0x30 (likely a variant ID / facing flag, but which
+  flag bit pattern it encodes isn't pinned down from this function alone — checking nearby callers in
+  the BeastSp animation table would settle it).
+- Whether the second position ([r5,#0xC]/[r5,#0x10]) is "home/anchor" or "target" is unknown; captured
+  calls don't include a dereferenced memory dump of the object, so we can't tell which struct fields those
+  are.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7aba4135
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80A708C -> battleObject_pickBeastSpFace_80A708C
+  where: bn6f d76a3a2d
+  tool: tools/rename_symbol.py

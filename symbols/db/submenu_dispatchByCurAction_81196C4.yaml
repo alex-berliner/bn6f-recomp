@@ -1,0 +1,66 @@
+name: submenu_dispatchByCurAction_81196C4
+address: '0x081196C4'
+kind: function
+previous_names:
+- sub_81196C4
+status: probable
+summary: Submenu object action dispatcher — reads `oBattleObject+9` (CurAction) and jumps through a small
+  thunk table to one of the submenu sub-actions (panel chip info, generic step, NPC chain state, sprite
+  zoom-shrink), then calls `sprite_setUnk0x2cFromLoader_81198E8` to store the sprite's `0x2C` loader addr.
+interface: '(r5 = battleObjectPtr, r10 = toolkit, lr = return) -> r0 = 0x40000000 ; side effects: dispatches
+  to one of 5 submenu action handlers; sprite unk0x2c is written by the `sprite_setUnk0x2cFromLoader`
+  follow-up.'
+details: "- `push {lr}`; load the dispatch table base via `off_81196D8 -> [off_81196DC]` (a pointer to\
+  \ a 5-entry table of `{func+1}` targets, Thumb-bit-set so `bx` works).\n  - `ldrb r1, [r5, #9]` reads\
+  \ `CurAction` (offset 0x9 in `oBattleObject`/`OverworldNPCObject` etc.).\n  - `ldr r0, [r0, r1]` indexes\
+  \ the table by CurAction; `mov lr, pc; bx r0` tail-dispatches to the chosen submenu update sub-function.\n\
+  \  - Four of the five slots resolve to known helpers: `submenu_updatePanelChipInfoIfDirty_81196F0`,\
+  \ `sub_8119730`, `sub_811974C`, `npc_stepChainSetState0x10_811975C`, `sprite_stepZoomShrinkOut_811976C`.\n\
+  \  - The `bl sprite_setUnk0x2cFromLoader_81198E8` placed right after the table in this function appears\
+  \ to actually belong to that region (likely written here by the assembler as a placeholder; the live\
+  \ call lives inside `0x081196E0`-ish code). It writes the sprite's `+0x2C` loader address based on whether\
+  \ `oBattleObject+0xC` is `0xFF` (use `0x40000000` base) or `0` otherwise.\n  - Exit value `r0 = 0x40000000`\
+  \ and `----` flags are seen on every captured call (the `bl sprite_setUnk0x2cFromLoader` is what writes\
+  \ that base address into r0 before returning).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r1, [r5, #9]` reads `CurAction` from an object pointer held in r5 (BattleObject-style
+    struct, also reused for OW NPC, see `OverworldNPCObject.CurAction` at 0x9). - Dispatch table at `off_81196DC`
+    lists 5 entries; the named callees match submenu/npc/sprite helpers and the leading thunk target is
+    `submenu_updatePanelChipInfoIfDirty_81196F0`. - `curAction == 0` -> submenu panel-chip-info updater;
+    `curAction == 4` -> sprite zoom-shrink-out — consistent with submenu page actions. - Captured entry
+    `r0 = 0x081196c5` (i.e. `sub_81196C4 | 1`, the Thumb dispatch thunk) confirms callers invoke this
+    function via a Thumb-branch pointer. - Captured exit `r0 = 0x40000000`, flags `----`, mirrors `sprite_setUnk0x2cFromLoader`''s
+    "use base 0x40000000" branch when `oBattleObject+0xC == 0xFF`.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x081196C4
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, beastsp, maps, menus3, story2, story4, story6, story8, story9'
+  reproduce: 'grep -l ''^081196c4 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, beastsp, maps, menus3, story2, story4, story6, story8, story9
+open_questions:
+- The exact meaning of every dispatch slot — slot indices 1,2,3 land in unnamed helpers (`sub_8119730`,
+  `sub_811974C`, `npc_stepChainSetState0x10_811975C`); what triggers them vs. the named panel-chip-info
+  or zoom-shrink handlers is unknown without reading those callees.
+- Whether the `bl sprite_setUnk0x2cFromLoader_81198E8` symbol is actually invoked from this function or
+  from the surrounding function (the placement right after `off_81196DC` is unusual). Examining `r0` after
+  dispatch in callers would settle it.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7aba4135
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_81196C4 -> submenu_dispatchByCurAction_81196C4
+  where: bn6f d76a3a2d
+  tool: tools/rename_symbol.py

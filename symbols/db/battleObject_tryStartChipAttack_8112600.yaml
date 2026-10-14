@@ -1,0 +1,62 @@
+name: battleObject_tryStartChipAttack_8112600
+address: '0x08112600'
+kind: function
+previous_names:
+- sub_8112600
+status: probable
+summary: If the AI's battle object has a chip selected and the battle is past the opening phase, performs
+  the chip-attack startup sequence (write chip params, set attack action, post-update) and returns 1.
+interface: '(r5 = BattleObject*, r10 = Toolkit*) -> r0 = 1 if a chip attack was initiated, else 0 ; side
+  effects: mutates the battle object, reads/writes battle state.'
+details: "r6 is initialised to 0 and used as the success flag. The body reads the selected chip for the\
+  \ AI's actor via battle_getSelectedChipForUse_800ED90, masking the low byte of r0 into r4 (the chip\
+  \ id, 0x7F).\n  If r3 from the chip lookup is zero (no chip selected), the function falls through to\
+  \ loc_811262C, returning 0. Otherwise it reads battle_getStateUnk40_800A704 (oBattleState_Unk_40) and\
+  \ compares it against the constant 0x12c loaded via off_81126D4. Only when the state field is >= 0x12c\
+  \ (i.e. past the battle intro/setup) does it proceed with the attack.\n  The startup sequence then runs\
+  \ somethingWriteChipParams_80126E4 (with the chip id in r0), object_setAttack0 (sets the actor's action\
+  \ to attack 0), and sub_800F322 (likely a post-attack-init step or counter tick). r6 is set to 1 before\
+  \ the shared epilogue.\n  Note the asm pushes only {r4,r6,lr}, so r5/r7/r10 are preserved through the\
+  \ call per the register contract; r4/r6 are restored by the pop.\n  r0 is the success bool returned\
+  \ to the caller (sub_8112278), which appears to be the AI tick / decision loop.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mov r6, #0` ... `mov r6, #1` immediately before the return at loc_811262C shows r6 is the
+    success flag returned via `mov r0, r6` (`bn6f/asm/asm32.s:8924`). - `mov r0, r5; bl battle_getSelectedChipForUse_800ED90`
+    followed by `tst r3, r3; beq loc_811262C` shows a chip must be selected for the body to run. - `lsl
+    r4, r0, #0x17; lsr r4, r4, #0x17` masks r0 to a 7-bit chip id held in r4. - `bl battle_getStateUnk40_800A704;
+    ldr r1, off_81126D4 // =0x12c; cmp r0, r1; blt loc_811262C` gates the attack on battle-state field
+    >= 0x12c (intro/setup phase). - `bl somethingWriteChipParams_80126E4; bl object_setAttack0; bl sub_800F322`
+    is the three-call chip-attack startup sequence that the function wraps. - The caller sub_8112278 takes
+    a wide contract (r4..r12, lr in; everything out), consistent with an AI per-frame dispatch iterating
+    battle objects and consuming a bool per actor.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08112600
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp'
+  reproduce: 'grep -l ''^08112600 '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp
+open_questions:
+- Exact identity of sub_800F322 / object_setAttack0 / somethingWriteChipParams_80126E4 — only their contracts/roles
+  are known; whether sub_800F322 is a counter increment or another write isn't pinned down by this snippet.
+- Which AI actor type this is meant for (player vs navi vs virus) — gated by somethingWriteChipParams
+  accepting a chip id; the caller chain determines which r5 it is called on.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7aba4135
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8112600 -> battleObject_tryStartChipAttack_8112600
+  where: bn6f d76a3a2d
+  tool: tools/rename_symbol.py

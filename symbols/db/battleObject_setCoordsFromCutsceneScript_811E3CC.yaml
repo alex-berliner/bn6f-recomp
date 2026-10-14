@@ -1,0 +1,72 @@
+name: battleObject_setCoordsFromCutsceneScript_811E3CC
+address: '0x0811E3CC'
+kind: function
+previous_names:
+- sub_811E3CC
+status: probable
+summary: Adjusts a battle object's sprite X/Y using a cutscene-script-relative offset (subtract 0x14/0x10-byte
+  row, +8) when its source-cutscene script slot index 0 matches, then runs sprite_update
+interface: '(r5 = BattleObject*, r6 = ?, r10 = Toolkit/CutsceneState base; lr = return into caller) ->
+  (r0 = 0x1AC, NZ flag set) ; side effects: writes Object[5] in scratch mem, sets Coordinates of object''s
+  sprite sub-entry, runs sprite_update'
+details: "Steps:\n  1. push {lr}; load byte at [r5] -> r4 (object header byte 0).\n  2. mov r1,#2; ldrb\
+  \ r0,[r6,#0xd]; tst r0,r0 — toggle bit 0x02 of the header in r4 (0x02 clear if the r6#0xd byte is nonzero,\
+  \ else set), then strb r4,[r5].\n  3. bl battle_getScenarioEffectStateField_81421D0 (sub_81421D0) ->\
+  \ r0 = scenario/effect slot index.\n  4. r1 = 0x10 * r0 + 0x0C; push {r0=0xDC, r1}; r0 = &dword_8089128\
+  \ (`CutsceneScript` ptr, the cutscene script state used by cutscene_checkOriginalCutsceneScriptPos_8036F70).\n\
+  \  5. bl cutscene_checkOriginalCutsceneScriptPos_8036F70 → returns Z flag. If NZ (slot not at \"original\"\
+  \ pos), r0 -= 0x14 and r1 += 8, then `bl sprite_setCoordinates` with (r0,r1)=sprite X/Y for the 0xDC\
+  \ sub-entry.\n  6. bl sprite_update(r5), then pop {pc}.\n  Captured call #0 shows entry r0=4, r1=0xA0\
+  \ coming from sub_811E384 with lr=0x0811e3c5 (the push-lr + first instr of the function), and exit r0=0x1AC\
+  \ Z set (i.e. `sprite_setCoordinates` returns NZ normally then `beq` is not taken, r0 settled to 0x1AC).\n\
+  \n  40 recorded snapshots cover many `0x08 7d d8 e5` cutscene-script positions (the BattleSP cutscenes),\
+  \ so this is the BeastSP cutscene slot-position handler.\n  All routing through the cutscene-check return\
+  \ flag decides the \"scenario-adjusted offset\" variant; only differs from the trivial pass-through\
+  \ by -0x14/+8.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {lr}` (0x811E3CC) at function entry + ending `pop {pc}` (0x811E402) - `ldrb r4,[r5]`
+    + `strb r4,[r5]` mutates an Object header byte at offset 0 of r5; `orr r4,r1 / bic r4,r1` against
+    #2 inside the `tst r0,r0 ; beq` branch toggles a single header flag bit - `bl sub_81421D0` returns
+    the slot index (r0) used as `mul r1,r0,#0x10`; sub_81421D0 readme calls it "get scenario/effect state
+    field" - `push {r0,r1}` (r0=0xDC, r1=offset+0xC) and `off_811E408 → dword_8089128` (label "CutsceneScript"
+    in the project); consumer `cutscene_checkOriginalCutsceneScriptPos_8036F70` reads them - `beq loc_811E3FC
+    ; sub r0,#0x14 ; add r1,#8` — when the cutscene check is *not* at its original position, an offset
+    of -0x14 / +8 is applied to the sprite coords - `bl sprite_setCoordinates (0800307c)` followed by
+    `bl sprite_update (080026c4)` updates the sprite sub-entry chosen by the high nibble of byte 2 of
+    the resource (here r0=0xDC → sub-entry 0xD) and advances OAM - captured snap_0180000_0: lr at push
+    site 0x0811e3c5, exit r0=0x1ac Z set, matching that `beq` was taken (cutscene script IS at original
+    pos, no offset adjustment) but exit value still reflects `sprite_setCoordinates` returned r0=0x1AC'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0811E3CC
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^0811e3cc '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- Exactly what r6 is and which byte at r6#0xD gates the header bit 1 (OBJECT_HEADER flags bit).
+- Whether the dword_8089128 (CutsceneScript) embed used here is per-BeastSP cutscene or a generic one
+  — the 40 beastsp snapshots strongly suggest BeastSP cutscenes, but no constant tag in the function itself
+  names them.
+- Resolution of `sub_81421D0`'s role ("scenario effect state field") — only known by its name in capture.
+- Whether the matching header-bit-1 toggle is "panel/trap-armed" vs "object pause" would be settled by
+  cross-checking r6 pointer type, which isn't visible here.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7aba4135
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_811E3CC -> battleObject_setCoordsFromCutsceneScript_811E3CC
+  where: bn6f d76a3a2d
+  tool: tools/rename_symbol.py
