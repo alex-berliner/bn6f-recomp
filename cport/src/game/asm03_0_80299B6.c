@@ -1322,7 +1322,7 @@ Next object_countdownTick_802BEFC(void) {
 
 /* ── battle_pickObjectAnimState_802BF0C ── */
 /* battle_pickObjectAnimState_802BF0C(r5 = battle object):
- * Pick an animation/state index for the object and hand it to sub_802C810.
+ * Pick an animation/state index for the object and hand it to battle_drawChipSelectRowTilemapBlock_802C810.
  * If either of the two flag halfwords next to dword_2036820 has bit 0 set,
  * the index comes from the object's byte at +0xC (capped: >1 becomes 0xC,
  * otherwise 4) and is also stored into the object's halfword at +2.
@@ -1343,7 +1343,7 @@ Next battle_pickObjectAnimState_802BF0C(void) {
         R0 = (LD16(R7) & 8) >> 3;
     }
 
-    GUEST_CALL(sub_802C810);
+    GUEST_CALL(battle_drawChipSelectRowTilemapBlock_802C810);
     RETURN_TO_CALLER();
 }
 

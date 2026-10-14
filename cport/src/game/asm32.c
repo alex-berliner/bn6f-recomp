@@ -803,7 +803,7 @@ Next petMenu_updateObject_81169B0(void) {
     switch (mode) {
     case 0: GUEST_CALL(npc_tickDisappearTimer_81169D8); break;
     case 4: GUEST_CALL(battle_reloadObjectSprite_8116A04); break;
-    case 8: GUEST_CALL(sub_8116A28); break;
+    case 8: GUEST_CALL(battleObject_setCurStateAndQueueOamForShadow_8116A28); break;
     default: break;  /* unreachable: the mode byte is always 0, 4 or 8 */
     }
 
@@ -892,11 +892,11 @@ Next battle_reloadObjectSprite_8116A04(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8116A28 ── */
-/* sub_8116A28: conditionally fix up a state byte, then continue into battle_queueOamEntriesForBattleObjectStateShadow_8116A44.
+/* ── battleObject_setCurStateAndQueueOamForShadow_8116A28 ── */
+/* battleObject_setCurStateAndQueueOamForShadow_8116A28: conditionally fix up a state byte, then continue into battle_queueOamEntriesForBattleObjectStateShadow_8116A44.
  * If the counter byte pointed to by r7 has reached 8, the byte at r5+8 is also
  * set to 8 (both are kept in sync). Flags/results come from battle_queueOamEntriesForBattleObjectStateShadow_8116A44. */
-Next sub_8116A28(void) {
+Next battleObject_setCurStateAndQueueOamForShadow_8116A28(void) {
     if (LD8(R7) == 8)
         ST8(R5 + 8, 8);
 

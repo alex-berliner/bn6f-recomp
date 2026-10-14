@@ -1,0 +1,69 @@
+name: object_applySelfCollision_8019F44
+address: '0x08019F44'
+kind: function
+previous_names:
+- sub_8019F44
+status: probable
+summary: 'Applies SelfDamage flag bits to a battle object''s CollisionData: clears/clamps SelfDamage,
+  doubles it on DAMAGE_DOUBLE, sets status/hit modifiers on DAMAGE_PARALYZE/DAMAGE_UNINSTALL, and dispatches
+  sub_801A4D0 for DAMAGE_ERASECROSS_SKULL_HIT/DAMAGE_NOTHING.'
+interface: '(r0 = CollisionData* @0x02XXXXXX, r1 = ???) -> r0 = ??? ; side effects: mutates CollisionData
+  fields SelfDamage (0x2e), StatusEffectBase (0x10), HitModifierBase (0x0e); calls sub_801A4D0.'
+details: "Reads CollisionData.SelfDamage (u16 at 0x2e) into r4, then walks r4's high bits left one at\
+  \ a time using `lsl r4,#1; bcc ...`. Three of those bits map directly onto the CollisionData.Damage\
+  \ flag constants defined in BattleObject.inc: bit 0x8000 (DAMAGE_DOUBLE), bit 0x4000 (DAMAGE_PARALYZE),\
+  \ bit 0x2000 (DAMAGE_UNINSTALL), bit 0x1000 (DAMAGE_ERASECROSS_SKULL_HIT), bit 0x0800 (DAMAGE_NOTHING).\
+  \ \n\n  After stripping the high bits, the remaining 11-bit SelfDamage is stored back. On DAMAGE_DOUBLE\
+  \ the value is doubled (add r0,r0). On DAMAGE_PARALYZE the StatusEffectBase (0x10) is set to 0x10 and\
+  \ HitModifierBase (0x0e) to 1. On DAMAGE_UNINSTALL (third branch) it tail-calls sub_801A4D0(r0=0xf8).\
+  \ On DAMAGE_ERASECROSS_SKULL_HIT (fourth branch) it calls sub_801A4D0(r0=0xf7) and uses `bcc loc_8019F80`\
+  \ so the carry flag of the callee controls fall-through. DAMAGE_NOTHING would be handled by the trailing\
+  \ `lsl r4,#1; bcc locret` ladder — there is a fifth `lsl r4,#1; bcc locret_8019F84` block that simply\
+  \ returns with no further action.\n\n  Caller object_setupCollisionData sets CollisionDataPtr (battle\
+  \ object offset 0x54) and the object's damage flags before calling this. object_updateCollisionData\
+  \ re-runs it each turn to refresh.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrh r4,[r7,#oCollisionData_SelfDamage]` (0x2e) loads the 16-bit SelfDamage field. - The
+    five `lsl r4,#1; bcc ...` ladder bits line up with CollisionData''s DAMAGE_DOUBLE (0x8000), DAMAGE_PARALYZE
+    (0x4000), DAMAGE_UNINSTALL (0x2000), DAMAGE_ERASECROSS_SKILL_HIT (0x1000), DAMAGE_NOTHING (0x0800)
+    flag constants. - DAMAGE_DOUBLE branch: `add r0,r0` then `strh r0,[r7,#oCollisionData_SelfDamage]`
+    doubles the damage value. - DAMAGE_PARALYZE branch: `mov r0,#0x10; strb r0,[r7,#oCollisionData_StatusEffectBase]`
+    (offset 0x10) and `mov r0,#1; strb r0,[r7,#oCollisionData_HitModifierBase]` (offset 0x0e). - DAMAGE_UNINSTALL/DAMAGE_ERASECROSS_SKULL_HIT
+    branches `mov r0,#0xf8`/`#0xf7; bl sub_801A4D0`, with carry returned from sub_801A4D0 gating fall-through
+    in the 0xf7 case. - Caller summaries (object_setupCollisionData, object_updateCollisionData) both
+    describe "applies a time-stop bit, and finalizes via sub_8019F44" / "re-evaluates it, marking bit
+    16 while time is stopped". - Captured r0 exits: r0=0 when high flag bits are clear (e.g. snap_story2_0/1/12)
+    and r0=0x0a (=10) when DAMAGE_PARALYZE fired (snap_story2_10/11/13), matching the `#0x10` constant
+    left in r0 at exit of that branch.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08019F44
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^08019f44 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- Whether the trailing fifth `lsl r4,#1; bcc locret` is meaningful (DAMAGE_NOTHING case) or pure padding.
+- What sub_801A4D0 does with r0=0xf7/0xf8 — the contract lists r1 and r5 as in but no memory ptr, so it
+  likely reads the same CollisionData via a different routing path.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f add04b11
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8019F44 -> object_applySelfCollision_8019F44
+  where: bn6f 82358707
+  tool: tools/rename_symbol.py

@@ -1,0 +1,63 @@
+name: battle_dispatchBeastOutEvent_80148CC
+address: '0x080148CC'
+kind: function
+previous_names:
+- sub_80148CC
+status: probable
+summary: 'Beast Out sub-state dispatch for an actor: dispatches on actor type to a per-event routine'
+interface: (r5 = actor-related state) -> tail-call to one of three routines; returns their result
+details: "1. Saves lr and loads a 3-entry jump table (off_80148E0) via off_80148DC.\n  2. Reads the low\
+  \ byte at [r5+0x01] — given the captured calls all return r0=1 with that byte\n     treated as an actor/type\
+  \ discriminant (the adjacent field is typically the type/index of\n     the actor record the AIData\
+  \ lives in; the callee naming \"beastsp\" plus the\n     `BeastOutAPwrAtk` field on AIData suggests\
+  \ the discriminant is the AIData's actor type\n     byte at offset 0).\n  3. Performs `ldr r1, [r1,\
+  \ r0]; mov lr, pc; bx r1` — a Thumb switch on r0 that tail-calls\n     the chosen routine with the original\
+  \ lr on the stack.\n  4. `pop {pc}` then either returns through that pushed lr or — because the callee\
+  \ ends with\n     `+1` (BX) and `pop {pc}` — returns directly to the original caller of 0x80148CC.\n\
+  \  5. Targets are: `battle_toggleBattleScreenFadeOrSomething_80148EC` (index 0),\n     `activateCrossHappensHere_8014944`\
+  \ (index 1), and `battle_runBeastOutIntro_801498E`\n     (index 2). The `+1` Thumb bit on each address\
+  \ marks them as Thumb entry points.\n  6. The captured calls always return r0=1 with C flag set (--C-),\
+  \ consistent with the\n     callees reporting \"I handled this beast-out phase\" to the per-frame actor\
+  \ updater.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {lr}` / `pop {pc}` at 0x080148cc-0x080148da: this is a pure dispatch wrapper. - `ldrb
+    r0, [r5,#1]` at 0x080148d2 reads the discriminator byte from a struct pointed to by r5 (callee-saved
+    across the dispatch); r5 is in the function''s `in=` set. - `ldr r1, [r1, r0]; mov lr, pc; bx r1`
+    at 0x080148d4-0x080148dc is a classic Thumb switch/jump-table via PC. - The three tail-call targets
+    are listed in off_80148E0 with Thumb bit set: 0x80148ED, 0x8014945, 0x801498F. Their project names
+    contain "BeastOut"/"Beast Out", confirming this is the Beast Out pipeline. - Captured calls all show
+    r5 = 0x02036828 (EWRAM), r0 = 4 (input), exit r0 = 1 with carry set — consistent with "event ran,
+    return 1 to caller".'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080148CC
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^080148cc '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The exact field at `[r5+1]` is not directly named; the candidate is the actor-type/
+- AIIndex byte of the actor record. Confirming it requires looking at the type
+- definitions reached through the r5 pointer in the caller.
+- Whether the dispatch is keyed by an actor-type enum (virus vs navi vs player) or by an
+- event-substate index is unclear from this snippet alone; the callees' names hint at
+- both possibilities.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f add04b11
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80148CC -> battle_dispatchBeastOutEvent_80148CC
+  where: bn6f 82358707
+  tool: tools/rename_symbol.py

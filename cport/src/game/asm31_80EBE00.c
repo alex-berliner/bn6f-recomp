@@ -1108,7 +1108,7 @@ done:
 }
 
 /* ── ai_attack_dispatch_80ED13E ── */
-/* register form: calls sub_80ED154 outside this file, which has no typed C interface yet */
+/* register form: calls battle_object_aiSnakeArmUpdate_80ED154 outside this file, which has no typed C interface yet */
 static void call_attack_type_handler(u32 idx, u32 target, u32 ai_vars,
                                      u32 r2, u32 r3, u32 r4, u32 r5, u32 r6,
                                      u32 r8, u32 r9, u32 r10, u32 r11, u32 r12) {
@@ -1117,7 +1117,7 @@ static void call_attack_type_handler(u32 idx, u32 target, u32 ai_vars,
     R7  = ai_vars;
     R2  = r2;  R3  = r3;  R4  = r4;  R5  = r5;  R6  = r6;
     R8  = r8;  R9  = r9;  R10 = r10; R11 = r11; R12 = r12;
-    GUEST_CALL(sub_80ED154);
+    GUEST_CALL(battle_object_aiSnakeArmUpdate_80ED154);
 }
 
 /* Read the AI attack-type index from the attack variables and dispatch to the

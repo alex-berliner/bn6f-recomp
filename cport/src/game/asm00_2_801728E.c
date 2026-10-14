@@ -688,21 +688,21 @@ static inline call_battle_isTimeStop_result call_battle_isTimeStop(void) {
 }
 
 typedef struct { u32 r0, r1, r3, r6; bool z, n, c, v; } call_sub_8019F44_result;
-/* register form: generated wrapper: sub_8019F44 has no typed C interface yet */
+/* register form: generated wrapper: object_applySelfCollision_8019F44 has no typed C interface yet */
 static inline call_sub_8019F44_result call_sub_8019F44(u32 r0, u32 r1, u32 r5) {
     R0 = r0;
     R1 = r1;
     R5 = r5;
-    GUEST_CALL(sub_8019F44);
+    GUEST_CALL(object_applySelfCollision_8019F44);
     return (call_sub_8019F44_result){ R0, R1, R3, R6, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
 }
 
 /* Fill the collision-data struct for a battle object, resolve self/target collision
- * type flags from the table, and finalize via sub_8019F44. */
+ * type flags from the table, and finalize via object_applySelfCollision_8019F44. */
 typedef struct {
-    u32 r0;  /* sub_8019F44 exit r0 */
-    u32 r1;  /* sub_8019F44 exit r1 */
-    u64 r6;  /* sub_8019F44 exit r6 */
+    u32 r0;  /* object_applySelfCollision_8019F44 exit r0 */
+    u32 r1;  /* object_applySelfCollision_8019F44 exit r1 */
+    u64 r6;  /* object_applySelfCollision_8019F44 exit r6 */
 } CollisionSetupResult;
 
 static CollisionSetupResult setup_collision_data(u32 out_ptr, u32 parent_ptr,
@@ -756,7 +756,7 @@ static CollisionSetupResult setup_collision_data(u32 out_ptr, u32 parent_ptr,
         call_object_getTableEntry_801A0BA(alliance, table_target);
     ST32(out_ptr + oCollisionData_TargetCollisionTypeFlags, target_entry.r0);
 
-    /* Finalize: sub_8019F44(collision_ptr, r1 from target lookup, parent_ptr) */
+    /* Finalize: object_applySelfCollision_8019F44(collision_ptr, r1 from target lookup, parent_ptr) */
     call_sub_8019F44_result fin =
         call_sub_8019F44(out_ptr, target_entry.r1, parent_ptr);
 

@@ -1,0 +1,56 @@
+name: battleScenarioEffect_isActive_814216E
+address: '0x0814216E'
+kind: function
+previous_names:
+- sub_814216E
+status: probable
+summary: returns true (r0=1 -> 7) while the per-battle scenario-effect state at eScenarioEffectState2000780+0xE
+  is non-zero, serving as a guard for the scenario-effect handlers
+interface: () -> r0 = 1 if scenario-effect state+0xE != 0 else 0 ; sets NZ, clobbers r4, restores lr via
+  tail-call
+details: "Tail-call helper: push {r4-r7,lr} only to load r5 with the absolute address of eScenarioEffectState2000780\n\
+  \  (commented `off_8142308`), then ldrb r0,[r5,#0xE] reads the one-byte scenario-effect flag, and `tst\n\
+  \  r0,r0` followed by pop {r4-r7,pc}` returns NZ/Z in r0 via the pop's load of pc. The five callers\n\
+  \  (sub_808983A / 808985A / 80898B2 / 80899F2 / 8089C16, all in the BeastSP / Beast-Out handling block)\n\
+  \  branch-test the returned flag to decide whether to apply the scenario effect (extra Beast-Out\n \
+  \ formulas keyed by Version_16/Version_17, which the captured snap @02011860 shows at offsets\n  0x09=BeastOut\
+  \ APwrAtk, 0x0a=Unk, 0x19=ChipLockoutTimer, etc.). Because it tail-calls through\n  `{r4-r7,pc}`, the\
+  \ contract lists r4/r5/r7 in `out` and may_write them. Behaviorally `void`/bool.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `sub_814216E:` body is `ldr r5,off_8142308; ldrb r0,[r5,#0xe]; tst r0,r0; pop {r4-r7,pc}`
+    (asm37_1.s:846) - `off_8142308` is annotated `eScenarioEffectState2000780`, so the byte lives at 0x0200078E
+    - pop `{...,pc}` is the standard way to return a tst/Z flag in r0 and restore callee-saved r4-r7 plus
+    lr - The 40 captures that hit this site all enter from the 0x080898xx page (lr=0x0808984B or 0x08089869)
+    - All exits return r0=0x00000007; flag ---- reflects tst result with no follow-up branch in this stub
+    - First capture r0=02011860 shows a T1-style battle object (Param1=09 etc.), confirming an AIData
+    caller'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0814216E
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^0814216e '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- Why r0=7 on exit (probably because the probe runs after a sibling `mov r0,#7` in the caller, or the
+- pre-thunk-tst r0 already held 7). Naming `scenarioEffect` relies on the eScenarioEffectState
+- symbol; if that label is wrong the byte being read is something else.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f add04b11
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_814216E -> battleScenarioEffect_isActive_814216E
+  where: bn6f 82358707
+  tool: tools/rename_symbol.py

@@ -1,0 +1,64 @@
+name: battle_drawChipSelectRowTilemapBlock_802C810
+address: '0x0802C810'
+kind: function
+previous_names:
+- sub_802C810
+status: probable
+summary: Draws one of two small tilemap sprite blocks (10 halfword pairs) into unk_2034B30's 24-wide row
+  buffer at x=2,y=0xE for the chip selection screen, picking the block by the caller's anim-state index.
+interface: (r0 = animStateIndex 0..1) -> side effects only (writes halfwords into the row buffer via blitTileBlockToRowBuffer_802C4B6;
+  returns r0=0xA, callee-saved r5/r6/r7 clobbered across the blit)
+details: "Steps:\n    1. push {r5,lr}; r2 = off_802C82C pointer-table address (loaded via off_802C828\
+  \ then resolved through [r2] -> off_802C82C).\n    2. r2 = [r2 + r0<<2]  -> selects one of two tile-pair\
+  \ blocks (byte_802C834 for index 0, byte_802C848 for index 1) referenced by off_802C82C[0]/off_802C82C[1].\n\
+  \    3. Prepares blit args: r0=2 (x), r1=0xE (y), r3=0xA (width=10 halfwords), r4=1 (height=1 row),\
+  \ and tail-calls blitTileBlockToRowBuffer_802C4B6 to copy 10 halfword tile IDs from the chosen block\
+  \ into the unk_2034B30 row buffer at column 2, row 14.\n    4. pop {r5,pc}; r0 ends up as 0xA from the\
+  \ callee (the 0xA is the height? Actually blit's r3=0xA is width; r0=0xA return matches the callee's\
+  \ documented \"out r2/r5/r6/r7 but r0 we observe from snap exits\" and is the same width value forwarded).\n\
+  \  Tile content:\n    - byte_802C834 (index 0): repeating pattern 0xC4,0x90 for 10 entries (a single\
+  \ tile repeated).\n    - byte_802C848 (index 1): 0xBA..0xC3 paired with 0x90 (a 10-entry gradient/sequence\
+  \ of tile IDs).\n  Caller (battle_pickObjectAnimState_802BF0C) hands either 0 or 1 depending on scripted\
+  \ state at +0xC of the chip-select object or bit-3 of the global frame counter, matching the two-table\
+  \ slot pattern.\n  Struct context: callee writes into unk_2034B30 (24-halfword-wide row buffer) used\
+  \ by the chip-select / battle row tilemap blitter pipeline.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {r5,lr} ... pop {r5,pc}` (push line, pop = pc) makes this a leaf-style helper returning
+    via pc-pop. - `lsl r0, r0, #2; ldr r2, [r2,r0]` (lines 0x802C814..0x802C818) is a word lookup from
+    a 2-entry pointer table indexed by r0. - off_802C828 -> off_802C82C -> {byte_802C834, byte_802C848}
+    confirms two 10-halfword blocks selected by r0. - `mov r0,#2; mov r1,#0xE; mov r3,#0xa; mov r4,#1`
+    matches blitTileBlockToRowBuffer_802C4B6''s documented signature (r0=x, r1=y, r3=width_halfwords,
+    r4=height_rows) and the 24-wide buffer docs. - Captured calls all show entry r0 ∈ {0,1} and exit r0=0xA
+    from the callee, consistent with this being the only thing this function does. - Sole caller battle_pickObjectAnimState_802BF0C
+    corroborates a 2-state anim index.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0802C810
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, beastsp, menus3, story2, story4, story5, story6, story7, story8,
+    story9'
+  reproduce: 'grep -l ''^0802c810 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, beastsp, menus3, story2, story4, story5, story6, story7, story8, story9
+open_questions:
+- The exact in-game meaning of the two tilemap blocks (icon row vs. highlight vs. animate-state glyph).
+  Visual/asset-side confirmation would settle whether byte_802C834 is a "neutral"/rest sprite and byte_802C848
+  is an "active"/animated-state sequence.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f add04b11
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_802C810 -> battle_drawChipSelectRowTilemapBlock_802C810
+  where: bn6f 82358707
+  tool: tools/rename_symbol.py

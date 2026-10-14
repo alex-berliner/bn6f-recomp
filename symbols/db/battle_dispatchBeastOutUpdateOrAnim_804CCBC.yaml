@@ -1,0 +1,58 @@
+name: battle_dispatchBeastOutUpdateOrAnim_804CCBC
+address: '0x0804CCBC'
+kind: function
+previous_names:
+- sub_804CCBC
+status: probable
+summary: 'Empty stub: push/pop with no body and no callees; behaves as an instantaneous no-op tail-return'
+interface: (lr) -> ; no return value, side effects only on r4-r7 in the saved set
+details: "The function is a four-instruction prologue/epilogue with nothing in between. It saves {r4-r7,lr}\n\
+  \  on entry and restores them with `pop {r4-r7,pc}`, so it returns to the caller stored in lr.\n  No\
+  \ registers beyond r4-r7 and lr are touched, and r0-r3 are left exactly as the caller supplied\n  them\
+  \ (the captured-call traces show r0/r1/r2/r3 unchanged and flags ---- at exit).\n  No `bl` is emitted,\
+  \ so it has no callees. No struct offsets or globals are read or written.\n  Despite the asm file living\
+  \ in `asm03_2.s` (battle-AI region) and the symbol file's\n  `snap_beastsp_0140000_*` traces landing\
+  \ here, the function performs no observable work; it is\n  effectively a placeholder slot in a jumptable/dispatch\
+  \ table that just bounces control back to lr.\ndetails: |\n  Captured calls land at r0=0x0804ccbd (one\
+  \ byte past the function entry; this is the standard Thumb\n  \"BL+1\" trick where a `bl` to a function\
+  \ followed by reading the return address yields the\n  post-`push` pc, i.e. 0x0804ccbd), confirming\
+  \ it is invoked as a tail-call site / dispatch entry\n  from somewhere that immediately expects the\
+  \ same lr to be returned to. The repeated trace across\n  40 snapshots with identical r0=0x0804ccbd\
+  \ further indicates a stable caller pattern rather than\n  a meaningful operation.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `sub_804CCBC:` prologue `push {r4-r7,lr}` and epilogue `pop {r4-r7,pc}` at offset 0 (bn6f/asm/asm03_2.s:11325)
+    show the function body is empty - No `bl`/`bx` instructions in the body ⇒ no callees - Contract `out=[]`,
+    `may_write=[''r4'',''r5'',''r6'',''r7'']` matches the saved register set - 40 captured calls all show
+    entry r0=0x0804ccbd and unchanged r0/flags at exit, consistent with a no-op function whose only effect
+    is the lr-restore via `pop {..,pc}`'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0804CCBC
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^0804ccbc '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- Empty bodies in this region usually mean the function was inlined/inlined-out by the compiler
+- but the symbol was kept as a jumptable slot. Confirming the caller context (which jumptable
+- index invokes this address) would settle whether it is a real dispatch target or just a
+- linker/reserved symbol.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f add04b11
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_804CCBC -> battle_dispatchBeastOutUpdateOrAnim_804CCBC
+  where: bn6f 82358707
+  tool: tools/rename_symbol.py

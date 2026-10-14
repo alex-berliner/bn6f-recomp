@@ -1951,7 +1951,7 @@ Next possiblyGetBattleEmotion_8015B64(void) {
 /* battle_setPlayerNaviStatsField0E_8015BEC(r0 = alliance flag, r1 = byte value):
  * Applies a one-byte update (offset 0x0E) to the NaviStats record of the
  * given side's player, but only if the player object exists and passes two
- * state checks (sub_801445C / sub_8014490, both taking the object in r5).
+ * state checks (battle_aiAIDataUnk32IsZero_801445C / battle_checkAIDataUnk36IsNonZero_8014490, both taking the object in r5).
  * On every exit the flags are those left by the last executed call:
  * the early "no player" exit re-derives them from `cmp r0, #0`.
  * r0 = result of the last call (0 / check result / NaviStats pointer),
@@ -1973,13 +1973,13 @@ Next battle_setPlayerNaviStatsField0E_8015BEC(void) {
     }
     R5 = R0; /* player object */
 
-    GUEST_CALL(sub_801445C); /* state check #1 (object in r5); NZ set */
+    GUEST_CALL(battle_aiAIDataUnk32IsZero_801445C); /* state check #1 (object in r5); NZ set */
     if (R0 != 0) {
         R4 = savedR4; R5 = savedR5; R6 = savedR6;
         RETURN_TO_CALLER();
     }
 
-    GUEST_CALL(sub_8014490); /* state check #2 (object in r5); NZ set */
+    GUEST_CALL(battle_checkAIDataUnk36IsNonZero_8014490); /* state check #2 (object in r5); NZ set */
     if (R0 != 0) {
         R4 = savedR4; R5 = savedR5; R6 = savedR6;
         RETURN_TO_CALLER();

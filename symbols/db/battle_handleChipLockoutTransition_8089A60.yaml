@@ -6,44 +6,40 @@ previous_names:
 status: probable
 summary: 'Drives the chip-lockout state transition in battle: clears/updates event flags, plays the appropriate
   map music (Forte/SoulWeapons-gated), then resets the chip-lockout timer/state to 0x64 and returns 1.'
-interface: '() -> r0 = 1 ; side effects: clears/sets event flags, mutates GameState->Unk_15, plays map
-  music via sub_8035408 / PlaySoundEffect(0x164) / playCertainMapMusicBasedOnEventByte_8036e44 + PlayMapMusic,
-  calls sub_8089CB0(0x1e), writes 0x64 to a battle-object byte at [r5]'
-details: "- Entry contract shows r5 holds a BattleObject (writes [r5] = 0x64 = 0x100 via `strb r0,[r5]`),\
-  \ r7 holds an AIData (`str r0,[r7,#0x10]`), and r10 is the toolkit pointer (used to load GameStatePtr\
-  \ at oToolkit_GameStatePtr, then `strb` into Unk_15).\n  - The function first early-exits (returning\
-  \ 1 with no other side effects) when `battle_tickChipLockout_8089CB4` says the lockout is still active\
-  \ (BEQ loc_8089AC6 at top of fn).\n  - When the lockout has just expired it: calls `battle_getSoulWeaponBase_81427CE`\
-  \ to fetch a soulWeapons entry pointer, calls `ClearEventFlag` on the soulweapon base (stored in r0\
-  \ from the prior bl), sets EVENT_740 via SetEventFlagFromImmediate, clears EVENT_225 via ClearEventFlagFromImmediate,\
-  \ then zeros GameState->Unk_15.\n  - It then conditionally enters the music path: tests EVENT_28; if\
-  \ not set AND `GetSoulWeaponsMapIndex() < 6`, it calls sub_8035408, plays SE 0x164 (`mov r0,#0x65; add\
-  \ r0,#0xff` -> 0x164), then runs `playCertainMapMusicBasedOnEventByte_8036e44` + `PlayMapMusic`. Otherwise\
-  \ jumps straight to loc_8089ABA skipping music.\n  - At loc_8089ABA: calls sub_8089CB0(0x1e), then writes\
-  \ 0x64 to the byte at [r5] (likely the chip-lockout state/timer byte on a battle object), and falls\
-  \ through to loc_8089AC6 which pops {r4-r7,pc} returning r0=1.\n  - The captured r0/r2 for snap_beastsp_0190000\
-  \ show r0=0x08089a61 (i.e. r0 has Thumb bit set from the BL address — the function is reached as a tail\
-  \ call from 0x080895b8+1), r1=0x080895c0 (per-frame state struct passed in r1 by caller), r2=0x00003def,\
-  \ r3=0x02001f6f (IWRAM pointer) are the inbound registers of the caller; exit r0=1 is the contract's\
-  \ success code.\n"
+interface: '() -> r0 = 1 ; side effects: clears/sets event flags, mutates GameState->Unk_15, plays map music via
+  sub_8035408 / PlaySoundEffect(0x164) / playCertainMapMusicBasedOnEventByte_8036e44 + PlayMapMusic, calls sub_8089CB0(0x1e),
+  writes 0x64 to a battle-object byte at [r5]'
+details: "- Entry contract shows r5 holds a BattleObject (writes [r5] = 0x64 = 0x100 via `strb r0,[r5]`), r7 holds\
+  \ an AIData (`str r0,[r7,#0x10]`), and r10 is the toolkit pointer (used to load GameStatePtr at oToolkit_GameStatePtr,\
+  \ then `strb` into Unk_15).\n  - The function first early-exits (returning 1 with no other side effects) when\
+  \ `battle_tickChipLockout_8089CB4` says the lockout is still active (BEQ loc_8089AC6 at top of fn).\n  - When\
+  \ the lockout has just expired it: calls `battle_getSoulWeaponBase_81427CE` to fetch a soulWeapons entry pointer,\
+  \ calls `ClearEventFlag` on the soulweapon base (stored in r0 from the prior bl), sets EVENT_740 via SetEventFlagFromImmediate,\
+  \ clears EVENT_225 via ClearEventFlagFromImmediate, then zeros GameState->Unk_15.\n  - It then conditionally enters\
+  \ the music path: tests EVENT_28; if not set AND `GetSoulWeaponsMapIndex() < 6`, it calls sub_8035408, plays SE\
+  \ 0x164 (`mov r0,#0x65; add r0,#0xff` -> 0x164), then runs `playCertainMapMusicBasedOnEventByte_8036e44` + `PlayMapMusic`.\
+  \ Otherwise jumps straight to loc_8089ABA skipping music.\n  - At loc_8089ABA: calls sub_8089CB0(0x1e), then writes\
+  \ 0x64 to the byte at [r5] (likely the chip-lockout state/timer byte on a battle object), and falls through to\
+  \ loc_8089AC6 which pops {r4-r7,pc} returning r0=1.\n  - The captured r0/r2 for snap_beastsp_0190000 show r0=0x08089a61\
+  \ (i.e. r0 has Thumb bit set from the BL address — the function is reached as a tail call from 0x080895b8+1),\
+  \ r1=0x080895c0 (per-frame state struct passed in r1 by caller), r2=0x00003def, r3=0x02001f6f (IWRAM pointer)\
+  \ are the inbound registers of the caller; exit r0=1 is the contract's success code.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- `bl battle_tickChipLockout_8089CB4` / `beq loc_8089AC6` at 0x08089a64-0x08089a66 shows it
-    bails (returns 1) when the chip-lockout has not yet expired. - `str r0,[r7,#0x10]` (0x08089a74) and
-    `strb r0,[r5]` (0x08089ab6) write caller-supplied pointers in r7 and r5 — r7 is the AIData the caller
-    passes in via the snap chain, r5 the battle object whose state is being reset to 0x64. - `mov r0,r10;
-    ldr r0,[r0,#oToolkit_GameStatePtr]` (0x08089a82-0x08089a84) reads GameState from toolkit, then `strb
-    r1,[r0,#oGameState_Unk_15]` (0x08089a88) writes 0 to Unk_15 — consistent with zeroing a lockout-counter
-    byte every time the chip lockout expires. - `mov r0,#0x65; add r0,#0xff` -> r0 = 0x164, then `bl PlaySoundEffect`
-    (0x08089aa8-0x08089ab0) plays SE 0x164 right before the per-map music call — classic "SFX then BGM"
-    sequence when changing track. - `cmp r0,#6; bge loc_8089ABA` after `GetSoulWeaponsMapIndex` (0x08089a9a-0x08089aa0)
-    implies the music branch only triggers for the first 6 entries of the soul-weapons map index (i.e.
-    only certain Beast+ maps have their music swapped in here). - `mov r0,#0x1e; bl sub_8089CB0` (0x08089abc-0x08089abe)
-    and `mov r0,#0x64; strb r0,[r5]` (0x08089ac2-0x08089ac4) show the reset values: sub_8089CB0 takes
-    the chip-lockout timer (0x1e = 30 frames ~= 0.5s typical), and the byte written at [r5] is the next
-    chip-lockout duration (0x64 = 100). - Toolchain summary `battle_tickChipLockout_8089CB4` confirms
-    the early-out is the chip-lockout tick.'
+  detail: '- `bl battle_tickChipLockout_8089CB4` / `beq loc_8089AC6` at 0x08089a64-0x08089a66 shows it bails (returns
+    1) when the chip-lockout has not yet expired. - `str r0,[r7,#0x10]` (0x08089a74) and `strb r0,[r5]` (0x08089ab6)
+    write caller-supplied pointers in r7 and r5 — r7 is the AIData the caller passes in via the snap chain, r5 the
+    battle object whose state is being reset to 0x64. - `mov r0,r10; ldr r0,[r0,#oToolkit_GameStatePtr]` (0x08089a82-0x08089a84)
+    reads GameState from toolkit, then `strb r1,[r0,#oGameState_Unk_15]` (0x08089a88) writes 0 to Unk_15 — consistent
+    with zeroing a lockout-counter byte every time the chip lockout expires. - `mov r0,#0x65; add r0,#0xff` -> r0
+    = 0x164, then `bl PlaySoundEffect` (0x08089aa8-0x08089ab0) plays SE 0x164 right before the per-map music call
+    — classic "SFX then BGM" sequence when changing track. - `cmp r0,#6; bge loc_8089ABA` after `GetSoulWeaponsMapIndex`
+    (0x08089a9a-0x08089aa0) implies the music branch only triggers for the first 6 entries of the soul-weapons map
+    index (i.e. only certain Beast+ maps have their music swapped in here). - `mov r0,#0x1e; bl sub_8089CB0` (0x08089abc-0x08089abe)
+    and `mov r0,#0x64; strb r0,[r5]` (0x08089ac2-0x08089ac4) show the reset values: sub_8089CB0 takes the chip-lockout
+    timer (0x1e = 30 frames ~= 0.5s typical), and the byte written at [r5] is the next chip-lockout duration (0x64
+    = 100). - Toolchain summary `battle_tickChipLockout_8089CB4` confirms the early-out is the chip-lockout tick.'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x08089A60
@@ -58,14 +54,13 @@ evidence:
     '
   result: beastsp
 open_questions:
-- 'What `ClearEventFlag` argument the code passes is opaque: assembly uses `mov r0,r0` (a NOP) before
-  the call, so r0 is whatever `battle_getSoulWeaponBase_81427CE` returned — but its meaning (an event
-  flag ID? a struct ptr?) isn''t fully verified.'
-- The role of sub_814219C / sub_81422B4 (whose return values flow into the SetEventFlagFromImmediate /
-  ClearEventFlagFromImmediate macro operands) is opaque from this fn alone.
-- Whether r5 truly is a BattleObject or some battle-context struct is inferred from the offset 0/byte-write
-  pattern; the captured registers don't include a struct dump so the exact meaning of "chip-lockout state
-  byte" is hypothesis.
+- 'What `ClearEventFlag` argument the code passes is opaque: assembly uses `mov r0,r0` (a NOP) before the call,
+  so r0 is whatever `battle_getSoulWeaponBase_81427CE` returned — but its meaning (an event flag ID? a struct ptr?)
+  isn''t fully verified.'
+- The role of sub_814219C / sub_81422B4 (whose return values flow into the SetEventFlagFromImmediate / ClearEventFlagFromImmediate
+  macro operands) is opaque from this fn alone.
+- Whether r5 truly is a BattleObject or some battle-context struct is inferred from the offset 0/byte-write pattern;
+  the captured registers don't include a struct dump so the exact meaning of "chip-lockout state byte" is hypothesis.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
@@ -77,3 +72,7 @@ changes:
   what: rename sub_8089A60 -> battle_handleChipLockoutTransition_8089A60
   where: bn6f 311f2abb
   tool: tools/rename_symbol.py
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f add04b11
+  tool: tools/symdoc.py

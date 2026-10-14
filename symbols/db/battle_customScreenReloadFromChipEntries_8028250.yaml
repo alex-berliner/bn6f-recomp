@@ -1,0 +1,71 @@
+name: battle_customScreenReloadFromChipEntries_8028250
+address: '0x08028250'
+kind: function
+previous_names:
+- sub_8028250
+status: probable
+summary: Reloads the Custom-screen chip grid from the ten active chip entries, then either redraws the
+  BG tile block or recolors the chip icons.
+interface: '(r0 = reloadKind: 0=redraw BG tile block 3, !=0=recolor chip icon OBPals) -> void ; side effects:
+  VRAM BG tile block 3, sprite OBPals, r10 implicitly read'
+details: "Push {r4-r7,lr}; push {r0} — saves r0 (=reloadKind) on the stack as the sole stack arg.\n  Calls\
+  \ getLocOfActiveChips_8027E1C(0) to fetch the address of active-chip entry 0; result in r4.\n  Loop\
+  \ 12 (=0xC) times, advancing r4 by 0xC between iterations (12 bytes per chip entry).\n    - Reads byte\
+  \ at [r4]; left-shifts by 2 to make a word index.\n    - Loads a function-pointer base from off_802836C\
+  \ / dword_8028370 and bx's into the\n      selected routine (so each chip kind dispatches a custom per-chip\
+  \ reload step).\n    - r1 is loaded with 0x6009C20 (BG tile block 3 VRAM in BGB-addressable space) before\n\
+  \      the loop, but the per-iteration handler may consume it (the chip-kind helpers read r1).\n  After\
+  \ the 12-iteration loop, pop the reloadKind arg. If 0, call\n  bg_ReloadTileBlock3Screen_80283B0 (reload\
+  \ the 15x6 chip-screen tilemap into BG block 3);\n  else call sub_80283C8, which recolors each of the\
+  \ ten chip icon OBPal indices based on\n  chip kind. This mirrors the Custom screen's two refresh modes:\
+  \ the first entry path\n  (r0=0, callers from customScreen_ExitSequence_8028E32) redraws the BG tiles;\
+  \ the second\n  path (r0=1, callers from sub_8026840, the custom-screen init/init-update) recolors\n\
+  \  icons. Captured traces match: r0=0 in r1=0x020365C0 (chip-entries table) calls and\n  r0=1 in the\
+  \ no-args (r1=0x20) traces produce the corresponding followup call.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {r4-r7,lr}` then `push {r0}` at sub_8028250 saves r0 across the call to getLocOfActiveChips.
+    - `mov r0, #0; bl getLocOfActiveChips_8027E1C` returns the active-chip entries array base into r4.
+    - Loop counter `mov r7, #0xc` and `add r4, #0xc` each iteration (12 bytes per chip entry, consistent
+    with active-chip slot size). - `ldr r1, dword_8028358 // =0x6009c20` is loaded once before the loop
+    and is BG tile block 3 VRAM (0x06000000 + 0x9C20 = block 3 base offset). - `ldrb r0, [r4]; lsl r0,
+    r0, #2; ldr r2, off_802836C; ldr r0, [r2,r0]; mov lr,pc; bx r0` — per-chip dispatch table. - After
+    the loop, `pop {r0}; cmp r0, #0; bne loc_802827E; bl bg_ReloadTileBlock3Screen_80283B0` else `bl sub_80283C8`.
+    - Captured r0=0 with r1=0x020365C0 traces (snap_story2_10/11/13) come from lr=0x08028E4B inside customScreen_ExitSequence_8028E32
+    → enters reload path with r0=0 (BG redraw). - Captured r0=1 with r1=0x20 traces (snap_story2_0/1/12)
+    come from lr=0x0802696D inside sub_8026840 → enters recolor path with r0=1. - sub_80283C8 is documented
+    as "Sets the OBPalette index on each of the ten active-chip icon sprites", confirming the recolor
+    branch. - bg_ReloadTileBlock3Screen_80283B0 is documented as loading the 15x6 chip-screen tilemap
+    into tile block 3.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08028250
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^08028250 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- The exact contents of the per-chip-kind dispatch table at off_8028370 are not enumerated here; resolving
+  them would settle what each chip-kind helper actually does to VRAM/OBPal in the loop. The semantic difference
+  between r0=0 and r0=1 is correct, but the callers may use either arg depending on which screen state
+  they leave the custom screen in.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f add04b11
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8028250 -> battle_customScreenReloadFromChipEntries_8028250
+  where: bn6f 82358707
+  tool: tools/rename_symbol.py

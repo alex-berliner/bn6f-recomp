@@ -2506,7 +2506,7 @@ Next custMenuPressOK_8028D3A(void) {
 /* customScreen_ExitSequence_8028E32: exit sequence for the Custom screen.
  * Runs the close-out steps (update the custom screen state after the player
  * unselects a chip, then the two follow-up updates) and finally calls
- * sub_8028250 with r0 = 0 before returning to the caller. */
+ * battle_customScreenReloadFromChipEntries_8028250 with r0 = 0 before returning to the caller. */
 Next customScreen_ExitSequence_8028E32(void) {
     u32 return_address = LR;
 
@@ -2516,7 +2516,7 @@ Next customScreen_ExitSequence_8028E32(void) {
     GUEST_CALL(battle_updateExtraSlotChipKeepFlag_8028F84);
 
     R0 = 0;
-    GUEST_CALL(sub_8028250);
+    GUEST_CALL(battle_customScreenReloadFromChipEntries_8028250);
 
     LR = return_address;
     RETURN_TO_CALLER();

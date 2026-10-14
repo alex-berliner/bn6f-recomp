@@ -1,0 +1,77 @@
+name: battle_object_aiSnakeArmUpdate_80ED154
+address: '0x080ED154'
+kind: function
+previous_names:
+- sub_80ED154
+status: probable
+summary: 'Per-frame AI helper for the SnakeArm (object 0x2B) held by a battle object: on first call sets
+  up the arm, then each tick hits the front panel with damage = AIAttackVars.Damage + AttackBoost, spawning
+  hit effects/projectiles, and tears the arm down after Unk_0c frames.'
+interface: (r5 = owner BattleObject, r7 = AIAttackVars ptr, lr) -> side effects only
+details: "Initialization branch (Unk_01 == 0): reads NameID, Alliance and DirectionFlip, calls\n  getBattleArmPositionMaybe_8018810\
+  \ with slot index 6 to get the (x,y) mount offset\n  (stored in r3,r1 shifted into 16.16: r3=r1<<16,\
+  \ r1=r0<<16), then calls\n  battle_spawnLinkedObjectType2B_80C97E0 (type 0x2B) with r0 = 0 (chip ID?),\
+  \ r2 = 0,\n  r4 = AIAttackVars.Unk_0c and r7 = owner+0x4c (RelatedObject1Ptr slot).\n  Sets OBJECT_FLAGS_GUARD\
+  \ and 1<<OBJECT_FLAGS_UNK_BIT_22_BIT, calls object_setAnimation(0),\n  sub_80101D4, zeros AIAttackVars.Unk_30\
+  \ (frame it actually fired), writes 4 to Unk_01,\n  0 to Unk_10, and returns.\n  Tick branch (Unk_01\
+  \ != 0): if Unk_03 == 3 or owner.CollisionData.FlagsFromCollision\n  has &0x2 set, jumps to teardown\
+  \ (clears RelatedObject1Ptr and AIData.Unk_68, then\n  object_clearFlag(1) and object_exitAttackState).\
+  \ Otherwise counts Unk_30; the first\n  time it increments to 1 it dispatches: if Unk_03 == 3 -> sub_802E032\
+  \ with arg 0xB<<7\n  (some effect), else when Unk_03 <= 2 it spawns a type-0x2F object via sub_80C9CDA\
+  \ at\n  the front panel using getBattleArmPositionMaybe_8018810 + DirectionFlip with damage\n  = AIAttackVars.Damage\
+  \ + AIAttackVars.AttackBoost and plays SE 0xC5; when Unk_03 == 4\n  it spawns a type-3 object via battle_SpawnAndInitObjectType3_80C4FFE\
+  \ with arg 0x14\n  and offset 6 instead.\n  Every tick increments Unk_10; once it exceeds Unk_0c it\
+  \ tears the arm down the same\n  way (clear RelatedObject1Ptr / AIData.Unk_68, object_clearFlag(1),\n\
+  \  object_exitAttackState).\n  Owner is r5 throughout, AIAttackVars in r7, captured r3 = 0x02034880\
+  \ (battle state?) and\n  r1 = 0x080ed155 (Thumb address, points into the function for nested call);\
+  \ contract\n  says r1/r5/r10 are the only preserved outputs, so this is effectively a void tick\n  routine\
+  \ driven by AIState.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- Entry checks `oAIAttackVars_Unk_01 == 0` to decide init vs tick (`ldrb r0,[r7,#oAIAttackVars_Unk_01];
+    tst r0,r0; bne loc_80ED1A4`). - Init reads owner NameID, Alliance, DirectionFlip and calls getBattleArmPositionMaybe_8018810
+    with constant 6, then battle_spawnLinkedObjectType2B_80C97E0; clearly sets up a linked object of type
+    0x2B (SnakeArm). - Uses AIAttackVars.Unk_30 as a one-shot `alreadyFired` flag: first run zero, then
+    set to 1 (`str r0,[r7,#oAIAttackVars_Unk_30]` with r0=1) and the spawn branch runs once. - Damage
+    payload comes from `AIAttackVars.Damage + AIAttackVars.AttackBoost`: `ldr r6,[r7,#oAIAttackVars_Damage];
+    ldrh r3,[r7,#oAIAttackVars_AttackBoost]; add r6,r6,r3`. - Spawn paths branch on `oAIAttackVars_Unk_03`
+    (3 vs <=2 vs 4): sub_80C9CDA for <=2, battle_SpawnAndInitObjectType3_80C4FFE for 4, sub_802E032 for
+    the 3 case (special "wide" effect with arg `0xB<<7` = 0x580). - Plays SE 0xC5 on the <=2 branch (`mov
+    r0,#0xc5; bl PlaySoundEffect`). - Teardown clears owner.oBattleObject_RelatedObject1Ptr, AIData.oAIData_Unk_68,
+    calls object_clearFlag(1) and object_exitAttackState; reached both via collision-flag branch and via
+    Unk_10 >= Unk_0c timeout. - Unk_10 is incremented every tick and compared to Unk_0c (the duration
+    field set in init from AIAttackVars.Unk_0c).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080ED154
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, beastsp, story8, story9'
+  reproduce: 'grep -l ''^080ed154 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, beastsp, story8, story9
+open_questions:
+- What `Unk_03` values 0..2 vs 3 vs 4 mean for an actual chip/attack (scripted behaviour); the assembly
+  only distinguishes <=2 (regular chip projectile), 3 (sub_802E032 wide effect), 4 (battle_SpawnAndInitObjectType3
+  type-3 spawn).
+- Whether the "Unk_30 == 0" guard is really a "did we fire this time" flag or a per-tick counter; callers
+  show r0 values 0,1,10,11,12,13 across captured snaps, all with N set, hinting it's an attacker ID being
+  computed each tick (probably not just Unk_30).
+- Exact role of sub_80101D4 and the meaning of owner+0x4C as the slot for the spawned arm (probably RelatedObject1Ptr
+  at oBattleObject_RelatedObject1Ptr, confirmed by teardown writing 0 to it).
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f add04b11
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80ED154 -> battle_object_aiSnakeArmUpdate_80ED154
+  where: bn6f 82358707
+  tool: tools/rename_symbol.py

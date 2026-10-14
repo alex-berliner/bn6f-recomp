@@ -1,0 +1,63 @@
+name: battle_tickChipLockoutAndFade_80897E8
+address: '0x080897E8'
+kind: function
+previous_names:
+- sub_80897E8
+status: probable
+summary: 'Per-frame handler: if eFlags2009F38 bit 0x80 is unset, tick chip lockout via sub_8089CB4 and
+  on its non-zero return trigger a screen fade (0x4 / 0xff) and write 0x24 to the r5-pointed state''s
+  byte; always returns 1'
+interface: '(r5 = battle state pointer) -> r0 = 1 ; side effects: may call SetScreenFade(4, 0xff) and
+  store 0x24 to [r5]'
+details: "The function reads a global chatbox/cutscene flag word (eFlags2009F38) masked with 0x80 (bit\
+  \ 7) via `chatbox_mask_eFlags2009F38`. If that bit is clear (`bne loc_8089804` taken when NZ from the\
+  \ mask means \"set\"), execution falls through to `sub_8089CB4` (`battle_tickChipLockout_8089CB4`, contract\
+  \ in={r5,lr} out={nz,c,v}). When that helper returns non-zero (`beq loc_8089804` not taken), the routine\
+  \ forces a screen fade: `SetScreenFade(4, 0xff)`, then `strb r0, [r5]` with r0 = 0x24. So r5 is treated\
+  \ as a state pointer whose byte 0 (or a field at a fixed small offset — the asm writes a literal u8\
+  \ into [r5]) is set to 0x24 (interpreted as a \"screen fade requested / chip-lockout consumed\" marker;\
+  \ 0x24 = 36).\n  The wrapper unconditionally returns 1 (`mov r0, #1`) so callers can chain or test completion.\
+  \ r5 is preserved by the push/pop. The captured-call snapshots show lr=0x080895b8 (caller) and r5 points\
+  \ at a struct in IWRAM whose bytes include 0x3def/0x1f6f patterns consistent with battle-state scratch\
+  \ — these are the 11 snap_beastsp frames.\n  Naming follows the registered callee name `battle_tickChipLockout_8089CB4`;\
+  \ the wrapper adds the screen-fade side effect that the bare callee doesn't perform, hence the combined\
+  \ name.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mov r0, #0x80; bl chatbox_mask_eFlags2009F38` (asm23.s:1078) — gate on the 0x80 flag bit.
+    - `bne loc_8089804` branches when the flag bit is set, skipping the body — chatbox_mask sets NZ to
+    indicate bits matched. - `bl battle_tickChipLockout_8089CB4` then `beq loc_8089804` — only act when
+    the helper reports work done. - `mov r0, #4; mov r1, #0xff; bl SetScreenFade` — standard "fade-out
+    to white" parameters in BN6. - `mov r0, #0x24; strb r0, [r5]` — literal write 0x24 into the r5 struct.
+    - `mov r0, #1; pop {r4-r7,pc}` — unconditional return 1; callee-saved r4-r7 restored. - Captured entry
+    r0=0x080897e9 (return-PC+1 thumb), r1=0x080895c0 (a helper address), r5 carries an IWRAM state pointer.
+    - Caller lr=0x080895b8 in every snap; consistent with a battle per-frame tick dispatcher.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080897E8
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^080897e8 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- Exact semantics of the 0x24 byte written to [r5] (likely a sub-state such as "fade started" rather than
+  chip-lockout data, since it lives in r5, not the AIData pointed-to by the inner callee). Settle by reading
+  the r5 struct's offset 0 layout — the snap captures don't include the head of r5.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f add04b11
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80897E8 -> battle_tickChipLockoutAndFade_80897E8
+  where: bn6f 82358707
+  tool: tools/rename_symbol.py

@@ -1,0 +1,67 @@
+name: battleObject_tickBeastOutActionCooldown_8141A70
+address: '0x08141A70'
+kind: function
+previous_names:
+- sub_8141A70
+status: probable
+summary: Ticks and gates a BattleObject's "Beast Out" Power-Atk-charge state machine (cooldown/charge
+  timer and rearm logic)
+interface: (r5 = BattleObject*) -> (none returned; flags may_write); side effects on the object's fields
+details: "- Entry reads `r5->Unk_0d` (object[0x0d]); if non-zero the function returns immediately\n  \
+  \  (`ldrb r0,[r5,#0xd] ; tst r0,r0 ; bne locret_8141AA6`), so 0x0d is an \"in Beast Out?\" guard bit.\n\
+  \  - When not in Beast Out, it clears `Unk_0x13` (`strb r0,[r5,#0x13]`, r0=0), clears `Unk_0x17`,\n\
+  \    and parks a soft timer of 0x1E in `Unk_0c` (`mov r0,#0x1e ; strb r0,[r5,#0xc]`).\n  - Decrements\
+  \ `Unk_0b` by one (`ldrb r0,[r5,#0xb] ; sub r0,#1 ; strb r0,[r5,#0xb]`); if still >0 it returns.\n \
+  \ - Otherwise, while `Unk_0x11` is non-negative (`blt loc_8141A92`) it is decremented; this matches\n\
+  \    the AIData field `BeastOutAPwrAtk` (loc=0x11), i.e. the A-button Power-Atk charge-timer slot\n\
+  \    the beast transformation reuses.\n  - `Unk_0x10` is incremented and capped against 0x50 (`cmp r0,#0x50\
+  \ ; bgt loc_8141AA2`); if it\n    overflows, `Unk_0x11` is cleared to 0. While still under the cap,\
+  \ `Unk_0xb` is reset to 2\n    (so the next decrement fires two frames later) and the function returns.\n\
+  \  - Net effect: a frame-by-frame \"charge\" tick that fills a small byte counter up to 0x50 while\n\
+  \    counting down a parallel charge-timer, only enabled while the actor is in Beast Out form\n    (object[0x0d]==0).\
+  \ Field map in this object: 0x0d gate, 0x0c fixed delay (0x1E),\n    0x0b sub-tick (set to 2 between\
+  \ bursts), 0x10 charge counter capped at 0x50,\n    0x11 charge-timer (matches `AIData.BeastOutAPwrAtk`),\
+  \ 0x13/0x17 cleared state scratch.\n  - Has no callees, no out-registers beyond NZCV (caller restores\
+  \ r4-r7).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0,[r5,#0xd] ; tst r0,r0 ; bne locret_8141AA6` (gate on object[0x0d]). - `mov r0,#0x1e
+    ; strb r0,[r5,#0xc]` writes the literal 0x1E to [r5+0xc]. - `ldrb r0,[r5,#0xb] ; sub r0,#1 ; strb
+    r0,[r5,#0xb]` and the `blt` return path at `bgt locret_8141AA6`. - `ldrb r0,[r5,#0x11] ; sub r0,#1
+    ; blt loc_8141A92 ; strb r0,[r5,#0x11]` matches the canonical `AIData.BeastOutAPwrAtk` slot (offset
+    0x11) used as a countdown timer elsewhere. - `ldrb r0,[r5,#0x10] ; add r0,#1 ; cmp r0,#0x50 ; bgt
+    loc_8141AA2 ; strb r0,[r5,#0x10]` and the cap path that zeroes [r5+0x11] (`mov r0,#0 ; strb r0,[r5,#0x11]`).
+    - Cap-pass path resets [r5+0xb] to 2 (`mov r0,#2 ; strb r0,[r5,#0xb]`) and falls through to return.
+    - Only caller `sub_81419A0` is part of the beast-state init/loop chain feeding this routine, consistent
+    with a per-frame Beast-Out tick.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08141A70
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^08141a70 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The semantic role of fields 0x0d, 0x0c, 0x10, 0x13, 0x17 within `BattleObject` is not
+- independently documented; the Beast-Out inference rests on the offset match with
+- '`AIData.BeastOutAPwrAtk` (0x11) and the literal 0x1E initial value, plus the only-caller'
+- sitting in `0x081419A0`. Decompiling `sub_81419A0` and any sibling battle state machine
+- would confirm whether 0x0d really tracks "currently in Beast Out form".
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f add04b11
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8141A70 -> battleObject_tickBeastOutActionCooldown_8141A70
+  where: bn6f 82358707
+  tool: tools/rename_symbol.py

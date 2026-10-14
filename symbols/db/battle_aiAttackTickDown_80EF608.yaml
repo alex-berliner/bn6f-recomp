@@ -1,0 +1,62 @@
+name: battle_aiAttackTickDown_80EF608
+address: '0x080EF608'
+kind: function
+previous_names:
+- sub_80EF608
+status: probable
+summary: Per-frame tick on the AI's per-attack vars (Unk_10 then Unk_12); when both reach 0, clears OBJECT_FLAGS_USING_ACTION
+  and exits attack state.
+interface: '(r5 = AIData*, r6 = ?, r7 = AIAttackVars*, lr) -> r0..r3/r6/r7 clobbered ; side effects: writes
+  AIAttackVars[0x10], AIAttackVars[0x12], AIAttackVars[0x00]; on expiry calls object_clearFlag(r5, 0x400000)
+  and object_exitAttackState(r5,r6,r7)'
+details: "- r7 points at an AIAttackVars struct (offsets oAIAttackVars_Unk_10=0x10 and 0x12 are written).\n\
+  \  - Each frame: --AIAttackVars->Unk_10; if it stays >0, return (locret_80EF62C).\n  - Else --AIAttackVars->Unk_12;\
+  \ if it reaches 0:\n      clear 0x400000 (= OBJECT_FLAGS_USING_ACTION) on r5's CollisionData->ObjectFlags1\
+  \ via object_clearFlag\n      then call object_exitAttackState(r5,r6,r7).\n    Otherwise (Unk_12 was\
+  \ non-zero) zero AIAttackVars->Unk_00 and return.\n  - The bit 0x400000 corresponds to OBJECT_FLAGS_USING_ACTION\
+  \ in CollisionData/ObjectFlags1.\n  - r5 is the BattleObject (object_exitAttackState signature is in=['r5','r6','r7'],\
+  \ so r5 is the battle object, r7 reused as AIData-derived ptr or AIAttackVars ptr, r6 likewise preserved).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrh r0, [r7,#oAIAttackVars_Unk_10]` then `sub r0,#1` / `strh r0,[r7,#oAIAttackVars_Unk_10]`
+    = per-frame countdown of the u16 at AIAttackVars+0x10. - `bgt locret_80EF62C` is the early-return
+    when the primary counter is still >0. - `ldrh r0,[r7,#oAIAttackVars_Unk_12]`, `--` and `strh` with
+    `beq loc_80EF620` confirms 0x12 is a secondary timer that gates exit. - At loc_80EF620: `mov r0,#1;
+    lsl r0,r0,#0x16` => r0 = 0x00400000 = OBJECT_FLAGS_USING_ACTION, used as the bit arg to object_clearFlag
+    which clears the matching bit in the object''s CollisionData->ObjectFlags1. - `bl object_exitAttackState`
+    is called right after clearing the flag, matching the documented role of that function (exit-attack-state
+    teardown for the battle object identified by r5/r6/r7). - Non-expiry branch zeroes `[r7,#oAIAttackVars_Unk_00]`
+    to reset the attack slot. - In/out contract: r0..r4 and r6,r7 are listed as may_write, consistent
+    with the callees clobbering them; out flags (nz/c/v) come from the timer comparisons and the post-decrement
+    subs.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080EF608
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^080ef608 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- Exact semantics of AIAttackVars+0x10 vs 0x12 (frame timer vs sub-timer); could be cooldowns or part
+  of an attack-state machine.
+- What triggers the caller to invoke this — likely a per-frame AI update tick — would settle by finding
+  its single caller.
+- r6's role is not touched here; it is just preserved through object_exitAttackState.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f add04b11
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80EF608 -> battle_aiAttackTickDown_80EF608
+  where: bn6f 82358707
+  tool: tools/rename_symbol.py

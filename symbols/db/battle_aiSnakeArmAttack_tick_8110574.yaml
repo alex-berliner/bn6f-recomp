@@ -1,0 +1,80 @@
+name: battle_aiSnakeArmAttack_tick_8110574
+address: '0x08110574'
+kind: function
+previous_names:
+- sub_8110574
+status: probable
+summary: 'AI step for a SnakeArm chip attack: highlights the target panel, waits a version-indexed number
+  of frames, then queues an attack and resets the AI substate.'
+interface: '(r4 = AIData, r5 = BattleObject, r6 = AIState, r7 = AIAttackVars, r10 = Toolkit, lr) -> void
+  ; side effects: writes AIState.Unk_02/Unk_08, AIAttackVars.Damage/Unk_0a/Unk_10/Unk_12/Unk_28/Unk_30/Unk_34,
+  calls object_getFlag/object_setAttack0/sub_800E360/highlightPanelIfSomeCondition_8109660, may highlight
+  a panel'
+details: "- On entry the AI substate guard `[r6,oAIState_Unk_02]` is tested; if 0 it is set to 1 and a\
+  \ per-version countdown `Unk_08` is loaded from `byte_8110506[oAIData_Version_16]`.\n  - If `object_getFlag()`\
+  \ returns a word whose low bits match `0x0` (constants `byte_8110614/0x8110618` are zero in this binary\
+  \ — `tst r0, r0`), `Unk_08` is increased by `0x78`. This is the \"guard/invulnerable ⇒ longer charge\"\
+  \ path.\n  - `BattleObject.ExtraVars` (offset 0x60) being NULL is used as a \"SnakeArm projectile not\
+  \ spawned yet\" flag. While still NULL and the countdown has not expired:\n      - If `Unk_08 > 0x3c`\
+  \ the function skips panel highlighting (probably the projectile already exists).\n      - Otherwise\
+  \ it highlights a panel at `(PanelX, PanelY) XOR DirectionFlip` with `r2 = 1` (some \"marker\" parameter)\
+  \ via `highlightPanelIfSomeCondition_8109660`. The low bit of `Unk_08 & 4` gates the call so the highlight\
+  \ blinks.\n      - `Unk_08--` and, if it reached 0 with the guard flag still unset, MaxHP is fed to\
+  \ `sub_800E360` (likely \"spawn/deal-self-damage to charge\").\n  - Once the countdown elapses (`Unk_08\
+  \ <= 0` or extra vars allocated), the function writes a fresh attack record into `AIAttackVars` from\
+  \ per-version tables (`byte_8110500/0x50C/0x512`):\n      - Damage ← `byte_8110500[Version]`\n     \
+  \ - Unk_0a ← `0xa` (10)\n      - Unk_10 ← `byte_811050C[Version]`\n      - Unk_12 ← `byte_8110512[Version]`\n\
+  \      - Unk_30/Unk_34 ← pointers to offsets `0x60/0x68` into the battle object (extra-vars slots 0/2)\n\
+  \      - Unk_28 ← pointer to offset `0x64` of the battle object (extra-vars slot 1)\n      - then `object_setAttack0(0xa)`\
+  \ queues attack index 0xA (10).\n  - Finally `AIState.Unk_02` is cleared so the next tick can re-arm.\n\
+  \  - The pointer into `BattleObject + 0x60/0x64/0x68` is the classic SnakeArm EV layout (extra-vars\
+  \ slots used for head/tail segments), matching the `SNAKEARM_EV_*` constants in BattleObject.inc.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `byte_8110506[Version]` and `add r0,#0x78` at 0x08110524–0x08110558 set `AIState.Unk_08`
+    (the countdown). - `object_getFlag` returns the flag word at `0801a166`; `tst r0,r1` against zero
+    constants `0x8110614/0x8110618` and the `beq` branches show the constants are zero in this binary,
+    so the `+0x78` extension happens whenever the object has *any* flag set non-zero (likely the UNK_4
+    / SUPERARMOR/INVULN family). Direct comparison against the disassembly: `ldr r1, byte_8110614 // =0x0`
+    then `tst r0, r1`. - `ldr r0,[r5,#oBattleObject_ExtraVars]` followed by `cmp r0,#0`/`bne loc_81105D4`
+    is the "extra vars (segment slots) not yet allocated" check; the path that calls `sub_800E360` (MaxHP
+    arg) and writes pointers at `+0x60/+0x64/+0x68` confirms these offsets are the EV slots. - `bl highlightPanelIfSomeCondition_8109660`
+    with `(PanelX,PanelY)` from `BattleObject` and `r2=1` (called only when `(countdown & 4)==0`, i.e.
+    on alternating ticks) is a blinking "target panel" preview, consistent with SnakeArm showing where
+    the head will land. - `object_setAttack0(r0=0xa)` at the end selects attack index 0xA; combined with
+    the table-driven `Damage/Unk_10/Unk_12` from `byte_8110500/0x50C/0x512`, this matches a chip-attack
+    AI routine whose params are version-dependent (Version = `oAIData_Version_16`). - Function uses AIState
+    (r6), AIAttackVars (r7) and BattleObject (r5) per the AI per-object driver convention seen elsewhere.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08110574
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp'
+  reproduce: 'grep -l ''^08110574 '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp
+open_questions:
+- What `sub_800E360(MaxHP, 0)` actually does (likely "spawn SnakeArm head segment" but it could be a generic
+  damage-on-self helper).
+- Exact semantics of `highlightPanelIfSomeCondition_8109660`'s `r2` flag (=1) and which direction `(PanelX^DirectionFlip,
+  PanelY)` corresponds to (own panel vs. enemy panel).
+- Why `Unk_08 > 0x3c` skips panel highlight — possibly because once `ExtraVars != NULL` next time the
+  body has spawned, but here the guard already ensures ExtraVars==NULL on this branch, so it likely means
+  "after the projectile-spawn frame stop blinking the cursor".
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f add04b11
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8110574 -> battle_aiSnakeArmAttack_tick_8110574
+  where: bn6f 82358707
+  tool: tools/rename_symbol.py

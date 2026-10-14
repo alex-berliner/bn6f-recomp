@@ -1,0 +1,60 @@
+name: battle_countAliveActorsOnTeam_8142C20
+address: '0x08142C20'
+kind: function
+previous_names:
+- sub_8142C20
+status: probable
+summary: counts active battle entries whose team byte matches the given team id
+interface: '(r0 = team id) -> r0 = count ; side effects: none (clobbers nzcv, r4-r7)'
+details: "Loads the EWRAM array at byte_2006670 (off_8142C8C) into r5. Iterates 0x14 (20) entries,\n \
+  \ walking 8 bytes at a time via `add r5, #8`. Each iteration first reads a u16 at offset\n  +4 (Unk_04\
+  \ of the entry); if it is non-zero it then reads a u8 at +6 and compares it\n  against the caller's\
+  \ team id (r0, preserved in r7). When both tests pass, r6 is\n  incremented. After the loop, r6 (the\
+  \ match count) is moved to r0 and the function\n  returns via `pop {r4-r7, pc}`, leaving Z set when\
+  \ the count is zero (also preserved\n  through the final `tst r0, r0`). The exact layout of each 8-byte\
+  \ slot is unclear, but\n  the byte at +6 acts as a team/alliance field; this is consistent with the\
+  \ table being\n  a small per-side roster (max 20 actors) used to derive a live-actor count.\n  All three\
+  \ direct callers (sub_808985A, sub_80898FC, sub_80899F2) are inside the same\n  battle/AI tick routine\
+  \ and use the returned count to gate chip-lockout or action\n  selection logic. Captured-call exit r0=6\
+  \ in the shown frames shows the live count\n  was 6 on that side.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r5, off_8142C8C // =byte_2006670` at 0x8142C28 pins the table base in EWRAM. - Loop
+    bound `cmp r4, #0x14` (0x8142C42) fixes iteration count at 20 entries. - Stride `add r5, #8` (0x8142C38)
+    implies 8-byte records. - `ldrh r0, [r5,#4]` + `tst r0, r0` (0x8142C2C-0x8142C30) treats the +4 u16
+    as an active-flag (non-zero => live). - `ldrb r0, [r5,#6]` + `cmp r0, r7` (0x8142C32-0x8142C34) compares
+    the team byte to the caller-supplied team id held in r7 (from the original `mov r7, r0` at 0x8142C24).
+    - `add r6, #1` (0x8142C36) and final `mov r0, r6` (0x8142C44) return the match count. - Captured-call
+    exit r0=6 across 6 frames in `snap_beastsp_0180000` corroborates a small live-actor count typical
+    of battle-roster tables.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08142C20
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^08142c20 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The struct member at +6 is described as a team byte, but no project struct covers
+- byte_2006670; identifying it as one of the per-actor slot tables (e.g. extending
+- BattleState.AliveBattleActors) would settle the exact semantics of +4/+6.
+- Whether the function is also responsible for skipping empty entries vs.
+- loaded-but-inert ones cannot be told from this snippet alone.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f add04b11
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8142C20 -> battle_countAliveActorsOnTeam_8142C20
+  where: bn6f 82358707
+  tool: tools/rename_symbol.py

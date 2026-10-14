@@ -1,0 +1,60 @@
+name: battle_aiAIDataUnk32IsZero_801445C
+address: '0x0801445C'
+kind: function
+previous_names:
+- sub_801445C
+status: probable
+summary: Returns true iff the calling BattleObject's AIData `Unk_32` (u16) field equals zero, leaving
+  the flag set.
+interface: '(r5 = BattleObject*) -> r0 = value of AIData->Unk_32; flags Z/C/V reflect `cmp r0, #0`'
+details: "Thin `mov pc, lr` leaf of just three meaningful instructions.\n  - `ldr r0, [r5, #oBattleObject_AIDataPtr]`\
+  \ (0x58): loads the AI block pointer from the\n    BattleObject pointed at by r5.\n  - `ldrh r0, [r0,\
+  \ #oAIData_Unk_32]`: reads the u16 at offset 0x32 of that AIData block.\n  - `cmp r0, #0`: sets NZCV\
+  \ so callers can branch on `Unk_32 == 0` (the contract lists `nz`/`c`/`v`\n    live to the caller);\
+  \ r0 still holds the loaded u16 on return.\n  No callees, no other side effects, r5/lr preserved across\
+  \ the call via ARM-Thumb tail-return.\n\n  Callers (none are confirmed within the route, but they all\
+  \ live in the AI state-set family):\n  - `battle_setPlayerNaviStatsField0E_8015BEC` (confirmed) - guards\
+  \ a stats-write on player-Navi\n    state; checks `Unk_32` of the AI block before touching the player\
+  \ NaviStats byte 0x0E.\n  - `sub_80143CE` - also tails through this with r5=object; presumably a nearby\
+  \ AI predicate.\n  - `sub_801A200` - tail-calls the same predicate with r5=object during navi init/teardown.\n\
+  \n  At the battle story2 snap times the caller passed either r0=0 / r1=AIDataPtr (frames 0, 11) or\n\
+  \  r0=object/r1=0 (frames 1, 2, 10, 12): the BattleObject pointer is consistently in r5, which the\n\
+  \  captured-call snapshotter only observed via lr/stack, not r5, hence r5 is not in the printed regs.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r0, [r5, #oBattleObject_AIDataPtr]` matches BattleObject offset 0x58 (per `oBattleObject`).
+    - `ldrh r0, [r0, #oAIData_Unk_32]` matches `u16 Unk_32 // loc=0x32` in AIData. - `cmp r0, #0` followed
+    by `mov pc, lr` makes the boolean `Unk_32 == 0` test the only behaviour. - Caller `battle_setPlayerNaviStatsField0E_8015BEC`
+    is documented as gating a write on AI state. - All 6 captured invocations leave r0=0 and `-ZC-` flags,
+    i.e. `Unk_32` was 0 at story sample times.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801445C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, battlesweep, beastsp, fuzz, menus2, story2, story4, story5,
+    story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0801445c '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, battlesweep, beastsp, fuzz, menus2, story2, story4, story5, story6, story7,
+    story8, story9
+open_questions:
+- Exact semantics of AIData.Unk_32 (this slice of the AI block is otherwise unreferenced by name);
+- renaming would benefit from a cross-reference on what writes Unk_32 (likely a battle-state setup
+- that flips it off once the player/AI animation phase completes).
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f add04b11
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801445C -> battle_aiAIDataUnk32IsZero_801445C
+  where: bn6f 82358707
+  tool: tools/rename_symbol.py

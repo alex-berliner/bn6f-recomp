@@ -1,0 +1,74 @@
+name: beastOverworldAi_decideTransformOrIdle_8089C16
+address: '0x08089C16'
+kind: function
+previous_names:
+- sub_8089C16
+status: probable
+summary: 'Beast-mode overworld AI step: drives transform/fail handling by inspecting the current PET navi
+  and HP, sets the OW player animation, then writes a new state byte.'
+interface: '(r5 = AIData ptr, r10 = Toolkit ptr) -> r0 = 1 ; side effects: writes AIData+0x00, AIData+0x08,
+  AIData+0x13, anim field in s200ace0, possibly raises event 0x1719 via owPlayer_setS200ace0_fixedAnimationSelect_809e13c'
+details: "- Entry reads AIData byte at r5+0x13 (AIData.Unk_13) and bne-skips straight to the return-1\
+  \ epilogue when set, so the function only does work on a fresh tick.\n  - First writes 1 to AIData+0x08\
+  \ (AIData.BLeftAbility area) then calls GetCurPETNavi + GetMaxAndCurHPForCurPETNavi_80010D4 to read\
+  \ the current PET navi's (maxHP, curHP) pair, returning them in r0/r1.\n  - r0 is max HP? tst r0,r0:\
+  \ the contract notes \"max HP and current HP... as a pair\" and the `tst r0,r0` branch treats it as\
+  \ the max. When max==0 (no navi equipped?), resets AIData+0x08 to 0, re-reads the navi, and if it's\
+  \ navi index 0 (MegaMan) plays a \"no transform\" sequence: owPlayer_setS200ace0_fixedAnimationSelect_809e13c(0x3A),\
+  \ calls sub_8089CB0(0x1E), then writes AIData+0x0 = 0x84 (new AI state) before exiting.\n  - When max>0\
+  \ it plays the normal transform anim: GetOWPlayerFacingDirection, owPlayer_setS200ace0_fixedAnimationSelect_809e13c(anim),\
+  \ sub_8089CB0(0x1E), then sub_814216E/sub_814219C are gated on (sub_814216E==0 and sub_814219C!=0?)\
+  \ — the `beq loc_8089C6A; bl sub_814219C; bne loc_8089C6A` pattern means: if the random/timer helper\
+  \ returned 0 jump to the \"no-success\" path; else call the second helper, and if THAT returned nonzero\
+  \ also jump to no-success. Only when both helpers return 0 do we write 0x7C into AIData+0x0 and exit.\n\
+  \  - Fall-through \"no-success\" path: sub_8089CB0(0), then write 0x1C to AIData+0x0 (idle/reset state)\
+  \ and return 1.\n  - All paths converge at loc_8089C74 with `mov r0,#1; pop {r4-r7,pc}` — caller-visible\
+  \ return is always 1 (boolean \"still alive / keep running\"), matching the contract's out=[r0,r3].\n\
+  \  - The \"BLeftAbility\" field being repurposed as a 1/0 flag (0x08) and the writes of 0x84/0x7C/0x1C\
+  \ into AIData+0x0 (Unk_00 / state byte) plus 0x1E into AIData+0x18 (Unk_18) is the standard AI step\
+  \ idiom in this binary.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0,[r5,#0x13]; tst r0,r0; bne loc_8089C74` shows guard on AIData.Unk_13. - `strb r0,[r5,#8]`
+    after each branch writes a 1/0 to AIData+0x08 (BLeftAbility slot) as a "transform attempted/succeeded"
+    flag. - `bl GetMaxAndCurHPForCurPETNavi_80010D4` + `tst r0,r0; bne loc_8089C4A` shows the function
+    branches on the max-HP-half of the (max,cur) pair being nonzero. - `cmp r0,#0; bne loc_8089C3E; mov
+    r0,#0x3a; bl owPlayer_setS200ace0_fixedAnimationSelect_809e13c` plays the explicit 0x3A anim only
+    when current navi is PET_NAVI_MEGAMAN (=0). - `mov r0,#0x84; strb r0,[r5]` / `mov r0,#0x7c; strb r0,[r5]`
+    / `mov r0,#0x1c; strb r0,[r5]` write three distinct state ids into AIData+0x0 (the AIState field at
+    offset 0 of the header). - `mov r0,#0x1e; bl ai_setAIDataUnk18_8089CB0` and `mov r0,#0; bl ai_setAIDataUnk18_8089CB0`
+    set AIData+0x18 (Unk_18) to 0x1E vs 0 to mark "in progress" vs "failed" sub-states. - `bl sub_814216E;
+    beq loc_8089C6A; bl sub_814219C; bne loc_8089C6A` is the standard "both helpers must return 0" gating
+    idiom seen elsewhere in this AI table. - Captured calls show lr=0x080895b8 (the AI jump-table dispatch
+    site) and 25 entries all with r0=1 at exit, consistent with a boolean "still active" return to the
+    dispatcher.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08089C16
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^08089c16 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The exact gameplay meaning of state ids 0x84 / 0x7C / 0x1C and helper 8089CB0's role are inferred only
+  from the AIData offsets and the value 0x1E=30 (likely a frame timer); confirming the AI state machine
+  names would settle whether 0x7C is "transform success" vs "begin transform anim". Inspecting the AI
+  state dispatch table at 0x080895c0 (the r1 captured in the trace) would confirm.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f add04b11
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8089C16 -> beastOverworldAi_decideTransformOrIdle_8089C16
+  where: bn6f 82358707
+  tool: tools/rename_symbol.py

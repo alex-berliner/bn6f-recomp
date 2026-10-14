@@ -1,0 +1,64 @@
+name: battleObject_setCurStateAndQueueOamForShadow_8116A28
+address: '0x08116A28'
+kind: function
+previous_names:
+- sub_8116A28
+status: probable
+summary: Sets a battle object's CurState to 0x8 (CUR_STATE_DESTROY) when its current state is already
+  0x8, then queues OAM entries via the battleObject shadow helper.
+interface: '(r5 = BattleObject*, r7 = some u8* state mirror) -> void ; side effects: writes [r5+8] = 0x8
+  when [r7] == 8, then bl to battle_queueOamEntriesForBattleObjectStateShadow_8116A44'
+details: "The function reads the byte at [r7] and compares it to 8. If equal, it loads 8 into r0 and\n\
+  \  stores it at [r5+8] (the CurState field of the BattleObject struct). It then unconditionally\n  bl's\
+  \ into sub_8116A44 (named here as battle_queueOamEntriesForBattleObjectStateShadow_8116A44)\n  and returns.\
+  \ r5 is the BattleObject pointer (per the oBattleObject struct: CurState is at\n  loc=0x8, an enum8\
+  \ with CUR_STATE_DESTROY = 0x08). r7 is treated as a separate u8 shadow/state\n  byte; the function\
+  \ only writes [r5+8] when [r7] also already equals 8, so this looks like a\n  guard to ensure we only\
+  \ re-set the destroy state when the shadow already reports it (likely an\n  idempotent re-enqueue path\
+  \ during the destroy phase). The function is invoked 40 times in the\n  snap_story2_* captures with\
+  \ consistent r0=0x08116a29 (LR-1 of an `add r0, pc, #0` from the\n  caller at 0x081169b8-ish) and r5/r7/r2/r3\
+  \ fixed across all story2 captures, suggesting it is\n  called once per battle object per frame from\
+  \ a state-update loop. The callee (sub_8116A44) is\n  the only one and is the OAM-queue helper. No other\
+  \ side effects in this function itself.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0, [r7]` then `cmp r0, #8` / `bne loc_8116A34` checks the shadow byte at [r7] - `mov
+    r0, #8` / `strb r0, [r5,#8]` writes 0x8 (CUR_STATE_DESTROY) into BattleObject.CurState at offset 0x8
+    - `bl battle_queueOamEntriesForBattleObjectStateShadow_8116A44` is the only direct call, always taken
+    - 40 captured calls all show r0=0x08116a29, r1=8, r2=0x03001b4a (IWRAM/EWRAM pointer), r3=0x02001f68
+    (EWRAM pointer), identical across story2 snapshots - Caller r0 has Thumb bit set (0x08116a29 == 0x08116a28
+    + 1) indicating r0 held a return-PC computed via `add r0, pc, #imm` - Exit r0=0xff and flags -ZC-
+    suggest the callee returns a non-zero byte in r0 that this function leaves intact'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08116A28
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^08116a28 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus2, menus3, story1, story2, story3,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- What r7 actually points to (an OAM shadow struct? a per-object state mirror?) is not fully
+- pinned by the function alone; a captured EWRAM dump at r7 would settle it. The semantic of
+- '"only re-write CurState=8 when shadow already says 8" is consistent with a "promote to destroy"'
+- guard but the larger state machine context (which caller drives the value at [r7] to 8) is not
+- visible in this function.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f add04b11
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8116A28 -> battleObject_setCurStateAndQueueOamForShadow_8116A28
+  where: bn6f 82358707
+  tool: tools/rename_symbol.py
