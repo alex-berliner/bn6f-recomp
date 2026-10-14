@@ -1,0 +1,57 @@
+name: link_initAndReset_8144240
+address: '0x08144240'
+kind: function
+previous_names:
+- sub_8144240
+status: probable
+summary: 'Link subsystem initializer: re-initializes link registers via the two helper init routines and
+  tail-pop returns to caller.'
+interface: '() -> r0 = caller''s LR side effects: hardware SIO/Timer3 reset and EWRAM link state zeroed
+  by callees; no other side effects'
+details: '- `push {lr}` saves caller''s LR; callees run with the same LR (no extra save needed).
+
+  - `bl link_initAndClear_8144158` then `bl link_resetHardwareAndClearLinkBuffers_81440D8` chain both
+  helpers.
+
+  - `pop {r0}` loads the saved LR into r0, then `bx r0` tail-returns to caller (Thumb-to-Thumb branch
+  on bit0 = 1).
+
+  - Because both callees are void-like (`out` lists only the same r4-r7 callee-saved set, so callers also
+  see r4-r7 preserved across this function), this wrapper is also void-like from the caller''s perspective;
+  r0 just holds the return PC momentarily and is not a usable value.
+
+  - `.byte 0, 0` after `thumb_func_end` is just alignment padding in libs.s; not part of the function.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {lr}` at 0x08144240 followed by two `bl` calls to the link-init/reset routines. - `pop
+    {r0}; bx r0` is the canonical Thumb tail-pop-to-caller idiom; r0 receives the LR but the function
+    has no other value to return. - Both callee summaries explicitly describe link hardware reset + zeroing
+    of the EWRAM state block. - Caller `main_initToolkitAndOtherSubsystems` (0x080004a4) and `sub_803DEAC`
+    (tail-call wrapper at 0x0803deac) both forward to this routine as part of toolkit bring-up. - `.byte
+    0, 0` after `thumb_func_end` is padding, not code.'
+  refs:
+  - bn6f/asm/libs.s
+  reproduce: 'python3 tools/asmcat.py 0x08144240
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): link_initAndReset_8144240
+
+    '
+open_questions:
+- Whether the caller treats r0 (the LR) as a meaningful result; the contract lists r4-r7 as out but not
+  r0, consistent with this being a `void`-style init even though r0 is briefly populated.
+sources:
+- discovery session 2026-10-14 batch 43 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7d779321
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8144240 -> link_initAndReset_8144240
+  where: bn6f 7ddd2238
+  tool: tools/rename_symbol.py

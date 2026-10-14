@@ -1,0 +1,65 @@
+name: battleObject_tickAITimerFlags_802E4E4
+address: '0x0802E4E4'
+kind: function
+previous_names:
+- sub_802E4E4
+status: probable
+summary: Polls two AIData Unk_44 timer-style flags and reacts when they fire (kick state + bubble if timer
+  expired, full invulnerability if bubble expired).
+interface: '(r5 = battle object) -> void ; side effects: clears Unk_44 flag bits and writes BattleObject
+  +0x50/+0x54/+0x30/Unk_5c + AIData'
+details: "1. Reads the BattleObject's Alliance byte at offset oBattleObject_Alliance, looks up the matching\
+  \ 0x1D0-stride record via getEntryPtr_2036120_1D0_802E070, and keeps the entry base in r7.\n2. Reads\
+  \ the AIData Unk_44 flag word. If the \"timer_2000000\" bit is set:\n   - ClearAIData_Unk_44_Flag with\
+  \ that mask.\n   - Stores 1 at record +0x50 (`strb r0, [r7,#0x50]`).\n   - Calls sub_802E1EC (sibling\
+  \ flag/timer handler).\n3. Re-reads Unk_44. If bit 0x20000000 is set:\n   - ClearAIData_Unk_44_Flag\
+  \ with that mask.\n   - Stores 1 at record +0x54.\n   - Calls sub_802E1EC again.\n   - Sets record+0x30\
+  \ = 0x1E0 (`strh r0, [r7,#0x30]`, halfword).\n   - Calls object_setInvulnerableTime(r7, 0xFFFF) — gives\
+  \ the object the max invulnerable time.\n   - Calls sub_802D310.\n4. The two branches are independent,\
+  \ so the second branch can fire even when the first didn't. The struct offsets 0x50/0x54 are not declared\
+  \ in BattleObject.inc; they correspond to AIData fields accessed via the unk_2036120 0x1D0-stride array,\
+  \ not the BattleObject directly.\n5. The routine is keyed on r5 (the caller passes the BattleObject);\
+  \ r7 is the matching unk_2036120 record used as scratch space for those AIData-mutating side effects.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0, [r5,#oBattleObject_Alliance]` then `bl getEntryPtr_2036120_1D0_802E070`; r0 is
+    saved into r7 — uses the BattleObject''s Alliance as an index into a fixed-stride table. - `mov r7,
+    r0` keeps the table entry as scratch across both branches. - First branch: `ldr r1, off_802E534 //
+    =timer_2000000` followed by `tst r0, r1` then `mov r0, r1; bl ClearAIData_Unk_44_Flag` — clears that
+    mask from AIData Unk_44. - First branch writes `strb r0, [r7,r1]` with r0=1, r1=0x50 — sets a flag/counter
+    in the unk_2036120 record. - First branch ends with `bl sub_802E1EC`, which has the same Unk_44-flag-clearing
+    shape. - Second branch re-tests Unk_44 with mask 0x20000000 (a different bit in the same word) and
+    clears it with the same Clear helper. - Second branch writes record+0x54 = 1, then calls sub_802E1EC,
+    then `strh r0, [r7,#0x30]` with 0x1E0, then `bl object_setInvulnerableTime` with 0xFFFF — clearly
+    an invulnerability setup. - Final `bl sub_802D310` only in the second branch — additional bookkeeping
+    after bubble/guard expires. - Only one caller (playerAI_sub_80F0354) matches: a player-AI tick routine
+    that drives AIData state machine ticks per frame.'
+  refs:
+  - bn6f/asm/asm03_0.s
+  reproduce: 'python3 tools/asmcat.py 0x0802E4E4
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_tickAITimerFlags_802E4E4
+
+    '
+open_questions:
+- What fields in the unk_2036120 0x1D0-stride record correspond to AIData offsets 0x50 and 0x54; they're
+  outside both the BattleObject and the AIData layouts declared in structs, which suggests the table entry
+  is a wrapper struct not yet documented.
+- The semantic meaning of timer_2000000 vs 0x20000000 (one looks like a per-frame elapsed-bit, the other
+  is one-shot). The first writes 1 at +0x50 (counter?), the second writes 1 at +0x54 + grants invuln (looks
+  like an "exit bubble" or "end of guard" handler).
+- Whether sub_802E1EC and sub_802D310 are also player-AI tick helpers or generic AIData mutators.
+sources:
+- discovery session 2026-10-14 batch 43 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7d779321
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_802E4E4 -> battleObject_tickAITimerFlags_802E4E4
+  where: bn6f 7ddd2238
+  tool: tools/rename_symbol.py

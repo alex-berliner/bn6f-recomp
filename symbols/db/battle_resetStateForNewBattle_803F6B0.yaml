@@ -1,0 +1,78 @@
+name: battle_resetStateForNewBattle_803F6B0
+address: '0x0803F6B0'
+kind: function
+previous_names:
+- sub_803F6B0
+status: probable
+summary: Reset eLink/battle state blocks and zero-fill related battle buffers when a fresh battle (or
+  battle-equivalent screen) begins.
+interface: '(r0 = battle-context selector 0..N, r10 = Toolkit) -> r0 = 1 (the flag set) ; side effects:
+  zeroes eStruct200F360, resets eLinkState+side buffers, queues a sub_8144240 call, initialises camera
+  state, initialises the BRE5 magic block, sets Camera.unk_0C = 0x3C, sets event flag 0x172F.'
+details: '1. Saves r4/r5/lr; r4 = the incoming battle-context selector (low 8 bits used as an index later).
+
+  2. ZeroFillByHalfword(eStruct200F360, 0x20) — clears the 0x20-byte block at the eStruct200F360 EWRAM
+  symbol.
+
+  3. crt0_entry_trampoline_8000288 — the entry-point trampoline tail-call; its summary notes it returns
+  to the caller, so its r4 side effect here is the only thing observable to this function.
+
+  4. eLinkState_ResetForNewUse_803DE88(0) — resets eLinkState (and its side buffers) and stores the caller''s
+  stack pointer at eLinkState+0x58 (its 0x10 record + 0x58 pointer, per callee summary).
+
+  5. sub_803DEAC() — trivial tail wrapper around sub_8144240.
+
+  6. sub_803DCE8(0x10, 2, 4, 4) — initialise the camera/screen state block attached to eLinkState with
+  the supplied layout record; the two destination buffers get zero-filled.
+
+  7. sub_813DBC0(0, 0, dword_803F734[r4]) — write the "BRE5" magic-tag block at 0x200B1B0 with three u16
+  args (0, 0, table[selector]) and a 0x3C terminator.
+
+  8. eLinkState[0xC] = 0x3C (Camera.unk_0C — shake timer, two halfwords).
+
+  9. SetEventFlagFromImmediate(EVENT_172F) — flag 0x2E5 in the event-flags page at 0x2001C88, i.e. position
+  0x2001F6D.
+
+  Returned via `pop {r4,r5,pc}` — r0 holds the 1 produced by the trampoline''s returned value (the captured-call
+  sites all show r0=00000001 on exit).
+
+  Callers use this to bring up the battle / link-battle state from scratch; it''s invoked from EnterMap
+  (during map entry setup), the title-screen update, the "Press Start" animation tick, and two battle/communication
+  setup routines (sub_809CC00 / sub_809CD60).
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- Zero-fill of eStruct200F360 at 0x20 halfwords is at the first `bl ZeroFillByHalfword`. -
+    eLinkState reset is the `bl eLinkState_ResetForNewUse_803DE88` with r0=0. - Camera setup uses the
+    documented callee sub_803DCE8 with args (0x10,2,4,4). - BRE5 magic-tag block init is `bl sub_813DBC0(0,0,dword_803F734[r4])`;
+    r4 is the user''s selector shifted left by 2. - The `strh r1, [r0,#0xc]` writes 0x3C into eLinkState+0xC,
+    which is Camera.unk_0C per Camera.inc. - `movflag EVENT_172F` + `bl SetEventFlagFromImmediate` matches
+    the pattern of other event-flag sets. - 26 captured calls all enter with r0=00000000, r1=00000040,
+    r2=00000020, r3=02001f6e (event-flag bits pointer), and always exit r0=00000001.'
+  refs:
+  - bn6f/asm/asm03_1_1.s
+  reproduce: 'python3 tools/asmcat.py 0x0803F6B0
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battle_resetStateForNewBattle_803F6B0
+
+    '
+open_questions:
+- The exact meaning of the selector in r0 — captured calls all pass r0=0, so the dword_803F734 lookup
+  path isn't observed at runtime here.
+- Whether sub_803DEAC's tail-call to sub_8144240 is doing link-cable handshaking or just a cached init
+  that I can't fully decompile from the callee summary; identifying sub_8144240 would settle this.
+sources:
+- discovery session 2026-10-14 batch 43 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7d779321
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_803F6B0 -> battle_resetStateForNewBattle_803F6B0
+  where: bn6f 7ddd2238
+  tool: tools/rename_symbol.py

@@ -1,0 +1,92 @@
+name: battleObject_updateBombPanelBomb_80C5C9C
+address: '0x080C5C9C'
+kind: function
+previous_names:
+- sub_80C5C9C
+status: probable
+summary: Per-frame update for a BombMan-style "panel bomb" battle object that arcs, lands, then either
+  explodes on a solid panel or self-destructs off-grid.
+interface: (r5 = BattleObject*) -> void ; reads/writes the battle object and its CollisionData, may play
+  SOUND_HIT_BOMB_1, may spawn a type-4 effect object, no return value
+details: 'Phase-init (PhaseInitialized==0): writes three 16.16 velocity/delta words to oBattleObject_XVelocity..ZVelocity
+  (offsets 0x40..0x48). The signed front-direction multiplier (object_getFrontDirection) scales only the
+  X component, sourced from a 5x16.16 little-endian table at byte_80C5D58: first row uses -0x1A (0xFFE6)
+  -> *2 = -0x1A;Y/Z rows are +-0x48 fixed. The local X/Y/Z 16.16 origin is saved at offsets 0x34..0x3c
+  on first frame (mov r7,#0x40; add r7,r5,r7; stmia r7!,{r1-r3} stores into XVelocity..ZVelocity, and
+  the previous 0x34..0x3c snapshot becomes the running base), and Timer is set to 0x28 frames, PhaseInitialized=4.
+
+  Each subsequent frame while Timer>0: reads the 16.16 base coords at +0x34..+0x3c, reads current XVelocity..ZVelocity,
+  adds base+velocity into new coords (+0x34..+0x3c), and writes ZVelocity into oBattleObject_ZVelocity
+  separately. The `str r6,[r5,#oBattleObject_ZVelocity]` actually stores the running Y-velocity into ZVelocity
+  (likely a vanilla bug preserved). Timer is decremented; if still >0 the function returns.
+
+  On Timer==0: clears OBJECT_FLAG_VISIBLE (bit 0x02) in oObjectHeader_Flags, calls convertBattleObjectXYToPanelXY_800E24C,
+  copies the resulting PanelX/PanelY into both the object and its CollisionData, then asks object_isValidPanel
+  / object_isCurrentPanelSolid. If the panel is valid AND solid, it writes the collision Region byte from
+  dword_80C5D7C[Param1] (single byte of 0x000F0001 -> low byte 0x01), sets CurAction=4, clears CurPhaseAndPhaseInitialized,
+  plays SOUND_HIT_BOMB_1, and returns (the bomb arms itself as a stationary mine on that panel).
+
+  If the panel is invalid OR not solid, it falls through: spawn_t1_0x0_EffectObject is called to drop
+  a small visual effect at the current XYZ, object_clearCollisionRegion clears it from collision tracking,
+  then CurStateActionPhaseAndPhaseInitialized is set to CUR_STATE_DESTROY (0x08) and OBJECT_FLAG_VISIBLE
+  is cleared so the engine tears it down next frame. Note the spawn is skipped on the "valid but not solid"
+  path because the code falls through to loc_80C5D42 without calling spawn; only the loc_80C5D36 branch
+  (valid AND solid? -- actually the beq for solid == false jumps to loc_80C5D36) spawns the effect, while
+  loc_80C5D42 handles invalid panels. Re-read: `beq loc_80C5D42` after object_isValidPanel means invalid-panel
+  path skips the spawn and clears collision immediately; `beq loc_80C5D36` after isCurrentPanelSolid (when
+  solid==false) takes the spawn path before also clearing collision at loc_80C5D42.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `tst r0,r0; bne loc_80C5CC0` on oBattleObject_PhaseInitialized is a classic first-frame guard
+    (line right after the push prologue). - `ldmia r7!,{r1-r3}; mul r1,r0` and the `byte_80C5D58` table
+    (signed halfwords 0xFFE6 = -26, 0xFFD8 = -40, etc.) plus immediate write into oBattleObject_XVelocity..ZVelocity
+    (`add r7,r7,r5; stmia r7!,{r1-r3}` with r7 starting at oBattleObject+0x40) match an "initial impulse"
+    init. - `mov r0,#0x28; strh r0,[r5,#oBattleObject_Timer]` and `mov r0,#4; strb r0,[r5,#oBattleObject_PhaseInitialized]`
+    lock the phase at exactly 0x28 frames and mark init done. - The per-frame block (`ldmia r7!,{r0-r2}`
+    from +0x34..+0x3c, `ldmia r7!,{r3,r4,r6}` from +0x40..+0x48, then `add r0,r0,r3 / add r6,r6,r4 / add
+    r2,r2,r6`, `stmia r7!,{r0-r2}` back into +0x34..+0x3c) is a textbook velocity integration. - `str
+    r6,[r5,#oBattleObject_ZVelocity]` stores the updated Y-velocity into the ZVelocity slot, matching
+    a known minor bug in this game''s bomb arc. - `bl convertBattleObjectXYToPanelXY_800E24C` and the
+    duplicated `strb` into PanelX/PanelY and the matching CollisionData_PanelX/PanelY fields shows a "snap
+    object onto its panel on landing" pattern. - `bl object_isValidPanel; tst r0,r0; beq loc_80C5D42`
+    and `bl object_isCurrentPanelSolid; tst r0,r0; beq loc_80C5D36` together gate a three-way landing
+    outcome: invalid -> clear & destroy; non-solid -> spawn effect & destroy; solid -> arm as mine. -
+    The `beq loc_80C5D36` arm reads `oBattleObject_Param1`, indexes `dword_80C5D7C` (a u32 of 0x0F000001)
+    with `ldrb r3,[r6,r0]` to grab the collision Region byte, then indexes `dword_80C5D80` (a u32 of 0)
+    to grab a Region/sound variant, and finally `bl PlaySoundEffect` with `mov r0,#SOUND_HIT_BOMB_1` ->
+    the constant matches BattleNetwork''s "bomb lands / arms" SFX and is the strongest single clue to
+    the function''s role. - `mov r0,#CUR_STATE_DESTROY; str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]`
+    combined with `bic r0,r1` (mask 2) of oObjectHeader_Flags is the standard "tear down this object"
+    exit. - Captured-call exit `r0=0x03005fc1` is just an EWRAM scratch pointer and `flags=--C-` shows
+    carry was set, consistent with the last `tst` on PhaseInitialized/Timer hitting zero and the `bic`/clear
+    path executing.'
+  refs:
+  - bn6f/asm/asm31.s
+  reproduce: 'python3 tools/asmcat.py 0x080C5C9C
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_updateBombPanelBomb_80C5C9C
+
+    '
+open_questions:
+- Whether the curstate path (valid+solid) actually stops here or also lets the bomb later detonate from
+  a separate handler; only an init/landing hook is visible here.
+- The exact element/Param1 table at dword_80C5D7C is small (single u32 0x0F000001) so most Param1 values
+  probably resolve to Region=0; a full Param1->Region mapping is unknown.
+- Whether `str r6,[r5,#oBattleObject_ZVelocity]` is intentional (gravity being applied through Y) or a
+  genuine port artifact that other games correct.
+sources:
+- discovery session 2026-10-14 batch 43 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7d779321
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80C5C9C -> battleObject_updateBombPanelBomb_80C5C9C
+  where: bn6f 7ddd2238
+  tool: tools/rename_symbol.py

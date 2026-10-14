@@ -1,0 +1,84 @@
+name: battle_drawCustFolderSlots_8125D10
+address: '0x08125D10'
+kind: function
+previous_names:
+- sub_8125D10
+status: probable
+summary: 'Battle chip-select / custom-screen background draw pass: paints the chip-slot strips, packed-up
+  chips and 2x14 chip graphics for the custom-cust screen using BG tile block 2.'
+interface: (r5 = battleStatePtr, r10 = toolkitPtr) -> void ; writes tile-block 2 graphics via the bg_
+  / pack helpers
+details: '1. Saves r4-r7, lr; r7 := r5 (the battle-state pointer that all the battle-scene sub-functions
+  take).
+
+  2. Calls sub_81261FC with r0 = ldrh [r7+0x18] (battleState.Unk_18 / chip-row index) and r1 = byte_2017A00
+  (some BG tile-id table). This presumably fills or selects one row of chip slot strips.
+
+  3. Reads [r7+0x74] (toolkit.BattleStatePtr? actually [r5+0x74] – within the BattleState struct this
+  is AliveOpponentActors[0x14]? No: BattleState at 0x80 is AliveBattleActors and r5+0x74 is likely a related
+  battle sub-state pointer; the callees treat it as another state struct). Subtracts 0xA0 and adds 0x0C
+  to get the BG tile base for the slot-strip row, then calls sub_812625C with width 4 to draw that 4-wide
+  patch.
+
+  4. Calls sub_812626C with the same row index, an unk_201DC20 table and width 0x0A / 0x0B / size 0x70
+  to draw the chip-name strip (matches a 10-or-11-tile wide strip at 7 entries × 0x10 size = 0x70).
+
+  5. Calls bg_drawTileStripTileBlock2_8126404 for another row at +0x11 with width 4 – draws the chip code
+  row.
+
+  6. Calls sub_8126430 with [r7+0x18] + the unk_201DC20 tile-id list + byte_2017A00 palette/data table
+  + the chip-id table at 0x81249A4 + 0x6006C00 (likely OAM/affine or VRAM ptr). Fills in one row of 7
+  chip data slots (the "chip-select" row).
+
+  7. Calls bg_drawTileRegion2x14_8126484 at +0x0F to blit the 2x14 chip-preview graphics.
+
+  8. Calls packSelectionSlots_8126494 with [r7+0x18] to pack the 7 chip-selection slots for this row.
+
+  9. Calls bg_copyTilePatchBlock2_81264E4 at +0x19 with width 4 to copy a fixed 3x14 patch of chip-window
+  background tiles.
+
+  10. Restores r4-r7 and returns; no caller-visible return value.
+
+  The whole routine is a per-frame (or per-update) redraw of the chip-slot UI panel for the chip-select
+  / custom screen; multiple callers invoke it (battle_init, the object tick, the per-frame update, menu/state
+  updates), confirming it is the chip-folder draw helper.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mov r7, r5` and every callee being passed `r5` (battle-state) or derived ptr from `[r7+0x74]`
+    matches the pattern of other battle-scene redraw helpers. - `[r7+0x18]` is loaded as a u16 row index
+    (`ldrh r0, [r7,#0x18]`) and passed as the first arg to every chip-row routine. - Callees bg_drawTileStripTileBlock2_8126404,
+    bg_drawTileRegion2x14_8126484, bg_copyTilePatchBlock2_81264E4 all take tile-id rows into tile block
+    2; their tile bases increase monotonically (+0xC, +0xF, +0x11, +0x19) consistent with a vertical strip
+    of UI rows. - sub_8126430 summary: "Loads one row of 7 chip slots from a chip-id table" — directly
+    matches the 7-slot width (`mov r3, #7`, `mov r4, #0xb`/0x70 size) seen here. - packSelectionSlots_8126494
+    summary: "Packs 7 chip-selection slots (12 bytes each)" — called last, painting the highlight rows.
+    - Callers (battle_init_8124B5C, battle_objTickTimerAndRefreshSpritePairs_8124D30, battle_runUpdatesAndCheckFade_81250E0,
+    sub_8124C94, sub_8124CE8) all match "draw/update the chip-folder UI" tickers.'
+  refs:
+  - bn6f/asm/asm33.s
+  reproduce: 'python3 tools/asmcat.py 0x08125D10
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battle_drawCustFolderSlots_8125D10
+
+    '
+open_questions:
+- What the exact 0x14/0x18/0x1A offsets inside battleState mean (some look like UI row cursors), and which
+  "row" each draw targets; the function always uses `[r7+0x18]` (a u16) as the row index, so it likely
+  paints the *currently highlighted* row each call.
+- What sub_81261FC, sub_812625C, sub_812626C do at the byte level (none have summaries yet).
+sources:
+- discovery session 2026-10-14 batch 43 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7d779321
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8125D10 -> battle_drawCustFolderSlots_8125D10
+  where: bn6f 7ddd2238
+  tool: tools/rename_symbol.py

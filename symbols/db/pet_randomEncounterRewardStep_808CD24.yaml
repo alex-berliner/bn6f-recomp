@@ -1,0 +1,81 @@
+name: pet_randomEncounterRewardStep_808CD24
+address: '0x0808CD24'
+kind: function
+previous_names:
+- sub_808CD24
+status: probable
+summary: Overworld random-encounter "step" that, on the first run per map group, sets a story flag, marks
+  the per-day LocEnemy flag (0x0F__ range), and plays the SE 0xD4 jingle once.
+interface: '() -> r0/flags caller-don''t-care ; side effects: sets one story flag and one daily progress
+  flag, plays sound effect 0xD4 on first encounter per area'
+details: 'Loads dword_808CA44 (0x2000B40..0x2000B45+) and asks ai_getAIModeForMapGroup_808D084 for an
+  AI
+
+  mode selector in r0, then uses it to index into the off_808CD68 table of per-area encounter
+
+  flag tables (byte_808CD78/86/98/AA, each a list of u16 little-endian flag IDs).
+
+  The byte at r5+5 (byte_2000B45) is the "step number within the current 0xC0-step encounter
+
+  cycle": it subtracts 0xC0, doubles it (×2 → halfword stride) and pulls the next flag ID out of
+
+  the chosen table.
+
+  If TestEventFlag returns "already set" (bne locret) the function is a no-op for this frame;
+
+  otherwise it SetEventFlag(s) the value, then unconditionally tests/sets a daily progress flag
+
+  with the immediate-prefixed versions (TestEventFlagFromImmediate / SetEventFlagFromImmediate —
+
+  the "BF1" movflag macro at the .bss sites points them at the 0x0F00/0x0F__ daily-progress
+
+  range), and plays sound effect 0xD4 (the "LocEnemy / encounter triggered" jingle). This matches
+
+  the calling function pet_tryStartRandomEncounterStep_808CB0C, which fires it once per fresh
+
+  encounter cutscene.
+
+  Note: the order of SetEventFlag/TestEventFlag looks like an "atomic claim" pattern (test+set
+
+  the same flag pair) but the assembly actually re-tests a *different* flag (the immediate
+
+  variant is on a separate flag) before enabling the sound effect.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r5, off_808D030 // =dword_808CA44` then `ldrb r0, [r5,#0x5]` matches dword_808CA44 =
+    0x2000B40, so byte_2000B45 (encounter step counter). - `bl ai_getAIModeForMapGroup_808D084` and the
+    subsequent `ldr r4, off_808CD68 ; ldr r4, [r4,r0]` with r0*4 produce the four-elem table at 808CD78/86/98/AA.
+    - `sub r0, #0xc0 ; lsl r0, r0, #1 ; ldrh r4, [r4,r0]` reads a u16 from one of those byte tables →
+    flag ID. - `bl TestEventFlag ; bne locret_808CD62` short-circuits on "already set" (locret ends the
+    function). - On first-run path: `bl SetEventFlag` with the same r4, then `bl TestEventFlagFromImmediate`
+    / `bl SetEventFlagFromImmediate` on a second flag (the daily progress flag), and `mov r0, #0xd4 ;
+    bl PlaySoundEffect` to play SE 0xD4 once. - Sole caller is pet_tryStartRandomEncounterStep_808CB0C
+    ("PET-Navi footsteps / ''LocEnemy'' state ... may start the encounter cutscene").'
+  refs:
+  - bn6f/asm/asm24.s
+  reproduce: 'python3 tools/asmcat.py 0x0808CD24
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): pet_randomEncounterRewardStep_808CD24
+
+    '
+open_questions:
+- The exact semantic of the second flag (the 0x0F__ one set unconditionally after the test/set pair);
+  whether it's the "LocEnemy steps left" counter (eStruct2001c04 says flag 0x170B) or just the daily-progress
+  roll, would settle it. Without disassembly of dword_808CA44's owner the role is "first-encounter reward
+  roll" rather than something more specific.
+sources:
+- discovery session 2026-10-14 batch 43 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7d779321
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_808CD24 -> pet_randomEncounterRewardStep_808CD24
+  where: bn6f 7ddd2238
+  tool: tools/rename_symbol.py

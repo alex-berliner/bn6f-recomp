@@ -1,0 +1,79 @@
+name: battleObject_commitMoveLanding_8014B18
+address: '0x08014B18'
+kind: function
+previous_names:
+- sub_8014B18
+status: probable
+summary: 'Land a battle object on its queued panel: commit FuturePanelXY, recompute coords/collision,
+  clear invulnerability and Press-A charge, restart the AI attack script, and reset the post-dash sprite/animation.'
+interface: '(r5 = battle object, r7 = AIAttackVars) -> r0 = 4 ; side effects: panel coords/pixel coords/collision/facing
+  updated; AI flag 0x80000 cleared; PwrAtkState cleared; AIAttackVars[0] := 6 then 4; RelatedObject2 may
+  be flagged 0x14/1 if non-null'
+details: 'Sets the AI flag word bit 0x80000 first (SetAIDataUnk0x48Flag), then commits the battle object''s
+
+  FuturePanelX/FuturePanelY (offsets 0x14/0x15) into PanelX/PanelY (0x12/0x13). Calls
+
+  object_removePanelReserve to release the panel the object was standing on, then
+
+  object_setCoordinatesFromPanels, object_updateCollisionPanels, object_clearInvulnerableTime.
+
+  After sub_800F46C the returned byte is written into DirectionFlip (offset 0x17).
+
+  battleObject_refreshSpriteAndArm_800F2C6 updates sprite+arm; battleObject_clearPwrAtkState_8012EA8
+
+  drops any in-progress PwrAtk charge.
+
+  The AIData pointer''s 0x5c child is passed to sub_80C4C3A, then sub_80158FA is invoked.
+
+  Sets AIAttackVars[+0x10] = 6 then [+0x00] = 4 (returned in r0).
+
+  Then: only if GetBattleNaviStatsByte_AllianceFromBattleObject with byte index 0x2c == 9
+
+  AND CurAnim == 0x16, it resets CurAnim to 0, clears RelatedObject1Ptr and AIData[+0x68],
+
+  Clears the 0x80000 AI flag, and if RelatedObject2Ptr is non-null writes 1 to its Param3
+
+  (offset 0x6) and ORs 0x14 into its oObjectHeader_Flags (offset 0x0).
+
+  Returns 4 (matches captured exit r0=4).
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: "- `bl SetAIDataUnk0x48Flag` with `dword_8014B94 = 0x80000` immediately followed by copying\n\
+    \  FuturePanel{X,Y} -> Panel{X,Y} shows the function commits the queued panel position.\n- `bl object_removePanelReserve`\
+    \ then `object_setCoordinatesFromPanels` then\n  `object_updateCollisionPanels` is the standard landing\
+    \ sequence (release panel, recompute\n  pixel coords, refresh collision).\n- `bl object_clearInvulnerableTime`\
+    \ zeroing post-hit invulnerability matches \"freshly landed\". - `bl battleObject_clearPwrAtkState_8012EA8`\
+    \ is documented as clearing the PwrAtk (Press-A) state. - `mov r0,#6` then `strh r0,[r7,#0x10]` and\
+    \ final `strh r0,#4 [r7,#0]` writes a 6 then 4\n  sequence into the AIAttackVars struct (offsets 0x10\
+    \ and 0x0 per oAIAttackVars).\n- The \"if (Alliance==9 && CurAnim==0x16)\" branch clearly handles\
+    \ BeastOut-cancel / dash-end:\n  resetting CurAnim to 0, clearing RelatedObject1Ptr and AIData[+0x68],\
+    \ clearing 0x80000,\n  and writing 0x14 (OBJECT_FLAG_ACTIVE|OBJECT_FLAG_PAUSE_UPDATE?) plus Param3=1\
+    \ to RelatedObject2.\n- Final `mov r0,#4` matches the captured exit r0=00000004."
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08014B18
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_commitMoveLanding_8014B18
+
+    '
+open_questions:
+- The exact meaning of the "Alliance == 9" NaviStats byte 0x2c check and what CurAnim 0x16 represents
+  (likely a BeastOut/dash-specific animation) is not pinned down by symbols; the post-dash RelatedObject2
+  write (Param3=1, Flags|=0x14) needs more callers in context.
+- sub_800F46C / sub_80158FA / sub_80C4C3A roles inferred only from call ordering.
+sources:
+- discovery session 2026-10-14 batch 43 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7d779321
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8014B18 -> battleObject_commitMoveLanding_8014B18
+  where: bn6f 7ddd2238
+  tool: tools/rename_symbol.py

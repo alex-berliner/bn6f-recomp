@@ -687,7 +687,7 @@ Next battle_updateObjectByKind_8026E98(void) {
     R1 = LD32(A_off_8026EBC + kind); /* thumb handler pointer from the ROM table */
     switch (kind) {
     case 0: GUEST_CALL(runBattleDialog_8026EC8); break;
-    case 4: GUEST_CALL(sub_8026F1A); break;
+    case 4: GUEST_CALL(battle_custMenuTickPlayerChipCursor_8026F1A); break;
     case 8: GUEST_CALL(sub_8026FAA); break;
     }
 

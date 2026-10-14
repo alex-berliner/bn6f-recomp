@@ -2385,9 +2385,9 @@ static void call_sub_81252C0(void) {
     GUEST_CALL(sub_81252C0);
 }
 
-/* register form: calls sub_8125D10 outside this file, which has no typed C interface yet */
+/* register form: calls battle_drawCustFolderSlots_8125D10 outside this file, which has no typed C interface yet */
 static void call_sub_8125D10_sub_8124B5C(void) {
-    GUEST_CALL(sub_8125D10);
+    GUEST_CALL(battle_drawCustFolderSlots_8125D10);
 }
 
 /* register form: calls sub_812546C outside this file, which has no typed C interface yet; clobbers r7 */
@@ -2547,7 +2547,7 @@ Next sub_8124C94(void) {
     }
 
     GUEST_CALL(battle_runTransition_8125444);
-    GUEST_CALL(sub_8125D10);
+    GUEST_CALL(battle_drawCustFolderSlots_8125D10);
     GUEST_CALL(sub_81264F4);
 
     /* Refresh the two sprites attached to this menu state. */
@@ -2592,7 +2592,7 @@ Next sub_8124CE8(void) {
 
     ST32(R5 + 0x70, 0xFF);
     GUEST_CALL(battle_runTransition_8125444);
-    GUEST_CALL(sub_8125D10);
+    GUEST_CALL(battle_drawCustFolderSlots_8125D10);
     GUEST_CALL(sub_8125D94);
 
     /* Update sprite frame/duration pair #4 from the live halfwords. */
@@ -2635,9 +2635,9 @@ static void call_sub_8125444_sub_8124D30(void) {
     GUEST_CALL(battle_runTransition_8125444);
 }
 
-/* register form: calls sub_8125D10 outside this file, which has no typed C interface yet */
+/* register form: calls battle_drawCustFolderSlots_8125D10 outside this file, which has no typed C interface yet */
 static void call_sub_8125D10(void) {
-    GUEST_CALL(sub_8125D10);
+    GUEST_CALL(battle_drawCustFolderSlots_8125D10);
 }
 
 /* register form: calls sub_8125D94 outside this file, which has no typed C interface yet */
@@ -3032,9 +3032,9 @@ static void call_sub_8125444(void) {
     GUEST_CALL(battle_runTransition_8125444);
 }
 
-/* register form: calls sub_8125D10 outside this file, which has no typed C interface yet */
+/* register form: calls battle_drawCustFolderSlots_8125D10 outside this file, which has no typed C interface yet */
 static void call_sub_8125D10_sub_81250E0(void) {
-    GUEST_CALL(sub_8125D10);
+    GUEST_CALL(battle_drawCustFolderSlots_8125D10);
 }
 
 /* register form: calls sub_81264F4 outside this file, which has no typed C interface yet */

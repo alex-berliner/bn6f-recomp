@@ -1,0 +1,73 @@
+name: battleObject_beastOutUpdate_80C5654
+address: '0x080C5654'
+kind: function
+previous_names:
+- sub_80C5654
+status: probable
+summary: 'Per-frame update for a beast-out (cross fuse) battle object: tears down collision, dispatches
+  to per-action handlers, or schedules its own destruction when the battle ends.'
+interface: (r5 = this BattleObject) -> void ; may set nz/c/v and trash r0-r3/r12; saves lr and callee-saved
+  regs implicitly via the caller
+details: '- Starts by calling object_removeCollisionData(r5) to clear the prior frame''s collision entry,
+  then object_spawnCollisionEffect(r5) so that any lingering hit effect is emitted for this frame.
+
+  - Calls battle_isBattleOver(); if true (r0!=0), jumps to the destroy branch.
+
+  - Calls battle_isTimeStop(); if true (time is stopped), jumps to loc_80C5682, which calls object_presentCollisionData
+  and returns via `pop {pc}`.
+
+  - Otherwise reads CollisionDataPtr (oBattleObject_CollisionDataPtr) and its oCollisionData_FlagsFromCollision
+  word; if non-zero, calls object_clearCollisionRegion(r5).
+
+  - Then loads CurAction (oBattleObject_CurAction), uses it to index a 2-entry dispatch table at off_80C56AC
+  containing battleObject_tossUpdate_80C56B4+1 and sub_80C5760+1, and bx''es into the chosen handler with
+  lr=pc.
+
+  - Destroy branch (battle over): reads the three coords at r5+0x34 (Coords X/Y/Z 16.16 fixed-point),
+  ldmia''s them into r1-r3, sets r4=0x14 and calls spawn_t1_0x0_EffectObject, which spawns a type-4 battle
+  object (effect type 0) returning the new pointer in r0. Then it clears the OBJECT_FLAG_VISIBLE bit (0x02)
+  in oObjectHeader_Flags, calls object_clearCollisionRegion(r5), and sets CurStateActionPhaseAndPhaseInitialized
+  = CUR_STATE_DESTROY (0x08) so the object is destroyed next frame.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl object_removeCollisionData` then `bl object_spawnCollisionEffect` at the head of the
+    function set up/clear collision each frame. - `bl battle_isBattleOver` + `bne loc_80C5688` shows a
+    battle-over short-circuit. - `bl battle_isTimeStop` + `bne loc_80C5682` shows time-stop is a separate
+    branch that just calls object_presentCollisionData. - `ldr r0, [r5,#oBattleObject_CollisionDataPtr];
+    ldr r0, [r0,#oCollisionData_FlagsFromCollision]` reads the collision flags at the documented offset
+    0x70; non-zero causes `bl object_clearCollisionRegion`. - `ldrb r0, [r5,#oBattleObject_CurAction];
+    ldr r1, off_80C56A8; ldr r1, [r1,r0]; mov lr, pc; bx r1` is the classic Thumb switch-table dispatch
+    keyed by CurAction. - Destroy path `mov r0, #0x34; add r0, r0, r5; ldmia r0!, {r1-r3}` pulls 12 bytes
+    starting at oBattleObject_Coords (X/Y/Z) into r1-r3; `mov r4, #0x14; bl spawn_t1_0x0_EffectObject`
+    then forwards r4=0x14 (effect type / param) into the type-4 spawner. - `ldrb r0, [r5,#oObjectHeader_Flags];
+    mov r1, #2; bic r0, r1; strb r0, [r5,#oObjectHeader_Flags]` clears OBJECT_FLAG_VISIBLE (0x02). - `mov
+    r0, #CUR_STATE_DESTROY; str r0, [r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]` stores
+    0x08 at offset 0x8 (CUR_STATE_DESTROY). - Only one caller: battleObject_initBeastOut_80C55E4 (the
+    beast-out initializer), consistent with this being the beast-out''s per-frame update.'
+  refs:
+  - bn6f/asm/asm31.s
+  reproduce: 'python3 tools/asmcat.py 0x080C5654
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_beastOutUpdate_80C5654
+
+    '
+open_questions:
+- Exact semantic difference between the two dispatched handlers (battleObject_tossUpdate_80C56B4 vs sub_80C5760)
+  and what CurAction values select each; the function is clearly an update loop for the beast-out form,
+  but the per-action split is opaque without seeing those callees.
+sources:
+- discovery session 2026-10-14 batch 43 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7d779321
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80C5654 -> battleObject_beastOutUpdate_80C5654
+  where: bn6f 7ddd2238
+  tool: tools/rename_symbol.py

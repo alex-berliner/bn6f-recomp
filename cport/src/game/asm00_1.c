@@ -2362,10 +2362,10 @@ static bool event_flag_test(u16 flag) {
     return !ZERO_FLAG();          /* Z clear: the flag is set */
 }
 
-/* register form: calls sub_803F6B0 outside this file, which has no typed C interface yet */
+/* register form: calls battle_resetStateForNewBattle_803F6B0 outside this file, which has no typed C interface yet */
 static void call_sub_803F6B0(u32 arg) {
     R0 = arg;
-    GUEST_CALL(sub_803F6B0);
+    GUEST_CALL(battle_resetStateForNewBattle_803F6B0);
 }
 
 /* register form: calls sub_803F500 outside this file, which has no typed C interface yet */

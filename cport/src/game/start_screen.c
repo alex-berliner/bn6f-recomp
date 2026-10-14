@@ -308,10 +308,10 @@ static inline notZero_eByte200AD04_result call_notZero_eByte200AD04(void) {
     return (notZero_eByte200AD04_result){ R0, R1, ZERO_FLAG() };
 }
 
-/* register form: generated typed wrapper: sub_803F6B0's signature is confident (symbols/db sub_803F6B0.yaml, signature:) */
+/* register form: generated typed wrapper: battle_resetStateForNewBattle_803F6B0's signature is confident (symbols/db battle_resetStateForNewBattle_803F6B0.yaml, signature:) */
 static inline void call_sub_803F6B0(u32 table_index) {
     R0 = table_index;
-    GUEST_CALL(sub_803F6B0);
+    GUEST_CALL(battle_resetStateForNewBattle_803F6B0);
 }
 
 /* register form: generated typed wrapper: toolkit_initAndVerifyWorkArea_0803F838's signature is confident (symbols/db toolkit_initAndVerifyWorkArea_0803F838.yaml, signature:); r7, r8, r9, r11, r12 pass through as the guest has them (no call site here sets them: the original passes its own caller's values on) */

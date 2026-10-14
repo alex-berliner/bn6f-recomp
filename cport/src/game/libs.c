@@ -159,11 +159,11 @@ Next link_initAndClear_8144158(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8144240 ── */
-/* sub_8144240: run both steps of the (likely per-frame) update for this
+/* ── link_initAndReset_8144240 ── */
+/* link_initAndReset_8144240: run both steps of the (likely per-frame) update for this
  * subsystem: link_initAndClear_8144158 followed by link_resetHardwareAndClearLinkBuffers_81440D8. Neither takes arguments;
  * whatever the callees leave in r2/r3 is passed through to the caller. */
-Next sub_8144240(void) {
+Next link_initAndReset_8144240(void) {
     GUEST_CALL(link_initAndClear_8144158);
     GUEST_CALL(link_resetHardwareAndClearLinkBuffers_81440D8);
     RETURN_TO_CALLER();

@@ -2219,10 +2219,10 @@ Next eLinkState_ResetForNewUse_803DE88(void) {
 }
 
 /* ── sub_803DEAC ── */
-/* sub_803DEAC: tail-call wrapper that simply invokes sub_8144240.
- * r4-r7 are preserved (sub_8144240 keeps them intact). */
+/* sub_803DEAC: tail-call wrapper that simply invokes link_initAndReset_8144240.
+ * r4-r7 are preserved (link_initAndReset_8144240 keeps them intact). */
 Next sub_803DEAC(void) {
-    GUEST_CALL(sub_8144240);
+    GUEST_CALL(link_initAndReset_8144240);
     RETURN_TO_CALLER();
 }
 
@@ -2775,8 +2775,8 @@ Next battle_getLinkStateCode_803F560(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_803F6B0 ── */
-/* sub_803F6B0: Initialize a new link encounter scene.
+/* ── battle_resetStateForNewBattle_803F6B0 ── */
+/* battle_resetStateForNewBattle_803F6B0: Initialize a new link encounter scene.
  *   inputs:  r0 = scenario index (selects a load function pointer)
  *            r10 = caller-saved (unused inside)
  *   outputs: c v r2 r3 r4 r5 r6 r7 (callee preserves r4-r7; we restore r4/r5 here)
@@ -2786,7 +2786,7 @@ Next battle_getLinkStateCode_803F560(void) {
  * Wipes a 0x20-byte link struct, runs the crt0 trampoline, resets link state,
  * configures the comm window, dispatches a scenario-specific loader, sets the
  * camera dwell, and raises event flag 0x172F. */
-Next sub_803F6B0(void) {
+Next battle_resetStateForNewBattle_803F6B0(void) {
     u32 scenario = R0;
 
     /* Stash r4 on the guest stack so the callees below can use r4 freely;

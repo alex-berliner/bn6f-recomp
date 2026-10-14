@@ -1,0 +1,71 @@
+name: battleObject_initActorStateT4_80D4472
+address: '0x080D4472'
+kind: function
+previous_names:
+- sub_80D4472
+status: probable
+summary: 'Initialises a type-4 battle object''s running "actor" state: sets HP=1, reserves its panel,
+  marks collision present, switches to CUR_STATE_UPDATE with a 30-frame timer, or on init failure spawns
+  a default effect and frees the slot.'
+interface: '(r5 = BattleObject*) -> void ; side effects: EWRAM battle-object fields, panel reservation,
+  possible t4 EffectObject spawn'
+details: '1. Recomputes pixel X/Y from panel coords via object_setCoordinatesFromPanels.
+
+  2. Calls battleObject_initSpriteAndCollision_8011504 with sprite id 0x41f and collision data ptr 0xc0d0300.
+
+  3. If init returns 0 (failure path): copies 3 words from object+0x34 (Coords block: X, Y, Z), bumps
+  Z by 0x10:0000 (one panel upward in fixed point), and calls spawn_t1_0x0_EffectObject with r4=0x10:0000
+  (the Z bump). Then object_freeMemory is called and the function exits — the failed object is destroyed.
+
+  4. Success path: sets CollisionData.HitEffect = 0xa, HP = MaxHP = 1, and if Param1 == 4 forces CurAnim
+  = 4 then falls through with palette index 0.
+
+  5. sprite_setPalette(0) (palette 0), object_presentCollisionData() refreshes collision, ExtraVars[0]
+  is set to the object pointer itself.
+
+  6. object_reservePanel is called with the object''s PanelX/PanelY, Timer is set to 0x1e (30), and CurState
+  becomes CUR_STATE_UPDATE so the per-frame logic takes over.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl battleObject_initSpriteAndCollision_8011504` with literal `0x41f` (sprite id) and `0xc0d0300`
+    (collision data) from dword_80D46AC/dword_80D46B0. - `tst r0,r0 ; bne loc_80D449C` cleanly separates
+    init-failure from init-success. - Failure path: `mov r0,#0x34 ; add r0,r0,r5 ; ldmia r0!,{r1-r3}`
+    pulls X/Y/Z; `add r3,r3,r4` with `r4 = 0x10 << 16` is a 1.0 fixed-point Z bump passed to `spawn_t1_0x0_EffectObject`
+    (its Param3 = Z). - `bl object_freeMemory` after the spawn is a clear "destroy this failed object"
+    trail. - Success path: `mov r0,#0xa ; bl object_setCollisionHitEffect` writes HitEffect 0xa. - `mov
+    r0,#1 ; strh r0,[r5,#oBattleObject_HP] ; strh r0,[r5,#oBattleObject_MaxHP]` sets HP = MaxHP = 1 (typical
+    of a 1-HP obstacle/character). - `cmp r0,#4 ; bne loc_80D44B4` checks Param1; if 4 sets CurAnim=4
+    (the alternate init anim). - `bl sprite_setPalette` with palette index 0 (r0 set just before fall-through).
+    - `bl object_presentCollisionData` and `ldr r0,[r5,#oBattleObject_ExtraVars] ; str r5,[r0]` stores
+    the object pointer in its own ExtraVars[0]. - `ldrb r0,[r5,#oBattleObject_PanelX] ; ldrb r1,[r5,#oBattleObject_PanelY]
+    ; bl object_reservePanel` claims the panel under the object. - `mov r0,#0x1e ; strh r0,[r5,#oBattleObject_Timer]`
+    sets a 30-frame timer. - `mov r0,#CUR_STATE_UPDATE ; strb r0,[r5,#oBattleObject_CurState]` advances
+    the state machine. - callee `spawn_t1_0x0_EffectObject` (0x080e05f6) description says it spawns a
+    type-4 battle object with effect type 0, matching the failure-path "spawn default effect" behaviour.'
+  refs:
+  - bn6f/asm/asm31.s
+  reproduce: 'python3 tools/asmcat.py 0x080D4472
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_initActorStateT4_80D4472
+
+    '
+open_questions:
+- The specific chip/actor this function belongs to cannot be told from this snippet alone (no caller shown,
+  no readable sprite-id naming); would settle it by checking the only callers and the sprite/collision
+  constants `0x41f` and `0xc0d0300` in bn6f data tables.
+sources:
+- discovery session 2026-10-14 batch 43 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7d779321
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80D4472 -> battleObject_initActorStateT4_80D4472
+  where: bn6f 7ddd2238
+  tool: tools/rename_symbol.py

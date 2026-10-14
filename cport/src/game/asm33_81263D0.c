@@ -3963,7 +3963,7 @@ Next sub_8129658(void) {
     case 0x0C: GUEST_CALL(battle_object_advanceState3_8129738); break;
     case 0x10: GUEST_CALL(sub_8129758); break;
     case 0x14: GUEST_CALL(sub_812977C); break;
-    case 0x18: GUEST_CALL(sub_81297C0); break;
+    case 0x18: GUEST_CALL(battle_runSubsystemSlice_81297C0); break;
     }
 
     R0 = 0xE;
@@ -4232,8 +4232,8 @@ Next sub_812977C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_81297C0 ── */
-/* sub_81297C0: per-frame "play" / intro / etc. controller
+/* ── battle_runSubsystemSlice_81297C0 ── */
+/* battle_runSubsystemSlice_81297C0: per-frame "play" / intro / etc. controller
  *
  * Called every tick while a cutscene-like state is active. Runs the entity
  * update pass, runs the queued-effects pass, and if a screen fade is in
@@ -4242,7 +4242,7 @@ Next sub_812977C(void) {
  *   inputs:  r5 = controller state struct ptr, r10 = ?, lr
  *   outputs: r4 r5 r6 r8 r9 r10 r11 r12
  *   clobbers: r0 r1 r2 r3 lr, nz c v */
-Next sub_81297C0(void) {
+Next battle_runSubsystemSlice_81297C0(void) {
     GUEST_CALL(entity_runAllUpdateHandlers_80465BC);
     GUEST_CALL(battle_updateEStructSprites_80465F8);
 

@@ -1,0 +1,96 @@
+name: battleObject_performMovementStep_8111A8C
+address: '0x08111A8C'
+kind: function
+previous_names:
+- sub_8111A8C
+status: probable
+summary: Advances a battle object one frame along an in-progress panel-to-panel move, snapping to its
+  destination panel and entering a post-move completion state when the move timer elapses.
+interface: (r5 = *BattleObject, r7 = *AIAttackVars) -> void ; mutates r5's X/Y/PanelX/PanelY/CollisionData/ObjectFlags1/CurAnim
+  and r7's Unk_10/Unk_1a/Unk_00
+details: 'Steps the object''s subpixel world X by adding XVelocity and Y by adding YVelocity (offsets
+  0x40/0x44 and
+
+  0x34/0x38), the standard per-frame motion integrator for a battle object.
+
+  When the AI move-tick counter `Unk_10` equals `Unk_12` (the scheduled slot count), it re-derives the
+
+  panel from world coords (`object_setPanelsFromCoordinates`) and refreshes the collision record
+
+  (`object_updateCollisionPanels`), so panel resync only happens on tick boundaries rather than every
+
+  frame.
+
+  When the tick counter is exactly 4 the function sets `CurAnim = 3` (presumably the "settling"/land
+
+  animation), then unconditionally decrements the counter `Unk_10` by one.
+
+  Once `Unk_10` underflows (`sub r0,#1` followed by `bge` not taken), the move has finished: PanelX/Y
+
+  are forced to the previously reserved FuturePanelX/Y, the panel reservation is released
+
+  (`object_removePanelReserve`), world coords are recomputed from the panels
+
+  (`object_setCoordinatesFromPanels`), and the collision copy is refreshed
+
+  (`object_setCollisionPanelsToCurrent`). ObjectFlags1 then has bit 0x40 (OBJECT_FLAGS_CANNOT_SLIDE)
+
+  cleared and bit `1<<19` (`OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT`, the "is currently moving" flag)
+
+  set, marking the object as still moving from this routine''s view while disabling slide interrupts.
+
+  Finally `AIAttackVars.Unk_1a = 1` and `AIAttackVars.Unk_00 = 0xc`, signaling the AI move-state machine
+
+  that the panel step has completed and it should advance to state 0xc.
+
+  The two callees that touch panel reservations/collision panels and the flag mutations together
+
+  characterize a "finish one panel-of-an-AI-driven move" helper, called every frame from
+
+  sub_8111A72 (which holds the move-state machine).
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r1, [r5,#oBattleObject_XVelocity]` + `ldr r0, [r5,#oBattleObject_X]` followed by `add`/`str`
+    at 0x8111A8E..0x8111A98 performs X+Y integration. - Same pattern against `oBattleObject_YVelocity`/`oBattleObject_Y`
+    immediately below shows both axes are integrated. - `ldrh r0,[r7,#oAIAttackVars_Unk_10]` / `ldrh r1,[r7,#oAIAttackVars_Unk_12]`
+    then `cmp r0,r1 ; bne loc_8111AAE` gates the panel resync to a specific tick. - Calls to `object_setPanelsFromCoordinates`
+    (0x0800e2ac) then `object_updateCollisionPanels` (0x0801a04c) are made only on the tick match. - `cmp
+    r0,#4` then `mov r0,#3 ; strb r0,[r5,#oBattleObject_CurAnim]` is the early "play land anim" cue when
+    1 frame from finish. - `sub r0,#1 ; strh r0,[r7,#oAIAttackVars_Unk_10] ; bge locret_8111AEA` is the
+    per-frame countdown with skip when not done. - On finish, `ldrb r0,[r5,#oBattleObject_FuturePanelX]
+    ; strb r0,[r5,#oBattleObject_PanelX]` (same for Y) commits the target panel. - Then `bl object_removePanelReserve`
+    (0x0801bb46) followed by `bl object_setCoordinatesFromPanels` and `bl object_setCollisionPanelsToCurrent`
+    finalize panel/world alignment. - `mov r0,#0x40 ; bl object_clearFlag` then `mov r0,#1 ; lsl r0,r0,#OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT
+    ; bl object_setFlag1` match clearing bit 6 of ObjectFlags1 and setting the bit-mask 0x80000 (`OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT`).
+    - Final two stores: `mov r0,#1 ; strb r0,[r7,#oAIAttackVars_Unk_1a]` and `mov r0,#0xc ; strh r0,[r7,#oAIAttackVars_Unk_00]`
+    flip the AI state to 0xc with a "done" flag. - Only caller is sub_8111A72 (per the callgraph), which
+    has the matching `in=[''r5'',''r7'',''lr'']` setup typical of an AI-move tick in the per-frame loop.'
+  refs:
+  - bn6f/asm/asm32.s
+  reproduce: 'python3 tools/asmcat.py 0x08111A8C
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_performMovementStep_8111A8C
+
+    '
+open_questions:
+- Exact semantic of `AIAttackVars.Unk_10` / `Unk_12` (slot counter vs. total steps) and why one resync
+  is tied to `Unk_10 == Unk_12` rather than every frame.
+- Why `CurAnim = 3` is forced only when `Unk_10 == 4` (and not at the snap point) and what animation 3
+  corresponds to.
+- Meaning of `Unk_1a = 1` and `Unk_00 = 0xc` in the AI state machine would be settled by looking at sub_8111A72.
+sources:
+- discovery session 2026-10-14 batch 43 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7d779321
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8111A8C -> battleObject_performMovementStep_8111A8C
+  where: bn6f 7ddd2238
+  tool: tools/rename_symbol.py

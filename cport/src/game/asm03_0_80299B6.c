@@ -3388,7 +3388,7 @@ Next battle_getAllianceEntryStatus_802E4B8(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_802E4E4 ── */
+/* ── battleObject_tickAITimerFlags_802E4E4 ── */
 /* One-shot bits in the AI-data flag word read by GetAIData_Unk_44_Flag. */
 #define AIDATA_FLAG_TIMER  0x02000000u /* literal "timer_2000000" in the disassembly */
 #define AIDATA_FLAG_INVULN 0x20000000u /* drives the permanent-invulnerability branch */
@@ -3457,8 +3457,8 @@ static void handle_ai_data_flag_triggers(u32 object) {
     }
 }
 
-/* sub_802E4E4(r5 = battle object) -> r2, r3 (leftovers from the last callee above) */
-Next sub_802E4E4(void) {
+/* battleObject_tickAITimerFlags_802E4E4(r5 = battle object) -> r2, r3 (leftovers from the last callee above) */
+Next battleObject_tickAITimerFlags_802E4E4(void) {
     handle_ai_data_flag_triggers(R5);
     RETURN_TO_CALLER();
 }

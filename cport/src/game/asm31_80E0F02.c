@@ -784,7 +784,7 @@ Next battle_objectFreeWrapper_80E1D72(void) {
  * 0x080E3B88, then always call object_updateSprite.
  *
  * Table layout (indexed by the CurState byte stored at offset 0/4/8):
- *   state 0 → sub_80E3B94
+ *   state 0 → battleObject_initFromRelatedObject_init_80E3B94
  *   state 4 → battle_objectUpdatePosAndRunAction_80E3BEA
  *   state 8 → object_freeMemory
  *
@@ -793,10 +793,10 @@ Next battle_objectFreeWrapper_80E1D72(void) {
 
 #define STATE_HANDLER_TABLE 0x080E3B88u
 
-/* register form: calls sub_80E3B94 outside this file, which has no typed C interface yet */
+/* register form: calls battleObject_initFromRelatedObject_init_80E3B94 outside this file, which has no typed C interface yet */
 static void state_handler_idle(u32 state) {
     R0 = state;
-    GUEST_CALL(sub_80E3B94);
+    GUEST_CALL(battleObject_initFromRelatedObject_init_80E3B94);
 }
 
 /* register form: calls battle_objectUpdatePosAndRunAction_80E3BEA outside this file, which has no typed C interface yet */

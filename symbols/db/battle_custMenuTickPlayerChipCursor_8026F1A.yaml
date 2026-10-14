@@ -1,0 +1,76 @@
+name: battle_custMenuTickPlayerChipCursor_8026F1A
+address: '0x08026F1A'
+kind: function
+previous_names:
+- sub_8026F1A
+status: probable
+summary: Advances the chip-select/customize sub-menu cursor one beat, with a chance to swap player element
+  via Puppeteer
+interface: (r2 = curBeat counter?, r5 = S20364C0 state ptr, r10 = Toolkit) -> void ; writes to S20364C0
+  fields, Puppeteer element, byte_20366C0
+details: "1. Checks chatbox flag 0x80; if set, defers to `battleObject_computePuppeteerSwitchElement_802A220`\
+  \ and applies that element.\n   If that helper returns 0xFF (no swap), it bails out.\n   Otherwise it\
+  \ calls `chatbox_8040818` and continues to the \"advance cursor\" branch.\n2. Otherwise reads chatbox\
+  \ state via `chatbox_GetState_8045F4C`; if state == 1, goes straight to\n   `loc_8026FA0` (writes CurAction=4,\
+  \ timer=0).\n3. Otherwise writes 0xFF to `byte_20366C0` (clears last-frame puppeteer element latch),\
+  \ then loads\n   `GetBattleSettingsUnk01` into r4 and computes `GetBattleNaviStatsHword(r0=tk->BattleState->0xd,\
+  \ r1=0x3e)+4`\n   into r0 — that's `MaxBaseHP + 4`.\n4. `svc 6` (RNG) with cap 5 produces a small random\
+  \ offset; this and r4 (the Unk01 setting) feed\n   a tiered compare (8 → 4 → 0) that picks an index\
+  \ into the table at `off_8027014`.\n5. Bumps a counter at `dword_20349A8`, looks up `ldrb r4, [r3, r0]`\
+  \ for the picked index/tier,\n   calls `GetRNGSecondary`, ANDs result with 0xF, and compares against\
+  \ r4 (threshold). If RNG < r4,\n   jumps to `loc_8026F8E` which writes `2` to `[r5+4]` (S20364C0.JumpOffset01\
+  \ selection); otherwise\n   leaves that path and writes 0x20 to `[r5+0xb]`, 8 to `[r5+1]` (CurAction=8\
+  \ = ?), 0 to `[r5+2]` (timer).\n6. The `loc_8026FA0` branch (used when chatbox state==1 or after puppeteer\
+  \ switch) writes 4 to\n   `[r5+1]` and 0 to `[r5+2]` — \"park\" the cursor handler.\nThis is the per-frame\
+  \ tick for the custom-screen menu (S20364C0), which is the cursor/UI for\npicking chips and the \"OK\"\
+  \ button; it doubles as a hook to perform the rare Puppeteer (L+R element swap).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mov r0, #0x80; bl chatbox_mask_eFlags2009F38` at 0x8026F1E - chatbox flag gating. - `bl
+    battleObject_computePuppeteerSwitchElement_802A220; cmp r0, #0xff; beq locret_8026FA8` at 0x8026F22
+    - Puppeteer element swap branch. - `bl chatbox_GetState_8045F4C; cmp r0, #1` at 0x8026F36 - chatbox
+    state==1 short-circuit. - `mov r0, #0xff; ldr r1, off_802700C // =byte_20366C0; strb r0, [r1]` at
+    0x8026F40 - clears the puppeteer element latch byte. - `bl GetBattleSettingsUnk01; mov r4, r0` at
+    0x8026F44 - reads Unk01 battle-settings value into r4. - `ldr r0, [r10,#oToolkit_BattleStatePtr];
+    ldrb r0, [r0,#0xd]` at 0x8026F48 - reads BattleState byte 0xD (some index/turn counter). - `mov r1,
+    #0x3e; bl GetBattleNaviStatsHword; add r0, #4` at 0x8026F4E - reads NaviStats field 0x3E (MaxBaseHP)
+    and adds 4. - `svc 6` at 0x8026F56 - inline RNG with cap 5. - `mov r3, #8; lsr r2, r0, #1; add r0,
+    r0, r2; cmp r4, r0; blt ...sub r3, #4; add r0, r0, r2; cmp r4, r0; blt ...sub r3, #4` - three-tier
+    threshold picks tier 0/4/8. - `ldr r2, off_8027010; ldr r3, [r2,r3]` at 0x8026F72 - loads tier table
+    indexed by r3. - `ldr r1, off_802703C; ldr r0, [r1,#0x8]; add r2, r0, #1; str r2, [r1,#0x8]` - bumps
+    the rolling counter at dword_20349A8. - `ldrb r4, [r3,r0]` at 0x8026F84 - lookup threshold byte from
+    tier table. - `bl GetRNGSecondary; mov r1, #1; mov r2, #0xf; and r0, r2; cmp r0, r4` at 0x8026F86
+    - secondary-RNG roll vs threshold. - `loc_8026F8E: mov r0, #2; strb r0, [r5,#4]` at 0x8026F8E - on
+    success writes 2 to S20364C0+4 (JumpOffset01 selection state). - `mov r0, #0x20; strb r0, [r5,#0xb];
+    mov r0, #8; strb r0, [r5,#1]; mov r0, #0; strh r0, [r5,#2]` at 0x8026F92 - default path writes CurAction=8,
+    timer=0, and a 0x20 to byte 0xB. - `loc_8026FA0: mov r0, #4; strb r0, [r5,#1]; mov r0, #0; strh r0,
+    [r5,#2]` at 0x8026FA0 - parked branch sets CurAction=4, timer=0. - r5 is the S20364C0 struct (this
+    function is the next call in the custom-screen update flow after battle_custMenuAnimateCursorToOK_8026B04).'
+  refs:
+  - bn6f/asm/asm03_0.s
+  reproduce: 'python3 tools/asmcat.py 0x08026F1A
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battle_custMenuTickPlayerChipCursor_8026F1A
+
+    '
+open_questions:
+- Exact semantic of tier thresholds 0/4/8 and the bytes they index into `off_8027014`. The chosen `r3`
+  of 0/4/8 is added to the table base to pick one of three tier arrays, then `[r3, r0]` reads the per-frame
+  threshold; presumably this controls how often the cursor auto-OK's or moves. Settling it requires either
+  renames of `off_8027014` (table of three threshold arrays) or a comparison against a known RNG-driven
+  custom-screen event in a public trace. Also unsure what the 0x20 written at `[r5+0xb]` controls - might
+  be a counter/timer slot in S20364C0 that the cursor handler reads next frame.
+sources:
+- discovery session 2026-10-14 batch 43 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7d779321
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8026F1A -> battle_custMenuTickPlayerChipCursor_8026F1A
+  where: bn6f 7ddd2238
+  tool: tools/rename_symbol.py

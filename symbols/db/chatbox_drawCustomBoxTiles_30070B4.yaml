@@ -1,0 +1,74 @@
+name: chatbox_drawCustomBoxTiles_30070B4
+address: '0x030070B4'
+kind: function
+previous_names:
+- sub_30070B4
+status: probable
+summary: Stages chatbox box-graphic tile data (3 tile sets x 8 palettes) into the EWRAM staging buffer
+  pointed to by r0, then DMA-copies 0xF00 bytes to OBJ VRAM at 0x06015700, and finally sets chatbox.Unk_3D
+  = 2 if FLAGS_3E_UNK_0400 is set.
+interface: '(r0 = mode selector: 0 -> stage buffer at dword_200CDA0+0x680; 1 -> stage buffer at dword_200CDA0+0x080;
+  else -> stage buffer at dword_200CDA0+0x680) -> no meaningful return ; side effects: writes 0x20 bytes
+  per palette group into the staging buffer, queues a 0xF00-byte DMA to OBJ VRAM 0x06015700, may set Chatbox+0x3D
+  to 2'
+details: '- `r0` is doubled as a small mode selector: `cmp r2,#0 / beq / cmp r2,#1 / beq / else` chooses
+  the destination slot inside the staging buffer pointed to by `dword_200CDA0`. For mode 1, `r7 += 0x80`;
+  otherwise (mode 0 and "default") `r7 += 0x680` (i.e. `0xd << 7`).
+
+  - `r5` is loaded from `off_300720C` indexed by `r2*4`, holding a `(*PaletteTable, *PerPaletteWidths)`.
+  The first word (`[r5]`) is a per-palette pointer array: while that pointer is non-null, eight u32 words
+  are copied (`[src+0x00], [src+0x60]`) into the staging buffer at stride 0x20, repeated four times to
+  fill 0x20 bytes per palette group. After each group, the next width byte (`ldrb r0,[r5, 4+r4]`) is added
+  to `r7` to advance the staging pointer.
+
+  - `r5 += 8` between iterations, so the per-palette pointer/width pair advances.
+
+  - After the staging loop, `QueueEightWordAlignedGFXTransfer(dword_200CDA0, 0x06015700, 0xF00)` is called:
+  this is the chatbox box-graphic OBJ tile area (the box tilemap lives in OBJ at 0x06015700).
+
+  - Finally, if `chatbox_maskFlags_3e(FLAGS_3E_UNK_0400)` returns non-zero (i.e. that bit is set), `Chatbox+0x3D`
+  is overwritten with `2`.
+
+  - The two callers are the two chatbox dialog-print routines (`chatbox_interpreteAndDrawDialogChar_804005C`
+  and the unnamed variant at 0x0803ff50); both call it once per character to upload new box-graphic tiles.
+
+  - Naming reflects: it''s used during the dialog-char draw step (i.e. box tile upload, not the text tile
+  upload which uses a separate buffer).
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `off_30071F0 = dword_200CDA0` and the staging-base computation `add r7, r7, #0x680` (`0xd
+    << 7`) at loc_30070DA show the destination is the third (0x680) slot of an 8-slot staging buffer at
+    0x020CDA0. - The eight u32 writes per palette (`[src], [src+0x60]` x4, advancing `r6 += 0xc0`) match
+    the per-palette layout of an OBJ tile cell pair used by chatbox box graphics. - The DMA target `0x6015700`
+    (`dword_30071F4`) and size `0xF00` (`dword_30071F8`) come straight from the constant pool, both 8-word
+    aligned per `QueueEightWordAlignedGFXTransfer`''s contract. - The final `chatbox_maskFlags_3e(FLAGS_3E_UNK_0400)`
+    then `strb r0, [r5,r1]` with `r1=0x3d` writes into `oChatbox+0x3D` (chatbox struct). - Callers are
+    chatbox dialog-character printers, so the upload fires whenever a new character is being drawn (and
+    thus new box-graphic tiles may need refreshing).'
+  refs:
+  - bn6f/asm/asm38.s
+  reproduce: 'python3 tools/asmcat.py 0x030070B4
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): chatbox_drawCustomBoxTiles_30070B4
+
+    '
+open_questions:
+- 'The exact semantic of `r0` (mode 0/1/other): mode 0 and "default" both go to slot 0x680; only mode
+  1 differs (slot 0x80). It''s likely "use slot 0 vs slot 1 vs default-fallback" but the precise meaning
+  (page A/B selection?) is not derivable from this function alone.'
+sources:
+- discovery session 2026-10-14 batch 43 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7d779321
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_30070B4 -> chatbox_drawCustomBoxTiles_30070B4
+  where: bn6f 7ddd2238
+  tool: tools/rename_symbol.py

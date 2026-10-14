@@ -1,0 +1,82 @@
+name: object_bombUpdate_80D12CA
+address: '0x080D12CA'
+kind: function
+previous_names:
+- sub_80D12CA
+status: probable
+summary: 'Per-frame update for the type-1 "bomb" battle object: tears down its collision on death/explode,
+  plays the bomb-hit SFX, spawns an explosion effect object, drives a phase jump table (0x0 prep/spawning,
+  0x8 broken/damaged delay, 0xc hit/react), or dest_explodes the bomb.'
+interface: '(r5 = &oBattleObject self) -> void ; side effects: spawns a type-4 effect object, plays SOUND_HIT_BOMB_1,
+  mutates the object''s CurAction/Timer/CurState/ExtraVars[8], refreshes its collision when time-stop
+  is inactive.'
+details: "Steps:\n1. First thing on entry: calls object_removeCollisionData() and object_spawnCollisionEffect()\
+  \ unconditionally (handed r5=self, plus r4/r7 already callee-saved).\n2. Calls battle_isBattleOver();\
+  \ if over, jumps straight to the explode path.\n3. Else calls sub_80D146A(r5) (the \"should explode\
+  \ now?\" predicate); if 0, also goes to the explode path.\n4. Reads CurAction; if already ==0xc (react),\
+  \ goes to the \"set CurAction=0xc, clear flag bit 1\" block.\n5. Otherwise calls basicHandleBattleObjectDamage_801156A(0).\
+  \ If it returns -1 (carry + r0==-1 + add #1 ==0), the bomb is taking damage:\n   - spawns an explosion\
+  \ effect at (X,Y) using Param1 as the explosion-type selector (`mul r3,Param1` then `*12+0x10`, lsl<<16\
+  \ → fixed-point parameter 0x10 in upper half)\n   - plays SOUND_HIT_BOMB_1\n   - calls object_clearCollisionRegion(self)\n\
+  \   - writes 0x14 into Timer\n   - then clears flag bit 1 in oObjectHeader_Flags, sets CurAction=0xc,\
+  \ CurPhaseAndPhaseInitialized=0, falls through to loc_80D1348 dispatch.\n6. If no damage dealt this\
+  \ frame: checks (CollisionDataPtr->oCollisionData_FlagsFromCollision & 0xf800000); if any of those bits\
+  \ are set, also goes to explode.\n7. Otherwise: snapshots current HP into ExtraVars+8, compares with\
+  \ previous-frame ExtraVars+8; on HP change writes Param2 into Timer, sets CurAction=8 (a damage-source/break\
+  \ phase), CurPhaseAndPhaseInitialized=0 → queues the broken/damaged-delay behaviour.\n8. Falls through\
+  \ to loc_80D1348 (per-Phase handler dispatch):\n   - Calls battle_isTimeStop(); if true, calls object_presentCollisionData(r5)\
+  \ instead of dispatching (so frozen bombs still age collision).\n   - Otherwise loads CurAction and\
+  \ indexes a 4-entry thumb jump table at off_80D1384: entries for actions 0,4,8,c → sub_80D1394, sub_80D13F6,\
+  \ sub_80D141A, sub_80D142C. The CurAction=0xc branch writes CurAction=0xc twice (once conditionally\
+  \ in the damage path, once also here) so the phase-0xc handler probably animates and reads Timer.\n\
+  9. loc_80D135E (the explode path): reads 12 bytes at offset 0x34 of self (Coords: X/X16/Y/Y16/Z/Z16,\
+  \ all 16.16 fixed-point), adds `0x10<<16` to the Y16-ish \"z component\" (3rd word), and calls spawn_t1_0x0_EffectObject\
+  \ with r4==0x14, r0=self+0x34, r1,r2,r3=coords. Plays SOUND_HIT_BOMB_1, object_clearCollisionRegion(self),\
+  \ then writes CUR_STATE_DESTROY into CurStateActionPhaseAndPhaseInitialized (the object's normal dying\
+  \ flag) and returns.\nQuirks/Notes:\n- This is clearly the Bomb / Mine / TimeBomb T1 object update (only\
+  \ T1 chip in BN6 that spawns an explosion + has 0xc action and HP-aware \"broken\" delay).\n- Uses Param1\
+  \ to pick explosion effect sub-type and Param2 as the \"broken\" frame delay.\n- The \"0xf800000\" mask\
+  \ is the high bits of FlagsFromCollision — these look like OBJECT_FLAGS_FROZEN/IMMOBILIZED bits (Frozen=0x10000,\
+  \ Immobilized=0x4000, SuperArmor=0x20000, MoveComplete=0x80000 — see CollisionData.inc) ⇒ while in those\
+  \ states, the bomb decides to detonate now.\n- The \"isTimeStop\" branch is the standard helper that\
+  \ handles per-frame collision aging for time-frozen bombs.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl object_removeCollisionData` / `bl object_spawnCollisionEffect` / `bl battle_isBattleOver`
+    / `bl object_clearCollisionRegion` / `bl object_presentCollisionData` / `bl sub_80D146A` directly
+    in the listed callee set. - `bl basicHandleBattleObjectDamage_801156A` + `add r0, #1; bne loc_80D1328`
+    ⇒ -1 ⇒ bomb took damage; result 0 ⇒ reached the explosion-spawn block. - `mul r3,r0 (=Param1); add
+    r3,#0x10; lsl r3,r3,#0x10; bl spawn_t1_0x0_EffectObject` ⇒ fixed-point Y-ish packed coordinate, Param1
+    selects one of 12-element explosion type slots. - `mov r0,#SOUND_HIT_BOMB_1; bl PlaySoundEffect` (twice,
+    normal-damage path and explode path) ⇒ bomb-hit sound. - `mov r0,#CUR_STATE_DESTROY; str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]`
+    (0x8 packed with 0/0 → CUR_STATE_DESTROY). - Jump table at off_80D1384 indexes by CurAction for actions
+    {0,4,8,0xc} confirms the four phase dispatch. - Flag clearing `bic r0,r1` with `r1=2` ⇒ clears OBJECT_FLAG_VISIBLE
+    (bit 1) on the bomb while it explodes.'
+  refs:
+  - bn6f/asm/asm31.s
+  reproduce: 'python3 tools/asmcat.py 0x080D12CA
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): object_bombUpdate_80D12CA
+
+    '
+open_questions:
+- Exact chip/object ID this is (Bomb, Mine, or TimeBomb) isn't pinned down by anything in the function;
+  only that it is a T1 battle object that explodes via spawn_t1_0x0_EffectObject, has HP, plays bomb-hit
+  SFX, and uses Param1 (sub-type) / Param2 (delay). Knowing the attack-id used in the attack script that
+  spawns this object would settle the name.
+- The four phase handlers (sub_80D1394/13F6/141A/142C) are not seen here; the semantics of "0x10<<16 added
+  to third word" inside the explode path is a guess (could be Y, Z, or precomputed delta).
+sources:
+- discovery session 2026-10-14 batch 43 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7d779321
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80D12CA -> object_bombUpdate_80D12CA
+  where: bn6f 7ddd2238
+  tool: tools/rename_symbol.py

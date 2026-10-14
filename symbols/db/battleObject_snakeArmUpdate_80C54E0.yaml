@@ -1,0 +1,76 @@
+name: battleObject_snakeArmUpdate_80C54E0
+address: '0x080C54E0'
+kind: function
+previous_names:
+- sub_80C54E0
+status: probable
+summary: 'Per-frame update for the SnakeArm battle object: tears down last-frame collision, conditionally
+  clears the panel highlight, dispatches to a CurAction update routine, refreshes collision data, and
+  re-highlights the panel; if the battle is over, destroys the object.'
+interface: (r5 = oBattleObject, r10 = toolkit) -> r0 = pointer to object_snakeArmUpdate_80C552A+1; returns
+  void-like (only r5/r8 may_write)
+details: 'Step 1: bl object_removeCollisionData — drops the object''s old collision presence.
+
+  Step 2: bl object_spawnCollisionEffect — spawns the collision animation/effect for this frame.
+
+  Step 3: bl battle_isBattleOver; if r0 != 0 the battle is over, jumps to loc_80C5520 which calls object_clearCollisionRegion
+  and writes CUR_STATE_DESTROY (0x08) to oBattleObject_CurStateActionPhaseAndPhaseInitialized, then returns.
+
+  Step 4 (battle continues): ldr r7,[r5,#oBattleObject_CollisionDataPtr]; if [r7,#oCollisionData_FlagsFromCollision]
+  != 0, calls object_clearCollisionRegion to leave any prior collision region.
+
+  Step 5: ldrb r0,[r5,#oBattleObject_CurAction]; uses this byte (an enum) as an index into a 1-entry jump
+  table at off_80C5518 → off_80C551C whose sole entry is battleObject_snakeArmUpdate_80C552A+1 (Thumb,
+  hence +1). bx r1 transfers into that routine (return via the saved r7/lr popped at end).
+
+  Step 6 (after the dispatched update returns): bl object_presentCollisionData then reads PanelX/PanelY
+  from the BattleObject and bl object_highlightPanel to mark the panel highlighted.
+
+  Step 7: pop {r7,pc}.
+
+  Reads/writes the BattleObject at offsets oBattleObject_CollisionDataPtr (0x54), oBattleObject_CurAction
+  (0x9), oBattleObject_PanelX/PanelY (0x12/0x13), and oBattleObject_CurStateActionPhaseAndPhaseInitialized
+  (0x8). Reads oCollisionData_FlagsFromCollision (0x70). Uses r5 as the BattleObject and r7 as its CollisionDataPtr.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl object_removeCollisionData` then `bl object_spawnCollisionEffect` mirror the standard
+    per-frame battle-object teardown-then-update header. - `bl battle_isBattleOver` followed by `tst r0,r0;
+    bne loc_80C5520` and `mov r0,#CUR_STATE_DESTROY; str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]`
+    at loc_80C5520 short-circuit to destroy on battle end (CUR_STATE_DESTROY is the 0x08 constant from
+    the BattleObject struct). - `ldr r7,[r5,#oBattleObject_CollisionDataPtr]; ldr r0,[r7,#oCollisionData_FlagsFromCollision];
+    beq loc_80C54FE` and `bl object_clearCollisionRegion`—collision region cleared only when last frame
+    had FlagsFromCollision set. - The two-entry-looking data at off_80C5518 actually resolves to a pointer-to-pointer
+    table (off_80C551C) with a single target `battleObject_snakeArmUpdate_80C552A+1`. BX with the +1 Thumb
+    bit and `mov lr,pc` makes this a synchronous jump into the CurAction handler before continuing with
+    the collision/panel tail. - `bl object_presentCollisionData` then `ldrb r0,[r5,#oBattleObject_PanelX];
+    ldrb r1,[r5,#oBattleObject_PanelY]; bl object_highlightPanel` re-establish this object''s collision
+    and panel highlight after the action ran. - Captured calls show r5 carries the BattleObject pointer
+    (exit r0 = 02039d20/02039d40, which are BattleObject addresses in the EWRAM-battle region 0200xxxx)
+    and r1 = 080c54e1 (the very next Thumb instruction after the push), i.e. saved LR.'
+  refs:
+  - bn6f/asm/asm31.s
+  reproduce: 'python3 tools/asmcat.py 0x080C54E0
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_snakeArmUpdate_80C54E0
+
+    '
+open_questions:
+- What battleObject_snakeArmUpdate_80C552A actually does — by convention it is the CurAction-specific
+  SnakeArm update, but this function only owns the frame "shell" around it. Seeing the contents of 80C552A
+  would settle the gameplay effect.
+sources:
+- discovery session 2026-10-14 batch 43 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7d779321
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80C54E0 -> battleObject_snakeArmUpdate_80C54E0
+  where: bn6f 7ddd2238
+  tool: tools/rename_symbol.py

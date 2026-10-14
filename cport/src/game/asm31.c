@@ -2795,8 +2795,8 @@ Next sub_80C53E4(void) {
     }
 }
 
-/* ── sub_80C54E0 ── */
-/* sub_80C54E0 — collision bookkeeping step for the battle object in R5.
+/* ── battleObject_snakeArmUpdate_80C54E0 ── */
+/* battleObject_snakeArmUpdate_80C54E0 — collision bookkeeping step for the battle object in R5.
  *
  * Drops the object's previous collision data, spawns its hit effect, then
  * checks whether the battle has ended:
@@ -2806,7 +2806,7 @@ Next sub_80C53E4(void) {
  *     CurAction through the table at off_80C551C (this table has a single
  *     entry, battleObject_snakeArmUpdate_80C552A), then present the current collision data and
  *     highlight the panel the object is standing on. */
-Next sub_80C54E0(void) {
+Next battleObject_snakeArmUpdate_80C54E0(void) {
     GUEST_CALL(object_removeCollisionData);
     GUEST_CALL(object_spawnCollisionEffect);
     GUEST_CALL(battle_isBattleOver);

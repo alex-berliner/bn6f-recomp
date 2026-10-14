@@ -1,0 +1,55 @@
+name: object_applyElementPanelRules_3007708
+address: '0x03007708'
+kind: function
+previous_names:
+- sub_3007708
+status: probable
+summary: For a battle object, applies element/panel-type rules when stepping off a collision panel — turns
+  grass/lava/cracked panels under specific element objects into broken panels (type 2).
+interface: '(r0 = panelX, r1 = panelY, r2 = collisionDataPtr, r10 = toolkit, lr) -> void ; side effects:
+  may write panel type via _object_setPanelType'
+details: "Saves r0-r2 across a paused-battle check, then on r4/r6/r7. Exits early if `battle_isPaused`\
+  \ is non-zero.\nCalls `_object_getPanelDataOffset(r6, r7)` to fetch a PanelData; if null, returns.\n\
+  Reads `collisionData.SelfCollisionTypeFlags` (offset 0x30). If it has any bits in mask 0x0C000000\n\
+  set (the two top bits of the byte 0x03 — i.e. flags 0x08000000 + 0x04000000), returns.\nReads `panelData.Type`.\
+  \ Branches on the value:\n  - Type 6: if `collisionData.PrimaryElement == ELEM_HEAT (1)`, set panel\
+  \ type to 2.\n  - Type 8: if `PrimaryElement == 2`, set panel type to 2.\n  - Types 9..0xC: if `PrimaryElement\
+  \ == 4`, set panel type to 2.\nOtherwise (or wrong element) returns without changing the panel.\nThe\
+  \ hard-coded literal `0xC000000` in `.data` is actually `0x0C000000`; the test is on flags\n`OBJECT_FLAGS_UNAFFECTED_BY_POISON`\
+  \ (0x08000000) and the adjacent bit. Acts as a per-element\nelement-applier that breaks terrain panels\
+  \ under fire/elec/... element baddies.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {r0-r2}` / early `bl battle_isPaused` and `bne locret` shows it short-circuits when
+    battle is paused - `bl _object_getPanelDataOffset` `tst r0,r0` `beq locret` confirms PanelData is
+    the operand panel - `ldr r2,[r4,#oCollisionData_SelfCollisionTypeFlags]` and `tst r2,#0xc000000` reads
+    the self-collision flags mask - `ldrb r0,[r0,#oPanelData_Type]` then `cmp r0,#6/8/9/c` switches on
+    panel-type - `ldrb r0,[r4,#oCollisionData_PrimaryElement]` and `cmp r0,#1/#2/#4` matches Heat(1)/Wood(2)/Aqua(4)
+    vs panel kinds 6,8,9..12 - all three matching branches call `_object_setPanelType(r6,r7,#2)` (panel-type
+    2 = broken)'
+  refs:
+  - bn6f/asm/asm38.s
+  reproduce: 'python3 tools/asmcat.py 0x03007708
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): object_applyElementPanelRules_3007708
+
+    '
+open_questions:
+- Exact mapping of panel types 6/8/9..C to in-game tiles (grass/lava/cracked/normal-panel — not in struct
+  definitions)
+- Whether the `0xC000000` mask is "skip flag" or "require flag"; the negation logic on the mask bits (`tst
+  … bne ret`) treats either of those bits as a reason to bail.
+sources:
+- discovery session 2026-10-14 batch 43 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7d779321
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_3007708 -> object_applyElementPanelRules_3007708
+  where: bn6f 7ddd2238
+  tool: tools/rename_symbol.py

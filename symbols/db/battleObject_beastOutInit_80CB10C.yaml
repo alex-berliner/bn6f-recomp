@@ -1,0 +1,71 @@
+name: battleObject_beastOutInit_80CB10C
+address: '0x080CB10C'
+kind: function
+previous_names:
+- sub_80CB10C
+status: probable
+summary: Sets up a battle object's panel coordinates, palette-flip flags, an animation, and a sound for
+  a Beast-Out (cross-unison) transformation.
+interface: '(r5 = BattleObject*) -> void ; side effects: writes BattleObject, sprite, sound'
+details: 'Operates on the BattleObject passed in r5. Calls object_setCoordinatesFromPanels to
+
+  rebuild pixel X/Y from the object''s current panel X/Y (no change in this path), then
+
+  zeroes oBattleObject_Z16 (offset 0x16, i.e. the Alliance/0x16 byte - actually Z16 is
+
+  the "Alliance/DirectionFlip" u16 per struct; the high byte is written 0 here).
+
+  Calls sprite_load(0x80, 8, 0xd) to install sprite 0x80 with tile/state params, then
+
+  sprite_noShadow to mark the slot as shadow-less. Sets OBJECT_FLAG_UPDATE_DURING_TIMESTOP
+
+  (0x10) on the header via `ldrb ... orr r0, #2`. Actually sets bit 0x02 (OBJECT_FLAG_VISIBLE)
+
+  based on the bit pattern; the `orr r0, r1` with r1=2 sets bit 0x02.
+
+  Writes CurAnim = CurAnimCopy = 0x14, then sprite_setAnimation(0x14) and
+
+  sprite_loadAnimationData to bind the new frames. Sets palette index 0 and calls
+
+  object_getFlip/sprite_setFlip so the sprite is mirrored per the object''s alliance.
+
+  Plays sound effect 0xA7 (the Beast-Out transformation SFX). Finally writes
+
+  CUR_STATE_UPDATE into the CurStateActionPhaseAndPhaseInitialized word (offset 0x8)
+
+  so the object''s state machine advances.
+
+  The "snap_beastsp" snapshots in entry/exit r0=00000004 imply it returns CUR_STATE_UPDATE.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: "- entry lr=0x080cb0e8 (just before) and the writes to CurAnim/CurState suggest this is the\n\
+    \  beast-out \"init\" half of an init/update jumptable (CUR_STATE_INITIALIZE handler).\n- sprite 0x80\
+    \ + anim 0x14 + SFX 0xA7 are the canonical Beast-Out visual+audio set in BN6. - Three \"snap_beastsp\"\
+    \ callsite names in the captured-call directory point at this routine\n  during the Beast-Out scene."
+  refs:
+  - bn6f/asm/asm31.s
+  reproduce: 'python3 tools/asmcat.py 0x080CB10C
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_beastOutInit_80CB10C
+
+    '
+open_questions:
+- Exact role of offset 0x16 store (struct field could be Alliance/DirectionFlip rather than Z16; verified
+  name probably needs a fuller struct cross-check). Settled by inspecting what field is actually written
+  at oBattleObject_Z16 in this ROM.
+sources:
+- discovery session 2026-10-14 batch 43 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7d779321
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80CB10C -> battleObject_beastOutInit_80CB10C
+  where: bn6f 7ddd2238
+  tool: tools/rename_symbol.py

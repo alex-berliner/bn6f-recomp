@@ -1,0 +1,82 @@
+name: battleObject_spawnBeastOutActor_80C856C
+address: '0x080C856C'
+kind: function
+previous_names:
+- sub_80C856C
+status: probable
+summary: Initializes a freshly-spawned battle object for a beast-out transformation, placing it on its
+  current panel, loading the beast sprite/animation, setting the flip, no shadow, and flipping it to the
+  CUR_STATE_UPDATE phase.
+interface: '(r5 = ptr to battle object whose header Flags bit 2 will be set) -> void ; side effects: writes
+  CurAnim/CurAnimCopy, CurStateActionPhaseAndPhaseInitialized, Z, X, sprite slot, sprite palette, sprite
+  flip bits; pushes/pops lr; trashes r0–r4'
+details: '1. Recomputes pixel X/Y from the object''s panel coords via object_setCoordinatesFromPanels
+  (r5 preserved).
+
+  2. Reads object_getFrontDirection (+1 or -1), multiplies by 0x180000 (24.0 in 16.16), and offsets the
+  X field — push-back so the spawn sits in front of the player navi.
+
+  3. Z is forced to 0x00100000 (16.0) for the chest height.
+
+  4. sprite_load(0x10, 0x10, 0x23, 0x80) loads the beast graphic at slot 0x80 with param 0x23 (the beast
+  sprite id byte) into the object''s sprite slot.
+
+  5. sprite_noShadow disables the shadow for this sprite.
+
+  6. Sets the bit 1 of the header byte at oObjectHeader_Flags (or|=2) so the object has FLAG_VISIBLE equivalent
+  behavior for spawn.
+
+  7. Sets CurAnim = 1 and CurAnimCopy = 1, then sprite_setAnimation(1) and sprite_loadAnimationData for
+  the beast animation set.
+
+  8. sprite_setPalette(0) uses palette bank 0 for the beast.
+
+  9. object_getFlip() → sprite_setFlip mirrors the sprite based on the object''s alliance+DirectionFlip.
+
+  10. Stores CUR_STATE_UPDATE (0x4) into the 32-bit CurStateActionPhaseAndPhaseInitialized field, marking
+  the beast ready for normal updates.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl object_setCoordinatesFromPanels` is the panel→pixel conversion for r5. - `bl object_getFrontDirection`
+    returns +1/-1, then `mov r1,#0x18; lsl r1,#0x10; mul r0,r1; ldr r1,[r5,#oBattleObject_X]; add r0,r0,r1;
+    str r0,[r5,#oBattleObject_X]` is an X offset of ±24.0 in 16.16. - `mov r0,#0x10; lsl r0,r0,#0x10;
+    str r0,[r5,#oBattleObject_Z]` writes Z=16.0 (floating chest level). - `mov r1,#0x10; mov r2,#0x23;
+    mov r0,#0x80; bl sprite_load` — sprite id 0x80 with arg 0x23/0x10 identifies the beast-out sprite
+    asset. - `bl sprite_noShadow` sets the no-shadow attribute. - `ldrb r0,[r5,#oObjectHeader_Flags];
+    mov r1,#2; orr r0,r1; strb r0,[r5,#oObjectHeader_Flags]` ORs the object header Flags byte with 0x2
+    (OBJECT_FLAG_VISIBLE). - `mov r0,#1; strb r0,[r5,#oBattleObject_CurAnim]; strb r0,[r5,#oBattleObject_CurAnimCopy];
+    bl sprite_setAnimation; bl sprite_loadAnimationData` chooses animation index 1 and loads the matching
+    animation data. - `mov r0,#0; bl sprite_setPalette` selects palette index 0. - `bl object_getFlip;
+    bl sprite_setFlip` mirrors the sprite based on alliance/flip state. - `mov r0,#CUR_STATE_UPDATE; str
+    r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]` ends with state=4, matching the CUR_STATE_UPDATE
+    constant. - The captured call site has r1=0x80C856D (Thumb bit of self), confirming this is the routine
+    reached from a caller at 0x80C8548.'
+  refs:
+  - bn6f/asm/asm31.s
+  reproduce: 'python3 tools/asmcat.py 0x080C856C
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_spawnBeastOutActor_80C856C
+
+    '
+open_questions:
+- Which exact beast sprite / chip element the constants 0x10/0x23/0x80 represent; the 0x23 in particular
+  is passed as a sub-param to sprite_load and may be a frame/animation index specific to the BN6 beast
+  graphic set.
+- Whether this is reused for the regular PErsona-specific beast OR for the enemy beast-out counter variant
+  — there is no caller list in this context, but the captured trace at 0x80C8548 should reveal which one.
+sources:
+- discovery session 2026-10-14 batch 43 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7d779321
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80C856C -> battleObject_spawnBeastOutActor_80C856C
+  where: bn6f 7ddd2238
+  tool: tools/rename_symbol.py

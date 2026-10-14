@@ -1,0 +1,79 @@
+name: owMapObject_loadSpawnAndCenterCameraOnEntry_809AF00
+address: '0x0809AF00'
+kind: function
+previous_names:
+- sub_809AF00
+status: probable
+summary: Spawn the story-5 entry overworld map object and recenter the camera on the player at that spot
+interface: '(r5 = GameState/JumpTable scratch, r10 = Toolkit) -> r0 = 0 ; side effects: sets player coords/facing/anim,
+  raises an event flag, spawns a map object, recenters camera'
+details: '1. Loads `off_809AFBC` (= `byte_809ADB4`) into r7 as a base of a per-map-object descriptor array
+  of 0x3c-byte entries.
+
+  2. Reads `toolkit->GameStatePtr->MapId` (r10->[0x3c]), takes the low byte, scales by 0x3c, and indexes
+  r7 to get the entry for the current map.
+
+  3. Reads entry+0x24/0x28 (X/Y) and writes them via `owPlayer_indirectlySetPlayerCoordsMaybe_809e1a4`
+  into the eStruct200ace0 player coords.
+
+  4. Reads entry+0x2c and uses it as both the player facing direction (`SetOWPlayerFacingDirection`) and
+  a fixed overworld animation select (`owPlayer_setS200ace0_fixedAnimationSelect_809e13c`, which also
+  raises EVENT_1719).
+
+  5. Calls `ZeroOWPlayerNaviPaletteIndex` (resets the Navi''s palette index to default).
+
+  6. Calls `sub_809E4F8` to draw the player sprite for the current animation frame.
+
+  7. Pushes/pops r4-r7 around `SpawnOverworldMapObject(0x2e, entry+0x30, entry+0x34, 0, entry+0x38)` to
+  safely pass the extra regs.
+
+  8. If entry+0x20 is non-zero, calls `SetEventFlag` with it (story flag to set on entry).
+
+  9. Default `r4 = 0x2d` (a fixed overworld player animation select). If `EVENT_COPYBOT_ACTIVE` is set,
+  changes it to `0x2e`, then stores the chosen byte at `r5+4` (a sub-state field of the calling subsystem''s
+  struct).
+
+  10. Calls `camera_writeUnk03_14_80301b2(0)` to clear the camera shake/param fields.
+
+  11. Computes the camera center: `camX = (entry[0x24] + entry[0x30]) >> 1`, `camY = (entry[0x28] + entry[0x34])
+  >> 1` (midpoint of player and spawned object), z=0, and calls `SetCameraXYZ`.
+
+  12. Returns 0.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r7, off_809AFBC // =byte_809ADB4` and `mov r2, #0x3c; mul r2, r1; add r7, r7, r2` show
+    a 0x3c-byte table indexed by map id from `r10->[0x3c]`. - `[r7,#0x24]/[r7,#0x28]` -> `owPlayer_indirectlySetPlayerCoordsMaybe_809e1a4`
+    confirms player X/Y initialization per entry. - `[r7,#0x2c]` is fed to both `SetOWPlayerFacingDirection`
+    and `owPlayer_setS200ace0_fixedAnimationSelect_809e13c`. - `mov r0, #0x2e` and `[r7,#0x30]/[r7,#0x34]/[r7,#0x38]`
+    -> `SpawnOverworldMapObject` spawns an entry-specific object at id 0x2e. - `tst r0, r0; beq loc_809AF4C`
+    followed by `bl SetEventFlag` shows entry+0x20 is a conditional story flag. - `movflag EVENT_COPYBOT_ACTIVE`
+    / `TestEventFlagFromImmediate` toggles between r4=0x2d and 0x2e then `strb r4, [r5,#4]` writes a state
+    byte into the subsystem struct at offset 4. - Final `asr r0,r0,#1; asr r1,r1,#1` + `SetCameraXYZ`
+    centers the camera between player and spawned object.'
+  refs:
+  - bn6f/asm/asm28_0.s
+  reproduce: 'python3 tools/asmcat.py 0x0809AF00
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): owMapObject_loadSpawnAndCenterCameraOnEntry_809AF00
+
+    '
+open_questions:
+- The exact meaning of the 0x3c-byte entry table at `byte_809ADB4` (entry offsets 0x20/0x24/0x28/0x2c/0x30/0x34/0x38)
+  — likely an "entry cutscene / map-load descriptor" but not labeled in the structs dump.
+- What owns the `[r5,#4]` state byte (which subsystem is r5 here).
+sources:
+- discovery session 2026-10-14 batch 43 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7d779321
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_809AF00 -> owMapObject_loadSpawnAndCenterCameraOnEntry_809AF00
+  where: bn6f 7ddd2238
+  tool: tools/rename_symbol.py
