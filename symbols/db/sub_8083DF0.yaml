@@ -3,36 +3,30 @@ address: '0x08083DF0'
 kind: function
 previous_names: []
 status: hypothesis
-summary: Boot helper that primes the ReqBBS scene GFX anims and ensures the "asked to jack out" / L-message cutscene
-  sentinels are registered by setting/clearing the relevant event flags.
-interface: (void) -> void ; side effects on GameState/Gfx anims and one oBB.
-details: "The function takes no inputs and returns no value to callers (only restores the\n  non-scratch regs the\
-  \ contract lists). It first pokes three GFX anims by calling\n  load_gfx_anim_8083FC0, load_gfx_anim_8083FFC,\
-  \ and load_gfx_anim_8084068 (these each\n  take r5 as their AIData-style param, so they are loading/animating\
-  \ GFX for an object\n  referenced through r5). It then defers to several helpers that act on event flags\n  and\
-  \ the cutscene state:\n    - reqBBS_setFlag_e17b0f7_8140A00 / reqBBS_clearFlag_8140A0C: BBS-request setters\n\
-  \        that toggle a flag at event byte 0x17 bit 0x7.\n    - ClearEventFlagFromImmediate / SetEventFlagFromImmediate\
-  \ /\n        TestEventFlagFromImmediate: standard story-progress flag helpers.\n    - cutscene_checkOriginalCutsceneScriptPos_8036F40\
-  \ / 8036F58: predicates over the\n        cutscene state's originally-saved script pointer (L-message sentinel\
-  \ /\n        AskJackOut script).\n    - sub_8083F80 / sub_8084080 / sub_8084180 / sub_8084214 / sub_80842D8:\n\
-  \        per-frame BBS GFX/animation drivers (contract all take r5).\n    - struct_copy_80840C4: mem-copy helper.\n\
-  \    - sub_809E462: test of oGameState_Unk_10 used as a gate.\n  Because the lifter could not disassemble the\
-  \ body (`sub_8083DF0 not found in bn6f/asm`)\n  the precise ordering and conditional structure is not visible,\
-  \ but every callee\n  belongs to the BBS subsystem (gfx anims + story/cutscene flag wiring around asking\n  to\
-  \ jack out), so the role is best read as the init/update entry point of the BBS\n  request flow: kick the three\
-  \ BBS GFX anims and reconcile any \"asked to jack out\"\n  cutscene-sentinel flags left over from the previous\
-  \ frame.\n"
+summary: BBS request handler for the battle subsystem; reacts to the L-button BBS cutscene state, sets/clears event
+  flags, runs a GFX anim and updates battle state.
+interface: '(r10 = oToolkit) -> void ; side effects: r0-r3/r12 (caller-saved), NZCV flags, event flags, battle state'
+details: "Without disassembly we cannot prove the role. The callee set is dominated by: (a) cutscene-script\n  position\
+  \ sentinels (`cutscene_checkOriginalCutsceneScriptPos_8036F40` / `_8036F58`) — strongly implies an\n  L-button\
+  \ / \"AskJackOut\" / pet-jack-out flow; (b) `SetEventFlagFromImmediate` / `ClearEventFlagFromImmediate`\n  / `TestEventFlagFromImmediate`\
+  \ with r10 — the standard flag-mutate triplet on the toolkit's\n  EventFlagsPtr; (c) `reqBBS_setFlag_e17b0f7_8140A00`\
+  \ and `reqBBS_clearFlag_8140A0C` — other BBS request\n  handlers, confirming this sits in the BBS-request family;\
+  \ (d) `load_gfx_anim_8083FC0`/`_8083FFC`/\n  `_8084068` and `sub_8083F80`/`sub_8084080`/`sub_8084180`/`sub_8084214`/`sub_80842D8`/`struct_copy_80840C4`\n\
+  \  — sibling helpers in the 0x8083xxx..0x8084xxx range, almost certainly the BBS-related battle state\n  init/update/copy\
+  \ subroutines; (e) `sub_809E462` — generic helper. The function takes no input register\n  and returns no output,\
+  \ so it is void-like.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- Function body is unavailable; assembly box says `sub_8083DF0 not found in bn6f/asm`. - Three direct
-    `load_gfx_anim_*` callees (0x8083FC0, 0x8083FFC, 0x8084068) all live in this same 0x08084xxx page and take r5,
-    matching a per-frame BBS GFX driver. - Callee `reqBBS_setFlag_e17b0f7_8140A00` is explicitly the BBS request
-    handler for event byte 0x17 bit 0x7 (memory 0x2001F68) and `reqBBS_clearFlag_8140A0C` is its clear counterpart.
-    - Callee `cutscene_checkOriginalCutsceneScriptPos_8036F40` reads the cutscene sentinel for the L-Message cutscript;
-    `cutscene_checkOriginalCutsceneScriptPos_8036F58` tests for the "AskJackOut" script. The BBS / jack-out flow
-    always re-checks these. - `ClearEventFlagFromImmediate`/`SetEventFlagFromImmediate` are paired with the sentinel
-    tests, so the function reconciles event flags based on which sentinel is active.'
+  detail: '- 0..0x10 caller save (no r0-r3 in/in-out) → void-like orchestrator that just sequences side effects.
+    - r10 in, lr out → standard ARM/Thumb Tailwind utility: `r10` is the `Toolkit*` (sectors used by Toolkit.inc),
+    so it can reach EventFlagsPtr, BattleStatePtr, ChatboxPtr, etc. - `cutscene_checkOriginalCutsceneScriptPos_*`
+    callees → reacts to `CutsceneState.originalCutsceneScriptPos_40` (sectors 0x1c..0x40 of CutsceneState.inc) being
+    the L-Message/AskJackOut sentinels. - `SetEventFlagFromImmediate` / `ClearEventFlagFromImmediate` / `TestEventFlagFromImmediate`
+    → reads/writes the toolkit''s EventFlagsPtr at offsets implied by the immediates. - `reqBBS_setFlag_e17b0f7_8140A00`
+    and `reqBBS_clearFlag_8140A0C` → sibling BBS-request handlers that mutate the same EWRAM event byte 0x17 / flag
+    0x7, so this function lives in the BBS request family. - `load_gfx_anim_*` and the 0x8083xxx/0x8084xxx helpers
+    cluster with BBS request work, so they are likely BBS-related init/teardown/copy helpers invoked here.'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x08083DF0
@@ -47,14 +41,15 @@ evidence:
     '
   result: beastsp, story5, story6
 open_questions:
-- Exact ordering of the calls and whether they are guarded by conditional branches
-- is not visible without the function body.
-- Whether the function is the per-frame ReqBBS update vs. a one-shot init cannot be
-- told from callees alone; route coverage / hit counts would settle which is which.
+- The exact event-flag bits and GFX anim index it drives — need the assembly.
+- Whether it is reached from the L-menu post-Result callback or from the pet-return cutscene chain.
+- The "battle_" prefix is chosen because the callees' sibling names suggest battle-side BBS work;
+- if the assembly shows it only when BattleState is active, the prefix is right; otherwise it is
+- a generic `reqBBS_` orchestrator.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f 12fbd516
+  where: bn6f 7d574411
   tool: tools/symdoc.py

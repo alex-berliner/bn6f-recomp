@@ -3,37 +3,37 @@ address: '0x08033B80'
 kind: function
 previous_names: []
 status: hypothesis
-summary: Queues one OAM row for a "Battle Start" cinematic sprite from a 24-frame table, then advances a frame counter
-  held in r5+5.
-interface: '(r0 = frameIndex, r5 = battleWorkPtr) -> r0 = nextFrameIndex ; side effect: queues an OAM entry via
-  sprite_queueOamEntryThunk_802FE28 and updates the frame counter at battleWorkPtr+0x05'
-details: "- `r2 = r0 * 0x18` computes a byte offset into `byte_8033BB8` (the 24-frame pose table at 0x8033BB8).\n\
-  \  - The first 18 bytes of the table are all zero (0x00..0x11), then a 6-byte pattern 0x01,0x02,0x03,0x02,0x01,0x00\
-  \ repeats 4 times (frames 0x12..0x23, i.e. 6 entries x 4). So this is a 24-frame, 0x18-byte cyclic pose table.\n\
-  \  - Loads `curFrame = [r5 + 5]`, adds the table offset to get `tableIndex = (curFrame * 0x18) + r0_in`, reads\
-  \ the `u8` pose id.\n  - Builds an OAM attribute 0: `0x80028003 + (pose << 16)`, and attribute 1: `0xC790` (the\
-  \ standard OAM 0xC790 corresponds to GBA OAM attr1 bits: 16-color, shape/size, with y/x packed). The constant\
-  \ `0xC790` is the typical Square 8x8 (size 0) attr1 with low X bits 0x90. So this is a small \"Ready\"/\"Go!\"\
-  \ battle-start OAM element being uploaded.\n  - Calls `sprite_queueOamEntryThunk_802FE28(arg=0x80028003+pose<<16,\
-  \ attr1=0xC790, 1, 0)`.\n  - Increments the frame counter at `[r5 + 5]`; wraps back to 0 when it reaches 0x18\
-  \ (24).\n  - Caller's exit `r0` recorded as `curFrame + 1` (1, 2, 0xb, 0xc, 0xd, 0xe...) — matches the increment.\n\
-  \  - The caller passes `r0 = 0` and `r1 = 4` (the latter is irrelevant to this function; r1 is not used). r5 is\
-  \ the per-battle work pointer, and r5+0x05 is a u8 animation-phase counter shared by the four battle-state routines.\n\
-  details_continuation: |\n  - The `_ADDRESS` suffix is kept because the surrounding struct/role of r5 is inferred\
-  \ from the callers (battle-state init routines) and not from a labeled struct field here.\n"
+summary: Queues an OAM entry for the battle-object whose index is given by r0, picking the tile/datasrc slot from
+  a small 24-entry table indexed by the per-frame counter at r5+5; advances that counter and stores the next slot
+  back into r5+5.
+interface: '(r0 = battleObjectIndex, r1 = ?, r5 = per-frame/anim state struct) -> r0 = next frame index (0..0x17)
+  ; side effects: advances the OAM queue, updates r5+5 counter.'
+details: "- Loads byte at r5+5 (the current \"step\"/offset) and multiplies r0 by 0x18 (so r0 selects one of\n \
+  \   two looks 0..? — the 24 table slices are indexed by (curStep + 24*objectIndex)).\n  - Reads byte from `byte_8033BB8`\
+  \ at that offset (table is 0x18*2=0x30 bytes long; first 24 are 0,\n    next 24 cycle 1,0,1,2,3,2 around a triangle\
+  \ — pattern A,B,A,C,D,C,A,…).\n  - Computes OAM attr0 = `0x80028003 + (tableValue << 16)` and attr1 = `0xC790`,\
+  \ then calls\n    `sprite_queueOamEntryThunk_802FE28(r0=attr0packed, r1=0xC790, r2=1, r3=0)`, which queues a\n\
+  \    single 2x2 affine/round OAM tile by reusing `r0` as a packed tile-index and adding the table\n    shift directly\
+  \ into attr0.\n  - Increments the counter at r5+5; if it reaches 0x18 wraps it back to 0; writes back to r5+5.\n\
+  \  - Return r0 = the next counter value. Captured calls all show exit r0 = (entryR0 -> entryR0+1)\n    sequence\
+  \ `1,2,b,c,d,e,…`, consistent with the wrap-around counter stepping +1 each frame.\n  - r5 appears to be a per-frame\
+  \ \"battle renderer state\" struct; r5+5 holds the current OAM frame\n    index. Functionally it does an OAM queue\
+  \ push for one sprite entity whose tile slot cycles\n    through the 24-entry triangular table, advancing the\
+  \ counter after each push. Matches OAM\n    attr0 pattern: 0x8002_8003 = GBA OAM attr0 base (rotation/scale enable,\
+  \ y=3, rotscale=0).\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- `byte_8033BB8` is a 24 (0x18) byte table of which the first 18 are 0 and the rest cycle 0x01,0x02,0x03,0x02,0x01,0x00
-    four times — consistent with a 24-frame battle-start OAM pose table (visible at lines byte_8033BB8+). - `mul
-    r2, r0; add r0, r2` (offset 0x8033B86..0x8033B8A) explicitly indexes the table by `r0 + r5[5]*0x18`; r0 is treated
-    as an additional starting offset. - Constant `0x80028003` is the standard OAM attr0 starting value (rot/scale
-    disabled, normal, obj mode 0) used for sprite uploads in this game; the `0xC790` constant for attr1 matches
-    an 8x8 / 16x16 at x=0x90 sprite — the GBA "Ready!" / "Go!" lettering size. - Single call to `sprite_queueOamEntryThunk_802FE28`
-    with a notUsed=1, queueCount=0 (positional args 3/4) means queue exactly one entry. - The compare `cmp r0, #0x18;
-    blt ...; mov r0, #0` wraps the counter at 24, matching the table length. - All six captured-call exit r0 values
-    (1, 2, 0xb, 0xc, 0xd, 0xe) are simply the previous frame + 1, all under 0x18, confirming the +1 counter update
-    and the wrapped return.'
+  detail: '- `mul r2, r0` with `mov r2, #0x18` => 24-byte stride per object index (asm line: `mov r2, #0x18; mul
+    r2, r0`). - `ldrb r0, [r5,#5]; add r0, r0, r2` reads/writes the u8 at offset 0x5 of the struct in r5 (the per-frame
+    counter / object slot). - `ldrb r1, [r1,r0]` against `off_8033BB4 -> byte_8033BB8` (0x30-byte table) selects
+    one of {0,1,2,3}. - `lsl r1, r1, #0x10; add r0, r0, r1` shifts the table byte into OAM attr1 bits 16-19 (tile-id
+    upper nibble). - `dword_8033BAC = 0x80028003` is a packed OAM attr0 (rotate/scale enable, y=3, rotscale index
+    0). - `dword_8033BB0 = 0xC790` is the attr1 (size 3 -> 64x64 affine, x=-112 -> mostly off-screen anchor). -
+    `bl sprite_queueOamEntryThunk_802FE28` matches the callee''s `(a1=attr0-packed, a2=attr1, a3=1, a4=0)` thunk
+    signature. - Exit captured-call r0 values: caller enters with r0=0 and exits with `1,2,0xb,0xc,0xd,0xe,...`,
+    consistent with `counter+1` wrap from the increment loop. - r5 is preserved by the function (`push {lr}` only)
+    and `strb r0, [r5,#5]` only touches +5.'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x08033B80
@@ -50,17 +50,16 @@ evidence:
   result: battle, battlesweep, beastsp, chips, fuzz, maps, menus2, story1, story2, story3, story4, story5, story6,
     story7, story8, story9, wander
 open_questions:
-- 'What r5+5 actually represents: it''s a per-battle u8 counter, but its struct field name (BattleState field vs
-  BattleObject field vs some scene-state field) is not directly visible from this function; the callers'' contracts
-  imply it is the battle-state animation-frame counter.'
-- Whether r0 is meant to be a "phase offset" or simply the current frame index (callers pass 0 in the captured sample,
-  so the role of r0 is unclear without additional caller code).
-- The semantic of the OAM attribute `0xC790` (i.e., which 8x8 / 16x16 tile slot it targets) — knowing the current
-  battle-start sprite assets would settle the exact graphic.
+- r1's role on entry — only used as the OAM register pass-through to the thunk; the assembly
+- loads a fresh `0xC790` into r1, so r1's caller-provided value is unused and likely just sentinel.
+- The semantic meaning of the 0..0x17 cycle table (likely a battle-state "shimmer" / cursor
+- animation that picks a tile variation per step).
+- What kind of object r5+5 represents — without a confirmed r5 struct definition I only know
+- that r5 is preserved and only +5 is touched.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f 12fbd516
+  where: bn6f 7d574411
   tool: tools/symdoc.py

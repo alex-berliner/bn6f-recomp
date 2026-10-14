@@ -1,0 +1,52 @@
+name: sub_801B9BC
+address: '0x0801B9BC'
+kind: function
+previous_names: []
+status: hypothesis
+summary: Kills (zeroes HP of) a battle object whose AIData targets a flagged object when the AI is set to actor
+  type NAVI.
+interface: (r5 = battleObject*) -> void ; may clear oBattleObject_HP of the related object pointed to by AI's AIData+0x54
+details: "Reads r5's oBattleObject_AIDataPtr (+0x58). If null, returns. Otherwise checks\n  oAIData_Unk_02 == 1\
+  \ (ACTOR_TYPE_NAVI). If not, returns. Loads oAIData_Unk_54 as a pointer\n  to another battle object (actually\
+  \ treated as a battle object here even though the field name\n  is generic), then calls object_getFlag() on it\
+  \ and tests bit 0x100 (OBJECT_FLAGS_DEAD).\n  If that bit is set, writes 0 to oBattleObject_HP at +0x24 of the\
+  \ target. Note that r0 in\n  the captured calls is consistently 0 (the callee's return value is read by the caller,\
+  \ not\n  used here). The function appears to be a guard: for a player's Navi (actor type 1), if\n  its AIData+0x54-linked\
+  \ object is dead, immediately zero the linked object's HP. This is\n  likely a \"fix-up after a kill\" path used\
+  \ during battle actor update in battle_801B1C4.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- ldr r3, [r5,#oBattleObject_AIDataPtr] at 0x801B9c0 reads the AI pointer - ldrb r0, [r3,#oAIData_Unk_02];
+    cmp r0, #1; bne locret filters to actor type 1 (ACTOR_TYPE_NAVI) - ldr r0, [r3,#oAIData_Unk_54]; tst r0, r0;
+    beq locret guards the linked pointer - bl object_getFlag then tests r0 against 0x100 (OBJECT_FLAGS_DEAD per
+    CollisionData.inc) - strh r0, [r5,#oBattleObject_HP] writes 0 (r0 was moved from #0 just before) to HP at +0x24
+    - Note: HP is written to r5, not r3; suggests r5 was reused as the target, but the strh offset matches oBattleObject_HP'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801B9BC
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus2, menus3, story2, story4, story5,
+    story6, story8, story9'
+  reproduce: 'grep -l ''^0801b9bc '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus2, menus3, story2, story4, story5, story6,
+    story8, story9
+open_questions:
+- Whether r5 at entry truly is the caller-supplied battle object used to find the AI, or whether the AI pointer
+  itself is the target whose HP is zeroed; the assembly uses r3 as AIData and r5 both for the early load and the
+  final HP write
+- The exact semantic of oAIData_Unk_54 (target object pointer vs other AI field) — knowing what writes to oAIData_Unk_54
+  in callers would settle it
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7d574411
+  tool: tools/symdoc.py

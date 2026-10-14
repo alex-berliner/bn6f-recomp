@@ -1,0 +1,57 @@
+name: sub_80027C4
+address: '0x080027C4'
+kind: function
+previous_names: []
+status: hypothesis
+summary: Initializes a small sprite/GFX-anim state block at `byte_20098A8` (scale=0x0C, delay=0, idle/duration=0x032F)
+  — a leaf resetter for an EWRAM aux state structure.
+interface: '(lr) -> r0 = 0x032F ; side effects: writes byte_20098A8..+0x3'
+details: "- Loads the base pointer `r1 = off_8002804 == byte_20098A8` (an EWRAM location, used in multiple\n   \
+  \ sp-sprite/animation-style call-sites).\n  - `strb r0,[r1,#0x1]` writes 0 to offset +1 (clears a \"delayed/armed\"\
+  \ byte).\n  - `strb r0,[r1]` writes the immediate 0x0C to offset +0 (a scale/divisor or sprite-size nibble).\n\
+  \  - `mov r0,#0xc` then `strh r0,[r1,#0x2]` writes 0x032F (from `dword_8002808`) as a u16 at offset\n    +2 (a\
+  \ frame-count / duration / palette-index field).\n  - Returns r0 = 0x032F for the caller.\n  - This is a tiny\
+  \ tail-init routine run from many subsystem-init passes (boot, map/battle entry,\n    scene/scenario/cutscene\
+  \ reset, logo-screen init). The same base address is written from several\n    sprite/anim setup paths, suggesting\
+  \ `byte_20098A8` is the per-frame sprite-state scratch used by\n    the sp-sprite/sp2 animation driver in `sprite.s`.\n\
+  \  - The function takes no inputs from callers other than the return address (in `lr`), matching the\n    ARM\
+  \ `mov pc, lr` epilogue and the contract `in=['lr']`.\n  - Caller `main_initToolkitAndOtherSubsystems` (0x080004a4)\
+  \ reaches it with lr=0x080004F5, suggesting\n    this lives inside the boot subsystem-init sequence; the other\
+  \ call sites are all initialization /\n    reset routines (`EnterMap`, `battle_initFullSetup`, `logoScreen_init`,\n\
+  \    `scenario_finalizeFrameOrRestart`, `scene_nextOrUpdate`, `copyTileData` and various sub_X reset\n    hooks),\
+  \ each of which wants sprite state primed to (scale=0x0C, time=0, payload=0x032F).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r1, off_8002804` resolves to `byte_20098A8`; this is an EWRAM pointer. - `mov r0,#0; strb r0,[r1,#0x1]`
+    and `mov r0,#0xc; strb r0,[r1]` clear+prime two adjacent bytes at +0/+1. - `ldr r0, dword_8002808 // =0x32f`
+    then `strh r0,[r1,#0x2]` primes the halfword at +2 to the constant 0x032F. - Captured-call exit r0 consistently
+    equals 0x032F, matching the value just stored. - All 40 callers are init/reset paths (boot, map-entry, battle-entry,
+    logo, scenario teardown, scene teardown, tile-data copy) which fits a "reset sprite aux state" role. - Function
+    lives at `bn6f/asm/sprite.s:230` so it groups with the other sprite init helpers.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080027C4
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^080027c4 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1, story2, story3,
+    story4, story5, story6, story7, story8, story9, wander
+open_questions:
+- True meaning of the byte[+0]=0x0C / halfword[+2]=0x032F payload is unknown (could be anim scale,
+- tile size, palette index, or queue-frame budget); identifying what owns `byte_20098A8..+3`
+- would settle this.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7d574411
+  tool: tools/symdoc.py
