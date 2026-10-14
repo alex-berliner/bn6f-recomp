@@ -3,31 +3,35 @@ address: '0x08118604'
 kind: function
 previous_names: []
 status: hypothesis
-summary: Dispatches AI by Y-coord-indexed entry on r6's BattleObject, scans AI attack vars slots to build a bitmask,
-  then stores the result into sprite field 0x2c.
-interface: '(r6 = BattleObject*, r5/r10 = toolkit) -> r0/r1/r2/r3 = modified; side effects: AIData dispatched, sprite
-  0x2c of r6''s object overwritten'
-details: "Loads the u16 `Y` and `Y16` halves from r6+0x38/0x3a (BattleObject Coords Y), sums them,\n  scales by\
-  \ 4 to get a u16 stride and indexes into `word_201DA80` (EWRAM table at 0x0201DA80),\n  then subtracts `0x90`\
-  \ (the offset of `SpriteData` within the BattleObject that has 0x2c extra\n  vars, i.e. oT1/oT3 layout). It calls\
-  \ `battleObject_runAIDispatchTable_813B7A0` with that pointer,\n  r6's `Element` (offset 0xe), and a zero arg.\
-  \ The result pointer is taken +8 (skipping the\n  AIAttackVars header) and r4/r6/r7 are used as nested counters:\
-  \ outer r4 0..0x31 (49 entries),\n  inner r6 0..5 (6 bytes per row), walking the AI attack-variable table slot\
-  \ by slot; every\n  non-zero byte clears the corresponding bit of `r2` (initially `0x40000000`, shifting right\
-  \ each\n  inner iteration). The final bitmask in r0 is passed to `sprite_setUnk0x2c` together with the\n  AI dispatch\
-  \ result, applying it to the sprite's 0x2c field.\n"
+summary: Builds a per-element "alive enemy" bitmask from AI dispatch results and writes it to the sprite's 0x2c
+  field
+interface: '(r6 = battleObject) -> r0 = elementAliveMask ; side effect: sprite_setUnk0x2c stores r0 into object
+  sprite field 0x2c'
+details: "Reads r6->Unk_38 (u16) and r6->Unk_3a (u16) (BattleObject offsets 0x38/0x3a, both u16s in Coords region)\n\
+  \  to compute an index `(Unk_3a + Unk_38) * 4`, then fetches a base pointer from `word_201DA80`\n  and reads a\
+  \ u16 there, subtracting 0x90 from it before passing as r0 to `battleObject_runAIDispatchTable_813B7A0`.\n  That\
+  \ callee returns r0 = pointer to a per-element \"alive\" byte array for the current frame.\n  The function then\
+  \ iterates over ~0x31 entries (`r4` counter up to 0x31, `r6` counter inner 0..5),\n  starting at `r0 + 8`, scanning\
+  \ bytes; for each nonzero byte it clears the corresponding bit\n  in a 17-bit mask seeded as `~0 << 1 = 0xFFFE`\
+  \ (initial r0 = 0x7FFFFFFE after `mvn; lsl; lsr`).\n  The mask bit position is shifted via r2 = `0x80 << 0x17\
+  \ = 0x400000` then `lsr r2, #1` per step,\n  yielding 17 sequential bits (bit 0..16). The 6-cycle inner loop with\
+  \ r6<5 + r4+=2, r7+=2\n  partitions the scan into ~9 outer iterations of ~3 elements each (matches Element count\
+  \ = 6 in BN6).\n  After the scan, calls `sprite_setUnk0x2c` to persist the mask into the object's sprite struct\
+  \ field 0x2c.\n  `Element` is at BattleObject offset 0xe and is passed in r1 to the AI dispatch, suggesting the\n\
+  \  iteration walks panel-aligned slots across the field rather than just elements.\n  Returned r0 = final mask\
+  \ (typically 0x7F7BFFFF in the captured snapshots, with only some bits clear).\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- `ldrh r0, [r6,#0x3a]` / `ldrh r1, [r6,#0x38]` sum BattleObject Coords Y halves (loc 0x38/0x3a). - `lsl
-    r0, r0, #2` then `ldr r1, off_81186A4 // =word_201DA80` indexes EWRAM table of u16s. - `sub r0, #0x90` matches
-    `oBattleObject_SizeWithoutSpriteDataAndLinkedList` (sprite region base). - `ldrb r1, [r6,#0xe]` loads `Element`;
-    `mov r2, #0` followed by `bl battleObject_runAIDispatchTable_813B7A0` is the AI dispatch. - `add r7, #8` skips
-    the AIAttackVars header so the scan starts at the per-element subvars. - `mov r0, #0; mvn r0, r0; lsl r0, r0,
-    #1; lsr r0, r0, #1` = `0x7FFF`, then `mov r2, #0x80; lsl r2, r2, #0x17` = `0x40000000` (initial bit). - Inner
-    loop `tst r3, r3; beq ...; bic r0, r2` clears bits where the byte is non-zero; nested counters `cmp r6,#5` /
-    `cmp r4,#0x31` give a 49*6 = 294-byte scan area. - Final `bl sprite_setUnk0x2c` writes the accumulated bitmask
-    into the sprite''s 0x2c word.'
+  detail: '- `ldrh r0,[r6,#0x3a]` / `ldrh r1,[r6,#0x38]` at 0x8118608/0x811860A read two u16 fields of the BattleObject
+    - `add r0,r0,r1; lsl r0,#2; ldr r1,=word_201DA80; add r0,r0,r1; ldrh r0,[r0]; sub r0,#0x90` derives an index/pointer
+    - `ldrb r1,[r6,#0xe]` reads the BattleObject''s Element byte (struct offset 0xe per BattleObject.inc) - `bl
+    battleObject_runAIDispatchTable_813B7A0` returns an `r0` pointer; `add r7,r0,#8` skips 8 header bytes - The
+    inner loop at 0x8118632 reads `[r7]` and clears a bit in `r0` via `bic r0,r2` for nonzero bytes - `mvn r0,r0;
+    lsl r0,r0,#1; lsr r0,r0,#1` produces the mask `0x7FFFFFFE` (visible as `7f7bffff` in captures since some bits
+    cleared) - Final `bl sprite_setUnk0x2c` writes r0 into the sprite''s 0x2c field, used downstream for AI targeting/visibility
+    - Captured entry/exit values are stable across 6 snapshots (`r1=0x0813944c`, `r2=0x10`, `r3=0x02008730`, exit
+    `r0=0x7f7bffff`), confirming this is a deterministic per-frame mask build'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x08118604
@@ -42,14 +46,17 @@ evidence:
     '
   result: beastsp
 open_questions:
-- Exact semantic of the resulting sprite 0x2c bitmask (which bit set means what element/condition);
-- whether the indexed table is really `eAIData`/dispatch versus something else, and the table's
-- unit size. Confirming these would need to inspect `word_201DA80` and cross-check callers in
-- '`sub_811842C`/`sub_811847C`.'
+- 'Exact meaning of the bitmask: "alive enemies per element" vs "valid target slots per element" vs something else'
+- Why the outer count is 0x31 (~49) and inner is 6 - whether 6 == Element count or 6 == something else
+- Why the result is `bic`-ed (cleared on nonzero) rather than `orr`-ed - "alive" semantics may be inverted
+- The role of the `word_201DA80` lookup - it likely indexes into a per-frame/per-turn dispatch table; without resolving
+  that table the index meaning remains guessed
+- Settling any of the above would require either (a) running this code in isolation with a known enemy layout, or
+  (b) reading the table at `word_201DA80` and the AIState/AIAttackVars structures referenced by `sub_813B7A0`
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f 53ec62da
+  where: bn6f 18c67962
   tool: tools/symdoc.py

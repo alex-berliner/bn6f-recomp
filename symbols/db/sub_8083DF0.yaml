@@ -3,31 +3,45 @@ address: '0x08083DF0'
 kind: function
 previous_names: []
 status: hypothesis
-summary: Overworld/jack-out BBS request handler that tests L-Message / AskJackOut cutscene sentinels, clears or
-  sets a story flag, refreshes the ReqBBS GUI, and loads player/navi battle graphics
-interface: '(r10 = Toolkit) -> nz (caller-tested); side effects: clears or sets BBS event flags, clears/loads several
-  GFX anim states, refreshes ReqBBS2001150 and eReqBBSGui, and may load a battle object set'
-details: "This function is the \"master\" handler for the overworld ReqBBS subsystem jump table\n  entry 0x14 (offset\
-  \ 0x14 from r10): the requester entry r10 is the toolkit (per the\n  contract). It first calls cutscene_checkOriginalCutsceneScriptPos_8036F40\
-  \ and\n  cutscene_checkOriginalCutsceneScriptPos_8036F58 (both confirming \"script pointer equals\n  the L-Message\
-  \ script / AskJackOut script sentinels\") and then takes an event flag byte\n  pair `(r0, r1)` and either `ClearEventFlagFromImmediate`\
-  \ or `SetEventFlagFromImmediate`\n  (the immediate event flag set is in some GFX-load path: see `reqBBS_setFlag_e17b0f7_8140A00`\n\
-  \  which sets bit 7 of event byte 0x17). It calls `reqBBS_clearFlag_8140A0C` (a related\n  clear handler), `sub_809E462`\
-  \ (likely the ReqBBS GUI refresh), then several\n  `load_gfx_anim_8083FC0 / 8083FFC / 8084068` (sequentially walking\
-  \ the GFXAnimState table\n  into / out of VRAM) and `sub_8083F80 / sub_8084080 / sub_8084180 / sub_8084214 /\n\
-  \  sub_80842D8` plus `struct_copy_80840C4` — these match the typical MegaMan/PET icon BG,\n  palette, OAM and\
-  \ grid loops used by the battle-side `loadPet_setUpGfxAnim_*` series.\n"
+summary: 'BBS request handler that drives the ReqBBS "Mystery Data" (?) flow: gates/manipulates the BBS state and
+  related cutscene by testing/setting event flags, copies event-flag state, drives the local `gfx_anim_*` loader
+  pipeline, and registers/clears a BBS request — all keyed off the toolkit in r10'
+interface: '(no input registers; r10 = toolkit) -> nz ; side effects: writes through r10 (toolkit state, BBS request
+  state, event flags, cutscene/script state, mystery-data scratch), uses r5 as a scratch pointer to a scratch state
+  struct'
+details: "The lifter could not locate an assembly body, so behaviour is inferred from the\n  callee list and contract\
+  \ alone.\n  - Reads `r10` (Toolkit; always-this register in bn6f) on entry; preserves r4/r5/r7/r8/r9/r12 to the\
+  \ caller\n    while clobbering r2/r3.\n  - Three cutscene-script-pointer probes are taken via 8036F40 / 8036F58\
+  \ (these tell whether the\n    original cutscene script pointer is the \"L-Message\" or \"AskJackOut\" sentinel\
+  \ scripts).\n  - Two event-flag immediates are then manipulated (Clear 802F12C and Set 802F110), and one more\n\
+  \    is Tested (802F164). This is the typical pre/post pattern for a BBS-mediated story-progress\n    branch in\
+  \ bn6f's request handlers.\n  - A pair of BBS request handlers is dispatched: 8140A0C (clear an event flag in\
+  \ 0x2001150) and\n    8140A00 (set event flag 0x7 in byte 0x17 at 0x2001F68). Both live in the `reqBBS_*` bucket.\n\
+  \  - Two gfx/anim pipelines are pumped forward: `load_gfx_anim_8083FC0`, `load_gfx_anim_8083FFC`,\n    and `load_gfx_anim_8084068`\
+  \ (all `gfx_anim_*` collaborators). `struct_copy_80840C4` then\n    duplicates a small struct, and 8083F80/8084080/8084180/8084214/80842D8\
+  \ form the per-frame\n    update sequence used by the loaded anims (typical \"init-then-tick\" shape: 8083F80\
+  \ likely\n    inits the loader, the others tick different phases).\n  - 809E462 is a tail-call mystery helper\
+  \ (its `in=['r10','lr']`, `out=['nz']` shape matches\n    a \"request completed, advance subsystem state\" wrapper\
+  \ used elsewhere).\n  - A scratch buffer is reached through r5 (r5 is in the in-register list and outlives the\
+  \ call),\n    with r5 unchanged across the gfx-anim helpers — strongly suggests an EWRAM scratch struct\n    passed\
+  \ implicitly via r5, not part of the toolkit.\n  - Naming: I picked `reqBBS_…` because both BBS handlers are the\
+  \ only true BBS-side callees; the\n    cutscene + event-flag work is consistent with a \"BBS request open/close\"\
+  \ branch rather than\n    free-form script execution. The \"MysteryDataHandling\" reading is speculative — could\
+  \ equally\n    be a generic \"BBS subsystem update\" loop. Worth confirming by checking what event flag the\n\
+  \    Set/Test pair is touching and whether 809E462 wraps a \"request completed\" handler.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- Contract `in=[''r10'',''lr'']` matches the toolkit-in-r10 calling convention used by every BBS/REQ
-    handler in bn6f. - Both `cutscene_checkOriginalCutsceneScriptPos_*` callees are present; their task is to test
-    `originalCutsceneScriptPos_40` against script sentinels. - `reqBBS_setFlag_e17b0f7_8140A00` sets the "BBS request"
-    event flag at `(0x17, 7)` — exactly the kind of state this handler refreshes. - Three near-adjacent `load_gfx_anim_*`
-    callees (8083FC0 / 8083FFC / 8084068) plus five `sub_8083F80 / 8084080 / 8084180 / 8084214 / 80842D8` calls
-    match a "set up BG + anim + copy + finalise" sequence used elsewhere by jack-out / battle-init. - `struct_copy_80840C4`
-    accepts `r5` and writes `r0/r1` only — characteristic of a small `memcpy` between two GFX-anim related buffers.
-    - `sub_809E462` returning NZ (and matching the size of the ReqBBSGui struct in'
+  detail: '- Both r10 in and r10/lr callee contract on every helper => this is a bn6f "subsystem function" that
+    owns the toolkit pointer. - Callee 8140A00 is explicitly described as "BBS request handler that sets event flag
+    0x7 in event byte 0x17". - Callee 8140A0C (sibling in the reqBBS set) clears a different flag via the same 0x2001150
+    controller. - Three cutscene-script sentinel checks (8036F40/8036F58 + the implicit TestEventFlagFromImmediate
+    chain) => this gates the BBS branch on whether a cutscene script was just left dangling on the L-Message/AskJackOut
+    sentinels. - The triple-gfx_anim + struct_copy + 5-stage update chain (8083F80..80842D8) is the exact "loader
+    init → pump phase 0..2 → teardown" pattern used by other bn6f "request body" handlers. - `may_write` includes
+    r5 alongside the standard r0/r1 scratch set, confirming r5 carries a non-toolkit context (e.g. scratch struct)
+    into the callees. - The lifter reports "sub_8083DF0 not found in bn6f/asm" — no disassembly captured, so all
+    behavioural claims rest on callees/contract alone.'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x08083DF0
@@ -42,15 +56,17 @@ evidence:
     '
   result: beastsp, story5, story6
 open_questions:
-- The exact role (overworld BBS update vs. jack-out / battle-init) is unclear because the
-- assembly list came back empty (`sub_8083DF0 not found in asm`); per callee signatures
-- alone this could be either a "load GFX + flag" ReqBBS step or a "switch to battle"
-- step triggered by the AskJackOut sentinel. To settle it we need the surrounding
-- jump-table indices or the first 16 bytes of the function body.
+- Which event flag (immediate) is gated; the Set/Clear/Test imm values aren't visible without disassembly.
+- Whether `r5` actually points at a scratch state struct (BBS scratch in 0x2001150 area?) or at a CallBattleData
+  field.
+- The exact phase this sits in — "BBS request gated by cutscene sentinel" is the best read of the callee mix; could
+  also be a generic story-progress check.
+- Real names of the helpers 8083F80, 8084080, 8084180, 8084214, 80842D8 (no lifted names yet); their order in the
+  call list would pin down init vs tick.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f 53ec62da
+  where: bn6f 18c67962
   tool: tools/symdoc.py

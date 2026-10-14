@@ -1,0 +1,58 @@
+name: sub_804C478
+address: '0x0804C478'
+kind: function
+previous_names: []
+status: hypothesis
+summary: 'Battle render-update helper: forces a renderInfo flag and queues a sprite transform through loc_80024D8
+  using a per-object origin/y-offset pair.'
+interface: '(r5 = BattleObject, r7 = camera/coord state, r10 = Toolkit) -> void ; side effects: mutates *RenderInfo
+  (sets bit 0x4800), stacks a 12-byte coord payload and tail-calls loc_80024D8'
+details: "1. Saves r4-r7 and lr; keeps r10 (Toolkit) live.\n  2. r1 = Toolkit->RenderInfoPtr (offset 0x8); reads\
+  \ u16 at [r1] and ORs in 0x4800 from dword_804C4AC, then writes it back — so bit 0x0800 (force window/mosaic line?)\
+  \ plus 0x4000 are being enabled on the render info.\n  3. Reads three words from the [r7]-rooted struct: [r7]\
+  \ = X-like, [r7+4] = Y-like, [r7+8] = Z-like (it is computed as `[r7+8] - (r5->field_0xd << 16)`), so the Z term\
+  \ is offset down by the object's 0x0d byte shifted to a u16 high half.\n  4. Pushes those three words as a 12-byte\
+  \ stack payload (origin vec).\n  5. Sets r0 = sp (pointer to that origin vec), r1 = [r7+0xc], r2 = [r7+0x10] byte,\
+  \ r3 = [r7+0x11] byte; calls loc_80024D8(r0, r1, r2, r3, r10) and then unwinds the 0xc stack frame.\n  6. The\
+  \ gfx_anim_data blobs at 804C4B0/804C4E0 are *constants* in the same code section, not code executed here — they\
+  \ look like gfx animation script templates stored next to this helper (probably referenced from another code path,\
+  \ not this function).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {r4-r7,lr}` followed by `mov r4, r10` shows r10 (Toolkit) and r5/r7 are callee-preserved inputs.
+    - `ldr r1, [r4,#oToolkit_RenderInfoPtr]` with immediate consistent with oToolkit_RenderInfoPtr=0x8. - `ldrh
+    r0,[r1]` + `orr r0,r2` where r2 = 0x4800 (from `dword_804C4AC`) → forcing renderInfo bits 0x4800. - `ldrb r0,[r5,#0xd]`
+    + `lsl r0,#0x10` + `sub r3,r3,r0` → z is `*(r7+8) - ((byte)r5[0xd] << 16)`, i.e. subtracts a u16-high halfword
+    from the object''s 0xd field. r5 is a battle object per caller sub_804C43C. - `sub sp,#0xc` and three `str`
+    into sp+0/+4/+8 build a 12-byte (3-word) coord vec passed by pointer (r0=sp). - `ldr r1,[r7,#0xc]`, `ldrb r2,[r7,#0x10]`,
+    `ldrb r3,[r7,#0x11]` are the only r7 reads besides the vec words → r7 is a small "render view" struct whose
+    offsets 0/4/8 are xyz origin and 0xc/0x10/0x11 are likely a palette/base/anim index passed to loc_80024D8. -
+    Single callee is loc_80024D8, a generic render helper (its in-contract mentions r10). - Direct caller sub_804C43C
+    has the same r5/r7/r10 contract → this is part of a small per-frame battle-object render update sequence.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0804C478
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp, maps'
+  reproduce: 'grep -l ''^0804c478 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp, maps
+open_questions:
+- What r7 points to (camera? per-object view? GFXAnimState?) — it isn't in the project struct list; the offset pattern
+  (3 words xyz, then a ptr+two bytes) doesn't match RenderInfo (size 0x40) or a Toolkit field.
+- Meaning of the 0xd byte subtracted from Z — could be a panel-row adjustment or a sprite-pivot Y offset.
+- Exact semantics of setting renderInfo bits 0x4800; could be enable-fade-window + mosaic-related flag.
+- Whether the gfx_anim_data blocks at 804C4B0/804C4E0 are referenced from here or are merely co-located constants.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 18c67962
+  tool: tools/symdoc.py

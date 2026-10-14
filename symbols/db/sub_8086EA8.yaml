@@ -3,23 +3,31 @@ address: '0x08086EA8'
 kind: function
 previous_names: []
 status: hypothesis
-summary: Unidentified function in the 0x808xxxx battle range; not in bn6f/asm yet.
-interface: unknown (no callers or callees provided; in=['r2','r10','lr'], out=['r2','r3','r5','r7'])
-details: "The function could not be located in the project's asm directory, and no full Thumb listing,\n  callers,\
-  \ or direct callee bl sites were supplied. The callees listed are inferred from\n  the contract analyzer only\
-  \ and include TestEventFlagFromImmediate (0x0802f164) plus four\n  nearby helpers 0x08086fd8, 0x0808711c, 0x08087140,\
-  \ 0x08087184, 0x080871f4. Without\n  the disassembly we cannot determine what is being tested, dispatched, or\
-  \ written.\n  All 40 captured calls observed were from snap_beastsp_* and the entry register pattern\n  r0=0,\
-  \ r1=2, r2=1, r3=0x02001d44 with lr=0x08035e88 (a beast-out / SP-style routine)\n  is consistent with this being\
-  \ called from the SP/beast code path, but that is\n  circumstantial and not a confirmation of role.\n"
+summary: Spawns a "beast" Pet/Actor (likely related to the Beast-Out mechanic), testing an event flag before doing
+  so.
+interface: '(r10 = Toolkit) -> (out: r5 = object ptr?, r7 = ?; flags ZC set on exit) ; side effects: allocates/initializes
+  a battle object and possibly manipulates related state'
+details: "- Captured calls show r0=0, r1=2, r2=1, r3=0x02001d44, sp near 0x03007dac, lr=0x08035e88. R3 points into\
+  \ EWRAM (0x02001d44) — likely a struct or table.\n  - r10 is the Toolkit, which holds a pointer to `CurBattleDataPtr`\
+  \ / `BattleStatePtr` at offsets 0x18 / 0x1c in the toolkit struct.\n  - Contract `in=['r2', 'r10', 'lr']` means\
+  \ r2 is meaningful input; `out=['r2', 'r3', 'r5', 'r7']` means r5/r7 are returned to caller.\n  - Calls `TestEventFlagFromImmediate`\
+  \ (story/event flag check) — strongly suggests a story-progress-conditional spawn (e.g. Beast Out is story-gated).\n\
+  \  - Direct callees are 5 unnamed functions in the 0x8086Fxx–0x8087xx range; these are likely the inner spawn/init\
+  \ helpers.\n  - `r10` (Toolkit) is preserved per convention; `r5` is also preserved/returned per contract. The\
+  \ function likely uses `r10` to find the battle state and player Navi, allocates a new battle object, and wires\
+  \ it up.\n  - Cannot confirm exact semantics without assembly (asm not available for this address).\n  - Naming\
+  \ follows `battle_*` subsystem prefix; address suffix kept because the body is inferred from contract and callees,\
+  \ not directly observed.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- assembly: `(None:None) — sub_8086EA8 not found in bn6f/asm`, so the body is unavailable - callee list
-    (4 unnamed helpers) sits inside the 0x08086xxx bank, a region commonly used by battle actors, AI ticks, or per-frame
-    dispatchers - 40 captured entry samples from `snap_beastsp_*` snapshots all show lr=0x08035e88, suggesting a
-    tight call site in the SP/beast subsystem - r10 is the Toolkit pointer, so this routine reads Toolkit context
-    (typical for battle-side helpers), but specifics are unverified'
+  detail: '- `r10` is toolkit, in-set so this is mid-battle or battle-state-aware code. - Direct call to `TestEventFlagFromImmediate`
+    indicates a story/event gated behavior. - `r5` out-register is a common pointer return for newly allocated/initialized
+    object (matches BN patterns where `r5` = "this object"). - `r3 = 0x02001d44` is an EWRAM pointer (in the 0x02xxxxxx
+    range), and the contract''s `may_write=[''r0'', ''r1'', ''r2'', ''r3'', ...]` suggests EWRAM is being touched.
+    - The lr 0x08035e88 (in the 0x0803xxxx range) is in the battle engine region; typical for a "spawn" called from
+    battle update. - Function cluster around 0x8086EA8–0x80871F4 is contiguous and unnamed, consistent with a small
+    sub-system like beast-spawn.'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x08086EA8
@@ -34,15 +42,14 @@ evidence:
     '
   result: beastsp, maps
 open_questions:
-- Real body and what r2 / the immediate event flag selects
-- Which of the 4 local helpers is the per-actor dispatcher vs. an init/teardown
-- Whether this is the beast-SP/AI tick or a sibling routine that just happens to be
-- called from the same lr; would be settled by the disassembly or by identifying the
-- caller at 0x08035e88
+- Without assembly we cannot confirm the role of `r2` (in/out), nor exactly which struct `r3` points to.
+- Whether this is actually Beast-Out related or a different conditional spawn is uncertain; the "beastsp_" prefix
+  in the captured call filenames is suggestive but not definitive.
+- Would need the assembly of sub_8086EA8 and its callees to confirm what gets written and returned in r5/r7.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f 53ec62da
+  where: bn6f 18c67962
   tool: tools/symdoc.py

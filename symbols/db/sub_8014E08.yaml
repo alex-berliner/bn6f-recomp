@@ -1,0 +1,65 @@
+name: sub_8014E08
+address: '0x08014E08'
+kind: function
+previous_names: []
+status: hypothesis
+summary: Drives the AI attack step that forces the sprite white, plays a recovery jingle, sets text/name, and on
+  timer expiry completes the turn-opening process.
+interface: '(r5 = BattleObject*, r7 = AIAttackVars*) -> void ; side effects: battle sprite/animation flips, NaviStats
+  byte 0x2C updated, sound 0x100 played'
+details: "1. If AIAttackVars+0x01 is already non-zero, jumps straight to the per-frame timer branch.\n  2. Otherwise\
+  \ forces the sprite palette to all white (`sprite_forceWhitePalette`), reads the object's alliance navi-stat byte\
+  \ at offset 0x2C, dispatches via `sub_8011384` and `sub_801595E`, looks up chip class 0x29, then loads sprite\
+  \ 0x80 with animation data + shadow and sets animation 0.\n  3. Copies the object's current animation id into\
+  \ the sprite slot, loads its animation data again, computes flip via `object_getFlip` + `sprite_setFlip`, and\
+  \ re-derives coordinates from panel coords (`object_setCoordinatesFromPanels`).\n  4. Writes 0x0A into AIAttackVars+0x10,\
+  \ force-whites again, computes a sub-id from the alliance and stores it back into the NaviStats byte at 0x2C,\
+  \ then calls `sub_80E11E0` with constant 0x30E00.\n  5. Plays SFX 0x100 (`PlaySoundEffect`), and if NaviStats[0x2C]\
+  \ is in 1..0x18 inclusive, calls `battle_setObjectTextId_8015B22`.\n  6. Calls `sub_8011268` (mode dispatch) with\
+  \ the 0x2C value, clears `Param3` on `RelatedObject2Ptr` if it exists, asks `battleObject_computeAIStepForwardDeltaX_8018856`\
+  \ for the forward delta, negates it and feeds it to `sub_801DC06`, then writes 4 into AIAttackVars+0x01.\n  7.\
+  \ Per-frame timer at AIAttackVars+0x10 counts down; when it hits 0 it grabs the battle emotion via `callPossiblyGetBattleEmotion_8015B54`,\
+  \ sets r1 to (emotion == 2 ? 1 : 0), runs `battle_beginTurnOpenProcess_80144C0`, marks the action used via `battleObject_markUsedAction_80143A6`,\
+  \ and if r1 was 1 writes 0xFF into NaviStats+0x0E (`battle_setPlayerNaviStatsField0E_8015BEC`).\n  8. Clears invulnerability,\
+  \ and if `RelatedObject2Ptr` exists, clears its final palette nibble via `sprite_clearFinalPalette` (with r5 swapped\
+  \ for the related object).\n  9. Sets AIState+0x00 (i.e. AIAttackVars+0x00 interpreted as u16) to 0x000C, transitioning\
+  \ to the next AI state.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- Entry push of {r4,lr}; r5 = BattleObject (per callee contracts reading `oBattleObject_*`), r7 = AIAttackVars*
+    (offset `oAIAttackVars_Unk_01`, `_Unk_10`, `_Unk_00`). - `ldrb r0, [r7,#oAIAttackVars_Unk_01]; tst r0,r0; bne
+    loc_8014EB8` is the gate into the per-frame branch — confirms r7 is the per-actor attack state. - Calls `GetBattleNaviStatsByte_AllianceFromBattleObject(r1=0x2c)`
+    then writes the same byte back via `SetBattleNaviStatsByte_AllianceFromBattleObject` — this is the object''s
+    navi-custom byte (NaviStats 0x2C = Transformation), so the function rewrites the transformation tag. - `chip_class_lookup_800FC9E`
+    with id 0x29 (=41) is invoked right after reading 0x2C, consistent with using the transformation to choose an
+    animation. - `PlaySoundEffect(0x100)` matches a "transformation complete / recovery" jingle. - `sub_8011268`
+    is the 24-handler mode dispatch and is called with the 0x2C byte, so this function re-routes behaviour based
+    on transformation class. - Final `strh r0, [r7,#oAIAttackVars_Unk_00]` writes 0x0C into the AI state byte, matching
+    the typical AIAttackVars state-transition pattern (advance to the next state).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08014E08
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^08014e08 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- Exact meaning of AIAttackVars+0x01 gating (init vs update), and what `sub_8011384` / `sub_801595E` / `sub_80E11E0`
+  compute from the alliance + 0x2C byte.
+- Whether the 0x0C write at the end represents "complete" or merely "advance to next state" — there are no listed
+  callers to confirm.
+- What `battle_setPlayerNaviStatsField0E_8015BEC` actually toggles (NaviStats 0x0E = Mood) when emotion == 2.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 18c67962
+  tool: tools/symdoc.py

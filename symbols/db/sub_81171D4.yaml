@@ -1,0 +1,54 @@
+name: sub_81171D4
+address: '0x081171D4'
+kind: function
+previous_names: []
+status: hypothesis
+summary: If a battle object's panel slot is occupied (per the eStructArr2008450 array), repositions that object's
+  sprite by its (PanelX, PanelY) base coordinates.
+interface: '(r0 = object ptr, r1 = sprite coord (probably PanelXY), r2 = struct index) -> no return; side effect:
+  may write the sprite''s position via sprite_setCoordinates'
+details: "- Saves r0/r1 on the stack (`str r0,[sp]`, `str r1,[sp,#4]`) and calls getStructFrom2008450(r2=r0) to\
+  \ check if a battle-object slot at index `r2` is occupied (NZ flags from its in-use byte).\n  - If the byte is\
+  \ 0 (slot free, beq taken), does nothing and returns early at loc_81171EE.\n  - Otherwise (slot occupied), restores\
+  \ the saved object ptr and sprite coord from the stack and calls sprite_setCoordinates(objectPtr, spriteCoord,\
+  \ r5). r5 holds a per-call value computed by the caller (likely PanelX or PanelY for the side being aligned).\n\
+  \  - The function is called from battle_alignRowCheck_81348DC and two sibling helpers (sub_8134930, sub_81349B4);\
+  \ per the confirmed caller summary, those wrappers verify a battle object's column position against its expected\
+  \ row offset and either reposition the object (calling into here) or set a misalignment flag.\n  - In all 30 captured\
+  \ calls r0=0xA5 (a PanelXY candidate) and r1=0x28 (likely a sprite coord packed value); the function is a thin\
+  \ helper that only updates sprite coordinates when the slot is in use.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `sub sp, sp, #8` / `str r0,[sp]` / `str r1,[sp,#4]` save the two arguments across the struct lookup.
+    - `mov r0, r2` then `bl getStructFrom2008450` checks `eStructArr2008450[index=r2]` and returns NZ flags (callee
+    summary says it returns the in-use byte). - `beq loc_81171EE` skips the sprite update when the slot is free.
+    - On the taken path, `ldr r0,[sp]` / `ldr r1,[sp,#4]` restore the saved args and `bl sprite_setCoordinates`
+    does the actual position write (callee summary: "Sets an object''s x/y position fields within the 0x10-byte
+    sprite sub-entry"). - The only confirmed caller battle_alignRowCheck_81348DC has the described role of "Verifies
+    a battle object''s column position against its expected row offset; if aligned, repositions the object and clears
+    a misalignment flag, otherwise sets the flag", matching the here-function''s slot-check + reposition behaviour.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x081171D4
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^081171d4 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- What `r1` (sprite_coord) actually encodes (raw sprite coord vs PanelXY packed) and what the caller's r5 holds;
+  the captured r0=0xA5/r1=0x28 pair is suspicious but not yet tied to a known struct layout. A second look at sub_1134930/11349B4
+  (still unnamed) would probably pin down which PanelXY byte is being applied to which axis.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 18c67962
+  tool: tools/symdoc.py

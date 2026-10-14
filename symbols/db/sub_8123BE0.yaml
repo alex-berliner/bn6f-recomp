@@ -3,35 +3,31 @@ address: '0x08123BE0'
 kind: function
 previous_names: []
 status: hypothesis
-summary: Configures and dispatches battle-object attack-variable (AIData) initialisation for the per-frame battle
-  setup chain.
-interface: '(r5 = BattleObject*, r10 = Toolkit*) -> no return; side-effect: populates AIData at 0x020047CC via sub_8123C20
-  with arg block in IWRAM at 0x081233D8'
-details: "- The function does no real work in its own frame: it just sets up a fixed argument vector and tail-calls\
-  \ sub_8123C20 (named here by the lifter as battleObject_applyAIDataToAttackTable_8123C20).\n  - r0 = dword_8123BFC\
-  \ (a ROM pointer = 0x5A5856, used as the AIData/AIState base from `0x08123BFC`), r1 = 0x20 (count/stride into\
-  \ the AI table), r2 = byte_81233E0 (IWRAM arg/source buffer at 0x081233D8), r3 = 5, r4 = 0x5c, r6 = 0. These five\
-  \ constants plus r0 are forwarded verbatim into sub_8123C20, so sub_8123BE0 is essentially a wrapper that packages\
-  \ the constants needed by the AI-attack-table builder.\n  - r5 (BattleObject pointer, kept live across the call\
-  \ by the parent battle-update loop) and r10 (Toolkit pointer) are not touched; they are documented as `in` only\
-  \ because the caller has them live on entry but sub_8123BE0 never reads them itself. They are passed through and\
-  \ survive, hence `out` lists r5.\n  - All three callers (battle_updateFrame_8123558, sub_8123574, sub_81235A4)\
-  \ are battle-object phase orchestration routines, fitting a setup helper that primes AI attack variables once\
-  \ a battle object is moving from setup into update phase 4.\n  - The literal 0x5A5856 is treated as a ROM-side\
-  \ base for AIData/AIState data; the constant 0x5c matches oAIData+0x5c (the `Unk_5c` pointer field), and r1=0x20\
-  \ matches oAIData+0x20 (`TotalDamageTaken` region start). So the call is plausibly copying 0x20 bytes of AIData\
-  \ into each of the 5 battle objects (player + 4 actors), using Unk_5c as the per-row storage pointer.\n"
+summary: Initialises a battle-object AI attack table with a fixed packed data blob (Z, V, S, X) and zeroes the per-attack
+  counter
+interface: (no explicit args; uses r5=touched battle object, r10=Toolkit) -> no return value ; side effects EWRAM
+  at byte_81233E0 and possibly counter offsets
+details: "- Function body is just a thin wrapper that loads four constants and calls sub_8123C20.\n  - r0 = address\
+  \ of dword_8123BFC (literal 0x5A5856, the ascii \"VZXS\"/packed nibbles for a 4-entry attack table).\n  - r1 =\
+  \ 0x20 (the per-entry size for the attack vars at AIData+0xa0 AttackVars).\n  - r2 = address of byte_81233E0 (a\
+  \ likely EWRAM destination / scratch buffer in AIData region).\n  - r3 = 5 (counter count or loop bound), r4 =\
+  \ 0x5C (offset into AIData where Unk_5c / counter-related fields live).\n  - r6 = 0 (initial value or clear flag).\n\
+  \  - Single `bl battleObject_applyAIDataToAttackTable_8123C20` performs the actual copy/setup; callee contract\
+  \ consumes r0-r6 + r10.\n  - Captured calls show consistent entry r0=1, r2=0x081233d8, r3=0x020047cc (matches\
+  \ the EWRAM struct at S20047CC, see oS20047CC layout used as some battle state), and exit r0=0x20 preserved.\n\
+  \  - Called once per frame from battle_updateFrame_8123558 and from mode-2 setup paths in sub_8123574 / sub_81235A4.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- Assembly is exactly `push/pop {r4-r7,lr}` plus 7 mov/ldr instructions and one `bl sub_8123C20` (asm33.s:1368),
-    i.e. a thin wrapper with no conditional logic. - dword_8123BFC == 0x5A5856 sits in ROM at 0x08123BFC and is
-    loaded as r0 (the only ROM pointer passed). - r1 #0x20 / r3 #5 / r4 #0x5c line up with oAIData: 0x20 is the
-    start of the post-header fields, 0x5c is the `Unk_5c` field, and 5 is plausibly `1 player + 4 opponents`. -
-    Captured-call entry r0-r3 shows the same caller context across 40 samples (r0=1, r2=0x081233D8, r3=0x020047CC),
-    consistent with a setup helper invoked once the battle object reaches the right phase. - Caller chain (updateFrame_8123558
-    -> ... -> mode-2 driver -> here) shows this is reached as part of the post-fade phase transition, hence "setup
-    AI attack vars" rather than a per-tick thing.'
+  detail: '- The literal `0x5A5856` (= ''V''<<16 | ''Z''<<8 | ''X'') packed into dword_8123BFC is consistent with
+    a chip-letter ordering table for custom-style AI attack selection. - `mov r1, #0x20` matches oAIData AttackVars
+    size (0x50 over 4 attacks -> entry stride could be 0x20); combined with `mov r4, #0x5c` (matches oAIData+0x5c
+    and oCollisionData+0x5c offsets), strongly suggesting AIData writes. - `mov r3, #5` aligns with five battle
+    objects or five attack slots in 4v1 / 5-actor battles. - Constant `byte_81233E0` (r2) is the EWRAM destination
+    for the attack table data. - Caller sub_81235A4''s contract preserves r5 across the call, confirming sub_8123BE0
+    itself does not produce a meaningful r0 for callers (r0 exit value 0x20 is just an artefact of the inner routine''s
+    preserved state). - Callers are exclusively inside the per-frame battle-object update chain, never from anywhere
+    OW related.'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x08123BE0
@@ -46,16 +42,14 @@ evidence:
     '
   result: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus3, story4, story6, story8, story9
 open_questions:
-- The semantic role of 0x5A5856 (looks like a packed ASCII string "ZXV", so probably a code label baked into the
-  ROM rather than a data pointer) is not verifiable from this frame alone; the lifter's callee summary describes
-  it as "applyAIDataToAttackTable", which is the best hint we have for what 0x5A5856 points at.
-- Whether r1 truly is a `count` or a `stride/struct-size`; combining with r3=5 and a known AIData size of 0x100
-  (per the inc), 0x20 is too small to be a single AIData, so it is almost certainly an inner per-actor slice (e.g.
-  TotalDamage/Joypad block). Callee disassembly would settle this.
+- Exact semantic role of the 4-byte magic 0x5A5856 is unconfirmed (chip-letter codes vs. chip ID indices).
+- Whether r4=0x5C selects AIData.Unk_5c (an `ptr`) or CollisionData.Unk_5c; the S20047CC layout doesn't naturally
+  have a 0x5c field, while both AIData and CollisionData do.
+- The role of r3=5 (number of actors, attacks, or attack-var entries) needs callee-side analysis to settle.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f 53ec62da
+  where: bn6f 18c67962
   tool: tools/symdoc.py
