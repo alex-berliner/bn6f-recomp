@@ -1,0 +1,57 @@
+name: battle_drawSelectedChipNameAndDamage_801C6EE
+address: '0x0801C6EE'
+kind: function
+previous_names:
+- sub_801C6EE
+status: probable
+summary: Draws the battle actor's selected chip as name text plus a right-aligned damage number (and optional
+  second value / marker glyph) into the battle BG tile map; does nothing when no chip is selected.
+details: 'Zeroes a 0x30-byte stack buffer (9x2 halfword digit tiles), call_sub_3005EBA(0, 0x12, 3, 0,
+  0x11, 2) sets up the 0x11x2-tile region at rows 0x12-0x13 of tile block 3. Loads the battle object from
+  eStruct2035280+0x48 and battle_getSelectedChipForUse_800ED90; r3==0 (no chip) returns immediately. chip_SelectNameTextTable_8027D10
+  + renderTextGfx_8045F8C render the chip name (dest byte_203EBA0, gfx base 0x600CB00, font dword_86B7AE0);
+  the returned run length drives two bg_writeTileIdRow_80018E0 calls (rows 0x12/0x13 from byte_801D944/byte_801D954).
+  getChip8021DA8(chip): when chip-data byte 9 has bit 1 set, memory_bcdConvert([sp+4]) + countHexDigits_8000C5C,
+  then a right-to-left loop writes each BCD digit as tile 0xD1B8 (+1 for the second half) into the 2-tile-tall
+  buffer cells. A nonzero [sp+8] appends a second BCD number after separator tiles 0xD1CE/0xD1CF; sub_8012A38(battleStructPtr,
+  chipId, 0) nonzero appends marker tiles 0xD1D2..0xD1D5. Finally CopyBackgroundTiles blits the 9x2 block
+  into tile block 3 just right of the name.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: 'Body read line by line: the no-chip early return after battle_getSelectedChipForUse_800ED90,
+    the chip byte 9 bit-1 test (tst r1,#2), the 0xD1B8/0xD1CE/0xD1D2 tile bases, and the sub_8012A38 marker
+    gate.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801C6EE
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0801c6ee '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9
+related:
+- battle_getSelectedChipForUse_800ED90
+- renderTextGfx_8045F8C
+- getChip8021DA8
+open_questions: []
+sources:
+- discovery session 2026-10-14 (outside model hyper/glm-5.3-flash, build/repro/discover)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 68d712e5
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801C6EE -> battle_drawSelectedChipNameAndDamage_801C6EE
+  where: bn6f 4daef61b
+  tool: tools/rename_symbol.py

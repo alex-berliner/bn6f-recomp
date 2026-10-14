@@ -1406,7 +1406,7 @@ Next battle_getSpecialActorSlotIfAiMatches_80EBB78(void) {
 /* aiAttack_dispatchStateHandler_80EBC0E: dispatch an AI attack sub-state handler.
  * R7 points at the AI attack vars; the state byte in its first field
  * selects the handler from a two-entry table in ROM:
- *   0 -> sub_80EBC28, 1 -> aiAttack_windupTick_80EBD3C.
+ *   0 -> battleAi_chargeThenFireAttackStep_80EBC28, 1 -> aiAttack_windupTick_80EBD3C.
  * The state byte is passed to the handler in R0 and the handler pointer
  * in R1 (as the original's `ldr r1, [table, state]` leaves it); the
  * `mov lr, pc / bx r1` sequence makes this an effective tail call, so the
@@ -1418,7 +1418,7 @@ Next aiAttack_dispatchStateHandler_80EBC0E(void) {
     R1 = LD32(A_off_80EBC20 + attackState); /* dispatch table entry */
 
     if (attackState == 0)
-        GUEST_CALL(sub_80EBC28);
+        GUEST_CALL(battleAi_chargeThenFireAttackStep_80EBC28);
     else
         GUEST_CALL(aiAttack_windupTick_80EBD3C); /* state >= 2 reads past the table in the original */
 

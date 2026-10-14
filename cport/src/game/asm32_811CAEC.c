@@ -391,10 +391,10 @@ static inline call_LoadGFXAnim_result call_LoadGFXAnim_sub_811ED58(u32 r0) {
 }
 
 typedef struct { u32 r4, r5, r6, r7; } call_sub_80465A0_result;
-/* register form: generated wrapper: sub_80465A0 has no typed C interface yet */
+/* register form: generated wrapper: battle_spawnEStructRecordsFromTable_80465A0 has no typed C interface yet */
 static inline call_sub_80465A0_result call_sub_80465A0(u32 r0) {
     R0 = r0;
-    GUEST_CALL(sub_80465A0);
+    GUEST_CALL(battle_spawnEStructRecordsFromTable_80465A0);
     return (call_sub_80465A0_result){ R4, R5, R6, R7 };
 }
 
@@ -619,10 +619,10 @@ static void call_sub_8046664_sub_811EF28(void) {
     GUEST_CALL(battle_resetEStructRecords_8046664);
 }
 
-/* register form: calls sub_80465A0 outside this file, which has no typed C interface yet */
+/* register form: calls battle_spawnEStructRecordsFromTable_80465A0 outside this file, which has no typed C interface yet */
 static void call_sub_80465A0_sub_811EF28(void *a1) {
     R0 = (u32)a1;
-    GUEST_CALL(sub_80465A0);
+    GUEST_CALL(battle_spawnEStructRecordsFromTable_80465A0);
 }
 
 /* register form: calls LoadGFXAnim outside this file, which has no typed C interface yet */

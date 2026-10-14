@@ -2216,7 +2216,7 @@ static void call_subsystem_handler(u32 index, u32 game_state) {
     case 0x24: GUEST_CALL(sub_80056B8); break;
     case 0x28: GUEST_CALL(sub_800572C); break;
     case 0x2C: GUEST_CALL(sub_80057A0); break;
-    case 0x30: GUEST_CALL(sub_80055CE); break;
+    case 0x30: GUEST_CALL(gamestate_runOverworldSceneStep_80055CE); break;
     case 0x34: GUEST_CALL(mainState_runFrame_8005814); break;
     case 0x38: GUEST_CALL(sub_800585A); break;
     }
@@ -2665,9 +2665,9 @@ static void call_sub_8004590_gamestate_OnMapUpdate_8005268(void) {
     GUEST_CALL(sub_8004590);
 }
 
-/* register form: calls sub_8004934 outside this file, which has no typed C interface yet */
+/* register form: calls owMapObject_queueSprites_8004934 outside this file, which has no typed C interface yet */
 static void call_sub_8004934_gamestate_OnMapUpdate_8005268(void) {
-    GUEST_CALL(sub_8004934);
+    GUEST_CALL(owMapObject_queueSprites_8004934);
 }
 
 /* register form: calls event_runArmedCallback_80024AE outside this file, which has no typed C interface yet */
@@ -2821,9 +2821,9 @@ static void call_sub_8004590(void) {
     GUEST_CALL(sub_8004590);
 }
 
-/* register form: calls sub_8004934 outside this file, which has no typed C interface yet */
+/* register form: calls owMapObject_queueSprites_8004934 outside this file, which has no typed C interface yet */
 static void call_sub_8004934(void) {
-    GUEST_CALL(sub_8004934);
+    GUEST_CALL(owMapObject_queueSprites_8004934);
 }
 
 /* register form: calls event_runArmedCallback_80024AE outside this file, which has no typed C interface yet */
@@ -2970,7 +2970,7 @@ static const u16 warp_entry_cues[2] = { 0xE7, 0xEC };
 /* register form: calls the overworld per-frame update/draw routines
  * (dispatch_80339CC, sub_80039AA, sub_8003AFA, sub_80027B4, sub_800286C,
  * sub_8003BF4, sub_8003E98, npc_drawSprites_800467C, sub_8004298,
- * sub_8004590, sub_8004934, event_runArmedCallback_80024AE) outside this
+ * sub_8004590, owMapObject_queueSprites_8004934, event_runArmedCallback_80024AE) outside this
  * file, which have no typed C interface yet */
 static void run_overworld_updates(void) {
     GUEST_CALL(dispatch_80339CC);
@@ -2983,7 +2983,7 @@ static void run_overworld_updates(void) {
     GUEST_CALL(npc_drawSprites_800467C);
     GUEST_CALL(sub_8004298);
     GUEST_CALL(sub_8004590);
-    GUEST_CALL(sub_8004934);
+    GUEST_CALL(owMapObject_queueSprites_8004934);
     GUEST_CALL(event_runArmedCallback_80024AE);
 }
 
@@ -3074,8 +3074,8 @@ static void call_sub_8004298_sub_80053E4(void) { GUEST_CALL(sub_8004298); }
 /* register form: calls sub_8004590 outside this file, which has no typed C interface yet */
 static void call_sub_8004590_sub_80053E4(void) { GUEST_CALL(sub_8004590); }
 
-/* register form: calls sub_8004934 outside this file, which has no typed C interface yet */
-static void call_sub_8004934_sub_80053E4(void) { GUEST_CALL(sub_8004934); }
+/* register form: calls owMapObject_queueSprites_8004934 outside this file, which has no typed C interface yet */
+static void call_sub_8004934_sub_80053E4(void) { GUEST_CALL(owMapObject_queueSprites_8004934); }
 
 /* register form: calls event_runArmedCallback_80024AE outside this file, which has no typed C interface yet */
 static void call_event_callback(void) { GUEST_CALL(event_runArmedCallback_80024AE); }
@@ -3308,9 +3308,9 @@ static void call_sub_8004590_sub_8005642(void) {
     GUEST_CALL(sub_8004590);
 }
 
-/* register form: calls sub_8004934 outside this file, which has no typed C interface yet */
+/* register form: calls owMapObject_queueSprites_8004934 outside this file, which has no typed C interface yet */
 static void call_sub_8004934_sub_8005642(void) {
-    GUEST_CALL(sub_8004934);
+    GUEST_CALL(owMapObject_queueSprites_8004934);
 }
 
 /* register form: calls event_runArmedCallback_80024AE outside this file, which has no typed C interface yet */
@@ -3473,7 +3473,7 @@ Next mainState_runFrame_8005814(void) {
     GUEST_CALL(npc_drawSprites_800467C);
     GUEST_CALL(sub_8004298);
     GUEST_CALL(sub_8004590);
-    GUEST_CALL(sub_8004934);
+    GUEST_CALL(owMapObject_queueSprites_8004934);
     GUEST_CALL(event_runArmedCallback_80024AE);
     GUEST_CALL(IsScreenFadeActive);
     if (!ZERO_FLAG()) {

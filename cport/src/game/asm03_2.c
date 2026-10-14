@@ -631,7 +631,7 @@ Next reqBBS_initRequestWorkArea_8046CC8(void) {
 /* register form: dispatches to the selected shop handler, saving and restoring
  * r4-r7, r8-r9, r12, lr exactly as the original's push/pop pairs do */
 /* The handlers' r0 is handed back to ShopControl's r0 unchanged, which no caller of ShopControl reads: */
-/* leftover unused: sub_8046D4C's r0, battle_objectAdvanceCounterToState8_8046DDC's r0, sub_8046DF8's r0 */
+/* leftover unused: shop_initScreen_8046D4C's r0, battle_objectAdvanceCounterToState8_8046DDC's r0, sub_8046DF8's r0 */
 /* leftover unused: scramblePanel_tick_8046E06's r0, dialogueEnd_unlockPlayer_8046E48's r0, sub_8046E84's r0 */
 /* leftover unused: chatbox_confirmShopPurchase_8046ED2's r0, chatbox_stepContextScript_8047028's r0 */
 static u32 call_shop_handler(u32 handler_addr, u32 state_offset) {
@@ -645,7 +645,7 @@ static u32 call_shop_handler(u32 handler_addr, u32 state_offset) {
     R5 = A_byte_2011C10;
 
     switch (state_offset) {
-    case 0:  GUEST_CALL(sub_8046D4C); break;
+    case 0:  GUEST_CALL(shop_initScreen_8046D4C); break;
     case 4:  GUEST_CALL(battle_objectAdvanceCounterToState8_8046DDC); break;
     case 8:  GUEST_CALL(sub_8046DF8); break;
     case 12: GUEST_CALL(scramblePanel_tick_8046E06); break;

@@ -3506,7 +3506,7 @@ Next battleObject_respawn_80D84DE(void) {
     ST8(R5 + oObjectHeader_Flags, flags);
 
     GUEST_CALL(sprite_clearFinalPalette);
-    GUEST_CALL(sub_801AD9E);
+    GUEST_CALL(object_applyCollisionHit_801AD9E);
 
     ST16(R5 + oBattleObject_HP, 1);
 

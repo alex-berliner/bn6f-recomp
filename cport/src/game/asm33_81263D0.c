@@ -469,10 +469,10 @@ static void warn_unexpected(u32 code, u32 kind) {
     GUEST_CALL(sub_8046696);
 }
 
-/* register form: calls sub_80465A0 outside this file, which has no typed C interface yet */
+/* register form: calls battle_spawnEStructRecordsFromTable_80465A0 outside this file, which has no typed C interface yet */
 static void report_unexpected_ptr(u32 pointer) {
     R0 = pointer;
-    GUEST_CALL(sub_80465A0);
+    GUEST_CALL(battle_spawnEStructRecordsFromTable_80465A0);
 }
 
 /* register form: calls setFieldsInThreeTableEntries_811980C outside this file, which has no typed C interface yet */
@@ -653,7 +653,7 @@ Next HandleMegaManStatusMenu8126B4C(void) {
         GUEST_CALL(battle_petNaviDisplayInit_8126B6C);   /* state 0 handler */
         break;
     case 4:
-        GUEST_CALL(sub_8126CC0);   /* state 4 handler */
+        GUEST_CALL(battle_petNaviDisplayUpdate_8126CC0);   /* state 4 handler */
         break;
     case 8:
         GUEST_CALL(pet_menuScreenTick_8126FF0);   /* state 8 handler */
@@ -792,8 +792,8 @@ static void call_get_tileset_ptrs(u32 *out0, u32 *out1) {
     *out0 = R0; *out1 = R1;
 }
 
-/* register form: calls sub_80465A0 outside this file, which has no typed C interface yet */
-static void call_sub_80465A0(u32 arg) { R0 = arg; GUEST_CALL(sub_80465A0); }
+/* register form: calls battle_spawnEStructRecordsFromTable_80465A0 outside this file, which has no typed C interface yet */
+static void call_sub_80465A0(u32 arg) { R0 = arg; GUEST_CALL(battle_spawnEStructRecordsFromTable_80465A0); }
 
 /* register form: calls SetScreenFade outside this file, which has no typed C interface yet */
 static void call_set_screen_fade_sub_8126B6C(u32 mode, u32 level) {
@@ -3559,10 +3559,10 @@ static void call_clear_bg_struct(void) {
     GUEST_CALL(clearStruct200BC30_803EBAC);
 }
 
-/* register form: calls sub_80465A0 outside this file, which has no typed C interface yet */
+/* register form: calls battle_spawnEStructRecordsFromTable_80465A0 outside this file, which has no typed C interface yet */
 static void call_process_tile_data(u32 ptr) {
     R0 = ptr;
-    GUEST_CALL(sub_80465A0);
+    GUEST_CALL(battle_spawnEStructRecordsFromTable_80465A0);
 }
 
 /* register form: calls bg_LoadFullScreenTilesAndSetup_812AFB0 outside this file, which has no typed C interface yet */
@@ -3808,7 +3808,7 @@ Next scene_runFadePopTick_8129400(void) {
 
         /* Install the per-scene palette/screen data and bring up the BG. */
         R0 = A_byte_8129168;
-        GUEST_CALL(sub_80465A0);
+        GUEST_CALL(battle_spawnEStructRecordsFromTable_80465A0);
         GUEST_CALL(bg_LoadFullScreenTilesAndSetup_812AFB0);
 
         /* Show the dialog box frame; we will fill the body with text next. */

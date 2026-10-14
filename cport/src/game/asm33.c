@@ -279,10 +279,10 @@ static void call_sub_8046664(void) {
     GUEST_CALL(battle_resetEStructRecords_8046664);
 }
 
-/* register form: calls sub_80465A0 outside this file, which has no typed C interface yet */
+/* register form: calls battle_spawnEStructRecordsFromTable_80465A0 outside this file, which has no typed C interface yet */
 static void call_sub_80465A0_sub_812345C(u32 table) {   /* table: guest address of byte_8123400 */
     R0 = table;
-    GUEST_CALL(sub_80465A0);
+    GUEST_CALL(battle_spawnEStructRecordsFromTable_80465A0);
 }
 
 /* register form: calls refreshChipUseStats_8123A80 outside this file, which has no typed C interface yet */
@@ -358,10 +358,10 @@ static void call_sub_8046664_sub_812349C(void) {
     GUEST_CALL(battle_resetEStructRecords_8046664);
 }
 
-/* register form: calls sub_80465A0 outside this file, which has no typed C interface yet */
+/* register form: calls battle_spawnEStructRecordsFromTable_80465A0 outside this file, which has no typed C interface yet */
 static void call_sub_80465A0_sub_812349C(u32 a1) {
     R0 = a1;
-    GUEST_CALL(sub_80465A0);
+    GUEST_CALL(battle_spawnEStructRecordsFromTable_80465A0);
 }
 
 /* register form: calls refreshChipUseStats_8123A80 outside this file, which has no typed C interface yet */
@@ -1361,7 +1361,7 @@ Next sub_8123C00(void) {
 }
 
 /* ── sub_8123D54 ── */
-/* sub_8123D54(r0 = selection): call the string/label printer at sub_80465A0
+/* sub_8123D54(r0 = selection): call the string/label printer at battle_spawnEStructRecordsFromTable_80465A0
  * with one of two fixed tables — byte_81233F0 when r0 is 0, byte_81233F8
  * otherwise. R1 emerges holding the original r0 (the callee leaves it alone),
  * and the callee's flag results pass through to the caller. */
@@ -1371,7 +1371,7 @@ Next sub_8123D54(void) {
     R1 = which;
     R0 = (which != 0) ? A_byte_81233F8 : A_byte_81233F0;
 
-    GUEST_CALL(sub_80465A0);
+    GUEST_CALL(battle_spawnEStructRecordsFromTable_80465A0);
 
     RETURN_TO_CALLER();
 }
@@ -2374,10 +2374,10 @@ static void call_sub_8046664_sub_8124B5C(void) {
     GUEST_CALL(battle_resetEStructRecords_8046664);
 }
 
-/* register form: calls sub_80465A0 outside this file, which has no typed C interface yet */
+/* register form: calls battle_spawnEStructRecordsFromTable_80465A0 outside this file, which has no typed C interface yet */
 static void call_sub_80465A0(u32 ptr) {
     R0 = ptr;
-    GUEST_CALL(sub_80465A0);
+    GUEST_CALL(battle_spawnEStructRecordsFromTable_80465A0);
 }
 
 /* register form: calls sub_81252C0 outside this file, which has no typed C interface yet */

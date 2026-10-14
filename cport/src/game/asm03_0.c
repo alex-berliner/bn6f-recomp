@@ -198,7 +198,7 @@ Next object_runFrameUpdate_8026A6C(void) {
 
 /* register form: calls the custom-menu state handlers (sub_8026B04,
  * custMenuUpdateWaitSelectionState_8026CCC, scrollStrip_update_8026BF4, sub_8026D06,
- * sub_8026DB0, sub_8026DC4, chatbox_stateMaybeFinishText_8026E4C,
+ * sub_8026DB0, battle_endChipSelectionBeginTurn_8026DC4, chatbox_stateMaybeFinishText_8026E4C,
  * battle_updateObjectByKind_8026E98, battle_runTutorialDialog_8026FC0, sub_8027044, sub_80271F8,
  * sub_802728C, sub_80273A4, chatbox_resetTextStateIfHidden_80273EC,
  * sub_8027406, sub_802753E, sub_8027548, sub_80275EC, sub_802770C,
@@ -220,7 +220,7 @@ static void run_state_handler(u32 state_offset, u32 self) {
     case 0x08: GUEST_CALL(scrollStrip_update_8026BF4); break;
     case 0x0C: GUEST_CALL(sub_8026D06); break;
     case 0x10: GUEST_CALL(sub_8026DB0); break;
-    case 0x14: GUEST_CALL(sub_8026DC4); break;
+    case 0x14: GUEST_CALL(battle_endChipSelectionBeginTurn_8026DC4); break;
     case 0x18: GUEST_CALL(chatbox_stateMaybeFinishText_8026E4C); break;
     case 0x1C: GUEST_CALL(battle_updateObjectByKind_8026E98); break;
     case 0x20: GUEST_CALL(battle_runTutorialDialog_8026FC0); break;

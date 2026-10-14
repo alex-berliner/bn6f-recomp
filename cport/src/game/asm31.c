@@ -1824,9 +1824,9 @@ static void sprite_update_guest(void) {
     GUEST_CALL(sprite_update);
 }
 
-/* register form: calls sub_80C43C4 outside this file, which has no typed C interface yet */
+/* register form: calls battleObject_syncSpriteWithRelatedObject_80C43C4 outside this file, which has no typed C interface yet */
 static void sub_80C43C4_guest(void) {
-    GUEST_CALL(sub_80C43C4);
+    GUEST_CALL(battleObject_syncSpriteWithRelatedObject_80C43C4);
 }
 
 /* Palette pass-through: if the object has no partner (Param2 == 0), use the related
@@ -1838,7 +1838,7 @@ static u32 pick_palette(u32 battle_object_ptr) {
 }
 
 /* Set up a battle object's sprite: collision data, sprite/animation data, palette,
- * initial animation, then hand off to sub_80C43C4 to finish the state init. */
+ * initial animation, then hand off to battleObject_syncSpriteWithRelatedObject_80C43C4 to finish the state init. */
 static void battle_object_sprite_setup(u32 battle_object_ptr) {
     u8 param1 = LD8(battle_object_ptr + oBattleObject_Param1);
 
@@ -2324,11 +2324,11 @@ Next SpawnCounterPinkRingMaybe_80C4C12(void) {
 }
 
 /* ── t3_0x0_80C4E58 ── */
-/* register form: calls sub_80C4E7C outside this file, which has no typed C interface yet */
+/* register form: calls battleObject_initAttackFromDefTable_80C4E7C outside this file, which has no typed C interface yet */
 static void call_idle_handler(u32 state, u32 object_ptr) {
     R0 = state;
     R5 = object_ptr;
-    GUEST_CALL(sub_80C4E7C);
+    GUEST_CALL(battleObject_initAttackFromDefTable_80C4E7C);
 }
 
 /* register form: calls battle_object_collisionPhase_80C4F02 outside this file, which has no typed C interface yet */

@@ -1144,11 +1144,11 @@ static void call_sub_8046664(u32 table) {
     GUEST_CALL(battle_resetEStructRecords_8046664);
 }
 
-/* register form: calls sub_80465A0 outside this file, which has no typed C interface yet.
+/* register form: calls battle_spawnEStructRecordsFromTable_80465A0 outside this file, which has no typed C interface yet.
  * This is the last callee, so the flags it leaves are the ones callers branch on. */
 static void call_sub_80465A0(u32 frameList) {
     R0 = frameList;
-    GUEST_CALL(sub_80465A0);
+    GUEST_CALL(battle_spawnEStructRecordsFromTable_80465A0);
 }
 
 /* Decompress the jack-in animation graphics (chip selection screen) and set up the

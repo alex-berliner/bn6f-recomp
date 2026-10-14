@@ -2025,7 +2025,7 @@ Next sub_81340DC(void) {
     u32 savedR4 = R4, savedR5 = R5, savedR6 = R6, savedR7 = R7;
 
     R0 = A_byte_813314C;
-    GUEST_CALL(sub_80465A0);
+    GUEST_CALL(battle_spawnEStructRecordsFromTable_80465A0);
 
     R0 = 3;
     GUEST_CALL(getStructFrom2008450);
