@@ -3,32 +3,31 @@ address: '0x08083DF0'
 kind: function
 previous_names: []
 status: hypothesis
-summary: Event-flags BBS request handler that clears a pet/navi story-progress flag (BBS payload wrapper).
-interface: '(r10 = Toolkit) -> NZ (handled); side-effects: clears an event flag pair, may set/clear event byte 0x17
-  bit 0x7, may load GFX anim scripts, may copy a struct.'
-details: "No source disassembly for this function exists in bn6f/asm, so the following is reconstructed\n  from\
-  \ the contract and callee list only. The contract `in=['r10','lr']` matches every other\n  request-handler in\
-  \ this ROM (r10 = &Toolkit, lr = return to dispatcher). The block of calls to\n  `ClearEventFlagFromImmediate`,\
-  \ `SetEventFlagFromImmediate`, and `TestEventFlagFromImmediate`\n  (at 0x0802f12c / 0x0802f110 / 0x0802f164) shows\
-  \ it routes BBS-request subcommands through the\n  immediate-mode event-flag helpers (offset 0x40 in the toolkit).\
-  \ `sub_809E462` is the generic\n  `ClearEventFlagFromIndirectRequest`-style helper used by other reqBBS_* peers\
-  \ and is consistent\n  with this being a BBS request clear-handler. `reqBBS_setFlag_e17b0f7_8140A00` is the matching\n\
-  \  \"set flag 0x7 in event byte 0x17\" sibling, suggesting this function is the *clear* counterpart\n  in the\
-  \ same event-byte. The four unnamed `load_gfx_anim_*` / `sub_8084080` / `sub_8084180` /\n  `sub_8084214` / `sub_80842D8`\
-  \ / `struct_copy_80840C4` callees look like GFX-anim loader +\n  per-state pumps typical of BBS request UIs, and\
-  \ `cutscene_checkOriginalCutsceneScriptPos_*`\n  calls suggest the handler additionally refuses to dispatch while\
-  \ a cutscene is mid-rewind.\n  In short: a BBS-request handler that, when invoked, clears a story-progress event\
-  \ flag and\n  triggers UI/animation side effects matching other reqBBS_* entry points.\n"
+summary: Overworld/jack-out BBS request handler that tests L-Message / AskJackOut cutscene sentinels, clears or
+  sets a story flag, refreshes the ReqBBS GUI, and loads player/navi battle graphics
+interface: '(r10 = Toolkit) -> nz (caller-tested); side effects: clears or sets BBS event flags, clears/loads several
+  GFX anim states, refreshes ReqBBS2001150 and eReqBBSGui, and may load a battle object set'
+details: "This function is the \"master\" handler for the overworld ReqBBS subsystem jump table\n  entry 0x14 (offset\
+  \ 0x14 from r10): the requester entry r10 is the toolkit (per the\n  contract). It first calls cutscene_checkOriginalCutsceneScriptPos_8036F40\
+  \ and\n  cutscene_checkOriginalCutsceneScriptPos_8036F58 (both confirming \"script pointer equals\n  the L-Message\
+  \ script / AskJackOut script sentinels\") and then takes an event flag byte\n  pair `(r0, r1)` and either `ClearEventFlagFromImmediate`\
+  \ or `SetEventFlagFromImmediate`\n  (the immediate event flag set is in some GFX-load path: see `reqBBS_setFlag_e17b0f7_8140A00`\n\
+  \  which sets bit 7 of event byte 0x17). It calls `reqBBS_clearFlag_8140A0C` (a related\n  clear handler), `sub_809E462`\
+  \ (likely the ReqBBS GUI refresh), then several\n  `load_gfx_anim_8083FC0 / 8083FFC / 8084068` (sequentially walking\
+  \ the GFXAnimState table\n  into / out of VRAM) and `sub_8083F80 / sub_8084080 / sub_8084180 / sub_8084214 /\n\
+  \  sub_80842D8` plus `struct_copy_80840C4` — these match the typical MegaMan/PET icon BG,\n  palette, OAM and\
+  \ grid loops used by the battle-side `loadPet_setUpGfxAnim_*` series.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- Contract `in=[''r10'',''lr'']` is the standard r10=&Toolkit BBS-request handler shape in this ROM.
-    - Callee `reqBBS_setFlag_e17b0f7_8140A00` (confirmed "sets flag 0x7 of event byte 0x17") is the matched set-side
-    sibling of this likely clear-side handler. - Callee `reqBBS_clearFlag_8140A0C` is named identically to this
-    function, indicating the pattern of `reqBBS_clearFlag_*` clear-handlers is reused. - `sub_809E462` is also called
-    from other confirmed `reqBBS_*` handlers in this ROM. - The two `cutscene_checkOriginalCutsceneScriptPos_*`
-    calls gate on the cutscene''s original saved script position, which is the same gate used by other reqBBS_*
-    early-out checks.'
+  detail: '- Contract `in=[''r10'',''lr'']` matches the toolkit-in-r10 calling convention used by every BBS/REQ
+    handler in bn6f. - Both `cutscene_checkOriginalCutsceneScriptPos_*` callees are present; their task is to test
+    `originalCutsceneScriptPos_40` against script sentinels. - `reqBBS_setFlag_e17b0f7_8140A00` sets the "BBS request"
+    event flag at `(0x17, 7)` — exactly the kind of state this handler refreshes. - Three near-adjacent `load_gfx_anim_*`
+    callees (8083FC0 / 8083FFC / 8084068) plus five `sub_8083F80 / 8084080 / 8084180 / 8084214 / 80842D8` calls
+    match a "set up BG + anim + copy + finalise" sequence used elsewhere by jack-out / battle-init. - `struct_copy_80840C4`
+    accepts `r5` and writes `r0/r1` only — characteristic of a small `memcpy` between two GFX-anim related buffers.
+    - `sub_809E462` returning NZ (and matching the size of the ReqBBSGui struct in'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x08083DF0
@@ -43,13 +42,15 @@ evidence:
     '
   result: beastsp, story5, story6
 open_questions:
-- No assembly is available (`sub_8083DF0 not found in bn6f/asm`), so the exact flag/byte
-- cleared, the BBS request payload offsets, and which r0/r1 the event helpers receive are all
-- inferred. Settling this requires the disassembled body.
+- The exact role (overworld BBS update vs. jack-out / battle-init) is unclear because the
+- assembly list came back empty (`sub_8083DF0 not found in asm`); per callee signatures
+- alone this could be either a "load GFX + flag" ReqBBS step or a "switch to battle"
+- step triggered by the AskJackOut sentinel. To settle it we need the surrounding
+- jump-table indices or the first 16 bytes of the function body.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f 78d5a37f
+  where: bn6f 53ec62da
   tool: tools/symdoc.py

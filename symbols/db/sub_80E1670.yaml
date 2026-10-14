@@ -3,33 +3,38 @@ address: '0x080E1670'
 kind: function
 previous_names: []
 status: hypothesis
-summary: Allocates a stack scratch array of enemy-panel target slots, then probes the related object via sub_80E16CC
-  for indices 0/1/2 (snake-arm candidate panels).
-interface: '(r5 = *BattleObject self) -> r0 = ? ; side effects: writes 0x34 bytes of stack scratch, may clobber
-  r0..r3/r4/r6/r7/lr'
-details: "- Sub sp, #0x34 reserves 0xD (13) u32-ish slots on the stack; r4 = sp is the base of that scratch array.\n\
-  \  - Reads oBattleObject_Alliance (off r5), XOR with 1 to flip friendly/enemy side, and calls object_getEnemyByNameRange(sp=scratch,\
-  \ count=0x1c3, mask derived from toggled Alliance) to enumerate enemy panels.\n  - The first scratch slot (at\
-  \ r4 + 0) is then zeroed; r6 keeps the count returned by the range search.\n  - Loads self's oBattleObject_RelatedObject1Ptr\
-  \ into r1 and calls sub_80E16CC three times in sequence, first with r0=0, then 1, then 2 (and short-circuits as\
-  \ soon as one returns nonzero). The companion function uses the literal byte_80E16C4 (0xA0,0xA4,0xAC,0xB0,0xB4,0xB8,0xBC,0xFF)\
-  \ as panel/col offsets and returns nonzero when the related object's panel matches a candidate.\n  - This pattern\
-  \ matches SnakeArm's targeting setup: pick the three enemy-side panel columns to potentially snake to. The literal\
-  \ table at 0x80E16C4 encodes seven even panel offsets 0xA0..0xBC plus a 0xFF terminator; only the first three\
-  \ (0xA0, 0xA4, 0xAC) are exercised here.\n  - Return value (r0) is whatever sub_80E16CC last left in r0 (per its\
-  \ contract) — i.e. nonzero on the first probe (0/1/2) that matched, otherwise 0. The caller sub_80E1566 treats\
-  \ it as \"did we find any snake-arm target column\".\n"
+summary: For a battle object, populate a stack scratch buffer with the opponent-side actors returned by `object_getEnemyByNameRange`
+  matching the index 0/1/2, based on the object's alliance.
+interface: (r5 = current battle object, r10 = toolkit, lr = return) -> r0 = scratch return (latest sub_80E16CC return,
+  or 0), r5 = current battle object preserved
+details: "The function allocates 0x34 bytes on the stack (`sub sp, sp, #0x34`), used as a scratch table (saved as\
+  \ r4).\n  It reads `oBattleObject_Alliance` (offset 0x16) from r5 (the current battle object), toggles bit 0 (`eor\
+  \ r3, r0` with r0=1), and passes that as the third argument (`r2`) to `object_getEnemyByNameRange` along with\
+  \ `r1 = 0` and a count from `dword_80E17E4` (= 0x1c3 = 451 enemies, i.e. iterate the whole enemy table). The result\
+  \ is stored in `r6`.\n\n  Then for `result_index = 0, 1, 2`, it writes `0` to `scratch[result_index*4]` (`str\
+  \ r0, [r3]` where r3 = r4 + index*4) and calls `sub_80E16CC(scratch_as_arg=result_index, relatedObj1Ptr=r5->RelatedObject1Ptr,\
+  \ scratch_buffer=r4)`. If `sub_80E16CC` returns non-zero it short-circuits the loop (bne loc_80E16BA), otherwise\
+  \ it continues with the next index. After the loop it pops and returns.\n\n  Net effect: it tries to find 3 enemy\
+  \ battle objects (the opponents of `r5`'s alliance) and, for each, calls `sub_80E16CC` with the enemy's index,\
+  \ the related-object pointer of `r5`, and the scratch buffer; only the first non-zero return aborts further calls.\
+  \ The result in `r6` and the populated scratch buffer are presumably used by the caller (sub_80E1566) to pick\
+  \ a target.\ninterface: (r5 = current battle object, r10 = toolkit, lr = return) -> r0 = scratch return (latest\
+  \ sub_80E16CC return, or 0), r5 = current battle object preserved\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- `sub sp, sp, #0x34` plus `mov r4, sp` establishes a 0x34-byte scratch array; `str r0, [r3]` (where
-    r3 = r4 + r6*4) zeroes the slot pointed at by the range-search count. - `ldrb r3, [r5,#oBattleObject_Alliance];
-    eor r3, #1` flips the caller''s alliance (this BattleObject''s own alliance) before passing it to object_getEnemyByNameRange
-    — i.e. enumerates the *opposing* alliance''s panel range. - `dword_80E17E4 = 0x1c3` is the mask (or count+flags)
-    passed as the third argument to the range helper. - The .byte table `byte_80E16C4 = 0xA0, 0xA4, 0xAC, 0xB0,
-    0xB4, 0xB8, 0xBC, 0xFF` is a typical panel/column offset table for an enemy row in BN; the 0xFF terminator pattern
-    matches the in-battle panel index list used by SnakeArm. - Three sequential calls to sub_80E16CC with r0 = 0,
-    1, 2, each bailing on the first nonzero, iterate over the first three candidate columns of that table.'
+  detail: '- `push {r4,r6,r7,lr}` + `sub sp, sp, #0x34` makes a 0x34-byte scratch buffer on stack (`mov r4, sp`)
+    — bn6f/asm/asm31.s:88300. - `ldrb r3, [r5,#oBattleObject_Alliance]` (offset 0x16) loads alliance, `eor r3, #1`
+    toggles it to find the opposing side — bn6f/asm/asm31.s:88304. - `bl object_getEnemyByNameRange` with r0=scratch,
+    r1=0, r2=toggled alliance, r3=0x1c3 — iterates enemy table once per call — bn6f/asm/asm31.s:88309. - `mov r6,
+    r0` saves the returned table pointer and uses `lsl r3, r0, #2; add r3, r3, r4; str r0, [r3]` to clear three
+    entries in the scratch table for r6=0..2 — bn6f/asm/asm31.s:88310. - The three calls `mov r0, #0/#1/#2; ldr
+    r1, [r5,#oBattleObject_RelatedObject1Ptr]; mov r2, r4; bl sub_80E16CC; cmp r0, #0; bne loc_80E16BA` invoke `sub_80E16CC`
+    three times with index, related-object1, and scratch; non-zero short-circuits the loop — bn6f/asm/asm31.s:88314..88327.
+    - `byte_80E16C4` follows the function but appears to be unrelated tail data (an 8-byte table of constants 0xA0,
+    0xA4, 0xAC, 0xB0, 0xB4, 0xB8, 0xBC, 0xFF); no live use in this function — bn6f/asm/asm31.s:88331. - Caller `sub_80E1566`
+    (in= r5/r6/r7/r10/lr, out= same wide set) consumes r6 (or the scratch) immediately after; consistent with a
+    "pick a target for r5''s related object" helper.'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x080E1670
@@ -44,16 +49,17 @@ evidence:
     '
   result: beastsp
 open_questions:
-- The exact contract of sub_80E16CC and the meaning of its r0 (which here is used as an index into the literal)
-  — only checking the decompiled sibling will confirm.
-- Whether r0 actually carries back a "found" flag, or whether the result is consumed through scratch memory written
-  by sub_80E16CC (the call here writes neither back to sp nor to r5, so the in-r0 return is the only live channel).
-- Naming the broader function "SnakeArm" assumes this sits inside the snake-arm battle object's initialize/init-update
-  path; verifying the parent sub_80E1566 is the SnakeArm handler would settle it.
+- What `sub_80E16CC` does with `(enemyIndex, relatedObject1Ptr, scratch)` is unknown from this function alone; it
+  might assign a related-object pointer, store HP, or do some targeting test. Looking at sub_80E16CC's body would
+  settle the meaning.
+- Why exactly three attempts (0/1/2) and why abort on first success — could be picking first alive, first matching
+  element, or first non-null in some priority list.
+- The byte table `byte_80E16C4` is referenced via `dword_80E17E4` for the enemy-name range constant; the trailing
+  bytes are unused here.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f 78d5a37f
+  where: bn6f 53ec62da
   tool: tools/symdoc.py

@@ -3,38 +3,30 @@ address: '0x081185E4'
 kind: function
 previous_names: []
 status: hypothesis
-summary: Loads a BattleObject's palette index from a global u16 table indexed by an AIData-derived offset, looks
-  up the BattleObject, and sets its sprite palette.
-interface: (r5 = AIData? base, r6 = related battle object, lr = return) -> void (r0 only used as scratch, returned
-  0)
-details: "Steps:\n  1. `ldrh r0, [r6,#0x3a]` and `ldrh r1, [r6,#0x38]` read two u16s from the object pointed to\
-  \ by r6 (likely AIData fields Unk_38 and Unk_3a — panel/index pair).\n  2. Adds them: `r0 = r0 + r1`, then shifts\
-  \ left 2 (`lsl r0, r0, #2`), so it indexes a table of u16 entries by (Unk_3a + Unk_38) * 2 — but lsl by 2 makes\
-  \ each entry 4 bytes; with `ldrh` that means it indexes a u16 array as if each slot were 2 bytes... actually the\
-  \ lsl #2 doubles the offset so combined with `ldrh [r0+table]` it reads `word_201DA80[(Unk_3a + Unk_38) * 2]`.\n\
-  \  3. Loads the u16 from `off_81186A4` (`word_201DA80`), subtracts `0x90`, then calls `battleObject_getByIndex_813B780`\
-  \ (which probably returns a battle-object pointer keyed by index).\n  4. Reads `ldrb r0, [r0,#3]` (battle-object\
-  \ offset 3 — the SpriteOffset half of TypeAndSpriteOffset, per ObjectHeader.inc).\n  5. Subtracts 1 (`sub r0,\
-  \ #1`) and calls `sprite_setPalette(palette)`. So the sprite palette index comes from object field offset 3 minus\
-  \ 1.\n\n  All 8 captured calls come from this function (`lr=08118477`, matching one of the unnamed callers). r5/r6\
-  \ are callee-saved, so the caller does not expect them to be clobbered. Exit r0=0 suggests `sub r0, #1` produced\
-  \ a small result (likely palette index 0 after the subtraction) and the return is not meaningful.\n\n  The \"\
-  0x90\" subtract is consistent with a sentinel \"no object\" index (e.g. `0x90` being an out-of-range guard); without\
-  \ knowing getByIndex semantics it's unclear whether subtract-then-getByIndex is correct or whether the subtract\
-  \ belongs to the index.\n"
+summary: Set a battle object's sprite palette using an index table referenced from its AIData.
+interface: '(r6 = BattleObject*) -> void ; side effect: writes sprite palette index'
+details: "The function reads two halfwords from the AIData attached to the battle object in r6: a base\n  index\
+  \ at r6+0x38 and an additional index at r6+0x3a (these match the Unk_38 / Unk_3a fields\n  of AIData). It sums\
+  \ them, multiplies by 4, and adds the base of a global table at\n  word_201DA80 (the off_81186A4 entry). It loads\
+  \ a u16 from that table slot and subtracts\n  0x90 from it; the result is used as an index passed to battleObject_getByIndex_813B780.\n\
+  \  The function then reads byte 3 of the returned object, subtracts 1 from it, and calls\n  sprite_setPalette\
+  \ with that value. Effectively: look up a battle object via the AIData\n  table, then set the calling object's\
+  \ sprite palette to one less than some byte of the\n  resolved object (likely the element/type byte) so the sprite\
+  \ palette reflects the\n  target object's identity (e.g. enemy Navi element color in cross/BeastOut contexts).\n\
+  \  All callers are unnamed battle sub_ routines that pass r6 holding a battle object\n  pointer; this is a \"\
+  void\" helper used inside a battle dispatch.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- r6+#0x38 and r6+#0x3a read as u16 at offsets that exactly match `AIData.Unk_38` and `AIData.Unk_3a`
-    per the AIData struct definition (both loc=0x38/0x3a, u16). - The r5/r6/r10 caller pattern with r6 referencing
-    u16s at 0x38/0x3a is consistent with AIData-style access; one of the 8 callers likely stages r6 to point at
-    `AIDataPtr` of some BattleObject. - `battleObject_getByIndex_813B780` (callee contract: `in=[''r0''] out=[''r0'',''r2'']`)
-    takes an index in r0 and returns an object pointer — matches the typical "index in -> object out" pattern. -
-    `[r0,#3]` after the lookup reads the low byte of the SpriteOffset half of `TypeAndSpriteOffset` (ObjectHeader
-    at offset 2–3 of a BattleObject); sprite_setPalette stores r0 in sprite struct byte 4 per the callee summary.
-    - `off_81186A4 -> word_201DA80` is the constant table; combined read pattern is a 4-byte-stride indexed u16
-    lookup. - 40 captured calls all originate from `lr=08118477` (one of the listed callers) and show no input args
-    in r0–r3 (consistent with `r5/r6` carrying state).'
+  detail: '- `ldrh r0, [r6,#0x3a]` and `ldrh r1, [r6,#0x38]` read two u16 fields from the object at r6, matching
+    the AIData Unk_38 / Unk_3a offsets exposed via AIDataPtr at oBattleObject+0x58. - `lsl r0,r0,#2` then `ldr r1,
+    off_81186A4 // =word_201DA80` and `add r0,r0,r1` form a u16* lookup into a global table of (Unk_38+Unk_3a)*4
+    entries. - `sub r0,#0x90` subtracts 0x90 before passing the index to battleObject_getByIndex_813B780, consistent
+    with converting a packed (base+slot) into a battle-actor index. - The result is dereferenced at offset 3 (`ldrb
+    r0,[r0,#3]`) which on the BattleObject is the Type byte (ObjectHeader.TypeAndSpriteOffset high nibble, offset
+    0x3). - Final `sub r0,#1` then `bl sprite_setPalette` stores (Type-1) into the sprite''s palette byte (sprite_setPalette
+    writes object sprite +0x4). - All eight callers pass r5/r6/r10 in their contracts and feed this function with
+    r6 as a battle object pointer (per `sub_811842C`/`sub_811847C`/...), confirming a per-frame/per-phase'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x081185E4
@@ -49,15 +41,17 @@ evidence:
     '
   result: beastsp
 open_questions:
-- The exact object type r6 points to (likely AIData, but could be a small wrapper).
-- 'The semantics of the `sub r0, #0x90` before `getByIndex`: index-sentinel vs. palette bias.'
-- What the two summed u16s represent (Unk_38 + Unk_3a of AIData could be a row+col index, a frame counter pair,
-  etc.).
-- Why the same caller in 40 captures shows identical args — the captured frames may all sample the same game tick.
+- The exact meaning of the (Unk_38+Unk_3a) -> 0x90 lookup table (beast-sprite id? enemy palette slot?).
+- Whether byte 3 of the resolved object is really ObjectHeader.Type (high nibble of
+- TypeAndSpriteOffset), the Element byte at oBattleObject+0xe, or some other u8 - reading at
+- +3 is unusual and disassembly of the resolved object would confirm the meaning.
+- Captured-call r0/r1/r2/r3 entry values are all zero, so the trace did not capture a live
+- AIData look-up; running the function in a real cross-fight scenario would expose a nonzero
+- table slot.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f 78d5a37f
+  where: bn6f 53ec62da
   tool: tools/symdoc.py

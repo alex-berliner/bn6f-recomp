@@ -3,38 +3,35 @@ address: '0x08123BE0'
 kind: function
 previous_names: []
 status: hypothesis
-summary: Configures AI state from a vtable-derived data block and forwards to applyAIDataToAttackTable with constant
-  args.
-interface: '(r0=dword_8123BFC ptr (r0=1, r2=&ai_data byte array 0x81233E0, r1=0x20, r3=5, r4=0x5c, r6=0)) -> r0=0x20
-  ; side effects: clobbers r0-r7,lr; tail-calls battleObject_applyAIDataToAttackTable_8123C20'
-details: "The function pushes r4-r7/lr, then loads r0 from `dword_8123BFC` (which holds 0x5A5856) and r2 from `byte_81233E0`\
-  \ (an EWRAM-resident 0x5C-byte AI data array; its size matches `AIData` field at loc=0x5c on BattleObject, i.e.\
-  \ AIDataPtr). r1 is forced to 0x20 (likely an AIData offset/index, matching AIData's `struct_org 0x20` boundary\
-  \ for joypad/damage fields), r3=5 (likely one of the small-count attack-vars fields in AIAttackVars such as NumChipsSelected\
-  \ or a chip-slot count), r4=0x5c (size of the AIData payload, matching struct size 0x100 minus offset 0x5c...\
-  \ actually exact size of AIData), r6=0. It then tail-calls the single callee `sub_8123C20` (battleObject_applyAIDataToAttackTable_8123C20)\
-  \ with that exact argument set, and returns the callee's r0 (0x20) via `pop {pc}`.\n  Given the argument shape\
-  \ (a 0x5C-byte AIData blob, an index 0x20, count 5, size 0x5C), this is consistent with copying/filling 5 attack-vars\
-  \ entries from the AI data blob at offset 0x20 into the AIAttackVars array inside a battle object. The captured-call\
-  \ snapshot (r0=1, r1=0, r2=&ai_data, r3=020047CC, sp=03007DE0, lr=08123563) shows the caller `battle_updateFrame_8123558`\
-  \ is operating on the live `oS20047CC` EWRAM blob at 0x020047CC and a battle object pointer, consistent with re-applying\
-  \ AI/attack data each turn. The function name is therefore plausibly a thin wrapper that fills the AIAttackVars\
-  \ (5 entries × 8 bytes = 0x28, or 5 entries × different size) from an AIData region, then forwards to the real\
-  \ applier. The exact semantics in `sub_8123C20` would settle it.\n"
+summary: Configures and dispatches battle-object attack-variable (AIData) initialisation for the per-frame battle
+  setup chain.
+interface: '(r5 = BattleObject*, r10 = Toolkit*) -> no return; side-effect: populates AIData at 0x020047CC via sub_8123C20
+  with arg block in IWRAM at 0x081233D8'
+details: "- The function does no real work in its own frame: it just sets up a fixed argument vector and tail-calls\
+  \ sub_8123C20 (named here by the lifter as battleObject_applyAIDataToAttackTable_8123C20).\n  - r0 = dword_8123BFC\
+  \ (a ROM pointer = 0x5A5856, used as the AIData/AIState base from `0x08123BFC`), r1 = 0x20 (count/stride into\
+  \ the AI table), r2 = byte_81233E0 (IWRAM arg/source buffer at 0x081233D8), r3 = 5, r4 = 0x5c, r6 = 0. These five\
+  \ constants plus r0 are forwarded verbatim into sub_8123C20, so sub_8123BE0 is essentially a wrapper that packages\
+  \ the constants needed by the AI-attack-table builder.\n  - r5 (BattleObject pointer, kept live across the call\
+  \ by the parent battle-update loop) and r10 (Toolkit pointer) are not touched; they are documented as `in` only\
+  \ because the caller has them live on entry but sub_8123BE0 never reads them itself. They are passed through and\
+  \ survive, hence `out` lists r5.\n  - All three callers (battle_updateFrame_8123558, sub_8123574, sub_81235A4)\
+  \ are battle-object phase orchestration routines, fitting a setup helper that primes AI attack variables once\
+  \ a battle object is moving from setup into update phase 4.\n  - The literal 0x5A5856 is treated as a ROM-side\
+  \ base for AIData/AIState data; the constant 0x5c matches oAIData+0x5c (the `Unk_5c` pointer field), and r1=0x20\
+  \ matches oAIData+0x20 (`TotalDamageTaken` region start). So the call is plausibly copying 0x20 bytes of AIData\
+  \ into each of the 5 battle objects (player + 4 actors), using Unk_5c as the per-row storage pointer.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- `ldr r0, off_8123BF8 // =dword_8123BFC` and the data word `0x5A5856` at dword_8123BFC: this is treated
-    as a 32-bit code/constant or pointer passed in r0. - `ldr r2, off_8123BF4 // =byte_81233E0`: r2 is a pointer
-    to a 0x5C-byte byte array in IWRAM (0x081233E0), which matches AIData size 0x5C (BattleObject.AIDataPtr points
-    to AIData of 0x100 bytes, but the actively-used portion of AIData up through Unk_5c is 0x5C bytes long). - `mov
-    r1, #0x20`: r1 = 0x20; coincides with `struct_org 0x20` boundary inside AIData where TotalDamageTaken/JoypadHeld
-    begin. - `mov r3, #5`: count of 5; matches a 5-element array size, plausibly the AIAttackVars subset or a 5-slot
-    chip list. - `mov r4, #0x5c`: size 0x5C bytes, identical to AIData''s used size. - `mov r6, #0`: cleared flag/padding
-    value. - Only one direct callee (`bl battleObject_applyAIDataToAttackTable_8123C20`) and the function returns
-    its r0 via `pop {r4-r7,pc}`. - All 40 captured calls show identical entry args (r0=1, r1=0, r2=&ai_data, r3=&S20047CC,
-    sp=03007DE0, lr=08123563) and exit r0=0x20 with flags -ZC-, indicating a deterministic, parameterless-per-call
-    wrapper run from `battle_updateFrame_8123558`.'
+  detail: '- Assembly is exactly `push/pop {r4-r7,lr}` plus 7 mov/ldr instructions and one `bl sub_8123C20` (asm33.s:1368),
+    i.e. a thin wrapper with no conditional logic. - dword_8123BFC == 0x5A5856 sits in ROM at 0x08123BFC and is
+    loaded as r0 (the only ROM pointer passed). - r1 #0x20 / r3 #5 / r4 #0x5c line up with oAIData: 0x20 is the
+    start of the post-header fields, 0x5c is the `Unk_5c` field, and 5 is plausibly `1 player + 4 opponents`. -
+    Captured-call entry r0-r3 shows the same caller context across 40 samples (r0=1, r2=0x081233D8, r3=0x020047CC),
+    consistent with a setup helper invoked once the battle object reaches the right phase. - Caller chain (updateFrame_8123558
+    -> ... -> mode-2 driver -> here) shows this is reached as part of the post-fade phase transition, hence "setup
+    AI attack vars" rather than a per-tick thing.'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x08123BE0
@@ -49,18 +46,16 @@ evidence:
     '
   result: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus3, story4, story6, story8, story9
 open_questions:
-- The exact role of r0=1 in the captured snapshot (it isn't loaded from dword_8123BFC at the function entry shown
-  — likely overwritten by the caller before entry); unclear whether r0 here is a battle-object index, an AI mode
-  flag, or an apply-flags bitmask.
-- Whether r4=0x5c is interpreted as a byte-count to copy or a struct size guard inside `sub_8123C20`.
-- Whether `dword_8123BFC` (value 0x5A5856) is ever dereferenced or just passed as a tag; the bytes "ZXV" don't obviously
-  correspond to a known symbol.
-- 'To settle: inspect `sub_8123C20`''s body and confirm it copies 0x5C bytes from *r2 starting at offset r1 into
-  *r0 with r3 entries and r4=size.'
+- The semantic role of 0x5A5856 (looks like a packed ASCII string "ZXV", so probably a code label baked into the
+  ROM rather than a data pointer) is not verifiable from this frame alone; the lifter's callee summary describes
+  it as "applyAIDataToAttackTable", which is the best hint we have for what 0x5A5856 points at.
+- Whether r1 truly is a `count` or a `stride/struct-size`; combining with r3=5 and a known AIData size of 0x100
+  (per the inc), 0x20 is too small to be a single AIData, so it is almost certainly an inner per-actor slice (e.g.
+  TotalDamage/Joypad block). Callee disassembly would settle this.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f 78d5a37f
+  where: bn6f 53ec62da
   tool: tools/symdoc.py
