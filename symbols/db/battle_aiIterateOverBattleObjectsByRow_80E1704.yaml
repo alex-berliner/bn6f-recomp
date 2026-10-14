@@ -1,0 +1,65 @@
+name: battle_aiIterateOverBattleObjectsByRow_80E1704
+address: '0x080E1704'
+kind: function
+previous_names:
+- sub_80E1704
+status: probable
+summary: Walks the battle-object list and returns an object whose PanelX matches a packed Y:X byte in
+  r4.
+interface: (r0 = accumulator/result, r4 = packed Y:X byte, r6 = ?, r7 = list head pointer) -> r0 = matched
+  object pointer (or 0)
+details: "Iterates a `[ptr]` array at `[r7]`, advancing `r7 += 4` each step until the slot is NULL\n \
+  \ (`ldr r3,[r7]; cmp r3,#0; beq locret_80E172E`). For each non-NULL BattleObject pointer `r3`,\n  it\
+  \ reads `PanelX` at `oBattleObject_PanelX = 0x12` (`ldrb r1,[r3,#0x12]`).\n\n  The packed byte in r4\
+  \ is decomposed:\n  - low byte = `(r4 << 24) >> 24`  → desired PanelX low bound\n  - high byte = `(r4\
+  \ >> 8)`        → desired PanelX high bound\n\n  If `PanelX < low OR PanelX > high` the entry is skipped\
+  \ (`blt`/`bgt` to `loc_80E172A`).\n  Otherwise:\n  - if `r0 == 0`, the current pointer becomes the new\
+  \ accumulator (`mov r0,r3`).\n  - else `bl sub_80E1730` is called with `(r0, r3, r6, lr)` — a helper\
+  \ that is consulted once\n    a previous match exists, probably to choose between candidates or to act\
+  \ on the second hit.\n\n  This pattern matches AI scanning for an enemy on the same row as the current\
+  \ panel, where\n  `r4` packs (col = PanelX desired, row = ?) and `r6` likely carries an AI/BattleState\
+  \ context\n  for the helper.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r3,[r7]; cmp r3,#0; beq locret_80E172E` — NULL-terminated pointer array walk anchored
+    at r7. - `ldrb r1,[r3,#oBattleObject_PanelX]` with the constant 0x12 (see BattleObject.inc) — reads
+    PanelX from each candidate object. - `lsl r2,r4,#0x18; lsr r2,r2,#0x18` isolates the low byte of r4;
+    `lsr r2,r4,#8` isolates the high byte; together they form a [low,high] range filter on PanelX. - `blt
+    loc_80E172A` (skip if PanelX < low) and `bgt loc_80E172A` (skip if PanelX > high) — strict range test,
+    both endpoints exclusive. - `cmp r0,#0; beq loc_80E1728` — only the first matching object is remembered;
+    subsequent matches defer to `sub_80E1730`. - `add r7,#4` advances the iterator by one pointer slot
+    before the loop. - Caller chain: `sub_80E16CC` (the only known caller) hands in r0/r1/r2/lr and saves
+    r4; convention strongly suggests this is a battle-AI scanning helper.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080E1704
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^080e1704 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- Exact meaning of the high byte of r4 — it's tested only against `PanelX`, not `PanelY`, so it likely
+  represents another column-x bound (panel-width?). Possibly a [colmin, colmax] range on the same row,
+  but the row axis is not directly compared here.
+- What `sub_80E1730` does on the second/later match — without its body we cannot tell whether this picks
+  the closest, farthest, or applies an AI decision.
+- 'Role of r6: passed through to `sub_80E1730` but never used in this function; probably an AIData/BattleObject
+  context pointer setup by the caller.'
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f c83478a3
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80E1704 -> battle_aiIterateOverBattleObjectsByRow_80E1704
+  where: bn6f 9d86d495
+  tool: tools/rename_symbol.py

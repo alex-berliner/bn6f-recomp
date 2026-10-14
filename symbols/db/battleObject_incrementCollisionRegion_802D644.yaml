@@ -1,0 +1,64 @@
+name: battleObject_incrementCollisionRegion_802D644
+address: '0x0802D644'
+kind: function
+previous_names:
+- sub_802D644
+status: probable
+summary: Increments the per-collision-region counter at EWRAM 0x2000070[r0] for the given region index,
+  saturating at 0xFF.
+interface: (r0 = region index 0..N) -> r0 = region index (untouched); r2 = new value written, with C/V
+  clobbered by the saturating cmp
+details: "Loads the base address 0x2000070 (a small u8 array in EWRAM indexed by region id) and reads\
+  \ the\n  current counter for that region, increments it by 1, and writes it back unless the result would\n\
+  \  overflow a u8 (i.e. result > 0xFE, so it would wrap to 0xFF). The `cmp r2, #0xff` + `bgt`\n  combination\
+  \ is a saturating-increment: if the post-increment value is already 0xFF (signed\n  comparison treats\
+  \ 0xFF as -1), the store is skipped, leaving the counter pinned at 0xFE. r0 is\n  not modified and serves\
+  \ only as the index; r1 is used as the base pointer and is also left\n  unchanged on exit. The function\
+  \ is void-like (no return value to callers; only r2 and flags are\n  documented as written).\n  Called\
+  \ from `battle_teardownObject_80165F8` as part of the battle-object teardown sequence;\n  given the\
+  \ surrounding work (releasing the slot, clearing collision data), this almost certainly\n  bumps the\
+  \ \"active objects using this collision region\" reference count down or tracks how many\n  teardowns\
+  \ touched the region. The captured-call lr=0x08016633 maps into that routine.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r1, off_802D690 // =byte_2000070` anchors the storage at EWRAM 0x02000070, a small per-region
+    array consistent with collision-region refcounts. - `ldrb r2, [r1,r0]` + `add r2, #1` + `strb r2,
+    [r1,r0]` is a textbook saturating increment of the u8 at `0x2000070[r0]`. - `cmp r2, #0xff` then `bgt
+    locret_802D650` skips the store when the new value would be 0xFF (signed `bgt` triggers on the negative
+    wrap), implementing the saturation cap. - Caller `battle_teardownObject_80165F8` summary explicitly
+    mentions "clears its collision region", matching the indexing semantics (`r0` is a region/collision
+    id passed alongside the object slot). - Captured calls always enter with `r1=0`, consistent with r1
+    not being used as an input here (only as the temp base pointer populated from `off_802D690`).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0802D644
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, battlesweep, beastsp, fuzz, menus2, menus3, story2, story4,
+    story5, story6, story8, story9'
+  reproduce: 'grep -l ''^0802d644 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, battlesweep, beastsp, fuzz, menus2, menus3, story2, story4, story5, story6,
+    story8, story9
+open_questions:
+- Whether the cap is intended as "max 0xFE" (saturate before storing 0xFF) or "skip only when
+- exact 0xFF would be written"; either reading collapses to the same observable behaviour in
+- practice. Settled by re-reading the byte right at 0x2000070[r0] before and after the call in a
+- controlled scenario. The exact semantic role (active-region refcount vs. teardown counter vs.
+- generation token) is also unverified; the name is restricted to the observable behaviour.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f c83478a3
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_802D644 -> battleObject_incrementCollisionRegion_802D644
+  where: bn6f 9d86d495
+  tool: tools/rename_symbol.py

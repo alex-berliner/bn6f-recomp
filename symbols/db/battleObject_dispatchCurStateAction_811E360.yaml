@@ -1,0 +1,59 @@
+name: battleObject_dispatchCurStateAction_811E360
+address: '0x0811E360'
+kind: function
+previous_names:
+- sub_811E360
+status: probable
+summary: Dispatches a BattleObject's CurState via a small jump table after reading offset 0x8
+interface: (r5 = BattleObjectPtr, r10 = toolkit ptr, lr) → side effects only; clobbers r0-r4, r6, r7,
+  lr; NZCV flags modified
+details: "Reads `r5` (BattleObject) byte at offset +8 (CurState per battle_object_struct: CUR_STATE_INITIALIZE\
+  \ 0x00,\n  CUR_STATE_UPDATE 0x04, CUR_STATE_DESTROY 0x08). Loads a base pointer from `off_811E370`,\
+  \ indexes by that byte,\n  fetches a function pointer, sets `lr = pc` and `bx`s through it (so callee\
+  \ runs in ARM mode if +1 set).\n  The dispatch table at `off_811E374` has exactly 3 entries:\n    [0]\
+  \ -> sub_811E384        (state 0x00: CUR_STATE_INITIALIZE)\n    [1] -> battleObject_setCoordsFromCutsceneScript_811E3CC\
+  \  (state 0x04: CUR_STATE_UPDATE)\n    [2] -> sub_811E40C        (state 0x08: CUR_STATE_DESTROY)\n \
+  \ `r6` is also preloaded with `eScenarioEffectState2000780` (saturating 0x40 loads indicate this points\
+  \ at a\n  state buffer rather than toolkit). Because the tail call is via `pop {pc}`, this trampoline\
+  \ returns to\n  whichever caller invoked it (lr is saved at entry, restored at exit), and the chosen\
+  \ callee's return\n  value/flags propagate to that outer caller unchanged.\n  Called from one of the\
+  \ BeastSp frames; offsets into on-BigBlue entry r2 (`0x087dd840`/`0x087dd8e5`) look like\n  BattleObject\
+  \ pointers whose offset 0x8 byte is the CurState.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r1, [r5,#8]` reads byte +8 from the object pointer in r5 — matches CurState offset
+    in battle_object_struct. - `off_811E370 -> off_811E374` is the start of the dispatch table; entry
+    count is 3 (`[off_811E384+1, battleObject_setCoordsFromCutsceneScript_811E3CC+1, sub_811E40C+1]`),
+    exactly the three documented CurState values 0/4/8. - `mov lr, pc; bx r0` followed by `pop {pc}` shows
+    a tail-call dispatch (save lr, dispatch, restore lr to return). - The names of the three callees (`sub_811E384`,
+    `battleObject_setCoordsFromCutsceneScript_811E3CC`, `sub_811E40C`) match the conventional initialize/update/destroy
+    trio of BattleObject lifecycle states. - Captured calls show lr=0x0804683c (a battle update loop)
+    and r5 pointing at an object-like struct.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0811E360
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^0811e360 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- Nothing material — the only unverified piece is which exact r5-using caller invokes this; coverage
+- names "snap_beastsp_0180000_*.bin" but no caller names are listed. Listing the caller would settle it.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f c83478a3
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_811E360 -> battleObject_dispatchCurStateAction_811E360
+  where: bn6f 9d86d495
+  tool: tools/rename_symbol.py

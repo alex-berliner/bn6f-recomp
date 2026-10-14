@@ -1,0 +1,68 @@
+name: battle_customScreen_clearSelection_80279C8
+address: '0x080279C8'
+kind: function
+previous_names:
+- sub_80279C8
+status: probable
+summary: 'In-battle Custom Screen cleanup: ticks the chip-select anim, queues its gfx, refreshes 5 slot
+  sprites with new availability, then runs the close-out sequence.'
+interface: (r5 = *S20364C0, r10 = *Toolkit) -> void
+details: "1. Calls battleObject_chipSelectAnimTick_8029C08 with r5 (the chip-select state).\n  2. Calls\
+  \ sub_802899C which queues the chip-select's 0x200-byte gfx block into VRAM.\n  3. Calls battle_endingBgUpdate_8029D34\
+  \ to advance the ending bg strip.\n  4. Loops r4 = 4..0 (5 iterations), and on each pass:\n     - r0\
+  \ = r4, r1 = 0, r2 = ldrb [r5,#8] (NumChipsSelected) - 1.\n     - if r0 <= r2 (i.e. slot index < NumChipsSelected-1),\
+  \ r1 := 1.\n     - calls customScreen_redrawChipSlot_8029CD4(r0, r1, 0) to redraw that chip slot\n \
+  \      as \"available\" (r1=1) for slots that just lost their chip, or \"empty/locked\" (r1=0)\n   \
+  \    otherwise. (The S20364C0 comment shows NumChipsSelected at offset 0x8.)\n  5. After the loop, calls\
+  \ customScreen_ExitSequence_8028E32 to tear the Custom screen down.\n  6. Returns to caller via `pop\
+  \ {r4,pc}` (tail call into the exit sequence essentially).\n  The net effect is: a chip was just used,\
+  \ so 5 chip-slot sprites are redrawn to reflect\n  the new NumChipsSelected, and the Custom screen then\
+  \ exits.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl battleObject_chipSelectAnimTick_8029C08` at 0x080279CC uses r5 (S20364C0 chip-select
+    state) per callee contract. - `bl sub_802899C` queues the 0x200-byte chip-select gfx per callee contract.
+    - `bl battle_endingBgUpdate_8029D34` advances bg strip per callee contract. - `ldrb r2, [r5,#8]` then
+    `sub r2,#1` reads NumChipsSelected (struct S20364C0 NumChipsSelected at 0x8) and computes (count-1).
+    - Loop `mov r4,#4 ... sub r4,#1 / bpl` iterates r4 = 4,3,2,1,0 (5 chip slots in the row). - `cmp r0,r2
+    / bgt loc_80279E6` then `mov r1,#1` makes r1=1 only when slot index <= count-1, i.e. still in the
+    now-active range. - `bl customScreen_redrawChipSlot_8029CD4(r0, r1, 0)` redraws each of the 5 chip
+    slots. - `bl customScreen_ExitSequence_8028E32` is the documented close-out of the Custom screen.
+    - All 5 callers are routed through sub_8027ADE / sub_8027AAE / sub_8027834 etc., the Custom Screen
+    state machine. - Captured calls (snap_beastsp_0160000_0..10) have r5=0x20364C0-style address (r10=toolkit),
+    r0/r1 hold small ints consistent with slot index / availability. - Exit r0=0, flags ZC set in every
+    capture, consistent with a void function that returns 0 via r0 clobber.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080279C8
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^080279c8 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- Whether the loop should really be (NumChipsSelected - 1) inclusive or exclusive; the `bgt` (>) makes
+  it
+- '`r0 <= r2`, i.e. slots 0..(count-2) get r1=1, and slot count-1 (if any) gets r1=0. The intent looks
+  like'
+- '"mark the slot that just emptied", but the exact "which slot is the just-used one" is not visible here.'
+- Whether sub_8029C08 / sub_8029CD4 / sub_802899C etc. are truly specific to *clearing* a selection vs.
+  an
+- arbitrary "deselect-one-chip-and-exit" event. The Custom Screen flow context strongly suggests the former.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f c83478a3
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80279C8 -> battle_customScreen_clearSelection_80279C8
+  where: bn6f 9d86d495
+  tool: tools/rename_symbol.py

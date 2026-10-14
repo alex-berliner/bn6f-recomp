@@ -186,11 +186,11 @@ static inline call_sub_8109708_result call_sub_8109708(u32 r0, u32 r1, u32 r2, u
 }
 
 typedef struct { u32 r0, r2, r3, r5, r6, r7; } call_sub_80103F8_result;
-/* register form: generated wrapper: sub_80103F8 has no typed C interface yet */
+/* register form: generated wrapper: battleObject_findClosestEnemyBattleObject_80103F8 has no typed C interface yet */
 static inline call_sub_80103F8_result call_sub_80103F8(u32 r0, u32 r5) {
     R0 = r0;
     R5 = r5;
-    GUEST_CALL(sub_80103F8);
+    GUEST_CALL(battleObject_findClosestEnemyBattleObject_80103F8);
     return (call_sub_80103F8_result){ R0, R2, R3, R5, R6, R7 };
 }
 

@@ -1,0 +1,62 @@
+name: battle_beastPwrAtk_addScaledBase_8012642
+address: '0x08012642'
+kind: function
+previous_names:
+- sub_8012642
+status: probable
+summary: 'Battle helper: add (baseDamage * beastOutMulti) to running total, with the multiplier clamped
+  to 5.'
+interface: (r0 = currentDamageTotal, r1 = baseDamage) -> r0 = currentDamageTotal + baseDamage * clamp(beastDamageCap,
+  0, 5) ; r1 unchanged
+details: "- Saves lr, then pushes r0/r1 onto the stack so they survive the helper call (r0 = accumulated\
+  \ damage, r1 = per-target base chip damage).\n  - Calls computeBeastDamageCap_801265A which (per its\
+  \ summary) returns the beast-out damage cap: 1 if beast-out, otherwise alliance + navi-bonus + transformation\
+  \ bonus clamped to 0xa.\n  - Moves the result into r2, branches: if r2 > 5, forces r2 = 5 (`cmp r2,#5`\
+  \ / `ble loc_8012652` / `mov r2,#5`). This effectively caps any beast damage contribution per hit at\
+  \ 5×.\n  - Restores r0/r1 from the stack and computes `add r0, r0, r1 * r2` (`mul r1, r2` / `add r0,\
+  \ r0, r1`).\n  - Returns via `pop {pc}` (no separate pop of lr). The contract says only the accumulator\
+  \ in r0 is observable to the caller.\n  - Called from a swarm of beast-power-attack initializers (greatfireAPwrAtk_init_8011BD0,\
+  \ slashcrossBPwrAtk_init_8011CD6, spoutcrossBPwrAtk_init_8011C5E, plus ~20 sub_8011xxx sub-spell initializers\
+  \ whose names all \"XBPwrAtk_init\" / \"XAPwrAtk_init\"). Captured-call signatures (entry r0=0x14, r1=0xa,\
+  \ exit r0=0x1e) match a typical \"running total += base * factor\" pattern: 14 + 10*1 = 0x1e when the\
+  \ beast cap is 1.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl computeBeastDamageCap_801265A` is the only direct call; the helper is documented as the
+    beast-out damage-cap calculator. - `cmp r2, #5` / `ble loc_8012652` / `mov r2, #5` shows a hard 5×
+    upper bound on the multiplier at offset 0x8012650. - `mul r1, r2` then `add r0, r0, r1` shows r0 +=
+    r1 * r2 (accumulator-style). - `push {lr}` / `pop {pc}` confirms it''s a non-leaf helper; contract
+    has only r0 as observable output. - Caller sub_8010D04 and the named greatfireAPwrAtk_init_8011BD0
+    / slashcrossBPwrAtk_init_8011CD6 / spoutcrossBPwrAtk_init_8011C5E are all beast-power-attack initializers
+    that need the beast-scaled damage added to a running accumulator. - Captured snap_beastsp_0140000_0..13
+    all show entry r0=0x14 (current total) + r1=0xa (base) -> exit r0=0x1e (20), i.e. 14 + 10*1, consistent
+    with the no-beast cap value.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08012642
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^08012642 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- Whether r0 is a *running* Damage total over all targets vs. something else (an AttackVars.Damage field
+  would also fit); the unit is unclear from the captured calls alone, but every caller is a beast-power-attack
+  init that needs scaled base damage summed in.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f c83478a3
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8012642 -> battle_beastPwrAtk_addScaledBase_8012642
+  where: bn6f 9d86d495
+  tool: tools/rename_symbol.py

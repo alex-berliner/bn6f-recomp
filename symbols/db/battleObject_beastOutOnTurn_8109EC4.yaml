@@ -1,0 +1,67 @@
+name: battleObject_beastOutOnTurn_8109EC4
+address: '0x08109EC4'
+kind: function
+previous_names:
+- sub_8109EC4
+status: probable
+summary: 'Beast-Out reaction: when this object is the current-turn actor, set its animation to 4 (Beast-Out
+  ready), mark attack vars, and clear OBJECT_FLAGS_INK_EQUIV_1 from its collision flags'
+interface: (r5 = ptr to this BattleObject, r7 = ptr to its AIAttackVars) -> side effects only ; no return
+  value to callers (only r1 may_write, condition codes)
+details: "Called from a battle-object \"Beast Out\" handler loop. The code first checks whether this\n\
+  \  object is the actor whose turn it currently is via battleObject_isCurrentTurnBattleObject_800AA06,\n\
+  \  passing r0 = [r5,oBattleObject_ExtraVars+4] (the \"current actor\" pointer stored in extra vars).\n\
+  \  If the check fails (r0 == 0 after tst), control jumps to locret_8109EE2 (pop {pc}) without\n  touching\
+  \ any state.\n  When the object IS the current turn actor:\n    - CurAnim (oBattleObject_CurAnim, +0x10)\
+  \ is set to 0x04 (strb r0, [r5,#0x10]).\n    - AIAttackVars.Unk_10 (oAIAttackVars_Unk_10, +0x10) is\
+  \ set to 0x35 (strh r0, [r7,#0x10]).\n    - r0 = 1 is passed to object_clearFlag, which clears the bit\
+  \ at position 1 of\n      ObjectFlags1 in this object's CollisionData (the cleared bit is presumably\
+  \ the\n      \"no-beast-out yet\" / \"beast-out pending\" flag).\n    - AIAttackVars.Unk_00 (oAIAttackVars_Unk_00,\
+  \ +0x00) is set to 8 (strh r0, [r7,#0x00]).\n  Result registers after the call: r0 cleared by object_clearFlag's\
+  \ RTS conventions\n  (exit snapshots show r0=0, Z flag set; the mov r0,#8 / mov r0,#1 in this routine\
+  \ also\n  clobber r0 before return), r1/r2 trashed by object_clearFlag, callee-saved r5/r7/lr\n  preserved\
+  \ across this leaf.\n  The \"snap_beastsp_*\" capture group shows r1 entered as 0x08109ec5 (= this function+1,\n\
+  \  i.e. the +1 Thumb offset used when callers reach this via lsl/add or BLX-from-Thumb\n  trampolines;\
+  \ common pattern when the caller encoded the address as ldr r1,[pc,..] then\n  bx r1). The repeated\
+  \ identical entries are consistent with this function being called\n  once per in-battle actor that\
+  \ has been Beast-Out ready, during the per-frame Beast-Out\n  dispatch.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- First two instructions `ldr r0, [r5,#oBattleObject_ExtraVars+4]; bl battleObject_isCurrentTurnBattleObject_800AA06`
+    gate the work on "is this the current-turn actor"; tst r0,r0 + beq to locret_8109EE2 confirms. - `strb
+    r0, [r5,#oBattleObject_CurAnim]` (0x10) with r0=4 sets CurAnim to 4, the Beast-Out reaction anim id.
+    - `strh r0, [r7,#oAIAttackVars_Unk_10]` and `strh r0, [r7,#oAIAttackVars_Unk_00]` write to the AIAttackVars
+    that r7 points at (AIData layout: AttackVars array at +0xa0 with size 0x50). - `bl object_clearFlag`
+    with r0=1 clears bit 1 of ObjectFlags1 in CollisionData (this object''s flag-clear routine). - Captured
+    snapshot prefix `snap_beastsp_*` and the repeated identical entry r0-r3 across 6/40 frames ties this
+    routine to the Beast-Out dispatch in BN6F. - Caller is `0x08109e86` (lr on each capture), consistent
+    with this being reached from a Beast-Out inner loop.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08109EC4
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp'
+  reproduce: 'grep -l ''^08109ec4 '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp
+open_questions:
+- 'The exact semantics of the bits written: which AI attack var slot 0 vs. 0x10 represent (request code
+  vs. state) and which ObjectFlags1 bit `1` corresponds to. Naming a stronger role than "Beast-Out reaction
+  handler" would need a wider sweep of the Beast-Out dispatcher.'
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f c83478a3
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8109EC4 -> battleObject_beastOutOnTurn_8109EC4
+  where: bn6f 9d86d495
+  tool: tools/rename_symbol.py

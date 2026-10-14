@@ -1,0 +1,74 @@
+name: battle_handleChipUseSubmenuInput_81235A4
+address: '0x081235A4'
+kind: function
+previous_names:
+- sub_81235A4
+status: probable
+summary: Handles Start/B to exit and A to confirm in a battle chip-use submenu, then refreshes chip-use
+  stats and steps the battle-object update phases.
+interface: 'void (r5 = navi/battle use-context struct, r10 = Toolkit); side effects: exits submenu on
+  Start/B, plays SFX, mutates r5 fields (+2=anim, +3, +0xc cursor, +0x1e/+0x20/+0x28/+0x32 AIData counters,
+  +0x32 again), refreshes chip-use stats; then calls drawBattleBackground + AI/attack-table apply phases.'
+details: "- Entry is `push {lr}` and the function `pop {pc}` at the end (no `push/pop` of other regs in\
+  \ lifter's contract `out`); in practice it relies on the caller preserving the callee-saved set around\
+  \ this call (r4/r5/r6/r7/r10).\n  - If IsButtonPressed(START|B) is true: confirm-exit submenu (`submenu_ConfirmExitAndFade_811FB64(8)`)\
+  \ and play `SOUND_EXIT_SUBMENU`, then fall through to the unconditional tail.\n  - Else if IsButtonPressed(A):\
+  \ call `sub_8123E08` (status-bit test), `sub_8123D54` (text/label picker → printer), play `SOUND_MENU_SELECT`,\
+  \ start animation `sub_811B314(1, 3)`, store `0x0c` at `[r5+2]` and `0` at `[r5+3]`, clear `[r5+0x20]`,\
+  \ then fall through.\n  - Else (no Start/B and no A): unconditionally store `0x1a` into `[r5+0x1e]`,\
+  \ `[r5+0x28]`, `[r5+0x32]`. Read `oToolkit_JoypadPtr` → `oJoypad_LowSensitivityHeld`, take `[r5+0xc]`\
+  \ as an index, load a byte from `dword_8123640` (= literal `0x140A00`), and call `sub_811F91C(joypad,\
+  \ tableByteByIndex, 1, 0)`; if non-zero, jump to the tail. Otherwise feed joypad+`[S2001c04+5]` into\
+  \ `menu_moveCursorLeftRight_811FA0C`; if its returned column differs from the current `[r5+0xc]`, store\
+  \ it back and call `refreshChipUseStats_8123A80`.\n  - `r5` here looks like a battle-side struct that\
+  \ mixes submenu-owned fields (anim/state bytes at +2/+3, cursor at +0xc) with an AIData footer (reads/writes\
+  \ at offsets 0x1e/0x20/0x28/0x32, which are in the AIData struct's `Unk_1a`/`JoypadHeld`/`JoypadReleased`/`Unk_32`\
+  \ range).\n  - Tail calls `drawBattleBackground_8123AB8`, `battleObject_applyAIDataToAttackTable_8123BC0`,\
+  \ `battleObject_runAttackTableApply_8123BE0`, `battleObject_runAITurnPhase_8123C00` (last three named\
+  \ here as suggestions since the assembly calls only show the unnamed subs; their confirmed summaries\
+  \ in callees show the AI/attack pipeline).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `IsButtonPressed(START|B)` then `submenu_ConfirmExitAndFade_811FB64(8)` + `PlaySoundEffect(SOUND_EXIT_SUBMENU)`
+    at the start of the function. - A branch calls `sub_8123E08` then `sub_8123D54` and animates via `sub_811B314(1,
+    3)`, then writes `[r5+2]=0x0c`, `[r5+3]=0`, `[r5+0x20]=0`. - Cursor-move branch reads `[r5+0xc]` and
+    compares it to the return of `menu_moveCursorLeftRight_811FA0C`, storing the new column back into
+    `[r5+0xc]` on change and following with `refreshChipUseStats_8123A80`. - Writes `0x1a` into AIData
+    offsets `+0x1e`, `+0x28`, `+0x32` (matched to AIData `Unk_1a`/`JoypadReleased`/`Unk_32`). - Reads
+    `Toolkit.JoypadPtr→oJoypad_LowSensitivityHeld` and `S2001c04[5]` (joypad/menu-state fields), feeds
+    `LowSensitivityHeld` into the cursor mover. - Tail unconditionally invokes the four `drawBattle…`/attack-table/AI
+    phase routines. - 29 captured callers all show r0=address+1 (BL idiom), r1=4, r2=0, r3=0x02001c04
+    (Toolkit.S2001c04_Ptr), lr=0x08123520; exit r0=0x40 (default OW compress), Z+C set.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x081235A4
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus3, story4, story6,
+    story8, story9'
+  reproduce: 'grep -l ''^081235a4 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus3, story4, story6, story8, story9
+open_questions:
+- What the `r5` struct actually is — likely a battle chip-use submenu context whose +0x1e/+0x20/+0x28/+0x32
+  offsets alias an embedded AIData; need a struct definition for the submenu state to confirm.
+- The literal `dword_8123640 = 0x140A00` is read into a byte — purpose unclear (maybe a flag mask or sprite/anim
+  index used by `sub_811F91C`).
+- 'The exact role of `sub_811F91C` here (the `tst r0,r0; bne tail` is the only output use): something
+  like a "is the cursor on a valid/helpable entry" gate; not deducible from the asm alone.'
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f c83478a3
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_81235A4 -> battle_handleChipUseSubmenuInput_81235A4
+  where: bn6f 9d86d495
+  tool: tools/rename_symbol.py

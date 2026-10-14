@@ -1,0 +1,72 @@
+name: battleObject_destroyOrDazzle_PHASE_80DA908
+address: '0x080DA908'
+kind: function
+previous_names:
+- sub_80DA908
+status: probable
+summary: 'Handles the object''s destroy/cleanup phase: clears collision and switches state, with a small
+  per-update timer branch.'
+interface: '(r5 = BattleObject*, r10 = Toolkit*) -> void ; side effects: mutates the BattleObject pointed
+  to by r5 (CurAnim, CurAction, CurPhase/PhaseInitialized, byte 0x0b, halfword 0x20)'
+details: "1. If battle_isBattleOver returns 0 (battle still running) the function returns immediately\
+  \ — no\n     work is done at all. Captured-call r0=4 every time, so this branch dominates.\n  2. Calls\
+  \ battle_getPhaseMode_800A152 and branches on the returned phase:\n     - mode == 0: returns immediately\
+  \ (time-stopped, nothing to do).\n     - mode == 2 (or after the timer branch below): falls through\
+  \ to the destroy tail at\n       loc_80DA948 which calls object_clearCollisionRegion(r5), sets CurAction\
+  \ = 0x08\n       (CUR_STATE_DESTROY) and zeros CurPhase/PhaseInitialized.\n     - mode == 1 (or any\
+  \ other non-zero, non-2 mode): switches the object into an \"active/\n       attacking\" mode — CurAnim\
+  \ = 1, calls sprite_noShadow to strip the shadow, CurAction = 0x0c,\n       and zeroes CurPhase/PhaseInitialized.\
+  \ This looks like a reactivation/dazzle branch.\n  3. Between those two tails sits an extra timer block\
+  \ reachable only when the function was\n     entered via the alias at +2 (lr = 0x080da8b4 — the caller\
+  \ `sub_80DA8B4` calls this code at\n     +1/+2, dropping the prologue and the `push {lr}`). That block\
+  \ reads `byte 0x0b` (the\n     PhaseInitialized/secondary byte field on BattleObject) and, if zero,\
+  \ seeds halfword\n     offset 0x20 (Timer) with 0xF0 (240) and sets the byte to 4; then decrements that\
+  \ halfword\n     each entry and falls into the destroy tail when it underflows. So when invoked from\
+  \ the\n     alias, this decrements a 240-tick self-destruct timer before clearing collision.\n  4. Object\
+  \ offsets used (BattleObject.inc): CurAnim=0x10, CurAction=0x09,\n     CurPhaseAndPhaseInitialized=0x0a,\
+  \ and raw bytes 0x0b / 0x20.\n  5. `pop {pc}` — no real return value; only scratch r0/r1/r2/r3/lr are\
+  \ clobbered (per the\n     contract out=[r1] but the caller never observes that).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {lr}` … `pop {pc}` (no body return) and out-only contains r1/flags confirms a void-like
+    procedure (`bn6f/asm/asm31.s:73876`). - `bl battle_isBattleOver` / `tst r0,r0` / `beq locret_80DA954`
+    — battle-over check is the first gate; all 40 captured calls show r0=4 on exit and Z flag set, so
+    this branch always fires when called directly (`snap_story2_0.bin..snap_story2_13.bin`). - `bl battle_getPhaseMode_800A152`
+    / `cmp r0,#0` / `beq locret` — phase 0 (time-stop) early exit. - `cmp r0,#2` / `beq loc_80DA948` —
+    phase 2 falls through to the destroy tail at loc_80DA948: `bl object_clearCollisionRegion`, `mov r0,#8
+    / strb r0,[r5,#oBattleObject_CurAction]`, `mov r0,#0 / strh r0,[r5,#oBattleObject_CurPhaseAndPhaseInitialized]`
+    (CurState=DESTROY). - The non-2 branch sets `mov r0,#1 / strb r0,[r5,#oBattleObject_CurAnim]`, `bl
+    sprite_noShadow`, `mov r0,#0xc / strb r0,[r5,#oBattleObject_CurAction]`, `mov r0,#0 / strh r0,[r5,#oBattleObject_CurPhaseAndPhaseInitialized]`'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080DA908
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp, fuzz, menus3, story2, story6, story9'
+  reproduce: 'grep -l ''^080da908 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp, fuzz, menus3, story2, story6, story9
+open_questions:
+- The `add r0,r0,r0` doubling looks like an authoring bug or an intentional *2 (giving 0x1E0,
+- not 0xF0). Worth confirming in the surrounding module whether 0xF0 or 0x1E0 is the intended
+- seed.
+- The +2 caller (0x080da8b4) is a different function that just falls into this code at a known
+- point; without its full body we can't tell whether this routine is the *only* self-destruct
+- timer for this object type, or whether the +2 entry is a hot-path shortcut. Naming the
+- function after the alias caller (rather than +0) would settle it.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f c83478a3
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80DA908 -> battleObject_destroyOrDazzle_PHASE_80DA908
+  where: bn6f 9d86d495
+  tool: tools/rename_symbol.py

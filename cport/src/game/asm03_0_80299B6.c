@@ -2987,12 +2987,12 @@ Next memBlock_ClearWorkArea_802D638(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_802D644 ── */
-/* sub_802D644(r0 = index into byte_2000070):
+/* ── battleObject_incrementCollisionRegion_802D644 ── */
+/* battleObject_incrementCollisionRegion_802D644(r0 = index into byte_2000070):
  * Increment the counter byte at byte_2000070[index], clamped at 0xFF
  * (0xFF stays 0xFF instead of wrapping). r2 = incremented (possibly
  * clamped) value; flags reflect the comparison against 0xFF. */
-Next sub_802D644(void) {
+Next battleObject_incrementCollisionRegion_802D644(void) {
     u32 value = (u32)LD8(A_byte_2000070 + R0) + 1;
 
     SET_FLAGS_CMP(value, 0xFF);

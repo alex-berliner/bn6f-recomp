@@ -1,0 +1,72 @@
+name: battleObject_updateAttachedArmCoords_80E4AAE
+address: '0x080E4AAE'
+kind: function
+previous_names:
+- sub_80E4AAE
+status: probable
+summary: Recomputes a battle object's X/Y/Z from its RelatedObject1Ptr's arm/part offset, syncs panel
+  coords, applies mosaic alpha, and queues destroy when off-panel with a non-zero ExtraVars sentinel.
+interface: (r5 = BattleObject *) -> void ; clobbers r0-r7, lr; nz/c/v
+details: "1. Loads RelatedObject1Ptr (r4) from [r5+oBattleObject_RelatedObject1Ptr]; reads the\n     related\
+  \ object's NameID (r0), Alliance (r2), DirectionFlip (r3) and passes them plus\n     a fixed slot id\
+  \ 0x1E to getBattleArmPositionMaybe_8018810, which yields an (x16, y16)\n     arm offset in (r0, r1).\n\
+  \  2. Saves the offsets in r7/r6 (<<16 so they become 16.16). Reads the related object's\n     X/Y/Z\
+  \ from r4+0x34..0x3c (3 words via ldmia), adds r7 to X (r1) and r6 to Y (r3), and\n     subtracts 0x20000\
+  \ from Y and Z (r2, r3) so the base attaches one panel up/back.\n  3. Writes the new X/Y/Z back into\
+  \ r5+0x34..0x3c (stmia).\n  4. Calls obj_getSpriteFlag10AndRenderInfoHigh_8002F3E and loc_8002F02 against\
+  \ r4\n     (sprite tooling update for the related sprite), then re-loads r4 and calls\n     sprite_getMosaicScalingParameters\
+  \ + sprite_setAlpha on r4.\n  5. Calls object_setPanelsFromCoordinates(r5) and object_isCurrentPanelValid(r5).\n\
+  \     If the panel is invalid, clears bit 0x02 (OBJECT_FLAG_VISIBLE) in\n     [r5+oObjectHeader_Flags].\n\
+  \  6. Reads *([r5+oBattleObject_ExtraVars]). If that sentinel is non-zero: OR's in bit\n     0x02 from\
+  \ r4's Flags into r5's Flags, then calls object_getFlag on r4; if bit\n     0x80000000 of the flag word\
+  \ is clear, it falls into the destroy path; otherwise it\n     returns leaving r5 alive.\n  7. Destroy\
+  \ path: clears *([r5+ExtraVars]) to 0 and sets\n     [r5+oBattleObject_CurStateActionPhaseAndPhaseInitialized]\
+  \ = CUR_STATE_DESTROY\n     (0x08). Returns via pop {r4,r6,r7,pc}.\n  Caller (sub_80E4A6E) loops every\
+  \ active battle object, so this is the per-object\n  update step for an attached/part-following battle\
+  \ actor (snake-arm style entity).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r4, [r5,#oBattleObject_RelatedObject1Ptr]` then `ldrh r0,[r4,#oBattleObject_NameID]`,
+    `ldrb r2,[r4,#oBattleObject_Alliance]`, `ldrb r3,[r4,#oBattleObject_DirectionFlip]`, `mov r1,#0x1e`
+    followed by `bl getBattleArmPositionMaybe_8018810` matches the helper''s signature (NameID, slot=0x1E,
+    Alliance, DirectionFlip -> x16,y16). - `mov r0,#0x34; add r0,r0,r4; ldmia r0!,{r1-r3}` and the matching
+    `add r0,r0,r5; stmia r0!,{r1-r3}` show Coords (X@0x34, Y@0x38, Z@0x3c) being read from r4 and written
+    into r5. - `ldr r6, dword_80E4B60` (=0x20000) used in `sub r2,r2,r6; sub r3,r3,r6` subtracts 0x20000
+    (one panel) from Y and Z. - Sequence of `bl obj_getSpriteFlag10AndRenderInfoHigh_8002F3E; bl loc_8002F02;
+    bl sprite_getMosaicScalingParameters; bl sprite_setAlpha` operates on r4 (the related object''s sprite),
+    not on r5.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080E4AAE
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp'
+  reproduce: 'grep -l ''^080e4aae '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp
+open_questions:
+- The semantic role of slot id 0x1E passed to getBattleArmPositionMaybe; the helper
+- comment suggests slots 0xCD..0xFF return default (0,7), but 0x1E is a valid index
+- whose arm-table meaning is not yet known.
+- Why bit 0x02 (OBJECT_FLAG_VISIBLE) is toggled on r5 based on panel validity and
+- bit 0x02 from r4's Flags is then OR'd in when the sentinel is non-zero; the
+- exact lifecycle intent (hide/show + attach detach) is not fully clear from the
+- assembly alone.
+- What writes the non-zero sentinel into *ExtraVars to trigger the destroy path
+- is not visible in this function; needs cross-reference from a sibling helper.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f c83478a3
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80E4AAE -> battleObject_updateAttachedArmCoords_80E4AAE
+  where: bn6f 9d86d495
+  tool: tools/rename_symbol.py

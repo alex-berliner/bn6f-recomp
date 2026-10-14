@@ -1,0 +1,71 @@
+name: jackIn_attemptJackInCheck_808CFB8
+address: '0x0808CFB8'
+kind: function
+previous_names:
+- sub_808CFB8
+status: probable
+summary: Decides whether the overworld player can jack in at their current position/conditions, updates
+  an encounter bitmap and counter, and returns a status code (0=idle, 1=moved, 2=jack-in blocked).
+interface: '(r10 = toolkit) -> r0 = status (0 = no change, 1 = player moved onto a jack-in hotspot, 2
+  = jack-in failed sound played) ; side effects: writes to *dword_808CA44 jack-in state struct (offsets
+  0x4/0x6/0x8-0x9/0x12/0x14/0x20..), calls PlaySoundEffect (0x11B then SOUND_CANT_JACK_IN), calls sub_808D034
+  and sub_808D098, calls ReadOWPlayerObjectCoords.'
+details: "- Resolves a global EWRAM pointer via the off_808D030 -> dword_808CA44 chain into r5 (the jack-in/status\
+  \ struct lives around 0x2000B40).\n  - Calls ReadOWPlayerObjectCoords to fetch the overworld player's\
+  \ X/Y/Z plus its object pointer, then funnels some of them through sub_808D034 before storing back as\
+  \ a u16 at struct+0x12.\n  - Compares the new Y-like coordinate (in r2) to struct+0x14: if unchanged\
+  \ the path falls through to strb r4 (returns 0). If changed, struct+0x14 is updated and sub_808D098\
+  \ is run; if sub_808D098 returns the \"equal\" result it also returns 0.\n  - When the hotspot is new\
+  \ and sub_808D098 says unequal, it sets r4=1 (status=moved), reads the player's panel/area bytes at\
+  \ struct+0x8/0x9 and only proceeds if the slot id (r1) lies in the inclusive range [0x71, 0x90]. Indices\
+  \ are remapped to local 0..0x1F and looked up against a 32-bit \"visited\" bitfield stored at struct\
+  \ + (0x20 + 4*(slot-0x72)).\n  - If the bit for that slot is already set (r1 bit clear), the function\
+  \ just OR-s the bit in (preserving the \"moved\" state) and returns 0. Otherwise the \"first discovery\"\
+  \ branch: increments a u16 counter at struct+0x6 (saturating at 0xFFFF), plays sound 0x11B (\"jack-in\
+  \ available\"), then plays SOUND_CANT_JACK_IN, leaves r4=2, and exits.\n  - Final step always stores\
+  \ r4 into struct+0x4 (the status byte) and returns r4 in r0. Callers in sub_808CB0C treat this status\
+  \ to decide whether to actually start a battle.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- "ldr r5, off_808D030 // =dword_808CA44" + "ldr r5, [r5]" resolve the global jack-in status
+    struct. - "bl ReadOWPlayerObjectCoords" followed by "bl sub_808D034" and "strh r2, [r5,#0x12]" updates
+    the cached player position halfword. - "ldrh r3, [r5,#0x14]" / "cmp r2, r3" / "beq loc_808D020" implement
+    the unchanged-position early-out. - Range gate "cmp r1, #0x71 ; blt ... ; cmp r1, #0x90 ; bgt ..."
+    restricts processing to hot-cold spots 0x71..0x90. - "sub r0, #0x72 ; sub r1, #0x71 ; lsl r0, r0,
+    #2 ; mov r2, #0x20 ; add r2, r2, r0 ; ldr r0, [r5,r2]" reads one of eight 32-bit visited bitmasks.
+    - "and r1, r3 ; beq loc_808D01C" tests whether this jack-in spot has already been recorded; the not-yet-recorded
+    path plays sound, bumps struct+0x6, and returns 2. - "ldr r0, dword_808D028 // =0x11B ; bl PlaySoundEffect"
+    / "mov r0, #SOUND_CANT_JACK_IN ; bl PlaySoundEffect" are the two audible cues. - "strb r4, [r5,#0x4]"
+    / "mov r0, r4 ; pop {r4-r7,pc}" canonicalize the status byte return.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0808CFB8
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^0808cfb8 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The exact mapping of sub_808D034 / sub_808D098 (not in this snippet); they likely format the overworld
+  coords and the encounter availability bitmap, but their bodies are not given here.
+- The semantic meaning of the u16 at struct+0x6 (jack-in attempts counter vs. visited-spots counter) and
+  of the status values 1 vs. 2 — only "0 = nothing" is unambiguous from this code.
+- Whether the [0x71, 0x90] range actually corresponds to "cold/empty spots" with a jack-in program installed,
+  or to a region-specific filter.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f c83478a3
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_808CFB8 -> jackIn_attemptJackInCheck_808CFB8
+  where: bn6f 9d86d495
+  tool: tools/rename_symbol.py

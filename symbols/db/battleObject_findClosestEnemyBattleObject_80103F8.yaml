@@ -1,0 +1,63 @@
+name: battleObject_findClosestEnemyBattleObject_80103F8
+address: '0x080103F8'
+kind: function
+previous_names:
+- sub_80103F8
+status: probable
+summary: Finds the closest enemy BattleObject to a panel (panel coords passed via stack) and returns it
+interface: '(r0 = actorIndex 0..3 [OpponentActors slot index], r5 = self BattleObject*) -> r0 = closest
+  enemy BattleObject* (or NULL); side effects: stack scratch for two (X,Y) pairs'
+details: "Saves PanelX/PanelY of self (r5) into [sp+0]/[sp+4] as the \"self panel\" probe.\n  Loads BattleStatePtr\
+  \ via r10 (= Toolkit), indexes into BattleActors[r0] (4-byte ptr slots\n  for a 4-slot opponent array),\
+  \ iterates r4=4 slots pulling the BattleObject* from each\n  AliveOpponentActors-like slot. For each\
+  \ non-null slot, reads CurState (skip if ==8, the\n  destroy state) and calls unpackVerActorTyAndAIIdx_800F29C\
+  \ on NameID; the function returns\n  the ActorType. Only ActorType in {0,1,2} (VIRUS/NAVI/PLAYER) are\
+  \ accepted as candidates;\n  values 0 and 1 share the same branch (loc_8010432), value 2 likewise.\n\
+  \  Each candidate's PanelX/PanelY is passed (along with self's [sp+0]/[sp+4]) to sub_8010460,\n  which\
+  \ returns a manhattan-ish distance. The candidate with the minimum distance wins;\n  r7 is the running\
+  \ best, and the push/pop at loc_8010452 carries the previous best's\n  distance forward so the new candidate\
+  \ can be compared with ble. Ties are not replaced\n  (the ble keeps the earlier one in r7). At the end\
+  \ r7 (= the winning BattleObject*) is\n  returned in r0, with NULL meaning no live candidate was found.\n\
+  \  Used by many enemy-virus/AI step functions (Mettaur, Swordy, Puffy, ...) to pick a target\n  object\
+  \ for the next AI decision.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r1,[r5,#oBattleObject_PanelX]` / `ldrb r1,[r5,#oBattleObject_PanelY]` followed by `str
+    r1,[sp]`/`str r1,[sp,#4]` saves caller''s panel into two scratch slots. - `mov r6,r10`; `ldr r6,[r6,#oToolkit_BattleStatePtr]`;
+    `mul r0,r1` (r1=0x10) + `oBattleState_BattleActors` (the PlayerActors/OpponentActors array slot) +
+    `r6` addresses a 4-entry slot table. - `mov r4,#4` and the trailing `add r6,#4`/`sub r4,#1`/`bne`
+    loop confirms iterating 4 pointers. - `cmp r0,#8` / `beq` skip matches `CUR_STATE_DESTROY` (struct
+    constant 0x8) on `oBattleObject_CurState`. - `bl unpackVerActorTyAndAIIdx_800F29C` returns ActorType;
+    the three `cmp r0,#2/#0/#1` branches accept ActorType 0/1/2. - `push {r0}` then later `pop {r1}` preserves
+    the previous-best distance so the new'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080103F8
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, battlesweep, beastsp, fuzz, menus2, story2, story4, story5,
+    story6, story8, story9'
+  reproduce: 'grep -l ''^080103f8 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, battlesweep, beastsp, fuzz, menus2, story2, story4, story5, story6, story8,
+    story9
+open_questions:
+- The exact distance metric sub_8010460 uses (manhattan vs straight-line) is not known
+- from this caller alone; reverse engineering sub_8010460 would settle it. Whether ties
+- are kept-in-order or replaced is also implicit in the ble.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f c83478a3
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80103F8 -> battleObject_findClosestEnemyBattleObject_80103F8
+  where: bn6f 9d86d495
+  tool: tools/rename_symbol.py

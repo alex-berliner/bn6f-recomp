@@ -1,0 +1,66 @@
+name: owPlayer_jumpTableDispatchWithAdvanceClear_809D8F4
+address: '0x0809D8F4'
+kind: function
+previous_names:
+- sub_809D8F4
+status: probable
+summary: Overworld-player secondary jumptable dispatcher for `OWPlayerObject.Unk_0a`; on a successful
+  per-frame tick it clears the 0x10-locked pending slot and the EVENT_1717_PLAYER_ADVANCE_FORWARD flag,
+  then advances the player's main jumptable index to 0x10.
+interface: '(r5 = OWPlayerObjectPtr, r10 = ToolkitPtr) -> none ; side effects: writes OWPlayerObject+0x0b,
+  clears a story-progress event flag, writes OWPlayerObject->JumptableIndex_09 (or its pending slot)'
+details: "- Reads OWPlayerObject byte at offset 0x0a (asm: `ldrb r0, [r5,#oOWPlayerObject_Unk_0a]`).\n\
+  \  - Uses an in-function jump table `off_809D91C = {sub_809D92C+1, sub_809D964+1, sub_809D9A0+1}` indexed\
+  \ by that byte to call into one of three sub-handlers (`bx r7` via `mov lr, pc`).\n  - Calls `sub_809DF28`\
+  \ (sub_809DF28 summary already says it bypasses the per-frame handler when player substate jumptable\
+  \ index is 0x10, otherwise falls through to `eStruct200ace0`).\n  - If `sub_809DF28` returns a value\
+  \ whose low byte is zero (`tst r0, r0; beq locret_809D91A`), the function returns immediately with no\
+  \ side effects beyond what the dispatch handler did.\n  - On a non-zero return: writes 0 to `[r7+1]`\
+  \ (i.e., the second byte of the dispatched function pointer/word at `off_809D928[r0]` — clears a \"\
+  queued\" sub-handler slot), then macro-clears `EVENT_1717_PLAYER_ADVANCE_FORWARD` via `ClearEventFlagFromImmediate`,\
+  \ then calls `owPlayer_setJumptableIndex09AndOthers_809e004(r0=0x10)` to push 0x10 into the player's\
+  \ main jumptable index (or its pending slot, depending on its current value).\n  - Per captured call,\
+  \ `r1` points into IWRAM (ff380000..ff600000 region) — values appear to be VRAM/heap pointers; the function\
+  \ only consumes r2/r5/r10/lr and returns nothing of interest to the caller.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0, [r5,#0xa]` reads the OWPlayerObject byte at the named offset (matches `oOWPlayerObject_Unk_0a`).
+    - Jump table at `off_809D91C` with three Thumb+1 entries resolves as a jumptable dispatch (`bx r7`
+    after `mov lr, pc`). - `tst r0, r0; beq locret_809D91A` shows the per-tick check on the inner state.
+    - `movflag EVENT_1717_PLAYER_ADVANCE_FORWARD` immediately followed by `bl ClearEventFlagFromImmediate`
+    clears that story-progress event flag on success. - `mov r0, #0x10; bl owPlayer_setJumptableIndex09AndOthers_809e004`
+    writes 0x10 into the OWPlayerObject main jumptable index per the callee''s contract. - `strb r0, [r7,#1]`
+    with `r0 = 0` zeroes the "next dispatch slot" byte of the handler pointer fetched at the top of the
+    function. - Captured callers all show `r5` as the OWPlayerObject base and `r3 = 020047cc` (S20047CC)
+    at entry; the function discards that input.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0809D8F4
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp, maps'
+  reproduce: 'grep -l ''^0809d8f4 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp, maps
+open_questions:
+- The exact three sub-handler functions (`sub_809D92C`, `sub_809D964`, `sub_809D9A0`) and the meaning
+  of `Unk_0a` (looks like a queued-anim/queued-handler index, since the function clears `[r7+1]` after
+  success).
+- Whether `sub_809DF28`'s r0 result is actually a one-bit "did we just advance forward" status, or a more
+  nuanced value; only the low bit is tested.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f c83478a3
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_809D8F4 -> owPlayer_jumpTableDispatchWithAdvanceClear_809D8F4
+  where: bn6f 9d86d495
+  tool: tools/rename_symbol.py

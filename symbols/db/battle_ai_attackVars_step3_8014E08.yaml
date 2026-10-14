@@ -1,0 +1,80 @@
+name: battle_ai_attackVars_step3_8014E08
+address: '0x08014E08'
+kind: function
+previous_names:
+- sub_8014E08
+status: probable
+summary: AI step 3 for a battle object's attack vars — plays the load/charge-in animation, sets a 10-frame
+  counter, plays a sound, and on expiry runs the turn-open / sprite-restoration cleanup and sets the next
+  state to 0xC.
+interface: (r5 = battle object, r7 = AI attack vars, r10 = toolkit, lr = ret) -> void ; no return value
+  to callers
+details: "Guarded by AIAttackVars_Unk_01: if non-zero, falls through to the counter-expiry branch immediately;\
+  \ otherwise it does the \"enter\" path.\n  Enter path (Unk_01 == 0): forces the palette to white, then\
+  \ loads a chip class for the object's alliance (`GetBattleNaviStatsByte(0x29)`), loads the sprite (class\
+  \ 0x80), attaches animation data, enables shadow, sets animation index 0, mirrors the sprite from `object_getFlip`,\
+  \ and `object_setCoordinatesFromPanels`. Stamps `AIAttackVars_Unk_10 = 0x0A` and re-whites the palette.\
+  \ Writes the loaded class byte back into NaviStats offset 0x2C via `SetBattleNaviStatsByte_AllianceFromBattleObject`.\
+  \ Calls `sub_80E11E0(r4 = 0x30E00, ...)`, then plays sound effect `0x100` (r0 = 1, r0 += 0xFF). Reads\
+  \ NaviStats 0x2C again; if 1..0x18 it sets the object's text name id (`battle_setObjectTextId_8015B22`).\
+  \ Calls `sub_8011268(0, 0x2c)` (a 24-way mode jump table), zeroes Param3 of `RelatedObject2Ptr` if non-null,\
+  \ runs `battleObject_computeAIStepForwardDeltaX_8018856(3)` and `sub_801DC06(-dx, ...)`, then sets `AIAttackVars_Unk_01\
+  \ = 4` and falls into the counter.\n  Counter branch: `AIAttackVars_Unk_10--`, while > 0 it returns.\
+  \ When it hits 0, it calls `callPossiblyGetBattleEmotion_8015B54(alliance)`; r0 == 2 ⇒ `r1 = 1` else\
+  \ `r1 = 0`, that boolean is pushed and used later. Calls `battle_beginTurnOpenProcess_80144C0` then\
+  \ `battleObject_markUsedAction_80143A6`. If the saved boolean is 1 it calls `battle_setPlayerNaviStatsField0E_8015BEC(alliance,\
+  \ 0xFF)`. Calls `object_clearInvulnerableTime` and, if `RelatedObject2Ptr != NULL`, `sprite_clearFinalPalette`\
+  \ on it (saving/restoring r5 around the call). Finally sets `AIAttackVars_Unk_00 = 0x0C` (the next AI\
+  \ state) and returns.\n  Notable: only `push {r4,lr}` is used so r4 is callee-saved across the function\
+  \ (it's used to carry 0x30E00 into `sub_80E11E0`). The two extra `push {r0}` / `push {r1}` slots are\
+  \ short-lived temporaries (class byte and the transformation==2 boolean).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- Early-exit guard: `ldrb r0, [r7,#oAIAttackVars_Unk_01]; tst r0,r0; bne loc_8014EB8` — when
+    state byte is already non-zero, jumps straight to the counter-decrement. - Force-white on entry +
+    exit: `bl sprite_forceWhitePalette` at top and again right after the `strh r0,[r7,#oAIAttackVars_Unk_10]`
+    write. - 10-frame timer: `mov r0,#0xa; strh r0,[r7,#oAIAttackVars_Unk_10]`, later `sub r0,#1; strh
+    ...; bgt locret_8014EFE`. - Sound id 0x100: `mov r0,#1; add r0,#0xff; bl PlaySoundEffect`. - Class
+    byte read/write at NaviStats offset 0x2C: `mov r1,#0x2c; bl GetBattleNaviStatsByte_AllianceFromBattleObject`
+    (twice, before and after loading) and `bl SetBattleNaviStatsByte_AllianceFromBattleObject` with `mov
+    r2,r0` of the freshly looked-up class. - Chip class lookup: `mov r1,#0x29; bl GetBattleNaviStatsByte_AllianceFromBattleObject;
+    bl chip_class_lookup_800FC9E` — byte 0x29 (ClassIdx / Folder) is fed into the chip-class ROM tables.
+    - `bl sprite_load(... r0=0x80 ...)` then `bl sprite_loadAnimationData` — standard "load + bind" sequence
+    used in other attack-VAR steps. - Counter expiry transitions to AIState 0xC: `mov r0,#0xc; strh r0,[r7,#oAIAttackVars_Unk_00]`.
+    - Transformation == 2 (BeastOut) branch: `cmp r0,#2; bne loc_8014ECE; mov r1,#1; loc_8014ECE: push
+    {r1}` then `cmp r0,#0` (after pop) chooses whether to write 0xFF to NaviStats+0x0E via `battle_setPlayerNaviStatsField0E_8015BEC`.
+    - 0x30E00 constant is loaded into r4 before `bl sub_80E11E0` (`ldr r4, dword_8014F00`).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08014E08
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^08014e08 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The semantic identity of the AI step ("enter" animation that charges in, then resolves turn open) is
+  inferred from the sequence; AIAttackVars_Unk_01 going 0→4 then Unk_00 going to 0xC strongly suggests
+  "state 3 of attack-vars lifecycle", but no caller list is provided to confirm which enemy/Navi this
+  fires for.
+- What `sub_80E11E0(r4=0x30E00, ...)` actually does is unknown; the constant 0x30E00 might be a packed
+  argument (chip id + element, or a script pointer).
+- The "if Unk_01 != 0 skip init" pattern implies the function is re-entered each frame from a dispatcher;
+  the dispatcher's identity is unknown (likely in the AI subsystem, possibly a sibling in this same file).
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f c83478a3
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8014E08 -> battle_ai_attackVars_step3_8014E08
+  where: bn6f 9d86d495
+  tool: tools/rename_symbol.py

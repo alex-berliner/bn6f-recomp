@@ -2496,10 +2496,10 @@ static const u8 *get_ver_actor_ty_and_ai_idx(u16 enemy_idx) {
     return (const u8 *)(u32)R0;
 }
 
-/* register form: calls sub_802D644 outside this file, which has no typed C interface yet */
+/* register form: calls battleObject_incrementCollisionRegion_802D644 outside this file, which has no typed C interface yet */
 static void dispatch_actor_init_low(u8 ai_index) {
     R0 = ai_index;
-    GUEST_CALL(sub_802D644);
+    GUEST_CALL(battleObject_incrementCollisionRegion_802D644);
 }
 
 /* register form: calls sub_802D65E outside this file, which has no typed C interface yet */
