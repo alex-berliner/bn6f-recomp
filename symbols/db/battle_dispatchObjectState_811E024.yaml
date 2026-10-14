@@ -1,0 +1,55 @@
+name: battle_dispatchObjectState_811E024
+address: '0x0811E024'
+kind: function
+previous_names:
+- sub_811E024
+status: probable
+summary: Tail-call dispatch on a battle object's CurAction/curstate byte via a 3-entry Thumb jump table
+interface: (r5 = BattleObject*) -> r2/r3/r5 = whatever the tail-called function returns; no preserved
+  lr (uses pop {pc})
+details: "Pushes lr, loads a pointer table at off_811E038 (3 entries: sub_811E048+1, sub_811E090+1, sub_811E0B2+1),\n\
+  \  indexes it with the byte at r5+8 (BattleObject's CurState/CurAction field per battle_object_struct),\n\
+  \  then jumps through it via `mov lr,pc; bx r0` after pre-loading r1 from r5+8 (BLeftAbility).\n  Effectively\
+  \ a 3-way tail-call dispatcher on CurState (values 0..2 map to the three callees).\n  Loads eStruct2001010\
+  \ into r6 but never uses it before returning (likely scratch).\n  The `pop {pc}` after the bx is dead\
+  \ code (never reached).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r1, [r5,#8]` matches BattleObject+0x8 = CurState (battle_object_struct definition)
+    - `ldr r0, off_811E034` followed by `ldr r0, [r0,r1]` reads a function pointer from a 3-entry table
+    indexed by that byte - `mov lr, pc; bx r0` is the standard Thumb-to-Thumb tail-call via dispatcher
+    - off_811E038 contains sub_811E048+1, sub_811E090+1, sub_811E0B2+1 (3 callees, 3-state machine) -
+    `pop {pc}` and the loaded r6/eStruct2001010 are never consumed, confirming tail-call semantics - Captured
+    calls show entry r5 = 0x02001f6e / 0x02009a2c (EWRAM battle object pointers)'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0811E024
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^0811e024 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- Which of sub_811E048/090/0B2 corresponds to CUR_STATE_INITIALIZE/UPDATE/DESTROY (0x00/0x04/0x08) — r5+8
+  holds CurState, but CurAction also lives at +9, and the table only has 3 entries while CurState's documented
+  values are 0/4/8. Settle by reading the callees' prologue or matching against CUR_STATE_INITIALIZE (0x00)/UPDATE
+  (0x04)/DESTROY (0x08) — the callers' r5+8 byte is what we'd need to inspect in surrounding code.
+- The role of r6 <- eStruct2001010 (loaded but unused) — likely stale code or caller expects it preserved
+  across dispatch.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 53ec62da
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_811E024 -> battle_dispatchObjectState_811E024
+  where: bn6f 6a79e2de
+  tool: tools/rename_symbol.py

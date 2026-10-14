@@ -1075,7 +1075,7 @@ Next sub_80A5514(void) {
  * The original pushes only LR, so the stack frame is just the return address.
  * Behaviour: if either of the two cutscene-script-pos checks is non-zero, or
  * the 0x80 chatbox flag is set, or owPlayer_isBusyOrCutsceneActive_809E462 returns non-zero, skip everything
- * (including sprite_update). Otherwise call sub_80A55D4, then test EVENT_4EA /
+ * (including sprite_update). Otherwise call reqBBS_updateBobbingCameraAndPlayChime_80A55D4, then test EVENT_4EA /
  * EVENT_4EB; if either is set skip to sprite_update. Otherwise, when the byte
  * at r6+8 is not 2, call checkBbsReqFlag_80A5744. sprite_update always runs past the
  * early-out block.
@@ -1105,8 +1105,8 @@ Next owMapObject_bbsObjectUpdate_80A5588(void) {
         RETURN_TO_CALLER();
     }
 
-    /* Run sub_80A55D4 unconditionally past the early-outs. */
-    GUEST_CALL(sub_80A55D4);
+    /* Run reqBBS_updateBobbingCameraAndPlayChime_80A55D4 unconditionally past the early-outs. */
+    GUEST_CALL(reqBBS_updateBobbingCameraAndPlayChime_80A55D4);
 
     /* If EVENT_4EA is set, skip the inner block (still sprite_update). */
     R0 = EVENT_4EA >> 8;

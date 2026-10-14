@@ -1,0 +1,61 @@
+name: battleObject_incrementUnk200431cCounterForMatchingObjects_813BE38
+address: '0x0813BE38'
+kind: function
+previous_names:
+- sub_813BE38
+status: probable
+summary: Bumps a per-battle counter for sibling battle objects sharing the caller's Element
+interface: '(r0 = battleObject index, r6 = saved caller Element, r10 = toolkit) -> r0 = 0 ; side effects:
+  increments byte in Unk200431c (toolkit+0x60) for every other live battle object with the same Element'
+details: "Iterates over the 0x31-entry fixed table at byte_2006C50 (typically ordered list of\n  battle\
+  \ object indices). For each occupied slot whose index (after -1) differs from the\n  caller's saved\
+  \ index, looks up the corresponding entry in Unk2004190 (8 bytes per entry),\n  fetches the live BattleObject\
+  \ via battleObject_getByIndex_813B780, and if its Element byte\n  at oBattleObject+0xE matches the caller's,\
+  \ increments byte_200431c[obj+4] by one. Caller\n  in sub_813BD24 seeds r6 from oBattleObject+0xE before\
+  \ invoking.\n  • Scratch: battleObject scratch at r7, Element scratch at r4; r6 is dead-stored on stack\n\
+  \  • Loop bound 0x31 = the standard 49-actor cap (AlivePlayerActors/AliveOpponentActors each\n    hold\
+  \ 0x10, fits).\n  • The offset oBattleObject+4 is being used as an index into Unk200431c — this is consistent\n\
+  \    with a u8 per-battle-object \"hits taken by matched element\" / targeting / damage-dealt\n    counter\
+  \ that the caller then consumes or displays.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- loop upper bound `cmp r6, #0x31` at loc_813BE7C - `ldr r5, off_813BE88` pulls address of
+    `byte_2006C50` (r5 bases the index walk) - `bl battleObject_getByIndex_813B780` resolves index → BattleObject
+    pointer - `ldrb r4, [r7,#3]` stores the *caller''s* element byte once before the loop (saved in r4)
+    - `ldrb r0, [r5,r6]; sub r0, #1; cmp r0, r1` filters out the caller''s own index (r1 came from stack
+    = saved r6 caller index) - `bl toolkit_getUnk2004190EntryPtr_813B9FC` used as a gate (`ldrh r0, [r7];
+    tst r0, r0; beq`) so empty entries skip - final matching block: `ldr r0, [r10,#oToolkit_Unk200431c_Ptr]`
+    (0x60), `ldrb r1, [r7,#4]`, `ldrb r2, [r0,r1]; add r2, #1; strb r2, [r0,r1]` is a +1 increment indexed
+    by the other battle object''s index byte - caller `sub_813BD24` contract: in r10, out r7/r8 — passing
+    the toolkit through, suggests it has just iterated actors and collected per-element data needing a
+    tally pass'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0813BE38
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^0813be38 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- What `Unk200431c[i]` actually counts (damage, hits, AI targeting weight?) — would settle by
+- reading the consumer that reads it right after sub_813BD24 returns. Exact semantics of
+- '`byte_2006C50` slot 0 meaning (likely sentinel count, skipped via `tst r0, r0`) also'
+- unverified beyond its use as an "is this slot live" flag.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 53ec62da
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_813BE38 -> battleObject_incrementUnk200431cCounterForMatchingObjects_813BE38
+  where: bn6f 6a79e2de
+  tool: tools/rename_symbol.py

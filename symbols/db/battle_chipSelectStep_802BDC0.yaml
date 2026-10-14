@@ -1,0 +1,59 @@
+name: battle_chipSelectStep_802BDC0
+address: '0x0802BDC0'
+kind: function
+previous_names:
+- sub_802BDC0
+status: probable
+summary: 'chip-select state dispatcher: indexes a jump table by chip-select state and forwards to the
+  matching handler, then plays the chip-select sound'
+interface: (r0 = chipSelectStateBase, r5 = chipSelectStruct (S20364C0*), r10 = Toolkit*, lr) -> r0 = return
+  value of last handler called
+details: "Pushes lr then reads `ldrb r0, [r5,#1]` (offset 0x1 in S20364C0, second jumptable offset).\n\
+  \  Builds an index into `off_802BDDC`, a 5-entry Thumb jump table:\n    - entry 0: sub_802BDF0\n   \
+  \ - entry 1: sub_802BE90\n    - entry 2: sub_802C280\n    - entry 3: sub_802C2D0\n    - entry 4: battle_advanceFade_802C328\n\
+  \  Loads the handler address with `ldr r1, [r1,r0]` then `mov lr, pc; bx r1` (TailCallForm,\n  handler\
+  \ returns via the original lr push above as `pop {pc}`). r0 input on entry is preserved\n  as the handler's\
+  \ r0.\n  After the dispatcher returns, calls sub_802C85C (no summary) and then `sound_pushRequest_802CA5C`,\n\
+  \  which queues the sound effect requested by the chip-select step. Captured calls show r0=4\n  on entry\
+  \ and a non-zero (handled) return value on exit, consistent with handler 4 / `battle_advanceFade_802C328`\n\
+  \  firing on snap_story2 snaps; the popup pointer in r3 (`02036828`) is unchanged.\n  Likely called\
+  \ once per chip-select advancement after the player confirms or hits OK.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0, [r5,#1]` reads S20364C0 byte 1, the second of the two `JumpOffset` bytes the struct
+    exposes as a dispatcher index. - `ldr r1, off_802BDD8 // =off_802BDDC` followed by `ldr r1, [r1,r0]`
+    is a direct table lookup, with `off_802BDDC` containing five `+1` Thumb addresses. - `mov lr, pc;
+    bx r1` is the canonical Thumb-tailswitch via LR; combined with `pop {pc}` at end, the dispatched handler''s
+    return goes straight to sub_802BDC0''s original caller. - r5 in S20364C0-based dispatchers throughout
+    bn6f is the chip-select state struct (see `battle_initChipSelect_802BD60` and `oS20364C0`). - Captured
+    exit r0=0x41dd0015 differs across calls only in low bits, matching a state-counter return value handed
+    back to whichever driver loop owned the chip select phase.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0802BDC0
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, beastsp, menus3, story2, story4, story5, story6, story7, story8,
+    story9'
+  reproduce: 'grep -l ''^0802bdc0 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, beastsp, menus3, story2, story4, story5, story6, story7, story8, story9
+open_questions:
+- Which handler each `(r0 = chipSelectStateBase)` value maps to in practice, and what `sub_802C85C` does
+  (its only caller here), would settle the per-call meaning.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 53ec62da
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_802BDC0 -> battle_chipSelectStep_802BDC0
+  where: bn6f 6a79e2de
+  tool: tools/rename_symbol.py

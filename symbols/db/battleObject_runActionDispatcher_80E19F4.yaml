@@ -1,0 +1,62 @@
+name: battleObject_runActionDispatcher_80E19F4
+address: '0x080E19F4'
+kind: function
+previous_names:
+- sub_80E19F4
+status: probable
+summary: Dispatches BattleObject CurAction to a per-action handler via a one-entry vtable (default tail
+  calls sub_80E1A0C)
+interface: '(r5 = BattleObjectPtr) -> r0 = handler''s r0 ; side effects: clobbers r1-r3,r10,lr; jumps
+  to function pointer chosen from a small table; tail-popped so the handler returns to the caller'
+details: "Reads [r5 + oBattleObject_CurAction] (offset 0x9) into r0 as an 8-bit index, then loads a\n\
+  \  function pointer from r1 = [off_80E1A04 + r0*4] where off_80E1A04 points at off_80E1A08\n  which\
+  \ is described as a table of action handlers. The only entry the asm actually places\n  is off_80E1A08\
+  \ = sub_80E1A0C + 1 (Thumb address with the +1 set), so the table appears\n  currently size-1 in the\
+  \ build; additional indices just zero-extend and would read past\n  the table in practice.\n  lr is\
+  \ moved into pc (mov lr, pc / bx r1) so this is a tail call: sub_80E1A0C returns\n  directly to 80E19F4's\
+  \ caller without an extra frame on the stack — push {lr} / pop {pc}\n  on the next two instructions\
+  \ is the unconditional-entry prologue/epilogue for the\n  Tail-call ABI; the captured saved lr (0x080e19c8)\
+  \ is the real return address.\n  r5 is the incoming BattleObject pointer and r10 is the toolkit (sub_80E1A0C\
+  \ consumes r10).\n  The exit captured r0 values look like returning constants from sub_80E1A0C's two\
+  \ outputs\n  (0x6f / 0x0a / 0x09 in the snapshots), propagating through unchanged.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {lr}` then `pop {pc}` immediately around the dispatch shows a tail-call trampoline
+    (`asm31.s:88871` sub_80E19F4 body, lines 1-7). - `ldrb r0, [r5,#oBattleObject_CurAction]` (line 3)
+    reads offset 0x9 of the BattleObject, matching CurAction in `BattleObject.inc`. - `ldr r1, off_80E1A04`
+    -> `[r1, r0]` (lines 2,4) implements a vtable lookup indexed by CurAction. - `mov lr, pc ; bx r1`
+    (lines 5-6) is the canonical "tail call" pattern (BX to Thumb, lr already points at caller). - Captured
+    entry lr=0x080e19c8 matches the single listed caller reaching this dispatcher. - Captured entry r0
+    sequence (4,8,12,8,12,8,12) is unrelated output from the caller; the function itself only uses r5
+    and an internally computed r1 pointer.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080E19F4
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, battlesweep, beastsp, fuzz, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^080e19f4 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, battlesweep, beastsp, fuzz, menus2, menus3, story2, story4, story5, story6,
+    story7, story8, story9
+open_questions:
+- True size and contents of off_80E1A08 — only one handler (sub_80E1A0C) is placed in
+- this build image, so other CurAction values cannot dispatch; dumping the ROM table
+- directly would settle the full handler set.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 53ec62da
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80E19F4 -> battleObject_runActionDispatcher_80E19F4
+  where: bn6f 6a79e2de
+  tool: tools/rename_symbol.py

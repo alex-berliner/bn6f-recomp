@@ -1,0 +1,83 @@
+name: reqBBS_updateBobbingCameraAndPlayChime_80A55D4
+address: '0x080A55D4'
+kind: function
+previous_names:
+- sub_80A55D4
+status: probable
+summary: 'BBS Overworld object per-frame step: ticking a down-counter, picking a BBS message id, drifting
+  the camera, projecting it onto the screen and playing a "new request" jingle when a message becomes
+  available.'
+interface: (r5 = BBS object ptr, r6 = ?, r10 = toolkit) -> side effects only; r0/flags side effects from
+  callees
+details: "Called from `sub_80A5588` (the BBS handler's update routine), once per frame while the BBS\n\
+  \  Overworld object is active. Steps:\n  1. Decrement a small timer at `[r5+0x2c]`; when it hits zero,\
+  \ reset it to 0x12 and clear the\n     `done` flag at `[r5+0x6]` (`strb r0, [r5,#6]` with r0=0; see\
+  \ `loc_80A55E0`).\n  2. If `[r5+0x6]` already equals 1, return immediately (BBS message has been delivered\
+  \ to the\n     Overworld; handler is finished). This short-circuit is what makes `r0=1` appear at exit\
+  \ in\n     `snap_story6_13.bin` only on the final tick.\n  3. Otherwise call `pickBBSMsgForMapGroup_80A5764`\
+  \ (r10 -> r4) to pick the BBS id for the current\n     map group / `reqBBS(4)` value.\n  4. Switch on\
+  \ `[r5+0x7]` (direction flag, values 0..3 read as a 4-way case) and add/subtract `r4`\n     into one\
+  \ of `[r5+0xc]` or `[r5+0x10]`. Those offsets correspond to X/Y in what the gameplay code\n     treats\
+  \ as the BBS camera/world-position slot (offset 0xc matches `[r5,#0xc]` below, used as the\n     base\
+  \ passed into `sub_8003694`).\n  5. Call `sub_80A5690` (camera-in-hotspot test, returns r0=1 when the\
+  \ camera is inside a BBS\n     hotspot rectangle). If inside, jump to the \"trigger chime\" branch;\
+  \ if outside, project the\n     `[r5+0xc]` position through the world->screen pipeline (`sub_8003694`)\
+  \ and only continue when\n     r2 == 0 (i.e. the projected point is on-screen AND inside the active\
+  \ viewport band).\n  6. Final branch:\n       - Test event flag 0x4EB via `TestEventFlagFromImmediate`.\
+  \ If unset AND `[r6+0x8] != 2`\n         (some \"BBS post-final flag\" must NOT also be set), set `[r5+0x8]\
+  \ = 8` (write the\n         \"BBS-ready-for-chatbox\" action byte) and return.\n       - Otherwise ([r5+0x5]\
+  \ != 0, meaning the camera has been \"snapped\" somewhere previously),\n         copy `[r5+0x24]/[r5+0x28]`\
+  \ back into `[r5+0xc]/[r5+0x10]` (revert the camera to its\n         saved spot), clear `[r5+0x5]`,\
+  \ set `[r5+0x6]=1` (done), and if `[r6+0xf]` is currently 0\n         play sound 0x17F (`dword_80A568C`)\
+  \ via `PlaySoundEffect` and stamp `[r6+0xf]=0xa`.\n       - If none of the above (camera projected off-screen),\
+  \ set `[r5+0x5]=1` (mark \"should snap\n         back next tick\").\n\n  So the routine is a state machine:\
+  \ idle for ~0x12 frames, drift the BBS camera toward the current\n  map group's hotspot until the camera\
+  \ reaches the hotspot rectangle, then either (a) post the\n  result into the OW action queue or (b)\
+  \ one-shot-play the chime and lock in the message.\n  Struct-wise, `r5` looks like an `OWMapObject`-ish\
+  \ entity (header at +0; matching the +0x2c timer,\n  +0x6 / +0x7 / +0x8 / +0x18-0x28 scratchpad layout\
+  \ used here), and `r6` is a sibling 0x10-byte\n  object whose `+8` and `+0xf` slots appear to be BBS-side\
+  \ bookkeeping.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `[r5+0x2c]` down-counter reset to 0x12 at `sub r0,#1` / `str r0,[r5,#0x2c]` / `mov r0,#0x12`
+    (lines 13-15) identifies the per-frame tick. - `[r5+0x6]` == 1 short-circuits the routine ("already
+    done") at the `beq locret_80A5674`. - `bl pickBBSMsgForMapGroup_80A5764` (BBS-id picker) plus the
+    4-way switch on `[r5+0x7]` adding or subtracting into `[r5+0xc]/[r5+0x10]` is a textbook "drift a
+    coordinate toward a target id". - The `sub_80A5690` call (camera-in-hotspot) gating the second branch
+    matches a BBS handler that waits until the camera lies inside the current map group''s BBS hotspot
+    rectangle. - `sub_8003694` (world->screen projection) followed by `cmp r2,#0 ; bne loc_80A5670` is
+    the "if on-screen" guard; the else-branch sets `[r5+0x5]=1`, the standard "save the current spot to
+    restore later" slot (re-stored into `[r5+0xc]/[r5+0x10]` from `[r5+0x24]/[r5+0x28]`). - `movflag EVENT_4EB
+    ; bl TestEventFlagFromImmediate` is the story-progress gating that decides "do not post the BBS message
+    at this point in the game".'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080A55D4
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp, story5, story6'
+  reproduce: 'grep -l ''^080a55d4 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp, story5, story6
+open_questions:
+- The exact roles of `[r6+0x8]` ("==2 aborts posting") and `[r6+0xf]` ("chime-already-played
+- flag", with sentinel 0xa) are inferred from the assembly pattern; identifying `r6`'s struct
+- would settle them.
+- The semantic meaning of "BBS msg id" returned by `pickBBSMsgForMapGroup_80A5764` (how it
+- selects among multiple BBS posts per map group) lives in that callee, not here.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 53ec62da
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80A55D4 -> reqBBS_updateBobbingCameraAndPlayChime_80A55D4
+  where: bn6f 6a79e2de
+  tool: tools/rename_symbol.py

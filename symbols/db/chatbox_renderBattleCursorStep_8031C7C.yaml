@@ -1,0 +1,56 @@
+name: chatbox_renderBattleCursorStep_8031C7C
+address: '0x08031C7C'
+kind: function
+previous_names:
+- sub_8031C7C
+status: probable
+summary: Advances the battle textbox cursor blink animation and reads back its visible/on state.
+interface: '(r0 = AIData pointer 0x02009f5c) -> r0 = 2 ; side effects: writes to scratch buffer via calcRelPosToTarget,
+  updates textbox cursor blink state'
+details: "- Pushes lr, then calls battle_calcRelPosToTarget_803172E with the incoming r0 (a pointer\n\
+  \    in EWRAM, captured as 0x02009f5c, which is an AIData struct instance).\n  - Loads constants r2=0xE,\
+  \ r4=0, r3=0xE, r5=0x10, then calls\n    textbox_computeCursorBlinkAdvance_80315B8 (named that way by\
+  \ the project; takes an\n    AIData-like struct and blink params).\n  - Calls sub_8031B7C, which (per\
+  \ its summary) returns the byte at offset 0x14 of an inner\n    struct pointed at by dword_2013920 when\
+  \ r0==1, else 0.\n  - The 0xE/0x10 constants match offsets in the AIData struct (ChipLockoutTimer=0x19,\n\
+  \    Unk_1a=0x1a... close but not exact; more likely these are textbox/joypad inner offsets).\n  - Returns\
+  \ 2 every time in story3 snapshots (r0=0x02009f5c → exit r0=2 with ZC flags set).\n  - Pops pc (tail-call\
+  \ style: push {lr} ... pop {pc} acts as bx lr).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- Captured entry r0=0x02009f5c (AIData region) and exit r0=0x2 with -ZC- flags, across 6+ snapshots.
+    - Direct calls to battle_calcRelPosToTarget_803172E (rel-pos calc) and textbox_computeCursorBlinkAdvance_80315B8
+    (cursor blink advance) at asm offsets +0x4 and +0x10. - sub_8031B7C summary says it inspects [[dword_2013920]+0x14]
+    for a flag; passing r0=1 selects the inner byte path; final returned r0=2 likely comes from this callee.
+    - push {lr} / pop {pc} tail-call pattern, so the function''s "return value" is whatever sub_8031B7C
+    returned (2).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08031C7C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp, fuzz, maps, story3, story8'
+  reproduce: 'grep -l ''^08031c7c '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp, fuzz, maps, story3, story8
+open_questions:
+- The exact role of the r4=0 written before the blink call; harmless in the captured
+- snapshots but its purpose (zeroing a counter?) is not visible in this function.
+- Why constants 0xE/0x10 are chosen; would need callee source to confirm they map to
+- AIData fields or textbox fields.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 53ec62da
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8031C7C -> chatbox_renderBattleCursorStep_8031C7C
+  where: bn6f 6a79e2de
+  tool: tools/rename_symbol.py

@@ -1,0 +1,63 @@
+name: battleObject_dispatchCurAction_80A7C84
+address: '0x080A7C84'
+kind: function
+previous_names:
+- sub_80A7C84
+status: probable
+summary: Dispatches a battle object's CurAction byte to one of three handlers via a 3-entry thumb-function
+  table (tail-call bx).
+interface: '(r5 = BattleObjectPtr, r10 = Toolkit) -> r0 = handler return; side effects: jumps to the function
+  pointer at off_80A7C98[r5+8] with r0=tableBase and r1=byte at r5+8, then returns whatever that handler
+  returns.'
+details: "1. Pushes {r4-r7,lr} (saves lr because the bx will never return through it).\n  2. Loads a pointer\
+  \ to off_80A7C98 (the 3-entry table at 0x080A7C98) into r0.\n  3. Reads the CurAction byte from the\
+  \ BattleObject at offset 0x8 (i.e. [r5+8], where r5 holds the object pointer).\n  4. Loads the matching\
+  \ function pointer: r0 = [r0 + r1] (tableBase + CurAction index).\n  5. Sets lr = pc (so the next bx\
+  \ acts as if returning to the pop instruction below) and bx r0 — a classic Thumb tail-call.\n  6. Restores\
+  \ {r4-r7,pc}, returning the callee's r0 directly to the caller.\n  The CurAction byte is also passed\
+  \ in r1 to the callee; the table base address is passed in r0, so each handler gets (tableBase, CurAction).\n\
+  \  The three handlers are sub_80A7CA4 (idx 0), sub_80A7CEA (idx 1), sub_80A7CF6 (idx 2) — all referenced\
+  \ with +1 (Thumb bit set), confirming they are Thumb.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {r4-r7,lr}` and `pop {r4-r7,pc}` (asm29.s:5398) confirm the function itself does no
+    work beyond dispatch. - `ldrb r1, [r5,#8]` shows the dispatch index is CurAction at BattleObject+8.
+    - `ldr r0, off_80A7C94` then `ldr r0, [r0,r1]` is the textbook tableBase+index load. - `mov lr, pc;
+    bx r0` is the canonical Thumb-bx trampoline used to tail-call into the matched handler. - The off_80A7C98
+    table holds three `.word sub_…+1` entries, exactly the +1 Thumb-bit convention used elsewhere in the
+    codebase. - The captured call entry r0 = 0x080a7c85 (= this function+1, Thumb) confirms it is the
+    dispatcher''s address being passed to a caller, and r1 = 0x38 is the CurAction value seen at runtime
+    (0x38 = CUR_STATE_UPDATE-ish range, dispatched to handler 1). - Exit r0 = 0x0998 / 0x09fc values match
+    exit r0s seen in sub_80A7CA4/sub_80A7CEA for these scenarios (consistent with the handler''s return
+    flowing through).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080A7C84
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^080a7c84 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The exact semantics of each of the three handlers (sub_80A7CA4/CEA/CF6) is not determined here; they
+  would need to be analyzed to know what CurAction values 0/1/2 mean (probably CUR_STATE_INITIALIZE/UPDATE/DESTROY-style
+  routing, but not confirmed).
+- Whether r10 (Toolkit) is actually consumed by the callees or is just callee-saved here is not visible
+  from this dispatcher alone.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 53ec62da
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80A7C84 -> battleObject_dispatchCurAction_80A7C84
+  where: bn6f 6a79e2de
+  tool: tools/rename_symbol.py

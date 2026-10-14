@@ -4,34 +4,33 @@ kind: function
 previous_names:
 - sub_804CBA4
 status: probable
-summary: Indirect dispatch through a 2-entry table indexed by a battle object's byte at +0x10 (typically
-  `CurAnim`), forwarding to either `sub_804CBDC` or `sub_804CC8E`.
-interface: '(r0 = ptr to a 2-entry fnptr table stored alongside `off_804CBB8`, r1 = u8 dispatch key) ->
-  r0 = return value forwarded from the chosen handler ; side effects: none in this stub itself; the dispatched
-  handler runs in r5/r10/lr-saved context.'
-details: 'The function is a 4-instruction Thumb trampoline. It pushes {r4-r7,lr}, loads the table base
-  (`off_804CBB4` -> `off_804CBB8` -> `{sub_804CBDC+1, sub_804CC8E+1}`), reads one byte at `[r5 + 0x10]`,
-  indexes the table by that byte, and tail-calls via `bx r0`. After `bx` it pops {r4-r7,pc}, but because
-  lr was overwritten with pc before the bx, the pop effectively returns to the original caller. The note
-  "r5" in the contract identifies the "current object" base register used by BN''s battle-object update
-  loop; offset 0x10 is the `CurAnim`/`CurAnimCopy` field of `oBattleObject`, so the dispatch is essentially
-  `switch (obj->CurAnim)` over the two beast-out related actions. The two handlers live right after this
-  stub: `sub_804CBDC` (index 0) and `sub_804CC8E` (index 1). Since the fnptrs are stored as `+1` they
-  are Thumb targets, confirming the dispatch is into two ARM/Thumb callables. The contract `out=[''r2'']`
-  likely reflects the callee''s documented contract being inherited; this stub itself does not return
+summary: Indirect dispatch through a 2-entry table indexed by a battle object's byte at +0x10 (typically `CurAnim`),
+  forwarding to either `sub_804CBDC` or `sub_804CC8E`.
+interface: '(r0 = ptr to a 2-entry fnptr table stored alongside `off_804CBB8`, r1 = u8 dispatch key) -> r0 = return
+  value forwarded from the chosen handler ; side effects: none in this stub itself; the dispatched handler runs
+  in r5/r10/lr-saved context.'
+details: 'The function is a 4-instruction Thumb trampoline. It pushes {r4-r7,lr}, loads the table base (`off_804CBB4`
+  -> `off_804CBB8` -> `{sub_804CBDC+1, sub_804CC8E+1}`), reads one byte at `[r5 + 0x10]`, indexes the table by that
+  byte, and tail-calls via `bx r0`. After `bx` it pops {r4-r7,pc}, but because lr was overwritten with pc before
+  the bx, the pop effectively returns to the original caller. The note "r5" in the contract identifies the "current
+  object" base register used by BN''s battle-object update loop; offset 0x10 is the `CurAnim`/`CurAnimCopy` field
+  of `oBattleObject`, so the dispatch is essentially `switch (obj->CurAnim)` over the two beast-out related actions.
+  The two handlers live right after this stub: `sub_804CBDC` (index 0) and `sub_804CC8E` (index 1). Since the fnptrs
+  are stored as `+1` they are Thumb targets, confirming the dispatch is into two ARM/Thumb callables. The contract
+  `out=[''r2'']` likely reflects the callee''s documented contract being inherited; this stub itself does not return
   anything in r0/r1 to its own caller.
 
   '
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- `push {r4-r7,lr}` / `pop {r4-r7,pc}` is a classic tail-call trampoline (no body between).
-    - `ldrb r1, [r5,#0x10]` reads the byte at object_base+0x10; in `oBattleObject` that is the `CurAnim`/`CurAnimCopy`
-    union. - The literal pool holds `{sub_804CBDC+1, sub_804CC8E+1}`, both Thumb-set, indicating an indirect
-    call through a 2-entry table. - `mov lr, pc; bx r0` performs the indirect tail call, and `pop {r4-r7,pc}`
-    returns to the original caller thanks to lr being clobbered with the return address. - Capture set
-    `snap_beastsp_*` (Beast Out SP snapshot) and entry `r0=0x0804cba5` (= this function, Thumb bit set)
-    corroborate the function being invoked in the Beast Out SP flow.'
+  detail: '- `push {r4-r7,lr}` / `pop {r4-r7,pc}` is a classic tail-call trampoline (no body between). - `ldrb r1,
+    [r5,#0x10]` reads the byte at object_base+0x10; in `oBattleObject` that is the `CurAnim`/`CurAnimCopy` union.
+    - The literal pool holds `{sub_804CBDC+1, sub_804CC8E+1}`, both Thumb-set, indicating an indirect call through
+    a 2-entry table. - `mov lr, pc; bx r0` performs the indirect tail call, and `pop {r4-r7,pc}` returns to the
+    original caller thanks to lr being clobbered with the return address. - Capture set `snap_beastsp_*` (Beast
+    Out SP snapshot) and entry `r0=0x0804cba5` (= this function, Thumb bit set) corroborate the function being invoked
+    in the Beast Out SP flow.'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x0804CBA4
@@ -59,3 +58,7 @@ changes:
   what: rename sub_804CBA4 -> battleObject_dispatchBeastOutAction_804CBA4
   where: bn6f d34dcc4e
   tool: tools/rename_symbol.py
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 53ec62da
+  tool: tools/symdoc.py

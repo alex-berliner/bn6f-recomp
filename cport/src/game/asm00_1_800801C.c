@@ -569,7 +569,7 @@ Next battle_DispatchStatePhase_800945C(void) {
     if (phase == 0)
         GUEST_CALL(battle_waitLinkSync_8009478);
     else
-        GUEST_CALL(sub_80094B6);
+        GUEST_CALL(battle_updateChipSelectInit_80094B6);
 
     SP += 4;                                /* pop {pc}: return through LR */
     RETURN_TO_CALLER();

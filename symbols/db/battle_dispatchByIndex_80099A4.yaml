@@ -1,0 +1,54 @@
+name: battle_dispatchByIndex_80099A4
+address: '0x080099A4'
+kind: function
+previous_names:
+- sub_80099A4
+status: probable
+summary: Dispatches to a battle-state handler based on `BattleState.Index_01`.
+interface: (r5 = BattleState* via toolkit r10) -> r0 = target-subroutine-return ; clobbers r0/r1, lr
+details: "Loads a 4-entry table pointer from `off_80099B8` (itself 9 slots, with three NULL entries\n\
+  \  for indices 2, 6, 7, 8), reads the current substate `BattleState.Index_01` (offset `oBattleState_Index_01`),\
+  \ and tail-calls through `mov lr,pc / bx r1`. Effectively a `switch(Index_01)` over battle sub-states:\n\
+  \    0 -> sub_80099E0  (init / enter)\n    1 -> sub_8009A88  (run / update)\n    2 -> NULL         (no-op\
+  \ / invalid)\n    3 -> sub_8009B20\n    4 -> sub_8009BAC\n    5 -> sub_8009C2A\n    6,7,8 -> NULL\n\
+  \    9 -> sub_8009C56  (exit / cleanup)\n  The prologue `push {lr}` then `pop {pc}` makes it a leaf\
+  \ trampoline; no local stack frame\n  is used. r5 is the BattleState pointer (sourced from the toolkit),\
+  \ r10 is the toolkit.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0, [r5,#oBattleState_Index_01]` (line 14525) loads the second BattleState byte (Index_01).
+    - `ldr r1, off_80099B4` followed by `ldr r1, [r1,r0]` indexes the dispatch table at off_80099B8 with
+    that index. - `mov lr, pc` + `bx r1` tail-calls through the loaded function pointer. - `pop {pc}`
+    returns via the value `lr` was set to (= the called function''s return address) — classic Thumb `bx`
+    trampoline pattern. - Dispatch table lists at off_80099B8 enumerate which subroutines are reachable
+    from each Index_01 value.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080099A4
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp'
+  reproduce: 'grep -l ''^080099a4 '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp
+open_questions:
+- The semantic role of each target sub_8009xxx (init vs. update vs. cleanup) is inferred from context
+  only; matching exact names would require inspecting those bodies.
+- Whether the three NULL entries are intentionally skipped, treated as no-ops by callers, or are placeholders
+  for unused states is not deducible from this stub alone.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 53ec62da
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80099A4 -> battle_dispatchByIndex_80099A4
+  where: bn6f 6a79e2de
+  tool: tools/rename_symbol.py

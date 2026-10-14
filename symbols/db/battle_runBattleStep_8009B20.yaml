@@ -1,0 +1,73 @@
+name: battle_runBattleStep_8009B20
+address: '0x08009B20'
+kind: function
+previous_names:
+- sub_8009B20
+status: probable
+summary: 'Per-frame battle main loop step: dispatches sub-move handling, validates the chip hand, and
+  resolves battle-result/turn-completion based on the player''s outcome.'
+interface: '(r5 = &eBattleState, r10 = &eToolkit) -> r0 = 0 ; side effects: mutates oBattleState_Unk_03,
+  oBattleState_Index_01, oBattleState_Unk_1e, oBattleState_Unk_02_03; calls sub_800B6F2 to fire pending
+  event flags'
+details: "On entry r5 is &eBattleState and r10 is &eToolkit. If the post-move flag oBattleState_Unk_03\
+  \ is zero,\n  the function primes it by calling sub_8008D40 and writing 4 back into it (`strb r0, [r5,#oBattleState_Unk_03]`).\n\
+  \  It then runs battle_dispatchPostMoveSubstate_8008950 and the chip-hand validator\n  someChipHandValidationHappensHere_800B090.\
+  \ The validator's return (r0) selects an outcome:\n    - r0==1: store battle-result 1 via setTwoStructs_800A840,\
+  \ recompute the player's animation pick\n      via sub_800AF84 (saving it to oBattleState_Unk_1e), write\
+  \ the matching sprite-data byte via\n      eStruct200A008_setUnk00, and call sub_800B6F2 to drain pending\
+  \ event flags. Note that\n      Unk_07 from eStruct200A008 is propagated into the OWPlayer trailing\
+  \ struct's +3 byte via\n      eStruct200A008_setUnk03 before the drain.\n    - r0==2: same as above\
+  \ but with battle-result 2; afterwards GetBattleEffects is checked and,\n      unless bits 0x8, 0x2\
+  \ and 0x400 are all clear, sub_800AF50 may rewrite r2 to override the\n      default value 0x14 written\
+  \ to oBattleState_Index_01.\n    - r0==7: just store battle-result 7.\n  In every case the function\
+  \ finally writes r2 (default 0x14, see `mov r2, #0x14`) into\n  oBattleState_Index_01 and clears oBattleState_Unk_02_03\
+  \ (16-bit) to 0, then returns 0 to the caller.\n  The contract's `out` register list is everything because\
+  \ all caller-saved registers are reused by\n  the callees; the only meaningful value written back is\
+  \ r0=0 (`mov r0, #0`).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0, [r5,#oBattleState_Unk_03]` + `tst r0, r0` + `bl sub_8008D40` + `strb r0, [r5,#oBattleState_Unk_03]`
+    (with r0=4): primes the post-move flag once per battle step - `bl battle_dispatchPostMoveSubstate_8008950`
+    followed by `bl someChipHandValidationHappensHere_800B090` and the r0 comparison tree: the chip-hand
+    validator''s return value picks the action branch - Three `mov r0, #<1|2|7>` + `bl setTwoStructs_800A840`
+    sequences confirm r0==1/2/7 each push a different battle-result byte into the shared routine - `bl
+    sub_800AF84` / `strb r0, [r5,#oBattleState_Unk_1e]` / `bl eStruct200A008_setUnk00`: hand off the recomputed
+    animation pick to both the battle state and the OW player sprite-data struct - `bl sub_800B6F2` only
+    in the r0==1 branch: only that branch runs pending-event flag firing - `mov r2, #0x14` at loc_8009BA2
+    then `strb r2, [r5,#oBattleState_Index_01]` and `strh r0, [r5,#oBattleState_Unk_02_03]` with r0=0:
+    default substate selector 0x14 and clear of Unk_02_03 at end-of-step - `bl GetBattleEffects` + `tst
+    r0, #8 / #2 / #0x400` and `bl sub_800AF50`: the r0==2 branch overrides r2 only when no special battle
+    effects are active'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08009B20
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp'
+  reproduce: 'grep -l ''^08009b20 '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp
+open_questions:
+- The "player outcome" values 1/2/7 returned by `someChipHandValidationHappensHere_800B090` likely encode
+  "win/lose/draw" but the project doesn't yet have names for them; identifying what each value means in
+  game terms would require the validator's code.
+- What the substate selector 0x14 (and the r2 overrides from sub_800AF50) actually means in `oBattleState_Index_01`
+  is unknown - it could be "battle ended, go to result", "play result animation", etc.
+- The exact game-term for "battle step" vs "battle tick" vs "battle frame" is debatable; this is the routine
+  called once per battle tick to advance post-action logic.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 53ec62da
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8009B20 -> battle_runBattleStep_8009B20
+  where: bn6f 6a79e2de
+  tool: tools/rename_symbol.py

@@ -2621,14 +2621,14 @@ Next sub_8031C5A(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8031C7C ── */
-/* sub_8031C7C — battle helper that runs a short setup sequence:
+/* ── chatbox_renderBattleCursorStep_8031C7C ── */
+/* chatbox_renderBattleCursorStep_8031C7C — battle helper that runs a short setup sequence:
  * 1. battle_calcRelPosToTarget_803172E with the caller's r0/r5 arguments,
  * 2. textbox_computeCursorBlinkAdvance_80315B8 with a fixed parameter set (14, 14, 0, 16),
  * 3. sub_8031B7C to finish.
  * All results (r0, r2-r7) and the NZCV flags are whatever the last
  * callee leaves behind. */
-Next sub_8031C7C(void) {
+Next chatbox_renderBattleCursorStep_8031C7C(void) {
     GUEST_CALL(battle_calcRelPosToTarget_803172E);
 
     R2 = 0xE;
@@ -2642,13 +2642,13 @@ Next sub_8031C7C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8031C94 ── */
-/* sub_8031C94: run a three-step sequence on the object passed in r0/r5.
+/* ── battle_aiStorySub3_8031C94 ── */
+/* battle_aiStorySub3_8031C94: run a three-step sequence on the object passed in r0/r5.
  * Calls battle_calcRelPosToTarget_803172E first, then textbox_computeCursorBlinkAdvance_80315B8 with a fixed parameter set
  * (r2=0, r3=0x10, r4=2, r5=2), then sub_8031B7C, which picks up whatever
  * r2/r5 textbox_computeCursorBlinkAdvance_80315B8 left behind. r3/r4 must survive the final call.
  * Everything (registers and flags) is simply passed through to the caller. */
-Next sub_8031C94(void) {
+Next battle_aiStorySub3_8031C94(void) {
     GUEST_CALL(battle_calcRelPosToTarget_803172E);
 
     R2 = 0;

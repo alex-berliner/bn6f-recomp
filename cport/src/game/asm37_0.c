@@ -311,10 +311,10 @@ Next getWorkAreaPtr_2006CF8_813BD0C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_813BD10 ── */
-/* sub_813BD10: load the address of unk_2006C88 into r7.
+/* ── battle_loadNavicustProgramTable_813BD10 ── */
+/* battle_loadNavicustProgramTable_813BD10: load the address of unk_2006C88 into r7.
  * A tiny getter used by callers that then access that RAM area. */
-Next sub_813BD10(void) {
+Next battle_loadNavicustProgramTable_813BD10(void) {
     R7 = A_unk_2006C88;
     RETURN_TO_CALLER();
 }

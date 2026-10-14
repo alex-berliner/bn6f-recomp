@@ -1,0 +1,69 @@
+name: battle_runBattleFrameForCyberWorld_808FEA4
+address: '0x0808FEA4'
+kind: function
+previous_names:
+- sub_808FEA4
+status: probable
+summary: Per-frame battle update gated to a specific cyberworld map (0x83 or 0x85:0x02)
+interface: '(r10 = toolkit) -> void ; side effects: dispatches AI and refreshes battle-object sprite gfx
+  when the gate is open'
+details: "Loads GameStatePtr from r10 (oToolkit_GameStatePtr) and reads MapGroup/MapNumber.\n  If MapGroup\
+  \ == 0x83 the gate is unconditionally open. If MapGroup == 0x85 the gate\n  additionally requires MapNumber\
+  \ == 0x02 (so the (0x85,0x02) cyberworld variant).\n  Outside those cases the function returns immediately\
+  \ without touching battle state.\n  When the gate is open, fetches the pointer stored at off_808FDB8\
+  \ into r5, calls\n  sub_808FF44 (which the contract marks as taking r5 in/out), then checks\n  (r5+0x5)\
+  \ — likely a per-frame \"busy\"/\"frozen\" flag, since the\n  BattleObject struct's AIDataPtr + 0x5\
+  \ maps to AIData.APwrAtk and the AIData offset\n  0x5 of the BattleObject AIData area.  Reading the\
+  \ code's own comment,\n  \"(byte_2000315 - 0x2000310)\", it accesses r5+5 as a byte; if it is non-zero\
+  \ the\n  routine bails out (no AI dispatch / no sprite refresh).\n  Only when r5+5 is zero does it call\
+  \ sub_8046818 (battle_callAIDispatch_8046818)\n  and then sub_8046854 (battleObject_updateSpriteGfxForAll_8046854)\
+  \ before\n  returning. Effectively a \"frame tick for the cyberworld battle scene\": if not\n  locked\
+  \ by r5+5, run AI dispatch and refresh all battle-object sprite graphics.\ndetails-step-by-step:\n \
+  \ 1. push {r4-r7,lr}; r0 = r10; r0 = [r0 + oToolkit_GameStatePtr]\n  2. r1 = GameState.MapGroup; r2\
+  \ = GameState.MapNumber\n  3. if MapGroup==0x83 fall through; if MapGroup==0x85 require MapNumber==0x02,\n\
+  \     else locret\n  4. r5 = *off_808FDB8 (a long-lived state pointer used by sub_808FF44)\n  5. bl\
+  \ sub_808FF44 — sets up something using r5\n  6. if [r5+5] != 0, return (no AI / no sprite work)\n \
+  \ 7. bl battle_callAIDispatch_8046818\n  8. bl battleObject_updateSpriteGfxForAll_8046854\n  9. pop;\
+  \ return via pc\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mov r0, r10; ldr r0, [r0,#oToolkit_GameStatePtr]` — fetches GameState from the toolkit -
+    `ldrb r1,[r0,#oGameState_MapGroup]; ldrb r2,[r0,#oGameState_MapNumber]` — reads MapId bytes - `cmp
+    r1,#0x83 / beq loc_808FEBA` — unconditional gate on group 0x83 - `cmp r1,#0x85 / bne locret_808FED0
+    / cmp r2,#2 / bne locret_808FED0` — group 0x85 only opens on map 0x02 - `ldr r5, off_808FED4 (=off_808FDB8);
+    ldr r5,[r5]` — loads a saved pointer used by sub_808FF44 - `bl sub_808FF44` — battle subsystem prep
+    (contract: in r5, out r1/r2/r3/r5/lr) - `ldrb r0,[r5,#0x5]; cmp r0,#0; bne locret_808FED0` — busy/in-progress
+    guard; non-zero skips the rest - `bl battle_callAIDispatch_8046818` — name suggests per-frame AI dispatch
+    - `bl battleObject_updateSpriteGfxForAll_8046854` — name suggests sprite-gfx refresh of all battle
+    objects'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0808FEA4
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^0808fea4 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- Exact semantics of `[r5+5]` flag; the AIData offset 0x5 is APwrAtk, but here it is being read on the
+  pointer loaded from off_808FDB8 (which may or may not be AIData). Deciding which struct r5 actually
+  points to would require following off_808FDB8 and the writer of that pointer.
+- Whether the gate condition really means "cyberworld" or just "these two specific maps" — only heuristic
+  from map-id values.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 53ec62da
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_808FEA4 -> battle_runBattleFrameForCyberWorld_808FEA4
+  where: bn6f 6a79e2de
+  tool: tools/rename_symbol.py

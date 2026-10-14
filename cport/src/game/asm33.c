@@ -1511,9 +1511,9 @@ Next submenu_subchip_dispatch_812407C(void) {
 }
 
 /* ── submenu_subchip_81240BC ── */
-/* register form: calls sub_81244EC outside this file, which has no typed C interface yet */
+/* register form: calls submenu_subchip_tickOamAndAdvanceAnimTable_81244EC outside this file, which has no typed C interface yet */
 static void call_submenu_update(void) {
-    GUEST_CALL(sub_81244EC);
+    GUEST_CALL(submenu_subchip_tickOamAndAdvanceAnimTable_81244EC);
 }
 
 /* register form: calls IsScreenFadeActive outside this file, which has no typed C interface yet */
@@ -1607,10 +1607,10 @@ static inline call_menu_moveCursorUpDown_811FA22_result_submenu_subchip_81240D0 
 }
 
 typedef struct { u32 r5; } call_sub_81244EC_result;
-/* register form: generated wrapper: sub_81244EC has no typed C interface yet */
+/* register form: generated wrapper: submenu_subchip_tickOamAndAdvanceAnimTable_81244EC has no typed C interface yet */
 static inline call_sub_81244EC_result call_sub_81244EC(u32 r5) {
     R5 = r5;
-    GUEST_CALL(sub_81244EC);
+    GUEST_CALL(submenu_subchip_tickOamAndAdvanceAnimTable_81244EC);
     return (call_sub_81244EC_result){ R5 };
 }
 
@@ -1916,14 +1916,14 @@ Next subchip_initGfx_81243B0(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_81244EC ── */
-/* sub_81244EC(r5 = entity ptr, r10 = ?):
+/* ── submenu_subchip_tickOamAndAdvanceAnimTable_81244EC ── */
+/* submenu_subchip_tickOamAndAdvanceAnimTable_81244EC(r5 = entity ptr, r10 = ?):
  * Per-frame entity update. Loads the active flag at +0xC; if zero, do nothing.
  * Otherwise packs an effect descriptor and dispatches a render/animation call
  * (battleObject_queueOamFromTableRow_811FAF4), then decrements a timer at +0x12; when it hits zero, calls
  * sub_8120CC8 to fetch a new (state, duration) pair that is stored at +0xD
  * and +0x12 respectively. */
-Next sub_81244EC(void) {
+Next submenu_subchip_tickOamAndAdvanceAnimTable_81244EC(void) {
     /* The original pushes {r4, lr} and uses r4 = 0x40000000 as an argument
      * to battleObject_queueOamFromTableRow_811FAF4, then pops r4 back, preserving it for the caller. */
     u32 saved_r4 = R4;

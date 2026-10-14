@@ -1,0 +1,56 @@
+name: battle_aiStorySub3_8031C94
+address: '0x08031C94'
+kind: function
+previous_names:
+- sub_8031C94
+status: probable
+summary: AI step helper that recomputes target-relative position, advances cursor blink, then queries
+  the AI selection byte
+interface: (r0 = scratch buffer, r5 = AI-related state) -> r0 = 0 or 2 ; side effects may_write ['nz',
+  'c', 'v', 'r0', 'r2', 'r3', 'r4', 'r5', 'r6', 'r7', 'lr']
+details: "1. push {lr}; bl battle_calcRelPosToTarget_803172E  — fills r0 with entity vs doubled target\
+  \ coords.\n  2. Sets up r2=0, r4=2, r3=0x10, r5=2 and bl sub_80315B8 (named textbox_computeCursorBlinkAdvance_80315B8\
+  \ in callees), advancing a cursor blink timer.\n  3. bl sub_8031B7C with r0=1, which per callee summary\
+  \ returns byte 1 (= AIIndex) of [[dword_2013920] + 0x14]; that return value flows out as r0.\n  4. Returns\
+  \ via pop {pc}.\n  All three callees sit at very low addresses (0x080315b8, 0x08031b7c, 0x0803172e)\
+  \ and the captured LR=0x08031ad0 across all snapshots confirms a single caller at 0x08031ad0, consistent\
+  \ with this being one sub-step of the larger battle_aiStory phase at 0x08031Axx.\n  Exit r0 is 0 or\
+  \ 2 in the captured snapshots (just the AIIndex pulled through sub_8031B7C).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- Assembly has exactly four operations after push {lr}: bl calcRelPos; prepare args; bl 80315B8;
+    bl 8031B7C; pop {pc} (sub_8031C94 body, bn6f/asm/asm03_0.s:25764). - Caller LR is uniformly 0x08031ad0
+    across all 40 captured snapshots, showing this is a one-call-site helper invoked from a single battle
+    AI sub-step. - Captured exit r0 values of 0 (most snapshots) or 2 (snap_story3_12/13) match the documented
+    behaviour of sub_8031B7C, which returns [[dword_2013920]+0x14].byte1 when r0=1. - r1=0x67ba / 0x67bb
+    on entry looks like a tile/object id argument expected by battle_calcRelPosToTarget, consistent with
+    AI target selection.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08031C94
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp, fuzz, maps, story1, story3, story8'
+  reproduce: 'grep -l ''^08031c94 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp, fuzz, maps, story1, story3, story8
+open_questions:
+- Exact role of the r2=0, r4=2, r3=0x10, r5=2 args handed to sub_80315B8 (textbox_computeCursorBlinkAdvance)
+  is inferred from the callee's name only; not visible from this assembly alone.
+- What 0x08031ad0 does with the returned AIIndex/byte is unknown without seeing that function.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 53ec62da
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8031C94 -> battle_aiStorySub3_8031C94
+  where: bn6f 6a79e2de
+  tool: tools/rename_symbol.py

@@ -1,0 +1,61 @@
+name: submenu_subchip_tickOamAndAdvanceAnimTable_81244EC
+address: '0x081244EC'
+kind: function
+previous_names:
+- sub_81244EC
+status: probable
+summary: Sub-chip submenu per-frame OAM tick — queues an OAM entry from a sprite/animation row table,
+  advances the local anim timer, and on expiry looks up the next anim row.
+interface: '(r5 = submenu state base, r10 = toolkit) -> void (out only preserves r5) ; side effects: writes
+  OAM via battleObject_queueOamFromTableRow_811FAF4, mutates r5+0xc/0xd/0x12'
+details: "Reads r5+0xc; if it's 0 the function returns without doing anything (\"active\" flag gate).\n\
+  \  Otherwise it builds an OAM tile-attr word from a base 0x40000 plus a row offset:\n    r1 = u16 at\
+  \ r5+0x14 (the panel row, used as an index); r1 *= 0x10; +0x30 gives the row offset.\n    r0 = 0x40000\
+  \ | rowOffset, r1 = 0x10002 (palette index / size low), r2 = u8 at r5+0xd (anim index),\n    r3 = byte_8123F34,\
+  \ r4 = 0x40000000 (OBJ enable / affine bit). battleObject_queueOamFromTableRow_811FAF4 is then called.\n\
+  \  Decrements the u8 at r5+0x12 (timer); if it doesn't hit zero the function returns. When it does hit\
+  \ zero, sub_8120CC8 (the t[i] / t[0] for t[i]==0xFF table lookup) is called with r0 = u16 animation\
+  \ row and r1 = pointer to dword_8123F3C (the advance table); the returned u8 is stored back into r5+0xd\
+  \ (next anim row) and the new timer duration is stored at r5+0x12.\n  Net effect each call: if the timer\
+  \ is enabled, push one sprite frame and either decrement the per-frame timer or roll to the next anim\
+  \ index + reset timer.\n  Callers (submenu_subchip_81240BC, submenu_subchip_81240D0, submenu_subchip_8124350)\
+  \ all feed it the same SubMenu pointer in r5 and toolkit in r10.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- ldrb r1, [r5,#0xc] / tst / beq locret gates on r5+0xc; that''s the SubMenu Unk_0c/enable
+    byte. - ldr r0, =0x40000 then orr with (r5+0x14 * 0x10 + 0x30) builds an OAM attribute2 base+offset;
+    0x10002 and 0x40000000 are standard OAM attribute0/attribute1 MSBs. - ldr r3, =byte_8123F34 (sprite
+    descriptor table) and ldrb r2, [r5,#0xd] (the row/anim index into that table) feed battleObject_queueOamFromTableRow_811FAF4,
+    whose name says exactly this is the per-frame OAM pump. - ldrb r1, [r5,#0x12] / sub #1 / strb / bne
+    shows a per-frame down-counter; only on underflow is the table touched. - The underflow branch calls
+    sub_8120CC8 with dword_8123F3C as the advance table and writes the returned u8 to r5+0xd (next anim
+    row) plus r0 to r5+0x12 (next timer); that matches "look up next anim index, reset timer".'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x081244EC
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, beastsp, fuzz, maps, menus3, story4, story6'
+  reproduce: 'grep -l ''^081244ec '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, beastsp, fuzz, maps, menus3, story4, story6
+open_questions:
+- Which exact OAM sprite table byte_8123F34 corresponds to for the sub-chip submenu is unverified; identifying
+  it would let us rename r5+0xc (enable) and r5+0xd (anim row) to actual field names and probably drop
+  the _ADDRESS suffix.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 53ec62da
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_81244EC -> submenu_subchip_tickOamAndAdvanceAnimTable_81244EC
+  where: bn6f 6a79e2de
+  tool: tools/rename_symbol.py

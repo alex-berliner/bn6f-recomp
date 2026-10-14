@@ -1,0 +1,61 @@
+name: battle_updateChipSelectInit_80094B6
+address: '0x080094B6'
+kind: function
+previous_names:
+- sub_80094B6
+status: probable
+summary: Initialises the battle chip-select screen once per battle result phase and advances to the result
+  screen when the chip-select init returns true.
+interface: (r5 = BattleStatePtr) -> r0 = battle_initChipSelect_802BD60's return ; writes BattleState_Unk_03
+  (+0xD), Index_01 (+0x1), Unk_02_03 (+0x2)
+details: "Called from a battle update function (lr=0x08009468, per the captured calls); r5 holds the BattleState\
+  \ (toolkit.BattleStatePtr pattern is common).\n  First half: tests BattleState_Unk_03 (offset 0xD) —\
+  \ if zero, queues the PET navi's reward/result display via setupNaviDisplay_802C34E (passes unk_2035260\
+  \ as r0, the battle-state result buffer at +0xD) and marks Unk_03 = 4 so the queueing only happens once.\n\
+  \  Second half: always calls battle_initChipSelect_802BD60. If it returns 0 (init finished), sets BattleState.Index_01\
+  \ = 0x14 (the next battle-phase jump index, \"battle result\") and clears BattleState.Unk_02_03 (offset\
+  \ 0x2..0x3) to 0.\n  Returns via pop {pc}. Behavior is essentially: \"after the battle ends, kick off\
+  \ navi result graphics once, drive chip-select init to completion, and on completion set the phase to\
+  \ result.\"\n  The `Index_01 = 0x14` value matches a battle phase id (chip-select done -> result/next\
+  \ phase), consistent with the function name it calls.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0, [r5,#oBattleState_Unk_03]` then `tst r0, r0` + `bne loc_80094C8`: guards one-shot
+    init on BattleState+0xD. - `ldr r0, =unk_2035260` / `bl setupNaviDisplay_802C34E`: the callee''s summary
+    says it "copies the 12-byte result record (r0 = unk_2035260, record battle state +0x0D) into eS20364C0…",
+    confirming the battle-state +0xD == result record pointer match. - `mov r0, #4` / `strb r0, [r5,#oBattleState_Unk_03]`:
+    marks init done (0 -> 4). - `bl battle_initChipSelect_802BD60` then `tst r0, r0` + `bne locret_80094D8`:
+    only the false (in-progress) branch falls through to update phase. - `mov r0, #0x14` / `strb r0, [r5,#oBattleState_Index_01]`
+    and `strh r0, [r5,#oBattleState_Unk_02_03]` with x=0: advance Index_01 to 0x14 (result phase) and
+    reset Unk_02_03. - `pop {pc}` (Thumb tail) — caller-saved r4/r5/r6/r7/r10 are in the in/out contract.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080094B6
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, beastsp, menus3, story2, story4, story5, story6, story7, story8,
+    story9'
+  reproduce: 'grep -l ''^080094b6 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, beastsp, menus3, story2, story4, story5, story6, story7, story8, story9
+open_questions:
+- What Index_01 == 0x14 actually names (likely "battle result phase" by elimination but no symbol confirms
+  it).
+- Whether BattleState+0xD is a flag or holds the result record pointer; the callee summary treats both
+  cases as the +0xD record slot.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 53ec62da
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80094B6 -> battle_updateChipSelectInit_80094B6
+  where: bn6f 6a79e2de
+  tool: tools/rename_symbol.py
