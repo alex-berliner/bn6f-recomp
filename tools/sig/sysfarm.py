@@ -297,8 +297,8 @@ def check(job: str, tree: str, file: str, entries: list[str], members: list[str]
         path = os.path.join(tree, "cport/src/game", file)
         code = open(path).read()
         g = json.load(open(os.path.join(tree, "build-abi/graph.json")))
-        covered = {m for m in members if m not in entries} | {n for n in g["entries"]
-                                                              if re.search(rf"^Next {n}\(void\)", code, re.M)}
+        covered = ({m for m in members if m not in entries}
+                   | set(re.findall(r"^Next (\w+)\(void\)", code, re.M)))
         unit_entries: dict[str, set[str]] = {}
         for n, e in g["entries"].items():
             unit_entries.setdefault(e["unit"], set()).add(n)
@@ -948,6 +948,7 @@ def run_job_chunked(name: str) -> None:
     update(name, members=len(members), entries=entries, skipped=skip, chunks=len(chunks))
     env = {"PATH": f"{MAIN}/toolchain/bin:{os.environ['PATH']}"}
     denv = {"BN6F_ROM": f"{MAIN}/bn6f/bn6f.gba"}
+    member_set = set(members)
     path = os.path.join(tree, "cport/src/game", file)
     body_path = os.path.join(base, "body.c")
     body = open(body_path).read() if os.path.exists(body_path) and job.get("resume") else ""
@@ -973,13 +974,19 @@ def run_job_chunked(name: str) -> None:
                     break
                 code = assemble(pre, open(pp[:-4] + ".c").read())[len(pre):].strip("\n") + "\n"
                 code = PROTO.sub(lambda m: "" if m.group(1) in {t["cname"] for t in table.values()} else m.group(0), code)
+                # the tool owns the probe adapters: a `Next` the model wrote for a member that is not an
+                # entry point duplicates the tool's (and an override that misses its unit's other entries
+                # makes the lifter refuse), so it comes out here; entry points' own adapters stay
+                for n, e in g["entries"].items():
+                    if e["unit"] in member_set and n not in entries:
+                        code = re.sub(rf"^Next {n}\(void\) \{{.*?^\}}\n", "", code, flags=re.M | re.S)
                 cur = pre + body + "\n" + code
                 open(path, "w").write(cur)
                 fails = static_checks(tree, f"src/game/{file}")
                 note = ""
                 if not fails:
-                    covered = set(chunk) | {n for n in g["entries"]
-                                            if re.search(rf"^Next {n}\(void\)", cur, re.M)}
+                    in_code = set(re.findall(r"^Next (\w+)\(void\)", cur, re.M))
+                    covered = set(chunk) | in_code
                     unit_entries: dict[str, set[str]] = {}
                     for n, e in g["entries"].items():
                         unit_entries.setdefault(e["unit"], set()).add(n)
