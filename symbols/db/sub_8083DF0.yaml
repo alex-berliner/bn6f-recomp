@@ -3,46 +3,46 @@ address: '0x08083DF0'
 kind: function
 previous_names: []
 status: hypothesis
-summary: Cutscene-graphics-orchestrator (reads L-Message / AskJackOut cutscene script markers, sets/clocks GFX anims
-  0x8083FC0/0x8083FFC/0x08084068, and toggles event flag 0x17 bit 7 via the BBS request handlers) — placeholder
-  for the scene that runs at 0x8083DF0.
-interface: '(r10 = oToolkit, lr = return) -> nz flags ; side effects: event flag bit (0x17, 0x07) read/cleared/set,
-  three GFX anim state slots loaded and ticked, sub_8083F80 / sub_80840C4 / sub_8084080 / sub_8084180 / sub_8084214
-  / sub_80842D8 driven, sub_809E462 called'
-details: "No assembly bytes were recovered for this routine (asm panel says \"sub_8083DF0 not found in\n  bn6f/asm\"\
-  ) so behaviour must be inferred from its callees and the register contract.\n  Reads only r10 (=oToolkit) and\
-  \ lr, so it is a top-level scene dispatched from the subsystem\n  jumptable (r10 carries the toolkit, like every\
-  \ other bn6f scene). Out contract includes r4..r12\n  plus nz flags, which is consistent with a long-lived per-frame\
-  \ state-machine: r5/r7/r8/r9\n  come back to the caller and are presumably re-loaded each call rather than preserved.\n\
-  \  The contract `may_write=['lr']` and the absence of any out=`r0/r1` registers indicates this\n  is void-like.\n\
-  \  Callee mix is unusually graphics-heavy: three \"load_gfx_anim_*\" routines (0x8083FC0, 0x8083FFC,\n  0x8084068)\
-  \ plus struct_copy 0x80840C4 suggest this function orchestrates a small list of\n  GFXAnimState entries (struct\
-  \ size 0x18, oGFXAnimState). It also drives six sibling helpers\n  labelled sub_8083F80 / 0x8084080 / 0x8084180\
-  \ / 0x8084214 / 0x80842D8 in the same code page,\n  which read r5 as their main state pointer — that page (0x8083F80..0x8084338)\
-  \ reads as a\n  mini cutscene/animation driver.\n  Two cutscene-marker probes (8036F40 \"L-Message sentinel?\"\
-  , 8036F58 \"AskJackOut script?\") and\n  direct read/write of an event flag (TestEventFlagFromImmediate / ClearEventFlagFromImmediate\n\
-  \  / SetEventFlagFromImmediate) imply this scene reacts to whichever L-Message / jackout script\n  is currently\
-  \ queued in oCutsceneState.\n  Event-flag operating target is fixed by the confirmed callee\n  reqBBS_setFlag_e17b0f7_8140A00\
-  \ (\"sets event flag 0x7 in event byte 0x17\"), with its sibling\n  reqBBS_clearFlag_8140A0C clearing it again;\
-  \ this is the BBS-request-via-cutscene flow used\n  when the player agrees to jack out during an L-Message.\n\
-  \  sub_809E462 (nz out) is the only call that returns a boolean check to the caller, so the\n  scene likely branches\
-  \ on it once anims are loaded (e.g. wait-for-input / has-scrolled).\n  Naming is intentionally generic (\"scene/orchestrator\"\
-  ) because the exact subsystem is not\n  pinned down; the absence of battle-state helpers (no oBattleStatePtr field\
-  \ in the contract,\n  no battle_* callees) makes this an overworld/cutscene-side routine rather than a battle\n\
-  \  routine, despite the \"battle_\" prefix candidates fitting the address layout.\n"
+summary: Initializes/refreshes a beast-out related battle object (loads gfx anims, manages event flags and cutscene-script
+  sentinels) and writes into the battle object's AIData/extras; result is a void-like side-effect call used by beast-out
+  AI processing.
+interface: (r10 = Toolkit) ; side effects on battle object in r5, BBS request flags, event flags 0x17[7] / 0x17[?],
+  and several EWRAM-backed data slots
+details: "The block sits in the 0x8083xxx range together with the other beast-out related helpers (load_gfx_anim_8083FC0,\
+  \ load_gfx_anim_8083FFC, sub_8083F80, struct_copy_80840C4, sub_8084080, sub_8084180, sub_8084214, sub_80842D8)\
+  \ and is described by the lifter as a leaf-ish routine that preserves r10/lr but is allowed to trash r2/r3/r4/r5/r7/r8/r9/r12\
+  \ and the flags.\n  Inputs/uses: r10 (Toolkit) provides BattleStatePtr/ChatboxPtr/CutsceneStatePtr/ReqBBS pointers\
+  \ etc., and r5 points at a BattleObject whose BeastOut/CustStyle extras live behind ExtraVars. The routine ends\
+  \ up driving non-trivial state changes through the chain: reqBBS_setFlag_e17b0f7_8140A00 (BBS that flips event\
+  \ byte 0x17 bit 7), reqBBS_clearFlag_8140A0C (paired clear), TestEventFlagFromImmediate / SetEventFlagFromImmediate\
+  \ / ClearEventFlagFromImmediate on adjacent story flags, and the two cutscene-state sentinels 8036F40 / 8036F58\
+  \ (\"L-Message\" and \"AskJackOut\"). GFX side: it pulls in three load_gfx_anim_* helpers (8083FC0, 8083FFC, 8084068)\
+  \ plus a struct_copy_80840C4 and several sub_8084* mutators, which together is the typical shape of \"load anim\
+  \ scripts for the beast-out animation, then patch the object's AIData/anim/extra vars\".\n  Output: nothing is\
+  \ returned to callers (out only lists r4–r9/r12/lr callee-saves — none of r0..r3/NZ are promised to callers),\
+  \ so treat it as `void`. The contract marking `nz` means it tests one of the event/cutscene flags and may branch\
+  \ on the result, but it does not surface that branch to the caller beyond the function's own internal flow.\n\
+  \  Because both arms (set + clear) of the BBS flag handlers and both cutscene sentinels are queried, this looks\
+  \ like the beast-out entry/exit dispatcher: pick a flag, do the cutscene sentinel check, then either run the \"\
+  entering\" path (load anim, copy struct, push sub_8084180/4214/42D8) or the \"exiting\" path (clear flag, run\
+  \ sub_8083F80 reverse path). sub_809E462 is the lone unrelated callee — it returns NZ (likely a \"menu/screen\
+  \ open\" probe) whose value steers which branch is taken.\n  Naming is kept tentative because the assembly listing\
+  \ was lost (`sub_8083DF0 not found in bn6f/asm`), so the exact decision tree (set flag vs clear flag, which flag\
+  \ pair is the trigger, and the precise object field it writes via struct_copy_80840C4) is inferred from callee\
+  \ behaviour.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- lifter reports no assembly bytes recovered (asm panel: "sub_8083DF0 not found in bn6f/asm") - in contract
-    `in=[''r10'',''lr'']` matches every bn6f top-level scene driven from the toolkit jumptable at oToolkit+0x00;
-    out has only callee-saved r4..r9/r12 and nz, matching a void scene that preserves its state for the next frame.
-    - direct callees include exactly three GFX-anim loaders (load_gfx_anim_8083FC0 / 0x08083FFC / 0x08084068) and
-    an explicit struct_copy_80840C4, so the function materialises a small array of GFXAnimState entries (struct
-    size 0x18 per oGFXAnimState). - the six siblings at 0x8083F80 / 0x8084080 / 0x8084180 / 0x8084214 / 0x80842D8
-    all read `r5` on entry (their in-contract lists r5), implying the orchestrator hands them the same r5/anim-slot
-    base it received from one of the load_gfx_anim_* helpers. - cutscene_checkOriginalCutsceneScriptPos_8036F40
-    / 8036F58 compare oCutsceneState `.originalCutsceneScriptPos_40` against L-Message and AskJackOut sentinels
-    respectively'
+  detail: '- Address range 0x8083DF0–0x80842D8 clusters with beast-out helpers (load_gfx_anim_*, sub_8084180/4214/42D8,
+    struct_copy_80840C4) per the captured callees list. - reqBBS_setFlag_e17b0f7_8140A00 summary names it as setting
+    event flag 0x7 in byte 0x17, and reqBBS_clearFlag_8140A0C is its paired clear — exactly the toggle pattern used
+    by a temporary "beast-out active" flag. - cutscene_checkOriginalCutsceneScriptPos_8036F40 ("L-Message sentinel")
+    and 8036F58 ("AskJackOut sentinel") show this routine gates on whether the current cutscene is the L-Message/Beast-Out
+    entry script. - Multiple Set/Clear/TestEventFlagFromImmediate calls and the load_gfx_anim helpers imply it both
+    flips story flags AND queues animation loading — i.e. it is the per-frame "apply beast-out" pump. - sub_809E462
+    returning NZ is consistent with a "is beast-out active / is menu open?" probe that selects the set-branch vs
+    clear-branch. - The out contract has no r0/r1/r3/NZ/C/V return promised to callers, matching a void-style mutator
+    that just updates the object in r5.'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x08083DF0
@@ -57,17 +57,20 @@ evidence:
     '
   result: beastsp, story5, story6
 open_questions:
-- 'The actual code: until asm is recovered, every behaviour above is inferred from callees.'
-- 'Whether this is a battle or overworld scene: address 0x8083DF0 sits next to other'
-- battle-adjacent helpers, but no oBattleStatePtr is read; could equally be the cutscene
-- portion of an L-Message ("jack-out?") prompt. Recovering the asm would settle this.
-- What r5 holds in the callees — is it oGFXAnimState index 0, 1, or 2 of three loaded slots?
-- Why sub_809E462 is called last (the only boolean out); viewing its body would tell us
-- whether the function waits on a "scene complete" flag before returning.
+- Assembly was not available in the lifter output, so the exact control flow (which flag is the trigger, what r5
+  field gets written, ordering of the three load_gfx_anim calls) cannot be read directly.
+- 'Whether sub_809E462''s NZ controls branch selection or is just an unrelated probe the compiler placed here by
+  coincidence (named callee contract: in=[r10,lr], out=[nz]).'
+- Whether the routine targets the player's beast-out, an opponent's, or both (callers section is empty, so we cannot
+  see the calling context).
+- Confirming whether the BBS-flag pair is the temporary beast-out active flag, or simply a related BBS grant (e.g.
+  freedom-progress flag 0x17/7).
+- Captured-call register values were not supplied, so the entry r0–r3 contents are unknown — having them would tell
+  us whether r0 encodes the object to mutate or a flag id pair.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f add04b11
+  where: bn6f 90fa2c5c
   tool: tools/symdoc.py

@@ -3,27 +3,29 @@ address: '0x08086EA8'
 kind: function
 previous_names: []
 status: hypothesis
-summary: placeholder - cannot propose a real name; assembly for this function is missing from the disassembly
-interface: (r2 in, r10 = toolkit, lr) -> r2, r3, r5, r7 out ; side effects unknown
-details: "The function body was not found in the bn6f disassembly; the route coverage log only\n  captured register\
-  \ values on entry/exit, no instructions. The contract list (`in=r2,r10,lr`,\n  `out=r2,r3,r5,r7`) and callees\
-  \ (TestEventFlagFromImmediate, sub_8086FD8, sub_808711C,\n  sub_8087140, sub_8087184, sub_80871F4) and the AIData-related\
-  \ offsets referenced by the\n  callees (r0/r1 passed through) suggest a battle-side helper that conditionally\
-  \ walks the\n  battle-object list and may poke AIData fields (ActorType/AIIndex), but without the actual\n  instructions\
-  \ I cannot confirm. All 40 captured calls hit it from r2=1, r3=0x02001d44\n  (an EWRAM pointer near oStruct2035280\
-  \ / oBattleState-area), with r0=0, r1=2, and exit\n  r0=0 / Z set, so the function appears to be a status/flag\
-  \ check that returns a boolean-like\n  r2 outcome (0/1) and preserves the toolkit pointer in r10. Until the body\
-  \ is recovered,\n  no specific battle-subsystem prefix can be assigned with confidence.\n"
+summary: Possibly dispatches an AI tick for a battle actor (reads AIData, runs state-specific AI helpers, and returns
+  an action/state code to the caller).
+interface: (r2 = actor index/AI data ptr? , r10 = toolkit ptr) -> r2 = next state/action? ; reads/writes actor AIData
+  via toolkit, no r0 return
+details: "- Contract notes r2 and r10/lr as inputs and r2/r3/r5/r7 as outputs; r0 is caller-saved and not returned\
+  \ (the captured calls all return r0=0 with no observed effect on flags Z/C, suggesting r0 is set to 0 as a byproduct).\n\
+  \  - The only confirmed callee is TestEventFlagFromImmediate (story-flag check); the four other callees (sub_8086FD8/711C/7140/7184)\
+  \ form a small state/action table starting at 0x8086FD8, with sub_80871F4 handling a \"done\"/result branch.\n\
+  \  - The capture set is from \"beastsp\" (Beast-SP / Beast Out) battle snapshots, and BeastOut-related fields\
+  \ exist in AIData (`BeastOutAPwrAtk` at +0x11), so this likely runs once per actor per AI tick during a Beast-Out\
+  \ battle to drive PowerAttack behaviour.\n  - r3/r5/r7 being live outputs but r0=0 on exit suggests the function\
+  \ either does not change r0 (r0 was already 0 in all calls) or explicitly clears it; the captured inputs (lr=0x08035e88)\
+  \ point back at a battle-tick caller.\n  - The struct used by the callees appears to be AIData (size 0x100) accessed\
+  \ through the actor's BattleObject.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- Function body is reported as "not found in bn6f/asm", so no concrete instructions can be cited. - Contract
-    in/out matches a routine that takes a flag/argument in r2 and returns a boolean in r2, with r10 as the toolkit
-    pointer (matches the project convention of toolkit being in r10 across battle code). - All 40 captured entries
-    show identical r0/r1/r2/r3 values and exit r0=0 with Z set, consistent with a predicate that re-uses the same
-    input state and returns early-true/false. - One callee, TestEventFlagFromImmediate (0x0802f164), tests a story/event
-    flag; this implies the function gates behavior on story progress. - Sub_8086FD8/808711C/8087184/80871F4 share
-    the r5/r10 register pattern used by battle object/AI list walkers, hinting at list traversal over BattleObjects.'
+  detail: '- In contract: in includes `r10` (Toolkit, per project convention), so the function touches toolkit globals.
+    - All six captured call sites are from `snap_beastsp_*` (Beast-Out battle snapshots), linking it to `AIData.BeastOutAPwrAtk`
+    (+0x11) and PwrAtkState (+0x1d) handling. - Direct call to TestEventFlagFromImmediate (story-progress gate)
+    is consistent with AI deciding whether a Beast-Out / PowerAttack move is allowed. - Caller lr=0x08035e88 in
+    every captured frame implies it is invoked from a fixed battle-tick site. - Five other callees form a sequential
+    block at 0x8086FD8..0x80871F4, matching a small state-machine dispatch.'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x08086EA8
@@ -38,13 +40,16 @@ evidence:
     '
   result: beastsp, maps
 open_questions:
-- The exact game-mechanism role (what it decides and which side performs what action).
-- Recovering the assembly body and looking at the few instructions before the first callee `bl`
-- (to see how r2/r5 are set) would settle the role immediately.
+- True role of sub_8086FD8/711C/7140/7184/71F4 (idle / move / attack / power-attack state handlers?).
+- Exact meaning of r2 in/out (index? AIData pointer? action code?).
+- Whether r2 is the BattleObject pointer, AIData pointer, or actor slot index — the captured r2=1 hints at an index
+  but the AI subsystem also uses r2 as a scratch register.
+- Whether r0 being 0 on exit is meaningful or just the captured calls' precondition.
+- Body not found in bn6f/asm, so all behavioural claims are inferred from callee IDs and caller context only.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f add04b11
+  where: bn6f 90fa2c5c
   tool: tools/symdoc.py

@@ -3,27 +3,25 @@ address: '0x0811E090'
 kind: function
 previous_names: []
 status: hypothesis
-summary: For a battle object, toggles a "hidden by shadow" flag on its ObjectSprite based on byte 0xE of the BattleObject,
-  then sets sprite coords to (0xbc, 0x0a) and runs sprite_update.
-interface: '(r5 = BattleObjectPtr, r6 = ?) -> r0 = 0x040c ; side effects: writes battle object byte at [r5], sprite
-  pos, sprite state'
-details: "1. Loads r4 = byte at [r5]; r0 = byte at [r6+0xe].\n  2. If r0 != 0: bic r4, #2 (clears bit 1 of r4).\
-  \ Else: orr r4, #2 (sets bit 1).\n  3. Stores r4 back to [r5].\n  4. Sets sprite coordinates via sprite_setCoordinates(r5,\
-  \ 0xbc, 0x0a) — based on the sprite_update contract, this writes x/y to ObjectHeader+2 sub-entry (SpriteOffset\
-  \ high nibble) of [r5].\n  5. Calls sprite_update(r5) to advance sprite state.\n  6. Returns via pop {pc} (tail-call\
-  \ style).\n  The action on [r6+0xe] being zero vs nonzero toggles a single bit (0x02) in whatever byte [r5] points\
-  \ to; combined with the snap calls (entry r0 often = 0x040c), this looks like a \"hide/show shadow sprite\" toggle.\
-  \ r5 is consistent with a BattleObject pointer (matches sprite_update contract), and r6 with an AIData-style struct\
-  \ (the caller sub_811E048 takes r1/r5/r6 and r5 is preserved into here).\n"
+summary: 'Beast-out battle object per-frame hook: toggles a flag bit on the object''s header flags based on its
+  element, then sets sprite coords to (0xbc, 0xa) and runs sprite_update.'
+interface: (r5 = battleObjectPtr, r6 = AIDataPtr) -> r5 = battleObjectPtr ; side effects write to *(r5+0), sprite
+  coords and sprite state via r5
+details: "- Reads byte [r5] into r4 (object header flags at offset 0).\n  - Reads byte [r6+0xe] (AIData.Element\
+  \ at offset 0xe) into r0.\n  - If Element != 0, clears bit 0x02 in r4 (bic r4, r1 where r1=#2); otherwise sets\
+  \ it (orr r4, #2).\n  - Stores updated r4 back to [r5] (header flags).\n  - Loads r0=0xbc, r1=0xa and calls sprite_setCoordinates(r5,\
+  \ 0xbc, 0xa).\n  - Calls sprite_update(r5).\n  - Tail-call style with push {lr} / pop {pc}.\n  - Caller is sub_811E048\
+  \ which appears to iterate or dispatch BeastOut-style battle-object updates (route covers 40 calls in the beast-sp\
+  \ snap).\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- `ldrb r4, [r5]` then conditional `bic r4, #2` / `orr r4, #2` modifies bit 1 of a flag byte at [r5].
-    - `ldrb r0, [r6,#0xe]` is the condition; tested with `tst r0, r0; beq loc_811E0A0`. - `mov r0, #0xbc; mov r1,
-    #0xa; bl sprite_setCoordinates` writes a fixed (x=0xbc, y=0x0a) pos to the sprite sub-entry. - `bl sprite_update`
-    advances sprite per-frame state. - All captured-call exits have r0=0x040c, matching the high nibble 0x04 (SpriteOffset=4)
-    returned by the sprite coords update pattern. - Sole caller sub_811E048 takes r5/r6 in and preserves them, consistent
-    with passing a BattleObject (r5) and a sibling/AI struct (r6) through.'
+  detail: '- `ldrb r4, [r5]` and final `strb r4, [r5]` show r5 is the BattleObject pointer and the flag byte at
+    offset 0 is being mutated. - `ldrb r0, [r6,#0xe]` matches AIData.Element (offset 0xe in the AIData struct).
+    - `bic r4, r1` (r1=#2) / `orr r4, #2` toggle the bit-0x02 of header flags based on Element==0. - `bl sprite_setCoordinates`
+    with r0=0xbc, r1=0xa moves sprite to fixed coords (0xbc, 0xa). - `bl sprite_update` afterwards refreshes sprite
+    state. - Caller sub_811E048 has matching contract in r5/r6/lr and calls this with r5/r6 set up for one battle
+    object.'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x0811E090
@@ -38,14 +36,15 @@ evidence:
     '
   result: beastsp
 open_questions:
-- Exact semantic of bit 1 of [r5] (a flag byte within ObjectSprite or ObjectHeader) is unknown; the 0x040c return
-  value hints it ends up related to SpriteOffset=4 packing but the meaning ("hidden") is inferred from "toggling"
-  + "set fixed coords" + "update" sequence, not from a symbol. Identifying the exact bit field (OBJECT_FLAG_VISIBLE
-  in ObjectHeader or an Unk in ObjectSprite) would settle it.
+- Exact meaning of toggling OBJECT_FLAG_VISIBLE (bit 0x02) based on Element==0 is unclear — why would visibility
+  depend on the actor's element?
+- The fixed coords (0xbc, 0xa) look like a "beast-out" staging position rather than real field coordinates; need
+  a code/data reference (e.g., animation script) to confirm.
+- Whether r0's exit value 0x40c (from the snapshots) is meaningful or just residue from the sprite routines is unknown.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f add04b11
+  where: bn6f 90fa2c5c
   tool: tools/symdoc.py

@@ -1,0 +1,60 @@
+name: sub_80F8448
+address: '0x080F8448'
+kind: function
+previous_names: []
+status: hypothesis
+summary: Reads self-HP vs MaxHP and AIState.Unk_04/05 timers to choose which scripted AI attack/thinker routine
+  to install this tick
+interface: '(r5 = BattleObject self, r6 = AIState, r7 = AIAttackVars, r10 = Toolkit) -> void ; side effects: writes
+  AIState.Unk_04/05, AIAttackVars fields (Unk_02/03/18/28/2c/30), sets CurAction via object_setAttack0/object_setAttack4'
+details: 'Compares self (r5) MaxHP/2 against self HP; if HP < MaxHP/2 the threshold in r3 becomes 2 (treat low-HP
+  case as "elevated"), otherwise 4. Loads AIState.Unk_04 (r6+4) and falls into loc_80F8518 when Unk_04 < r3 (increments
+  Unk_04, writes tier+0x0A Action and a destructor at AIAttackVars+0x28 = sub_80F8DA8+1 → wait that branch uses
+  sub_80F8CF8+1, those are sub-AI-action subroutines installed as a callback at +0x28). The three other branches
+  cover equal/over threshold situations: they reset Unk_04=0, may bump or reset Unk_05, and install one of three
+  different action/callback combinations depending on what sub_80F8610 returns and which dword entry is selected
+  from `dword_80F853C` (a 4-byte value `0x03030306` packed via little-endian reads becomes indices 6/3/3/3 — one
+  per difficulty tier). Each branch rewrites AIAttackVars.Unk_02 (chip/id selector), Unk_03 (AI tier), Unk_18 (target
+  panel / pointer returned by sub_80F85B2/D4/E8/FC), Unk_2c (pointer to opposing alliance BattleObject retrieved
+  via battle_findPlayer after `eor 0,1` of self''s Alliance byte at oBattleObject_Alliance=0x16), Unk_28 (next-AI-callback
+  Thumb+1), and Unk_30 (self + 0x60 "ExtraVars" address, used as a target struct). Finally object_setAttack0/4(r0=0xA,
+  0xB, 0xC) sets CurAction to install the chosen attack.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrh r1,[r5,#oBattleObject_MaxHP]` and `ldrh r2,[r5,#oBattleObject_HP]` then `lsr r1,r1,#1`/`cmp r1,r2`
+    is literally MaxHP/2 vs HP at offsets 0x24/0x26 of BattleObject - `ldrb r0,[r6,#oAIState_Unk_04]` reads AIState
+    byte 0x4, written back with strb at loc_80F8458 / loc_80F8518 / loc_80F84E0 - `bl sub_80F8610` then `cmp r0,#3`/`bge`/`blt`
+    chooses between two near-identical branches (one writes Off_0x86F8 callback, the other Off_0x86FC) - the dword
+    `0x03030306` loaded via `ldrb r1,[r1,r0]` gives the per-tier select counter threshold - `ldrb r0,[r5,#oBattleObject_Alliance];
+    eor r0,#1; bl battle_findPlayer; str r0,[r7,#oAIAttackVars_Unk_2c]` retrieves opponent BattleObject for AIAttackVars+0x2c
+    - storing `r5 + 0x60` into `oAIAttackVars_Unk_30` matches oBattleObject.ExtraVars at loc=0x60 - final `object_setAttack0`/`setAttack4`
+    calls install CurAction 0x0A / 0x0B / 0x0C (or 9 via setAttack4)'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080F8448
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp, chips'
+  reproduce: 'grep -l ''^080f8448 '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp, chips
+open_questions:
+- The real meaning of the four dword values `0x03030306` indices, what the four installed callbacks at 0x80F8CF8
+  / 0x80F8D3E / 0x80F8DA8 / 0x80F8DFE actually execute, and whether `oAIState_Unk_04` is a "ramp-up counter" that
+  drives the AI to gradually escalate when HP is dropping (since it increments then resets), or an attack-script
+  slot pointer. Renaming has a `_ADDRESS` suffix because the role of these state vars is inferred from offset names
+  only.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 90fa2c5c
+  tool: tools/symdoc.py

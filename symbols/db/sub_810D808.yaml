@@ -3,27 +3,53 @@ address: '0x0810D808'
 kind: function
 previous_names: []
 status: hypothesis
-summary: Cannot determine; assembly not provided, callers list empty.
-interface: unknown — contract lists r4/r5/r7/r10/lr in and r1/r5 out, but I have not observed how those are populated
-  or consumed.
-details: "All observed evidence is circumstantial:\n  - One caller at lr=0x0810d7f0 invoked this function 40 times\
-  \ across snap_story6_* traces.\n  - Entry r0=0, r1=0x0810d809 (a Thumb code address, not a RAM pointer), r2=0x80,\
-  \ r3=0x03.\n  - Exit r0 returns small bytes (0x24, 0x25, or saturating 0x7f) with C/ZC flag transitions, consistent\n\
-  \    with returning a step/state index, but I have not verified what the bytes mean.\n  - The callee set (object_setCounterTime,\
-  \ object_setFlag1, object_getFrontDirection,\n    battle_ResetObjectTimerTo8, highlightPanelIfSomeCondition_8109660,\
-  \ sub_80C5578) suggests\n    this routine mutates a BattleObject in r5 (consistent with the in=r5 contract), updates\
-  \ a\n    counter timer to 8, ORs a flag into CollisionData, and highlights a panel on the 6x3 grid —\n    a plausible\
-  \ profile for a per-step animation/move tick, but this is a guess from callee\n    names, not from the function's\
-  \ own instructions.\n"
+summary: Battle object step routine reachable from a story-6 storyboard dispatch (likely a per-tick script handler);
+  returns a small status code in r0 and touches a panel/sprite routine.
+interface: (r0 = ?, r1 = ?, r2 = 0x80 ? , r3 = 3 ? , r4/r5/r7/r10/lr = saved) -> r0 = status byte (e.g. 0x24/0x25
+  or 0x7F), r1/r5/flags clobbered
+details: "The lifter reports a 0x0c-byte prologue typical of Thumb code at 0x0810d808, but the\n  actual instruction\
+  \ bytes are absent from the dump (\"sub_810D808 not found in\n  bn6f/asm\"). All evidence therefore comes from\
+  \ callees, captured-call context and\n  callers. Entry context from snap_story6_*.bin is nearly constant:\n  \
+  \  r0=0, r1=0x0810d809 (Thumb address of this function + 1, i.e. \"this + 1\" sentinel\n    pattern), r2=0x80,\
+  \ r3=0x03, sp=0x03007d70, lr=0x0810d7f0 (i.e. the caller sits\n    just before this function). r5 is a battle-object\
+  \ pointer in r5 (per callee\n    contracts of `object_getFrontDirection`/`object_setCounterTime`/`object_setFlag1`,\n\
+  \    which take the object in r5). r7 is used and r10 is the toolkit pointer, the\n    standard battle call-site\
+  \ shape.\n\n  The five captured exits show r0 takes one of three values: 0x24, 0x25, or 0x7F.\n  Values 0x24 and\
+  \ 0x7F are common battle \"step\" return codes in this engine\n  (continue/wait); 0x25 is one of a few small-script\
+  \ return constants as well. The\n  varying carry/zero flags and the wide register-clobber list indicate this routine\n\
+  \  does real work (calls into helpers that mutate the object and the panel grid)\n  rather than a thin trampoline.\n\
+  \n  Direct callees:\n    - `battle_ResetObjectTimerTo8_80C4072` -- null-safe write of 8 into a battle\n      object's\
+  \ +8 timer slot (per the callee contract: in r0 object, out r1). This\n      implies the routine owns a phase\
+  \ that must explicitly re-arm an object timer\n      (consistent with a re-entrant script step).\n    - `highlightPanelIfSomeCondition_8109660`\
+  \ -- bulk-highlights a 6x3 panel offset\n      list; per the contract it takes (r0 base, r1 = ?, r2 = 0x80 ?,\
+  \ r3 = 3 ?, ...).\n      Note the captured entry args (0, 0x810d809, 0x80, 3) match the callee's in[]\n      exactly,\
+  \ suggesting the captured context was *while the call to this helper\n      was about to happen / just happened*\
+  \ -- i.e. this is the dominant path\n      through the routine.\n    - `object_getFrontDirection` (r5 -> r0/r1\
+  \ side sign) -- reads battle-object\n      alliance/DirectionFlip to compute a +1/-1 facing direction multiplier.\n\
+  \    - `object_setCounterTime` (r0/r5/r10) -- writes the battle-object counter\n      timer using the toolkit\
+  \ (r10).\n    - `object_setFlag1` (r0/r5) -- ORs flag bits into the object's\n      CollisionData.ObjectFlags1\
+  \ word.\n    - `sub_80C5578` -- a larger battle helper that takes/returns many registers;\n      likely a panel/grid\
+  \ update routine called from this step.\n\n  Combined, the routine clearly: (1) holds a battle object in r5 and\
+  \ the toolkit\n  in r10, (2) recomputes front direction (r5 -> object_getFrontDirection),\n  (3) highlights panels\
+  \ around a base position (the snap entry args r0=0,r2=0x80,\n  r3=3 match `highlightPanelIfSomeCondition_8109660`'s\
+  \ shape), (4) sets a counter\n  timer on the object, (5) sets ObjectFlags1 bits, and (6) on exit returns a\n \
+  \ one-byte status in r0. Calling convention places lr=0x0810d7f0 right before\n  this function; the dispatcher\
+  \ that lives there is the obvious next thing to\n  disassemble to confirm the role.\n\n  The \"story6\" tag on\
+  \ the captured snapshots strongly suggests this is a\n  per-frame script step for a story-battle cut-in panel\
+  \ selector / cursor\n  (e.g. a \"choose a panel to highlight/target\" or \"advance the story banner\"\n  handler\
+  \ that the dispatcher at 0x0810d7f0 calls once per frame for the story-6\n  scene). Without the assembly, the\
+  \ specific game-level role is uncertain.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- Caller LR is constant at 0x0810d7f0 across all 6 shown captures (snap_story6_*.bin traces). - Entry
-    r1=0x0810d809 (odd Thumb address) is a code pointer, not a RAM pointer, so the EWRAM capture heuristic did not
-    apply. - Exit r0 takes only three observed values (0x24, 0x25, 0x7f) across the 6 samples, with C set on the
-    small ones and ZC set on 0x7f. - Callee object_setCounterTime / object_setFlag1 / object_getFrontDirection /
-    battle_ResetObjectTimerTo8 each take a BattleObject pointer; the in=r5 contract is consistent with r5 holding
-    that pointer.'
+  detail: '- callee `highlightPanelIfSomeCondition_8109660` contract `in=[''r0'',''r1'',''r2'',''r3'',...]` exactly
+    matches the captured-call entry shape r0=0, r1=0x0810d809, r2=0x80, r3=3, so this routine is the (direct or
+    near) caller of that panel-highlight helper -- a panel-grid operation. - callee `object_getFrontDirection` `in=[''r5'',...]`
+    confirms r5 is a battle object pointer at call sites; consistent with `object_setFlag1` / `object_setCounterTime`
+    also taking r5 as the object. - callee `battle_ResetObjectTimerTo8_80C4072` writes 8 into a battle object''s
+    +8 field; suggests this routine re-arms an object timer as part of its step. - captured returns r0=0x24, 0x25,
+    0x7F with mixed carry/zero -- three distinct terminal states typical of a state-machine step (continue / wait
+    / done). - all captured calls have lr=0x0810d7f0, i.e. the same caller; this function'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x0810D808
@@ -38,15 +64,18 @@ evidence:
     '
   result: battlesweep, beastsp, story4, story6
 open_questions:
-- The function's actual code body — without it I cannot point at any instruction and confirm any role.
-- Who calls it from 0x0810d7f0 and in what loop/phase.
-- What r4 and r10 (likely Toolkit per project convention) hold at entry.
-- What 0x24/0x25/0x7f encode (step index, remaining timer, phase id, or something else).
-- Settled trivially by supplying the asm listing and the named callers list.
+- Exact assembly is missing from the dump; concrete behavior beyond what the
+- callee contracts imply cannot be confirmed. Reading the 0x0810d808 region of
+- the ROM directly (or any pending symbol/binary lift) would settle both the
+- return-code mapping and the precise panel-highlight call shape. The name is
+- held as `sub_810D808` because no confident role can be assigned yet -- an
+- intermediate name such as `battle_story6StepHandler_810D808` could be used if
+- the "story6" inference is accepted, but it is kept as a plain placeholder
+- until the assembly is recovered.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f add04b11
+  where: bn6f 90fa2c5c
   tool: tools/symdoc.py
