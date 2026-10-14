@@ -792,3 +792,65 @@ Highlights:
 | 16    | 25                 | 21                        | 4               | 0       |
 
 Running total: named 313, hypothesis-only 83, dropped 0 (of ~10,600 placeholders).
+
+## Batch 17 (2026-10-14)
+
+25 functions, 21 named + 4 hypothesis (sub_802C460, sub_8083DF0, sub_80A7354,
+sub_80E1670 kept as comment only), renamed in recomp f6458265 (bn6f pushed;
+port ROM unchanged).
+
+Highlights:
+- battle: tick pre-battle init (battle_tickPreBattleInit_8008AA0);
+- battle object: tick sprite anim (battleObject_tickSpriteAnim_801BC24),
+  register custom arm (battleObject_registerCustomArm_801DB84);
+- custMenu: dispatch selection (battle_custMenuDispatchSelection_8028820);
+- battle object: compute puppeteer switch element
+  (battleObject_computePuppeteerSwitchElement_802A220);
+- battle: calc dist panel between (battle_calcDistPanelBetween_8031852);
+- overworld map: get hotspot boundary for map group
+  (owMap_getHotspotBoundaryForMapGroup_80A5724);
+- battle object: dispatch AI custom op (battleObject_dispatchAICustomOp_80A57AC),
+  dispatch AI data (battleObject_dispatchAIData_80A72B4);
+- battle beast-sp: stepper (battle_beastSpStepper_80A7912);
+- beast-SP: init or update (beastSP_initOrUpdate_80A86B4);
+- battle object: dispatch cur phase by jumptable
+  (battleObject_dispatchCurPhaseByJumpTable_80D4570);
+- battle AI attack: vars try reset and process action
+  (battle_aiAttackVarsTryResetAndProcessAction_80EC67E);
+- battle object: clear beast-out submenu flag
+  (battleObject_clearBeastOutSubmenuFlag_8117FF8);
+- submenu: update chip palette (submenu_updateChipPalette_8118234);
+- battle object: get cur state row ptr
+  (battleObject_getCurStateRowPtr_8118314);
+- battle object: check PwrAtk target switch
+  (battleObject_checkPwrAtkTargetSwitch_8119880);
+- battle: dispatch scenario effect (battle_dispatchScenarioEffect_811E248);
+- battle object: beast-SP update (battleObject_beastSp_update_811E2B4),
+  update sprite unk-0x2C from scenario flags
+  (battleObject_updateSpriteUnk0x2cFromScenarioFlags_811E314);
+- battle: get enemy index from map group
+  (battle_getEnemyIndexFromMapGroup_8142080).
+
+## Tally update
+
+| batch | functions examined | named (renamed via record) | hypothesis-only | dropped |
+|-------|--------------------|---------------------------|-----------------|---------|
+| 1     | 25                 | 25                        | 0               | 0       |
+| 2     | 21                 | 20                        | 1               | 0       |
+| 3     | 25                 | 23                        | 2               | 0       |
+| 4     | 25                 | 21                        | 4               | 0       |
+| 5     | 25                 | 20                        | 5               | 0       |
+| 6     | 25                 | 21                        | 4               | 0       |
+| 7     | 25                 | 19                        | 6               | 0       |
+| 8     | 25                 | 20                        | 5               | 0       |
+| 9     | 25                 | 18                        | 7               | 0       |
+| 10    | 25                 | 14                        | 11              | 0       |
+| 11    | 25                 | 17                        | 8               | 0       |
+| 12    | 25                 | 15                        | 10              | 0       |
+| 13    | 25                 | 19                        | 6               | 0       |
+| 14    | 25                 | 19                        | 6               | 0       |
+| 15    | 25                 | 21                        | 4               | 0       |
+| 16    | 25                 | 21                        | 4               | 0       |
+| 17    | 25                 | 21                        | 4               | 0       |
+
+Running total: named 334, hypothesis-only 87, dropped 0 (of ~10,600 placeholders).
