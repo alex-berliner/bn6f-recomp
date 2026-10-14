@@ -1,0 +1,53 @@
+name: chatbox_dispatchTable_804C058
+address: '0x0804C058'
+kind: function
+previous_names:
+- sub_804C058
+status: probable
+summary: Tail-call dispatcher that jumps to a chatbox-step routine chosen by Toolkit pointer + 0x10
+interface: '(r5 = EWRAM pointer; r10 = Toolkit) -> r0 = result from chosen routine ; side effects: jumps
+  into one of two chatbox helpers, preserves {r4-r7}'
+details: "Saves r4-r7 and lr, loads off_804C06C (the jump table), indexes it by a u8\n  read from r5+0x10\
+  \ (some state byte), and tail-calls the selected routine via\n  `mov lr,pc; bx r0`. Table at 0x0804c06c\
+  \ has two entries: sub_804C08C+1 and\n  chatbox_stepIfGatesOpen_804C11C+1. This is a 2-way switch over\
+  \ a small chatbox\n  subsystem state. Caller passes routine parameters in r0..r3 (r2=0x0200f389 in\n\
+  \  every captured snapshot, looks like a fixed EWRAM script/struct pointer). The\n  returned r0 in the\
+  \ captured calls (0x08..0x0f) is the routine's return value\n  (likely a small step status / cursor\
+  \ result).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {r4-r7,lr}` + `pop {r4-r7,pc}` show a tail-call frame used purely to carry {r4-r7}
+    across the `bx r0`. - `ldr r0, off_804C068` then `ldrb r1,[r5,#0x10]` then `ldr r0,[r0,r1]` is the
+    classic `table[index]` dispatch (ARM ARM A8.8.96 / Thumb LDRSB-style indexing). - off_804C06C contains
+    exactly two ARM-mode targets (`+1` Thumb bit set), so r5[0x10] is expected to be 0 or 1. - One callee
+    is already named `chatbox_stepIfGatesOpen_804C11C`; the other (sub_804C08C) likely sits in the same
+    chatbox step pipeline. - r10 contract = Toolkit (see project comment "toolkit struct, always in r10").'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0804C058
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp, story5, story6'
+  reproduce: 'grep -l ''^0804c058 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp, story5, story6
+open_questions:
+- Which EWRAM struct r5 actually points to (offset 0x10 is the dispatch byte,
+- not necessarily Chatbox+0x10). Renaming the callee sub_804C08C would firm up
+- whether this really lives in the chatbox namespace.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 09ad1b28
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_804C058 -> chatbox_dispatchTable_804C058
+  where: bn6f 311f2abb
+  tool: tools/rename_symbol.py

@@ -1,0 +1,57 @@
+name: chatbox_copyNaviSpriteState_804C298
+address: '0x0804C298'
+kind: function
+previous_names:
+- sub_804C298
+status: probable
+summary: Copies OW navi sprite state (animation/palette/transform/coord shader) into unk_2000AC0 for chatbox
+  rendering
+interface: '(r5 = OWPlayerObject*, r10 = Toolkit*) -> r2 = RenderInfo/unk_2009740 derived pointer ; side
+  effects: writes 14 bytes to unk_2000AC0 + 0x0F..0x1D'
+details: "Reads scattered fields from the OW player object pointed to by r5 (offsets 0x10, 0x11,\n  0x13,\
+  \ 0x15, 0x17, 0x18) and stores them at fixed offsets inside a global EWRAM struct at\n  unk_2000AC0\
+  \ (offsets 0x0F, 0x11, 0x13, 0x15, 0x16, 0x17). The source offsets correspond\n  to the AnimationSelect/PaletteIndex\
+  \ area of OverworldPlayerObject / OverworldNPCObject.\n  Then loads RenderInfoPtr via Toolkit->oToolkit_RenderInfoPtr\
+  \ (r10->0x8) and copies two u16\n  fields at +0x14 and +0x16 (mosaic / OBJ-affine-related) into unk_2000AC0\
+  \ +0x1A, +0x1C.\n  Finally loads Toolkit->oToolkit_Unk2009740_Ptr (r10->0x20) and copies bytes +2, +3\
+  \ into\n  unk_2000AC0 +0x18, +0x19 (palette/color filter bytes).\n  Called from chatbox_stepIfGatesOpen_804C11C\
+  \ after a setup helper, so the per-frame \"render\n  the PET navi next to the chatbox\" data refresh\
+  \ is its role.\ndetails_quirk: The destination struct (unk_2000AC0) is not defined in the provided headers;\n\
+  \  it's the chatbox-adjacent navi-sprite state buffer.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- Caller summary states it runs after a setup step during cutscene/chatbox ticks (chatbox_stepIfGatesOpen_804C11C
+    description). - ldrb from r5 offsets 0x10/0x11/0x13/0x15/0x17/0x18 matches OWPlayerObject.AnimationSelect/PaletteIndex
+    area. - ldr r2,[r10,#oToolkit_RenderInfoPtr] = r10+0x8 (Toolkit offset 0x8). - ldr r2,[r10,#oToolkit_Unk2009740_Ptr]
+    = r10+0x20 (Toolkit offset 0x20). - All writes target ldr r3,off_804C308 (= unk_2000AC0) at contiguous
+    offsets 0x0F..0x1D. - 40 captured invocations, lr=0x0804c143 (the immediately preceding helper in
+    chatbox_stepIfGatesOpen_804C11C).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0804C298
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp, story5, story6'
+  reproduce: 'grep -l ''^0804c298 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp, story5, story6
+open_questions:
+- Exact meaning of unk_2000AC0 fields; would settle by identifying reads of unk_2000AC0+0x0F..0x1D elsewhere.
+- The relationship between r5 (a battle/OW object?) and "OW player" is assumed from offset
+- pattern; verifying the r5 source type at the call site would confirm.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 09ad1b28
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_804C298 -> chatbox_copyNaviSpriteState_804C298
+  where: bn6f 311f2abb
+  tool: tools/rename_symbol.py

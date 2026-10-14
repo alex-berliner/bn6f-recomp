@@ -1,0 +1,62 @@
+name: link_stateMachineRunStep_8144250
+address: '0x08144250'
+kind: function
+previous_names:
+- sub_8144250
+status: probable
+summary: Drives the e-Reader / link-cable state machine for one tick (state stored in eTimerEnable200F460+1),
+  performs its action, then packs and returns a status bitfield.
+interface: '(r0 = small struct ptr {byte 0 = lastMode}, r1 = ptr2, r2 = ptr3) -> r0 = packed status word
+  ; side effects: IWRAM/EWRAM at eTimerEnable200F460+ (link-state, SIO control), call to link/teardown
+  helpers'
+details: "- Saves r4-r7/lr; r4=r0, r5=r1, r6=r2.\n  - Reads the current link sub-state from `byte_200F461`\
+  \ (`eTimerEnable200F460+1`) and uses it as a 6-case jump table (`jpt_8144268`) selecting loc_814428C\
+  \ (0), 814429C (1), 81442B4 (2), 81442F0 (3), 81442FA (4), 814430C (5).\n  - Case 0: calls `sub_81440D8`\
+  \ (link teardown) and sets state=1.\n  - Case 1: if r0==1 calls `link_initAndClear_8144158` and sets\
+  \ state=2.\n  - Case 2: branches on r0 (1 or 2) to handle e-Reader state, else calls `ereader_updateTimerEnable_8144380`.\n\
+  \  - Case 3: calls `sub_81443AC`, sets state=4.\n  - Case 4/5: calls `sub_81443FC(r5)` and `sub_81444E4(r6)`\
+  \ (case 5 also pre-sets `eTimerEnable200F460+0x15=2`).\n  - After the switch, clears `*r4=0`, then packs\
+  \ a status word from eTimerEnable200F460 fields: low byte merges Unk_02/Unk_03 (with 0x20 if +0==8),\
+  \ then ORs in shifted fields from +0xC,+0x11..+0x15 (8,9,16,17,18,20 bits), and additionally sets bit\
+  \ 0x40 when state==4, and 0x400000 when Unk_02>3.\n  - Returns the packed word in r0.\n  - Caller sub_803DEB4\
+  \ is the e-Reader/title-screen driver; called repeatedly while link/e-Reader state machine is active.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0, [r0,#0x1]` followed by jump table at `jpt_8144268` → state machine dispatch keyed
+    off `eTimerEnable200F460+1`. - Case arms each end with `strb rX, [r1,#0x1]` writing the next state
+    value (1, 2, 4) → `eTimerEnable200F460+1`. - Direct BLs to `link_initAndClear_8144158`, `ereader_updateTimerEnable_8144380`,
+    `sub_81440D8` (link teardown), and two unknowns `sub_81443FC`/`sub_81444E4` whose contract `in=[''r0'']`
+    matches r5/r6 being passed through. - `def_8144268` block ORs shifted bytes from eTimerEnable200F460+0xC,
+    +0x11..+0x15 (8,9,0x10,0x11,0x12,0x14) and conditionally adds 0x40 (state==4) and 0x400000 (Unk_02>3)
+    before returning in r0. - Caller sub_803DEB4 is the only listed caller (story2/3 snapshots call this
+    path via lr=0x0803dec5).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08144250
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3,
+    story1, story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^08144250 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander
+open_questions:
+- r1/r2 argument purpose beyond being passed to sub_81443FC/sub_81444E4 is unclear.
+- Exact semantics of each state number (0..5) beyond the helper they invoke.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 09ad1b28
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8144250 -> link_stateMachineRunStep_8144250
+  where: bn6f 311f2abb
+  tool: tools/rename_symbol.py

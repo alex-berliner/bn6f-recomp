@@ -1,0 +1,71 @@
+name: battleObject_aiActionStep_810CE1A
+address: '0x0810CE1A'
+kind: function
+previous_names:
+- sub_810CE1A
+status: probable
+summary: Enemy AI action-decision step that picks a random row target, maybe picks B-button / PwrAtk inputs,
+  and dispatches into attack sub-helpers.
+interface: '() -> r0 = 0 ; side effects: reads/writes AIData (r5) and BattleState'
+details: "- Entry contract: r4/r5/r6/r7/r10/lr saved; only r1/r5 restored as output and r0 cleared to\
+  \ 0, so callers use it as a void-style step.\n  - Calls battle_pickRandomRowObjectFields_810971A to\
+  \ choose an enemy/ally row slot and returns id+attr bytes; uses GetPositiveSignedRNG as the entropy\
+  \ source.\n  - Calls object_getFlag (r5) and ifPanelFlagSetFindBattleActorWithCollisionOnPanelXY_80E7486\
+  \ (r10) to locate a battle actor under a given panel and inspect its object-flag word.\n  - Calls object_setAttack0\
+  \ (r5) to set the attack-0 timer/state on the AI's battle object.\n  - Tail-call / fall-through into\
+  \ sub_810CEAE and sub_810CF4A; given the layout (addresses within 0x200 bytes of each other), these\
+  \ are likely the \"execute chip\" / \"execute attack\" sub-steps that follow the decision.\n  - All\
+  \ 40 captured call sites come from snap_story6_*.bin with r1=0x20 (the \"0x20\" AI state in AIData's\
+  \ AIState field at 0x80), so this is the per-tick handler for AIState==0x20 in story chapter 6.\n  -\
+  \ Note: no assembly available in repo, so the exact sequence of decisions is inferred from callee identities;\
+  \ cannot tell which branch leads to which helper.\nevidence: |\n  - callee battle_pickRandomRowObjectFields_810971A\
+  \ returns object id+attr: picks a row target.\n  - callee GetPositiveSignedRNG is the only RNG used\
+  \ here, so target selection is randomized.\n  - callee ifPanelFlagSetFindBattleActorWithCollisionOnPanelXY_80E7486\
+  \ + object_getFlag: pattern of \"find actor on panel, look at its collision/flag word\".\n  - callee\
+  \ object_setAttack0: writes the attack-0 trigger on the AI's battle object (r5).\n  - contract out=['r1','r5']\
+  \ with r0 always returned 0 (all 6 captured exits r0=0, -ZC-): caller treats it as a step returning\
+  \ nothing meaningful.\n  - captured r1=0x20 across all 40 sites: matches AIData.AIState==0x20 being\
+  \ the dispatch state.\n  - file name prefix snap_story6_*: story chapter 6 enemy AI hook.\nuncertain:\
+  \ |\n  - Without the assembly we cannot confirm the call ordering of sub_810CEAE vs sub_810CF4A, nor\
+  \ which condition gates which; reading the disassembly would settle this and let us name the function\
+  \ more precisely (e.g. \"AIState0x20_attackStep\" vs \"AIState0x20_moveStep\").\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- callee battle_pickRandomRowObjectFields_810971A returns object id+attr: picks a row target.
+    - callee GetPositiveSignedRNG is the only RNG used here, so target selection is randomized. - callee
+    ifPanelFlagSetFindBattleActorWithCollisionOnPanelXY_80E7486 + object_getFlag: pattern of "find actor
+    on panel, look at its collision/flag word". - callee object_setAttack0: writes the attack-0 trigger
+    on the AI''s battle object (r5). - contract out=[''r1'',''r5''] with r0 always returned 0 (all 6 captured
+    exits r0=0, -ZC-): caller treats it as a step returning nothing meaningful. - captured r1=0x20 across
+    all 40 sites: matches AIData.AIState==0x20 being the dispatch state. - file name prefix snap_story6_*:
+    story chapter 6 enemy AI hook.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0810CE1A
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp, story5, story6, story9'
+  reproduce: 'grep -l ''^0810ce1a '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp, story5, story6, story9
+open_questions:
+- Without the assembly we cannot confirm the call ordering of sub_810CEAE vs sub_810CF4A, nor which condition
+  gates which; reading the disassembly would settle this and let us name the function more precisely (e.g.
+  "AIState0x20_attackStep" vs "AIState0x20_moveStep").
+- 'status: probable'
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 09ad1b28
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_810CE1A -> battleObject_aiActionStep_810CE1A
+  where: bn6f 311f2abb
+  tool: tools/rename_symbol.py

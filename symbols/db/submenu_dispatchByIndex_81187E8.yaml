@@ -1,0 +1,77 @@
+name: submenu_dispatchByIndex_81187E8
+address: '0x081187E8'
+kind: function
+previous_names:
+- sub_81187E8
+status: probable
+summary: Jumps through a small Thumb jump table indexed by `submenu->idx_00` (byte at offset 0x00), forwarding
+  call to one of three handlers with `r5` (the Submenu pointer) as the receiver.
+interface: (r5 = submenu struct ptr) -> tail call to a per-index handler; the called handler returns whatever
+  its own contract returns (out list mentions r2/r3/r5 as caller-visible, but that's just because the
+  caller's callee-save list reflects the tail-called handler's full contract).
+details: "Function is just a tiny dispatcher:\n   1. `push {lr}` (so `lr` holds the caller's return address,\
+  \ used as the `pc` return target).\n   2. Loads `r6 = sSubmenu` (constant pool label `sSubmenu` at `off_8118808`)\
+  \ — unused after the load except as a side effect of being a literal that may survive into callee-save\
+  \ lists. It is read but never actually referenced again in this routine, which is a quirk worth noting.\n\
+  \   3. Loads `r0` from a pointer-of-pointers table: `off_81187F8 = &off_81187FC`, and then `ldrb r1,\
+  \ [r5, #8]`… wait, the index is at `[r5, #0x08]`? Looking again: `ldrb r1, [r5,#8]` then `ldr r0, [r0,r1]`.\
+  \ So `r5` is the Submenu pointer and `r5->idx_00` (sub_menu_struct field at offset 0) — actually the\
+  \ offset `#8` here is the small-int index operand, not 0x08. Reading the asm: `ldrb r1, [r5, #8]` —\
+  \ `#8` is the Thumb immediate, so it loads byte at `r5+8`. That's curious because the SubMenu struct\
+  \ has `idx_00` at 0x0 and only `struct_org 0x50` (so no documented field at 0x08). But the captured\
+  \ calls all pass `r5` such that the byte at offset 8 is being read as the dispatch index. The dispatch\
+  \ table has 3 entries: `[0] = sub_811880C`, `[1] = battleObject_dispatchSpriteUpdate_8118874`, `[2]\
+  \ = sub_8118AA8`.\n   4. Sets `lr = pc`, then `bx r0` — this is a Thumb/ARM interworking trampoline:\
+  \ the function pointers in the table are stored with `+1` (Thumb bit set), and `mov lr, pc; bx r0` is\
+  \ the classic \"store return then branch with link via pc\" trick to call through a Thumb pointer while\
+  \ letting the original `lr` survive in `pc` for `pop {pc}` to return to the original caller. In other\
+  \ words, the routine does a tail-call via `bx` with `lr` set to the just-loaded `pc`, then `pop {pc}`\
+  \ returns to the saved caller-of-record.\n   5. `pop {pc}` — pops the saved `lr` (real caller) into\
+  \ `pc`, returning.\n   The \"+1\" suffixes in the table (`sub_811880C+1`, `battleObject_dispatchSpriteUpdate_8118874+1`,\
+  \ `sub_8118AA8+1`) confirm Thumb targets. Index range 0..2 covers only three handlers, so this dispatcher\
+  \ routes the Submenu to its current state's update/handler.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {lr}` then `pop {pc}` at the end confirms it returns to the address pushed (caller''s
+    `lr`), no own return value constructed. - `ldr r6, off_8118808 // =sSubmenu` loads the `sSubmenu`
+    symbol but it is not used after — likely a relic/cached value carried into the called handler via
+    r6. - `ldrb r1, [r5,#8]` reads an unsigned byte from `r5` to use as a table index; `r5` is documented
+    in the contract as the only input. - `ldr r0, [r0,r1]` indexes through a two-level pointer table (`off_81187F8
+    = &off_81187FC`, then a word at `off_81187FC + r1*4`). - The table contains `sub_811880C+1`, `battleObject_dispatchSpriteUpdate_8118874+1`,
+    and `sub_8118AA8+1`. The `+1` indicates Thumb bit is set on each address. - `mov lr, pc; bx r0` is
+    a Thumb interworking trampoline (since the targets are Thumb, but this routine itself is Thumb and
+    `bx` from Thumb to a `+1` Thumb address is well-defined; the `mov lr, pc` saves the post-`bx` PC for
+    `pop {pc}` to return to). - No stack locals, no own work — pure dispatch.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x081187E8
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^081187e8 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The byte read is at offset `#8` (decimal), not `#0x8`. The SubMenu struct currently has `idx_00` documented
+  at offset 0x00; the captured calls consistently show `r5` as a Submenu pointer, so the actual index
+  field is at offset 8 of the SubMenu struct (not yet documented in `sub_menu_struct`). Identifying the
+  SubMenu struct field at offset 8 would settle it; or perhaps `r5` here is a different struct whose index
+  lives at 8 (e.g. a battle-object-like struct that this dispatcher happens to reuse). The presence of
+  `battleObject_dispatchSpriteUpdate_8118874` as one of the targets makes a BattleObject-shaped r5 plausible
+  too.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 09ad1b28
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_81187E8 -> submenu_dispatchByIndex_81187E8
+  where: bn6f 311f2abb
+  tool: tools/rename_symbol.py

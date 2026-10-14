@@ -1,0 +1,66 @@
+name: battleObject_tryUseSelectedChip_8111FAE
+address: '0x08111FAE'
+kind: function
+previous_names:
+- sub_8111FAE
+status: probable
+summary: 'If a battle object has a chip selected and the battle state is past 0x12C, commit it: write
+  chip params, set attack 0, and decrement the chip count.'
+interface: (r5 = BattleObject) -> r0 = 1 if a chip was used, 0 otherwise ; no other side effects
+details: "1. Initializes r6=0 (the \"used\" return flag) and calls battle_getSelectedChipForUse_800ED90\
+  \ with\n     r0=r5 (the battle object). The callee returns the chip id in r0 and a non-zero indicator\
+  \ in r3\n     when the object has a chip ready to use.\n  2. If r3==0, no chip is selected, so the function\
+  \ falls through to the loc_8111FDA epilogue and\n     returns 0 (mov r0,r6).\n  3. Otherwise the chip\
+  \ id in r0 is masked to a 9-bit field (lsl #0x17; lsr #0x17 -> bits 0..8 of r0)\n     and saved in r4.\n\
+  \  4. Calls battle_getStateUnk40_800A704, returning BattleState+0x40. It is compared against the\n \
+  \    constant 0x12C at off_8111FF4; if the value is < 0x12C the chip is NOT used and the function\n\
+  \     returns 0. 0x12C is 300 decimal, an unusual threshold that likely corresponds to the first\n \
+  \    frame index of the \"chip use\" phase window (or a frame counter guarding late-phase actions).\n\
+  \  5. Once the threshold is reached, it calls somethingWriteChipParams_80126E4 with the masked\n   \
+  \  chip id in r0, then object_setAttack0 to start the use-chip animation/state, and finally\n     battleObject_decrementChipHeldAndClearChip_800F322\
+  \ to remove the chip from the object's held\n     count and clear its chip field.\n  6. Sets r6=1 and\
+  \ returns it in r0, so the caller knows a chip was committed this frame.\n  Caller sub_8111E14 iterates\
+  \ over battle actors and calls this for each; the r0 return value\n  presumably short-circuits the iteration\
+  \ once a chip has been used.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl battle_getSelectedChipForUse_800ED90` with r0=r5 and the subsequent `tst r3,r3; beq loc_8111FDA`
+    at sub_8111FAE:8250-8252 shows the function bails out when no chip is selected. - `lsl r4,r0,#0x17;
+    lsr r4,r4,#0x17` at 8253-8254 masks the chip id to 9 bits before passing to somethingWriteChipParams_80126E4.
+    - `bl battle_getStateUnk40_800A704` then `ldr r1,off_8111FF4 (=0x12C); cmp r0,r1; blt loc_8111FDA`
+    at 8255-8259 shows the gating threshold is 0x12C, with the chip NOT used when state is below it. -
+    The committed action is the trio `somethingWriteChipParams_80126E4` -> `object_setAttack0` -> `sub_800F322`
+    (renamed battleObject_decrementChipHeldAndClearChip_800F322) at 8260-8262, which matches a "use chip"
+    sequence: set attack params, switch state to attack 0, remove the chip. - `mov r6,#1` then `mov r0,r6`
+    at 8263-8266 returns 1 on success, 0 otherwise. - Function is called from sub_8111E14 which loops
+    over actors and consumes a chip; the bool-style return matches that pattern.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08111FAE
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp'
+  reproduce: 'grep -l ''^08111fae '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp
+open_questions:
+- What BattleState+0x40 specifically counts (frames? an animation/state index?) and why 0x12C.
+- Settling it requires reading nearby battle step code that writes that field.
+- The 9-bit chip id mask could indicate the chip id is stored in a wider field with attribute
+- bits; the exact encoding in battle_getSelectedChipForUse_800ED90's return is unknown here.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 09ad1b28
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8111FAE -> battleObject_tryUseSelectedChip_8111FAE
+  where: bn6f 311f2abb
+  tool: tools/rename_symbol.py

@@ -1,0 +1,62 @@
+name: battle_aiAttackVars_dispatch_810A3AC
+address: '0x0810A3AC'
+kind: function
+previous_names:
+- sub_810A3AC
+status: probable
+summary: Dispatches to one of seven AI attack-vars handlers based on the actor's AIAttackVars.Unk_00 value
+  (0..6).
+interface: '() -> r0 = whatever the dispatched handler returns in r0 ; side effects: r1 preserved-then-clobbered,
+  lr saved/restored via push/pop'
+details: 'Function takes no explicit arguments; it reads r7+0x?? (the `oAIAttackVars_Unk_00` constant
+  in the asm is a misnomer--the getuleb128 offsets that produced it suggest it is the byte at r7+`oAIAttackVars_Unk_00`,
+  i.e. the attack-vars selection index). It loads that byte as the low index into a 7-entry word table
+  at `off_810A3C0` and tail-calls the selected handler via `mov lr, pc; bx r1` (an ARM-style "bx to a
+  Thumb address" trampoline—the entries have +1 to switch to Thumb). The selected handlers are the seven
+  cases the dispatch covers (e.g. attack-vars variants 0..6). The frame is a single `push {lr}` / `pop
+  {pc}`, so no local stack. Captured-call exits show diverse r0 values (1, 0, 0x183, 0x02036870), confirming
+  each callee returns in r0 whatever the underlying case produces.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0, [r7,#oAIAttackVars_Unk_00]` reads one byte from r7 into the dispatch index. - `ldr
+    r1, off_810A3BC` then `ldr r1, [r1,r0]` performs an indexed load from a 7-word table at `off_810A3C0`.
+    - `mov lr, pc / bx r1` is a hand-rolled trampoline into the indexed Thumb handler (table entries carry
+    +1). - The seven `.word sub_XXXXX+1` entries at `off_810A3C0` show the seven attack-vars handlers:
+    0x810A3DC, 0x810A438, 0x810A462, 0x810A49C, 0x810A4D0, 0x810A50C, 0x810A51E. - `push {lr}` / `pop
+    {pc}` confirms a pure tail-call (no locals, lr/via-push only) and that r0 must come from the callee.
+    - Captured-call snapshots show r0 varying by case (0x1, 0x0, 0x183, 0x02036870), consistent with seven
+    distinct handlers.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0810A3AC
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp'
+  reproduce: 'grep -l ''^0810a3ac '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp
+open_questions:
+- The exact role of each handler (the seven `sub_810A3DC/438/462/49C/4D0/50C/51E` functions) is not named
+  here; would be settled by examining each in turn.
+- The true meaning of `oAIAttackVars_Unk_00` and what the dispatched behavior actually represents in battle
+  logic (chip selection? attack-type choice?).
+- Why callers always invoke at `0x0810a3ad` (lr pushed onto stack with Thumb bit cleared) rather than
+  `0x0810a3ac` directly.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 09ad1b28
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_810A3AC -> battle_aiAttackVars_dispatch_810A3AC
+  where: bn6f 311f2abb
+  tool: tools/rename_symbol.py

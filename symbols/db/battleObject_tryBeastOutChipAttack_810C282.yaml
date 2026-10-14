@@ -1,0 +1,63 @@
+name: battleObject_tryBeastOutChipAttack_810C282
+address: '0x0810C282'
+kind: function
+previous_names:
+- sub_810C282
+status: probable
+summary: 'AI helper: when a battle object has a chip selected and Unk_40 has reached a threshold, push
+  chip params, set attack0 and consume the held chip, returning whether it acted.'
+interface: (r5 = BattleObject) -> r0 = 1 if the beast-out chip attack was committed, else 0
+details: "- Pushes {r4,r6,lr}; r6 is the success flag initialised to 0.\n  - `mov r0, r5; bl battle_getSelectedChipForUse_800ED90`\
+  \ reads the chip id (r0) and a count\n    (r3). If r3 == 0 (`tst r3, r3; beq`), there is no selected\
+  \ chip and the function exits\n    with r6 still 0.\n  - The chip id is masked with `lsl r4, r0, #0x17;\
+  \ lsr r4, r4, #0x17` to keep the low 9 bits\n    (a \"chip id\" mask, ignoring element/class high bits).\n\
+  \  - `bl battle_getStateUnk40_800A704` returns `oBattleState_Unk_40`. Compared with the\n    constant\
+  \ `0x12c` (300); if it is < 0x12c the function exits without acting.\n  - Otherwise the masked chip\
+  \ id (r4) is passed to `somethingWriteChipParams_80126E4`,\n    then `object_setAttack0` writes the\
+  \ attack0 value, then\n    `battleObject_decrementChipHeldAndClearChip_800F322` consumes the held chip,\
+  \ and r6 is\n    set to 1 before returning r6.\n  - Out register r0 carries the bool flag; r4/r5/r7\
+  \ are callee-saved across the call but\n    the contract lists them as out, meaning the caller depends\
+  \ on them being preserved\n    (caller restores).\n  - The constant 0x12c strongly suggests this is\
+  \ a beast-out mode trigger threshold\n    (300 turns / frames), and the captured call site name \"beastsp\"\
+  \ confirms it's used\n    from the beast-sp AI path; the function gates that AI on a chip being ready\
+  \ and the\n    beast timer having elapsed.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl battle_getSelectedChipForUse_800ED90` at the head reads the selected chip and a count;
+    `tst r3, r3; beq loc_810C2AE` short-circuits when no chip is selected. - `ldr r1, off_810C34C // =0x12c;
+    cmp r0, r1; blt loc_810C2AE` enforces the 0x12c threshold on `oBattleState_Unk_40`. - Sequence `bl
+    somethingWriteChipParams_80126E4` then `bl object_setAttack0` then `bl battleObject_decrementChipHeldAndClearChip_800F322`
+    is exactly the "execute chip attack" pipeline, with `mov r6, #1` confirming success is reported via
+    r6. - Only caller is `sub_810C212`; captured calls land from snap_beastsp_* which are beast-SP related
+    traces, supporting the beast-out interpretation. - Register contract `out=[''r0'',''r1'',''r4'',''r5'',''r7'']`
+    with r6 used internally matches a small bool-returning helper.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0810C282
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp'
+  reproduce: 'grep -l ''^0810c282 '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp
+open_questions:
+- The exact semantics of `0x12c` (turns vs frames vs an internal counter) — comparing
+- it with a sibling beast-out handler in another BN6 version would settle it.
+- Whether the chip id mask drops element bits intentionally or is just defensive;
+- a higher-level view of the chip id format would confirm.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 09ad1b28
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_810C282 -> battleObject_tryBeastOutChipAttack_810C282
+  where: bn6f 311f2abb
+  tool: tools/rename_symbol.py

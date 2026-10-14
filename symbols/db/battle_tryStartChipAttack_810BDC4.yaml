@@ -4,37 +4,34 @@ kind: function
 previous_names:
 - sub_810BDC4
 status: probable
-summary: AI helper that, when the actor has a chip selected and battle turn state is high enough, queues
-  that chip for use by writing its parameters, setting attack0, and starting the chip-use sub-state.
-interface: (r0 = battleObject, r5 = ?, r7 = ?, r10 = toolkit) -> r0 = 1 if a chip-use was initiated, else
-  0 ; side effects writes to BattleState/oBattleState_Unk_40 path, sets the object's AttackVars/Attack0
-  and triggers sub_800F322
-details: "- Sets r6 (return flag) = 0.\n  - r0 <- r5, calls battle_getSelectedChipForUse_800ED90 to fetch\
-  \ the chip the actor will use; the chip id ends up in r0, with a related value in r3.\n  - tst r3,r3\
-  \ ; beq -> bail (r6 still 0). r4 = low 9 bits of the chip id (the \"r4 = r0 & 0x1FF\" pattern).\n  -\
-  \ Calls battle_getStateUnk40_800A704 to read oBattleState_Unk_40 (battle turn / readiness counter at\
-  \ BattleState offset 0x40).\n  - Compares that value to 0x12C (the literal at dword_810BEC8); if it's\
-  \ strictly less, the function exits with r6 = 0 (too early to start the chip).\n  - Otherwise: r0 =\
-  \ r4 (chip id), call somethingWriteChipParams_80126E4 (writes chip params into the actor's AIAttackVars\
-  \ at +0xa0 with the chip id), then object_setAttack0 (writes Attack0 = chip id in object header / params),\
-  \ then sub_800F322 (which finishes kicking off the chip-use state on the battle object).\n  - Sets r6\
-  \ = 1 and returns r0 = r6.\n  - Caller is sub_810BC44 (an AI update / per-frame dispatcher that walks\
+summary: AI helper that, when the actor has a chip selected and battle turn state is high enough, queues that chip
+  for use by writing its parameters, setting attack0, and starting the chip-use sub-state.
+interface: (r0 = battleObject, r5 = ?, r7 = ?, r10 = toolkit) -> r0 = 1 if a chip-use was initiated, else 0 ; side
+  effects writes to BattleState/oBattleState_Unk_40 path, sets the object's AttackVars/Attack0 and triggers sub_800F322
+details: "- Sets r6 (return flag) = 0.\n  - r0 <- r5, calls battle_getSelectedChipForUse_800ED90 to fetch the chip\
+  \ the actor will use; the chip id ends up in r0, with a related value in r3.\n  - tst r3,r3 ; beq -> bail (r6\
+  \ still 0). r4 = low 9 bits of the chip id (the \"r4 = r0 & 0x1FF\" pattern).\n  - Calls battle_getStateUnk40_800A704\
+  \ to read oBattleState_Unk_40 (battle turn / readiness counter at BattleState offset 0x40).\n  - Compares that\
+  \ value to 0x12C (the literal at dword_810BEC8); if it's strictly less, the function exits with r6 = 0 (too early\
+  \ to start the chip).\n  - Otherwise: r0 = r4 (chip id), call somethingWriteChipParams_80126E4 (writes chip params\
+  \ into the actor's AIAttackVars at +0xa0 with the chip id), then object_setAttack0 (writes Attack0 = chip id in\
+  \ object header / params), then sub_800F322 (which finishes kicking off the chip-use state on the battle object).\n\
+  \  - Sets r6 = 1 and returns r0 = r6.\n  - Caller is sub_810BC44 (an AI update / per-frame dispatcher that walks\
   \ battle actors); it uses the boolean to know whether a chip was actually launched this tick.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- `push {r4,r6,lr}` followed by `mov r6, #0` and final `mov r0, r6` / `pop {r4,r6,pc}` show
-    r6 is the bool return; function returns 1 when the chip-use path ran, 0 otherwise. - `mov r0, r5 ;
-    bl battle_getSelectedChipForUse_800ED90` and the contract for that callee (reads battle object, returns
-    selected chip + flags in r3) explain how r0/r3 are produced. - `tst r3, r3 ; beq loc_810BDF0` short-circuits
-    when no chip is selected. - `lsl r4, r0, #0x17 ; lsr r4, r4, #0x17` is the classic "r4 = r0 & 0x1FF"
-    extraction of the 9-bit chip id. - `bl battle_getStateUnk40_800A704` per the callee''s docstring returns
-    oBattleState_Unk_40. - `ldr r1, dword_810BEC8 // =0x12c ; cmp r0, r1 ; blt loc_810BDF0` is a direct
-    threshold gate against 0x12C (300 decimal), a typical "wait N ticks before activating" guard. - `mov
-    r0, r4 ; bl somethingWriteChipParams_80126E4` writes the chip-id into the AI attack vars (offset +0xa0
-    on the BattleObject, per AIData/AIAttackVars layout). - `bl object_setAttack0` then `bl sub_800F322`
-    together initiate the chip use; sub_800F322 has no reads (per its contract `in=[''r5'',''lr'']`) and
-    writes r0, suggesting it advances the actor''s chip-use sub-state.'
+  detail: '- `push {r4,r6,lr}` followed by `mov r6, #0` and final `mov r0, r6` / `pop {r4,r6,pc}` show r6 is the
+    bool return; function returns 1 when the chip-use path ran, 0 otherwise. - `mov r0, r5 ; bl battle_getSelectedChipForUse_800ED90`
+    and the contract for that callee (reads battle object, returns selected chip + flags in r3) explain how r0/r3
+    are produced. - `tst r3, r3 ; beq loc_810BDF0` short-circuits when no chip is selected. - `lsl r4, r0, #0x17
+    ; lsr r4, r4, #0x17` is the classic "r4 = r0 & 0x1FF" extraction of the 9-bit chip id. - `bl battle_getStateUnk40_800A704`
+    per the callee''s docstring returns oBattleState_Unk_40. - `ldr r1, dword_810BEC8 // =0x12c ; cmp r0, r1 ; blt
+    loc_810BDF0` is a direct threshold gate against 0x12C (300 decimal), a typical "wait N ticks before activating"
+    guard. - `mov r0, r4 ; bl somethingWriteChipParams_80126E4` writes the chip-id into the AI attack vars (offset
+    +0xa0 on the BattleObject, per AIData/AIAttackVars layout). - `bl object_setAttack0` then `bl sub_800F322` together
+    initiate the chip use; sub_800F322 has no reads (per its contract `in=[''r5'',''lr'']`) and writes r0, suggesting
+    it advances the actor''s chip-use sub-state.'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x0810BDC4
@@ -49,11 +46,11 @@ evidence:
     '
   result: battlesweep, beastsp
 open_questions:
-- Exact semantic meaning of `oBattleState_Unk_40 >= 0x12C` (turn-counter? readiness timer?) is not derivable
-  from this function alone.
-- Whether the "r0 = r5" copying the BattleObject pointer into the chip-selection helper is the actor the
-  caller is currently driving, or a related object, depends on the caller sub_810BC44 which I do not have
-  the full body of here.
+- Exact semantic meaning of `oBattleState_Unk_40 >= 0x12C` (turn-counter? readiness timer?) is not derivable from
+  this function alone.
+- Whether the "r0 = r5" copying the BattleObject pointer into the chip-selection helper is the actor the caller
+  is currently driving, or a related object, depends on the caller sub_810BC44 which I do not have the full body
+  of here.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
@@ -65,3 +62,7 @@ changes:
   what: rename sub_810BDC4 -> battle_tryStartChipAttack_810BDC4
   where: bn6f 57a30947
   tool: tools/rename_symbol.py
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 09ad1b28
+  tool: tools/symdoc.py

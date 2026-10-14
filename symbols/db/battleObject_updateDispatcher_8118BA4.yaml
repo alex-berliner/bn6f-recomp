@@ -1,0 +1,68 @@
+name: battleObject_updateDispatcher_8118BA4
+address: '0x08118BA4'
+kind: function
+previous_names:
+- sub_8118BA4
+status: probable
+summary: Battle object per-frame dispatcher that selects one of three update routines by the object's
+  type byte at [r5+8] (BattleObject.CurState).
+interface: (r5 = BattleObjectPtr) -> side effects via the called routine; no value returned (void-like;
+  r0..r4, r6, lr clobbered transitively, pc popped from stack)
+details: "- Reads the global EWRAM pointer sSubmenu via `ldr r6, off_8118BC4` but never actually uses\
+  \ r6 before the indirect jump; it exists only as a stray load that\n    sets up r6 for whatever caller-style\
+  \ ABI expectation was inherited (often seen as a sentinel \"toolkit\" register held across the call).\n\
+  \  - Loads the dispatch table base `off_8118BB8` then indexes by `ldrb r1, [r5,#8]` — offset 0x8 in\
+  \ `struct BattleObject` is the `CurState` union\n    (CUR_STATE_INITIALIZE=0, CUR_STATE_UPDATE=4, CUR_STATE_DESTROY=8),\
+  \ so the table entry chosen is `table[CurState >> 2]`.\n  - Loads the selected function pointer with\
+  \ `ldr r0, [r0,r1]` where `r1 = CurState`, which is then jumped to via `mov lr, pc; bx r0` (ARM/Thumb\n\
+  \    interworking, hence the low bit set in each table entry like `+1`).\n  - The three callees are:\
+  \ index 0 -> `sub_8118BC8` (initialize handler for CurState=CUR_STATE_INITIALIZE), index 1 -> `battleObject_updateByType_8118C2C`\n\
+  \    (update handler for CurState=CUR_STATE_UPDATE), index 2 -> `sub_8118CEC` (destroy handler for CurState=CUR_STATE_DESTROY).\n\
+  \  - Returns to the saved LR via `pop {pc}`, preserving r5 (callee-saved) so the caller can keep using\
+  \ its BattleObject pointer after the call.\n  - The matching `r0=0x8118ba5` (with Thumb bit) plus `r1=0x48`,\
+  \ `r2=0x02021358`, `r3=0x20`, `sp=0x03007dac`, `lr=0x080465e0` snapshot identifies this as\n    part\
+  \ of a tight per-object loop indexed at offset 0x48, scanning 0x20 entries — the classic iteration across\
+  \ the battle object pool\n    (`oBattleObjectsLinkedListStart` / `oT*BattleObject` indices).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r1, [r5,#8]` indexes exactly the `CurState` field of `struct BattleObject` (declared
+    at loc=0x8 in BattleObject.inc). - `off_8118BB8` table contains exactly three pointers +1 for Thumb:
+    `sub_8118BC8+1`, `battleObject_updateByType_8118C2C+1`, `sub_8118CEC+1`, aligned with the three `CUR_STATE_*`
+    values (`0x00`, `0x04`, `0x08`) which become 0/1/2 after `>> 2`. - `mov lr, pc; bx r0` is the canonical
+    ARM-Thumb interwork dispatcher pattern; the `+1` Thumb bits in the table entries require it. - All
+    40 captured snapshots share the identical entry frame (`r0=0x8118ba5`, `r1=0x48`, `r2=0x02021358`,
+    `r3=0x20`, same `sp` and `lr`), consistent with this being invoked from a single loop site that walks
+    an array of objects at index stride 0x48 over 0x20 slots. - Naming helpers in the project explicitly
+    call `battleObject_updateByType_8118C2C` the "update by type" function, fitting the CUR_STATE_UPDATE
+    entry.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08118BA4
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^08118ba4 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The role of `sub_8118BC8` (CUR_STATE_INITIALIZE) and `sub_8118CEC` (CUR_STATE_DESTROY) is not confirmed;
+  examining them would clarify whether this
+- dispatcher is a generic BattleObject tick or something narrower (e.g. a beastOut-specific object type).
+  What r6 (`sSubmenu`) is meant to provide the
+- callees also remains unclear — the callees' summaries would settle it.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 09ad1b28
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8118BA4 -> battleObject_updateDispatcher_8118BA4
+  where: bn6f 311f2abb
+  tool: tools/rename_symbol.py

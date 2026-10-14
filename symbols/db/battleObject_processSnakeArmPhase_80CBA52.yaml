@@ -1,0 +1,76 @@
+name: battleObject_processSnakeArmPhase_80CBA52
+address: '0x080CBA52'
+kind: function
+previous_names:
+- sub_80CBA52
+status: probable
+summary: 'Per-frame battle object driver: drives a "snake-arm" style phase by moving the object along
+  its current X/Y velocities, syncing panel/collision state, and self-destructing if the object drifts
+  off the battlefield.'
+interface: '(r5 = obj, r10 = toolkit) -> r0 = 0; side effects: clobbers r0..r7, lr; writes oBattleObject_X,
+  oBattleObject_Y, oBattleObject_XVelocity, oBattleObject_YVelocity, oBattleObject_CurPhase, oBattleObject_CurAction,
+  oBattleObject_CurStateActionPhaseAndPhaseInitialized, oBattleObject_Timer; clears the object''s collision
+  region; recurses into sub_80CBAFA.'
+details: "• First calls object_isCurrentPanelValid; if the object's currently occupied panel is not valid\
+  \ (test fails, r0 == 0), the object is removed from its collision region (object_clearCollisionRegion),\
+  \ its CurStateActionPhaseAndPhaseInitialized is set to CUR_STATE_DESTROY (0x8), and CurAction is set\
+  \ to 2 — the object is destroyed.\n  • Otherwise the per-phase tick begins. If CurPhase is 0 (not yet\
+  \ running), CurPhase is bumped to 1. The code then checks ExtraVars+4 (offset 0x64): when zero it copies\
+  \ Timer2 into Timer and resyncs pixel coordinates from the current panels (object_setCoordinatesFromPanels);\
+  \ when non-zero it loads ExtraVars+0 (offset 0x60) into r1, multiplies r0 (= r0, i.e. a kind of fixed-point\
+  \ velocity seed left in r0) by r1 (mul r0, r1) and stores the product into YVelocity, while XVelocity\
+  \ is zeroed — a one-shot velocity kick for the first sub-tick.\n  • Each tick integrates X += XVelocity\
+  \ and Y += YVelocity (16.16 fixed-point fields at oBattleObject_X = 0x34 and oBattleObject_Y = 0x38),\
+  \ then calls object_setPanelsFromCoordinates and object_updateCollisionPanels so the panel/facing state\
+  \ stays in sync, then recurses into sub_80CBAFA (probably the animation/animation handling hook for\
+  \ this same object).\n  • Finally Timer is decremented; as long as it stays > 0 the loop continues implicitly\
+  \ on the next frame, otherwise CurPhase is reset to 0 so a fresh phase may be (re)initialised.\n  •\
+  \ Captured callers all run with the same prologue (object r5, toolkit r10), exit with the carry flag\
+  \ clear and r0 in [0x10..0x1D], suggesting the function is called repeatedly by some per-object dispatcher\
+  \ that inspects r0.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- r5 is preserved across the function, the only caller-saved registers touched are r0..r4 (and
+    r10 via the contract) — matches a per-object routine addressed via a dispatch table. - The block at
+    loc_80CBA6A tests oBattleObject_CurPhase; first entry sets it to 1 and initialises Timer from Timer2
+    — clear "phase-0 kickoff" behaviour. - object_clearCollisionRegion + CUR_STATE_DESTROY write at oBattleObject_CurStateActionPhaseAndPhaseInitialized
+    identifies the off-panel branch as object self-removal. - Locals add YVelocity = XVelocity-stored-into-YVelocity
+    * ExtraVars[0] while zeroing XVelocity — directional kick consistent with a snake-arm thrust. - X
+    += XVelocity / Y += YVelocity / object_setPanelsFromCoordinates / object_updateCollisionPanels chain
+    is the standard per-frame object integrator. - Timer countdown with CurPhase reset to 0 only after
+    the timer expires is a phase-driven state machine. - Captured calls all show the same r5/r10 prologue
+    and r0 containing a packed "object/cmd" value returned to the caller.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080CBA52
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp'
+  reproduce: 'grep -l ''^080cba52 '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp
+open_questions:
+- The exact role of `sub_80CBAFA` (animation/animation-update hook?); it shares the r5/r10 contract and
+  is called once per tick.
+- The semantics of `ExtraVars[0]` (multiplier) and the r0 left in r0 before the mul — likely a base speed/velocity
+  component from the action script.
+- What the caller's r0 exit value (0x10..0x1D, all carry-clear) actually encodes; possibly a packed object/cmd
+  index used by an outer dispatcher.
+- Which battle action invokes this function (the captured calls are tagged `snap_beastsp_0050000`, suggesting
+  a BeastOut/sp-out style behaviour, but the assembly has no obvious element selection).
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 09ad1b28
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80CBA52 -> battleObject_processSnakeArmPhase_80CBA52
+  where: bn6f 311f2abb
+  tool: tools/rename_symbol.py

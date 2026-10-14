@@ -1,0 +1,66 @@
+name: battleObject_runBeastSpFunction_8136DE0
+address: '0x08136DE0'
+kind: function
+previous_names:
+- sub_8136DE0
+status: probable
+summary: Run a saved function table entry for the Beast-SP context, saving/restoring AIData timer fields
+  across the call
+interface: '(r0 = beast-sp subsystem object ptr, r1 = 0x28) -> r0 = ? (caller treats as unknown); side
+  effects: writes EWRAM 0x2009398..0xC and calls one of 0x24 dispatch targets then invokes beastsp_dispatchHandler_81356D4'
+details: "Stack-only helper. On entry r10 is the Toolkit (r7 = [r10+0x34] SubmenuPtr, r1 = [r10+4] which\
+  \ is\n  ParamWord from somewhere; here r1 holds a short-lived 6-byte scratch pointer).\n  It first copies\
+  \ three u16s (offsets 0, 2, 4) from the scratch pointer into EWRAM\n  byte_2009390+0x8..+0xC (the AIData\
+  \ Unk_40/Unk_44 area used by the BeastSp code), then\n  zeroes those three u16s in the scratch. It reads\
+  \ `byte` from byte_2009390, indexes\n  off_8136E28 with it (a 36-entry thunk table at 0x08136E2C, all\
+  \ `sub_xxx+1` Thumb addresses)\n  to call a Beast-SP state function via `mov lr,pc; bx r0` (ARM/Thumb\
+  \ switch), then invokes\n  beastsp_dispatchHandler_81356D4 with r10 restored, and finally restores the\
+  \ three saved\n  halfwords back into the scratch.\n  The 36 dispatch targets (sub_8136EE4 … sub_81375CC)\
+  \ and the use of byte_2009390 for dispatch\n  identify this as a continuation/exec wrapper for the Beast-SP\
+  \ state machine used in Beast Out.\n  Captured calls show entry r0=08136DE1 (Thumb bit set, confirming\
+  \ the caller PCs to 0x08136DE0),\n  r1=0x28 (the size/scratch byte count passed via r1), exit r0=0xfc00/0xfc02\
+  \ which is the canonical\n  default JOYPAD mask (high bits only), suggesting the indirected function\
+  \ may end by returning\n  that or by ASLEEPing; the caller then uses r0+offs_81356D4 logic. (8hex addr\
+  \ without 0x.)\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r7,[r7,#0x34]` then `ldr r5, off_8136EC0 ; =byte_2009390` shows r10==Toolkit, scratch
+    is EWRAM at 0x2009390 - `ldrh r0,[r1]; strh r0,[r5,#8]` and offsets 0/2/4 mirror save-clear-restore
+    across the BeastSP call (timestamps in AIData Unk_40..0x4c fields) - `mov r0,#0; strh r0,[r1]` clears
+    the scratch before the call - `ldrb r1,[r5]; ldr r0,[r0,r1]; mov lr,pc; bx r0` is the standard Thumb/ARM
+    thunk dispatch via off_8136E28 -> off_8136E2C, a 36-entry function table - `bl beastsp_dispatchHandler_81356D4`
+    is the named BeastSP continuation caller - Caller lr=0x0811f784 in all snapshots shows this is invoked
+    from the shared battle update loop - The 6 saved bytes correspond to 3 timers most likely PwrAtk/TimerAndTimer2
+    style (u16 + u16 + u16) on a battleObject struct'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08136DE0
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^08136de0 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The exact identity of the 6 bytes saved/restored (r1 points to field on a battleObject or AIData, unknown
+  which struct's field)
+- Which of the 36 dispatched functions are valid for a given beastSP-step byte
+- 'Why capture-call r0==0xfc00/0xfc02: it isn''t actually set by this frame''s body (the body only writes
+  to EWRAM and runs the tail call), so the value comes from the dispatched function or its continuation
+  — naming it as "run/continuation wrapper" is confirmed but the consumer of r0 is opaque.'
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 09ad1b28
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8136DE0 -> battleObject_runBeastSpFunction_8136DE0
+  where: bn6f 311f2abb
+  tool: tools/rename_symbol.py

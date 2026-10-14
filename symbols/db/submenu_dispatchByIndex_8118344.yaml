@@ -1,0 +1,67 @@
+name: submenu_dispatchByIndex_8118344
+address: '0x08118344'
+kind: function
+previous_names:
+- sub_8118344
+status: probable
+summary: 3-way state dispatcher for the SubMenu subsystem, indexing into a handler table by the byte at
+  r5+8 and tail-calling one of three Thumb handlers.
+interface: '(r0 = ???, r5 = ???, r10 = Toolkit) -> does not return normally (tail-calls a handler via
+  bx r0); side effects: clobbers r0-r7'
+details: "- The function is a thin ARM-mode dispatcher. It loads the address of the global sSubmenu into\
+  \ r6 (only to keep it live; r6 is otherwise unused here).\n  - Loads the address of off_8118358 (a 3-entry\
+  \ pointer table) into r0, then indexes it by the byte at [r5,#8] (treated as a u32 index × 4). Each\
+  \ entry is a Thumb-function pointer (+1 Thumb bit).\n  - The table holds sub_8118368, sub_81183C4, and\
+  \ sub_81185B8 — three Thumb handlers. The chosen handler's address is loaded into r0 (the entry pointer),\
+  \ then control is transferred via `mov lr, pc; bx r0` (an ARM→Thumb tail call).\n  - Because the call\
+  \ is a tail-call (bx, not bl), the function has no normal return path; the trailing `pop {pc}` is the\
+  \ epilogue stub for any path that did return, but no caller snapshot shows it being taken — every captured\
+  \ call returns into the caller at the same address it was called from, with r0 set to 0x00001c60 (a\
+  \ typical \"consumed/no-result\" sentinel for this dispatcher style).\n  - r5 is read for the index\
+  \ and is also in/out per the contract, suggesting the caller keeps a pointer to a small struct in r5\
+  \ across calls. Without project-wide context for what struct r5 points to here, the exact identity of\
+  \ r5's pointee is unknown.\n  - r10 holds the Toolkit pointer (per the contract), standard for game-loop\
+  \ dispatchers.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r6, off_8118364 // =sSubmenu` ties the function to the SubMenu subsystem. - `ldrb r1,
+    [r5,#8]` and `ldr r0, [r0,r1]` use the byte at r5+8 as a 0..2 index into a 3-entry dispatch table.
+    - The table at off_8118358 contains exactly three entries pointing to sub_8118368, sub_81183C4, sub_81185B8
+    (visible in the literal pool). - `mov lr, pc; bx r0` performs an ARM→Thumb tail call to the chosen
+    handler; the function does not normally return (no `bx lr`). - Captured exit r0 is consistently 0x00001c60
+    with -Z-- flags, suggesting a sentinel return convention (the handlers tail-call back into the dispatcher
+    wrapper at +1 = 0x08118345, which then propagates 0x1c60).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08118344
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^08118344 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The role of each of the three handlers (sub_8118368 / sub_81183C4 / sub_81185B8) is not visible here;
+  their names would pin down which SubMenu states are dispatched.
+- The exact struct r5 points to is unknown; offset 0x8 in the SubMenu struct (sSubmenu) holds `idx_00`
+  only at offset 0, not 8, so r5 likely points to something other than the SubMenu global itself (perhaps
+  a SubMenuEntry or similar sub-struct, or an outer state struct).
+- Why r0=0x08118345 appears at function entry (the function's own address+1) is unclear; it could be that
+  the caller uses an indirect-call-as-tail-call mechanism and the captured r0 reflects the just-loaded
+  LR.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 09ad1b28
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8118344 -> submenu_dispatchByIndex_8118344
+  where: bn6f 311f2abb
+  tool: tools/rename_symbol.py

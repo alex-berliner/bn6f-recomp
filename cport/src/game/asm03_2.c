@@ -3402,13 +3402,13 @@ Next chatbox_getTextScriptPointerByIndex_804A24C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_804C058 ── */
-/* sub_804C058: tail-dispatcher for an object whose "handler selector" byte
+/* ── chatbox_dispatchTable_804C058 ── */
+/* chatbox_dispatchTable_804C058: tail-dispatcher for an object whose "handler selector" byte
  * lives at [R5+0x10]. The selector is used as a byte offset into a two-entry
  * handler table (off_804C06C); the chosen handler is entered with
  * r0 = its own entry address and r1 = the selector byte, and everything it
  * leaves behind (notably r2, r8-r12) passes straight through to our caller. */
-Next sub_804C058(void) {
+Next chatbox_dispatchTable_804C058(void) {
     u32 selector = LD8(R5 + 0x10);
     u32 handler  = LD32(A_off_804C06C + selector);
 
@@ -3525,7 +3525,7 @@ Next sub_804C08C(void) {
 /* ── chatbox_stepIfGatesOpen_804C11C ── */
 /* chatbox_stepIfGatesOpen_804C11C: gates two chatbox/cutscene steps behind a flag test, a pair of cutscene
  * position checks, and a chatbox flag mask. If all four pass, runs sub_804C144 then
- * sub_804C298. Inputs: r5, r10, lr. Outputs: r2. Clobbers: nz, c, v, r0, r1, r3, lr.
+ * chatbox_copyNaviSpriteState_804C298. Inputs: r5, r10, lr. Outputs: r2. Clobbers: nz, c, v, r0, r1, r3, lr.
  * Preserved: r4, r5, r6, r7. */
 Next chatbox_stepIfGatesOpen_804C11C(void) {
     /* TestPETMenuDataFlag(1) must return zero (flag not set). */
@@ -3548,7 +3548,7 @@ Next chatbox_stepIfGatesOpen_804C11C(void) {
 
     /* All gates passed: run the two-step update. */
     GUEST_CALL(sub_804C144);
-    GUEST_CALL(sub_804C298);
+    GUEST_CALL(chatbox_copyNaviSpriteState_804C298);
 
     RETURN_TO_CALLER();
 }
@@ -3702,8 +3702,8 @@ Next tickActionTimer_804C214(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_804C298 ── */
-/* sub_804C298:
+/* ── chatbox_copyNaviSpriteState_804C298 ── */
+/* chatbox_copyNaviSpriteState_804C298:
  *   inputs:  r5 (source struct), r10 (toolkit), lr
  *   outputs: r2 (pointer to unk_2009740)
  *   clobbers: r0, r3
@@ -3713,7 +3713,7 @@ Next tickActionTimer_804C214(void) {
  * toolkit's render-info / unk_2009740 pointers into a global scratch buffer
  * at unk_2000AC0, then returns the unk_2009740 pointer in r2.
  */
-Next sub_804C298(void) {
+Next chatbox_copyNaviSpriteState_804C298(void) {
     u32 buf = A_unk_2000AC0;
     u32 r10 = R10;
 

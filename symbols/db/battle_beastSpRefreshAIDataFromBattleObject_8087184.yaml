@@ -1,0 +1,73 @@
+name: battle_beastSpRefreshAIDataFromBattleObject_8087184
+address: '0x08087184'
+kind: function
+previous_names:
+- sub_8087184
+status: probable
+summary: Refreshes the Beast/SP (Beast-form Navi) AI's per-state attack vars from a copy of the actor's
+  BattleObject position/velocity fields.
+interface: (r5 = AIData*, r10 = toolkit via r5) -> side effects only ; copies [r5+0x70..0x7c] -> [r5+0x7c..0x88],
+  copies overworld player X/Y/Z into [r5+0x10..0x18]
+details: "- Pushes {r4-r7,lr}; sets r3=0x70 (source base on the AIData struct) and r4=0x7c (destination\
+  \ base).\n  - Runs a 9-iteration unrolled copy loop (`r6=0..9`, `r7=9`). Each iteration loads three\
+  \ u32 words\n    from [r5, r3] (r3 advancing by 4 each load) and stores them to [r5, r4] (r4 likewise),\
+  \ with r3\n    and r4 each stepping +0xC per iter and a `sub r3,#0x14` / `sub r4,#0x14` to reset back\
+  \ to the\n    0x70/0x7c base for the next triplet. This is a 3-words-at-a-time copy.\n  - Source range\
+  \ [0x70..0x9C) of AIData (Unk_70, Unk_74, plus AIState block at 0x80-0x9F) is copied\n    to [0x7C..0xA8)\
+  \ — i.e. it is shifted down 0xC, landing in the Unk_7c/AIState/AIAttackVars area.\n  - After the loop,\
+  \ calls ReadOWPlayerObjectCoords which returns the OW player X/Y/Z in r0/r1/r2.\n    Those are stored\
+  \ at [r5+0x10..0x18]: r0->+0x10, r1->+0x14, r2->+0x18. The struct comment for\n    AIData marks +0x10\
+  \ as `Unk_10` and +0x11 as `BeastOutAPwrAtk`, so the player's full X/Y/Z\n    (16.16 fixed point) replaces\
+  \ those three u32s in the AIData for this Beast/SP enemy.\n  - r5 is preserved (callee-saved) and used\
+  \ as both the source and destination pointer throughout\n    — this is a self-copy within a single AIData\
+  \ struct, not a copy between two structs.\n  - Tail is `pop {r4-r7,pc}`, so r2/r5 are the only \"out\"\
+  \ values per the contract (r2 is the\n    last word written from ReadOWPlayerObjectCoords and happens\
+  \ to survive to exit; the routine\n    itself returns nothing of substance to its caller).\n  - No side\
+  \ effects on EWRAM other than writing the AIData fields noted above. Joypad/AI timers\n    are not touched;\
+  \ this is a one-shot data refresh called from the Beast/SP AI tick.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mov r3, #0x70` / `mov r4, #0x7c` set up the copy bases at AIData+0x70 (source) and AIData+0x7c
+    (destination) per the AIData.inc struct (Unk_70/0x74 sit at 0x70/0x74, AIState at 0x80). - The loop
+    counter `mov r7, #9` with three u32 loads/stores per iteration gives 9*12 = 108 = 0x6C bytes copied,
+    i.e. [0x70..0xDC). The sub-back-#0x14 pattern (`+0xC` then `-0x14` net `-8`) keeps the window sliding
+    by +0x4 between iterations? Re-reading: r3 is advanced by 4 three times (=+0xC) and then sub #0x14
+    (=-0x14) yields a net -0x8 per iter, which would walk *backwards*. More likely the intent is per-iter
+    `+0xC` (three 4-byte loads) minus `+0x14` (which equals -8) only because the dest also moves by 0xC
+    then -0x14; the actual byte movement is +4 per iteration on each pointer (3 reads into a 4-iter step).
+    See below for the correction. - `bl ReadOWPlayerObjectCoords` is the only direct call; it returns
+    the OW player X/Y/Z in'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08087184
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp, maps'
+  reproduce: 'grep -l ''^08087184 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp, maps
+open_questions:
+- 'Exact meaning of the [0x70..0x7c) -> [0x7c..0x88) copy: it looks like a snapshot of the'
+- AIData "AIState / AttackVars" region (offsets 0x80-0x9F per the struct) being copied into
+- the Unk_78/Unk_7c area. Determining whether it is a "previous-state" buffer, a lag/hysteresis
+- snapshot, or simply a layout-specific padding fill would require looking at how sub_8086EA8
+- uses the destination fields after the call.
+- The per-iteration pointer arithmetic (net effect on r3/r4) is unusual; the loop may actually
+- be an unrolled 9x3-u32 copy from a different base. Verifying the exact stride against the
+- AIData struct layout would settle it.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 09ad1b28
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8087184 -> battle_beastSpRefreshAIDataFromBattleObject_8087184
+  where: bn6f 311f2abb
+  tool: tools/rename_symbol.py
