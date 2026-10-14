@@ -2166,8 +2166,9 @@ Highlights:
 | 39    | 25                 | 22                        | 3               | 0       |
 | 40    | 25                 | 23                        | 2               | 0       |
 | 41    | 25                 | 20                        | 5               | 0       |
+| 42    | 25                 | 20                        | 4               | 0       |
 
-Running total: named 764, hypothesis-only 235, dropped 0 (of ~10,600 placeholders).
+Running total: named 784, hypothesis-only 235, dropped 0 (of ~10,600 placeholders).
 
 ## Batch 37 (2026-10-14)
 
@@ -2188,6 +2189,10 @@ Running total: named 764, hypothesis-only 235, dropped 0 (of ~10,600 placeholder
 ## Batch 41 (2026-10-14)
 
 25 functions: 20 renamed to probable, 5 left as hypothesis (sub_80EB79C, sub_810CC54, sub_8115272, sub_80D4472, sub_810CA8E). First time we got a refusal from the LLM (sub_810CA8E — it had no assembly in the standard split and refused to guess). Also first time we got an IWRAM placeholder (sub_300777C, sub_3007038) and the LLM successfully named it. Notable: sub_81204C4 was unusual — the LLM put all the assembly evidence inside `details:` instead of `evidence:`, parser had to fall back.
+
+## Batch 42 (2026-10-14)
+
+25 functions: 20 renamed to probable, 4 left as hypothesis (sub_80EB79C, sub_810CC54, sub_810CA8E, sub_80D4472). One unusual name parse: sub_80A5AF8 had "battle_beastOutInit_80A5AF8 (status: hypothesis)" inside the name field — had to strip the parenthetical.
 
 ## Session summary
 
