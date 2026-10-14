@@ -63,3 +63,38 @@ pending_renames.txt: removed the 2 resolved lines (sub_802FE28, sub_801AC6C);
 ## Batch 2
 
 Not started.
+
+## Batch 2 (2026-10-14)
+
+21 functions, 20 named + 1 hypothesis (sub_80C57F4 kept as comment only), renamed
+in recomp eba7a4a7 (bn6f 4daef61b comments + renames; port ROM unchanged):
+
+- the player-side anger-state maintenance (battle_updatePlayerAngerState_8014326);
+- the collision-hit application (object_applyCollisionHit_801AD9E) and the
+  selected-chip name+damage drawer (battle_drawSelectedChipNameAndDamage_801C6EE);
+- the player's paralyze-action handler (battleObject_actionParalyze_80175B8);
+- four table-driven battle-object init handlers
+  (battleObject_initAttackFromDefTable_80C4E7C, battleObject_initProjectileFromTable_80CA2D4,
+  battleObject_initSpriteAndCollision_80C8708, battleObject_syncSpriteWithRelatedObject_80C43C4);
+- main-flow ticks (battle_updateMainFlow_80080D2) and victory phase (battle_runVictorySequence_80081A4);
+- chip-selection turn transition (battle_endChipSelectionBeginTurn_8026DC4), eStruct
+  record spawner (battle_spawnEStructRecordsFromTable_80465A0), shop init (shop_initScreen_8046D4C),
+  battle-intro spawn step (battle_runBattleIntroSpawnStep_80091F0);
+- overworld map-object draw step (owMapObject_queueSprites_8004934) and overworld scene
+  tick (gamestate_runOverworldSceneStep_80055CE);
+- PET navi-select screen update (pet_updateNaviSelectScreen_811EDB4) and PET navi-display
+  scene update (battle_petNaviDisplayUpdate_8126CC0);
+- AI attack-sequence step (battleAi_spawnTempAttackObjectStep_80EB862) and AI charged-attack
+  step (battleAi_chargeThenFireAttackStep_80EBC28).
+
+tool: tools/asmcat.py (recreated after rebuild) — evidence reproduce commands take the
+address, resolve the current name from the lifter's header comments.
+
+## Tally update
+
+| batch | functions examined | named (renamed via record) | hypothesis-only | dropped |
+|-------|--------------------|---------------------------|-----------------|---------|
+| 1     | 25                 | 25                        | 0               | 0       |
+| 2     | 21                 | 20                        | 1               | 0       |
+
+Running total: named 45, hypothesis-only 1, dropped 0 (of ~10,600 placeholders).
