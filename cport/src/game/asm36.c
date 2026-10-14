@@ -2197,13 +2197,13 @@ Next sub_8134548(void) {
 
 /* ── object_resolveTableEntry_8134558 ── */
 /* Lookup constants baked into the original via literal-pool loads. */
-#define LOOKUP_TYPE       0x20002   /* passed as r1 to sub_811FA98 */
-#define LOOKUP_FIELD_ID   0xC24C    /* passed as r6 to sub_811FA98 */
-#define LOOKUP_COUNT      0x64      /* passed as r7 to sub_811FA98 */
+#define LOOKUP_TYPE       0x20002   /* passed as r1 to object_computeAndQueueOamEntry_811FA98 */
+#define LOOKUP_FIELD_ID   0xC24C    /* passed as r6 to object_computeAndQueueOamEntry_811FA98 */
+#define LOOKUP_COUNT      0x64      /* passed as r7 to object_computeAndQueueOamEntry_811FA98 */
 #define ENTRY_STRIDE_FLD  0x18      /* s16 field in the table entry (stride in 8-byte units) */
-#define ENTRY_TYPE_FLD    7         /* passed as r4 to sub_811FA98 */
+#define ENTRY_TYPE_FLD    7         /* passed as r4 to object_computeAndQueueOamEntry_811FA98 */
 
-/* register form: calls sub_811FA98 outside this file, which has no typed C interface yet.
+/* register form: calls object_computeAndQueueOamEntry_811FA98 outside this file, which has no typed C interface yet.
  * Saves and restores r4-r7 so the outer function preserves them for its own callers
  * (the original does this via push/pop). */
 static void call_811FA98(u32 arg0, u32 arg1, u32 arg2, u32 arg3,
@@ -2211,12 +2211,12 @@ static void call_811FA98(u32 arg0, u32 arg1, u32 arg2, u32 arg3,
     u32 saved4 = R4, saved5 = R5, saved6 = R6, saved7 = R7;
     R0 = arg0; R1 = arg1; R2 = arg2; R3 = arg3;
     R4 = arg4; R5 = arg5; R6 = arg6; R7 = arg7;
-    GUEST_CALL(sub_811FA98);
+    GUEST_CALL(object_computeAndQueueOamEntry_811FA98);
     R4 = saved4; R5 = saved5; R6 = saved6; R7 = saved7;
 }
 
 /* Compute an object-lookup id from a table entry base and index, load two attributes
- * from the entry, and delegate to sub_811FA98 to resolve or query the object.
+ * from the entry, and delegate to object_computeAndQueueOamEntry_811FA98 to resolve or query the object.
  *
  * The id packs a row number (index minus stride × 8, scaled left by 16) with a
  * caller-supplied sub-identifier.  The two attribute values are unsigned half-words

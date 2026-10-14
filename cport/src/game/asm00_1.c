@@ -1222,7 +1222,7 @@ Next TryUpdateEachOWPlayerObject_8003BA2(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8003BF4 ── */
+/* ── owMapObject_renderAll_8003BF4 ── */
 /* Overworld object layout (offsets as in the original asm). */
 #define OWOBJ_STRIDE    0xC8  /* bytes per entry in the overworld object list        */
 #define OWOBJ_POSITION  0x1C  /* world position, input to the sprite projection      */
@@ -1297,10 +1297,10 @@ static void update_overworld_player_sprites(void) {
     commit_sprite_queue(0, object);
 }
 
-/* sub_8003BF4(): no results in registers. r4-r7 and r8/r9/r12 are returned exactly as
+/* owMapObject_renderAll_8003BF4(): no results in registers. r4-r7 and r8/r9/r12 are returned exactly as
  * the caller left them (the original pushes and pops them); save them here because the
  * guest calls above pass hidden arguments through r5 and may clobber the set. */
-Next sub_8003BF4(void) {
+Next owMapObject_renderAll_8003BF4(void) {
     u32 keep_r4 = R4, keep_r5 = R5, keep_r6 = R6, keep_r7 = R7, keep_r8 = R8,
         keep_r9 = R9, keep_r12 = R12;
     update_overworld_player_sprites();
@@ -1425,20 +1425,20 @@ Next sub_8003E98(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8004298 ── */
-/* sub_8004298: invoke sub_80028C0 with argument 3 and return.
+/* ── sprite_finalizeBattleSpriteGroupQueue_8004298 ── */
+/* sprite_finalizeBattleSpriteGroupQueue_8004298: invoke sub_80028C0 with argument 3 and return.
  * (The mov r0, #0x30 / ldr r3 bytes after the pop are dead code from a
  * previous tail of the function and are never executed.) */
-Next sub_8004298(void) {
+Next sprite_finalizeBattleSpriteGroupQueue_8004298(void) {
     R0 = 3;
     GUEST_CALL(sub_80028C0);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8004590 ── */
-/* sub_8004590: wrapper that invokes sub_80028C0 with argument 4 (tail call:
+/* ── sprite_finishGroup_8004590 ── */
+/* sprite_finishGroup_8004590: wrapper that invokes sub_80028C0 with argument 4 (tail call:
  * returns directly to our caller, LR is passed through unchanged). */
-Next sub_8004590(void) {
+Next sprite_finishGroup_8004590(void) {
     R0 = 4;
     GUEST_CALL(sub_80028C0);
     RETURN_TO_CALLER();
@@ -2610,9 +2610,9 @@ static void call_sub_80039AA_gamestate_OnMapUpdate_8005268(void) {
     GUEST_CALL(sub_80039AA);
 }
 
-/* register form: calls sub_8003AFA outside this file, which has no typed C interface yet */
+/* register form: calls object_dispatchByType_8003AFA outside this file, which has no typed C interface yet */
 static void call_sub_8003AFA_gamestate_OnMapUpdate_8005268(void) {
-    GUEST_CALL(sub_8003AFA);
+    GUEST_CALL(object_dispatchByType_8003AFA);
 }
 
 /* register form: calls checkOWObjectInteractions_80037f4 outside this file, which has no typed C interface yet */
@@ -2630,19 +2630,19 @@ static void call_scrollBGTileMap(void) {
     GUEST_CALL(scrollBGTileMapToCamera_8030580);
 }
 
-/* register form: calls sub_80027B4 outside this file, which has no typed C interface yet */
+/* register form: calls sprite_setRenderFlushState_80027B4 outside this file, which has no typed C interface yet */
 static void call_sub_80027B4_gamestate_OnMapUpdate_8005268(void) {
-    GUEST_CALL(sub_80027B4);
+    GUEST_CALL(sprite_setRenderFlushState_80027B4);
 }
 
-/* register form: calls sub_800286C outside this file, which has no typed C interface yet */
+/* register form: calls sprite_resetPaletteCount_800286C outside this file, which has no typed C interface yet */
 static void call_sub_800286C_gamestate_OnMapUpdate_8005268(void) {
-    GUEST_CALL(sub_800286C);
+    GUEST_CALL(sprite_resetPaletteCount_800286C);
 }
 
-/* register form: calls sub_8003BF4 outside this file, which has no typed C interface yet */
+/* register form: calls owMapObject_renderAll_8003BF4 outside this file, which has no typed C interface yet */
 static void call_sub_8003BF4_gamestate_OnMapUpdate_8005268(void) {
-    GUEST_CALL(sub_8003BF4);
+    GUEST_CALL(owMapObject_renderAll_8003BF4);
 }
 
 /* register form: calls sub_8003E98 outside this file, which has no typed C interface yet */
@@ -2655,14 +2655,14 @@ static void call_npcDrawSprites(void) {
     GUEST_CALL(npc_drawSprites_800467C);
 }
 
-/* register form: calls sub_8004298 outside this file, which has no typed C interface yet */
+/* register form: calls sprite_finalizeBattleSpriteGroupQueue_8004298 outside this file, which has no typed C interface yet */
 static void call_sub_8004298_gamestate_OnMapUpdate_8005268(void) {
-    GUEST_CALL(sub_8004298);
+    GUEST_CALL(sprite_finalizeBattleSpriteGroupQueue_8004298);
 }
 
-/* register form: calls sub_8004590 outside this file, which has no typed C interface yet */
+/* register form: calls sprite_finishGroup_8004590 outside this file, which has no typed C interface yet */
 static void call_sub_8004590_gamestate_OnMapUpdate_8005268(void) {
-    GUEST_CALL(sub_8004590);
+    GUEST_CALL(sprite_finishGroup_8004590);
 }
 
 /* register form: calls owMapObject_queueSprites_8004934 outside this file, which has no typed C interface yet */
@@ -2781,24 +2781,24 @@ static void call_sub_80039AA(void) {
     GUEST_CALL(sub_80039AA);
 }
 
-/* register form: calls sub_8003AFA outside this file, which has no typed C interface yet */
+/* register form: calls object_dispatchByType_8003AFA outside this file, which has no typed C interface yet */
 static void call_sub_8003AFA(void) {
-    GUEST_CALL(sub_8003AFA);
+    GUEST_CALL(object_dispatchByType_8003AFA);
 }
 
-/* register form: calls sub_80027B4 outside this file, which has no typed C interface yet */
+/* register form: calls sprite_setRenderFlushState_80027B4 outside this file, which has no typed C interface yet */
 static void call_sub_80027B4(void) {
-    GUEST_CALL(sub_80027B4);
+    GUEST_CALL(sprite_setRenderFlushState_80027B4);
 }
 
-/* register form: calls sub_800286C outside this file, which has no typed C interface yet */
+/* register form: calls sprite_resetPaletteCount_800286C outside this file, which has no typed C interface yet */
 static void call_sub_800286C(void) {
-    GUEST_CALL(sub_800286C);
+    GUEST_CALL(sprite_resetPaletteCount_800286C);
 }
 
-/* register form: calls sub_8003BF4 outside this file, which has no typed C interface yet */
+/* register form: calls owMapObject_renderAll_8003BF4 outside this file, which has no typed C interface yet */
 static void call_sub_8003BF4(void) {
-    GUEST_CALL(sub_8003BF4);
+    GUEST_CALL(owMapObject_renderAll_8003BF4);
 }
 
 /* register form: calls sub_8003E98 outside this file, which has no typed C interface yet */
@@ -2811,14 +2811,14 @@ static void call_npc_drawSprites_800467C(void) {
     GUEST_CALL(npc_drawSprites_800467C);
 }
 
-/* register form: calls sub_8004298 outside this file, which has no typed C interface yet */
+/* register form: calls sprite_finalizeBattleSpriteGroupQueue_8004298 outside this file, which has no typed C interface yet */
 static void call_sub_8004298(void) {
-    GUEST_CALL(sub_8004298);
+    GUEST_CALL(sprite_finalizeBattleSpriteGroupQueue_8004298);
 }
 
-/* register form: calls sub_8004590 outside this file, which has no typed C interface yet */
+/* register form: calls sprite_finishGroup_8004590 outside this file, which has no typed C interface yet */
 static void call_sub_8004590(void) {
-    GUEST_CALL(sub_8004590);
+    GUEST_CALL(sprite_finishGroup_8004590);
 }
 
 /* register form: calls owMapObject_queueSprites_8004934 outside this file, which has no typed C interface yet */
@@ -2968,21 +2968,21 @@ Next endBattleAndEnterMap_800531C(void) {
 static const u16 warp_entry_cues[2] = { 0xE7, 0xEC };
 
 /* register form: calls the overworld per-frame update/draw routines
- * (dispatch_80339CC, sub_80039AA, sub_8003AFA, sub_80027B4, sub_800286C,
- * sub_8003BF4, sub_8003E98, npc_drawSprites_800467C, sub_8004298,
- * sub_8004590, owMapObject_queueSprites_8004934, event_runArmedCallback_80024AE) outside this
+ * (dispatch_80339CC, sub_80039AA, object_dispatchByType_8003AFA, sprite_setRenderFlushState_80027B4, sprite_resetPaletteCount_800286C,
+ * owMapObject_renderAll_8003BF4, sub_8003E98, npc_drawSprites_800467C, sprite_finalizeBattleSpriteGroupQueue_8004298,
+ * sprite_finishGroup_8004590, owMapObject_queueSprites_8004934, event_runArmedCallback_80024AE) outside this
  * file, which have no typed C interface yet */
 static void run_overworld_updates(void) {
     GUEST_CALL(dispatch_80339CC);
     GUEST_CALL(sub_80039AA);
-    GUEST_CALL(sub_8003AFA);
-    GUEST_CALL(sub_80027B4);
-    GUEST_CALL(sub_800286C);
-    GUEST_CALL(sub_8003BF4);
+    GUEST_CALL(object_dispatchByType_8003AFA);
+    GUEST_CALL(sprite_setRenderFlushState_80027B4);
+    GUEST_CALL(sprite_resetPaletteCount_800286C);
+    GUEST_CALL(owMapObject_renderAll_8003BF4);
     GUEST_CALL(sub_8003E98);
     GUEST_CALL(npc_drawSprites_800467C);
-    GUEST_CALL(sub_8004298);
-    GUEST_CALL(sub_8004590);
+    GUEST_CALL(sprite_finalizeBattleSpriteGroupQueue_8004298);
+    GUEST_CALL(sprite_finishGroup_8004590);
     GUEST_CALL(owMapObject_queueSprites_8004934);
     GUEST_CALL(event_runArmedCallback_80024AE);
 }
@@ -3050,17 +3050,17 @@ static void call_dispatch(void) { GUEST_CALL(dispatch_80339CC); }
 /* register form: calls sub_80039AA outside this file, which has no typed C interface yet */
 static void call_sub_80039AA_sub_80053E4(void) { GUEST_CALL(sub_80039AA); }
 
-/* register form: calls sub_8003AFA outside this file, which has no typed C interface yet */
-static void call_sub_8003AFA_sub_80053E4(void) { GUEST_CALL(sub_8003AFA); }
+/* register form: calls object_dispatchByType_8003AFA outside this file, which has no typed C interface yet */
+static void call_sub_8003AFA_sub_80053E4(void) { GUEST_CALL(object_dispatchByType_8003AFA); }
 
-/* register form: calls sub_80027B4 outside this file, which has no typed C interface yet */
-static void call_sub_80027B4_sub_80053E4(void) { GUEST_CALL(sub_80027B4); }
+/* register form: calls sprite_setRenderFlushState_80027B4 outside this file, which has no typed C interface yet */
+static void call_sub_80027B4_sub_80053E4(void) { GUEST_CALL(sprite_setRenderFlushState_80027B4); }
 
-/* register form: calls sub_800286C outside this file, which has no typed C interface yet */
-static void call_sub_800286C_sub_80053E4(void) { GUEST_CALL(sub_800286C); }
+/* register form: calls sprite_resetPaletteCount_800286C outside this file, which has no typed C interface yet */
+static void call_sub_800286C_sub_80053E4(void) { GUEST_CALL(sprite_resetPaletteCount_800286C); }
 
-/* register form: calls sub_8003BF4 outside this file, which has no typed C interface yet */
-static void call_sub_8003BF4_sub_80053E4(void) { GUEST_CALL(sub_8003BF4); }
+/* register form: calls owMapObject_renderAll_8003BF4 outside this file, which has no typed C interface yet */
+static void call_sub_8003BF4_sub_80053E4(void) { GUEST_CALL(owMapObject_renderAll_8003BF4); }
 
 /* register form: calls sub_8003E98 outside this file, which has no typed C interface yet */
 static void call_sub_8003E98_sub_80053E4(void) { GUEST_CALL(sub_8003E98); }
@@ -3068,11 +3068,11 @@ static void call_sub_8003E98_sub_80053E4(void) { GUEST_CALL(sub_8003E98); }
 /* register form: calls npc_drawSprites_800467C outside this file, which has no typed C interface yet */
 static void call_npc_draw_sprites(void) { GUEST_CALL(npc_drawSprites_800467C); }
 
-/* register form: calls sub_8004298 outside this file, which has no typed C interface yet */
-static void call_sub_8004298_sub_80053E4(void) { GUEST_CALL(sub_8004298); }
+/* register form: calls sprite_finalizeBattleSpriteGroupQueue_8004298 outside this file, which has no typed C interface yet */
+static void call_sub_8004298_sub_80053E4(void) { GUEST_CALL(sprite_finalizeBattleSpriteGroupQueue_8004298); }
 
-/* register form: calls sub_8004590 outside this file, which has no typed C interface yet */
-static void call_sub_8004590_sub_80053E4(void) { GUEST_CALL(sub_8004590); }
+/* register form: calls sprite_finishGroup_8004590 outside this file, which has no typed C interface yet */
+static void call_sub_8004590_sub_80053E4(void) { GUEST_CALL(sprite_finishGroup_8004590); }
 
 /* register form: calls owMapObject_queueSprites_8004934 outside this file, which has no typed C interface yet */
 static void call_sub_8004934_sub_80053E4(void) { GUEST_CALL(owMapObject_queueSprites_8004934); }
@@ -3268,24 +3268,24 @@ static void call_sub_80039AA_sub_8005642(void) {
     GUEST_CALL(sub_80039AA);
 }
 
-/* register form: calls sub_8003AFA outside this file, which has no typed C interface yet */
+/* register form: calls object_dispatchByType_8003AFA outside this file, which has no typed C interface yet */
 static void call_sub_8003AFA_sub_8005642(void) {
-    GUEST_CALL(sub_8003AFA);
+    GUEST_CALL(object_dispatchByType_8003AFA);
 }
 
-/* register form: calls sub_80027B4 outside this file, which has no typed C interface yet */
+/* register form: calls sprite_setRenderFlushState_80027B4 outside this file, which has no typed C interface yet */
 static void call_sub_80027B4_sub_8005642(void) {
-    GUEST_CALL(sub_80027B4);
+    GUEST_CALL(sprite_setRenderFlushState_80027B4);
 }
 
-/* register form: calls sub_800286C outside this file, which has no typed C interface yet */
+/* register form: calls sprite_resetPaletteCount_800286C outside this file, which has no typed C interface yet */
 static void call_sub_800286C_sub_8005642(void) {
-    GUEST_CALL(sub_800286C);
+    GUEST_CALL(sprite_resetPaletteCount_800286C);
 }
 
-/* register form: calls sub_8003BF4 outside this file, which has no typed C interface yet */
+/* register form: calls owMapObject_renderAll_8003BF4 outside this file, which has no typed C interface yet */
 static void call_sub_8003BF4_sub_8005642(void) {
-    GUEST_CALL(sub_8003BF4);
+    GUEST_CALL(owMapObject_renderAll_8003BF4);
 }
 
 /* register form: calls sub_8003E98 outside this file, which has no typed C interface yet */
@@ -3298,14 +3298,14 @@ static void call_npc_drawSprites_800467C_sub_8005642(void) {
     GUEST_CALL(npc_drawSprites_800467C);
 }
 
-/* register form: calls sub_8004298 outside this file, which has no typed C interface yet */
+/* register form: calls sprite_finalizeBattleSpriteGroupQueue_8004298 outside this file, which has no typed C interface yet */
 static void call_sub_8004298_sub_8005642(void) {
-    GUEST_CALL(sub_8004298);
+    GUEST_CALL(sprite_finalizeBattleSpriteGroupQueue_8004298);
 }
 
-/* register form: calls sub_8004590 outside this file, which has no typed C interface yet */
+/* register form: calls sprite_finishGroup_8004590 outside this file, which has no typed C interface yet */
 static void call_sub_8004590_sub_8005642(void) {
-    GUEST_CALL(sub_8004590);
+    GUEST_CALL(sprite_finishGroup_8004590);
 }
 
 /* register form: calls owMapObject_queueSprites_8004934 outside this file, which has no typed C interface yet */
@@ -3465,14 +3465,14 @@ Next scenario_finalizeFrameOrRestart_8005642(void) {
 Next mainState_runFrame_8005814(void) {
     GUEST_CALL(dispatch_80339CC);
     GUEST_CALL(sub_80039AA);
-    GUEST_CALL(sub_8003AFA);
-    GUEST_CALL(sub_80027B4);
-    GUEST_CALL(sub_800286C);
-    GUEST_CALL(sub_8003BF4);
+    GUEST_CALL(object_dispatchByType_8003AFA);
+    GUEST_CALL(sprite_setRenderFlushState_80027B4);
+    GUEST_CALL(sprite_resetPaletteCount_800286C);
+    GUEST_CALL(owMapObject_renderAll_8003BF4);
     GUEST_CALL(sub_8003E98);
     GUEST_CALL(npc_drawSprites_800467C);
-    GUEST_CALL(sub_8004298);
-    GUEST_CALL(sub_8004590);
+    GUEST_CALL(sprite_finalizeBattleSpriteGroupQueue_8004298);
+    GUEST_CALL(sprite_finishGroup_8004590);
     GUEST_CALL(owMapObject_queueSprites_8004934);
     GUEST_CALL(event_runArmedCallback_80024AE);
     GUEST_CALL(IsScreenFadeActive);

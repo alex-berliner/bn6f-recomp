@@ -1,0 +1,83 @@
+name: battle_drawChipCountsOAM_801C082
+address: '0x0801C082'
+kind: function
+previous_names:
+- sub_801C082
+status: probable
+summary: Iterates an array of 6 chip-count OAM slots at dword_20352E0, projecting each owning battle object's
+  screen X/Y and queuing an OAM entry for that actor's selected chip with a run of stacked OAM tiles.
+interface: '(r0 = playerAlliance?) -> r0 = 0 ; side effects: queues OAM entries via sub_802FE28'
+details: "Walks a 6-element array of 8-byte slots at dword_20352E0 (pointed by r4 at 0x0801c084);\n  base\
+  \ tile data address starts at 0xab50 (loaded into r7) and the r6 index runs 6 down to 1.\n  For each\
+  \ entry: byte[0] active flag, byte[3] must equal the pushed input arg (r0);\n  the pointer to its actor/BattleObject\
+  \ is read at +4 and tested with GetAIDataUnk0x48Flag to\n  skip slots whose AI data has the 0x100000\
+  \ bit set; the actor's selected chip is fetched\n  via battle_getSelectedChipForUse_800ED90, and OAM\
+  \ is only queued if a chip (r3 != 0) exists.\n  Sprite placement: r10+0x18 gives the BattleState pointer;\
+  \ oBattleState_Unk_0d selects the\n  active alliance side and is fed to object_getAllianceDirection;\
+  \ object_getFlipDirection\n  compares byte 0x16 (Alliance) and byte 0x17 (DirectionFlip) of the actor;\
+  \ the actor's\n  location at actor+0x34 is projected by projectObjectToScreen_800362C returning X/Y\
+  \ plus\n  visibility in r2.\n  When visible, X is masked to 0x1FF and decremented by 8 (lsl 16 puts\
+  \ X high), Y is added\n  with byte 1 of the slot (signed, used as a row offset) plus byte 2, masked\
+  \ to 0xFF.\n  r6 accumulates into the packed (X<<16 | Y) OAM attribute; the tile layout is built by\n\
+  \  calling sub_802FE28 (OAM queueThunk) with 0x40000000+attr, r7=tile base, 2, and chip+0xd0,\n  repeated\
+  \ for r5 downcount of chip copies; r7 advances by 4 each outer iteration so six\n  row-by-row slices\
+  \ of OAM tiles are emitted per slot, matching the 6-slice layout of\n  dword_20352E0. The function returns\
+  \ 0 in r0 with NZ=0 C=1.\nevidence: |\n  - Array base loaded from off_801C148 -> dword_20352E0 (line\
+  \ @ 0x801c084)\n  - r6 starts at 6, r7 at 0xab50; outer loop steps r4+=8, r7+=4, r6-=1 (0x801c13a..0x801c146)\n\
+  \  - Inner draw loop sub_r5 downcount reuses r6 via add r0,r0,r2 then sub r6,r6,r1 (0x801c10c..0x801c12c)\n\
+  \  - Skip conditions: byte[0]==0 (0x801c08c), byte[3]!=stored_r0 (0x801c094..0x801c09a), bit 0x100000\
+  \ AI flag (0x801c0a2..0x801c0a8), no chip (0x801c0ae..0x801c0b0)\n  - Screen projection: projectObjectToScreen_800362C\
+  \ called with actor+0x34 (0x801c0d0), visibility checked via cmp r2,#0 / beq loc_801C136\n  - X/Y composition:\
+  \ ldrsb r2,[r4,r2] with r2=1 (offset 0x801c0d4), add r1,r1,r2 with r2=2 (0x801c0f2), and 0x1FF/0xff\
+  \ masks\n  - OAM thunk call: mov r0,#0x40000000 + r6 attr, r1=r7, r2=2, r3=chip+0xd0 (0x801c108..0x801c110)\n\
+  \  - ToolKit->BattleState->Unk_0d read via ldrb r0,[r0,#oBattleState_Unk_0d] then object_getAllianceDirection\
+  \ (0x801c0bc..0x801c0c4)\nuncertain: |\n  Exact semantic of byte[3] of each array slot (the \"playerAlliance?\"\
+  \ matches the caller's\n  r0 which is 1 from battle_RequestEndBattle_801C06E but 0 from sub_801C078).\
+  \ The exact OAM\n  tile address source (0xab50+4*i) is consistent with the OAM being the player's confirmed-chip\n\
+  \  numbers overlay drawn during the battle HUD. Settling it would require knowing what\n  dword_20352E0\
+  \ points to (a chip-count strip array indexed by side?) and what 0xab50 is.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- Array base loaded from off_801C148 -> dword_20352E0 (line @ 0x801c084) - r6 starts at 6,
+    r7 at 0xab50; outer loop steps r4+=8, r7+=4, r6-=1 (0x801c13a..0x801c146) - Inner draw loop sub_r5
+    downcount reuses r6 via add r0,r0,r2 then sub r6,r6,r1 (0x801c10c..0x801c12c) - Skip conditions: byte[0]==0
+    (0x801c08c), byte[3]!=stored_r0 (0x801c094..0x801c09a), bit 0x100000 AI flag (0x801c0a2..0x801c0a8),
+    no chip (0x801c0ae..0x801c0b0) - Screen projection: projectObjectToScreen_800362C called with actor+0x34
+    (0x801c0d0), visibility checked via cmp r2,#0 / beq loc_801C136 - X/Y composition: ldrsb r2,[r4,r2]
+    with r2=1 (offset 0x801c0d4), add r1,r1,r2 with r2=2 (0x801c0f2), and 0x1FF/0xff masks - OAM thunk
+    call: mov r0,#0x40000000 + r6 attr, r1=r7, r2=2, r3=chip+0xd0 (0x801c108..0x801c110) - ToolKit->BattleState->Unk_0d
+    read via ldrb r0,[r0,#oBattleState_Unk_0d] then object_getAllianceDirection (0x801c0bc..0x801c0c4)'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801C082
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0801c082 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- Exact semantic of byte[3] of each array slot (the "playerAlliance?" matches the caller's
+- r0 which is 1 from battle_RequestEndBattle_801C06E but 0 from sub_801C078). The exact OAM
+- tile address source (0xab50+4*i) is consistent with the OAM being the player's confirmed-chip
+- numbers overlay drawn during the battle HUD. Settling it would require knowing what
+- dword_20352E0 points to (a chip-count strip array indexed by side?) and what 0xab50 is.
+- 'status: probable'
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 12ebc85b
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801C082 -> battle_drawChipCountsOAM_801C082
+  where: bn6f 0fc2dd04
+  tool: tools/rename_symbol.py

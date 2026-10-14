@@ -188,10 +188,10 @@ Next spriteLoadMugshot_800275A(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80027B4 ── */
-/* sub_80027B4: set the flag at dword_200F350 (A_dword_200F350) to 1.
+/* ── sprite_setRenderFlushState_80027B4 ── */
+/* sprite_setRenderFlushState_80027B4: set the flag at dword_200F350 (A_dword_200F350) to 1.
  * Probably marks some sprite/resource table as loaded/available. */
-Next sub_80027B4(void) {
+Next sprite_setRenderFlushState_80027B4(void) {
     ST32(A_dword_200F350, 1);
     RETURN_TO_CALLER();
 }
@@ -210,10 +210,10 @@ Next palette_InitTransferState_80027D4(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_800286C ── */
-/* sub_800286C: clear the 32-bit global dword_200F340 to zero (some
+/* ── sprite_resetPaletteCount_800286C ── */
+/* sprite_resetPaletteCount_800286C: clear the 32-bit global dword_200F340 to zero (some
  * global counter/flag reset; no results, no flags). */
-Next sub_800286C(void) {
+Next sprite_resetPaletteCount_800286C(void) {
     ST32(A_dword_200F340, 0);
     RETURN_TO_CALLER();
 }

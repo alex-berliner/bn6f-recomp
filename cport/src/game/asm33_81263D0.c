@@ -2434,7 +2434,7 @@ Next fieldEntityTileAnimTick_8127F54(void) {
 
 /* ── sub_8127FE4 ── */
 /* sub_8127FE4(r5 = object pointer)
- * Wrapper that fills out the argument set and forwards to sub_811FA98
+ * Wrapper that fills out the argument set and forwards to object_computeAndQueueOamEntry_811FA98
  * (a large constructor / dispatcher). r5 is preserved across the call. */
 Next sub_8127FE4(void) {
     u32 obj = R5;
@@ -2447,12 +2447,12 @@ Next sub_8127FE4(void) {
     R2 = LD16(obj + 0x1E);
     R3 = LD16(obj + 0x24);
 
-    /* sub_811FA98 needs R4=4, R6=oSomeTable_30CA4C, R7=0x35. */
+    /* object_computeAndQueueOamEntry_811FA98 needs R4=4, R6=oSomeTable_30CA4C, R7=0x35. */
     R4 = 4;
     R6 = 0x30CA4C;
     R7 = 0x35;
 
-    GUEST_CALL(sub_811FA98);
+    GUEST_CALL(object_computeAndQueueOamEntry_811FA98);
 
     R4 = save_r4;
     R6 = save_r6;
@@ -3363,7 +3363,7 @@ Next checkTextScriptEnd_8128BF0(void) {
 /* ── battle_queueHpUpdate_8128C20 ── */
 /* battle_queueHpUpdate_8128C20(r5 = battle object pointer):
  * Build a coordinate from the battle object's HP field (parity + half) and queue
- * a sub_811FA98 call via a command buffer (opcode 0xE1.0x13, key 0x20002).
+ * a object_computeAndQueueOamEntry_811FA98 call via a command buffer (opcode 0xE1.0x13, key 0x20002).
  * Preserves r4, r5, r6, r7 across the call. */
 Next battle_queueHpUpdate_8128C20(void) {
     u32 saved_r4 = R4;
@@ -3382,7 +3382,7 @@ Next battle_queueHpUpdate_8128C20(void) {
     R6 = 0xC240;
     R7 = 0x37;
 
-    GUEST_CALL(sub_811FA98);
+    GUEST_CALL(object_computeAndQueueOamEntry_811FA98);
 
     R4 = saved_r4;
     R6 = saved_r6;

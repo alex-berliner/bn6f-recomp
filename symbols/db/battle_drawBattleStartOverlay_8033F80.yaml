@@ -1,0 +1,67 @@
+name: battle_drawBattleStartOverlay_8033F80
+address: '0x08033F80'
+kind: function
+previous_names:
+- sub_8033F80
+status: probable
+summary: Conditionally DMA-loads the battle-start overlay tilemap/sprite frame and queues a battle-start
+  OAM entry based on a game-state flag.
+interface: '(r0 = battle subsystem index/id 0) -> (nothing) ; side effect: DMA queues a 0x80-byte chunk
+  from ROM 0x86C1AA0 to VRAM 0x6017580 and queues one OAM sprite at the tile-id constant 0xC7AC.'
+details: "Guards on the global state byte at 0x200AD04 via `notZero_eByte200AD04`; if it is zero the function\n\
+  \  returns immediately (BM state: present).\n  When the flag is non-zero it queues a 0x80-byte (eight-word-aligned)\
+  \ GFX transfer:\n    src = byte_86C1AA0 (ROM, 0x086C1AA0)\n    dst = 0x6017580     (VRAM charblock base,\
+  \ tile-region destination)\n    size = 0x80\n  It then indexes the small 8-byte jump table at 0x08033FB4\
+  \ by r4 (= r0 << 2) to fetch a u32 OAM\n  parameter, and calls sprite_queueOamEntryThunk_802FE28(r0=tblEntry,\
+  \ r1=0xC7AC, r2=1, r3=0).\n  Effectively this is the per-frame routine that, while the battle-start\
+  \ flag is active, refreshes\n  the \"FIGHT!\" / battle-start overlay tiles into VRAM and pushes its\
+  \ associated OAM tile-alloc\n  request. Caller `onUpdateInInternet_8033B1E` invokes it with r0=1 during\
+  \ the Internet update step;\n  `battle_resetState_8033AC4` invokes it with r0=1 as part of the four-step\
+  \ reset sequence.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- Guard `bl notZero_eByte200AD04` / `beq locret_8033FA4` at the very start of the function
+    is the flag-check; `notZero_eByte200AD04` is the named callee that loads byte 0x200AD04. - The DMA
+    call is `bl QueueEightWordAlignedGFXTransfer` with `mov r2, #0x80`, source `byte_86C1AA0`, destination
+    `0x6017580` — an explicit 0x80-byte ROM→VRAM copy. - `lsl r4, r4, #2` + `ldr r0, [r0, r4]` against
+    the 8-byte table `byte_8033FB4` (entries 0x00000600, 0x00002440, 0x00003040) is a tile-alloc/OAM dispatch
+    table indexed by battle index. - `mov r1, #0xc7ac` / `mov r2, #1` / `mov r3, #0` then `bl sprite_queueOamEntryThunk_802FE28`
+    passes tile-base 0xC7AC plus the looked-up OAM record into the sprite queue. - Caller `battle_resetState_8033AC4`
+    is described as running "the four battle-state (re)initialization routines in order" — consistent
+    with this being the first/init-time overlay redraw.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08033F80
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story1, story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^08033f80 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander
+open_questions:
+- Exact semantics of the per-call argument r0 (battle-state phase index vs. menu/page index vs.
+- arbitrary sub-id) — only three table slots are decoded; capturing an entry with r0=2 or r0=3
+- and observing which OAM parameter is fetched would settle it.
+- Why the function reads a battle-state byte (0x200AD04) but only triggers when non-zero is not
+- labelled in this struct set; a state struct view for 0x200AD04 would clarify (likely the
+- '`eSubsystemIndex`/`InBattle` flag in `BattleState` 0x11 region).'
+- The `sprite_queueOamEntryThunk_802FE28` argument shape is inferred from the callee's
+- contract; the precise OAM attribute fields it fills (palette, x/y, shape) are unknown.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 12ebc85b
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8033F80 -> battle_drawBattleStartOverlay_8033F80
+  where: bn6f 0fc2dd04
+  tool: tools/rename_symbol.py

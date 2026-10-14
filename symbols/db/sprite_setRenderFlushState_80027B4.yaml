@@ -1,0 +1,65 @@
+name: sprite_setRenderFlushState_80027B4
+address: '0x080027B4'
+kind: function
+previous_names:
+- sub_80027B4
+status: probable
+summary: Writes 0x1 to the render-flush latch at EWRAM 0x0200F350, signalling that the next render-flush
+  pass should execute.
+interface: (lr = caller's return address) -> r0 = 0x0200F350, r1 = 0x1 (trashed); no other side effects
+details: "The function is a tiny three-instruction helper: load the EWRAM pointer\n  `dword_200F350` (0x0200F350)\
+  \ into r0, load the literal 0x1 into r1, then\n  `str r1, [r0]`, which stores 0x1 at 0x0200F350. It\
+  \ then returns via\n  `mov pc, lr`. 0x0200F350 is part of the render / sprite state area used by\n \
+  \ the engine — comment on `render_info_struct` notes \"look at\n  render_flushDisplayRegisters_800172C\
+  \ for how data is transferred\", and\n  `S200F348` is the immediately preceding struct at 0x0200F348,\
+  \ so this word\n  almost certainly is the \"Index/control\" tail of that struct (or a sibling\n  sprite-render\
+  \ latch at the same address) and the store here requests a\n  flush. Because the address is in EWRAM\
+  \ the write persists across frames\n  until cleared by the renderer. The captured calls all show entry\
+  \ r0=0x16,\n  r1=0x1, r2=0x03005ffb, r3=any, lr=0x080052a7 — i.e. the same caller in\n  every scenario\
+  \ snapshot, repeatedly asking for a flush at every per-frame\n  call site. The \"out\" contract is empty\
+  \ of caller-saved regs because r0/r1\n  are clobbered to the loaded constants; callee-saved regs are\
+  \ untouched.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r0, off_80027BC // =dword_200F350` loads 0x0200F350 into r0. - `ldr r1, dword_80027C0
+    // =0x1` loads the literal value 1. - `str r1, [r0]` is the only store — a single 32-bit write of
+    1 to 0x0200F350. - `mov pc, lr` returns without further work, so the only effect is that 32-bit write.
+    - The struct `S200F348` (file S200F348.inc) sits at 0x0200F348 with size 0x08, putting 0x0200F350
+    exactly at offset +8 — i.e. the byte right after that struct, almost certainly the render-flush trigger.
+    - The comment in RenderInfo.inc references `render_flushDisplayRegisters_800172C` as the consumer
+    of this region, and the function name on disk (sprite.s) plus the captured call from `gamestate_OnMapUpdate_8005268`
+    (overworld per-frame) and `battle_update_8007A44` (battle per-frame) matches a sprite/render pipeline
+    request fired every frame. - All 40 captured entries show the same lr=0x080052a7, i.e. one specific
+    per-frame dispatcher invoking this helper once per frame, consistent with a "request a render flush
+    now" semantic.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080027B4
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story1, story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^080027b4 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander
+open_questions:
+- The exact meaning of "Index/control" tail beyond S200F348's size 0x08 isn't documented in any struct,
+  so the field name is inferred from neighbour structs. Naming a field `FlushRequest` or `RenderFlushLatch`
+  would settle it.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 12ebc85b
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80027B4 -> sprite_setRenderFlushState_80027B4
+  where: bn6f 0fc2dd04
+  tool: tools/rename_symbol.py

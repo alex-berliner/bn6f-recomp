@@ -1,0 +1,56 @@
+name: sprite_finishGroup_8004590
+address: '0x08004590'
+kind: function
+previous_names:
+- sub_8004590
+status: probable
+summary: Closes out a sprite-queue group by recording the final palette-count (dword_200F340) into byte
+  slot 4 of byte_200F389.
+interface: '() -> r0 = 0x4 ; side effect: writes the latest palette-count (dword_200F340) into byte_200F389[4]
+  via sub_80028C0'
+details: "Trivial tail-call: pushes lr, sets r0 = 4, branches-and-links to sub_80028C0 (the helper\n \
+  \ that \"records the sprite palette count (dword_200F340) in slot r0 of byte_200F389\"), then\n  pops\
+  \ pc. r0 is left as the immediate 4 on exit (visible in the captured calls as\n  r0=0x00000004) so the\
+  \ caller can see which slot index was used.\n  Called from per-frame ticks (battle_init, gamestate_OnMapUpdate,\
+  \ mainState_runFrame, the\n  scenario/warp/scene sub-dispatchers, and 0x08138848), which all need to\
+  \ flush the pending\n  sprite palette bookkeeping at the end of the frame's sprite-queueing phase.\n\
+  \  The slot 4 here likely corresponds to a specific sprite group (e.g. battle/UI/overlay) –\n  the same\
+  \ helper is reused at other slot indices elsewhere, but here it is fixed to 4.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- asm: `mov r0, #4` then `bl sub_80028C0` and `pop {pc}` (bn6f/asm/asm00_1.s:2789-2792). -
+    sub_80028C0''s project summary says it "Record[s] the sprite palette count (dword_200F340) in slot
+    r0 of byte_200F389, after each sprite group is queued." - Captured exit r0 is 0x00000004 in all 40
+    snap_story2 traces, matching the slot index. - All callers are per-frame main-loop/transition dispatchers,
+    which fits a "finish current sprite-queue group" step. - The contract''s `may_write=[''r0'', ''r1'',
+    ''r2'', ''lr'']` matches the only callee clobbers.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08004590
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story1, story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^08004590 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander
+open_questions:
+- Which sprite group slot 4 represents (e.g. battle field vs. HUD vs. background tiles);
+- the other 3 callers of sub_80028C0 with different slot values would settle that.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 12ebc85b
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8004590 -> sprite_finishGroup_8004590
+  where: bn6f 0fc2dd04
+  tool: tools/rename_symbol.py

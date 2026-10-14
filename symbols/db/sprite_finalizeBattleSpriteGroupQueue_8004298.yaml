@@ -1,0 +1,61 @@
+name: sprite_finalizeBattleSpriteGroupQueue_8004298
+address: '0x08004298'
+kind: function
+previous_names:
+- sub_8004298
+status: probable
+summary: Flush the queued sprite group and record its palette count into the third slot of the sprite
+  palette counter array.
+interface: ()
+details: "The function is a tiny leaf. It loads r0 = 3 and tail-calls sub_80028C0, whose contract\n  documents\
+  \ it as \"Record the sprite palette count (dword_200F340) in slot r0 of\n  byte_200F389, after each\
+  \ sprite group is queued.\" So this routine is the explicit\n  \"queue group 3\" / finalizer step: it\
+  \ stamps the palette-count snapshot taken at\n  dword_200F340 into byte_200F389 + 3 (i.e. the third\
+  \ group slot) and returns via\n  `pop {pc}`. The dead instructions after the pop (`mov r0, #0x30` /\
+  \ `ldr r3,\n  off_80042BC` / `thumb_func_end`) are disassembler padding from a code-pool constant\n\
+  \  pool / next routine and are not executed.\n\n  r0 carries the literal group index (3); r1..r3 are\
+  \ passed through (in the captured\n  frames r1=4, r2=0x0200f389, r3=1, but those are caller-specific\
+  \ and unused by this\n  routine — they belong to the parent queuing logic). No caller-visible return\
+  \ value:\n  r0 is written (to 3 on entry, then clobbered by sub_80028C0), but the contract\n  lists\
+  \ `out=[]`, meaning callers don't rely on what comes back. It's effectively a\n  void tail-call used\
+  \ by the per-frame battle/object/scene tickers (see callers\n  list) at the point where the third batch\
+  \ of sprites has been queued and the\n  palette counter should be sealed.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `sub_8004298: push {lr}; mov r0, #3; bl sub_80028C0; pop {pc}` — body is three instructions:
+    set r0 to 3, call the documented "record palette count in slot r0" helper, then return via pop-pc
+    (no value propagated). - sub_80028C0 contract explicitly: "Record the sprite palette count (dword_200F340)
+    in slot r0 of byte_200F389, after each sprite group is queued." With r0=3 this writes into the third
+    group slot of byte_200F389. - The dead `mov r0, #0x30` / `ldr r3, off_80042BC // =eT3BattleObject0_LinkedList`
+    after `pop {pc}` is unreachable (control already returned) and is the disassembler showing the start
+    of the next routine or a pool slot, not part of this function. - Callers are all per-frame dispatchers
+    (battle_init, OnMapUpdate, runFrame, scenario_finalizeFrameOrRestart, scene_nextOrUpdate, plus the
+    warping OW tick and several `sub_8005xxx` jumptable slots), which is consistent with sealing a'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08004298
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story1, story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^08004298 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander
+open_questions: []
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 12ebc85b
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8004298 -> sprite_finalizeBattleSpriteGroupQueue_8004298
+  where: bn6f 0fc2dd04
+  tool: tools/rename_symbol.py

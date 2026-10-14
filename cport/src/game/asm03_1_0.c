@@ -342,12 +342,12 @@ Next callback_noop_8033A7C(void) {
 /* ── sub_8033A80 ── */
 Next sub_8033A80(void) {
     /* sub_8033A80: initialize/resume the three rendering sub-systems with argument 0.
-     * Calls sub_8033B80, sub_8033F80 and gfxTransfer_8033DA0 in sequence, each with r0 = 0. */
+     * Calls sub_8033B80, battle_drawBattleStartOverlay_8033F80 and gfxTransfer_8033DA0 in sequence, each with r0 = 0. */
     R0 = 0;
     GUEST_CALL(sub_8033B80);
 
     R0 = 0;
-    GUEST_CALL(sub_8033F80);
+    GUEST_CALL(battle_drawBattleStartOverlay_8033F80);
 
     R0 = 0;
     GUEST_CALL(gfxTransfer_8033DA0);
@@ -364,7 +364,7 @@ Next onUpdateInRealWorld_8033A96(void) {
     GUEST_CALL(sub_8033B80);
 
     R0 = 0;
-    GUEST_CALL(sub_8033F80);
+    GUEST_CALL(battle_drawBattleStartOverlay_8033F80);
 
     GUEST_CALL(sub_8033BE8);
 
@@ -378,7 +378,7 @@ Next onUpdateInRealWorld_8033A96(void) {
 /* battle_resetState_8033AC4: reset/initialize the battle object state (self in r5 = *S2011E30).
  * Runs the four initialization steps in order:
  *   1. sub_8033B80 with r0 = 0
- *   2. sub_8033F80 with r0 = 0
+ *   2. battle_drawBattleStartOverlay_8033F80 with r0 = 0
  *   3. updateChipSlotGfx_8033C68
  *   4. sub_8033BE8
  * Register state (r0-r3, flags) after the call is whatever sub_8033BE8 leaves. */
@@ -387,7 +387,7 @@ Next battle_resetState_8033AC4(void) {
     GUEST_CALL(sub_8033B80);
 
     R0 = 0;
-    GUEST_CALL(sub_8033F80);
+    GUEST_CALL(battle_drawBattleStartOverlay_8033F80);
 
     GUEST_CALL(updateChipSlotGfx_8033C68);
     GUEST_CALL(sub_8033BE8);
@@ -398,13 +398,13 @@ Next battle_resetState_8033AC4(void) {
 /* ── onUpdateInInternet_8033B1E ── */
 /* onUpdateInInternet_8033B1E(self: *S2011E30 in r5): per-frame update hook
  * while the player is navigating the Internet. Runs the common Internet
- * update step, flags state 1 for sub_8033F80, then redraws the map name
+ * update step, flags state 1 for battle_drawBattleStartOverlay_8033F80, then redraws the map name
  * display. All callee flag/register effects are passed through to callers. */
 Next onUpdateInInternet_8033B1E(void) {
     GUEST_CALL(sub_8033E0C);
 
     R0 = 1;
-    GUEST_CALL(sub_8033F80);
+    GUEST_CALL(battle_drawBattleStartOverlay_8033F80);
 
     GUEST_CALL(RenderMapName_8033EE8);
 

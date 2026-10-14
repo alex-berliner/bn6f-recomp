@@ -2251,7 +2251,7 @@ Next battle_main_8007800(void) {
 
     /* Pre-frame global state updates */
     GUEST_CALL(sub_801FE6C);
-    GUEST_CALL(sub_8020140);
+    GUEST_CALL(battleObject_checkTerminateFlagAndDispatch_8020140);
 
     /* Fetch BattleState pointer from Toolkit */
     R5 = LD32(R10 + oToolkit_BattleStatePtr);

@@ -1,0 +1,63 @@
+name: object_computeAndQueueOamEntry_811FA98
+address: '0x0811FA98'
+kind: function
+previous_names:
+- sub_811FA98
+status: probable
+summary: Computes a packed (tile-id,attribute) OAM piece from a base tile and a sub-index, then forwards
+  it to the OAM queue.
+interface: '(r0 = baseTileId, r1 = packedX|Y_field ?, r2 = totalEntryCount, r3 = strideNumerator, r4 =
+  maxIndex, r7 = paletteShifted8Bits16) -> r0 = unpacked 0xFF ; side effects: pushes one OAM entry via
+  sub_802FE28'
+details: "Splits r1 high/low halves: stores the high half at [sp+0] (later shifted left by 0xa to form\
+  \ a base attribute-bit) and the low byte at [sp+8] (low byte of tile id), with the next-low byte at\
+  \ [sp+4] (high byte of tile id), then masks the high half with #0xff into r6 (used as palette/index).\n\
+  \  Only proceeds when r0 >= 0 and r2 > r4 (i.e. base within range). Computes sub = (r7 << 16) (svc #6\
+  \ = BIOS Div), then ((r2 - r4) << 4) used as a denominator piece to derive `mul r2, r3 / 0x1000` (entry\
+  \ index = (curIdx * stride) >> 12). Builds a packed u32: ((r0<<16) & 0xffff0000) | (lowTile + index),\
+  \ OR'd with constant 0x8000 (OBJ enable bit). Then ORs 0x8000 of attribute base (from [sp]<<10) into\
+  \ r1 from [sp+0xc] (the saved high half) and passes r2=[sp+4], r3=[sp+8] to `sprite_queueOamEntryThunk_802FE28`.\n\
+  \  Behaviourally this is the OAM-entry-from-table-index dispatcher used by many battle routines.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl sub_802FE28` / "sprite_queueOamEntryThunk_802FE28" is the OAM-queue helper this function
+    delegates to. - `svc 6` (BIOS Div) at offset 0x811FAB0 builds a 16:16 fixed-point ratio using r7<<16
+    and (r2-r4)<<4. - `mul r2, r3` / `lsr r2, r2, #0xc` produces an integerised index from the divided
+    ratio. - `orr r0, r1` with `ldr r1, dword_811FAF0 // =0x8000` is the OBJ-enable bit in OBJ_ATTR0.
+    - `lsl r2, r2, #0xa` of the saved r1-hi (palette/slot field) sets the bits that go into OBJ_ATTR1.
+    - Caller `sfx_playChipUseSound_8123A50` (chip SFX) and `object_resolveTableEntry_8134558` (object
+    table lookup) both fit the "build an OAM entry from a chip/object-id table" pattern, since 0x20002
+    lookup type points to a chip/object atlas. - Caller `battle_queueHpUpdate_8128C20` is queued alongside
+    OAM updates for HUD digits (consistent with HP digits being sprites).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0811FA98
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus3, story1, story2,
+    story4, story6, story8, story9'
+  reproduce: 'grep -l ''^0811fa98 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus3, story1, story2, story4, story6,
+    story8, story9
+open_questions:
+- 'Exact semantics of the four sp[] slots: low byte, next byte and high half of r1 split across [sp+4]/[sp+8]/[sp]
+  respectively is inferred from the shift mask pattern and the OAM ATTR layout.'
+- The meaning of r7 high-half pre-shift and the precise interpretation of the svc-6 pair numerator/denominator
+  (likely a 16.16 fixed tile offset and a per-step stride).
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 12ebc85b
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_811FA98 -> object_computeAndQueueOamEntry_811FA98
+  where: bn6f 0fc2dd04
+  tool: tools/rename_symbol.py

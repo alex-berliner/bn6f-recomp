@@ -1,0 +1,72 @@
+name: battle_dispatchFlaggedUpdates_801BEE0
+address: '0x0801BEE0'
+kind: function
+previous_names:
+- sub_801BEE0
+status: probable
+summary: Iterates a 16-bit dispatch mask at Struct2035280+0x40 and calls matching battle update handlers
+  in order until exhausted
+interface: '(no explicit return; pairs of `[mask_bit, handler]` are walked LSB-first) -> void; side effects:
+  invokes a sequence of battle handlers'
+details: "Loads the toolkit pointer into r5 (`off_801BFE8 = eStruct2035280`) and a base pointer to the\n\
+  \  per-bit handler table into r6 (`off_801BF00 = off_801BF04`). Loads the 32-bit dispatch bitmask\n\
+  \  from `eStruct2035280+0x40` into r7 (`dword_20352C0`).\n  The loop at `loc_801BEE8` shifts r7 right\
+  \ by 1 each iteration:\n  - Carry clear (mask bit was 0) and mask non-zero -> just advance r6 by one\
+  \ slot and continue.\n  - Mask exhausted (carry set after the shift, then `beq locret_801BEFC` after\
+  \ `lsr`) -> return.\n  Wait, re-reading: `lsr r7,r7,#1` then `bcs loc_801BEF2`. If carry was set going\
+  \ in to the lsr,\n  that's a bit *that was just shifted out*. So a bit set in the mask causes a call;\
+  \ bits clear\n  are skipped. There is no terminator bit in the table — it relies on the mask running\
+  \ out.\n  When a bit is set, it loads the handler pointer from `[r6]`, sets `lr = pc` and `bx r0`, so\
+  \ the\n  handler runs as if it had been `bl`'d (lr already points after `add r6,#4`). After the handler\n\
+  \  returns, r6 advances and the loop continues until r7 becomes 0.\n  Handler slots (thumb+1 entries):\
+  \ sub_801BFEE, sub_801BFF8, sub_801C168, sub_801C368,\n  sub_801C470, sub_801C4AE, nullsub_58, sub_801C840,\
+  \ object_countdownTimer_801CA0C,\n  nullsub_58, sub_801C984, nullsub_58, sub_801CA28, nullsub_58, sub_801CADC,\
+  \ sub_801CE28,\n  sub_801D1D8, sub_801C5F4, sub_801D2A0, sub_801D450, sub_801D514, sub_801D548, sub_801D590,\n\
+  \  sub_801D71A. Several slots are `nullsub_58` placeholders, so bits 6, 9, 11, 13 map to no-ops.\n \
+  \ `r4`/`r10` are required in on entry, confirming this is called from the battle update path\n  with\
+  \ the toolkit (r10) and some scratch (r4) live across the call.\n  Called only by `battle_update_8007A44`\
+  \ (the per-frame battle dispatcher). Captured calls show\n  r0 = 0x02034380 (an object/tile-related\
+  \ pointer) — the handlers receive whatever the caller\n  had in r0, consistent with the fact that r0\
+  \ is unmodified by this dispatcher.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r5, off_801BFE8` and `// =eStruct2035280` comment confirms r5 = global battle state
+    struct - `ldr r7, [r5,#0x40]` reads the dispatch bitmask from `Struct2035280.Unk_40` (a u32 at offset
+    0x40) - `lsr r7, r7, #1` / `bcs loc_801BEF2` together with `beq locret_801BEFC` at top of loop = walk
+    bits LSB-first until exhausted - `ldr r0, [r6]` + `mov lr, pc` + `bx r0` mimics a `bl` to the slot
+    pointer (each slot +1 means thumb bit already set) - `add r6, #4` advances the handler table regardless
+    of whether the slot was called - Handler slot table at `off_801BF04` lists 24 pairs ending at `sub_801D71A`;
+    4 of them are `nullsub_58` => bits 6/9/11/13 are inert - Single caller is `battle_update_8007A44`,
+    the per-frame battle update entry (r4/r10 live across, in contract) - Captured r0 on entry differs
+    across calls (0x02034380 vs other objects), matching r0 just being threaded through to each handler'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801BEE0
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0801bee0 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- Whether the bitmask is truly 32 bits or only the low 16 are usable (table is 24 entries; if it
+- were 16 bits the upper 8 would never trigger). Knowing the caller's writer of `Unk_40` would
+- settle this.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 12ebc85b
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801BEE0 -> battle_dispatchFlaggedUpdates_801BEE0
+  where: bn6f 0fc2dd04
+  tool: tools/rename_symbol.py

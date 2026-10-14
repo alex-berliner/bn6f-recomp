@@ -1,0 +1,60 @@
+name: owMapObject_renderAll_8003BF4
+address: '0x08003BF4'
+kind: function
+previous_names:
+- sub_8003BF4
+status: probable
+summary: 'Per-frame overworld render: walks the OWPlayerObject list, projects/culls/queues visible sprites
+  into OAM and records the palette count.'
+interface: '() -> void ; side effects: queues OAM pieces, increments palette count at 0x0200f389, no caller-visible
+  return.'
+details: "Loop variable r1 starts at 1, end (exclusive) at r0=1 (i.e. exactly one object, the OWPlayerObject\
+  \ at\n  0x03005ffb / eOWPlayerObject). For each object: if OBJECT_FLAG_VISIBLE (0x02) is set, runs\n\
+  \  sprite_projectAndCull(obj+0x1c), sprite_ensureGfxResident(0), then sprite_queueFramePieces(2, 0x60,\
+  \ obj+0x90);\n  if the OBJECT_FLAG_ACTIVE (0x01) bit is set, clears obj+0xb4 (size+0x24) and still projects\
+  \ it.\n  Otherwise if just ACTIVE, only projects. After the loop calls sub_80028C0 to record dword_200F340's\n\
+  \  palette count into byte_200F389. Step by r5 += 0xc8 (one OWPlayerObject stride).\n  Despite r0/r1\
+  \ being passed in via callee-save at entry (r10/lr contract), inside the function\n  r0 is immediately\
+  \ forced to 1 and r1 to 0, so the function really runs once over the player\n  object — the contract\
+  \ just reflects the overworld tick's saved r10/r5-r9 context.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- r0/r1 forced to 1/0 at top (`mov r0,#1; mov r1,#0`), so the loop always runs once. - ldr
+    r5,off_8003C94 // =eOWPlayerObject: confirmed by comment. - `ldrb r2,[r5]; mov r3,#OBJECT_FLAG_VISIBLE;
+    tst r2,r3` tests bit 0x02. - `add r0,r5,#0x1c` plus `bx sprite_projectAndCull+1` ⇒ project at +0x1c.
+    - `add r5,#0x90` then `bx sprite_queueFramePieces+1` with r0=2, r1=0x60 ⇒ queue OAM at +0x90 with
+    layer 2, palette 0x60. - For non-visible active: `str r3,[r4,#0x24]` after r4 = r5+0x90 (so obj+0xb4)
+    clears sprite-visible flag; project still runs. - Step `add r5,#0xc8` matches the OWPlayerObject stride
+    (sizeof oOverworldPlayerObject = 0xc8). - `bl sub_80028C0` after the loop records palette count (its
+    summary: "Record the sprite palette count (dword_200F340) in slot r0 of byte_200F389"). - out contract
+    is only callee-saved r4..r10,r12, no return registers ⇒ void to callers.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08003BF4
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story1, story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^08003bf4 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander
+open_questions:
+- 'Why the contract reads r10/lr at entry but r0/r1 are immediately overwritten: likely r10 holds the
+  toolkit and r5 holds eOWPlayerObject; the lifter recorded the saved-r10/lr pair as the call-site contract.'
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 12ebc85b
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8003BF4 -> owMapObject_renderAll_8003BF4
+  where: bn6f 0fc2dd04
+  tool: tools/rename_symbol.py

@@ -1096,14 +1096,14 @@ Next chipFolder_initGfx_812386C(void) {
  * object at oBattleObject_Alliance. Reads one byte of state, indexes a small
  * ROM table with it to get a halfword offset, pulls a 16-bit sample id from
  * the chip record at that offset, and hands it (with the rest of the args
- * loaded from the literal pool) to the sound driver sub_811FA98. */
+ * loaded from the literal pool) to the sound driver object_computeAndQueueOamEntry_811FA98. */
 static void play_chip_use_sound(u32 r5)
 {
     u8 state_byte = LD8(r5 + 0xC);
     u8 offset_byte = LD8(SUB_8123A50_TABLE + state_byte);
     u16 sample_id = LD16(r5 + offset_byte);
 
-    /* register form: calls sub_811FA98 outside this file, which has no typed C interface yet */
+    /* register form: calls object_computeAndQueueOamEntry_811FA98 outside this file, which has no typed C interface yet */
     R0 = SUB_811FA98_ARG0;
     R1 = SUB_811FA98_ARG1;
     R2 = SUB_811FA98_ARG2;
@@ -1112,12 +1112,12 @@ static void play_chip_use_sound(u32 r5)
     R5 = r5;
     R6 = SUB_811FA98_ARG6;
     R7 = SUB_811FA98_ARG7;
-    GUEST_CALL(sub_811FA98);
+    GUEST_CALL(object_computeAndQueueOamEntry_811FA98);
 }
 
 Next sfx_playChipUseSound_8123A50(void) {
     /* The contract requires r4..r7 to be preserved across the call.
-     * Restore them from the input values after sub_811FA98 has run. */
+     * Restore them from the input values after object_computeAndQueueOamEntry_811FA98 has run. */
     u32 r4_in = R4, r5_in = R5, r6_in = R6, r7_in = R7;
 
     play_chip_use_sound(R5);

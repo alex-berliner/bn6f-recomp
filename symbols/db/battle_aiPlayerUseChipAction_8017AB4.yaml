@@ -1,0 +1,75 @@
+name: battle_aiPlayerUseChipAction_8017AB4
+address: '0x08017AB4'
+kind: function
+previous_names:
+- sub_8017AB4
+status: probable
+summary: 'AI player actor''s chip-use battle action: validates and launches the currently selected battle
+  chip, draws a replacement, and handles the post-hit jitter animation'
+interface: (r5 = *BattleObject) -> void ; no return value to caller
+details: "Triggered only from `ai_eventuallyRunsAIAttack_801AF44` for AI-controlled player actors.\n \
+  \ Skips entirely (jumps to position-jitter block) unless all of these hold:\n    - actor type is 2 (player)\
+  \ — `unpackVerActorTyAndAIIdx_800F29C` puts 0 in r0 for non-players, otherwise 2\n    - battle effect\
+  \ flag 0x8 is set in the current battle settings\n    - AI data word at offset 0x44 has bit 0x800 set\
+  \ (`GetAIData_Unk_44_Flag` with mask 0x800)\n    - `sub_800BEDA` returns nonzero (precondition for being\
+  \ able to use a chip)\n    - a current chip exists in the hand (`getCurChipInBattleHand_8010004` returns\
+  \ >=0)\n    - the current chip's byte[9] has bit 0 set — i.e. it is an offensive chip\n  When all conditions\
+  \ hold, it calls `useChipRelated_80127C0` with r0=0, then either:\n    - dispatches a function pointer\
+  \ from `off_802CCB4` (case 0x15 result: 0x21) using a chip-handler\n      table indexed by the chip's\
+  \ element/type byte, jumping with r0/r1 set to the actor's panel X/Y;\n      r7 holds a packed fixed-point\
+  \ target, r4/r6 carry extra chip context\n    - or calls `sub_80E192C` (case 0x1b result: 0x27) with\
+  \ similar arguments\n  After launch it sets the actor's panel alliance, calls `loc_800BF30` and `sub_800B8EE`,\
+  \ and\n  draws a replacement card via `battle_drawCardToHand_800FC7C`. Finally clears bit 0x4 of the\n\
+  \  AI data flag word (`ClearAIData_Unk_44_Flag` with mask 0x80c — actually 0x80c clears both\n  0x800\
+  \ and 0x4).\n  If the launch path was skipped, the same `ClearAIData_Unk_44_Flag(0x80c)` is still applied.\n\
+  \  The tail of the function (at loc_8017B64) always runs and:\n    - if PreventAnim==0, snapshots X16/Z16\
+  \ into Unk_30/Unk_32, clears Unk_19, sets PreventAnim=4\n    - if the collision data's word at offset\
+  \ 0x80 is nonzero, force Unk_19 = 0x1e\n    - while Unk_19 is nonzero, decrement it and jitters Y around\
+  \ Unk_30/Unk_32 (acting on Y via\n      `AddRandomVarianceToTwoCoords` writing into the Coords block\
+  \ at oBattleObject+0x34)\n    - else restore X16/Z16 from Unk_30/Unk_32\n  This produces the characteristic\
+  \ hit-time wobble on the actor after a chip is used.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `cmp r0, #2` / `bne loc_8017B64` immediately after `unpackVerActorTyAndAIIdx_800F29C` — only
+    the ACTOR_TYPE_PLAYER (0x02) branch continues (`BattleObject.inc`: `ACTOR_TYPE_PLAYER, 0x02`). - `GetBattleEffects`
+    -> `tst r0, #8` -- tests the 0x08 battle-effect bit. - `GetAIData_Unk_44_Flag` then `tst r0, #0x800`
+    -- gates on AI flag 0x800 (AIData offset 0x44). - `sub_800BEDA` returning 0 short-circuits to loc_8017B5E,
+    which still calls `ClearAIData_Unk_44_Flag` with mask 0x80c, so the flag is always cleared once the
+    function reaches the post-snapshot block. - `getCurChipInBattleHand_8010004` result in r0; `add r1,
+    r0, #1` then `beq` after `lsl/lsr` — skips when the hand pointer is -1 (i.e. no chip). - `getChip8021DA8`
+    then `ldrb r0, [r0,#9]; tst r0, #1` — only offensive chips (bit 0 of byte 9) proceed. - `mov r0, #0
+    ; bl useChipRelated_80127C0` — invokes the chip launcher with the standard'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08017AB4
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp, chips, menus2, menus3, story2, story9'
+  reproduce: 'grep -l ''^08017ab4 '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp, chips, menus2, menus3, story2, story9
+open_questions:
+- What AI data word 0x44 bit 0x800 means exactly (only the "use a chip now" request bit is
+- evident).
+- The two dispatch case IDs (0x15 and 0x1b) -- these are `useChipRelated_80127C0` return
+- values; their precise chip-class meaning isn't directly named.
+- Whether `loc_800BF30` is a hit-application call or a sprite-state setter.
+- The 0x50 byte stack frame contains 0x10 bytes of "extra" data the dispatch sites read
+- (r7+0..0x14), presumably AI attack vars or chip launch context pushed in by
+- '`useChipRelated_80127C0`.'
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 12ebc85b
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8017AB4 -> battle_aiPlayerUseChipAction_8017AB4
+  where: bn6f 0fc2dd04
+  tool: tools/rename_symbol.py

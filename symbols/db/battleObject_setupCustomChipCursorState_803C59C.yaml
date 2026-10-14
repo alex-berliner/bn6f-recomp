@@ -1,0 +1,69 @@
+name: battleObject_setupCustomChipCursorState_803C59C
+address: '0x0803C59C'
+kind: function
+previous_names:
+- sub_803C59C
+status: probable
+summary: Appends a custom-screen OAM entry and uploads the next chip-cursor tile to VRAM each frame, gated
+  on the chip-cursor singleton's state.
+interface: (r0 = packed_OAM_word0, r1 = packed_OAM_word1) -> r0 = packed_OAM_word0 ; r0/r1 also clobbered
+details: "Called from battle_update_8007A44 (the per-frame battle tick) and from the\n  custom-screen\
+  \ subsystem tick callbacks at 0x0812xxxx. On entry, the two\n  pushed words are the partially-built\
+  \ OAM attr0/attr1 pair (r0 = attr0, r1 =\n  attr1) for one of the chip-cursor OAM slots. The function\
+  \ first calls\n  sub_8146BF4, which (per its summary) returns whether the chip-cursor\n  singleton is\
+  \ in states 0 or 1; if not, the function bails (locret_803C5EC).\n  When allowed, it calls sub_8146BB8\
+  \ to \"advance\" the chip-cursor (e.g. move\n  to next animation frame / consume a frame), then subtracts\
+  \ one from\n  byte_200BC61 and uses r0/r1 to build:\n    r1 = (r0<<16) | r1\n    r0 = 0x40000000 | r1\n\
+  \    r1 = 0xE3F4\n  and calls sub_802FE28 (the sprite OAM queue thunk described as\n  sprite_queueOamEntryThunk_802FE28)\
+  \ to enqueue the OAM entry.\n  It then bumps byte_200BC60 (curFrame) by one, masks to 2 bits, and if\
+  \ the\n  result exceeds byte_200BC61 (maxFrame/animLength) it resets the counter to\n  0. The 2-bit\
+  \ index selects one of four 0x80-byte tile blocks at\n  dword_86A5300 and QueueEightWordAlignedGFXTransfer\
+  \ copies 0x80 bytes\n  (0x6017E80 = 4bpp/8x8 tile of 0x20 bytes per tile -> 4 tiles? 0x80 = 4\n  tiles,\
+  \ matching 4 chip-cursor animation frames) into VRAM at 0x06017E80.\n  So the function is the per-frame\
+  \ chip-cursor custom-screen anim tick: enqueue\n  one OAM slot and stream the next 4 tiles of cursor\
+  \ animation.\n  byte_200BC60 is the 4-frame cursor anim index, byte_200BC61 is its period.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- callee sub_8146BF4 summary explicitly says "returns 1 if state is 0 or 1"; the `beq locret_803C5EC`
+    after it gates the rest of the work on that predicate. - r0/r1 are pushed/popped around the two helper
+    calls so the OAM attr0/attr1 pair is preserved through the helpers; the assembly reuses them to form
+    the OAM entry (orr r0, r1 after lsl r0,#16 then orr with 0x40000000, and 0xE3F4 in r1). - sub_802FE28
+    is the named sprite OAM-queue thunk; passing (a1, a2, 0, 0) enqueues a single OAM with the packed
+    attr pair. - The `lsr r0,#4 ... and r0,#3` masks the curFrame low 2 bits to produce a 0..3 frame index;
+    compared to byte_200BC61 (a max/period). When the counter exceeds the period, strb r0=0 to [r5] resets
+    it. - `lsl r0,#7` * 4 = 0x200 stride? Actually 1<<7 = 0x80 per index, so'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0803C59C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0803c59c '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- Exact role of byte_200BC60/byte_200BC61 (counter + period) is inferred
+- from the code; whether byte_200BC61 is read fresh each call or set by
+- a different function is not visible here.
+- sub_8146BB8's role ("advance" cursor) is unconfirmed; the summary
+- says only that it has no inputs and returns r0; the assembly here
+- subtracts 1 from its return and stores to byte_200BC61, which suggests
+- it returns the new period value rather than a frame index.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 12ebc85b
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_803C59C -> battleObject_setupCustomChipCursorState_803C59C
+  where: bn6f 0fc2dd04
+  tool: tools/rename_symbol.py

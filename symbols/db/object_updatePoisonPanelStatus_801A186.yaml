@@ -1,0 +1,79 @@
+name: object_updatePoisonPanelStatus_801A186
+address: '0x0801A186'
+kind: function
+previous_names:
+- sub_801A186
+status: probable
+summary: Ticks the per-object poison-panel timer on the current battle object and heals +1 HP per tick
+  when standing on a Holy Panel (panel type 6, element Wood=4) outside of pause/time-stop.
+interface: '(r5 = BattleObject*, r10 = Toolkit*) -> r0 = 2 (constant return after `bl battle_isTimeStop`
+  falls through) ; side effects: writes to oCollisionData_PoisonPanelTimer and the halfword at oBattleObject+0x8c,
+  may call object_addHP(1)'
+details: "Early-out guards: returns immediately if `battle_isTimeStop` is true OR `battle_isPaused` is\
+  \ true (the captured-call snapshots consistently return r0=2, which is `battle_isPaused`'s \"true\"\
+  \ return; see `battle_isPaused`'s contract). Otherwise loads `r7 = BattleObject.CollisionDataPtr` and\
+  \ bails if `CollisionData.Enabled` (oCollisionData_Region) is zero.\n  Looks up the panel the object\
+  \ is on via `PanelX/PanelY -> object_getPanelDataOffset`; if the panel is gone (NULL) returns.\n  Panel-type-4\
+  \ branch (poison): `object_getFlag` ANDed with the bitmask `dword_801A1FC = 0x8000028` (OBJECT_FLAGS_INVULNERABLE\
+  \ | OBJECT_FLAGS_INVULNERABLE... actually bits 3 and 27 -- probably UNAFFECTED_BY_POISON and a separate\
+  \ flag). If any of those bits are set the function jumps to the \"reset timer\" cleanup. Otherwise it\
+  \ decrements `CollisionData.PoisonPanelTimer`; if it underflows it is reset to 6 and a counter halfword\
+  \ at BattleObject+0x8c (likely a \"turns on poison panel\" counter, sitting in `ExtraVars` of the T1/T3\
+  \ layout) is incremented.\n  Panel-type-6 branch (Holy Panel): if the object's Element is Wood (`0x4`,\
+  \ masked with `0xF`), the function checks `BattleState.Unk_0e`/`Unk_16` flags (one of these is presumably\
+  \ the `BattleType` or a per-battle disable flag for holy-panel healing). When HP <= 9 it instead reads\
+  \ `BattleState.Unk_16` (low-HP gating on holy-panel regen). If neither flag is set, it calls `object_addHP(1)`\
+  \ to heal the actor.\n  Otherwise the poison timer is cleared and the function exits.\n  Notable quirk:\
+  \ the captured-call memory dump shows the same EWRAM buffer (`0x02001b80`) every snapshot, which strongly\
+  \ indicates these snapshots are taken from the same object across consecutive frames rather than from\
+  \ independent battle scenarios.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl battle_isTimeStop` / `bne locret_801A1FA` at asm:22383 -- battle-time-stop early-out.
+    - `bl battle_isPaused` / `bne locret_801A1FA` at asm:22383 -- battle-pause early-out. - `ldrb r0,
+    [r7,#oCollisionData_Region]` / `cmp r0, #0` -- only acts if collision is enabled (Region 0 == disabled).
+    - `bl object_getPanelDataOffset` with `PanelX/PanelY` and the subsequent `ldrb r0, [r0,#oPanelData_Type]`
+    -- identifies the panel type under the actor. - Panel-type 4 handling (poison): `cmp r0, #4`, `bne
+    loc_801A1CE`; the timer-decrement `ldrb r0, [r7,#oCollisionData_PoisonPanelTimer]`, `sub r0, #1`,
+    `strb r0, [r7,#oCollisionData_PoisonPanelTimer]`; reset to 6 on underflow; the `ldrh/strh` at offset
+    0x8c increments a "times poisoned" counter. - `ldr r1, dword_801A1FC // =GameHeader` (comment in asm)
+    and `tst r0, r1` -- flag-bit check against `0x8000028` (OBJECT_FLAGS_INVULNERABLE | OBJECT_FLAGS_UNAFFECTED_BY_POISON).
+    - Panel-type 6 handling (Holy Panel): `cmp r0, #6`, then `ldrb r0, [r5,#oBattleObject_Element]` masked
+    with `0xf`, `cmp r0, #4` (Wood element requirement), `ldr r2, [r10,#oToolkit_BattleStatePtr]` then
+    `ldrb r0, [r2,#oBattleState_Unk_0e]` and the HP<=9 alternate `ldrb r0, [r2,#oBattleState_Unk_16]`
+    -- the holy-panel gate. - Final heal: `mov r0, #1 ; bl object_addHP` -- +1 HP per tick. - All six
+    callers (`sub_801A9B8`, `sub_801AA48`, `sub_801AAC0`, `sub_801AB40`, `sub_801ABB8`, `sub_801AC6C`)
+    take `r5, r10, lr`, the standard battle-object update helper signature.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801A186
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0801a186 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9
+open_questions:
+- The 40 capture-snapshot calls all hit the early-exit path (r0==2 == battle-paused-true) so the poison/Holy
+  branches are not directly observed; the "panel damage tick" and "holy heal" path is inferred from the
+  assembly only.
+- Exact meaning of the `BattleState.Unk_0e` / `Unk_16` byte gating the Holy-Panel heal (game-mode flag?
+  master "healing disabled" flag?) is not pinned down by the disassembly.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 12ebc85b
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801A186 -> object_updatePoisonPanelStatus_801A186
+  where: bn6f 0fc2dd04
+  tool: tools/rename_symbol.py

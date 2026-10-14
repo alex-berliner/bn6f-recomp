@@ -1,0 +1,62 @@
+name: sprite_resetPaletteCount_800286C
+address: '0x0800286C'
+kind: function
+previous_names:
+- sub_800286C
+status: probable
+summary: Resets the sprite palette count at 0x0200F340 (dword_200F340) to 0 after it's been recorded into
+  byte_200F389 by sprite_recordPaletteCount_80028C0.
+interface: () -> r0 = 0x0200F340 ; no return value to caller (only r0/r1 are clobbered)
+details: "Loads the EWRAM address dword_200F340 (the global held in r12 by the toolkit pattern) into r0,\n\
+  \  then writes an immediate 0 into that word and returns. The function tail is `mov pc, lr` so it\n\
+  \  is a leaf that does not push the link register; the input contract is read-only 'lr' from the\n \
+  \ tooling. Many overworld/battle per-frame tickers call it (battle_init_80052D8,\n  battle_update_8007A44,\
+  \ gamestate_OnMapUpdate_8005268, scene_nextOrUpdate_80053E4,\n  scenario_finalizeFrameOrRestart_8005642,\
+  \ mainState_runFrame_8005814, plus a long list of\n  state 0x2C sub-state handlers), so this is a shared\
+  \ \"reset a sprite-system latch each frame\"\n  helper. The leaf return shape (`out` only contains lr/r0/r1)\
+  \ means callers do not rely on a\n  returned value - it is void-like. The captured-call samples all\
+  \ show zero being written into\n  0x0200F340 (the r0 exit value becomes the address, not its contents;\
+  \ the 0 is stored at that\n  address) and the buffer at r0 in callers is the 64-byte region 0x0200F350\
+  \ which the writes\n  do not touch directly. Likely semantics: a tile/block-dirty or shadow-OAM-style\
+  \ one-shot flag\n  for the sprite subsystem; the S200F348 struct incidentally sits at 0x0200F348 (size\
+  \ 8, used\n  by gameOver song timing), which would mean we are clearing the byte just before that struct\
+  \ -\n  consistent with a per-frame \"have-we-done-it-this-frame\" latch.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- ldr r0, off_80028CC  ; r0 <- dword_200F340 (the only data the function reads) - mov r1, #0           ;
+    r1 <- 0 - str r1, [r0]         ; writes 0 to *0x0200F340 - mov pc, lr           ; leaf return, tail
+    so no further reads/writes occur - all 40 captured callers return with r0 = 0x0200F340 and flags unchanged
+    - assembly lives in bn6f/asm/sprite.s:349, immediately after a sequence of other sprite helpers, matching
+    a sprite_ prefix - r0 entry points at 0x0200F350 in every capture (the IWRAM buffer just above 0x0200F340),
+    and the only write observed is the *0x0200F340 store, consistent with a sibling latch'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0800286C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story1, story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^0800286c '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander
+open_questions:
+- exact semantic of the latch at 0x0200F340 (sprite draw flag? shadow OAM index? frame count?) is not
+  provable from this function alone; reading adjacent EWRAM consumers in sprite.s/0x800052AB callers would
+  settle it.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 12ebc85b
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_800286C -> sprite_resetPaletteCount_800286C
+  where: bn6f 0fc2dd04
+  tool: tools/rename_symbol.py

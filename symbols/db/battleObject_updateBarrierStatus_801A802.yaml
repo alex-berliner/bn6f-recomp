@@ -1,0 +1,86 @@
+name: battleObject_updateBarrierStatus_801A802
+address: '0x0801A802'
+kind: function
+previous_names:
+- sub_801A802
+status: probable
+summary: Per-frame update of a BattleObject's barrier status (incl. Wood/Aqua barrier countdown, panel-type
+  interactions, and reset of damage/hit modifiers).
+interface: (r5 = BattleObjectPtr, r10 = Toolkit) -> void ; clobbers flags, r0-r4, r6, lr
+details: "Quick early-out if `battle_isPaused()` is set (returns immediately). Otherwise loads\n  the\
+  \ BattleObject's CollisionDataPtr into r4 and reads `Barrier` (oCollisionData_Barrier, +0x6).\n\n  -\
+  \ Barrier == 0: returns without doing anything.\n  - Barrier == 0xa (Aqua) or 0x8 (Wood): checks `oCollisionData_Unk_16`;\
+  \ if non-zero and\n    certain object flag bits (byte +0x77 bit 0x20 or `oCollisionData_Unk_6c & 0xa20`)\
+  \ are\n    set, the function transitions the barrier to 0x10 (Barrier-broken state) and resets\n   \
+  \ Unk_16 to 0 while copying HitModifierFinal into Unk_15.\n  - Barrier == 0x10: counts down `oCollisionData_Unk_1a_1b`\
+  \ every frame (unless\n    `battle_isTimeStop()`); when it reaches 0 the barrier clears.\n  - Barrier\
+  \ == 0x8 (Wood): increments `oCollisionData_Unk_1a_1b` each frame (gated by\n    `CurAction` not being\
+  \ 6/7 and not time-stopped); once it hits 0xf0 it latches\n    `oCollisionData_Unk_16` to 1.\n  - Barrier\
+  \ == 0xa (Aqua): once `oCollisionData_Unk_16` is non-zero, advances it as a\n    `c8`-style charge timer\
+  \ tied to `oCollisionData_Unk_1a`; once Unk_16 reaches 0xc8\n    and `oCollisionData_Unk_1b` reaches\
+  \ 0x78, the barrier state is initialized.\n\n  After the per-state branches, if the barrier has been\
+  \ \"broken\" by Elec damage\n  (or any non-zero PrimaryElement damage at index `oCollisionData_Unk_14`),\
+  \ the\n  barrier is cleared, Unk_1a_1b is zeroed and Unk_16 is cleared. Otherwise the\n  function sums\
+  \ the five primary-element damages (Null/Heat/Aqua/Elec/Wood at\n  +0x94..+0x9c), looks up the standing\
+  \ panel via `object_getPanelDataOffset(PanelX,\n  PanelY)` and halves that sum if the panel type is\
+  \ 5 (likely a cracked/hole panel).\n  It compares against `oCollisionData_Unk_17` (a threshold), decrements\n\
+  \  `oCollisionData_Unk_16` by the (possibly halved) sum and clears the barrier if\n  the counter goes\
+  \ <= 0.\n\n  Finally the function resets the panel-damage accumulators (oCollisionData +\n  0x82..+0x8c),\
+  \ Unk_8e/Unk_90/Unk_92, HitModifierFinal, StatusEffectFinal,\n  oCollisionData +0xa4, +0x74 (u16), +0x76\
+  \ (u8), and clears bit 0x50 in\n  `FlagsFromCollision` (oCollisionData +0x70).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- The first branch on `battle_isPaused()` (asm line 2-4) is the only "early return without
+    touching CollisionData" path. - `ldrb r6, [r4,#oCollisionData_Barrier]` then a `cmp r6, #0` proves
+    r6 holds the barrier byte for the whole function. - `cmp r6, #0xa` / `cmp r6, #8` immediately followed
+    by `ldrh r0, [r4,#oCollisionData_Unk_16]; tst r0, r0` is the Aqua/Wood broken-bit check. - The transition
+    `mov r6, #0x10; strb r6, [r4,#oCollisionData_Barrier]; mov r0, #0; strh r0, [r4,#oCollisionData_Unk_16]`
+    at loc_801A854 is the barrier-just-broken state being armed. - The countdown at loc_801A874 (`ldrh
+    ... ldr r1, dword_801A9B4=0xffff; cmp r0, r1; sub r0, #1; strh r0, ...; bgt loc_801A8E0; mov r0, #0;
+    strb r0, [r4,#oCollisionData_Barrier]`) is the 0x10-state counting down to expiry. - `bl battle_isTimeStop`
+    and `bne loc_801A8AC` near loc_801A888 gate the Wood-barrier charging by timestop and CurAction (cmp
+    #7, cmp #6). - The Aqua branch around loc_801A8AE drives `oCollisionData_Unk_16` from 0 to 0xc8 via
+    `oCollisionData_Unk_1a` (interval counter) and uses `oCollisionData_Unk_1b` with a 0x78 saturation,
+    which is exactly the "120 frames" charging pattern. - The big block at loc_801A916 summing the five
+    `PrimaryElementDamages` short fields (0x94..0x9c) and the panel-type-based halving (`cmp r0, #5; bne
+    loc_801A948; add r0, #1; lsr r0, r0, #1`) is the per-frame damage application against `oCollisionData_Unk_17`.
+    - The trailing zeroing of `r4 + 0x82..0x8c` (panel-damage accumulators), `oCollisionData_Unk_8e/0x90/0x92`,
+    `HitModifierFinal`, `StatusEffectFinal`, `+0xa4`, `+0x74`, `+0x76`, and `bic` of `0x50` from `FlagsFromCollision`
+    is the per-frame reset of accumulated collision state. - The callers all share a contract of "reads
+    BattleObject in r5, Toolkit in r10" and several of them preserve r10/r5 themselves, matching a typical
+    per-actor update slot.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801A802
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0801a802 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9
+open_questions:
+- Exact identity of `Barrier` values 8/0xa/0x10 in the broader battle script vocabulary (Wood panel, Aqua
+  panel, broken?); only the numeric discriminators are visible.
+- What `oCollisionData_Unk_6c & 0xa20` and byte +0x77 bit 0x20 represent (probably elemental/status flags);
+  the function only checks them as a guard.
+- Whether `oCollisionData_Unk_17` is a fixed HP-style value or a counter captured elsewhere — the comparison
+  `cmp r0, r1; blt` then `sub`/`strb` then `bgt loc_801A96E` is consistent with "deal damage each frame,
+  but never less than zero remaining".
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 12ebc85b
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801A802 -> battleObject_updateBarrierStatus_801A802
+  where: bn6f 0fc2dd04
+  tool: tools/rename_symbol.py

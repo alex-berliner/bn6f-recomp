@@ -1725,26 +1725,26 @@ static inline u32 call_object_getFlag(u32 r5) {
 }
 
 typedef struct { u32 r2, r4, r6; } call_sub_801A802_result;
-/* register form: generated wrapper: sub_801A802 has no typed C interface yet */
+/* register form: generated wrapper: battleObject_updateBarrierStatus_801A802 has no typed C interface yet */
 static inline call_sub_801A802_result call_sub_801A802(u32 r5) {
     R5 = r5;
-    GUEST_CALL(sub_801A802);
+    GUEST_CALL(battleObject_updateBarrierStatus_801A802);
     return (call_sub_801A802_result){ R2, R4, R6 };
 }
 
 typedef struct { u32 r2, r7; } call_sub_801A186_result;
-/* register form: generated wrapper: sub_801A186 has no typed C interface yet */
+/* register form: generated wrapper: object_updatePoisonPanelStatus_801A186 has no typed C interface yet */
 static inline call_sub_801A186_result call_sub_801A186(u32 r5) {
     R5 = r5;
-    GUEST_CALL(sub_801A186);
+    GUEST_CALL(object_updatePoisonPanelStatus_801A186);
     return (call_sub_801A186_result){ R2, R7 };
 }
 
 typedef struct { u32 r2, r4, r7; } call_sub_801A36A_result;
-/* register form: generated wrapper: sub_801A36A has no typed C interface yet */
+/* register form: generated wrapper: object_tickIcePanelFreeze_801A36A has no typed C interface yet */
 static inline call_sub_801A36A_result call_sub_801A36A(u32 r5) {
     R5 = r5;
-    GUEST_CALL(sub_801A36A);
+    GUEST_CALL(object_tickIcePanelFreeze_801A36A);
     return (call_sub_801A36A_result){ R2, R4, R7 };
 }
 
@@ -1838,10 +1838,10 @@ static inline void call_battleObject_applyStatusEffect_801A554(u32 r5) {
     GUEST_CALL(battleObject_applyStatusEffect_801A554);
 }
 
-/* register form: generated wrapper: sub_801A2CC has no typed C interface yet */
+/* register form: generated wrapper: battleObject_clearChipSelectionOnAirShoe_801A2CC has no typed C interface yet */
 static inline void call_sub_801A2CC(u32 r5) {
     R5 = r5;
-    GUEST_CALL(sub_801A2CC);
+    GUEST_CALL(battleObject_clearChipSelectionOnAirShoe_801A2CC);
 }
 
 typedef struct { u32 r5, r10; } call_sub_801A324_result;
@@ -1861,10 +1861,10 @@ static inline call_object_calculateFinalDamage1_result call_object_calculateFina
 }
 
 typedef struct { bool c, v; } call_sub_801A420_result;
-/* register form: generated wrapper: sub_801A420 has no typed C interface yet */
+/* register form: generated wrapper: battleObject_tickCounterTimer_801A420 has no typed C interface yet */
 static inline call_sub_801A420_result call_sub_801A420(u32 r5) {
     R5 = r5;
-    GUEST_CALL(sub_801A420);
+    GUEST_CALL(battleObject_tickCounterTimer_801A420);
     return (call_sub_801A420_result){ CARRY_FLAG(), OVERFLOW_FLAG() };
 }
 

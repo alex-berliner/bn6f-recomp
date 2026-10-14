@@ -1,0 +1,59 @@
+name: battleObject_tickCounterTimer_801A420
+address: '0x0801A420'
+kind: function
+previous_names:
+- sub_801A420
+status: probable
+summary: Decrements the CollisionData::CounterTimer of the battle object held in r5 by 1 when non-zero
+interface: (r5 = BattleObject*) -> r0 = decremented value (only when timer was non-zero) ; modifies the
+  held byte; Z flag set if branch taken (timer was 0)
+details: "Loads the object's CollisionDataPtr via the named offset (BattleObject::CollisionDataPtr at\
+  \ 0x54 from the linked-list base), reads CounterTimer (CollisionData +0xd) into r0, and tests it. If\
+  \ zero it simply returns (Z set, r0==0). Otherwise it subtracts 1, writes the result back to the same\
+  \ byte, and returns. The function takes no other argument: r5 (per the contract) is the in-flight BattleObject\
+  \ whose collision is being stepped down.\n\n  The \"out = c/v\" plus may_write 'r0,r3' pattern is purely\
+  \ an artifact of the ldr/ldrb/sub/strb sequence with a tst preceding the branch; r0 holds the new (or\
+  \ original 0) byte and r3 is the scratch pointer to CollisionData. No callee-saved registers are touched,\
+  \ so the function is effectively void from a structural standpoint.\n\n  All six callers shown (sub_801A9B8\
+  \ / sub_801AA48 / sub_801AAC0 / sub_801AB40 / sub_801ABB8 / sub_801AC6C) come from the same 0x0801a9xx–0x0801acxx\
+  \ cluster that runs the per-object battle step, fitting the role of a per-frame tick helper.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r3, [r5,#oBattleObject_CollisionDataPtr]` followed by `ldrb r0, [r3,#oCollisionData_CounterTimer]`
+    at offsets 0/2/4 directly dereferences the named struct fields. - `tst r0, r0 / beq locret_801A42C`
+    is a guarded decrement: skip the sub+strb when the byte is already zero, otherwise `sub r0,#1 ; strb
+    r0,[r3,#oCollisionData_CounterTimer]` decrements and stores. - The function is leaf (`mov pc, lr`),
+    no callees, no callee-saved register use → consistent with a per-tick helper that runs inside the
+    per-object step. - Callers all reside in the 0x0801a9b8–0x0801ac6c cluster that walks BattleObjects
+    per frame.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801A420
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0801a420 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9
+open_questions:
+- What CollisionData::CounterTimer actually counts down (hits remaining, paralysis frames, invis frames,
+  etc.); the field name `CounterTimer` in the struct is generic. Cross-referencing where it is set would
+  settle its semantics.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 12ebc85b
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801A420 -> battleObject_tickCounterTimer_801A420
+  where: bn6f 0fc2dd04
+  tool: tools/rename_symbol.py

@@ -1,0 +1,81 @@
+name: battleObject_applyEmotionShaderIfCounterReady_8016CA4
+address: '0x08016CA4'
+kind: function
+previous_names:
+- sub_8016CA4
+status: probable
+summary: When the battle is running and the object's alliance differs from the battle's emotion-state
+  byte, and that emotion state is 2 (an "enemy of the player's emotion"?), and the collision-data counter-timer
+  is non-zero, applies a palette-color-shader (from the table at 0x8016CE4, indexed by Unk_40 & 2) to
+  this battle object's sprite; otherwise leaves the sprite shader alone.
+interface: (r5 = BattleObjectPtr, r10 = ToolkitPtr) -> void ; side effects may write the sprite-block
+  color-shader of this BattleObject via sprite_setColorShader
+details: "- bails out immediately via locret_8016CDE when battle_isBattleOver returns non-zero (battle\
+  \ already ended), so this only runs during an active battle.\n  - loads BattleStatePtr through Toolkit\
+  \ at oToolkit_BattleStatePtr (r10 -> [r10,#oToolkit_BattleStatePtr]), then reads its Unk_0d byte. Comments\
+  \ identify Unk_0d as the side that is \"the current emotion-state side\".\n  - reads this BattleObject's\
+  \ Alliance (oBattleObject_Alliance). XORs the two values; if they match (eor == 0) it returns, so this\
+  \ is only run when the object is on the opposite side from whoever currently owns the emotion state.\n\
+  \  - flips the object's Alliance in r0 (mov r1,#1 ; eor r0,r1) and passes it to callPossiblyGetBattleEmotion_8015B54.\
+  \ Per that callee's description, the first arg is treated as the side to query the emotion state for.\
+  \ The function returns an enum-ish r0 (== 2 means \"the queried side is currently in the Beast/transformed/anger-2\
+  \ emotion\").\n  - if the returned emotion is not 2 (cmp r0,#2 ; bne -> return) it also bails, so we\
+  \ only proceed when the opposing side IS in emotion-state 2.\n  - loads CollisionDataPtr through this\
+  \ BattleObject (r5 -> [r5,#oBattleObject_CollisionDataPtr]) and checks its CounterTimer (oCollisionData_CounterTimer).\
+  \ If zero, returns — so we only shade while a counter (paralysis? counter-hit?) is actively running.\n\
+  \  - reads battle_getStateUnk40_800A704 (BattleState.Unk_40) and masks it with 2 to pick one of two\
+  \ palette-shader ids from the inline table dword_8016CE4 (currently just {0x00000000, 0x7C000000}; only\
+  \ the second entry is initialised in the dump, the upper 16 bits 0x7C00 are a sprite color-shader id).\n\
+  \  - sprite_setColorShader stores the chosen shader id into the sprite block selected by the object's\
+  \ high-nibble sprite index.\n  - both callers (ai_eventuallyRunsAIAttack_801AF44, battle_801B1C4) are\
+  \ per-frame/per-event battle loops, consistent with this being a periodic visual-update hook that tints\
+  \ an enemy during an emotion-based counter window.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- bl battle_isBattleOver ; tst r0,r0 ; bne locret_8016CDE -> guards on battle-active state.
+    - ldr r1,[r1,#oToolkit_BattleStatePtr] then ldrb r1,[r1,#oBattleState_Unk_0d] -> reads BattleState.Unk_0d
+    as a "side/emotion" byte. - ldrb r0,[r5,#oBattleObject_Alliance] ; eor r1,r0 ; beq locret_8016CDE
+    -> only when object''s side != state byte. - bl callPossiblyGetBattleEmotion_8015B54 with side = eor(Alliance,1)
+    ; cmp r0,#2 ; bne locret -> only when opposing-side emotion is 2. - ldr r3,[r5,#oBattleObject_CollisionDataPtr]
+    ; ldrb r0,[r3,#oCollisionData_CounterTimer] ; tst r0,r0 ; beq -> only when a counter timer is active.
+    - bl battle_getStateUnk40_800A704 ; mov r1,#2 ; and r0,r1 ; ldr r1,off_8016CE0 ; ldrh r0,[r1,r0] ;
+    bl sprite_setColorShader -> picks one of two sprite-shader ids from the inline table at 0x8016CE4
+    and writes it via sprite_setColorShader. - inline data dword_8016CE4 = 0x7C000000 with only the upper
+    halfword initialised; ldrh reads pick the upper u16 of the dword at offset 0 or 2 (i.e. 0x0000 or
+    0x7C00).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08016CA4
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^08016ca4 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- what Unk_40 & 2 actually represents in BattleState (just a "shade index" toggle, or a meaningful flag
+  like "team-1 has emotion 2 active").
+- which emotion/transform state value 2 corresponds to (BeastOut? Anger-2?) — callPossiblyGetBattleEmotion_8015B54
+  is only described as "fetches the player's current battle emotion/transformation state", and r0 is treated
+  as a side selector here, not an emotion id, so the 2 is presumably the enemy's state side flag.
+- the second entry of dword_8016CE4 (offset 2) is not initialised in the captured ROM dump; only 0x7C000000
+  is present, so the ldrh at offset 2 likely reads the upper 16 bits of the next word (which is uninitialised
+  padding) — likely the routine was patched to a single shader id, or the other entry is set at runtime.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 12ebc85b
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8016CA4 -> battleObject_applyEmotionShaderIfCounterReady_8016CA4
+  where: bn6f 0fc2dd04
+  tool: tools/rename_symbol.py

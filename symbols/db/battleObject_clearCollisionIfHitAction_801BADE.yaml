@@ -1,0 +1,62 @@
+name: battleObject_clearCollisionIfHitAction_801BADE
+address: '0x0801BADE'
+kind: function
+previous_names:
+- sub_801BADE
+status: probable
+summary: If a battle object's current action is a hit (7) and a related field is non-zero, reset its collision
+  state; returns 1 if a reset happened, else 0
+interface: '(r5 = AIData*, r6 = BattleObject*) -> r0 = 0/1 ; side effects: may call battleObject_resetCollisionState_801A2B0
+  (mutates r5''s AIData+0x78 BattleObject pointer and BattleObject structure)'
+details: 'Loads CurAction from BattleObject at [r5,oBattleObject_CurAction] (0x9). If it does not equal
+  7, returns 0 immediately. Otherwise loads a u16 from [r6 + 0x80] (a halfword inside BattleObject''s
+  ExtraVars/AIData-tied region; r6 is most likely the AIData or another related AI struct tracked alongside
+  r5); if it is zero the function returns 0, else it calls battleObject_resetCollisionState_801A2B0 (contract
+  says it takes r5=AIData* and resets the AIData+0x78 BattleObject''s active-collision state, including
+  the collision timer and Z restoration). After the call the function returns 1. Used by both the AI-attack-init
+  path (ai_eventuallyRunsAIAttack_801AF44) and battle_801B1C4 to short-circuit a pending hit-style attack
+  whose corresponding counter/flag has been exhausted, so the collision is wiped and the actor is left
+  without an active hit collision until the next action.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0, [r5,#oBattleObject_CurAction]` reads CurAction (offset 0x9) from the struct held
+    in r5. - `cmp r0, #7` / `bne loc_801BAF6` exits with r0=0 when CurAction != 7. - `mov r0, #0x80` then
+    `ldrh r0, [r6,r0]` reads a u16 at r6+0x80; this is the only field tested before deciding to reset.
+    - `beq loc_801BAF6` skips the reset when that u16 is zero. - `bl battleObject_resetCollisionState_801A2B0`
+    performs the reset; callee contract confirms it touches the BattleObject pointed at by AIData+0x78.
+    - `mov r4, #1` then `mov r0, r4` / `pop {r4,pc}` returns 1 as the success flag. - Both callers (ai_eventuallyRunsAIAttack_801AF44
+    and battle_801B1C4) live in the AI-attack handling region, consistent with an AI-attack guard.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801BADE
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0801bade '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- Exact semantics of CurAction==7 (likely a hit/attack action id) and meaning of the u16 at r6+0x80 (could
+  be a hit-collision timer, uses-counter, or pointer low-half). Without naming both fields, the role is
+  described generically. Settling it would require the BattleObject/AIData field names or a matching adjacent
+  struct definition for r6.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 12ebc85b
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801BADE -> battleObject_clearCollisionIfHitAction_801BADE
+  where: bn6f 0fc2dd04
+  tool: tools/rename_symbol.py

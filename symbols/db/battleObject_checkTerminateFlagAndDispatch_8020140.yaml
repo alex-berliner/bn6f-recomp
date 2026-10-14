@@ -1,0 +1,71 @@
+name: battleObject_checkTerminateFlagAndDispatch_8020140
+address: '0x08020140'
+kind: function
+previous_names:
+- sub_8020140
+status: probable
+summary: When the 0x200BC50.5 flag is set and the EWRAM 0x200BC30 jump-offset pair is exactly 0x0C, calls
+  sub_813D66C + dispatch_803C620 and stores r0 into eStruct2038160 byte 0x01; otherwise no-op.
+interface: () -> void; r0 = dispatch result becomes the new value at 0x2038161 (eStruct2038160 byte 1)
+details: "- Pushes {r7, lr} (so r7 is the only callee-saved register used aside from lr; pushes match\
+  \ the contract's out preserves no caller r4-r6 here).\n  - Calls `test0x200bc50_0x5_813D60C` (returns\
+  \ r0=bool, r1=&S200BC50); the `beq locret_802015C` skips the whole body when the flag is zero.\n  -\
+  \ When the flag is set, calls `eStruct200BC30_getJumpOffset00` and compares r0 to #0xc (`cmp r0, #0xc`).\
+  \ Only if the recorded jump-table offset is 0x0C does the function fall through; otherwise it returns.\
+  \ 0x0C happens to be the high byte of `0x5200|0x0CFC`/`0x42FC` seen in the buffer snapshots at 0x2036780\
+  \ (matches `0x00 0x00 0x52 fc` little-endian words in r0 memory).\n  - The two captured buffers (0x2036780,\
+  \ 0x2039a00) are identical between r0 and r1 — these are the secondary scratch buffers for the second\
+  \ story/spawn, not directly mutated by this routine (they reflect state built earlier).\n  - Loads `off_8020168`\
+  \ (= eStruct2038160) into r7, then does `bl sub_813D66C` followed by `bl dispatch_803C620`.\n  - Stores\
+  \ dispatch_803C620's return r0 as a byte into `*(eStruct2038160 + 0x01)` via `strb r0, [r7, #0x1]`.\
+  \ The constant name shown by the assembler is `BattleTerminate01`, suggesting byte 1 is a \"battle-terminate\"\
+  \ / lifecycle signal.\n  - Pops {r7, pc}. No r0..r3 are returned to the caller (the contract confirms\
+  \ `out` lists only saved regs/flags/dispatch-r0 is consumed internally as a store).\n  - Because the\
+  \ lifter lists r2..r12 may_write despite only pushing r7/lr, those reflect transitive may_write from\
+  \ the callees (dispatch_803C620 + sub_813D66C) rather than this function touching them directly.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl test0x200bc50_0x5_813D60C; beq locret_802015C` — early-out when the 0x200BC50.5 flag
+    is clear (0x08020140 instructions shown verbatim). - `bl eStruct200BC30_getJumpOffset00; cmp r0, #0xc;
+    bne locret_802015C` — only proceed when the first byte of the 0x200BC30 record equals 0x0C. - `ldr
+    r7, off_8020168 // =eStruct2038160` and `strb r0, [r7,#0x1] // (eStruct2038160_BattleTerminate01 -
+    0x2038160)` — the destination is EWRAM 0x2038161, named "BattleTerminate01" by the disassembler. -
+    Caller is `battle_main_8007800` only, called as a per-frame hook step (callee contract in r4-r12/lr
+    matches the per-frame main tick). - Captured r0/r1 entry buffers all begin with `00 00 52 fc`/`42
+    fc` little-endian (0xFC520000 / 0xFC420000 etc), with the 0x4 byte matching the `Index_00` placeholder
+    seen in S20364C0 (`JumpOffset00=0x00/0x35/0x37/...`).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08020140
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^08020140 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- Exact semantics of the 0x0C value at 0x200BC30 and of dispatch_803C620's return (the byte stored into
+  0x2038161). Knowing what the dispatch computes and what "BattleTerminate01" toggles in the larger battle
+  frame would confirm whether this is a "request battle-end" path or a generic state-bump.
+- Identities of `sub_813D66C` and `dispatch_803C620` are unknown; they are likely the actual story-state
+  or chip-select state machines whose outcome drives 0x2038161.
+- Whether `r7` is the only true callee-saved used (the broader `out` likely comes from the callees, not
+  this wrapper).
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 12ebc85b
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8020140 -> battleObject_checkTerminateFlagAndDispatch_8020140
+  where: bn6f 0fc2dd04
+  tool: tools/rename_symbol.py

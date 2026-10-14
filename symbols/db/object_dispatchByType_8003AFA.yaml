@@ -1,0 +1,65 @@
+name: object_dispatchByType_8003AFA
+address: '0x08003AFA'
+kind: function
+previous_names:
+- sub_8003AFA
+status: probable
+summary: Per-frame dispatch into an object-type function table, indexed by the global ObjectList's current
+  type index.
+interface: '(no explicit args; reads EWRAM eStruct2001010) -> r0 = 0 ; side effects: tail-calls one of
+  several handlers'
+details: "Pushes {r4-r7, lr}. Loads r5 = off_8003B40 which points at eStruct2001010.\n  Reads eStruct2001010\
+  \ byte 0 (a SubsystemIndex/active flag) and short-circuits if it\n  is 0 or has bit 0x80 set (tst r0,\
+  \ r0 / tst r0, #0x80 -> beq locret_8003B1A).\n  Loads r7 = off_8003B44 (base of an array of function\
+  \ pointers) and indexes it by\n  eStruct2001010 byte 1 (multiplied by 0x10) to get a handler entry.\
+  \ Loads r0 = [r7]\n  (the handler address), then `mov lr, pc; bx r0` tail-calls it. Returns via\n  pop\
+  \ {r4-r7, pc}.\n  The 0x10 stride strongly suggests each entry is a small jump-table record\n  (likely\
+  \ a struct of several function pointers per subsystem), not a flat array\n  of single pointers. The\
+  \ contract shows r4/r6/r10/lr preserved; r5-r9/r12 are\n  scratch around the tail-call. EWRAM at 0x02001010\
+  \ is the global engine state\n  record whose first byte selects the active subsystem and second byte\
+  \ selects a\n  per-subsystem handler variant.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r5, off_8003B40 // =eStruct2001010` at 0x08003AFC selects EWRAM 0x02001010. - `ldrb
+    r0, [r5]` reads the first byte and the two early branches (`tst r0,r0` / `tst r0,#0x80`) make this
+    an enabled-flag + busy-flag gate. - `ldrb r0, [r5,#0x1]` reads a second byte used as an index (`mul
+    r0, r1` with r1 = 0x10), so each variant occupies 16 bytes. - `ldr r7, off_8003B44` is the table base,
+    `ldr r0, [r7]` reads the function pointer at that slot. - `mov lr, pc` / `bx r0` is a Thumb-aware
+    tail call into the handler; `pop {r4-r7,pc}` returns to the original caller. - The 40 captured calls
+    all have r1 = 0x14 (= 0x2001011 - 0x2001010 = the second byte read), confirming the same subsystem-variant
+    selection across scenes.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08003AFA
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story1, story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^08003afa '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander
+open_questions:
+- The actual semantic of the dispatch (which of the many per-frame handlers
+- each table slot points to) is hidden behind the BX target; only the off_
+- value disassembly would name the slots.
+- Whether eStruct2001010's first byte is exactly the `SubsystemIndex` (0x00
+- field of GameState) or a separate object-subsystem selector needs the
+- EWRAM map cross-referenced; both struct sets list a `u8 SubsystemIndex` /
+- '`u8 Index_00` at offsets that fit.'
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 12ebc85b
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8003AFA -> object_dispatchByType_8003AFA
+  where: bn6f 0fc2dd04
+  tool: tools/rename_symbol.py

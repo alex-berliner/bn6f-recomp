@@ -2148,7 +2148,7 @@ Next initSaveStateBlock_8048F9C(void) {
  * Reads the state byte at eS200A290 (0/4/8/12 selects one of four
  * subsystem handlers from a jump table), calls the selected handler,
  * then checks whether the subsystem has finished; if so it fires
- * event 0xDA with argument 2 via sub_803C59C.
+ * event 0xDA with argument 2 via battleObject_setupCustomChipCursorState_803C59C.
  *
  * R4–R7 are preserved across this function (the original uses
  * push/pop {r4-r7}); R5 is temporarily set to the state pointer for
@@ -2180,7 +2180,7 @@ Next cb_8048FD4(void) {
     /* Subsystem finished – signal completion. */
     R0 = 0xDA;
     R1 = 2;
-    GUEST_CALL(sub_803C59C);
+    GUEST_CALL(battleObject_setupCustomChipCursorState_803C59C);
     RETURN_TO_CALLER();
 }
 

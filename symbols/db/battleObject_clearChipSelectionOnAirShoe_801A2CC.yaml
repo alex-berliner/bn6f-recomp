@@ -1,0 +1,71 @@
+name: battleObject_clearChipSelectionOnAirShoe_801A2CC
+address: '0x0801A2CC'
+kind: function
+previous_names:
+- sub_801A2CC
+status: probable
+summary: Clears the queue/Chip field of a BattleObject when its CollisionData FlagsFromCollision has bit
+  0x10 set; if the actor is a PLAYER it also pops a slot back into the hand.
+interface: (r5 = *BattleObject) -> ; side effects — writes r5->Chip = 0xFFFF and ChipsHeld = 0, and on
+  the PLAYER branch increments the hand slot's count, popping the chip back to the battle hand.
+details: "1. Loads CollisionDataPtr->FlagsFromCollision (offset 0x70 of CollisionData) into r0 via `ldr\
+  \ r3,[r5,#oBattleObject_CollisionDataPtr]` + `ldr r0,[r3,#oCollisionData_FlagsFromCollision]`.\n  2.\
+  \ Tests bit 0x10 of those flags with `tst r0,#0x10`; if clear, exits without modifying anything.\n \
+  \ 3. Loads AIDataPtr->ActorType at offset 0x0; if ActorType != ACTOR_TYPE_PLAYER (=2), goes into the\
+  \ short branch: just clears `r5->Chip` (offset 0x2a, halfword) to 0xFFFF and resets `r5->ChipsHeld`\
+  \ (offset 0x1a) to 0, then returns.\n  4. If ActorType == ACTOR_TYPE_PLAYER, also stores 0xFFFF to `Chip`,\
+  \ then calls `getBattleHandAddr_8010018(Alliance)` to get a pointer to the player's battle hand slot.\n\
+  \  5. Loads the chip-count byte at [r0] (offset 0 of a hand slot, holding the live chip count), and\
+  \ the chip entry id at [r0, r1*2 + 2] (slot index 1..n for queued chips).\n  6. Compares the chip id\
+  \ with 0xFFFF; if equal there is no queued chip and we just return.\n  7. Otherwise the live count byte\
+  \ is incremented by 1 (`add r1,#1 ; strb r1,[r0]`), i.e. the queued chip is \"returned\" to the hand\
+  \ so the actor can re-queue it. The Chip field itself is left at 0xFFFF in this branch because we already\
+  \ wrote it above.\n  The 0x10 bit of FlagsFromCollision being set strongly suggests this is an AIRSHOE-related\
+  \ condition (OBJECT_FLAGS_AIRSHOE = 0x10 in ObjectFlags1, though the field here is FlagsFromCollision\
+  \ not ObjectFlags1 — they collide by value), so on air-shoe step the current/queued chip must be discarded.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r3,[r5,#oBattleObject_CollisionDataPtr]; ldr r0,[r3,#oCollisionData_FlagsFromCollision]`
+    (offset 0x70) at asm00_2.s:22587-22588. - `tst r0,#0x10` immediately tests bit 4 of the flag word
+    — matches OBJECT_FLAGS_AIRSHOE. - `cmp r1,#2 ; beq loc_801A2EA` distinguishes ACTOR_TYPE_PLAYER (=2)
+    from virus/navi per AIData.ActorType. - `strh r0,[r5,#oBattleObject_Chip]` with r0=0xFFFF writes the
+    0xFFFF sentinel (no chip) to oBattleObject_Chip (offset 0x2a). - `strb r0,[r5,#oBattleObject_ChipsHeld]`
+    clears ChipsHeld at offset 0x1a. - `bl getBattleHandAddr_8010018` is the only callee, returning a
+    hand slot pointer; the `ldrb r1,[r0]` then `add r2,#2 ; ldrh r2,[r0,r2]` confirm the hand slot layout
+    used elsewhere (count byte at +0, chip entries at +2,+4,...). - `add r1,#1 ; strb r1,[r0]` increments
+    the slot''s live-count byte, "putting back" the previously queued chip.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801A2CC
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0801a2cc '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9
+open_questions:
+- Whether bit 0x10 of FlagsFromCollision really is the "air-shoe stride hit" trigger or some other collision-derived
+  flag; the function naming I picked follows ObjectFlags1.OBJECT_FLAGS_AIRSHOE but those constants live
+  in a different field, so verify by tracing callers (sub_801A9B8/AA48/AAC0/AB40/ABB8/AC6C) and seeing
+  when they fire. Drop the suffix if the bit ends up meaning something else.
+- The exact caller context (whose BattleObject is r5) — these six sibling callers live near each other
+  and likely run inside the per-actor battle update on some event. Naming could change to `battleObject_handleQueueChipCancellation_801A2CC`
+  if the trigger isn't air-shoe-specific.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 12ebc85b
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801A2CC -> battleObject_clearChipSelectionOnAirShoe_801A2CC
+  where: bn6f 0fc2dd04
+  tool: tools/rename_symbol.py

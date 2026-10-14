@@ -1,0 +1,62 @@
+name: object_tickIcePanelFreeze_801A36A
+address: '0x0801A36A'
+kind: function
+previous_names:
+- sub_801A36A
+status: probable
+summary: Decrements an AIData ice-freeze counter and clears the object's frozen/immobilized flags when
+  it expires on a cracked panel.
+interface: (r5 = BattleObject*, r10 = Toolkit*) -> void
+details: "Reads the object's CollisionDataPtr (r7) and AIDataPtr. If the battle is paused or time-stopped,\
+  \ returns.\n  Otherwise decrements AIData+0x38 (interpreted as an ice/hold timer); when it underflows\
+  \ (was 1 -> 0,\n  or non-zero with bgt branch not taken) falls through to clear OBJECT_FLAGS_FROZEN\
+  \ (0x10000) and\n  check the panel under the object. If the panel is a crack (Type == 7) it calls sub_801A3DA\
+  \ to handle\n  the shatter/break effects.\n  When the counter is still >0 after decrement (bgt), the\
+  \ function also returns early. When AIData+0x38\n  is zero on entry it branches to loc_801A38A: it then\
+  \ checks that OBJECT_FLAGS_2_DO_UPDATE_COLLISION_PANELS\n  (0x80000) is set, and if so re-runs the same\
+  \ flow. For panel types 9..0xC (likely ice/snow/ice-stage\n  breakable surfaces) it calls sub_801A400\
+  \ instead, suggesting a per-panel-type break/transform routine.\n  Live registers preserved per ARM\
+  \ convention: r4/r7/lr pushed; r5/r10 caller-saved-through-bl are\n  inputs.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- ldr r1, [r5,#oBattleObject_AIDataPtr]; ldrh r0, [r1,#oAIData_Unk_38] then sub r0,#1; strh
+    r0 backs the "u16 ice counter, decrement" interpretation. - bl battle_isPaused / bl battle_isTimeStop
+    both bne loc_801A38A at top of fn guard against ticking during pause/time-stop. - mov r0,#1; lsl r0,r0,#0x13
+    -> 0x80000 = OBJECT_FLAGS_2_DO_UPDATE_COLLISION_PANELS (per CollisionData.inc); this is the gate after
+    loc_801A38A. - bl object_clearFlag with the same 0x80000 mask clears the gate flag when timer expires;
+    cmp r1,#7; ldrb at oPanelData_Type matches PanelData.Type=7 cracked-ice panel check. - sub_801A3DA
+    and sub_801A400 are reached only on the "ice panel" / "types 9..0xC" branches, consistent with ice-panel
+    transition handlers.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801A36A
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0801a36a '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9
+open_questions:
+- What the two callees (sub_801A3DA, sub_801A400) actually do (e.g. spawn shatter animation vs.
+- transform to normal panel). What the exact meaning of AIData+0x38 is (it is the field labeled
+- Unk_38 in the project struct). Whether the second branch (loc_801A38A path) also clears
+- OBJECT_FLAGS_FROZEN bit 16 (0x10000) — only the 0x80000 bit is cleared in the visible code, so
+- perhaps the frozen-bit clear happens inside sub_801A3DA.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 12ebc85b
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801A36A -> object_tickIcePanelFreeze_801A36A
+  where: bn6f 0fc2dd04
+  tool: tools/rename_symbol.py

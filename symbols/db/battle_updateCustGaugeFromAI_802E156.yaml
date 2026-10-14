@@ -1,0 +1,64 @@
+name: battle_updateCustGaugeFromAI_802E156
+address: '0x0802E156'
+kind: function
+previous_names:
+- sub_802E156
+status: probable
+summary: If battle flag 0x40 is set, refreshes the custom-gauge display using the matched AI entry's CustomGauge
+  field.
+interface: '(no caller-visible inputs; uses r10 = Toolkit) -> no return value; side effects: may call
+  SetCustGauge to refresh the custom gauge'
+details: "Tests TestBattleFlag_0x40 and returns early if the bit is clear (push {r4,lr}; bl TestBattleFlag_0x40;\
+  \ beq locret_802E170).\n  Otherwise loads r10 (= Toolkit) and reads Toolkit.BattleStatePtr (offset 0x18),\
+  \ then dereferences the byte at oBattleState_Unk_0d (0x0d) of the resulting BattleState struct.\n  That\
+  \ byte is the AI index handed to getEntryPtr_2036120_1D0_802E070, which returns the address of a 0x1D0-byte\
+  \ AI/template record (r0=record, r1=array base) — the entry is saved in r4.\n  Reads the halfword at\
+  \ record+0x28 (likely the 16-bit CustomGauge value or related gauge field) and forwards it to SetCustGauge,\
+  \ which redraws the in-battle custom-gauge widget.\n  No return value; only r4 is preserved across the\
+  \ call (r4 saved/restored, lr saved/restored via push/pop).\n  Callees suggest the function is the \"\
+  Custom gauge sync\" step inside the per-frame battle update, gated by a flag so it only fires in certain\
+  \ battle modes.\ninterface: (no caller-visible inputs; uses r10 = Toolkit) -> no return value; side\
+  \ effects: may call SetCustGauge to refresh the custom gauge\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {r4,lr}` / `pop {r4,pc}` at asm03_0.s:17030 show only r4/lr are live across the call,
+    matching the contract. - `bl TestBattleFlag_0x40` (confirmed summary) + `beq locret_802E170` show
+    the early-exit guard on bit 0x40 of the battle-flags word. - `mov r0, r10; ldr r0, [r0,#oToolkit_BattleStatePtr]`
+    confirms r10 holds Toolkit and 0x18 is BattleStatePtr (from toolkit_struct offsets). - `ldrb r0, [r0,#oBattleState_Unk_0d]`
+    reads byte 0x0d of BattleState (battle_state_struct loc=0xd). - `bl getEntryPtr_2036120_1D0_802E070`
+    indexes the fixed-stride AI/record table at unk_2036120 with that byte. - `ldrh r0, [r0,#0x28]; bl
+    SetCustGauge` reads the halfword at offset 0x28 of the AI entry and hands it to SetCustGauge (confirmed
+    callee summary). - Captured calls all return r0=0 and Z flag set, with r0/r1/r2/r3 varying at entry
+    — consistent with a void, side-effecting helper invoked from the main battle update loop (callers
+    include battle_update_8007A44).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0802E156
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0802e156 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- The semantic identity of the halfword at AI record+0x28 (CustomGauge vs. some other gauge field) and
+  the meaning of battle flag 0x40 (which battle mode this is gated to) remain unverified; cross-referencing
+  other AI record consumers and flag 0x40's other uses in sub_8007E62/sub_8007F4E would settle it.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 12ebc85b
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_802E156 -> battle_updateCustGaugeFromAI_802E156
+  where: bn6f 0fc2dd04
+  tool: tools/rename_symbol.py

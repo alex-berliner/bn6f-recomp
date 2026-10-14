@@ -1093,20 +1093,20 @@ Next sub_801BFF8(void) {
 
 /* ── battle_RequestEndBattle_801C06E ── */
 /* battle_RequestEndBattle_801C06E: turn the "end battle" flag on.
- * Sets the argument to 1 and tail-calls sub_801C082 (the shared
+ * Sets the argument to 1 and tail-calls battle_drawChipCountsOAM_801C082 (the shared
  * flag-setting routine), which returns straight to this function's caller. */
 Next battle_RequestEndBattle_801C06E(void) {
     R0 = 1;
-    GUEST_CALL(sub_801C082);
+    GUEST_CALL(battle_drawChipCountsOAM_801C082);
     RETURN_TO_CALLER();
 }
 
 /* ── sub_801C078 ── */
 /* sub_801C078: entry point that invokes the main routine with r0 = 0
- * (no arguments); all results come straight from sub_801C082. */
+ * (no arguments); all results come straight from battle_drawChipCountsOAM_801C082. */
 Next sub_801C078(void) {
     R0 = 0;
-    GUEST_CALL(sub_801C082);
+    GUEST_CALL(battle_drawChipCountsOAM_801C082);
     RETURN_TO_CALLER();
 }
 

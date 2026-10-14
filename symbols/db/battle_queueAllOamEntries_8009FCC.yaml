@@ -1,0 +1,65 @@
+name: battle_queueAllOamEntries_8009FCC
+address: '0x08009FCC'
+kind: function
+previous_names:
+- sub_8009FCC
+status: probable
+summary: Drains the battle OAM queue by submitting each queued entry to the sprite OAM committer `sub_802FE28`
+  until a per-frame count is exhausted.
+interface: void (no explicit return; preserves callee-saved registers r4-r7 and lr)
+details: "Loads two globals: a byte at 0x03000EA8 (used as a single-bit/loop counter in r6) and a pointer\
+  \ at 0x03002180 (a 16-byte queued-entry struct array walked in r7).\n  On entry the loop spins while\
+  \ r6 != 0: it decrements r6, reads four u32 slots from [r7 + 0..0xC], pushes/pops {r6,r7} around the\
+  \ call so the queue pointer can advance safely, then calls `sub_802FE28` once per queued entry. The\
+  \ callee name (sprite_queueOamEntryThunk_802FE28) and the project summary \"(u32 a1, u16 a2, int notUsed,\
+  \ int a4) -> void\" identify it as the routine that pushes a single entry into the GBA OAM buffer.\n\
+  \  After the call, r7 advances by 0x10 to the next slot. The 0x10 stride matches the four u32 fields\
+  \ copied per iteration. When r6 reaches 0, control falls through `locret_8009FEE` which pops r5-r7 and\
+  \ pc.\n  Function is \"void\"-like — register contract out has only r4..r7,lr (callee-saved); no caller-visible\
+  \ return.\n  All three callers are inside the battle-update hot path (`battle_update_8007A44`, `sub_8007E62`,\
+  \ `sub_8007F4E`), and they leave r0=5 with the global count differing, consistent with \"flush however\
+  \ many entries the previous update accumulated this frame.\"\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `off_8009FF4` resolves to `byte_3000EA8`; `off_8009FF0` to `dword_3002180` (pointer to a
+    queue array) — seen in the ldr/ldr pairs at 0x8009FD0-0x8009FD2. - Loop guard `tst r6,r6; beq locret_8009FEE`
+    plus `sub r6,#1` before the call shows the queue count is consumed one entry per iteration. - Four
+    `ldr r0..r3,[r7,#N]` (offsets 0,4,8,0xC) followed by `add r7,#0x10` shows a 0x10-stride array of (a1,a2,notUsed,a4)
+    entries queued for `sub_802FE28`. - `push {r6,r7}` / `pop {r6,r7}` around the `bl` is required so
+    r7 (queue cursor) can survive the call (call uses r4-r7 per its contract). - The callee `sub_802FE28`
+    is named `sprite_queueOamEntryThunk` and is documented as pushing an OAM entry: r0=a1, r1=a2. - All
+    40 captured calls have entry r0=5 (=`dword_3002180` if 0x3000EA8 ever held 5; or r0 holds the *count*
+    of queued entries for the frame — here constant 5 across snapshots suggests `byte_3000EA8` itself
+    is 5 — slight ambiguity in the captured traces). - Callers are all inside `battle_update_8007A44`''s
+    subs — a battle-loop flush.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08009FCC
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^08009fcc '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- Whether r0=5 in the captured entries is the per-frame queued count (matching `byte_3000EA8`) or a leftover
+  from the caller. Settling it would require reading `byte_3000EA8` live alongside this caller, or examining
+  the producers that write into `dword_3002180`.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 12ebc85b
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8009FCC -> battle_queueAllOamEntries_8009FCC
+  where: bn6f 0fc2dd04
+  tool: tools/rename_symbol.py
