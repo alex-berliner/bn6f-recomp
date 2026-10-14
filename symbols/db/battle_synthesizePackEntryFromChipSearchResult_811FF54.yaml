@@ -1,0 +1,60 @@
+name: battle_synthesizePackEntryFromChipSearchResult_811FF54
+address: '0x0811FF54'
+kind: function
+previous_names:
+- sub_811FF54
+status: probable
+summary: Look up a chip-id-driven reordering table for chip-pack slot rows.
+interface: (r0 = chipIndexInSearchTable 0..0xA) -> r0 = remappedSlotIndex ; side effects none
+details: "Tiny tail-call helper. `push {lr}` / `pop {pc}` plus `ldr r1, =byte_811FF60; ldrb r0,[r1,r0]`\
+  \ is\n  the canonical Thumb idiom for \"return table[index]\" with no stack frame.\n  `byte_811FF60`\
+  \ is a 12-entry u8 remap table: `[0,1,2,3,8,4,6,7,5,9,0xA,0]`. Indices\n  0..3 and 0xA pass through,\
+  \ 4→8, 5→4, 6→6, 7→7, 8→5, 9→9, 0xB→0. The caller passes r0 in\n  0..0xA (captured calls show 0x4..0xA\
+  \ only), and the function returns the remapped value\n  in r0.\n  Two of the three confirmed callers\
+  \ are chip-pack construction routines:\n  buildChipSearchTable_811FE7C indexes 0..3 in this region,\
+  \ and sub_81203E4 (\"packed\n  chip-slot address list from a chip-pack entry row of the folder table\"\
+  ) calls it for\n  each chip in a row — exactly the place where the engine needs a reorder to map a\n\
+  \  5-chip pack's row position into the final 10-chip selection order. The 0 and 0xA\n  pass-through\
+  \ plus the 8↔4 swap strongly suggest this is the \"second row of a pack\"\n  ordering helper (the first\
+  \ row uses 0..4 directly).\n  The `_ADDRESS` suffix is kept because the larger role (\"render the 10-slot\
+  \ select\n  order from a 5-pack row\") relies on caller context rather than this function alone.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- Assembly at 0x811FF54 is exactly `push {lr}; ldr r1,=byte_811FF60; ldrb r0,[r1,r0]; pop {pc}`,
+    the textbook table-lookup tail-call. - The literal pool at 0x811FF5C stores the pointer 0x811FF60,
+    and `byte_811FF60` lists `[0x0,0x1,0x2,0x3,0x8,0x4,0x6,0x7,0x5,0x9,0xA,0x0]` (12 entries). - In/out
+    contract `r0 -> r0` matches a pure index-lookup. - Caller sub_81203E4 is documented as "Builds a packed
+    chip-slot address list from a chip-pack entry row of the folder table", which is where this reorder
+    is consumed. - Caller buildChipSearchTable_811FE7C also maps chip search results, consistent with
+    one shared reorder table. - Captured-call entry r0 values span 0x4..0xA, all within the 0..0xA input
+    domain.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0811FF54
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus3, story4, story6,
+    story8, story9'
+  reproduce: 'grep -l ''^0811ff54 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus3, story4, story6, story8, story9
+open_questions:
+- Whether indices ≥ 0xB ever reach this function (table[0xB] = 0, would be a fallthrough).
+- The exact role of the 8↔4 swap (which two of the chip-pack rows map onto each other)
+- can only be pinned down by walking one full sub_81203E4 invocation.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 147865dc
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_811FF54 -> battle_synthesizePackEntryFromChipSearchResult_811FF54
+  where: bn6f 717c16f5
+  tool: tools/rename_symbol.py

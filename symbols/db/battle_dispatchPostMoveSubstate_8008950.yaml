@@ -1,0 +1,65 @@
+name: battle_dispatchPostMoveSubstate_8008950
+address: '0x08008950'
+kind: function
+previous_names:
+- sub_8008950
+status: probable
+summary: Dispatches the battle's post-move substate by reading a state byte from EWRAM at 0x203CA70 and
+  tail-calling the matching handler
+interface: '() -> r0 = byte loaded from *(0x203CA70 + 0x4) ; side effects: tail-calls one of seven handlers
+  stored in `off_800896C`, preserving lr via r5'
+details: "The function pushes only r5+lr so it acts like a \"trampoline\" that returns via the saved lr.\
+  \ It reads\n  a state byte (`ldrb r0, [r5]` where r5 = `dword_203CA70`, i.e. 0x203CA70 in EWRAM), indexes\
+  \ into\n  `off_800896C` (a pointer table of 7 Thumb entries with the low bit set), and `bx r1`s into\
+  \ the\n  chosen handler. After the handler returns, it loads `*(0x203CA70 + 0x4)` (the \"phase/timer\"\
+  \ byte\n  immediately after the dispatch index) into r0 and pops back. The 7 entries are\n  `sub_800898C`,\
+  \ `battle_advancePostMovePhase_80089CC` (already named), `sub_8008A7C`, `sub_8008B7C`,\n  `sub_8008BF0`,\
+  \ `sub_8008C58`, `sub_8008D18` — six of those are still unnamed post-move sub-states.\n  The shared\
+  \ `dword_203CA70` buffer appears to be a small post-move state struct: byte 0 is the\n  dispatch index,\
+  \ byte 4 is what gets returned to the caller. This matches a `battle_` subsystem\n  dispatcher pattern,\
+  \ not the AI script runner (`battleObject_runAIScript_802DE5C` is only mentioned\n  by the linked listing\
+  \ because `bl` was emitted after the `bx`; it never executes).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r5, off_8008988 // =dword_203CA70` pins the state struct address to 0x203CA70. - `ldrb
+    r0, [r5]` reads byte 0 as the dispatch index. - `ldr r1, off_8008968 // =off_800896C` plus `ldr r1,
+    [r1,r0]` does a Thumb-switch-table lookup (the `+1` offsets in the table confirm Thumb targets). -
+    `mov lr, pc; bx r1` is a standard tail-call that reuses the saved lr, so this function returns the
+    same value its handler returns. - `ldrb r0, [r5,#0x4]` returns the next-field (0x203CA74) which is
+    what the `out` contract says. - The `bl battleObject_runAIScript_802DE5C` line is dead code emitted
+    after the `bx`, since `bx` never falls through. Real callee set is the seven handlers in `off_800896C`.
+    - One callee `battle_advancePostMovePhase_80089CC` is already named "advance post-move phase", strongly
+    corroborating that this whole dispatch is post-move substate handling.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08008950
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp'
+  reproduce: 'grep -l ''^08008950 '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp
+open_questions:
+- The exact semantics of byte 0x4 of `dword_203CA70` (return value / state). Confirming it
+- represents a sub-phase counter or a small enum would settle whether r0 has game meaning or
+- just mirrors an internal flag.
+- The six still-anonymous handlers (`sub_800898C`, `sub_8008A7C`, `sub_8008B7C`, `sub_8008BF0`,
+- '`sub_8008C58`, `sub_8008D18`) likely correspond to seven concrete post-move phases (e.g.'
+- result flash, deletion anim, panel reward, etc.); identifying any of them would let us give
+- them all fancier names than `sub_8008XXX`.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 147865dc
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8008950 -> battle_dispatchPostMoveSubstate_8008950
+  where: bn6f 717c16f5
+  tool: tools/rename_symbol.py

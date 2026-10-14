@@ -1,0 +1,64 @@
+name: mplay_trackHandler_814ECB4
+address: '0x0814ECB4'
+kind: function
+previous_names:
+- sub_814ECB4
+status: probable
+summary: m4a song-track tail-call trampoline that pops the saved LR and returns through the chosen track's
+  IRQ handler.
+interface: (r0 = MPlayTrackInfo*) ; r0 = LR; no other output regs; no side effects on globals beyond the
+  tail call.
+details: "- Single-instruction forwarder: pushes LR, then loads a function pointer from a static\n   \
+  \ EWRAM slot at off_30055FC (via off_814ECC4 -> off_30055FC), tail-calls it through\n    sub_814DA64\
+  \ (rfufunc_tailCallStub_814DA64), and on return pops the original LR into r0\n    and BXs back to it.\n\
+  \  - The \"r1\" passed to the tail target is the function pointer read from the EWRAM slot,\n    not\
+  \ any caller arg, so callers do not actually use r1 in a meaningful way here.\n  - Because it ends with\
+  \ `pop {r0}; bx r0`, this function never returns to *its* caller's\n    site via LR; it returns straight\
+  \ to the saved LR. The contract listing r0 as a\n    may_write is consistent with that pop-into-r0 trick.\n\
+  \  - Captured calls show r0 (MPlayTrackInfo) values 0x02010690, 0x02010910, 0x02010990,\n    0x02010c60,\
+  \ 0x02010ad0, 0x02010510 - all distinct MPlayTrackInfo blocks - and the\n    exit r0 is the saved LR\
+  \ (0x0814f0b7, i.e. the call site inside MPlayMain), confirming\n    the bx-via-saved-LR behavior.\n\
+  \  - The called sub_814DA64 is a tail-call stub (\"rfufunc_tailCallStub\"), so this whole\n    function\
+  \ exists purely to dispatch through a function pointer stored at 0x030055FC.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {lr}` at sub_814ECB4+0 saves the caller''s return address (the captured lr=0x0814f0b7).
+    - `ldr r1, off_814ECC4; ldr r1, [r1]` reads a 4-byte pointer from the EWRAM cell whose address is
+    held in off_30055FC; r1 becomes the function pointer to tail-call. - `bl rfufunc_tailCallStub_814DA64`
+    is the single indirect call, so this fn only tail-calls. - `pop {r0}` plus `bx r0` returns control
+    straight to the LR pushed in the prolog (verified: exit r0 in all 40 captures equals the entry lr
+    0x0814f0b7), so the return address for callers is effectively the saved LR. - Captured r0 values across
+    the 6 sample calls are 0x02010690/0x02010910/0x02010990/ 0x02010c60/0x02010ad0/0x02010510, i.e. EWRAM-resident
+    MPlayTrackInfo blocks; each is a separate track of the m4a player. - The single caller that actually
+    produces the saved LR (0x0814f0b7) is MPlayMain (0x0814e260), the m4a music player sequencer.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0814ECB4
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story1, story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^0814ecb4 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander
+open_questions:
+- What the function pointer stored at 0x030055FC actually points to (which IRQ/callback
+- trampoline is being tail-called) is not visible from this stub. Reading that EWRAM
+- cell in a live trace, or disassembling sub_814DA64, would settle it.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 147865dc
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_814ECB4 -> mplay_trackHandler_814ECB4
+  where: bn6f 717c16f5
+  tool: tools/rename_symbol.py

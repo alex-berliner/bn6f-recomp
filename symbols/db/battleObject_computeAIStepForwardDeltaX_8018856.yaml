@@ -1,0 +1,67 @@
+name: battleObject_computeAIStepForwardDeltaX_8018856
+address: '0x08018856'
+kind: function
+previous_names:
+- sub_8018856
+status: probable
+summary: Computes the per-frame X-axis step the AI moves toward an enemy based on a chip-class table,
+  signed by the object's facing direction.
+interface: (r0 = chipClassTableIdx, r5 = BattleObjectPtr) -> r0 = signed X-step multiplier for AI movement
+details: "1. Pushes lr then r0 onto the stack (r0 preserved as a \"scratch\" between calls).\n  2. Reads\
+  \ NaviStats byte 0x2c (`Transformation`) for the battle object via GetBattleNaviStatsByte_AllianceFromBattleObject,\
+  \ saving it on the stack.\n  3. Reads NaviStats byte 0x29 (`NaviIndex`) for the same object via the\
+  \ same helper.\n  4. Calls chip_class_lookup_800FC9E(r0=NaviIndex, r1=Transformation), getting (r0=class,\
+  \ r1=tableFlag, r2=tableBase).\n  5. Restores the Transformation byte into r2 (the index), then calls\
+  \ getIndexedSignedBytePair_8018842(r0=tableBase, r1=tableFlag, r2=index) which yields a signed byte\
+  \ pair (r0, r1) - the two halves of a per-chip-class \"step\" entry.\n  6. Pushes {r0,r1}, calls object_getFrontDirection()\
+  \ to fetch the +/-1 facing multiplier for this battle object's alliance + DirectionFlip.\n  7. Pops\
+  \ the X-step (r0) and the other byte (r1, discarded), multiplies r0 by the facing direction sign into\
+  \ r0, and returns via the initial r0 slot pop (=pc).\n  Side effect: none on memory; reads only NaviStats\
+  \ bytes 0x29/0x2c.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {r0}` at entry preserves the caller''s chip-class index argument through subsequent
+    calls (asm l.21276). - `mov r1, #0x2c` then `bl GetBattleNaviStatsByte_AllianceFromBattleObject` (asm
+    l.21277-8) reads NaviStats offset 0x2c = Transformation per the struct definition. - `mov r1, #0x29`
+    then second call (asm l.21281-2) reads offset 0x29 = NaviIndex. - `bl chip_class_lookup_800FC9E` with
+    r0=NaviIndex, r1=Transformation; contract explicitly states it returns (class, tableFlag, tableBase)
+    in (r0, r1, r2). - `mov r0, r1; mov r1, r2` swaps tableFlag into r0 and tableBase into r1 before `bl
+    getIndexedSignedBytePair_8018842` (asm l.21287-9). - `pop {r2}` restores the chip-class index from
+    the initial push; getIndexedSignedBytePair_8018842''s contract expects (r0=base, r1=flag, r2=index).
+    - `push {r0,r1}` then `bl object_getFrontDirection` (asm l.21294-5) saves the table pair while fetching
+    the +/-1 sign. - `mul r0, r2` (asm l.21298) multiplies the X-step (r0) by the front-direction sign
+    (r2). - Captured calls in snap_story2_*.bin all enter with r0=3 (chip-class index), r1=-0x38, r2=1,
+    r3=0x44 and exit with r0=8; consistent with a signed byte (e.g., +8) returned as the AI X delta.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08018856
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^08018856 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- Which byte of the pair is the X component (r0 vs r1 after getIndexedSignedBytePair_8018842) and whether
+  the chip-class byte returned by chip_class_lookup_800FC9E selects rows vs columns of the pair table.
+  Tracing getIndexedSignedBytePair_8018842 (not in scope here) would settle it. The "step" interpretation
+  is inferred from the typical AI walk-toward-enemy pattern and the caller list (every caller is one of
+  the per-actor AI handlers at 0x08014bee/4E08/5040/52C8/54C8/562C/5766).
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 147865dc
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8018856 -> battleObject_computeAIStepForwardDeltaX_8018856
+  where: bn6f 717c16f5
+  tool: tools/rename_symbol.py

@@ -1,0 +1,63 @@
+name: battleObject_tickOamSubFlagAnimSlot_81282C0
+address: '0x081282C0'
+kind: function
+previous_names:
+- sub_81282C0
+status: probable
+summary: Drives a per-slot OAM/animation entry for battle object sub-flag visuals (decrements a counter,
+  queues an OAM row, advances to the next entry when it elapses).
+interface: '(r0 = slot index) -> r0 = unk_2026870[2*slot] (current anim id) ; side effects: writes unk_2026870[2*slot]
+  and [2*slot+1]; r1/r4 clobbered'
+details: "- r0 = slot index (0..3); r7 = r0<<1 doubles it.\n  - r4 = unk_2026870[2*slot] (the current\
+  \ anim/frame id byte at off_8128310).\n  - Computes a tile slot base: 0x17 + 0x10*slot, packs it into\
+  \ r0 as 0x17_0000 | base,\n    forming the 24-bit packed value the OAM helper expects.\n  - Calls battleObject_queueOamFromTableRow_811FAF4\
+  \ with r1 = 0x17_0000 | base,\n    r2 = r4 (anim id), r3 = byte_8127984 (table), r4 = 0x4000.\n  - On\
+  \ return, reloads unk_2026870 base, reads the duration byte at unk_2026870[2*slot+1],\n    decrements\
+  \ it by 1 (strb r1, [r4,r6] where r6 = r7+1).\n  - If the decrement leaves it non-zero, returns immediately\
+  \ (still in r0 the new duration).\n  - If it reached zero, calls sub_8120CC8(0, byte_812798A): a table\
+  \ lookup that advances to\n    the next anim id (or loops to t[0] when the table entry is 0xFF), then\
+  \ writes the new\n    id back to unk_2026870[2*slot] and a fresh duration byte into unk_2026870[2*slot+1].\n\
+  \  - On return, r0 holds the newly written anim id; r1 holds the new duration.\n  - Called from battle_checkSubFlags_8128280\
+  \ which loops the four slots when their event\n    sub-flag (sub_flag+0x1DA0) is unset; this function\
+  \ is the per-slot tick.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `lsl r7, r0, #1` then `ldrb r4, [r4,r7]` reads unk_2026870 at byte offset r0*1 (paired slots).
+    - `add r6, r7, #1` then `ldrb r1, [r4,r6]` followed by `sub r1, #1; strb r1, [r4,r6]` is the decrement-the-counter-in-place
+    pattern. - `bne locret_81282F8` after the strb means: only continue when the counter hit zero. - `bl
+    sub_8120CC8` is the project-confirmed "next-table-entry or wrap to t[0]" lookup; the result is `strb
+    r0,[r4,r7]` (new anim id) and `strb r1,[r4,r6]` (new duration) — exactly a refresh pair. - Caller
+    `battle_checkSubFlags_8128280` is described as iterating the four battle-object slots whose event
+    sub-flag is unset, calling this with the slot index — matches r0 as a small slot index. - Returned
+    r0 values in captured calls (0/1/2/...) match the small anim-id bytes one would read back from unk_2026870.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x081282C0
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp, story1, story8'
+  reproduce: 'grep -l ''^081282c0 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp, story1, story8
+open_questions:
+- The exact identity of unk_2026870 (an EWRAM animation/duration array) and byte_8127984 /
+- byte_812798A (the anim and duration tables) is not labeled in the project; what each entry
+- '"animates" (number sprite? HP popups? counter sprites?) would settle the role further.'
+- Whether the slot here corresponds to the four "battle object sub-flag" positions in
+- BattleState or to a separate OAM slot pool is unclear from this function alone.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 147865dc
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_81282C0 -> battleObject_tickOamSubFlagAnimSlot_81282C0
+  where: bn6f 717c16f5
+  tool: tools/rename_symbol.py

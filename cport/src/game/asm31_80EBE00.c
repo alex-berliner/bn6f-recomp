@@ -2971,7 +2971,7 @@ Next battle_aiAttack_stepGlide_80FE1B4(void) {
  *  - 0: the attack hasn't been started yet. Arm it: store 4 into the flag
  *       and copy the attack's charge time (Unk_18) into the countdown Unk_10.
  *  - nonzero: count Unk_10 down by one; once it drops to zero (or wraps),
- *       call sub_801171C to actually perform the attack.
+ *       call object_exitAttackState_801171C to actually perform the attack.
  *
  * The caller inspects r0 and the nz/c/v flags afterwards, so they are left
  * exactly as the original instruction stream leaves them; r5/r6/r7 pass
@@ -2992,7 +2992,7 @@ Next battle_aiTickAttackTimer_80FE1FE(void) {
         SET_FLAGS_CMP(left, 1); /* flags of the original's `subs r0,#1` */
         R0 = timer;
         if ((s32)timer <= 0)    /* bgt not taken: countdown expired */
-            GUEST_CALL(sub_801171C);
+            GUEST_CALL(object_exitAttackState_801171C);
     }
     RETURN_TO_CALLER();
 }
@@ -3629,7 +3629,7 @@ Next sub_8109804(void) {
  * candidate panel passes the parameter check, store the future panel on
  * the battle object and reserve it, set the "cannot slide" flag,
  * dispatch to sub_81098C4 or sub_810990E based on Unk_03, then run
- * sub_810986E. Otherwise clear Unk_1a and call sub_801171C.
+ * sub_810986E. Otherwise clear Unk_1a and call object_exitAttackState_801171C.
  *
  * Inputs:  r5 = battle object ptr, r6 = ?, r7 = AI attack vars ptr
  * Outputs: standard AAPCS; preserves r4..r7. */
@@ -3669,7 +3669,7 @@ Next sub_8109820(void) {
 
 fail:
     ST8(R7 + oAIAttackVars_Unk_1a, 0);
-    GUEST_CALL(sub_801171C);
+    GUEST_CALL(object_exitAttackState_801171C);
     RETURN_TO_CALLER();
 }
 

@@ -1,0 +1,62 @@
+name: pet_menu_drawCharacterStatBlock_8123C98
+address: '0x08123C98'
+kind: function
+previous_names:
+- sub_8123C98
+status: probable
+summary: 'PET status sub-screen: clears the status tilemap area, fills it with the pre-loaded char stat
+  tiles, and renders the status icon for the active PET navi.'
+interface: '(r5 = SubMenu* / runtime state, r10 = Toolkit*, lr = ret) -> void ; side effects: clobbers
+  r0–r7/lr, writes tilemap at unk_20347D8 and the status block bg tiles via CopyBackgroundTiles.'
+details: "1. call_sub_3005EBA(3,6,2,0,0x17,2) at the start books a 3x6 blank-tilemap run over rows 0x17\
+  \ and width 2 (acts as a clear/erase before drawing).\n  2. Reads r7 = r5 (submenu pointer); loads byte\
+  \ at [r7+0xc] twice (the redundant pair suggests cache priming), pushes it through sub_8137884, and\
+  \ shifts right 4 to obtain a high nibble -> selects one of four 0xB-long blank-tile rows in unk_20347D8\
+  \ (the IWRAM tilemap scratch).\n  3. sub_8120348(unk_20347D8, 0xb, 2, 1, 0xf) fills 0xB u16s of the\
+  \ tilemap with the \"blank text-box tile\" by sub_8120348's contract.\n  4. CopyBackgroundTiles(j=0xb,\
+  \ i=6, tile_block=2, tiles=unk_20347D8, j_size=0xf, i_size=2) commits those 0xB*6 tile IDs into bg tile\
+  \ block 2 starting at row 6.\n  5. Reads [r7+0x14] (FuturePanelX-style field on the submenu/pet context)\
+  \ and GetCurPETNaviStatsByte(value, 9) -> returns byte 9 of the navi stats (RegUP per NaviStats.inc).\n\
+  \  6. battleObject_drawIndicatorOrStatusIcon_812053C(value, 0x8160, 0x37) draws the per-status icon\
+  \ at slot 0x37 with palette arg 0x8160; runs entirely in r0/r1/r2 -> nothing returned (void).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- "bl call_sub_3005EBA" with r0=3,r1=6,r2=2,r3=0,r4=0x17,r5=2 matches the contract for a tilemap
+    clear before drawing. - "ldrb r0, [r7,#0xc]" twice plus "bl sub_8137884" (which decodes a per-call
+    index) and "lsr r0, r0, #4" picks a high-nibble slot in unk_20347D8. - "bl sub_8120348" (confirmed
+    as tilemap fill with blank tile (pal<<12)|0x200) called with r1=0xb from unk_20347D8. - "bl CopyBackgroundTiles"
+    with size (0xb, 6) and tile-block 2 commits those tiles; tile-block 2 is the PET submenu bg. - "ldrb
+    r0, [r7,#0x14]; mov r1, #9; bl GetCurPETNaviStatsByte" reads the submenu''s selected entity byte 0x14
+    then asks for the navi''s RegUP field. - "bl battleObject_drawIndicatorOrStatusIcon_812053C" with
+    constant 0x37 draws an icon at fixed offset 0x37 in the icon strip (consistent with PET status icons).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08123C98
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus3, story4, story6,
+    story8, story9'
+  reproduce: 'grep -l ''^08123c98 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus3, story4, story6, story8, story9
+open_questions:
+- The exact role of [r7+0xc] (some submenu state byte, possibly a category selector) - whether it is a
+  submenu draw-state index or a per-row flag.
+- The tile data in unk_20347D8 and unk_20018EC is opaque without matching the engine's tilemap-filler
+  convention; only the layout shape (16 entries of 0xB u16s) is clear here.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 147865dc
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8123C98 -> pet_menu_drawCharacterStatBlock_8123C98
+  where: bn6f 717c16f5
+  tool: tools/rename_symbol.py

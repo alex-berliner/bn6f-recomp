@@ -3363,13 +3363,13 @@ Next sub_8118FE4(void) {
 }
 
 /* ── battle_dispatchEventScript_8119018 ── */
-/* register form: calls sub_8137884 outside this file, which has no typed C interface yet */
+/* register form: calls battle_getPlayerCurState_8137884 outside this file, which has no typed C interface yet */
 static u32 lookup_script_entry(u32 index, u32 obj_ptr, u32 script_data) {
     R0 = index;
     R1 = index;
     R2 = obj_ptr;
     R3 = script_data;
-    GUEST_CALL(sub_8137884);
+    GUEST_CALL(battle_getPlayerCurState_8137884);
     return R0;
 }
 

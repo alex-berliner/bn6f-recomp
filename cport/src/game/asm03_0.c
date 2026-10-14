@@ -318,11 +318,11 @@ static void dispatch_bg_flags(u32 flags) {
     GUEST_CALL(dispatch_801DACC);
 }
 
-/* register form: calls sub_801E0A0 outside this file, which has no typed C interface yet */
+/* register form: calls battle_eStruct2035280_postEvent_801E0A0 outside this file, which has no typed C interface yet */
 static void tile_bg_setup(u32 rows, u32 start) {
     R0 = rows;
     R1 = start;
-    GUEST_CALL(sub_801E0A0);
+    GUEST_CALL(battle_eStruct2035280_postEvent_801E0A0);
 }
 
 /* register form: calls bgmap_WriteTileIdAtBlock_800187C outside this file, which has no typed C interface yet */
@@ -1307,11 +1307,11 @@ static inline call_dispatch_801DACC_result_battle_customGauge_EndTurn_8027D78 ca
 }
 
 typedef struct { u32 r3, r4, r5, r6, r7, r8, r9, r10, r11, r12; bool v; } call_sub_801E0A0_result;
-/* register form: generated wrapper: sub_801E0A0 has no typed C interface yet */
+/* register form: generated wrapper: battle_eStruct2035280_postEvent_801E0A0 has no typed C interface yet */
 static inline call_sub_801E0A0_result call_sub_801E0A0(u32 r0, u32 r1) {
     R0 = r0;
     R1 = r1;
-    GUEST_CALL(sub_801E0A0);
+    GUEST_CALL(battle_eStruct2035280_postEvent_801E0A0);
     return (call_sub_801E0A0_result){ R3, R4, R5, R6, R7, R8, R9, R10, R11, R12, OVERFLOW_FLAG() };
 }
 

@@ -1,0 +1,57 @@
+name: battle_getPlayerCurState_8137884
+address: '0x08137884'
+kind: function
+previous_names:
+- sub_8137884
+status: probable
+summary: Reads the current state byte (0/4/8 etc.) of the active battle object for a given slot/index.
+interface: (r0 = index) -> r0 = byte from unk_20018EC[r0] ; no other side effects
+details: "Three-instruction thunk. Loads the address of `unk_20018EC` (an EWRAM byte array)\n  into r1,\
+  \ reads byte `[r1 + r0]`, and returns it in r0 via `mov pc, lr`. The\n  caller-provided r0 is treated\
+  \ as an index, so the table must be at least\n  `index+1` bytes long. All callers pass r0 as a small\
+  \ slot number (0, 8 are\n  common in captures), so it is a per-slot state byte. Most likely candidates\n\
+  \  for what `unk_20018EC` represents: an array indexed by battle object slot\n  that mirrors the `CurState`\
+  \ field (`CUR_STATE_INITIALIZE=0`,\n  `CUR_STATE_UPDATE=4`, `CUR_STATE_DESTROY=8`) of the corresponding\n\
+  \  `BattleObject`; or, less likely, an actor/side index from `BattleState`.\n  The contract writes r0\
+  \ (and may_write flags r1) consistent with the\n  `ldrb r0,[r1,r0]` pattern; only r0 is propagated to\
+  \ the caller.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r1, off_813788C` loads the address of `unk_20018EC` into r1 (`asm36.s:15650`). - `ldrb
+    r0, [r1,r0]` performs a byte load from that table at the caller-supplied index. - `mov pc, lr` returns
+    r0 (the loaded byte) directly without further computation. - Callers `battle_dispatchEventScript_8119018`,
+    `petNaviMenuFrame_812368C`, `sub_811AA4C`, `sub_811ABF8`, `sub_8123C98`, `sub_813068C`, `sub_8130810`
+    are all battle/text-script dispatch sites that branch on the returned state byte to decide what action-script
+    sub-state to run, consistent with reading `BattleObject.CurState`. - `unk_20018EC` lives in EWRAM
+    (address range 0x02000000+), matching the small index table pattern used by other per-slot battle
+    helpers.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08137884
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus3, story4, story6,
+    story8, story9'
+  reproduce: 'grep -l ''^08137884 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus3, story4, story6, story8, story9
+open_questions:
+- What `unk_20018EC` actually is (BattleObject.CurState mirror vs BattleState slot index vs something
+  else). Cross-referencing writers of `unk_20018EC[r0]` in the broader codebase would settle it; the present
+  function only reads.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 147865dc
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8137884 -> battle_getPlayerCurState_8137884
+  where: bn6f 717c16f5
+  tool: tools/rename_symbol.py

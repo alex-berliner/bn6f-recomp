@@ -1,0 +1,62 @@
+name: battle_aiAttack_checkMysteryDataUnk_80F02A2
+address: '0x080F02A2'
+kind: function
+previous_names:
+- sub_80F02A2
+status: probable
+summary: Returns 0 only when the actor's AIAttackVars.Unk_0d is nonzero AND AIData.Unk_48 has bit 0x8000
+  set; otherwise returns 1.
+interface: (r7 = AIDataPtr) -> r0 = 1 or 0 ; r4 trashed, preserves r5/r7/lr
+details: "Reads AIAttackVars offset 0x0d (the `Unk_0d` byte) relative to r7 and bails early to `r0=1`\
+  \ if it is zero.\n  Otherwise calls GetAIDataUnk0x48Flag (which returns the u32 at AIData+0x48 in r0)\
+  \ and masks it with 0x8000 (`dword_80F02BC`).\n  If that bit is set the result is 0; any other outcome\
+  \ (flag clear or Unk_0d was 0) returns 1.\n  The function is a pure predicate: no memory is written,\
+  \ no flags other than N/Z are produced, and the only scratch register is r4 (used to hold the candidate\
+  \ return value).\n  Caller aiAttack_TimerTickEnd_80EB194 uses the bool to gate whether the timer-end\
+  \ branch actually advances the AI state; the other six callers also take r0 as a yes/no gate before\
+  \ doing their own state work.\n  The constant 0x8000 against Unk_48 plus the name GetAIDataUnk0x48Flag\
+  \ strongly suggests the bit encodes \"Mystery Data is set / is full\" on the active actor (the \"Mystery\"\
+  \ status of AIData+0x48), but that interpretation is uncertain.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0, [r7,#oAIAttackVars_Unk_0d]` at the top of the body reads that exact byte of the
+    AIAttackVars struct pointed at by r7. - `bl GetAIDataUnk0x48Flag` returns the u32 at AIData+0x48 (helper
+    name is self-describing); result is in r0 per its contract. - `ldr r1, dword_80F02BC` followed by
+    `tst r0, r1` masks r0 with the literal 0x8000 stored right after the function (`dword_80F02BC: .word
+    0x8000`). - `mov r4, #1` / `mov r4, #0` and the final `mov r0, r4` make the only return values 0 or
+    1. - All 7 callers pass r7 (AIDataPtr) live, and 6 of them take the result in r0 as a conditional
+    (matched by per-caller contract that lists r0 as written). - Captured-call entry flags (`N---`, `-ZC-`,
+    `-Z--`) are consistent with `tst`/`teq` tests the callers do around the result; exit flag state `----`
+    matches "result just moved, no flags touched afterwards".'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080F02A2
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^080f02a2 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9
+open_questions:
+- What AIAttackVars.Unk_0d actually represents (timer-end vs. attack-anim vs. some attack sub-mode flag);
+  and which specific bit 0x8000 of AIData.Unk_48 corresponds to in game terms (e.g., full Mystery Data,
+  a per-attack flag, or a generic actor capability). Renaming to a more meaningful verb phrase needs callee
+  `GetAIDataUnk0x48Flag` to be understood first.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 147865dc
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80F02A2 -> battle_aiAttack_checkMysteryDataUnk_80F02A2
+  where: bn6f 717c16f5
+  tool: tools/rename_symbol.py

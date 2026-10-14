@@ -1756,10 +1756,10 @@ static u32 load_u16_from_table(u32 index) {
     return R0;
 }
 
-/* register form: calls sub_811FF54 outside this file, which has no typed C interface yet */
+/* register form: calls battle_synthesizePackEntryFromChipSearchResult_811FF54 outside this file, which has no typed C interface yet */
 static u32 map_chip_element(u8 value) {
     R0 = value;
-    GUEST_CALL(sub_811FF54);
+    GUEST_CALL(battle_synthesizePackEntryFromChipSearchResult_811FF54);
     return R0;
 }
 
@@ -1835,11 +1835,11 @@ Next buildChipSearchTable_811FE7C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_811FF54 ── */
-/* sub_811FF54(r0 = index): look up an entry in the fixed byte table at
+/* ── battle_synthesizePackEntryFromChipSearchResult_811FF54 ── */
+/* battle_synthesizePackEntryFromChipSearchResult_811FF54(r0 = index): look up an entry in the fixed byte table at
  * ROM byte_811FF60; r0 = byte at byte_811FF60[index]. The load is not
  * bounds-checked in the original, so keep it as a raw guest memory read. */
-Next sub_811FF54(void) {
+Next battle_synthesizePackEntryFromChipSearchResult_811FF54(void) {
     R0 = LD8(A_byte_811FF60 + R0);
     RETURN_TO_CALLER();
 }
@@ -2113,10 +2113,10 @@ static inline call_getChip8021DA8_result call_getChip8021DA8(u32 r0) {
     return (call_getChip8021DA8_result){ R0 };
 }
 
-/* register form: generated wrapper: sub_811FF54 has no typed C interface yet */
+/* register form: generated wrapper: battle_synthesizePackEntryFromChipSearchResult_811FF54 has no typed C interface yet */
 static inline u32 call_sub_811FF54(u32 r0) {
     R0 = r0;
-    GUEST_CALL(sub_811FF54);
+    GUEST_CALL(battle_synthesizePackEntryFromChipSearchResult_811FF54);
     return R0;
 }
 
@@ -2126,7 +2126,7 @@ static inline u32 call_sub_811FF54(u32 r0) {
  * 0x20-byte entries of the table starting at entry_base + entry_index * 0x20.
  * For each entry, the halfword at +0x1C shifted right by 7 tells whether a
  * chip occupies the slot:
- *   - set:    look the chip up, map its id byte through sub_811FF54 to a
+ *   - set:    look the chip up, map its id byte through battle_synthesizePackEntryFromChipSearchResult_811FF54 to a
  *             slot number, and store two words built from packed 16-bit
  *             halves (slot_base + slot*4, +1, then +0x20002, +0x20003)
  *             at out_list + 8*i and out_list + 8*i + 4;
@@ -2225,7 +2225,7 @@ Next sub_81204C4(void) {
 
 /* ── battleObject_drawIndicatorOrStatusIcon_812053C ── */
 /* battleObject_drawIndicatorOrStatusIcon_812053C:
- *   Ask sub_81205C0 for a value; if it came back non-negative, build an
+ *   Ask sprite_queueTwoOamEntries_81205C0 for a value; if it came back non-negative, build an
  *   address/flag word (low 0x4000 on, top bits and 0x8000 cleared) and
  *   hand it to sprite_queueOamEntryThunk_802FE28 together with (0xC + original r1).
  *   inputs:  r0 r1 r2 lr
@@ -2235,9 +2235,9 @@ Next battleObject_drawIndicatorOrStatusIcon_812053C(void) {
     /* r4 holds the caller's r1 across the leaf call (preserved register). */
     u32 saved_r1 = R1;
 
-    /* mov r3, #0 ; bl sub_81205C0 */
+    /* mov r3, #0 ; bl sprite_queueTwoOamEntries_81205C0 */
     R3 = 0;
-    GUEST_CALL(sub_81205C0);
+    GUEST_CALL(sprite_queueTwoOamEntries_81205C0);
     /* tst r0, r0 : sets N/Z from R0; the original blt reads N (taken when R0 < 0). */
     SET_FLAGS_NZ(R0 & R0);
 
@@ -2318,11 +2318,11 @@ Next sub_8120618(void) {
 
 /* ── sub_812068C ── */
 /* sub_812068C(r0 = value, r1 = row, r2 = arg2, r3 = arg3):
- * Queries sub_81205C0 for a packed position; if one is found (result >= 0),
- * triggers sprite_queueOamEntryThunk_802FE28 with it, then queries sub_81205C0 again with the
+ * Queries sprite_queueTwoOamEntries_81205C0 for a packed position; if one is found (result >= 0),
+ * triggers sprite_queueOamEntryThunk_802FE28 with it, then queries sprite_queueTwoOamEntries_81205C0 again with the
  * position's high half moved down by 8. Callees observe r4 = row, r6 = arg3
  * and r7 = the queried position, as in the original. Preserves r4-r7 and
- * returns with the flags left by the final sub_81205C0 call. */
+ * returns with the flags left by the final sprite_queueTwoOamEntries_81205C0 call. */
 Next sub_812068C(void) {
     u32 savedR4 = R4, savedR5 = R5, savedR6 = R6, savedR7 = R7;
 
@@ -2339,7 +2339,7 @@ Next sub_812068C(void) {
     R1 = row;
     R2 = arg2;
     R3 = 1;
-    GUEST_CALL(sub_81205C0);
+    GUEST_CALL(sprite_queueTwoOamEntries_81205C0);
     u32 pos = R0;
     R7 = pos;
 
@@ -2361,7 +2361,7 @@ Next sub_812068C(void) {
     R1 = row;
     R2 = shifted;
     R3 = 1;
-    GUEST_CALL(sub_81205C0);
+    GUEST_CALL(sprite_queueTwoOamEntries_81205C0);
 
     /* pop {r4-r7} */
     R4 = savedR4;

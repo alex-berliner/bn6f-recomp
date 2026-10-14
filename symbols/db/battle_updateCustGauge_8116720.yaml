@@ -1,0 +1,65 @@
+name: battle_updateCustGauge_8116720
+address: '0x08116720'
+kind: function
+previous_names:
+- sub_8116720
+status: probable
+summary: For the battle object in r5, runs its AI state dispatch then refreshes the Custom Gauge from
+  current HP/MaxHP/charge values.
+interface: '|'
+details: "Entry is from a battle-object dispatcher (caller likely loops battle objects); r5 holds the\n\
+  \  current BattleObject. The function reads r5+oBattleObject_AIDataPtr into r4, then computes\n  r6\
+  \ = r4 + 0x80 (the AIState field of AIData). It reads AIState.Unk_00 as an index, loads the\n  jump\
+  \ table at off_8116754 (only one entry resolved: sub_8116758+1, the \"first\" AI state handler)\n  and\
+  \ tail-calls it via `bx r1` with lr set to pc.\n\n  After the AI handler returns, the function:\n  \
+  \ - Clears bit 1 of r5+oObjectHeader_Flags (bic r0,#2 then strb). Bit 1 is OBJECT_FLAG_VISIBLE,\n  \
+  \   so the object is hidden when entering this state.\n   - Loads HP (0x24) and MaxHP (0x26) and the\
+  \ u16 at offset 0x80 of the BattleObject (the Custom\n     Gauge charge/max field co-located with AIData's\
+  \ last byte region).\n   - Computes (MaxHP - HP) * charge and passes that as the value to SetCustGauge\
+  \ (whose contract\n     takes a value in r0 and a divisor/max in r1).\n\n  Net effect: a per-state \"\
+  tick\" that hands off to the AI state table, hides the actor's sprite,\n  and writes a new Custom Gauge\
+  \ fill amount equal to missing-HP * charge.\ninterface: |\n  (r5 = BattleObject*) -> void; side effects:\
+  \ AIDataPtr->AIState handler invoked, Flags bit1 cleared,\n  SetCustGauge(value=(MaxHP-HP)*(uint16)obj[0x80],\
+  \ max=??? ) called\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- ldr r4, [r5,#oBattleObject_AIDataPtr] at 0x8116724 grabs the AIData pointer from the BattleObject.
+    - add r6, r6, r4 where r6 starts at 0x80 reproduces AIData+0x80 which the AIData struct defines as
+    the `AIState` overlay (u0 AIState // loc=0x80). - ldrb r0, [r6,#oAIState_Unk_00] then `ldr r1,[r1,r0]`
+    + `bx r1` is the standard Thumb jumptable dispatch on AIState.Unk_00; off_8116754 is the table (only
+    sub_8116758 known). - bic r0,r1 / strb r0,[r5,#oObjectHeader_Flags] with mask #2 = OBJECT_FLAG_VISIBLE.
+    - ldrh r0,[r5,#oBattleObject_HP] (0x24) and ldrh r1,[r5,#oBattleObject_MaxHP] (0x26). - ldrh r2,[r5,#0x80]
+    reads a u16 sitting just past the AIState region (struct_org 0xa0 in AIData; here used as a Custom
+    Gauge charge word). - sub r1,r1,r0 / mul r0,r2 / bl SetCustGauge — value = (MaxHP-HP)*charge, fed
+    to the gauge updater.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08116720
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp'
+  reproduce: 'grep -l ''^08116720 '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp
+open_questions:
+- 'The r1 passed to SetCustGauge: the code does `mov r0,r1` then `mul r0,r2`, so r0 ends up holding'
+- (MaxHP-HP)*charge; r1 going into SetCustGauge is whatever the previous step left (likely MaxHP-HP,
+- the original r1). SetCustGauge's actual parameter roles aren't known, so whether this represents
+- '"fill amount vs max" or "current vs target" is inferred from context. Also only one AI state entry'
+- (sub_8116758) is referenced in the table; other states are unknown.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 147865dc
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8116720 -> battle_updateCustGauge_8116720
+  where: bn6f 717c16f5
+  tool: tools/rename_symbol.py

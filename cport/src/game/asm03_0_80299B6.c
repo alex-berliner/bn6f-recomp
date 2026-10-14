@@ -1068,10 +1068,10 @@ Next sub_802BDB4(void) {
 /* ── objStepFinishSetState4_802BE0C ── */
 /* objStepFinishSetState4_802BE0C — finish step for the object in r5 (r10 = toolkit pointer):
  * calls call_sub_3005EBA with the fixed argument set (0, 0, 3, 0, 6, 2),
- * clears the render-info frame counter, calls sub_801E0A0(0, 0), then
+ * clears the render-info frame counter, calls battle_eStruct2035280_postEvent_801E0A0(0, 0), then
  * writes state 4 into the object's halfword field at +2.
  * Preserves the entry values of r4 and r5 for the caller; exits with
- * NZ flags from "MOV r0, #4" and r1/r2/r3/r10 as sub_801E0A0 left them. */
+ * NZ flags from "MOV r0, #4" and r1/r2/r3/r10 as battle_eStruct2035280_postEvent_801E0A0 left them. */
 Next objStepFinishSetState4_802BE0C(void) {
     u32 saved_r4 = R4;
     u32 saved_r5 = R5;
@@ -1090,11 +1090,11 @@ Next objStepFinishSetState4_802BE0C(void) {
     u32 renderInfo = LD32(toolkit + 8 /* oToolkit_RenderInfoPtr */);
     ST16(renderInfo + oRenderInfo_Unk_18, 0);
 
-    /* sub_801E0A0(0, 0); r5 is live for the callee, so restore it first */
+    /* battle_eStruct2035280_postEvent_801E0A0(0, 0); r5 is live for the callee, so restore it first */
     R0 = 0;
     R1 = 0;
     R5 = saved_r5;
-    GUEST_CALL(sub_801E0A0);
+    GUEST_CALL(battle_eStruct2035280_postEvent_801E0A0);
 
     /* advance the object's state field to 4 (flags: N=0, Z=0) */
     R0 = 4;

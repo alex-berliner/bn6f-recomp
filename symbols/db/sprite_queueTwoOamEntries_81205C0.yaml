@@ -1,0 +1,59 @@
+name: sprite_queueTwoOamEntries_81205C0
+address: '0x081205C0'
+kind: function
+previous_names:
+- sub_81205C0
+status: probable
+summary: Queues two sprite OAM entries (a top tile and a bottom tile) with overlapping/blended vertical
+  extents, returning a packed status value.
+interface: (r0 = ?, r1 = base tile id low16, r2 = packed y/coord, r3 = flag, lr = ?) -> r0 = packed result
+  ; also clobbers r1, r2, r3, r4-r7
+details: "Allocates 8 bytes on the stack (sp,#8). Saves r1=base tile, r2=packed Y, r3=flag into the two\
+  \ stack slots and r4/r5.\n  Runs divmod via SVC 6 (BiosDivide) with r1=#0xa — the divisor 10 hints it\
+  \ is splitting a value into a 10-entry column list (e.g. panel columns on a 10-column battlefield, or\
+  \ 10 sprite rows for two vertical halves of one object).\n  Iterates from r6=0..7 stepping +4: reads\
+  \ the precomputed per-row offset from the stack (`ldr r1, [r2]` where r2 = sp+r6), LSLs by r5 (the flag/multiplier),\
+  \ adds r4 (base), and calls sprite_queueOamEntryThunk_802FE28 with a4=1 to enqueue an OAM entry whose\
+  \ Y comes from the just-advanced r7.\n  On each pass it sign-extends r7 (the Y coord) via `lsl/lsr #0x10`\
+  \ and `asr #0x10`, then advances r7 by +7 or +8 depending on r5 (so rows are 8px tall with a 1px overlap).\
+  \ The Y for the next row is repacked into the high half of r7 by `orr r7,r1`.\n  Returns the final packed\
+  \ Y-value (low16 = row-subpixel, high16 = cumulative row Y) in r0. Called with r0=00000004 across snapshots\
+  \ — likely an OAM OBJ index/slot.\n  Note: r2=00ba0037 in capture corresponds to Y=0xba and X/sub-coord=0x0037\
+  \ (panel X within 3x3 grid: 0x37 = 5 columns, 7 rows typical).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `svc 6` (BiosDivide) with imm #0xa (line "svc 6") divides something by 10 (panel rows/columns)
+    - The two loop iterations (r6=0 and r6=4 in `cmp r6,#8`) give exactly 2 OAM entries - The +7/+8 stride
+    (`add r7,#7` vs `add r7,#8` at loc_8120606) sized for 8x8 tiles with 1px overlap - The call to `sprite_queueOamEntryThunk_802FE28`
+    at loc_81205EC with a4=1 - Captured r2 = 0x00ba0037 → consistent with packed (y, x_or_anim) written
+    into an OAM entry - Caller `sub_812068C` docstring mentions "searches a row-based lookup table for
+    a packed position" — matches the local pattern of indexing a 10-row table per Y'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x081205C0
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus3, story4, story6,
+    story8, story9'
+  reproduce: 'grep -l ''^081205c0 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus3, story4, story6, story8, story9
+open_questions:
+- Exact meaning of r0 on entry (likely OAM slot id); would settle by inspecting the argument setup at
+  the call sites of sub_812053C / sub_8120568 / sub_812068C.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 147865dc
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_81205C0 -> sprite_queueTwoOamEntries_81205C0
+  where: bn6f 717c16f5
+  tool: tools/rename_symbol.py

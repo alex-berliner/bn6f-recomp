@@ -1,0 +1,75 @@
+name: object_exitAttackState_801171C
+address: '0x0801171C'
+kind: function
+previous_names:
+- sub_801171C
+status: probable
+summary: 'Tears down a battle object''s current AI attack: zeroes attack-vars scratch, applies per-mode
+  cleanup (chip lockout / Unk_15), clears AI-data flags, clears the power-atk state, clears the using-action
+  bit, and parks the object in CurAction=8 with the AIAttackVars timer reset.'
+interface: '(r5 = battle object) -> void ; side effects: writes AIData + AIAttackVars + CurAction of the
+  object in r5, modifies the global AIData flags at Unk_44 (mask 0x1000003F), calls battleObject_clearPwrAtkState_8012EA8
+  and object_clearFlag(OBJECT_FLAGS_USING_ACTION).'
+details: "- Loads r1 = AIDataPtr from [r5, #oBattleObject_AIDataPtr], then r7 = AIDataPtr + 0xA0 = &AIData.AttackVars[0]\
+  \ (i.e. AIAttackVars base).\n  - Clears AIAttackVars.Unk_1b (strb r0,[r7,#0x1B]) to 0.\n  - Reads r6\
+  \ = AIAttackVars.Unk_1c (the mode/result code of the attack that just resolved).\n    - If r6 == 4:\
+  \ branch straight to the cleanup tail (no per-mode copy).\n    - If r6 == 2: copy AIAttackVars.Unk_05\
+  \ into AIData.ChipLockoutTimer (offset 0x19) — i.e. arm chip-lockout when the attack was a chip.\n \
+  \   - If r6 == 3: copy AIAttackVars.Unk_05 into AIData.Unk_15 (offset 0x15) — i.e. set a counter/state\
+  \ when the attack was of that mode.\n  - Always clears AIData.Unk_1a (strb r0,[r1,#0x1A]) to 0.\n  -\
+  \ Calls ClearAIData_Unk_44_Flag(0x1000003F) (mask covers bits 0-5 + bit 24 of the 32-bit Unk_44 word)\
+  \ — releases mid-attack AI flags.\n  - Calls battleObject_clearPwrAtkState_8012EA8 to reset the power-atk\
+  \ state machine in the AIData.\n  - Calls object_clearFlag with bit 1<<22 = OBJECT_FLAGS_USING_ACTION\
+  \ on the object's collision flags, so the object is no longer marked \"currently using an action\".\n\
+  \  - Tail: sets CurAction = 8 (CUR_STATE_DESTROY per the BattleObject enum, i.e. destroy/wind-down phase)\
+  \ and zeros AIAttackVars.Unk_00 (a 16-bit timer).\n  - Return value: r0 is loaded with 1 for the flag-clearing\
+  \ call and with 0 for the strb/strh stores; nothing meaningful is exposed to callers, so this is effectively\
+  \ void (out contract lists r0 only as a scratch side effect from the last strh/strb).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r1, [r5,#oBattleObject_AIDataPtr]` then `add r7, r7, r1` with `r7 = 0xA0` directly matches
+    the AIData.AttackVars base at offset 0xA0 in struct AIData. - `ldrb r6, [r7,#oAIAttackVars_Unk_1c]`
+    followed by `cmp r6,#2` / `cmp r6,#3` / `cmp r6,#4` is the per-mode switch on the attack''s terminal
+    mode byte. - `strb r0, [r1,#oAIData_ChipLockoutTimer]` (offset 0x19) on the r6==2 path and `strb r0,
+    [r1,#oAIData_Unk_15]` (offset 0x15) on the r6==3 path are the per-mode "remember this attack result"
+    stores. - `ldr r0, dword_8011760` → 0x1000003F is passed to ClearAIData_Unk_44_Flag, which is a small
+    mask inside Unk_44 (bits 0-5 + bit 24) — consistent with releasing "this attack is in progress" flags.
+    - `mov r0, #1; lsl r0, r0, #0x16` produces 0x00400000 = OBJECT_FLAGS_USING_ACTION, fed to object_clearFlag
+    — releases the busy-actor flag after the action finishes. - `mov r0, #8; strb r0, [r5,#oBattleObject_CurAction]`
+    (offset 0x9) parks the object in CurAction 8 (CUR_STATE_DESTROY) and `strh r0, [r7,#oAIAttackVars_Unk_00]`
+    resets the AttackVars timer. - Tail `thumb_func_end object_exitAttackState` adjacent in the asm (asm00_2.s:5954)
+    suggests another local symbol `object_exitAttackState` shares this epilogue, reinforcing the "exit
+    attack state" interpretation. - Captured-call entry `r0=0xffffffff, r1=0x080fe1ff, r2=0x80/0x76/0x6c/0x62,
+    r3=0x3` from battle_aiTickAttackTimer_80FE1FE is consistent with the caller being inside an attack-tick
+    path: r5 holds the actor, and on expiry it falls through to this routine to wrap up.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801171C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battlesweep, beastsp, chips, story4, story6, story9'
+  reproduce: 'grep -l ''^0801171c '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battlesweep, beastsp, chips, story4, story6, story9
+open_questions:
+- Exact meaning of AIAttackVars.Unk_1c values 2 / 3 / 4 (chip / dark-chip / other) is not fully pinned;
+  the values 0x1B/0x19/0x15 storage pattern strongly suggests a small state machine, but the precise mode
+  semantics would need cross-referencing AIAttackVars callers (e.g. sub_8109820) to confirm.
+- The 0x1000003F mask for Unk_44 is large; whether all those bits are the "attack active" bits or also
+  include other state is not verifiable from this function alone.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 147865dc
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801171C -> object_exitAttackState_801171C
+  where: bn6f 717c16f5
+  tool: tools/rename_symbol.py

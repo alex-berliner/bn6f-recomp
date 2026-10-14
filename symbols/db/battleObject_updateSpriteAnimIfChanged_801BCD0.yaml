@@ -1,0 +1,64 @@
+name: battleObject_updateSpriteAnimIfChanged_801BCD0
+address: '0x0801BCD0'
+kind: function
+previous_names:
+- sub_801BCD0
+status: probable
+summary: Refreshes a battle object's sprite animation index whenever CurAnim changes, then ticks the sprite
+  one frame.
+interface: (r5 = BattleObject* this, lr = return) -> (r0, r1, r2, r3 clobbered; r4, r5, lr preserved for
+  tail-call; void return)
+details: "Reads the object's ObjectHeader.Flags byte at oBattleObject+0 (well-known start of the\n  embedded\
+  \ object_header_struct); if OBJECT_FLAG_STOP_SPRITE_UPDATE (bit 0x8) is set the\n  function returns\
+  \ immediately without touching the sprite.\n  Otherwise it compares the object's current animation byte\
+  \ (CurAnim at +0x10) with the\n  cached copy (CurAnimCopy at +0x11). If they differ, it calls sprite_setAnimation(r0=CurAnim),\n\
+  \  then sprite_loadAnimationData() to (re)load frames for the new anim, and finally stores\n  CurAnim\
+  \ back into CurAnimCopy to mark the change consumed.\n  When the animation does not change (or was just\
+  \ changed), it tail-calls sprite_update() to\n  advance the active sprite one frame.\n  Notable: the\
+  \ same sprite_update() runs unconditionally when not STOP_SPRITE_UPDATE, including\n  the equal-CurAnim\
+  \ path; the flag check is the only early-out.\n  Called from battleObject_updateSprite_80C4484, battle_EndObjectCurrentAnim_80C44D2,\
+  \ and\n  several generic per-object update loops (sub_8014A38, sub_802D714, sub_802D926, sub_80C464C,\n\
+  \  t4_0x3c_80E4A1C); consistent with a per-frame battle-object sprite tick.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- Instruction `ldrb r0, [r5,#oObjectHeader_Flags]; mov r1, #8; tst r0, r1; bne locret_801BCF2`
+    tests bit 3 of the ObjectHeader.Flags byte (OBJECT_FLAG_STOP_SPRITE_UPDATE) and returns early. - `ldrb
+    r0, [r5,#oBattleObject_CurAnim]; ldrb r1, [r5,#oBattleObject_CurAnimCopy]; cmp r0, r1; beq loc_801BCEE`
+    compares CurAnim vs CurAnimCopy using the documented offsets 0x10/0x11 of BattleObject. - `bl sprite_setAnimation`
+    is called when the indices differ; `bl sprite_loadAnimationData` follows; `strb r0, [r5,#oBattleObject_CurAnimCopy]`
+    mirrors the new CurAnim into CurAnimCopy. - `bl sprite_update` at loc_801BCEE (no register setup,
+    lr kept on stack) means this becomes the tail of the equal-anim path and the executed-at-least-once
+    path when STOP_SPRITE_UPDATE is clear. - Caller battleObject_updateSprite_80C4484 description says
+    it "runs the standard object update unless Param3 is set or the battle is time-stopped" — consistent
+    with skipping when STOP_SPRITE_UPDATE or CurAnim-gated, and with this being the part that actually
+    touches the'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801BCD0
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp'
+  reproduce: 'grep -l ''^0801bcd0 '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp
+open_questions:
+- Whether the CurAnim path (when different) is supposed to load animation data itself; the
+- code clearly calls both sprite_setAnimation then sprite_loadAnimationData, so semantics look
+- final, but a future caller wanting "set anim but don't reload yet" can't be expressed here.
+- Settled already by callee contracts.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 147865dc
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801BCD0 -> battleObject_updateSpriteAnimIfChanged_801BCD0
+  where: bn6f 717c16f5
+  tool: tools/rename_symbol.py

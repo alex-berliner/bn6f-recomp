@@ -2689,14 +2689,14 @@ Next background_applyFixedTilePatch_801E03E(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_801E0A0 ── */
-/* sub_801E0A0(r0, r1 = two byte parameters):
+/* ── battle_eStruct2035280_postEvent_801E0A0 ── */
+/* battle_eStruct2035280_postEvent_801E0A0(r0, r1 = two byte parameters):
  * Copies the halfword at +0x24 of the struct pointed to by the entry at
  * +0x48 of eStruct2035280 into eStruct2035280+0x24, stores the two byte
  * parameters at +0x1 and +0x2, then runs the 0x80 (text-box) update path:
  * eStruct2035280_SetRequestBits_801BECC followed by dispatch_801DA48.
  * Leaves R1/R2/R3 and the c/v flags as dispatch_801DA48 left them. */
-Next sub_801E0A0(void) {
+Next battle_eStruct2035280_postEvent_801E0A0(void) {
     u32 boxStruct = A_eStruct2035280;
 
     u16 counter = LD16(LD32(boxStruct + 0x48) + 0x24);

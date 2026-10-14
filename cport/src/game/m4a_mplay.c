@@ -60,7 +60,7 @@ enum { CGB_VOL_CHANGED = 1, CGB_FREQ_CHANGED = 2 };
 /* Lifted m4a helpers (bn6f names in comments). */
 #define FadeOutBody     sound_main_tickFadesAndStopBank_814F228
 #define ClearChain      m4a_ply_trampoline_814ECA0
-#define Clear64byte     sub_814ECB4
+#define Clear64byte     mplay_trackHandler_814ECB4
 #define TrkVolPitSet    m4a_plyNote_applyPitchAndVolume_814F2F0
 #define ChnVolSetAsm    sprite_crossfadeColorChannels_814E528
 #define MidiKeyToFreq   sub_814E7F4

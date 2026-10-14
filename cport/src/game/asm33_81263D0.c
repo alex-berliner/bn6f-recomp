@@ -2600,7 +2600,7 @@ Next palette_fillBufferWithFadeByte_8128260(void) {
 /* ── battle_checkSubFlags_8128280 ── */
 /* battle_checkSubFlags_8128280: For each of up to 4 entries in the battle object table, check the
  * "sub flag" derived from the object's flags+0x18 high half; if the matching
- * event flag (sub_flag + 0x1DA0) is not set, call sub_81282C0 with the index.
+ * event flag (sub_flag + 0x1DA0) is not set, call battleObject_tickOamSubFlagAnimSlot_81282C0 with the index.
  *
  *   r5 = battle object pointer
  *   r10 = (preserved, used by caller)
@@ -2642,7 +2642,7 @@ Next battle_checkSubFlags_8128280(void) {
             /* TestEventFlag returned nz: flag set, nothing to do. */
         } else {
             R0 = i;
-            GUEST_CALL(sub_81282C0);
+            GUEST_CALL(battleObject_tickOamSubFlagAnimSlot_81282C0);
         }
     }
 

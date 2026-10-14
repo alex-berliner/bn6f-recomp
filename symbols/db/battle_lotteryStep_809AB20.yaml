@@ -1,0 +1,85 @@
+name: battle_lotteryStep_809AB20
+address: '0x0809AB20'
+kind: function
+previous_names:
+- sub_809AB20
+status: probable
+summary: 'Step the lottery/reward mini-screen: decrement a counter, play unselect SFX, run chatbox scripts,
+  and award chips/items/NaviCust on a winning draw.'
+interface: '(r2 = eventFlagValue, r5 = localLotteryStatePtr, r7..r12 = preserved scratch from callers)
+  -> r0 = 0 to indicate "tick processed", 1 to indicate "chatbox still busy" ; side effects: text scripts
+  played, chip/item/NaviCust grants fired, counter/state bytes clobbered'
+details: "- At entry, r5 points to a small per-frame lottery struct in EWRAM (size inferred from the writes\
+  \ below), r10 is the toolkit (per project convention; already passed at lr return), r7/r9/r11/r12 are\
+  \ callee-saved scratch regs from the parent battle step.\n  - Tests event flag EVENT_1725 (`movflag\
+  \ EVENT_1725`); if set, the lottery is already \"spent\" and the function jumps to the busy branch.\n\
+  \  - Decrement the countdown at +0x84 in the lottery struct (`ldr r0,[r5,#0x84] ... sub r0,#1; str r0,[r5,#0x84]`);\
+  \ if the A button edge is detected in `tToolkit_ChatboxPtr` (`r10 + oToolkit_JoypadPtr` low byte AND\
+  \ 2) it forces the lottery into \"cancelled\" state (writes 4 to the state byte at +8, plays SOUND_UNSELECT_68,\
+  \ runs script 0xB of `eTextScript2033404`).\n  - Otherwise it checks `chatbox_mask_eFlags2009F38(8)`:\
+  \ if that flag is clear, return 1 (chatbox still busy / waiting).\n  - Copies 8 bytes from `tToolkit_ChatboxPtr\
+  \ + 0x4C` (a chatbox rolling/result buffer) onto stack and calls `sub_813D41C`, which decodes the lottery\
+  \ draw into a (kind, id_a, id_b) triple (the function works with chatbox position +0x4c +0x50 since\
+  \ str r2/r3 are written back there).\n  - On result == 2 (`:loc_809AC14`), runs script 0x14 of `eTextScript2033404`\
+  \ (the \"no win\" message) and stores 1 into the state byte.\n  - On result == 1, switches on the kind\
+  \ field (`r1`): 1=item, 2=item with capacity check, 3=NaviCust program; each branch grants the corresponding\
+  \ reward via GiveItem/GiveNaviCustPrograms/GiveChips, then stores the next dialog id at `r5+0x74` and\
+  \ the next state byte at `r5+8`, before running script 0xE of `TextScriptLottery86C67E4` (the result\
+  \ announcement).\n  - Fall-through \"any other kind\" path awards chips via `GiveChips(r2,r3,1)`, resets\
+  \ a small struct at `r5+0x7c..0x80` (clearing two halfwords + bytes at +5/+6), then calls `decompAndCopyData(dword_809AC2C)`\
+  \ to preload a chip/folder GFX asset pair into `unk_2034E00/unk_2036500` (used by the chip-select screen).\
+  \ Sets dialog id 0xF, state byte 3.\n  - In all \"done\" branches, returns 0; the busy branch at `loc_809AC24`\
+  \ returns 1.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `movflag EVENT_1725` followed by `bl TestEventFlagFromImmediate` at the function head, and
+    the BEQ that takes the "already done" branch, pins the event-flag guard. - `ldr r0, [r5,#0x84]; sub
+    r0,#1; str r0,[r5,#0x84]` is the count-down tick for the lottery timer. - `ldr r0,[r10,#oToolkit_JoypadPtr];
+    ldrb r0,[r0,#2]; ... tst r1,#2` is the "A pressed" test, and the immediate write `strb r0,[r5,#8]`
+    with value 4 plus `PlaySoundEffect(SOUND_UNSELECT_68)` and `chatbox_runScript(eTextScript2033404,
+    0xB)` matches the "cancel the lottery" dialog. - `CopyWords(r10->Chatbox+0x4C, sp, 8)` then `sub_813D41C`
+    reads the 8-byte lottery buffer to determine the prize triple; the returned triple is also written
+    back to `r4=*tk.Chatbox+0x4C/+0x50`. - Three `cmp r1,#1/#2/#3` branches dispatch on prize kind with
+    `GiveItem`, `GiveItem` (with a tst to detect "already max" → dialog id 0x11), and `GiveNaviCustPrograms`
+    (dialog id 0x13). The default (chip) branch uses `GiveChips(r2,r3,1)` and dialog id 0xF. - `decompAndCopyData(dword_809AC2C)`
+    is invoked right before the chip branch, and the table has two (comp_86C7980 → unk_2034E00, comp_86C73D8
+    → unk_2036500) pairs — exactly the two GFX/folder artifacts the chip-select screen needs, suggesting
+    this is the chip-prize path. - `chatbox_runScript(TextScriptLottery86C67E4, 0xE)` is the shared "won
+    X" line for all three Give* branches. - Functions exiting with `mov r0,#0` versus `mov r0,#1` together
+    with the per-branch `strb r0,[r5,#8]` updates to the state byte is consistent with a state-machine
+    step that returns 0=done/1=keep-waiting.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0809AB20
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^0809ab20 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The exact layout of the lottery record at r5 beyond offsets 5,6,8,0x74,0x78,0x7c,0x80,0x84 (which fields
+  are state/dialog-id/timer vs. prize cache). A labelled `oLotteryState` macro would settle it.
+- What `EVENT_1725` semantically represents ("lottery already claimed this visit", or a story-progress
+  bit). Cross-referencing other 1725 tests in the battle overlay would clarify.
+- The meaning of the r1 kind enum {1,2,3,other} returned by `sub_813D41C` (only inferred from the GiveItem
+  x2 vs GiveNaviCustPrograms vs GiveChips split); the assembly hints at it but does not name it.
+- Whether the "default" branch really is "any chip" or specifically "BattleChips from the result buffer".
+  The two halfwords cleared at +5/+6 plus the `decompAndCopyData` table both point at it, but the call
+  to `GiveChips` doesn't disambiguate by code.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 147865dc
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_809AB20 -> battle_lotteryStep_809AB20
+  where: bn6f 717c16f5
+  tool: tools/rename_symbol.py

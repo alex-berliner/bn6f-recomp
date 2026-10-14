@@ -1,0 +1,54 @@
+name: battleObject_clearActionPhaseUnk09_80A7E44
+address: '0x080A7E44'
+kind: function
+previous_names:
+- sub_80A7E44
+status: probable
+summary: Stub that zeros a battle object's CurAction byte (offset 0x9).
+interface: '(r5 = *BattleObject) -> r0 = 0 ; side effects: writes byte 0 at r5+0x9'
+details: "Saves r4-r7 and lr, then loads immediate 0 into r0 and performs strb r0, [r5,#9]\n  before restoring\
+  \ the saved registers (pop {r4-r7,pc}) — a single-byte clear with\n  no other side effects. Per the\
+  \ battle_object_struct definition, offset 0x9 is\n  CurAction (the current action index next to `CurState`\
+  \ at 0x8). This makes the\n  function a minimal \"reset CurAction to 0\" helper, often used as an initialize/\n\
+  \  teardown thunk when a phase is reset. The contract shows only r5/lr read and\n  only r5 in the live-out\
+  \ callee-saved set, with r0 returned as 0; r4/r6/r7 are\n  pushed/popped but untouched here. The captured\
+  \ calls all enter with lr =\n  0x080a7e20 (caller's site), r0 = 0x080a7e45 (the function address with\
+  \ Thumb\n  bit set), and r1 = 0; r2/r3 vary and look like unrelated caller state. The\n  function is\
+  \ invoked repeatedly during battle steps where the AI/object action\n  index must be cleared.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mov r0, #0` followed by `strb r0, [r5,#9]` at 0x080a7e48/0x080a7e4c writes a zero byte to
+    offset 9 of the object pointer passed in r5. - The `push {r4-r7,lr}` / `pop {r4-r7,pc}` pair preserves
+    the callee-saved registers and returns via lr; r0 is left as 0 (captured exit r0=0 in every snapshot,
+    with the Z flag set: `-Z--`). - Per `battle_object_struct`, offset 0x9 is `CurAction` (sibling of
+    `CurState` at 0x8), confirming the role of the cleared byte. - The function has no callees and a void-like
+    contract (only r5 preserved in out), matching a tiny inlined clear.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080A7E44
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^080a7e44 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- Whether the callers always invoke this as a "reset to default action" stub or
+- sometimes as part of state-destroy cleanup; cross-referencing call sites at
+- 0x080a7e20 would settle which state machine paths use it.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 147865dc
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80A7E44 -> battleObject_clearActionPhaseUnk09_80A7E44
+  where: bn6f 717c16f5
+  tool: tools/rename_symbol.py

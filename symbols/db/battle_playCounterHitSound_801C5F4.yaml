@@ -1,0 +1,60 @@
+name: battle_playCounterHitSound_801C5F4
+address: '0x0801C5F4'
+kind: function
+previous_names:
+- sub_801C5F4
+status: probable
+summary: Plays a "counter hit" SFX from a small lookup table when the AIData's Anger/Timer tier increases
+  between ticks, but only if battle flag 0x40 is set.
+interface: '(r5 = AIData*, r10 = Toolkit*, lr) -> no meaningful r0 return; side effects: PlaySoundEffect(r0=???)'
+details: "Reads `MainJumptableIndexPtr` (r10[oToolkit_MainJumptableIndexPtr]) and bails if its low byte\
+  \ is 0x50, suggesting this hook is only valid inside a particular main sub-state.\n  Saves the previous-tier\
+  \ byte at `AIData+0x18` into `AIData+0x19`, then computes the new tier from `AIData+0x20` (TotalDamageTaken,\
+  \ a u16) using three ascending thresholds: `Timer < 0x1500` -> 0, `< 0x2A00` -> 1, `>= 0x4000` (only\
+  \ exact match in the third compare) -> 2; the result is stored to `AIData+0x18`. The thresholds and\
+  \ 0x18/0x19 fields look like a tier/anger bucket tracker rather than a direct damage total.\n  Calls\
+  \ `battle_testFlag0x40_800A8F8`. If it returns 1 AND the new tier (`AIData+0x18`) is strictly greater\
+  \ than the previous (`AIData+0x19`, compared with `ble`), `AIData+0x18`-1 is used as a halfword index\
+  \ into `byte_801C6E8` (via `off_801C6E4`) and the resulting sfx id is passed to `PlaySoundEffect`.\n\
+  \  In game terms: when the battle has the \"anger increases\" flag set and the AIData's anger/tier bucket\
+  \ ticks up, play a tier-specific counter/hit SFX from a 2-entry table.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mov r0, r10; ldr r0, [r0,#oToolkit_MainJumptableIndexPtr]; ldrb r1, [r0]; cmp r1, #0x50;
+    beq locret_801C63E` shows the 0x50 subsystem gate. - `ldrb r0, [r5,#0x18]; strb r0, [r5,#0x19]` backs
+    up the previous tier byte to +0x19. - The ladder of `ldrh r0, [r5,#0x20]` against `0x1500`, `0x2A00`,
+    `0x4000` with `strb r2, [r5,#0x18]` writes the new tier to the same byte. - The size of the timer
+    range and the fact that "+1 twice" means r2 ends up 0/1/2 is consistent with a 3-bucket anger/tier
+    counter. - `bl battle_testFlag0x40_800A8F8; cmp r0, #1; bne locret_801C63E` makes the SFX contingent
+    on flag 0x40. - `cmp r0, r1; ble locret_801C63E; sub r0, #1; lsl r0, r0, #1; ldr r1, off_801C6E4;
+    ldrh r0, [r1,r0]; bl PlaySoundEffect` indexes a halfword lookup table by the new tier and plays it.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801C5F4
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp'
+  reproduce: 'grep -l ''^0801c5f4 '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp
+open_questions:
+- What 0x50 means as a main-jumptable value, and the exact semantics of `AIData+0x20` here (Anger vs TotalDamageTaken;
+  the project's struct currently lists 0x34 as Anger and 0x20 as TotalDamageTaken; the code uses 0x20
+  as a u16 with absolute thresholds better fitting a battle-phase timer). Settling it requires matching
+  callers to confirm what kinds of AIData this routine is installed on.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 147865dc
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801C5F4 -> battle_playCounterHitSound_801C5F4
+  where: bn6f 717c16f5
+  tool: tools/rename_symbol.py

@@ -670,10 +670,10 @@ static bool call_8120D10_is_zero(u32 flag, u32 r4, u32 r5, u32 r6, u32 r7, u32 r
     return ZERO_FLAG();
 }
 
-/* register form: calls sub_8137884 outside this file, which has no typed C interface yet */
+/* register form: calls battle_getPlayerCurState_8137884 outside this file, which has no typed C interface yet */
 static u32 get_navi_status(u32 navi_idx, u32 r2, u32 r3, u32 r4, u32 r5, u32 r6, u32 r7) {
     R0 = navi_idx; R2 = r2; R3 = r3; R4 = r4; R5 = r5; R6 = r6; R7 = r7;
-    GUEST_CALL(sub_8137884);
+    GUEST_CALL(battle_getPlayerCurState_8137884);
     return R0;
 }
 
@@ -839,8 +839,8 @@ static u32 pet_menu_frame(void) {
 
     /* register form: calls sfx_playChipUseSound_8123A50 outside this file, which has no typed C interface yet */
     GUEST_CALL(sfx_playChipUseSound_8123A50);
-    /* register form: calls sub_8123C98 outside this file, which has no typed C interface yet */
-    GUEST_CALL(sub_8123C98);
+    /* register form: calls pet_menu_drawCharacterStatBlock_8123C98 outside this file, which has no typed C interface yet */
+    GUEST_CALL(pet_menu_drawCharacterStatBlock_8123C98);
     /* register form: calls sub_8123E58 outside this file, which has no typed C interface yet */
     GUEST_CALL(sub_8123E58);
     /* register form: calls entity_runAllUpdateHandlers_80465BC outside this file, which has no typed C interface yet */

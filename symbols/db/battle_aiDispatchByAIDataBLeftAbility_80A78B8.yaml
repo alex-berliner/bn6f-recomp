@@ -1,0 +1,69 @@
+name: battle_aiDispatchByAIDataBLeftAbility_80A78B8
+address: '0x080A78B8'
+kind: function
+previous_names:
+- sub_80A78B8
+status: probable
+summary: Dispatches to an AI subroutine indexed by `AIDataPtr->BLeftAbility`, after refreshing the AI
+  data pointer from the battle object.
+interface: '(in r5 = BattleObject*, in r10 = Toolkit*) -> no return (tail-calls the handler); side effects:
+  clobbers r0,r1,r2,r3,r6,r7'
+details: "1. Saves r4-r7 and lr; loads `r0 = r5[4]` (the battle object's ListIndex byte, since r5 points\
+  \ at the linked-list node +0x4 = ObjectHeader.Index).\n  2. Calls `battle_getAIDataPtr_8142068(r0=ListIndex)`\
+  \ to (re)fetch the AIData* into r6 (matching its out=r6 contract).\n  3. Loads the handler table base\
+  \ from `off_80A78CC` (-> `off_80A78D0`, a 4-entry pointer table).\n  4. Indexes it with `r1 = r5[8]`\
+  \ (BattleObject.CurState) and `bx`es through lr to the resulting handler. The `+1` on each entry makes\
+  \ them Thumb-mode targets.\n  5. The four handlers are `sub_80A78E0`, `sub_80A7912`, `sub_80A796C`,\
+  \ `sub_80A79D4`, indexed by CurState 0..3 (INITIALIZE / UPDATE / two intermediate or destroy phases\
+  \ — per BattleObject.inc CurState enum).\n  6. Returns via `pop {r4-r7,pc}`, restoring lr so the bx\
+  \ acts as the call. Callee-saved r4,r5,r10,r2-r5 contract out reflects that this is a thin dispatcher;\
+  \ nothing meaningful is returned to the caller.\n  The captured-call lr `08004916` is the AI main loop\
+  \ that drives all battle objects; snapshots 0/10 (r2=0x02001f68 IWRAM heap, r3=0x40) and 1/11-13 (r2=02039540,\
+  \ r3=0x40) are two distinct battle objects being processed in alternating order.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0, [r5,#4]` at offset 0 of the function reads BattleObject.ListIndex (offset 0x4 in
+    object_header_struct / BattleObject, since r5 points at Prev of the linked-list node which is 4 bytes
+    before the object header start). - `bl battle_getAIDataPtr_8142068` matches the named callee contract
+    (in r0, out r6). - `ldrb r1, [r5,#8]` reads at object offset 0x8 = BattleObject.CurState (per battle_object_struct
+    union). - `ldr r0, [r0,r1]` + `mov lr,pc; bx r0` is a standard Thumb switch-table dispatch; the +1
+    offsets on each word force Thumb mode for the targets. - The four-way table corresponds exactly to
+    CurState values 0 (INITIALIZE), 4 (UPDATE), 8 (DESTROY) plus one more, but the struct comment says
+    "0x00/0x04/0x08"; only 3 phases are documented, so the 4th entry (CurState==3) is likely unused or
+    aliasing — naming reflects that uncertainty by naming the file off the BLeftAbility key rather than
+    a phase. - All 40 captured snapshots show identical entry r0=`080a78b9` (Thumb bit set on the function
+    address) and exit r0=`0x3c4` (`0x3c0` + Thumb bit, i.e. `sub_80A78E0+1`), confirming that CurState==0
+    (INITIALIZE) is hit on every call here. - r10 in = r10 out matches the project convention that r10
+    always carries the Toolkit pointer across battle AI paths.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080A78B8
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^080a78b8 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The function name suggests it dispatches on BLeftAbility, but the index register actually reads `r5[8]`
+  which is CurState; the table is therefore a CurState jumptable. BLeftAbility is unused here. Renaming
+  to `battle_aiDispatchByCurState_80A78B8` would more honestly describe what the assembly does — kept
+  the role-tag but flagged this.
+- Whether `sub_8142068` truly takes r0=ListIndex or r0=object pointer is unknown; the call passes whatever
+  `r5[4]` is. A look at `sub_8142068` would settle this.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 147865dc
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80A78B8 -> battle_aiDispatchByAIDataBLeftAbility_80A78B8
+  where: bn6f 717c16f5
+  tool: tools/rename_symbol.py

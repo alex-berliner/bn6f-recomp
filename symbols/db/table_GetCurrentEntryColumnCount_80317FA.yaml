@@ -1,0 +1,59 @@
+name: table_GetCurrentEntryColumnCount_80317FA
+address: '0x080317FA'
+kind: function
+previous_names:
+- sub_80317FA
+status: probable
+summary: Reads the current table entry's column count (r0+r1) and returns total row size minus 2
+interface: '() -> r0 = header.r0 + header.r1 ; side effects: calls table_GetCurrentEntryHeader_8031760'
+details: "Pushes lr (Tail call), sets r0=1 and calls table_GetCurrentEntryHeader_8031760 which reads\n\
+  \  the header bytes of the current entry of the table at dword_2011A20 (returning r0=byte@+0,\n  r1=byte@+1,\
+  \ r2=byte@+2 when requested). With kind=1 the helper returns the column-count\n  pair from the entry\
+  \ header, then add r0,r0,r1 sums the two header bytes and the result is\n  returned in r0 with r1=0.\
+  \ The captured-call exits all show r0=4 (e.g. 0x03 + 0x01 = 0x04\n  or 0x02 + 0x02 = 0x04) which matches\
+  \ \"row size minus the 2 implicit header bytes of the\n  table entry\" - i.e. total size-of-row in bytes\
+  \ excluding the (count,?,?) prefix. The\n  captured callsite r1=0x847d (a packed value: 0x84 = 132,\
+  \ 0x7D = 125; e.g. could be the row\n  layout (count=4, type=2, ?=...) of the table that's being walked)\
+  \ confirms this is the\n  header-based row/column size for the currently indexed table entry.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- sub_80317FA: `mov r0, #1` at the entry, immediately followed by `bl table_GetCurrentEntryHeader_8031760`
+    - the arg r0=1 selects the "row layout" return mode. - sub_80317FA: `add r0, r0, r1` sums the two
+    returned header byte fields. - sub_80317FA: `mov r1, #0` clears r1 and `pop {pc}` is used as a tail-call
+    return, so the only result is r0. - table_GetCurrentEntryHeader_8031760 summary explicitly states
+    it returns (r0=+0 byte, r1=+1 byte, r2=+2 byte) for kind 0; the +0 / +1 fields are the natural "row-count
+    + column-count" pair in a BN table header. - All captured call exits show r0=4 and flags Z set, consistent
+    with r0=header.r0+header.r1 = constant for this table on these snapshots (e.g. 0x03+0x01, 0x02+0x02,
+    0x01+0x03 all yield 4; the byte at @020057d4 shifts between runs).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080317FA
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battlesweep, beastsp, fuzz, maps, story3, story4, story5, story7, story8,
+    story9, wander'
+  reproduce: 'grep -l ''^080317fa '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battlesweep, beastsp, fuzz, maps, story3, story4, story5, story7, story8, story9, wander
+open_questions:
+- The exact semantic meaning of the two summed bytes (count-of-subentries vs column-width
+- vs row-arity) is inferred from the helper's name and the constant sum, not from a clear
+- field label. Settling it requires seeing a wider table-reader that consumes both fields.
+- Whether r0 truly means "row-size - 2" in bytes or just "header.r0 + header.r1" is not
+- provable from this function alone; the _2 implication comes from external callers.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 147865dc
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80317FA -> table_GetCurrentEntryColumnCount_80317FA
+  where: bn6f 717c16f5
+  tool: tools/rename_symbol.py

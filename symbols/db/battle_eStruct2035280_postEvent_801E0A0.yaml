@@ -1,0 +1,69 @@
+name: battle_eStruct2035280_postEvent_801E0A0
+address: '0x0801E0A0'
+kind: function
+previous_names:
+- sub_801E0A0
+status: probable
+summary: Posts a battle subsystem event to eStruct2035280 by copying a halfword from +0x24 of a pointer
+  at +0x48 into the struct's own +0x24, storing r0/r1 into byte fields, ORing bit 0x80 into the request
+  dword, then dispatching with mask 0x80.
+interface: '(r0 = param0 -> byte_2035281, r1 = param1 -> byte_2035282, r10 = toolkit) -> void ; side effects:
+  writes Struct2035280+0x24/0x1/0x2, ORs 0x80 into Struct2035280+0x40, then calls dispatch_801DA48(r0=0x80)'
+details: "Resolves eStruct2035280 via the off_801E0D8 pool constant. Loads the pointer stored at +0x48\
+  \ (an EWRAM pointer into another struct), reads a u16 at +0x24 from that target, and writes it into\
+  \ eStruct2035280+0x24 — i.e. mirrors a \"current value\" from a source object into the global slot (likely\
+  \ a battle phase / event index, since +0x24 of eStruct2035280 is otherwise word_20352A4 and the captured\
+  \ value goes through ldrh/strh).\n  Stores r0 into byte_2035281 and r1 into byte_2035282 (these are\
+  \ parameters; the meaning isn't directly inferable from the assembly, but callers consistently pass\
+  \ small values like 0x00, 0x0f).\n  ORs 0x80 into the request-bits dword (eStruct2035280+0x40) via eStruct2035280_SetRequestBits_801BECC,\
+  \ then immediately calls dispatch_801DA48(0x80) to process that exact mask. So the function both enqueues\
+  \ and dispatches the 0x80 request in one shot — callers do not need to call dispatch themselves for\
+  \ this bit.\n  All callers are battle / object-step code: task484_RunFrame, two unnamed battle routines,\
+  \ the Custom Gauge end-of-turn handler, and objStepFinishSetState4 (the object-state finalize helper).\
+  \ This confirms the 0x80 bit is a battle-lifecycle event flag (the `battle_customGauge_EndTurn_8027D78`\
+  \ caller uses it at end-of-turn, and `objStepFinishSetState4_802BE0C` uses it when finalizing a step).\n\
+  \  Push/pop only {lr} — leaf with two `bl`s.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r3, off_801E0D8` resolves to the Struct2035280 pool constant (`=eStruct2035280`). -
+    `ldr r2, [r3,#0x48]` then `ldrh r2, [r2,#0x24]` then `strh r2, [r3,#0x24]` is a copy of a u16 from
+    a pointer field at +0x48 into the local +0x24 halfword. - `strb r0, [r3,#0x1]` and `strb r1, [r3,#0x2]`
+    show r0/r1 are stored as bytes at offsets 0x1 and 0x2 (Unk_01/Unk_02 of Struct2035280, just past the
+    Index_00 byte). - `mov r0, #0x80; bl eStruct2035280_SetRequestBits_801BECC` then `mov r0, #0x80; bl
+    dispatch_801DA48` enqueue + dispatch the same mask 0x80. - Caller `objStepFinishSetState4_802BE0C`
+    explicitly calls this with (0,0) as part of a step-finalize sequence, suggesting the 0/0 pair plus
+    0x80 is a "step finished" notification. - Caller `battle_customGauge_EndTurn_8027D78` calls it with
+    r0=0 from the end-of-turn Custom Gauge teardown, suggesting 0x80 marks end-of-turn events. - All 6
+    captured calls exit r0=0x80 with Z set, confirming the final `mov r0, #0x80` is the contract exit
+    value (the dispatch returns r0=0x80).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801E0A0
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0801e0a0 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- Exact meaning of bytes at +0x1/+0x2 (r0/r1 params) and the halfword mirrored from +0x24 of the +0x48
+  pointer (probably a battle phase / chip-select slot index, given the pointer is held at Struct2035280+0x48).
+  Identifying what struct lives at the +0x48 pointer and what +0x24 of it represents would settle it.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 147865dc
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801E0A0 -> battle_eStruct2035280_postEvent_801E0A0
+  where: bn6f 717c16f5
+  tool: tools/rename_symbol.py

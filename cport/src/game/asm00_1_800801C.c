@@ -388,7 +388,7 @@ Next task484_RunFrame_800927C(void) {
     /* Clear the task state (r0 = r1 = 0). */
     R0 = 0;
     R1 = 0;
-    GUEST_CALL(sub_801E0A0);
+    GUEST_CALL(battle_eStruct2035280_postEvent_801E0A0);
 
     RETURN_TO_CALLER();
 }

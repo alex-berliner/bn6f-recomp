@@ -1884,7 +1884,7 @@ Next battleObject_setupSprite_80C4368(void) {
  * Reads the "related object" pointer from the battle object (r5) and runs the
  * standard mosaic-scaling + alpha setup on that sprite. Then dispatches by
  * the Param3 byte of the battle object:
- *   - Param3 != 0   -> call sub_801BCD0 (alternate update path).
+ *   - Param3 != 0   -> call battleObject_updateSpriteAnimIfChanged_801BCD0 (alternate update path).
  *   - Param3 == 0   -> if the battle isn't currently time-stopped, run the
  *                      generic object_updateSprite.
  *
@@ -1916,9 +1916,9 @@ static void update_sprite(void) {
     GUEST_CALL(object_updateSprite);
 }
 
-/* register form: calls sub_801BCD0 outside this file, which has no typed C interface yet */
+/* register form: calls battleObject_updateSpriteAnimIfChanged_801BCD0 outside this file, which has no typed C interface yet */
 static void alt_object_update(void) {
-    GUEST_CALL(sub_801BCD0);
+    GUEST_CALL(battleObject_updateSpriteAnimIfChanged_801BCD0);
 }
 
 /* Typed implementation. Performs the same work the original does, with the
@@ -1998,7 +1998,7 @@ Next battle_spawnObject56LinkedToOwner_80C44A8(void) {
 /* ── battle_EndObjectCurrentAnim_80C44D2 ── */
 /* battle_EndObjectCurrentAnim_80C44D2(r0 = battle object):
  * End the object's current animation: write 0xFF (finished) into its
- * current-animation slot and call sub_801BCD0 to refresh its animation
+ * current-animation slot and call battleObject_updateSpriteAnimIfChanged_801BCD0 to refresh its animation
  * state. A NULL object pointer is a no-op. r4/r5 are preserved.
  * Flags: with a NULL object they come from the tst; otherwise the last
  * flag-setting instruction before the call is the Thumb "mov r5, r0",
@@ -2013,7 +2013,7 @@ Next battle_EndObjectCurrentAnim_80C44D2(void) {
     ST8(R0 + oBattleObject_CurAnimCopy, 0xFF);
     R5 = R0;                       /* helper takes the object in r5 */
     SET_FLAGS_ADD(R0, 0);          /* "mov r5, r0" == adds r5, r0, #0 */
-    GUEST_CALL(sub_801BCD0);
+    GUEST_CALL(battleObject_updateSpriteAnimIfChanged_801BCD0);
     R5 = savedR5;                  /* pop {r5} restores the caller's r5 */
     RETURN_TO_CALLER();
 }

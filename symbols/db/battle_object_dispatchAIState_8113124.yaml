@@ -1,0 +1,57 @@
+name: battle_object_dispatchAIState_8113124
+address: '0x08113124'
+kind: function
+previous_names:
+- sub_8113124
+status: probable
+summary: Dispatches the current AI state of a battle object via a jumptable after gating on low-HP chip
+  usage and a flag check.
+interface: '(r6 = BattleObject*) -> r0/r1 = scratch ; side effects: jumps through an AI-state dispatch
+  table at off_8113148'
+details: "Saves {r4,r6,lr}; calls sub_81131D8 (low-HP chip-use check). If non-zero, returns immediately.\n\
+  \  Otherwise reads `object_getFlag()` and tests bit mask 0xa000 (FLOATSHOE 0x20 + AIRshoe 0x10 combined\
+  \ mask; the 0xa000 constant refers to bits in the high half - likely INVIS+something, but the constant\
+  \ is 0x0000a000). If either sub returns non-zero/flag set, returns.\n  Otherwise reads `BattleObject_Unk_60\
+  \ + 0x20` offset indexed as `[r6, #oAIState_Unk_00]` — note that `oAIState_Unk_00` is at offset 0x60\
+  \ in the BattleObject (ExtraVars[0]), not in AIState; the live `oAIState` (at 0x80) appears unused here.\
+  \ Loads function pointer from `off_8113144 → off_8113148[Unk_00]` and `bx r1` to dispatch.\n  This is\
+  \ a generic AI-state dispatcher for a battle actor's \"extra vars\" byte 0.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {r4,r6,lr}` followed by `bl battle_object_tryUseChipWhenLowHP_81131D8` and `cmp r0,#0
+    / bne locret_8113142` (early-out on low-HP chip path). - `bl object_getFlag` then `tst r0, #0xa000`
+    then `bne locret_8113142` (early-out on flag mask). - `ldrb r0, [r6, #oAIState_Unk_00]` uses r6 as
+    the BattleObject pointer; the off_8113144 -> off_8113148 jump table dispatches. - `mov lr, pc ; bx
+    r1` switches to the dispatched handler with LR set for return. - r0=08113125 in captured calls (BL+1
+    address passed as an arg to caller) confirms this is a tail-style dispatcher.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08113124
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles2, battlesweep, beastsp, fuzz, menus3, story2, story4, story5, story8,
+    story9'
+  reproduce: 'grep -l ''^08113124 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles2, battlesweep, beastsp, fuzz, menus3, story2, story4, story5, story8, story9
+open_questions:
+- The exact meaning of AIState byte index 0 (r6 + oAIState_Unk_00 = 0x60) is unknown; the actual `AIState`
+  struct (oAIState=0x80 in AIData) is not accessed here. The 0xa000 flag mask meaning is also unverified
+  — could be OBJECT_FLAGS_AIRSHOE|FLOATSHOE if read elsewhere, but those are 0x10|0x20 not 0xa000. Settling
+  this would require reading the full `object_getFlag` helper.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 147865dc
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8113124 -> battle_object_dispatchAIState_8113124
+  where: bn6f 717c16f5
+  tool: tools/rename_symbol.py

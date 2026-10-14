@@ -1256,7 +1256,7 @@ Next aiAttack_stepStateMachine_80EB04C(void) {
  * is still counting down there is nothing else to do. Once it reaches zero the
  * object's "busy" flag (0x40) is cleared and the CURRENTLY_MOVING flag is set,
  * the timer is reloaded from Unk_18 (the reloaded value stays in R0 when the
- * AI-layer check sub_80F02A2 is called, as in the original), the animation is
+ * AI-layer check battle_aiAttack_checkMysteryDataUnk_80F02A2 is called, as in the original), the animation is
  * reset if the check returns non-zero, and finally the action state (Unk_00)
  * is set to 0xC.
  *
@@ -1281,10 +1281,10 @@ Next aiAttack_TimerTickEnd_80EB194(void) {
     GUEST_CALL(object_setFlag1);
 
     /* Reload the timer for the next attack and ask the AI layer about it.
-     * R0 still holds the reloaded value when sub_80F02A2 is entered. */
+     * R0 still holds the reloaded value when battle_aiAttack_checkMysteryDataUnk_80F02A2 is entered. */
     R0 = LD16(R7 + oAIAttackVars_Unk_18);
     ST16(R7 + oAIAttackVars_Unk_10, R0);
-    GUEST_CALL(sub_80F02A2);
+    GUEST_CALL(battle_aiAttack_checkMysteryDataUnk_80F02A2);
 
     if (R0 != 0) {
         R0 = 0;

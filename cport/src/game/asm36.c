@@ -946,7 +946,7 @@ Next battle_dispatchObjectUpdateOrEffect_81333A0(void) {
         RETURN_TO_CALLER();
     } else {
         /* Default / type-4-with-other-sub-type: spawn fixed effects */
-        GUEST_CALL(sub_81345D4);
+        GUEST_CALL(battleObject_runActionShieldOrStatusEffect_81345D4);
         GUEST_CALL(battle_spawnFixedArgEffect_wrapper_81345E8);
         GUEST_CALL(battleObject_queueOamPanelGrid_8134610);
     }
@@ -2297,8 +2297,8 @@ Next sub_81345B0(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_81345D4 ── */
-/* sub_81345D4:
+/* ── battleObject_runActionShieldOrStatusEffect_81345D4 ── */
+/* battleObject_runActionShieldOrStatusEffect_81345D4:
  * Fixed-parameter wrapper around battleObject_updateShieldOrStatusEffect_813468C — everything this routine does
  * is fill in one hard-coded argument set and delegate:
  *   r0 = 0x5A (90), r1 = 0x20 (32), r2 = 0x20 (32), r3 = 0x12 (18)
@@ -2308,7 +2308,7 @@ Next sub_81345B0(void) {
  *   r7 = passed through untouched from the caller
  * All caller-saved state (r4-r7) is preserved across the call, exactly as the
  * original's push/pop pair does; only r0-r3/lr and the flags are clobbered. */
-Next sub_81345D4(void) {
+Next battleObject_runActionShieldOrStatusEffect_81345D4(void) {
     u32 savedR4 = R4;
     u32 savedR5 = R5;
     u32 savedR6 = R6;
@@ -3160,10 +3160,10 @@ Next clearChipGiftRecordAndTakeChipsSlot0_8137808(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8137884 ── */
-/* sub_8137884(r0 = index):
+/* ── battle_getPlayerCurState_8137884 ── */
+/* battle_getPlayerCurState_8137884(r0 = index):
  * look up a byte in the table at unk_20018EC and return it. */
-Next sub_8137884(void) {
+Next battle_getPlayerCurState_8137884(void) {
     R0 = LD8(A_unk_20018EC + R0);
     RETURN_TO_CALLER();
 }
