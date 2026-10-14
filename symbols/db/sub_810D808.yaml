@@ -3,30 +3,27 @@ address: '0x0810D808'
 kind: function
 previous_names: []
 status: hypothesis
-summary: Picks a panel in the 6x3 grid in front of a battle object and highlights it, setting the in-front flag
-interface: (r0 = ?, r1 = self/pc_addr, r2 = 0x80, r3 = 3) -> r0 = highlighted panel index (0..0x7F or sentinel)
-details: "Assembly is not currently disassembled in bn6f/asm, so behaviour is inferred only from the\n  register\
-  \ contract, callees, and 40 captured call sites (snap_story6_*.bin). r1 arrives carrying\n  0x0810d809 (PC+1 of\
-  \ this Thumb function), the standard idiom for thunked-from-Thumb callers\n  passing the function's own address\
-  \ — strong evidence this is an AI/action callback dispatched\n  by table. r2=0x80 and r3=3 are stable across captures\
-  \ and look like flags/slot arguments.\n\n  Output r0 is a small panel index (0x24, 0x25, 0x7F seen), consistent\
-  \ with the 6x3 grid layout\n  the sibling `highlightPanelIfSomeCondition_8109660` operates on. The callee mix\
-  \ is exactly what\n  a \"highlight what is in front of me\" routine needs: `object_getFrontDirection` provides\
-  \ the\n  ±X side sign, `object_setFlag1` likely sets the in-front flag on the chosen panel/object,\n  `object_setCounterTime`\
-  \ resets a wait timer, `battle_ResetObjectTimerTo8_80C4072` resets the\n  caller's per-object timer to 8, and\
-  \ `sub_80C5578` is most likely the panel-data accessor that\n  reads/writes a PanelData row.\n\n  The snapshot\
-  \ variation (r0 climbs from 0x24/0x25 up to 0x7F as the object moves across frames)\n  fits a routine that selects\
-  \ the panel directly ahead on the grid.\n"
+summary: Cannot determine; assembly not provided, callers list empty.
+interface: unknown — contract lists r4/r5/r7/r10/lr in and r1/r5 out, but I have not observed how those are populated
+  or consumed.
+details: "All observed evidence is circumstantial:\n  - One caller at lr=0x0810d7f0 invoked this function 40 times\
+  \ across snap_story6_* traces.\n  - Entry r0=0, r1=0x0810d809 (a Thumb code address, not a RAM pointer), r2=0x80,\
+  \ r3=0x03.\n  - Exit r0 returns small bytes (0x24, 0x25, or saturating 0x7f) with C/ZC flag transitions, consistent\n\
+  \    with returning a step/state index, but I have not verified what the bytes mean.\n  - The callee set (object_setCounterTime,\
+  \ object_setFlag1, object_getFrontDirection,\n    battle_ResetObjectTimerTo8, highlightPanelIfSomeCondition_8109660,\
+  \ sub_80C5578) suggests\n    this routine mutates a BattleObject in r5 (consistent with the in=r5 contract), updates\
+  \ a\n    counter timer to 8, ORs a flag into CollisionData, and highlights a panel on the 6x3 grid —\n    a plausible\
+  \ profile for a per-step animation/move tick, but this is a guess from callee\n    names, not from the function's\
+  \ own instructions.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- captured calls all share r1=0x0810d809 = own_PC+1 (Thumb `ADR r1, sub_810D808` style), typical of an
-    AI/dispatch-table callback - r2=0x80 and r3=0x03 are constant across all 40 captures => two fixed call arguments
-    - exit r0 saturates near 0x7F, which is the max index of an 8-wide (6 cols x 3 rows packed as linear) panel
-    array - callee set matches "find panel in front, highlight it, set in-front flag" exactly: object_getFrontDirection
-    supplies ±X, object_setFlag1 (OBJECT_FLAGS_2_DO_UPDATE_COLLISION_PANELS or similar) updates its object state,
-    object_setCounterTime and battle_ResetObjectTimerTo8_80C4072 frame the call as part of an action''s countdown
-    - sibling panel-helper highlightPanelIfSomeCondition_8109660 confirms 6x3 grid convention'
+  detail: '- Caller LR is constant at 0x0810d7f0 across all 6 shown captures (snap_story6_*.bin traces). - Entry
+    r1=0x0810d809 (odd Thumb address) is a code pointer, not a RAM pointer, so the EWRAM capture heuristic did not
+    apply. - Exit r0 takes only three observed values (0x24, 0x25, 0x7f) across the 6 samples, with C set on the
+    small ones and ZC set on 0x7f. - Callee object_setCounterTime / object_setFlag1 / object_getFrontDirection /
+    battle_ResetObjectTimerTo8 each take a BattleObject pointer; the in=r5 contract is consistent with r5 holding
+    that pointer.'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x0810D808
@@ -41,15 +38,15 @@ evidence:
     '
   result: battlesweep, beastsp, story4, story6
 open_questions:
-- 'Without the actual disassembly the exact return semantics are unknown: r0 may be a panel'
-- index, a flat packed (x,y), or a hit/sentinel value — disassembly would settle it
-- Whether this routine is invoked from an AI state handler versus a chip action handler is
-- unknown; the lr=0x0810d7f0 in the snapshots (just below this function) hints at a call site
-- in the same translation unit that would clarify the role
+- The function's actual code body — without it I cannot point at any instruction and confirm any role.
+- Who calls it from 0x0810d7f0 and in what loop/phase.
+- What r4 and r10 (likely Toolkit per project convention) hold at entry.
+- What 0x24/0x25/0x7f encode (step index, remaining timer, phase id, or something else).
+- Settled trivially by supplying the asm listing and the named callers list.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f c951b1b4
+  where: bn6f add04b11
   tool: tools/symdoc.py

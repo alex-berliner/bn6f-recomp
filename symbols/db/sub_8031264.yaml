@@ -1,0 +1,64 @@
+name: sub_8031264
+address: '0x08031264'
+kind: function
+previous_names: []
+status: hypothesis
+summary: 'story3 battle helper: finalizes the textbox update via sub_8031122/0x30F04, derives a camera scroll delta
+  and feeds it to camera_moveByDelta_80310B0, then ORs 3 into the high bit of r12 (likely a state/flag word the
+  caller owns) and returns'
+interface: (r0 = a state struct pointer also passed to sub_8031122, r1 = 0x8466, r2 = 0x02027C50, r3 = 0, r5, r12,
+  lr) -> r0 = pointer (unchanged), r12 |= 3, lr popped; r1, r2, r3, r5 clobbered as side effects via callees
+details: "- Saves r0-r2, r5, lr on entry (`push {r0-r2,r5,lr}`) so r0/r1/r2 can be passed untouched to sub_8031122\
+  \ alongside the preserved r5.\n  - sub_8031122 hypothesis: zeroes two counter/flag words of dword_200F3E0 then\
+  \ continues via sub_80310EC; the only captured-call side effect on return is \"C\" flag set in the exit log, consistent\
+  \ with a nonzero return.\n  - Sets up the argument block for sub_8030F04 with r2=0, r4=0, r3=0x20, r5=0x20, r6=1,\
+  \ then calls it. Note r4/r6 are pushed clobberable so only r5 is restored; r2=0 and the (r3,r5)=(0x20,0x20) pair\
+  \ feed the callee's 16.16 fixed-point scroll and \"active\" flag=1.\n  - The two neg/lsr/neg/lsr transforms on\
+  \ r0/r1 collapse a non-zero value to -1 and a zero value to 0 (round-toward-nearest-zero branchless idiom): `neg;\
+  \ lsr#1; neg` on -x yields x for x!=0. So the call passes a (+nonzero, +nonzero) or (0,0) delta into camera_moveByDelta_80310B0.\n\
+  \  - Finally ORs 3 into the caller's r12 (`orr r0, r1 with imm 3; mov r12, r0`) — r12 is a caller-owned scratch\
+  \ register (always saved/restored via push/pop), so the caller sees the lower two bits of r12 set on return.\n\
+  \  - Restores the pushed regs and returns via `pop {r0-r2,r5,pc}`. Net effect: advance the camera scroll by one\
+  \ frame using the just-computed delta, and tag r12 with bits 0/1 (probably \"tick completed\" / \"story3 active\"\
+  ).\n  - The captured memory blob at r0 points 0x10 bytes into a 0x20009F5C struct (looks like an actor/battle-object\
+  \ or camera-link record: pair of 16.16 coords followed by a 0x20,0x23 tag and counter words). Five sequential\
+  \ snapshots are the same struct walked by +1 frame each time, consistent with a per-frame \"story3\" tick.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- push/pop set is `{r0-r2,r5,lr} ... {r0-r2,r5,pc}`, confirming r12 is a caller-owned scratchpad to be
+    modified and returned (final `orr r0,r1=3; mov r12,r0`). - `mov r2,#0; mov r4,#0; mov r3,#0x20; mov r5,#0x20;
+    mov r6,#1` then `bl sub_8030F04` — these become the in-args to the textbox-and-state helper (whose contract
+    lists in=[''r0'',''r2'',''r3'',''r4'',''r5'',''r6'',''lr'']). - `neg r0,r0; lsr r0,r0,#1; neg r0,r0` after the
+    call is a known Thumb trick to map `x != 0 -> x` and `x == 0 -> 0` (rounds without a branch); paired with `lsr
+    r1,r1,#1` it halves r1 then feeds both to camera_moveByDelta_80310B0, whose contract accepts (r0,r1) as a delta.
+    - All five captured calls return r0=02009F5c with C-flag set, matching the "textbox/state helper produced something
+    nonzero" pattern from sub_8031122 then sub_8030F04 each frame. - The 0x10-pre-byte sequence inside the 64-byte
+    blob at 02009F5c shifts by exactly +1 byte per snapshot (frame counter / step counter lives there).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08031264
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp, fuzz, maps, story3, story4, story5, story6, story8'
+  reproduce: 'grep -l ''^08031264 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp, fuzz, maps, story3, story4, story5, story6, story8
+open_questions:
+- What the 0x40-byte struct at 02009F5C actually is (looks like a small per-frame controller, not the camera; camera
+  pointer is in r0 going in but is reused for the textbox helper too, so it may be the BattleState pointer instead).
+- What OR'ing 3 into r12 communicates to the caller — likely "this story3 step finished" + "bit1 = running", but
+  without the caller context the bit semantics are guesses.
+- Whether sub_8030F04's "0x20,0x20,1" args are frame-coords or per-axis scroll deltas — the callee contract mentions
+  "skip update when delta is zero" so the nonzero halves matter; guessing 16.16 0.5 / 0.5 effective motion is consistent.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f add04b11
+  tool: tools/symdoc.py

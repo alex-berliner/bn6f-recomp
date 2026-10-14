@@ -3,30 +3,27 @@ address: '0x08086EA8'
 kind: function
 previous_names: []
 status: hypothesis
-summary: Per-frame Beast-Out AI dispatcher for a battle object (selects one of several beast-action paths based
-  on event flags) — void
-interface: (r2 = beast-mode-related context/param, r10 = Toolkit) -> r2,r3,r5,r7 ; side effects
-details: "Body is missing from the disassembly, so the function's contents cannot be inspected\n  directly. The\
-  \ contract marks only r2/r10/lr as inputs and only r2/r3/r5/r7 as outputs\n  (r3/r5/r7 are pure scratch; r2 is\
-  \ passed back), so nothing is returned to callers in a\n  traditional sense — callers re-use r2. The callee list\
-  \ is dominated by AI helpers:\n  TestEventFlagFromImmediate (reads a story-progress flag), sub_8086FD8 (in r2/r5),\n\
-  \  sub_808711C (in r5), sub_8087140 (out r0), sub_8087184 (in r5, out r2/r5), and sub_80871F4\n  (in r5, out r2/r3/r4).\
-  \ Several callees consume r5 and pass back r2, consistent with a\n  switch-style dispatch over beast-action variants\
-  \ that each consume an AIData / action\n  blob. The captured calls are all `snap_beastsp_*` traces (entry r0=0,\
-  \ r1=2, r2=1,\n  sp=03007dac, lr=08035e88) and exit with r0=0 and Z flag set, confirming the void-like\n  contract\
-  \ and matching a per-frame \"tick\" rather than a query. Naming uses the `battleObject_`\n  prefix because r10\
-  \ (Toolkit) is the typical battle-object entry convention and the callees\n  read/write AIData-shaped state.\n"
+summary: placeholder - cannot propose a real name; assembly for this function is missing from the disassembly
+interface: (r2 in, r10 = toolkit, lr) -> r2, r3, r5, r7 out ; side effects unknown
+details: "The function body was not found in the bn6f disassembly; the route coverage log only\n  captured register\
+  \ values on entry/exit, no instructions. The contract list (`in=r2,r10,lr`,\n  `out=r2,r3,r5,r7`) and callees\
+  \ (TestEventFlagFromImmediate, sub_8086FD8, sub_808711C,\n  sub_8087140, sub_8087184, sub_80871F4) and the AIData-related\
+  \ offsets referenced by the\n  callees (r0/r1 passed through) suggest a battle-side helper that conditionally\
+  \ walks the\n  battle-object list and may poke AIData fields (ActorType/AIIndex), but without the actual\n  instructions\
+  \ I cannot confirm. All 40 captured calls hit it from r2=1, r3=0x02001d44\n  (an EWRAM pointer near oStruct2035280\
+  \ / oBattleState-area), with r0=0, r1=2, and exit\n  r0=0 / Z set, so the function appears to be a status/flag\
+  \ check that returns a boolean-like\n  r2 outcome (0/1) and preserves the toolkit pointer in r10. Until the body\
+  \ is recovered,\n  no specific battle-subsystem prefix can be assigned with confidence.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- Assembly not found in bn6f/asm ("sub_8086EA8 not found in bn6f/asm"), so behaviour is inferred purely
-    from contract + callees, not from concrete instructions. - All 6 shown captured calls are from `snap_beastsp_0100000_*`
-    traces and share entry r0=00000000, r1=00000002, r2=00000001, sp=03007dac, lr=08035e88; exit r0=00000000, flags
-    -ZC-, indicating a void-like per-frame tick rather than a query. - TestEventFlagFromImmediate is one of the
-    direct callees; the function reads a story-progress/event flag and branches on it, consistent with dispatching
-    one of several beast-action variants. - Multiple callees consume r5 and return updated r2 (sub_8086FD8, sub_808711C,
-    sub_8087184), the canonical pattern for switch-style AI action dispatchers in this project. - The block of callees
-    (8086FD8..80871F4) lives at consecutive addresses, suggesting'
+  detail: '- Function body is reported as "not found in bn6f/asm", so no concrete instructions can be cited. - Contract
+    in/out matches a routine that takes a flag/argument in r2 and returns a boolean in r2, with r10 as the toolkit
+    pointer (matches the project convention of toolkit being in r10 across battle code). - All 40 captured entries
+    show identical r0/r1/r2/r3 values and exit r0=0 with Z set, consistent with a predicate that re-uses the same
+    input state and returns early-true/false. - One callee, TestEventFlagFromImmediate (0x0802f164), tests a story/event
+    flag; this implies the function gates behavior on story progress. - Sub_8086FD8/808711C/8087184/80871F4 share
+    the r5/r10 register pattern used by battle object/AI list walkers, hinting at list traversal over BattleObjects.'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x08086EA8
@@ -41,15 +38,13 @@ evidence:
     '
   result: beastsp, maps
 open_questions:
-- Without the body, the exact criterion (event flag id, AIData field) is unknown.
-- Decompiling the body, or naming the immediate passed to TestEventFlagFromImmediate,
-- would settle the trigger and the action IDs.
-- Whether r2 carries an AIData*, BattleObject*, or just an action index is unknown;
-- checking the first instructions of the body would resolve it.
+- The exact game-mechanism role (what it decides and which side performs what action).
+- Recovering the assembly body and looking at the few instructions before the first callee `bl`
+- (to see how r2/r5 are set) would settle the role immediately.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f c951b1b4
+  where: bn6f add04b11
   tool: tools/symdoc.py

@@ -3,24 +3,46 @@ address: '0x08083DF0'
 kind: function
 previous_names: []
 status: hypothesis
-summary: Per-battle init helper that selects a battle-setup entry, copies pet/param struct, registers the object,
-  sets a couple of event flags, and clears/stages cutscene state for the upcoming pet-wave animation.
-interface: (r10 = ToolkitPtr) -> nz ; r0/r2/r3/r4/r5/r7/r8/r9/r12 trashed; uses r5 and r12 heavily
-details: "Without the asm we can't prove specifics. Based on callee names this looks like a per-frame or\n  per-event\
-  \ battle-object entry point: it calls sub_8083F80/8084080/8084180/8084214/80842D8 (likely\n  battle-object lifecycle:\
-  \ register, copy params, advance state, push update, etc.) and the\n  load_gfx_anim_* trio (likely setting up\
-  \ the wave/pet-portrait GFX anim). It uses\n  Test/Set/ClearEventFlagFromImmediate (story progress for waves),\
-  \ and the two\n  cutscene_checkOriginalCutsceneScriptPos_* helpers (likely gating which cutscript sentinel to\n\
-  \  restore). reqBBS_setFlag_e17b0f7_8140A00 / reqBBS_clearFlag_8140A0C are called, suggesting this\n  also pokes\
-  \ the BBS request state. sub_809E462 looks like a battle-state check.\n"
+summary: Cutscene-graphics-orchestrator (reads L-Message / AskJackOut cutscene script markers, sets/clocks GFX anims
+  0x8083FC0/0x8083FFC/0x08084068, and toggles event flag 0x17 bit 7 via the BBS request handlers) — placeholder
+  for the scene that runs at 0x8083DF0.
+interface: '(r10 = oToolkit, lr = return) -> nz flags ; side effects: event flag bit (0x17, 0x07) read/cleared/set,
+  three GFX anim state slots loaded and ticked, sub_8083F80 / sub_80840C4 / sub_8084080 / sub_8084180 / sub_8084214
+  / sub_80842D8 driven, sub_809E462 called'
+details: "No assembly bytes were recovered for this routine (asm panel says \"sub_8083DF0 not found in\n  bn6f/asm\"\
+  ) so behaviour must be inferred from its callees and the register contract.\n  Reads only r10 (=oToolkit) and\
+  \ lr, so it is a top-level scene dispatched from the subsystem\n  jumptable (r10 carries the toolkit, like every\
+  \ other bn6f scene). Out contract includes r4..r12\n  plus nz flags, which is consistent with a long-lived per-frame\
+  \ state-machine: r5/r7/r8/r9\n  come back to the caller and are presumably re-loaded each call rather than preserved.\n\
+  \  The contract `may_write=['lr']` and the absence of any out=`r0/r1` registers indicates this\n  is void-like.\n\
+  \  Callee mix is unusually graphics-heavy: three \"load_gfx_anim_*\" routines (0x8083FC0, 0x8083FFC,\n  0x8084068)\
+  \ plus struct_copy 0x80840C4 suggest this function orchestrates a small list of\n  GFXAnimState entries (struct\
+  \ size 0x18, oGFXAnimState). It also drives six sibling helpers\n  labelled sub_8083F80 / 0x8084080 / 0x8084180\
+  \ / 0x8084214 / 0x80842D8 in the same code page,\n  which read r5 as their main state pointer — that page (0x8083F80..0x8084338)\
+  \ reads as a\n  mini cutscene/animation driver.\n  Two cutscene-marker probes (8036F40 \"L-Message sentinel?\"\
+  , 8036F58 \"AskJackOut script?\") and\n  direct read/write of an event flag (TestEventFlagFromImmediate / ClearEventFlagFromImmediate\n\
+  \  / SetEventFlagFromImmediate) imply this scene reacts to whichever L-Message / jackout script\n  is currently\
+  \ queued in oCutsceneState.\n  Event-flag operating target is fixed by the confirmed callee\n  reqBBS_setFlag_e17b0f7_8140A00\
+  \ (\"sets event flag 0x7 in event byte 0x17\"), with its sibling\n  reqBBS_clearFlag_8140A0C clearing it again;\
+  \ this is the BBS-request-via-cutscene flow used\n  when the player agrees to jack out during an L-Message.\n\
+  \  sub_809E462 (nz out) is the only call that returns a boolean check to the caller, so the\n  scene likely branches\
+  \ on it once anims are loaded (e.g. wait-for-input / has-scrolled).\n  Naming is intentionally generic (\"scene/orchestrator\"\
+  ) because the exact subsystem is not\n  pinned down; the absence of battle-state helpers (no oBattleStatePtr field\
+  \ in the contract,\n  no battle_* callees) makes this an overworld/cutscene-side routine rather than a battle\n\
+  \  routine, despite the \"battle_\" prefix candidates fitting the address layout.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- All callees are in the 0x0808xxxx range, clustered around battle setup and gfx anim. - load_gfx_anim_*
-    + struct_copy_80840C4 + sub_80840xx suggest creating and copying a battle-object-ish struct. - Event flag Set/Clear/Test
-    calls indicate this is run during battle scene transitions. - cutscene_checkOriginalCutsceneScriptPos_* take
-    no flags but return nz, suggesting gating logic. - reqBBS_setFlag_e17b0f7_8140A00 sets story flag 0x7 in event
-    byte 0x17, often tied to "pet joined" story beats.'
+  detail: '- lifter reports no assembly bytes recovered (asm panel: "sub_8083DF0 not found in bn6f/asm") - in contract
+    `in=[''r10'',''lr'']` matches every bn6f top-level scene driven from the toolkit jumptable at oToolkit+0x00;
+    out has only callee-saved r4..r9/r12 and nz, matching a void scene that preserves its state for the next frame.
+    - direct callees include exactly three GFX-anim loaders (load_gfx_anim_8083FC0 / 0x08083FFC / 0x08084068) and
+    an explicit struct_copy_80840C4, so the function materialises a small array of GFXAnimState entries (struct
+    size 0x18 per oGFXAnimState). - the six siblings at 0x8083F80 / 0x8084080 / 0x8084180 / 0x8084214 / 0x80842D8
+    all read `r5` on entry (their in-contract lists r5), implying the orchestrator hands them the same r5/anim-slot
+    base it received from one of the load_gfx_anim_* helpers. - cutscene_checkOriginalCutsceneScriptPos_8036F40
+    / 8036F58 compare oCutsceneState `.originalCutsceneScriptPos_40` against L-Message and AskJackOut sentinels
+    respectively'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x08083DF0
@@ -35,17 +57,17 @@ evidence:
     '
   result: beastsp, story5, story6
 open_questions:
-- Assembly was not provided; the body, exact argument layout, and what each of the sub_80840xx
-- callees does is inferred only from their contracts (which are also unnamed). Even the role
-- ("wave setup") is a guess from the gfx-anim-heavy callee list and BBS flag pattern.
-- === NOTE ===
-- The provided assembly block reads `; sub_8083DF0 not found in bn6f/asm`, so I cannot cite real
-- instructions or specific offsets/values. Everything above is reconstructed from the callee graph
-- only; status is `hypothesis` accordingly.
+- 'The actual code: until asm is recovered, every behaviour above is inferred from callees.'
+- 'Whether this is a battle or overworld scene: address 0x8083DF0 sits next to other'
+- battle-adjacent helpers, but no oBattleStatePtr is read; could equally be the cutscene
+- portion of an L-Message ("jack-out?") prompt. Recovering the asm would settle this.
+- What r5 holds in the callees — is it oGFXAnimState index 0, 1, or 2 of three loaded slots?
+- Why sub_809E462 is called last (the only boolean out); viewing its body would tell us
+- whether the function waits on a "scene complete" flag before returning.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f c951b1b4
+  where: bn6f add04b11
   tool: tools/symdoc.py
