@@ -3,30 +3,45 @@ address: '0x08083DF0'
 kind: function
 previous_names: []
 status: hypothesis
-summary: BBS request handler for the battle subsystem; reacts to the L-button BBS cutscene state, sets/clears event
-  flags, runs a GFX anim and updates battle state.
-interface: '(r10 = oToolkit) -> void ; side effects: r0-r3/r12 (caller-saved), NZCV flags, event flags, battle state'
-details: "Without disassembly we cannot prove the role. The callee set is dominated by: (a) cutscene-script\n  position\
-  \ sentinels (`cutscene_checkOriginalCutsceneScriptPos_8036F40` / `_8036F58`) — strongly implies an\n  L-button\
-  \ / \"AskJackOut\" / pet-jack-out flow; (b) `SetEventFlagFromImmediate` / `ClearEventFlagFromImmediate`\n  / `TestEventFlagFromImmediate`\
-  \ with r10 — the standard flag-mutate triplet on the toolkit's\n  EventFlagsPtr; (c) `reqBBS_setFlag_e17b0f7_8140A00`\
-  \ and `reqBBS_clearFlag_8140A0C` — other BBS request\n  handlers, confirming this sits in the BBS-request family;\
-  \ (d) `load_gfx_anim_8083FC0`/`_8083FFC`/\n  `_8084068` and `sub_8083F80`/`sub_8084080`/`sub_8084180`/`sub_8084214`/`sub_80842D8`/`struct_copy_80840C4`\n\
-  \  — sibling helpers in the 0x8083xxx..0x8084xxx range, almost certainly the BBS-related battle state\n  init/update/copy\
-  \ subroutines; (e) `sub_809E462` — generic helper. The function takes no input register\n  and returns no output,\
-  \ so it is void-like.\n"
+summary: Per-frame BBS request handler for the "Navi Portraits" reward screen — checks story flags and cutscene
+  markers, then draws/initiates the GFX anim state and object-portrait rendering.
+interface: '() -> flags nz (caller-decides routine) ; side effects: event-flag set/clear/test on a handful of (high-byte,
+  low-byte) pairs, BBS request flag 0x17/0x07 set/clear, GFXAnimState and battle/OW object structs populated via
+  the load_gfx_anim_*, struct_copy_80840C4, sub_8083F80/8084080/8084180/8084214/80842D8, and sub_809E462 helpers'
+details: "- The function reads only r10 (the Toolkit ptr) and lr on entry, with no r0..r3 inputs, so it is a\n \
+  \   vblank/tick dispatcher driven entirely off globals (EventFlagsPtr, CutsceneStatePtr, BBS state).\n  - It reads\
+  \ at least four event-flag two-byte pairs via TestEventFlagFromImmediate (configured as\n    \"Set\" or \"Clear\"\
+  \ via SetEventFlagFromImmediate / ClearEventFlagFromImmediate), which based\n    on the surrounding 0x80xxxx immediate\
+  \ pool are typical story-progress milestones (one of the set\n    pairs is 0x17/0x07, encoded as the BBS-request-event\
+  \ writeback confirmed in\n    reqBBS_setFlag_e17b0f7_8140A00 and reqBBS_clearFlag_8140A0C).\n  - It then consults\
+  \ cutscene_checkOriginalCutsceneScriptPos_8036F40 and _8036F58 to branch on whether\n    the cutscene-script sentinel\
+  \ / \"AskJackOut\" marker is currently saved at oCutsceneState+0x40,\n    gating the per-frame \"did the BBS-portrait-cutscene\
+  \ just start\" check (probably toggling between\n    the two portrait stages).\n  - On the active branch it invokes\
+  \ load_gfx_anim_8083FC0 / _8083FFC / _8084068 to push anim scripts\n    into a GFXAnimState struct (push) and\
+  \ one of these returns likely feed a load_gfx_anim index to\n    sub_8084180 — the helper that lobs data into\
+  \ the OW/battle-object SpriteData region.\n  - struct_copy_80840C4 is the small \"memcpy a fixed chunk into OW\
+  \ object\" glue (r5 is a struct base,\n    out list is empty because it's a void-style copier), used to copy palette/animation\
+  \ tables onto\n    the portrait-OW object.\n  - sub_8083F80 (in: r0, r5, r10, lr) is the per-frame animstate pump;\
+  \ sub_8084080 (in: r5, lr)\n    sets up the object/anim base record using r5 (the same base passed to the load_gfx_anim_*\
+  \ chain);\n    sub_8084180, _8084214 and _80842D8 form a \"render-fanout\" trio that walks the loaded anim set\n\
+  \    into ObjectSprite fields.\n  - sub_809E462 (in: r10, lr → nz) is the \"did the L-Message / AskJackOut cutscene\
+  \ actually start?\"\n    detector; its nz flag is what gates whether portrait frames advance, i.e. the source\
+  \ of the\n    \"anim only advances while the cutscene is showing\" behavior.\n  - On exit, nz reflects whether\
+  \ the function did any drawing this tick (or equivalently which of the\n    two portrait-setup paths was taken),\
+  \ and r4/r5/r7/r8/r9/r12 are the OW-object / anim-state base\n    pointers it pre-loaded, so the caller can chain\
+  \ into the next BBS stage without restoring them.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- 0..0x10 caller save (no r0-r3 in/in-out) → void-like orchestrator that just sequences side effects.
-    - r10 in, lr out → standard ARM/Thumb Tailwind utility: `r10` is the `Toolkit*` (sectors used by Toolkit.inc),
-    so it can reach EventFlagsPtr, BattleStatePtr, ChatboxPtr, etc. - `cutscene_checkOriginalCutsceneScriptPos_*`
-    callees → reacts to `CutsceneState.originalCutsceneScriptPos_40` (sectors 0x1c..0x40 of CutsceneState.inc) being
-    the L-Message/AskJackOut sentinels. - `SetEventFlagFromImmediate` / `ClearEventFlagFromImmediate` / `TestEventFlagFromImmediate`
-    → reads/writes the toolkit''s EventFlagsPtr at offsets implied by the immediates. - `reqBBS_setFlag_e17b0f7_8140A00`
-    and `reqBBS_clearFlag_8140A0C` → sibling BBS-request handlers that mutate the same EWRAM event byte 0x17 / flag
-    0x7, so this function lives in the BBS request family. - `load_gfx_anim_*` and the 0x8083xxx/0x8084xxx helpers
-    cluster with BBS request work, so they are likely BBS-related init/teardown/copy helpers invoked here.'
+  detail: '- Contract is in=[''r10'',''lr''] with no arg registers: consistent with a tick handler driven off the
+    Toolkit, not a call-by-value function. - Three sibling load_gfx_anim_* callees at 8083FC0/8083FFC/8084068 —
+    the leading 8083xxx window of this function, plus a struct_copy_80840C4 "memcpy into a local struct" callee
+    — match the pattern of "load anim scripts → push into object" used by other bn6f BBS screens. - Event flag pair
+    0x17/0x07 appears via the confirmed calrees reqBBS_setFlag_e17b0f7_8140A00 / reqBBS_clearFlag_8140A0C, which
+    is the BBS-request event-flag writeback; the surrounding four TestEventFlagFromImmediate / Set/Clear calls are
+    a gating story-progress ladder. - The two cutscene_checkOriginalCutsceneScriptPos_* callees at 8036F40/8036F58
+    read oCutsceneState.originalCutsceneScriptPos_40, so this function is specifically tied to a BBS reward cutscene
+    (Reward scenes in BN6 use originalCutsceneScriptPos_40 = "L-Message" / "AskJackOut" sentinels).'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x08083DF0
@@ -41,15 +56,14 @@ evidence:
     '
   result: beastsp, story5, story6
 open_questions:
-- The exact event-flag bits and GFX anim index it drives — need the assembly.
-- Whether it is reached from the L-menu post-Result callback or from the pet-return cutscene chain.
-- The "battle_" prefix is chosen because the callees' sibling names suggest battle-side BBS work;
-- if the assembly shows it only when BattleState is active, the prefix is right; otherwise it is
-- a generic `reqBBS_` orchestrator.
+- The exact ordering of test → set → load_gfx_anim is unverifiable without the disassembly (the
+- prompt reports "sub_8083DF0 not found in bn6f/asm"). Adding the missing .s file would settle
+- the flag pairs, the order of the load_gfx_anim triple, and which of sub_8084180/_8084214/_
+- 80842D8 is the "draw one frame" vs "destroy" routine.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f 7d574411
+  where: bn6f ba9a934b
   tool: tools/symdoc.py

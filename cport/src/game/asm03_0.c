@@ -139,8 +139,8 @@ Next sub_8026A28(void) {
 /* sub_8026A50(self: r5 = *S20364C0) -> u8 in r0 (always 0)
  *
  * Stores the value returned by sub_802FE48 into the object's byte at
- * offset 0x0E, starts sub_802FE7A with (0, 0x40, 0x40, value), sets the
- * object's state word to 4, and returns 0. r1-r3 end as sub_802FE7A
+ * offset 0x0E, starts sprite_setAffineTransform_802FE7A with (0, 0x40, 0x40, value), sets the
+ * object's state word to 4, and returns 0. r1-r3 end as sprite_setAffineTransform_802FE7A
  * left them (it preserves its arguments); flags come from "mov r0, #0".
  */
 Next sub_8026A50(void) {
@@ -151,11 +151,11 @@ Next sub_8026A50(void) {
     result = R0;
     ST8(R5 + oS20364C0_Unk_0e, result); /* remember the result on the object */
 
-    R3 = result;                        /* arguments for sub_802FE7A */
+    R3 = result;                        /* arguments for sprite_setAffineTransform_802FE7A */
     R1 = 0x40;
     R2 = 0x40;
     R0 = 0;
-    GUEST_CALL(sub_802FE7A);            /* r1/r2/r3 pass through unchanged */
+    GUEST_CALL(sprite_setAffineTransform_802FE7A);            /* r1/r2/r3 pass through unchanged */
 
     ST32(R5, 4);                        /* object state = 4 */
 

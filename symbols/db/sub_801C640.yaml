@@ -1,0 +1,63 @@
+name: sub_801C640
+address: '0x0801C640'
+kind: function
+previous_names: []
+status: hypothesis
+summary: Draws/updates a battle cursor tile over the selected panel for the actor in r5, including a flashing variant
+  and end-of-battle check.
+interface: '(r5 = actor/BattleObject*, r10 = *Toolkit) -> r0 = unused ; side effects: writes BG tile ids via bgmap,
+  queues a 0x20-byte GFX upload, early-returns during end-of-battle'
+details: "1. Calls battle_IsBattleEnding_800A97A first; if true, returns immediately (no drawing while battle is\
+  \ winding down).\n  2. Reads the actor's u16 field at [r5+0x20] (AIData.TotalDamageTaken at offset 0x20 of AIData,\
+  \ but here it's used as a panel-state word). Splits it: bits 10+ become r4, bit 7+ becomes r6.\n  3. If the upper\
+  \ bits (r4 = TotalDamageTaken >> 10) are non-zero, calls call_sub_3005EBA with (r0=7, r1=1, r2=3, r3=0x922A, r5=1)\
+  \ — likely \"set the alt/flashing cursor tile in BG map block 7,1,3 to tile id 0x922A\".\n  4. Otherwise calls\
+  \ the same helper with r3=0x9222 (the normal cursor tile id) at the same map block.\n  5. Then if the lower 16\
+  \ bits aren't 0x4000 (a \"no redraw\" sentinel), computes (TotalDamageTaken >> 7) & 7 = panel-x within block and\
+  \ (TotalDamageTaken >> 10) = block-y offset, and calls bgmap_WriteTileIdAtBlock_800187C with (block-x=7, block-y=1,\
+  \ layer=3, tile-id = 0x9222 + x) to place the per-tile cursor.\n  6. Loads [r5+0x18] (PreventAnim byte) — if 0,\
+  \ subtracts 2 to get a frame index; else uses the value directly. Multiplies by 0x20 and indexes into a 0x20-byte\
+  \ cursor-GFX table at byte_86E1CD8.\n  7. Calls QueueEightWordAlignedGFXTransfer(0x3001A80, &byte_86E1CD8[index],\
+  \ 0x20) to push the chosen cursor frame into VRAM/OBJ tile slot 0x3001A80.\n  8. `push {r5}` / `pop {r5}` are\
+  \ used only to give call_sub_3005EBA a scratch r5 while keeping the actor pointer across the call.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl battle_IsBattleEnding_800A97A` at the very top with `cmp r0,#0 / bne locret_801C6AE` shows early-out
+    during end-of-battle. - `ldrh r6,[r5,#0x20]` matches the AIData.TotalDamageTaken offset 0x20 in the AIData struct;
+    the bit fields derived from it (>>0xa and >>7) suggest a packed panel coordinate rather than damage. - Two call_sub_3005EBA
+    invocations with r3=0x9222 and r3=0x922A differ by 8 — a typical "two cursor tile animations" pattern; the second
+    is gated by `cmp r4,#0 / beq`, picking the alternate tile when the high bits are set (flashing/selected variant).
+    - `bgmap_WriteTileIdAtBlock_800187C` is called with computed block coordinates `r0=7, r1=1, r2=3`, and a tile
+    id offset by (TotalDamageTaken>>7)&7 — this is the per-cell cursor placement in a 32x32 BG block. - `ldrb r3,[r5,#0x18]`
+    then `sub r3,#2 / sub r3,#1 / mul r3,#0x20` and `ldr r0,=byte_86E1CD8` indicates selecting a 0x20-byte GFX frame
+    from a table (8 frames for 8-tile cursor animation). - Final `bl QueueEightWordAlignedGFXTransfer` with size
+    0x20 and dest 0x3001A80 uploads that frame to OBJ/VRAM.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801C640
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp'
+  reproduce: 'grep -l ''^0801c640 '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp
+open_questions:
+- The exact meaning of [r5+0x20] (treated here as a packed cursor coord, but lives in AIData's TotalDamageTaken
+  slot for an AI struct — though r5 in this project is documented as a BattleObject, not the AIData; the project
+  contract says r5 is an in-register pointer, not clear which struct).
+- The role of byte_801C6E8 (three bytes 0x6A,0x01,0x69,0x01,0x8F,0x00) referenced via off_801C6E4 — appears unused
+  in this function body, possibly a forward reference to a sibling routine.
+- Whether call_sub_3005EBA here is a BG-map tile-setter or a generic tile-loader; the constants 0x9222/0x922A suggest
+  VRAM tile ids in the 0x9000 region.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ba9a934b
+  tool: tools/symdoc.py

@@ -1,0 +1,60 @@
+name: sprite_initBattleFadeGfxState_80027C4
+address: '0x080027C4'
+kind: function
+previous_names:
+- sub_80027C4
+status: probable
+summary: initialises a small graphics/fade state struct used by the battle fade pipeline
+interface: '() -> r0 = 0x32f ; side effects: writes [0x20098A8] = 0x0C, [0x20098A9] = 0, [0x20098AA] =
+  0x32F'
+details: "Loads the address of `byte_20098A8` (an EWRAM state struct used by the sprite/battle\n  fade\
+  \ pipeline) into r1, then:\n    - clears `byte_20098A9` (`strb r0,[r1,#0x1]` with r0=0),\n    - writes\
+  \ 0x0C into `byte_20098A8` (a state/mode byte),\n    - writes 0x32F into the halfword at `[r1+0x2]`\
+  \ (i.e. `word_20098AA`).\n  Returns r0 = 0x32F (which the contract confirms: all captured-call exits\
+  \ show\n  r0 = 0x32F). It then `mov pc, lr`, so it is a void-like init helper used for\n  its side effects\
+  \ on the global EWRAM state; the 0x32F return value is not\n  relied on by callers.\n  Called from a\
+  \ wide range of \"enter scene / reset\" routines (EnterMap,\n  battle_initFullSetup_8005DBE, copyTileData_803FC64,\
+  \ logoScreen_init_803D1FC,\n  main_jumptable steps, scenario restart), so this is a standard\n  \"reinitialise\
+  \ fade-related graphics state before a screen transition\".\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r1, off_8002804 // =byte_20098A8` at 0x080027c4 loads the EWRAM state struct base. -
+    `strb r0, [r1,#0x1]` with r0=0 zeroes offset 0x02 (the state/flags byte). - `mov r0, #0xc; strb r0,
+    [r1]` writes 0x0C into the struct. - `ldr r0, dword_8002808 // =0x32f; strh r0, [r1,#0x2]` stores
+    0x32F at +2. - `mov pc, lr` and the contract `out=[]` confirm no architectural return value; r0 is
+    only incidentally left at 0x32F (matches every captured exit: snap_story2_0/1/10/11/12/13 all show
+    exit r0=0x32f). - The fn name lives in `bn6f/asm/sprite.s`, and the 0x0C/0x32F values match common
+    sprite-fade constants used elsewhere in the file (consistent with a battle-fade graphics init). -
+    Caller coverage: EnterMap (map entry), battle_initFullSetup_8005DBE'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080027C4
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story1, story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^080027c4 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander
+open_questions:
+- Exact semantic meaning of the 0x0C and 0x32F values (mode + counter/threshold)
+- isn't pinned to a named struct field; would settle by finding the full
+- struct definition for `byte_20098A8` and tracking how the loaded values
+- are consumed by the fade draw/update functions.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ba9a934b
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80027C4 -> sprite_initBattleFadeGfxState_80027C4
+  where: bn6f 00be3514
+  tool: tools/rename_symbol.py

@@ -1,0 +1,74 @@
+name: battleObject_handleFlashingInvisTick_801A5EE
+address: '0x0801A5EE'
+kind: function
+previous_names:
+- sub_801A5EE
+status: probable
+summary: Per-tick handler that decrements and finishes a battle object's flashing/invisibility duration,
+  clearing the invis flag and playing the disappearance SFX.
+interface: '(r5 = BattleObjectPtr) -> void ; side effects: mutates FlashingInvisTimer and ObjectFlags1/ObjectFlags2
+  of r5->CollisionDataPtr; may call PlaySoundEffect(0x94)'
+details: "1. Reads oBattleState_Unk_32 via battle_getFlags; if bit 0 is clear, returns immediately (no\
+  \ work to do this frame).\n  2. Loads r5->CollisionDataPtr into r6, then reads oCollisionData_FlashingInvisTimer\
+  \ (a u16 at offset 0x24).\n  3. If the timer is currently 0 AND ObjectFlags2 bit 0x2 (OBJECT_FLAGS_2_UNK_BIT_01)\
+  \ is set, seeds the timer to 0x78.\n  4. Always clears ObjectFlags2 bit 0x2 with object_clearFlag2(0x2).\n\
+  \  5. If FlashingInvisTimer != 0: decrements it (sub #1, strh). When it reaches 0 (or below) and ObjectFlags1\
+  \ bit 0x2 (OBJECT_FLAGS_INVIS) is set, plays SFX 0x94 via PlaySoundEffect — this is the \"vanish\" sound\
+  \ played when invis wears off.\n  6. Otherwise (timer still positive after decrement, i.e. bgt), sets\
+  \ ObjectFlags1 bit 0x200 (OBJECT_FLAGS_FLASHING) with object_setFlag1 to make the object keep flashing\
+  \ on screen.\n  7. In the \"timer exhausted this frame\" branch it unconditionally clears ObjectFlags1\
+  \ bits 0x202 (INVIS | FLASHING) via object_clearFlag(0x202), ending the flash/invis state.\n  8. The\
+  \ function is called from ai_eventuallyRunsAIAttack_801AF44 each AI attack tick to drive the flashing-then-vanish\
+  \ effect (e.g. invisibility chips like Invisible).\ndetails: |\n  Note: step 5 and step 7 above share\
+  \ the loc_801A632 label; the PlaySoundEffect + object_clearFlag(0x202) pair is the \"invis expired\"\
+  \ branch (timer hit 0 and object was actually invisible), while the bgt branch at loc_801A63A is \"\
+  still flashing, keep the FLASHING flag set\".\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- Entry reads battle_getFlags and tests bit 0 (asm: `bl battle_getFlags` / `tst r0, #1` / `beq
+    locret_801A642`) — gated on global battle flag. - r6 is `ldr r6, [r5, #oBattleObject_CollisionDataPtr]`
+    and used as the CollisionData pointer. - `ldrh r0, [r6, #oCollisionData_FlashingInvisTimer]` then
+    `tst r0, r0` / `bne loc_801A610` — timer==0 branch that, together with `object_getFlag2` & 0x2, seeds
+    0x78 via `strh r0, [r6, #oCollisionData_FlashingInvisTimer]` (the seed value 0x78 = 120 frames). -
+    `mov r0, #2 ; bl object_clearFlag2` — always clears ObjectFlags2 bit 0x2 after the seed check. - Decrement
+    block: `ldrh r0,[r6,#oCollisionData_FlashingInvisTimer] ; sub r0,#1 ; strh r0,[r6,#oCollisionData_FlashingInvisTimer]
+    ; bgt loc_801A63A` — classical countdown; bgt means "still >0, keep flashing". - PlaySoundEffect(0x94)
+    on invis expiry: `bl object_getFlag ; mov r1,#2 ; tst r0,r1 ; beq loc_801A632 ; mov r0,#0x94 ; bl
+    PlaySoundEffect` — sound only triggers if INVIS bit was actually set, i.e. the object is currently
+    invisible. - loc_801A63A sets the FLASHING flag: `mov r0,#1 ; lsl r0,#9 (=0x200) ; bl object_setFlag1`.
+    - loc_801A632 clears 0x202: `ldr r0,dword_801A644 // =0x202 ; bl object_clearFlag` — clears INVIS
+    | FLASHING together at expiry. - Only caller is ai_eventuallyRunsAIAttack_801AF44, consistent with
+    this being an AI-attack-side effect driver.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801A5EE
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0801a5ee '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- Exact semantics of ObjectFlags2 bit 0x2 (seed trigger) and the global BattleState Unk_32 bit 0 (master
+  enable) — confirming them requires matching the flag names in the enum with the code's effect; the assembly
+  only shows they must both be true to start the countdown.
+- Whether 0x94 is the actual SFX id for "invis wears off" vs. some other SE — the constant is just baked
+  into the `mov r0,#0x94`, and there is no symbol for it in the binary.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ba9a934b
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801A5EE -> battleObject_handleFlashingInvisTick_801A5EE
+  where: bn6f 00be3514
+  tool: tools/rename_symbol.py

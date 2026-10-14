@@ -1,0 +1,63 @@
+name: battleObject_resolveEmotionPalette_801E6A8
+address: '0x0801E6A8'
+kind: function
+previous_names:
+- sub_801E6A8
+status: probable
+summary: Looks up the emotion palette/effect index for a battle object's current emotion/transformation,
+  with special-cased boosts for BeastOut/transformed states.
+interface: '(r5 = BattleObject*) -> r0 = emotion/pose id, r1 = r3 (some flag from caller) ; side effects:
+  clobbers r4, r6'
+details: "- Loads the battle object's AIDataPtr-equivalent field at [r5+0x48] then reads `Alliance` byte\n\
+  \    (`oBattleObject_Alliance` is at offset 0x16 of the AIData side struct, but here it's used as a\
+  \ u8\n    alliance 0/1).\n  - Calls `callPossiblyGetBattleEmotion_8015B54` (per the helper's confirmed\
+  \ stub\n    `possiblyGetBattleEmotion_8015B64`) which returns the player's current emotion/transformation\n\
+  \    state in r1, with mood in r2 and beast-out counter in r3.\n  - If r1 (returned emotion) is 0 (no\
+  \ special emotion), it indexes `byte_801E6F4` by the\n    stored alliance table (entry 0..6 -> 0x00,0x02,0x03,0x01,0x05,0x04,0x00)\
+  \ and returns\n    that in r0 paired with `r3` in r1.\n  - For non-zero emotions, it picks a base pose\
+  \ from `byte_801E700` (entries for emotions 1..0xA\n    map to 5..9; 0xB/0xC map to 0x14; 0xD..0x12\
+  \ to 0x0F..0x13; 0x13/0x14 to 0x16).\n  - Special adjustments: if r4 in {0xB, 0xC} and the alliance\
+  \ table yields 3, bump once;\n    if r4 in 1..0xA and the table yields 2, bump by 5 (so the table value\
+  \ branches the look).\n  - Final return: r0 = chosen pose id, r1 = r3 (caller's r3, presumably the beast-out\
+  \ counter).\n  - Callers (advance-battle-object-anim and sub_801CC34) use the returned pair (pose id,\
+  \ side\n    flag) to pick battle-animation palette/pose info.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r0, [r5,#0x48]` followed by `ldrb r0, [r0,#oBattleObject_Alliance]` reads Alliance via
+    r5. - `bl callPossiblyGetBattleEmotion_8015B54` returns (res0,transformation,mood,beast_out_counter).
+    - `cmp r1, #0` / `bne loc_801E6BE` decides the "no emotion" vs "emotion active" branch. - Fallback:
+    `ldr r2, off_801E6F0` -> `ldrb r0, [r2,r0]` indexes the 7-entry alliance table. - `ldr r2, off_801E6FC`
+    -> `ldrb r6, [r2,r4]` indexes the pose table using r4 (=r1, emotion id). - `cmp r4, #0xb / 0xc`, `cmp
+    r4, #1`, `bgt 0xa` selects which table bump to apply. - Final `mov r0, r6` / `mov r1, r3` returns
+    pose id with caller-supplied r3 preserved.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801E6A8
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0801e6a8 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- Exact game-mechanic meaning of the r0 output (pose index vs emotion palette bank) - the caller
+- pairs it with r3 (beast-out counter) but doesn't reveal the use site. Settling would require
+- inspecting how battle_updateObjectAnim_801CB38 / sub_801CC34 consume r0/r1 from this call.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ba9a934b
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801E6A8 -> battleObject_resolveEmotionPalette_801E6A8
+  where: bn6f 00be3514
+  tool: tools/rename_symbol.py

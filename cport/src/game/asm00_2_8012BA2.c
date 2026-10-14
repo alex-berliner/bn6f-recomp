@@ -1500,7 +1500,7 @@ Next battle_beginTurnOpenProcess_80144C0(void) {
     GUEST_CALL(battle_SetObjectHitModifier_8019F86);
     R0 = 1;
     GUEST_CALL(object_setCollisionRegion);
-    GUEST_CALL(sub_8012EA8);
+    GUEST_CALL(battleObject_clearPwrAtkState_8012EA8);
 
     /* the sub_80144CA entry (r7 = 1) skips this call */
     if (R7 == 0)
@@ -3109,7 +3109,7 @@ Next sub_80170E4(void) {
     GUEST_CALL(object_clearCollisionRegion);
     GUEST_CALL(battle_ClearObjectCollisionResult_801A5E2);
     GUEST_CALL(battle_resetCollisionState_80101C4);
-    GUEST_CALL(sub_8012EA8);
+    GUEST_CALL(battleObject_clearPwrAtkState_8012EA8);
     GUEST_CALL(releaseSlotByValue_801DC36);
 
     /* No chips held; current chip index = -1 (none selected). */

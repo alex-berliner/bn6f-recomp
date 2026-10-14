@@ -1,0 +1,55 @@
+name: battleObject_clearPwrAtkState_8012EA8
+address: '0x08012EA8'
+kind: function
+previous_names:
+- sub_8012EA8
+status: probable
+summary: 'Clears the active PwrAtk (charged/Press A) state of a battle object: zeros the AIData charge-related
+  bytes and clears the 0x60000 flag in the AI flag word.'
+interface: '(r5 = BattleObjectPtr) -> r0 = 0x60000 ; side effects: writes AIData offsets 0x1b/0x1d/0x1e
+  to 0 and clears bits 0x60000 in AIData Unk_44'
+details: "- Loads r3 = [r5 + oBattleObject_AIDataPtr] (0x58).\n  - Stores 0 to AIData + 0x1d (PwrAtkState),\
+  \ + 0x1b (PwrAtkCurChargeTime), + 0x1e (PwrAtkButton).\n  - Loads the literal 0x60000 and calls ClearAIData_Unk_44_Flag(r0=0x60000,\
+  \ r5=obj, lr=ret), which masks that bit out of AIData Unk_44.\n  - Returns the same 0x60000 constant\
+  \ in r0 (mostly a side artifact of passing it as the mask).\n  - Pure cleanup: no other state mutated;\
+  \ commonly invoked from sub_80170E4 (battle-object teardown) and many of the 0x80xxxxx battle subroutines\
+  \ that abort a PwrAtk.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r3, [r5,#oBattleObject_AIDataPtr]` reads the AI pointer at the struct offset 0x58. -
+    The three `strb r0, [r3,#oAIData_*]` writes use offsets 0x1d/0x1b/0x1e which the AIData struct names
+    as PwrAtkState/PwrAtkCurChargeTime/PwrAtkButton. - `ldr r0, dword_8012FAC // =0x60000` provides the
+    mask passed to the only callee, ClearAIData_Unk_44_Flag (0x0800ffee), whose confirmed role is to clear
+    that flag from AI Unk_44. - `pop {pc}` is the only exit and the post-call r0 is consistently 0x60000
+    in the captured calls. - All listed callers take r5 = BattleObjectPtr and have r10 in scope (battle/object
+    update routines), matching the contract.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08012EA8
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^08012ea8 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- Exact meaning of the 0x60000 flag bits (which PwrAtk state they encode) and whether 0x1b/0x1d/0x1e should
+  be reset together or independently. Cross-referencing AIData Unk_44 bit definitions would settle it.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ba9a934b
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8012EA8 -> battleObject_clearPwrAtkState_8012EA8
+  where: bn6f 00be3514
+  tool: tools/rename_symbol.py

@@ -1393,7 +1393,7 @@ Next battle_spawnArmHitEffect_801A4A6(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_801A506 ── */
+/* ── battle_ai_markWindBoxReady_801A506 ── */
 /* register form: calls SetAIData_Unk_44_Flag outside this file, which has no typed C interface yet */
 static void set_ai_data_unk44_flag(u32 flag) {
     R0 = flag;
@@ -1414,7 +1414,7 @@ static u32 maybe_set_ai_unk44_flag(u32 battle_object_ptr) {
     return collision_data;
 }
 
-Next sub_801A506(void) {
+Next battle_ai_markWindBoxReady_801A506(void) {
     R3 = maybe_set_ai_unk44_flag(R5);
     RETURN_TO_CALLER();
 }
@@ -1845,10 +1845,10 @@ static inline void call_sub_801A2CC(u32 r5) {
 }
 
 typedef struct { u32 r5, r10; } call_sub_801A324_result;
-/* register form: generated wrapper: sub_801A324 has no typed C interface yet */
+/* register form: generated wrapper: battle_applyCounterHealAndSpawnEffect_801A324 has no typed C interface yet */
 static inline call_sub_801A324_result call_sub_801A324(u32 r5) {
     R5 = r5;
-    GUEST_CALL(sub_801A324);
+    GUEST_CALL(battle_applyCounterHealAndSpawnEffect_801A324);
     return (call_sub_801A324_result){ R5, R10 };
 }
 

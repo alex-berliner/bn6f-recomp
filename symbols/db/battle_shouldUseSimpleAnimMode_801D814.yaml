@@ -1,0 +1,60 @@
+name: battle_shouldUseSimpleAnimMode_801D814
+address: '0x0801D814'
+kind: function
+previous_names:
+- sub_801D814
+status: probable
+summary: Returns 1 when the battle's object animation stepper should use a "simple" code path, based on
+  battle mode, two event flags, a battle-flag bit, and a battle-effects bit; otherwise 0.
+interface: (r10 = ToolkitPtr) -> r0 = 0 or 1 (bool)
+details: "Initializes r4 = 0. Calls GetBattleMode(); if the result is 1 (battle mode 1) returns 1 directly.\n\
+  \  If the result is 5 (battle mode 5), returns 1 directly.\n  Otherwise tests EVENT_163 via TestEventFlagFromImmediate;\
+  \ if it is set, returns 1.\n  Then tests TestBattleFlag_0x40 (the 0x40 bit of the battle settings word);\
+  \ if set, returns 1.\n  Then calls GetBattleEffects() and tests the 0x200000 bit of the returned bitmask;\
+  \ if set, returns 1.\n  Finally tests EVENT_E0; if set, returns 1. Else r4 stays 0. Return value is\
+  \ r4.\n  The function is a pure predicate over the live battle state; it has no side effects beyond\
+  \ calling the helpers. Only one caller is recorded (battle_updateObjectAnim_801CB38), so its concrete\
+  \ role is the gate that chooses between the full and simple animation-update paths used by that stepper.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- entry: `mov r4, #0` initializes the default "no"/0 path - `bl GetBattleMode; cmp r0, #1;
+    beq loc_801D84A` returns 1 for battle mode 1 - `cmp r0, #5; beq loc_801D848` returns 1 for battle
+    mode 5 (loc_801D848 sets r4=1 then falls through) - `bl TestEventFlagFromImmediate` with the EVENT_163
+    immediate before each branch checks a story/event flag - `bl TestBattleFlag_0x40` tests bit 0x40 of
+    the battle settings word - `bl GetBattleEffects; ldr r1, dword_801D850; tst r0, r1` tests bit 0x200000
+    of the battle-effects bitmask - `movflag EVENT_E0; bl TestEventFlagFromImmediate` checks a second
+    story/event flag as the final OR-term - `loc_801D848: mov r4, #1` and final `mov r0, r4; pop {r4,pc}`
+    always returns the accumulated boolean - captured-call r0=0, Z flag set on every observed invocation
+    shows the predicate often evaluates to false in the snap_story2 traces'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801D814
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0801d814 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- The exact meaning of EVENT_163 and EVENT_E0 in story/script terms is not known from this function alone.
+- Whether battle mode 5 is "Boss" or some specific battle type isn't determined here.
+- Why exactly six independent conditions OR together to select the simple path isn't fully resolvable
+  without seeing how the caller (battle_updateObjectAnim_801CB38) uses the result.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ba9a934b
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801D814 -> battle_shouldUseSimpleAnimMode_801D814
+  where: bn6f 00be3514
+  tool: tools/rename_symbol.py

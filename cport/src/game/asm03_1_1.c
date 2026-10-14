@@ -1847,9 +1847,9 @@ static void call_runSetupStepAndClearWorkArea_8005F6C(void) {
     GUEST_CALL(runSetupStepAndClearWorkArea_8005F6C);
 }
 
-/* register form: calls sub_80027C4 outside this file, which has no typed C interface yet */
+/* register form: calls sprite_initBattleFadeGfxState_80027C4 outside this file, which has no typed C interface yet */
 static void call_sub_80027C4(void) {
-    GUEST_CALL(sub_80027C4);
+    GUEST_CALL(sprite_initBattleFadeGfxState_80027C4);
 }
 
 /* register form: calls logoScreen_loadLogoTiles_803D2B8 outside this file, which has no typed C interface yet */
@@ -3438,9 +3438,9 @@ static void run_setup_step_and_clear_work_area(void) {
     GUEST_CALL(runSetupStepAndClearWorkArea_8005F6C);
 }
 
-/* register form: calls sub_80027C4 outside this file, which has no typed C interface yet */
+/* register form: calls sprite_initBattleFadeGfxState_80027C4 outside this file, which has no typed C interface yet */
 static void call_sub_80027C4_copyTileData_803FC64(void) {
-    GUEST_CALL(sub_80027C4);
+    GUEST_CALL(sprite_initBattleFadeGfxState_80027C4);
 }
 
 /* register form: calls decompAndCopyData outside this file, which has no typed C interface yet */

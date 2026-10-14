@@ -1,0 +1,59 @@
+name: battle_dispatchSpriteAction_81196A0
+address: '0x081196A0'
+kind: function
+previous_names:
+- sub_81196A0
+status: probable
+summary: Battle sprite update dispatcher that branches on the object's sprite header byte2 into one of
+  three handlers (self/npc/null stub)
+interface: 'r5 = battle object ptr (live across call: out keeps it) ; side effects: chains via bx into
+  the selected handler, only lr is preserved'
+details: "Reads r5 byte at offset +0x4 (the object sprite-header subtype byte, i.e. the low nibble of\
+  \ header byte 2 / Type field per object_header_struct, where bits 0x0F are SpriteOffset and 0xF0 is\
+  \ Type). Uses that value as a 4-byte index into a 3-entry jump table at off_81196B8: entry 0 -> sub_81196C4,\
+  \ entry 1 -> npc_dispatchStateHandler_811979C, entry 2 -> nullStub_8119800; the only one the route coverage\
+  \ ever calls is sprite_update via direct `bl` (so likely entry 0 == sprite_update wrapper, but the table\
+  \ is what gets executed, not the trailing `bl sprite_update`).\n  All this routine does is `push {lr}`\
+  \ / `bx` via lr into the dispatch target / `pop {pc}` (Thumb \"bx-target\" tail) - it's a small jump-table\
+  \ indirection used by the battle-sprite init code path.\n  No memory read/write is performed on the\
+  \ object itself here; the callee does that. Out lives are r2/r3/r5 (preserved across the call so the\
+  \ caller keeps using them), per the lifter contract.\n  The `bl sprite_update` after the bx is dead\
+  \ padding in the literal pool region (it's right before .balign 4) and not actually reached.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r0, off_81196B4` then `ldrb r1, [r5,#4]` and `lsl r1, r1, #2` reads r5+4 byte, multiplies
+    by 4 for an array-of-words lookup (lines 4-6 of asm). - `ldr r0, [r0,r1]` then `mov lr, pc` / `bx
+    r0` is the textbook Thumb jump-table dispatch (lines 7-9). - `off_81196B8` lists exactly three targets,
+    with `+1` to switch the low bit so bx enters Thumb mode (lines 16-18). - Caller summary for battle_spriteInit_8119384
+    confirms this is invoked from sprite-initialization for newly-created battle actors. - Captured r0=0x81196A1
+    in some snaps (address of fn+1) matches the bx-into-Thumb pattern; lr values at entry are the call
+    sites inside battle_spriteInit_8119384.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x081196A0
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, beastsp, maps, menus3, story2, story4, story6, story8, story9'
+  reproduce: 'grep -l ''^081196a0 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, beastsp, maps, menus3, story2, story4, story6, story8, story9
+open_questions:
+- What each of the other two dispatch slots (0x1=npc, 0x2=null stub) actually do would take reading sub_81196C4
+  and nullStub_8119800; whether the trailing `bl sprite_update` is dead or leftover relocation is also
+  unclear.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ba9a934b
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_81196A0 -> battle_dispatchSpriteAction_81196A0
+  where: bn6f 00be3514
+  tool: tools/rename_symbol.py

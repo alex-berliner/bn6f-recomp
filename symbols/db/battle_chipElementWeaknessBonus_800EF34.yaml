@@ -1,0 +1,71 @@
+name: battle_chipElementWeaknessBonus_800EF34
+address: '0x0800EF34'
+kind: function
+previous_names:
+- sub_800EF34
+status: probable
+summary: Computes an elemental chip bonus (additive damage + element id) based on the selected chip and
+  the user's Navi/custom-equipment profile.
+interface: '(r0 = chipID, r1 = ?) -> r0 = damageBonus, r1 = elementID ; side effects: none beyond the
+  final barrier-hit adjustment'
+details: "Entry sets up a local stack slot that holds the `?` value, then calls GetBattleNaviStatsByte_AllianceFromBattleObject(0x29)\
+  \ to test a \"is custom/hub-state\" flag (r0==0 means no custom Navi check). If not a custom hub object,\
+  \ it dispatches to sub_800F09E which presumably returns the (damage, element) tuple already, then folds\
+  \ that into battle_addBarrierHitAdjust_800F1DC.\n\n  Otherwise (the r0==0 path actually means \"custom\"\
+  ): it reads another NaviStats byte at offset 0x2c (\"Transformation\" field). The function then runs\
+  \ a long switch on that transformation value:\n    - 1 or 0xD (HeatMan-like): chip.element==0, chip\
+  \ has no flags bit0/bit1 -> r7=2 (Fire?), +0x32 damage\n    - 2 or 0xE (AquaMan-like): element==2 ->\
+  \ r7=6 (Water?), +0x32\n    - 3 or 0xF (ElecMan-like): element==5 -> r7=6 (Elec?), +0x32\n    - 8 or\
+  \ 0x14 (WoodMan-like?): element==8 -> r7=7 (Wood?), +0x0A\n    - 4 or 0x10: element==6 -> r7=8, +0x1E\n\
+  \    - 9 or 0x15: element==9 -> r7=8, +0x0A\n  Each branch only counts when chip byte[9] & bit1 (0x2)\
+  \ is clear AND byte[9] & bit0 (0x1) is clear AND the chip's element matches the expected number — i.e.\
+  \ it's a \"clean\" elemental chip that doesn't already carry element/status flags.\n\n  After all the\
+  \ conditional branches fall through to loc_800F058, there is one more \"transformation in 0xB..0x16\"\
+  \ branch that, for element==0xA chips, only fires when GetBattleMode() != 1 (i.e. not a real battle)\
+  \ and adds +0x1E, r7=9.\n\n  Finally the always-taken tail moves (r6, r7) into (r0, r1), calls battle_addBarrierHitAdjust_800F1DC(r0=damageBonus,\
+  \ r1=elementID, r2=chipID), then restores stack and returns. The chip data accesses use the chip database\
+  \ record (offset 6 = element, offset 9 = flag byte).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- Entry reads "transformation" byte via GetBattleNaviStatsByte_AllianceFromBattleObject(r1=0x2c);
+    constant `0x2c` matches oNaviStats_Transformation. - Many branches compare r0 (the transformation
+    byte) against enum-like values 1, 2, 3, 4, 8, 9, 0xD, 0xE, 0xF, 0x10, 0x14, 0x15 — i.e. NAVI state
+    enum values. - getChip8021DA8 returns a 44-byte chip record; ldrb [r0,#6] reads the element byte and
+    ldrb [r0,#9] reads a flag byte; r7 is then assigned element-id-looking constants (2,6,7,8,9) and r6
+    is incremented by 0x32/0x1E/0x0A. - Final tail calls battle_addBarrierHitAdjust_800F1DC(r0=damage,
+    r1=element, r2=chipID); its signature adds 50 (0x32) when a barrier is hit, consistent with r6 already
+    starting at 0x32. - Exit trace shows r0=0 (no extra damage), --C- flag pattern: matches the 0x32 +
+    barrier case where no barrier is present.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0800EF34
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0800ef34 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9
+open_questions:
+- Exact meaning of r7's element IDs (2/6/7/8/9 do not match straight Elem enum) — might be BattleDamageElement
+  indices rather than Element enums.
+- Whether the first GetBattleNaviStatsByte(0x29) is "is in Hub/Custom" or "is Navi+chip equip state";
+  the equality-with-0 then call-sub_800F09E pattern suggests sub_800F09E handles the non-custom path and
+  returns the same (r0, r1) tuple, but its internals aren't known.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ba9a934b
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_800EF34 -> battle_chipElementWeaknessBonus_800EF34
+  where: bn6f 00be3514
+  tool: tools/rename_symbol.py

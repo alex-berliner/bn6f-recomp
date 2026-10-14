@@ -1,0 +1,72 @@
+name: battle_updateCustomGauge_801FE6C
+address: '0x0801FE6C'
+kind: function
+previous_names:
+- sub_801FE6C
+status: probable
+summary: Per-frame battle handler that drives the Custom Gauge state machine (initial copy-in, normal/custom-condition
+  branch and gauge-state writes) for the active battle.
+interface: '(in: r5=cur state byte, r8..r12=toolkit/BattleState-preserved) -> r0 = pointer to eStruct2036780
+  ; side effects: writes eStruct2083197D8 (offsets 0 and 1), may copy 0x10 bytes from unk_20399F0/unk_2039A00
+  into eStruct2036780.'
+details: "1. Loads eStruct2083197D8 (off_80200D8) and snapshots `eStruct2083197D8[1]` into r6, then forces\
+  \ `eStruct2083197D8[1]=2` (a \"running\" marker).\n  2. If `eStruct2083197D8[0]==0`, the gauge system\
+  \ has not been initialised yet: it falls into loc_801FED2 and copies 0x10 bytes from `unk_20399F0` into\
+  \ `eStruct2036780`, then 0x10 bytes from `unk_2039A00` into `eStruct2036780`. After this, eStruct2083197D8[0]\
+  \ is left non-zero on next visits so the init branch is skipped.\n  3. Otherwise (running), tests story\
+  \ flag EVENT_172D via `TestEventFlagFromImmediate`. If the flag is set (branch loc_801FEB6), it restores\
+  \ `eStruct2083197D8[1]=r6` and:\n     - Calls `GetBattleEffects`. If effect bit 0x8 is *not* set, runs\
+  \ `sub_803DEB4` and stores its return value into `eStruct2083197D8[1]` (the normal state transition\
+  \ path).\n     - If effect bit 0x8 *is* set, keeps `eStruct2083197D8[1]=r6`.\n  4. If the flag is clear\
+  \ (loc_801FEB0 branch), it then queries `sub_8144D04(0)`. If that returns 1 and `sub_8144D04(3)` also\
+  \ returns 1, the function returns with the gauge untouched. Otherwise it forces `eStruct2083197D8[1]=4`\
+  \ (special \"force-set\" gauge state).\n  5. `r0` exit value is `eStruct2036780` (loaded in loc_801FED2\
+  \ via off_80200E4 and left in r0 across the pop {pc}); captured calls show r0=0x02036780 matching that\
+  \ label.\n  6. The callees paint a clear \"story flag + battle effect + cross-checks two debug/condition\
+  \ queries\" pattern consistent with Custom Gauge's \"should we use the player's saved gauge or compute\
+  \ a new one?\" decision.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `off_80200D8 = eStruct203F7D8` and `off_80200E4 = eStruct2036780` are loaded explicitly at
+    the top (`ldr r4, off_80200D8` / `ldr r0, off_80200E4`). - The init branch (`tst r0,r0; beq loc_801FED2`)
+    only runs when `eStruct203F7D8[0]==0`, and the `CopyWords` calls in loc_801FED2 populate `eStruct2036780`
+    (off_80200E4) from two 0x10-byte sources `unk_20399F0` and `unk_2039A00`. - Captured calls show exit
+    r0 = 0x02036780, matching `eStruct2036780`''s loaded address in the init branch. - `movflag EVENT_172D`
+    plus `TestEventFlagFromImmediate` shows the story-flag-driven branch. - `GetBattleEffects` returning
+    r0 with mask 0x8 selects between two distinct transitions: a normal `sub_803DEB4` call or restoring
+    the snapshotted value `r6`. - `sub_8144D04(0)` and `sub_8144D04(3)` returning 1 short-circuits the
+    "set state to 4" branch. - Caller is `battle_main_8007800`, the per-frame battle dispatcher, consistent
+    with a per-frame battle state update.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801FE6C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0801fe6c '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- The semantic of `eStruct203F7D8[0]/[1]` (initialised flag + state byte) is inferred from usage, not
+  from a definition in the struct list.
+- The actual gameplay meaning of "Custom Gauge" vs "normal" gauge is not directly visible in the assembly;
+  the name is inferred from BN6's known "Custom Gauge" mechanic and the dual-source copy from `unk_20399F0`/`unk_2039A00`.
+- The two `sub_8144D04` queries (IDs 0 and 3) are unknown without that callee's body.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ba9a934b
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801FE6C -> battle_updateCustomGauge_801FE6C
+  where: bn6f 00be3514
+  tool: tools/rename_symbol.py

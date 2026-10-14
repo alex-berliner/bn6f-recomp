@@ -1,0 +1,80 @@
+name: battleObject_submenuRenderFolderAndChips_81341A0
+address: '0x081341A0'
+kind: function
+previous_names:
+- sub_81341A0
+status: probable
+summary: Per-frame folder/chip-page background tile uploader for the battle custom-screen/submenu scene
+  (writes five tile blocks via CopyBackgroundTiles, depending on the submenu scroll index at object+0x18).
+interface: '(r5 = submenu/BattleObject-like struct with u16 anim/id at +0x24 and s16 scrollIndex at +0x18)
+  -> r0 = 0x1c ; side effects: BG tile blocks 2/1/2/1/2 at column offsets derived from scrollIndex; queue/decompress
+  folder chip GFX; queue u16 tile-id writes.'
+details: "- `mov r7, r5`; loads `r0 = u16 [r7+0x24]` (the anim/folder-set field) and three EWRAM pointers\
+  \ (`word_202A020`, `unk_2034458`, `byte_813317C`) and dispatches five build-and-blit passes that fill\
+  \ 8x14 tile-id buffers in EWRAM then DMA them to VRAM BG.\n  - Pass 1: `sub_81200EC` builds the first\
+  \ buffer `unk_2034458` (unpacked chip-pack tile ids), `CopyBackgroundTiles` copies at column `0xf -\
+  \ scrollIndex`, i=4 rows, tileBlock32x32=2, j_size=8, i_size=0xe.\n  - Pass 2: `battle_loadFolderChipGfx_8120390`\
+  \ builds `unk_2034538` for folder chip GFX into VRAM `0x6007200`; blits at column `0xd - scrollIndex`,\
+  \ i=4 rows, tileBlock32x32=2, j_size=2, i_size=0xe.\n  - Pass 3: `sub_81203E4` packs chip-slot list\
+  \ from a (0xa << 12) | 0x35c = 0xa35c chip-pack row into `unk_2034570` and uploads to VRAM `0x6006b80`;\
+  \ blits at column `0x17 - scrollIndex`, i=4 rows, tileBlock32x32=2, j_size=2, i_size=0xe.\n  - Pass\
+  \ 4: `sub_8120458` builds `unk_20345A8` from (0xb << 12) | 0x216 = 0xb216 chip-pack row; blits at column\
+  \ `0x19 - scrollIndex`, i=4 rows, tileBlock32x32=1, j_size=1, i_size=0xe.\n  - Pass 5: `sub_81204C4`\
+  \ builds `unk_20345C4` from (0x9 << 12) | 0x34f = 0x934f chip-pack row; blits at column `0x1a - scrollIndex`,\
+  \ i=4 rows, tileBlock32x32=2, j_size=2, i_size=0xe.\n  - After the five blits, computes `r4 = scrollIndex\
+  \ - [r7+0x1a]` (the bottom scrollIndex), branches: if `r4 >= 0` and column differs, calls `call_sub_3005EBA`\
+  \ for that column with sizes (1,2,0,0x10) -- this is a \"blur/swap rectangles\" effect that compares\
+  \ the two scroll indices.\n  - If `r4 < 0` (bottom > top), runs two `call_sub_3005EBA` calls -- first\
+  \ for column `0xb - r1 - r4` with sizes (2,2,0,2), then for column `0xd - r1 - r4` with sizes (4,2,0,0xe);\
+  \ these blit a column of cells that just entered the visible area in the animated scroll.\n  - `r0 =\
+  \ 0x1c` on exit is the standard \"I took a frame, return 0x1c to the per-frame stepper\" sentinel seen\
+  \ across the battle/scene object suite.\n  - Uses `r10` (= Toolkit) only implicitly through callees\
+  \ (`battle_loadFolderChipGfx_8120390` etc.); the function reads scroll/anim from the `r5`-passed object\
+  \ and writes BG via `CopyBackgroundTiles` and `call_sub_3005EBA`.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- Five `(loaderX; CopyBackgroundTiles(j=0xF/D/17/19/1A - scrollIndex, i=4, block=2/2/2/1/2,
+    sizes 8xE, 2xE, 2xE, 1xE, 2xE))` triplets at lines 81341B0..813426A show it is a tile-blitter driven
+    by `[r5+0x18]`. - Loaders `sub_81200EC`, `battle_loadFolderChipGfx_8120390`, `sub_81203E4`, `sub_8120458`,
+    `sub_81204C4` are all "build a u16 tile-id buffer in EWRAM from a chip-pack row" helpers (their contracts
+    in the prompt match that role). - Branch at `blt loc_8134298` followed by the mvn/add/sub math shows
+    it is computing a delta between the two scroll indices stored at `r5+0x18` and `r5+0x1a`; the rect
+    blits via `call_sub_3005EBA` are clearly an animated scroll transition. - `r0 = 0x1c` is the per-frame
+    return sentinel that `battle_objectUpdate_8133400` (and siblings) interpret as "stepped a frame";
+    the same constant appears on every captured-call exit in this snapshot set. - `r7 = r5` and reads
+    at offsets +0x24 and +0x18 line up with `BattleObject`/`oBattleObject`-style offsets (u16 Anim, s16
+    scrollIndex-like field at +0x18). The +0x1a read in the same file shows the struct holds a second
+    scrollIndex adjacent at +0x1a.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x081341A0
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, beastsp, maps, menus3, story4, story6, story8, story9'
+  reproduce: 'grep -l ''^081341a0 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, beastsp, maps, menus3, story4, story6, story8, story9
+open_questions:
+- Whether `r5` is a true BattleObject or a SubMenu-scene local struct (callers `sub_81338D4`, `sub_8133944`,
+  `sub_81337E8`, `sub_8133484` are all in the 8133xxx submenu/scene range, so it is likely the SubMenu
+  scene object, not a generic BattleObject).
+- The exact identity of the five EWRAM tile-id buffers and which folder rows they correspond to (the chip-pack
+  row numbers 0xb, 0xa, 0x9 with low halves 0x35c/0x216/0x34f) need cross-reference to the chip-pack table
+  to confirm they are folder view rows.
+- The meaning of the 0x1c return code in the broader scene stepper.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ba9a934b
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_81341A0 -> battleObject_submenuRenderFolderAndChips_81341A0
+  where: bn6f 00be3514
+  tool: tools/rename_symbol.py

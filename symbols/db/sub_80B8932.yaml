@@ -1,0 +1,72 @@
+name: sub_80B8932
+address: '0x080B8932'
+kind: function
+previous_names: []
+status: hypothesis
+summary: Per-frame step that promotes a related/sub-object into its parent's slot, copying three header words from
+  r4+0x34 onto r5+0x34, translating Y/Z by 0x20/0x1f, propagating X/Y by the parent's facing × a sub_80030BA scalar,
+  then mirroring sprite state (color shader, final palette, Unk_11+render-info bits, flip, mosaic/alpha) and finally
+  calling object_updateSprite unless the battle is time-stopped or the related object's CollisionData flags disable
+  updates.
+interface: '(r5 = parent BattleObject*, r10 = Toolkit*) -> r0..r3,r0..r7 clobbered; lr restored ; side effects:
+  writes r5+0x34..+0x40, r5+Y/Z16, r5+X/Y, r5 Flags (bit 0x02), r5 DirectionFlip, and r5 SpriteData; reads r5+0x34..+0x40
+  and r4 = r5->RelatedObject1Ptr; conditionally calls object_freeMemory in an unreachable tail.'
+details: "1. Saves r4/r6/lr; r6 = object_getFrontDirection() (signed ±1 facing).\n  2. r4 = r5->RelatedObject1Ptr\
+  \ (offset 0x4c). Loads three u32s from r4+0x34 and stores them over r5+0x34 (the Coords union: X/Y/Z — note struct's\
+  \ Coords begins at +0x34 with X/Y/Z each u32).\n  3. Bumps parent's displayed Y16 by 0x20 and Z16 by 0x1f.\n \
+  \ 4. Calls sub_80030BA(r4, 1) — that function returns a signed (r0:r1) 32.16 signed delta; the code does lsl r0,#16\
+  \ then mul r0,r6 (only the high word is multiplied by facing, and the low word r1 is used verbatim as a Y delta).\n\
+  \  5. Adds (r0 * facing) to r5->X and r1 to r5->Y.\n  6. Copies bit 0x02 (OBJECT_FLAG_VISIBLE? — the code masks\
+  \ both with ~2 then ORs in the related object's bit 0x02) of oObjectHeader_Flags from the related object into\
+  \ the parent.\n  7. Pulls color shader, final palette from the related object and applies them to the parent sprite.\n\
+  \  8. Reads Unk_11 + render-info-high byte pair via obj_getSpriteFlag10AndRenderInfoHigh_8002F3E and writes them\
+  \ through loc_8002F02.\n  9. When ExtraVars is null, copies the related object's DirectionFlip onto r5 and calls\
+  \ sprite_setFlip with object_getFlip().\n 10. Calls sprite_getMosaicScalingParameters + sprite_setAlpha unconditionally.\n\
+  \ 11. If battle_isTimeStop is false AND the related object's CollisionData->ObjectFlags1 doesn't have the 0x80110C00\
+  \ mask set, calls object_updateSprite on the related object; otherwise skips.\n 12. The dead tail \"bl object_freeMemory\"\
+  \ before pop is unreachable (it falls into pop via `b locret_80B89DA`).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl object_getFrontDirection` returns ±1 saved into r6, then `mul r0, r6` shows facing used as signed
+    multiplier for the X delta. - `ldr r4,[r5,#0x4c]` aligns with oBattleObject_RelatedObject1Ptr; the subsequent
+    `ldmia r0!,{r1-r3}` / `stmia r0!,{r1-r3}` at offsets 0x34 / 0x40 copy three u32 words matching the Coords union
+    size (X/Y/Z each u32). - `add r0,#0x20` then `strh r0,[r5,#oBattleObject_Y16]` and `#0x1f` into oBattleObject_Z16
+    show explicit Y16/Z16 nudges; oBattleObject_Y16 and oBattleObject_Z16 are at +0x36/+0x3a halves. - `mvn r2,#2
+    ; and r1,r2 ; ... mov r3,#2 ; and r2,r3 ; orr r1,r2 ; strb r1,[r5,#oObjectHeader_Flags]` shows copying only
+    bit 0x02 (matches OBJECT_FLAG_VISIBLE per oObjectHeader_Flags struct). - The three pairs sprite_getColorShader→sprite_setColorShader,
+    sprite_getFinalPalette→sprite_setFinalPalette, obj_getSpriteFlag10AndRenderInfoHigh_8002F3E→loc_8002F02, plus
+    object_getFlip→sprite_setFlip demonstrate a "mirror the related object''s sprite state onto the parent" pattern.
+    - `cmp r0,#0` on oBattleObject_ExtraVars (0x60) gates the DirectionFlip/flip copy, suggesting the path is suppressed
+    once an ExtraVars buffer is attached. - `bl battle_isTimeStop ; bne locret` plus the `tst r0,r1` (mask 0x80110C00)
+    against the related object''s CollisionData ObjectFlags1 shows the sprite update is conditional. - `bl object_updateSprite`
+    updates the related object (r0 was loaded from RelatedObject1Ptr), not r5 — the function steps the related object
+    on the parent''s behalf.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080B8932
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp'
+  reproduce: 'grep -l ''^080b8932 '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp
+open_questions:
+- The unreachable `bl object_freeMemory` just before `pop {r4,r6,pc}` looks like a code-gen artifact; whether this
+  is a typo for an alternate free path or genuinely dead cannot be settled from this function alone.
+- sub_80030BA's semantics are not characterised here — its return is treated as a signed (r0:r1) 32.16 pair with
+  only the high word scaled by facing, which matches `lsl r0,#16; mul r0,r6` but assumes the lower 16 bits of r0
+  are 0 (otherwise they'd shift into the high half after the lsl).
+- Whether the related object is the parent (e.g. a held/equipped object riding on the player) or a child is not
+  provable from this snippet — the directionality is inferred from "promote r4 onto r5".
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ba9a934b
+  tool: tools/symdoc.py

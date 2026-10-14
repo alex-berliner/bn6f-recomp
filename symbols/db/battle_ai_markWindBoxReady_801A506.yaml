@@ -1,0 +1,62 @@
+name: battle_ai_markWindBoxReady_801A506
+address: '0x0801A506'
+kind: function
+previous_names:
+- sub_801A506
+status: probable
+summary: 'Battle AI: if the target battle object''s collision data has a non-zero damage multiplier and
+  non-zero DamageElements flags, set AIData Unk_44 bit 0x80000000'
+interface: (r5 = AI work pointer) -> void ; may set AIData Unk_44 flag and clobber r0/r1/r3
+details: "Leaf helper called once per AI attack dispatch from ai_eventuallyRunsAIAttack_801AF44.\n  Reads\
+  \ the current BattleObject pointer out of the AIData work area at r5+0x?? (see\n  oBattleObject_CollisionDataPtr\
+  \ access; the lifter's \"oBattleObject_CollisionDataPtr\" symbolic\n  offset resolves to the BattleObject.CollisionDataPtr\
+  \ slot at BattleObject+0x54, so the AIData\n  work struct in r5 must hold the BattleObject pointer at\
+  \ a known offset, not the AIData itself).\n  From the BattleObject it follows the CollisionDataPtr into\
+  \ the BattleObject's CollisionData and\n  inspects two fields: DamageMultiplier (0x75, u8) and DamageElements\
+  \ (0x76, u8). If either is 0\n  the function returns immediately. Otherwise it loads the constant 0x80000000\
+  \ (dword_801A538) into\n  r0 and tail-calls SetAIData_Unk_44_Flag, which ORs that bit into AIData Unk_44.\
+  \ In effect this\n  marks the wind box (or whatever DamageElements/DamageMultiplier describe) as \"\
+  ready to use this\n  attack tick\" so the AI's per-attack commit step can pick it up.\n  The function\
+  \ is leaf-like: it only touches r0/r1/r3 and lr; callee preserves r5. No value is\n  returned to the\
+  \ caller; the only observable effect is the side effect on AIData Unk_44.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- assembly: `ldr r3, [r5,#oBattleObject_CollisionDataPtr]` then `ldrb r0, [r3,#0x75]` and `ldrh
+    r0, [r3,#0x80]` show the read of CollisionData.DamageMultiplier (0x75) and CollisionData.FinalDamage/0x80
+    (the high-half damage slot, here used as the "DamageElements" halfword proxy). - assembly: `cmp r0,#0;
+    beq locret_801A520` on both reads short-circuits the helper when either field is zero, confirming
+    the guard. - assembly: `ldr r0, dword_801A538` (value 0x80000000) followed by `bl SetAIData_Unk_44_Flag`
+    shows the side effect of OR''ing bit 0x80000000 into the AI''s Unk_44. - caller chain: ai_eventuallyRunsAIAttack_801AF44
+    holds a per-actor AIData pointer in r5 and invokes this function before the actual attack commit step,
+    matching the "wind box ready" role.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801A506
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0801a506 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- Which of the two read fields (0x75 DamageMultiplier vs 0x80 FinalDamage) is the real "ready"
+- gate - the assembly reads both but only ORs after both pass; semantic name of the side-effect
+- flag (top bit of Unk_44) is still unconfirmed.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ba9a934b
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801A506 -> battle_ai_markWindBoxReady_801A506
+  where: bn6f 00be3514
+  tool: tools/rename_symbol.py

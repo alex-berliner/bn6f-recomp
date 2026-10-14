@@ -1,0 +1,74 @@
+name: battle_finishBattle_8007850
+address: '0x08007850'
+kind: function
+previous_names:
+- sub_8007850
+status: probable
+summary: Battle-state transition routine that resolves a finished battle (success/timeout/comm-fail) by
+  stamping the battle result, setting up the next state, and clearing timers.
+interface: (r5 = *BattleState) -> void ; writes BattleState fields Index_00/Index_01, Unk_02_03, Unk_20;
+  sets event flags 1733/1735 when battle-effects bit 0x08 is off
+details: "Reads eStruct203F7D8 byte 0 via eStruct203F7D8_getUnk01 and switches on it.\n  - Case 4: writes\
+  \ 0xFF to dword_200F3B0, then calls sub_81440D8 to tear down link comms, calls sub_801FE64, and\n  \
+  \  if the BattleTerminate01 byte (eStruct2038160_getBattleTerminate01) is 0, probes a small table at\
+  \ eStruct200BC30\n    offset 0xE (values 8 or 2 trigger eStruct200FE00_setUnk04To15h). Finalizes with\
+  \ setTwoStructs_800A840(5 or 9),\n    sets Index_00=8, Index_01=4, Unk_02_03=0 (matching sub_8007B80\
+  \ → battle_state_tick_8007CA0 sequence), then sets\n    story event flags 1733 and 1735 only when GetBattleEffects()\
+  \ has bit 0x08 clear.\n  - Case !=4 && ==2 (or jump-offset bits 0xC): looks at BattleTerminate01; 0\
+  \ → setTwoStructs_800A840(9 or 10) plus\n    the standard state stamp; non-zero → dispatches eStruct200BC30_dispatchStateHandler_801FEEE\
+  \ with the getUnk01\n    value, and if (value & 8)==0 jumps through a per-Index_01 jump table at off_8007940\
+  \ to either sub_800794C,\n    battle_dispatchPhase_8007978, or battle_initEntry_8007A0C.\n  - Otherwise:\
+  \ increments BattleState.Unk_20 (a u16) every tick until it hits 0xB4, at which point writes 0xEE to\n\
+  \    dword_200F3B0 and falls into the case-4 path.\n  The function is pure on r5 and the globals; no\
+  \ return value beyond clobbers. The call-site lr=0x08007818\n  (a +0xC8 forward branch) plus the state-stamp\
+  \ pattern (Index_00=8 / Index_01=4 / Unk_02_03=0) is consistent with\n  this being called from battle_main_8007800\
+  \ just before transitioning out of an in-progress battle.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- Entry lr=0x08007818 captured across all snap_story2 samples points at the call site inside
+    battle_main_8007800. - The two strb/strh pairs at 0x80078A6..0x80078B0 set r5+oBattleState_Index_00=8,
+    oBattleState_Index_01=4, oBattleState_Unk_02_03=0 — the same triple the comment "trigger sub_8007B80
+    / battle_state_tick_8007CA0" flags as the post-battle state stamp. - GetBattleEffects is consulted
+    at 0x80078C0 then `tst r0, #8`; the EVENT_1733/1735 SetEventFlagFromImmediate calls follow only when
+    that bit is clear. - The case-2 branch reads eStruct200BC30 offset 0xE (BattleType? or eStruct200BC30+0xE
+    state) and compares to 8 or 2, matching the dispatch in battle_initEntry_8007A0C and battle_dispatchPhase_8007978.
+    - Case 4''s `bl sub_81440D8` (link teardown) and writing 0xFF/0xEE to dword_200F3B0 are consistent
+    with a comm-failure/result resolution routine. - BattleTerminate01==0 path chooses between setTwoStructs_800A840(9)
+    and (10) by checking the value against 1, but the assembly uses two `beq` to the same label so both
+    0x09 and 0x0A end up set per the captured r0.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08007850
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^08007850 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- Exact meaning of eStruct203F7D8 byte 0 (the "unk01" field) — case 2 vs case 4 split probably encodes
+  a battle
+- outcome kind (success vs comm error vs forfeit), but the struct definition isn't in scope.
+- Why Unk_20 is incremented to 0xB4 only on the default path; the timeout value may be related to the
+  "fade
+- out / game over" timer.
+- The jump table off_8007940 entries (sub_800794C, battle_dispatchPhase_8007978, battle_initEntry_8007A0C)
+- may indicate a normal exit path when the outcome byte is non-zero but lower bits are clear.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ba9a934b
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8007850 -> battle_finishBattle_8007850
+  where: bn6f 00be3514
+  tool: tools/rename_symbol.py

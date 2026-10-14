@@ -1,0 +1,67 @@
+name: battleObject_killIfBubbleFlag_801B9BC
+address: '0x0801B9BC'
+kind: function
+previous_names:
+- sub_801B9BC
+status: probable
+summary: If the object's AIData says it's a clean-trigger kill and the related battle object has the 0x100
+  object flag (BUBBLED), set HP to 0 to mark it dead.
+interface: '(r5 = BattleObject*) -> void ; side effect: may zero oBattleObject_HP on the related object'
+details: "1. Push {r5, lr}; preserve caller-saved object pointer and return address.\n  2. Load r3 = oBattleObject_AIDataPtr(r5);\
+  \ if null, return immediately.\n  3. Read oAIData_Unk_02 (byte); if != 1, return. This is the gate that\
+  \ selects one\n     specific AI mode/state before further checks.\n  4. Load r0 = oAIData_Unk_54 (u32).\
+  \ If zero, return; otherwise stash in r5 (so r5\n     is repurposed as the \"related\" BattleObject\
+  \ pointer for object_getFlag).\n  5. Call object_getFlag on that related object; the returned flag word\
+  \ is the\n     OBJECT_FLAGS_1 word of its CollisionData.\n  6. AND r0 with 0x100 — i.e. OBJECT_FLAGS_BUBBLED\
+  \ = bit 8. If the bubble flag\n     is clear, return without touching HP.\n  7. If set, write 0 to oBattleObject_HP\
+  \ (u16) on the *related* object (r5), killing it.\n  8. Pop {r5, pc}. No return value to the caller\
+  \ (out=r5 only).\n  Note: the HP write goes to the object stored in oAIData_Unk_54, not to r5's\n  BattleObject,\
+  \ so this routine is \"kill the linked other actor if it has the\n  bubble flag while the current actor's\
+  \ AI flagged clean-up\".\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r3, [r5,#oBattleObject_AIDataPtr]; tst r3, r3; beq locret_801B9E4` shows the function
+    early-outs when the AIData ptr is null. - `ldrb r0, [r3,#oAIData_Unk_02]; cmp r0, #1; bne locret_801B9E4`
+    forces Unk_02 == 1 (a single AI state trigger). - `ldr r0, [r3,#oAIData_Unk_54]; tst r0, r0; beq ...;
+    push {r5}; mov r5, r0` saves the caller''s object ptr then reuses r5 as the related BattleObject.
+    - `bl object_getFlag // () -> int` returns the OBJECT_FLAGS_1 word (per callee summary "first object-flag
+    word"). - `ldr r1, off_801BB0C // =0x100` is bit 8, matching OBJECT_FLAGS_BUBBLED. - `tst r0, r1;
+    beq locret_801B9E4` skips the kill when the bubble flag is unset. - `mov r0, #0; strh r0, [r5,#oBattleObject_HP]`
+    writes u16 0 to HP on the related (r5) BattleObject, the standard death-by-zero-HP pattern. - Caller
+    `battle_801B1C4` (high-level per-frame battle step) is the only listed caller, consistent with a tick-time
+    kill check.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801B9BC
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story8, story9'
+  reproduce: 'grep -l ''^0801b9bc '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus2, menus3, story2, story4, story5,
+    story6, story8, story9
+open_questions:
+- What AIData_Unk_02 == 1 actually represents semantically (AI substate? "clean kill" mode?). Its value
+  semantics come from elsewhere.
+- Why the kill targets the object in oAIData_Unk_54 instead of the current r5 object (likely a parent/child
+  or counter-attacker relationship, but unverified).
+- Whether 0x100 here is genuinely OBJECT_FLAGS_BUBBLED or a co-incident constant (the BIT pattern matches
+  but the comment in CollisionData.inc calls bit 8 OBJECT_FLAGS_UNK_8; bit 31 is BUBBLED). This needs
+  cross-checking with how object_getFlag lays out the flags word.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ba9a934b
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801B9BC -> battleObject_killIfBubbleFlag_801B9BC
+  where: bn6f 00be3514
+  tool: tools/rename_symbol.py

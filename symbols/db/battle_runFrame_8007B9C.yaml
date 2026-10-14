@@ -1,0 +1,66 @@
+name: battle_runFrame_8007B9C
+address: '0x08007B9C'
+kind: function
+previous_names:
+- sub_8007B9C
+status: probable
+summary: 'Per-frame battle driver: resets the FIFO write pointer, dispatches a per-BattleState handler
+  (countdown or dispatch), walks the battle-object list, flushes the panel and sprite rendering subsystems,
+  then resets the FIFO again.'
+interface: (r5 = *BattleState) -> void
+details: "Reads BattleState.Unk_02 (offset 0x02) and uses it as a 0/1 index into a 2-entry\n  jump table\
+  \ at off_8007BC8 to choose between two phase handlers:\n    - index 0 -> battle_stateCountdownTick_8007BD0\n\
+  \    - index 1 -> eStruct200BC30_dispatchJumpOffset00_8007BF0\n  These are invoked via `mov lr, pc;\
+  \ bx r1` (computed call).\n  Before the dispatch it primes the FIFO write counter via fifo_resetWriteCounter_800A01C,\n\
+  \  and after the dispatch it (1) walks the per-frame battle-object logic via\n  RunBattleObjectLogic,\
+  \ (2) runs the panel/HP-bar render flush via panel_800BFC4,\n  (3) flushes sprite draw registers via\
+  \ sprite_setRenderFlushState_80027B4 and resets\n  the per-frame sprite palette count via sprite_resetPaletteCount_800286C,\
+  \ and (4)\n  re-arms the FIFO write counter so the next frame can start cleanly.\n  Net effect: this\
+  \ is the BattleState main-loop tick: it runs a phase-specific update,\n  then drives the per-object\
+  \ logic and rendering flushes, bracketed by FIFO resets.\n  Captured calls from snap_story2_*.bin all\
+  \ show entry r2=0x10, r3=0x02001c04 (S2001c04)\n  and lr=0x08007b8c, which is consistent with this being\
+  \ called from a per-frame battle\n  trampoline that has r5=*BattleState in a caller-saved register.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- asm line `bl fifo_resetWriteCounter_800A01C` at the very top shows the FIFO is reset before
+    the phase dispatch, then again at the bottom after rendering. - `ldrb r0, [r5,#oBattleState_Unk_02]`
+    plus `ldr r1, [r1,r0]` with the off_8007BC8 = {&0x8007BD0+1, &0x8007BF0+1} table and `mov lr, pc;
+    bx r1` is a textbook index-jump on a 2-entry function table, dispatching one of two phase handlers.
+    - The two callees named in the jump table (`battle_stateCountdownTick_8007BD0` and `eStruct200BC30_dispatchJumpOffset00_8007BF0`)
+    are clearly named battle phase handlers, supporting the "battle frame tick" role. - The sandwich of
+    `RunBattleObjectLogic -> panel_800BFC4 -> sprite_setRenderFlushState -> sprite_resetPaletteCount ->
+    fifo_resetWriteCounter` is the standard per-frame battle object-update + render-flush sequence.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08007B9C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^08007b9c '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9
+open_questions:
+- What BattleState.Unk_02 specifically encodes (0 -> countdown/idle, 1 -> dispatch)
+- is inferred from the two callee names; verifying the field's meaning against a known
+- battle phase (e.g., real-time tick vs scripted cutscene) would settle it. The
+- relationship between `panel_800BFC4` and the "panel" render flush vs an HP-bar
+- refresh also remains implicit; the captured panel_800BFC4 contract names itself
+- generically.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ba9a934b
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8007B9C -> battle_runFrame_8007B9C
+  where: bn6f 00be3514
+  tool: tools/rename_symbol.py

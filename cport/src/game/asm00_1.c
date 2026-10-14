@@ -2292,9 +2292,9 @@ static void run_setup_step_and_clear_work_area(void) {
     GUEST_CALL(runSetupStepAndClearWorkArea_8005F6C);
 }
 
-/* register form: calls sub_80027C4 outside this file, which has no typed C interface yet */
+/* register form: calls sprite_initBattleFadeGfxState_80027C4 outside this file, which has no typed C interface yet */
 static void call_sub_80027C4_EnterMap(void) {
-    GUEST_CALL(sub_80027C4);
+    GUEST_CALL(sprite_initBattleFadeGfxState_80027C4);
 }
 
 /* register form: calls InitializeOverworldMapObjectStructs outside this file, which has no typed C interface yet */
@@ -3107,8 +3107,8 @@ static void call_reset_all_graphics(u32 toolkit) {
 /* register form: calls runSetupStepAndClearWorkArea_8005F6C outside this file, which has no typed C interface yet */
 static void call_run_setup_step(void) { GUEST_CALL(runSetupStepAndClearWorkArea_8005F6C); }
 
-/* register form: calls sub_80027C4 outside this file, which has no typed C interface yet */
-static void call_sub_80027C4_sub_80053E4(void) { GUEST_CALL(sub_80027C4); }
+/* register form: calls sprite_initBattleFadeGfxState_80027C4 outside this file, which has no typed C interface yet */
+static void call_sub_80027C4_sub_80053E4(void) { GUEST_CALL(sprite_initBattleFadeGfxState_80027C4); }
 
 /* register form: calls zeroFill_80024A2 outside this file, which has no typed C interface yet */
 static void call_zero_fill_80024A2(void) { GUEST_CALL(zeroFill_80024A2); }
@@ -3210,7 +3210,7 @@ Next mainState_resetGameAndGoto28_8005524(void) {
     GUEST_CALL(npc_clearOverworldNpcStateWord_8004702);
     GUEST_CALL(resetAllGraphicsState_8005F40);
     GUEST_CALL(runSetupStepAndClearWorkArea_8005F6C);
-    GUEST_CALL(sub_80027C4);
+    GUEST_CALL(sprite_initBattleFadeGfxState_80027C4);
     GUEST_CALL(zeroFill_80024A2);
     GUEST_CALL(scenario_initEffectState_8003962);
     GUEST_CALL(zeroFill_8003AB2);
@@ -3356,9 +3356,9 @@ static void call_runSetupStepAndClearWorkArea_8005F6C(void) {
     GUEST_CALL(runSetupStepAndClearWorkArea_8005F6C);
 }
 
-/* register form: calls sub_80027C4 outside this file, which has no typed C interface yet */
+/* register form: calls sprite_initBattleFadeGfxState_80027C4 outside this file, which has no typed C interface yet */
 static void call_sub_80027C4_sub_8005642(void) {
-    GUEST_CALL(sub_80027C4);
+    GUEST_CALL(sprite_initBattleFadeGfxState_80027C4);
 }
 
 /* register form: calls zeroFill_80024A2 outside this file, which has no typed C interface yet */

@@ -1,0 +1,72 @@
+name: battle_tickLowHpWarning_801C840
+address: '0x0801C840'
+kind: function
+previous_names:
+- sub_801C840
+status: probable
+summary: Battle per-frame updater that bumps an internal "low-HP" timer, plays SOUND_LOW_HP every 0x2d
+  frames while the alive-player-actor count is non-zero, and animates the navi's HP gauge toward the live
+  HP value.
+interface: '(r5 = BattleObject*, r10 = Toolkit*) -> void ; side effects: PlaySoundEffect(SOUND_LOW_HP),
+  mutates r5[BButton_offset], r5[Unk_03], r5[Unk_05], r5[Unk_24] and r5[Unk_26]'
+details: "Steps:\n  1. Loads BattleStatePtr off the toolkit (r10) and r7 = object at [r5+0x48] (typical\
+  \ `RelatedObject1Ptr`-style slot of `r5`).\n  2. Special-cases GetBattleMode()==6 (network/Demi compatibility\
+  \ battle) by bailing out early if `BattleState->AlivePlayerActors[*]` is zero — i.e. don't fire low-HP\
+  \ feedback if no navi is alive.\n  3. If `battle_isBattleOver` is true or `battle_isPaused` is true,\
+  \ skip the low-HP tick entirely.\n  4. Reads the navi HP (r7+0x24) and \"HP/4\" (r7+0x26>>2); when current\
+  \ HP <= HP/4 it increments `r5[6]` (the `BButton` byte of the BattleObject ExtraVars per the struct\
+  \ layout). Once that counter reaches 0x2d it is reset and `PlaySoundEffect(SOUND_LOW_HP)` is queued.\n\
+  \  5. Animates `r5[0x24]` (Unk_24 in ExtraVars) toward `r5[0x26]` (target/current display HP): every\
+  \ frame it steps by `(delta>>3)+4` capped at the destination; the byte at `r5[5]` acts as a per-target\
+  \ idle cooldown, and `r5[3]` becomes 1/2 (rising/falling).\n  6. The two `0xff..ff` constants used (`r2\
+  \ = 0xFFFF`) appear to be sentinel \"use live navi HP\" markers — when the cached value equals 0xffff\
+  \ it is overwritten with the battle's current `r7[0x24]`.\n  Captured-call entries show r0 = 0x0801c841\
+  \ (the low-HP handler entry, with Thumb bit cleared); lr = 0x0801bef8, strongly suggesting `sub_801BEF8`\
+  \ is the per-frame dispatcher that calls this for the navi/navi-side battle objects.\n  No callers are\
+  \ listed in the contract, so the caller is `sub_801BEF8` (likely a per-frame `battleObject_run` style\
+  \ routine).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `GetBattleMode` is called early (`bl GetBattleMode`) and the value 6 (network battle) is
+    the only mode that triggers the early-bailout branch. - `bl battle_isBattleOver` / `bl battle_isPaused`
+    short-circuit the increment-and-play-sound path on `bne` (`loc_801C886`). - The HP-comparison step
+    uses `ldrh r1, [r7,#0x24]` / `ldrh r2, [r7,#0x26]; lsr r2, r2, #2` and `cmp r1, r2; bgt loc_801C886`
+    — i.e. play sound only when HP ≤ MaxHP/4. - Sound cue: literal constant `0x2d` (45 frames) gates a
+    call to `PlaySoundEffect` with r0=`SOUND_LOW_HP`. - The display-HP animation is the trio of branches
+    at 0x801C886/0x801C8A2/0x801C8DE that step toward `r5[0x24]` by `(delta >> 3) + 4` while writing direction
+    into `r5[3]` and resetting `r5[5]` to 0xf. - Sentinel `0xff00 + 0xff = 0xFFFF` constants appear twice
+    (r5+0x26 and local r2) as the "lazy bind" initial value. - `push {r7,lr}`/`pop {r7,pc}` matches the
+    register contract: r7 is repurposed internally (saved), r10/r5 are caller-saved.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801C840
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0801c840 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- 'The exact meaning of `r5` here: it''s loaded as `[r5+0x48]` for the navi handle, suggesting `r5` is
+  itself the player/navi BattleObject (offset 0x48 = RelatedObject1Ptr). The captured r0=0x0801c841 plus
+  the layout match the contract, but no callers were provided so I can''t confirm by name.'
+- Which two custom-byte offsets (e.g. 0x24/0x26 in the ExtraVars) constitute "displayed HP" vs "live HP"
+  — the code clearly tweens one toward the other but the inline names are not in the BattleObject struct.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ba9a934b
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801C840 -> battle_tickLowHpWarning_801C840
+  where: bn6f 00be3514
+  tool: tools/rename_symbol.py

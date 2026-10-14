@@ -1,0 +1,66 @@
+name: battleObject_copyStateAndSyncSpriteFromRelated_80C458C
+address: '0x080C458C'
+kind: function
+previous_names:
+- sub_80C458C
+status: probable
+summary: Copies positional/animation state and sprite attrs (palette, shader, flip) from a battle object's
+  RelatedObject1Ptr into itself, then dispatches to a per-CurAction handler.
+interface: '(r5 = this BattleObject*) -> void ; side effects: writes to *r5 sprite + header, then tail-calls
+  a per-action handler chosen by oBattleObject_CurAction'
+details: "- r4 = [r5 + oBattleObject_RelatedObject1Ptr]; r0 = r4->oBattleObject_CurAnim + r5->oBattleObject_Param4;\
+  \ written back to r5->oBattleObject_CurAnim; if it differs from r5->oBattleObject_CurAnimCopy, calls\
+  \ sprite_setAnimation + sprite_loadAnimationData.\n  - Loads 3 words at (r4+0x34) (the X/Y/Z Coords\
+  \ block) into r1..r3, conditionally subtracts 0x10000 from r2/r3 if r5->oBattleObject_ExtraVars is non-null,\
+  \ then stores r1..r3 into (r5+0x34).\n  - Copies the low 2 bits of r4->oObjectHeader_Flags into the\
+  \ same bits of r5->oObjectHeader_Flags (and clears the bits in r5 first via mvn #2, then orrs in r4's\
+  \ bits).\n  - Calls sub_80C46CC (post-copy hook) and sets the palette (sprite_setPalette), then copies\
+  \ color-shader and final-palette from the related object, plus copies its DirectionFlip byte and runs\
+  \ object_getFlip -> sprite_setFlip.\n  - Also runs obj_getSpriteFlag10AndRenderInfoHigh_8002F3E then\
+  \ loc_8002F02 to push sprite Unk_11 flag/high-nibble render info across.\n  - Finally uses oBattleObject_CurAction\
+  \ as an index into off_80C4614 (2 entries) and tail-calls sub_80C461C or sub_80C464C; the pop {pc} makes\
+  \ the bx into the actual return.\n  - Reads in only r5..r12,lr (no r0..r4 inputs); returns nothing to\
+  \ its caller (sub_80C4550) — caller is responsible for the rest of the frame.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- ldr r4, [r5,#oBattleObject_RelatedObject1Ptr] then the ldmia r0!,{r1-r3} at r4+0x34 and stmia
+    r0!,{r1-r3} at r5+0x34 copies X/Y/Z from the related object. - sub r2,r2,#0x10000 / sub r3,r3,#0x10000
+    gated on [r5,#oBattleObject_ExtraVars] shows coordinate origin compensation when extra vars exist.
+    - mvn r1,#2 / and r0,r1; and r1,r2 (=2); orr r0,r1; strb r0,[r5,#oObjectHeader_Flags] copies the 0x02
+    bit of the related header into the target header. - The chain ldr r0,[r5,#oBattleObject_RelatedObject1Ptr];
+    bl sprite_getColorShader; bl sprite_setColorShader (and the equivalent for sprite_getFinalPalette/sprite_setFinalPalette)
+    shows sprite attribute mirroring. - ldrb r1,[r0,#oBattleObject_DirectionFlip]; strb r1,[r5,#oBattleObject_DirectionFlip]
+    then bl object_getFlip / bl sprite_setFlip copies the flip state. - off_80C4614 containing sub_80C461C+1,
+    sub_80C464C+1 used with ldr r1,[r1,r0] / mov lr,pc / bx r1 / pop {pc} tail-dispatches based on CurAction.
+    - push {lr} at entry and pop {pc} right after the bx means the function''s caller (sub_80C4550) gets
+    its return, and the tail-call target is the one that actually returns to the original caller.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080C458C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp'
+  reproduce: 'grep -l ''^080c458c '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp
+open_questions:
+- What sub_80C46CC and the two CurAction handlers (sub_80C461C, sub_80C464C) actually do; whether the
+  0x10000 subtraction is panel-grid compensation or a specific coordinate-space shift.
+- Whether CurAction indices beyond the two in off_80C4614 ever reach this code, or if they're clamped
+  upstream.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ba9a934b
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80C458C -> battleObject_copyStateAndSyncSpriteFromRelated_80C458C
+  where: bn6f 00be3514
+  tool: tools/rename_symbol.py

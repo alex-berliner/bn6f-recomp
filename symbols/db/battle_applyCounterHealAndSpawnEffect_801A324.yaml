@@ -1,0 +1,71 @@
+name: battle_applyCounterHealAndSpawnEffect_801A324
+address: '0x0801A324'
+kind: function
+previous_names:
+- sub_801A324
+status: probable
+summary: Heal the opposing battle actor by the counter-damage stored in their AIData Unk_10, then spawn
+  a +HP effect object and play the heal sound.
+interface: (r5 = self BattleObjectPtr) -> (r5/r10 preserved; no return value)
+details: "Operates on the caller-supplied BattleObject in r5. Flips the Alliance flag (`eor r0, #1`) and\
+  \ resolves the opposing side via battle_getPlayerAIData_8010022 to fetch the enemy's AIData pointer\
+  \ (r4).\n  Reads the enemy's panel-damage value at CollisionDataPtr+0x92 (u16) into r0, and folds it\
+  \ into AIData.Unk_10 by `Unk_10 += r4->Unk_10 + r0` (r4 here still the opponent's previous Unk_10).\n\
+  \  Then clears the actor's own AIData.Unk_10 to zero and computes `maxHP * 10 / 100 * self AIData.Unk_10`\
+  \ (via mul-by-0xa after clearing: actually multiplies MaxHP by the captured self AIData.Unk_10 byte\
+  \ held in r4 and uses `tst r0, r0` as the branch).\n  If that value is non-zero, calls object_addHP\
+  \ (heals r5 by r0), then loads the BattleObject's 16-byte Coords block starting at offset 0x34 (X16/Y16/Z16)\
+  \ into r1-r3 and spawns a t1 effect object via spawn_t1_0x0_EffectObject with r4=6 (effect-type index)\
+  \ for the heal number popup. Falls through and returns on r0 == 0.\n  Spawn position is taken directly\
+  \ from the object's own Coords block (offset 0x34..0x3b), so the heal number appears at the actor's\
+  \ current location.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `eor r0, r1` on r5''s `oBattleObject_Alliance` (offset 0x16) selects the opposing side before
+    calling battle_getPlayerAIData_8010022. - `ldrh r0, [r3, #0x92]` matches `oCollisionData` offset 0x92
+    (`Unk_92`), the cumulative panel counter used as the counter damage value in BN counter chips. - Reads
+    self''s AIDataPtr into r3 and stores the byte at offset 0x10 (`oAIData_Unk_10`) into r4, then `strb
+    r0, [r3, #oAIData_Unk_10]` with r0=0 immediately clears it — standard BN6 counter-chip heal tick (AIData.Unk_10
+    acts as the per-turn counter/heal accumulator). - `ldrh r0, [r5, #oBattleObject_MaxHP]` followed by
+    `mov r1, #0xa; svc 6; mul r0, r4` computes MaxHP*10/100*counter byte — i.e. a fraction-of-maxHP heal
+    scaled by the counter byte (the `svc 6` is the BIOS divmod helper used as r0 *= r1/100, equivalent
+    to `r0 = r0 * r1 / 100`). - `beq locret_801A368` after `tst r0, r0` short-circuits when the heal amount
+    is zero so no heal/effect/sfx is played. - `bl object_addHP` (confirmed) actually applies the HP delta
+    to r5. - `mov r0, #0x34; add r0, r0, r5; ldmia r0!, {r1-r3}` loads r5[0x34..0x3b] (the Coords X16/Y16/Z16
+    16-bit halves), the standard spawn-position source for t1 effect objects. - `mov r4, #6` is passed
+    as the effect-type index to spawn_t1_0x0_EffectObject (the "+HP number popup" effect variant). - `mov
+    r0, #SOUND_UNK_8A; bl PlaySoundEffect` plays the recovery SFX associated with the heal. - Captured
+    calls all return r0=0 with Z flag set after a `-ZC-` start, consistent with a void function that doesn''t
+    surface a result.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801A324
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0801a324 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9
+open_questions:
+- Whether the "10%" factor is unconditional — only one constant is observed in the captured window, so
+  other callers might patch the divisor. Also unclear which chip/family ID this is invoked from (the caller
+  sub_801AC6C wasn't summarized). The exact meaning of AIData.Unk_10 (counter chip accumulator) is inferred
+  from BN6 context rather than a confirmed field name.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ba9a934b
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801A324 -> battle_applyCounterHealAndSpawnEffect_801A324
+  where: bn6f 00be3514
+  tool: tools/rename_symbol.py

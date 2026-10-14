@@ -1571,9 +1571,9 @@ Next sub_801CA80(void) {
 #define TILE_ROW_SIZE        0x80u
 #define PATTERN_SIZE         0x20u
 
-/* register form: calls sub_801E6A8 outside this file, which has no typed C interface yet */
+/* register form: calls battleObject_resolveEmotionPalette_801E6A8 outside this file, which has no typed C interface yet */
 static void compute_advance_frame(u32 *state, u32 *frame) {
-    GUEST_CALL(sub_801E6A8);
+    GUEST_CALL(battleObject_resolveEmotionPalette_801E6A8);
     *state = R0;
     *frame = R1;
 }
@@ -1585,9 +1585,9 @@ static void compute_hold_frame(u32 *state, u32 *frame) {
     *frame = R1;
 }
 
-/* register form: calls sub_801D814 outside this file, which has no typed C interface yet */
+/* register form: calls battle_shouldUseSimpleAnimMode_801D814 outside this file, which has no typed C interface yet */
 static bool gfx_transfer_done(void) {
-    GUEST_CALL(sub_801D814);
+    GUEST_CALL(battle_shouldUseSimpleAnimMode_801D814);
     return R0 != 0;
 }
 
@@ -1802,13 +1802,13 @@ Next sub_801CE28(void) {
 /* screenFadeOutStepTick_801CE6C: tick the staged fade driven by the work block at R5.
  *
  * work[7] counts the steps and work[6] is a per-block parameter. Each tick
- * calls sub_802FE7A(0, 0x40, 0xE0 - 0x20 * step, work[6]); the third
+ * calls sprite_setAffineTransform_802FE7A(0, 0x40, 0xE0 - 0x20 * step, work[6]); the third
  * argument shrinks by 0x20 per step, so the effect fades out in stages.
  * Once the step counter reaches 5 the block moves to state 4 (work[0])
  * and the counter is cleared.
  *
  * On early ticks r0 = step counter; on the finishing tick r0 = 0 and
- * r1..r3 are whatever sub_802FE7A left. Flags: the original ends with
+ * r1..r3 are whatever sprite_setAffineTransform_802FE7A left. Flags: the original ends with
  * `cmp r0,#5` (c/v and, on the early-exit path, nz) followed by a
  * flag-setting `movs r0,#0` on the finishing path, so c/v always come
  * from the comparison and nz is overridden to "zero" only when the
@@ -1820,7 +1820,7 @@ Next screenFadeOutStepTick_801CE6C(void) {
     R1 = 0x40;
     R2 = 0xE0 - counter * 0x20;
     R3 = LD8(R5 + 6);
-    GUEST_CALL(sub_802FE7A);
+    GUEST_CALL(sprite_setAffineTransform_802FE7A);
 
     counter = LD8(R5 + 7);
     if ((s32)counter < 5) {
@@ -1840,7 +1840,7 @@ Next screenFadeOutStepTick_801CE6C(void) {
 /* ── chatbox_stepTextPrinter_801CE92 ── */
 /* chatbox_stepTextPrinter_801CE92(r5 = message window object):
  * Pick the text-advance delay for the current message state (field +7) and
- * start the text printer with sub_802FE7A. Once the state reaches 0x30 the
+ * start the text printer with sprite_setAffineTransform_802FE7A. Once the state reaches 0x30 the
  * message sequence is over: the object moves to state 8 and field +7 is
  * cleared. States other than 1/2/3/0x2E/0x2F/0x30 skip the printer call.
  * On return r0 = field +7 and the flags reflect CMP r0, #0x30 (or the final
@@ -1867,7 +1867,7 @@ Next chatbox_stepTextPrinter_801CE92(void) {
     R0 = 0;
     R1 = 0x40;
     R3 = LD8(R5 + 6);
-    GUEST_CALL(sub_802FE7A);
+    GUEST_CALL(sprite_setAffineTransform_802FE7A);
 
 advance_state:
     /* Reload the message state into r0 (the original always ends with it there). */
@@ -1890,17 +1890,17 @@ advance_state:
  *   +6: flag word index the task operates on
  *   +7: step counter (each step covers a 0x20-bit slice, first at bit 0x40)
  * Each call clears this step's 0x40-bit slice of the flag word via
- * sub_802FE7A, then re-reads the counter: once it reaches 5 the task's
+ * sprite_setAffineTransform_802FE7A, then re-reads the counter: once it reaches 5 the task's
  * flag word bit is cleared and state[0] is set to 0xC (task done).
  * Leaves r0-r3 and the flags exactly as the last helper/compare does. */
 Next flags_clearWordSlicesTaskStep_801CED2(void) {
     /* Clear this step's slice of the flag word:
-     * sub_802FE7A(0, 0x40, 0x40 + step * 0x20, flagWordIndex). */
+     * sprite_setAffineTransform_802FE7A(0, 0x40, 0x40 + step * 0x20, flagWordIndex). */
     R0 = 0;
     R1 = 0x40;
     R2 = 0x40 + LD8(R5 + 7) * 0x20;
     R3 = LD8(R5 + 6);
-    GUEST_CALL(sub_802FE7A);
+    GUEST_CALL(sprite_setAffineTransform_802FE7A);
 
     /* Re-read the counter to see if every slice has been cleared. */
     R0 = LD8(R5 + 7);

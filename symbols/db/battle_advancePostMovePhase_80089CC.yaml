@@ -1,0 +1,70 @@
+name: battle_advancePostMovePhase_80089CC
+address: '0x080089CC'
+kind: function
+previous_names:
+- sub_80089CC
+status: probable
+summary: 'Per-frame post-move phase driver: unpauses, ticks AI joypad, advances phase state, and dispatches
+  to a "wait for ready" / chip-lockout / move-result state machine.'
+interface: '(r10 = toolkit, r5 = some scratch object/state ptr) -> void ; side effects: writes *r5, advances
+  BattleState counters, sets CustGauge, sets/clears paused flag'
+details: "- Early: calls battle_updateNaviAIJoypad for both navis (r0=0 then 1), then UnpauseBattle, then\
+  \ battle_setFlags(r0=1), and battle_updatePhaseState_800AE0C + battle_advanceUnk40IfFlagSet_800A6A6\
+  \ — i.e. standard \"a battle frame happened\" prologue.\n  - Reads battle_IsBattleEnding_800A97A; if\
+  \ true, jumps to sub_800AB7C (likely the end-of-battle effect).\n  - Switch on battle_getPhaseMode_800A152\
+  \ result:\n      * 1: increments BattleState+0x18, calls SetCustGauge(0x4000), then writes [r5]=8  ->\
+  \ \"post-move / chip-lockout tick, then wait\"\n      * 2: increments BattleState+0x19, writes [r5]=0xc\
+  \                            -> \"second lockout slot, then wait\"\n      * 7: writes [r5]=0x14    \
+  \                                                  -> \"flee/victory proceed\"\n      * else: checks\
+  \ battle_checkFlowAdvanceFlags_800A046. If !=0xFF: stores the flag at [r5+5], PauseBattle, writes [r5]=0x18,\
+  \ calls sub_801E15C (chip-selection / pre-confirm screen).\n                       If 0xFF: calls sub_800A21C;\
+  \ if it returns 1: PauseBattle + write [r5]=0x14.\n  - r5 is a pointer to a small per-frame \"current\
+  \ state / mode / counter\" triple used by a state machine that drives battle sequencing after movement.\
+  \ Three bytes at +5 (sub-state), +0 (next state), are visible.\n  - The dword at 0x8008A74 (`10 00 25\
+  \ 33 64 00 00 00`) appears unused by this function (it's a literal pool entry after `locret_8008A60`);\
+  \ possibly an inline data table or uninitialized padding for the next function.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mov r0,#0 / #1 ; bl battle_updateNaviAIJoypad_8012DFC` ticks joypads for both navis (asm
+    lines 2–3). - `bl UnpauseBattle` immediately followed by `mov r0,#1 ; bl battle_setFlags` shows this
+    is the start-of-frame unlock. - `bl battle_updatePhaseState_800AE0C` and `bl battle_advanceUnk40IfFlagSet_800A6A6`
+    are the documented phase-state and "unk40 flag" step functions. - `bl battle_IsBattleEnding_800A97A
+    ; tst r0,r0 ; beq loc_80089F8 ; bl sub_800AB7C` — explicit end-of-battle branch. - `bl battle_getPhaseMode_800A152`
+    returns a small mode id (0/1/2/7) and the switch handles exactly 1, 2, 7 and a fallback. - Phase 1
+    increments `BattleState+0x18` and calls `SetCustGauge(0x4000)`; phase 2 increments `BattleState+0x19`;
+    phase 7 just sets next state to 0x14 — consistent with two different chip-lockout counters and a "battle
+    over" path. - `battle_checkFlowAdvanceFlags_800A046` returning 0xFF (battle over / time stopped) gates
+    the final `sub_800A21C` branch and a PauseBattle + write of 0x14. - `bl sub_801E15C` is invoked only
+    when the "ready to advance" branch is chosen — likely the chip confirm / pre-attack screen.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080089CC
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp'
+  reproduce: 'grep -l ''^080089cc '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp
+open_questions:
+- What *exactly* the small state pointed to by r5 represents (sub-state, next state, counter). Only the
+  byte at +5 is named (sub-flag) and the word at +0 is the next state constant.
+- Why exactly phases 1 and 2 both increment separate BattleState bytes and why 1 also sets the CustGauge
+  to 0x4000.
+- Role of sub_801E15C and sub_800A21C.
+- The trailing `byte_8008A74` looks like junk/data for the next function rather than a table used here.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ba9a934b
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80089CC -> battle_advancePostMovePhase_80089CC
+  where: bn6f 00be3514
+  tool: tools/rename_symbol.py

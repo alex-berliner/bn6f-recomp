@@ -1,0 +1,75 @@
+name: sprite_setAffineTransform_802FE7A
+address: '0x0802FE7A'
+kind: function
+previous_names:
+- sub_802FE7A
+status: probable
+summary: Computes two 2D affine matrices (rotation/scale + shear) at word_200A6F0 for sprite affine rendering,
+  using cos/sin tables and the sin/cos inputs derived from r1/r2.
+interface: '(r0 = obj, r1 = sin/cos raw angle arg, r2 = sin/cos raw angle arg, r3 = ?) -> r0 = &word_200A6F0
+  ; side effects: writes to word_200A6F0 and an offset within it (12-byte affine matrix records)'
+details: "- Saves {r0,r1,r2} on the stack immediately to free the input registers. r1 and r2 are >>2 to\
+  \ produce\n    table indices (they were scaled raw values like 0x40/0x90/0x60 -> 0x10/0x24/0x18).\n\
+  \  - word_200A6F0 (off_802FF48) is treated as an array of 12-byte \"affine matrix slot\" records:\n\
+  \    record i sits at base+0xC*i; an extra 0x10 stride is added for the second matrix of the pair, so\n\
+  \    the pair ends up at base+0xC*r3 and base+0xC*(r3+0x10). r3 is therefore a matrix-pair slot index.\n\
+  \  - [r0+8] (curAnim? or subslot index byte in object sprite state) is cleared to 0 and the popped byte\
+  \ 0\n    is written to the same offset of the destination slot, marking a sprite-affine slot owner byte.\n\
+  \  - r2 is left-shifted by 1 and used as a cos-table index, r5=0 is the sin-table index. The same pattern\n\
+  \    runs twice (once for each matrix in the pair) so the function actually configures two matrices\n\
+  \    (rotation+scale at offsets 0/2/6 and shear at offsets 4 — note the second pair negates sin before\n\
+  \    storing at offset 4 vs offset 2).\n  - sub_802FF10(r3) is called between the two halves; its return\
+  \ value is stored at [r0,#9] then [#0xa],\n    so sub_802FF10 likely owns OAM-affine buffer indexing\
+  \ (it returns a pointer to an affine param\n    record whose rotation/scale fields are about to be filled\
+  \ in here).\n  - All four stores per matrix use lsr #4 after multiplying by r7 (a scale factor popped\
+  \ from the\n    stack), so this is a (cos*scale)>>4 / (sin*scale)>>4 packing into 16-bit affine params.\n\
+  \  - The pattern of math_cosTable/math_sinTable indices, the >>4 packing, and the offsets 0/2/4/6\n\
+  \    inside an OAM affine matrix strongly match GBA OBJ affine parameter writes (PA,PB,PC,PD).\n  -\
+  \ r0 at exit points at word_200A6F0 (the base), as captured in every recorded call site. The\n    callers\
+  \ pass r0=0 on entry, so this is a pure writer that returns the base pointer.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- off_802FF48 = word_200A6F0 is loaded into r6 and a base pointer is returned in r0 (captured
+    call sites all show exit r0=0x0200a6f0; e.g. snap_story2_0.bin exit r0=0200a6f0). - math_cosTable
+    and math_sinTable are the only globals read (off_802FF08/off_802FF0C), used via ldrsh and a sign-flip
+    on the second-pass sin (neg r4, r4) — exactly the PA/PB/PC/PD layout for a GBA affine sprite matrix.
+    - Two stride-0xC regions separated by 0x10*0xC = 0xC0 bytes: `add r0,r0,r1` and `add r6,r6,r1` with
+    r1=0xC*(r3+0x10) — i.e. two matrices at indices r3 and r3+0x10 of an OAM affine table. - After every
+    "first half" math, sub_802FF10 is called and its return is poked into r0+9 and r0+0xa, matching OAM
+    affine attribute 0/1 register storage offsets in GBA hardware. - Each stored halfword is `(cos|r5)*r7
+    >> 4` / `(cos|r2)*r7 >> 4`; r7 comes from `pop {r3}` after pushing the original r0,r1,r2 — so r7 is
+    the value pushed in r3 (the matrix scale).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0802FE7A
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story1, story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0802fe7a '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story4, story5, story6, story7, story8, story9
+open_questions:
+- What sub_802FF10 actually returns and what r3 means (matrix-pair index vs raw slot); the 0x10
+- stride suggests two paired slots but the convention isn't visible here.
+- The role of the bytes written to [r0,#9] and [r0,#0xa] (palette/affine-index bytes).
+- Why some callers (chatbox_/flags_/screenFade_) invoke this with r1,r2 in the 0x40-0x90 range —
+- looks like they are reusing it as a generic "fill affine buffer with sin/cos * r3" helper, but
+- that's inferred only.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ba9a934b
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_802FE7A -> sprite_setAffineTransform_802FE7A
+  where: bn6f 00be3514
+  tool: tools/rename_symbol.py

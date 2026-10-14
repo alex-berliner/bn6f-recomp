@@ -18,7 +18,7 @@
  * and the entry's fields are combined into the results:
  *   r0 = chip ID              (entry +0x00)
  *   r1 = entry sub-value      (entry +0x0C)
- *   r2 = entry +0x18 value plus sub_800EF34(chip) plus entry +0x24 value
+ *   r2 = entry +0x18 value plus battle_chipElementWeaknessBonus_800EF34(chip) plus entry +0x24 value
  * Otherwise the object's own oBattleObject_Chip field is returned with
  * r1/r2 cleared. r3 always receives the object's ChipsHeld count.
  *
@@ -62,7 +62,7 @@ Next battle_getSelectedChipForUse_800ED90(void) {
 
     R0 = LD16(entry);
     R1 = 0;
-    GUEST_CALL(sub_800EF34);
+    GUEST_CALL(battle_chipElementWeaknessBonus_800EF34);
 
     u32 baseValue = LD16(entry + 0x18) + R0;
     u32 extra = LD16(entry + 0x24);

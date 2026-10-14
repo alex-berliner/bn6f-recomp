@@ -3509,7 +3509,7 @@ Next sub_8119118(void) {
 /* ── npc_StateModeDispatcher_8119364 ── */
 /* npc_StateModeDispatcher_8119364: dispatcher for the state machine object in r5. Reads the mode
  * byte at [r5+8] and calls one of three handlers via the table at
- * off_8119378 (battle_spriteInit_8119384 / sub_81196A0 / sub_8119804).
+ * off_8119378 (battle_spriteInit_8119384 / battle_dispatchSpriteAction_81196A0 / sub_8119804).
  *
  * Note the table is indexed with the raw mode byte (`ldr r0, [r0, r1]`), so
  * the byte itself holds the byte offset: 0, 4 or 8, one entry per 4-byte
@@ -3531,7 +3531,7 @@ Next npc_StateModeDispatcher_8119364(void) {
         GUEST_CALL(battle_spriteInit_8119384);
         break;
     case 4:
-        GUEST_CALL(sub_81196A0);
+        GUEST_CALL(battle_dispatchSpriteAction_81196A0);
         break;
     case 8:
         GUEST_CALL(sub_8119804);
@@ -3624,10 +3624,10 @@ static void write_substruct_field30(u32 ptr) {
     GUEST_CALL(object_writeSubstructField30_8002FEC);
 }
 
-/* register form: calls sub_81196A0 outside this file, which has no typed C interface yet */
+/* register form: calls battle_dispatchSpriteAction_81196A0 outside this file, which has no typed C interface yet */
 static void finalize_sprite(void) {
     R0 = 0;
-    GUEST_CALL(sub_81196A0);
+    GUEST_CALL(battle_dispatchSpriteAction_81196A0);
 }
 
 /* --- typed implementation --- */

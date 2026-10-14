@@ -342,9 +342,9 @@ Next callback_noop_8033A7C(void) {
 /* ── sub_8033A80 ── */
 Next sub_8033A80(void) {
     /* sub_8033A80: initialize/resume the three rendering sub-systems with argument 0.
-     * Calls sub_8033B80, battle_drawBattleStartOverlay_8033F80 and gfxTransfer_8033DA0 in sequence, each with r0 = 0. */
+     * Calls sprite_queueOamByFrameIndex_8033B80, battle_drawBattleStartOverlay_8033F80 and gfxTransfer_8033DA0 in sequence, each with r0 = 0. */
     R0 = 0;
-    GUEST_CALL(sub_8033B80);
+    GUEST_CALL(sprite_queueOamByFrameIndex_8033B80);
 
     R0 = 0;
     GUEST_CALL(battle_drawBattleStartOverlay_8033F80);
@@ -361,7 +361,7 @@ Next sub_8033A80(void) {
  * flags, run the real-world update logic, then queue a graphics transfer. */
 Next onUpdateInRealWorld_8033A96(void) {
     R0 = 0;
-    GUEST_CALL(sub_8033B80);
+    GUEST_CALL(sprite_queueOamByFrameIndex_8033B80);
 
     R0 = 0;
     GUEST_CALL(battle_drawBattleStartOverlay_8033F80);
@@ -377,14 +377,14 @@ Next onUpdateInRealWorld_8033A96(void) {
 /* ── battle_resetState_8033AC4 ── */
 /* battle_resetState_8033AC4: reset/initialize the battle object state (self in r5 = *S2011E30).
  * Runs the four initialization steps in order:
- *   1. sub_8033B80 with r0 = 0
+ *   1. sprite_queueOamByFrameIndex_8033B80 with r0 = 0
  *   2. battle_drawBattleStartOverlay_8033F80 with r0 = 0
  *   3. updateChipSlotGfx_8033C68
  *   4. sub_8033BE8
  * Register state (r0-r3, flags) after the call is whatever sub_8033BE8 leaves. */
 Next battle_resetState_8033AC4(void) {
     R0 = 0;
-    GUEST_CALL(sub_8033B80);
+    GUEST_CALL(sprite_queueOamByFrameIndex_8033B80);
 
     R0 = 0;
     GUEST_CALL(battle_drawBattleStartOverlay_8033F80);
@@ -411,7 +411,7 @@ Next onUpdateInInternet_8033B1E(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8033B80 ── */
+/* ── sprite_queueOamByFrameIndex_8033B80 ── */
 /* register form: calls sprite_queueOamEntryThunk_802FE28 outside this file, which has no typed C interface yet */
 static void call_sub_802FE28_sub_8033B80(u32 a1, u16 a2, int a3, int a4) {
     R0 = a1;
@@ -443,7 +443,7 @@ static void apply_offset_and_tick(u32 index, u32 state_ptr) {
     ST8(state_ptr + 5, (u8)frame);
 }
 
-Next sub_8033B80(void) {
+Next sprite_queueOamByFrameIndex_8033B80(void) {
     apply_offset_and_tick(R0, R5);
     RETURN_TO_CALLER();
 }

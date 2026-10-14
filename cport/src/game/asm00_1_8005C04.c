@@ -253,9 +253,9 @@ static void run_setup_step_and_clear_work_area(void) {
     GUEST_CALL(runSetupStepAndClearWorkArea_8005F6C);
 }
 
-/* register form: calls sub_80027C4 outside this file, which has no typed C interface yet */
+/* register form: calls sprite_initBattleFadeGfxState_80027C4 outside this file, which has no typed C interface yet */
 static void call_sub_80027C4_sub_8005DBE(void) {
-    GUEST_CALL(sub_80027C4);
+    GUEST_CALL(sprite_initBattleFadeGfxState_80027C4);
 }
 
 /* register form: calls zeroFill_80024A2 outside this file, which has no typed C interface yet */
@@ -2250,7 +2250,7 @@ Next battle_main_8007800(void) {
     u32 saved_r5 = R5;
 
     /* Pre-frame global state updates */
-    GUEST_CALL(sub_801FE6C);
+    GUEST_CALL(battle_updateCustomGauge_801FE6C);
     GUEST_CALL(battleObject_checkTerminateFlagAndDispatch_8020140);
 
     /* Fetch BattleState pointer from Toolkit */
@@ -2261,7 +2261,7 @@ Next battle_main_8007800(void) {
      * (entries at 0x00, 0x04, 0x08, 0x0C, 0x10, 0x14). */
     u32 stateByte = LD8(R5 + oBattleState_Index_00);
     switch (stateByte) {
-    case 0x00: GUEST_CALL(sub_8007850);           break;
+    case 0x00: GUEST_CALL(battle_finishBattle_8007850);           break;
     case 0x04: GUEST_CALL(battle_update_8007A44); break;
     case 0x08: GUEST_CALL(sub_8007B80);           break;
     case 0x0C: GUEST_CALL(sub_8007E62);           break;
@@ -2530,7 +2530,7 @@ Next battle_initEntry_8007A0C(void) {
 /* ── sub_8007B80 ── */
 /* Dispatch the current battle-state phase handler via the two-entry jump
  * table at off_8007B94.  The byte at BattleState::index_01 (offset 1)
- * selects:  0 → sub_8007B9C,  4 → battle_state_tick_8007CA0.
+ * selects:  0 → battle_runFrame_8007B9C,  4 → battle_state_tick_8007CA0.
  * r0 must hold the raw phase index when the handler enters (the handler
  * reads it), matching the original ldrb r0 / bx r1 sequence. */
 

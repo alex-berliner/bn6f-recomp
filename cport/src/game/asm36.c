@@ -971,9 +971,9 @@ static void call_update_animations(void) {
     GUEST_CALL(sub_8134538);
 }
 
-/* register form: calls sub_81341A0 outside this file, which has no typed C interface yet */
+/* register form: calls battleObject_submenuRenderFolderAndChips_81341A0 outside this file, which has no typed C interface yet */
 static void call_update_camera(void) {
-    GUEST_CALL(sub_81341A0);
+    GUEST_CALL(battleObject_submenuRenderFolderAndChips_81341A0);
 }
 
 /* register form: calls sub_81353DC outside this file, which has no typed C interface yet */
@@ -1166,10 +1166,10 @@ static inline call_entity_setLookupEntryStateFromFlag_8117D10_result call_entity
 }
 
 typedef struct { u32 r4, r5, r6, r7; } call_sub_81341A0_result;
-/* register form: generated wrapper: sub_81341A0 has no typed C interface yet */
+/* register form: generated wrapper: battleObject_submenuRenderFolderAndChips_81341A0 has no typed C interface yet */
 static inline call_sub_81341A0_result call_sub_81341A0(u32 r5) {
     R5 = r5;
-    GUEST_CALL(sub_81341A0);
+    GUEST_CALL(battleObject_submenuRenderFolderAndChips_81341A0);
     return (call_sub_81341A0_result){ R4, R5, R6, R7 };
 }
 
@@ -1360,8 +1360,8 @@ static void save_state_and_set_state_8(void) {
     GUEST_CALL(object_saveStateAndSetState8_8133E7C);
 }
 
-/* register form: calls sub_8134310 outside this file, which has no typed C interface yet */
-static void post_step_8134310(void) { GUEST_CALL(sub_8134310); }
+/* register form: calls battleObject_drawFolderEditScreenGfx_8134310 outside this file, which has no typed C interface yet */
+static void post_step_8134310(void) { GUEST_CALL(battleObject_drawFolderEditScreenGfx_8134310); }
 
 /* register form: calls sub_81345B0 outside this file, which has no typed C interface yet */
 static void post_step_81345B0(void) { GUEST_CALL(sub_81345B0); }
@@ -1436,8 +1436,8 @@ Next sub_8133944(void) {
     GUEST_CALL(sub_81345B0);
     GUEST_CALL(sub_8134538);
     GUEST_CALL(sub_8134548);
-    GUEST_CALL(sub_81341A0);
-    GUEST_CALL(sub_8134310);
+    GUEST_CALL(battleObject_submenuRenderFolderAndChips_81341A0);
+    GUEST_CALL(battleObject_drawFolderEditScreenGfx_8134310);
     GUEST_CALL(sub_81353DC);
 
     /* Two palette/OBJ-bank setups: slot 5 in low (0), slot 6 in high (1). */

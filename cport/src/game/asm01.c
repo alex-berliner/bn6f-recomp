@@ -83,7 +83,7 @@ Next sub_801FE5E(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_801FE6C ── */
+/* ── battle_updateCustomGauge_801FE6C ── */
 /* Register-form helpers: each calls a game function outside this file which has no typed C
  * interface yet. They put arguments in R0.., call the function, and return the result. */
 
@@ -179,7 +179,7 @@ static void do_step(u8 prev_step) {
     e_state_set_byte1(E_STEP_BUSY);
 }
 
-Next sub_801FE6C(void) {
+Next battle_updateCustomGauge_801FE6C(void) {
     u8 prev_step = e_state_byte1();
     do_step(prev_step);
     RETURN_TO_CALLER();
