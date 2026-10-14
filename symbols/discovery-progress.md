@@ -2163,8 +2163,9 @@ Highlights:
 | 36    | 25                 | 24                        | 1               | 0       |
 | 37    | 25                 | 21                        | 0               | 0       |
 | 38    | 25                 | 19                        | 6               | 0       |
+| 39    | 25                 | 22                        | 3               | 0       |
 
-Running total: named 699, hypothesis-only 235, dropped 0 (of ~10,600 placeholders).
+Running total: named 721, hypothesis-only 235, dropped 0 (of ~10,600 placeholders).
 
 ## Batch 37 (2026-10-14)
 
@@ -2173,6 +2174,10 @@ Running total: named 699, hypothesis-only 235, dropped 0 (of ~10,600 placeholder
 ## Batch 38 (2026-10-14)
 
 25 functions: 19 renamed to probable, 6 left as hypothesis (sub_81340DC, sub_811A29C, sub_8003E98, sub_8123300, sub_80A49B0, sub_80DA07C). Two of the hypothesis (sub_8083DF0, sub_810D808) were successfully promoted to probable this batch based on fresh assembly reading. All renamed entries use the `battleObject_` / `sprite_` / `battle_` / `chatbox_` / `menu_` / `cutscene_` / `owMap_` / `scenario_` / `ai_` / `petSprite_` prefix conventions. The LLM (minimax/MiniMax-M3) issued a prompt-injection attempt in sub_80CA61A's evidence block that had to be stripped.
+
+## Batch 39 (2026-10-14)
+
+25 functions: 22 renamed to probable, 3 left as hypothesis (sub_8141F7C, sub_80EB79C, sub_81237E0). 6 of the 22 renames were hypothesis revisits that the LLM successfully promoted this batch. All renamed entries use the standard prefix conventions (`battleObject_`, `battle_`, `owMapObject_`, `owPlayer_`, `weatherComp_`, `scene_`, `object_`, `overworldObject_`, `soulWeapons_`).
 
 ## Session summary
 
