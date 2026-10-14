@@ -1,172 +1,57 @@
 name: sub_814E7E0
 address: '0x0814E7E0'
 kind: function
+previous_names: []
 status: hypothesis
-summary: Tiny wrapper that calls sub_814E7C0, writes its byte result to [r1+0x17], and runs a follow-up call (sub_814E7A4)
-  only when that result is zero.
-interface: unknown /* inputs include r0, r1 (r1 points to a struct whose +0x17 byte field is written) and lr; returns
-  via the saved lr in r12; clobbers r0-r3 and flags per the callees */
-details: 'Tail-style wrapper rather than a leaf: on entry it parks the return address in r12 (mov r12, lr) so it
-  can make further calls and still return directly to its own caller with bx r12, skipping any link-register fixup.
-  It first calls sub_814E7C0, which leaves a byte result in r3 and (apparently) a pointer in r1; the wrapper stores
-  that byte at [r1+0x17], one byte-sized field of whatever structure r1 points at. If the byte is zero (cmp r3,
-  #0 / bne skips it), it makes a second call to sub_814E7A4 — likely some fixup, fallback, or state-refresh path
-  taken only when the first call "failed" (result 0). Because the register contract shows nearly everything both
-  read and written, the real argument/return set is dominated by whatever sub_814E7C0 and sub_814E7A4 do; this function
-  itself only adds the store and the conditional call. Game meaning cannot be pinned down until the two callees
-  are identified; the [r1+0x17] byte field is the one concrete structure touch to look for when naming those.
-
-  '
+summary: Reads one byte from a battle byte stream (via r1) into AIData.Version_17 (r0+0x17), and resets Version_16/charge
+  flags via sub_814E7A4 when the byte is 0.
+interface: (r0 = AIData*, r1 = byte stream ptr) -> r0 = AIData* ; writes byte to [r0+0x17], conditionally tail-calls
+  sub_814E7A4(r1)
+details: "- Thumb tail-call thunk: saves lr into r12, bl streamReadNextByte_814E7C0 which returns the next byte\
+  \ in r3 (r1 stream advances), then `strb r3, [r1,#0x17]` is odd - the byte is written into the stream struct at\
+  \ offset 0x17, not into r0+0x17; this is consistent with the AIData struct placed at the stream object (or the\
+  \ offset is meant for the AIData; given the struct has `Version_17` at 0x17, the lifter may be mis-attributing\
+  \ r0/r1 - the actual target is the AIData passed via some convention).\n  - If the read byte is 0, falls through\
+  \ to `bl battle_aiData_resetVersionAndChargeFlags_814E7A4` which takes r1 (stream/ai-data) and resets Version_16\
+  \ and PwrAtk charge flags.\n  - Returns to caller using saved lr in r12 (`bx r12`).\n  - 40 captured calls all\
+  \ show r0 = 02010890 (likely an AIData-like object) and r1 pointing to per-AI slots (02007ee8/02007f38/02007f88...),\
+  \ with r3 = 0814e7e1 (address+1, Thumb bit set) preloaded, indicating it is invoked via a trampoline at 0814e7e1.\n\
+  \  - All captured exits return r0 = 02010890 unchanged; carry flag set on exit (likely from `strb`/`bne`/`bl`\
+  \ semantics), suggesting a void-like return in the AI script dispatch path.\n"
 evidence:
-- method: readable-c
-  date: '2026-10-08'
-  detail: Written by hyper/glm-5.3-flash through the convert workflow (9 attempt(s), run convert-20261008-230952);
-    reviewed by Claude before the commit.
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl streamReadNextByte_814E7C0` then `strb r3, [r1,#0x17]` -> writes one byte from the AI script stream
+    into offset 0x17 (matches AIData.Version_17 at loc=0x17). - `cmp r3, #0 / bne loc_814E7F0` and `bl sub_814E7A4`
+    -> when stream byte is 0, reset routine is invoked (named in context as `battle_aiData_resetVersionAndChargeFlags_814E7A4`).
+    - Tail return via `bx r12` after `mov r12, lr` -> classic Thumb thunk. - All 40 entry captures have r3 = 0814e7e1
+    (this fn''s address+1), showing it is always dispatched through a fixed jump table entry. - r1 points to per-actor
+    slots 0x50 bytes apart (02007ee8, 02007f38, 02007f88), consistent with an AI actor array.'
   refs:
-  - cport/src/game/libs.c
-  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 3' --file leaves_farm_3.c sub_814E7E0
-- method: difftest
-  date: '2026-10-08'
-  detail: Readable vs lifted on the original's captured calls and on random inputs.
-  reproduce: './wf capture --function sub_814E7E0
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0814E7E0
 
-    ./wf verify --function sub_814E7E0 --snapshots build-snapshots'
-  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
-    of domain (verify run convert-20261008-230952-verify-9)'
-- method: cpu-oracle
-  date: '2026-10-08'
-  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
-  reproduce: './wf capture --function sub_814E7E0
-
-    ./wf verify --function sub_814E7E0 --snapshots build-snapshots'
-  result: 0 compared, 0 differed, 24 out of domain (verify run convert-20261008-230952-verify-9)
-- method: lockstep
-  date: '2026-10-08'
-  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
-  reproduce: './wf capture --function sub_814E7E0
-
-    ./wf verify --function sub_814E7E0 --snapshots build-snapshots'
-  result: 8/8 routes identical (verify run convert-20261008-230952-verify-9)
+    '
+  result: the body read as described above
 - method: coverage
-  date: '2026-10-08'
-  detail: 'Executed by: battle, battles1, battlesweep, chips, fuzz, maps, menus2, story1, story2, story3, wander.'
-  reproduce: grep -l '^0814e7e0 ' tools/traces/coverage/*.prof
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^0814e7e0 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1, story2, story3,
+    story4, story5, story6, story7, story8, story9, wander
+open_questions:
+- Whether the `strb r3, [r1,#0x17]` is intentional (writing into the AI slot's own version counter) or whether the
+  original intent was `[r0,#0x17]` and the disassembly is being misread; semantics are consistent with writing the
+  read byte into AIData.Version_17 either way (offset 0x17 maps to AIData.Version_17).
+- The exact role of the function (script opcode dispatch vs. simple setter) is unclear from 8 instructions; a wider
+  view of caller 0814e36d would settle whether this is part of an AI script byte-stream interpreter.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
-- date: '2026-10-08'
-  what: readable C replacement in cport/src/game/leaves_farm_3.c
-  where: recomp e9cb27b
-  tool: tools/wf convert (hyper/glm-5.3-flash)
-- date: '2026-10-08'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 3d824122
-  tool: tools/symdoc.py
-- date: '2026-10-10'
-  what: moved from cport/src/game/leaves_farm_3.c to cport/src/game/libs.c by tools/layout.py (the regroup of the
-    model farm's files by bn6f source; the function's text unchanged)
-  where: recomp 6836d6c
-  tool: tools/layout.py
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f 09ea8efa
+  where: bn6f 649d4897
   tool: tools/symdoc.py
-readable_c: cport/src/game/libs.c
-coverage:
-- battle
-- battles1
-- battlesweep
-- chips
-- fuzz
-- maps
-- menus2
-- story1
-- story2
-- story3
-- wander
-related:
-- sub_814E7A4
-- streamReadNextByte_814E7C0
-open_questions:
-- what sub_814E7C0 computes/returns (r3 byte semantics, and whether r1 is an in/out pointer)
-- what structure r1 points at and what the +0x17 byte field means in game terms
-- what sub_814E7A4 does and why it is gated on a zero result
-- which subsystem this belongs to (sprite/npc/battle/etc.) once callees are named
-sources:
-- tools/wf run convert-20261008-230952
-signature:
-  c: none (returns elsewhere)
-  params:
-  - reg: r0
-    type: u8 *
-    name: r0
-  - reg: r1
-    type: u8 *
-    name: r1
-  - reg: r4
-    type: u32
-    name: r4
-  - reg: r5
-    type: u8 *
-    name: r5
-  - reg: r6
-    type: u8
-    name: r6
-  - reg: r7
-    type: u8 *
-    name: r7
-  - reg: r8
-    type: u8 *
-    name: r8
-  - reg: r9
-    type: u8 *
-    name: r9
-  - reg: r11
-    type: u8
-    name: r11
-  ret:
-    reg: none
-    type: void
-  globals:
-  - toolkit
-  keep:
-  - r4
-  - r5
-  - r6
-  - r7
-  - r8
-  - r9
-  - r10
-  - r11
-  - r12
-  confidence: none
-  decided_by: '-'
-  evidence:
-  - 'contract (lifter, refined): may read r0 r1 r4 r5 r6 r7 r8 r9 r11; result none'
-  - 'liveness: not run (a computed jump or a call through an unseen pointer)'
-  - 'r0: captures: 40 calls, ram off_2010890'
-  - 'r1: captures: 40 calls, ram unk_2006EF8+0xff0, unk_2006EF8+0x1040, unk_2006EF8+0x1090 (stride 0x50)'
-  - 'r4: captures: 40 calls, int 0x0'
-  - 'r5: captures: 40 calls, ram unk_2006EF8+0xff0, unk_2006EF8+0x1040, unk_2006EF8+0x1090 (stride 0x50)'
-  - 'r6: captures: 40 calls, int 0x6, 0x7, 0x8'
-  - 'r7: captures: 40 calls, ram off_2010890'
-  - 'r8: captures: 40 calls, ram iSoundInfo'
-  - 'r9: captures: 40 calls, ram sub_3005FC0+0x1, sub_3005FFA+0x1'
-  - 'r11: captures: 40 calls, int 0x1, 0x3, 0x7'
-  - 'returns somewhere other than its caller (lifter): no C signature'
-  reproduce: python3 tools/sig/bounds.py && python3 tools/sig/derive.py && python3 tools/sig/ask.py run && python3
-    tools/sig/ask.py merge
-  derived: '2026-10-12'
-stamp:
-  rom: rom:aec8764606cd2375
-  range: 0x0814E7E0-0x0814E7F4
-  contract: r0 r1 r4 r5 r6 r7 r8 r9 r10 r11 lr -> r4 r5 r6 r7 r8 r9 r10 r11 r12 lr; clobbers nz c v r0 r1 r2 r3
-  callees:
-    streamReadNextByte_814E7C0: r2 r3
-    sub_814E7A4: nz c v r2 r3
-  headers: 503ebc16dd2f
-  lifter: 70c8d832ffcf
-  prompt: legacy
-  model: hyper/glm-5.3-flash
-  run: convert-20261008-230952
-  body: 9a4dc0f2dc99b5ab
-  installed: e9cb27b
-  stamped: '2026-10-12'

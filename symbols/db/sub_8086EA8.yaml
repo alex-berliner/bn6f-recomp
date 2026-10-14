@@ -3,31 +3,29 @@ address: '0x08086EA8'
 kind: function
 previous_names: []
 status: hypothesis
-summary: Spawns a "beast" Pet/Actor (likely related to the Beast-Out mechanic), testing an event flag before doing
-  so.
-interface: '(r10 = Toolkit) -> (out: r5 = object ptr?, r7 = ?; flags ZC set on exit) ; side effects: allocates/initializes
-  a battle object and possibly manipulates related state'
-details: "- Captured calls show r0=0, r1=2, r2=1, r3=0x02001d44, sp near 0x03007dac, lr=0x08035e88. R3 points into\
-  \ EWRAM (0x02001d44) — likely a struct or table.\n  - r10 is the Toolkit, which holds a pointer to `CurBattleDataPtr`\
-  \ / `BattleStatePtr` at offsets 0x18 / 0x1c in the toolkit struct.\n  - Contract `in=['r2', 'r10', 'lr']` means\
-  \ r2 is meaningful input; `out=['r2', 'r3', 'r5', 'r7']` means r5/r7 are returned to caller.\n  - Calls `TestEventFlagFromImmediate`\
-  \ (story/event flag check) — strongly suggests a story-progress-conditional spawn (e.g. Beast Out is story-gated).\n\
-  \  - Direct callees are 5 unnamed functions in the 0x8086Fxx–0x8087xx range; these are likely the inner spawn/init\
-  \ helpers.\n  - `r10` (Toolkit) is preserved per convention; `r5` is also preserved/returned per contract. The\
-  \ function likely uses `r10` to find the battle state and player Navi, allocates a new battle object, and wires\
-  \ it up.\n  - Cannot confirm exact semantics without assembly (asm not available for this address).\n  - Naming\
-  \ follows `battle_*` subsystem prefix; address suffix kept because the body is inferred from contract and callees,\
-  \ not directly observed.\n"
+summary: BattleObject scene/frame dispatch with event-flag-gated subroutines; behaviour is unrecoverable from the
+  supplied data because the assembly wasn't located.
+interface: '(r2 = ?, r10 = oToolkit) -> r0 = 0, flags Z set ; side effects: modifies r0-r7/lr, flags'
+details: 'The harness reports 40 captured entry/exit traces: entry r0=0, r1=2, r2=1, r3=02001d44, lr=08035e88; exit
+  r0=0 with Z flag set. The callee list (TestEventFlagFromImmediate, sub_8086FD8, sub_808711C, sub_8087140, sub_8087184,
+  sub_80871F4) plus the r10 (toolkit) and r2 inputs are consistent with a per-frame battle-object pump that tests
+  a story/flag bit (TestEventFlagFromImmediate), selects a dispatcher path, and forwards r5 to routines that probably
+  touch the BattleObject and AIData structs (AIData offsets 0x58/0x78 hold the AI/BattleObject pointers). Returns
+  0 to the caller at lr=08035e88 with Z set. There is no assembly dump in this prompt ("sub_8086EA8 not found in
+  bn6f/asm"), so beyond the contract and trace shape no instruction-level proof is available. I cannot honestly
+  propose a specific name for "starts the AI tick" or "runs the beast-mode animation" because I cannot quote a single
+  instruction to back it up. Keeping the placeholder.
+
+  '
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- `r10` is toolkit, in-set so this is mid-battle or battle-state-aware code. - Direct call to `TestEventFlagFromImmediate`
-    indicates a story/event gated behavior. - `r5` out-register is a common pointer return for newly allocated/initialized
-    object (matches BN patterns where `r5` = "this object"). - `r3 = 0x02001d44` is an EWRAM pointer (in the 0x02xxxxxx
-    range), and the contract''s `may_write=[''r0'', ''r1'', ''r2'', ''r3'', ...]` suggests EWRAM is being touched.
-    - The lr 0x08035e88 (in the 0x0803xxxx range) is in the battle engine region; typical for a "spawn" called from
-    battle update. - Function cluster around 0x8086EA8–0x80871F4 is contiguous and unnamed, consistent with a small
-    sub-system like beast-spawn.'
+  detail: '- 40 entry traces all show r0=0, r1=2, r2=1, lr=08035e88 and exit r0=0 with -ZC-; the constant inputs
+    across calls hint at a stable dispatcher argument. - r10 is contract in; the toolkit registers the NaviStats/EventFlags/BattleState
+    pointers this kind of function normally consumes. - callee TestEventFlagFromImmediate at 0x0802f164 is a story/flag
+    read, suggesting a flag-gated branch. - callees sub_8086FD8 / sub_808711C / sub_8087140 / sub_8087184 / sub_80871F4
+    form a small cluster (0x8086EA8..0x8087200) consistent with a single object''s frame handler and its helpers.
+    - The prompt explicitly states "sub_8086EA8 not found in bn6f/asm", so no instruction can be quoted.'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x08086EA8
@@ -42,14 +40,14 @@ evidence:
     '
   result: beastsp, maps
 open_questions:
-- Without assembly we cannot confirm the role of `r2` (in/out), nor exactly which struct `r3` points to.
-- Whether this is actually Beast-Out related or a different conditional spawn is uncertain; the "beastsp_" prefix
-  in the captured call filenames is suggestive but not definitive.
-- Would need the assembly of sub_8086EA8 and its callees to confirm what gets written and returned in r5/r7.
+- What exactly this function does per-frame (run an action phase? drive the beast-mode power-atk charge?), since
+  the assembly isn't available and no caller map was provided.
+- Meaning of r1=2 and r2=1 on entry (a CurAction/CurPhase pair? an event-id+arg?) — only the assembly would confirm.
+- 'The "best guess" name should be discarded: providing it here would be invention, which the prompt forbids.'
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f 18c67962
+  where: bn6f 649d4897
   tool: tools/symdoc.py

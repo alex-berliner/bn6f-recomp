@@ -3,31 +3,25 @@ address: '0x08123BE0'
 kind: function
 previous_names: []
 status: hypothesis
-summary: Initialises a battle-object AI attack table with a fixed packed data blob (Z, V, S, X) and zeroes the per-attack
-  counter
-interface: (no explicit args; uses r5=touched battle object, r10=Toolkit) -> no return value ; side effects EWRAM
-  at byte_81233E0 and possibly counter offsets
-details: "- Function body is just a thin wrapper that loads four constants and calls sub_8123C20.\n  - r0 = address\
-  \ of dword_8123BFC (literal 0x5A5856, the ascii \"VZXS\"/packed nibbles for a 4-entry attack table).\n  - r1 =\
-  \ 0x20 (the per-entry size for the attack vars at AIData+0xa0 AttackVars).\n  - r2 = address of byte_81233E0 (a\
-  \ likely EWRAM destination / scratch buffer in AIData region).\n  - r3 = 5 (counter count or loop bound), r4 =\
-  \ 0x5C (offset into AIData where Unk_5c / counter-related fields live).\n  - r6 = 0 (initial value or clear flag).\n\
-  \  - Single `bl battleObject_applyAIDataToAttackTable_8123C20` performs the actual copy/setup; callee contract\
-  \ consumes r0-r6 + r10.\n  - Captured calls show consistent entry r0=1, r2=0x081233d8, r3=0x020047cc (matches\
-  \ the EWRAM struct at S20047CC, see oS20047CC layout used as some battle state), and exit r0=0x20 preserved.\n\
-  \  - Called once per frame from battle_updateFrame_8123558 and from mode-2 setup paths in sub_8123574 / sub_81235A4.\n"
+summary: Wrapper that fills the per-battle AI attack vars from a fixed AI script for the current battle object
+interface: (r0 = ?, r2 = ?, r5 = BattleObject*, r10 = Toolkit*) -> none
+details: "Pure trampoline: loads three constants (dword_8123BFC = 0x5A5856, r1=0x20, byte_81233E0, r3=5, r4=0x5C,\
+  \ r6=0) and forwards them to battleObject_applyAIDataToAttackTable_8123C20.\n  Constant pattern (0x5C, 0x20, 5,\
+  \ 0) plus an AI data blob at byte_81233E0 suggests \"pick the AI preset indexed by some battle-state byte and\
+  \ write it into the AI attack table at offset 0x20 of an object whose AIData lives at offset 0x5C\".\n  Callers\
+  \ all treat this as a per-frame AI-setup step before running the rest of the battle-object sub-state machine.\n\
+  \  Returns nothing to callers (out is only callee-saved r5).\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- The literal `0x5A5856` (= ''V''<<16 | ''Z''<<8 | ''X'') packed into dword_8123BFC is consistent with
-    a chip-letter ordering table for custom-style AI attack selection. - `mov r1, #0x20` matches oAIData AttackVars
-    size (0x50 over 4 attacks -> entry stride could be 0x20); combined with `mov r4, #0x5c` (matches oAIData+0x5c
-    and oCollisionData+0x5c offsets), strongly suggesting AIData writes. - `mov r3, #5` aligns with five battle
-    objects or five attack slots in 4v1 / 5-actor battles. - Constant `byte_81233E0` (r2) is the EWRAM destination
-    for the attack table data. - Caller sub_81235A4''s contract preserves r5 across the call, confirming sub_8123BE0
-    itself does not produce a meaningful r0 for callers (r0 exit value 0x20 is just an artefact of the inner routine''s
-    preserved state). - Callers are exclusively inside the per-frame battle-object update chain, never from anywhere
-    OW related.'
+  detail: '- Single `bl battleObject_applyAIDataToAttackTable_8123C20` after loading six constants (asm33.s:1367)
+    - dword_8123BFC == 0x5A5856 is the only 32-bit load and likely an AI-script selector / packed argument - r4
+    = 0x5C lines up with BattleObject.AIDataPtr (offset 0x58 is the ptr, +4 = 0x5C into the pointed-to AIData) -
+    target buffer offset - r1 = 0x20 lines up with AIData''s AttackVars (struct_org 0xa0 inside a 0x100-byte AIData,
+    but a smaller sub-array also starts at 0x20 of the live object header) - the destination inside AIData - All
+    40 captured calls come from r0=1, r2=081233d8 (likely an AI table pointer inside EWRAM), r3=020047cc (the S20047CC
+    block), identical state across frames - it''s an idempotent per-frame AI load - battle_updateFrame_8123558 calls
+    it once per frame as part of the update chain'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x08123BE0
@@ -42,14 +36,13 @@ evidence:
     '
   result: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus3, story4, story6, story8, story9
 open_questions:
-- Exact semantic role of the 4-byte magic 0x5A5856 is unconfirmed (chip-letter codes vs. chip ID indices).
-- Whether r4=0x5C selects AIData.Unk_5c (an `ptr`) or CollisionData.Unk_5c; the S20047CC layout doesn't naturally
-  have a 0x5c field, while both AIData and CollisionData do.
-- The role of r3=5 (number of actors, attacks, or attack-var entries) needs callee-side analysis to settle.
+- Exact semantic role of each constant (which is the AI index, which is the struct offset) — confirming requires
+  seeing battleObject_applyAIDataToAttackTable_8123C20's body.
+- Whether byte_81233E0 is a table of AI script blobs or a single blob.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f 18c67962
+  where: bn6f 649d4897
   tool: tools/symdoc.py
