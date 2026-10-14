@@ -1,0 +1,85 @@
+name: battle_initChipSelectFromOverlay_8133228
+address: '0x08133228'
+kind: function
+previous_names:
+- sub_8133228
+status: probable
+summary: Initializes the chip-select screen state from the overlay's "submenu open" branch, building the
+  chip pack, decompressing screen assets, and switching state to view 4.
+interface: '(r5 = BattleState-like overlay state, r10 = Toolkit) -> r0 = 4 ; side effects: zeroes large
+  IWRAM buffers, clears BG tile data, kicks off the chip-pack/chip-search table builds, runs a chatbox
+  script, runs the "Battle Start" script, and sets r5->curSubscreen = 4.'
+details: "- Calls ZeroFillGFX30025c0 to reset the toolkit's 0x2000-byte BG tile ID block.\n- Calls toolkit_applyOverlayPalette_80015FC\
+  \ with palette slot 0x10, then writes 0x1F40 into RenderInfo+0 and zeroes RenderInfo+0x10..+0x1A (six\
+  \ halfword fades/sizes).\n- Calls SetScreenFade(8, 0x10) and battle_resetEStructRecords_8046664 to reset\
+  \ overlay scene records.\n- Zeroes a wide swath of the r5 \"battle-chip-select state\" struct: halfword\
+  \ 0x18, 0x1A, 0x20, 0x22, 0x24, 0x26, 0x2A, 0x2C, 0x2E, 0x30, 0x34, 0x36, 0x38, 0x3A; byte 0xE, 0xF,\
+  \ 0x10, 0x11; word 0x44, 0x48, 0x4C, 0x64.\n- Looks up an index into dword_81331FC via sub_8120CC8(0,\
+  \ off_813336C), shifts the result left by 4, ORs with the index, and writes the byte into r5+0x12, 0x13,\
+  \ 0x15, 0x16 (panel/packaging fields). Sets a halfword 0x1E = 0x1E, byte 0x17 = 0x1E, halfword 0x1C\
+  \ = 0xFFFF, words 0x5C and 0x60 = 0xFFFF, word 0x64 = 0.\n- Branches on submenu_isOpen_81355D8:\n  *\
+  \ If a submenu (other than 0x20) is open: CopyBytes(unk_20251A0 -> unk_20376AC, 0x3C), then sub_811FCA4(word_202A020,\
+  \ 1, unk_20343E0). On non-zero result (or fallback) loads sub_8133EC0, runs chatbox script 0, clears\
+  \ word_202A020 via battle_ClearBuffer_811FE34, zero-fills unk_202A3E0 with zeroFill_0xA000Words_811FF6C,\
+  \ sets r5[2] = 8 (goto loc_8133338). Otherwise jumps to loc_81332D6 which falls into the same exit path.\n\
+  \  * If no submenu: builds the chip pack with battle_buildChipPackFromFolderEntries_811FCB8(r5[0xC],\
+  \ word_202A020, 0, unk_20343E0). If the build reports 0 chips, takes the loc_81332F2 branch (no submenu\
+  \ again): sub_8133EC0, submenu_isOpen_81355D8 check, zeroFill_0xA000Words_811FF6C(unk_202A3E0, 0), and\
+  \ r5[0x28] = 0 (skip search-table build).\n  * If the chip pack built successfully: sub_8133EC0, sub_811FDB8(r5[0xC]);\
+  \ if it returns 0 build the search table via buildChipSearchTable_811FE7C(unk_202A3E0, 0) and store\
+  \ the count at r5[0x28]; then call battle_fieldLockDispatch_8120018(unk_202A3E0, count, 7, 0); also\
+  \ write 7 into a slot retrieved from [r10+0x40]+2 and 0 into that same slot+3 (probably an \"unprocessed\
+  \ list\" sentinel in the toolkit queue). Otherwise fall back to loc_81332D6 (chatbox path).\n- Tail:\
+  \ sub_81340AC, sub_81340DC; if no submenu, also runs battleObject_handleMoveAlignment_81352A0(word_202A020,\
+  \ byte_8133154, 0xA5, 0x28, 4) and registerBattleStartScript_81355EC. Finally calls battle_setFieldsFromObj_81340FC\
+  \ and writes 4 into r5[1] before popping.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- "bl ZeroFillGFX30025c0" right after function entry confirms BG tile ID block reset. - "mov
+    r0, #0x10; bl toolkit_applyOverlayPalette_80015FC" loads palette/tile slot 0x10. - The halfword 0x1F40
+    stored at RenderInfo+0 then six zero halfwords through +0x1A matches the render-info fade layout (RenderInfo
+    struct has Unk_00..Unk_1a fields). - "bl battle_resetEStructRecords_8046664" matches its confirmed
+    role of resetting the scene-record array. - The big unconditional zero block strh/strb/str r0,…,[r5,#off]
+    zeroes everything consistent with a chip-select state init. - "bl sub_8120CC8" with r0=0, r1=off_813336C
+    (= dword_81331FC) is the table-lookup-then-default helper. - The branch on submenu_isOpen_81355D8
+    picks between "submenu open" (overlay) and "main menu / normal" flows: the open branch copies unk_20251A0
+    -> unk_20376AC (0x3C bytes) then calls sub_811FCA4 (chip-pack builder variant that always succeeds
+    or returns 1). - battle_buildChipPackFromFolderEntries_811FCB8 and sub_811FDB8 both fold in submenu_isOpen_81355D8
+    == false path, and the success path goes through buildChipSearchTable_811FE7C + battle_fieldLockDispatch_8120018
+    with mode 7. - "ldr r1, [r10,#0x40]; mov r0, #7; strb r0, [r1,#2]; mov r0, #0; strb r0, [r1,#3]" stores
+    7 into a "command queue" style slot reachable through r10 (toolkit). - registerBattleStartScript_81355EC
+    is invoked only in the no-submenu branch, matching its role. - Final "mov r0, #4; strb r0, [r5,#1];
+    pop …" writes 4 into r5''s curSubscreen byte (BattleState+1 is the subsystem/jump-table index per
+    struct definitions). - The struct being mutated is keyed off r5 (battle overlay state) with offsets
+    0x1..0x64 consistent with a chip-select screen struct that lives just before/inside the chip-select
+    subsystem state.'
+  refs:
+  - bn6f/asm/asm36.s
+  reproduce: 'python3 tools/asmcat.py 0x08133228
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battle_initChipSelectFromOverlay_8133228
+
+    '
+open_questions:
+- Exact identity of the r5 struct (chip-select screen struct vs. a battle-overlay wrapper). The wide offset
+  range 0xE..0x64 plus the writing of 0x4 into r5[1] strongly suggests a per-screen state whose top byte
+  is a jump-table index.
+- What unk_20376AC vs unk_20251A0 vs unk_202A3E0 vs unk_20343E0 actually represent (likely overlay scratch
+  + chip-pack + chip-search tables).
+- The role of sub_811FCA4 vs battle_buildChipPackFromFolderEntries_811FCB8 (the former likely skips VRAM
+  compensation, hence the "submenu open" path that already has VRAM and just re-uses the existing pack).
+- The semantics of the field "r5+0x12..0x16" being written with the same value (panel/row sentinel).
+sources:
+- discovery session 2026-10-14 batch 37 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 391e53d9
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8133228 -> battle_initChipSelectFromOverlay_8133228
+  where: bn6f f491ae79
+  tool: tools/rename_symbol.py

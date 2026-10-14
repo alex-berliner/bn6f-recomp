@@ -958,7 +958,7 @@ Next sub_8116ADC(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8116B00 ── */
+/* ── battleObject_navigationArrowInit_8116B00 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0; } call_GetCurPETNavi_result;
 /* register form: generated wrapper: GetCurPETNavi has no typed C interface yet */
@@ -1116,8 +1116,8 @@ init_sprite_variant(u32 spr, u32 player_slot) {
     return call_sprite_dispatchVariantUpdate_8116B9C(spr, player_slot);
 }
 
-/* sub_8116B00(r5 = sprite, r7 = player slot, r10, lr) -> r2 r3 r5 r10 r11 */
-Next sub_8116B00(void) {
+/* battleObject_navigationArrowInit_8116B00(r5 = sprite, r7 = player slot, r10, lr) -> r2 r3 r5 r10 r11 */
+Next battleObject_navigationArrowInit_8116B00(void) {
     call_sprite_dispatchVariantUpdate_8116B9C_result res = init_sprite_variant(R5, R7);
     R2 = res.r2; R3 = res.r3; R5 = res.r5; R10 = res.r10; R11 = res.r11;
     RETURN_TO_CALLER();

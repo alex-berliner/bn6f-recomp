@@ -1,0 +1,82 @@
+name: battleObject_advanceChipAnimFrames_812B318
+address: '0x0812B318'
+kind: function
+previous_names:
+- sub_812B318
+status: probable
+summary: Per battle object, increments the +0x1C frame counter and walks up to three chip-select entry
+  slots in unk_20251A0, counting ready entries and dequeueing those whose animation has played out; returns
+  whether to proceed and how many active entries remain.
+interface: (r0 = maxEntries (= original +1), r5 = current battle object) -> r0 = 1 if the object should
+  continue, 0 if the slot was reset; r1 = count of ready entries; r2 = count of "fast" (high-bit set)
+  entries
+details: 'The function is called from many battle-object control paths (chip select, action pick, cancel/event
+  pose,
+
+  state-3 advance) with r0=3 ("original entries+1") so the loop iterates r4 in {1,2,3} (inclusive of r0+1).
+
+  It first bumps the battle object''s +0x1C byte (a per-object frame counter, no field name in the
+
+  BattleObject struct but is `Unk_1c`). Then it scans the three words of unk_20251A0 indexed by (r4-1)*4.
+
+  For each slot: if NULL, it just counts a ready-slot into [sp]; if bit 0x80000000 is set it counts that
+
+  bit as a "fast" entry into [sp+4]; otherwise it clears bit 0x80000000 and calls sub_811A768(sprite,
+
+  -0x10) (right-shifting a sprite-coordinate helper) - if the helper returns 0 meaning the rightward
+
+  bound was crossed, the slot''s pointer is zeroed and r6 is cleared to 0 to abort the loop early.
+
+  Finally it compares byte_812B394[r4] (thresholds 0,3,6,9,12) against the +0x1C frame counter; if the
+
+  threshold is still ahead it loops, and at the end returns r6 (whether to keep going), r1 = ready count
+
+  and r2 = fast count. The captured calls match: entry r0=3 and r3=4 (object''s slot index), exit r0=1
+  in
+
+  the steady state, with a single r0=0 when sub_811A768 zeroes a slot (snap_menus3_12.bin).
+
+  Callers use the returned (r1, r2) to gate transitions or to take the cancel/select pose, e.g.
+
+  decideBattleAction_8129AC8 forwards the "ready" count into chip-select actions.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- r0=3 at entry means r7=r0+1=4 and the loop runs r4=1..3 inclusive (3 chip-select slots).
+    - ldrb r0,[r5,#0x1c]; add r0,#1; strb r0,[r5,#0x1c] bumps an object-local frame counter inside +0x1C
+    (BattleObject Unk_1c). - unk_20251A0 is loaded via off_812B38C and indexed by (r4-1)<<2, i.e. an array
+    of three u32 entries. - tst r1,#0x80000000 then bic r1,#0x80000000 followed by bl sub_811A768 makes
+    the top bit a "in-flight" flag cleared before shifting. - mov r6,#0 only happens when sub_811A768
+    returns 0, matching the only r0=0 captured exit (snap_menus3_12.bin). - byte_812B394 thresholds {0,3,6,9,12}
+    are the per-slot per-step frame-count checkpoint vs +0x1C. - All 12+ confirmed callers treat this
+    as a "three chip slots ready?" gate before chip-select / state-3 / cancel-pose logic.'
+  refs:
+  - bn6f/asm/asm33.s
+  reproduce: 'python3 tools/asmcat.py 0x0812B318
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_advanceChipAnimFrames_812B318
+
+    '
+open_questions:
+- The exact meaning of the two return counts (r1 ready, r2 with-bit-set). The "fast" branch count vs the
+  ready-empty count distinction is not used distinctively by every caller; checking how each caller consumes
+  r2 vs r1 in the disassembly would settle it.
+- Why r3 is unused inside the function. It almost always arrives as 4 (the active slot index) but the
+  function reads slots via r4 only - is r3 purely a chip-slot index passed through for the caller's own
+  use?
+- Whether the unk_20251A0 array is the chip-select entry list or something else (e.g. an animation queue).
+sources:
+- discovery session 2026-10-14 batch 37 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 391e53d9
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_812B318 -> battleObject_advanceChipAnimFrames_812B318
+  where: bn6f f491ae79
+  tool: tools/rename_symbol.py

@@ -1,0 +1,72 @@
+name: battleObject_initSpriteFromRelatedOrParam2_80E32D8
+address: '0x080E32D8'
+kind: function
+previous_names:
+- sub_80E32D8
+status: probable
+summary: 'Initializes a battle object (mystery data variant): sets VISIBLE, copies NameID from its source
+  object, loads sprite (using arm-position lookup when Param1==0xff, else Param2), unpacks actor info,
+  finishes sprite plumbing (animation, animationData, palette, flip, color shader, Timer2, shadow), then
+  transitions to UPDATE and runs the per-frame updater.'
+interface: (r5 = this battleObject, r10 = toolkit) -> void (mutates r0..r12/lr, preserves nothing across
+  call)
+details: "1. Sets ObjectHeader_Flags bit 1 (VISIBLE) on `this` (r5). No callers listed—function appears\
+  \ to be reached via an indirect/jump-table or by another function not yet linked.\n2. Branch on Param1:\
+  \ 0xff => arm/extra path; otherwise the \"normal\" path.\n   - 0xff branch: copies NameID from RelatedObject1Ptr\
+  \ into `this.NameID`, calls enemy_getArmPosition_800F26C to resolve (x,y,?,?,?) into r0/r1, then sprite_load(0x80,\
+  \ r0, r1) using those coordinates; reads back NameID, calls unpackVerActorTyAndAIIdx_800F29C, then sub_8010DF6(part2=0)\
+  \ and sub_80C4526(RelatedObject2Ptr, 1). Skips over the Param2-based sprite_load at loc_80E331A.\n \
+  \  - non-0xff branch: sprite_load(0x80, Param2, Param3) at loc_80E3312.\n3. After sprite_load: Param3\
+  \ is copied into both CurAnim and CurAnimCopy, then sprite_setAnimation, sprite_loadAnimationData, sprite_update\
+  \ run in that order.\n4. Reads a 4-byte record at this+0x64 (relative to r5+0x64): word0 -> Timer2,\
+  \ byte2 toggles shadow (0 => sprite_noShadow; nonzero => sprite_hasShadow, and byte3==0 triggers sprite_removeShadow).\n\
+  5. ExtraVars[0x10] -> sprite_setPalette; Param4 -> sprite_setFlip; writes 0 to Timer; ExtraVars[0] ->\
+  \ sprite_setColorShader.\n6. Sets CurStateActionPhaseAndPhaseInitialized = CUR_STATE_UPDATE (0x04 in\
+  \ low byte, zeroing CurAction/Phase/PhaseInitialized), then falls into battleObject_updateMysteryData_80E336E.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0,[r5,#oObjectHeader_Flags] ... orr r0,r1 ... strb r0,[r5,#oObjectHeader_Flags]` with
+    r1=2 = OBJECT_FLAG_VISIBLE set on entry. - `cmp r1,#0xff` at Param1 chooses the arm source branch
+    (loc_80E3312 vs the Param1==0xff branch). - Param1==0xff path: `ldrh r0,[r5,#oBattleObject_NameID]`
+    written into `this.NameID` from RelatedObject1Ptr; `bl enemy_getArmPosition_800F26C` returns x/y packed
+    into r0/r1 consumed by `bl sprite_load` (R0=0x80). - `ldrh r0,[r5,#oBattleObject_NameID]; bl unpackVerActorTyAndAIIdx_800F29C`
+    then `mov r2,#0; bl sub_8010DF6` and `bl sub_80C4526` (with RelatedObject2Ptr) are the extra-init
+    tail of the 0xff branch. - Param2/Param3 drive `sprite_load` in the else branch (`ldrb r2,[r5,#oBattleObject_Param2]`).
+    - `ldrb r0,[r5,#oBattleObject_Param3]; strb r0,[r5,#oBattleObject_CurAnim]; strb r0,[r5,#oBattleObject_CurAnimCopy];
+    bl sprite_setAnimation` shows CurAnim=CurAnimCopy=Param3. - `bl sprite_loadAnimationData` then `bl
+    sprite_update` advance the new sprite once. - `add r7,r5,#0x64`/sibling loads show the 4-byte shadow
+    config: `[r7]==Timer2`, `[r7,#2]tst == shadow on/off`, `[r7,#3]tst == remove-shadow gate`. - Branch
+    to sprite_hasShadow vs sprite_noShadow at loc_80E3340/loc_80E334E handles the dual-flag shadow handling.
+    - `ldr r0,[r5,#oBattleObject_ExtraVars+0x10]; bl sprite_setPalette`, `ldrb r0,[r5,#oBattleObject_Param4];
+    bl sprite_setFlip`, `strh r0,[r5,#oBattleObject_Timer]` (r0=0), `ldr r0,[r5,#oBattleObject_ExtraVars];
+    bl sprite_setColorShader`. - `mov r0,#CUR_STATE_UPDATE; str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized];
+    bl battleObject_updateMysteryData_80E336E` shows the state transition plus tail-call into the per-frame
+    updater.'
+  refs:
+  - bn6f/asm/asm31.s
+  reproduce: 'python3 tools/asmcat.py 0x080E32D8
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_initSpriteFromRelatedOrParam2_80E32D8
+
+    '
+open_questions:
+- No caller in the request — who triggers this init (likely an enemy spawner or mystery-data spawn; the
+  per-frame callee's name has "MysteryData" which fits enemy viruses/bosses). The exact Param1==0xff arm
+  semantics (which arm position lookup; what sub_8010DF6 and sub_80C4526 do with RelatedObject2Ptr) are
+  not resolvable from this function alone.
+- The 4 bytes at +0x64 (0x60=ExtraVars base; byte at ExtraVars[4]) are functionally the shadow spec/timer
+  config — their identity relative to ExtraVars[] indexing is unclear.
+sources:
+- discovery session 2026-10-14 batch 37 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 391e53d9
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80E32D8 -> battleObject_initSpriteFromRelatedOrParam2_80E32D8
+  where: bn6f f491ae79
+  tool: tools/rename_symbol.py

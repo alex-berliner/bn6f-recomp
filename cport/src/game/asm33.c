@@ -870,11 +870,11 @@ Next pet_menu_runFrame_81237BC(void) {
 /* ── sub_81237E0 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r1, r2; bool v; } call_sub_8120CC8_result_sub_81237E0;
-/* register form: generated wrapper: sub_8120CC8 has no typed C interface yet */
+/* register form: generated wrapper: battleObject_advanceAnimTableBy0xFF_8120CC8 has no typed C interface yet */
 static inline call_sub_8120CC8_result_sub_81237E0 call_sub_8120CC8_sub_81237E0(u32 r0, u32 r1) {
     R0 = r0;
     R1 = r1;
-    GUEST_CALL(sub_8120CC8);
+    GUEST_CALL(battleObject_advanceAnimTableBy0xFF_8120CC8);
     return (call_sub_8120CC8_result_sub_81237E0){ R0, R1, R2, OVERFLOW_FLAG() };
 }
 
@@ -1391,11 +1391,11 @@ static inline call_sub_811FAF4_result call_sub_811FAF4(u32 r0, u32 r1, u32 r2, u
 }
 
 typedef struct { u32 r0, r1; bool v; } call_sub_8120CC8_result;
-/* register form: generated wrapper: sub_8120CC8 has no typed C interface yet */
+/* register form: generated wrapper: battleObject_advanceAnimTableBy0xFF_8120CC8 has no typed C interface yet */
 static inline call_sub_8120CC8_result call_sub_8120CC8_sub_8123D98(u32 r0, u32 r1) {
     R0 = r0;
     R1 = r1;
-    GUEST_CALL(sub_8120CC8);
+    GUEST_CALL(battleObject_advanceAnimTableBy0xFF_8120CC8);
     return (call_sub_8120CC8_result){ R0, R1, OVERFLOW_FLAG() };
 }
 
@@ -1412,7 +1412,7 @@ static inline call_sub_8120CC8_result call_sub_8120CC8_sub_8123D98(u32 r0, u32 r
  *   r6 = fwd_r4    : forwarded as r4 to battleObject_queueOamFromTableRow_811FAF4
  *
  * The slot byte is laid out as (tier << 4) | kind. The kind nibble is
- * produced by battleObject_queueOamFromTableRow_811FAF4 (with an immediate sub_8120CC8 refill stored into
+ * produced by battleObject_queueOamFromTableRow_811FAF4 (with an immediate battleObject_advanceAnimTableBy0xFF_8120CC8 refill stored into
  * the slot when the old tier was 1), the tier nibble is the old tier minus
  * one. The original preserves r4 with push/pop, so this helper returns it
  * for the adapter to restore - the battleObject_queueOamFromTableRow_811FAF4 wrapper leaves its own
@@ -1434,9 +1434,9 @@ static u32 refresh_spawn_slot(u32 page, u32 offset, u32 table_idx, u32 slot_off,
 
     u32 new_tier;
     if (tier == 1u) {
-        /* Tier 1 is exhausted: ask sub_8120CC8 for the follow-up entry and
+        /* Tier 1 is exhausted: ask battleObject_advanceAnimTableBy0xFF_8120CC8 for the follow-up entry and
            store it into the slot right away. r1 afterwards is whatever
-           sub_8120CC8 leaves there, and feeds the tier field below. */
+           battleObject_advanceAnimTableBy0xFF_8120CC8 leaves there, and feeds the tier field below. */
         call_sub_8120CC8_result refill =
             call_sub_8120CC8_sub_8123D98(lookup.r0, A_dword_81233D4);
         ST8(base + slot_off, refill.r0);
@@ -1921,7 +1921,7 @@ Next subchip_initGfx_81243B0(void) {
  * Per-frame entity update. Loads the active flag at +0xC; if zero, do nothing.
  * Otherwise packs an effect descriptor and dispatches a render/animation call
  * (battleObject_queueOamFromTableRow_811FAF4), then decrements a timer at +0x12; when it hits zero, calls
- * sub_8120CC8 to fetch a new (state, duration) pair that is stored at +0xD
+ * battleObject_advanceAnimTableBy0xFF_8120CC8 to fetch a new (state, duration) pair that is stored at +0xD
  * and +0x12 respectively. */
 Next submenu_subchip_tickOamAndAdvanceAnimTable_81244EC(void) {
     /* The original pushes {r4, lr} and uses r4 = 0x40000000 as an argument
@@ -1952,9 +1952,9 @@ Next submenu_subchip_tickOamAndAdvanceAnimTable_81244EC(void) {
     if (!ZERO_FLAG())
         goto end;
 
-    /* Timer expired: ask sub_8120CC8 for the next (state, duration) pair. */
+    /* Timer expired: ask battleObject_advanceAnimTableBy0xFF_8120CC8 for the next (state, duration) pair. */
     R1 = A_dword_8123F3C;
-    GUEST_CALL(sub_8120CC8);
+    GUEST_CALL(battleObject_advanceAnimTableBy0xFF_8120CC8);
     ST8(R5 + 0xD, R0 & 0xFF);
     ST8(R5 + 0x12, R1 & 0xFF);
 
@@ -2395,10 +2395,10 @@ static void call_sub_812546C(void) {
     GUEST_CALL(sub_812546C);
 }
 
-/* register form: calls sub_8120CC8 outside this file, which has no typed C interface yet */
+/* register form: calls battleObject_advanceAnimTableBy0xFF_8120CC8 outside this file, which has no typed C interface yet */
 static u32 call_sub_8120CC8(u32 slot, u32 data) {
     R0 = slot; R1 = data;
-    GUEST_CALL(sub_8120CC8);
+    GUEST_CALL(battleObject_advanceAnimTableBy0xFF_8120CC8);
     return R0 | (R1 << 4);  /* combine both callee outputs as the caller does */
 }
 
@@ -2468,7 +2468,7 @@ static u32 init_battle_data(u32 battle_data, u32 toolkit) {
     call_sub_8125D10_sub_8124B5C();
     call_sub_812546C();
 
-    /* Store combined lookup byte from sub_8120CC8 */
+    /* Store combined lookup byte from battleObject_advanceAnimTableBy0xFF_8120CC8 */
     ST8(battle_data + 0xC, call_sub_8120CC8(0, A_dword_8124A94));
 
     /* Trigger screen fade in */

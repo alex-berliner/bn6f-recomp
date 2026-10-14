@@ -1,0 +1,56 @@
+name: battleObject_advanceAnimTableBy0xFF_8120CC8
+address: '0x08120CC8'
+kind: function
+previous_names:
+- sub_8120CC8
+status: probable
+summary: Looks up the next animation table entry for a battle object — fetches `t[i]` from `r1`; if the
+  byte is `0xFF` it returns the first byte of the table instead.
+interface: (r0 = index, r1 = table ptr) -> r0 = byte ; preserves lr via tail-call, no memory writes
+details: 'Saves `r0` into `r3` and `r1` into `r2`, then loads `r1 = byte [r2 + r3]`, i.e. `table[index]`.
+
+  If that byte equals `0xFF` (the documented sentinel for "end of anim table"), it rewinds: `r0` is forced
+  to `0` and `r1` is reloaded from `[r2 + 0]` — the first row of the table.
+
+  Otherwise the loaded `r1` (and original `r0` index) is returned unchanged via `mov pc, lr`.
+
+  This matches the typical "next anim frame" loop pattern in `sub_8134740`''s hypothesis line ("reloading
+  it from `sub_8120CC8` when it reaches zero") and in `sub_811F508`''s chip-use/custom-data ticker ("reloads
+  a per-instance timer via `sub_8120CC8` when it expires"). Captured-call snapshots show r0 across many
+  values (0,1,4) being returned unchanged, consistent with an index passed through.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r1, [r2, r3]` at 0x08120CD0 reads `table[index]` after `mov r3, r0` / `mov r2, r1`.
+    - `cmp r1, #0xff` then `bne locret_8120CD6` — 0xFF is treated as a sentinel end-of-list value. - On
+    hit, `mov r0, #0` and `ldrb r1, [r2, r0]` reloads index 0 of the same table. - Tail return `mov pc,
+    lr` with `lr` listed in `in=` matches a pure lookup with no caller-saved register clobbers beyond
+    r0/r1. - 40 captured calls and 36 of 40 example entries show r0 unchanged across the call (0→0, 1→1,
+    4→4), confirming r0 is passed through as the row index.'
+  refs:
+  - bn6f/asm/asm32.s
+  reproduce: 'python3 tools/asmcat.py 0x08120CC8
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_advanceAnimTableBy0xFF_8120CC8
+
+    '
+open_questions:
+- Whether r0 is meant as the byte value, the slot id, or the animation id is not strictly disambiguated
+  by the assembly alone — caller-side use (e.g. `sub_8134740` hypothesis saying "reloading obj+0x15")
+  implies r0 is an index into a per-object animation/table array; a couple of non-default captured r0s
+  (1, 4) are consistent with multi-row tables. Nothing else obviously ties to a specific struct field.
+sources:
+- discovery session 2026-10-14 batch 37 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 391e53d9
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8120CC8 -> battleObject_advanceAnimTableBy0xFF_8120CC8
+  where: bn6f f491ae79
+  tool: tools/rename_symbol.py

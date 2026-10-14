@@ -2414,15 +2414,15 @@ Next overworldObject55_ReadStreamEntry_8031A68(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8031B7C ── */
-/* sub_8031B7C(r0 = query id):
+/* ── chatbox_getCursorBlinkState_8031B7C ── */
+/* chatbox_getCursorBlinkState_8031B7C(r0 = query id):
  * Fetches one byte out of the overworld map object's state. With r0 == 1 it
  * follows dword_2013920 to the object, reads its pointer at +0x14, and returns
  * the byte at +1 of that structure; any other r0 returns 0. Callers also
  * receive the intermediate pointers in r5 (object table) and r2 (structure),
  * plus the flags of the `cmp r0, #1` (and on the zero path the subsequent
  * `mov r0, #0` updates n/z on top of them). */
-Next sub_8031B7C(void) {
+Next chatbox_getCursorBlinkState_8031B7C(void) {
     u32 mode = R0;
 
     R5 = A_dword_2013920;
@@ -2455,7 +2455,7 @@ Next text_setupTextboxAndStartPrint_8031BB2(void) {
     R5 = 0x10;
     GUEST_CALL(textbox_computeCursorBlinkAdvance_80315B8); /* open the message window box */
 
-    GUEST_CALL(sub_8031B7C); /* start the text print */
+    GUEST_CALL(chatbox_getCursorBlinkState_8031B7C); /* start the text print */
 
     RETURN_TO_CALLER();
 }
@@ -2478,7 +2478,7 @@ Next textbox_StepAndRefreshWindow_8031BCA(void) {
     GUEST_CALL(textbox_computeCursorBlinkAdvance_80315B8);
 
     /* Redraw/refresh the text box using the blit results in r2..r5. */
-    GUEST_CALL(sub_8031B7C);
+    GUEST_CALL(chatbox_getCursorBlinkState_8031B7C);
 
     RETURN_TO_CALLER();
 }
@@ -2488,7 +2488,7 @@ Next textbox_StepAndRefreshWindow_8031BCA(void) {
  *
  * R0 and R5 arrive as arguments. The first callee (battle_calcRelPosToTarget_803172E) is invoked
  * with them unchanged. Then fixed tile/map parameters are loaded into
- * r2-r5 (0, 0x10, 0xC, 0xC) for math_pointCrossHalfPlaneTest_8031594, and finally sub_8031B7C is
+ * r2-r5 (0, 0x10, 0xC, 0xC) for math_pointCrossHalfPlaneTest_8031594, and finally chatbox_getCursorBlinkState_8031B7C is
  * called with whatever registers math_pointCrossHalfPlaneTest_8031594 left behind (r0 and r5 are
  * carried through). All register and flag effects on return come from the
  * last callee, so nothing needs to be set explicitly here. */
@@ -2501,7 +2501,7 @@ Next battleObject_checkInAttackRange_08031BE2(void) {
     R5 = 0xC;
 
     GUEST_CALL(math_pointCrossHalfPlaneTest_8031594);
-    GUEST_CALL(sub_8031B7C);
+    GUEST_CALL(chatbox_getCursorBlinkState_8031B7C);
 
     RETURN_TO_CALLER();
 }
@@ -2510,7 +2510,7 @@ Next battleObject_checkInAttackRange_08031BE2(void) {
 /* battle_aiUpdate_8031BFA:
  * Runs battle_calcRelPosToTarget_803172E on the values the caller left in r0/r5, then invokes
  * battleObject_isHitByPanelRectangle_8031570 with a fixed argument set (r2 = 0, r3 = r4 = 0x10, r5 = 0)
- * and finally sub_8031B7C. Register results and flags are whatever the
+ * and finally chatbox_getCursorBlinkState_8031B7C. Register results and flags are whatever the
  * last callee leaves behind; lr is untouched (the original just pushes
  * lr and pops it back into pc). */
 Next battle_aiUpdate_8031BFA(void) {
@@ -2522,7 +2522,7 @@ Next battle_aiUpdate_8031BFA(void) {
     R5 = 0;
     GUEST_CALL(battleObject_isHitByPanelRectangle_8031570);
 
-    GUEST_CALL(sub_8031B7C);
+    GUEST_CALL(chatbox_getCursorBlinkState_8031B7C);
 
     RETURN_TO_CALLER();
 }
@@ -2531,8 +2531,8 @@ Next battle_aiUpdate_8031BFA(void) {
 /* battle_calcRelPosAndAdvanceTextboxBlink_8031C2A(r0, r5 = context):
  * Runs a short helper sequence: first battle_calcRelPosToTarget_803172E on the incoming context,
  * then textbox_computeCursorBlinkAdvance_80315B8 with the fixed arguments (r2 = 1, r3 = 0x10, r4 = 1,
- * r5 = 0x10), and finally sub_8031B7C. The caller sees whatever registers
- * and flags sub_8031B7C leaves behind. */
+ * r5 = 0x10), and finally chatbox_getCursorBlinkState_8031B7C. The caller sees whatever registers
+ * and flags chatbox_getCursorBlinkState_8031B7C leaves behind. */
 Next battle_calcRelPosAndAdvanceTextboxBlink_8031C2A(void) {
     GUEST_CALL(battle_calcRelPosToTarget_803172E);
 
@@ -2542,7 +2542,7 @@ Next battle_calcRelPosAndAdvanceTextboxBlink_8031C2A(void) {
     R5 = 0x10;
     GUEST_CALL(textbox_computeCursorBlinkAdvance_80315B8);
 
-    GUEST_CALL(sub_8031B7C);
+    GUEST_CALL(chatbox_getCursorBlinkState_8031B7C);
     RETURN_TO_CALLER();
 }
 
@@ -2552,7 +2552,7 @@ Next battle_calcRelPosAndAdvanceTextboxBlink_8031C2A(void) {
  * The caller's r0/r5 are passed straight through to battle_calcRelPosToTarget_803172E; afterwards
  * a fixed parameter block (r2 = 0, r3 = 14, r4 = 14, r5 = 0) is set up for
  * math_pointLeftOfLineTest_80315DC, and whatever it leaves in r0/r2/r3/r4/r5 is handed on to
- * sub_8031B7C, whose results (registers and flags) become this function's
+ * chatbox_getCursorBlinkState_8031B7C, whose results (registers and flags) become this function's
  * results. */
 Next battle_aiPointLeftOfLineSideTest_8031C42(void) {
     GUEST_CALL(battle_calcRelPosToTarget_803172E);
@@ -2563,7 +2563,7 @@ Next battle_aiPointLeftOfLineSideTest_8031C42(void) {
     R5 = 0;
 
     GUEST_CALL(math_pointLeftOfLineTest_80315DC);
-    GUEST_CALL(sub_8031B7C);
+    GUEST_CALL(chatbox_getCursorBlinkState_8031B7C);
 
     RETURN_TO_CALLER();
 }
@@ -2612,12 +2612,12 @@ Next FreeOWPlayerObject(void) {
 }
 
 /* ── sub_8031C5A ── */
-/* sub_8031C5A: enable the flag passed to sub_8031B7C as r0 = 1 (e.g. mark
+/* sub_8031C5A: enable the flag passed to chatbox_getCursorBlinkState_8031B7C as r0 = 1 (e.g. mark
  * something as done/on); all results (r0, r2, r5, flags) come straight from
  * the callee. */
 Next sub_8031C5A(void) {
     R0 = 1;
-    GUEST_CALL(sub_8031B7C);
+    GUEST_CALL(chatbox_getCursorBlinkState_8031B7C);
     RETURN_TO_CALLER();
 }
 
@@ -2625,7 +2625,7 @@ Next sub_8031C5A(void) {
 /* chatbox_renderBattleCursorStep_8031C7C — battle helper that runs a short setup sequence:
  * 1. battle_calcRelPosToTarget_803172E with the caller's r0/r5 arguments,
  * 2. textbox_computeCursorBlinkAdvance_80315B8 with a fixed parameter set (14, 14, 0, 16),
- * 3. sub_8031B7C to finish.
+ * 3. chatbox_getCursorBlinkState_8031B7C to finish.
  * All results (r0, r2-r7) and the NZCV flags are whatever the last
  * callee leaves behind. */
 Next chatbox_renderBattleCursorStep_8031C7C(void) {
@@ -2637,7 +2637,7 @@ Next chatbox_renderBattleCursorStep_8031C7C(void) {
     R5 = 0x10;
 
     GUEST_CALL(textbox_computeCursorBlinkAdvance_80315B8);
-    GUEST_CALL(sub_8031B7C);
+    GUEST_CALL(chatbox_getCursorBlinkState_8031B7C);
 
     RETURN_TO_CALLER();
 }
@@ -2645,7 +2645,7 @@ Next chatbox_renderBattleCursorStep_8031C7C(void) {
 /* ── battle_aiStorySub3_8031C94 ── */
 /* battle_aiStorySub3_8031C94: run a three-step sequence on the object passed in r0/r5.
  * Calls battle_calcRelPosToTarget_803172E first, then textbox_computeCursorBlinkAdvance_80315B8 with a fixed parameter set
- * (r2=0, r3=0x10, r4=2, r5=2), then sub_8031B7C, which picks up whatever
+ * (r2=0, r3=0x10, r4=2, r5=2), then chatbox_getCursorBlinkState_8031B7C, which picks up whatever
  * r2/r5 textbox_computeCursorBlinkAdvance_80315B8 left behind. r3/r4 must survive the final call.
  * Everything (registers and flags) is simply passed through to the caller. */
 Next battle_aiStorySub3_8031C94(void) {
@@ -2657,7 +2657,7 @@ Next battle_aiStorySub3_8031C94(void) {
     R5 = 2;
     GUEST_CALL(textbox_computeCursorBlinkAdvance_80315B8);
 
-    GUEST_CALL(sub_8031B7C);
+    GUEST_CALL(chatbox_getCursorBlinkState_8031B7C);
 
     RETURN_TO_CALLER();
 }
@@ -2665,7 +2665,7 @@ Next battle_aiStorySub3_8031C94(void) {
 /* ── sub_8031CAC ── */
 /* sub_8031CAC(r0, r5):
  * Compute the relative position to the battle target, run a half-plane test against
- * a point, then perform sub_8031B7C. Acts as a thin wrapper that prepares the
+ * a point, then perform chatbox_getCursorBlinkState_8031B7C. Acts as a thin wrapper that prepares the
  * arguments for math_pointCrossHalfPlaneTest_8031594. */
 Next sub_8031CAC(void) {
     /* Calculate the relative position from r0 toward the current battle target. */
@@ -2680,7 +2680,7 @@ Next sub_8031CAC(void) {
     R5 = 0xE;
 
     GUEST_CALL(math_pointCrossHalfPlaneTest_8031594);
-    GUEST_CALL(sub_8031B7C);
+    GUEST_CALL(chatbox_getCursorBlinkState_8031B7C);
 
     RETURN_TO_CALLER();
 }

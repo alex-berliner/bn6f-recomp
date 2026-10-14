@@ -121,10 +121,10 @@ Next sprite_setPriority_8002E14(void) {
     RETURN_TO_CALLER();
 }
 
-/* sub_80028C0(r0 = index):
+/* sprite_recordPaletteCountToGroupSlot_80028C0(r0 = index):
  * Write the low byte of the value at dword_200F340 into byte_200F389[index].
  * Leaves r1 = value read, r2 = base address of byte_200F389. */
-Next sub_80028C0(void) {
+Next sprite_recordPaletteCountToGroupSlot_80028C0(void) {
     R1 = LD32(A_dword_200F340);
     R2 = 0x0200F389u;        /* byte_200F389 */
     ST8(R2 + R0, R1);

@@ -25,7 +25,7 @@ enum {
     NPC_SPRITE = 0xA0,               /* oOverworldNPCObject_SizeBeforeObjectSprite */
     NPC_POSITION = 0x24,             /* what sprite_projectAndCull projects */
     SPRITE_PIECE_MASK = 0x24,        /* sprite struct: on-screen piece mask */
-    NPC_TILE_ALLOCATOR = 2,          /* sprite_ensureGfxResident / sub_80028C0 index for NPCs */
+    NPC_TILE_ALLOCATOR = 2,          /* sprite_ensureGfxResident / sprite_recordPaletteCountToGroupSlot_80028C0 index for NPCs */
     NPC_SPRITE_LAYER = 2, NPC_LIST_BIAS = 0x60,
 };
 
@@ -64,7 +64,7 @@ Next TryUpdateEachOverworldNPCObject_800461E(void) {
 /* Draw the NPCs: a visible NPC is projected, its graphics made resident and
  * its frame's pieces queued on sprite layer 2; an invisible one has no
  * pieces on screen, but an active one is still projected. Then the NPC tile
- * allocator's slot is recorded (sub_80028C0). */
+ * allocator's slot is recorded (sprite_recordPaletteCountToGroupSlot_80028C0). */
 Next npc_drawSprites_800467C(void) {
     u32 in4 = R4, in5 = R5, in6 = R6, in7 = R7, in8 = R8, in9 = R9, in12 = R12;
     R4 = in8; R6 = in12;                                  /* as the original */
@@ -99,7 +99,7 @@ Next npc_drawSprites_800467C(void) {
     }
     SET_FLAGS_CMP(NPC_COUNT, NPC_COUNT);                  /* the loop's last cmp: C = 1, V = 0 */
     R0 = NPC_TILE_ALLOCATOR;
-    GUEST_CALL(sub_80028C0);
+    GUEST_CALL(sprite_recordPaletteCountToGroupSlot_80028C0);
     R4 = in4; R5 = in5; R6 = in6; R7 = in7; R8 = in8; R9 = in9; R12 = in12;
     RETURN_TO_CALLER();
 }

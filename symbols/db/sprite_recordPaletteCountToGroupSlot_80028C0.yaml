@@ -1,0 +1,53 @@
+name: sprite_recordPaletteCountToGroupSlot_80028C0
+address: '0x080028C0'
+kind: function
+previous_names:
+- sub_80028C0
+status: probable
+summary: Records the current queued-sprite palette count (dword_200F340) into byte slot r0 of the per-group
+  counter array at byte_200F389.
+interface: (r0 = groupSlot) -> side effects only (r1/r2 clobbered, NZ flags set); writes byte_200F389[r0]
+  = (byte) dword_200F340
+details: '4-instruction leaf that loads dword_200F340 (the running count of OBJ palette slots used by
+  the sprite queue) into r1, then stores the low byte of that value into byte_200F389 + r0. The callers
+  use r0 as a per-sprite-group index (slots 3/4/5/6/...) so each sprite-group flush records its post-flush
+  palette count into its own slot of the array. Different callers pass different r0 values (0/1/4/5/0x38/...)
+  which select which byte of the array is written. No flags are documented as live to callers, but the
+  byte store is the only meaningful side effect.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r1, off_80028CC // =dword_200F340` then `ldr r1, [r1]` reads the palette-count word
+    at 0x0200F340 into r1 (assembly lines 2-3). - `ldr r2, off_80028D0 // =byte_200F389` loads the base
+    of the per-group counter array at 0x0200F389 (assembly line 4). - `strb r1, [r2,r0]` writes the low
+    byte of the palette count at byte_200F389 + r0 (assembly line 5), confirming r0 is the slot index.
+    - Captured calls show r0 taking values 0, 1, 4, 5, 0x38 etc., consistent with "slot index into the
+    per-group array". - Caller `battleObject_finishQueuedSpriteGroup_80049B0` is documented as writing
+    into "slot 5" of byte_200F389, matching r0=5 capture `snap_story4_11.bin`. - Caller `sprite_finishGroup_8004590`
+    writes into "slot 4", matching r0=4 capture `snap_story4_10.bin`. - Caller `sprite_finalizeBattleSpriteGroupQueue_8004298`
+    writes into "slot 3" of the same array (r0=3 in similar flush sites).'
+  refs:
+  - bn6f/asm/sprite.s
+  reproduce: 'python3 tools/asmcat.py 0x080028C0
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): sprite_recordPaletteCountToGroupSlot_80028C0
+
+    '
+open_questions:
+- Exact layout/ownership of byte_200F389 (one entry per possible sprite-group slot) is not fully proven;
+  would be settled by mapping all callers to their slot indices.
+sources:
+- discovery session 2026-10-14 batch 37 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 391e53d9
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80028C0 -> sprite_recordPaletteCountToGroupSlot_80028C0
+  where: bn6f f491ae79
+  tool: tools/rename_symbol.py

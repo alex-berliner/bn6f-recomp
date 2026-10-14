@@ -10,14 +10,14 @@
 
 /* ── t1_0x5_tempAttackObject_80B8CD8 ── */
 /* register form: tail-dispatch to the temp-attack object's state handler.
- * battle_initNaviSprite_80B8CF8 / sub_80B8DA6 / object_freeMemory have no typed C interface yet. */
+ * battle_initNaviSprite_80B8CF8 / battleObject_syncSpriteFromOwner_80B8DA6 / object_freeMemory have no typed C interface yet. */
 static void call_temp_attack_handler(u32 state, u32 handler_addr, u32 obj_ptr) {
     R0 = state;
     R1 = handler_addr;
     R5 = obj_ptr;
     switch (state) {
     case 0: GUEST_CALL(battle_initNaviSprite_80B8CF8);      break;
-    case 4: GUEST_CALL(sub_80B8DA6);      break;
+    case 4: GUEST_CALL(battleObject_syncSpriteFromOwner_80B8DA6);      break;
     case 8: GUEST_CALL(object_freeMemory); break;
     }
 }
@@ -105,11 +105,11 @@ static void call_get_arm_position(u32 tableEntry, u32 nameID, u32 armIdx,
     *outY = R1;
 }
 
-/* register form: sub_80B8DA6 reads R4 (table entry) internally; original keeps R4
+/* register form: battleObject_syncSpriteFromOwner_80B8DA6 reads R4 (table entry) internally; original keeps R4
  * = table entry until after the pop restores the caller's value */
 static void call_post_init_sub_80B8DA6(u32 tableEntry) {
     R4 = tableEntry;
-    GUEST_CALL(sub_80B8DA6);
+    GUEST_CALL(battleObject_syncSpriteFromOwner_80B8DA6);
 }
 
 /* ------------------------------------------------------------------ */
@@ -191,7 +191,7 @@ static void init_battle_navi_sprite(u32 obj) {
 
 /* ------------------------------------------------------------------ */
 
-/* battle_initNaviSprite_80B8CF8(obj = R5) -> r0-r3 (from sub_80B8DA6), nzcv; preserves caller's r4. */
+/* battle_initNaviSprite_80B8CF8(obj = R5) -> r0-r3 (from battleObject_syncSpriteFromOwner_80B8DA6), nzcv; preserves caller's r4. */
 Next battle_initNaviSprite_80B8CF8(void) {
     u32 saved_r4 = R4;
     init_battle_navi_sprite(R5);
@@ -199,8 +199,8 @@ Next battle_initNaviSprite_80B8CF8(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80B8DA6 ── */
-/* sub_80B8DA6: Sync secondary object (in r5) to its related primary object (in r4):
+/* ── battleObject_syncSpriteFromOwner_80B8DA6 ── */
+/* battleObject_syncSpriteFromOwner_80B8DA6: Sync secondary object (in r5) to its related primary object (in r4):
  *  - copy position offset (0x34..0x40) from r4 into r5, adding XVelocity/ZVelocity
  *    and subtracting the 0xC byte signed shifted left 16 from Y/Z.
  *  - copy bit 1 of related's flags into self's flags (clear bit 1 from r1 mask first).
@@ -209,7 +209,7 @@ Next battle_initNaviSprite_80B8CF8(void) {
  *    Param3 set), or unless battle is paused.
  *  - otherwise clear bit 1 of self flags and queue self for destroy.
  *  Preserves r4 r5 r7. */
-Next sub_80B8DA6(void) {
+Next battleObject_syncSpriteFromOwner_80B8DA6(void) {
     u32 r4 = LD32(R5 + oBattleObject_RelatedObject1Ptr);
 
     /* Copy position block (3 u32s at offset 0x34) from r4 -> r5,

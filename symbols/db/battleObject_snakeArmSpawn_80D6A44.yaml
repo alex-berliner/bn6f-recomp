@@ -1,0 +1,84 @@
+name: battleObject_snakeArmSpawn_80D6A44
+address: '0x080D6A44'
+kind: function
+previous_names:
+- sub_80D6A44
+status: probable
+summary: 'Initialize and spawn a SnakeArm projectile battle object for its parent: load its sprite/animation,
+  attach to the parent''s NameID-relative arm slot, set up collision with hit/status params from the parent''s
+  Params, play the summon SFX and switch to the Update state.'
+interface: '(r5 = this, r10 = toolkit) -> void ; side effect: object slot is freed and returned if collision-data
+  allocation fails'
+details: '- Loads sprite 0x80/0x10/0x40 and turns off its shadow, then sets OBJECT_FLAG_VISIBLE on oObjectHeader_Flags
+  (orr with 2).
+
+  - Sets oBattleObject_CurAnim and oBattleObject_CurAnimCopy to 0, sets the sprite animation to 0 and
+  loads the animation data.
+
+  - Picks a palette index from a 3-entry palette table at dword_80D6B24 indexed by Param4 (values 1,2,3
+  → palettes), then sets the sprite palette and flip from object_getFlip / sprite_setFlip.
+
+  - Copies Param3 into oBattleObject_Timer, recomputes the object''s pixel coords from panel coords, then
+  nudges oBattleObject_X16 backwards by 0x28 * front-direction multiplier so the SnakeArm appears in front
+  of the parent.
+
+  - Adds a per-arm offset from the parent''s NameID via getBattleArmPositionMaybe_8018810 (slot 0x1c)
+  to oBattleObject_X and oBattleObject_Z so it arms multiple onto the parent at distinct attachment points.
+
+  - Allocates a collision-data slot (object_createCollisionData); on failure frees the object slot and
+  returns. Otherwise sets region=0xb, calls object_setupCollisionData with Param1 as a collision-type
+  table index, sets HitEffect=0xFF, and copies Param2 into the status-effect base only if it is not already
+  nonzero.
+
+  - Param4 branches: Param4>=2 && Param4!=3 → sub_801A4D0(0x18, 1); Param4==3 → sub_801A4D0(0xF6, 0);
+  Param4<2 → no branch (no extra setup).
+
+  - Calls object_presentCollisionData, plays SFX 0xF3, sets CurStateActionPhaseAndPhaseInitialized = CUR_STATE_UPDATE
+  (0x4) and tail-calls sub_80D6B28 (the per-state Update handler).
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- sprite_load call with constants 0x80/0x10/0x40 at asm offset 80D6A4A–80D6A50 identifies a
+    fixed SnakeArm sprite. - `orr r0, #2 ; strb r0, [r5,#oObjectHeader_Flags]` sets OBJECT_FLAG_VISIBLE
+    (0x02) defined in ObjectHeader.inc. - Palette table dword_80D6B24 = 0x03000201 — three bytes (palettes)
+    for Param4 indices 0/1/2; 0x03 is the third entry used by the `Param4==3` branch. - The "front-direction"
+    offset: `object_getFrontDirection → mul 0x28 → sub from X16` matches an "in front of parent" placement
+    for a projectile spawning at the user''s panel row. - `getBattleArmPositionMaybe_8018810` with slot
+    0x1c returns mirrored attachment offsets used so several SnakeArm copies (Param4=1..3) attach to distinct
+    points on the parent''s body, indexed by Param4. - `object_setupCollisionData(0xb, 5, Param1, ...)`
+    and `Param2 → oCollisionData_StatusEffectBase`/`Param4 → oCollisionData → sub_801A4D0(0x18/0xF6)`
+    parameterise the collision from the four Params bytes (obj0..obj3). - `mov r0, #CUR_STATE_UPDATE ;
+    str r0, [r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]` then `bl sub_80D6B28` shows this
+    is the init (CUR_STATE_INITIALIZE) entry that hands off to its own update dispatcher. - `PlaySoundEffect(0xF3)`
+    is the SnakeArm summon cue (BN6 SnakeArm SE). - On `object_createCollisionData` returning NULL the
+    code calls `object_freeMemory` and returns via `pop {r4,pc}`, indicating the slot is freed if collision
+    allocation fails.'
+  refs:
+  - bn6f/asm/asm31.s
+  reproduce: 'python3 tools/asmcat.py 0x080D6A44
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_snakeArmSpawn_80D6A44
+
+    '
+open_questions:
+- The exact mapping of Param4 → palette index and per-arm slot count (only three palette entries are referenced;
+  how Param4>=4 behaves is unknown).
+- What sub_801A4D0(0x18,1) and sub_801A4D0(0xF6,0) write into CollisionData — likely panel/effect flags
+  or a tag value — but their contents are not in scope here.
+- Whether sub_80D6B28 is the per-frame SnakeArm update or merely a one-shot scheduler call (control-flow
+  only lands there once from init here).
+sources:
+- discovery session 2026-10-14 batch 37 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 391e53d9
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80D6A44 -> battleObject_snakeArmSpawn_80D6A44
+  where: bn6f f491ae79
+  tool: tools/rename_symbol.py

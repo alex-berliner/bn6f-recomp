@@ -282,7 +282,7 @@ Next pet_initMenu_811EC10(void) {
     /* look up the first menu entry's two bytes and store them */
     R0 = 0;
     R1 = A_byte_811EBDA;
-    GUEST_CALL(sub_8120CC8);
+    GUEST_CALL(battleObject_advanceAnimTableBy0xFF_8120CC8);
     ST8(A_ePETMenuData + 0xA, R0);
     ST8(A_ePETMenuData + 0xB, R1);
 
@@ -1027,7 +1027,7 @@ Next getCurrentMapBgm_811F290(void) {
 /* sub_811F508(r10 = ?, r5 = ?, lr):
  * Chip/custom-data handler invoked during a frame.
  * Reads r5->0x10 flag; if zero, dispatches to battleObject_queueOamFromTableRow_811FAF4 with a packed arg,
- * decrements r5->0xB timer, and reloads it via sub_8120CC8 when it hits zero.
+ * decrements r5->0xB timer, and reloads it via battleObject_advanceAnimTableBy0xFF_8120CC8 when it hits zero.
  *
  * Output: R7 (preserved register, untouched by this function).
  * Clobbers: R0, R1, R2, R3, LR. */
@@ -1063,7 +1063,7 @@ Next sub_811F508(void) {
     /* Timer expired: store result into r5->byte_0A, then reload timer. */
     ST8(R5 + 0xA, (u8)result);
     R1 = (u32)A_byte_811EBDA;              /* off_811F548 */
-    GUEST_CALL(sub_8120CC8);
+    GUEST_CALL(battleObject_advanceAnimTableBy0xFF_8120CC8);
     ST8(R5 + 0xB, (u8)R1);
 
     RETURN_TO_CALLER();
@@ -2856,7 +2856,7 @@ Next gfx_fillTilemapConsecutiveBanded_8120C94(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8120CC8 ── */
+/* ── battleObject_advanceAnimTableBy0xFF_8120CC8 ── */
 /* Read one byte out of a text/data buffer at the given index. A 0xFF byte
  * marks the end of the data: when the caller's index lands on it, the read
  * wraps around to the buffer's first byte and the index reported back to the
@@ -2884,11 +2884,11 @@ static text_byte_result read_text_byte(u32 index, u32 buf) {
     return res;
 }
 
-/* sub_8120CC8(r0 = index, r1 = buffer) ->
+/* battleObject_advanceAnimTableBy0xFF_8120CC8(r0 = index, r1 = buffer) ->
  *   r0 = index (0 when the slot held the 0xFF end marker), r1 = byte read,
  *   r2 = buffer, r3 = index; C/V as the original's cmp r1, #0xFF leaves them
  *   (C set iff the first byte read was 0xFF, V clear). */
-Next sub_8120CC8(void) {
+Next battleObject_advanceAnimTableBy0xFF_8120CC8(void) {
     R2 = R1;
     R3 = R0;
     text_byte_result res = read_text_byte(R0, R1);

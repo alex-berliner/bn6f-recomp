@@ -1,0 +1,80 @@
+name: menu_runScreens3Step_81295D8
+address: '0x081295D8'
+kind: function
+previous_names:
+- sub_81295D8
+status: probable
+summary: 'Per-frame tick of the "screens3" sub-menu: advances the entity update/sprite pipelines, then
+  either toggles an in/out transition step on the active entity record or triggers a fade-in chatbox prompt.'
+interface: '() -> r0 = 0x1 ; side effects: mutates entity record at [r5+0x1b..0x3], eFlags2009F38 |= 0x40,
+  requests a screen fade(8,16) and a chatbox script 1'
+details: 'Pushes lr, runs `entity_runAllUpdateHandlers_80465BC` then `battle_updateEStructSprites_80465F8`
+
+  to tick entity logic + per-record sprite rebuild for every active record (battleObject pipeline).
+
+  If `IsScreenFadeActive()` returns true (a fade is in flight) the function bails out early (returns 1).
+
+  Otherwise it reads `eStruct200BC30_getJumpOffset00()`; if that offset > 0 (transitioning into a record),
+
+  it asks `sub_8049D42` whether the transition has finished; if yes it clears bit 0x04 of [r5+0x1b],
+
+  rewrites [r5+0x1]=4 and [r5+0x2]=0 (move record to state 4 / phase 0). If `sub_8049D42` says no, it
+
+  calls `initSaveStateBlock_8048F9C` with r0=1 and sets bit 0x04 of [r5+0x1b].
+
+  When the jump offset is <= 0 it does the "entrance" path: `sub_812AFC8`, `loadEntryPairTable_812B1DC`
+
+  using the byte table at `byte_812913C`, `sub_812B2C4` with r0=0xE, sets [r5+0x2]=4, [r5+0x3]=0,
+
+  loads the entity''s graphics slot via `loadEntityJumpOffset00Gfx_812B530`, runs chatbox script index
+  1
+
+  on archive eTextScript201BA20, ORs 0x40 into `eFlags2009F38`, and finally calls
+
+  `SetScreenFade(8, 0x10)` to fade the new screen in.
+
+  Always returns 1 in r0 (sets Z on exit).
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl entity_runAllUpdateHandlers_80465BC` / `bl battle_updateEStructSprites_80465F8` at top
+    of fn. - `bl IsScreenFadeActive` followed by `beq locret_8129650` short-circuits the body while fading.
+    - `bl eStruct200BC30_getJumpOffset00 ; cmp r0,#0 ; ble loc_8129620` branches between "transition done"
+    branch (offset>0) and "start entry" branch (offset<=0). - `ldrb r1,[r5,#0x1b] ; mov r0,#4 ; tst r0,r1
+    ; beq loc_8129610` toggles entity-record flag bit 0x04. - `initSaveStateBlock_8048F9C` is the named
+    "init the eS200A290 extra-save block" routine, repurposed here with r0=1. - `chatbox_runScript_803FD9C_on_eTextScript201BA20`
+    called with `r0=1` shows chatbox script #1; `chatbox_set_eFlags2009F38(0x40)` ORs the 0x40 flag. -
+    `SetScreenFade(8,0x10)` finalises the fade-in to value 8 step 0x10. - Snap coverage: every captured
+    call entry has lr=0x081295ae (the caller right after the bl in the screens3 submenu) and always exits
+    with r0=1, Z set — exactly one-shot per frame. - Capture trace name "snap_menus3_*.bin" lines up with
+    the SubMenu/sysmenu3 step the caller invokes.'
+  refs:
+  - bn6f/asm/asm33.s
+  reproduce: 'python3 tools/asmcat.py 0x081295D8
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): menu_runScreens3Step_81295D8
+
+    '
+open_questions:
+- The semantic name of "screens3" / which sub-menu this belongs to (the captured-trace tag suggests `sub_menu_runScreens3_*`
+  but caller is listed as none in the provided data).
+- 'Whether the "transition done" path (offset>0 + sub_8049D42 returns NE) is fully understood: clearing
+  [r5+0x1b] bit 0x04 and writing [r5]=4, [r5+1]=0 may be "mark record done and reset" but the record''s
+  CurState/CurAction semantics would settle it.'
+- Why `initSaveStateBlock_8048F9C` is called here with r0=1 (the routine's main job is resetting the eSave
+  block); could be a side-effect of using it as a "clear state" helper.
+sources:
+- discovery session 2026-10-14 batch 37 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 391e53d9
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_81295D8 -> menu_runScreens3Step_81295D8
+  where: bn6f f491ae79
+  tool: tools/rename_symbol.py

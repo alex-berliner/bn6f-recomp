@@ -1,0 +1,60 @@
+name: chatbox_getCursorBlinkState_8031B7C
+address: '0x08031B7C'
+kind: function
+previous_names:
+- sub_8031B7C
+status: probable
+summary: Returns the battle textbox cursor blink visibility/state byte from the global chatbox state,
+  or 0 if the caller passes a non-1 mode.
+interface: (r0 = query_mode) -> r0 = byte at (chatbox_base + 0x14)[1] if r0==1, else 0 ; no side effects
+details: 'Loads a 32-bit pointer from off_8031B90 (= dword_2013920, the EWRAM chatbox/subsystem state
+  base) into r5.
+
+  Compares the incoming r0 against 1; if equal, adds ldr_obj (0x14) to the base to reach a sub-struct/array,
+  and returns the byte at offset +1 in r0 (a cursor-blink-style state byte).
+
+  For any r0 != 1, returns 0. Tail-returns via `mov pc, lr` (no push/pop), so r5 is left set to the chatbox
+  base pointer for the caller to reuse.
+
+  The 40 captured calls all use r0=1 and return r0=4 (i.e. `byte at [chatbox+0x15] == 4`), confirming
+  the +0x14/+1 read is stable. Callers live in battle AI / cursor blink paths and use the byte to decide
+  whether the textbox cursor should be drawn or which side test result to use.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r5, off_8031B90 // =dword_2013920` (off_8031B90 pool entry) sets up the chatbox-base-like
+    pointer. - `cmp r0, #1` / `beq loc_8031B84` shows a 1-vs-other mode dispatch; r0=other falls through
+    to `mov r0, #0`. - `ldr r2, [r5,#0x14]` + `ldrb r0, [r2,#1]` (loc_8031B84) reads a single state byte;
+    comment equates `0x14` to `(dword_2013934 - 0x2013920)`. - Captured exits: every entry with r0=1 produces
+    exit r0=0x4 with `-ZC-` flags, matching `ldrb ...; mov pc, lr` (N/Z updated by the byte, C/V unaffected)
+    and confirming the +1 byte is consistently 4 in the snapshot state. - Caller `chatbox_renderBattleCursorStep_8031C7C`
+    is described as advancing the battle textbox cursor blink animation and reading its visible/on state
+    — exactly the value this function returns. - Callers in `battle_ai*` use the byte to gate side-of-line
+    / attack-range decisions, consistent with reading the cursor-blink on/off state as a cheap "user has
+    confirmed selection" gate.'
+  refs:
+  - bn6f/asm/asm03_0.s
+  reproduce: 'python3 tools/asmcat.py 0x08031B7C
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): chatbox_getCursorBlinkState_8031B7C
+
+    '
+open_questions:
+- What specifically the returned byte represents (raw blink phase vs. a derived "ready/selected" flag)
+  and the exact identity of the 0x14-offset sub-struct (only one byte is consumed, so the struct could
+  be wider). Tracing the 0x14 struct's other users would settle the role of byte +1.
+sources:
+- discovery session 2026-10-14 batch 37 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 391e53d9
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8031B7C -> chatbox_getCursorBlinkState_8031B7C
+  where: bn6f f491ae79
+  tool: tools/rename_symbol.py

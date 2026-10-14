@@ -24,10 +24,10 @@ Next sub_800B884(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_800B892 ── */
-/* sub_800B892(r0 = object pointer): return the byte at offset 1 of
+/* ── battleObject_getIndex_800B892 ── */
+/* battleObject_getIndex_800B892(r0 = object pointer): return the byte at offset 1 of
  * whatever byte_203CF00_getEntryPtr_800BF5C resolves the object to (its type/flag field). */
-Next sub_800B892(void) {
+Next battleObject_getIndex_800B892(void) {
     GUEST_CALL(byte_203CF00_getEntryPtr_800BF5C);
     R0 = LD8(R0 + 1);
     RETURN_TO_CALLER();
@@ -218,10 +218,10 @@ static void alliance_set_state(u32 alliance, u32 state) {
     GUEST_CALL(sub_800B884);
 }
 
-/* register form: calls sub_800B892 outside this file, which has no typed C interface yet */
+/* register form: calls battleObject_getIndex_800B892 outside this file, which has no typed C interface yet */
 static u32 alliance_phase_query(u32 value) {
     R0 = value;
-    GUEST_CALL(sub_800B892);
+    GUEST_CALL(battleObject_getIndex_800B892);
     return R0;
 }
 

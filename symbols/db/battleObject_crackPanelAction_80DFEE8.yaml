@@ -1,0 +1,79 @@
+name: battleObject_crackPanelAction_80DFEE8
+address: '0x080DFEE8'
+kind: function
+previous_names:
+- sub_80DFEE8
+status: probable
+summary: Cracks the panel the battle object is standing on after a delay, playing a crack SFX and advancing
+  to action 4 (with a follow-up phase that destroys the object once its crack animation finishes).
+interface: '(r5 = BattleObject*) -> r0 = Timer decremented value (live for caller per contract), flags
+  updated ; side effects: highlights panel, mutates PanelX/PanelY highlight byte, Timer, animation/sprite
+  state, collision region, plays SFX 0xB9, sets CurAction=4 and zeroes CurPhaseAndPhaseInitialized'
+details: '- On entry reads `oBattleObject_Timer` (offset 0x20); if bit 0x4 is unset it calls `object_highlightPanel(PanelX,
+  PanelY)` to mark the current panel as highlighted.
+
+  - Always decrements `Timer` by 1 (sub r0,#1 / strh). When the timer is still > 0 (`bgt locret_80DFF82`)
+  the function returns without further work.
+
+  - When the timer reaches 0, it loads the panel parameters via `object_getPanelParameters(PanelX, PanelY)`;
+  if bit 0x10 (a panel flag) is set, it sets bit 0x1 (`OBJECT_FLAG_VISIBLE`) on the object''s `oObjectHeader_Flags`.
+
+  - Loads sprite group 0x80 with sub-id 0x26, clears shadow (`sprite_noShadow`), zeroes `oBattleObject_CurAnim`/`CurAnimCopy`,
+  sets animation 0 (`sprite_setAnimation`), reloads animation data (`sprite_loadAnimationData`), then
+  re-applies the object''s flip via `object_getFlip`/`sprite_setFlip` and assigns collision region 1 (`object_setCollisionRegion`).
+
+  - If the object''s `oBattleObject_Param1` is non-zero, it calls `sub_8109794(PanelX, PanelY)` (the tile-cracking
+  handler), which propagates the crack into the panel.
+
+  - Plays sound effect 0xB9 (`PlaySoundEffect`), sets `CurAction = 4` and zeroes `CurPhaseAndPhaseInitialized`,
+  then returns (this transitions to a destroy/finish sub-action).
+
+  - The second basic block (loc_80DFF64) is reached only via fall-through as a continuation sub-action:
+  on first entry it sets CurPhase=1 and clears collision region; once `sprite_getFrameParameters` shows
+  bit 0x80 of the frame word set (animation finished), it overwrites `CurStateActionPhaseAndPhaseInitialized`
+  with `CUR_STATE_DESTROY` (0x8).
+
+  - The capture traces consistently return r0 in {6..9} after the timer-driven path, consistent with the
+  leftover Timer value written before the return; that is an observable artefact of the contract, not
+  a meaningful return value.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrh r0, [r5,#oBattleObject_Timer]` + `tst r0, #4` + `bne loc_80DFEFA` shows the per-frame
+    highlight gating. - `sub r0, #1` / `strh r0, [r5,#oBattleObject_Timer]` then `bgt locret_80DFF82`
+    is the down-counter guard. - `bl object_getPanelParameters` + `tst r0, #0x10` + `orr r0, #2` / `strb
+    ... oObjectHeader_Flags` is the visibility-bit write. - `mov r1,#0x10; mov r2,#0x26; mov r0,#0x80;
+    bl sprite_load` followed by `bl sprite_noShadow`, the two `strb r0,[r5,#CurAnim/CurAnimCopy]` and
+    `bl sprite_setAnimation`/`bl sprite_loadAnimationData` shows the sprite re-setup. - `bl object_getFlip`
+    / `bl sprite_setFlip` re-applies facing; `mov r0,#1; bl object_setCollisionRegion` sets region 1.
+    - `ldrb r0, [r5,#oBattleObject_Param1]; cmp r0,#0; beq ...; bl sub_8109794` is the optional tile-cracking
+    branch (sub_8109794 is the tile-crack object handler per callee summary). - `mov r0,#0xb9; bl PlaySoundEffect`
+    and `mov r0,#4; strb r0,[r5,#CurAction]; mov r0,#0; strh r0,[r5,#CurPhaseAndPhaseInitialized]; pop
+    {pc}` is the action transition. - Second block writes `CUR_STATE_DESTROY` (0x8) into `oBattleObject_CurStateActionPhaseAndPhaseInitialized`
+    once the crack sprite''s `sprite_getFrameParameters` returns bit 0x80 set.'
+  refs:
+  - bn6f/asm/asm31.s
+  reproduce: 'python3 tools/asmcat.py 0x080DFEE8
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_crackPanelAction_80DFEE8
+
+    '
+open_questions:
+- Exact game-level identity of the resulting cracked tile / element (Param1's meaning beyond "non-zero
+  ⇒ call sub_8109794"). Knowing the Param1 values used by callers would pin this to a specific tile chip/crack
+  type.
+sources:
+- discovery session 2026-10-14 batch 37 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 391e53d9
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80DFEE8 -> battleObject_crackPanelAction_80DFEE8
+  where: bn6f f491ae79
+  tool: tools/rename_symbol.py

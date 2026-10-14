@@ -335,7 +335,7 @@ Next battle_endTurnMarkActed_8017888(void) {
 /* sub_80178B6(r5 = battle object):
  * Trampoline/dispatcher: reads the object's handler selector (oBattleObject_Unk_0d,
  * which stores a byte offset into the jump table) and tail-calls the matching
- * handler sub_80178D4 / sub_8017992 / sub_8017A38. The original pushes lr, sets
+ * handler battleObject_initMoveStep_80178D4 / sub_8017992 / sub_8017A38. The original pushes lr, sets
  * lr = pc and branches through the table, so the callee returns straight back
  * to our caller: this is a tail call and the callee's results are ours.
  * On entry to the handler, r0 holds the selector byte and r1 holds the table
@@ -348,7 +348,7 @@ Next sub_80178B6(void) {
     R1 = LD32(A_off_80178C8 + kind);
 
     switch (kind) {
-    case 0: GUEST_CALL(sub_80178D4); break;
+    case 0: GUEST_CALL(battleObject_initMoveStep_80178D4); break;
     case 4: GUEST_CALL(sub_8017992); break;
     case 8: GUEST_CALL(sub_8017A38); break;
     /* Any other selector would send the original to a garbage address; the game

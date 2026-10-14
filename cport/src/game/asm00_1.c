@@ -1258,14 +1258,14 @@ static void sprite_queue_frame_pieces(u32 a, u32 b, u32 sprite) {
     GUEST_CALL(sprite_queueFramePieces);
 }
 
-/* register form: calls sub_80028C0 outside this file, which has no typed C interface yet.
+/* register form: calls sprite_recordPaletteCountToGroupSlot_80028C0 outside this file, which has no typed C interface yet.
  * r5 must hold the address just past the walked object list, as the original leaves it,
  * and r1 is 0 there (the original's restored loop counter). */
 static void commit_sprite_queue(u32 arg, u32 list_end) {
     R0 = arg;
     R1 = 0;
     R5 = list_end;
-    GUEST_CALL(sub_80028C0);
+    GUEST_CALL(sprite_recordPaletteCountToGroupSlot_80028C0);
 }
 
 /* Per-frame sprite update for the overworld object list that starts at the player.
@@ -1310,19 +1310,19 @@ Next owMapObject_renderAll_8003BF4(void) {
 }
 
 /* ── battle_resetSpritePaletteCount_8003C70 ── */
-/* battle_resetSpritePaletteCount_8003C70: reset the something tracked by sub_80028C0 (r0 = 0 as its argument). */
+/* battle_resetSpritePaletteCount_8003C70: reset the something tracked by sprite_recordPaletteCountToGroupSlot_80028C0 (r0 = 0 as its argument). */
 Next battle_resetSpritePaletteCount_8003C70(void) {
     R0 = 0;
-    GUEST_CALL(sub_80028C0);
+    GUEST_CALL(sprite_recordPaletteCountToGroupSlot_80028C0);
     RETURN_TO_CALLER();
 }
 
 /* ── sub_8003E18 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
-/* register form: generated wrapper: sub_80028C0 has no typed C interface yet */
+/* register form: generated wrapper: sprite_recordPaletteCountToGroupSlot_80028C0 has no typed C interface yet */
 static inline void call_sub_80028C0(u32 r0) {
     R0 = r0;
-    GUEST_CALL(sub_80028C0);
+    GUEST_CALL(sprite_recordPaletteCountToGroupSlot_80028C0);
 }
 
 /* Sprite update pass over the battle object list.
@@ -1335,7 +1335,7 @@ static inline void call_sub_80028C0(u32 r0) {
  *                 queue frame pieces (piece list at +0x90).
  *   bit 1 clear -> zero the piece counter (+0x90+0x24); if bit 0 is set, still
  *                 project/cull so its transform stays up to date.
- * After the loop, sub_80028C0(1) finalizes the frame.
+ * After the loop, sprite_recordPaletteCountToGroupSlot_80028C0(1) finalizes the frame.
  *
  * Preserves r4-r9, r12 across callee clobbering; r3 left as last callee produces. */
 
@@ -1370,7 +1370,7 @@ static void call_queue_frame_pieces(u32 piece_list) {
 
 static void update_sprites(void) {
     /* register form: caller-preserved r4-r9, r12 must be saved/restored
-       across sprite/sub_80028C0 calls which clobber them */
+       across sprite/sprite_recordPaletteCountToGroupSlot_80028C0 calls which clobber them */
     u32 save_r4 = R4, save_r5 = R5, save_r6 = R6, save_r7 = R7;
     u32 save_r8 = R8, save_r9 = R9, save_r12 = R12;
 
@@ -1421,26 +1421,26 @@ Next sub_8003E18(void) {
  * No outputs; all registers may be clobbered. */
 Next sub_8003E98(void) {
     R0 = 1;
-    GUEST_CALL(sub_80028C0);
+    GUEST_CALL(sprite_recordPaletteCountToGroupSlot_80028C0);
     RETURN_TO_CALLER();
 }
 
 /* ── sprite_finalizeBattleSpriteGroupQueue_8004298 ── */
-/* sprite_finalizeBattleSpriteGroupQueue_8004298: invoke sub_80028C0 with argument 3 and return.
+/* sprite_finalizeBattleSpriteGroupQueue_8004298: invoke sprite_recordPaletteCountToGroupSlot_80028C0 with argument 3 and return.
  * (The mov r0, #0x30 / ldr r3 bytes after the pop are dead code from a
  * previous tail of the function and are never executed.) */
 Next sprite_finalizeBattleSpriteGroupQueue_8004298(void) {
     R0 = 3;
-    GUEST_CALL(sub_80028C0);
+    GUEST_CALL(sprite_recordPaletteCountToGroupSlot_80028C0);
     RETURN_TO_CALLER();
 }
 
 /* ── sprite_finishGroup_8004590 ── */
-/* sprite_finishGroup_8004590: wrapper that invokes sub_80028C0 with argument 4 (tail call:
+/* sprite_finishGroup_8004590: wrapper that invokes sprite_recordPaletteCountToGroupSlot_80028C0 with argument 4 (tail call:
  * returns directly to our caller, LR is passed through unchanged). */
 Next sprite_finishGroup_8004590(void) {
     R0 = 4;
-    GUEST_CALL(sub_80028C0);
+    GUEST_CALL(sprite_recordPaletteCountToGroupSlot_80028C0);
     RETURN_TO_CALLER();
 }
 
@@ -1532,11 +1532,11 @@ Next FreeOverworldNPCObject(void) {
 }
 
 /* ── gameMode_switchToMode2_80046F8 ── */
-/* gameMode_switchToMode2_80046F8: switch the game into mode 2 by calling sub_80028C0.
- * No inputs; sub_80028C0 receives r0 = 2. */
+/* gameMode_switchToMode2_80046F8: switch the game into mode 2 by calling sprite_recordPaletteCountToGroupSlot_80028C0.
+ * No inputs; sprite_recordPaletteCountToGroupSlot_80028C0 receives r0 = 2. */
 Next gameMode_switchToMode2_80046F8(void) {
     R0 = 2;
-    GUEST_CALL(sub_80028C0);
+    GUEST_CALL(sprite_recordPaletteCountToGroupSlot_80028C0);
     RETURN_TO_CALLER();
 }
 
@@ -1646,10 +1646,10 @@ Next FreeOverworldMapObject(void) {
 }
 
 /* ── battleObject_finishQueuedSpriteGroup_80049B0 ── */
-/* battleObject_finishQueuedSpriteGroup_80049B0: invoke sub_80028C0 with argument 5; result comes back in r2. */
+/* battleObject_finishQueuedSpriteGroup_80049B0: invoke sprite_recordPaletteCountToGroupSlot_80028C0 with argument 5; result comes back in r2. */
 Next battleObject_finishQueuedSpriteGroup_80049B0(void) {
     R0 = 5;
-    GUEST_CALL(sub_80028C0);
+    GUEST_CALL(sprite_recordPaletteCountToGroupSlot_80028C0);
     RETURN_TO_CALLER();
 }
 

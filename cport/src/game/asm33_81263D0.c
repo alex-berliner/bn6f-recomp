@@ -694,11 +694,11 @@ static void call_sub_81270D0(void) { GUEST_CALL(initTitleScreens_81270D0); }
 /* register form: calls sub_8127800 outside this file, which has no typed C interface yet */
 static void call_sub_8127800(void) { GUEST_CALL(sub_8127800); }
 
-/* register form: calls sub_8120CC8 outside this file, which has no typed C interface yet.
+/* register form: calls battleObject_advanceAnimTableBy0xFF_8120CC8 outside this file, which has no typed C interface yet.
  * Returns the packed tile-attribute byte: (R0 | (R1 << 4)) & 0xFF. */
 static u32 call_get_tile_attr(u32 idx, u32 table_addr) {
     R0 = idx; R1 = table_addr;
-    GUEST_CALL(sub_8120CC8);
+    GUEST_CALL(battleObject_advanceAnimTableBy0xFF_8120CC8);
     return (R0 | (R1 << 4)) & 0xFF;
 }
 
@@ -1775,7 +1775,7 @@ Next sub_81279A8(void) {
 /* Fade timer value stored to the render-info header on scene init. */
 #define RENDER_FADE_TIMER  0x1F40
 
-/* Two output registers from sub_8120CC8 (fade-palette lookup). */
+/* Two output registers from battleObject_advanceAnimTableBy0xFF_8120CC8 (fade-palette lookup). */
 typedef struct { u32 step, frame; } FadePair;
 
 /* ---- register-form helpers for game functions outside this file ---- */
@@ -1817,10 +1817,10 @@ static void call_sub_8127CB8(void) {
     GUEST_CALL(battle_setupSceneTiles_8127CB8);
 }
 
-/* register form: calls sub_8120CC8 outside this file, which has no typed C interface yet */
+/* register form: calls battleObject_advanceAnimTableBy0xFF_8120CC8 outside this file, which has no typed C interface yet */
 static FadePair call_fade_lookup(u32 a, u32 b) {
     R0 = a; R1 = b;
-    GUEST_CALL(sub_8120CC8);
+    GUEST_CALL(battleObject_advanceAnimTableBy0xFF_8120CC8);
     FadePair p; p.step = R0; p.frame = R1;
     return p;
 }
@@ -2039,11 +2039,11 @@ static void call_bg_reload_background_region_5_3_81281C0(void) {
     GUEST_CALL(bg_ReloadBackgroundRegion_5_3_81281C0);
 }
 
-/* register form: calls sub_8120CC8 outside this file, which has no typed C interface yet */
+/* register form: calls battleObject_advanceAnimTableBy0xFF_8120CC8 outside this file, which has no typed C interface yet */
 static void call_sub_8120CC8(u32 a, u32 b, u32 *out0, u32 *out1) {
     R0 = a;
     R1 = b;
-    GUEST_CALL(sub_8120CC8);
+    GUEST_CALL(battleObject_advanceAnimTableBy0xFF_8120CC8);
     *out0 = (u8)R0;
     *out1 = (u8)R1;
 }
@@ -2384,7 +2384,7 @@ Next sub_8127EF4(void) {
  *   an affine-bg parameter block from the entity, push it through battleObject_queueOamFromTableRow_811FAF4
  *   along with the tile index in the col/row table, then tick the entity's
  *   duration timer. When the timer hits zero, pull the next (tile, duration)
- *   pair from the dword_8127980 sequence via sub_8120CC8 and store them back. */
+ *   pair from the dword_8127980 sequence via battleObject_advanceAnimTableBy0xFF_8120CC8 and store them back. */
 Next fieldEntityTileAnimTick_8127F54(void) {
     u32 entity = R5;
 
@@ -2422,9 +2422,9 @@ Next fieldEntityTileAnimTick_8127F54(void) {
         if (!ZERO_FLAG())                RETURN_TO_CALLER();
 
         /* Timer expired: pull the next tile/duration pair from the
-         * dword_8127980 sequence via sub_8120CC8. */
+         * dword_8127980 sequence via battleObject_advanceAnimTableBy0xFF_8120CC8. */
         R1 = A_dword_8127980;
-        GUEST_CALL(sub_8120CC8);
+        GUEST_CALL(battleObject_advanceAnimTableBy0xFF_8120CC8);
         ST8(entity + 0x0C, (u8)R0);
         ST8(entity + 0x0E, (u8)R1);
     }
@@ -3445,12 +3445,12 @@ static void scene_load_and_start_cutscene(void) {
     GUEST_CALL(scene_loadAndStartCutscene_812AF18);
 }
 
-/* register form: calls sub_8120CC8 outside this file, which has no typed C interface yet.
+/* register form: calls battleObject_advanceAnimTableBy0xFF_8120CC8 outside this file, which has no typed C interface yet.
  * Returns the r0/r1 the callee left behind. */
 static void sub_8120CC8_call(u32 a0, u32 a1, u32 *out0, u32 *out1) {
     R0 = a0;
     R1 = a1;
-    GUEST_CALL(sub_8120CC8);
+    GUEST_CALL(battleObject_advanceAnimTableBy0xFF_8120CC8);
     *out0 = R0;
     *out1 = R1;
 }
@@ -3458,7 +3458,7 @@ static void sub_8120CC8_call(u32 a0, u32 a1, u32 *out0, u32 *out1) {
 /* Init battle scene: clear VRAM/GFX, prime render info, start opening cutscene,
  * then write the variant bytes from the dword_8129180 table into the state struct.
  * Returns the r0/r1 the original leaves: r0 = 0 (final `mov r0, #0`),
- * r1 = the second byte sub_8120CC8 produced (still in r1 at return). */
+ * r1 = the second byte battleObject_advanceAnimTableBy0xFF_8120CC8 produced (still in r1 at return). */
 static void init_battle_scene_sub_8129248(u32 toolkit_r10, u32 state_r5, u32 *out_r0, u32 *out_r1) {
     u32 render_info_ptr;
     u32 lo, hi;
@@ -3490,7 +3490,7 @@ static void init_battle_scene_sub_8129248(u32 toolkit_r10, u32 state_r5, u32 *ou
     ST8(state_r5 + 0x1B, 0);
 
     /* The original ends with `mov r0, #0` (which also sets NZ for r0==0); r1 is the
-     * byte sub_8120CC8 returned in r1, still live in r1 at the pop. */
+     * byte battleObject_advanceAnimTableBy0xFF_8120CC8 returned in r1, still live in r1 at the pop. */
     *out_r0 = 0;
     *out_r1 = hi;
 }
@@ -3839,12 +3839,12 @@ Next scene_runFadePopTick_8129400(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_81295D8 ── */
-/* sub_81295D8: per-frame update of the eStruct200BC30 object.
+/* ── menu_runScreens3Step_81295D8 ── */
+/* menu_runScreens3Step_81295D8: per-frame update of the eStruct200BC30 object.
  * inputs:  r4 r5 r6 r10 lr
  * outputs: r5 r8 r9 r10 r11 r12
  * preserved: r6 r7 r8 r9 */
-Next sub_81295D8(void) {
+Next menu_runScreens3Step_81295D8(void) {
     GUEST_CALL(entity_runAllUpdateHandlers_80465BC);
     GUEST_CALL(battle_updateEStructSprites_80465F8);
 
@@ -4124,13 +4124,13 @@ Next sub_81296D8(void) {
 
 /* ── battle_object_advanceState3_8129738 ── */
 /* battle_object_advanceState3_8129738(r5 = battle object ptr):
- * If sub_812B318(3) succeeds, mark the object's state: store 3 at +0x1D,
+ * If battleObject_advanceChipAnimFrames_812B318(3) succeeds, mark the object's state: store 3 at +0x1D,
  * call sub_81325E4 on its +0xE byte and store the result at +2,
- * then clear +3 to 0. Skips all of that if sub_812B318 returns nonzero. */
+ * then clear +3 to 0. Skips all of that if battleObject_advanceChipAnimFrames_812B318 returns nonzero. */
 Next battle_object_advanceState3_8129738(void) {
-    /* Try to acquire something via sub_812B318(arg=3); nonzero -> bail out. */
+    /* Try to acquire something via battleObject_advanceChipAnimFrames_812B318(arg=3); nonzero -> bail out. */
     R0 = 3;
-    GUEST_CALL(sub_812B318);
+    GUEST_CALL(battleObject_advanceChipAnimFrames_812B318);
     if (R0 != 0) {
         RETURN_TO_CALLER();
     }
@@ -4147,19 +4147,19 @@ Next battle_object_advanceState3_8129738(void) {
 
 /* ── sub_8129758 ── */
 /* sub_8129758(r5 = entity ptr)
- * Reads entity field at offset 0x1D and asks sub_812B318 what to do with it.
- * If sub_812B318 signals a follow-up (r1 != 0), call sub_812B218.
+ * Reads entity field at offset 0x1D and asks battleObject_advanceChipAnimFrames_812B318 what to do with it.
+ * If battleObject_advanceChipAnimFrames_812B318 signals a follow-up (r1 != 0), call sub_812B218.
  * If the chosen action is 3, set the entity's state byte to 0x14 and call
  * sub_811A610(0, 0).
- * Outputs: r4 = sub_812B318's r2 (the action), r5/r6 preserved. */
+ * Outputs: r4 = battleObject_advanceChipAnimFrames_812B318's r2 (the action), r5/r6 preserved. */
 Next sub_8129758(void) {
-    /* Ask sub_812B318 what to do with entity[0x1D]. */
+    /* Ask battleObject_advanceChipAnimFrames_812B318 what to do with entity[0x1D]. */
     R0 = (u32)LD8(R5 + 0x1D);
-    GUEST_CALL(sub_812B318);
+    GUEST_CALL(battleObject_advanceChipAnimFrames_812B318);
     /* r4 = action returned in r2 */
     R4 = R2;
 
-    /* If sub_812B318 set r1, follow up with sub_812B218. */
+    /* If battleObject_advanceChipAnimFrames_812B318 set r1, follow up with sub_812B218. */
     if (R1 != 0) {
         GUEST_CALL(sub_812B218);
     }
@@ -4304,15 +4304,15 @@ Next sub_81297DC(void) {
 
 /* ── sub_8129808 ── */
 /* sub_8129808: takes r5 = some battle object pointer (has a byte at +0x1d and +3),
- * reads its state index byte, calls sub_812B318, and based on results either
+ * reads its state index byte, calls battleObject_advanceChipAnimFrames_812B318, and based on results either
  * does nothing or flips the object's state to 4 and calls sub_811A610(1,0).
  * Preserves r4/r5/r6 for the caller; clobbers r0-r3 and lr internally. */
 Next sub_8129808(void) {
     u8 state_index = LD8(R5 + 0x1D);
 
     R0 = state_index;
-    GUEST_CALL(sub_812B318);
-    u32 r4_save = R2;          /* sub_812B318's result in r2 -> cached in r4 */
+    GUEST_CALL(battleObject_advanceChipAnimFrames_812B318);
+    u32 r4_save = R2;          /* battleObject_advanceChipAnimFrames_812B318's result in r2 -> cached in r4 */
 
     if (R1 != 0) {
         GUEST_CALL(sub_812B218);
@@ -4503,7 +4503,7 @@ Next battleObj_setCanceledPose_81298D4(void) {
     /* First, ask the toolkit/engine whether this update path is even
      * permitted right now (mode 3 = whatever the bsy check is). */
     R0 = 3;
-    GUEST_CALL(sub_812B318);
+    GUEST_CALL(battleObject_advanceChipAnimFrames_812B318);
     if (R0 != 0)
         RETURN_TO_CALLER();             /* not allowed -> bail, leave object alone */
 
@@ -4529,13 +4529,13 @@ Next battleObj_setCanceledPose_81298D4(void) {
 /* ── sub_81298F8 ── */
 /* sub_81298F8(r5 = battle object pointer, lr = return address)
  * Initialize a battle object's visual/animation state to its "selected"/attack pose:
- * sub_812B318 must allow it (r0 != 0 -> skip); on success set r5[0x1D]=3, r5[2]=4,
+ * battleObject_advanceChipAnimFrames_812B318 must allow it (r0 != 0 -> skip); on success set r5[0x1D]=3, r5[2]=4,
  * r5[3]=0x10, r5[0x12]=r5[0x13]=0. */
 Next sub_81298F8(void) {
     R0 = 3;
-    GUEST_CALL(sub_812B318);
+    GUEST_CALL(battleObject_advanceChipAnimFrames_812B318);
     if (R0 != 0) {
-        /* sub_812B318 refused; leave the object untouched. */
+        /* battleObject_advanceChipAnimFrames_812B318 refused; leave the object untouched. */
     } else {
         ST8(R5 + 0x1D, 3);
         ST8(R5 + 2,    4);
@@ -4634,14 +4634,14 @@ Next sub_8129918(void) {
 
 /* ── sub_8129948 ── */
 /* sub_8129948(r5 = some struct):
- * Reads the byte at r5+0x1D and passes it to sub_812B318.
- * Saves sub_812B318's r2 in r4. If its r1 is nonzero, also calls sub_812B218.
+ * Reads the byte at r5+0x1D and passes it to battleObject_advanceChipAnimFrames_812B318.
+ * Saves battleObject_advanceChipAnimFrames_812B318's r2 in r4. If its r1 is nonzero, also calls sub_812B218.
  * If r4 == 3, sets state byte at r5+3 to 4 and calls sub_811A610(3, 0). */
 Next sub_8129948(void) {
     u8 slot = LD8(R5 + 0x1D);
 
     R0 = slot;
-    GUEST_CALL(sub_812B318);
+    GUEST_CALL(battleObject_advanceChipAnimFrames_812B318);
 
     R4 = R2;
     SET_FLAGS_NZ(R1);
@@ -4955,15 +4955,15 @@ Next sub_8129A98(void) {
 
 /* ── decideBattleAction_8129AC8 ── */
 /* decideBattleAction_8129AC8(r5 = entity, lr = return):
- *   Picks a battle-side action for the entity at r5: asks sub_812B318 what
+ *   Picks a battle-side action for the entity at r5: asks battleObject_advanceChipAnimFrames_812B318 what
  *   kind to do (r2 = kind, r1 = valid). If valid and kind == 2 we mark the
  *   entity's action byte (r5+3 = 4) and trigger the move event (sub_811A610);
- *   otherwise we delegate to sub_812B318's sibling sub_812B218.
+ *   otherwise we delegate to battleObject_advanceChipAnimFrames_812B318's sibling sub_812B218.
  *   outputs: r4 r5 r6  preserved: r4 r5 r6 r7 */
 Next decideBattleAction_8129AC8(void) {
     /* Ask the battle-side helper which action this entity should take. */
     R0 = LD8(R5 + 0x1D);
-    GUEST_CALL(sub_812B318);
+    GUEST_CALL(battleObject_advanceChipAnimFrames_812B318);
     /* r1 = valid, r2 = kind. Match the original: r4 picks up r2, then we
      * test r1 with TST/SUBS so the Z flag reflects it. */
     u32 kind = R2;
@@ -5044,7 +5044,7 @@ Next sub_8129B34(void) {
 
 /* ── chipSelectInit_8129B90 ── */
 /* chipSelectInit_8129B90(r5 = control struct pointer):
- *   Ask sub_812B318 for state 2; if granted, initialise the chip-selection
+ *   Ask battleObject_advanceChipAnimFrames_812B318 for state 2; if granted, initialise the chip-selection
  *   counter fields on the struct. Preserves r4/r5/r6.
  *   inputs:  r5, lr
  *   outputs: r4, r5, r6 (preserved)
@@ -5058,9 +5058,9 @@ Next sub_8129B34(void) {
  *     +0x13  counter high              = 0
  */
 Next chipSelectInit_8129B90(void) {
-    /* sub_812B318(r0 = 2): request chip-use state 2. */
+    /* battleObject_advanceChipAnimFrames_812B318(r0 = 2): request chip-use state 2. */
     R0 = 2;
-    GUEST_CALL(sub_812B318);
+    GUEST_CALL(battleObject_advanceChipAnimFrames_812B318);
 
     /* tst r0, r0 — bne locret: bail out if it refused. */
     SET_FLAGS_NZ(R0);
@@ -5167,8 +5167,8 @@ Next sub_8129C28(void) {
 
 /* ── sub_8129C74 ── */
 /* sub_8129C74(r5 = battle object):
- * Reconciles the object against a lookup done by sub_812B318:
- *  - sub_812B318 is called with the byte at +0x1D and reports back a flag in r1
+ * Reconciles the object against a lookup done by battleObject_advanceChipAnimFrames_812B318:
+ *  - battleObject_advanceChipAnimFrames_812B318 is called with the byte at +0x1D and reports back a flag in r1
  *    and a value in r2 (its r0 result is discarded);
  *  - if the object's state byte at +0x20 is 2 and the flag is 0, there is
  *    nothing to do;
@@ -5184,7 +5184,7 @@ Next sub_8129C74(void) {
     u32 self = R5;
 
     R0 = LD8(self + 0x1D);
-    GUEST_CALL(sub_812B318);
+    GUEST_CALL(battleObject_advanceChipAnimFrames_812B318);
     u32 flag = R1;
     u32 value = R2;
 
@@ -5335,13 +5335,13 @@ Next sub_8129D00(void) {
 
 /* ── sub_8129D58 ── */
 /* sub_8129D58(r5 = object): check the object's state at offset 0x20 via
- * sub_812B318; if it reports "not busy" (returns 0), reset the object into
+ * battleObject_advanceChipAnimFrames_812B318; if it reports "not busy" (returns 0), reset the object into
  * its initial state (timer mode 3, timer 8, counters cleared). */
 Next sub_8129D58(void) {
     u32 obj = R5;
 
     R0 = LD8(obj + 0x20);
-    GUEST_CALL(sub_812B318);
+    GUEST_CALL(battleObject_advanceChipAnimFrames_812B318);
 
     if (R0 == 0) {
         ST8(obj + 0x1D, 3);
@@ -5918,7 +5918,7 @@ Next sub_812B218(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_812B318 ── */
+/* ── battleObject_advanceChipAnimFrames_812B318 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r3, r4, r5; } call_sub_811A768_result;
 /* register form: generated wrapper: sub_811A768 has no typed C interface yet */
@@ -5929,7 +5929,7 @@ static inline call_sub_811A768_result call_sub_811A768(u32 r0, u32 r1) {
     return (call_sub_811A768_result){ R0, R3, R4, R5 };
 }
 
-/* sub_812B318: walk the deallocation table unk_20251A0.
+/* battleObject_advanceChipAnimFrames_812B318: walk the deallocation table unk_20251A0.
  * For each of slot_count entries (indexed 0 … slot_count−1):
  *   slot == 0            → tally as null (null_count++)
  *   bit 31 of slot set   → tally as locked  (high_count++)
@@ -5985,8 +5985,8 @@ static Result_812B318 process_dealloc_slots(u32 slot_count, u32 entity_base, u32
     return out;
 }
 
-/* sub_812B318(r0=slot_count, r5=entity_base) → r0,r1,r2,r3 */
-Next sub_812B318(void) {
+/* battleObject_advanceChipAnimFrames_812B318(r0=slot_count, r5=entity_base) → r0,r1,r2,r3 */
+Next battleObject_advanceChipAnimFrames_812B318(void) {
     Result_812B318 res = process_dealloc_slots(R0, R5, R3);
     R0 = res.r0;
     R1 = res.r1;

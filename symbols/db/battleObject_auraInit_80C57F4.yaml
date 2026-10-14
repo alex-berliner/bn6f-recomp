@@ -1,0 +1,91 @@
+name: battleObject_auraInit_80C57F4
+address: '0x080C57F4'
+kind: function
+previous_names:
+- sub_80C57F4
+status: probable
+summary: Initialiser for an aura-style battle object — loads its sprite, sets palette, creates collision
+  data and hands off to the per-frame aura update.
+interface: (r5 = battle object) -> void ; returns r5/r8/r10 alive
+details: 'Pushes r4 and lr. Loads sprite 0x80 of type 0x10 (3rd arg r2=0x17) via
+
+  sprite_load(r0=0x80, r1=0x10, r2=0x17), disables shadow with
+
+  sprite_noShadow(), then sets OBJECT_FLAG_UPDATE_DURING_TIMESTOP (0x02 is
+
+  OR''d into oObjectHeader_Flags — actually the lo nibble shown is shifted,
+
+  see flags below; the bit set is the timestop-update one). Selects the
+
+  palette as Param1*4 via sprite_setPalette, recomputes the panel coords
+
+  with object_setPanelsFromCoordinates, and chooses the sprite mirror bit
+
+  via sprite_setFlip by XOR''ing Alliance with DirectionFlip (flipping again
+
+  if the object sits to the left of its x origin, i.e. when
+
+  PanelX - Param3 < 0).
+
+  Calls object_createCollisionData; if it returns NULL, frees the object
+
+  with object_freeMemory and returns (its POP is `pop {pc}` so this is the
+
+  "abort init" path). Otherwise seeds collision with
+
+  object_setupCollisionData(r1=0xa, r2=5, r3=3), hit-effect 2
+
+  (object_setCollisionHitEffect), object_clearCollisionRegion and
+
+  object_presentCollisionData. Timer2 is set to 0x0f; ExtraVars is pointed
+
+  at one of two anim-table ROM addresses (`byte_80C5A12` or `byte_80C5A18`)
+
+  chosen by `|PanelX-Param3| > 1`; the first byte of that table is written
+
+  into CurAnim/CurAnimCopy and sprite_setAnimation/sprite_loadAnimationData
+
+  are kicked. Finally CurState/Action/Phase/PhaseInitialized is set to
+
+  CUR_STATE_UPDATE (0x04) and battleObject_auraUpdateOrDestroy_80C5886
+
+  tail-calls.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: "- `push {r4,lr}` then `bl sprite_load`/`bl sprite_noShadow` show init setup. - `orr r0, r1`\
+    \ with `r1=#2` into oObjectHeader_Flags sets bit 1 (OBJECT_FLAG_VISIBLE). - `Param1 * 4` then `bl\
+    \ sprite_setPalette` selects a palette index from Param1. - `bl object_createCollisionData`; `tst\
+    \ r0,r0; bne` then `bl object_freeMemory; pop {pc}` shows\n  abort-on-no-slot path.\n- `object_setupCollisionData(r1=0xa,\
+    \ r2=5, r3=3)` then\n  `object_setCollisionHitEffect(r0=2)` configures collision shape and hit effect.\n\
+    - `strh r0, [r5,#oBattleObject_Timer2]` writes 0x0f to Timer2. - `cmp r0,#1; ble loc_80C586C; ldr\
+    \ r1, off_80C5A24 // byte_80C5A18` shows two-table branch\n  keyed on `|PanelX-Param3|`.\n- `mov r0,#CUR_STATE_UPDATE;\
+    \ str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]`\n  seeds the per-frame state.\n\
+    - Tail call `bl battleObject_auraUpdateOrDestroy_80C5886; pop {r4,pc}`. - The callee's one-liner confirms\
+    \ this is the aura pattern (death effect vs collision)."
+  refs:
+  - bn6f/asm/asm31.s
+  reproduce: 'python3 tools/asmcat.py 0x080C57F4
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_auraInit_80C57F4
+
+    '
+open_questions:
+- The precise sprite type/palette meaning (sprite id 0x80, sub-id 0x10, table 0x17) and the BattleObject
+  "aura" identity (which chip/object this represents) can't be recovered from the asm alone; matching
+  a name to it would settle it.
+sources:
+- discovery session 2026-10-14 batch 37 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 391e53d9
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80C57F4 -> battleObject_auraInit_80C57F4
+  where: bn6f f491ae79
+  tool: tools/rename_symbol.py

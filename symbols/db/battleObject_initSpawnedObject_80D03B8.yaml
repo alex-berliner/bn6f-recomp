@@ -1,0 +1,90 @@
+name: battleObject_initSpawnedObject_80D03B8
+address: '0x080D03B8'
+kind: function
+previous_names:
+- sub_80D03B8
+status: probable
+summary: Initializes a freshly-allocated battle object for a moving/animated spawn (recomputes coords
+  from panels, sets Z to 0, nudges Y/Z up by 1 panel, loads sprite 0x80/anim 0x3F, gives it a shadow,
+  sets flip from facing, sets an X-velocity based on Param1, allocates collision data with hit-effect
+  6, plays SE 0xB3, and advances state to UPDATE)
+interface: '(r5 = battleObject, r10 = toolkit, lr = return) -> void ; side effects: writes many battle-object
+  fields, allocates a CollisionData slot, plays sound effect 0xB3'
+details: '1. Recomputes the object''s pixel X/Y from its current panel grid (object_setCoordinatesFromPanels).
+
+  2. Zeros oBattleObject_Z, then increments oBattleObject_Y16 and oBattleObject_Z16 by +1 (so the object
+  sits one panel half-row above its current row).
+
+  3. Computes a facing ±1 via object_getFrontDirection, indexes a 4-entry signed-velocity table at byte_80D0444
+  by (Param1<<2) to get a direction-specific X-velocity scalar, multiplies, and stores into oBattleObject_XVelocity.
+  The table holds entries {0, +6, -6, +7, -7} (signed 16.16), so Param1 selects one of four presets depending
+  on how the object should slide horizontally.
+
+  4. Loads sprite index 0x80 with two extra args 8/0xE (sprite_load), turns on the shadow (sprite_hasShadow),
+  sets flag bit 0x02 (OBJECT_FLAG_VISIBLE) in oObjectHeader_Flags, and forces CurAnim/CurAnimCopy = 0x3F.
+
+  5. sprite_setAnimation(0x3F), then sprite_loadAnimationData, palette 0 (sprite_setPalette).
+
+  6. Copies the current horizontal flip from object_getFlip via sprite_setFlip.
+
+  7. Allocates a CollisionData slot via object_createCollisionData; if allocation fails it frees the object
+  (object_freeMemory) and returns — defensive path.
+
+  8. On success: object_setupCollisionData(..., r1=4, r2=5, r3=3) initializes the collision block from
+  the parent, sets hit-effect 6 (object_setCollisionHitEffect), and registers the collision for this frame
+  (object_presentCollisionData).
+
+  9. Plays sound effect 0xB3 (PlaySoundEffect) — a "spawn/appear" cue.
+
+  10. Stores CUR_STATE_UPDATE (0x04) into the full u32 oBattleObject_CurStateActionPhaseAndPhaseInitialized
+  slot and returns.
+
+  Note: r10 (toolkit) is preserved by the contract but is not directly used by this routine — kept live
+  across calls so callees that expect it in r10 see it intact.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl object_setCoordinatesFromPanels` is the first call after `push {lr}` — clear "set up
+    from panels" intent. - `mov r0,#0; str r0,[r5,#oBattleObject_Z]` plus `ldrh r1,[r5,#oBattleObject_Y16];
+    add r1,r1,#1; strh r1,[r5,#oBattleObject_Y16]` and the matching Z16 bump show explicit Z=0 / +1 panel
+    lift. - `bl object_getFrontDirection; ldrb r1,[r5,#oBattleObject_Param1]; lsl r1,r1,#2; ldr r2,[off_80D0440];
+    ldr r1,[r2,r1]; mul r0,r1; str r0,[r5,#oBattleObject_XVelocity]` shows the Param1-driven velocity
+    table lookup. - The 16-byte table at byte_80D0444 = {0,0, 6,0, 0,0x80, 6,0, 0,0, 7,0, 0,0x80, 7,0}
+    (little-endian u32) corresponds to {0x00000000, +0x00060000, -0x00060000, +0x00070000, -0x00070000}
+    → four signed presets at indices 0..3. - `mov r1,#8; mov r2,#0xe; mov r0,#0x80; bl sprite_load` →
+    sprite 0x80 with sub-args 8 and 0xE. - `bl sprite_hasShadow` then OR''ing bit 0x02 into `oObjectHeader_Flags`
+    adds OBJECT_FLAG_VISIBLE. - `mov r0,#0x3f; strb r0,[r5,#oBattleObject_CurAnim]; strb r0,[r5,#oBattleObject_CurAnimCopy];
+    bl sprite_setAnimation; bl sprite_loadAnimationData` forces anim 0x3F and loads it. - `bl object_createCollisionData;
+    tst r0,r0; bne loc_80D0420; bl object_freeMemory` shows the standard "alloc-or-die" pattern. - `mov
+    r1,#4; r2,#5; r3,#3; bl object_setupCollisionData` then `mov r0,#6; bl object_setCollisionHitEffect`
+    then `mov r0,#0xb3; bl PlaySoundEffect` are unique constants that pin the routine''s identity. - `mov
+    r0,#CUR_STATE_UPDATE; str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]` is the standard
+    init→update step transition.'
+  refs:
+  - bn6f/asm/asm31.s
+  reproduce: 'python3 tools/asmcat.py 0x080D03B8
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_initSpawnedObject_80D03B8
+
+    '
+open_questions:
+- Which chip/battle-object category uses sprite 0x80 + anim 0x3F + SE 0xB3 — probably a generic spawn/despawn
+  helper shared by multiple battle objects; naming "initSpawnedObject" reflects that without claiming
+  a specific chip.
+- Exact gameplay meaning of Param1 (0..3 selects a horizontal-velocity preset); would need a caller trace
+  to map the four presets to named variants.
+sources:
+- discovery session 2026-10-14 batch 37 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 391e53d9
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80D03B8 -> battleObject_initSpawnedObject_80D03B8
+  where: bn6f f491ae79
+  tool: tools/rename_symbol.py

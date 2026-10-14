@@ -1,0 +1,76 @@
+name: battleObject_initStaticActor_80D761C
+address: '0x080D761C'
+kind: function
+previous_names:
+- sub_80D761C
+status: probable
+summary: CUR_STATE_INITIALIZE handler for a "static actor" battle object — sets up sprite, shadow, palette,
+  collision data, HP, name ID and initial position, then either transitions to CUR_STATE_UPDATE or self-destroys
+  when timer==0 / collision slot unavailable.
+interface: '(r5 = battle object, r10 = toolkit) -> void ; side effects: writes many BattleObject fields,
+  claims/uses collision slot, may dispatch destroy events and free the object.'
+details: "Sets OBJECT_FLAG_VISIBLE (bit 0x2) on the object header (ldrb/orr/strb r5,#oObjectHeader_Flags).\n\
+  Loads sprite #0x80 sub 0xd via sprite_load (r0=0x80, r1=4, r2=0xd), sets CurAnimAndCurAnimCopy=0 (strh),\n\
+  sets the sprite anim via sprite_setAnimation(0), loads anim data, enables shadow (sprite_hasShadow),\
+  \ and\nmirrors via object_getFlip+sprite_setFlip.\nPalette index = Param1*3 (mul r0,r1; sprite_setPalette).\n\
+  NameID = 0xEB (strh oBattleObject_NameID).\nCopies Param3/Param4 into FuturePanelX/Y, then resolves\
+  \ the 16.16 panel coords via\nobject_getCoordinatesForPanels and pushes (oldX,oldY,dx,dy) onto the stack\
+  \ for calcAngle_800117C,\nwhose single-byte direction is stored at oBattleObject_Unk_0c.\nSets velocity\
+  \ (0x2c000 passed to sub_80011A0 -> stored in XVelocity/YVelocity) and z-velocity/timer from\nsub_800120E\
+  \ with r6=0xffffd800. Timer being zero takes the alternate branch (loc_80D7718) which copies\nthe panel\
+  \ coords into Coords and calls battle_dispatchDestroyEvents_802EF5C + \nclearEntryOfBattleStateBattleObjectList_800F656\
+  \ + object_genericDestroy, returning.\nIn the normal path, if Damage has bit 0x8000 set, shifts the\
+  \ damage value; sets MaxHP=0xfa0 and HP=MaxHP\n- (damage & 0xfff), also writes that HP into ExtraVars+0xc;\
+  \ loads r0=0xB4 into Timer; claims a collision\nslot via object_createCollisionData — if it fails, dispatch\
+  \ destroy + clear list + object_freeMemory and\nreturn. Otherwise calls object_setupCollisionData(r1=0x4f,\
+  \ r2=0xf, r3=3), writes SelfDamage from a \nper-PARAM1 table (dword_80D7748: 0x5A463232), sets StaminaDamageCounterDisabler=0x1e,\
+  \ calls \nobject_clearCollisionRegion, object_setCollisionHitEffect(0xa), object_presentCollisionData,\
+  \ then \nsub_801DC7C(r0=-0x10, r1=3) (battle-status list claim with name id 0xfff0? — neg r0,r0), and\
+  \ finally sets\nCurState=CUR_STATE_UPDATE and tail-calls sub_80D774C (the CUR_STATE_UPDATE handler).\n\
+  Pop {pc} at the end is the function epilogue (lr was saved at entry).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- Entry pushes {lru} only — function ends with pop {pc}, confirming this is a leaf-like initializer
+    reached from CUR_STATE_INITIALIZE dispatch. - "bl sub_80D774C" at the end of the success path and
+    the matching in/out registers (sub_80D774C takes the same r2..r12/r5) show this is the init half of
+    an init/update pair. - CurState byte is set to CUR_STATE_UPDATE (0x04) before tail-call to sub_80D774C:
+    `mov r0,#CUR_STATE_UPDATE; strb r0,[r5,#oBattleObject_CurState]`. - On failure of object_createCollisionData
+    (tst r0,r0; bne loc_80D76DE; then dispatch destroy + clear list + object_freeMemory + pop {pc}) the
+    function aborts init and returns — no CurState update. - Param1 used to index `dword_80D7748` (`ldrb
+    r0,[r5,#oBattleObject_Param1]; ... ldrb r1,[r1,r2]; strh r1,[r0,#oCollisionData_SelfDamage]`) and
+    `mul r0,r1` (`r0*3`) to feed sprite_setPalette show Param1 selects the static actor''s variant (color/damage
+    profile). - Param3/Param4 stored into FuturePanelX/Y and used to compute initial X/Y (Coords at +0x34,
+    via `mov r7,r5; add r7,#0x34; stmia r7!,{r0-r2}`). - Constant 0xfa0 stored in MaxHP and 0xB4 in Timer
+    are the static actor''s fixed HP and lifetime timer — hard-coded, no Param. - Constant 0xEB stored
+    in NameID matches the constant-base for static battle actors. - Alternate branch (loc_80D7718) when
+    sub_800120E returns timer==0 immediately goes through dispatch destroy + clear list + object_genericDestroy
+    — same teardown as the createCollisionData failure path, confirming this object spawns, runs once,
+    then exits.'
+  refs:
+  - bn6f/asm/asm31.s
+  reproduce: 'python3 tools/asmcat.py 0x080D761C
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_initStaticActor_80D761C
+
+    '
+open_questions:
+- The exact role of sub_80011A0 and sub_800120E (they take the 0x2c000 / 0xffffd800 args and return velocity/timer;
+  probably an AI/inertia helper) — would settle by examining those.
+- What `oBattleObject_Unk_0c` stores (the calcAngle result byte, probably initial facing/direction for
+  the actor's first hop) — would settle by tracing sub_80D774C.
+- What damage-bit 0x8000 flip in the early branch actually means (parses/transforms the encoded Damage
+  field — possibly "doubled" half) — would settle by tracing callers that set Damage before init.
+sources:
+- discovery session 2026-10-14 batch 37 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 391e53d9
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80D761C -> battleObject_initStaticActor_80D761C
+  where: bn6f f491ae79
+  tool: tools/rename_symbol.py

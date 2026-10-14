@@ -1057,7 +1057,7 @@ Next sub_81337C4(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_81337E8 ── */
+/* ── battleObject_runSubmenuInputHandler_81337E8 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { bool z, n; } call_submenu_isOpen_81355D8_result;
 /* register form: generated wrapper: submenu_isOpen_81355D8 has no typed C interface yet */
@@ -1309,8 +1309,8 @@ static submenu_tick_result submenu_tick(u32 r2, u32 r4, u32 r5,
     return res;
 }
 
-/* sub_81337E8(r2 r4 r5 r10) -> r5 r8 r9 r10 r12 */
-Next sub_81337E8(void) {
+/* battleObject_runSubmenuInputHandler_81337E8(r2 r4 r5 r10) -> r5 r8 r9 r10 r12 */
+Next battleObject_runSubmenuInputHandler_81337E8(void) {
     submenu_tick_result r = submenu_tick(R2, R4, R5, R8, R9, R12, R10);
     R5 = r.r5;
     R8 = r.r8;
@@ -2410,11 +2410,11 @@ static inline call_sub_811FAF4_result call_sub_811FAF4(u32 r0, u32 r1, u32 r2, u
 }
 
 typedef struct { u32 r0, r1, r3; } call_sub_8120CC8_result;
-/* register form: generated wrapper: sub_8120CC8 has no typed C interface yet */
+/* register form: generated wrapper: battleObject_advanceAnimTableBy0xFF_8120CC8 has no typed C interface yet */
 static inline call_sub_8120CC8_result call_sub_8120CC8(u32 r0, u32 r1) {
     R0 = r0;
     R1 = r1;
-    GUEST_CALL(sub_8120CC8);
+    GUEST_CALL(battleObject_advanceAnimTableBy0xFF_8120CC8);
     return (call_sub_8120CC8_result){ R0, R1, R3 };
 }
 
@@ -2423,7 +2423,7 @@ static inline call_sub_8120CC8_result call_sub_8120CC8(u32 r0, u32 r1) {
  * Chooses a mode mask from the palette-slot byte (obj+0xD), builds a tile
  * source descriptor from the X coordinate (obj+0x34), blits via battleObject_queueOamFromTableRow_811FAF4,
  * then decrements the animation counter stored in obj+0x15's upper nibble.
- * When the counter hits zero, sub_8120CC8 supplies a new high-nibble value. */
+ * When the counter hits zero, battleObject_advanceAnimTableBy0xFF_8120CC8 supplies a new high-nibble value. */
 static void process_object_tiles(u32 obj) {
     /* register form: the original's push {r4} / pop {r4} keeps the caller's
      * R4 intact across battleObject_queueOamFromTableRow_811FAF4 which overwrites R4; the generated wrapper
@@ -2451,7 +2451,7 @@ static void process_object_tiles(u32 obj) {
     u32 counter = (orig_byte >> 4) - 1u;
 
     if (counter == 0u) {
-        /* Counter reached 0: fetch a new value from sub_8120CC8. */
+        /* Counter reached 0: fetch a new value from battleObject_advanceAnimTableBy0xFF_8120CC8. */
         call_sub_8120CC8_result cc8 = call_sub_8120CC8(faf4.r0, A_dword_81331FC);
         ST8(obj + 0x15, (u8)cc8.r0);
         counter = cc8.r1;

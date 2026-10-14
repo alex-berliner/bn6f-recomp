@@ -1,0 +1,75 @@
+name: battleObject_runSubmenuInputHandler_81337E8
+address: '0x081337E8'
+kind: function
+previous_names:
+- sub_81337E8
+status: probable
+summary: Per-frame input/state dispatcher for the in-battle custom-screen submenu (handles B/START/A/SELECT/LR/dpad,
+  folder-edit quit, submenu BG clear, and runs the two row-align/tile-upload helpers plus AI turn-handler
+  steps 5/6).
+interface: '(r5 = sSubmenu/this battle object, r10 = Toolkit, r2 = ?, r4 / lr saved) -> r0 = 0x40 ; side
+  effects: writes sSubmenu.unk_02/unk_1B/obj+1/obj+2, runs script 0x17, plays SFX, dispatches into chatbox_*/folder-edit/object_saveState/BG/AI
+  helpers.'
+details: '1. Calls submenu_isOpen_81355D8; if no submenu is open, branches to loc_813381E to try B-cancel
+  (sub_8133BB4), START/B-cancel (sub_8133C0C), and A-confirm in folder edit (folderEdit_AConfirmPress_8134A3C).
+
+  2. If a submenu is open, loads sSubmenu pointer from off_8133888, checks sSubmenu+0x2 == 0x24 (custom-screen
+  mode) or bit 0x40 of sSubmenu+0x1B; both jump to the rendering/AI tail (loc_8133864). Otherwise tests
+  IsButtonPressed(START|B|A).
+
+  3. On START/B/A press, stores 0x10 at obj+1 and 0 at obj+2, runs chatbox script 0x17, plays SOUND_UNSELECT_7B,
+  and falls through to the tail.
+
+  4. Falls back through chatbox_selectPress_8133C58, then reads LowSensitivityHeld from the Toolkit JoypadPtr
+  and calls menu_adjustCursorOrValue_811F7F8 (mask 7, min 0, max 0).
+
+  5. Tail (loc_8133864) always runs: battleObject_submenuRenderFolderAndChips_81341A0, submenu_clearBgIfClosed_8134594,
+  object_resolveTableEntryByIndex_8134538, battleObject_alignRowOffsetCheckSN3_81353DC, then battle_aiRunTurnHandler_81353F0(5,0)
+  and (6,1).
+
+  6. Captured calls show consistent r0=0x40 on exit (the function is `void`-like to callers, no useful
+  r0 returned; r0=0x40 here appears to be a passthrough from the last BL into r0).
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl submenu_isOpen_81355D8 ; beq loc_813381E` at the top branches on submenu-open state (confirmed
+    callee summary). - `ldr r0, off_8133888 ; ldrb r1, [r0,#0x2] ; cmp r1, #0x24` shows two early-exit
+    guards using sSubmenu fields. - `mov r0, #JOYPAD_START | JOYPAD_B | JOYPAD_A ; bl IsButtonPressed`
+    gives the hard-input triple-handler branch with chatbox script 0x17 + SOUND_UNSELECT_7B. - loc_8133830
+    dispatch chain runs chatbox_selectPress_8133C58, then the Joypad LowSensitivityHeld (offset 0x4) ->
+    menu_adjustCursorOrValue_811F7F8 (confirmed menu helper). - loc_813381E dispatch chain runs sub_8133BB4
+    (B press), sub_8133C0C (START/B cancel), folderEdit_AConfirmPress_8134A3C (A confirm) when the submenu
+    is closed. - Tail unconditionally runs the three submenu/object-helper BLs and ends with two battle_aiRunTurnHandler_81353F0
+    calls with rows 5 then 6. - Captured r0 exit 0x40 across all 40 snap frames indicates the call is
+    primarily side-effecting; r5/r8/r9/r10/r12 are flagged out (callee-saved) which matches the lack of
+    meaningful return value.'
+  refs:
+  - bn6f/asm/asm36.s
+  reproduce: 'python3 tools/asmcat.py 0x081337E8
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_runSubmenuInputHandler_81337E8
+
+    '
+open_questions:
+- Exact identity of the BattleObject whose +1/+2 are clobbered on the START/B/A branch (r5 likely holds
+  it via the routine's BattleState convention, but it isn't explicitly loaded in this slice).
+- What sSubmenu.unk_02==0x24 vs sSubmenu.unk_1B bit 0x40 represent (custom-screen submode vs an "in a
+  chip-select busy" flag) -- would settle by scanning what writes those offsets.
+- 'Why r0 finishes at 0x40 in every captured call: last leaf before `pop {pc}` is `battle_aiRunTurnHandler_81353F0`,
+  which returns r0=0x40 in this call pattern -- looks like leftover, not a deliberate return value (contract
+  marks it void-like).'
+sources:
+- discovery session 2026-10-14 batch 37 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 391e53d9
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_81337E8 -> battleObject_runSubmenuInputHandler_81337E8
+  where: bn6f f491ae79
+  tool: tools/rename_symbol.py

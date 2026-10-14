@@ -1,0 +1,61 @@
+name: battleObject_getIndex_800B892
+address: '0x0800B892'
+kind: function
+previous_names:
+- sub_800B892
+status: probable
+summary: Returns the byte at offset 0x1 of the entry that byte_203CF00_getEntryPtr points at for the given
+  slot index.
+interface: (r0 = slotIndex) -> r0 = entry.byte_1 ; no side effects
+details: '1. push {lr} saves the return address (function uses `pop {pc}` as epilogue, so it''s a leaf-ish
+  helper).
+
+  2. bl byte_203CF00_getEntryPtr_800BF5C converts the slot index in r0 into a pointer into the 0x50-byte/entry
+  table at byte_203CF00 (EWRAM/IWRAM, confirmed by callee summary).
+
+  3. ldrb r0, [r0,#1] loads the second byte of that entry and returns it.
+
+  4. pop {pc} returns to the caller.
+
+  All three captured-call sites (snap_story2_0/1/2.bin) invoke it with slot index 1 and r2 pointing at
+  0x02036778 (an EWRAM pointer), and the function returns 0x00. Callers are all battle object handlers
+  (SnakeArm, chip-name drawer, time-freeze end, undim-screen, etc.) — they use the result as a battle-side
+  selector, consistent with reading from the byte_203CF00 0x50-byte/entry table.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl byte_203CF00_getEntryPtr_800BF5C` directly calls the confirmed "Address helper that converts
+    a slot index into a pointer to that entry in the 0x50-byte-per-entry array at byte_203CF00" callee.
+    - `ldrb r0, [r0,#1]` reads byte at offset 0x1 of the returned entry, exactly the operation in the
+    assembly. - All three captured-call snapshots show entry r0=1 (slot index), with r2=0x02036778 (an
+    EWRAM address nearby the 0x020xxxxx range, consistent with battle data), exit r0=0. - Caller list
+    is dominated by battle-object handlers (battleObject_stepSnakeArm_800BA8a, object_drawChipName, object_timefreezeEnd,
+    object_undimScreen, sub_800BBA8, sub_800BCC0, sub_800BCF6), all operating on per-actor battle state.'
+  refs:
+  - bn6f/asm/object.s
+  reproduce: 'python3 tools/asmcat.py 0x0800B892
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_getIndex_800B892
+
+    '
+open_questions:
+- The semantic meaning of the byte at offset 0x1 of a byte_203CF00 entry is not documented in the supplied
+  struct headers — whether it's a slot Index, an alliance flag, or some other per-actor field cannot be
+  settled without the entry struct definition.
+- Whether the function returns it as a small integer or as a flag/boolean (callers don't make it obvious
+  from summaries alone) is also unclear; the three captured calls all return 0.
+sources:
+- discovery session 2026-10-14 batch 37 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 391e53d9
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_800B892 -> battleObject_getIndex_800B892
+  where: bn6f f491ae79
+  tool: tools/rename_symbol.py

@@ -1,0 +1,83 @@
+name: battleObject_syncSpriteFromOwner_80B8DA6
+address: '0x080B8DA6'
+kind: function
+previous_names:
+- sub_80B8DA6
+status: probable
+summary: 'Per-frame: copy the navi sprite''s X/Y/Z pos into this battle object''s coords, then mirror
+  the related object''s color shader/palette/alpha/flip onto this object, and tick the sprite unless paused/timestopped;
+  destroys this object if its extra-vars length is zero.'
+interface: '(r5 = this battle object, r10 = toolkit, lr) -> r5 preserved ; side effects: writes object
+  header flag bits 0x02, mutates r5+oCoords (0x34..0x40), r5+oBattleObject_RelatedObject1Ptr->sprite fields,
+  and on a zero length, clears OBJECT_FLAG_VISIBLE and forces CUR_STATE_DESTROY.'
+details: '1. Loads r4 = this object''s RelatedObject1Ptr (offset 0x4c), the sprite owner whose palette/shader/flip/alpha/mosaic
+  this object copies.
+
+  2. Reads its X/Y/Z (offsets 0x34/0x38/0x3c), adds this object''s XVelocity/ZVelocity (offsets 0x40/0x48),
+  subtracts this object''s byte-0xC sign-extended << 16 (an X-offset tweak of the related object''s coords),
+  and stores the result back to the related object''s coord block (writes to r4+0x34..+0x40). So the "navi"
+  sits relative to this battle object plus its own velocity.
+
+  3. Merges this object''s header flag byte 0x02 (OBJECT_FLAG_VISIBLE) with the related object''s flag
+  byte 0x02 (`and r0, !2; and r1, 2; orr`): this object''s visibility follows the related object''s.
+
+  4. Mirrors sprite state from RelatedObject1Ptr onto this object via the four paired getter/setter pairs:
+  ColorShader (0x08002edc → 0x08002ed0), FinalPalette (0x08002dc8 → 0x08002db4), MosaicScalingParameters
+  (0x08002ce0 → 0x08002c7e), Flip (0x08002f7e → 0x08002f5c). Each set call uses r5 (this object) as the
+  destination sprite owner.
+
+  5. If the dword at *this.oBattleObject_ExtraVars is 0 (length sentinel/array-empty), it clears OBJECT_FLAG_VISIBLE
+  on this object and writes CUR_STATE_DESTROY (0x08) into oBattleObject_CurStateActionPhaseAndPhaseInitialized
+  (offset 0x8), bypassing the rest.
+
+  6. Otherwise: if Param3 (offset 0x6) is non-zero, only check `battle_isTimeStop`; if it is zero, check
+  `battle_isTimeStop` first and bail out on either being true by reading from related object schedule
+  check, then call `battle_isPaused`. If neither paused nor time-stopped, calls `object_updateSprite(r5,
+  r10, lr)` to actually tick the animation.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r4, [r5,#oBattleObject_RelatedObject1Ptr]` plus the loops `ldmia r0!,{r1-r3}` from r4+0x34
+    show it reads X/Y/Z from the related object. - `add r1,r1,r0` with `ldr r0,[r5,#oBattleObject_XVelocity]`
+    and `add r3,r3,r0` with `ldr r0,[r5,#oBattleObject_ZVelocity]` show velocity deltas are added to the
+    related-object coords. - `stmia r0!,{r1-r3}` written back at the same +0x34 offset (with r0 = r5+0x34
+    after `mov r0,#0x34; add r0,r0,r5`) — wait, actually the store uses `r5+0x34`, so it stores the new
+    X/Y/Z back into THIS object''s coords block (the related object''s read gives the base, plus this
+    object''s velocity is the delta, stored as this object''s pos). - The visibility flag merge (`and
+    r0,r1; and r1,r2; orr r0,r1`) on `oObjectHeader_Flags` of both r5 and r4 confirms it gates this object''s
+    visibility on the related object''s. - The four get/set pairs of get/set ColorShader / FinalPalette
+    / MosaicScalingParameters / Flip each read from r4 (RelatedObject1Ptr) and pass r5 to the setter —
+    clear sync-everything-from-owner pattern. - `ldr r0,[r5,#oBattleObject_ExtraVars]; ldr r0,[r0]; tst
+    r0,r0` is a "length-zero means we''re done" guard. - `mov r0,#CUR_STATE_DESTROY; str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]`
+    sets state to 0x08 (the struct''s CUR_STATE_DESTROY constant). - `battle_isTimeStop` / `battle_isPaused`
+    are guarded in the same way `object_updateSprite` itself gates (per its description), so this is a
+    wrapper that re-checks before invoking the sprite ticker. - Single confirmed caller `battle_initNaviSprite_80B8CF8`
+    is the init-for-a-battle-navi path, consistent with this being a per-frame tick for navi-sprite "shadow"
+    battle objects.'
+  refs:
+  - bn6f/asm/asm31.s
+  reproduce: 'python3 tools/asmcat.py 0x080B8DA6
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_syncSpriteFromOwner_80B8DA6
+
+    '
+open_questions:
+- Whether the X-offset subtraction from byte 0xC is an "alignment" constant the parent uses, or a per-object
+  billboard offset — no symbolic reference to it elsewhere visible.
+- Whether the destroy-on-zero path is an actual despawn trigger or a sentinel for "no extra vars buffer
+  allocated" — only one caller observed so far.
+sources:
+- discovery session 2026-10-14 batch 37 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 391e53d9
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80B8DA6 -> battleObject_syncSpriteFromOwner_80B8DA6
+  where: bn6f f491ae79
+  tool: tools/rename_symbol.py

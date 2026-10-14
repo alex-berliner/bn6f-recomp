@@ -1,0 +1,72 @@
+name: battleObject_initFromPanelSpriteAndCollision_80CC4EC
+address: '0x080CC4EC'
+kind: function
+previous_names:
+- sub_80CC4EC
+status: probable
+summary: Initialises a battle object's panel coordinates, sprite/animation, and collision block, then
+  sets its state-action field to advance out of the init state.
+interface: (r5 = BattleObject*) -> void ; writes object fields including oBattleObject_Z, oBattleObject_Y,
+  oBattleObject_CurAnim, oBattleObject_CurStateActionPhaseAndPhaseInitialized; on collision-data allocation
+  failure frees the object and skips collision work
+details: '1. Calls object_setCoordinatesFromPanels so X/Y pixel coords match PanelX/PanelY.
+
+  2. Sets Z = 0 then adds 1 (so Z = 1), and adds 1 to the Y pixel coord, raising the object one pixel
+  above its panel (likely a hill/anomaly pixel offset).
+
+  3. Loads sprite id 0x29 with priority 0x10 from archive 0x80 via sprite_load, calls sprite_noShadow,
+  sets oObjectHeader_Flags |= 0x02 (OBJECT_FLAG_VISIBLE), zeroes CurAnim/CurAnimCopy, sets anim index
+  to 0 via sprite_setAnimation, loads the per-object animation data, advances one sprite frame, sets palette
+  0, and applies the object''s horizontal flip via object_getFlip + sprite_setFlip.
+
+  4. Allocates a CollisionData slot with object_createCollisionData; on failure it tears the object down
+  with object_freeMemory and returns.
+
+  5. On success, calls object_setupCollisionData(r0=slot, r1=0x29, r2=r3=0), sets the collision hit-effect
+  to 0xFF, then object_presentCollisionData to run the per-frame collision handler.
+
+  6. Final step writes 4 to oBattleObject_CurStateActionPhaseAndPhaseInitialized — that''s the CUR_STATE_UPDATE
+  (0x4) field encoded into the u32 at 0x8, advancing the state machine past CUR_STATE_INITIALIZE.
+
+  Distinctive constants (sprite 0x29, archive 0x80) are the function''s fingerprint and likely identify
+  the specific battle object type this init phase belongs to.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl object_setCoordinatesFromPanels` then `str r0,[r5,#oBattleObject_Z]` (Z=0) followed by
+    add+store and a +1 to Y pixel (`add r1,r1,r0; str r1,[r5,#oBattleObject_Y]`) — explicit Z/Y init from
+    panels. - `mov r0,#0x80 / mov r1,#0x10 / mov r2,#0x29; bl sprite_load` and the trailing `mov r1,#0x29;
+    bl object_setupCollisionData` show the sprite id 0x29 + archive 0x80 are the object''s identity. -
+    `orr r0,r1` with `mov r1,#2` against oObjectHeader_Flags sets the visible bit; immediately followed
+    by zeroing CurAnim/CurAnimCopy and `bl sprite_setAnimation`/`sprite_loadAnimationData`/`sprite_update`/`sprite_setPalette`/flip
+    sequence — standard sprite bring-up. - `bl object_createCollisionData` then `tst r0,r0; bne loc_80CC548`
+    with the failure path calling `object_freeMemory` and bailing out — exactly the "couldn''t allocate
+    collision -> destroy object" pattern used by other object inits. - `str r1,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]`
+    with `mov r1,#4` matches CUR_STATE_UPDATE = 0x4 in oBattleObject.CurState, finishing the init phase.'
+  refs:
+  - bn6f/asm/asm31.s
+  reproduce: 'python3 tools/asmcat.py 0x080CC4EC
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battleObject_initFromPanelSpriteAndCollision_80CC4EC
+
+    '
+open_questions:
+- Which concrete battle-object type uses sprite 0x29 / archive 0x80 / hit-effect 0xFF; only the caller's
+  identity would settle it. sub_80CC584 is its sole caller and remains unnamed.
+- Whether the +1 to Y pixel is an intentional "rest one pixel above panel" quirk shared with other init
+  helpers.
+sources:
+- discovery session 2026-10-14 batch 37 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 391e53d9
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80CC4EC -> battleObject_initFromPanelSpriteAndCollision_80CC4EC
+  where: bn6f f491ae79
+  tool: tools/rename_symbol.py
