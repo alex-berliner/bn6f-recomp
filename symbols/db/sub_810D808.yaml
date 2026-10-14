@@ -3,37 +3,43 @@ address: '0x0810D808'
 kind: function
 previous_names: []
 status: hypothesis
-summary: Drives one battle object's per-frame panel-highlight pass (counter-timer reset, side-flip direction lookup,
-  panel highlight for matching cells, related flag set).
-interface: (r0=ignored, r1=`BattleObject*` aliased with `r5`, r2=0x80, r3=3; out=r0=panel slot/iteration byte, r1=possibly
-  the cur-chip slot index; r4/r5/r7/r10/lr are callee-saved)
-details: "The assembly for this address was not located in the bn6f asm directory (`sub_810D808 not found in bn6f/asm`),\
-  \ so the description is inferred from the lifter contract, callees and captured-call arguments.\n  - Entry always\
-  \ loads r0=0, r1=`0810d809` (a `BattleObject*`-like address matching the linked-list sentinel of the battle-object\
-  \ list), r2=0x80, r3=3, sp=`03007d70`, lr=`0810d7f0`. That matches the project's \"battle object list walk with\
-  \ param block\" calling convention used by other `0x810D7xx` battle-object dispatchers.\n  - The callees it invokes\
-  \ match the operation: `battle_ResetObjectTimerTo8_80C4072` writes 8 into `BattleObject.Timer`; `object_setCounterTime`\
-  \ writes the counter; `object_getFrontDirection` returns the +/-1 facing multiplier; `object_setFlag1` ORs a flag\
-  \ into the object's collision `ObjectFlags1`; `highlightPanelIfSomeCondition_8109660` highlights panels using\
-  \ a (dx,dy) list around the object's panel coords with a side multiplier.\n  - Exit r0 cycles through small values\
-  \ (0x24, 0x25, 0x7f) and the captured-call stack frame is the same `03007d70` used by other battle update frames.\
-  \ Together this points to a per-frame battle object update that walks a panel list, sets per-object state, and\
-  \ returns either a hit count or a chip/slot index.\n  - Because no assembly was provided, every claim about field\
-  \ offsets, the highlight rule, and the meaning of the return value is inference from callee behaviour, not from\
-  \ disassembly.\n"
+summary: Tick handler for a battle object's per-action update (advance state, retarget by facing, refresh counter/highlight),
+  given battle object and an internal action id.
+interface: (r0 = 0, r1 = &ret_810D808 thunk for caller -> this function at 0x810D809, r2 = 0x80, r3 = 3, r4..r7/r10/lr
+  from caller) -> r0 = an exit small value (often 0x24, 0x25, 0x7F) ; no side effect contract on global EWRAM shown.
+details: "- Address 0x810D808 is the entry, with the body actually starting at 0x810D809 (matches r1=0x0810d809\
+  \ in the captures, which is a \"+1\" Thumb-mode trick: caller stored the +1 of the destination and the routine\
+  \ negates the bias; in the captures the next instr is `bl sub_810D808` from 0x0810d7f0, and Thumb BL ignores bit0;\
+  \ so the captured `r1=0x0810d809` is just the disassembler quirk of showing a +1 bias for a Thumb target).\n \
+  \ - The r2=0x80, r3=3 look like a small argument pair (an action index 0x80 in some flag-byte sense, with mask\
+  \ 3) but the contract lists no in-r0..r3, so they are scratch.\n  - In-reg contract {r4,r5,r7,r10,lr} and out\
+  \ {r1,r5} plus r5-r7/r10/lr may_write, plus a single byte in r0, with flags in C/V/N/Z changing: strongly suggests\
+  \ this is a per-frame state-machine action tick.\n  - r5 in is read with `object_getFrontDirection` (which uses\
+  \ r5 -> facing direction) and `object_setFlag1` (r0 = r5), so r5 is the active battle object pointer.\n  - r10\
+  \ is read by `object_setCounterTime(r0,r5,r10,lr)` -> r10 is the toolkit (matches the convention \"toolkit struct,\
+  \ always in r10\").\n  - r7 in + out r7 (may_write): typical index/counter register in a `for (...)` loop.\n \
+  \ - The callee `highlightPanelIfSomeCondition_8109660` matches a \"highlight a column of panels\" routine that\
+  \ takes a baseX/baseY and a sign, consistent with a BattleObject update that needs to redraw an attack-row highlight\
+  \ when an action triggers a panel selection.\n  - The callee `sub_80C5578` is a generic `in r0..r7/lr -> out r0..r3/r5/lr`\
+  \ worker used widely as a state-tick helper.\n  - `battle_ResetObjectTimerTo8_80C4072` is called to reset the\
+  \ per-action timer to 8 ticks, consistent with a \"begin a new action phase\" update.\n  - Captured exit r0 values\
+  \ 0x24, 0x25, 0x7F across calls correspond to small \"phase\" / \"status\" codes returned to the dispatcher.\n\
+  \  - Without disassembly the exact stage of the action being ticked is unknown; callees and the out-r1 plus the\
+  \ various small r0 returns suggest this routine both advances the action and tells the dispatcher the next phase\
+  \ index.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- 40 captured calls all show the identical `(r0=0, r1=0810d809, r2=0x80, r3=3, sp=03007d70, lr=0810d7f0)`
-    frame, consistent with a fixed dispatcher called once per object per frame. - r1=0x0810d809 is odd-aligned (`+1`)
-    so it almost certainly points at `oBattleObjectsLinkedListStart` (0x10 byte sentinel containing `Prev/Next`),
-    with the +1 flag the same kind of "list head" marker used in other object walkers. - callee list: `battle_ResetObjectTimerTo8_80C4072`
-    writes 8 to the battle object''s Timer field; `object_setCounterTime` + `object_setFlag1` (writing to `CollisionData.ObjectFlags1`)
-    match "counter driven highlight" semantics. - `object_getFrontDirection` returning a +/-1 multiplier and `highlightPanelIfSomeCondition_8109660`
-    taking a panel-coordinate list with a side sign parameter directly implies the function passes panel (dx,dy)
-    offsets weighted by alliance side direction. - exit r0 range 0x24..0x7f is consistent with a small byte written
-    back into a per-object chip/slot index or a "did we hit a highlighted panel" counter; the exact meaning cannot
-    be pinned without seeing the epilogue.'
+  detail: '- Callee `object_setCounterTime` and `object_setFlag1` both take r5 as the battle object, so r5 in this
+    function is the BattleObject* (consistent with the project''s convention BattleObject* in r5). - `object_getFrontDirection`
+    is called with r5 to compute facing side-sign; this is used to expand a panel highlight in `highlightPanelIfSomeCondition_8109660`,
+    the typical pattern when an action projects a row/column ahead of the actor. - `battle_ResetObjectTimerTo8_80C4072`
+    writing 8 to +0x8 fits the BattleObject.CurState/CurAction region, i.e. advancing a per-action timer. - r10
+    in and being passed to `object_setCounterTime` matches the toolkit-in-r10 rule. - Captured r0=0, r1=0x0810d809,
+    r2=0x80, r3=3 is identical across the six calls shown, with lr=0x0810d7f0: a single dispatcher loop in 0x0810d7f0
+    is invoking this routine as a "+1" Thumb target via `bl 0x0810d808` with bit0=1 set, so the body actually starts
+    at 0x0810d809. - Exit r0 values 0x24, 0x25, 0x7F vary across calls but always tiny; this is the shape of a "phase"
+    or "state code" return used by an action jumptable.'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x0810D808
@@ -48,14 +54,15 @@ evidence:
     '
   result: battlesweep, beastsp, story4, story6
 open_questions:
-- The asm wasn't found, so field offsets, the exact state machine (counter reset -> counter set -> drive highlight
-  -> flag set), and the meaning of the return value are guessed.
-- r0 returned values like 0x7f (carry/zero) suggest "max panel index reached" or "saturated", but could equally
-  be a flag mask. Disassembling the epilogue at 0x810d808 and the matching 0x810d7f0 caller would settle the contract.
+- We have no assembly; the role above is reconstructed only from the callee set and the in/out contract.
+- The semantic meaning of r0 returns 0x24 vs 0x25 vs 0x7F (idle / action end / error?) is unknown; needs the disassembly
+  to read the `cmp`/`bne` ladder.
+- Whether this routine is the per-frame `CurState==CUR_STATE_UPDATE` dispatcher or a single named action like "step
+  forward" / "attack" cannot be determined from the caller list (caller is hidden as "0x0810d7f0").
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f 353d80a9
+  where: bn6f c6f1bc6f
   tool: tools/symdoc.py

@@ -3,23 +3,29 @@ address: '0x08028894'
 kind: function
 previous_names: []
 status: hypothesis
-summary: Computes a (x, y) pair for selecting a B-button attack entry from AIData BPwrAtk and BLeftAbility, returning
-  coords in (r0, r1)
-interface: (r5 = AIData*) -> r0 = x, r1 = y ; no side effects
-details: "Pushes lr, loads r6 with the address of a small 30-byte table at byte_80288B0 (a `bpwr_table` of u16\n\
-  \  triples: panel-col/col-element/y), and reads the B-button power byte at AIData+0x7 (BPwrAtk).\n  If BPwrAtk\
-  \ < 5, r1 = 0 (use base table columns); else r1 = 0x18 (use offset 0x18 block) and r0 -= 5.\n  Then r0 = (r0 *\
-  \ 16) + 8 and r1 += 0x68, producing an (x, y) pixel position pair.\n  Pops PC to return. r6 is preserved only\
-  \ as a working pointer.\n  Likely used by the AI subsystem to position a chip-select / B-button cursor based on\
-  \ BPwrAtk and\n  BLeftAbility rows; matches the BLeftAbility selector in AIData.\n"
+summary: returns a (sprite, frame) pair as (r0, r1) for a battle object's BPwrAtk chip-code chip
+interface: '(r5 = BattleObject*) -> r0 = tile/sprite offset, r1 = frame offset added to base 0x68 ; side effects:
+  none (uses r6)'
+details: "Reads the object's `BPwrAtk` byte at offset 0x7 of the BattleObject pointed to by r5.\n  If that byte\
+  \ is >= 5, the function forces r1 to 0x18 and subtracts 5 from r0 before\n  scaling; otherwise r1 starts at 0.\
+  \ The value in r0 is then shifted left 4 (×16),\n  incremented by 8, and r1 is increased by 0x68. The literal\
+  \ pool immediately after\n  the code (byte_80288B0) is a small chip-code palette/anim lookup table (6 entries\n\
+  \  × 5 bytes) that the caller presumably indexes for the chip-code B-press attack,\n  but this function itself\
+  \ does not read it; r6 is loaded with the table address\n  (off_80288AC → byte_80288B0) and the function returns\
+  \ via `pop {pc}`.\n  Returned r0 is the chip-code sprite offset and r1 the corresponding frame table\n  offset\
+  \ (with 0x68 base). r6 leaks the address of byte_80288B0; per the calling\n  convention note the address _8028894\
+  \ is a tail-call thunk, but in practice it\n  returns to its caller (pop {pc}).\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- `ldrb r0, [r5,#7]` reads BPwrAtk (AIData offset 0x7) per AIData.inc - `cmp r0, #5; blt loc_80288A4`
-    chooses between two regions of byte_80288B0 (offset 0 vs 0x18) - `lsl r0, r0, #4; add r0, #8; add r1, #0x68`
-    produces a packed (x*16+8, y+0x68) pair - `ldr r6, off_80288AC` and the embedded bytes form a 5-row x 2-block
-    lookup table - Captured calls show lr=0x08028834 (a nearby caller in the AI battle story2 path) and consistent
-    entry/exit register shapes across all 40 samples.'
+  detail: '- `ldrb r0, [r5,#7]` reads BattleObject.BPwrAtk (struct offset 0x7). - `cmp r0, #5 / blt loc_80288A4
+    / sub r0, #5` implements the two-range split for chip-code indices >= 5 (B-button chip codes past the standard
+    5). - `lsl r0, r0, #4 ; add r0, #8` produces r0 = (idx*16 + 8), the per-entry stride into a 16-byte/entry sprite
+    table. - `mov r1, #0 / mov r1, #0x18` selects 0 or 0x18 as the base frame offset. - `add r1, #0x68` lifts the
+    frame offset to 0x68/0x80 (frame table base). - `ldr r6, off_80288AC` loads the address of byte_80288B0 into
+    r6, leaking it. - `pop {pc}` returns to the saved lr from the matched `push {lr}`. - Captured calls all show
+    the same entry r0=0x08028895/r1=0x0802886c and exit r0=8, indicating the common path is `BPwrAtk < 5` with idx
+    such that idx*16+8 = 8, i.e. BPwrAtk == 0 → Cannon-style chip-code 0.'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x08028894
@@ -36,12 +42,19 @@ evidence:
   result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2, story4, story5,
     story6, story7, story8, story9
 open_questions:
-- Without seeing the caller at 0x08028834 the exact semantic of "y+0x68" / "x*16+8" (panel grid,
-- cursor pixels, screen coords) cannot be pinned; the (x, y) pair's units are inferred.
+- 'The role of byte_80288B0 (6×5 bytes of mostly-zero / `0xE`/`0xC` values):'
+- likely the chip-code palette-or-frame index table indexed by BPwrAtk, but this
+- function never indexes it; the address is just handed to the caller via r6.
+- 'Why r6 (a callee-saved register) is set in a `void`-shaped function: this is'
+- almost certainly a leaf helper that exists to be inlined/instantiated per
+- chip-code (the `0x08028895` self-entry shows the call site is one byte into
+- the function, i.e. the caller builds r5 and falls through skipping `push lr`).
+- Settled by identifying the chip-code table (Palette20097a0 or similar) and
+- confirming which struct holds 0x68-based frame indices.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f 353d80a9
+  where: bn6f c6f1bc6f
   tool: tools/symdoc.py

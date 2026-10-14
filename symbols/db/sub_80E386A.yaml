@@ -3,48 +3,37 @@ address: '0x080E386A'
 kind: function
 previous_names: []
 status: hypothesis
-summary: Beast-Out action dispatcher that copies a related object's UPDATE_DURING_TIMESTOP flag onto the current
-  battle object and routes execution to one of five action handlers (or destroys the object on the no-handler path).
-interface: '(r5 = BattleObject*) -> void ; side effects: modifies the object''s ObjectHeader.Flags (bit 1), CurStateActionPhaseAndPhaseInitialized,
-  and tail-calls one of sub_80E38C8 / sub_80E38EE / sub_80E3904 / sub_80E3930 / sub_80E3950.'
-details: "- Entry saves lr; reads BattleObject.Param1 (`oBattleObject_Param1`). If it equals 4 the code jumps straight\
-  \ into the flag-copying block (so Param1==4 is treated as \"always run the action path\"). Otherwise it dereferences\
-  \ `oBattleObject_RelatedObject1Ptr`, reads its CurAction (`oBattleObject_CurAction`), and compares with 0xb. Only\
-  \ CurAction==0xb (or Param1==4) takes the action path; any other action sets `CUR_STATE_DESTROY` (0x8) into `CurStateActionPhaseAndPhaseInitialized`\
-  \ and returns.\n  - In the action path the code copies bit 0x02 of the related object's `oObjectHeader_Flags`\
-  \ into the same bit of the current object's `oObjectHeader_Flags` (mvn/mask/orr sequence at 0x80e387e..0x80e3888).\
-  \ That bit is not OBJECT_FLAG_PAUSE_UPDATE (0x04) nor STOP_SPRITE_UPDATE (0x08); based on the constants defined\
-  \ here the closest match is bit 0x02 = OBJECT_FLAG_VISIBLE, but the related object's flag is masked with 0x02\
-  \ before ORRing in, so it really toggles the current object's bit 1 to mirror the partner. (In practice this looks\
-  \ like the \"inactive companion should not be visible during timestop\" sync.)\n  - If Param1 != 4, the function\
-  \ then calls `battle_isTimeStop` and bails out (returns) when it returns non-zero, so the action handlers only\
-  \ run when timestop is NOT active.\n  - When execution is allowed, it loads `oBattleObject_CurAction` and uses\
-  \ it as an index into the 5-entry table at off_80E38B4 (entries 0..4 -> sub_80E38C8, sub_80E38EE, sub_80E3904,\
-  \ sub_80E3930, sub_80E3950). The dispatcher tail-calls the selected handler via `mov lr,pc; bx r1`, so it returns\
-  \ to whichever caller invoked this dispatcher. If the action value is not 0..4 the bx reads whatever is at that\
-  \ table slot, which is a bug surface (or reserved).\n  - The 40 captured calls all show r0=4 on entry and a CurAction\
-  \ value coming from `oBattleObject_CurAction` via the related object; sample 10..13 return r0=0 with N flag set\
-  \ (the destroy path), sample 0 returns 8 (CUR_STATE_DESTROY returned in r0 as the state value), sample 1 returns\
-  \ 7. The \"destroy\" path is exercised by the snap.\n  - \"Beast Out\" hypothesis comes from the captured call\
-  \ site filename `snap_beastsp_*`; nothing in the asm hardcodes \"beast\" so the prefix is best-effort. The dispatching\
-  \ on CurAction of a RelatedObject1 with values like 0xb is consistent with a \"beast\" / partner Navi handing\
-  \ off its current action to a battle object that mirrors its behaviour.\n"
+summary: 'Beast-Out extra-action state for a battle object: jumps to one of five sub-actions by CurAction or destroys
+  the object'
+interface: (r5 = BattleObjectPtr, r10 = ToolkitPtr) -> void ; modifies r5-relative battle object (flags, CurStateActionPhaseAndPhaseInitialized)
+details: "The function reads `oBattleObject_Param1` (offset 0x4) at r5. If that byte equals 4, OR if the related\
+  \ object's `CurAction` equals 0xB, it merges bit 1 (0x02) of the related object's `oObjectHeader_Flags` into the\
+  \ current object's `oObjectHeader_Flags` (`mvn r1, #2` / `and` / `orr` / `strb r0, [r5,#oObjectHeader_Flags]`).\n\
+  \  When `Param1 == 4` the dispatch jumps straight to the action table; otherwise `battle_isTimeStop` is consulted\
+  \ and the function returns early if a time stop is active.\n  Otherwise the function dispatches via the indirect\
+  \ jump table at `off_80E38B4` keyed by `oBattleObject_CurAction` (5 entries → sub_80E38C8, sub_80E38EE, sub_80E3904,\
+  \ sub_80E3930, sub_80E3950, all jumped to via `bx r1` with `mov lr, pc`).\n  The fall-through path (when neither\
+  \ Param1==4 nor CurAction==0xB) sets `CurState = CUR_STATE_DESTROY` and writes the full 32-bit field at `oBattleObject_CurStateActionPhaseAndPhaseInitialized`\
+  \ (so CurAction/CurPhase/PhaseInitialized are also clobbered).\n  The captures show entry `r0=0x4`, so Param1\
+  \ is read but r0 on entry is unused (only r5/r10/lr are in the contract); exit r0 is whatever the action-table\
+  \ target returns (8/7/0/0/0 across the captured calls). The first two non-zero exits come from the dispatched\
+  \ handlers; the later zeros suggest those handlers can return 0 as well, but the contract doesn't expose an output\
+  \ so this function itself is void-like for its caller.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- `ldrb r0, [r5,#oBattleObject_Param1]; cmp r0,#4; beq loc_80E387C` – Param1==4 short-circuits to the
-    action path. - `ldr r0,[r5,#oBattleObject_RelatedObject1Ptr]; ldrb r0,[r0,#oBattleObject_CurAction]; cmp r0,#0xb`
-    – the action the partner is currently doing is the gate; only 0xb (or Param1==4) proceeds. - `mov r1,#2; mvn
-    r1,r1` (=0xfffffffd) followed by `and r0,r1; ... and r1,r2` (`r2=2`) and `orr r0,r1; strb r0,[r5,#oObjectHeader_Flags]`
-    – copies bit 0x02 of the partner''s header flag byte into the same bit of this object''s header. - `bl battle_isTimeStop;
-    bne locret_80E38AC` – the action handlers are skipped while timestop is active unless Param1==4. - `ldr r1,off_80E38B0;
-    ldrb r0,[r5,#oBattleObject_CurAction]; ldr r1,[r1,r0]; mov lr,pc; bx r1` – uses CurAction as an index into the
-    5-entry jump table off_80E38B4. - Jump table at off_80E38B4: 5 entries pointing to sub_80E38C8, sub_80E38EE,
-    sub_80E3904, sub_80E3930, sub_80E3950. - `mov r0,#CUR_STATE_DESTROY; str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]`
-    in the fall-through path; `pop {pc}` is used as the return, indicating the function is "void"-like from the
-    caller contract (out = none). - Captured-call entry r0=4 matches Param1==4 in `oBattleObject_Param1`; snap file
-    names `snap_beastsp_*.bin` strongly suggest a Beast-Out related battle object, but the asm itself does not prove
-    it.'
+  detail: '- `ldrb r0, [r5,#oBattleObject_Param1]; cmp r0, #4; beq loc_80E387C` — entry reads Param1 and branches
+    if 4 - `ldr r0, [r5,#oBattleObject_RelatedObject1Ptr]; ldrb r0, [r0,#oBattleObject_CurAction]; cmp r0, #0xb`
+    — second guard uses 0xB as a sentinel action id - `mvn r1, #2 ... ldrb r0, [r5,#oObjectHeader_Flags] ... ldrb
+    r1, [r3,#oObjectHeader_Flags] ... and r1, r2 ... orr r0, r1; strb r0, [r5,#oObjectHeader_Flags]` — copies bit
+    1 of the related object''s header flags into the current object''s header flags - `bl battle_isTimeStop; bne
+    locret_80E38AC` — bails out under time-stop unless Param1==4 (the earlier branch bypassed the check) - `ldr
+    r1, off_80E38B0; ldrb r0, [r5,#oBattleObject_CurAction]; ldr r1, [r1,r0]; mov lr, pc; bx r1` — standard Thumb-via-BX
+    jump table dispatch on CurAction - `off_80E38B4` lists sub_80E38C8, sub_80E38EE, sub_80E3904, sub_80E3930, sub_80E3950
+    (5 entries), matching CurAction values 0..4 - `mov r0, #CUR_STATE_DESTROY; str r0, [r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]`
+    — default-fallthrough sets destroy state and zeros CurAction/CurPhase/PhaseInitialized because CUR_STATE_DESTROY=8
+    packs to 0x08000000 in the union - Captures show entry r0=0x4 (=Param1) across 40 calls; exit r0 varies (8/7/0)
+    per dispatched handler, consistent with returning the inner routine''s r0'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x080E386A
@@ -59,16 +48,14 @@ evidence:
     '
   result: battlesweep, beastsp, chips
 open_questions:
-- The exact semantic of the action IDs 0..4 dispatched to the five handlers is unknown; resolving it needs each
-  of sub_80E38C8 / EE / 04 / 30 / 50.
-- Whether the copied header bit really is OBJECT_FLAG_VISIBLE (0x02) or some other 0x02-valued flag in this object's
-  header is not provable from this function alone.
-- The "beast" naming is only inferred from the captured call filename `snap_beastsp_*`; renaming would be safer
-  if a generic name like `battleObject_dispatchByCurAction_80E386A` were preferred.
+- Whether the dispatched handlers actually run for beast-out-specific actions or are generic action-state dispatchers;
+  this is only called from an unknown site (callers list empty) and only the related-object's CurAction==0xB path
+  references the beast-out notion. The snap name `snap_beastsp_*` suggests the caller is the beast-sp/post-Beast-Out
+  handler, but no caller is confirmed in the lift.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f 353d80a9
+  where: bn6f c6f1bc6f
   tool: tools/symdoc.py

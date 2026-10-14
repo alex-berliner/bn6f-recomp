@@ -3,32 +3,33 @@ address: '0x08083DF0'
 kind: function
 previous_names: []
 status: hypothesis
-summary: Cutscene submode driver for the JackOut / BBS-request selection step (advances sub-state, loads GFX anims,
-  manages event flags and call-script pointers)
-interface: 'in=(r10 = ToolkitPtr) ; side effects: scratch regs r0-r6, r12, lr; nz clobbered; calls into cutscene/event-flag/gfx-anim/BBS
-  helpers'
-details: "- The contract takes r10 (Toolkit) and lr; everything else is local. It clobbers all scratch regs and\
-  \ a lot of callee-saved-looking locals (r2-r5, r7-r9, r12) but the lifetime is internal - the function effectively\
-  \ returns `void`-style (only `nz` flag and caller-saves for tail state).\n  - It dispatches via three cutscene-script-position\
-  \ checks (`cutscene_checkOriginalCutsceneScriptPos_8036F40` for L-Message sentinel, `cutscene_checkOriginalCutsceneScriptPos_8036F58`\
-  \ for \"AskJackOut\") plus a third condition handled by `sub_809E462`, branching into one of three sub-mode paths.\n\
-  \  - On the AskJackOut / BBS path it sets/clears event flag 0x7 in event byte 0x17 (`reqBBS_setFlag_e17b0f7_8140A00`\
-  \ / `reqBBS_clearFlag_8140A0C`) and the immediate two-byte event-flag helpers (`SetEventFlagFromImmediate` / `ClearEventFlagFromImmediate`\
-  \ / `TestEventFlagFromImmediate`).\n  - It drives GFX anim loading: `load_gfx_anim_8083FC0`, `load_gfx_anim_8083FFC`,\
-  \ `load_gfx_anim_8084068`, plus `sub_8083F80` (anim init using `r0 + r5` shape), `sub_8084080` (anim per-frame?),\
-  \ `struct_copy_80840C4` (struct copy), and the heavier helpers `sub_8084180` / `sub_8084214` / `sub_80842D8` that\
-  \ look like choice-result and BBS-row updaters.\n  - No assembly text was provided in the prompt, so the precise\
-  \ internal control flow (jump table offsets, struct addresses) cannot be cited.\n"
+summary: Per-frame cutscene script dispatcher that advances the active cutscene script and handles gated event flags
+  and GFX animation loads for cutscene flow control
+interface: (r10 = toolkit) -> none (void; r2/r3/r4/r5/r7/r8/r9/r12 are caller-saved scratch) ; touches CutsceneState,
+  EventFlags, and possibly loads cutscene GFX anims
+details: "Function entry has no usable in-register parameters beyond the toolkit pointer in r10; everything else\n\
+  \  is read via the toolkit's CutsceneState / EventFlagsPtr / RenderInfo chain.\n  It calls cutscene_checkOriginalCutsceneScriptPos_8036F40\
+  \ / _8036F58 to detect the L-Message and\n  \"AskJackOut\" sentinel scripts and branches on the result to set\
+  \ or clear event flag 0x7 (via\n  SetEventFlagFromImmediate / ClearEventFlagFromImmediate / TestEventFlagFromImmediate\
+  \ using the\n  immediate args) and posts a BBS request (reqBBS_setFlag_e17b0f7_8140A00 /\n  reqBBS_clearFlag_8140A0C)\
+  \ to keep world-state and menu state aligned.\n  It then calls sub_8083F80 and a chain of load_gfx_anim_* helpers\
+  \ (8083FC0/8083FFC/8084068,\n  plus struct_copy_80840C4/sub_8084080/sub_8084180/sub_8084214/sub_80842D8) to load\
+  \ and parameterize\n  one or more GFX animations tied to the cutscene step, and ends in sub_809E462 (a generic\
+  \ test helper).\n  Several callees take r5 as an opaque per-frame buffer pointer; the function appears to be the\n\
+  \  per-VBlank cutscene tick driver invoked while CutsceneState.TextArchivePtr is active.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- All callees that involve event flags / BBS / cutscene sentinel scripts use r10 (Toolkit) per their
-    contracts; the function reads only r10 + lr, so it is a self-contained sub-driver. - `cutscene_checkOriginalCutsceneScriptPos_8036F40`
-    / `_8036F58` discriminate cutscene-script variants (L-Message vs AskJackOut), strongly suggesting this is the
-    cutscene sub-step that branches on which script is queued. - The two BBS helpers (`reqBBS_setFlag_e17b0f7_8140A00`
-    confirms it pokes BBS state for the selection) appearing alongside multiple `load_gfx_anim_8083*` calls indicates
-    GUI/animation timing for the JackOut dialog. - `sub_809E462` returns `nz` only and reads only r10/lr, fitting
-    a "third sub-mode test" shape.'
+  detail: '- contract in=[''r10'',''lr''] with no r0..r3 inputs matches the canonical cutscene tick style (toolkit-only)
+    - callers list is empty, which fits an internal per-frame dispatcher pulled by the cutscene VBlank - direct
+    calls to cutscene_checkOriginalCutsceneScriptPos_8036F40 and _8036F58 explicitly test for the L-Message and
+    AskJackOut sentinels, the two well-known scripted cutscene endpoints - mix of SetEventFlagFromImmediate / ClearEventFlagFromImmediate
+    / TestEventFlagFromImmediate with r10 only implies an event-flag gated path keyed off the script identity -
+    call to reqBBS_setFlag_e17b0f7_8140A00 and reqBBS_clearFlag_8140A0C together indicate the BBS screen needs to
+    be kept in sync with the same flag - the cluster load_gfx_anim_8083FC0 / _8083FFC / _8084068 plus struct_copy_80840C4
+    / sub_8084080 / sub_8084180 / sub_8084214 / sub_80842D8 share r5 as their working pointer, strongly suggesting
+    these load and queue GFX animations needed by the active cutscene script - sub_809E462 appears as a tail/branch
+    predicate'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x08083DF0
@@ -43,15 +44,15 @@ evidence:
     '
   result: beastsp, story5, story6
 open_questions:
-- Which of the three branches is the entry vs. post-processing without the disassembly.
-- Whether `sub_8083F80` / `_8084080` / `_8084180` / `_8084214` / `_80842D8` are BBS-list row helpers or generic
-  anim-state drivers.
-- The exact event-flag byte/bit beyond 0x7/0x17; the `SetEventFlagFromImmediate` / `ClearEventFlagFromImmediate`
-  immediate operands are unread without the asm.
+- No assembly lines are available to confirm the precise ordering or which event-flag bits are
+- toggled; matching concrete immediate arguments would settle the name
+- Whether this is the "Run" entry of the cutscene subsystem or a per-step inner loop is unknown
+- without seeing the call sites
+- The exact GFX anim resources being loaded can't be derived from callee names alone
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f 353d80a9
+  where: bn6f c6f1bc6f
   tool: tools/symdoc.py

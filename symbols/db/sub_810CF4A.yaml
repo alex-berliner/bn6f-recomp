@@ -3,25 +3,36 @@ address: '0x0810CF4A'
 kind: function
 previous_names: []
 status: hypothesis
-summary: Stages a chip-use from the AI's currently selected chip by filling attack vars and writing params.
-interface: (r5 = AIDataPtr) -> r0 = ?, r1 = ? ; mutates AIData, attack vars, and the battle object's chip params
-details: "Operates on the AI's AIData pointer carried in r5 (r4/r7/r10 hold the surrounding battle context, with\n\
-  \  the toolkit/BattleState in r10). Calls battle_getSelectedChipForUse_800ED90 (via r0) to fetch the chip\n  the\
-  \ AI will use; battle_getStateUnk40_800A704 pulls an Unk_40 from the current BattleState used as\n  param data;\
-  \ somethingWriteChipParams_80126E4 pushes per-chip parameters onto the BattleObject;\n  object_setAttack0 forces\
-  \ the actor's CurAnim/CurAnimCopy (oBattleObject+0x10/0x11) to 0; and\n  sub_800F322 queues the chip use on the\
-  \ AI side (AttackVars at oAIData+0xa0). The two scratch regs\n  r0/r1 returned to the caller carry the params\
-  \ pointer and the chip use result for the AI tick. As\n  the assembly itself is missing from this build, the role\
-  \ is reconstructed from the callee set and\n  the caller's contract (which keeps r4/r5/r7/r10/lr over the call).\n"
+summary: AI handler that selects a battle object's chip and writes the resulting attack parameters to its AIData
+interface: '(r4 = AIDataPtr, r5 = BattleObjectPtr, r7 = ?, r10 = ToolkitPtr, lr = ret) -> r0 = chip descriptor ptr,
+  r1 = flags/status; side effects: writes AIAttackVars via somethingWriteChipParams_80126E4, may set OBJECT_FLAGS_2_DO_UPDATE_COLLISION_PANELS
+  via object_setAttack0, writes chip-related AIData fields, calls sub_800F322 (likely block0/chip-use reset)'
+details: "- Entry contract takes AIData in r4 (per the AIData pointer pattern used across the AI subsystem) and\
+  \ BattleObject in r5; r10 is Toolkit (always, per project convention).\n  - First callee battle_getSelectedChipForUse_800ED90\
+  \ looks up the chip the actor intends to use (chip ID, element, etc.); its return in r0 is the chip descriptor\
+  \ the rest of the function operates on.\n  - Next, battle_getStateUnk40_800A704 reads oBattleState_Unk_40 (a battle-state\
+  \ field) into r0, then this is used to gate the body (likely only chip-using navis run this AI pass).\n  - object_setAttack0\
+  \ takes r0 (chip descriptor) and r5 (BattleObject) and toggles a flag on the object — most likely setting OBJECT_FLAGS_2_DO_UPDATE_COLLISION_PANELS\
+  \ so the new attack's hitbox is taken into account this frame.\n  - somethingWriteChipParams_80126E4 (contract:\
+  \ r0 = chip descriptor, r5 = BattleObject, r7 = ?, r10 = Toolkit; writes AIAttackVars at oAIData+0xa0) populates\
+  \ the AIData attack-vars block (Damage, AttackBoost, element breakdown, etc.) from the chip descriptor and the\
+  \ target's collision info.\n  - sub_800F322 (in=r5, may_write r0) runs on the BattleObject afterwards — by elimination\
+  \ (no other write is called after the chip-params write) this likely finalizes the chip-use state (e.g. clearing\
+  \ chip lockout / chip-used flag, akin to block0_idle-0800F2F0's wrapper).\n  - Out=r0/r1 suggests callers read\
+  \ the chip descriptor and a small flags/status word afterwards (e.g. to decide on hit-effect selection or to fall\
+  \ through if no chip is usable).\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- All four callees plus the caller sub_810CE1A share r4/r5/r7/r10/lr, identifying this as AI tick glue.
-    - battle_getSelectedChipForUse_800ED90 is the per-actor "chip I want to use this turn" resolver. - object_setAttack0
-    zeroes the CurAnim/CurAnimCopy fields of oBattleObject, the standard "init attack" hook. - somethingWriteChipParams_80126E4
-    takes the chip id and the param word to write into chip param buffers. - sub_800F322 only consumes r5 (the AIDataPtr)
-    and writes back into AttackVars — consistent with queuing. - battle_getStateUnk40_800A704 returns BattleState+0x40
-    used as the param source word.'
+  detail: '- Every callee except sub_800F322 is a confirmed battle/AIData helper (battle_getSelectedChipForUse_800ED90,
+    battle_getStateUnk40_800A704, somethingWriteChipParams_80126E4 — name implies exactly the AI attack-vars write
+    that follows `getSelectedChipForUse`), which together strongly imply the body: pick chip → write AI attack vars
+    from it → mark attack active → cleanup. - object_setAttack0''s in contract (r0 chip, r5 BattleObject) matches
+    the "tell the object its new attack is live" step after chip params are known. - sub_800F322 has contract in=[r5]
+    only, so it operates purely on the BattleObject; calling it last with the chip-params already written is consistent
+    with a chip-used/post-attack bookkeeping step. - Caller sub_810CE1A''s contract (in r4/r5/r6/r7/r10/lr, out
+    r1/r5) matches an AI dispatcher that has just computed the right chip/action for an object and hands off to
+    a per-action write+finalize helper.'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x0810CF4A
@@ -36,13 +47,15 @@ evidence:
     '
   result: battlesweep, beastsp, story5, story6, story9
 open_questions:
-- The assembly listing is empty in this build so the precise ordering and conditional branches are
-- unknown; the body might also short-circuit when no chip is selected. Re-running with the asm dump
-- available would let us confirm the exact ordering vs. whether this is called per-actor or once per AI tick.
+- Exact meaning of r7 on entry and the precise return contract (what r0/r1 encode to the caller); the assembly text
+  isn't loaded so I can't read the actual instructions or confirm r7's role.
+- Whether the "set attack" / "write chip params" / "block0 finalize" ordering is exactly as inferred; callee order
+  in the contract is the order they appear, but there could be branches.
+- Drop the `_ADDRESS` suffix once the caller/callee pattern is confirmed against the real listing.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f 353d80a9
+  where: bn6f c6f1bc6f
   tool: tools/symdoc.py

@@ -3,28 +3,36 @@ address: '0x08010C50'
 kind: function
 previous_names: []
 status: hypothesis
-summary: Looks up the BattleObject for a given alliance and, if found, triggers a chip activation handler with the
-  chip's element code minus 0x3FF.
-interface: '(r0 = chipId, r1 = alliance) -> r0 = sub_8010D04 return ; side effects: reads chip database and possibly
-  mutates the player''s BattleObject/AIData via sub_8010D04'
-details: "Saves r0/r1 into r4/r6, then calls battle_findPlayer(r1) to obtain the player's BattleObject*.\n  If the\
-  \ returned pointer is null the function returns immediately.\n  Otherwise it calls getChip8021DA8(r4) to obtain\
-  \ the 44-byte static chip record for the chip ID,\n  loads the u16 at +0x1A of that record (the chip element/activation\
-  \ field), subtracts the constant\n  0x3FF loaded from dword_8010D40, and passes (chipElementMinus3FF, r6=original\
-  \ alliance arg)\n  down to sub_8010D04.\n  On every captured call r0 was 0x195 on entry and r0 was 0x1E on exit;\
-  \ the sub_8010D04 return is\n  left in r0 and the Z flag is cleared (LSR/AND semantics in sub_8010D04).\n  r10\
-  \ is the toolkit, held across the call. The constant 0x3FF (= 1023) is consistent with the\n  upper bits of Mega\
-  \ Man chip-element codes, so the result is likely a flag/index used by sub_8010D04\n  to mark the chip as activated\
-  \ for that player/alliance.\n"
+summary: Sets a player BattleObject's PwrAtk charge time to the chip's charge value when the chip is a BeastOut/charge-style
+  chip (ID != 0x3FF) and the alliance side has a player battle object.
+interface: '(r0 = chipId, r1 = alliance, r10 = ToolkitPtr) -> r0 = chipId (or 0x1E on chip id miss); side effects:
+  writes AIData fields (charge time) via sub_8010D04 when player found'
+details: "- Saves r0 as r4 (chipId), r1 as r6 (alliance), then resolves alliance -> player BattleObject with battle_findPlayer.\n\
+  \  - If no player found (r5 == 0), returns immediately at locret_8010C74.\n  - Otherwise it looks up the chip\
+  \ via getChip8021DA8(r0=chipId) and reads a u16 at offset 0x1A (likely the chip's charge-time value).\n  - Subtracts\
+  \ 0x3FF (dword_8010D40) from that value; the result is the duration applied (sub_8010D04 is then called with (r0\
+  \ = duration, r1 = alliance)). The 0x3FF subtraction looks like a sentinel/cap: chips at/near 0x3FF would underflow,\
+  \ so likely the caller pre-filters chipId to chips whose value at +0x1A is >= 0x3FF.\n  - sub_8010D04 is the worker\
+  \ that actually writes the PwrAtk state onto the player's AIData (consistent with its r0/r5/r10/r4 contract and\
+  \ the AIData fields BeastOutAPwrAtk / PwrAtkCurChargeTime / PwrAtkState / PwrAtkButton).\n  - Captured calls all\
+  \ enter with r0 = 0x195 (a chip ID), r1 = 0, exit r0 = 0x1E with Z clear (ldrh at offset 0x1A returns whatever\
+  \ value is at that chip record, then sub_r0_r1 returns the diff; the constant 0x1E looks like a code result, not\
+  \ a written field).\n  - Likely paired with caller `080109CE` (returns to LR=080109CE), which itself decides which\
+  \ chip's PwrAtk to enqueue per player.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- `mov r4, r0 / mov r6, r1` then `mov r0, r1; bl battle_findPlayer` at the top of sub_8010C50 shows the
-    two args are preserved across the player lookup. - `beq locret_8010C74` after the tst on r5 shows a null-BattleObject
-    short-circuit. - `bl getChip8021DA8` followed by `ldrh r0, [r0,#0x1a]` and `ldr r1, dword_8010D40 // =0x3ff`
-    `sub r0, r0, r1` directly mirrors the struct field at +0x1A of ChipData and a 0x3FF mask. - The 40 captured
-    calls in snap_beastsp_0140000_*.bin all show entry r0=0x195 and exit r0=0x1E, consistent with a per-frame player
-    chip-activation dispatch.'
+  detail: '- `push {r4-r6,lr}; mov r4,r0; mov r6,r1` preserves chipId and alliance across the call. - `mov r0,r1;
+    bl battle_findPlayer` resolves alliance to player BattleObject; r5 stored as result. - `tst r5,r5; beq locret_8010C74`
+    shows the "no player found" early-out is real (corresponds to observed `----` exit flag when alliance has no
+    player). - `bl getChip8021DA8` with the original chipId confirms static-chip lookup by ID. - `ldrh r0,[r0,#0x1a]`
+    loads a u16 charge field from the 44-byte ChipData record; offset 0x1A is plausible for a chip''s charge/length
+    field given the struct size of 44 bytes. - `ldr r1,dword_8010D40` (=0x3FF) `sub r0,r0,r1` produces a duration
+    delta capped at 0x3FF. - `mov r1,r6; bl sub_8010D04` hands duration + alliance to the worker; sub_8010D04''s
+    contract reads r10 (ToolkitPtr) which matches the parent fn. - Captured entry r0=0x195 across 6+ traces with
+    r1=0 indicates a single fixed chip-id call site (chip 0x195 ~= *BeastOut / Cross-Arm / PwrAtk family*), LR=080109CE
+    single caller. - Exit r0=0x1E is constant across all 6 snapshots despite r3 varying, confirming r0 is recomputed
+    purely from chip data (not from r3/BattleObject state).'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x08010C50
@@ -39,14 +47,15 @@ evidence:
     '
   result: beastsp
 open_questions:
-- The actual semantics of `(element - 0x3FF)` passed to sub_8010D04 and what sub_8010D04
-- ultimately writes. Naming this `processChipActivation` is plausible from the captured-call
-- profile but the exact role of r1 (alliance vs. raw carry) is only inferred from the
-- battle_findPlayer contract; disassembling sub_8010D04 would settle it.
+- Exact semantics of `chipData+0x1A` (charge ticks vs. duration field name) and the role of the 0x3FF subtraction/cap.
+- Whether sub_8010D04's writes correspond to AIData.PwrAtkCurChargeTime, PwrAtkState, PwrAtkButton, or just BeastOutAPwrAtk
+  - needs sub_8010D04 disassembly.
+- Why exit r0 is 0x1E specifically (chip 0x195 +0x1A -0x3FF = 0x1E?), would be confirmed by inspecting chip 0x195's
+  table entry.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f 353d80a9
+  where: bn6f c6f1bc6f
   tool: tools/symdoc.py

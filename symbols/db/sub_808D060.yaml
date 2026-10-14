@@ -1,0 +1,60 @@
+name: sub_808D060
+address: '0x0808D060'
+kind: function
+previous_names: []
+status: hypothesis
+summary: Looks up an element and a partner element for a given battle panel/terrain type from a 4-entry signed-byte
+  table.
+interface: (r0 = element/pair index) -> r0 = signed byte 0 (primary element), r1 = signed byte 1 (partner element);
+  side effects none beyond callee-save (lr saved/restored)
+details: "- Takes a small integer index in r0 (the in-list arg from the only caller sub_808D034).\n  - Calls sub_808D084,\
+  \ which by its contract also reads r10/lr and returns a value in r0 — likely fetching some\n    base offset/index\
+  \ derived from the active battle field or panel row (the function lives next to it in\n    asm24.s and shares\
+  \ the same r10 contract, suggesting both touch the toolkit's battle-related globals).\n  - The returned r0 is\
+  \ shifted left by 1 (lsl r0, r0, #1) and used as a byte offset into the local table\n    byte_808D07C, which has\
+  \ 4 entries of 2 signed bytes each:\n        [0] = {0x04, 0x0E}\n        [1] = {0x0C, 0x04}\n        [2] = {0x0A,\
+  \ 0x04}\n        [3] = {0xFC, 0xF6}\n  - r0 = sign-extended byte at table[index*2]   (ldrsb r0, [r3, r0])\n  -\
+  \ r1 = sign-extended byte at table[index*2+1] (mov r1, #1 ; ldrsb r1, [r3, r1])\n  - The fact that two values\
+  \ are returned as a pair, and the table contains canonical element codes\n    (0x04 = Null, 0x0E and 0x0C look\
+  \ like pair-coded elements, 0xFC/0xF6 are negative/invalid markers),\n    strongly suggests this returns \"primary\
+  \ element + secondary/weakness element\" for the indexed\n    battle terrain/panel type — i.e. the elemental pair\
+  \ associated with that panel flavor.\n  - Function is a leaf (push {lr} / pop {pc}); no stack frame, no memory\
+  \ writes besides the read of the\n    literal table.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- Assembly `lsl r0, r0, #1` followed by `ldrsb r0, [r3, r0]` and `mov r1, #1; ldrsb r1, [r3, r1]` shows
+    a 2-byte signed pair is being read at base+r0*2 (asm24.s:1851). - The embedded table `byte_808D07C` contains
+    4 pairs of signed bytes — 8 bytes total — exactly what the indexing math expects. - Caller sub_808D034 sets
+    up r0/r1/r5/r10/lr and consumes r0,r1,r2,r4,r5 — i.e. it uses both returned values (r0 and r1) plus additional
+    registers, matching a "look up an element pair then do something with each" usage pattern. - r10 is in the contract:
+    the project uses r10 as the toolkit pointer (toolkit_struct is always in r10), so sub_808D084 likely reads toolkit
+    context (e.g. current BattleState / panel type) before this function indexes the table. - Values 0x04 and 0x0E
+    correspond to known element IDs (Null and one of the standard elements in the BN elemental table); 0xFC/0xF6
+    as signed bytes look like "no second element" sentinels.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0808D060
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^0808d060 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- What sub_808D084 actually returns (likely some panel-row / terrain-derived index in [0..3]) and what
+- global it pulls from. Decompiling sub_808D084 would settle the exact semantics.
+- Whether the returned pair is "element + weakness", "element + pair element", or "panel type + element".
+- Settled by checking how sub_808D034 uses r0 and r1 after the call.
+- The negative sentinel 0xFC/0xF6 in the last entry — is it "no second element" or an error code?
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f c6f1bc6f
+  tool: tools/symdoc.py

@@ -3,28 +3,26 @@ address: '0x08086EA8'
 kind: function
 previous_names: []
 status: hypothesis
-summary: 'Beast-server AI step for an enemy battle actor: branches by event flag and delegates to sub-phases.'
-interface: (r2 = BattleObject* ?) -> r0 = 0, r2/r3/r5/r7 live for caller ; calls into sub_8086FD8/sub_808711C/sub_8087140/sub_8087184/sub_80871F4
-details: "No assembly was located for sub_8086EA8 in the bn6f asm dump, so the body is not directly\n  inspectable.\
-  \ The contract marks r2, r10 (toolkit) and lr as the only inputs read on entry, and\n  r2/r3/r5/r7 as surviving\
-  \ callers; the may_write set includes nearly every scratch register,\n  consistent with a small thunk that loads\
-  \ some context, runs TestEventFlagFromImmediate (likely\n  flag 0x0102 / 0x0100 given the 'beastsp' capture filenames)\
-  \ and then tail-calls into one of\n  the five unnamed callees 8086FD8/808711C/8087140/8087184/80871F4 depending\
-  \ on the flag/state.\n  The fact that all 40 captured calls in the beastsp scenes were made by this function with\
-  \ the\n  same arguments (r0=0, r1=2, r2=1, r3=0x02001d44, lr=0x08035e88) and exited with r0=0 / ZC\n  shows it\
-  \ is on the AI tick path executed for the enemy beasts. The r3 value 0x02001d44 is a\n  constant pool pointer\
-  \ (likely an event-flags / scene-params table).\n  Without the lifted body we can't tell whether r2 carries the\
-  \ BattleObject* or just an index,\n  and we can't tell which of the 5 callees is selected per call.\n"
+summary: AI dispatch for Beast/SP-style enemy turn (r2=actor idx), testing event flags and stepping per-actor sub-states
+interface: (r2 = actor index in current panel; r10 = Toolkit; lr) -> r0 = 0 ; may clobber r0-r7, flags
+details: "Entry registers captured in every snapshot are r0=0, r1=2, r2=1, r3=0x02001d44, lr=0x08035e88 (a battle\
+  \ frame-return).\n  The contract lists r10 in `in` (Toolkit) and r2 in `in`/`out` (an actor index). It calls TestEventFlagFromImmediate\
+  \ and\n  five more unnamed helpers (sub_8086FD8, sub_808711C, sub_8087140, sub_8087184, sub_80871F4), all of which\
+  \ share the\n  same r5/r10(linked-list-walk) calling convention observed across nearby AI helpers. The pattern\
+  \ is consistent with\n  a per-actor AI tick: walk linked actor list via r5/r10, branch on event flag, then dispatch\
+  \ to one of the\n  sub_8086xxx helpers based on r2/phase. The fact that r0 returns 0 with Z set in every captured\
+  \ call suggests this\n  function ultimately resolves the AI step to \"no action\" or fall-through for this scenario\n\
+  \  (the snapshot is labelled `beastsp` — likely \"Beast/SP\" AI feature rather than beast-out).\n  No assembly\
+  \ was provided so instruction-level confirmation is missing; naming is based on the snapshot label\n  (`snap_beastsp_*`),\
+  \ the callee signatures, and the cluster of r2/r5/lr threaded helpers at 8086xxx.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- Assembly listing for 0x08086ea8 is absent ("sub_8086EA8 not found in bn6f/asm"), so the body could
-    not be inspected directly. - Callee list (TestEventFlagFromImmediate + 5 unnamed helpers 0x08086fd8..0x080871f4)
-    is contiguous and matches a typical AI sub-state dispatcher. - 40 captures all originate from lr=0x08035e88
-    (single caller) and pass r2=1, r3=0x02001d44, strongly implying this function is invoked once per beast per
-    tick from the AI loop at 0x08035e88. - Entry r0=0, r1=2 every call suggests r0 is unused (or used as a return
-    value slot) and r1 is an event-flag id; TestEventFlagFromImmediate takes a 16-bit flag id in r0/r1. - Exit r0=0
-    with ZC set fits "early-out / no action" for the not-yet-unlocked case.'
+  detail: '- Captured-call filenames all start with `snap_beastsp_`, pointing at a Beast/SP AI scenario - Entry
+    r2=1 is consistent across 40 calls; r10 is in `in` per contract (Toolkit) - Callee TestEventFlagFromImmediate:
+    AI routines gate behaviour on story-progress flags - sub_808711C/sub_8087184/sub_80871F4 share r5-in/out contracts
+    typical of a per-actor linked-list walker - Return r0=0 with `-ZC-` flags every time suggests a "no-op / fall-through"
+    outcome, common at end of an AI turn'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x08086EA8
@@ -39,13 +37,14 @@ evidence:
     '
   result: beastsp, maps
 open_questions:
-- 'The actual selection logic between the 5 unnamed callees: needs the disassembled body.'
-- Whether r2 is a BattleObject* or an enum/state index.
-- What the constant 0x02001d44 (r3) actually points to (event-flag table? AI param table?).
+- 'Exact AI role: is r2 the panel actor index, AIDataPtr, or AIData[] offset?'
+- What distinguishes the five sub_8086xxx callees (one per AI sub-state? per actor type?)
+- Assembly is absent (`sub_8086EA8 not found in bn6f/asm`); without it, the proposed name and step list are partly
+  inferred from convention
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f 353d80a9
+  where: bn6f c6f1bc6f
   tool: tools/symdoc.py
