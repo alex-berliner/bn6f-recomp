@@ -1,0 +1,66 @@
+name: object_spawnRelatedChildEffect_80E08C4
+address: '0x080E08C4'
+kind: function
+previous_names:
+- sub_80E08C4
+status: probable
+summary: Spawns a battle effect object of type 4 (with caller params) and links it to the caller battle
+  object via RelatedObject1Ptr, copying Alliance.
+interface: (r0 = type-related param, r1 = sub-param, r2 = sub-param, r3 = sub-param, r5 = caller battle
+  object) -> r0 = new battle object pointer (or 0 if spawn failed)
+details: "- Pushes only {lr, r5} to preserve the caller's battle-object pointer (r5) for later linking.\n\
+  \  - Loads immediate 0x4 into r0 and calls object_spawnType4, passing r1/r2/r3/r4 (r4 happens to be\
+  \ a positional param) plus the just-loaded r0 — typical \"spawn with type=4\" wrapper that returns the\
+  \ new object pointer in r0.\n  - If the spawn succeeded (object_spawnType4's returned r0 is non-zero,\
+  \ branch via beq locret_80E08DA), it stores the caller pointer (r5) into the new object's +oBattleObject_RelatedObject1Ptr\
+  \ (offset 0x4c) and copies the caller's Alliance byte (+oBattleObject_Alliance, 0x16) into the same\
+  \ offset on the new object.\n  - Effect: a child object (type 4) is attached to the caller, inheriting\
+  \ side, but otherwise unmodified by this routine. This matches the hit-effect helper pattern: the parent\
+  \ owns the lifecycle/reference to the child it spawns.\n  - The 40 captured calls (snap_story2_*.bin)\
+  \ all share r0=7 on entry and exit r0 with a heap pointer (02036870 / 02036ac8 / 02036a00), consistent\
+  \ with a routine that always forwards to the spawner and returns its return value; r1/r2/r3 vary widely\
+  \ so they are spawn-position/param data.\n  - Returning the new object in r0 lets callers chain (e.g.\
+  \ spawnHiteffect uses it for follow-up work).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- mov r0, #4 ; bl object_spawnType4 -> this is the type argument, so the spawned object type
+    is 4 (per oT4BattleObject struct). - str r5, [r0,#oBattleObject_RelatedObject1Ptr] (offset 0x4c) —
+    writes the caller pointer back-link into the new object. - ldrb r1, [r5,#oBattleObject_Alliance] ;
+    strb r1, [r0,#oBattleObject_RelatedObject1Ptr site] — copies Alliance (offset 0x16) one byte at a
+    time, byte-store shows the offset must be Alliance (0x16), not the ptr slot. - beq locret_80E08DA
+    after spawn -> if object_spawnType4 returned 0 (alloc failure), skip back-link and Alliance copy.
+    - callees list contains only object_spawnType4, matching the single spawn inside this function. -
+    exit r0 in captures is 02036870/02036ac8/02036a00 (heap pointers) which is exactly what object_spawnType4
+    returns on success.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080E08C4
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^080e08c4 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9
+open_questions:
+- The exact role of the type-4 child object (whether it is specifically the hit-impact effect or a generic
+  attachment helper) is not proven from this function alone — the callers (object_spawnHiteffect, object_spawnCollisionEffect,
+  sub_80139F6, sub_801A100) all use type 4 for their own variant purposes, but spawn-args vary in the
+  captured r1-r3 meaning different roles across call sites.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 649d4897
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80E08C4 -> object_spawnRelatedChildEffect_80E08C4
+  where: bn6f 7ad99d5e
+  tool: tools/rename_symbol.py

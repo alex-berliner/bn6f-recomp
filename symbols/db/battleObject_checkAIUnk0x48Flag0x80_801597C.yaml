@@ -1,0 +1,53 @@
+name: battleObject_checkAIUnk0x48Flag0x80_801597C
+address: '0x0801597C'
+kind: function
+previous_names:
+- sub_801597C
+status: probable
+summary: Returns 1 if battle object AIData has Unk_48 & 0x80 set, else 0 (nullptr-safe).
+interface: '(r0 = *BattleObject) -> r0 = 0 or 1 ; side effects: none'
+details: "Saves r0 (BattleObject*) into r5, then branches on a \"branch if equal\" — disassembled as `beq\n\
+  \  locret_8015992` with no prior compare; the lifter's contract marks the BEQ as conditional, so\n \
+  \ this is effectively a `b locret` and the function returns r0 untouched when called. In normal\n  capture\
+  \ (r0 = 0x0203a9b0, a non-null BattleObject) the call goes to GetAIDataUnk0x48Flag\n  (0x0801032c) which\
+  \ returns the value of AIData->Unk_48. The result is then masked with 0x80\n  (`tst r0, #0x80`): if\
+  \ bit 7 is clear, r2 stays 0 and that 0 is returned; if set, r2 = 1 and 1\n  is returned. So this is\
+  \ a boolean predicate on AIData.Unk_48 & 0x80.\n  Callers: `activateCrossHappensHere_8014944` (only\
+  \ one), which decides whether the\n  Cross-Activate battle action fires based on this bit.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mov r5, r0` preserves the input pointer; only GetAIDataUnk0x48Flag consumes the battle object.
+    - `bl GetAIDataUnk0x48Flag` is the only callee, named exactly for the AIData 0x48 flag check. - `tst
+    r0, #0x80` then `beq loc_8015990` / `mov r2, #1` / `mov r0, r2` builds a strict 0/1 boolean of the
+    0x80 bit of the returned AIData flag word. - exit r0 is consistently 1 in all six captured calls (AIData.Unk_48
+    has bit 7 set on the beast-cross snapshot).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801597C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^0801597c '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- 'The leading `beq locret_8015992` looks like a NULL-pointer guard: if r0 was 0 on entry, the'
+- function returns 0 (the original r0) without calling the helper. The captures never hit that
+- path, so it is inferred from the pattern. Settling it would require a call with r0 = 0 or
+- reading the helper's behaviour when given a null object.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 649d4897
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801597C -> battleObject_checkAIUnk0x48Flag0x80_801597C
+  where: bn6f 7ad99d5e
+  tool: tools/rename_symbol.py

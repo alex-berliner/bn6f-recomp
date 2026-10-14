@@ -2480,11 +2480,11 @@ static void call_set_valid_flag(u32 val, u32 flag_obj) {
     GUEST_CALL(battleObject_setFlags6Bit_81171F4);
 }
 
-/* register form: calls sub_81171D4 outside this file, which has no typed C interface yet */
+/* register form: calls battleObject_setSpriteCoordsFromEStructEntryIfActive_81171D4 outside this file, which has no typed C interface yet */
 static void call_move_position(u32 x, u32 y, u32 flag_obj, u32 threshold, u32 row_off) {
     u32 saved_r4 = R4;   /* preserve R4 across callee that may clobber it */
     R0 = x; R1 = y; R2 = flag_obj; R3 = threshold; R4 = row_off;
-    GUEST_CALL(sub_81171D4);
+    GUEST_CALL(battleObject_setSpriteCoordsFromEStructEntryIfActive_81171D4);
     R4 = saved_r4;
 }
 

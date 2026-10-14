@@ -2785,10 +2785,10 @@ static void copy_obj_tiles(u32 slot, u32 counter, u32 chip_ptr) {
     GUEST_CALL(sprite_CopyObjTilesToVramSlot_80281D4);
 }
 
-/* register form: calls sub_8029CD4 outside this file, which has no typed C interface yet */
+/* register form: calls customScreen_redrawChipSlot_8029CD4 outside this file, which has no typed C interface yet */
 static void update_chip_display(u32 count) {
     R0 = count; R1 = 0; R2 = 0;
-    GUEST_CALL(sub_8029CD4);
+    GUEST_CALL(customScreen_redrawChipSlot_8029CD4);
 }
 
 /* register form: calls sub_802A00C outside this file, which has no typed C interface yet */

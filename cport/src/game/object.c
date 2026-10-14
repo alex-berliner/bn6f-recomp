@@ -2394,7 +2394,7 @@ Next object_spawnHiteffect(void) {
 
     /* request effect type 8 (hit spark) */
     R4 = 8;
-    GUEST_CALL(sub_80E08C4);
+    GUEST_CALL(object_spawnRelatedChildEffect_80E08C4);
 
     R4 = savedR4;
     RETURN_TO_CALLER();

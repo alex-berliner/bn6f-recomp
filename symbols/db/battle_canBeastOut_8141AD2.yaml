@@ -1,0 +1,62 @@
+name: battle_canBeastOut_8141AD2
+address: '0x08141AD2'
+kind: function
+previous_names:
+- sub_8141AD2
+status: probable
+summary: Returns 0 when beast-out is allowed for the player's current location, 1 otherwise (used to gate
+  the beast-out input handling)
+interface: '() -> r0 = bool (0 = beast-out permitted, 1 = not permitted) ; side effects: reads toolkit
+  GameState->MapGroup and an AIData[0x11]'
+details: "- At entry the caller's r5 holds a BattleObject* (caller is `sub_81419A0`) and r10 is the toolkit;\
+  \ the function reads the toolkit's GameStatePtr (`mov r7, r10; ldr r7, [r7,#oToolkit_GameStatePtr]`),\
+  \ then takes MapGroup as a u16.\n  - It first early-exits with 1 (no beast-out) if story flag EVENT_701\
+  \ is set (`movflag EVENT_701; bl TestEventFlagFromImmediate; beq loc_8141B00`).\n  - Otherwise it reads\
+  \ `byte [r5,#0x11]` which is the byte right after `BPwrAtk` in AIData — i.e. `BLeftAbility` (offset\
+  \ 0x8) + 0x9 bytes = `BeastOutAPwrAtk` at 0x11. A zero here is treated as \"no beast-out configured\"\
+  , so it returns 1.\n  - If a beast-out value is configured, it walks the small u16 list at `byte_8141B08`\
+  \ (`0x0091,0x0191,0x0291,0x0388`) and returns 0 if MapGroup matches one of those entries; otherwise\
+  \ returns 1.\n  - Two `pop {r4-r7,pc}` exits: `mov r0,#0; pop {r4-r7,pc}` for \"allowed\" and `mov r0,#1;\
+  \ pop {r4-r7,pc}` for \"not allowed\". All callee-saved registers are preserved.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `movflag EVENT_701; bl TestEventFlagFromImmediate; beq loc_8141B00` — story flag gates the
+    check (returns 1 if set). - `ldrb r0, [r5,#0x11]; tst r0, r0; bne loc_8141B00` — `AIData.BeastOutAPwrAtk`
+    at offset 0x11; if zero, beast-out not configured (return 1). - `mov r7, r10; ldr r7, [r7,#oToolkit_GameStatePtr];
+    ldrh r7, [r7,#oGameState_MapGroup]` — MapGroup is the comparison value. - `ldr r4, off_8141B04 //
+    =byte_8141B08` then the loop `ldrh r0,[r4,r6]; tst r0,r0; beq loc_8141B00; cmp r0,r7; beq loc_8141AFC`
+    over the 4-entry u16 list 0x0091,0x0191,0x0291,0x0388 — MapGroup whitelist of maps where beast-out
+    is enabled. - Snapshots all show entry r0=4 (ACT), r1=1 (state), consistent with a "tick/canX" callback
+    signature on the beast-out path (`snap_beastsp_*`); exit r0=1 in every captured frame, meaning MapGroup
+    was not in the whitelist at those sites.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08141AD2
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^08141ad2 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The exact meaning of the 4-entry whitelist (0x91, 0x191, 0x291, 0x388) is not verified — could be a
+  packed MapGroup,MapNumber or some other field; the comparison only uses MapGroup so the low byte is
+  effectively unused.
+- Whether EVENT_701 being set is "beast-out already unlocked but disabled here" vs. "story too far / wrong
+  chapter" is unknown.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 649d4897
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8141AD2 -> battle_canBeastOut_8141AD2
+  where: bn6f 7ad99d5e
+  tool: tools/rename_symbol.py

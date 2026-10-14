@@ -1,0 +1,71 @@
+name: battle_scrollAdvanceByPanelStep_8031520
+address: '0x08031520'
+kind: function
+previous_names:
+- sub_8031520
+status: probable
+summary: Performs one incremental scroll step (and optional collision-test second half) during battle
+  panel-by-panel scrolling
+interface: (r0 = BattleState ptr, r1 = scroll counter/state, r2 = ???, r12 = accumulated result bitmask,
+  r5 = ???) -> r0 = BattleState ptr, r12 = updated bitmask ; mutates camera scroll via camera_moveByDelta_80310B0
+details: "Pushes {lr} and a caller-preserved copy of {r0,r1,r2,r5}, then calls\n  battle_scrollAccumulateStep_8031176\
+  \ to advance the battle scroll counter/state.\n  Sets the row/column delta registers (r2=0x20, r3=0x20,\
+  \ r4=0, r5=0x20, r6=0) and calls\n  camera_computeScrollDelta_8030E8C to obtain a signed scroll delta,\
+  \ then applies it\n  via camera_moveByDelta_80310B0 with r1=0 (zero baseline). After reloading the\n\
+  \  saved registers, ORs r12 with (r3 << 0) to bit-accumulate a completion/result bit\n  driven by sub_8030E8C's\
+  \ returned r3.\n  If r3 == 1 the function returns immediately (single-step path). Otherwise it\n  re-pushes\
+  \ and calls battle_scrollAccumulateStep_8031176 again, with the second\n  block computing a different\
+  \ delta (r2=0, r3=0x20, r4=0x20, r5=0x20, r6=0) and\n  dispatching through sub_8030F7C (the two-edge\
+  \ wedge line-vs-wedge test returning\n  intersection coords, or (0,0) on no-cross). camera_moveByDelta_80310B0\
+  \ is called\n  with r0=0 and the result is OR'd into r12 via (r3 << 1). On non-zero r3 the\n  branch\
+  \ falls through to the final `pop {pc}` epilogue (no separate label).\n  Callee-side, r12 doubles as\
+  \ a two-bit \"hit/test result\" accumulator across the\n  two halves of the routine, which strongly\
+  \ hints this is a per-frame \"advance\n  panel scroll, then probe if the scroll step crossed a panel\
+  \ edge or a wedge\n  boundary\" routine.\n  The captured callers all enter with r0=02009f5c (a BattleState-like\
+  \ pointer),\n  r1=0x00009533, r2=02029200, r3=0, lr=0x08030bfc — i.e. consistently a single\n  caller\
+  \ from the battle scroll subsystem (sub_8030BFC, which itself lives next\n  door in the same scroll\
+  \ module). Memory at r0 shows a Camera-ish layout\n  (0xff_06_4000 fields plus 0xff_08_4000 sibling),\
+  \ consistent with a scroll\n  state descriptor.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl battle_scrollAccumulateStep_8031176` at sub_8031520+6 advances the scroll counter each
+    call. - The (r2=0x20, r3=0x20, r4=0, r5=0x20, r6=0) initialization then `bl camera_computeScrollDelta_8030E8C`
+    matches the first block of sub_8030E8C (line-segment vs wedge compute). - `bl camera_moveByDelta_80310B0`
+    applies the delta; its own description says it skips when delta is zero. - `cmp r3, #1 / beq locret_803156E`
+    short-circuits the second half when the first probe already saturated. - The second `mov r2, #0 ;
+    mov r3, #0x20 ; mov r4, #0x20 ; mov r5, #0x20 ; mov r6, #0` + `bl sub_8030F7C` mirrors the wedge-test
+    contract (two-edge wedge intersection). - OR-ing `(r3 << 0)` then `(r3 << 1)` into r12 accumulates
+    two independent 1-bit results from r3. - All 40 captured call entries have lr=0x08030bfc and identical
+    r1/r2/r3, indicating a single battle-scroll caller.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08031520
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, beastsp, fuzz, maps, menus2, story2, story3, story4,
+    story5, story6, story8, story9, wander'
+  reproduce: 'grep -l ''^08031520 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, beastsp, fuzz, maps, menus2, story2, story3, story4, story5, story6,
+    story8, story9, wander
+open_questions:
+- The exact meaning of r12's two bits (panel-reached vs wedge-crossed) is inferred from the callee descriptions;
+  confirming the bit usage would require seeing how sub_8030BFC consumes r12.
+- r1/r5 role is opaque — likely the scroll-step table pointer / packed pair, but the assembly doesn't
+  dereference them here.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 649d4897
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8031520 -> battle_scrollAdvanceByPanelStep_8031520
+  where: bn6f 7ad99d5e
+  tool: tools/rename_symbol.py

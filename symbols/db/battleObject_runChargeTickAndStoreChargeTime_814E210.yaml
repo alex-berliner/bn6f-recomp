@@ -1,0 +1,62 @@
+name: battleObject_runChargeTickAndStoreChargeTime_814E210
+address: '0x0814E210'
+kind: function
+previous_names:
+- sub_814E210
+status: probable
+summary: Runs the battle object's update routine (r1->r0,r3) and stores the returned charge-time byte
+  into AIData.PwrAtkCurChargeTime (r1+0x1b).
+interface: (r0 = BattleObject*, r1 = AIData*) -> r0 = BattleObject*, flags untouched ; no side effects
+  beyond the strb at r1+0x1b
+details: "Thin trampoline: `mov r12, lr` / `bl battleObject_runUpdateRoutineAndAdvancePC_814E0D0` / `strb\
+  \ r3, [r1, #0x1b]` / `bx r12`.\n  `sub_814E0D0` takes (r0=obj, r1=aiData) and returns r0=obj, r3=some\
+  \ byte. This wrapper just persists r3 into AIData offset 0x1b, which the AIData struct labels as `PwrAtkCurChargeTime`.\n\
+  \  All callers come from `sub_814E36D` (lr = 0814e36d in every captured snapshot) with r0 = 02010890\
+  \ (a BattleObject), r1 = various AIData structs (02007ee8 / 02007f38 / 02007f88), r2 = a script/cursor\
+  \ pointer (0818d97d / 0818dfe8 / ...), and r3 = 0814e211 (the +1 form of this function's address, i.e.\
+  \ thumb switch via blx-on-lr).\n  Exit always restores r0 to the BattleObject pointer, so callers re-use\
+  \ the same BattleObject afterward.\ndetails: |\n  The `bx r12` (not `bx lr`) is unusual; the function\
+  \ saves lr into r12 up front and returns via r12 to avoid a Thumb/ARM veneer issue, since the routine\
+  \ must tail-call back through the same path as the caller's lr (which is 0814e36d for every snapshot).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `sub_814E0D0` is named `battleObject_runUpdateRoutineAndAdvancePC_814E0D0`; its contract
+    returns r0 and r3, matching the values this function consumes. - AIData struct definition: `u8 PwrAtkCurChargeTime
+    // loc=0x1b` lines up with the `strb r3, [r1, #0x1b]` exactly. - All 40 captured invocations have
+    r0 = 02010890 (same BattleObject pointer), r1 ∈ {02007ee8, 02007f38, 02007f88} (consistent AIData
+    pointers used by the calling script). - Captured r3 = 0814e211 = 0x0814e210 + 1, the standard Thumb-blx
+    trick; the function does `mov r12, lr` and `bx r12`, confirming r12 was loaded with lr (= 0814e36d),
+    and the +1 form goes through a thumb->thumb blx. - The `bl` is direct (no function-pointer table),
+    so this is inlined-by-hand rather than an indirect dispatch.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0814E210
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story1, story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^0814e210 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander
+open_questions:
+- What `sub_814E0D0`'s r3 byte actually represents semantically (it is stored as PwrAtkCurChargeTime,
+  so it is plausibly the per-frame charge-time increment). The exact identity of the script PCs in r2
+  (0818d97d / 0818dfe8 / 0819a6da / 0819ab7a / 0819c395 / 0819c8a1) would settle what story segment each
+  call belongs to.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 649d4897
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_814E210 -> battleObject_runChargeTickAndStoreChargeTime_814E210
+  where: bn6f 7ad99d5e
+  tool: tools/rename_symbol.py

@@ -1,0 +1,61 @@
+name: battleObject_dispatchBeastOutAction_8117110
+address: '0x08117110'
+kind: function
+previous_names:
+- sub_8117110
+status: probable
+summary: 'Beast-out action dispatcher: jumps to one of three handlers selected by `AIData.Unk_08` (the
+  B-Left ability) on the current battle object'
+interface: '(r5 = AIData pointer) -> r0/r1/r2/r3 = whatever the chosen handler returns ; side effects:
+  jumps to a routine via the function pointer table at off_8117124, returns its result'
+details: "Function merely loads the pointer table at off_8117120 -> off_8117124, indexes it by\n  `ldrb\
+  \ r1, [r5,#8]` (byte 0x08 of the AIData struct that `r5` points at, i.e. AIData.BLeftAbility\n  per\
+  \ `ai_data_struct`), loads the function address, sets `lr = pc` and `bx r0` to call it with\n  Thumb\
+  \ bit pre-set (the table entries are stored as `target+1`). The `push {lr}` / `pop {pc}`\n  prologue/epilogue\
+  \ make this a one-instruction tail-call dispatcher.\n  Three targets are encoded in the literal pool:\
+  \ sub_8117130, sub_81171B4, sub_81171CC. So the\n  selector byte selects one of three beast-out behaviours\
+  \ for the current AI's AIData.\n  r0/r1 are *not* written by this function itself (no explicit writes\
+  \ between the prologue and the\n  `bx`) - the `out` registers come entirely from the dispatched target.\
+  \ The function preserves\n  nothing; the callee-saved `lr` is on the stack and the caller pops it back\
+  \ via `pop {pc}`.\n  The captured snapshots all show entry r0=08117111 (return site), r5 holding the\
+  \ AIData pointer,\n  consistent with this dispatcher being called from a beast-out action handler in\
+  \ the AI loop.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {lr}` followed by `pop {pc}` is the classic Thumb tail-call trampoline pattern. - `ldr
+    r0, off_8117120` then `[r0,r1]` loads from the table at off_8117124 indexed by `ldrb r1, [r5,#8]`,
+    confirming r5 points at AIData and byte 0x08 (BLeftAbility) is the selector. - The literal pool `off_8117124`
+    contains exactly three words (sub_8117130+1, sub_81171B4+1, sub_81171CC+1), so the dispatch is a 3-way
+    switch over BLeftAbility. - The `+1` on each entry plus `mov lr, pc; bx r0` is the standard Thumb-via-Arm-bridge
+    trick used elsewhere in this ROM. - Captured entry registers: r0=08117111 (a return-site pattern),
+    r1=0x14, r2=02035014, r3=02034ba0, sp=03007db0, lr=080465e0 - matches an AI update caller (0x080465e0)
+    that loops over actors.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08117110
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^08117110 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- Which beast-out B-Left ability maps to which of the three targets (0/1/2); the assembly does not
+- show a BLeftAbility enum constant for them. Inspecting the three callee stubs would settle the
+- semantics of each branch.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 649d4897
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8117110 -> battleObject_dispatchBeastOutAction_8117110
+  where: bn6f 7ad99d5e
+  tool: tools/rename_symbol.py

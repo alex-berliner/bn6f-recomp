@@ -1,0 +1,54 @@
+name: battleObject_updateBeastOutPwrAtk_80A5828
+address: '0x080A5828'
+kind: function
+previous_names:
+- sub_80A5828
+status: probable
+summary: 'Drives a beast-out Navi''s per-tick PwrAtk hand-off animation: copies target coords, runs the
+  hand-off sub-state until it finishes, then resets.'
+interface: (r5 = BattleObject, r6 = AIData) -> void ; no return; writes AIData.Unk_07 (sub-state), BattleObject.CurState/CurAction,
+  then runs sprite_update
+details: "Reads AIData byte 7 (r6+7) as a 0..3 sub-state. On 0 it forces CurState=3 via\n  battle_setPlayerDirectionAndAnimFromAIState_80A5890\
+  \ then leaves. On 3 it copies 12 bytes\n  from AIData+0x88/+0x8C/+0x90 into BattleObject+0xC/+0x10/+0x14\
+  \ (target pose fields), sets\n  CurState=1, bumps Unk_09 (hand-off tick counter) and dispatches sub_80A58E0.\
+  \ When that\n  returns non-zero (done), the function clears AIData+7 and resets Unk_09. Any other value\n\
+  \  falls through to sub_80A58AC. Always falls through to sub_80A5A5C and sprite_update.\n  Reads/writes\
+  \ the BattleObject+CurState/CurAction pair (0x8/0x9), the AIData sub-state at\n  0x07, and the AI-handshake\
+  \ tick at 0x09; ends with the standard post-update sprite tick.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0, [r6,#7]; cmp r0,#0/1/3; beq/bne` switch on AIData+7 at 0x80A5828..0x80A5876 - `ldr
+    r0,[r6,#0x88]; str r0,[r5,#0xc]; ldr r0,[r6,#0x8c]; str r0,[r5,#0x10]; ldr r0,[r6,#0x90]; str r0,[r5,#0x14]`
+    (12 bytes copied on state 3) - `mov r0,#3; strb r0,[r5]; add r4,#1; strb r4,[r5,#9]` state-3 init:
+    sets CurState and ticks Unk_09 - `bl sub_80A58E0; cmp r0,#0; bne loc_80A587E` drives the hand-off
+    helper and tests its "done" return - `mov r0,#0; strb r0,[r6,#7]; mov r4,#0; strb r4,[r5,#9]` resets
+    the sub-state on completion - `bl sub_80A58AC` (the "default" branch) - `bl sub_80A5A5C; bl sprite_update`
+    shared tail - capture r1=0x20 at entry and 0x88..0x90 reads are consistent with AIData offsets'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080A5828
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp, maps'
+  reproduce: 'grep -l ''^080a5828 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp, maps
+open_questions:
+- Exact semantics of AIData+0x88..0x90 (looks like a packed target pose, but no field names) and of the
+  four callees' roles. Confirming them would let us drop the address suffix.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 649d4897
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80A5828 -> battleObject_updateBeastOutPwrAtk_80A5828
+  where: bn6f 7ad99d5e
+  tool: tools/rename_symbol.py

@@ -1,0 +1,58 @@
+name: battleObject_setSpriteCoordsFromEStructEntryIfActive_81171D4
+address: '0x081171D4'
+kind: function
+previous_names:
+- sub_81171D4
+status: probable
+summary: If the eStructArr2008450 entry `r2` is in use, copies the saved (r0, r1) position into the object's
+  sprite sub-entry X/Y fields via sprite_setCoordinates.
+interface: '(r0 = posX/u16, r1 = posY/u16, r2 = eStructArr2008450 index, lr = return) -> r0 = r0 (unchanged),
+  flags unknown; side effects: writes object sprite X/Y for object at eStructArr2008450[r2] when its in-use
+  flag is non-zero'
+details: "Pushes r4-r7/lr, allocates 8 bytes of stack scratch, saves r0 at [sp+0] and r1 at [sp+4].\n\
+  \  Loads r2 into r0 and calls getStructFrom2008450(r0=r2), which returns the in-use/status byte of\n\
+  \  eStructArr2008450[r2] in r0 with NZ flags set from that byte.\n  `beq loc_81171EE` skips the sprite\
+  \ write when that byte is 0 (entry not in use).\n  When non-zero, it restores r0/r1 from the stack (the\
+  \ original entry r0/r1) and calls\n  sprite_setCoordinates(r0=posX, r1=posY, r5=in-use byte saved earlier).\
+  \ The save of r1 into r5\n  before the call (`mov r5, r1`) is the only preserved callee-saved reg used;\
+  \ the r5 live-out is\n  why the contract lists r5 as an output. Restores stack, pops r4-r7/pc.\n  Net\
+  \ effect: gate sprite X/Y assignment on whether the eStruct entry is currently active.\n  Caller `battle_alignRowCheck_81348DC`\
+  \ passes the desired panel/screen coordinates and the\n  object's eStructArr index after a row-alignment\
+  \ check.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `sub sp, sp, #8` then `str r0, [sp]` / `str r1, [sp,#4]` saves the entry X/Y across the struct
+    probe. - `mov r0, r2` then `bl getStructFrom2008450` reuses r2 as the index for the eStructArr2008450
+    probe. - `beq loc_81171EE` branches over the sprite write when getStructFrom2008450''s returned byte
+    is 0. - `mov r5, r1` followed by `ldr r0, [sp]` / `ldr r1, [sp,#4]` then `bl sprite_setCoordinates`
+    passes the original r0/r1 to the sprite setter, with r5 carrying the in-use byte as the third arg
+    per sprite_setCoordinates''s contract. - Captured calls all show r0=0xa5, r1=0x28, r2=0x04 across
+    30 traces with r0 unchanged on exit, matching a per-frame coordinate update for the same object.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x081171D4
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^081171d4 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The semantic role of the in-use byte (what "active" means for eStructArr2008450 entries) is not pinned
+  down here; r5 is forwarded to sprite_setCoordinates but the callee's use of it is opaque from this function.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 649d4897
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_81171D4 -> battleObject_setSpriteCoordsFromEStructEntryIfActive_81171D4
+  where: bn6f 7ad99d5e
+  tool: tools/rename_symbol.py

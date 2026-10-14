@@ -1,0 +1,68 @@
+name: battle_aiData_processStreamByte_814E7CC
+address: '0x0814E7CC'
+kind: function
+previous_names:
+- sub_814E7CC
+status: probable
+summary: Reads the next byte from a stream into the AIData struct's ChipLockoutTimer (0x19), and resets
+  version/charge flags when the byte is zero
+interface: (r0 = AIDataPtr, r1 = stream/state ptr) -> r0 = AIDataPtr unchanged ; side effects writes AIDataPtr[0x19]
+details: "- The function saves lr into r12 and calls streamReadNextByte_814E7C0(r1) which advances the\
+  \ byte stream in `r1` and returns the next byte in r3.\n  - It stores the byte directly into AIData[0x19],\
+  \ which the AIData struct defines as `ChipLockoutTimer`. The byte appears to be the chip lockout countdown\
+  \ value pulled from a battle init/stream source (all six captured calls are from story2 scenes with\
+  \ r2 being a code/script pointer and r3=0814e7cd, the very next Thumb instruction -- lr returns to 0814e36d,\
+  \ i.e. the same caller across scenes).\n  - After the strb, if the read byte was 0, control falls through\
+  \ to battle_aiData_resetVersionAndChargeFlags_814E7A4(r1) which clobbers AIData's Version_16/Version_17\
+  \ and PwrAtkCurChargeTime fields (per the unnamed sub_814E7A4 contract: writes r2/r3 for those byte\
+  \ slots).\n  - When the byte is non-zero, the reset call is skipped; otherwise the lockout timer is\
+  \ zero (effectively \"no lockout\") and version+charge state is reset before the b to bx r12.\n  - Two\
+  \ `.byte 0, 0` alignment pads sit between the bx r12 and thumb_func_end; they are not instructions.\n\
+  \  - In/out contract: no value is returned to the caller (out contains only callee-saved r4-r11/r12/lr;\
+  \ r0 is preserved by the callee path because r0 is never overwritten before bx r12). Callers therefore\
+  \ treat it as void; they re-use the AIData pointer in r0.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mov r12, lr` / `bx r12` at 0x0814e7cc/0x0814e7dc show the function is a leaf thunk dispatched
+    via lr (not a real `bx` to a saved lr). - `bl streamReadNextByte_814E7C0` at 0x0814e7cc reads the
+    next byte from the `r1` stream into r3. - `strb r3, [r1,#0x19]` writes that byte to AIData offset
+    0x19, which the AIData.inc struct defines as `ChipLockoutTimer`. - `cmp r3, #0` / `bne loc_814E7DC`
+    at 0x0814e7d0/0x0814e7d4 branch over the reset. - `bl battle_aiData_resetVersionAndChargeFlags_814E7A4`
+    at 0x0814e7d8 is only taken when the read byte is zero, confirming the reset is a "no-lockout" cleanup.
+    - All 40 captured calls (snap_story2_* in the same battle init script 0814e36d area) feed r1 as the
+    AIData struct (r1[0x19] matches ChipLockoutTimer position; r2 is a script pointer; r3 is the next
+    Thumb PC = 0814e7cd, i.e. the strb itself).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0814E7CC
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story1, story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^0814e7cc '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander
+open_questions:
+- Whether 0x19 really is a chip lockout timer or some other AI state field - the captured calls never
+  write a known value there in the snapshots shown, but the field name from AIData.inc is the most plausible
+  mapping.
+- Whether the reset on zero is intentional (lockout==0 means "no chip selected, so reset version/charge")
+  or coincidental; would settle it by reading the script bytes at the captured r2 pointers (0818d97a,
+  0818dfe5, etc.) and tracing what the following AI code does.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 649d4897
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_814E7CC -> battle_aiData_processStreamByte_814E7CC
+  where: bn6f 7ad99d5e
+  tool: tools/rename_symbol.py

@@ -1,0 +1,67 @@
+name: battleObject_markAIDataUnk18AndMarkDirty_814E21C
+address: '0x0814E21C'
+kind: function
+previous_names:
+- sub_814E21C
+status: probable
+summary: Marks AIData Unk_18 = 0 and sets the OBJECT_FLAG_DIRTY (bit 0x80) on the owning BattleObject
+  so the next AI tick re-evaluates, then returns to caller via r12.
+interface: '(r0 = unk, r1 = AIDataPtr, r2 = unk, r3 = unk) -> ; no caller-visible return; side effects:
+  writes [r1+0x18] = r3 and ORs 0x80 into [r1+0]'
+details: "- Saves lr into r12 then calls battleObject_runUpdateRoutineAndAdvancePC_814E0D0 which returns\
+  \ the new\n    CurState/phase value in r3 (callee's contract: in r1, out r0/r2/r3).\n  - Compares AIData->Unk_18\
+  \ (offset 0x18, after Version_16/Version_17) with the returned r3. If they\n    already match, jumps\
+  \ to bx r12 (the captured-call site shows all paths land here with r0 = 0).\n  - Otherwise stores r3\
+  \ back into [r1+0x18], reads [r1+0], ORs with 0x0F, and writes back. The 0x0F mask\n    forces the low\
+  \ nibble of byte 0 (the AIData flags/header byte) on, which is the dirty/active pattern\n    used elsewhere\
+  \ in the battle AI tick chain so the parent BattleObject re-runs its update routine.\n  - bx r12 returns\
+  \ to sub_814E36D which is the AI tick dispatcher (lr=0814e36d in every captured call).\n  - r0 entry\
+  \ is a BattleObject pointer (struct at 0x02010890, OBJECT_FLAG/Index at offset 0); r1 entry\n    is\
+  \ the matching AIData struct (offset 0x18 sits in the documented AIData struct).\n  - The 40 captured\
+  \ entries all show different r2 values that vary per scene (snap_story2_0..13), and\n    AIData->Unk_18\
+  \ is updated accordingly (some become 0x92, 0x8E, 0x96), confirming Unk_18 is a\n    per-tick state\
+  \ id written by the update routine.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl battleObject_runUpdateRoutineAndAdvancePC_814E0D0` followed by `ldrb r0, [r1,#0x18];
+    cmp r0, r3; beq loc_814E232` shows the function pulls a state byte out of AIData+0x18 and compares
+    to the routine''s return value. - `strb r3, [r1,#0x18]; ldrb r3, [r1]; mov r2, #0xf; orr r3, r2; strb
+    r3, [r1]` is the literal "store new state id, then OR 0x0F into the header byte" dirty-marking sequence.
+    - Captured-call exit r0=00000000 with -ZC- flags confirms r0 is not a meaningful return; only the
+    side-effects matter, matching the callee-saved-only `out` contract. - Every captured call has lr=0814e36d,
+    identifying the AI tick dispatcher caller in sub_814E36D. - AIData struct defines Unk_18 at loc=0x18
+    (after Version_16/Version_17) and the byte at offset 0 is reserved/flags-like, consistent with the
+    "force low nibble on" behaviour.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0814E21C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story1, story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^0814e21c '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander
+open_questions:
+- Exact semantics of AIData.Unk_18 (looks like a phase/state id) and the meaning of bits 0..3 of
+- AIData[0] — likely a dirty/re-evaluate flag for the AI loop, but the AIData layout only documents
+- Unk_00 implicitly via `ActorType`/`AIIndex`. Naming the AIData byte as "dirty" is inferred from the
+- 0x0F mask pattern matching other battle-tick code. Settling it would require inspecting other
+- sites that read AIData[0] low nibble and sub_814E36D's dispatcher.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 649d4897
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_814E21C -> battleObject_markAIDataUnk18AndMarkDirty_814E21C
+  where: bn6f 7ad99d5e
+  tool: tools/rename_symbol.py

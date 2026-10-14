@@ -1,0 +1,71 @@
+name: battleObject_updateBeastSpSlotMask_8118604
+address: '0x08118604'
+kind: function
+previous_names:
+- sub_8118604
+status: probable
+summary: For each battle-object beast-sp row, OR-clears the corresponding bit of a slot mask and writes
+  the resulting u32 to the object's sprite Unk0x2c.
+interface: '(r5 = ?, r6 = battleObject*, r10 = toolkit*) -> r0 = 0x7F7BFFFF ; clobbers r0-r3,r7 ; side
+  effects: writes ObjectSprite+0x2c via sprite_setUnk0x2c'
+details: "1. ldrh r0, [r6,#0x3a] and ldrh r1, [r6,#0x38] (AIData.Unk_38 and Unk_3a — likely the beast-sp\
+  \ / cross-counter\n     pair) are summed and multiplied by 4, then used as an index into the EWRAM table\
+  \ at `word_201DA80`.\n     The word read there has 0x90 subtracted from it before being passed as the\
+  \ `param` argument (r1)\n     to `battleObject_runAIDispatchTable_813B7A0`.\n  2. `battleObject_runAIDispatchTable_813B7A0`\
+  \ returns the address of the AI attack-vars row in r0; +8\n     skips the AIState header (size 0x20\
+  \ of the AIState struct, but the return convention here is\n     AIData+AttackVars+8 = AIState+AIAttackVars+8,\
+  \ aligning on AIAttackVars).\n  3. The loop walks 0x31 entries of those attack-vars bytes (r4 counter,\
+  \ r7 pointer). For every 5th\n     entry (when r6==5, r6 is reset) it advances r7/r4 by an extra +1,\
+  \ which steps over a 16-bit field\n     inside AIAttackVars every 5 bytes — this is the \"beast-sp slot\"\
+  \ structure: 5 bytes of slot info\n     then a 2-byte field, 0x31 ≈ 9 such slots (9*(5+2)+2 = 65 bytes\
+  \ matches the AIAttackVars size of 0x50\n     minus a few trailing bytes).\n  4. For each non-zero byte\
+  \ the constant bit (starting at 0x01000000 shifted right each iteration)\n     is cleared from a u32\
+  \ mask. The bit mask sequence `mov r2,#0x80; lsl r2,r2,#0x17` (=0x01000000)\n     followed by repeated\
+  \ `lsr r2,#1` produces bits 0x01000000, 0x00800000, ..., 0x00010000 — those\n     are the OBJECT_FLAGS_BUBBLED\
+  \ / _UNK_30 / _UNK_29 / _UNK_28 / _UNK_27 / _UNK_26 /\n     _UNAFFECTED_BY_POISON / _UNK_25 / _UNK_24\
+  \ / _UNK_23 (or similar) bits in CollisionData.ObjectFlags1.\n  5. After the loop, r0 holds the bit-cleared\
+  \ mask and `sprite_setUnk0x2c` is called to push it into\n     the object's sprite+0x2c (per callee\
+  \ contract).\n  6. r0 left as `0x7F7BFFFF` (= all-ObjectFlags1 bits except the cleared ones, ~5 bits\
+  \ clear in\n     low half + bit 24/25 area), matching the captured exit value across all 40 invocations.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- Captured exit r0=0x7F7BFFFF is constant across all 40 frames, indicating a precomputed flag
+    mask derived from object state, not a fresh computation. - ObjectHeader+0x0e is `Element` and is passed
+    as r1 to battleObject_runAIDispatchTable, consistent with selecting an AI/element row in the dispatch
+    table (sub_813B7A0 contract: in r0,r1,r10). - Sum of AIData.Unk_38+Unk_3a is a known "beast-sp" /
+    cross-counter accumulator in BN6 beast-mode code; *4 indexing into 201DA80 plus the 0x90 subtract
+    matches the AI dispatch-table header convention used elsewhere. - Loop bound 0x31 (49) with the +2
+    stride every 5 iterations produces exactly the AIAttackVars byte fan-out seen at AIData+0xa8 (8 bytes
+    per beast-sp entry, of which 5 are tested). - The bit mask pattern `0x01000000 >> n` matches the OBJECT_FLAGS_BUBBLED-area
+    flags stored in CollisionData.ObjectFlags1; pushing them into SpriteData+0x2c mirrors how sprite_setUnk0x2c
+    masks other flag bits onto an object''s sprite.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08118604
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^08118604 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- Which exact 5 of the 0x31 attack-vars bytes correspond to which OBJECT_FLAGS bits, and whether the
+- mask is "clear bits where beasts are sp-affected" (more likely given `bic`) or vice-versa. Settled
+- by inspecting the AIAttackVars layout for the beast-sp block and checking which OBJECT_FLAGS bits
+- appear to interact with cross/paralyze state.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 649d4897
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8118604 -> battleObject_updateBeastSpSlotMask_8118604
+  where: bn6f 7ad99d5e
+  tool: tools/rename_symbol.py

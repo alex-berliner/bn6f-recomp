@@ -1,0 +1,59 @@
+name: battleObject_setCoordsAndUpdateSprite_811E1D4
+address: '0x0811E1D4'
+kind: function
+previous_names:
+- sub_811E1D4
+status: probable
+summary: 'BattleObject stage-update: toggle a header flag from AIData Unk_0e, snap sprite to (0xCC, 0x1E)
+  and refresh.'
+interface: '(r5 = BattleObject*, r6 = AIData*) -> void ; side effects: mutates BattleObject header byte
+  0 (bit1), calls into sub_811E202 / sprite_setCoordinates(0xCC, 0x1E) / sprite_update.'
+details: "Loads the current value of the BattleObject header byte (r5, offset 0) into r4, then\n  reads\
+  \ AIData Unk_0e at [r6 + 0xe]. If Unk_0e is zero, ORs 0x02 into the header\n  (`bic/orr` around `mov\
+  \ r1, #2`); otherwise clears bit1 of the header. Stores the\n  patched header byte back at [r5].\n \
+  \ Falls through to sub_811E202 (no args visible) which is described as\n  \"set sprite 0x2c flags from\
+  \ AI version\".\n  Hard-codes r0 = 0xCC and r1 = 0x1E and calls sprite_setCoordinates(r5, 0xCC, 0x1E),\n\
+  \  parking the sprite at panel-grid (0xCC, 0x1E).\n  Finishes with sprite_update(r5) to push the new\
+  \ header flags/coords into the live sprite.\n  The fixed coords (0xCC, 0x1E) and the bit toggling on\
+  \ Element (Unk_0e) line up with a\n  \"beast-out / row changed\" reset for BeastSp-style actors (the\
+  \ captured call snapshot\n  for beastsp_0140000 matches this path repeatedly).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r4, [r5]` then conditional `bic r4, r1` / `orr r4, r1` with r1=2 and `strb r4, [r5]`
+    (asm32.s:32095 lines for sub_811E1D4) show header bit1 being set/cleared based on a test. - `ldrb
+    r0, [r6,#0xe]` followed by `tst r0, r0` / `beq loc_811E1E4` ties the toggle to AIData+0xe. - Captured
+    calls: r5 is reused by all 40 snapshots (e.g. r5=020118d8, r6=0x0c in snap_beastsp_0140000_0), entry
+    r1=0x04 / r1=0x0a4 in beastsp_0140000_1 etc., consistent with a BattleObject (r5) + AIData (r6) caller
+    convention used elsewhere in sub_811E18C. - Caller sub_811E18C has the same `in=[''r1'',''r5'',''r6'',''lr'']`
+    contract and routes through this function, so the toggle is a per-actor stage update. - `mov r0, #0xcc`
+    / `mov r1, #0x1e` then `bl sprite_setCoordinates` is the literal coords handed to the sprite, and
+    `bl sprite_update` finalizes it (sprite_setCoordinates/sprite_update confirmed callees).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0811E1D4
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^0811e1d4 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The semantics of AIData Unk_0e (battle_object_struct has Element at 0xe; AIData also has
+- Unk_0e) are not pinned down — confirming which struct r6 points to in this caller would
+- settle whether the toggle means "Element-based" or "AI-version-based".
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 649d4897
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_811E1D4 -> battleObject_setCoordsAndUpdateSprite_811E1D4
+  where: bn6f 7ad99d5e
+  tool: tools/rename_symbol.py

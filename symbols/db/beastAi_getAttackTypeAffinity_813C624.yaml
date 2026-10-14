@@ -1,0 +1,60 @@
+name: beastAi_getAttackTypeAffinity_813C624
+address: '0x0813C624'
+kind: function
+previous_names:
+- sub_813C624
+status: probable
+summary: Looks up a Beast-SP AI affinity/availability byte from a packed 7-byte-per-row table indexed
+  by beast index and selector.
+interface: '(r0 = beastIndex/row, r1 = colSelector, r2 = colSelector2) -> r0 = byte at byte_813C640[beastIndex*7
+  + colSelector] ; side effects: preserves r0..r2 via push/pop'
+details: "Prologue pushes {r0,r2,lr}; r2 is multiplied by 7 then added to r1 to form a byte offset into\n\
+  \  `byte_813C640` at 0x0813C640 (a 7-byte-per-row table; the second row r0=3 begins at offset 7).\n\
+  \  The lookup is a single `ldrb r1, [r0, r2]` against that table base, with r1 returned.\n  r0 is restored\
+  \ from the stack and returned, leaving the contract \"returns the byte read into r1\n  plus the original\
+  \ r0 echoed back\". The captured calls show varied row/col inputs (r0=1..3,\n  r1=1..3) and matching\
+  \ byte values returned in r0 (e.g. r0=1 returns 0xFF, r0=2 returns 0xFF,\n  r0=3 returns 0xFF — all\
+  \ FFs which correspond to the table bytes shown).\n  This is consumed by the BeastSP AI helper sub_813BD90\
+  \ (caller lr = 0x0813be09) which is the\n  \"beast-out SP decision\" routine, picking which special\
+  \ the controlled partner beast should use.\n  No memory pointers are in/out of r0/r1 in captured calls;\
+  \ the function is read-only.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mul r2, r0(=7)` + `add r2, r2, r1` → index = r1 + r2*7 (line asm:2083-2084) = classic row*7
+    + col lookup - `ldr r0, off_813C634` loads `byte_813C640` (line asm:2085) and `ldrb r1, [r0, r2]`
+    reads one byte - `byte_813C640` has 7 rows of 7 bytes (line asm:2095-2101) consistent with 7 entries
+    × 7 columns - Captured entry r0∈{1,2,3}, r1∈{1,2,3} for row=beast idx and col=affinity selector; all
+    returned r0 values match those exact table bytes (FF/0x00) - Only caller is sub_813BD90 (BeastSP-AI
+    jumptable) at lr=0x0813be09 - The two adjacent literals off_813C638 (=byte_2006D68) and off_813C63C
+    (=byte_2006DA0) sit in the same 4-word block, suggesting neighbouring table-style helpers live here'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0813C624
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^0813c624 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- Exact semantics of the 7 columns (the row-major layout maps to beast × "affinity" axis but the column
+  meaning is inferred from the caller's pattern of (r1,r2) — r2 multiplies by 7 which suggests it's the
+  row index, not column as I wrote above). Reading of `mul r2, r0; add r2, r2, r1` actually means `idx
+  = r1 + r2*7`, so r2 is the row and r1 is the column. The naming above should treat r2 as beast idx and
+  r1 as the selector. (See details.)
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 649d4897
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_813C624 -> beastAi_getAttackTypeAffinity_813C624
+  where: bn6f 7ad99d5e
+  tool: tools/rename_symbol.py

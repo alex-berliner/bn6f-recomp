@@ -1,0 +1,58 @@
+name: battle_render_setBlurAndAnimUpdate_804C478
+address: '0x0804C478'
+kind: function
+previous_names:
+- sub_804C478
+status: probable
+summary: Enables OBJ blur (0x4800) on RenderInfo then drives a GFX anim frame for the current battle object
+interface: '(r5 = ptr to AIData-like struct, r7 = GFX anim state ptr, r10 = Toolkit) -> no return; side
+  effect: RenderInfo word 0 ORed with 0x4800'
+details: "Reads RenderInfoPtr from Toolkit (r10+0x8) and ORs its u16 at offset 0 with 0x4800, enabling\
+  \ a\n  mosaic/blur bit on the render object attributes.\n  Pulls three words from the GFX anim state\
+  \ (r7+0, r7+4, r7+8) — the GFXAnimState fields CommandPos,\n  Param0, Param1. Subtracts (r5 byte 0xd\
+  \ << 16) from the third one — that byte is a render-time\n  vertical offset baked into AIData. Saves\
+  \ the three values to a stack scratch buffer and passes\n  sp as r0 plus the anim state's remaining\
+  \ words (r7+0xc, r7+0x10, r7+0x11) as r1..r3 into the\n  palette/animation runner loc_80024D8, which\
+  \ interprets the scratch as a packed (x,y,z) and the\n  other args as a frame/anim command.\n  Two `gfx_anim_*`\
+  \ tables follow in the same alignment word block (dword_804C4B0 / dword_804C4E0)\n  but they are data,\
+  \ not code. This function is only the run-step; the script streams are\n  installed elsewhere. Single\
+  \ in-line caller: sub_804C43C, which is presumably the per-frame\n  dispatcher.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r1, [r4,#oToolkit_RenderInfoPtr]` then `ldrh r0,[r1] / orr r0,0x4800 / strh r0,[r1]`
+    shows a halfword OR of 0x4800 into RenderInfo word 0. - `ldr r1,[r7] / ldr r2,[r7,#4] / ldr r3,[r7,#8]`
+    matches GFXAnimState fields CommandPos, Param0, Param1 (offsets 8, 0xc, 0x10 actually; here the ldr
+    offsets are 0,4,8 from r7, so they alias the first 12 bytes of the state — i.e. LoopAddress/CommandPos/Param0).
+    - `ldrb r0,[r5,#0xd]; lsl r0,#0x10; sub r3,r3,r0` subtracts a vertical render offset from the third
+    arg before passing it through the stack. - The stack-saved triplet is then handed to `loc_80024D8`
+    as `(sp, r7+0xc, r7+0x10 byte, r7+0x11 byte)`, i.e. as a 3-word coordinate plus three control bytes.
+    - Only caller is sub_804C43C, which is a small thunk in the same file.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0804C478
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp, maps'
+  reproduce: 'grep -l ''^0804c478 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp, maps
+open_questions:
+- What the two adjacent `gfx_anim_*` tables are for (probably the two AIData Unk_0d variants the
+- runner branches on). Settled by looking at sub_804C43C to see whether it picks one based on
+- AIData state.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 649d4897
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_804C478 -> battle_render_setBlurAndAnimUpdate_804C478
+  where: bn6f 7ad99d5e
+  tool: tools/rename_symbol.py

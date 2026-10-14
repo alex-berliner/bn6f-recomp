@@ -1314,27 +1314,27 @@ Next sub_814E1FC(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_814E210 ── */
-/* sub_814E210: wrapper around battleObject_runUpdateRoutineAndAdvancePC_814E0D0 — calls it, then stores the byte
+/* ── battleObject_runChargeTickAndStoreChargeTime_814E210 ── */
+/* battleObject_runChargeTickAndStoreChargeTime_814E210: wrapper around battleObject_runUpdateRoutineAndAdvancePC_814E0D0 — calls it, then stores the byte
  * result it leaves in r3 at [r1 + 0x1B]. Everything else (including r0 and
  * the flags left by the callee) passes through unchanged; returns to the
  * caller's original return address, kept in r12 like the original does. */
-Next sub_814E210(void) {
+Next battleObject_runChargeTickAndStoreChargeTime_814E210(void) {
     R12 = LR;
     GUEST_CALL(battleObject_runUpdateRoutineAndAdvancePC_814E0D0);
     ST8(R1 + 0x1B, R3);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_814E21C ── */
-/* sub_814E21C:
+/* ── battleObject_markAIDataUnk18AndMarkDirty_814E21C ── */
+/* battleObject_markAIDataUnk18AndMarkDirty_814E21C:
  * Calls battleObject_runUpdateRoutineAndAdvancePC_814E0D0 (which fills r1 with a record pointer and r3 with the
  * record's current/new state value), then syncs the state byte at [r1+0x18]:
  * if it differs from r3, the new value is written back and the low nibble of
  * the byte at [r1] is set to 0xF (marking the record as "needs refresh").
  * Flags are left as the last executed flag-setting instruction leaves them:
  * CMP r0, r3 on the equal path, ORR on the update path. */
-Next sub_814E21C(void) {
+Next battleObject_markAIDataUnk18AndMarkDirty_814E21C(void) {
     R12 = LR;
     GUEST_CALL(battleObject_runUpdateRoutineAndAdvancePC_814E0D0);
 
@@ -1536,12 +1536,12 @@ Next streamReadNextByte_814E7C0(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_814E7CC ── */
-/* sub_814E7CC: tail of a getter/setter pair.
+/* ── battle_aiData_processStreamByte_814E7CC ── */
+/* battle_aiData_processStreamByte_814E7CC: tail of a getter/setter pair.
  * Calls streamReadNextByte_814E7C0 (which returns a byte in r3 and a struct pointer in r1),
  * stores the byte at [r1 + 0x19], and if it was zero also calls
  * battle_aiData_resetVersionAndChargeFlags_814E7A4. r12 is kept as the original does (r12 = lr on entry). */
-Next sub_814E7CC(void) {
+Next battle_aiData_processStreamByte_814E7CC(void) {
     R12 = LR;
 
     GUEST_CALL(streamReadNextByte_814E7C0);
@@ -1824,7 +1824,7 @@ static void init_cgb_sound(u32 sound_buf) {
     /* Install patched sound-driver handlers in the game's function-pointer table */
     u32 fp = A_off_3005570;
     ST32(fp + 0x20, (A_sub_814FBFC | 1));
-    ST32(fp + 0x44, (A_sub_814E7CC | 1));
+    ST32(fp + 0x44, (A_battle_aiData_processStreamByte_814E7CC | 1));
     ST32(fp + 0x4C, (A_sub_814E7E0 | 1));
     ST32(fp + 0x70, (A_sub_814FD54 | 1));
     ST32(fp + 0x74, (A_sub_814E758 | 1));

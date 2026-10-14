@@ -1,0 +1,61 @@
+name: battle_dispatchJumpByActorSlotAndAction_804C404
+address: '0x0804C404'
+kind: function
+previous_names:
+- sub_804C404
+status: probable
+summary: Dispatcher that calls one of two AIData sub-handlers based on an actor slot index and an action
+  selector from a 0x14-byte AIData entry.
+interface: '(r5 = AIData table base?, r5+0xc = slot index, r5+0x10 = action selector) -> returns whatever
+  the dispatched callee returns ; side effects: tail-calls into sub_804C43C or sub_804C478'
+details: "Loads a base pointer from `byte_804C3F0` into r7.\n  Reads a u8 slot index at r5+0xc, multiplies\
+  \ by 0x14 (matching the per-entry stride of the AIData-style table), and indexes r7 to land on the table\
+  \ entry's \"data\" word (r0 = base + slot*0x14).\n  Reads r5+0x10 as an action selector (r1) and indexes\
+  \ a tiny two-entry jump table at `off_804C420` to obtain a Thumb function pointer (with `+1` thumb-bit).\n\
+  \  Sets lr=pc, bx r0 to the chosen handler, then pops {r4-r7,pc} so it serves as a tail-call return;\
+  \ the assemble-time `pop {r4-r7,pc}` plus the explicit `mov lr,pc; bx r0` is the canonical Thumb-only\
+  \ \"register-indirect tail-call with callee-preserved restore\" pattern.\n  This function is therefore\
+  \ a small dispatcher; any state changes happen in the callee.\n  Function size: 10 instructions, exactly\
+  \ the shape of a Thumb function table dispatcher.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0, [r5,#0xc]` followed by `mov r1,#0x14; mul r0,r1; add r7,r7,r0` indexes a 0x14-byte
+    AIData-style entry table at r7=`byte_804C3F0`. - `ldrb r1, [r5,#0x10]` reads a second selector and
+    uses it to index `off_804C420`. - `off_804C420` literally contains `sub_804C43C+1` and `sub_804C478+1`
+    (with the +1 for Thumb), confirming a two-way function-pointer dispatch. - `mov lr,pc; bx r0` plus
+    `pop {r4-r7,pc}` is the canonical Thumb tail-call idiom so the callee returns directly to the caller
+    of this dispatcher. - Contract lists massive register trashing (`out` includes r0..r12) which is consistent
+    with a tail-call to a child that can clobber everything; r4-r7 are restored on the pop {pc} so the
+    calling convention is preserved.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0804C404
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp, maps'
+  reproduce: 'grep -l ''^0804c404 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp, maps
+open_questions:
+- The real identities of `sub_804C43C` and `sub_804C478` (only their offsets are known); classifying the
+  dispatcher more precisely needs those two bodies and confirmation that `byte_804C3F0` is actually an
+  AIData-derived 0x14-byte table.
+- The exact r5 role (AIData base vs. some other per-actor struct) is inferred from the AIData struct having
+  `Unk_0c` (0xc) and a u8 at 0x10 that fits "action selector", but the contract's r5-in is the strongest
+  evidence that r5 itself is the dispatch key.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 649d4897
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_804C404 -> battle_dispatchJumpByActorSlotAndAction_804C404
+  where: bn6f 7ad99d5e
+  tool: tools/rename_symbol.py

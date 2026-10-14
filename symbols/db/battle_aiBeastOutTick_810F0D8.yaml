@@ -1,0 +1,80 @@
+name: battle_aiBeastOutTick_810F0D8
+address: '0x0810F0D8'
+kind: function
+previous_names:
+- sub_810F0D8
+status: probable
+summary: 'Beast-Out AI tick step: when the beast-AI flag is set, advance the turn counter and queue an
+  attack; otherwise countdown and either pick a chip attack or queue a counter/decide.'
+interface: '(r4 = AIData, r5 = BattleObject, r6 = AIState, r7 = AIAttackVars) -> void ; side effects:
+  AIAttackVars (damage/flags/cmd), object_setAttack0, possibly sub_80103F8 reads from the opposite-ally
+  battle object.'
+details: "Registers r4..r7 are loaded by the caller; no arguments are passed in r0-r3 (the saved entry\n\
+  \  r1=0x0810f0d9, r2=0x80, r3=0x03 are residues from the caller frame, not inputs here). The first\n\
+  \  block checks the beast-AI \"extra-var2\" field at BattleObject+0x64 (oBattleObject_ExtraVars+4):\n\
+  \  if non-zero it is cleared, ExtraVars[0] is incremented, AttackVars.Unk_0c is set to that value,\n\
+  \  and object_setAttack0(0xb) is invoked (object code 0xb = \"exit/sync BeastOut turn\"); this branch\n\
+  \  fires when BeastOutSet was requested last tick. Otherwise the function calls\n  battle_aiTryChipAttack_0810F1B6;\
+  \ if it succeeds it returns. On failure it decrements the\n  BattleObject.0x6c halfword (custom-counter/timer)\
+  \ and bails out while still > 0. When the timer\n  hits zero it increments AIState.Unk_04 (a 0..3 sub-state).\
+  \ For sub-states >= 3 it clears Unk_04\n  back to 0, then runs \"should we end the beast AI?\" checks:\
+  \ skip if battle_isBattleOver returns\n  true, otherwise read the *opposite* alliance's battle object\
+  \ via sub_80103F8(r0=!Alliance, 1),\n  inspect its HP (the ldrh [r0,#0x24] -> oBattleObject_HP), and\
+  \ bail if HP==0. If those pass, the\n  function looks up version-indexed damage from byte_810F18C[oAIData.Version_16]\
+  \ (a 6-entry table\n  per Beast tier; values 0x0A,0x1E,0x50,0x64,0x32,0x64), stores it into AttackVars.Damage\
+  \ and\n  AttackVars.Unk_0a, then writes AttackVars.Unk_0c from byte_810F192 indexed by sub_810F1E6()\n\
+  \  (1..3 by tier), records the navi Version_16 in Unk_0d, copies ExtraVars[0] into Unk_0e, and\n  arms\
+  \ AttackVars.Unk_28 with &BattleObject+0x64 (the AI extra-vars scratch slot), then calls\n  object_setAttack0(0xa)\
+  \ (the actual beast-attack frame).\n  In the >=3 branch fall-through (loc_810F160), the function instead\
+  \ stores the \"wait\"\n  duration from byte_810F1A4 into AttackVars.Unk_10, zeros AttackVars.Unk_2c,\
+  \ points\n  AttackVars.Unk_28 at sub_810F1F2+1 (a \"no-op\" return stub) and calls object_setAttack0(9).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- r4..r7 (and r10=toolkit) in-registers, no r0..r3 args: contract `in=[''r4'',''r5'',''r6'',''r7'',''r10'',''lr'']`.
+    - Beast flag test at start uses `ldr r0,[r5,#oBattleObject_ExtraVars+4]; cmp r0,#0; beq ...` (0x0810F0DE).
+    - On set, `str r0,[r5,#oBattleObject_ExtraVars+4]; ldr r0,[r5,#oBattleObject_ExtraVars]; add r0,#1;
+    strb r0,[r7,#oAIAttackVars_Unk_0c]; mov r0,#0xb; bl object_setAttack0` (0x0810F0E6..0x0810F0F0). -
+    Loc_810F0F4 calls `bl battle_aiTryChipAttack_0810F1B6` and bails on success (`cmp r0,#0; bne locret_810F178`).
+    - 0x6c halfword timer countdown at `mov r1,#0x6c; ldrh r0,[r5,r1]; sub r0,#1; strh r0,[r5,r1]; cmp
+    r0,#0; bgt locret` (0x0810F100..0x0810F10A). - AIState sub-step advance at `ldrb r0,[r6,#oAIState_Unk_04];
+    add r1,r0,#1; strb r1,[r6,#oAIState_Unk_04]; cmp r0,#3; blt loc_810F160` (0x0810F110..0x0810F11A)
+    and reset-to-0 at 0x0810F11E. - battle_isBattleOver consulted before commit (`bl battle_isBattleOver;
+    tst r0,r0; bne loc_810F160`). - Opposite-ally lookup: `ldrb r0,[r5,#oBattleObject_Alliance]; mov r1,#1;
+    eor r0,r1; bl sub_80103F8` (0x0810F12C). - HP-check via `ldrh r0,[r0,#0x24]` (BattleObject.HP offset)
+    and `tst r0,r0; beq loc_810F160` (0x0810F134). - Damage table from `ldrb r0,[r4,#oAIData_Version_16];
+    ldr r1,off_810F180; ldrb r0,[r1,r0]; strh r0,[r7,#oAIAttackVars_Damage]; strh r0,[r7,#oAIAttackVars_Unk_0a]`
+    (0x0810F13A..0x0810F144). Table bytes 0x0A,0x1E,0x50,0x64,0x32,0x64 at 0x0810F18C. - AttackVars.Unk_0c
+    from `bl sub_810F1E6; ldr r1,off_810F184; ldrb r0,[r1,r0]; strb r0,[r7,#oAIAttackVars_Unk_0c]` (0x0810F14A)
+    and byte_810F192 = [1×6, 2×6, 3×6]. - AttackVars.Unk_28 armed with &BattleObject+0x64 via `mov r0,#0x64;
+    add r0,r0,r5; str r0,[r7,#oAIAttackVars_Unk_28]` (0x0810F15A).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0810F0D8
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp'
+  reproduce: 'grep -l ''^0810f0d8 '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp
+open_questions:
+- Exact semantic of sub-states 0..3 of AIState.Unk_04 (which tier each branch corresponds to).
+- Meaning of AttackVars.Unk_28 pointer (the extra-vars scratch) - looks like a callback pointer for the
+  battle object; only the asm that consumes it would settle it.
+- Whether sub_810F1E6 returns 0..2 (the table has only 3 distinct values, all distinct), or some larger
+  value the table-mask handles.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 649d4897
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_810F0D8 -> battle_aiBeastOutTick_810F0D8
+  where: bn6f 7ad99d5e
+  tool: tools/rename_symbol.py

@@ -1,0 +1,73 @@
+name: battle_ai_findEnemyTargets_80E1670
+address: '0x080E1670'
+kind: function
+previous_names:
+- sub_80E1670
+status: probable
+summary: finds enemy (virus/navi) battle objects on the opposite alliance and stores them into a stack-local
+  array, with sub_80E16CC probing specific related-target slots
+interface: '(r5 = self BattleObject, r10 = Toolkit) -> r0 = 0 (Alliance-precomputed count of stored slots),
+  r5 preserved ; side effects: writes a 0x34-byte scratch buffer on the stack and queries object_getEnemyByNameRange
+  plus three sub_80E16CC probes'
+details: "Allocates 0x34 bytes on the stack (`sub sp,#0x34`) and takes `sp` as the local scratch buffer\
+  \ (`mov r4, sp`).\n  Reads `oBattleObject_Alliance` (0x16) from `r5`, eors it with 1 to flip alliance,\
+  \ and zeroes that flipped value back into a slot of the local buffer at `[r3]` (where `r3 = r0*4 + r4`,\
+  \ i.e. slot 0).\n  Calls `object_getEnemyByNameRange(r0=r4 ptr-to-buffer, r1=0, r2=0x1c3)` to enumerate\
+  \ enemy actors whose name/ID range covers 0x1c3 — the count returned in `r6` determines how many further\
+  \ slots get filled next.\n  Then it makes up to three probes via `sub_80E16CC(self=object in r5 with\
+  \ `ldr r1,[r5,#oBattleObject_RelatedObject1Ptr]`, mode=r0=0,1,2, buffer=r4)` — looks like it is checking\
+  \ which of three category/pass types the related object satisfies (likely distinguishing Player/Navi/Virus\
+  \ targeting, matching `AIData.ActorType` 0..2). The first zero return is the result value handed back\
+  \ in `r0` (loops via `bne loc_80E16BA` break on first non-zero). Whoever moves the alliance-flip count\
+  \ into slot 0 of the local 0x34-byte buffer and gets a per-mode-0..2 count from `sub_80E16CC` is preparing\
+  \ a target list for AI selection.\n  Stack is restored and only r0/r5 are live; r4/r6/r7 are pushed/popped\
+  \ as scratch.\n  This strongly resembles an AI \"find valid enemy targets\" helper: flip alliance, build\
+  \ an enemy-name-id list in a stack buffer, then for each candidate probe mode via the related-object\
+  \ routine.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r3,[r5,#oBattleObject_Alliance]` and `eor r3,#1` at the entry — explicitly flips alliance
+    of the calling battle object, the canonical "find enemies" trick. - `bl object_getEnemyByNameRange`
+    with `r2=0x1c3` and the buffer pointer — this enumerates enemy actors whose name/ID matches 0x1c3
+    and writes their count/index list into the passed buffer (per the project''s helper contract). - The
+    literal `byte_80E16C4 = 0xA0, 0xA4, 0xAC, 0xB0, 0xB4, 0xB8, 0xBC, 0xFF` directly after `sub_80E16CC`
+    is consistent with mode-0..2 indexing (used by the helper using r0=0/1/2). - Caller `sub_80E1566`
+    lives in the AI region (`0x080e16xx`, in the same `sub_80E1566` AI script dispatcher) and passes r5
+    (BattleObject) and r10 (Toolkit), matching AI helpers. - `oBattleObject_RelatedObject1Ptr` is at offset
+    0x4c and is read for the sub call — this is the AI-related battle object slot, used during AI candidate
+    selection. - The 0x34-byte stack slot is the right size for ~13 word entries (matches a `0x1c3`-bounded
+    id list plus count/scratch).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080E1670
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^080e1670 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- 'Exact meaning of the three `sub_80E16CC` r0 values (0/1/2): without seeing sub_80E16CC''s assembly
+  they could be attack-mode indices, actor-type filters, or target-priority lanes.'
+- What the `object_getEnemyByNameRange` return is meant to populate in the local buffer (count? first
+  victim index? full list?). The `mov r0,#0; str r0,[r3]` writes 0 into slot 0 of the count area, suggesting
+  r6 (return) is being used as a per-element counter rather than a count to stash.
+- Whether this is invoked from "select enemy to attack" vs "select ally to support" — the flipped alliance
+  and AI context favors the former; called from a script dispatcher makes it ambiguous without seeing
+  the caller's branch.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 649d4897
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80E1670 -> battle_ai_findEnemyTargets_80E1670
+  where: bn6f 7ad99d5e
+  tool: tools/rename_symbol.py
