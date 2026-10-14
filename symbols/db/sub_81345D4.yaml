@@ -3,28 +3,28 @@ address: '0x081345D4'
 kind: function
 previous_names: []
 status: hypothesis
-summary: thin wrapper that calls battleObject_updateShieldOrStatusEffect_813468C with a fixed five-argument record
-  (0x5A, 0x20, 0x20, 0x12) and one global byte/word
-interface: '(r5 = ?, r10 = toolkit) -> r0 = callee return value ; side effects: clobbers r4-r7 per ARM convention;
-  relies on toolkit/BattleState globals'
-details: "- Saves {r4-r7, lr}, then loads r4 = `byte_81331F4` (per off_81346F4) and r6 = 0 (per byte_81346FC); these\
-  \ are passed via r4/r6 to the callee (caller-saved in the contract).\n  - Sets r0=0x5A, r1=0x20, r2=0x20, r3=0x12\
-  \ — likely (shield/element index, X, Y, duration/count) into battleObject_updateShieldOrStatusEffect_813468C.\
-  \ The captured-call exit r0 values 0x50, 0x40, 0x11, 0x62, 0x52, 0x42 line up with distinct shield/effect slots\
-  \ being applied per turn.\n  - r10 (toolkit) is the only preserved argument across the call, consistent with the\
-  \ callee contract that uses r10.\n  - `pop {r4-r7,pc}` indicates no caller-visible return beyond r0 (the callee's\
-  \ value); everything else is restored.\n  - All four callers (`sub_81333A0/3A68/3B18/3B74`) live in the same 0x081333xx-0x081334xx\
-  \ block, suggesting a battle-AI / per-actor \"apply shield or status effect\" helper invoked at specific battle-script\
-  \ moments; the constants 0x20/0x20/0x12 also look like panel-X/Y plus a 0x12 (18) tick timer.\n"
+summary: Thin caller that forwards fixed arguments to the per-actor shield/status-effect updater for one frame.
+interface: '(r0 = ?, r1 = ?, r2 = ?, r3 = ?) -> r0 = updater return code (varies: 0x11/0x40/0x42/0x50/0x52/0x62);
+  side effects: none of its own besides the call'
+details: "Saves r4-r7 and lr, then loads five immediates into r0-r4,r6: r0=0x5a, r1=0x20, r2=0x20,\n  r3=0x12, r4\
+  \ = address of byte_81331F4 (loaded via off_81346F4), r6 = 0. It then tails into\n  battleObject_updateShieldOrStatusEffect_813468C\
+  \ and returns that callee's r0 to its own\n  caller (pop {r4-r7,pc}). All real work lives in the callee; this\
+  \ is just a parameter-pack\n  wrapper with a hard-coded \"which effect\" / argument set (0x5a, 0x20, 0x20, 0x12,\
+  \ table @\n  0x081331F4, 0). It is called from four sibling sub_8133xxx helpers (81333A0, 8133A68,\n  8133B18,\
+  \ 8133B74), which suggests each picks a different effect variant by feeding\n  different immediates through their\
+  \ own wrapper - this one being the 0x5a variant.\n  Return values seen across captured calls (0x11, 0x40, 0x42,\
+  \ 0x50, 0x52, 0x62) come from\n  the callee, not from anything done here.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- `mov r0, #0x5a; mov r1, #0x20; mov r2, #0x20; mov r3, #0x12` at 0x081345dc-0x081345e6 hard-codes the
-    four arguments. - `bl battleObject_updateShieldOrStatusEffect_813468C` is the only call; that callee''s contract
-    takes r0-r3 + r4-r6/r10. - `push {r4-r7,lr}`/`pop {r4-r7,pc}` shows void-like behaviour; only r0 carries the
-    callee''s return out. - All callers (sub_81333A0, sub_8133A68, sub_8133B18, sub_8133B74) appear to be battle-AI/per-turn
-    scripts (liftered contracts read/write many AI/BattleState fields), consistent with a per-tick shield/status
-    invocation.'
+  detail: '- `push {r4-r7,lr}` / `pop {r4-r7,pc}` and the single `bl` show this is a thin trampoline (asm listing
+    of sub_81345D4, bn6f/asm/asm36.s:8864). - The hard-coded `mov r0,#0x5a ; mov r1,#0x20 ; mov r2,#0x20 ; mov r3,#0x12`
+    plus `ldr r4,off_81346F4` (=byte_81331F4) and `ldr r6,byte_81346FC` (=0) are the only meaningful instructions
+    before the `bl battleObject_updateShieldOrStatusEffect_813468C`. - Exit r0 in the six captured calls (0x50,
+    0x40, 0x11, 0x62, 0x52, 0x42) varies while entry arguments are constant, so the return value is computed entirely
+    inside the callee and merely returned through this wrapper. - All four callers (sub_81333A0/8133A68/8133B18/8133B74)
+    follow the same tail-call pattern (they share r5/r10/lr in-contracts), consistent with this being one of several
+    sibling wrappers each selecting a different effect ID.'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x081345D4
@@ -39,15 +39,16 @@ evidence:
     '
   result: battles1, battles2, beastsp, maps, menus3, story4, story6, story8, story9
 open_questions:
-- What the four constants 0x5A, 0x20, 0x20, 0x12 actually encode (function code vs shield element vs panel coords
-  vs ticks) — needs callee 813468C disassembly to confirm.
-- Why r4/r6 are loaded but never read in this stub — likely just forwarded argument slots consumed by the callee.
-- The exact battle phase / actor type each of the four callers targets — would settle whether this is one shared
-  helper or a family of shield/status triggers.
+- The semantic meaning of the magic constants 0x5a/0x20/0x20/0x12 and the byte_81331F4
+- table is not derivable from this function alone; reading the body of
+- battleObject_updateShieldOrStatusEffect_813468C (and the other three sibling wrappers)
+- is needed to confirm it is a shield-vs-status-effect update and which actor index it
+- targets. The exact game term (e.g. "barrier tick", "status icon refresh", "shield HP
+- regen") therefore stays as a hypothesis.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f 03e8533e
+  where: bn6f a5b62063
   tool: tools/symdoc.py

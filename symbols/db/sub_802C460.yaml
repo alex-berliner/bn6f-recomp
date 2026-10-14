@@ -1,118 +1,57 @@
 name: sub_802C460
 address: '0x0802C460'
 kind: function
+previous_names: []
 status: hypothesis
-summary: Reads two byte positions from an object, scans the span between them (via sub_802C490), and if something
-  is found along the way raises a type-3 notification.
-interface: void scanSpanBetween(Object* obj) — object pointer passed in r5; r4, r6, r7, r10 are inputs the callee
-  must preserve; returns nothing meaningful, but c/v and r1-r3 are left as side effects of the early-out CMP and
-  the callees.
-details: 'Takes an object pointer in r5 and reads two signed bytes from offsets 6 and 7, which look like two positions
-  along one axis (e.g. two tile/column coordinates, possibly start and current position of a moving/hazard object).
-  If the two bytes are equal the function does nothing. Otherwise it computes the distance between them and a start
-  coordinate: if the byte at offset 6 is the smaller value the start is that byte plus 0x18 (24 — likely a stride/width,
-  e.g. the far edge of the tile the object occupies), otherwise the start is the byte at offset 7. It then calls
-  sub_802C490(start, 2, distance, 0x12); the constant 2 is probably a direction/axis selector and 0x12 (18) some
-  kind of target id or search type for the span scan. If sub_802C490 reports a hit (returns nonzero in r2), the
-  function calls call_sub_3005EBA(hit_result, 3, 0), presumably dispatching an event/callback of type 3 with the
-  scan''s result. r4 and r5 are saved and restored around the calls; on the equal-bytes early-out path r1 still
-  holds the byte loaded from offset 7 and c/v reflect the CMP of the two bytes.
-
-  '
+summary: Compare two signed bytes on a struct in r5 (offsets 6 and 7); when they differ, dispatch to a helper that
+  likely swaps something and conditionally calls a follow-up function if that helper sets r2.
+interface: '(r5 = pointer to a struct whose +6 and +7 are signed bytes; r6, r10 unchanged) -> r0 = result of follow-up
+  call_sub_3005EBA (often 0); side effects: may call sub_802C490 and call_sub_3005EBA; clobbers r0-r4,r7; preserves
+  only lr via return'
+details: "- Reads two signed bytes: [r5+6] and [r5+7] (ldrsb at +6/#6 and +7/#7), corresponding to AIData.BButton\
+  \ (loc=0x6) and AIData.BPwrAtk (loc=0x7).\n  - If both bytes are equal, returns immediately (beq locret_802C48E).\n\
+  \  - Otherwise computes the difference (r4 = abs diff), picks the larger value via `add r0, #0x18` then `mov r0,\
+  \ r1` (adds 0x18 = 24 to the smaller one to offset into a packed table).\n  - Calls sub_802C490 with (r0 = possibly-offset\
+  \ index, r1 = 2, r5 = 0x12). Per its contract, it returns r0/r2 and writes nz/c/v; here only r2 is read (`tst\
+  \ r2, r2`).\n  - If sub_802C490 returned a non-zero r2 (some kind of \"yes, change needed\" flag), calls call_sub_3005EBA\
+  \ with (r2=3, r3=0). Per its contract that one returns nz/c/v and clobbers r0-r2,r4-r7,lr — its r0/flags are what\
+  \ we see at exit.\n  - The caller sub_802BD60 is described in the project as \"battle chip select\" (battle_initChipSelect_802BD60),\
+  \ so r5 likely points into the chip-select state struct (S20364C0-style). Note that offset 6/0x12 of AIData fit\
+  \ better with a NaviStats / chip-state sized record than the AIData at oAIData, but the magic numbers 6 and 7\
+  \ exactly match AIData.BButton/BPwrAtk. Be cautious about which struct r5 actually references.\n"
 evidence:
-- method: readable-c
-  date: '2026-10-09'
-  detail: Written by hyper/glm-5.3-flash through the convert workflow (11 attempt(s), run convert-20261009-014533);
-    reviewed by Claude before the commit.
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrsb r0, [r5,r0]` with r0 = #6 then `ldrsb r1, [r5,r1]` with r1 = #7 are the byte loads. - `cmp r0,
+    r1; beq locret` short-circuits on equality. - `sub r4, r1, r0` vs `sub r4, r0, r1; mov r0, r1` (gt branch) compute
+    abs-diff into r4 with the larger in r0. - `add r0, #0x18` is applied to the smaller-of-the-two before calling
+    sub_802C490 (third argument = 0x12). - `tst r2, r2; beq locret` shows r2 (the second return register of sub_802C490
+    per its contract) is the gate. - `mov r2, #3; mov r3, #0; bl call_sub_3005EBA` shows the follow-up only runs
+    after the prior check. - Caller is battle_initChipSelect_802BD60; called sub_802C490 and call_sub_3005EBA are
+    unnamed asm03 callees.'
   refs:
-  - cport/src/game/asm03_0_80299B6.c
-  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 11' --file leaves_farm_11.c sub_802C460
-- method: difftest
-  date: '2026-10-09'
-  detail: Readable vs lifted on the original's captured calls and on random inputs.
-  reproduce: './wf capture --function sub_802C460
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0802C460
 
-    ./wf verify --function sub_802C460 --snapshots build-snapshots'
-  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 247 out
-    of domain (verify run convert-20261009-014533-verify-11)'
-- method: cpu-oracle
-  date: '2026-10-09'
-  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
-  reproduce: './wf capture --function sub_802C460
-
-    ./wf verify --function sub_802C460 --snapshots build-snapshots'
-  result: 15 compared, 0 differed, 9 out of domain (verify run convert-20261009-014533-verify-11)
-- method: lockstep
-  date: '2026-10-09'
-  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
-  reproduce: './wf capture --function sub_802C460
-
-    ./wf verify --function sub_802C460 --snapshots build-snapshots'
-  result: 8/8 routes identical (verify run convert-20261009-014533-verify-11)
+    '
+  result: the body read as described above
 - method: coverage
-  date: '2026-10-09'
-  detail: 'Executed by: battles1, story2.'
-  reproduce: grep -l '^0802c460 ' tools/traces/coverage/*.prof
-changes:
-- date: '2026-10-09'
-  what: readable C replacement in cport/src/game/leaves_farm_11.c
-  where: recomp 25fe81c
-  tool: tools/wf convert (hyper/glm-5.3-flash)
-- date: '2026-10-09'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 7e065978
-  tool: tools/symdoc.py
-- date: '2026-10-10'
-  what: moved from cport/src/game/leaves_farm_11.c to cport/src/game/asm03_0_80299B6.c by tools/layout.py (the regroup of the model farm's files by bn6f source; the function's text unchanged)
-  where: recomp 6836d6c
-  tool: tools/layout.py
-readable_c: cport/src/game/asm03_0_80299B6.c
-coverage:
-- battles1
-- story2
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, beastsp, menus3, story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0802c460 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, beastsp, menus3, story2, story4, story5, story6, story7, story8, story9
 open_questions:
-- Meaning of offsets 6 and 7 in the object struct (two X positions? row/column indices?)
-- What sub_802C490's arguments (axis=2, limit=0x12) and hit result actually select
-- What event type 3 in call_sub_3005EBA triggers in-game
-- Why the start is offset by 0x18 only when the offset-6 byte is the smaller one
+- Which struct r5 actually points to; offsets 6 and 7 matching AIData fields is suggestive but not proof (chip-select
+  local struct also has a field at +7 named ChipSelectCursorPos, so +6 here is just "the thing being compared against
+  the selected chip slot").
+- The semantic meaning of the `0x18` offset, of the literal `0x12` packed into r5, and of the call_sub_3005EBA argument
+  r2=3 (some action id, almost certainly "press B to use B-PwrAtk").
 sources:
-- tools/wf run convert-20261009-014533
-signature:
-  c: void sub_802C460(S20364C0 *r5)
-  params:
-  - reg: r5
-    type: S20364C0 *
-    name: r5
-  ret:
-    reg: none
-    type: void
-  globals:
-  - toolkit
-  keep:
-  - r1
-  - r2
-  - r3
-  confidence: confident
-  decided_by: mechanical
-  evidence:
-  - 'contract (lifter, refined): may read r5 r6; result none'
-  - 'liveness over the assembly and callees (tools/sig/derive.py): reads r5'
-  - 'r5: captures: 40 calls, struct eS20364C0'
-  reproduce: python3 tools/sig/bounds.py && python3 tools/sig/derive.py && python3 tools/sig/ask.py run && python3
-    tools/sig/ask.py merge
-  derived: '2026-10-12'
-stamp:
-  rom: rom:2f00b7b6f6c50e88
-  range: 0x0802C460-0x0802C490
-  contract: r5 r6 r10 lr -> c v r1 r2 r3 r4 r5 r6 r7 lr; clobbers nz r0
-  callees:
-    sub_802C490: c v r0 r2 r4 r6
-    call_sub_3005EBA: nz c v r0 r1 r2 r4 r5 r6 r7 lr
-  headers: f7e2d2cc6cfa
-  lifter: 70c8d832ffcf
-  prompt: legacy
-  model: hyper/glm-5.3-flash
-  run: convert-20261009-014533
-  body: 4e293c525009ec27
-  installed: 25fe81c
-  stamped: '2026-10-12'
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a5b62063
+  tool: tools/symdoc.py

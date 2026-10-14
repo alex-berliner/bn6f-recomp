@@ -1,145 +1,53 @@
 name: sub_8119880
 address: '0x08119880'
 kind: function
+previous_names: []
 status: hypothesis
-summary: Compares two status bytes (+0xE, +0xF) on the active submenu struct, returning their difference with flags
-  set NZ; only runs when the caller's incoming Z flag was clear.
-interface: 'bool sub_8119880(u32 r5 /* ctx */, u32 *r6 /* in/out: submenu ptr */);
-
-  // input also gates on caller-supplied Z flag (early-exit path)
-
-  // returns the difference (field_E - field_F) with N/Z flags set
-
-  '
-details: 'Reads r5+5 as an index into the small lookup table byte_811935C. The actual
-
-  value is unused — it is just loaded into r0/r1 which are then clobbered, and
-
-  the beq tests the caller''s incoming Z flag (a Thumb ldrb does not set flags),
-
-  so this is a flag-based gate, not a data test.
-
-
-  When Z=1 (incoming): early return — r6 passes through, flags pass through
-
-  (taken-branch path preserves N/Z; in practice this returns NZ=0 since Z=1).
-
-
-  When Z=0: loads the global sSubmenu pointer into r6. If
-
-  submenu_isOpen_81355D8 returns "not open" (Z=1 from that callee), keeps
-
-  sSubmenu; otherwise calls sub_81312F4 to obtain the currently active submenu
-
-  struct and stores that in r6 instead. Finally compares bytes at +0xE and +0xF
-
-  of that struct and returns their difference (field_E - field_F) via SET_FLAGS_NZ.
-
-
-  Appears to be a per-frame status check that decides whether the submenu has
-
-  transitioned (e.g. one field becoming equal to/less than the other), gating
-
-  some downstream behavior. The two bytes at +0xE/+0xF are not yet identified
-
-  — likely selection index vs. item count, or current/previous state.
-
-  '
+summary: Checks the B-attack slot's charge state to decide whether a submenu-driven B-button action should be allowed
+  this frame.
+interface: '(r5 = AIDataPtr) -> NZ = charge state allows a B-button submenu action ; side effects: clobbers r0,
+  r1, r6, may set N/Z'
+details: "Pushes lr, reads r5+0x5 (the APwrAtk byte of the AIData struct passed via r5).\n  Looks up that byte in\
+  \ the byte_811935C table; if the indexed byte is zero it short-circuits straight to the return.\n  Otherwise loads\
+  \ sSubmenu into r6 and calls submenu_isOpen_81355D8 to see if a non-main submenu (i.e. something\n  other than\
+  \ the 0x20 closed state) is up. If so it also calls sub_81312F4 and overwrites r6 with its return.\n  Finally\
+  \ it compares sSubmenu+0xe against sSubmenu+0xf and returns the result in the Z flag (NZ if they differ).\n  Net\
+  \ behaviour: returns \"submenu's 0xe vs 0xf fields differ\" only when the AIData byte passes the table lookup\n\
+  \  AND a submenu other than the default one is open. Caller uses this as a guard before letting an AI/player\n\
+  \  B-attack slot auto-charge resolve through the submenu.\n"
 evidence:
-- method: readable-c
-  date: '2026-10-11'
-  detail: Written by hyper/qwen3.8-flash through the convert workflow (2 attempt(s), run convert-20261011-001230);
-    reviewed by Claude before the commit.
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0, [r5,#5]` is the APwrAtk byte of struct AIData (per the AIData.inc offsets). - `ldr r1, off_81198AC
+    // =byte_811935C` then `ldrb r0, [r1,r0]` is a per-APwrAtk-index table lookup; the `beq locret_811989E` skips
+    everything when the looked-up byte is zero. - `ldr r6, off_81198A8 // =sSubmenu` plus `bl submenu_isOpen_81355D8`
+    ties the path to the global SubMenu state. - The second branch `bl sub_81312F4 ; mov r6, r0` only runs when
+    the submenu is open, replacing the sSubmenu pointer with whatever that helper returns (likely a menu subentry
+    pointer). - Tail `ldrb r0, [r6,#0xe] ; ldrb r1, [r6,#0xf] ; cmp r0, r1` then `pop {pc}` returns the comparison''s
+    Z/NZ in flags (the callee contract lists only `nz` in `out`). - All six captured callers in `snap_story2_*`
+    are called from the same caller sub_81196F0 with r0=0x081196f1 (a small thunk/return address), r2=0xf0 then
+    0xb0 (some count/timer argument), r3=0x02008470/0x02008520 (IWRAM buffers).'
   refs:
-  - cport/src/game/asm32_8119438.c
-  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 54' --file inbox_farm_54.c sub_8119880
-- method: difftest
-  date: '2026-10-11'
-  detail: Readable vs lifted on the original's captured calls and on random inputs.
-  reproduce: './wf capture --function sub_8119880
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08119880
 
-    ./wf verify --function sub_8119880 --snapshots build-snapshots'
-  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 183 out
-    of domain (verify run convert-20261011-001230-verify-2)'
-- method: cpu-oracle
-  date: '2026-10-11'
-  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
-  reproduce: './wf capture --function sub_8119880
-
-    ./wf verify --function sub_8119880 --snapshots build-snapshots'
-  result: 11 compared, 0 differed, 13 out of domain (verify run convert-20261011-001230-verify-2)
-- method: lockstep
-  date: '2026-10-11'
-  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
-  reproduce: './wf capture --function sub_8119880
-
-    ./wf verify --function sub_8119880 --snapshots build-snapshots'
-  result: 16/16 routes identical (verify run convert-20261011-001230-verify-2)
+    '
+  result: the body read as described above
 - method: coverage
-  date: '2026-10-11'
-  detail: 'Executed by: battles1, battles2, maps, menus3, story2, story4, story6, story8, story9.'
-  reproduce: grep -l '^08119880 ' tools/traces/coverage/*.prof
-changes:
-- date: '2026-10-11'
-  what: readable C replacement in cport/src/game/asm32_8119438.c
-  where: recomp a045c21
-  tool: tools/wf convert (hyper/qwen3.8-flash)
-- date: '2026-10-11'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 27d1cdb8
-  tool: tools/symdoc.py
-readable_c: cport/src/game/asm32_8119438.c
-coverage:
-- battles1
-- battles2
-- maps
-- menus3
-- story2
-- story4
-- story6
-- story8
-- story9
-related:
-- sub_81196F0
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, beastsp, maps, menus3, story2, story4, story6, story8, story9'
+  reproduce: 'grep -l ''^08119880 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, beastsp, maps, menus3, story2, story4, story6, story8, story9
 open_questions:
-- What do the bytes at submenu+0xE and submenu+0xF represent (selection / count / state)?
-- What is the byte_811935C table, and is r5+5 a flag or mode selector being indexed into it?
-- Why does the function return (field_E - field_F) as the flags result rather than just a bool?
-- Who supplies the incoming Z flag, and what does Z=1 vs Z=0 semantically mean at the call sites?
+- What the per-APwrAtk table at byte_811935C actually classifies (chip id mapping? charging-allowed mask?). What
+  sub_81312F4 returns (the struct the comparison is run on vs sSubmenu). What r2 (0xb0/0xf0) and r3 IWRAM pointers
+  mean to the upstream caller sub_81196F0. Without resolving those the function's game-level intent is inferred.
 sources:
-- tools/wf run convert-20261011-001230
-- recomp a045c21
-signature:
-  c: void sub_8119880(u8 *r5)
-  params:
-  - reg: r5
-    type: u8 *
-    name: r5
-  ret:
-    reg: none
-    type: void
-  flags: 'z: callers test the Z flag it leaves (a typed wrapper returns it as .z)'
-  confidence: confident
-  decided_by: mechanical
-  evidence:
-  - 'contract (lifter, refined): may read r5; result none'
-  - 'liveness over the assembly and callees (tools/sig/derive.py): reads r5'
-  - 'r5: captures: 40 calls, ram eStructArr2008450'
-  reproduce: python3 tools/sig/bounds.py && python3 tools/sig/derive.py && python3 tools/sig/ask.py run && python3
-    tools/sig/ask.py merge
-  derived: '2026-10-12'
-stamp:
-  rom: rom:90b5e603ac7b99ca
-  range: 0x08119880-0x081198B0
-  contract: nz r5 lr -> nz; clobbers c v r0 r1 r6 lr
-  callees:
-    submenu_isOpen_81355D8: nz
-    sub_81312F4: r0
-  headers: 33da2711d9da
-  lifter: 70c8d832ffcf
-  prompt: 8ad67e179f33
-  model: hyper/qwen3.8-flash
-  run: convert-20261011-001230
-  body: 67d5c59fec8ae122
-  installed: a045c21
-  stamped: '2026-10-12'
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a5b62063
+  tool: tools/symdoc.py

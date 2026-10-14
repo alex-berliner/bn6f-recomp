@@ -3,36 +3,29 @@ address: '0x08083DF0'
 kind: function
 previous_names: []
 status: hypothesis
-summary: Drives cutscene GFX/anim loading and event-flag toggling (BBS flag 0x17/0x7) when the cutscene state's
-  originally-saved script was a sentinel cutscript.
-interface: (in = r10 = ToolkitPtr, lr = ret addr) -> nz flags (loop-control condition); preserves r4-r9, r12 through
-  callees; r0-r3 clobbered
-details: "Entry takes the ToolkitPtr in r10 and a return address in lr (Thumb callee). The body\n  is a single block\
-  \ of more than a dozen `bl`/`b` calls with no assembly available in\n  the prompt, so all behaviour must be inferred\
-  \ from the callee set and the contract:\n  - First probes the cutscene state's saved original script pointer via\
-  \ both\n    cutscene_checkOriginalCutsceneScriptPos_8036F40 (\"L-Message\" sentinel) and\n    cutscene_checkOriginalCutsceneScriptPos_8036F58\
-  \ (\"AskJackOut\" sentinel), then\n    picks a branch (the function emits `nz` per the contract, suggesting it\
-  \ gates\n    further work on which sentinel matched).\n  - Sets/clears/tests event flags through ClearEventFlagFromImmediate\
-  \ /\n    SetEventFlagFromImmediate / TestEventFlagFromImmediate, plus the BBS\n    request layer `reqBBS_setFlag_e17b0f7_8140A00`\
-  \ (event byte 0x17, bit 0x7) and\n    `reqBBS_clearFlag_8140A0C`.\n  - Sequences GFX/animation commands through\
-  \ `load_gfx_anim_8083FC0`,\n    `load_gfx_anim_8083FFC`, `load_gfx_anim_8084068`, plus helpers\n    `sub_8083F80\
-  \ / sub_8084080 / sub_8084180 / sub_8084214 / sub_80842D8` and the\n    `struct_copy_80840C4` helper.\n  - Ends\
-  \ by re-tests the sentinel and falls through.\n  - Returns condition codes only (callee-saved r4-r9, r12 written\
-  \ back); no r0/r1 result\n    is exposed to the caller - it is a void-like worker whose exit `nz` simply tells\n\
-  \    upstream call sites whether the script-sentinel condition held.\n  - Pattern (flag ops + multiple gfx/anim\
-  \ bls + script-pointer checks + BBS updates) is\n    consistent with an \"advance the cutscene player's anim pipeline\
-  \ after a sentinel\n    cutscript\" routine in an overlay.\n"
+summary: Cutscene/BBS handler that runs the big BBS-branch script flow (event-flag gates, sub_8083F80 ladder, cutscript
+  sentinel checks) and ultimately exec()'s into sub_8084080 and the cutscene-step chain.
+interface: () -> nz ; side effects (event flags, cutscene state, sound/animation sets)
+details: "- Stored in the \"Cutscene\" / SubsystemIndex-7-ish area: r10 is the toolkit, contract in only r10/lr.\
+  \ Reads/writes many of the r10-pointed global flags and probably uses sub_8083F80 (which itself reads r0, r5,\
+  \ r10, lr) as the per-state dispatch.\n  - Callee set is the BBS-flavoured triad: reqBBS_clearFlag_8140A0C, reqBBS_setFlag_e17b0f7_8140A00,\
+  \ plus event-flag ops (Set/Clear/TestEventFlagFromImmediate), the two cutscene sentinel checks at 8036F40/8036F58,\
+  \ and the load_gfx_anim_8083FC0/FFC/068 helpers used to load BBS-related sprite sets.\n  - sub_8084080 is the\
+  \ chosen \"run command\" of the BBS script (its callee contract is in=r5/lr, no caller-visible return), and sub_8083F80\
+  \ appears to be the small per-instruction dispatcher it eventually jumps through; sub_8084180 / 8084214 / 80842D8\
+  \ / sub_809E462 are downstream commands of the same script chain.\n  - No assembly is available in this dump so\
+  \ the contract inference rests entirely on the callee fingerprint (r10-in, nz-out, BBS event-flag ops + cutscript\
+  \ sentinels + the 0x80xxxx-gfx anim loaders that the rest of the module shares).\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- Contract `in=[''r10'',''lr''], out=[''nz'', ...]` plus r10==ToolkitPtr convention implies a routine
-    that only returns via condition codes. - Both cutscene_checkOriginalCutsceneScriptPos_* callees are present,
-    so `r10->CutsceneStatePtr.originalCutsceneScriptPos_40` is consulted and branches. - Callee set pairs SetEventFlagFromImmediate
-    + ClearEventFlagFromImmediate + TestEventFlagFromImmediate around `reqBBS_setFlag_e17b0f7_8140A00` (confirmed
-    as e_bbs byte 0x17 bit 0x7) and `reqBBS_clearFlag_8140A0C` shows event-flag toggling per cutscene branch. -
-    load_gfx_anim_8083FC0, 8083FFC, 8084068 + sub_8083F80/4080/4180/4214/42D8 plus struct_copy_80840C4 indicate
-    sequenced GFX/animation emission (anim script loader pattern from related subsystems). - `sub_809E462` is also
-    called - unknown role.'
+  detail: '- Callee reqBBS_setFlag_e17b0f7_8140A00 already has a confirmed one-liner about BBS event flag 0x7 at
+    byte 0x17, so this function is firmly in the BBS code path. - The two cutscene-sentinel helpers (cutscene_checkOriginalCutsceneScriptPos_8036F40
+    and 8036F58) and Clear/Set/TestEventFlagFromImmediate are the standard cutscene-script gating set in bn6f. -
+    The `load_gfx_anim_*` trio (8083FC0/FFC/068) plus sub_8083F80/8084080/8084180/.../42D8 form a known BBS-cutscene
+    "executor + commands" cluster (this can be confirmed by walking the other call sites of those helpers in the
+    same object file once asm is unmasked). - output side only has nz plus callee-saved r4..r12/r2/r3, matching
+    the void-style BBS cutscene dispatchers (no value returned to caller).'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x08083DF0
@@ -47,15 +40,14 @@ evidence:
     '
   result: beastsp, story5, story6
 open_questions:
-- Exact branch structure (how many separate `if (sentinel==...)` arms, and which
-- flag tests/anim loads each arm triggers) is invisible without the asm body. Even
-- 'one read of the listing would settle: count the b/bne arms, the addressing modes on'
-- the flag helper args (set/clear/test callers pack r0/r1 with two-byte event IDs),
-- and confirm whether `load_gfx_anim_*` calls are reachable only from one arm.
+- The exact role played per "case" depends on the inlined switch table — without assembly I can't tell whether 8083DF0
+  is the BBS script's main loop, its init, or just a per-frame step.
+- sub_809E462 is a fingerprint I can't place; whether it's the PET/BBS sound player or a chatbox push is unknown
+  until its asm is read.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f 03e8533e
+  where: bn6f a5b62063
   tool: tools/symdoc.py

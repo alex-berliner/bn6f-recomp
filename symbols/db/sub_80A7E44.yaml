@@ -1,0 +1,44 @@
+name: sub_80A7E44
+address: '0x080A7E44'
+kind: function
+previous_names: []
+status: hypothesis
+summary: Clears the `Unk_09` byte at offset 0x9 of an unknown struct passed in r5 (no return value).
+interface: (r5 = ptr to a struct with a byte field at offset 0x9) -> void
+details: "The function pushes r4-r7+lr, immediately writes 0 to [r5, #9], and returns.\n  BattleObject layout starts\
+  \ with an `object_header_struct` (Flags/Index at 0, Type at 2, etc.),\n  so offset 0x9 is `CurAction` on BattleObject.\
+  \ But other structs (e.g. AIState, OverworldNPCObject)\n  also have meaningful bytes at +0x9. Without any captured\
+  \ call showing r5, or a caller/callee,\n  the concrete role of offset 0x9 cannot be pinned down.\n  The contract\
+  \ lists only r5 in/out (callee-saved), so the function is effectively void from the\n  caller's perspective —\
+  \ it just mutates one byte at a fixed offset on a struct already in r5.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `strb r0, [r5,#9]` is the only observable operation (`asm29.s:5526`). - r0 is loaded with `#0` (immediate),
+    so 0x00 is stored at offset +0x9 of the r5 pointer. - r5 is in the contract''s `in`/`out` set, consistent with
+    r5 being the sole struct argument. - No captured call records r5''s value, and no callers/callees are listed,
+    so the struct identity is unknown.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080A7E44
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^080a7e44 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- What struct r5 refers to (BattleObject `CurAction` vs AIState `Unk_01` vs NPC `CurAction`, etc.) and what
+- semantics clearing offset 0x9 has (state machine reset? clearing a damage/aggro counter?). A single
+- caller or a captured r5 trace would settle it.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a5b62063
+  tool: tools/symdoc.py
