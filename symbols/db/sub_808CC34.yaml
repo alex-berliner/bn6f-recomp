@@ -1,0 +1,50 @@
+name: sub_808CC34
+address: '0x0808CC34'
+kind: function
+previous_names: []
+status: hypothesis
+summary: Selects an address/row pair from one of four data tables based on an event flag and several per-row tests.
+interface: '(no input registers; r10 = toolkit, r5 = ?) -> r0 = base address (one of four tables), r1 = derived
+  row index ; side effects: none persistent beyond saved regs'
+details: "Initializes r4 and r6 to 0. Tests event flag EVENT_9D4 via TestEventFlagFromImmediate; if set, picks table\
+  \ byte_808C930 (r4) and falls through.\n  Otherwise calls sub_808CC10: on nonzero return, picks byte_808CA48.\
+  \ On zero, calls sub_808CF8C: on nonzero return, picks byte_808C428 and additionally runs sub_808D084 to compute\
+  \ r6 from r0.\n  On a third branch (sub_808CF8C returning 0), calls sub_808CDC4: on nonzero return, picks byte_808C74C\
+  \ and uses r1 of its return as r6.\n  Returns (r0 = selected table base, r1 = derived row value) so the caller\
+  \ can index one of these tables. The four tables and r6 sources suggest per-actor or per-battle row selection.\n\
+  \  r5/r10/lr in: r10 is the toolkit per project convention; r5 is some live context the callees rely on but this\
+  \ function itself does not read.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `movflag EVENT_9D4` then `bl TestEventFlagFromImmediate` at asm24.s:1322 shows a story-progress gate
+    as the first branch. - `beq loc_808CC48` (event flag not set) routes to the chain of three callees; otherwise
+    `ldr r4, off_808CC80 // =byte_808C930` selects the first table. - The four table constants (byte_808C930, byte_808CA48,
+    byte_808C428, byte_808C74C) loaded into r4 are all read-only data addresses picked by the four `ldr r4, off_...`
+    instructions. - `bl sub_808D084 ; mov r6, r0` and `mov r6, r1` after `bl sub_808CDC4` show r6 is the second
+    output value, sourced differently per branch. - Final `mov r0, r4 ; mov r1, r6 ; pop {r4,r6,pc}` confirms the
+    return pair is (table base, derived row).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0808CC34
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^0808cc34 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The semantic meaning of each branch (sub_808CC10/CCF8C/CDC4) and which actor class each table addresses is unknown;
+  examining those callees' contracts would likely clarify the row meaning.
+- r5's role is opaque because this function never dereferences it.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f c83478a3
+  tool: tools/symdoc.py

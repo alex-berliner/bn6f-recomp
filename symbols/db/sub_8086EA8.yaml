@@ -3,24 +3,20 @@ address: '0x08086EA8'
 kind: function
 previous_names: []
 status: hypothesis
-summary: 'Per-frame beast-out AI dispatch: tests a story event flag then routes to a beast-out AI sub-state action
-  (likely sets/checks AIData fields and runs an action routine).'
-interface: (r0 = ?, r1 = ?, r2 = working object/actor idx, r10 = toolkit) -> modifies r2, r3, r5, r7 in place; side
-  effects flags
-details: "Function is in the 0x8086xxx cluster alongside sub_8086FD8 / sub_808711C / sub_8087140 /\n  sub_8087184\
-  \ / sub_80871F4; it almost certainly drives a beast-out (`AIData.BeastOutAPwrAtk`)\n  AI branch.  Entry takes\
-  \ r2 / r10 from the dispatch caller (contract in='r2','r10','lr'),\n  immediately calls TestEventFlagFromImmediate\
-  \ (story-progress gate), then tails into one\n  of the unknown sub_8086FD8..sub_80871F4 helpers.  Exposes r2/r3/r5/r7\
-  \ to the caller as\n  the dispatched action/phase indices for that actor.  Without the lifted body I can't\n \
-  \ pinpoint which r2 sub-state lands in which helper, nor the exact object fields touched.\n"
+summary: unknown — assembly not present in project asm, no callers available
+interface: (r2 = small int, r10 = Toolkit ptr, lr = return address) -> r2 = ?, r3/r5/r7 = ? ; side effects unknown
+details: "Cannot analyze: the asm file for 0x08086EA8 is missing, and the callers list is empty.\n  The function\
+  \ is entered with r0=0, r1=2, r2=1, and lr=0x08035e88 in every snapshot,\n  and returns with r0=0 and -ZC- flags\
+  \ (so it ends on a `movs r0, #0` + bx lr or pop + bx lr\n  pattern, but the body is unknown). Given r2/r10/r3/r5/r7\
+  \ are live across the call and the\n  Toolkit is in r10, it is likely a battle helper called once per frame/tick,\
+  \ but the body\n  is required to say more.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- Contract in={r2, r10, lr} matches the project''s "toolkit+running obj idx" dispatch idiom (r10 = toolkit
-    per Toolkit.inc). - All four callees (sub_8086FD8/711C/7140/7184/71F4) live in the same address cluster 0x8086xxx,
-    consistent with one AI dispatch table. - TestEventFlagFromImmediate call (0x0802f164) implies the dispatch may
-    be gated on a story-progress flag relevant to beast-out availability. - Out={r2,r3,r5,r7} suggests the function
-    returns index-like values to a caller that iterates actors/AIStates, fitting an AI tick step.'
+  detail: '- Assembly section reports `sub_8086EA8 not found in bn6f/asm`, so no instructions are visible. - `###
+    callers` section is empty, so no call sites constrain the role. - Captured calls show identical r0=0, r1=2,
+    r2=1, lr=0x08035e88 across 40 entries, hinting at a per-frame tick, but this is circumstantial. - Contract `in=[''r2'',
+    ''r10'', ''lr'']` excludes r0/r1, so they are caller scratch and uninformative.'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x08086EA8
@@ -35,15 +31,17 @@ evidence:
     '
   result: beastsp, maps
 open_questions:
-- Exact field(s) read/written from AIData — need the actual instructions.
-- Which r2 value is the "current beast-out actor" index vs a sub-state id.
-- Whether r0/r1 carry additional arguments or are scratch.
-- Assembly section is reported "not found in bn6f/asm", so without it the name
-- is conjecture; the `_ADDRESS` suffix is intentionally retained.
+- The actual instruction body (assembly file missing or function inlined into another TU).
+- Which of the five unnamed callees is the dominant one; callee summaries are absent.
+- Why r2 is an in-parameter on every recorded call.
+- Settling this requires either adding `0x08086EA8` to the asm dump or recovering the
+- function from a sibling ROM (bn6g/bn6e) where the same body should exist.
+- If you can re-run the lifter so the assembly for 0x08086EA8 is emitted, or paste the disassembly here, I can give
+  a properly-evidenced `probable` name on the next pass.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f 4b6ad669
+  where: bn6f c83478a3
   tool: tools/symdoc.py

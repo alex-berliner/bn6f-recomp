@@ -1,0 +1,56 @@
+name: sub_80F17C4
+address: '0x080F17C4'
+kind: function
+previous_names: []
+status: hypothesis
+summary: Dispatches to one of three AI attack handlers based on AIAttackVars byte 0; the picked function runs with
+  r0=that byte and r7 (battle object) live.
+interface: () -> r0,r1-r12,flags inherited from the dispatched callee ; side effects via the chosen handler
+details: "- Only saves r7,lr and reads AIAttackVars offset 0 (oAIAttackVars_Unk_00 = loc=0x0) from the battle object\
+  \ pointed to by r7 (`ldrb r0, [r7,#oAIAttackVars_Unk_00]`).\n  - Loads a base pointer `off_80F17D8` into r1, then\
+  \ indexes it by the read byte via `ldr r1,[r1,r0]` to pick one of three Thumb targets, tail-calling through `mov\
+  \ lr,pc / bx r1`.\n  - Tail-call dispatcher: r0 carries the dispatched byte, r7 is preserved as the caller-saved-but-restored\
+  \ live register, and the popped {r7,pc} returns. All other registers/flags pass through unchanged to the chosen\
+  \ callee.\n  - The three targets are `sub_80F17E4+1` (idx 0), `battleObject_aiSpawnSnakeArmAttack_80F1808+1` (idx\
+  \ 1) and `sub_80F1888+1` (idx 2). `battleObject_aiSpawnSnakeArmAttack_80F1808` strongly suggests SnakeArm-specific\
+  \ AI attack phases, and the snake-arm extra vars (`SNAKEARM_EV_1..3`) line up with indices 1..3 if you count from\
+  \ the start.\n  - Naming uses `_ADDRESS` because the role is partly inferred from the lone named callee and the\
+  \ AIAttackVars context; not certain this is the *SnakeArm* dispatcher despite the strong hint.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {r7,lr}` then `ldrb r0,[r7,#oAIAttackVars_Unk_00]` shows r7 is the live battle object pointer
+    and the dispatch key is the first byte of AIAttackVars. - `ldr r1,off_80F17D4` followed by `ldr r1,[r1,r0]`
+    and `bx r1` is a classic tail-call jump table dispatcher. - The `off_80F17D8` table contains exactly three Thumb
+    entries (+1 encoded into the bx target marks Thumb), matching a small phase dispatcher. - One callee is named
+    `battleObject_aiSpawnSnakeArmAttack_80F1808`, so the surrounding dispatcher belongs to the AIAttackVars snake-arm
+    phase logic. - The contract lists only r7 in `in` (besides the implicit cc/f) and the epilogue `pop {r7,pc}`
+    confirms r7 is the only callee-preserved live register.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080F17C4
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp'
+  reproduce: 'grep -l ''^080f17c4 '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp
+open_questions:
+- Whether byte 0 of AIAttackVars here is a phase index (0/1/2) or a chip/element selector; the table only has 3
+  entries so a 2-bit field is plausible.
+- Whether r7 truly points at AIData + oAIAttackVars (AIData.Unk_00 is 0x00 and AIData sits at the AIData offset
+  from BattleObject.AIDataPtr) or at a standalone AIAttackVars; the +oAIAttackVars_Unk_00 symbol name indicates
+  AIData, since `def_struct_offsets ai_attack_vars_struct, oAIAttackVars` matches that label.
+- The other two callees (`sub_80F17E4`, `sub_80F1888`) are still unnamed; their identity would fully settle whether
+  index 0 is the "no-op/init" and index 2 is the "despawn/cleanup" phase.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f c83478a3
+  tool: tools/symdoc.py

@@ -3,27 +3,33 @@ address: '0x0813BE8C'
 kind: function
 previous_names: []
 status: hypothesis
-summary: Loops over the 0x31 8-byte Unk2004190 entries and clears/initializes the ones whose first halfword is already
-  zero.
-interface: (no args, r10 = oToolkit) -> void; r7 clobbered, no return value
-details: "Iterates r6 from 0 to 0x30 (cmp r6,#0x31; blt) and for each index calls\n  toolkit_getUnk2004190EntryPtr_813B9FC(r6)\
-  \ -> r7. The body is a literal\n  `ldrh r0,[r7] ; tst r0,r0 ; beq loc_813BE9E` followed by a fallthrough `add\
-  \ r6,#1`,\n  i.e. it currently does nothing when the halfword is non-zero and also does nothing\n  when it is\
-  \ zero — the only concrete side-effect is incrementing the index and looping.\n  The captured pointer (02004190)\
-  \ holds 64 zero bytes at every call site, so the\n  function is effectively a no-op against the live state. The\
-  \ single caller\n  (battle_initState_813BBD4) runs it as part of the battle sub-init sequence, so it\n  reads\
-  \ as a leftover/disabled init step for the Unk2004190 entry array (Toolkit at\n  oToolkit+0x5c, pointer held at\
-  \ 02004190).\n"
+summary: Clears (or tests) the 0x31-entry Unk2004190 scratch array by iterating indices 0..0x30 and reading each
+  entry's halfword, leaving r7 as the last read pointer.
+interface: '(r10 = Toolkit*) -> r0 = 0, NZC/V flags clobbered ; side effects: walks Toolkit->Unk2004190[0..0x30],
+  reads each entry''s halfword, clobbers r0/r1/r2/r4/r5/r6/r7'
+details: "- Sets r6 = 0 as the loop counter (the only \"write to a register\" before the branch).\n  - At each iteration\
+  \ it computes the address of entry r6 in Toolkit->Unk2004190 via\n    toolkit_getUnk2004190EntryPtr_813B9FC, whose\
+  \ summary tells us it returns r0 = base + 8*index.\n  - Loads a halfword from [r0] (ldrh r0, [r7]) and immediately\
+  \ does `tst r0, r0; beq` to the\n    fall-through. The branch target is the same address as the tst itself (loc_813BE9E),\
+  \ so the\n    `beq` is a no-op skip — the loaded halfword is dropped on the floor and no memory is written.\n\
+  \  - Increments r6 by 1 and loops while r6 < 0x31, i.e. walks 49 entries (indices 0..48).\n  - The caller battle_initState_813BBD4\
+  \ has the comment \"Initializes ... plus three 0x31-byte I/O\n    scratch buffers pulled from the toolkit\", which\
+  \ lines up exactly with this routine clearing\n    the halfword flag/word of 0x31 entries. However, the assembly\
+  \ never actually writes the\n    loaded value back, so this is effectively a read-walk; the clearing, if it happens\
+  \ at all,\n    must be done by the toolkit helper or happen implicitly. Worth flagging.\n  - r7 carries the pointer\
+  \ of the last visited entry out of the function (out=['r7']); callers\n    that need the entry address probably\
+  \ recover it themselves with a fresh call to the helper.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- asm:00001144 `mov r6,#0 / bl toolkit_getUnk2004190EntryPtr_813B9FC / mov r7,r0 / ldrh r0,[r7]` shows
-    the loop fetches each entry and reads its first u16. - asm:00001144 `tst r0,r0 / beq loc_813BE9E` and the next
-    instruction `add r6,#1 / cmp r6,#0x31 / blt loc_813BE90` make the body trivial; the non-taken branch is also
-    empty. - Captured calls (snap_story2_0..13.bin): entry r1=02004190 (the array base the caller set up) and the
-    first 64 bytes at 02004190 are all zero every time the caller runs this. - Caller battle_initState_813BBD4''s
-    docstring explicitly says it "runs the battle sub-init sequence (layout, sprite/cell setup, etc.) on the state
-    buffer", which lines up with this being one of those optional/empty sub-init steps.'
+  detail: '- `mov r6, #0` then `add r6, #1; cmp r6, #0x31; blt` is the canonical 0..0x30 count loop (loc_813BE90..813BE9E
+    in asm37_0.s:1147). - The sole callee toolkit_getUnk2004190EntryPtr_813B9FC is summarized as returning the entry
+    pointer for the requested index — calling it with r0=r6 yields entry r6''s address. - `ldrh r0, [r7]` reads
+    a u16 from each entry; `tst r0, r0; beq loc_813BE9E` branches to the very next instruction (the increment) so
+    the test never alters control and no str/bh follows, i.e. nothing is actually stored. - The sole caller is battle_initState_813BBD4,
+    whose description mentions "0x31-byte I/O scratch buffers" matching the 0x31-iteration count here. - Captured-call
+    entry r1 = 0x02004190 (the EWRAM address pointed at by Toolkit+0x5c, i.e. Unk2004190) confirms the helper actually
+    returns a pointer into that buffer.'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x0813BE8C
@@ -40,13 +46,16 @@ evidence:
   result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1, story2, story3,
     story4, story5, story6, story7, story8, story9, wander
 open_questions:
-- Whether this is dead/inlined-out code or whether the original intent was a memset/something conditional on the
-  u16; knowing whether the beq-target originally contained a real write (early build artifact, debugging stub) would
-  settle it. None of the 40 captured calls exercise a non-zero entry.
+- Whether this routine is meant to clear/write the entries or just to test/walk them; the
+- assembly as shown has no store. Settling it requires confirming whether
+- toolkit_getUnk2004190EntryPtr_813B9FC has a side-effect that zeros the slot, or whether a
+- store was elided by the lifter.
+- Why r7 is in `out` (the contract) but never explicitly used after the loop — possibly the
+- lifter marks any callee-saved register that was written, even if no caller relies on it.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f 4b6ad669
+  where: bn6f c83478a3
   tool: tools/symdoc.py

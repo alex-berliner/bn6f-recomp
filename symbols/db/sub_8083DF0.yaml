@@ -3,30 +3,26 @@ address: '0x08083DF0'
 kind: function
 previous_names: []
 status: hypothesis
-summary: Cutscene/BBS orchestrator that tests/sets event flags and drives GFX anim + sprite loads around the cutscene-script-pos
-  checks
-interface: (r10 = toolkit ptr, no other inputs) -> void ; modifies a wide set of scratch regs and writes through
-  toolkit globals
-details: "Entry reads toolkit globals via r10 (standard in-pattern). It dispatches to a small block\n  of unnamed\
-  \ helpers (sub_8083F80, 8084080, 8084180, 8084214, 80842D8) that all take r5 in,\n  plus a sequence of read-modify-writes\
-  \ on event-flag bytes. Surrounding that, it queries\n  cutscene state with cutscene_checkOriginalCutsceneScriptPos_8036F40\
-  \ and _8036F58, sets\n  flag 0x7 of event byte 0x17 via reqBBS_setFlag_e17b0f7_8140A00, clears a BBS request flag\n\
-  \  with reqBBS_clearFlag_8140A0C, and triggers three GFX anim drivers\n  (load_gfx_anim_8083FC0 / 8083FFC / 8084068).\
-  \ The struct_copy_80840C4 likely moves a\n  small fixed data block; sub_809E462 is a thin glue callback. No assembly\
-  \ was supplied, so\n  the exact order/cases of these calls cannot be pinpointed beyond \"this function owns\n\
-  \  the orchestration\".\n  Contract: `out` lists only nz plus the callee-saved registers (r2,r3,r4,r5,r7,r8,r9,r12)\n\
-  \  that the caller reloads itself; nothing is returned to the caller in r0/r1, so this is\n  effectively a void\
-  \ cutscene-stage function from the toolkit dispatcher.\n"
+summary: Unknown — assembly not present in bn6f/asm dump; cannot be characterised.
+interface: (in=r10, lr ; out=nz, r2, r3, r4, r5, r7, r8, r9, r12 ; may write r0..r9, r12, lr, nz/c/v)
+details: "The provided context block lists the function at 0x08083df0 with a full register\n  contract and a long\
+  \ list of callees (event-flag get/set/clear, two\n  cutscene-pos checks, a BBS request flag setter/clearer, three\
+  \ `load_gfx_anim_*`\n  helpers, three `sub_8084*` helpers, `struct_copy_80840C4`, and `sub_809E462`),\n  but the\
+  \ assembly section is empty:\n\n      ; sub_8083DF0 not found in bn6f/asm\n\n  No captured-call entry values,\
+  \ no exit r0/flags, and no callers were supplied\n  either. Every concrete claim about what this function does\
+  \ therefore has to\n  come from the assembly, which is missing. Naming it from the callee mix alone\n  would be\
+  \ guessing.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- `contract in=[''r10'',''lr'']` and `out` lacks any r0/r1 value => this is a void-like toolkit callee.
-    - Callee names `cutscene_checkOriginalCutsceneScriptPos_8036F40/_8036F58` and `reqBBS_setFlag_e17b0f7_8140A00`
-    (confirmed) tie the routine to the BBS/cutscene path. - Three `load_gfx_anim_*` callees (8083FC0/8083FFC/8084068)
-    and `struct_copy_80840C4` imply a sprite/GFX bundle install around the flag decision points. - `reqBBS_clearFlag_8140A0C`
-    clears a flag the prior `_setFlag` may have set or that another stage conditioned on. - All inner helpers take
-    r5 as their main pointer, consistent with a per-actor or per-bundle context (`r5` arrives from somewhere inside
-    this function).'
+  detail: '- "sub_8083DF0 not found in bn6f/asm" — the lifter has no instructions for this function, so no behaviour
+    can be observed directly. - The callee list includes `reqBBS_setFlag_e17b0f7_8140A00` and `reqBBS_clearFlag_8140A0C`,
+    both of which take only `r10`/`lr`; combined with `sub_809E462` (also `r10`/`lr` only) this suggests the function
+    probably runs in a normal "toolkit-in-r10" calling context rather than something exotic, but that is an inference
+    about the calling convention, not about what the function does. - `cutscene_checkOriginalCutsceneScriptPos_8036F40`
+    and `_8036F58` are both queried, which would be consistent with a cutscene-driven update step, but again this
+    is not confirmed by any instruction in this function. - Without the assembly, no instruction-level evidence
+    for the body is'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x08083DF0
@@ -41,14 +37,16 @@ evidence:
     '
   result: beastsp, story5, story6
 open_questions:
-- Exact branching/sequencing of the inner calls (no asm was attached for this placeholder).
-- What `r5` points to inside this function (likely an Object or an animation script
-- pointer; the asm would settle it).
-- Whether the BBS handler call is unconditional or guarded by the cutscene-pos tests.
+- The full instruction listing at 0x08083df0 in bn6f would settle the role
+- immediately; until then the name cannot be anything more than a guess.
+- Whether this is a per-frame update, a one-shot init, a cutscene-driven
+- handler, or something keyed off `sub_80842D8`/`sub_809E462` is unknown.
+- Whether the `_ADDRESS` suffix would be appropriate depends on the role
+- once the assembly is recovered.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f 4b6ad669
+  where: bn6f c83478a3
   tool: tools/symdoc.py

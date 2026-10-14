@@ -1,0 +1,56 @@
+name: sub_8127374
+address: '0x08127374'
+kind: function
+previous_names: []
+status: hypothesis
+summary: On the PET menu screen, if a dialogue/text shadow sprite's animation timer is past its initial phase, advance
+  its shake offset, then queue/update its OAM entry.
+interface: '(r5 = pointer to a PET menu text-shadow sprite struct) -> void (clobbers r0-r4,r6,r7,lr; flags N/Z/C/V)
+  ; side effects: queues one OAM entry via object_computeAndQueueOamEntry_811FA98'
+details: "- r5 points at a per-line PET menu text/shadow object (its `Unk_1e` halfword at offset 0x1e is the local\
+  \ anim timer).\n  - Guard: if the halfword at +0x1e is < 4, the function is a no-op and returns immediately (`blt\
+  \ locret_81273A6`).\n  - Loads signed byte offset 0xd (Y/row?) and signed byte 0xe (target Y?) of the struct,\
+  \ takes the signed difference, scales by 8 (lsl #3), then adds the current 16-bit offset 0x32 (a 16.16 fixed-point\
+  \ X?) to produce a new value, stored back as a halfword at +0x32.\n  - Packs the result as `newVal | 0x14` for\
+  \ attribute 0, and 0x00020002 for attribute 1; passes (current Anim at +0x1e, current \"joypad/sprite-id\" halfword\
+  \ at +0x24, size 4) plus a pointer constant `0x4c 0xC2 ... 0xDA 0x01 ...` (an OAM tile descriptor) and 0x34 to\
+  \ object_computeAndQueueOamEntry_811FA98.\n  - The constants + \"shake-by-Y-difference\" math + queueing into\
+  \ the OAM helper strongly suggest this is the per-frame text-shadow shake animation used in the PET menu chatbox/text\
+  \ rows, not the navi cursor.\n  - Inlined constants at 0x81273A8/0x81273AC are 0x20002 and an 8-byte OAM tile/palette\
+  \ descriptor; together with the 0x34 magic number they look like a fixed OAM packet spec.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrh r0, [r5,#0x1e]; cmp r0, #4; blt locret_81273A6` — local anim timer guard, suggests "skip when
+    still in setup phase". - `ldrsb r0, [r5,r1=0xd]; ldrsb r2, [r5,r3=0xe]; sub r0,r0,r2; lsl r0,r0,#3; add r0,r0,r1(ldrsh
+    [r5,0x32]); strh r0,[r5,0x32]` — Y-difference * 8 added to a 16-bit halfword at +0x32; classic shake/wobble
+    math. - `mov r1,#0x14; orr r0,r1` — top bits OR 0x14 (shape/affine flag); `ldr r1,dword_81273A8 // =0x20002`
+    — second attribute word. - `bl object_computeAndQueueOamEntry_811FA98` — final step is always "queue an OAM
+    entry from this struct", confirming it draws the PET text-shadow sprite this frame. - Caller is `pet_menuScreenTick_8126FF0`
+    (PET-menu per-frame dispatcher); another unnamed caller `sub_8126CC0` is also part of the PET menu subsystem.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08127374
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp, menus3, story2'
+  reproduce: 'grep -l ''^08127374 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp, menus3, story2
+open_questions:
+- What exact struct r5 points at (substruct of SubMenu / chatbox / row entry?) — would settle it by inspecting nearby
+  struct definitions and the parent `sub_8126CC0` to see how it builds the array of `r5` pointers.
+- The meaning of offset 0xd/0xe (likely shadow row offsets) and of halfword 0x24 (`JoypadPressed` field of AIData
+  suggests this is *not* an AIData, but probably a small PET-menu row struct we don't have in the provided headers).
+- Whether the 0x34 constant is a size/stride or an OAM layer parameter.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f c83478a3
+  tool: tools/symdoc.py
