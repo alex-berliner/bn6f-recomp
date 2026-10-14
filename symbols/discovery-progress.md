@@ -467,3 +467,52 @@ Highlights:
 | 10    | 25                 | 14                        | 11              | 0       |
 
 Running total: named 201, hypothesis-only 45, dropped 0 (of ~10,600 placeholders).
+
+## Batch 11 (2026-10-14)
+
+25 functions, 17 named + 8 hypothesis (sub_8026B04, sub_802DE5C, sub_8030F04,
+sub_8031980, sub_8031A5E, sub_8083DF0, sub_8123C20, sub_8142B28 kept as
+comment only), renamed in recomp 8e6d70d4 (bn6f pushed; port ROM unchanged).
+
+Highlights:
+- battle main-frame: step run and decide result
+  (battle_stepRunAndDecideResult_800938A);
+- battle HUD: draw chip-counts OAM with retval zero
+  (battle_drawChipCountsOAMWithRetvalZero_801C078);
+- chatbox: get text script pointer by index
+  (chatbox_getTextScriptPointerByIndex_804A24C) — first chatbox entry
+  in the 0x0804xxxx range (chatbox main area);
+- overworld player: apply countdown update (owPlayer_applyCountdownUpdate_809D5C4);
+- battle object: load AI data entry (battleObject_loadAIDataEntry_80A6014),
+  set flags 6 bit (battleObject_setFlags6Bit_81171F4),
+  queue OAM from table row (battleObject_queueOamFromTableRow_811FAF4),
+  update shield or status effect (battleObject_updateShieldOrStatusEffect_813468C),
+  run AI dispatch table (battleObject_runAIDispatchTable_813B7A0),
+  validate script pointer (battleObject_validateScriptPointer_814E0B6),
+  run update routine and advance PC (battleObject_runUpdateRoutineAndAdvancePC_814E0D0);
+- beast-sp battle: beast-out dispatch (battle_beastOutDispatch_80A5AD4),
+  battle perform beast-out AI tick (battle_performBeastOutBattleAiTick_81419A0),
+  get beast-out availability (battle_getBeastOutAvailability_81422BE);
+- overworld map: check bounds and start beast-sp encounter
+  (owMapObject_checkBoundsAndStartBeastSpEncounter_80A7CFE);
+- battle AI: run turn handler (battle_aiRunTurnHandler_81353F0);
+- battle helper: calc panel screen coord
+  (battle_calcPanelScreenCoord_814F3A4).
+
+## Tally update
+
+| batch | functions examined | named (renamed via record) | hypothesis-only | dropped |
+|-------|--------------------|---------------------------|-----------------|---------|
+| 1     | 25                 | 25                        | 0               | 0       |
+| 2     | 21                 | 20                        | 1               | 0       |
+| 3     | 25                 | 23                        | 2               | 0       |
+| 4     | 25                 | 21                        | 4               | 0       |
+| 5     | 25                 | 20                        | 5               | 0       |
+| 6     | 25                 | 21                        | 4               | 0       |
+| 7     | 25                 | 19                        | 6               | 0       |
+| 8     | 25                 | 20                        | 5               | 0       |
+| 9     | 25                 | 18                        | 7               | 0       |
+| 10    | 25                 | 14                        | 11              | 0       |
+| 11    | 25                 | 17                        | 8               | 0       |
+
+Running total: named 218, hypothesis-only 53, dropped 0 (of ~10,600 placeholders).
