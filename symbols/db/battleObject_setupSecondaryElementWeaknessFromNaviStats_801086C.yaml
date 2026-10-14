@@ -1,0 +1,60 @@
+name: battleObject_setupSecondaryElementWeaknessFromNaviStats_801086C
+address: '0x0801086C'
+kind: function
+previous_names:
+- sub_801086C
+status: probable
+summary: Sets the battle object's secondary-element weakness using stat look-ups of the actor's and its
+  foe NaviStats.
+interface: '() -> void ; side effects: writes SecondaryElementWeakness and SecondaryElement on the actor''s
+  CollisionData (r5->r0 via battle object lookup)'
+details: "Callee of several battle-object init/setup paths (e.g. playerObject_init_80172F0, sub_80144CA,\
+  \ sub_802D7A0 and friends). Uses GetBattleNaviStatsByte_AllianceFromBattleObject (r5 keeps the battle\
+  \ object) to pull two values: first NaviStats byte 0x29, then if 0 fallback, NaviStats byte 0x2c. The\
+  \ selected byte indexes table byte_80108B8 (25 entries of mostly 0x1/0x2/0x3/0x4). That byte is passed\
+  \ to sub_8019F8C.\n  After that, it does a parallel pass for the opposing side: try NaviStats byte 0x2c\
+  \ first, then 0x29, indexed into table byte_80108D1 (single-element bit flags). That byte is passed\
+  \ to battleObject_SetSecondaryElementWeakness_8019F9E which writes SecondaryElementWeakness / SecondaryElement\
+  \ (offset 0x18/0x19) on the CollisionData.\n  r4/r5 are preserved/callee-saved; the function returns\
+  \ 0 in r0 with no flags requirements.\n  All three callees are battle-element/elemental helpers. The\
+  \ two lookup tables encode element mapping per NaviStats combination.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- Captured calls pass r0=00020000 r1=020384f0 (BattleObject/CollisionData region) into context
+    where r5 retains the battle object pointer. - Assembly reads r1=0x29 then r1=0x2c into GetBattleNaviStatsByte_AllianceFromBattleObject
+    with the result indexing byte_80108B8 (assembly labels `byte_80108B8`). - Final write routed through
+    confirmed `battleObject_SetSecondaryElementWeakness_8019F9E` which lives on CollisionData SecElem
+    offsets. - `sub_8019F8C` is the only other callee and resembles a partner setter for the same byte
+    path. - Returned r0=0 with no flags, matching typical void-side-effects helpers.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0801086C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0801086c '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- Exact meaning of byte_80108B8 (element id) and byte_80108D1 (secondary-element bit pattern); whether
+  the sub_8019F8C branch is unconditional or whether one byte is "Primary" vs the other for "Secondary".
+  Decompiling two `sub_8019F8C` / `SetSecondaryElementWeakness_8019F9E` callers and their writers will
+  settle it.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8d94ac47
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_801086C -> battleObject_setupSecondaryElementWeaknessFromNaviStats_801086C
+  where: bn6f 48692679
+  tool: tools/rename_symbol.py

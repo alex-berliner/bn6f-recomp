@@ -2506,14 +2506,14 @@ Next battleObject_checkInAttackRange_08031BE2(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8031BFA ── */
-/* sub_8031BFA:
+/* ── battle_aiUpdate_8031BFA ── */
+/* battle_aiUpdate_8031BFA:
  * Runs battle_calcRelPosToTarget_803172E on the values the caller left in r0/r5, then invokes
  * sub_8031570 with a fixed argument set (r2 = 0, r3 = r4 = 0x10, r5 = 0)
  * and finally sub_8031B7C. Register results and flags are whatever the
  * last callee leaves behind; lr is untouched (the original just pushes
  * lr and pops it back into pc). */
-Next sub_8031BFA(void) {
+Next battle_aiUpdate_8031BFA(void) {
     GUEST_CALL(battle_calcRelPosToTarget_803172E);
 
     R2 = 0;

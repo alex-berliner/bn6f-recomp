@@ -1,0 +1,58 @@
+name: battle_aiUpdate_8031BFA
+address: '0x08031BFA'
+kind: function
+previous_names:
+- sub_8031BFA
+status: probable
+summary: 'Advances one battle AI tick: computes the entity''s relative position to its target, then runs
+  a small AI helper that returns a value to a flag-check callee.'
+interface: (r0 = entity pointer, r5 = AI state-ish struct) -> r0 = 0/3 from sub_8031B7C (cached-AI-active
+  flag); tail call via pop {pc}.
+details: "- Saves lr, calls battle_calcRelPosToTarget_803172E (r0=entity, r5=carry-over; result scratch\
+  \ written for entity + next-position).\n  - Sets r2=0, r4=0x10, r3=0x10, r5=0 and calls sub_8031570.\
+  \ The four arguments (r2..r5) form the 0x10/0x10/0/0 quad typical of the AI's \"find/stage an action\"\
+  \ helpers; 0x10,0x10 is a panel-area window, 0 is the \"no override\" pair.\n  - Then calls sub_8031B7C(r0)\
+  \ which (per its probable summary) returns 1 of [[dword_2013920]+0x14] when called with r0==1, else\
+  \ 0; here r0 is the result of sub_8031570 (a small int), so the function ends by reporting a boolean\
+  \ to the caller.\n  - The function pops {pc} rather than {lr}, so it is itself a tail call: the caller\
+  \ at 0x08031ad0 frames this as one step in a per-turn AI loop.\n  - Inputs r0/r5 are preserved by the\
+  \ contract; everything else is caller-saved.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {lr}` / `pop {pc}` (asm:25682) confirms tail-call and one frame. - First `bl battle_calcRelPosToTarget_803172E`
+    updates the relative-pos scratch buffer for r0+next-pos (callee summary). - The immediate quartet
+    `mov r2,#0; mov r4,#0x10; mov r3,#0x10; mov r5,#0` before `bl sub_8031570` is the same arg pattern
+    sub_8031570 expects in its contract (in=r0,r2,r3,r4,r5). - The exit r0=0/3 in the captured calls (snap_battles1_0/1/10/11/12/13)
+    matches the 0/3 returned by `sub_8031B7C(r0)` per its summary. - All 40 captures have r1=0x6ab2 and
+    r0=02009f5c with stable PanelXY-style bytes (0x4b00/0x4b00) consistent with a battle entity being
+    passed in r0.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08031BFA
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, beastsp, fuzz, maps, story3, story4, story5, story6, story8'
+  reproduce: 'grep -l ''^08031bfa '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, beastsp, fuzz, maps, story3, story4, story5, story6, story8
+open_questions:
+- The semantic meaning of the (0x10, 0x10, 0, 0) window into sub_8031570 (likely a "search a 16x16 region
+  for target candidates, 0 override" but unverified).
+- Whether r5 in the contract is a pre-existing AI/secondary pointer or just a saved callee-saved register;
+  its semantics here are not derivable from this function alone.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8d94ac47
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8031BFA -> battle_aiUpdate_8031BFA
+  where: bn6f 48692679
+  tool: tools/rename_symbol.py

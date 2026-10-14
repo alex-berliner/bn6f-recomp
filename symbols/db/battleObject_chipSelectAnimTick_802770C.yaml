@@ -1,0 +1,61 @@
+name: battleObject_chipSelectAnimTick_802770C
+address: '0x0802770C'
+kind: function
+previous_names:
+- sub_802770C
+status: probable
+summary: Dispatches the chip-select animation tick for a BattleObject based on its S20364C0 sub-state
+  (JumpOffset00)
+interface: (r5 = * S20364C0 self) -> ()
+details: "- Pushes lr, then reads u8 at [r5,#2] (S20364C0.Unk_02 per the S20364C0 struct) and uses it\
+  \ as an index into the dispatch table at off_8027724.\n  - The table contains 5 entries (`sub_8027738+1`,\
+  \ `sub_802774C+1`, `sub_802777C+1`, `sub_8027796+1`, `sub_8027806+1`), each a Thumb function pointer\
+  \ with the +1 thumb-bit set, so they cover sub-states 0..4.\n  - Loads `r0 = *(table + (Unk_02<<2))`,\
+  \ sets lr=pc, and `bx r1` to tail-call the dispatch target (return jumps straight to the popped pc —\
+  \ note `pop {pc}` is the only epilogue, so this is a thin dispatcher).\n  - After the bx, the asm has\
+  \ an unreachable `bl battleObject_chipSelectAnimTick_8029C08` line that the decompiler kept; the contract\
+  \ shows the only true direct `bl` callee is sub_8029C08, which `sub_8027738..sub_8027806` presumably\
+  \ call themselves.\n  - `off_8027720` is itself a pointer to `off_8027724`, so the table address is\
+  \ loaded one indirection extra (a small quirk from the original ROM layout).\n  - Callee contract `sub_8029C08:\
+  \ (self: * S20364C0 $r5) -> ()` and the function's use of r5 as the BattleObject-style `self` strongly\
+  \ suggest this entire routine is the chip-select screen animation tick (the S20364C0 fields — ChipSelectCursorPos\
+  \ at +7, NumChipsSelected at +8 — match the post-battle chip-selection UI).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0, [r5,#2]` reads Unk_02 of the S20364C0 struct passed via r5 — instruction at 0x08027710.
+    - `ldr r1, [r1,r0]` indexes a 4-byte-stride table — confirms dispatch by sub-state — instruction at
+    0x08027714. - `mov lr, pc; bx r1` tail-calls the chosen handler — instructions at 0x08027716-0x08027718.
+    - `pop {pc}` epilogue (no `pop {lr}; bx lr`) shows this is a thin dispatcher preserving lr — instruction
+    at 0x0802771A. - off_8027724 lists exactly 5 handlers indexed 0..4, consistent with a chip-select
+    animation having ~5 phases. - The preserved callee name `battleObject_chipSelectAnimTick_8029C08`
+    confirms this is a tick driver, not an init.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0802770C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^0802770c '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- Which S20364C0.Unk_02 value maps to which handler (need each sub_* to inspect).
+- Whether the unreachable `bl battleObject_chipSelectAnimTick_8029C08` was actually emitted in ROM or
+  is a stray emitted by the disassembler after the bx — no callers are listed, so calling context is also
+  unknown.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8d94ac47
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_802770C -> battleObject_chipSelectAnimTick_802770C
+  where: bn6f 48692679
+  tool: tools/rename_symbol.py

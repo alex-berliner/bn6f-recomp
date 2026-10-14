@@ -1,0 +1,56 @@
+name: battle_aiGetCurActionPanelY_8087140
+address: '0x08087140'
+kind: function
+previous_names:
+- sub_8087140
+status: probable
+summary: Returns AIData.PanelY (offset 0x13) of the BattleObject pointed to by the Toolkit's current actor
+  slot
+interface: () -> r0 = u8 PanelY
+details: "Reads the Toolkit pointer (r10) and follows Toolkit.GameStatePtr... no, follows\n  Toolkit.BattleStatePtr\
+  \ path differently. Code does:\n    r1 = [r10 + 0x3C]            ; r10 always the Toolkit; offset 0x3C\
+  \ = GameStatePtr\n    r1 = [r1 + 0x18]             ; GameState.CurBattleDataPtr (loc=0x1c? actually\
+  \ loc=0x18? struct shows 0x1c; the 0x18 here is a per-battle sub-struct)\n    r4 = ldrb [r1 + 0x13]\
+  \        ; u8 PanelY at +0x13\n  Returns the byte in r0. The two-step indirection (Toolkit -> something\
+  \ -> AIData)\n  means the \"something\" is a BattleObject whose AIData is read at offset 0x13. Given\n\
+  \  AIData has Unk_13 at 0x13 with a u8_arr slot above it and BeastOutAPwrAtk at 0x11,\n  this is a quick\
+  \ read of the AIData byte that callers (e.g. beast-SP AI dispatcher\n  sub_8086EA8) want to consult\
+  \ as the current action panel Y.\n  No writes, only r4 is preserved around the call; pure read.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {r4,lr}` / `pop {r4,pc}` — leaf function, no stack frame beyond saved r4 - `mov r1,
+    r10` then `ldr r1, [r1,#0x3c]` — pulls a pointer out of the Toolkit at slot 0x3C (GameStatePtr) -
+    `ldr r1, [r1,#0x18]` — dereferences GameState -> CurBattleDataPtr (offset 0x1c in struct, but here
+    treated as 0x18; likely an inner per-actor struct view where the battle-actor list starts earlier)
+    - `ldrb r4, [r1,#0x13]` — reads a single byte at offset 0x13 - `mov r0, r4` — returns that byte -
+    Only caller is sub_8086EA8 (Beast/SP AI dispatch), which iterates per-actor sub-states - 40 captured
+    calls; exit r0=0 in 2 cases (r1==0 chain) and r0=2 in 38 cases, consistent with reading a panel Y'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08087140
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp, maps'
+  reproduce: 'grep -l ''^08087140 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp, maps
+open_questions:
+- Exact role of offset 0x13 inside the chained pointer isn't fully provable from this function alone;
+  could be AIData.Unk_13, AIData-related flag, or AIData+0x13 view of BattleObject. Tracking what sub_8086EA8
+  does with the returned value (compared against what panel coords?) would settle it.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8d94ac47
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8087140 -> battle_aiGetCurActionPanelY_8087140
+  where: bn6f 48692679
+  tool: tools/rename_symbol.py

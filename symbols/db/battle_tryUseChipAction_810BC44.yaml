@@ -1,0 +1,64 @@
+name: battle_tryUseChipAction_810BC44
+address: '0x0810BC44'
+kind: function
+previous_names:
+- sub_810BC44
+status: probable
+summary: 'Per-frame battle AI action dispatcher: gates on battle-over flag, kicks the object out of state
+  8 if an attack trigger is set, otherwise tries to start a chip attack, then dispatches to a per-AIState
+  handler.'
+interface: (r0..r3 scratch in r4 = object ptr, r5 = owner battle object ptr, r6 = aiState ptr, r10 = toolkit)
+  -> r0 = bool "started attack this frame" ; writes BattleObject.CurAnim, BattleObject.oBattleObject+0x88
+  (timer), AIData related fields, aiState.Unk_00, may pop via r6->[Unk_00] dispatch
+details: "1. Returns immediately if battle_isBattleOver() reports the battle ended (`tst r0, r0; bne locret_810BC8E`).\n\
+  \  2. Reads BattleObject+0x7c; if non-zero, clears it to 0 (`strb r0,[r5,r1]` with r1=0x7c, r0=0).\n\
+  \  3. Calls object_getFlag(r5) and tests bit 0xa000 of the returned flag word (`tst r0, r1` with r1=0xa000).\
+  \ If set, checks aiState[0] == 8; if not state 8 it forcibly enters state 8: writes CurAnim=1 (`strb\
+  \ r0,[r5,#oBattleObject_CurAnim]`), aiState[0]=8, clears the BattleObject+0x88 halfword to 0, then jumps\
+  \ to the jump-table dispatch at 810BC84. If already in state 8, falls through to the jump table too.\n\
+  \  4. If the 0xa000 flag is NOT set, calls sub_810BDC4 (likely a chip-attack starter) and only goes\
+  \ to the jump table when r0==0; otherwise returns (chip attack already in progress).\n  5. The jump\
+  \ table `off_810BC94` is `AIState[0]` -> handler: index 0 -> sub_810BCA0, index 1 -> sub_810BCBC, index\
+  \ 2 -> sub_810BCFC. (`+1` arms are Thumb->ARM BX form; the function tails into a register-indirect call\
+  \ via `bx r1`.)\n  6. On dispatch it loads the handler address from the table using aiState[0] (0x6\
+  \ → `ldrb r0,[r6,#oAIState_Unk_00]`), loads the slot, then `bx r1`.\n  Callers: unknown (function in\
+  \ IWRAM, contract says only r4-r12 preserved across call).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl battle_isBattleOver` + `tst r0,r0; bne locret_810BC8E` short-circuits when battle ended.
+    - `dword_810BEB4 = 0xa000` and `tst r0,r1` is the chip-attack launch flag bitmask. - `strb r0,[r5,#oBattleObject_CurAnim]`
+    with r0=1 sets CurAnim=1; paired with `[r5,r1]` where r1=0x88 so the halfword at 0x88 is cleared (timer
+    reset). - `ldrb r0,[r6,#oAIState_Unk_00]` reads aiState[0] and indexes the dispatch table at off_810BC94
+    which lists handlers for states 0,1,2. - `mov lr,pc ; bx r1` is a forced Thumb tail-call from the
+    table, explaining why no `bx lr`/pop follows that path.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0810BC44
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp'
+  reproduce: 'grep -l ''^0810bc44 '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp
+open_questions:
+- The semantics of the 0xa000 bit; the struct field is off_BattleObject+0x7c, currently unnamed.
+- Whether sub_810BDC4 returns bool (1=already attacking) or new state; the comparison `cmp r0,#0; bne
+  locret_810BC8E` is consistent with "nonzero=in progress, abort this frame".
+- What the three per-state handlers (sub_810BCA0 / sub_810BCBC / sub_810BCFC) actually do; not in the
+  context block.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8d94ac47
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_810BC44 -> battle_tryUseChipAction_810BC44
+  where: bn6f 48692679
+  tool: tools/rename_symbol.py

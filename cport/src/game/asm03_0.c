@@ -201,7 +201,7 @@ Next object_runFrameUpdate_8026A6C(void) {
  * sub_8026DB0, battle_endChipSelectionBeginTurn_8026DC4, chatbox_stateMaybeFinishText_8026E4C,
  * battle_updateObjectByKind_8026E98, battle_runTutorialDialog_8026FC0, sub_8027044, sub_80271F8,
  * sub_802728C, sub_80273A4, chatbox_resetTextStateIfHidden_80273EC,
- * sub_8027406, sub_802753E, sub_8027548, sub_80275EC, sub_802770C,
+ * sub_8027406, sub_802753E, sub_8027548, sub_80275EC, battleObject_chipSelectAnimTick_802770C,
  * sub_8027834, sub_802790C, sub_802794A, sub_8026E78, sub_8027A58) outside
  * this file; they have no typed C interface yet */
 static void run_state_handler(u32 state_offset, u32 self) {
@@ -233,7 +233,7 @@ static void run_state_handler(u32 state_offset, u32 self) {
     case 0x3C: GUEST_CALL(sub_802753E); break;
     case 0x40: GUEST_CALL(sub_8027548); break;
     case 0x44: GUEST_CALL(sub_80275EC); break;
-    case 0x48: GUEST_CALL(sub_802770C); break;
+    case 0x48: GUEST_CALL(battleObject_chipSelectAnimTick_802770C); break;
     case 0x4C: GUEST_CALL(sub_8027834); break;
     case 0x50: GUEST_CALL(sub_802790C); break;
     case 0x54: GUEST_CALL(sub_802794A); break;

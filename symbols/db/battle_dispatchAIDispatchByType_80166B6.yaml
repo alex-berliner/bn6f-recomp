@@ -1,0 +1,59 @@
+name: battle_dispatchAIDispatchByType_80166B6
+address: '0x080166B6'
+kind: function
+previous_names:
+- sub_80166B6
+status: probable
+summary: Dispatches an AI-specific callback based on the BattleObject's Unk_1f field, used by attack-event
+  functions
+interface: '(r5 = BattleObject*) -> tail-call to one of two helpers (r0 = ..., preserved in r5) ; side
+  effects: jumps to sub_80166D0 or sub_8016730 via a function pointer table indexed by the object''s Unk_1f
+  byte'
+details: "Loads the address of the dispatch table at off_80166C8 into r1, then reads a single byte from\n\
+  \  r5 + oBattleObject_Unk_1f (offset 0x1f in the BattleObject struct) as an index. LDR r1,[r1,r0]\n\
+  \  pulls the target function pointer and `bx r1` jumps to it (with Thumb bit cleared via the\n  +1 entries).\
+  \ The `push {lr}` / `pop {pc}` pair is the standard Thumb tail-call pattern, so this\n  is just a one-level\
+  \ dispatcher, not a real caller of either target.\n  Two-table entries observed: sub_80166D0+1 and sub_8016730+1,\
+  \ implying at least two AI\n  attack-phase handlers. The captured call has r0=0x10 (Unk_1f) and exits\
+  \ with r0=0x1000, but\n  since this function only tail-calls, that return is produced by the chosen\
+  \ target. The\n  BattleObject memory dump begins with 01 01 00 00 01 00 00 0a ... which is consistent\
+  \ with\n  the standard BattleObject header (Flags, Index, Type/SpriteOffset, ListIndex, CurState,\n\
+  \  CurAction, CurPhase, PhaseInitialized).\n  Callers are both in the AI attack path: ai_eventuallyRunsAIAttack_801AF44\
+  \ and\n  battle_801B1C4, which matches the \"eventually runs an AI attack\" interpretation.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- Assembly: `ldrb r0, [r5,#oBattleObject_Unk_1f]` reads a byte at offset 0x1f of the BattleObject
+    in r5. - `ldr r1, [r1,r0]` then indexes a 2-entry pointer table at off_80166C8. - `mov lr, pc; bx
+    r1` is the canonical Thumb `blr` pattern; combined with `push {lr}` / `pop {pc}` this is a tail-call,
+    not a real call. - The +1 displacement on both `sub_80166D0+1` / `sub_8016730+1` clears the Thumb
+    bit before `bx`. - Callers ai_eventuallyRunsAIAttack_801AF44 and battle_801B1C4 both live in the AI/attack
+    code path and take a BattleObject in r5.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080166B6
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp, chips'
+  reproduce: 'grep -l ''^080166b6 '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp, chips
+open_questions:
+- The semantic meaning of Unk_1f (which the project's BattleObject struct labels as part of `Unk_1e_Unk_1f`
+  at 0x1e) and what differentiates the two dispatched targets (0 -> sub_80166D0, 1 -> sub_8016730) is
+  unknown. Deeper naming of the targets would clarify it.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8d94ac47
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80166B6 -> battle_dispatchAIDispatchByType_80166B6
+  where: bn6f 48692679
+  tool: tools/rename_symbol.py

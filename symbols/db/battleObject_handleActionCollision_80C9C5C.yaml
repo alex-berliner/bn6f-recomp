@@ -1,0 +1,60 @@
+name: battleObject_handleActionCollision_80C9C5C
+address: '0x080C9C5C'
+kind: function
+previous_names:
+- sub_80C9C5C
+status: probable
+summary: Tear down then re-present a battle object's collision data for its current action, or destroy
+  it if the battle is over.
+interface: '(r5 = oBattleObject*) -> void ; side effects: mutates the BattleObject and its CollisionData,
+  may flip CurState to CUR_STATE_DESTROY'
+details: "1. Calls `object_removeCollisionData` to drop any collision the object currently owns.\n  2.\
+  \ Calls `object_spawnCollisionEffect` to spawn the visual hit/effect.\n  3. Calls `battle_isBattleOver`;\
+  \ if non-zero (battle ended), clears the object's collision region and writes CUR_STATE_DESTROY into\
+  \ `oBattleObject_CurStateActionPhaseAndPhaseInitialized` and returns.\n  4. Otherwise loads `oBattleObject_CollisionDataPtr`\
+  \ and reads `oCollisionData_FlagsFromCollision`; if non-zero, calls `object_clearCollisionRegion` to\
+  \ release its current collision slot.\n  5. Indexes a small 2-entry Thumb jumptable at `off_80C9C90`\
+  \ by `oBattleObject_CurAction`. The two targets are `battle_objectCountdownFireAttackTick_80C9CA2` (Fire-element\
+  \ attack action handler) and `battle_objectDestroyWhenAnimFrameDone_80C9CC4` (wait until animation completes\
+  \ then destroy), as indicated by the table labels in the assembly.\n  6. Finally calls `object_presentCollisionData`\
+  \ to put the object's collision back into the panel system for the next tick.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl object_removeCollisionData` then `bl object_spawnCollisionEffect` are the only top-level
+    clean-up + VFX calls visible at the entry. - `bl battle_isBattleOver` followed by `tst r0, r0`/`bne
+    loc_80C9C98` and the `mov r0,#CUR_STATE_DESTROY; str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]`
+    shows the early-out destroy branch when the battle has ended. - `ldr r7,[r5,#oBattleObject_CollisionDataPtr];
+    ldr r0,[r7,#oCollisionData_FlagsFromCollision]; tst r0,r0; beq loc_80C9C7A; bl object_clearCollisionRegion`
+    shows the conditional region-clear. - `ldrb r0,[r5,#oBattleObject_CurAction]; ldr r1,off_80C9C8C;
+    ldr r1,[r1,r0]; mov lr,pc; bx r1` is a Thumb jumptable dispatch by CurAction, with `off_80C9C90` containing
+    the two handler pointers labelled in the source. - All five captured snap_battles1 entries return
+    `r0 = 02038838` (battle over branch) or `020388e0` (non-battle-over branch), matching the two paths
+    above.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080C9C5C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, beastsp, story8, story9'
+  reproduce: 'grep -l ''^080c9c5c '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, beastsp, story8, story9
+open_questions:
+- The exact semantics of the two action handlers invoked through the jumptable (`80C9CA2` and `80C9CC4`)
+  are not visible here; only their addresses are referenced.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8d94ac47
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80C9C5C -> battleObject_handleActionCollision_80C9C5C
+  where: bn6f 48692679
+  tool: tools/rename_symbol.py

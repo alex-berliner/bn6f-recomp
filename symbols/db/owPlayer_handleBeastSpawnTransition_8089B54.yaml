@@ -1,0 +1,61 @@
+name: owPlayer_handleBeastSpawnTransition_8089B54
+address: '0x08089B54'
+kind: function
+previous_names:
+- sub_8089B54
+status: probable
+summary: Overworld player handler that, when chatbox event flag 0x80 is set, finishes a BeastOut spawn
+  by facing the player toward their navi, kicking off its fixed animation and clearing a request BBS flag,
+  then writes 0x18 into the AI state's byte at r5.
+interface: (r5 = ptr to AI/BattleObject state, r10 = toolkit) -> r0 = 1 ; sets BYTE [r5+?] = 0x18, mutates
+  OWPlayer facing and eStruct200ace0, clears flag in oReqBBS2001150
+details: "- Entry behaviour: pushes callee-saved regs, reads chatbox event flag 0x80 via chatbox_mask_eFlags2009F38;\
+  \ if the bit is NOT set, jumps straight to epilogue.\n  - If bit IS set, calls sub_8089CB4; if that\
+  \ returns Z (zero/equal), also bails to the epilogue — so the heavy block only runs when both the flag\
+  \ and the sub_8089CB4 predicate are true.\n  - Then forces OWPlayer facing to direction 4 (SetOWPlayerFacingDirection\
+  \ with r0=4), re-reads it via GetOWPlayerFacingDirection, and feeds the value into owPlayer_setS200ace0_fixedAnimationSelect_809e13c\
+  \ (which stores the fixed player anim + raises EVENT_1719).\n  - reqBBS_clearFlag_8140A0C clears a bit\
+  \ in oReqBBS2001150, and finally `strb r0,#0x18` writes 0x18 into the AI-state-typed byte at the offset\
+  \ implied by r5 (matches the caller pair snap_beastsp_0190000_* taken from the BeastSp script at 0x080895c0\
+  \ jumping here).\n  - Always returns r0=1 (\"did work / handled\") at the epilogue; pop restores r4-r7,pc.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mov r0, #0x80` followed by `bl chatbox_mask_eFlags2009F38` and a `bne` skipping the whole
+    body → chatbox event flag 0x80 gates the work. - `bl sub_8089CB4; beq loc_8089B7A` → secondary predicate
+    from sub_8089CB4 must also be NZ to reach the work. - `mov r0, #4; bl SetOWPlayerFacingDirection`
+    → forces OWPlayer facing direction 4 before reading it back. - `bl GetOWPlayerFacingDirection; bl
+    owPlayer_setS200ace0_fixedAnimationSelect_809e13c` → re-uses the just-set direction to program the
+    navi''s fixed-player animation into eStruct200ace0. - `bl reqBBS_clearFlag_8140A0C` → clears a request
+    BBS flag so the screen is dropped from "new requests" tally. - `mov r0, #0x18; strb r0, [r5]` → stores
+    0x18 into the byte at the AI/BattleObject-typed pointer that the caller passes in r5. - 40 captured
+    entry traces all show r5 = 0x08089b55+1, lr = 0x080895b8 (the BL landing in the BeastSp script at
+    0x080895c0), and identical exit r0=1; this is a per-frame handler invoked from the BeastSp script.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08089B54
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^08089b54 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- Exact meaning of byte 0x18 written to [r5] — could be `CurAnim`, an AI state enum, or a `CurState`;
+  identifying the struct that r5 points to in this BeastSp context would settle it.
+- The role of sub_8089CB4's predicate (it only has condition codes in its contract).
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8d94ac47
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8089B54 -> owPlayer_handleBeastSpawnTransition_8089B54
+  where: bn6f 48692679
+  tool: tools/rename_symbol.py

@@ -4,31 +4,29 @@ kind: function
 previous_names:
 - sub_808CDC4
 status: probable
-summary: Walk an event-flag table whose pointer is selected by sub_808D084; return a packed index (group*3
-  + entry) when the event and the subsequent event-flag range both pass.
-interface: '() -> r0 = match flag (0/1), r1 = group index (0..N), r2 = (3*group + entry) ; side effects:
-  r10 (Toolkit) read-only, NZ/CV flags preserved by TestEventFlag calls'
-details: "1. Saves r4-r8 and lr; calls sub_808D084 to obtain a small group index (r8) in [0..3].\n  2.\
-  \ Loads a pointer table via `ldr r6, [r6, r0<<2]` (off_808CEBC indexed by the group index). r6 points\
-  \ to a row of records; each row is 8 bytes: `[u16 eventFlag, u16 rangeStart, u16 rangeEnd, u16 pad?]`\
-  \ based on the reads at offsets 0, +2, +4 (with a stray `add r3,#2` that suggests start==+2, end==+4).\n\
-  \  3. Loops r7 in 0..3 (when group<3) or 0..4 (when group==3) checking each record: TestEventFlag(eventFlag)\
-  \ AND TestEventFlagRange(start,end). On the first full match, sets r4=1 and breaks.\n  4. Returns r0=r4\
-  \ (match), r1=r8 (group index), r2 = r8*3 + r7 (encoded slot of the matching or last-tested entry).\n\
-  \  5. Only known caller is sub_808CC34; the 3*group packing plus the variable inner count (3 vs 4) strongly\
-  \ suggests a per-encounter / per-battle-stage event test (story progression gating for AI / encounter\
-  \ eligibility).\n"
+summary: Walk an event-flag table whose pointer is selected by sub_808D084; return a packed index (group*3 + entry)
+  when the event and the subsequent event-flag range both pass.
+interface: '() -> r0 = match flag (0/1), r1 = group index (0..N), r2 = (3*group + entry) ; side effects: r10 (Toolkit)
+  read-only, NZ/CV flags preserved by TestEventFlag calls'
+details: "1. Saves r4-r8 and lr; calls sub_808D084 to obtain a small group index (r8) in [0..3].\n  2. Loads a pointer\
+  \ table via `ldr r6, [r6, r0<<2]` (off_808CEBC indexed by the group index). r6 points to a row of records; each\
+  \ row is 8 bytes: `[u16 eventFlag, u16 rangeStart, u16 rangeEnd, u16 pad?]` based on the reads at offsets 0, +2,\
+  \ +4 (with a stray `add r3,#2` that suggests start==+2, end==+4).\n  3. Loops r7 in 0..3 (when group<3) or 0..4\
+  \ (when group==3) checking each record: TestEventFlag(eventFlag) AND TestEventFlagRange(start,end). On the first\
+  \ full match, sets r4=1 and breaks.\n  4. Returns r0=r4 (match), r1=r8 (group index), r2 = r8*3 + r7 (encoded\
+  \ slot of the matching or last-tested entry).\n  5. Only known caller is sub_808CC34; the 3*group packing plus\
+  \ the variable inner count (3 vs 4) strongly suggests a per-encounter / per-battle-stage event test (story progression\
+  \ gating for AI / encounter eligibility).\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
   detail: '- `bl sub_808D084` followed by `lsl r0,r0,#2` and indirect load through `off_808CEB8` -> off_808CEBC
-    gives a row pointer table indexed by a small group id. - Each iteration `ldrh r0,[r6,r3]` at r3=r7*8
-    reads a u16 event flag, then at +2 reads a u16 start and at +4 (after `add r3,#2`) reads a u16 end
-    -> two field reads, looks like TestEventFlagRange(a2=start,a3=end). - `bl TestEventFlag` then `beq
-    loc_808CE02` (skip row), and `bl TestEventFlagRange` then `beq loc_808CE02` again - both must succeed
-    for r4 to become 1. - Loop bound: `cmp r8,#3` / `blt loc_808CDDA` vs `cmp r7,#4` chosen by `blt loc_808CE0E`
-    -> group 3 has one extra entry. - Exit packing: `mov r1,r8; mov r2,#3; mul r1,r2; add r1,r1,r7` =>
-    r2 = 3*group + slot.'
+    gives a row pointer table indexed by a small group id. - Each iteration `ldrh r0,[r6,r3]` at r3=r7*8 reads a
+    u16 event flag, then at +2 reads a u16 start and at +4 (after `add r3,#2`) reads a u16 end -> two field reads,
+    looks like TestEventFlagRange(a2=start,a3=end). - `bl TestEventFlag` then `beq loc_808CE02` (skip row), and
+    `bl TestEventFlagRange` then `beq loc_808CE02` again - both must succeed for r4 to become 1. - Loop bound: `cmp
+    r8,#3` / `blt loc_808CDDA` vs `cmp r7,#4` chosen by `blt loc_808CE0E` -> group 3 has one extra entry. - Exit
+    packing: `mov r1,r8; mov r2,#3; mul r1,r2; add r1,r1,r7` => r2 = 3*group + slot.'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x0808CDC4
@@ -43,9 +41,9 @@ evidence:
     '
   result: beastsp
 open_questions:
-- Exact semantics of the row layout (whether the +4 read is end or pad) and which game subsystem consumes
-  the (group, slot) pair; decompiling sub_808D084 and the caller sub_808CC34 would confirm whether this
-  gates battle/encounter selection or something else.
+- Exact semantics of the row layout (whether the +4 read is end or pad) and which game subsystem consumes the (group,
+  slot) pair; decompiling sub_808D084 and the caller sub_808CC34 would confirm whether this gates battle/encounter
+  selection or something else.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
@@ -57,3 +55,7 @@ changes:
   what: rename sub_808CDC4 -> battle_checkLockedEventTable_808CDC4
   where: bn6f 1bd2afd1
   tool: tools/rename_symbol.py
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8d94ac47
+  tool: tools/symdoc.py

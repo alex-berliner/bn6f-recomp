@@ -1,0 +1,61 @@
+name: battle_chatbox_setCursorTextFromEventFlag_808CF8C
+address: '0x0808CF8C'
+kind: function
+previous_names:
+- sub_808CF8C
+status: probable
+summary: If event flag EVENT_9D9 is set in battle, writes a u16 from the battle object's slot data into
+  the chatbox `Unk_4C` and plays SFX 0x122 (battle-tied cue line)
+interface: '(r5 = battle object, r10 = toolkit) -> r0 = 1 if the flag was set, else 0; side effects: writes
+  to chatbox+0x4C and calls PlaySoundEffect(0x122)'
+details: "Tests event flag `EVENT_9D9` via `TestEventFlagFromImmediate`. If the flag is clear, returns\
+  \ 0 and does nothing else.\n  If the flag is set, loads the active chatbox pointer from `toolkit->ChatboxPtr`\
+  \ (offset `oToolkit_ChatboxPtr = 0x2C`), then writes a u16 read from `[r5+6]` (the battle object's `Param3`/`BButton`\
+  \ field at offset 6 of the `battle_object_struct`) into `[chatbox+0x4C]`.\n  Plays sound effect 0x122\
+  \ (the chatbox appears to consume this value, likely as a script/text index), and returns 1.\n  The\
+  \ caller in `sub_808CC34` uses the returned bool to decide whether to take a battle-state branch (likely\
+  \ setting a specific dialog line for an event-tied battle outcome, e.g. a victory/loss turn flag).\n\
+  \  `r5` carries the battle object pointer across the call (object header at offset 0, `Param3`/`BButton`\
+  \ at offset 6), r10 the toolkit.\ndetails: |\n  - `movflag EVENT_9D9` + `bl TestEventFlagFromImmediate`\
+  \ (0x0802f164) gates the entire body.\n  - `ldr r1, [r10, #oToolkit_ChatboxPtr]` (0x2C) then `mov r2,\
+  \ #0x4C; ldrh r0, [r5, #6]; str r0, [r1, r2]` writes the param to chatbox+0x4C.\n  - `ldr r0, dword_808CFB4`\
+  \ = 0x122, used as SFX id with `bl PlaySoundEffect` (0x080005cc).\n  - Sets r0 = 1 on success, otherwise\
+  \ returns r4 (= 0); `tst r0, r0` then `pop {r4,pc}`.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl TestEventFlagFromImmediate` immediately after `movflag EVENT_9D9` is the explicit branch
+    gate at 0x0808cf94. - Chatbox pointer is loaded from the toolkit''s `oToolkit_ChatboxPtr` (0x2C) field
+    per the `toolkit_struct` definition. - Writing `ldrh r0, [r5,#6]` to `[chatbox+0x4C]` overwrites an
+    as-yet unnamed chatbox word with the battle object''s `BButton`/`Param3` byte pair. - SFX id 0x122
+    is read from `dword_808CFB4` (.word 0x122) and passed to the M4A wrapper at 0x080005cc. - Function
+    returns a bool (`mov r4,#1` on success, `mov r4,#0` initially), and that bool is the only output the
+    caller propagates.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0808CF8C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^0808cf8c '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- What field chatbox+0x4C actually represents (no named member at 0x4C in the `chatbox_struct` macro aside
+  from `Unk_4C`) and which SFX 0x122 corresponds to; resolving those would let us drop the `_ADDRESS`
+  suffix and pick a precise role name.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8d94ac47
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_808CF8C -> battle_chatbox_setCursorTextFromEventFlag_808CF8C
+  where: bn6f 48692679
+  tool: tools/rename_symbol.py

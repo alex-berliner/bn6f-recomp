@@ -1,0 +1,66 @@
+name: battle_aiDispatchByState_8109FD6
+address: '0x08109FD6'
+kind: function
+previous_names:
+- sub_8109FD6
+status: probable
+summary: 'AI dispatch trampoline: reads the battle object''s AIState and tail-calls one of the per-state
+  AI handlers'
+interface: (r5 = BattleObject*, r10 = Toolkit*, lr = return) -> r1 = AIState byte loaded value? (per contract
+  out=r1) ; side effects clobber r0-r7, lr, flags; calls through LR
+details: 'Loads the AIData pointer (oBattleObject_AIDataPtr = 0x58) from r5 into r4, then computes r6
+  = r4 + 0x80 which lands on AIData->AIState (per ai_data_struct, the union `u0 AIState // loc=0x80`).
+  Reads the AIState byte (AIState->Unk_00) into r0, then loads a 5-entry jump table off_8109FF0 (sub_810A004,
+  ai_attackStateStep_810A080, sub_810A0BA, battle_aiSelectAndUseChip_810A126, sub_810A204) via r1 and
+  tail-calls through it (`mov lr, pc; bx r1`). The +1 offset on each entry compensates for Thumb LSB bit.
+  Caller at 0x0801ba10 returns to it with r0=0 and Z/C flags set, suggesting the dispatcher either wrote
+  0 to r0 on its way out or the caller normalizes r0 after. The function saves r4/r6/r7/lr and restores
+  them in an epilogue that matches `pop {r4,r6,r7,pc}` paired with the trampoline''s `bx r1` returning
+  straight to the saved pc when one of the per-state handlers returns here. In practice this is invoked
+  per-frame from the battle AI update loop to fan out by AIState index.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r4, [r5,#oBattleObject_AIDataPtr]` at 0x08109fd8, with oBattleObject_AIDataPtr = 0x58
+    per BattleObject.inc. - `mov r6, #0x80; add r6, r6, r4` computes AIData+0x80, matching `u0 AIState
+    // loc=0x80` in AIData.inc. - `ldrb r0, [r6,#oAIState_Unk_00]` reads the first byte of the AIState
+    struct. - `ldr r1, off_8109FEC // =off_8109FF0; ldr r1, [r1,r0]` indexes a 5-entry table of code pointers
+    stored in off_8109FF0, each marked with `+1` (Thumb bit) per the asm at 0x08109ff0..0x08109ffc. -
+    `mov lr, pc; bx r1` performs an indirect tail-call to the selected handler. - Caller lr=0x0801ba10
+    (per all captured call frames) is consistent with a single battle AI update call-site. - Captured-call
+    r0=0x20 / r1=0x20 / r2=0x80 / r3=0x03 on entry are arguments the caller passes to *some* AI handler
+    (these match a routine that will read panel/state info), not to this dispatcher; the dispatcher itself
+    does not consume them.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08109FD6
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, battlesweep, beastsp, fuzz, menus2, story2, story4, story5,
+    story6, story8, story9'
+  reproduce: 'grep -l ''^08109fd6 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, battlesweep, beastsp, fuzz, menus2, story2, story4, story5, story6, story8,
+    story9
+open_questions:
+- Exact semantics of the five handler entries (sub_810A004 / ai_attackStateStep_810A080 / sub_810A0BA
+  / battle_aiSelectAndUseChip_810A126 / sub_810A204) and which AIState index selects which.
+- Why r1 is listed in the contract's out (the trampoline clobbers r1 to load the table entry, but the
+  called handler may keep its value; not visible from this function alone).
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8d94ac47
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8109FD6 -> battle_aiDispatchByState_8109FD6
+  where: bn6f 48692679
+  tool: tools/rename_symbol.py

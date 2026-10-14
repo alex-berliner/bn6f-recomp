@@ -1,0 +1,60 @@
+name: battle_chargePwrAtk_8010C50
+address: '0x08010C50'
+kind: function
+previous_names:
+- sub_8010C50
+status: probable
+summary: Charge the player's PowerAttack timer for a chip based on a chip ID and battle alliance.
+interface: '(r0 = chip_id, r1 = alliance_bool) -> r0 = power-atk charge time in frames (0x1e) ; side effects:
+  may write player BattleObject'
+details: "- Saves r4=chip_id, r6=alliance, then resolves the player BattleObject via battle_findPlayer(r0=alliance).\
+  \ Bails out (r0 stays whatever it was; on the captured runs entry r0 was 0x195 so returns 0x195 then\
+  \ becomes 0x1e) if no player found.\n  - Looks up the static chip record with getChip8021DA8(chip_id),\
+  \ reads u16 at offset 0x1a (chip's base power-attack charge time), subtracts 0x3ff (dword_8010D40) —\
+  \ i.e. removes the 10-bit 0x3ff ceiling, leaving a delta from that ceiling.\n  - Calls sub_8010D04(delta,\
+  \ alliance) which (per its contract) likely stores the value into the player BattleObject's PowerAttack\
+  \ charge state. The captured exit r0=0x1e is the resulting charge time that sub_8010D04 returned in\
+  \ r0.\n  - Net effect: given a chip ID used as a power-attack trigger, computes how much \"charge time\"\
+  \ remains and writes it to the player's PowerAttack state; returns the final value to the caller.\n\
+  \  - All r0-r3 entry snapshots show the same chip_id=0x195 with r3 being various player pointers/0xFFFFFFFF,\
+  \ consistent with iterating per-tick over a list of player actors (e.g. during PowerAttack charging).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mov r4, r0` / `mov r6, r1` save chip_id and alliance at function entry. - `mov r0, r1; bl
+    battle_findPlayer` and `tst r5, r5; beq locret_8010C74` shows player lookup gated on alliance. - `bl
+    getChip8021DA8` then `ldrh r0, [r0,#0x1a]` reads a u16 charge-time field from the 44-byte chip record
+    at offset 0x1a. - `ldr r1, dword_8010D40 // =0x3ff; sub r0, r0, r1` subtracts the 0x3ff ceiling from
+    the chip''s charge value. - `mov r1, r6; bl sub_8010D04` consumes the delta and the alliance; sub_8010D04''s
+    wide may_write contract confirms it pokes the player BattleObject. - Exit r0=0x1e across all six captured
+    calls — caller at 0x080109ce always observes this same final charge time, supporting the "set remaining
+    PwrAtk frames" reading.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08010C50
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^08010c50 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- 'The exact semantics of `chip_id - 0x3ff`: not verified whether this is "frames to add" vs "frames remaining";
+  tracing sub_8010D04 would settle it.'
+- 'Why r0=0x195 (and 0x195 also equals exit r0 when findPlayer returns NULL): looks like a sentinel that
+  survives the early-return; not confirmed.'
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8d94ac47
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8010C50 -> battle_chargePwrAtk_8010C50
+  where: bn6f 48692679
+  tool: tools/rename_symbol.py

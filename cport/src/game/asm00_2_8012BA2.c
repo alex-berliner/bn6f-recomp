@@ -1388,10 +1388,10 @@ Next battle_updateAngerTint_80143E4(void) {
  *
  * Does nothing while time-stop or the pause menu is active. Otherwise reads the
  * object's flags: if one of the "AI active" bits (0xC00) is set, run the AI
- * handler sub_8014432; if the object has no AI, clear its AI data field 0x4C.
+ * handler battle_incrementAIDataUnk4c_8014432; if the object has no AI, clear its AI data field 0x4C.
  *
  * inputs:  r5 (object), r10 (battle context), lr
- * outputs: r1 (whatever the last callee left), v (set only by sub_8014432)   */
+ * outputs: r1 (whatever the last callee left), v (set only by battle_incrementAIDataUnk4c_8014432)   */
 Next battle_runObjectAI_80143FC(void) {
     GUEST_CALL(battle_isTimeStop); /* answers in Z; the original branches on it */
     if (!ZERO_FLAG())
@@ -1405,7 +1405,7 @@ Next battle_runObjectAI_80143FC(void) {
 
     R1 = 0xC00;                 /* bits: AI update requested / AI exists */
     if ((R0 & R1) != 0)
-        GUEST_CALL(sub_8014432);
+        GUEST_CALL(battle_incrementAIDataUnk4c_8014432);
     else
         GUEST_CALL(battle_clearAIDataField4c_8014424);
 
@@ -1507,7 +1507,7 @@ Next battle_beginTurnOpenProcess_80144C0(void) {
         GUEST_CALL(battleObject_initAIData_800FEEC);
 
     GUEST_CALL(sub_8014536);
-    GUEST_CALL(sub_801086C);
+    GUEST_CALL(battleObject_setupSecondaryElementWeaknessFromNaviStats_801086C);
     GUEST_CALL(battle_applySelfDamageFromBattleEffect_80142C2);
 
     /* restore the callee-saved registers the original pops back */

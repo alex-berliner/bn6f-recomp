@@ -1,0 +1,60 @@
+name: battleObject_aiBeastOutStage_80A7EDA
+address: '0x080A7EDA'
+kind: function
+previous_names:
+- sub_80A7EDA
+status: probable
+summary: Per-actor AI beast-out stage dispatcher that jumps through a thumb thunk based on AIData.Unk_09.
+interface: (r5 = BattleObject*; AIData accessed via object offset) -> r0 = handler return value; callee-saved
+  r5/r10/lr preserved
+details: "- Saves r4-r7 and lr; r5 holds the BattleObject*, r10 the toolkit (per project convention).\n\
+  \  - Loads off_80A7EE8 (a pointer to off_80A7EEC, i.e. a self-referential table of function pointers).\n\
+  \  - Reads the byte at AIData+9 (AIData.Unk_09) from the battle object as an index, then `ldr r0, [r0,r1]`\
+  \ to fetch one of the three function pointers stored at off_80A7EEC.\n  - Sets lr=pc, `bx r0` invokes\
+  \ the selected handler as a Thumb thunk (the entries are stored with +1 to set Thumb bit). This is the\
+  \ classic MMBN dispatcher idiom; r5 (BattleObject) and r1 (AIData+9 byte) flow into the handler.\n \
+  \ - Table contents: [sub_80A7EF8+1, sub_80A7F14+1, sub_80A7F26+1] — three stages.\n  - The 40 captured\
+  \ samples are all `snap_beastsp_*` (beast-out / soul-union related), and the byte at AIData+9 selects\
+  \ which sub-handler runs, so this is the beast-out AI state machine dispatch for AIData.Unk_09 values\
+  \ 0/1/2.\n  - Returns whatever r0 the called handler returned (one sample shows r0=4, others r0=0 with\
+  \ Z set), and pops r4-r7,pc restoring lr.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {r4-r7,lr}` / `pop {r4-r7,pc}` at sub_80A7EDA frames a tail-call dispatcher. - `ldrb
+    r1, [r5,#9]` reads offset 0x9 of the BattleObject. Per AIData.inc that is `AIData.Unk_09`, accessed
+    through the AIData pointer located at BattleObject+0x58 (`AIDataPtr`); the lifter''s contract in=r5/r7/r10
+    fits a BattleObject dispatch. - `ldr r0, off_80A7EE8` followed by `ldr r0, [r0,r1]` indexes a 3-entry
+    function pointer table by that byte. - `mov lr, pc` then `bx r0` performs a Thumb-state-preserving
+    indirect call (the +1 entries in the table set the Thumb bit). - off_80A7EEC lists exactly sub_80A7EF8+1,
+    sub_80A7F14+1, sub_80A7F26+1 — three handlers indexed by AIData.Unk_09. - All 40 captured calls come
+    from `snap_beastsp_*` snapshots, indicating this runs during beast-out/spirit-style combat states.
+    - r5 (BattleObject) and r1 (the index byte) are live on entry into the handler, matching what each
+    handler needs.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080A7EDA
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^080a7eda '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The semantic meaning of AIData.Unk_09 values 0/1/2 (e.g. enter-stance, charge/release, finish). Naming
+  each child (sub_80A7EF8/80A7F14/80A7F26) and reading their bodies would confirm the stage names.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8d94ac47
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80A7EDA -> battleObject_aiBeastOutStage_80A7EDA
+  where: bn6f 48692679
+  tool: tools/rename_symbol.py
