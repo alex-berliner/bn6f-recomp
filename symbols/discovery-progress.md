@@ -335,3 +335,52 @@ Highlights:
 | 7     | 25                 | 19                        | 6               | 0       |
 
 Running total: named 149, hypothesis-only 22, dropped 0 (of ~10,600 placeholders).
+
+## Batch 8 (2026-10-14)
+
+25 functions, 20 named + 5 hypothesis (sub_80139C4, sub_801C304, sub_8083DF0,
+sub_813468C, sub_814E0D0 kept as comment only), renamed in recomp 8dbf2221
+(bn6f pushed; port ROM unchanged).
+
+Highlights:
+- battle/AI: get navi custom-style stat boost from chip
+  (battle_getNaviCustStyleStatBoostFromChip_800F09E),
+  update HP meters (battleObject_updateHPMeters_801C168),
+  render HP overlays (battle_renderHpOverlays_801C202),
+  accumulate final damage upper bound
+  (battleObject_accumulateFinalDamageUpperBound_802CE10),
+  allocate actor index (battle_allocateActorIndex_802FE48),
+  AI div/mod (battle_aiDivMod_802FF10);
+- internet: draw HP digits (internet_drawHpDigits_8033E0C);
+- cutscene: try start L-message cutscene
+  (cutscene_tryStartLMessageCutscene_8034D7C),
+  run triggered overworld cutscene (cutscene_runTriggeredOverworldCutscene_8034DB0);
+- battle SIO: poll SIO link if active (battle_pollSIOLinkIfActive_803DE72);
+- overworld player: check sliprun reward and play SFX
+  (owPlayer_checkSliprunRewardAndPlaySfx_809DB02);
+- overworld map object: check player facing freeze
+  (owMapObject_checkPlayerFacingFreeze_809DF36);
+- battle object: handle collision frame (battleObject_handleCollisionFrame_80CB9E2),
+  try use chip when low HP (battle_object_tryUseChipWhenLowHP_81131D8);
+- menu: adjust cursor or value (menu_adjustCursorOrValue_811F7F8),
+  draw submenu box (menu_drawSubmenuBox_8134490);
+- communication library: is comms busy (library_isCommsBusy_8146BF4);
+- battle AI data: reset version and charge flags
+  (battle_aiData_resetVersionAndChargeFlags_814E7A4);
+- audio: main tick fades and stop bank (sound_main_tickFadesAndStopBank_814F228),
+  plyNote apply pitch and volume (m4a_plyNote_applyPitchAndVolume_814F2F0).
+
+## Tally update
+
+| batch | functions examined | named (renamed via record) | hypothesis-only | dropped |
+|-------|--------------------|---------------------------|-----------------|---------|
+| 1     | 25                 | 25                        | 0               | 0       |
+| 2     | 21                 | 20                        | 1               | 0       |
+| 3     | 25                 | 23                        | 2               | 0       |
+| 4     | 25                 | 21                        | 4               | 0       |
+| 5     | 25                 | 20                        | 5               | 0       |
+| 6     | 25                 | 21                        | 4               | 0       |
+| 7     | 25                 | 19                        | 6               | 0       |
+| 8     | 25                 | 20                        | 5               | 0       |
+
+Running total: named 169, hypothesis-only 27, dropped 0 (of ~10,600 placeholders).
