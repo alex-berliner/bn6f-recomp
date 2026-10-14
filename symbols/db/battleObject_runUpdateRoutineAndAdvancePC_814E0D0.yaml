@@ -4,36 +4,34 @@ kind: function
 previous_names:
 - sub_814E0D0
 status: probable
-summary: Reads the next command byte from a battle-object's per-update script pointer at [r1+0x40], advances
-  the pointer, then falls through into a RAM-pointer validator.
-interface: (r1 = battleObject/state ptr) -> r0 = ?, r2 = advanced script pointer, r3 = command byte (or
-  cleared if invalid); falls through into sub_814E0B6
-details: "Steps from the assembly at 0x0814e0D0:\n    1. `ldr r2, [r1,#0x40]` – load the current script-stream\
-  \ pointer stored at offset 0x40 of the r1 record (the offset 0x40 matches the AIAttackVars +0x40 script-cursor\
-  \ word and Chatbox/Unk offset 0x40 seen across call sites, but here it really is treated as a script\
-  \ PC).\n    2. `loc_814E0D2:` `add r3, r2, #1` / `str r3, [r1,#0x40]` – compute and store the advanced\
-  \ PC back into [r1+0x40], so the next call to this function will read the byte following the one consumed\
-  \ now.\n    3. `ldrb r3, [r2]` – fetch the command byte at the *old* PC into r3 (note it is the pre-increment\
-  \ value of r2 that is dereferenced).\n    4. `b sub_814E0B6` – tail-call into the validator at 0x0814e0B6\
-  \ (whose contract says it \"range-checks the value in r2 and treats it as valid (leaves r3 alone) only\
-  \ when it is a RAM pointer (bit 25 set, i.e. 0x02000000-0x03FFFFFF); otherwise it clears r3 to signal\
-  \ 'invalid'\"). Because this is a `b` tail-call, the validator's outputs (r0, r3 unchanged-on-valid\
-  \ / cleared-on-invalid, NZCV set) are exactly this routine's outputs.\n  The bytecode/stream-pointer\
+summary: Reads the next command byte from a battle-object's per-update script pointer at [r1+0x40], advances the
+  pointer, then falls through into a RAM-pointer validator.
+interface: (r1 = battleObject/state ptr) -> r0 = ?, r2 = advanced script pointer, r3 = command byte (or cleared
+  if invalid); falls through into sub_814E0B6
+details: "Steps from the assembly at 0x0814e0D0:\n    1. `ldr r2, [r1,#0x40]` – load the current script-stream pointer\
+  \ stored at offset 0x40 of the r1 record (the offset 0x40 matches the AIAttackVars +0x40 script-cursor word and\
+  \ Chatbox/Unk offset 0x40 seen across call sites, but here it really is treated as a script PC).\n    2. `loc_814E0D2:`\
+  \ `add r3, r2, #1` / `str r3, [r1,#0x40]` – compute and store the advanced PC back into [r1+0x40], so the next\
+  \ call to this function will read the byte following the one consumed now.\n    3. `ldrb r3, [r2]` – fetch the\
+  \ command byte at the *old* PC into r3 (note it is the pre-increment value of r2 that is dereferenced).\n    4.\
+  \ `b sub_814E0B6` – tail-call into the validator at 0x0814e0B6 (whose contract says it \"range-checks the value\
+  \ in r2 and treats it as valid (leaves r3 alone) only when it is a RAM pointer (bit 25 set, i.e. 0x02000000-0x03FFFFFF);\
+  \ otherwise it clears r3 to signal 'invalid'\"). Because this is a `b` tail-call, the validator's outputs (r0,\
+  \ r3 unchanged-on-valid / cleared-on-invalid, NZCV set) are exactly this routine's outputs.\n  The bytecode/stream-pointer\
   \ field at +0x40 is shared by *every* caller: sub_814E1C0 names it \"update routine pointer\", sub_814E17C/+0xA\
-  \ and sub_814E1E8 (+0xF, biased +0x40) and sub_814E21C (+0xC flags) all treat the byte returned in r3\
-  \ as a state/phase indicator that the wrapper then stores into the record. Given that sub_814E0B6 only\
-  \ accepts RAM pointers, this is more like reading an IRQ-vs-script dispatcher byte than an executable\
-  \ address; either way it is \"fetch + advance PC\".\n"
+  \ and sub_814E1E8 (+0xF, biased +0x40) and sub_814E21C (+0xC flags) all treat the byte returned in r3 as a state/phase\
+  \ indicator that the wrapper then stores into the record. Given that sub_814E0B6 only accepts RAM pointers, this\
+  \ is more like reading an IRQ-vs-script dispatcher byte than an executable address; either way it is \"fetch +\
+  \ advance PC\".\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- `ldr r2, [r1,#0x40]` at 0x0814e0D2 loads the live script pointer from offset 0x40 of the
-    record in r1. - `add r3, r2, #1` / `str r3, [r1,#0x40]` advance and persist the pointer. - `ldrb r3,
-    [r2]` then reads the byte at the pre-increment PC into r3. - `b sub_814E0B6` (the only callee) tail-calls
-    the RAM-pointer validator whose documentation matches: it clears r3 when the pointer is not 0x02xxxxxx/0x03xxxxxx.
-    - sub_814E1C0''s summary ("runs a per-object update routine for the entity whose pointer is in r1")
-    and sub_814E210''s wrapper summary ("byte result ... at [r1+0x1B]") both consume r3 downstream, consistent
-    with the byte-fetch interpretation.'
+  detail: '- `ldr r2, [r1,#0x40]` at 0x0814e0D2 loads the live script pointer from offset 0x40 of the record in
+    r1. - `add r3, r2, #1` / `str r3, [r1,#0x40]` advance and persist the pointer. - `ldrb r3, [r2]` then reads
+    the byte at the pre-increment PC into r3. - `b sub_814E0B6` (the only callee) tail-calls the RAM-pointer validator
+    whose documentation matches: it clears r3 when the pointer is not 0x02xxxxxx/0x03xxxxxx. - sub_814E1C0''s summary
+    ("runs a per-object update routine for the entity whose pointer is in r1") and sub_814E210''s wrapper summary
+    ("byte result ... at [r1+0x1B]") both consume r3 downstream, consistent with the byte-fetch interpretation.'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x0814E0D0
@@ -42,19 +40,19 @@ evidence:
   result: the body read as described above
 - method: coverage
   date: '2026-10-14'
-  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
-    story1, story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander'
   reproduce: 'grep -l ''^0814e0d0 '' tools/traces/coverage/*.prof
 
     '
-  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
-    story2, story3, story4, story5, story6, story7, story8, story9, wander
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1, story2, story3,
+    story4, story5, story6, story7, story8, story9, wander
 open_questions:
-- Whether the byte at the PC is actually treated as an executable address (validated 02xxxxxx) or just
-  as an indexed dispatch byte that is then later resolved; the sub_814E0B6 summary says "RAM pointer ...
-  valid", but every caller reads it as a tag/index, so the semantics are still ambiguous.
-- The exact struct used for [r1+0x40] (attack-script PC in AIAttackVars, or something else) – settled
-  by following what the caller wrappers write next to that byte.
+- Whether the byte at the PC is actually treated as an executable address (validated 02xxxxxx) or just as an indexed
+  dispatch byte that is then later resolved; the sub_814E0B6 summary says "RAM pointer ... valid", but every caller
+  reads it as a tag/index, so the semantics are still ambiguous.
+- The exact struct used for [r1+0x40] (attack-script PC in AIAttackVars, or something else) – settled by following
+  what the caller wrappers write next to that byte.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
@@ -66,3 +64,7 @@ changes:
   what: rename sub_814E0D0 -> battleObject_runUpdateRoutineAndAdvancePC_814E0D0
   where: bn6f d0265620
   tool: tools/rename_symbol.py
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 87c09f6c
+  tool: tools/symdoc.py

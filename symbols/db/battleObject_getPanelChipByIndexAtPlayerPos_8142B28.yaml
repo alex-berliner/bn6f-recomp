@@ -1,0 +1,66 @@
+name: battleObject_getPanelChipByIndexAtPlayerPos_8142B28
+address: '0x08142B28'
+kind: function
+previous_names:
+- sub_8142B28
+status: probable
+summary: Looks up the battle object at the player's current overworld tile and returns its panel chip
+  id (the halfword at offset 4), or 0 if no object matches
+interface: (r5 = pointer to a battle object state with bytes at +0 and +1 used) -> r0 = halfword from
+  matching object's +4, or 0 ; no side effects
+details: "- `sub_8142B28` reads `r5[0]` and, when nonzero, also `r5[1]`. If `r5[0]` is zero the function\
+  \ returns 0 immediately (mov r4,#0 then branches over the lookup at loc_8142B4C). The `beq` on `tst\
+  \ r0,r0` shows the zero-byte short-circuits the lookup.\n  - When the first byte is non-zero, the second\
+  \ byte must equal 0x0F (`cmp r0,#0xf ; bne loc_8142B4C`) for the lookup to proceed; otherwise it falls\
+  \ through to return r4=0. So r5 looks like a 2-byte \"filter\": ([+0]!=0 && [+1]==0x0F).\n  - It then\
+  \ calls `ReadOWPlayerObjectCoords` to fetch the overworld player's tile position (r2 = Z, the per the\
+  \ callee contract) and compares it to `r5[0x14]` (`ldr r0,[r5,#0x14] ; cmp r0,r2`). Only when they match\
+  \ does it proceed.\n  - When the tile matches, `r5[4]` (a u8 index) is passed to `battleObject_getByIndex_81428C2`,\
+  \ which returns a pointer to a `BattleObject` (or related struct). The function then loads `ldrh r4,[r0,#4]`\
+  \ and returns that halfword via r0 (the `mov r0,r4` at the end). The \"id\" returned is thus an object's\
+  \ u16 at offset 4 of the resolved struct.\n  - The captured exit r0 values 0x8379 and 0x7E81 (snap_0180000_0/1)\
+  \ are the chip IDs returned in the success case; the all-zero exits in snaps 10-13 are the \"no match\"\
+  \ r4=0 path.\n  - This pairs naturally with the callers sub_8142A84 / sub_8142B04 (both have similar\
+  \ `out` contracts of just r2-r5, suggesting they wrap or chain this lookup). The whole group is a small\
+  \ \"panel-resident object → chip id\" helper.\n  - `tst r0,r0 ; pop {r4-r7,pc}` deliberately re-tests\
+  \ the returned r4 (now in r0) and sets Z accordingly, so callers can `beq`/`bne` on the return. This\
+  \ is the `nz` flag in the out contract.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0,[r5]` then `tst r0,r0 ; beq loc_8142B4C` shows r5[0]==0 short-circuits to return
+    0. - `ldrb r0,[r5,#1] ; cmp r0,#0xf ; bne loc_8142B4C` shows r5[1] must be 0xF for the lookup to run.
+    - `bl ReadOWPlayerObjectCoords` followed by `ldr r0,[r5,#0x14] ; cmp r0,r2` matches r5[0x14] against
+    the overworld player''s Z/tile value returned by the callee. - `ldrb r0,[r5,#4] ; bl battleObject_getByIndex_81428C2`
+    uses r5[4] as the index into the battle-object array. - `ldrh r4,[r0,#4]` reads a u16 at offset 4
+    of the resolved struct and that is what is returned (`mov r0,r4`). - `tst r0,r0` before the pop sets
+    Z based on the returned id, matching the out flag `nz`.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08142B28
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^08142b28 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The semantic meaning of r5[0] and r5[1] (a "filter"/"type" pair) is not visible here; struct context
+  (callers sub_8142A84 / sub_8142B04) would clarify. The callee `ReadOWPlayerObjectCoords` is described
+  as returning X/Y/Z, so the comparison likely uses Z (height/tile) rather than X/Y, but the contract
+  lists r0..r3 as the outputs of that callee and the code only uses r2.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 87c09f6c
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8142B28 -> battleObject_getPanelChipByIndexAtPlayerPos_8142B28
+  where: bn6f eb615ac5
+  tool: tools/rename_symbol.py

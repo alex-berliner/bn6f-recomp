@@ -1,0 +1,67 @@
+name: battle_runTextboxUpdateAndSetStateBit1_8030F04
+address: '0x08030F04'
+kind: function
+previous_names:
+- sub_8030F04
+status: probable
+summary: Battle textbox update helper called from camera-scroll/textbox transition sequences; returns
+  0,0 on early-out, otherwise two deltas used by callers' r12 accumulator.
+interface: (r0 = ptr, r2 = ?, r3 = ?, r4 = ?, r5 = ?, r6 = ?) -> r0 = deltaLo (or 0), r1 = deltaHi (or
+  0)
+details: "Pushes {lr}, saves r6 into r8.\n  Computes r6 = r5 - r4 and r7 = r2 - r3, then r2 = r2*r5 -\
+  \ r3*r4 (cross product of (r4,r3) and (r5,r2)?).\n  Loads r3 = [r0+0], r4 = [r0+4]; multiplies by r6,r7\
+  \ and accumulates with r2; if the result is <= 0 it takes the loc_8030F76 early-out returning r0=r1=0.\n\
+  \  Otherwise reads the +0xc/+0x10 pair and repeats the same test. If that also fails, it falls through\
+  \ to the 0x8030F3C path which calls sub_8031048 twice (using r6/r7) and returns two r7-style differences\
+  \ in r8/r9 (final r0/r1).\n  The early-out returns the documented 0xfffffff1/0xfffffff5/0xfffffff0/0xfffffff8\
+  \ sentinel negatives only in the captured calls where the second-branch condition is also <=0; in the\
+  \ assembly the explicit early-out path returns 0,0. The captured negative r0 values are the *caller*\
+  \ (sub_8031264/sub_8031330) post-processing this function's return (likely a flag/limit check), not\
+  \ this function itself.\n  Function is called from five battle-state-driven camera/textbox update sequences\
+  \ that all fold a result bit into r12.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- First half: `sub r6,r5,r4`/`sub r7,r2,r3` then `mul r3,r4`/`mul r2,r5`/`sub r2,r3,r2` (2D
+    cross product) at asm03_0.s:23699-23705. - Loads [r0+0]/[r0+4] and forms `r2 + r3*r6 + r4*r7`; `cmp
+    r5,#0; ble loc_8030F76` shows the early-out returns r0=0/r1=0 at asm03_0.s:23717/23787. - Second pass
+    repeats with offsets 0xc/0x10 then branches to 0x8030F3C when also >0. - Two `bl sub_8031048` calls
+    at asm03_0.s:23749 and 23761 push {r6,r7}, swap into r6/r7, return; results become r8 (==r9 in different
+    order) and are returned in r0/r1. - All five callers are battle transition/camera drivers (battle_runTextboxUpdateAndSetStateBit1_80313D4,
+    sub_8031264, sub_8031330, sub_8031420, sub_8031478) that pass r0 plus a delta pair and accumulate
+    a state bit in r12 — matches the cross-product / two-half-pass pattern. - The 0x40-byte capture at
+    r0 (0x0200f3e0) is the per-frame camera/scroll state, with 8 u32 fields; the function reads +0/+4
+    first, +0xc/+0x10 second — consistent with a 4-way point/segment struct used to compute scroll deltas.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08030F04
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, beastsp, fuzz, maps, menus2, story1, story2, story3, story4,
+    story5, story6, story8, story9, wander'
+  reproduce: 'grep -l ''^08030f04 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, beastsp, fuzz, maps, menus2, story1, story2, story3, story4, story5, story6,
+    story8, story9, wander
+open_questions:
+- 'What struct r0 points to: not in the listed structs; could be a camera or per-frame scroll info (offsets
+  0,4,0xc,0x10 are read as 32-bit values).'
+- Whether the captured exit r0 (0xfffffff1/5/0/8) is this function's raw return or post-processed by the
+  caller — captured values contradict the explicit 0,0 return path, so callers likely `neg`/mask the result
+  before ORing into r12. Reading sub_8031048 + its callers would confirm the high-level role (likely "did
+  both half-scrolls complete?").
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 87c09f6c
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8030F04 -> battle_runTextboxUpdateAndSetStateBit1_8030F04
+  where: bn6f eb615ac5
+  tool: tools/rename_symbol.py

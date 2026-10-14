@@ -1,0 +1,78 @@
+name: battle_custMenuAnimateCursorToOK_8026B04
+address: '0x08026B04'
+kind: function
+previous_names:
+- sub_8026B04
+status: probable
+summary: 'Battle chip-select sub-state: animates the chip cursor sliding right to the OK column and writes
+  the per-frame BG tile IDs; commits the selected chips on completion by damaging the player and queueing
+  the next menu state.'
+interface: '(r5 = *S20364C0 chip-select state, r10 = *Toolkit) -> void ; side effects: BG tile map writes
+  at chip-select block, plays sound effect 0x79 (select), updates chatbox/eRenderInfo, damages player
+  HP, switches JumpOffset01 to either 0x2C or 0x4'
+details: "First-time entry (Unk_02 == 0): plays SOUND_SELECT_79 (`mov r0, #0x4f` then `PlaySoundEffect`),\
+  \ sets RenderInfo+0x18 = 0x78 (the chip-select tile width), clears chatbox+0x12 via sub_801E71C(r0=0),\
+  \ calls dispatch_801DACC(0x80) and sub_801E0A0(0xf, 0), seeds the slide with Unk_44 = 0xf and Unk_40\
+  \ = 0x78, and latches Unk_02 = 1 so the entry sound only fires once.\n  Each frame decrements Unk_44\
+  \ and uses it as an index into unk_2035000 to write a 3-tile-wide row of BG tile IDs (`bgmap_WriteTileIdAtBlock_800187C`\
+  \ repeated with r2=3). The loop runs twice (r6 = ((Unk_40 - 0xc) & 4) >> 2 + 1) to cover both chip-slot\
+  \ rows, sliding leftward (Unk_40 -= 0xc) until the cursor reaches the OK column.\n  After the slide,\
+  \ if BattleMode != 1 the camera Y is shifted by -0x18000; the new Unk_40 is mirrored to RenderInfo+0x18\
+  \ and to chatbox+0x12 via sub_801E71C(0x78 - Unk_40). When the slide finishes (r0 == 0), the function\
+  \ looks at Unk_0c: if 0xff or (0x05 and BattleState+7 < 5) it transitions to JumpOffset01 = 4 (custMenuUpdateWaitSelectionState_8026CCC),\
+  \ otherwise JumpOffset01 = 0x2C (sub_802728C), clearing Unk_02 so the entry sound replays next time.\n\
+  \  Damage to the player differs by BattleState+7: if == 1 it renders enemy names instead of damaging,\
+  \ else it calls battle_damagePlayerLeave1HP_8013FD0 twice with damage 0 and 1 (the chip-cost chip, then\
+  \ the 1-HP safety hit). Finally it calls battleObject_chipSelectAnimTick_8029C08.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0, [r5,#oS20364C0_Unk_02]; cmp r0, #0; bne loc_8026B38` gates a one-shot init block
+    that latches Unk_02 = 1 (`strb r0, [r5,#oS20364C0_Unk_02]`), exactly the pattern of "play entry sound
+    once, then tick each frame" - `mov r0, #0x78; strh r0, [r1,#0x18]` writes the chip-select BG scroll/width
+    into RenderInfo+0x18 (the field at offset 0x18 matches the chip-select panel width) - `mov r0, #0;
+    bl sub_801E71C` followed by `mov r0, #0x80; bl dispatch_801DACC` and `mov r0, #0xf; mov r1, #0; bl
+    sub_801E0A0` show the standard chatbox-init trio for the chip-select slide animation - The slide loop
+    uses `bgmap_WriteTileIdAtBlock_800187C` (r0=tileID, r1=blockX, r2=blockY, r3=tileId-from-unk_2035000)
+    inside a `mov r7, #0x14`-bounded inner loop and a `sub r6, #1; bne loc_8026B46` outer loop whose count
+    is derived from Unk_40 (the "cursor X"), exactly a tile-by-tile slide animation - `bl GetBattleMode;
+    cmp r0, #1; beq loc_8026B8C` skips the camera Y shift in mode 1, and `ldr r1, [r2,#0x34]; ldr r3,
+    dword_8026CC8 // =0x18000; sub r1, r1, r3; str r1, [r2,#0x34]` slides camera Y up (toward player field)
+    in other modes - `ldrb r0, [r5,#oS20364C0_Unk_0c]; cmp r0, #0xff` then `cmp r0, #5; bne loc_8026BD6;
+    ... ldrb r0, [r0,#7]; cmp r0, #5; bge loc_8026BE0` are the "are we out of rounds / done?" guard that
+    decides between JumpOffset01 = 0x2C (sub_802728C) and JumpOffset01 = 4 (custMenuUpdateWaitSelectionState_8026CCC)
+    - The two `bl battle_damagePlayerLeave1HP_8013FD0` calls (r0=0 then r0=1) under the `cmp r0, #1; bne
+    loc_8026BB6` branch show the chosen chip is paid for and a 1-HP safety hit is applied - The assembly
+    comment `// 0x00: trigger sub_802728C via custMenuMainMaybe_8026A88` and `// 0x00: trigger custMenuUpdateWaitSelectionState_8026CCC
+    via custMenuMainMaybe_8026A88` confirms both JumpOffset01 targets are the two follow-up states of
+    custMenuMain'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08026B04
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^08026b04 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- Whether JumpOffset01 = 0x2C truly dispatches sub_802728C (only known from the in-file comment) and the
+  exact role of unk_2035000's 0x1e stride (looks like a per-chip BG-tile source row). Mode 1's special
+  case is the battle-type "no camera pan" path; the mode values aren't fully mapped.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 87c09f6c
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8026B04 -> battle_custMenuAnimateCursorToOK_8026B04
+  where: bn6f eb615ac5
+  tool: tools/rename_symbol.py

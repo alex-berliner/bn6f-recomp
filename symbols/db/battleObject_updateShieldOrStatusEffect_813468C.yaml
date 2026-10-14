@@ -4,56 +4,52 @@ kind: function
 previous_names:
 - sub_813468C
 status: probable
-summary: Applies a shield/status effect overlay to a battle object by patching the related-object byte
-  with a packed (nibble) tag looked up from dword_81331FC when the high nibble of the source byte equals
-  1, then spawns the overlay sprite.
-interface: '(r0 = packed value, r1 = ?, r2 = ?, r3 = relatedObjectOffsetInO1, r5 = toolkit/object, r4
-  = ptrToTableOrArgs, r6 = ptrToTableOrArgs) -> r0 = original lower nibble; side effects: writes the related-object
-  byte at oBattleObject+0x4c and dispatches sub_811FAF4.'
-details: "1. Saves r4/r6 onto the stack alongside r1..r3 and pulls r5's halfword at offset 0x18 (YVelocity\
-  \ area? probably panel/coordinate half) which it shifts left by 3 and subtracts from r0 — this is the\
-  \ parallax/centering adjustment before repacking the object.\n  2. If r3 (related-object index) is zero,\
-  \ r2 is cleared, otherwise r2 is loaded as a u16 from the r5+offset — this selects an entry from the\
-  \ small ROM table at off_81346F4 / byte_81331F4.\n  3. The selected entry is multiplied by 0x10 and\
-  \ OR'd into the low half of r0 (so the table provides the new \"tag\" overlay kind), and r0 is OR'd\
-  \ with the constant 0x20003 — these bits look like object-spawn flags / sprite-type bits pushed into\
-  \ the object header.\n  4. r2 is also loaded as a u8 from r5+r2 (the existing related-object tag byte)\
-  \ and stashed on stack; its low nibble is masked off for the call, then its high nibble is shifted down\
-  \ 4 and decremented — only when this gives zero does it call sub_8120CC8 on dword_81331FC with the high\
-  \ nibble as the index, and writes the returned byte back into r5+r2 (replacing the tag's low nibble\
-  \ with a table-derived value).\n  5. Finally it OR's the resulting high-nibble bits back into the low\
-  \ nibble position of r5+r2 and stores it; on the post-call exit path it returns the original low nibble\
-  \ in r0 (consistent with the captured exit values 0x50, 0x20, 0x10, 0xB0, 0xF0 seen across snapshots).\n\
-  \  6. The two callers (battle_spawnFixedArgEffect_wrapper_81345E8 and sub_81345D4) hard-code the r5\
-  \ target as related-object byte 0x12 (typical \"effect/shield slot\") and pass the dword_81331FC table\
-  \ pointer via r4/r6, which lines up with the secondary lookup. The other caller (sub_81345B0, flag 0x10000000)\
-  \ takes a different branch — that's the \"spawn an overlay sprite\" path, not the \"patch related-object\
-  \ tag\" path.\n  7. The 0x40 / 0x50 in the embedded byte_81346FC are screen-coords for the overlay (X=0x40,\
-  \ Y=0x50) and 0xFF marks the slot as inactive — strongly suggesting this is the \"spawn an auxiliary\
-  \ sprite anchored to the battle object's coordinate\" routine used for status/shield visual effects\
-  \ (Bubble/BubbleWrap/Repair/Shield etc.).\n"
+summary: Applies a shield/status effect overlay to a battle object by patching the related-object byte with a packed
+  (nibble) tag looked up from dword_81331FC when the high nibble of the source byte equals 1, then spawns the overlay
+  sprite.
+interface: '(r0 = packed value, r1 = ?, r2 = ?, r3 = relatedObjectOffsetInO1, r5 = toolkit/object, r4 = ptrToTableOrArgs,
+  r6 = ptrToTableOrArgs) -> r0 = original lower nibble; side effects: writes the related-object byte at oBattleObject+0x4c
+  and dispatches sub_811FAF4.'
+details: "1. Saves r4/r6 onto the stack alongside r1..r3 and pulls r5's halfword at offset 0x18 (YVelocity area?\
+  \ probably panel/coordinate half) which it shifts left by 3 and subtracts from r0 — this is the parallax/centering\
+  \ adjustment before repacking the object.\n  2. If r3 (related-object index) is zero, r2 is cleared, otherwise\
+  \ r2 is loaded as a u16 from the r5+offset — this selects an entry from the small ROM table at off_81346F4 / byte_81331F4.\n\
+  \  3. The selected entry is multiplied by 0x10 and OR'd into the low half of r0 (so the table provides the new\
+  \ \"tag\" overlay kind), and r0 is OR'd with the constant 0x20003 — these bits look like object-spawn flags /\
+  \ sprite-type bits pushed into the object header.\n  4. r2 is also loaded as a u8 from r5+r2 (the existing related-object\
+  \ tag byte) and stashed on stack; its low nibble is masked off for the call, then its high nibble is shifted down\
+  \ 4 and decremented — only when this gives zero does it call sub_8120CC8 on dword_81331FC with the high nibble\
+  \ as the index, and writes the returned byte back into r5+r2 (replacing the tag's low nibble with a table-derived\
+  \ value).\n  5. Finally it OR's the resulting high-nibble bits back into the low nibble position of r5+r2 and\
+  \ stores it; on the post-call exit path it returns the original low nibble in r0 (consistent with the captured\
+  \ exit values 0x50, 0x20, 0x10, 0xB0, 0xF0 seen across snapshots).\n  6. The two callers (battle_spawnFixedArgEffect_wrapper_81345E8\
+  \ and sub_81345D4) hard-code the r5 target as related-object byte 0x12 (typical \"effect/shield slot\") and pass\
+  \ the dword_81331FC table pointer via r4/r6, which lines up with the secondary lookup. The other caller (sub_81345B0,\
+  \ flag 0x10000000) takes a different branch — that's the \"spawn an overlay sprite\" path, not the \"patch related-object\
+  \ tag\" path.\n  7. The 0x40 / 0x50 in the embedded byte_81346FC are screen-coords for the overlay (X=0x40, Y=0x50)\
+  \ and 0xFF marks the slot as inactive — strongly suggesting this is the \"spawn an auxiliary sprite anchored to\
+  \ the battle object's coordinate\" routine used for status/shield visual effects (Bubble/BubbleWrap/Repair/Shield\
+  \ etc.).\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- `ldr r1, [sp,#8]; ldrb r2, [r5,r2]; str r2, [sp,#0x14]; mov r3, #0xf; and r2, r3` (line 15-17
-    of asm) shows it isolates the low nibble of an existing r5+offset byte to forward to sub_811FAF4 unmodified.
-    - `ldrh r2, [r5,r3]` vs `mov r2, #0` / `bne loc_81346B0` (line 11-15) and the subsequent `mul r2,
-    r3; add r1, r1, r2; orr r0, r1` show a 16-byte-indexed table lookup on r5+offset whose entry is OR''d
-    into r0. - `lsr r1, r1, #4; sub r1, #1; bne loc_81346E0` followed by `ldr r1, off_8134718 // dword_81331FC;
-    bl sub_8120CC8` (the second callee — known "table lookup, returns t[i] or t[0] when t[i]==0xFF") shows
-    a second table index whose result overwrites the low nibble. - `ldr r1, dword_81346F8 // =0x20003`
-    and `or r r0, r1` packs the constant 0x20003 into the outgoing argument — these are spawn flags set
-    in the object header / sprite attr1 bits. - `mov r1, #0x18; ldrsh r1, [r5,r1]; lsl r1, r1, #3; sub
-    r0, r0, r1` reads offset 0x18 (YVelocity u32 field in BattleObject) as a signed half, shifts left
-    3, and subtracts from r0 — classic "object-localize the world coordinate" used when computing sprite
-    placement on the object. - Captured exits (0x50, 0x20, 0x10, 0xB0, 0xF0) match the upper-nibble-only
-    values that would be returned when the low-nibble overwrite path is skipped; r0 is consistently just
-    the surviving high nibble / packed tag. - The two confirmed wrappers — battle_spawnFixedArgEffect_wrapper_81345E8
-    (flag 0x40000000) and sub_81345D4 (flag 0x40000000) — both push byte_81331F4 as the primary table
-    and call into it for related-object byte 0x12 with r3=0x12/0x13 — the "auxiliary/effect slot" of a
-    BattleObject. - sub_81345B0 is the *sprite-spawn* sibling (flag 0x10000000, same routine, different
-    param packing); the byte_81346FC embedded bytes 0x40/0x50 are exactly the X/Y used for spawning such
-    a sprite at object centre.'
+  detail: '- `ldr r1, [sp,#8]; ldrb r2, [r5,r2]; str r2, [sp,#0x14]; mov r3, #0xf; and r2, r3` (line 15-17 of asm)
+    shows it isolates the low nibble of an existing r5+offset byte to forward to sub_811FAF4 unmodified. - `ldrh
+    r2, [r5,r3]` vs `mov r2, #0` / `bne loc_81346B0` (line 11-15) and the subsequent `mul r2, r3; add r1, r1, r2;
+    orr r0, r1` show a 16-byte-indexed table lookup on r5+offset whose entry is OR''d into r0. - `lsr r1, r1, #4;
+    sub r1, #1; bne loc_81346E0` followed by `ldr r1, off_8134718 // dword_81331FC; bl sub_8120CC8` (the second
+    callee — known "table lookup, returns t[i] or t[0] when t[i]==0xFF") shows a second table index whose result
+    overwrites the low nibble. - `ldr r1, dword_81346F8 // =0x20003` and `or r r0, r1` packs the constant 0x20003
+    into the outgoing argument — these are spawn flags set in the object header / sprite attr1 bits. - `mov r1,
+    #0x18; ldrsh r1, [r5,r1]; lsl r1, r1, #3; sub r0, r0, r1` reads offset 0x18 (YVelocity u32 field in BattleObject)
+    as a signed half, shifts left 3, and subtracts from r0 — classic "object-localize the world coordinate" used
+    when computing sprite placement on the object. - Captured exits (0x50, 0x20, 0x10, 0xB0, 0xF0) match the upper-nibble-only
+    values that would be returned when the low-nibble overwrite path is skipped; r0 is consistently just the surviving
+    high nibble / packed tag. - The two confirmed wrappers — battle_spawnFixedArgEffect_wrapper_81345E8 (flag 0x40000000)
+    and sub_81345D4 (flag 0x40000000) — both push byte_81331F4 as the primary table and call into it for related-object
+    byte 0x12 with r3=0x12/0x13 — the "auxiliary/effect slot" of a BattleObject. - sub_81345B0 is the *sprite-spawn*
+    sibling (flag 0x10000000, same routine, different param packing); the byte_81346FC embedded bytes 0x40/0x50
+    are exactly the X/Y used for spawning such a sprite at object centre.'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x0813468C
@@ -68,12 +64,12 @@ evidence:
     '
   result: battles1, battles2, beastsp, maps, menus3, story4, story6, story8, story9
 open_questions:
-- What the dword_81331FC table actually indexes (chip IDs? element flags? status IDs?) — would settle
-  by reading the table contents.
+- What the dword_81331FC table actually indexes (chip IDs? element flags? status IDs?) — would settle by reading
+  the table contents.
 - Whether the offset into the r5 struct (r3 argument) is always 0x12/0x13 or could also be other related-object
   slots; no captured call uses anything else.
-- What flag 0x40000000 vs 0x10000000 selects at sub_811FAF4 — that callee is still unnamed and the flag's
-  meaning isn't visible here.
+- What flag 0x40000000 vs 0x10000000 selects at sub_811FAF4 — that callee is still unnamed and the flag's meaning
+  isn't visible here.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
@@ -85,3 +81,7 @@ changes:
   what: rename sub_813468C -> battleObject_updateShieldOrStatusEffect_813468C
   where: bn6f d0265620
   tool: tools/rename_symbol.py
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 87c09f6c
+  tool: tools/symdoc.py

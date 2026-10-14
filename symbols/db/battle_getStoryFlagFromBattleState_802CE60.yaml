@@ -1,0 +1,64 @@
+name: battle_getStoryFlagFromBattleState_802CE60
+address: '0x0802CE60'
+kind: function
+previous_names:
+- sub_802CE60
+status: probable
+summary: Returns a packed 4-word story/turn entry indexed by (param ^ oBattleState_Unk_0d), reading r0=lo16,
+  r1=hi16, r2=upper from a global table
+interface: (r0 = selector 0..n, r10 = toolkit) -> r0 = u16 entry[0], r2 = u16 entry[2], r1 = u32 entry[4]
+  ; no side effects, returns through r0/r1/r2
+details: 'Takes a one-byte selector in r0. Loads Toolkit->BattleStatePtr via r10 (mov r1,r10; ldr r1,[r1,#oToolkit_BattleStatePtr]),
+  reads the byte at offset oBattleState_Unk_0d (ldrb r1,[r1,#0xd]), XORs it with the selector (eor r0,r1),
+  and multiplies the result by 0x10 to index into a 0x10-byte-per-entry table rooted at unk_2036720. Returns
+  the 10-byte entry spread across r0,r1,r2: r0 = first halfword at [ptr+0], r2 = second halfword at [ptr+2],
+  r1 = full word at [ptr+4]. The sole caller sub_801C984 invokes this twice with r0=0 and r0=1, packing
+  the pair into two booleans on a local struct (probably "is this story scene/step active" or two flag
+  bits keyed by oBattleState_Unk_0d). The 0x10-byte stride and r0/r2 returning u16s with r1 returning
+  a u32 strongly suggests a small struct of {u16,u16,u32} per story branch.
+
+  interface: (r0 = selector 0..n, r10 = toolkit) -> r0 = u16 entry[0], r2 = u16 entry[2], r1 = u32 entry[4]
+  ; no side effects, returns through r0/r1/r2
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mov r1, r10 ; ldr r1,[r1,#oToolkit_BattleStatePtr]` (lines 14414-14416) loads BattleStatePtr
+    from the toolkit, matching the standard r10 toolkit access pattern in battle code - `ldrb r1,[r1,#oBattleState_Unk_0d]`
+    (offset 0xd from BattleState) matches the documented `BattleState.Unk_0d` field per BattleState.inc
+    - `eor r0,r1 ; mov r1,#0x10 ; mul r0,r1` constructs a (selector ^ Unk_0d) * 0x10 byte offset; 0x10
+    matches the entry stride - `ldr r1,off_802D024 // =unk_2036720` shows the table base is the EWRAM
+    symbol unk_2036720 - Final three reads `ldrh r0,[r0]; ldRh r2,[r0,#2]; ldr r1,[r0,#4]` return three
+    fields from a 0x10-byte entry, matching the r0/r2/r1 return layout - Caller sub_801C984 invokes twice
+    with r0=0 and r0=1, treating each as a 0/1 boolean, consistent with two table entries being read back-to-back'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0802CE60
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story2, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0802ce60 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story2,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- The semantics of oBattleState_Unk_0d as an XOR key are not pinned (turn counter? scene index? faction?).
+  Knowing what populates Unk_0d and what the entries of unk_2036720 represent (probably turn names / table
+  rows of unk_0200/0201) would settle the role and confirm "story" framing.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 87c09f6c
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_802CE60 -> battle_getStoryFlagFromBattleState_802CE60
+  where: bn6f eb615ac5
+  tool: tools/rename_symbol.py

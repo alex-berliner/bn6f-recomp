@@ -1364,9 +1364,9 @@ Next sub_801C906(void) {
 }
 
 /* ── sub_801C984 ── */
-/* sub_801C984: query sub_802CE60 twice and store the answers as 0/1 flags:
- *   [r5+7] = (sub_802CE60(0) != 0)
- *   [r5+9] = (sub_802CE60(1) != 0)
+/* sub_801C984: query battle_getStoryFlagFromBattleState_802CE60 twice and store the answers as 0/1 flags:
+ *   [r5+7] = (battle_getStoryFlagFromBattleState_802CE60(0) != 0)
+ *   [r5+9] = (battle_getStoryFlagFromBattleState_802CE60(1) != 0)
  * The result of the second query is also left in r0, with flags matching
  * the original's final CMP/MOVS. */
 Next sub_801C984(void) {
@@ -1374,7 +1374,7 @@ Next sub_801C984(void) {
 
     /* First query, normalize the answer to 0/1 and store it. */
     R0 = 0;
-    GUEST_CALL(sub_802CE60);
+    GUEST_CALL(battle_getStoryFlagFromBattleState_802CE60);
     flag = (R0 != 0);
     ST8(R5 + 7, flag);
 
@@ -1382,7 +1382,7 @@ Next sub_801C984(void) {
      * matching the original's conditional `mov r0, #1`), and the flags
      * come from either the CMP or the MOVS, depending on the path. */
     R0 = 1;
-    GUEST_CALL(sub_802CE60);
+    GUEST_CALL(battle_getStoryFlagFromBattleState_802CE60);
     if (R0 != 0) {
         R0 = 1;
         SET_FLAGS_NZ(R0);

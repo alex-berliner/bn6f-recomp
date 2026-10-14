@@ -2577,15 +2577,15 @@ Next zeroFill_802CE54(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_802CE60 ── */
-/* sub_802CE60(r0 = index):
+/* ── battle_getStoryFlagFromBattleState_802CE60 ── */
+/* battle_getStoryFlagFromBattleState_802CE60(r0 = index):
  * Fetch one 16-byte entry from the table at unk_2036720. The index is
  * scrambled by XORing it with the current battle state's shuffle key
  * (oBattleState_Unk_0d) before scaling it to the entry size, so callers
  * get a shuffled-but-deterministic entry for the current battle.
  * Returns r0 = entry halfword at +0, r1 = entry word at +4,
  *         r2 = entry halfword at +2. */
-Next sub_802CE60(void) {
+Next battle_getStoryFlagFromBattleState_802CE60(void) {
     u32 battleState = LD32(R10 + oToolkit_BattleStatePtr);
     u32 shuffleKey = LD8(battleState + oBattleState_Unk_0d);
 

@@ -1,0 +1,56 @@
+name: battleObject_getFromListPair_80A6E78
+address: '0x080A6E78'
+kind: function
+previous_names:
+- sub_80A6E78
+status: probable
+summary: Reads a 32-bit entry from a [r5, r6] base+offset battle-object linked-list node and returns it
+  in r0.
+interface: (r5 = linked-list node base, r6 = byte offset) -> r0 = *(u32*)(r5 + r6) ; no side effects
+details: "Two-instruction routine: `ldr r0, [r5, r6]` followed by `mov pc, lr`. The base pointer r5 and\n\
+  \  the offset r6 are passed in by the callers (caller-saved in this leaf), and the function\n  performs\
+  \ a plain 32-bit memory load. The 0xE78 function immediately follows a chunk of\n  similar two-instruction\
+  \ accessors in the 80A6xxx range; the captured calls confirm\n  callers use a linked-list node address\
+  \ in r5 and a small positive byte offset in r6, e.g.\n  `0x080a6a6f` passing r5=0x084ba260 (a BattleObject/linked-list\
+  \ node) with r6 typically\n  0x10, 0x14, 0x1C, 0x20, 0x24, 0x30, 0x50, 0x58. The returned value is reused\
+  \ as a\n  pointer (e.g. 0x080a65e4, 0x080a6600, 0x080a6602) by the next stage, matching the\n  `LinkedList.Next`/`RelatedObject*Ptr`\
+  \ style 32-bit fields in the BattleObject struct.\n  Pure leaf; no flags are documented as set by `ldr`\
+  \ in the contract and callers keep all\n  caller-saved registers except r0.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- asm: `ldr r0, [r5,r6]` / `mov pc, lr` at 0x080A6E78 is exactly a 32-bit load-and-return leaf.
+    - caller lr 0x080a6a6f (`sub_80A6A62`) and similar callers pass r5=0x084ba260 (BattleObject-like address
+    in IWRAM) and r6 in {0x10, 0x14, 0x1C, 0x20, 0x24, 0x30, 0x50, 0x58}, consistent with the linked-list
+    / pointer fields of the BattleObject struct. - exit r0 is always a pointer into the 0x080a6xxx / 0x080a60xx
+    / 0x080a6cxx range or 0, i.e. another linked-list or data pointer, matching the read of a `ptr`-typed
+    struct field. - no `bl` is emitted inside the function (no callees), confirming it is a leaf accessor.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x080A6E78
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^080a6e78 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- Exact meaning of the offset/value at each call site (which BattleObject field is being
+- read) — disambiguating which of the 11 named callers pass which offset would let a
+- more specific name (e.g. `battleObject_getNext_...`) be assigned, but the function itself
+- is just a generic field load.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 87c09f6c
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_80A6E78 -> battleObject_getFromListPair_80A6E78
+  where: bn6f eb615ac5
+  tool: tools/rename_symbol.py

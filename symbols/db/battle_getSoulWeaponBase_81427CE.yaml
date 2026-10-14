@@ -1,0 +1,57 @@
+name: battle_getSoulWeaponBase_81427CE
+address: '0x081427CE'
+kind: function
+previous_names:
+- sub_81427CE
+status: probable
+summary: Returns a SoulWeapons per-row base value (0x7F0..0x7F7) indexed by the current SoulWeapons map
+  index.
+interface: () -> r0 = u16 base value (0x7F0..0x7F7)
+details: "Pushes r4-r7/lr, calls GetSoulWeaponsMapIndex (which returns an index in r0), then uses that\n\
+  \  index as a halfword offset into the inline table at 0x081427E0:\n      0x07F0, 0x07F1, 0x07F2, 0x07F3,\
+  \ 0x07F4, 0x07F5, 0x07F6, 0x07F7, 0, 0\n  The ldrh is at 0x081427D6 and the table lives at 0x081427E0.\
+  \ The function is a thin wrapper\n  that selects a 16-bit constant from this lookup using the SoulWeapons\
+  \ map index and returns\n  it in r0. Pop restores r4-r7 and PC; lr is not preserved so this is a tail-call-style\
+  \ leaf.\n  All callers in the 0x0814xxxx range sit in the same module as the table (soul-weapon map\n\
+  \  related logic). The returned value 0x7F0..0x7F7 plus a low index strongly suggests it is\n  used\
+  \ as a base address for per-soul-weapon rows (e.g., 0x80007F0 = SRAM soul-weapons region\n  row base\
+  \ in many BN titles, though the exact memory region is not proved here).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `bl GetSoulWeaponsMapIndex` is the only callee; it returns the index used as the table index.
+    - `lsl r0, r0, #1` followed by `ldrh r0, [r1,r0]` and the literal `byte_81427E0` table of 10 halfwords
+    makes it clear the function indexes a u16 lookup and returns the entry. - All 8 non-zero entries are
+    0x07F0..0x07F7 (sequential), with two trailing zeros. - Captured exits all show r0 = 0x000007F0 (the
+    first table entry) when callers pass the index that returns 0; e.g. snap_beastsp_0180000_0..13.bin
+    all return 0x7F0. - The function takes no arguments (entry r0-r3 are unconstrained/preserved) and
+    only returns a u16 in r0; callee-saved r4-r7 are pushed/popped so this is leaf-like and safe to call
+    from any of the four battle-side callers (sub_8089A60, sub_81422BE, sub_8142510, sub_8142618).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x081427CE
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^081427ce '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The exact consumer meaning of 0x7F0..0x7F7 (e.g., which soul-weapon slot each value maps to,
+- and whether callers add an index on top) cannot be confirmed from this function alone —
+- 'callers would need to be matched. Also not proved: why the trailing two entries are zero.'
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 87c09f6c
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_81427CE -> battle_getSoulWeaponBase_81427CE
+  where: bn6f eb615ac5
+  tool: tools/rename_symbol.py

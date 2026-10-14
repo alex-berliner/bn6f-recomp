@@ -1,0 +1,65 @@
+name: camera_computeScrollDelta_8030E8C
+address: '0x08030E8C'
+kind: function
+previous_names:
+- sub_8030E8C
+status: probable
+summary: Given a camera struct (or two) and source/dest fields, returns a (deltaX, deltaY) pair to apply
+  when scrolling between battlefield positions; returns 0,0 when the source/dest are aligned.
+interface: '(r0 = cameraStructPtr, r1 = ?, r2 = destField1, r3 = destField2, r4 = srcField1, r5 = srcField2,
+  r6 = out_ptr_or_field?, r12 = ?) -> r0 = deltaX, r1 = deltaY ; side effects: writes r8/r9 (return regs
+  preserved through callees)'
+details: "Captured entry shows r0 = 0x0200f3e0 (EWRAM, camera-ish or scroll struct), r1 a u16/cell-ish\n\
+  \  value (e.g. 0x796b / 0x8f3f / 0x903d — looks like 16-bit panel coords), r2 = r3 = 0x20\n  (probably\
+  \ a \"cell size\" or doubled width). r4/r5 hold two source-axis values, r6 a third\n  value used as\
+  \ a kind of \"count\" or guard (checked against 1).\n\n  Math: r6 = r8_save; delta = (r5-r4); otherDelta\
+  \ = (r2-r3); computes two scalar products\n  (r3*r4 - r2*r5) and a dot product (r3*[r0] + r4*[r0+4])\
+  \ to test which side of a 2-D\n  edge the source point lies on. If the sign disagrees with [r0+0xc..0x10]\
+  \ (a second point\n  on the same edge), the function falls into a refinement branch that calls sub_8031048\n\
+  \  twice with the negated sign products to iteratively correct r8/r9, which the callers\n  (sub_8031478\
+  \ \"two-axis scroll\" and camera_initAndActivate_803123E) then feed to\n  camera_moveByDelta_80310B0.\n\
+  \n  When the sign test matches, exits with r0=r1=0 (already-aligned case). Otherwise returns\n  the\
+  \ corrected (r9, r8) pair as the scroll delta.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- "sub r6, r5, r4 ; sub r7, r2, r3 ; mul r3, r4 ; mul r2, r5 ; sub r2, r3, r2" -> standard
+    2-D cross product / cross-edge test. - "ldr r3,[r0] ; ldr r4,[r0,#4]" reads two edge points from the
+    struct pointed to by r0; "ldr r3,[r0,#0xc] ; ldr r4,[r0,#0x10]" reads a second pair — matches a line-segment
+    "other edge" definition. - "cmp r5,#0 ; bge loc_8030EFE" -> short-circuit when the sign matches the
+    reference edge; loc_8030EFE does "mov r0,#0 ; mov r1,#0 ; pop {pc}". - callee sub_8031048 called twice
+    with negated partial products, returning refined scalars that are assembled into r8/r9. - caller camera_initAndActivate_803123E
+    summary: "snaps it to its current center (halved coords from sub_8030E8C) via camera_moveByDelta_80310B0"
+    — confirms r0/r1 are a (dx,dy) delta. - caller sub_8031478 summary: "Two-axis camera scroll during
+    battle transitions … accumulates scroll-state bits in r12" — consistent with sub_8030E8C producing
+    per-axis deltas per pass.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08030E8C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, beastsp, fuzz, maps, menus2, story1, story2, story3,
+    story4, story5, story6, story8, story9, wander'
+  reproduce: 'grep -l ''^08030e8c '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, beastsp, fuzz, maps, menus2, story1, story2, story3, story4, story5,
+    story6, story8, story9, wander
+open_questions:
+- Exact identity of the struct at r0 (camera? a separate "scroll bounds" struct?), the meaning of r6's
+  "1 vs other" branch, and the precise role of sub_8031048 (line/edge intersection? iterative solve?).
+  Naming the suffix is a hedge.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 87c09f6c
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8030E8C -> camera_computeScrollDelta_8030E8C
+  where: bn6f eb615ac5
+  tool: tools/rename_symbol.py

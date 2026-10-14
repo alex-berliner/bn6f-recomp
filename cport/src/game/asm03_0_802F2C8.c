@@ -1660,7 +1660,7 @@ Next sub_80311F4(void) {
  *
  * Captures caller-saved regs (r0, r1, r2, r5, lr) onto the stack, lets
  * sub_8031122 set up the camera context, queries the current X/Y position
- * via sub_8030E8C with a (0, 0x20, 0x20, 1) window, halves both coordinates
+ * via camera_computeScrollDelta_8030E8C with a (0, 0x20, 0x20, 1) window, halves both coordinates
  * and feeds the delta into camera_moveByDelta_80310B0. Finally ORs 3 into
  * r12 (bit 0 = active, bit 1 = ready) and restores the original r0..r2, r5. */
 Next camera_initAndActivate_803123E(void) {
@@ -1681,7 +1681,7 @@ Next camera_initAndActivate_803123E(void) {
     R3 = 0x20;
     R5 = 0x20;
     R6 = 1;
-    GUEST_CALL(sub_8030E8C);
+    GUEST_CALL(camera_computeScrollDelta_8030E8C);
 
     /* Halve the returned X (unsigned) and Y (signed) to get the per-frame delta. */
     R0 = (u32)((u32)R0 >> 1);
@@ -1888,7 +1888,7 @@ Next battle_setupMessageWindow_80313B0(void) {
     R3 = 0x20;
     R5 = 0x20;
     R6 = 1;
-    GUEST_CALL(sub_8030E8C);
+    GUEST_CALL(camera_computeScrollDelta_8030E8C);
 
     /* step 3: finalize pass with r1 = 0 */
     R1 = 0;
@@ -1927,7 +1927,7 @@ Next battle_runTextboxUpdateAndSetStateBit1_80313D4(void) {
     R4 = 0 - 1;
     R5 = 0 - 1;
     R6 = 1;
-    GUEST_CALL(sub_8030F04);
+    GUEST_CALL(battle_runTextboxUpdateAndSetStateBit1_8030F04);
 
     /* Third step: called with r0 = 0. Its results in r3/r4/r6 stay live. */
     R0 = 0;
@@ -2010,7 +2010,7 @@ static inline call_camera_moveByDelta_80310B0_result call_camera_moveByDelta_803
 }
 
 typedef struct { u32 r1, r4, r6, r7, r8, r9; } call_sub_8030F04_result;
-/* register form: generated wrapper: sub_8030F04 has no typed C interface yet */
+/* register form: generated wrapper: battle_runTextboxUpdateAndSetStateBit1_8030F04 has no typed C interface yet */
 static inline call_sub_8030F04_result call_sub_8030F04(u32 r0, u32 r2, u32 r3, u32 r4, u32 r5, u32 r6) {
     R0 = r0;
     R2 = r2;
@@ -2018,7 +2018,7 @@ static inline call_sub_8030F04_result call_sub_8030F04(u32 r0, u32 r2, u32 r3, u
     R4 = r4;
     R5 = r5;
     R6 = r6;
-    GUEST_CALL(sub_8030F04);
+    GUEST_CALL(battle_runTextboxUpdateAndSetStateBit1_8030F04);
     return (call_sub_8030F04_result){ R1, R4, R6, R7, R8, R9 };
 }
 
@@ -2026,7 +2026,7 @@ static inline call_sub_8030F04_result call_sub_8030F04(u32 r0, u32 r2, u32 r3, u
  *
  * Scrolls the camera off the edge of one map and into the next, in two passes.
  * Each pass re-anchors the camera with battleObject_applyShakeOffsetAndProject_8031136, asks for a scroll delta
- * (sub_8030E14 for the first pass, sub_8030F04 for the second), applies it
+ * (sub_8030E14 for the first pass, battle_runTextboxUpdateAndSetStateBit1_8030F04 for the second), applies it
  * with camera_moveByDelta_80310B0, and folds the move's status flag (r3) into
  * the caller's r12 accumulator: bit 0 from the first pass, bit 1 from the
  * second. If the first move reports status 1 the routine returns immediately
@@ -2110,7 +2110,7 @@ static inline u32 call_sub_8031176(u32 r0, u32 r5) {
 }
 
 typedef struct { u32 r0, r4, r6, r7, r8, r9; } call_sub_8030E8C_result;
-/* register form: generated wrapper: sub_8030E8C has no typed C interface yet */
+/* register form: generated wrapper: camera_computeScrollDelta_8030E8C has no typed C interface yet */
 static inline call_sub_8030E8C_result call_sub_8030E8C(u32 r0, u32 r2, u32 r3, u32 r4, u32 r5, u32 r6) {
     R0 = r0;
     R2 = r2;
@@ -2118,7 +2118,7 @@ static inline call_sub_8030E8C_result call_sub_8030E8C(u32 r0, u32 r2, u32 r3, u
     R4 = r4;
     R5 = r5;
     R6 = r6;
-    GUEST_CALL(sub_8030E8C);
+    GUEST_CALL(camera_computeScrollDelta_8030E8C);
     return (call_sub_8030E8C_result){ R0, R4, R6, R7, R8, R9 };
 }
 
@@ -2140,7 +2140,7 @@ static inline u32 call_sub_8031136_sub_8031478(u32 r0, u32 r5) {
 }
 
 typedef struct { u32 r1, r4, r6, r7, r8, r9; } call_sub_8030F04_result_sub_8031478;
-/* register form: generated wrapper: sub_8030F04 has no typed C interface yet */
+/* register form: generated wrapper: battle_runTextboxUpdateAndSetStateBit1_8030F04 has no typed C interface yet */
 static inline call_sub_8030F04_result_sub_8031478 call_sub_8030F04_sub_8031478(u32 r0, u32 r2, u32 r3, u32 r4, u32 r5, u32 r6) {
     R0 = r0;
     R2 = r2;
@@ -2148,7 +2148,7 @@ static inline call_sub_8030F04_result_sub_8031478 call_sub_8030F04_sub_8031478(u
     R4 = r4;
     R5 = r5;
     R6 = r6;
-    GUEST_CALL(sub_8030F04);
+    GUEST_CALL(battle_runTextboxUpdateAndSetStateBit1_8030F04);
     return (call_sub_8030F04_result_sub_8031478){ R1, R4, R6, R7, R8, R9 };
 }
 

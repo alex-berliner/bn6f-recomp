@@ -1,0 +1,62 @@
+name: rfu_dispatchCallFromCallback_814DA6C
+address: '0x0814DA6C'
+kind: function
+previous_names:
+- sub_814DA6C
+status: probable
+summary: Indirect-tail wrapper that branches to the function pointer held in r3 (typical call-via-pointer
+  helper in the RFU packet handling path).
+interface: (r3 = target function) -> whatever the target returns; lr is not restored here (tail-call via
+  BX)
+details: "The function is a single Thumb instruction: `bx r3`. The contract labels r3 as an\n  input,\
+  \ and the captured-call frames show different call sites loading r3 with\n  hand-picked routine pointers\
+  \ (e.g. r3 is paired with r0=pointer-to-buffer in some\n  captures, e.g. 0x03007d29 / 0x03007cc1 etc.,\
+  \ and r2 tends to be 0x78/0x80 byte counts\n  from the LLSF helpers — looks like the function pointer\
+  \ plus a length is passed through).\n\n  This is the classic \"indirect tail-call trampoline\" pattern.\
+  \ It does not save lr or\n  push a frame; caller has already set up r3 with the function to actually\
+  \ run, and\n  `bx r3` jumps to it with lr untouched, so when that callee returns, control flows back\n\
+  \  to sub_814DA6C's caller. Equivalent to `return func[r3](...)` in C. It is used inside\n  the `rfu_STC_*_constructLLSF`\
+  \ / `_receive` helpers (and sub_814D8F0 / sub_814D9C4 which\n  are clearly adjacent dispatch logic)\
+  \ to invoke a polymorphic callback/handler whose\n  pointer was loaded from a small table indexed by\
+  \ the construct-receive helpers.\n\n  No callees of its own — its only \"callee\" is whatever is in\
+  \ r3, hence empty bl list.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `sub_814DA6C: bx r3` at 0x0814da6c — the entire body. - contract lists r3 as an input; out
+    contract is the same as in (no saves, no frame). - callers include `rfu_STC_NI_constructLLSF` (0x0814b400),
+    `rfu_STC_NI_receive_Receiver` (0x0814bd94), `rfu_STC_UNI_constructLLSF` (0x0814b5c0), `rfu_STC_UNI_receive`
+    (0x0814baf4), `STWI_init` (0x0814ca44), and the neighbouring dispatch routines sub_814D8F0 / sub_814D9C4
+    — all classic indirect-call dispatch sites for the RFU (wireless) STC layer. - captured exit `r0=0x0814d94d`
+    in snap_story2_0 is a routine address, consistent with r0 being propagated from the callee rather
+    than computed here.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0814DA6C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3,
+    story1, story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^0814da6c '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3, story1, story2,
+    story3, story4, story5, story6, story7, story8, story9, wander
+open_questions:
+- The exact pointer source/table the callers load r3 from (sub_814D8F0 / sub_814D9C4 likely set r3 from
+  a small jump table given their identical contracts). Disassembling those two would confirm the table
+  layout.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 87c09f6c
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_814DA6C -> rfu_dispatchCallFromCallback_814DA6C
+  where: bn6f eb615ac5
+  tool: tools/rename_symbol.py

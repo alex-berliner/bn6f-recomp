@@ -1,0 +1,57 @@
+name: battle_aiActorKind_getBeastOutCostBase_800FD0A
+address: '0x0800FD0A'
+kind: function
+previous_names:
+- sub_800FD0A
+status: probable
+summary: Compute a per-battle-actor beast-out cost multiplier (NaviStats 0x29 * mapping byte) for AI choice
+interface: '(r5 = BattleObject) -> r0 = byte_80212BB[mapping_idx(NaviStats_0x29)] * cost_factor ; side
+  effects: clobbers r4,r7,nz,cv'
+details: "Loads the BattleObject's AIData pointer (r4) and the player's BattleObjectAlliance. Reads\n\
+  \  NaviStats byte at offset 0x29 via GetBattleNaviStatsByte_AllianceFromBattleObject(r5,r1=0x29),\n\
+  \  uses it to index byte_80212BB (a small lookup table, r7). Then:\n    - If the player's battle emotion\
+  \ return value == 2, cost_factor = 4\n    - Else if ActorType == ACTOR_TYPE_PLAYER and the AI Unk_48\
+  \ bit 0x200 is set, factor = 1\n    - Else cost_factor = byte_800FD5C[AIData.Version_16]\n  Returns\
+  \ r0 = r7 * factor (mul). The caller (sub_801002C, AI action scoring) uses this as\n  one term in a\
+  \ beast-out/spam-style decision. Pure arithmetic, no memory writes.\n  Pre-snapshot captured at the\
+  \ AI tick loop (lr=0x0801009b, r2=0x80 / r3=3 = param payload to AIData\n  written earlier by sub_801002C).\
+  \ The actor-type 2 path forces factor 1, suggesting players\n  getting a cheap cost when AI flag 0x200\
+  \ (possibly \"player controlled this tick\") is set.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldr r4, [r5,#oBattleObject_AIDataPtr]` at 0x800FD10: derives AIData pointer from BattleObject
+    - `mov r1,#0x29; bl GetBattleNaviStatsByte_AllianceFromBattleObject`: request NaviStats[0x29] (confirmed
+    callee is the alliance-aware stats reader) - `ldrb r7,[r1,r0]` at 0x800FD1A: r7 = byte_80212BB[NaviStats_0x29]
+    - `cmp r0,#2; bne ...; mov r0,#4`: emotion==2 (confirmed-emotion return) hardcodes 4 - `ldrb r0,[r4,#oAIData_ActorType];
+    cmp r0,#2`: ACTOR_TYPE_PLAYER gate (struct constant 0x02) - `bl GetAIDataUnk0x48Flag; tst r0,#0x200`:
+    checks AIData.Unk_48 bit 0x200 - `ldrb r2,[r4,#oAIData_Version_16]; ldrb r0,[r1,r2]`: factor table
+    byte_800FD5C indexed by AIData.Version_16 - `mul r0,r7; pop {r4,r7,pc}`: returns r7 * factor'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0800FD0A
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battlesweep, beastsp'
+  reproduce: 'grep -l ''^0800fd0a '' tools/traces/coverage/*.prof
+
+    '
+  result: battlesweep, beastsp
+open_questions:
+- Exact semantics of the multiplier (what gameplay unit it represents - chip cost? beast-out
+- cooldown?); table contents of byte_80212BB and byte_800FD5C. Settling requires identifying the
+- caller's use of the return value in sub_801002C.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 87c09f6c
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_800FD0A -> battle_aiActorKind_getBeastOutCostBase_800FD0A
+  where: bn6f eb615ac5
+  tool: tools/rename_symbol.py

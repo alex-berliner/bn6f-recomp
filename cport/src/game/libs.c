@@ -1132,8 +1132,8 @@ Next ply_pend(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_814E168 ── */
-/* sub_814E168: refresh two halfword fields of the object whose address
+/* ── battleObject_updateChipCharge_814E168 ── */
+/* battleObject_updateChipCharge_814E168: refresh two halfword fields of the object whose address
  * battleObject_runUpdateRoutineAndAdvancePC_814E0D0 returns in r0. Field +0x1C receives the callee's r3 doubled;
  * field +0x20 receives that doubled value scaled by the halfword at +0x1E
  * (an 8.8 fixed-point multiply: (doubled * scale) >> 8).
@@ -1142,7 +1142,7 @@ Next ply_pend(void) {
  * Flags come from the final shift: nz from the result, c from the last bit
  * shifted out (bit 7 of the product). The callee's r0/r2/r3 results stay in
  * r0/r2/r3 as the original leaves them. */
-Next sub_814E168(void) {
+Next battleObject_updateChipCharge_814E168(void) {
     R12 = LR;   /* mov r12, lr — the original returns via bx r12 */
 
     GUEST_CALL(battleObject_runUpdateRoutineAndAdvancePC_814E0D0);
@@ -1162,14 +1162,14 @@ Next sub_814E168(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_814E17C ── */
-/* sub_814E17C(r1 = object, remaining inputs forwarded to battleObject_runUpdateRoutineAndAdvancePC_814E0D0):
+/* ── battleObject_runUpdateRoutineAndAdvancePCNextStep_814E17C ── */
+/* battleObject_runUpdateRoutineAndAdvancePCNextStep_814E17C(r1 = object, remaining inputs forwarded to battleObject_runUpdateRoutineAndAdvancePC_814E0D0):
  * Runs battleObject_runUpdateRoutineAndAdvancePC_814E0D0, which computes a byte value in r3 from the object state.
  * That byte is written to offset 0xA of the object, and the flag byte at
  * offset 0 gets its 0xC bits forced on (object marked as ...).
  * Returns r2 = 0xC, r3 = updated flag byte; NZ flags come from the ORR.
  * r1 and r12 pass through unchanged (battleObject_runUpdateRoutineAndAdvancePC_814E0D0 preserves both). */
-Next sub_814E17C(void) {
+Next battleObject_runUpdateRoutineAndAdvancePCNextStep_814E17C(void) {
     R12 = LR; /* battleObject_runUpdateRoutineAndAdvancePC_814E0D0 preserves r12; it still holds our return address */
 
     u32 obj = R1;

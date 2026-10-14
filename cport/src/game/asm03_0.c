@@ -196,7 +196,7 @@ Next object_runFrameUpdate_8026A6C(void) {
  * receives the raw table offset in r0 and its own table entry in r1, exactly
  * as the original's jump-table dispatch leaves the registers. */
 
-/* register form: calls the custom-menu state handlers (sub_8026B04,
+/* register form: calls the custom-menu state handlers (battle_custMenuAnimateCursorToOK_8026B04,
  * custMenuUpdateWaitSelectionState_8026CCC, scrollStrip_update_8026BF4, sub_8026D06,
  * sub_8026DB0, battle_endChipSelectionBeginTurn_8026DC4, chatbox_stateMaybeFinishText_8026E4C,
  * battle_updateObjectByKind_8026E98, battle_runTutorialDialog_8026FC0, sub_8027044, sub_80271F8,
@@ -215,7 +215,7 @@ static void run_state_handler(u32 state_offset, u32 self) {
      * table, so switch on it directly; the table entry above is what the
      * original would have jumped through. */
     switch (state_offset) {
-    case 0x00: GUEST_CALL(sub_8026B04); break;
+    case 0x00: GUEST_CALL(battle_custMenuAnimateCursorToOK_8026B04); break;
     case 0x04: GUEST_CALL(custMenuUpdateWaitSelectionState_8026CCC); break;
     case 0x08: GUEST_CALL(scrollStrip_update_8026BF4); break;
     case 0x0C: GUEST_CALL(sub_8026D06); break;
@@ -283,7 +283,7 @@ Next custMenuMainMaybe_8026A88(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8026B04 ── */
+/* ── battle_custMenuAnimateCursorToOK_8026B04 ── */
 /* Number of tile entries per animation row */
 #define TILEMAP_COLS       0x14
 /* Byte stride between successive tilemap columns */
@@ -450,8 +450,8 @@ static void s20364c0_update(u32 self, u32 toolkit, u32 r4, u32 r6) {
     s20364c0_finalize(self);
 }
 
-/* sub_8026B04(r5=self, r10=toolkit, r4, r6=state for battleObject_chipSelectAnimTick_8029C08) -> all regs + flags */
-Next sub_8026B04(void) {
+/* battle_custMenuAnimateCursorToOK_8026B04(r5=self, r10=toolkit, r4, r6=state for battleObject_chipSelectAnimTick_8029C08) -> all regs + flags */
+Next battle_custMenuAnimateCursorToOK_8026B04(void) {
     s20364c0_update(R5, R10, R4, R6);
     RETURN_TO_CALLER();
 }

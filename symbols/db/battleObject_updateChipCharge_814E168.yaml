@@ -1,0 +1,63 @@
+name: battleObject_updateChipCharge_814E168
+address: '0x0814E168'
+kind: function
+previous_names:
+- sub_814E168
+status: probable
+summary: Advances the buster/chip-charge frame on a battle object and stores a damage-scaled value
+interface: '(r0 = BattleObject*, r1 = ?) -> r0 = BattleObject* ; side effects: writes halfwords to BattleObject+0x1c
+  and +0x20, clobbers r1..r3 and flags'
+details: "Saved-lr dispatch (mov r12, lr / bx r12) so this is invoked from a tail-call / jump-table\n\
+  \  entry, not via BL. Calls battleObject_runUpdateRoutineAndAdvancePC_814E0D0 once with the\n  caller-supplied\
+  \ arguments preserved (returns a new r0, writes the routine's r0..r2 into\n  r0..r2 of the captured\
+  \ calls).\n  After the call it reads the u16 at BattleObject+0x1c (Unk_1c), doubles it (lsl #1), writes\n\
+  \  it back as a u16 (so effectively *= 2 saturated to 16 bits), then multiplies the\n  u16 at +0x1e\
+  \ (Unk_1e_Unk_1f low byte, the captured-call value looks like PwrAtkButton-style\n  data) by that doubled\
+  \ value, takes the high byte (lsr #8) and stores the result at\n  BattleObject+0x20 (Timer).\n  PwrAtkButton\
+  \ is at +0x1e in the BattleObject struct, and +0x1c/0x20 are the small\n  charge-state fields directly\
+  \ below PwrAtkState — strongly suggests this computes a chip\n  charge bar / power-atk charge frame\
+  \ value.\n  Returns the original BattleObject* in r0 (r0 is preserved through the callee).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mov r12, lr ; bl battleObject_runUpdateRoutineAndAdvancePC_814E0D0 ; bx r12` shows a routine
+    that ends by tail-returning to the caller''s lr, dispatching through the callee. - r0 across captured
+    calls is stable (02010890, 02010be0, 020108d0, 02010990), confirming it is the BattleObject* being
+    threaded through. - `strh r3, [r0,#0x1c]` after `lsl r3, r3, #1` is a *2-and-truncate on the field
+    at +0x1c. - `ldrh r2, [r0,#0x1e]; mul r3, r2; lsr r3, r3, #8; strh r3, [r0,#0x20]` is a (Unk_1e *
+    new_Unk_1c) >> 8 stored at +0x20 — a classic Q.8 / fixed-point multiply used for charge bar advance.
+    - In BattleObject.inc, +0x1c sits between ChipsHeld (+0x1a) and Unk_1e_Unk_1f (+0x1e), and +0x20 is
+    `Timer`; +0x1e is a halfword that captures look like PwrAtkButton — matches a charge-step computation.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0814E168
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story1, story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^0814e168 '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander
+open_questions:
+- The exact semantics of fields +0x1c/+0x1e (not in AIData/BattleObject labels) make
+- the specific meaning ("chip charge", "buster charge", "PwrAtk tick") a guess; looking
+- at what writes Unk_1c/Unk_1e elsewhere would confirm.
+- Why this function needs to call runUpdateRoutineAndAdvancePC first — it could be that
+- the callee computes some side-effect state (e.g. PwrAtkCurChargeTime) that this code
+- then consumes.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 87c09f6c
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_814E168 -> battleObject_updateChipCharge_814E168
+  where: bn6f eb615ac5
+  tool: tools/rename_symbol.py

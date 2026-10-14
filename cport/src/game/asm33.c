@@ -1288,7 +1288,7 @@ Next drawBattleBackground_8123AB8(void) {
 
 /* ── sub_8123BC0 ── */
 /* sub_8123BC0:
- * Passes a fixed argument set to sub_8123C20 and returns its result untouched.
+ * Passes a fixed argument set to battleObject_applyAIDataToAttackTable_8123C20 and returns its result untouched.
  * Arguments are all constants: the word table at dword_8123BDC, the byte
  * table at byte_81233D8, 1 in r1, 4 in r3 and a length of 0x1C in r4.
  * Like the original, this wrapper preserves r4-r7 across the call (it only
@@ -1301,7 +1301,7 @@ Next sub_8123BC0(void) {
     R2 = A_byte_81233D8;  /* pointer to the byte table */
     R3 = 4;
     R4 = 0x1C;            /* entry count */
-    GUEST_CALL(sub_8123C20);
+    GUEST_CALL(battleObject_applyAIDataToAttackTable_8123C20);
 
     R4 = r4;
     R5 = r5;
@@ -1311,7 +1311,7 @@ Next sub_8123BC0(void) {
 }
 
 /* ── sub_8123BE0 ── */
-/* sub_8123BE0: thin wrapper around sub_8123C20 with a fixed argument set.
+/* sub_8123BE0: thin wrapper around battleObject_applyAIDataToAttackTable_8123C20 with a fixed argument set.
  * r0 points at the 3-byte constant in the literal pool (dword_8123BFC =
  * 0x5A5856), r2 at the byte_81233E0 work area; the remaining arguments
  * (0x20, 5, 0x5C, 0) select its mode/geometry. The callee's r4/r6
@@ -1326,7 +1326,7 @@ Next sub_8123BE0(void) {
     R3 = 5;
     R4 = 0x5C;
     R6 = 0;
-    GUEST_CALL(sub_8123C20);
+    GUEST_CALL(battleObject_applyAIDataToAttackTable_8123C20);
 
     R4 = r4;
     R5 = r5;
@@ -1336,7 +1336,7 @@ Next sub_8123BE0(void) {
 }
 
 /* ── sub_8123C00 ── */
-/* sub_8123C00: prepare a fixed set of arguments and forward them to sub_8123C20.
+/* sub_8123C00: prepare a fixed set of arguments and forward them to battleObject_applyAIDataToAttackTable_8123C20.
  * The color/palette table at dword_8123C1C (0x5B5957 = three BGR555 entries) and
  * the work buffer byte_81233E8 are passed by address; the remaining arguments
  * (0x40, 6, 0x60, -, 1) are constants. r4-r7 are restored to their entry values
@@ -1351,7 +1351,7 @@ Next sub_8123C00(void) {
     R4 = 0x60;
     R6 = 1;
 
-    GUEST_CALL(sub_8123C20);
+    GUEST_CALL(battleObject_applyAIDataToAttackTable_8123C20);
 
     R4 = savedR4;
     R5 = savedR5;

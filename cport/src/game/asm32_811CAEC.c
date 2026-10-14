@@ -414,10 +414,10 @@ static inline call_replaySpriteFrames_811F24C_result call_replaySpriteFrames_811
 }
 
 typedef struct { u32 r5, r7; } call_sub_811F0C8_result;
-/* register form: generated wrapper: sub_811F0C8 has no typed C interface yet */
+/* register form: generated wrapper: battle_updateCursorPulsate_811F0C8 has no typed C interface yet */
 static inline call_sub_811F0C8_result call_sub_811F0C8_sub_811ED58(u32 r5) {
     R5 = r5;
-    GUEST_CALL(sub_811F0C8);
+    GUEST_CALL(battle_updateCursorPulsate_811F0C8);
     return (call_sub_811F0C8_result){ R5, R7 };
 }
 
@@ -551,9 +551,9 @@ static bool gfx_anim_active(u32 anim_id) {
     return !ZERO_FLAG();  /* Z set => anim not active */
 }
 
-/* register form: calls sub_811F0C8 outside this file, which has no typed C interface yet */
+/* register form: calls battle_updateCursorPulsate_811F0C8 outside this file, which has no typed C interface yet */
 static void call_sub_811F0C8_sub_811EE98(void) {
-    GUEST_CALL(sub_811F0C8);
+    GUEST_CALL(battle_updateCursorPulsate_811F0C8);
 }
 
 /* register form: calls petCommSaveInit_811F11C outside this file, which has no typed C interface yet */
@@ -606,7 +606,7 @@ Next battle_state_tick_811EE98(void) {
 Next naviSelect_SetupBackgrounds_811EF0C(void) {
     GUEST_CALL(sub_811F1B8);
     GUEST_CALL(sub_811F214);
-    GUEST_CALL(sub_811F0C8);
+    GUEST_CALL(battle_updateCursorPulsate_811F0C8);
     GUEST_CALL(petCommSaveInit_811F11C);
     GUEST_CALL(CopyBackgroundTiles_PET_811EF70);
     GUEST_CALL(CopyBackgroundTiles_onNaviSelect_811F54C);
@@ -641,9 +641,9 @@ static void call_sub_811F214(void) {
     GUEST_CALL(sub_811F214);
 }
 
-/* register form: calls sub_811F0C8 outside this file, which has no typed C interface yet */
+/* register form: calls battle_updateCursorPulsate_811F0C8 outside this file, which has no typed C interface yet */
 static void call_sub_811F0C8(void) {
-    GUEST_CALL(sub_811F0C8);
+    GUEST_CALL(battle_updateCursorPulsate_811F0C8);
 }
 
 /* register form: calls petCommSaveInit_811F11C outside this file, which has no typed C interface yet */
@@ -821,7 +821,7 @@ Next drawCurrentMapName_811F08C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_811F0C8 ── */
+/* ── battle_updateCursorPulsate_811F0C8 ── */
 /* register form: calls sub_811F184 outside this file, which has no typed C interface yet.
  * sub_811F184(r0 = addr_of_word_3001B2C, r1 = ptr off_811F0F8,
  *             r2 = byte from r5+6, r3 = byte from r5+7) -> r0, r1 */
@@ -835,7 +835,7 @@ static void call_sub_811F184(u8 out[2], u8 in6, u8 in7) {
     out[1] = (u8)R1;   /* r5+6 */
 }
 
-/* sub_811F0C8: dispatch on the entity sub-state at r5+4.
+/* battle_updateCursorPulsate_811F0C8: dispatch on the entity sub-state at r5+4.
  * If sub-state == 8, call sub_811F184 with the bytes at r5+6 / r5+7 and store the
  * results back. Otherwise read the halfword at offset +4 from the constant pool
  * entry pointed to by off_811F0F8[0] and store it into word_3001B2C. */
@@ -854,7 +854,7 @@ static void sub_811F0C8_impl(u32 r5, u8 *out_bytes) {
     }
 }
 
-Next sub_811F0C8(void) {
+Next battle_updateCursorPulsate_811F0C8(void) {
     u8 out_bytes[2];
     sub_811F0C8_impl((u32)R5, out_bytes);
     RETURN_TO_CALLER();

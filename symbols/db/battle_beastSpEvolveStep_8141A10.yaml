@@ -1,0 +1,62 @@
+name: battle_beastSpEvolveStep_8141A10
+address: '0x08141A10'
+kind: function
+previous_names:
+- sub_8141A10
+status: probable
+summary: 'Per-frame Beast+ form-evolution trigger: watches a counter on the active battle object and calls
+  StartCutscene to play one of the Beast+ evolution scenes (params 5/6/7) when the threshold is reached.'
+interface: '(r5 = *BattleObject) -> void ; side effects: writes BattleObject fields, may call StartCutscene'
+details: "Reads [r5+0xd]; if non-zero the function returns immediately (gate flag).\n  Sets [r5+0xb] =\
+  \ 2 (PhaseInitialized), decrements the timer [r5+0xc] and returns if\n  still > 0 (so it walks down\
+  \ by one per call).\n  When the timer hits zero, clears it; if [r5+0x10] > 0 it counts it down and reloads\n\
+  \  [r5+0xc] = 0x1e (30 frames) for the next tick.\n  Otherwise inspects [r5+0x10] as a phase index:\n\
+  \    0x27 -> set [r5+0x13]=1 (one-shot) and call StartCutscene(byte_808A128, 5)\n    0x13 -> set [r5+0x17]=1\
+  \ (one-shot) and call StartCutscene(byte_808A128, 6)\n    0x00 -> call StartCutscene(byte_808A128, 7)\n\
+  \  Falls through to loc_8141ABC (called only if StartCutscene returned NE/ZF clear,\n  i.e. successfully),\
+  \ otherwise returns to caller.\n  The 40 captured calls all have r0=0, r1=0x40, r2=0x140, r3=02001d68;\
+  \ the differing\n  exit r0 values (0x10..0x1d) are just the StartCutscene return code over time. The\n\
+  \  r5 pointer in the contract is the actor; the AIData the actor points to\n  ([obj+0x58]) holds 0xd/0xc/0x10/0x13/0x17\
+  \ which this function is driving.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `push {r4-r7,lr}` and uses r5 as the active battle object across the body. - Gate: `ldrb
+    r0,[r5,#0xd]; tst r0,r0; bne locret_8141A6A` (early return when AIData flag is set). - Phase init:
+    `mov r0,#2; strb r0,[r5,#0xb]` writes PhaseInitialized=2 (struct comment: bool8 PhaseInitialized).
+    - Tick: `ldrb r0,[r5,#0xc]; sub r0,#1; strb r0,[r5,#0xc]; bgt locret_8141A6A` decrements Unk_0c each
+    frame. - Reload: at loc_8141A36 it reloads Unk_0c with 0x1e (30 frames) while Unk_10 still > 0. -
+    Three cutscene branches at offsets 0x8141A4A / 0x8141A5C / 0x8141ACA set one-shot flags at [r5+0x13]
+    and [r5+0x17] then call `StartCutscene(byte_808A128, #5/#6/#7)`. - The cutscene script pointer is
+    loaded from `off_8141A6C -> byte_808A128`, labeled `CutsceneScript` in the project''s symbol table.
+    - Captured entry r0=0, r1=0x40, r2=0x140, r3=02001d68 with exit r0 spanning 0x10..0x1d matches the
+    routine being invoked every frame from a battle update (sub_81419A0 is the only caller, contract matches
+    a battle object update tick).'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08141A10
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: beastsp'
+  reproduce: 'grep -l ''^08141a10 '' tools/traces/coverage/*.prof
+
+    '
+  result: beastsp
+open_questions:
+- The semantic meaning of params 5/6/7 to the cutscene script (which Beast+ forms they correspond to)
+  is not visible in this function; would need byte_808A128 disassembly to settle.
+- Why AIData+0xd acts as an enable/disable gate is unknown.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 87c09f6c
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_8141A10 -> battle_beastSpEvolveStep_8141A10
+  where: bn6f eb615ac5
+  tool: tools/rename_symbol.py

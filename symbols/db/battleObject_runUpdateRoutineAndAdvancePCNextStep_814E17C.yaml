@@ -1,0 +1,62 @@
+name: battleObject_runUpdateRoutineAndAdvancePCNextStep_814E17C
+address: '0x0814E17C'
+kind: function
+previous_names:
+- sub_814E17C
+status: probable
+summary: Tail-call wrapper around battleObject_runUpdateRoutineAndAdvancePC_814E0D0 that also sets CurPhase
+  = CurPhase | 0x0C on the caller-supplied AIState and returns the original object pointer in r0.
+interface: '(r0 = BattleObject*, r1 = AIState*) -> r0 = same BattleObject* ; side effects: writes CurPhase
+  (offset 0xA) and the bottom-of-AIState byte (offset 0x0) of *r1.'
+details: "Saves lr into r12, then jumps to sub_814E0D0 (the function summary in the callee contract\n\
+  \  describes it as \"run update routine and advance PC\"; given r3 is in/out there it returns\n  the\
+  \ next-action/state byte in r3 with flags set). After that call:\n    - r3 is stored at [r1,#0xa] —\
+  \ this is `CurPhase` of the AIState struct (offset 0xa\n      per ai_state_struct).\n    - r1's byte\
+  \ 0 (`Unk_00` of AIState) is loaded, ORed with 0x0C, and stored back. 0x0C sets\n      bits 2 and 3,\
+  \ which on `CurState`/`CurAction` of the BattleObject look like a\n      \"phase initialised\" / \"\
+  waiting on a sub-action\" marker; in practice this just marks\n      the AIState as having been stepped\
+  \ once.\n  r0 is never touched, so the caller gets its BattleObject pointer back unchanged.\n  Ends\
+  \ with `bx r12` which is the saved lr — i.e. this is a tail call.\n  Captured calls show r0 = a BattleObject*\
+  \ (0200xxxx), r1 = an AIState* (0200xxxx),\n  with the AIState address slot at +0x2C of the BattleObject\
+  \ matching Unk_5c/AIDataPtr\n  layout seen elsewhere. The struct written by sub_814E0D0 at [r0 + 0x5c]\
+  \ for the AIDataPtr\n  lines up with the AIData at +0x58 of BattleObject.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `mov r12, lr ; bl sub_814E0D0` is a tail-call wrapper pattern. - `strb r3, [r1,#0xa]` writes
+    the return value (the new sub-step / CurPhase-style byte) at AIState + 0xa, matching ai_state_struct
+    offset Unk_0a/Unk_0c neighbours. - `ldrb r3, [r1]` then `orr r3, #0xc ; strb r3, [r1]` OR-s 0xC into
+    AIState byte 0, marking "phase stepped". - r0 is preserved across the tail call and returned (exit
+    r0 == entry r0 in every snap). - Captured calls: r1 points at a small EWRAM block (the second slot
+    of the BattleObject struct, matching the AIState layout), and the AIState''s first byte starts as
+    0x80 and becomes 0x8C/0x92/0x96/0x8E depending on call — the OR-with-0x0C matches those transitions.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0814E17C
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3,
+    story1, story2, story3, story4, story5, story6, story7, story8, story9, wander'
+  reproduce: 'grep -l ''^0814e17c '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander
+open_questions:
+- What `0xC` in AIState byte 0 specifically means at the gameplay level (whether it's
+- '"needsUpdate" or a sub-state flag) and whether sub_814E0D0 is reading r1 as an AIState'
+- or a generic scratch pointer — settled by looking at sub_814E0D0's body.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 87c09f6c
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_814E17C -> battleObject_runUpdateRoutineAndAdvancePCNextStep_814E17C
+  where: bn6f eb615ac5
+  tool: tools/rename_symbol.py

@@ -1,0 +1,71 @@
+name: battle_updateCursorPulsate_811F0C8
+address: '0x0811F0C8'
+kind: function
+previous_names:
+- sub_811F0C8
+status: probable
+summary: 'Per-frame PET/Navi-select cursor pulse: either loads a pulsing palette index into word_3001B2C
+  from a script table, or calls sub_811F184 to advance a sub-frame animation timer and writes the new
+  pulse state back into the r5 toolkit scratch.'
+interface: '(r5 = toolkit pointer, r10 = ?, lr = ret) -> r0 = 0x019A ; side effect: writes halfword 0x019A
+  to word_3001B2C, or writes the pair (r5+6, r5+7) returned from sub_811F184'
+details: "- Entry checks r5 byte offset 4 (`ldrb r0, [r5,#4]`); when that scratch byte is 8 it takes the\n\
+  \    \"running\" branch, otherwise it takes the \"init/load\" branch.\n  - In the non-8 branch the function\
+  \ reads the halfword at `dword_811F10C[0] + 4` (i.e.\n    `*(u16*)((*off_811F0F8) + 4)` = the `Timer`\
+  \ field of a GFXAnimState-sized struct, value\n    0x019A from the literal `word_811F110`) and stores\
+  \ it at `word_3001B2C` via `strh`. This is\n    the \"default\" pulse palette index handed to the BG\
+  \ palette slot each non-running frame.\n  - In the running branch it loads `r5+6` and `r5+7` (two single-byte\
+  \ pulse state fields in the\n    r5 scratch object) into r2/r3 and calls `sub_811F184(r0=word_3001B2C,\
+  \ r1=off_811F0F8, r2, r3)`;\n    the callee returns r0/r1 which are written back to r5+7 and r5+6 (note\
+  \ the swapped\n    destination order: `strb r0,[r5,#7]; strb r1,[r5,#6]`), advancing the pulse animation.\n\
+  \  - Captured-call exit r0 is always 0x019A in every recorded sample (snap_story2_*.bin), which\n  \
+  \  matches the constant stored in the non-running branch and is the value sub_811F184 returns\n    when\
+  \ r2/r3 are at their \"rest\" position (snap_story2_0/1 have r0=-0x1c/-0x18 in but the\n    callee still\
+  \ returns 0x019A, so it is the saturated/min value).\n  - All callers except `sub_811EDB4`/`sub_811EED0`\
+  \ are confirmed battle_/naviSelect/pet helpers\n    that work on the PET/Navi-select screens, consistent\
+  \ with a cursor-pulse driver.\n  - r10/lr are listed in `in` only because they are part of the caller's\
+  \ callee-save contract;\n    this function itself never reads or writes them.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0, [r5,#4]; cmp r0, #8; beq loc_811F0DE` shows a two-mode dispatch keyed off a byte
+    in the r5 scratch struct. - The `ldrh r0, [r0,#0x4]` of `dword_811F10C[0]` and the immediate `0x19A`
+    at `word_811F110` match the captured exit r0 == 0x019A on every recorded call. - The `strb r0,[r5,#7];
+    strb r1,[r5,#6]` after `bl sub_811F184` is the only place those scratch bytes are written, and the
+    call passes the previous values back in, confirming sub_811F184 is a step function for these two bytes.
+    - Caller `initPetSelectScreen_811EF28` is described as setting up "GFX anim scripts" and "PET/Navi-select"
+    backgrounds, which fits a per-frame pulse driver.'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0811F0C8
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0811f0c8 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus2, menus3, story1, story2, story3,
+    story4, story5, story6, story7, story8, story9
+open_questions:
+- The semantic role of r5+6 / r5+7 (probably a sub-frame index/phase) and of word_3001B2C
+- (likely BG palette or BLDCNT-related; the constant 0x019A in the GFXAnimState literal table
+- is suggestive of a timer rather than a palette index, but the writer does not contradict
+- either). Settling it needs a writer of word_3001B2C in a known GFX path or a cross-ref of
+- 0x019A to a GFXAnimState.Timer field in the engine.
+- The contract lists `r10` in `in` but this function never uses it; the caller just happens
+- to pass it through.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 87c09f6c
+  tool: tools/symdoc.py
+- date: '2026-10-14'
+  what: rename sub_811F0C8 -> battle_updateCursorPulsate_811F0C8
+  where: bn6f eb615ac5
+  tool: tools/rename_symbol.py
