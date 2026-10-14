@@ -291,3 +291,47 @@ Highlights:
 | 6     | 25                 | 21                        | 4               | 0       |
 
 Running total: named 130, hypothesis-only 16, dropped 0 (of ~10,600 placeholders).
+
+## Batch 7 (2026-10-14)
+
+25 functions, 19 named + 6 hypothesis (sub_800F09E, sub_802CE10, sub_8083DF0,
+sub_80CB9E2, sub_8134490, sub_814F2F0 kept as comment only), renamed in
+recomp 0aacab9a (bn6f 57429803 comments + renames; port ROM unchanged).
+
+Highlights:
+- battle/AI main-frame: fade-to-result init (battle_initFadeToBattleResult_80094DA),
+  power-attack related run (battle_runPwrAtkRelated_8012EA0);
+- battle object: apply status-effect on turn end
+  (battleObject_applyStatusEffectOnTurnEnd_80139F6),
+  anger-trigger check (battleObject_checkAngerTrigger_80142DC),
+  custom-gauge tick (battleObject_tickCustomGauge_801C470),
+  sync sprite from related object (battleObject_syncSpriteFromRelatedObject_80B8932),
+  AI handle chips and flinch-Z (battleObject_aiHandleChipsAndFlinchZ_80F0608),
+  run floating anim (battleObject_runFloatingAnim_811CAEC);
+- battle HUD: order/BG selection arrows draw
+  (battle_drawOrderBGSelectionArrows_801C640),
+  kind-effect dispatch (battle_dispatchKindEffect_801E792),
+  chip-select fighter names (battle_drawChipSelectFighterNames_81200EC),
+  chip-icon slots load (battle_loadChipIconSlots_8120458),
+  item flag check (battle_checkItemFlagFor_813B9B4);
+- overworld player: per-frame substate dispatcher
+  (ow_player_perFrameSubstateDispatcher_809D470),
+  per-frame tick (owPlayer_tickPerFrame_809D4DC),
+  apply knockback or snap to target (owPlayer_ApplyKnockbackOrSnapToTarget_809D730),
+  reset sneak-run and check B button (owPlayer_resetSneakRunAndCheckBButton_809DE98);
+- serial I/O library: libSIOControlPoll_81445F8;
+- audio: stop all channels in bank (sound_stopAllChannelsInBank_814E4DC).
+
+## Tally update
+
+| batch | functions examined | named (renamed via record) | hypothesis-only | dropped |
+|-------|--------------------|---------------------------|-----------------|---------|
+| 1     | 25                 | 25                        | 0               | 0       |
+| 2     | 21                 | 20                        | 1               | 0       |
+| 3     | 25                 | 23                        | 2               | 0       |
+| 4     | 25                 | 21                        | 4               | 0       |
+| 5     | 25                 | 20                        | 5               | 0       |
+| 6     | 25                 | 21                        | 4               | 0       |
+| 7     | 25                 | 19                        | 6               | 0       |
+
+Running total: named 149, hypothesis-only 22, dropped 0 (of ~10,600 placeholders).
