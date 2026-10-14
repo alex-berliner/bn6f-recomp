@@ -3,32 +3,31 @@ address: '0x0802C460'
 kind: function
 previous_names: []
 status: hypothesis
-summary: Compare two signed bytes on a struct in r5 (offsets 6 and 7); when they differ, dispatch to a helper that
-  likely swaps something and conditionally calls a follow-up function if that helper sets r2.
-interface: '(r5 = pointer to a struct whose +6 and +7 are signed bytes; r6, r10 unchanged) -> r0 = result of follow-up
-  call_sub_3005EBA (often 0); side effects: may call sub_802C490 and call_sub_3005EBA; clobbers r0-r4,r7; preserves
-  only lr via return'
-details: "- Reads two signed bytes: [r5+6] and [r5+7] (ldrsb at +6/#6 and +7/#7), corresponding to AIData.BButton\
-  \ (loc=0x6) and AIData.BPwrAtk (loc=0x7).\n  - If both bytes are equal, returns immediately (beq locret_802C48E).\n\
-  \  - Otherwise computes the difference (r4 = abs diff), picks the larger value via `add r0, #0x18` then `mov r0,\
-  \ r1` (adds 0x18 = 24 to the smaller one to offset into a packed table).\n  - Calls sub_802C490 with (r0 = possibly-offset\
-  \ index, r1 = 2, r5 = 0x12). Per its contract, it returns r0/r2 and writes nz/c/v; here only r2 is read (`tst\
-  \ r2, r2`).\n  - If sub_802C490 returned a non-zero r2 (some kind of \"yes, change needed\" flag), calls call_sub_3005EBA\
-  \ with (r2=3, r3=0). Per its contract that one returns nz/c/v and clobbers r0-r2,r4-r7,lr — its r0/flags are what\
-  \ we see at exit.\n  - The caller sub_802BD60 is described in the project as \"battle chip select\" (battle_initChipSelect_802BD60),\
-  \ so r5 likely points into the chip-select state struct (S20364C0-style). Note that offset 6/0x12 of AIData fit\
-  \ better with a NaviStats / chip-state sized record than the AIData at oAIData, but the magic numbers 6 and 7\
-  \ exactly match AIData.BButton/BPwrAtk. Be cautious about which struct r5 actually references.\n"
+summary: 'Battle chip-select screen input handler: reacts to APwrAtk/BPwrAtk key presses to advance the cursor between
+  chip slots on a particular row, clamping at the row''s bounds.'
+interface: (r5 = s_20364C0 chip-select state ptr, r6 = ???, r10 = toolkit) -> r0 = (unchanged from entry) ; side
+  effects may include calling sub_802C490 and call_sub_3005EBA
+details: 'Reads the two signed bytes at s_20364C0+0x6 (BButton row, `BPwrAtk`) and s_20364C0+0x7 (BPwrAtk row, `BPwrAtk`)
+  as r0/r1 and compares them. If equal it returns. Otherwise it computes |r0 - r1| into r4 and picks the larger
+  index as r0, then adds an offset based on the current state to that index. With r1 = 2 and r5 = 0x12 it calls
+  sub_802C490 (presumably the row cursor mover or row selection helper). If sub_802C490 returns a non-zero r2, the
+  function then calls call_sub_3005EBA with r2 = 3, r3 = 0 (likely "advance selection" or "play sound"). This is
+  reached only when the chip select cursor is on a particular row, and the call from sub_802BD60 (which the project
+  identified as `battle_initChipSelect`) confirms this is the chip-select sub-screen input handler.
+
+  '
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- `ldrsb r0, [r5,r0]` with r0 = #6 then `ldrsb r1, [r5,r1]` with r1 = #7 are the byte loads. - `cmp r0,
-    r1; beq locret` short-circuits on equality. - `sub r4, r1, r0` vs `sub r4, r0, r1; mov r0, r1` (gt branch) compute
-    abs-diff into r4 with the larger in r0. - `add r0, #0x18` is applied to the smaller-of-the-two before calling
-    sub_802C490 (third argument = 0x12). - `tst r2, r2; beq locret` shows r2 (the second return register of sub_802C490
-    per its contract) is the gate. - `mov r2, #3; mov r3, #0; bl call_sub_3005EBA` shows the follow-up only runs
-    after the prior check. - Caller is battle_initChipSelect_802BD60; called sub_802C490 and call_sub_3005EBA are
-    unnamed asm03 callees.'
+  detail: '- asm: `mov r0, #6; ldrsb r0,[r5,r0]` and `ldrsb r1,[r5,r1]` correspond to offset 0x6/0x7 in S20364C0,
+    which the struct maps to BButton (0x6) and BPwrAtk (0x7) — two chip-select cursor row positions. - asm: `cmp
+    r0,r1; beq locret` — no-op when both row indicators are equal (cursor already past that row). - asm: `sub r4,
+    r1, r0` then `bgt loc_802C476; sub r4,r0,r1; mov r0,r1` — compute |rowB - rowA| and pick the larger as the index.
+    - asm: `add r0, #0x18` in the r0<r1 path — adjusts the picked index by 0x18, hinting at a row-specific offset.
+    - asm: `mov r1, #2; mov r5, #0x12; bl sub_802C490` — passes a constant 0x12 with r1=2 to the helper, then conditionally
+    tails into `bl call_sub_3005EBA` only when the helper returned non-zero in r2. - Caller: sub_802BD60 is annotated
+    `battle_initChipSelect_802BD60` by the project, situating this inside the chip-select subscreen. - Captured
+    r5/r6/r10 in/out entries match the chip-select state pointer + toolkit pattern.'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x0802C460
@@ -43,15 +42,14 @@ evidence:
     '
   result: battles1, battles2, beastsp, menus3, story2, story4, story5, story6, story7, story8, story9
 open_questions:
-- Which struct r5 actually points to; offsets 6 and 7 matching AIData fields is suggestive but not proof (chip-select
-  local struct also has a field at +7 named ChipSelectCursorPos, so +6 here is just "the thing being compared against
-  the selected chip slot").
-- The semantic meaning of the `0x18` offset, of the literal `0x12` packed into r5, and of the call_sub_3005EBA argument
-  r2=3 (some action id, almost certainly "press B to use B-PwrAtk").
+- Exact semantics of sub_802C490 (advance cursor to next row vs. set selection) — would settle it with that function's
+  body.
+- Whether the 0x18 offset and r1=2 are "chip slot index" or "row index" within the chip-select grid.
+- The role of r6 (a scratch/flags register) on entry is unclear from this snippet.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f a5b62063
+  where: bn6f 147865dc
   tool: tools/symdoc.py

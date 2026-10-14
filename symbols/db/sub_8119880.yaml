@@ -3,30 +3,31 @@ address: '0x08119880'
 kind: function
 previous_names: []
 status: hypothesis
-summary: Checks the B-attack slot's charge state to decide whether a submenu-driven B-button action should be allowed
-  this frame.
-interface: '(r5 = AIDataPtr) -> NZ = charge state allows a B-button submenu action ; side effects: clobbers r0,
-  r1, r6, may set N/Z'
-details: "Pushes lr, reads r5+0x5 (the APwrAtk byte of the AIData struct passed via r5).\n  Looks up that byte in\
-  \ the byte_811935C table; if the indexed byte is zero it short-circuits straight to the return.\n  Otherwise loads\
-  \ sSubmenu into r6 and calls submenu_isOpen_81355D8 to see if a non-main submenu (i.e. something\n  other than\
-  \ the 0x20 closed state) is up. If so it also calls sub_81312F4 and overwrites r6 with its return.\n  Finally\
-  \ it compares sSubmenu+0xe against sSubmenu+0xf and returns the result in the Z flag (NZ if they differ).\n  Net\
-  \ behaviour: returns \"submenu's 0xe vs 0xf fields differ\" only when the AIData byte passes the table lookup\n\
-  \  AND a submenu other than the default one is open. Caller uses this as a guard before letting an AI/player\n\
-  \  B-attack slot auto-charge resolve through the submenu.\n"
+summary: Returns whether the battle action menu is locked because a submenu is open, gated by an AIData lookup of
+  the actor's APwrAtk
+interface: '(r5 = ??? ptr) -> r0 = (r0==0: 0 if locked, 1 if unlocked) ; out: nz/c/v from comparison, side effects
+  may write r6 (sSubmenu) via submenu_isOpen path'
+details: "Loads byte r5+5 (AIData.APwrAtk) and uses it as an index into byte_811935C; if the result is\n  zero it\
+  \ skips ahead and returns 1 via the `mov r0,#1; tst r0,r0; pop {pc}` epilogue (z set,\n  but r0 nonzero means\
+  \ \"menu not locked / not blocked\").\n  Otherwise it loads sSubmenu into r6 and calls submenu_isOpen_81355D8;\
+  \ if no submenu is open\n  it returns r6 unchanged, otherwise it calls sub_81312F4 to resolve the live submenu\
+  \ pointer\n  into r6. Then it reads sSubmenu+0xE and sSubmenu+0xF and compares them with cmp r0,r1, so\n  the\
+  \ result is the NZ flag from that compare (the caller sub_81196F0 uses it to gate a\n  branch). The structure\
+  \ read is sSubmenu offsets 0xE/0xF (SubMenu struct, current\n  per-ewram block is only 0x50 / declared size 0x80).\n\
+  \  The function is \"void-like\" in the sense that the meaningful return is the cmp flag\n  result; the r0 left\
+  \ in the register is whatever the last load (sSubmenu+0xE) produced\n  except in the no-locked-APwrAtk early-out\
+  \ where r0=1.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- `ldrb r0, [r5,#5]` is the APwrAtk byte of struct AIData (per the AIData.inc offsets). - `ldr r1, off_81198AC
-    // =byte_811935C` then `ldrb r0, [r1,r0]` is a per-APwrAtk-index table lookup; the `beq locret_811989E` skips
-    everything when the looked-up byte is zero. - `ldr r6, off_81198A8 // =sSubmenu` plus `bl submenu_isOpen_81355D8`
-    ties the path to the global SubMenu state. - The second branch `bl sub_81312F4 ; mov r6, r0` only runs when
-    the submenu is open, replacing the sSubmenu pointer with whatever that helper returns (likely a menu subentry
-    pointer). - Tail `ldrb r0, [r6,#0xe] ; ldrb r1, [r6,#0xf] ; cmp r0, r1` then `pop {pc}` returns the comparison''s
-    Z/NZ in flags (the callee contract lists only `nz` in `out`). - All six captured callers in `snap_story2_*`
-    are called from the same caller sub_81196F0 with r0=0x081196f1 (a small thunk/return address), r2=0xf0 then
-    0xb0 (some count/timer argument), r3=0x02008470/0x02008520 (IWRAM buffers).'
+  detail: '- `ldrb r0, [r5,#5]` at 0x08119882 reads AIData.APwrAtk (offset 0x5 in AIData struct). - `ldrb r0, [r1,r0];
+    beq locret_811989E` at 0x08119886/0x0811988A gates on a table lookup against byte_811935C; the beq is to the
+    early-out that sets r0=1. - `bl submenu_isOpen_81355D8; beq loc_8119898` at 0x08119890/0x08119894: only updates
+    r6 via sub_81312F4 when a submenu is open, otherwise leaves r6 = sSubmenu base. - `ldrb r0,[r6,#0xe]; ldrb r1,[r6,#0xf];
+    cmp r0,r1` at 0x08119898-0x0811989C: produces the NZ-flag return consumed by the caller. - Early epilogue `mov
+    r0,#1; tst r0,r0; pop {pc}` at 0x081198A0-0x081198A4 sets Z=0, so the caller''s "branch if NZ" treats this as
+    "menu is usable". - Caller sub_81196F0 contracts show r0 in may_write and uses only NZ output, consistent with
+    a predicate return.'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x08119880
@@ -41,13 +42,16 @@ evidence:
     '
   result: battles1, battles2, beastsp, maps, menus3, story2, story4, story6, story8, story9
 open_questions:
-- What the per-APwrAtk table at byte_811935C actually classifies (chip id mapping? charging-allowed mask?). What
-  sub_81312F4 returns (the struct the comparison is run on vs sSubmenu). What r2 (0xb0/0xf0) and r3 IWRAM pointers
-  mean to the upstream caller sub_81196F0. Without resolving those the function's game-level intent is inferred.
+- What the byte_811935C table encodes (likely a per-APwrAtk flag of which A-button power
+- types disable the in-battle menu while a submenu is open). The semantic of the 0xE/0xF
+- SubMenu pair is also unknown — likely a "current submenu index" and "previous submenu
+- index" used to detect transitions, but that needs the SubMenu struct fully mapped.
+- Settling either requires cross-referencing the SubMenu writer sites and the APwrAtk
+- table at 0x0811935C.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f a5b62063
+  where: bn6f 147865dc
   tool: tools/symdoc.py

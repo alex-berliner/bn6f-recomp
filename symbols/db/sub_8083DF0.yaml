@@ -3,29 +3,31 @@ address: '0x08083DF0'
 kind: function
 previous_names: []
 status: hypothesis
-summary: Cutscene/BBS handler that runs the big BBS-branch script flow (event-flag gates, sub_8083F80 ladder, cutscript
-  sentinel checks) and ultimately exec()'s into sub_8084080 and the cutscene-step chain.
-interface: () -> nz ; side effects (event flags, cutscene state, sound/animation sets)
-details: "- Stored in the \"Cutscene\" / SubsystemIndex-7-ish area: r10 is the toolkit, contract in only r10/lr.\
-  \ Reads/writes many of the r10-pointed global flags and probably uses sub_8083F80 (which itself reads r0, r5,\
-  \ r10, lr) as the per-state dispatch.\n  - Callee set is the BBS-flavoured triad: reqBBS_clearFlag_8140A0C, reqBBS_setFlag_e17b0f7_8140A00,\
-  \ plus event-flag ops (Set/Clear/TestEventFlagFromImmediate), the two cutscene sentinel checks at 8036F40/8036F58,\
-  \ and the load_gfx_anim_8083FC0/FFC/068 helpers used to load BBS-related sprite sets.\n  - sub_8084080 is the\
-  \ chosen \"run command\" of the BBS script (its callee contract is in=r5/lr, no caller-visible return), and sub_8083F80\
-  \ appears to be the small per-instruction dispatcher it eventually jumps through; sub_8084180 / 8084214 / 80842D8\
-  \ / sub_809E462 are downstream commands of the same script chain.\n  - No assembly is available in this dump so\
-  \ the contract inference rests entirely on the callee fingerprint (r10-in, nz-out, BBS event-flag ops + cutscript\
-  \ sentinels + the 0x80xxxx-gfx anim loaders that the rest of the module shares).\n"
+summary: 'Substate/dispatch inside the BBS-style chatbox/result cutscene: tests cutscene script sentinels, sets/clears
+  the request-BBS flag at 0x2001F68 bit 0x7, and loads+animates the request-bbs GFX via a sequence of helpers.'
+interface: (r10 = toolkit) -> side-effects only; preserves r4-r9/r12 per contract
+details: "The callee set makes the role fairly clear: it drives a small request-BBS flow\n  (reqBBS_setFlag_e17b0f7_8140A00\
+  \ is \"BBS request handler that sets event flag 0x7 in event\n  byte 0x17 (memory address 0x2001F68)\") paired\
+  \ with reqBBS_clearFlag_8140A0C, plus two\n  \"cutscene_checkOriginalCutsceneScriptPos\" sentinels (L-Message\
+  \ and AskJackOut), so this\n  function only runs in those specific cutscene-script contexts. It then chains three\n\
+  \  load_gfx_anim_* helpers (8083FC0 / 8083FFC / 8084068) plus a struct_copy and a half-dozen\n  other 8083xxx/8084xxx\
+  \ helpers, suggesting it steps the request-BBS animation/animation-setup\n  across multiple frames. TestEventFlagFromImmediate\
+  \ / SetEventFlagFromImmediate /\n  ClearEventFlagFromImmediate are used to gate the states. The bare r10/lr in-contract\
+  \ and the\n  full set of callee-saved r4-r9/r12 in out matches a leaf step function whose caller is the\n  higher-level\
+  \ BBS GUI state machine; nothing concrete on a return value. No assembly was\n  emitted into the dump (\"sub_8083DF0\
+  \ not found in bn6f/asm\"), so the role is inferred only\n  from the callee graph and call-site shape.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- Callee reqBBS_setFlag_e17b0f7_8140A00 already has a confirmed one-liner about BBS event flag 0x7 at
-    byte 0x17, so this function is firmly in the BBS code path. - The two cutscene-sentinel helpers (cutscene_checkOriginalCutsceneScriptPos_8036F40
-    and 8036F58) and Clear/Set/TestEventFlagFromImmediate are the standard cutscene-script gating set in bn6f. -
-    The `load_gfx_anim_*` trio (8083FC0/FFC/068) plus sub_8083F80/8084080/8084180/.../42D8 form a known BBS-cutscene
-    "executor + commands" cluster (this can be confirmed by walking the other call sites of those helpers in the
-    same object file once asm is unmasked). - output side only has nz plus callee-saved r4..r12/r2/r3, matching
-    the void-style BBS cutscene dispatchers (no value returned to caller).'
+  detail: '- In-contract r10+lr only, no argument registers: a state-step callback, not a free function. - Direct
+    call to reqBBS_setFlag_e17b0f7_8140A00 (confirmed to set flag 0x7 at 0x2001F68, the BBS request byte) and to
+    reqBBS_clearFlag_8140A0C: ties the function to the BBS-request flag, not the generic battle/cutscene flow. -
+    Calls to cutscene_checkOriginalCutsceneScriptPos_8036F40 (L-Message sentinel) and cutscene_checkOriginalCutsceneScriptPos_8036F58
+    (AskJackOut sentinel): the function deliberately branches on whether the saved cutscene pointer is the L-Message
+    or AskJackOut script, so this only fires inside those cutscenes. - Three siblings load_gfx_anim_8083FC0 / 8083FFC
+    / 8084068 plus struct_copy_80840C4 and sub_8083F80 / sub_8084080 / sub_8084180 / sub_8084214 / sub_80842D8:
+    this is a chunk of the request-bbs GFX/animation subsystem (addresses clustered in 8083xxx-8084xxx). - sub_809E462
+    is the only non-bbs callee: probably the standard "advance chatbox/cutscene"'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x08083DF0
@@ -40,14 +42,17 @@ evidence:
     '
   result: beastsp, story5, story6
 open_questions:
-- The exact role played per "case" depends on the inlined switch table — without assembly I can't tell whether 8083DF0
-  is the BBS script's main loop, its init, or just a per-frame step.
-- sub_809E462 is a fingerprint I can't place; whether it's the PET/BBS sound player or a chatbox push is unknown
-  until its asm is read.
+- Whether the function is "advance the BBS request animation each tick" vs. "initialize the
+- BBS GUI on entering the cutscene", because no callers or assembly were supplied. Callee
+- load_gfx_anim_8083FC0 / 8083FFC / 8084068 might be a one-shot setup rather than per-frame;
+- getting the matching caller graph would settle this.
+- 'Exact return semantics: contract lists many callee-saved registers but no caller-visible'
+- return value, so it is void-like, but without assembly we cannot confirm whether
+- nz is genuinely set or just a transient flag from one of the test-event calls.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f a5b62063
+  where: bn6f 147865dc
   tool: tools/symdoc.py

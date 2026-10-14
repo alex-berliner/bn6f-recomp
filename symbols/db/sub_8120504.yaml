@@ -1,0 +1,64 @@
+name: sub_8120504
+address: '0x08120504'
+kind: function
+previous_names: []
+status: hypothesis
+summary: Pack a single chip-ID/code into an 8-byte chip descriptor (code+ID in low dword, code+ID+1 in high dword)
+  and store it via a pointer; scratch helper for the chip-select summary writer.
+interface: '(r0 = scratch0_hi = 0xA, r1 = scratch0_lo = svc-result / tmp, r2 = chipIDAndCode, r3 unused) ; r7 =
+  outPtr ; side effect: [r7+0] = ((chipIDAndCode+1)<<16 | chipIDAndCode) , [r7+4] = ((chipIDAndCode+0xC)<<16 | chipIDAndCode+0xB)
+  ; returns r0 = (chipIDAndCode+1)'
+details: 'Prologue saves r4-r7+lr; r7<-r1 (outPtr), r4<-r2 (chipIDAndCode, treated as u32 because r1 starts as 0).
+  It then issues BIOS svc 0x6 (CpuFastSet/Div/Mod via r0=0xA request form) with r0=0xA, r1 as the divider pair (r1,r0
+  paired) to compute r1 = r1 mod r0 (or similar), but the relevant result is `r2 = r1`, then `r0 = r1`, and the
+  r0/r1 pair is rearranged so that after the tst+add sequence: r1 ends as either r4+0 or r4+1 (modulo result of
+  svc 6), and r0 ends as r4+1 unconditionally (r0 = r1+r4+1). The two operands are then packed as two u16: (r0 <<
+  16) | r1, and stored to [r7]. The same packing is repeated with constants 0xB and 0xC: r1 = r4+0xB, r0 = r4+0xC
+  (lsl#16), orr and store to [r7+4]. Exit pops and returns r0 = r4+1 in r0 (per captured-call exit r0=0x935b935a
+  when r4=0x934f). Effectively this writes two adjacent 4-byte descriptors whose lower halfword is chipIDAndCode
+  (or +1) and whose upper halfword is chipIDAndCode shifted up by one slot index. Caller writes a zero 8-byte entry
+  when chip slot is empty, otherwise calls this to convert chipIDAndCode into the layout used by the chip-select
+  summary buffer.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- assembly `push {r4-r7,lr}` / `pop {r4-r7,pc}` at asm32.s:36679 frame - `mov r7,r1` / `mov r4,r2` saves
+    outPtr (r7) and chipIDAndCode (r4); r4 is reused as the base for every packed value - `svc 6` with r0=0xA divides
+    the (r0,r1) pair to produce r1 = r1 mod r0 then the `tst r1,r1`/`bne` chooses r1 = r4 or r4+1 (mod carry); r0
+    is unconditionally forced to r4+1 via `add r0,r0,r4` `add r0,#1` - `lsl r0,r0,#0x10` `orr r0,r1` `str r0,[r7]`
+    packs (r0_hi16 | r1_lo16) into the low dword - second pair: `mov r0,#0xb` `add r1,r4,r0` then `mov r2,#0xc`
+    `add r0,r4,r2` `lsl r0,r0,#0x10` `orr r0,r1` `str r0,[r7,#4]` — same shape, constants 0xB/0xC - captured-call
+    exit r0 = 0x935b935a matches r4=0x934f + 1 (=0x9350 high half) packed: low half is 0x935a (=0x934f+0xB), high
+    half is 0x935b (=0x934f+0xC); r7 contents in captures show two adjacent packed 4-byte values laid out in this
+    exact pattern (e.g. `4f 93 5a 93 5b 93` then zero) - caller sub_81204C4 description states it converts each
+    occupied slot''s chip type into an 8-byte output entry via this function and zeros empty slots, consistent with
+    r7 being the per-slot output pointer'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08120504
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus3, story4, story6, story8, story9'
+  reproduce: 'grep -l ''^08120504 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus3, story4, story6, story8, story9
+open_questions:
+- exact semantics of the svc6 pair (which BIOS call it actually is in bn6f and what r0=0xA encodes); the add+1 on
+  r0 vs the conditional add+1 on r1 suggests a carry/borrow trick tied to the BIOS result, but the project has no
+  public BIOS header I can cross-check. Settle by checking the only `svc 6` site in this routine against bn6f BIOS
+  call tables.
+- the meaning of the "chipIDAndCode" packed with +0xB and +0xC offsets in the second dword (likely an element/secondary-code
+  or attack-form record, but not provable from the assembly alone).
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 147865dc
+  tool: tools/symdoc.py
