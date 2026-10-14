@@ -2165,8 +2165,9 @@ Highlights:
 | 38    | 25                 | 19                        | 6               | 0       |
 | 39    | 25                 | 22                        | 3               | 0       |
 | 40    | 25                 | 23                        | 2               | 0       |
+| 41    | 25                 | 20                        | 5               | 0       |
 
-Running total: named 744, hypothesis-only 235, dropped 0 (of ~10,600 placeholders).
+Running total: named 764, hypothesis-only 235, dropped 0 (of ~10,600 placeholders).
 
 ## Batch 37 (2026-10-14)
 
@@ -2183,6 +2184,10 @@ Running total: named 744, hypothesis-only 235, dropped 0 (of ~10,600 placeholder
 ## Batch 40 (2026-10-14)
 
 25 functions: 23 renamed to probable, 2 left as hypothesis (sub_80EB79C, sub_801A45C). 6 of the 23 renames were hypothesis revisits that the LLM successfully promoted. Subsystems covered: battle beast-sp/snakearm/aura/variousinits, chip-folder screen state, OW map object spawning, bus-station sequence, battle damage flags.
+
+## Batch 41 (2026-10-14)
+
+25 functions: 20 renamed to probable, 5 left as hypothesis (sub_80EB79C, sub_810CC54, sub_8115272, sub_80D4472, sub_810CA8E). First time we got a refusal from the LLM (sub_810CA8E — it had no assembly in the standard split and refused to guess). Also first time we got an IWRAM placeholder (sub_300777C, sub_3007038) and the LLM successfully named it. Notable: sub_81204C4 was unusual — the LLM put all the assembly evidence inside `details:` instead of `evidence:`, parser had to fall back.
 
 ## Session summary
 
