@@ -3,24 +3,29 @@ address: '0x08031980'
 kind: function
 previous_names: []
 status: hypothesis
-summary: Returns 3 if r0 == 1, else 2; tiny AI/data helper at the end of a likely shared ai_data slot
-interface: '(r0 = tag/selector) -> r0 = 3 if r0==1 else 2; side effects: clobbers r5'
-details: "The function is a leaf (push {lr}; pop {pc}) that loads a global word (dword_2013940)\n  into r5 but never\
-  \ uses it before returning. The branch is:\n    if (r0 == 1) -> r0 = 3;\n    else         -> r0 = 2;\n  Based\
-  \ on the captured calls and the ldr of dword_2013940 (which lives in the\n  battle/AI EWRAM region used by bn6f's\
-  \ AIData-related state), this is one of the\n  inlineable \"AI actor type\" helpers used by the AI table walker;\
-  \ the r5 load\n  is a side-effect remnant common to many of these one-liner AI helpers.\n  All 40+ captured calls\
-  \ feed r0=1 (entry argument) from r5 across the chain\n  sub_803199E..sub_8031A5E and always observe exit r0=3,\
-  \ consistent with the\n  \"input == 1\" branch being the production path. Behavior on other inputs is\n  only\
-  \ inferred from the assembly (`else` -> 2) and not captured.\n"
+summary: Returns one of two hard-coded state word values (3 when r0==1, 2 otherwise) using dword_2013940 as scratch;
+  appears to be a battle-AI helper queried with a selector.
+interface: '(r0 = selector) -> r0 = 2 or 3; side effects: loads dword_2013940 into r5 (no write observed)'
+details: "Prologue: `push {lr}`; loads address `dword_2013940` into r5.\n  `cmp r0, #1` / `beq loc_803198A`: when\
+  \ selector==1, sets r0=3 and returns via `pop {pc}`.\n  Otherwise falls through to `loc_803198E`: sets r0=2 and\
+  \ returns.\n  Body never dereferences r5, so the loaded global is unused in this function (likely scratch or\n\
+  \  referenced by a callee/caller convention for a related family of helpers). Exit flags are --C-\n  (C set) on\
+  \ the r0=3 branch (because of the mov r0,#3 in Thumb sets CY=1) and clear on the r0=2\n  branch; all 40 captured\
+  \ calls hit the ==1 branch (r0=1 in, r0=3 out), consistent with every\n  caller being a state/lookup helper that\
+  \ asks for selector 1.\n  The function is part of a tight dispatcher (9 contiguous sibling wrappers at 0x0803199E,\n\
+  \  0x080319B6, 0x080319CE, 0x080319E6, 0x080319FE, 0x08031A16, 0x08031A2E, 0x08031A46,\n  0x08031A5E) all funneling\
+  \ into this routine with r0=1, so it likely returns a small enum\n  identifying a battle state (e.g. \"which AI/substate\
+  \ word to index\"). Without seeing the\n  dispatcher siblings' code, the exact role (lookup vs constant) is inferred.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- `cmp r0, #1` / `beq loc_803198A` immediately followed by `mov r0, #3` (then pop {pc}) — chooses 3 when
-    r0==1 - Fall-through `mov r0, #2` at loc_803198E then `pop {pc}` — returns 2 otherwise - `ldr r5, off_8031994`
-    (dword_2013940) is loaded but never read before return; just a preserved scratch - 40 captured calls all enter
-    with r0=1 and exit with r0=3 and C=1, matching the r0==1 branch - Callers live in a tight 0x0803199E..0x08031A5E
-    cluster, each carrying r5 through, suggesting a single AI subsystem that always passes 1'
+  detail: '- `cmp r0, #1` then `beq loc_803198A` (sub_8031980, lines 25245..) shows selector==1 branch. - `mov r0,
+    #3` followed by `pop {pc}` is the r0==1 path (asm at loc_803198A). - `mov r0, #2` followed by `pop {pc}` is
+    the default path (asm at loc_803198E). - All 6 (of 40) captured entry r0 values are 1 and exit r0 is always
+    3 → callers always pass selector 1 and get back 3. - `r2`/`r3` are passed in as (02029f44, 8), (02029e1c, 8),
+    (02029f68, 8) — three different EWRAM bases plus count 8 — but r2/r3 are not consumed by this function, so callers
+    pass through other context. - `dword_2013940` is loaded into r5 but never read; suggests this is a shim that
+    reuses the convention of an adjacent helper family (or the parent caller reloads r5 itself).'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x08031980
@@ -37,15 +42,13 @@ evidence:
   result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1, story2, story3,
     story4, story5, story6, story7, story8, story9, wander
 open_questions:
-- The dword_2013940 reference — whether it's an unused legacy load or actually read by an inline caller (none observed
-  in this function)
-- Whether the returned 3/2 means "actor class index", "faction index", or a template slot — captured calls only
-  show the r0==1→3 path
-- Why all 40 real callers pass exactly 1; whether the else→2 path is reachable at runtime is unverified
+- What `dword_2013940` actually represents (the function never dereferences it).
+- Whether r0=2 path is ever hit in practice (no captured call exercised it).
+- The relationship to the sibling wrappers and what 2 vs 3 encode (battle state enum?).
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f 22c74dca
+  where: bn6f d4179034
   tool: tools/symdoc.py

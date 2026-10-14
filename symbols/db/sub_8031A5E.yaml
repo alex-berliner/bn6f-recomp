@@ -3,30 +3,24 @@ address: '0x08031A5E'
 kind: function
 previous_names: []
 status: hypothesis
-summary: Tail-call wrapper that asks sub_8031980 to look up a state word for selector 1 and forwards the result
-  back as its own return value.
-interface: '() -> r0 = (3 if selector 1 matches, otherwise 2) ; side effects: same as sub_8031980'
-details: "The function body is three instructions. It first pushes lr, loads immediate 1 into r0,\n  then bl sub_8031980.\
-  \  Per the callee's contract, sub_8031980 reads the `r0` selector as\n  an index into some EWRAM word, loads that\
-  \ word, and returns 3 in r0 when the value is 1\n  and 2 otherwise.  This wrapper hard-codes the selector to 1,\
-  \ so callers always get the\n  \"selector == 1\" branch's classification.\n\n  The epilogue is `pop {pc}` rather\
-  \ than `pop {lr}` followed by `bx lr`, which means control\n  transfers straight back to this function's caller\
-  \ with sub_8031980's r0 in place - so the\n  wrapper is genuinely just a tail call.  The captured-call snapshots\
-  \ consistently show\n  r0=0x020058ac/0x02005984/0x02005ce4 pointers into a region that begins with the 0x68 /\
-  \ 0x18\n  byte prefix the callee documents, and exits always carry r0=3 (C flag set), matching the\n  \"selector\
-  \ 1 matches\" path of sub_8031980.\n\n  Because the only behaviour comes from sub_8031980, the naming only reflects\
-  \ the fixed\n  selector; the meaning of \"selector 1 / 3 vs 2\" still belongs to the callee and is not\n  decipherable\
-  \ here.\n"
+summary: Tiny battle helper that calls sub_8031980 with r0=1 and returns its result in r0.
+interface: () -> r0 = result of sub_8031980(1) ; no other side effects (only lr is pushed/popped)
+details: "Three-instruction tail-call to sub_8031980. Loads r0 = 1, branches with link to sub_8031980,\n  then returns\
+  \ via `pop {pc}` (so lr was the only saved register). The result is whatever\n  sub_8031980 returns for r0=1 (per\
+  \ its current hypothesis, it returns 3 if the input is 1,\n  else 2). All 6 sample invocations show r0=3 on exit,\
+  \ consistent with a \"passes a fixed\n  argument 1\" wrapper. The captured-call context shows lr=08031902 for\
+  \ every sample, so this\n  wrapper sits right before the call site at 08031902; given the surrounding code is\
+  \ in\n  the battle/AI subsystem (AIData structures captured at r0 ~ 020058ac / 02005984 / 02005ce4),\n  the wrapper\
+  \ is most likely a small accessor used from an AI handler — possibly the\n  \"number of frames / phase count\"\
+  \ or similar constant lookup that always wants the value\n  for AIIndex-like input 1.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- `mov r0, #1` at the function entry sets the selector argument to 1. - `bl sub_8031980` is the sole
-    external call; the callee''s contract documents that it returns 3 for selector 1 and 2 otherwise. - `pop {pc}`
-    (instead of `pop {lr}` + `bx lr`) makes this a pure tail call, so r0 and flags fall straight through to the
-    caller. - All 40 captured exit snapshots set r0=3 with the C flag set (---- -> --C-), which is what sub_8031980
-    produces for the selector-1 branch. - lr on entry (0x08031902) is the documented return address back into the
-    wrapping story-2 code, and 40 callers all share that single source, so this is reached from exactly one site
-    within the story2 helper.'
+  detail: '- assembly: `mov r0, #1` / `bl sub_8031980` / `pop {pc}` at 0x08031a5e - callee `sub_8031980` per its
+    own contract takes r0 and returns 2 or 3 in r0 - all 6 captured calls exit with r0=0x3 and lr=08031902, confirming
+    the wrapper returns a fixed value derived from sub_8031980(1) - caller''s saved lr at entry (08031902) sits
+    4 bytes after this wrapper, consistent with a `bl` from that site - AIData-like structs in r0 across all 6 captures
+    place this code in the AI/battle area'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x08031A5E
@@ -43,15 +37,13 @@ evidence:
   result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1, story2, story3,
     story4, story5, story6, story7, story8, story9, wander
 open_questions:
-- What "selector 1 vs otherwise" semantically means (the 3 vs 2 distinction is owned by
-- sub_8031980); we only know this wrapper pins the selector to 1.
-- Whether there exists a sibling wrapper that hard-codes selector 0 to return 2 — would be
-- 'confirmed by finding a literal `mov r0, #0` followed by the same `bl sub_8031980` shape'
-- nearby in bn6f/asm.
+- the exact semantic meaning of "value 1" (which AI state field, or actor-type slot)
+- cannot be told from this stub alone; cross-referencing sub_8031980's callers with
+- AIData field meanings would settle it
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f 22c74dca
+  where: bn6f d4179034
   tool: tools/symdoc.py

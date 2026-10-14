@@ -3,17 +3,30 @@ address: '0x08083DF0'
 kind: function
 previous_names: []
 status: hypothesis
-summary: GFX animation init helper that loads an animation frame value or sets a script/cutscene flag; called by
-  multiple init_gfx_anim_* routines and story/cutscene flag helpers.
-interface: '() -> r0 = unknown ; side effects: unknown'
-details: "GFX animation init helper that loads an animation frame value or sets a script/cutscene flag.\n\nevidence:\
-  \ |\n  - Called by init_gfx_anim_8083FC0, init_gfx_anim_8083FFC, init_gfx_anim_8084068\n  - Called by story/cutscene\
-  \ flag helpers\n\nuncertain: |\n  - The body wasn't extracted from the ROM, so specific operations are not visible.\n"
+summary: (cannot be verified) probable helper that tests/clears/sets cutscene- and BBS-related event flags and kicks
+  off three GFX anim states as part of the start-screen flow.
+interface: '(in = r10 toolkit; out = nz; side effects: r2-r9,r12 clobbered, lr clobbered; no r0 returned value.)'
+details: "- The contract lists no `r0`/`rh`/memory out, so the caller does not consume a return value beyond the\
+  \ nz flag from the embedded tests.\n  - Direct callees strongly suggest a \"prep before showing something\" routine:\
+  \ it tests/clears/sets event flags (Clear/Set/TestEventFlagFromImmediate, reqBBS_clearFlag_8140A0C, reqBBS_setFlag_e17b0f7_8140A00),\
+  \ checks whether the cutscene state is sitting on the L-Message or AskJackOut sentinel (cutscene_checkOriginalCutsceneScriptPos_8036F40\
+  \ / _8036F58), then fires three gfx-anim loaders (load_gfx_anim_8083FC0 / _8083FFC / _8084068) and copies a struct\
+  \ (struct_copy_80840C4, sub_8083F80, sub_8084080, sub_8084180, sub_8084214, sub_80842D8).\n  - The \"reqBBS\"\
+  \ callees touch `0x2001F68` (event byte 0x17) and are wired into BBS request handling, which is part of the main-menu/connector\
+  \ screen machinery; that is the strongest contextual hint for `startScreen_`.\n  - sub_809E462 is called late\
+  \ and (one-line) returns nz — consistent with a \"wait for VBlank/intr\" stall at the end of an init sequence.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- Called by init_gfx_anim_8083FC0, init_gfx_anim_8083FFC, init_gfx_anim_8084068 - Called by story/cutscene
-    flag helpers'
+  detail: '- Direct callee `reqBBS_setFlag_e17b0f7_8140A00` writes `0x2001F68` (event byte 0x17), tying the routine
+    to BBS-related state (confirmed callee summary in prompt). - Direct callees `cutscene_checkOriginalCutsceneScriptPos_8036F40`
+    and `_8036F58` check `originalCutsceneScriptPos_40` in CutsceneState, which is only meaningful when a script
+    is queued/being restored — i.e. at screen (re)entry (confirmed callee summary). - Three `load_gfx_anim_*` callees
+    + `struct_copy_80840C4` indicate this routine wires up anim state slots, matching the startScreen flow that
+    needs GFX anim slots prepped before frames render. - Callee `sub_809E462` is an `nz`-returning stall, placed
+    near the end of the call list, matching the "prep -> spin until ready" idiom used elsewhere in subsystem inits.
+    - Register contract: `in=[''r10'',''lr'']` with `out` containing only nz + callee-saved r2-r9,r7-r9,r12 — confirms
+    r10 is the toolkit and nothing is returned to the caller, which is consistent with a void init/update.'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x08083DF0
@@ -28,12 +41,19 @@ evidence:
     '
   result: beastsp, story5, story6
 open_questions:
-- The body wasn't extracted from the ROM, so specific operations are not visible.
-- 'status: hypothesis'
+- No assembly was available (`sub_8083DF0 not found in bn6f/asm`), so every claim above is inferred from callees,
+  not from instructions at 0x08083df0.
+- Without the instructions I cannot tell which of the three gfx-anim loaders is gated behind which flag test, or
+  whether this routine is the startScreen init vs a per-frame update.
+- The exact meaning of `sub_8083F80`, `sub_8084080`, `sub_8084180`, `sub_8084214`, `sub_80842D8` is unknown; they
+  could be per-anim helpers or shared struct copy variants, which would shift the naming from `startScreen_` to
+  a more generic `gfxAnim_` if they turn out to be reusable across subsystems.
+- 'Settling it: disassemble the bytes at 0x08083df0 (the asm file appears to be missing) and look at the call sites
+  in startScreen / main-menu / BBS handlers to confirm which screen''s initialisation owns it.'
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
-  where: bn6f 22c74dca
+  where: bn6f d4179034
   tool: tools/symdoc.py

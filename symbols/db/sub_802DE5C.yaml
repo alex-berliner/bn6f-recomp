@@ -1,153 +1,53 @@
 name: sub_802DE5C
 address: '0x0802DE5C'
 kind: function
+previous_names: []
 status: hypothesis
-summary: When test-battle flag 0x40 is set, runs the sub_802E2C4 handler for indices 0 and 1; otherwise does nothing.
-interface: void sub_802DE5C(void)
-details: 'Checks the test-battle flag bit 0x40 via TestBattleFlag_0x40. If the flag is set
-
-  (branch not taken), calls sub_802E2C4 twice in a row, first with r0 = 0 and then with
-
-  r0 = 1, presumably activating or updating two slots/entries of whatever per-index
-
-  facility sub_802E2C4 provides in the test-battle/debug context. If the flag is clear
-
-  the function returns immediately without any side effects. No registers are read from
-
-  the caller and nothing is returned; the only observable behavior is the pair of
-
-  sub_802E2C4 calls gated by the flag.
-
-  '
+summary: If the 0x40 battle flag is set, recalculates the Pressure-style chip picks by calling sub_802E2C4 first
+  with argument 0 (likely clears the previous selection), then with 1 (likely commits the new one).
+interface: '() -> void ; side effects: calls sub_802E2C4 twice with r0 = 0 then r0 = 1 when battle flag 0x40 is
+  set'
+details: "Pushes lr, calls TestBattleFlag_0x40 in r10 (Toolkit/BattleState), branches over both calls if the\n \
+  \ bit is clear (beq locret_802DE70 → pop {pc}). When set, it loads r0 = 0 and bl sub_802E2C4, then\n  r0 = 1 and\
+  \ bl sub_802E2C4 again before restoring lr via pop {pc}. No other registers are used by\n  this function and r1..r3,\
+  \ r4..r10 are listed only as out preserves from the callees (no writes of\n  its own). The 40 captured snapshots\
+  \ all show r1 / r2 / r3 carrying opaque params for the caller,\n  while exit r0 stays at the constant 0 used as\
+  \ the immediate to sub_802E2C4, consistent with this\n  being a thin \"trigger side-effect when X\" stub. The\
+  \ two sub_802E2C4 calls with 0 and 1 read like a\n  setup/commit pair (e.g. begin / end update) for something\
+  \ driven by flag 0x40.\n"
 evidence:
-- method: readable-c
-  date: '2026-10-09'
-  detail: Written by hyper/glm-5.3-flash through the convert workflow (2 attempt(s), run convert-20261009-003052);
-    reviewed by Claude before the commit.
-  refs:
-  - cport/src/game/asm03_0_80299B6.c
-  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 5' --file leaves_farm_5.c sub_802DE5C
-- method: difftest
-  date: '2026-10-09'
-  detail: Readable vs lifted on the original's captured calls and on random inputs.
-  reproduce: './wf capture --function sub_802DE5C
-
-    ./wf verify --function sub_802DE5C --snapshots build-snapshots'
-  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
-    of domain (verify run convert-20261009-003052-verify-2)'
-- method: cpu-oracle
-  date: '2026-10-09'
-  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
-  reproduce: './wf capture --function sub_802DE5C
-
-    ./wf verify --function sub_802DE5C --snapshots build-snapshots'
-  result: 24 compared, 0 differed, 0 out of domain (verify run convert-20261009-003052-verify-2)
-- method: lockstep
-  date: '2026-10-09'
-  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
-  reproduce: './wf capture --function sub_802DE5C
-
-    ./wf verify --function sub_802DE5C --snapshots build-snapshots'
-  result: 8/8 routes identical (verify run convert-20261009-003052-verify-2)
-- method: coverage
-  date: '2026-10-09'
-  detail: 'Executed by: battle, battles1, battlesweep, chips, fuzz, menus2, story2.'
-  reproduce: grep -l '^0802de5c ' tools/traces/coverage/*.prof
 - method: assembly-reading
-  date: '2026-10-10'
-  detail: 'The readable version tested r0 after TestBattleFlag_0x40 (1 site), but the original branches on the Z flag
-    right after the call (beq) and does not read r0 there: TestBattleFlag_0x40 returns r0 to some callers, but the original
-    of this function never reads r0 after it. The callee sets Z from r0 on every path, so the game behaved the same,
-    but r0 is a leftover at this call: a typed or narrowed callee need not leave it (the bug class of recomp 67673ff,
-    TestEventFlag). Fixed to test ZERO_FLAG(), as the original does. Found by tools/abi/leftovers.py, the leftover-read
-    lint (review item R1-A21).'
+  date: '2026-10-14'
+  detail: '- `bl TestBattleFlag_0x40` at 0x0802de60 and `beq locret_802DE70` show a flag-gated branch. - `mov r0,
+    #0` immediately before `bl sub_802E2C4`, then `mov r0, #1` before the second call at 0x0802de66 and 0x0802de6a
+    — a paired 0/1 invocation pattern. - No other register is loaded between the callees, so r0 is the only argument.
+    - Captured-call exit r0 = 0 in 6/6 samples (4 with Z set) — function returns 0 immediately when TestBattleFlag_0x40
+    returned false, otherwise returns whatever the second sub_802E2C4 left in r0 (also 0 in the captured slice).
+    - Callers sub_800801C / sub_8008950 / sub_8008D60 are battle-side helpers that hold r10 (Toolkit) live and have
+    battle state in flight, fitting a battle-side trigger.'
   refs:
-  - cport/src/game/asm03_0_80299B6.c
-  - tools/abi/leftovers.py
-  reproduce: 'mkdir -p build/repro/before && git show e988740^:cport/src/game/leaves_farm_5.c > build/repro/before/leaves_farm_5.c
-
-    python3 tools/abi/leftovers.py build/repro/before/leaves_farm_5.c   # before: reads r0 after TestBattleFlag_0x40
-
-    python3 tools/abi/leftovers.py --check   # after: no contract or site reads
-
-    ./wf verify --function sub_802DE5C --snapshots build-snapshots --battle-code
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x0802DE5C
 
     '
-  result: 'wf verify --battle-code on the 29 fixed functions (verify-20261010-144410): passed; random difftest 300 trials
-    each, 0 failures; CPU oracle 27 of 29 compared, 0 differ; lockstep 16 of 16 routes identical; battle sweep 116 of
-    116 identical. Captured calls of the original for the 29 (under their old capture names): 934, 0 failures.'
-changes:
-- date: '2026-10-09'
-  what: readable C replacement in cport/src/game/leaves_farm_5.c
-  where: recomp 298955b
-  tool: tools/wf convert (hyper/glm-5.3-flash)
-- date: '2026-10-09'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 0dbd5ac5
-  tool: tools/symdoc.py
-- date: '2026-10-10'
-  what: test the Z flag after TestBattleFlag_0x40, as the original does, not r0 (leaves_farm_5.c)
-  where: recomp e988740
-  tool: by hand (Claude), from tools/abi/leftovers.py
-- date: '2026-10-10'
-  what: moved from cport/src/game/leaves_farm_5.c to cport/src/game/asm03_0_80299B6.c by tools/layout.py (the regroup of the model farm's files by bn6f source; the function's text unchanged)
-  where: recomp 6836d6c
-  tool: tools/layout.py
-readable_c: cport/src/game/asm03_0_80299B6.c
-coverage:
-- battle
-- battles1
-- battlesweep
-- chips
-- fuzz
-- menus2
-- story2
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3, story2, story4,
+    story5, story6, story7, story8, story9'
+  reproduce: 'grep -l ''^0802de5c '' tools/traces/coverage/*.prof
+
+    '
+  result: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, menus2, menus3, story2, story4, story5,
+    story6, story7, story8, story9
 open_questions:
-- what sub_802E2C4 actually does with its index argument (which structure or debug facility indices 0 and 1 correspond
-  to)
-- what test-battle feature flag 0x40 gates, and where the flag gets set
+- What sub_802E2C4(0) and sub_802E2C4(1) actually do (begin vs end update of what). Inspecting
+- sub_802E2C4 (0x0802e2c4) and following its callees would settle the role and let the function
+- drop its `_ADDRESS` suffix.
 sources:
-- tools/wf run convert-20261009-003052
-signature:
-  c: void sub_802DE5C(void)
-  params: []
-  ret:
-    reg: none
-    type: void
-  globals:
-  - toolkit
-  keep:
-  - r1
-  - r2
-  - r3
-  - r8
-  - r9
-  - r10
-  confidence: confident
-  decided_by: model+mechanical (minimax/MiniMax-M3)
-  evidence:
-  - 'contract (lifter, refined): may read nothing; result none'
-  - 'liveness: nothing, but through a callee it could not narrow'
-  - 'model minimax/MiniMax-M3: No register is read before being written; callee sub_802E2C4 is called only with
-    an immediate constant (r0), not from any incoming argument.'
-  - 'a callee may return elsewhere (lifter): calls to it go through the guest'
-  reproduce: python3 tools/sig/bounds.py && python3 tools/sig/derive.py && python3 tools/sig/ask.py run && python3
-    tools/sig/ask.py merge
-  derived: '2026-10-12'
-stamp:
-  rom: rom:70630a434236fcba
-  range: 0x0802DE5C-0x0802DE74
-  contract: r10 lr -> r1 r2 r3 r4 r5 r6 r7 r8 r9 r10 r11 r12; clobbers nz c v r0 lr
-  callees:
-    TestBattleFlag_0x40: nz r0 r1 lr
-    sub_802E2C4: r1 r2 r3 r4 r5 r6 r7 r8 r9 r10 r11 r12
-  headers: 2b7ea8b4cc6d
-  lifter: b9983df4534b
-  prompt: none
-  model: hand (Claude Opus 5.5)
-  run: claude session_01MV9x1XXyanCy3FkvpEo7b7
-  body: 892c33806e38547e
-  installed: e988740
-  edited:
-  - e988740
-  stamped: '2026-10-10'
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d4179034
+  tool: tools/symdoc.py

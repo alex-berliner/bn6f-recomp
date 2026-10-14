@@ -1,0 +1,66 @@
+name: sub_8030F04
+address: '0x08030F04'
+kind: function
+previous_names: []
+status: hypothesis
+summary: Computes signed per-axis clip/penetration deltas for two battle objects against an axis-aligned bounding
+  box reference
+interface: (r0 = objOrAabbPtr, r1 = otherObjPtr, r2 = aabbHalfWidthDelta, r3 = aabbHalfHeightDelta, r4 = otherHalfWidth,
+  r5 = otherHalfHeight, r6 = axisMaskOrDim, r7 = ?, lr) -> r0 = negY, r1 = negX
+details: "Function operates on a struct at r0 of at least ~0x14 bytes, reading a u32 at +0 and +4, and u32s at +0xC\
+  \ and +0x10.\n  Computes r2 = r2*r5 - r3*r4 (a cross-product / 2D extent test) into r2; then r5 = r2 + r0*((r6=r6-r5)?\
+  \ r5? - r5? - actually r6 = (r6 - r5) using the captured r6)  -- re-reading: r6 := (r6 - r5) saved into r8; r7\
+  \ := (r2 - r3) saved into r7; then r5 = r2 + r0*((r8)*(r6)) + r4*((r7)*(r7))? \n\n  The actual logic:\n  - r6_in\
+  \ = original r6 (held in r8 after `mov r8,r6`)\n  - r6 = r2-r3 held in r7; r5 = r4-r5? no: r4 = r4-r5; Actually:\n\
+  \    r8 = original r6\n    r6 = r5 - r4 (no, r4 = sub r6,r5,r4) -> r6 = r5 - r4  (this is the axis-aligned diff)\n\
+  \    r7 = r2 - r3  (the other diff)\n  - r3 *= r4; r2 *= r5; r2 = r3 - r2 (the 2D cross)\n  - Load [r0] and [r0+4]\
+  \ as the \"penetration\" axes, multiply by r6,r7 and accumulate into r3\n  - r5 = r2 + r3 (the discriminant of\
+  \ sorts)\n  - if r5 <= 0, branch tests the alternate pair ([r0+0xC],[r0+0x10]) similarly\n  - if both fail, returns\
+  \ (0,0) (loc_8030F76)\n  - otherwise calls sub_8031048 twice (the \"real\" sub), once with negated-X delta and\
+  \ once with negated-Y delta, reading [result+4] and [result+0] respectively, and returns (r8=negY, r9=negX) in\
+  \ (r0,r1) (mov r0,r9; mov r1,r8)\n  Captured calls show r1 = a heap pointer (0x8379, 0x9924, 0x9928), r2 always\
+  \ 0x20, r3 always 0, exit r0 always negative (sign set), and the input struct has pattern like 0f 00 / 03 00 /\
+  \ 00 00 / 13 00 / fc ff (little-endian s16 pairs followed by s16 ffff), strongly suggesting four signed halfword\
+  \ components (X1, Y1?, X2, Y2?) representing AABB extents or a collision vector.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `sub r6, r5, r4` and `sub r7, r2, r3` at 8030F0A/8030F0C are clearly extent differences (signed) -
+    `mul r3, r4` then `mul r2, r5` then `sub r2, r3, r2` is a 2D cross product r3*r4 - r2*r5 - The first read `[r0]`
+    and `[r0,#4]` (at 8030F18/8030F1A) then multiplying with r6,r7 and adding to the cross -- classic separating
+    axis test (SAT) for two OBBs - Branches on the sign of the accumulated value with `bgt loc_8030F76` (8030F32)
+    and the second pair `[r0,#0xc]`/`[r0,#0x10]` (at 8030F40) indicate the two axis pairs of an OBB - `sub_8031048`
+    is called twice (8030F64 and 8030F88) with negated args, then returns the per-axis penetration - Captured-call
+    r0=0200f3e0, r1=heapObj, r2=0x20, r3=0 with negative exit r0 (e.g. fffffff1, fffffff8) and 64-bit pattern of
+    4 s16 values matches an AABB or OBB axis pair structure - Caller `sub_8031478` ("Two-axis camera scroll during
+    battle transitions ... horizontal pass with object nudge, then optional vertical pass") suggests this is the
+    per-axis penetration for pushing the player / a battle object out of a panel boundary'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08030F04
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, beastsp, fuzz, maps, menus2, story1, story2, story3, story4, story5,
+    story6, story8, story9, wander'
+  reproduce: 'grep -l ''^08030f04 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, beastsp, fuzz, maps, menus2, story1, story2, story3, story4, story5, story6, story8,
+    story9, wander
+open_questions:
+- Whether [r0] refers to a 2D bounding box of a battle object or an AABB-encoded sector; need to see how r0 is passed
+  by the callers and what struct it actually points to
+- The exact return value meaning (negY, negX) vs (negX, negY) is inferred from `mov r0, r9; mov r1, r8` and r8 being
+  set in the X-pass branch and r9 in the Y-pass branch
+- 'sub_8031048''s role: the function is called with r6,r7 as (negX, negY)-like values and the returned struct has
+  [r0,#4] and [r0,#0] read; possibly a transform or a clip query against the panel grid'
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d4179034
+  tool: tools/symdoc.py

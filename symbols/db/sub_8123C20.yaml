@@ -1,0 +1,79 @@
+name: sub_8123C20
+address: '0x08123C20'
+kind: function
+previous_names: []
+status: hypothesis
+summary: 'Performs the per-battle-object column-alignment check for the active actor: looks up a panel slot index,
+  writes it into the actor''s AIData state, marks the side bit, and either runs the AI panel-range attack or the
+  row-alignment repair.'
+interface: '(r0 = color/slot table ptr, r1 = flag bitmask to OR into side bits, r2 = record spawn table ptr, r3
+  = work buffer ptr, r4 = AI state field offset, r5 = AIData* (toolkit ptr in r10), r6 = caller''s flag-mask constant)
+  -> void ; side effects: AIState field at AIData+<r4> is set, AIData.Unk_4c |= r1, and one of battle_aiCheckPanelRangeAndDoAttack_8134930
+  or battle_alignRowCheck_81348DC is invoked.'
+details: "Saves r0-r4,r6 on the stack and reads r5->0xc (AIData.Unk_0c, an actor slot index) and r5->0x14 (AIData.AIIndex\
+  \ / a flag byte), then indexes r0 by the slot to get a u8 panel slot. It calls GetCurPETNaviStatsByte with r5->0x14\
+  \ as the field offset to fetch a flag/level byte.\n  If the byte is 0xFF, the panel slot is \"blocked\": when\
+  \ (r1 & AIData.Unk_4c) == 0, sub_81171F4 is called with r0=1, r1=work buffer; otherwise nothing is done (early-out\
+  \ path).\n  Otherwise, the AI byte is stored as a u16 into AIData at the caller's chosen offset (r4), and if the\
+  \ side bit (r1 & AIData.Unk_4c) is not yet set, sub_80465A0 spawns EStruct records from r2 (a pointer table) and\
+  \ ORs r1 into AIData.Unk_4c.\n  Finally it computes a target panel coordinate (0x24 + AIData.Unk_0c * 0xa, i.e.\
+  \ BattleState->PlayerActors[Unk_0c]) plus 0x9d/0x48 constants (the AI check range), and dispatches: if r6 (caller's\
+  \ side/row constant) == 1, it calls battle_alignRowCheck_81348DC (row-alignment repair); otherwise it calls battle_aiCheckPanelRangeAndDoAttack_8134930\
+  \ (AI panel-range attack). The choice uses r6 as discriminator with r3=work buffer and r7=record table pointer\
+  \ for the AI branch.\nevidence: |\n  - str r0-r4,r6 at entry shows r0=table, r1=side mask, r2=record table, r3=work\
+  \ buffer, r4=AI offset, r6=discriminator (`push {lr}; sub sp, sp, #0x18; str r0,[sp]; str r1,[sp,#4]; str r2,[sp,#8];\
+  \ str r3,[sp,#0xc]; str r4,[sp,#0x10]; str r6,[sp,#0x14]`).\n  - `ldrb r0, [r5,#0xc]` plus the linked list of\
+  \ callers treating r5 as the per-actor AIData (or AIData-relative pointer held in r5 with toolkit in r10) matches\
+  \ the AIData.inc Unk_0c slot byte.\n  - `ldrb r1, [r1,r0]; ldrb r0, [r5,#0x14]; bl GetCurPETNaviStatsByte` reads\
+  \ r5->0x14 as a NaviStats field offset, then asks GetCurPETNaviStatsByte for a u8 of the current PET navi stats.\n\
+  \  - `cmp r0, #0xff; bne loc_8123C52` selects between the blocked branch (calls sub_81171F4) and the normal branch\
+  \ (stores value, spawns EStructs, runs AI/align).\n  - `ldr r0,[sp,#0x10]; strh r0, [r5,r1]` writes the AI byte\
+  \ as a u16 into AIData at the caller-supplied field offset (the r4 saved on stack).\n  - `tst r0, r1; orr r1,\
+  \ r0; str r1, [r5,#0x4c]` ORs r1 (side bit) into AIData.Unk_4c only on the first visit, matching the \"init once\
+  \ per side\" semantics shown by the three wrappers passing different side bitmasks.\n  - `mov r0, #0x24; ldrb\
+  \ r1, [r5,#0xc]; mov r2, #0xa; mul r1, r2; add r0, r0, r1` computes 0x24 + Unk_0c*0xa, i.e. the slot in BattleState.PlayerActors/OpponentActors\
+  \ (struct_org 0xd0 size 0x10 each, +0x24 into a BattleState base).\n  - `cmp r6, #1; beq loc_8123C8C` dispatches\
+  \ to battle_alignRowCheck_81348DC vs battle_aiCheckPanelRangeAndDoAttack_8134930; r6 was the caller's constant,\
+  \ three callers pick 1, 0x20, 0x40 etc.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- str r0-r4,r6 at entry shows r0=table, r1=side mask, r2=record table, r3=work buffer, r4=AI offset,
+    r6=discriminator (`push {lr}; sub sp, sp, #0x18; str r0,[sp]; str r1,[sp,#4]; str r2,[sp,#8]; str r3,[sp,#0xc];
+    str r4,[sp,#0x10]; str r6,[sp,#0x14]`). - `ldrb r0, [r5,#0xc]` plus the linked list of callers treating r5 as
+    the per-actor AIData (or AIData-relative pointer held in r5 with toolkit in r10) matches the AIData.inc Unk_0c
+    slot byte. - `ldrb r1, [r1,r0]; ldrb r0, [r5,#0x14]; bl GetCurPETNaviStatsByte` reads r5->0x14 as a NaviStats
+    field offset, then asks GetCurPETNaviStatsByte for a u8 of the current PET navi stats. - `cmp r0, #0xff; bne
+    loc_8123C52` selects between the blocked branch (calls sub_81171F4) and the normal branch (stores value, spawns
+    EStructs, runs AI/align). - `ldr r0,[sp,#0x10]; strh r0, [r5,r1]` writes the AI byte as a u16 into AIData at
+    the caller-supplied field offset (the r4 saved on stack). - `tst r0, r1; orr r1, r0; str r1, [r5,#0x4c]` ORs
+    r1 (side bit) into AIData.Unk_4c only on the first visit, matching the "init once per side" semantics shown
+    by the three wrappers passing different side bitmasks. - `mov r0, #0x24; ldrb r1, [r5,#0xc]; mov r2, #0xa; mul
+    r1, r2; add r0, r0, r1` computes 0x24 + Unk_0c*0xa, i.e. the slot in BattleState.PlayerActors/OpponentActors
+    (struct_org 0xd0 size 0x10 each, +0x24 into a BattleState base). - `cmp r6, #1; beq loc_8123C8C` dispatches
+    to battle_alignRowCheck_81348DC vs battle_aiCheckPanelRangeAndDoAttack_8134930; r6 was the caller''s constant,
+    three callers pick 1, 0x20, 0x40 etc. status: hypothesis'
+  refs:
+  - bn6f/asm/asm00_2.s
+  reproduce: 'python3 tools/asmcat.py 0x08123C20
+
+    '
+  result: the body read as described above
+- method: coverage
+  date: '2026-10-14'
+  detail: 'Executed by: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus3, story4, story6, story8, story9'
+  reproduce: 'grep -l ''^08123c20 '' tools/traces/coverage/*.prof
+
+    '
+  result: battles1, battles2, battlesweep, beastsp, fuzz, maps, menus3, story4, story6, story8, story9
+open_questions:
+- The exact identity of the caller's r6 discriminator (which axis of alignment it controls) and which AIData field
+  offset r4 corresponds to in each wrapper are not provable from this function alone; settling them needs disassembly
+  of sub_8123BC0/sub_8123BE0/sub_8123C00 plus their callers, and the names of the constants they pass.
+sources:
+- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d4179034
+  tool: tools/symdoc.py
