@@ -236,3 +236,89 @@ C structs regenerated via tools/abi/gen_structs.py. The recomp C port
 files (cport/src/game/*.c) were updated by tools/rename_symbol.py
 which in turn re-ran the lifter against the renamed asm. Symdb check
 3559 entries, 0 problems. Gate: ok in 10.5 s.
+
+## Batch 4 (2026-10-15)
+
+19 struct-fields renamed (8 AIAttackVars, 3 AIState, 3 ObjectSprite,
+1 CollisionData, 3 RenderInfo, 1 S20364C0). bn6f commit c1151c67 (asm
+renames) + 9a00d192/e0f53549/cda5d394 (.inc renames). Pushed to fork at
+c1151c67. recomp commit 59e56c66. ROM SHA preserved
+(`0676ecd4d58a976af3346caebb44b9b6489ad099`).
+
+### AIAttackVars (8 fields)
+
+- **oAIAttackVars_Unk_0e -> oAIAttackVars_SubStepIndex** (probable): u8,
+  current step/phase index within a multi-stage attack sequence
+  (incremented each StepTimer wraparound, bounded by a sibling counter,
+  also used as animation/variant selector, 127 reads).
+- **oAIAttackVars_Unk_34 -> oAIAttackVars_AiAttackParam** (hypothesis):
+  u32, AI attack parameter (e.g., per-attack multiplier, 111 reads).
+- **oAIAttackVars_Unk_38 -> oAIAttackVars_PanelParamFlags2**
+  (hypothesis): u32, panel-parameter flags2 (deferred/scratch, 52
+  reads).
+- **oAIAttackVars_Unk_0f -> oAIAttackVars_AttackStepIndex** (probable):
+  u8, step index within the current attack phase (49 reads).
+- **oAIAttackVars_Unk_05 -> oAIAttackVars_ChipUseDelay** (probable): u8,
+  chip-use delay counter (49 reads).
+- **oAIAttackVars_Unk_04 -> oAIAttackVars_ChargeReadyFlag** (probable):
+  u8, charge ready flag (set when charge completes, 41 reads).
+- **oAIAttackVars_Unk_14 -> oAIAttackVars_ChipID** (hypothesis): u16,
+  chip ID (overload/dual-use with attack data, 28 reads).
+- **oAIAttackVars_Unk_3c -> oAIAttackVars_ScratchPointerOrPanel**
+  (hypothesis): u32, generic scratch ptr / panel pointer (16 reads).
+
+### AIState (3 fields)
+
+- **oAIState_Unk_02 -> oAIState_SubState** (probable): u8, sub-state of
+  the AI dispatch (jump-table index, 64 reads).
+- **oAIState_Unk_07 -> oAIState_AggressionFlag** (probable): u8,
+  aggression flag (1 = go on offense, 0 = defend, 17 reads).
+- **oAIState_Unk_03 -> oAIState_AttackDecisionFlag** (probable): u8, AI
+  attack-decision flag (1 = decided, 0 = undecided, 16 reads).
+
+### ObjectSprite (3 fields)
+
+- **oObjectSprite_Unk_11 -> oObjectSprite_SpriteFlags** (probable): u8,
+  sprite flags (orientation/mirror/animation-on, 20 reads).
+- **oObjectSprite_Unk_03 -> oObjectSprite_SpriteFlags2** (probable): u8,
+  additional sprite flags (drawn state/affine, 14 reads).
+- **oObjectSprite_Unk_15 -> oObjectSprite_OamAttributes** (probable): u8,
+  OAM attributes (palette bank, shape, etc, 11 reads).
+
+### CollisionData (1 field)
+
+- **oCollisionData_Unk_16 -> oCollisionData_BarrierHP** (probable):
+  u16, barrier HP (remaining hits before barrier breaks, 19 reads).
+
+### RenderInfo (3 fields)
+
+- **oRenderInfo_Unk_18 -> oRenderInfo_BG2ScrollX** (probable): u32,
+  BG2 scroll-X offset for parallax (16 reads).
+- **oRenderInfo_Unk_12 -> oRenderInfo_BGScrollY** (probable): u8, BG
+  scroll-Y offset for parallax (15 reads).
+- **oRenderInfo_Unk_10 -> oRenderInfo_BGScrollXOffset** (probable):
+  u8, BG1 scroll-X offset for parallax (13 reads).
+
+### S20364C0 (1 field)
+
+- **oS20364C0_Unk_02 -> oS20364C0_StateHandled** (hypothesis): bool,
+  state-handled flag (1 = sub-state processed, 15 reads).
+
+Two minor process.py bugs were uncovered and fixed:
+- The first attempt at process_v3.py's auto-detection of the .inc file
+  for nested structs (AIData.inc containing AIState/AIAttackVars) and
+  outer structs (ObjectSprite/CollisionData/RenderInfo/S20364C0 with
+  their own .inc) sometimes selected the wrong struct macro because
+  many .inc files share offset-spaced field names. The fix was to
+  encode the (struct_name, macro_name) mapping in a Python list rather
+  than guess from field name. The first batch 4 run produced wrong
+  renames that had to be reverted with `git reset --hard d2cd686c`
+  (which also reset bn6f's elf and forced a rebuild before retrying).
+- s_20364C0_struct's Unk_02 is a `bool`, not `u8`. The Python regex
+  used `\b(u\d+|ptr|...)\b` and missed `bool`; a `sed` edit fixed it
+  in the retry.
+
+C structs regenerated via tools/abi/gen_structs.py. The recomp C port
+files (cport/src/game/*.c) were updated by tools/rename_symbol.py
+which in turn re-ran the lifter against the renamed asm. Symdb check
+~3575 entries, 0 problems. Gate: ok in 10.4 s.
