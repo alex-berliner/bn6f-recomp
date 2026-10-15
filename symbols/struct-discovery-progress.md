@@ -605,3 +605,33 @@ Recomp commit pending.
 | oOverworldNPCObject_Unk_58 | u32 | `InteractionAreaHandle` | hypothesis |
 
 Running total: 1 + 20 + 20 + 19 + 16 + 20 + 20 + 20 + 20 + 20 + 19 + 20 + 20 = **235 fields named**.
+
+## Batch 14 (20 fields, 2026-10-15)
+
+bn6f commits: `e9bc0aa9` (.inc), `bf3190a4` (asm renames).
+Recomp commit pending.
+
+| Field | Old | New | Status |
+|---|---|---|---|
+| oS20364C0_Unk_13 | u8 | `FadeSeqIndex` | probable |
+| oWarp2011bb0_Unk_10 | u8 | `WarpState` | probable |
+| oS20364C0_Unk_0f | u8 | `PulsePhase` | probable |
+| oS200ace0_Unk_20 | u32 | `OWRoutinePointer` | hypothesis |
+| oS2001c04_Unk_14 | u16 | `EncounterRollValue` | probable |
+| oS2001c04_Unk_12 | u16 | `EncounterStepAccumulator` | probable |
+| oPanelData_Unk_07 | u8 | `CachedAlliance` | hypothesis |
+| oPalette20097a0_Unk_00 | u8 | `ActiveFlag` | probable |
+| oOWObjectInteractionArea_Unk_0c | u32 | `InteractionFlagMask` | probable |
+| oOWObjectInteractionArea_Unk_08 | flags32 | `Flags` | probable |
+| oGameState_Unk_08 | u8 | `ChatboxMessageSlot` | hypothesis |
+| oBattleState_Unk_c0 | u0 | `Drop` | hypothesis |
+| oStartScreen_Unk_02 | u8 | `SubState` | hypothesis |
+| oS20364C0_Unk_0e | u8 | `ActorIndex` | hypothesis |
+| oS20364C0_Unk_0c | u8 | `FirstBattleTutorialStep` | hypothesis |
+| oS200ace0_Unk_18_1a | u32 | `ScriptTimer` | hypothesis |
+| oPanelData_Unk_10 | u16 | `ClaimTimer` | probable |
+| oPanelData_Unk_01 | u8 | `HighlightState` | probable |
+| oOWObjectInteractionArea_Unk_10 | u32 | `InteractionFlags` | hypothesis |
+| oGameState_Unk_03 | u8 | `ChipDescDirtyFlag` | hypothesis |
+
+Running total: 1 + 20 + 20 + 19 + 16 + 20 + 20 + 20 + 20 + 20 + 19 + 20 + 20 + 20 = **255 fields named**.
