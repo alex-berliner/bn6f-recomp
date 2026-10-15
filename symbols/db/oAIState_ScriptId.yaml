@@ -1,0 +1,59 @@
+name: oAIState_ScriptId
+address: '0x0'
+kind: struct-field
+status: probable
+summary: AI state machine phase index used to dispatch handler routines via a per-AI jump table.
+details: This byte is loaded and used as an index into a per-actor jump table (`ldr r1, [r1,r0]` then
+  `bx r1`) in ~20+ state dispatch functions, and is otherwise written with small constant phase ids (0,
+  4, 8, 0xc, 0x10, 0x14, 0x18, 0x32, 0x64) by handler routines when transitioning between phases. The
+  symdb description for sub_810D998 explicitly says "4-entry handler is invoked via a jump table indexed
+  by oAIState_Unk_00". Initial values come from `battle_getAiDifficultyTier_800FE36`-indexed tables (e.g.
+  sub_80FBA0C, sub_810694C, sub_8107C7C), and reset paths go through `sub_8109BB8` which sets it to 4.
+evidence:
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: 'Canonical dispatch: this byte indexes the handler jump table (`off_810D9B4`), confirming it''s
+    the AI state phase id.'
+  refs:
+  - bn6f/asm/asm31.s:125256
+  reproduce: grep -n 'oAIState_Unk_00' bn6f/asm/asm31.s | head
+  result: '"ldrb r0, [r6,#oAIState_Unk_00] / ldr r1, [r1,r0] / bx r1"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Handlers transition to a new state (0xc) after a flag check, the standard pattern for setting
+    the next AIState.
+  refs:
+  - bn6f/asm/asm31.s:125256
+  reproduce: grep -n 'oAIState_Unk_00' bn6f/asm/asm31.s | head
+  result: '"mov r0, #0xc / strb r0, [r6,#oAIState_Unk_00]"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: The initial state id is looked up from a per-difficulty table, e.g. dword_80FBA20 — consistent
+    with starting the AI in a difficulty-appropriate phase.
+  refs:
+  - bn6f/asm/asm31.s:125256
+  reproduce: grep -n 'oAIState_Unk_00' bn6f/asm/asm31.s | head
+  result: '"bl battle_getAiDifficultyTier_800FE36 / ldrb r0, [r1,r0] / strb r0, [r6,#oAIState_Unk_00]"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Within a single handler (around sub_8101D72..8101D90), successive branches transition the byte
+    to 4, 8, 0xc, 0x10 — typical multi-phase AI progression.
+  refs:
+  - bn6f/asm/asm31.s:125256
+  reproduce: grep -n 'oAIState_Unk_00' bn6f/asm/asm31.s | head
+  result: '"mov r0, #4 / strb r0, [r6,#oAIState_Unk_00]  ...  mov r0, #8 / strb r0, [r6,#oAIState_Unk_00]  ... '
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: A second, distinct dispatch loop also indexes its jump table by this byte, showing the same
+    byte is the canonical AI phase id across enemy AI drivers.
+  refs:
+  - bn6f/asm/asm31.s:125256
+  reproduce: grep -n 'oAIState_Unk_00' bn6f/asm/asm31.s | head
+  result: '"ldrb r0, [r6,#oAIState_Unk_00] / ldr r1, [r1,r0] / bx r1"'
+previous_names:
+- oAIState_Unk_00
+changes:
+- date: '2026-10-15'
+  what: rename oAIState_Unk_00 -> oAIState_ScriptId
+  where: bn6f d2cd686c
+  tool: tools/rename_symbol.py

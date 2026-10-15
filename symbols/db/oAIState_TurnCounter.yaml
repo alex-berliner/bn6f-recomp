@@ -1,0 +1,76 @@
+name: oAIState_TurnCounter
+address: '0x4'
+kind: struct-field
+status: probable
+summary: Per-attack turn/wait counter incremented each AI step until a difficulty-scaled threshold, after
+  which the AI commits to its prepared attack.
+details: The field is consistently read at the top of an AI step, compared against a small constant (2/3/4/5),
+  and either incremented by 1 (with occasional +2/-1/+3 in special cases) or zeroed when the threshold
+  is reached. Reaching the threshold triggers the actual attack setup (rng gates, sub_80F2CC2, object_setAttack0,
+  etc.), and the byte is reset to 0 right after — a classic "wait N turns then act" pattern. Difficulty-tier
+  tables in sub_80F594C/sub_8100308 index by AI difficulty and the result is compared directly against
+  this byte, confirming it is the count of elapsed AI ticks before the attack fires.
+evidence:
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: 'Counter compared against threshold (cmp r0, #3) at the start of a Navi AI step; if >= threshold,
+    attack branch taken.'
+  refs:
+  - bn6f/asm/asm31.s:125373
+  reproduce: grep -n 'oAIState_Unk_04' bn6f/asm/asm31.s | head
+  result: '"ldrb r0, [r6,#oAIState_Unk_04]"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: 'Counter incremented by 1 each tick (`add r0, #1` / `strb r0, [r6,#oAIState_Unk_04]`) when the
+    rng gate fails, building up wait time.'
+  refs:
+  - bn6f/asm/asm31.s:125373
+  reproduce: grep -n 'oAIState_Unk_04' bn6f/asm/asm31.s | head
+  result: '"ldrb r0, [r6,#oAIState_Unk_04]"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: '"strb r0, [r6,#oAIState_Unk_04]" — counter cleared to 0 once the attack fires, so the next
+    attack cycle restarts the wait.'
+  refs:
+  - bn6f/asm/asm31.s:125373
+  reproduce: grep -n 'oAIState_Unk_04' bn6f/asm/asm31.s | head
+  result: '"mov r0, #0"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: AI difficulty tier indexes a per-difficulty threshold table which is compared against this byte
+    — exactly a "wait N turns based on difficulty" pattern.
+  refs:
+  - bn6f/asm/asm31.s:125373
+  reproduce: grep -n 'oAIState_Unk_04' bn6f/asm/asm31.s | head
+  result: '"ldrb r0, [r1,r0]" (difficulty table) / "ldrb r1, [r6,#oAIState_Unk_04]" / "cmp r1, r0"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Different Navi uses a different threshold (5), again clearing the counter to 0 on overflow.
+  refs:
+  - bn6f/asm/asm31.s:125373
+  reproduce: grep -n 'oAIState_Unk_04' bn6f/asm/asm31.s | head
+  result: '"cmp r0, #5 / bge loc_80F64D6"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Counter can be incremented by 2 in one step (rng-dependent burst), matching a wait counter with
+    stochastic extra delay.
+  refs:
+  - bn6f/asm/asm31.s:125373
+  reproduce: grep -n 'oAIState_Unk_04' bn6f/asm/asm31.s | head
+  result: '"bl GetPositiveSignedRNG / lsr r0, r0, #6 / bcc ... / ldrb r0, [r6,#oAIState_Unk_04] / add
+    r0, #1"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Halfword store here is misaligned/rare, but in context the AI setup routine seeds the field
+    to a non-zero value (here 1) as the initial wait count before the first attack.
+  refs:
+  - bn6f/asm/asm31.s:125373
+  reproduce: grep -n 'oAIState_Unk_04' bn6f/asm/asm31.s | head
+  result: '"mov r0, #1 / strh r0, [r6,#oAIState_Unk_04]"'
+previous_names:
+- oAIState_Unk_04
+changes:
+- date: '2026-10-15'
+  what: rename oAIState_Unk_04 -> oAIState_TurnCounter
+  where: bn6f d2cd686c
+  tool: tools/rename_symbol.py

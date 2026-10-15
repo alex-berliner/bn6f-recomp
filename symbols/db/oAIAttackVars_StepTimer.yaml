@@ -1,0 +1,58 @@
+name: oAIAttackVars_StepTimer
+address: '0x10'
+kind: struct-field
+status: probable
+summary: Per-frame countdown timer that drives AI-attack sub-state ticks (initialised by state-entry handlers,
+  decremented each frame, and tested against 0/thresholds to advance the AI-attack state machine).
+details: 'Across all four files the dominant pattern is "strh init_value; ... ldrh/strh sub #1; bmi/bge/bgt
+  against zero". In asm00_2.s handlers set Unk_10 to 0x14/0x1e/0xa/0x28/0x36 and in asm31.s aiAttackTimerTick_80EB758
+  sets it to 5, sub_80EB1F8 to 5, battleObject_aiAttackTickCharge_80EBEB2 reloads from Unk_12, aiAttack_TimerTickEnd_80EB194
+  reloads from Unk_18, aiAttack_handleMoveDirectionTimerAndStartNewAttack_80EB502 reloads from Unk_12,
+  and ai_attackStepRunDecrement_80EB1C4''s symdb description calls it a "countdown". The single byte store
+  "mov r0,#0x1e; strh r0,[r7,#oAIAttackVars_Unk_10]" in sub_80121BC is the canonical AIAttackVars init.
+  asm31.s:110262 (`aiAttackTimerTick_80EB758`) and symdb "confirmed" entry for it (`recomp symbols/db/aiAttackTimerTick_80EB758.yaml`)
+  describe this exact decrement/exit pattern.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Canonical "set value, decrement each frame, exit attack on expiry" timer pattern; symdb confirms
+    this function is the AI-attack timer tick.
+  refs:
+  - bn6f/asm/asm31.s:109414
+  reproduce: grep -n 'oAIAttackVars_Unk_10' bn6f/asm/asm31.s | head
+  result: '"mov r0, #5 ; strh r0, [r7,#oAIAttackVars_Unk_10]  ...  ldrh r0, [r7,#oAIAttackVars_Unk_10]
+    ; sub r0'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Reloads the field from Unk_18 on expiry — clear "reload duration register" behaviour matching
+    a step timer.
+  refs:
+  - bn6f/asm/asm31.s:109414
+  reproduce: grep -n 'oAIAttackVars_Unk_10' bn6f/asm/asm31.s | head
+  result: '"ldrh r0, [r7,#oAIAttackVars_Unk_10] ; sub r0, #1 ; strh r0, [r7,#oAIAttackVars_Unk_10] ; bne
+    locret'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Another beast-out sub-state handler that seeds Unk_10 with a duration (0x14) and counts down
+    each call.
+  refs:
+  - bn6f/asm/asm31.s:109414
+  reproduce: grep -n 'oAIAttackVars_Unk_10' bn6f/asm/asm31.s | head
+  result: '"mov r0, #0x14 ; strh r0, [r7,#oAIAttackVars_Unk_10] ... ldrh r0,[r7,#oAIAttackVars_Unk_10]
+    ; sub r0'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Same field used as an incrementing step counter in charge/windup sequences — still a sub-state
+    step timer, just counted up instead of down.
+  refs:
+  - bn6f/asm/asm31.s:109414
+  reproduce: grep -n 'oAIAttackVars_Unk_10' bn6f/asm/asm31.s | head
+  result: '"mov r0, #0 ; strh r0, [r7,#oAIAttackVars_Unk_10] ... ldrh r0, [r7,#oAIAttackVars_Unk_10] ;
+    add r0, '
+previous_names:
+- oAIAttackVars_Unk_10
+changes:
+- date: '2026-10-15'
+  what: rename oAIAttackVars_Unk_10 -> oAIAttackVars_StepTimer
+  where: bn6f d2cd686c
+  tool: tools/rename_symbol.py

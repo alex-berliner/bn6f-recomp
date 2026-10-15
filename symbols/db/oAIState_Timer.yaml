@@ -1,0 +1,80 @@
+name: oAIState_Timer
+address: '0x8'
+kind: struct-field
+status: probable
+summary: Countdown timer (in frames) used by various AI state behaviors; initialized from version-specific
+  tables or fixed values, decremented each tick, and triggers state transitions or attacks when it expires.
+details: 'Every load decrements the value by 1 (sub r0, #1 / strh) and tests against zero or expiry conditions
+  (bne / bgt / blt 0x3c). Every store sets it from either a hard-coded constant (0x32, 0x1e, 0x3c, 0x78)
+  or a table indexed by AIData version — classic countdown initialization. On expiry the code transitions
+  oAIState_Unk_00 to a new state or fires an attack (object_setAttack0).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Sets timer to 50 frames, then decrements each tick; on reaching 0, clears Unk_00 state — a classic
+    frame-countdown pattern.
+  refs:
+  - bn6f/asm/asm31.s:173203
+  reproduce: grep -n 'oAIState_Unk_08' bn6f/asm/asm31.s | head
+  result: '"mov r0, #0x32 / strh r0, [r6,#oAIState_Unk_08] ... ldrh r0, [r6,#oAIState_Unk_08] / sub r0,
+    #1 / st'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Counter increments each call (chip-action attempt) until it reaches a version-dependent threshold,
+    then resets and transitions to Unk_00=4 — a "max attempts" timer.
+  refs:
+  - bn6f/asm/asm31.s:173203
+  reproduce: grep -n 'oAIState_Unk_08' bn6f/asm/asm31.s | head
+  result: '"ldrh r0, [r6,#oAIState_Unk_08] / add r0, #1 / strh r0, [r6,#oAIState_Unk_08] ... cmp r0, r1
+    (table '
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: 'SnakeArm-style: timer initialized from per-version table, optionally increased by 0x78, used
+    to gate highlight behavior (mid-range phase) then decremented toward expiry.'
+  refs:
+  - bn6f/asm/asm31.s:173203
+  reproduce: grep -n 'oAIState_Unk_08' bn6f/asm/asm31.s | head
+  result: '"ldrb r0,[r0,r1] (table[Version_16]) / strh r0,[r6,#oAIState_Unk_08] ... add r0,#0x78 / strh
+    r0,[r6,'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: SnakeArm step init seeds timer from version-keyed table then transitions Unk_00 to state 4 —
+    direct table-driven countdown initialization.
+  refs:
+  - bn6f/asm/asm31.s:173203
+  reproduce: grep -n 'oAIState_Unk_08' bn6f/asm/asm31.s | head
+  result: '"ldrb r0,[r1,r0] (table[Version_16]) / strh r0,[r6,#oAIState_Unk_08] / mov r0,#4 / strb r0,[r6,#oAIS'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Timer ticks down; 0xFF sentinel means "inactive"; on reaching 0 it schedules attack 0xA — a
+    classic AI state-phase countdown that fires an attack on expiry.
+  refs:
+  - bn6f/asm/asm31.s:173203
+  reproduce: grep -n 'oAIState_Unk_08' bn6f/asm/asm31.s | head
+  result: '"ldrh r0,[r6,#oAIState_Unk_08] / cmp r0,#0xff / beq ... sub r0,#1 / strh r0,[r6,#oAIState_Unk_08]
+    / '
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Timer loaded from another object field (a battle-object duration); decremented each tick; clears
+    Unk_02 init flag on expiry — generic AI duration timer.
+  refs:
+  - bn6f/asm/asm31.s:173203
+  reproduce: grep -n 'oAIState_Unk_08' bn6f/asm/asm31.s | head
+  result: '"mov r0,#0x64 / ldrh r0,[r5,r0] / strh r0,[r6,#oAIState_Unk_08] ... ldrh r0,[r6,#oAIState_Unk_08]
+    / '
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Same one-shot 0x1E (30-frame) init/decrement/expiry pattern — identical to asm31.s:173203 countdown
+    idiom.
+  refs:
+  - bn6f/asm/asm31.s:173203
+  reproduce: grep -n 'oAIState_Unk_08' bn6f/asm/asm31.s | head
+  result: '"mov r0,#0x1e / strh r0,[r6,#oAIState_Unk_08] ... ldrh r0,[r6,#oAIState_Unk_08] / sub r0,#1
+    / strh r'
+previous_names:
+- oAIState_Unk_08
+changes:
+- date: '2026-10-15'
+  what: rename oAIState_Unk_08 -> oAIState_Timer
+  where: bn6f d2cd686c
+  tool: tools/rename_symbol.py

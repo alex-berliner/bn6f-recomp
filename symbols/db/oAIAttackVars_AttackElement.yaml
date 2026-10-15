@@ -1,0 +1,63 @@
+name: oAIAttackVars_AttackElement
+address: '0x1'
+kind: struct-field
+status: hypothesis
+summary: One-shot "step has been initialized" flag set to 4 on entry and tested as a boolean to gate first-tick
+  setup work.
+details: 'Across virtually every accessor, the field is read with `tst r0, r0` (boolean test against zero)
+  and, when zero, a block of init code runs that always concludes with `strb r0, [r7,#oAIAttackVars_Unk_01]`
+  after `mov r0, #4`. The two branches then read Unk_10 as a live timer until it expires, after which
+  the flag is either reused (e.g. cleared back to 0 in `sub_80EC7C0`/decrement/restart in `sub_80ECEBC`)
+  or the routine exits. The values stored are almost always exactly 4 (with isolated 1/2 cases driving
+  state machines like `sub_80ECEBC` and `sub_80ECF8E`), strongly consistent with a phase/init flag rather
+  than data. This "read=0 then strb #4 then run" pattern repeats identically across the AI attack step
+  table, transformation intros, charge counters, delay timers, and the `*TimerAndExitWhenDone` family
+  — every caller is gating first-entry initialization, which is precisely what a 1-byte init flag expresses.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: 'Canonical first-entry gate: flag reads as boolean, then on first tick the routine writes #4
+    to mark "init done" before counting Unk_10 down.'
+  refs:
+  - bn6f/asm/asm31.s:109872
+  reproduce: grep -n 'oAIAttackVars_Unk_01' bn6f/asm/asm31.s | head
+  result: '"ldrb r0, [r7,#oAIAttackVars_Unk_01] / tst r0, r0 / bne loc_8014BCA ... mov r0, #4 / strb r0,
+    [r7,#o'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Identical init-flag pattern in `battle_runTransformationIntroStep_8014BEE`; the field is never
+    used as data, only as a done-once flag.
+  refs:
+  - bn6f/asm/asm31.s:109872
+  reproduce: grep -n 'oAIAttackVars_Unk_01' bn6f/asm/asm31.s | head
+  result: '"ldrb r0, [r7,#oAIAttackVars_Unk_01] / tst r0, r0 / bne loc_8014C9E ... mov r0, #4 / strb r0,
+    [r7,#o'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Confirm-named timer routine uses the byte exactly as an init-once flag — strong corroboration
+    of the name.
+  refs:
+  - bn6f/asm/asm31.s:109872
+  reproduce: grep -n 'oAIAttackVars_Unk_01' bn6f/asm/asm31.s | head
+  result: '"aiAttackTimerTick_80EB758: ldrb r0, [r7,#oAIAttackVars_Unk_01] / tst r0, r0 / bne loc_80EB768
+    ... m'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Rare deviation where the field takes values 1 or 2 to index a small 3-state mini-FSM; still
+    consistent with a phase/init-style flag used by the same step table to coordinate sub-phases.
+  refs:
+  - bn6f/asm/asm31.s:109872
+  reproduce: grep -n 'oAIAttackVars_Unk_01' bn6f/asm/asm31.s | head
+  result: '"sub_80ECEBC: ldrb r0, [r7,#oAIAttackVars_Unk_01] / cmp r0, #1 / beq loc_80ECED2 / cmp r0,
+    #2 / beq '
+previous_names:
+- oAIAttackVars_Unk_01
+changes:
+- date: '2026-10-15'
+  what: rename oAIAttackVars_Unk_01 -> oAIAttackVars_AttackElement
+  where: bn6f 2324a65c
+  tool: tools/rename_symbol.py
+- date: '2026-10-15'
+  what: rename oAIAttackVars_Unk_01 -> oAIAttackVars_AttackElement
+  where: bn6f d2cd686c
+  tool: tools/rename_symbol.py

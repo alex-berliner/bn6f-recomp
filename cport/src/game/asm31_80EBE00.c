@@ -28,7 +28,7 @@
 #define CHARGE_ATTACK_TABLE 0x080EBE14
 
 Next megamanChargeShotAiAttack_80EBE00(void) {
-    u32 phase = LD8(R7 + oAIAttackVars_Unk_00);
+    u32 phase = LD8(R7 + oAIAttackVars_HitElement);
 
     switch (phase) {
     case 0:
@@ -108,8 +108,8 @@ static void spawn_temp_attack_object(u32 template_id, u32 template_r4, u32 targe
 }
 
 /* Offsets within the AI attack-vars struct that game.h does not name:
- *   +0x00 = state (u16, oAIAttackVars_Unk_00)
- *   +0x01 = charge-phase byte (oAIAttackVars_Unk_01)
+ *   +0x00 = state (u16, oAIAttackVars_HitElement)
+ *   +0x01 = charge-phase byte (oAIAttackVars_AttackElement)
  *   +0x08 = damage (u16, oAIAttackVars_Damage)       */
 #define AIATTACK_STATE_OFFSET      0u
 #define AIATTACK_PHASE_OFFSET      1u
@@ -127,22 +127,22 @@ static u32 ai_buster_attack_tick(u32 atk, u32 r4_in, u32 r5) {
         run_charge_handler_80EB562();
         ST8(atk + AIATTACK_PHASE_OFFSET, 4);
         set_object_flag1(1u << 22 /* OBJECT_FLAGS_UNK_BIT_22_BIT */);
-        ST16(atk + oAIAttackVars_Unk_10, 0);
+        ST16(atk + oAIAttackVars_StepTimer, 0);
     }
 
-    if (LD16(atk + oAIAttackVars_Unk_10) == 1) {
+    if (LD16(atk + oAIAttackVars_StepTimer) == 1) {
         /* fire tick: buster sound, shot object on the front panel, muzzle flash */
         play_sound(SOUND_BUSTER_6A);
         u32 shot = spawn_object_on_front_panel(
-            LD8(atk + oAIAttackVars_Unk_0c),
+            LD8(atk + oAIAttackVars_AttackBoost2),
             LD16(atk + AIATTACK_DAMAGE_OFFSET),
             0x180000u);
-        ST16(atk + oAIAttackVars_Unk_12, shot);
+        ST16(atk + oAIAttackVars_ChargeCycles, shot);
         spawn_temp_attack_object(0, 5, r5 + 0x4C, r4_in, atk);
     }
 
-    u32 ticks = LD16(atk + oAIAttackVars_Unk_10) + 1;
-    ST16(atk + oAIAttackVars_Unk_10, ticks);
+    u32 ticks = LD16(atk + oAIAttackVars_StepTimer) + 1;
+    ST16(atk + oAIAttackVars_StepTimer, ticks);
     if (ticks > 4) {
         /* fired all shots: reset the AI attack state */
         ST16(atk + AIATTACK_STATE_OFFSET, 8);
@@ -163,13 +163,13 @@ Next battle_aiBusterAttackTick_80EBE54(void) {
 
 /* ── battle_aiAttackHandlerDispatch_80EBF10 ── */
 /* Dispatches an AI attack step through a 3-entry jump table indexed by the
- * attack-type byte at oAIAttackVars_Unk_00 (offset 0) within the vars block.
+ * attack-type byte at oAIAttackVars_HitElement (offset 0) within the vars block.
  * Sets r0 = type, r1 = handler address (table entry), lr = return point,
  * then calls the handler. All other registers pass through to the callee. */
 
 /* register form: looks up AI attack jump table and calls the selected handler */
 static void call_ai_attack_handler(u32 vars_ptr) {
-    u32 attack_type = (u32)LD8(vars_ptr + oAIAttackVars_Unk_00);
+    u32 attack_type = (u32)LD8(vars_ptr + oAIAttackVars_HitElement);
     u32 handler = LD32(A_off_80EBF24 + attack_type);
     R0 = attack_type;
     R1 = handler;
@@ -205,7 +205,7 @@ Next aiAttack_genericSpawnAndCountdown_80EBF30(void) {
     u32 self = R4;   /* battle object running this attack */
     u32 state = R7;  /* oAIAttackVars block for this attack */
 
-    if (LD8(state + 1) == 0) { /* oAIAttackVars_Unk_01: attack not started yet */
+    if (LD8(state + 1) == 0) { /* oAIAttackVars_AttackElement: attack not started yet */
         /* First tick: start the attack. */
         R0 = 10; /* attack animation id */
         GUEST_CALL(object_setAnimation);
@@ -224,18 +224,18 @@ Next aiAttack_genericSpawnAndCountdown_80EBF30(void) {
         GUEST_CALL(object_setFlag1);
 
         ST8(state + 1, 4);   /* Unk_01 = 4: attack is now started */
-        ST16(state + oAIAttackVars_Unk_10, 1); /* one tick of attack left */
+        ST16(state + oAIAttackVars_StepTimer, 1); /* one tick of attack left */
     }
 
     /* Count the attack timer down; when it goes negative, return to state 4. */
-    u32 timer = LD16(state + oAIAttackVars_Unk_10);
+    u32 timer = LD16(state + oAIAttackVars_StepTimer);
     SET_FLAGS_CMP(timer, 1); /* flags of timer - 1 */
     R0 = timer - 1;
-    ST16(state + oAIAttackVars_Unk_10, R0);
+    ST16(state + oAIAttackVars_StepTimer, R0);
 
     if ((s32)R0 < 0) {
         R0 = 4;
-        ST16(state, R0); /* oAIAttackVars_Unk_00 = 4: back to AI state 4 */
+        ST16(state, R0); /* oAIAttackVars_HitElement = 4: back to AI state 4 */
         SET_FLAGS_NZ(R0); /* n/z from the new state, c/v from the subtract */
     }
 
@@ -247,7 +247,7 @@ Next aiAttack_genericSpawnAndCountdown_80EBF30(void) {
 /* battle_aiWindRackAttackStep_80EBFF4(r5 = battle object, r7 = AI attack vars):
  * Wind-rack attack AI step. On the first run (attack state byte at r7+1 == 0)
  * it starts the attack animation (10), bumps the counter at
- * oAIData_TempAttackObjectPtr->0x10, sets the timer oAIAttackVars_Unk_10 to 10 and marks
+ * oAIData_TempAttackObjectPtr->0x10, sets the timer oAIAttackVars_StepTimer to 10 and marks
  * the attack as started (state byte = 4). Every run then counts Unk_10 down;
  * while it is still >= 0 the attack continues. When it expires, the related
  * object reference is cleared, the pointer at oAIData_TempAttackObjectPtr is reset to NULL
@@ -255,7 +255,7 @@ Next aiAttack_genericSpawnAndCountdown_80EBF30(void) {
  * Flags/r0 on return: those of the timer decrement (SUBS) if the attack is
  * still running; otherwise whatever object_exitAttackState leaves. */
 Next battle_aiWindRackAttackStep_80EBFF4(void) {
-    if (LD8(R7 + 1 /* oAIAttackVars_Unk_01 */) == 0) {
+    if (LD8(R7 + 1 /* oAIAttackVars_AttackElement */) == 0) {
         /* First tick of the attack: play animation 10 and init state. */
         u32 aiData = LD32(R5 + oBattleObject_AIDataPtr);
         u32 counterBlock = LD32(aiData + oAIData_TempAttackObjectPtr);
@@ -266,14 +266,14 @@ Next battle_aiWindRackAttackStep_80EBFF4(void) {
         R0 = 10;
         GUEST_CALL(object_setAnimation);
 
-        ST16(R7 + oAIAttackVars_Unk_10, 10);
-        ST8(R7 + 1 /* oAIAttackVars_Unk_01 */, 4);
+        ST16(R7 + oAIAttackVars_StepTimer, 10);
+        ST8(R7 + 1 /* oAIAttackVars_AttackElement */, 4);
     }
 
     /* Count the attack timer down. */
-    u32 timer = LD16(R7 + oAIAttackVars_Unk_10);
+    u32 timer = LD16(R7 + oAIAttackVars_StepTimer);
     u32 remaining = timer - 1;
-    ST16(R7 + oAIAttackVars_Unk_10, remaining);
+    ST16(R7 + oAIAttackVars_StepTimer, remaining);
     SET_FLAGS_CMP(timer, 1);
 
     if ((s32)remaining >= 0) {
@@ -321,9 +321,9 @@ Next sub_80EC350(void) {
     ST32(SP, R7);
     u32 aiVars = R7;
 
-    u32 unk02  = LD8(aiVars + oAIAttackVars_Unk_02);
-    u32 unk03  = LD8(aiVars + oAIAttackVars_Unk_03);
-    u32 unk0c  = LD32(aiVars + oAIAttackVars_Unk_0c);
+    u32 unk02  = LD8(aiVars + oAIAttackVars_InitFlag);
+    u32 unk03  = LD8(aiVars + oAIAttackVars_AiDifficultyTier);
+    u32 unk0c  = LD32(aiVars + oAIAttackVars_AttackBoost2);
     u32 damage = LD32(aiVars + oAIAttackVars_Damage);
 
     /* atkBoost (u16) goes into the high half of r7; unk14 (u16) is the low half. */
@@ -398,7 +398,7 @@ Next sub_80EC350(void) {
 /* AI attack dispatch, sub_80EC7A6.
  *
  * r7 points at the AI's attack-variable block; the byte at
- * oAIAttackVars_Unk_00 selects an entry of the two-word jump table at
+ * oAIAttackVars_HitElement selects an entry of the two-word jump table at
  * off_80EC7B8. The original does `mov lr, pc; bx r1` into the selected
  * handler, so the whole function behaves as a tail call: the registers the
  * handler leaves behind (r1, r5, r8-r12) are this function's outputs, and
@@ -412,7 +412,7 @@ Next sub_80EC350(void) {
  * generated wrapper covers it, and the handler's register outputs have to be
  * left in the guest registers for this function's caller. */
 static void run_ai_attack_handler(u32 ai_vars) {
-    u32 selector = LD8(ai_vars + oAIAttackVars_Unk_00);
+    u32 selector = LD8(ai_vars + oAIAttackVars_HitElement);
     u32 target = LD32(A_off_80EC7B8 + selector);
 
     R0 = selector;    /* the selector byte, as the original passes it on */
@@ -435,7 +435,7 @@ Next sub_80EC7A6(void) {
  */
 Next sub_80EC7C0(void) {
     /* First call (Unk_01 == 0): set up animation, counter time and flags. */
-    if (LD8(R7 + oAIAttackVars_Unk_01) == 0) {
+    if (LD8(R7 + oAIAttackVars_AttackElement) == 0) {
         R0 = 0xE;
         GUEST_CALL(object_setAnimation);
 
@@ -446,14 +446,14 @@ Next sub_80EC7C0(void) {
         R0 = 1u << OBJECT_FLAGS_UNK_BIT_22_BIT;
         GUEST_CALL(object_setFlag1);
 
-        ST8(R7 + oAIAttackVars_Unk_01, 4);
-        ST16(R7 + oAIAttackVars_Unk_10, 0);
+        ST8(R7 + oAIAttackVars_AttackElement, 4);
+        ST16(R7 + oAIAttackVars_StepTimer, 0);
     }
 
     /* Tick 1: spawn the thunder projectile at the caster's panel, aimed in
      * their facing direction. R7 is preserved across the spawn call via the
      * guest stack to match the original's push {r7} / pop {r7}. */
-    if (LD16(R7 + oAIAttackVars_Unk_10) == 1) {
+    if (LD16(R7 + oAIAttackVars_StepTimer) == 1) {
         u32 buf = SP -= 4;
         ST32(buf, R7);
 
@@ -463,9 +463,9 @@ Next sub_80EC7C0(void) {
         R0 = R0 + panelX;
 
         R1 = panelY;
-        R2 = LD8(R7 + oAIAttackVars_Unk_02);
+        R2 = LD8(R7 + oAIAttackVars_InitFlag);
 
-        u32 unk0c    = LD32(R7 + oAIAttackVars_Unk_0c);
+        u32 unk0c    = LD32(R7 + oAIAttackVars_AttackBoost2);
         u32 damage   = LD32(R7 + oAIAttackVars_Damage);
         u32 atkBoost = LD16(R7 + oAIAttackVars_AttackBoost);
         R4 = unk0c;
@@ -480,10 +480,10 @@ Next sub_80EC7C0(void) {
     }
 
     /* Advance tick counter and end the attack once it has run for 4 ticks. */
-    u32 tick = LD16(R7 + oAIAttackVars_Unk_10) + 1;
-    ST16(R7 + oAIAttackVars_Unk_10, tick);
+    u32 tick = LD16(R7 + oAIAttackVars_StepTimer) + 1;
+    ST16(R7 + oAIAttackVars_StepTimer, tick);
     if ((s32)tick > 4) {
-        ST16(R7 + oAIAttackVars_Unk_00, 4);
+        ST16(R7 + oAIAttackVars_HitElement, 4);
     }
 
     RETURN_TO_CALLER();
@@ -497,13 +497,13 @@ Next sub_80EC7C0(void) {
  * "related object 1" pointer and the AI data's Unk_68 field, then leave the
  * attack state via object_exitAttackState. */
 Next sub_80EC81E(void) {
-    if (LD8(R7 + oAIAttackVars_Unk_01) == 0) {
-        ST16(R7 + oAIAttackVars_Unk_10, 0x1E);
-        ST8(R7 + oAIAttackVars_Unk_01, 4);
+    if (LD8(R7 + oAIAttackVars_AttackElement) == 0) {
+        ST16(R7 + oAIAttackVars_StepTimer, 0x1E);
+        ST8(R7 + oAIAttackVars_AttackElement, 4);
     }
 
-    u32 timer = LD16(R7 + oAIAttackVars_Unk_10);
-    ST16(R7 + oAIAttackVars_Unk_10, timer - 1);
+    u32 timer = LD16(R7 + oAIAttackVars_StepTimer);
+    ST16(R7 + oAIAttackVars_StepTimer, timer - 1);
 
     /* BGE after SUBS r0, #1: branches when the pre-decrement value was >= 1
      * as a signed 32-bit quantity (LDRH zero-extends, so the high half is 0). */
@@ -525,7 +525,7 @@ Next sub_80EC81E(void) {
  * updates a counter on the battle object, and exits the attack state. */
 Next sub_80EC844(void) {
     /* Index table at byte_80EC870 by (AI byte * 2), read the entry as a u16. */
-    u8 aiByte = (u8)LD8(R7 + oAIAttackVars_Unk_03);
+    u8 aiByte = (u8)LD8(R7 + oAIAttackVars_AiDifficultyTier);
     u16 amount = LD16(A_byte_80EC870 + (aiByte * 2));
 
     /* Attempt to apply the value; result is ignored on failure. */
@@ -583,15 +583,15 @@ Next battle_aiAttackStateDispatch_80EC884(void) {
  * Flags and r0 reflect the decremented timer when it is still positive. */
 Next ai_attackTickDelayTimer_80EC90E(void) {
     /* First activation: initialize the timer and its state byte. */
-    if (LD8(R7 + 1 /* oAIAttackVars_Unk_01 */) == 0) {
-        ST16(R7 + oAIAttackVars_Unk_10, 10);
+    if (LD8(R7 + 1 /* oAIAttackVars_AttackElement */) == 0) {
+        ST16(R7 + oAIAttackVars_StepTimer, 10);
         ST8(R7 + 1, 4);
     }
 
-    u32 timer = LD16(R7 + oAIAttackVars_Unk_10);
+    u32 timer = LD16(R7 + oAIAttackVars_StepTimer);
     SET_FLAGS_CMP(timer, 1); /* flags of SUBS timer, #1 */
     timer = timer - 1;
-    ST16(R7 + oAIAttackVars_Unk_10, timer);
+    ST16(R7 + oAIAttackVars_StepTimer, timer);
 
     if ((s32)timer >= 0) {
         R0 = timer;
@@ -631,7 +631,7 @@ static void call_attack_handler_sub_80EC960(u32 handler, u32 state) {
 /* One step of the AI attack: pick and run the handler for the state byte.
  * Note the table is indexed by the byte itself, not scaled by 4. */
 static void run_ai_attack_step_sub_80EC960(u32 attack_vars) {
-    u32 state   = LD8(attack_vars + oAIAttackVars_Unk_00);
+    u32 state   = LD8(attack_vars + oAIAttackVars_HitElement);
     u32 handler = LD32(A_off_80EC974 + state);
     call_attack_handler_sub_80EC960(handler, state);
 }
@@ -645,15 +645,15 @@ Next sub_80EC960(void) {
 
 /* ── aiAttack_tickTimerAndExitWhenDone_80ECA0C ── */
 /* aiAttack_tickTimerAndExitWhenDone_80ECA0C: tick down the AI attack timer in the object's AIAttackVars.
- * When the counter (oAIAttackVars_Unk_10) drops below zero, leave the attack
+ * When the counter (oAIAttackVars_StepTimer) drops below zero, leave the attack
  * state. Flags reflect the decrement (SUBS r0, #1) when the callee is not
  * taken; otherwise whatever object_exitAttackState leaves is fine. */
 Next aiAttack_tickTimerAndExitWhenDone_80ECA0C(void) {
-    u32 count = LD16(R7 + oAIAttackVars_Unk_10);
+    u32 count = LD16(R7 + oAIAttackVars_StepTimer);
     u32 remaining = count - 1;
 
     SET_FLAGS_CMP(count, 1);
-    ST16(R7 + oAIAttackVars_Unk_10, (u16)remaining);
+    ST16(R7 + oAIAttackVars_StepTimer, (u16)remaining);
     R0 = remaining;
 
     if ((s32)remaining < 0)
@@ -664,7 +664,7 @@ Next aiAttack_tickTimerAndExitWhenDone_80ECA0C(void) {
 
 /* ── sub_80ECA34 ── */
 /* sub_80ECA34: battle-AI attack dispatcher. The AI attack state block pointed
- * to by R7 holds a selector byte (oAIAttackVars_Unk_00) used as a word offset
+ * to by R7 holds a selector byte (oAIAttackVars_HitElement) used as a word offset
  * into the two-entry handler table at off_80ECA48 (so the stored value is
  * 0 or 4):
  *   entry 0 -> sub_80ECA50
@@ -675,7 +675,7 @@ Next aiAttack_tickTimerAndExitWhenDone_80ECA0C(void) {
  * LR pointing just past the call, so the handler returns straight back to
  * this function's caller; its outputs (r1, r5, r8-r12) become ours. */
 Next sub_80ECA34(void) {
-    u32 selector = LD8(R7 + oAIAttackVars_Unk_00);
+    u32 selector = LD8(R7 + oAIAttackVars_HitElement);
     u32 handler = LD32(A_off_80ECA48 + selector);
 
     R0 = selector;
@@ -757,7 +757,7 @@ static struct sub_80ECA50_result buster_shot_attack(u32 r1, u32 r2, u32 r5,
                                                    u32 r7, u32 r8, u32 r9, u32 r10) {
     struct sub_80ECA50_result res;
 
-    if (LD8(r7 + oAIAttackVars_Unk_01) == 0) {
+    if (LD8(r7 + oAIAttackVars_AttackElement) == 0) {
         /* First entry: begin fire animation, init the counter, seed timer to 0. */
         call_object_setAnimation(0xE, r5);
 
@@ -768,8 +768,8 @@ static struct sub_80ECA50_result buster_shot_attack(u32 r1, u32 r2, u32 r5,
         call_object_setDefaultCounterTime_result cd =
             call_object_setDefaultCounterTime(r5);
 
-        ST8(r7 + oAIAttackVars_Unk_01, 4);
-        ST16(r7 + oAIAttackVars_Unk_10, 0);
+        ST8(r7 + oAIAttackVars_AttackElement, 4);
+        ST16(r7 + oAIAttackVars_StepTimer, 0);
 
         res.r1  = cd.r1;
         res.r5  = r5;
@@ -777,7 +777,7 @@ static struct sub_80ECA50_result buster_shot_attack(u32 r1, u32 r2, u32 r5,
         res.r8  = eb.r8;
         res.r9  = eb.r9;
         res.r10 = r10;
-    } else if (LD16(r7 + oAIAttackVars_Unk_10) == 1) {
+    } else if (LD16(r7 + oAIAttackVars_StepTimer) == 1) {
         /* Frame 1 of the timer: fire the buster sound and projectile. */
         call_PlaySoundEffect_result_sub_80ECA50 ps = call_PlaySoundEffect_sub_80ECA50(SOUND_BUSTER_6A, r2);
         r5 = ps.r5;
@@ -786,10 +786,10 @@ static struct sub_80ECA50_result buster_shot_attack(u32 r1, u32 r2, u32 r5,
         call_object_getFrontDirection_result_sub_80ECA50 fd = call_object_getFrontDirection_sub_80ECA50(r5);
         /* fd.r1 is discarded: sub_80C9184 gets panel-Y instead. */
 
-        u32 unk_0c   = LD32(r7 + oAIAttackVars_Unk_0c);
+        u32 unk_0c   = LD32(r7 + oAIAttackVars_AttackBoost2);
         u32 boost    = LD16(r7 + oAIAttackVars_AttackBoost);
         u32 damage   = LD32(r7 + oAIAttackVars_Damage) + boost;
-        u32 unk_02   = LD8(r7  + oAIAttackVars_Unk_02);
+        u32 unk_02   = LD8(r7  + oAIAttackVars_InitFlag);
         u32 panel_x  = LD8(r5  + oBattleObject_PanelX);
         u32 panel_y  = LD8(r5  + oBattleObject_PanelY);
 
@@ -813,10 +813,10 @@ static struct sub_80ECA50_result buster_shot_attack(u32 r1, u32 r2, u32 r5,
     }
 
     /* Advance the per-attack frame timer; once past 4, signal completion. */
-    u32 t = (u32)((s32)LD16(res.r7 + oAIAttackVars_Unk_10) + 1);
-    ST16(res.r7 + oAIAttackVars_Unk_10, t);
+    u32 t = (u32)((s32)LD16(res.r7 + oAIAttackVars_StepTimer) + 1);
+    ST16(res.r7 + oAIAttackVars_StepTimer, t);
     if ((s32)t > 4)
-        ST16(res.r7 + oAIAttackVars_Unk_00, 4);
+        ST16(res.r7 + oAIAttackVars_HitElement, 4);
 
     return res;
 }
@@ -844,14 +844,14 @@ Next sub_80ECA50(void) {
 Next sub_80ECAA4(void) {
     /* One-shot init: if the state byte at offset 1 is zero, kick off a 10-tick
      * countdown (offset 0x10) and mark the state byte as in-progress (4). */
-    if (LD8(R7 + oAIAttackVars_Unk_01) == 0) {
-        ST16(R7 + oAIAttackVars_Unk_10, 0xA);
-        ST8(R7 + oAIAttackVars_Unk_01, 4);
+    if (LD8(R7 + oAIAttackVars_AttackElement) == 0) {
+        ST16(R7 + oAIAttackVars_StepTimer, 0xA);
+        ST8(R7 + oAIAttackVars_AttackElement, 4);
     }
 
     /* Decrement the countdown. */
-    u32 countdown = LD16(R7 + oAIAttackVars_Unk_10) - 1;
-    ST16(R7 + oAIAttackVars_Unk_10, (u16)countdown);
+    u32 countdown = LD16(R7 + oAIAttackVars_StepTimer) - 1;
+    ST16(R7 + oAIAttackVars_StepTimer, (u16)countdown);
 
     /* While the countdown is still positive, just return (r1 unchanged). */
     if ((s32)countdown >= 0) {
@@ -891,7 +891,7 @@ static u32 call_attack_handler_sub_80ECF2E(u32 state, u32 handler) {
 
 /* Look up the handler for the current attack state and call it. */
 static void ai_attack_dispatch(u32 vars) {
-    u32 state = LD8(vars + oAIAttackVars_Unk_00);
+    u32 state = LD8(vars + oAIAttackVars_HitElement);
     u32 handler = LD32(A_off_80ECF40 + state);
     call_attack_handler_sub_80ECF2E(state, handler);
 }
@@ -923,9 +923,9 @@ Next sub_80ECF48(void) {
 
     /* sub_80ED040() -> byte stored at Unk_16 */
     GUEST_CALL(sub_80ED040);
-    ST8(R7 + oAIAttackVars_Unk_16, (u8)R0);
+    ST8(R7 + oAIAttackVars_TargetPanelX, (u8)R0);
 
-    ST8(R7 + oAIAttackVars_Unk_17, 3);
+    ST8(R7 + oAIAttackVars_TargetPanelY, 3);
     ST8(R5 + oBattleObject_CurAnim, 0x0A);
 
     GUEST_CALL(object_setDefaultCounterTime);
@@ -945,8 +945,8 @@ Next sub_80ECF48(void) {
     GUEST_CALL(object_setFlag1);
 
     ST8(R7 + oAIAttackVars_Unk_0e, 9);
-    ST32(R7 + oAIAttackVars_Unk_30, (u32)-1);
-    ST16(R7 + oAIAttackVars_Unk_00, 4);
+    ST32(R7 + oAIAttackVars_ScratchVar, (u32)-1);
+    ST16(R7 + oAIAttackVars_HitElement, 4);
 
     R4 = saved_r4;
     RETURN_TO_CALLER();
@@ -974,7 +974,7 @@ Next sub_80ECF8E(void) {
     u32 saved_r4 = R4;
     u32 saved_r6 = R6;
 
-    u32 state = LD8(R7 + oAIAttackVars_Unk_01);
+    u32 state = LD8(R7 + oAIAttackVars_AttackElement);
 
     if (state != 1) {
         if (state != 2) {
@@ -987,14 +987,14 @@ Next sub_80ECF8E(void) {
         }
 
         /* ---- Per-attack setup ---- */
-        ST8(R7 + oAIAttackVars_Unk_01, 1);
-        ST16(R7 + oAIAttackVars_Unk_10, 8);
+        ST8(R7 + oAIAttackVars_AttackElement, 1);
+        ST16(R7 + oAIAttackVars_StepTimer, 8);
 
         {
-            u32 param  = (LD32(R7 + oAIAttackVars_Unk_0c) & 0xFFFFu) | 0x10000u;
-            u32 col    = LD8(R7 + oAIAttackVars_Unk_16);
-            u32 row    = LD8(R7 + oAIAttackVars_Unk_17);
-            u32 side   = LD8(R7 + oAIAttackVars_Unk_02);
+            u32 param  = (LD32(R7 + oAIAttackVars_AttackBoost2) & 0xFFFFu) | 0x10000u;
+            u32 col    = LD8(R7 + oAIAttackVars_TargetPanelX);
+            u32 row    = LD8(R7 + oAIAttackVars_TargetPanelY);
+            u32 side   = LD8(R7 + oAIAttackVars_InitFlag);
             u32 damage = LD32(R7 + oAIAttackVars_Damage);
 
             R0 = col;  R1 = row;  R2 = side;  R3 = 0;
@@ -1004,8 +1004,8 @@ Next sub_80ECF8E(void) {
         }
 
         {
-            u32 col = LD8(R7 + oAIAttackVars_Unk_16);
-            u32 row = LD8(R7 + oAIAttackVars_Unk_17);
+            u32 col = LD8(R7 + oAIAttackVars_TargetPanelX);
+            u32 row = LD8(R7 + oAIAttackVars_TargetPanelY);
             R0 = col;  R1 = row;
             GUEST_CALL(object_getCoordinatesForPanels); /* R0=x, R1=y */
             /* Original: mov r2, r1 ; mov r1, r0  — save y first. */
@@ -1020,7 +1020,7 @@ Next sub_80ECF8E(void) {
             /* Spawn succeeded: load the AI attack timer value into R1
              * (matches the original `ldrb r1`) and write it to the
              * new effect object. */
-            R1 = LD8(R7 + oAIAttackVars_Unk_0d);
+            R1 = LD8(R7 + oAIAttackVars_TimerOrCycles);
             ST16(R0 + oBattleObject_Timer, R1);
         }
         /* If spawn returned NULL, R1 stays as spawn_t1_0x0_EffectObject left it,
@@ -1030,9 +1030,9 @@ Next sub_80ECF8E(void) {
 
     /* ---- Per-frame timer tick ---- */
     {
-        u32 orig_timer = LD16(R7 + oAIAttackVars_Unk_10);
+        u32 orig_timer = LD16(R7 + oAIAttackVars_StepTimer);
         u32 timer = orig_timer - 1;
-        ST16(R7 + oAIAttackVars_Unk_10, (u16)timer);
+        ST16(R7 + oAIAttackVars_StepTimer, (u16)timer);
         SET_FLAGS_CMP(orig_timer, 1);  /* `subs r0, r0, #1` */
 
         if ((s32)timer >= 0) {
@@ -1042,35 +1042,35 @@ Next sub_80ECF8E(void) {
 
     /* ---- Timer expired: bounce the target panel ---- */
     {
-        u32 dir = LD32(R7 + oAIAttackVars_Unk_30);
-        u32 row = LD8(R7 + oAIAttackVars_Unk_17);
+        u32 dir = LD32(R7 + oAIAttackVars_ScratchVar);
+        u32 row = LD8(R7 + oAIAttackVars_TargetPanelY);
         s32 probe = (s32)row + (s32)dir;
 
         if (probe >= 1 && probe <= 3) {
             /* Step along the column stays in range: take the step. */
             u32 new_row = (u32)probe;
-            ST8(R7 + oAIAttackVars_Unk_17, (u8)new_row);
+            ST8(R7 + oAIAttackVars_TargetPanelY, (u8)new_row);
             R1 = new_row;
         } else {
             /* Out of range: flip the column-direction step and ask the
              * helper which way the row should now nudge. */
             u32 neg_dir = (u32)(-(s32)dir);
-            ST32(R7 + oAIAttackVars_Unk_30, neg_dir);
+            ST32(R7 + oAIAttackVars_ScratchVar, neg_dir);
             GUEST_CALL(sub_80ED040);  /* R0 = row hint */
 
-            u32 old_col = LD8(R7 + oAIAttackVars_Unk_16);
+            u32 old_col = LD8(R7 + oAIAttackVars_TargetPanelX);
             u32 hint    = R0;
 
             if (hint == old_col) {
                 /* Helper says same row: bounce straight along the row. */
                 u32 new_row = (u32)((s32)row - (s32)dir);
-                ST8(R7 + oAIAttackVars_Unk_17, (u8)new_row);
+                ST8(R7 + oAIAttackVars_TargetPanelY, (u8)new_row);
                 R1 = new_row;
             } else {
                 /* Helper gives a different row: nudge toward it. */
                 s32 delta = (hint > old_col) ? 1 : -1;
                 u32 new_col = (u32)((s32)old_col + delta);
-                ST8(R7 + oAIAttackVars_Unk_16, (u8)new_col);
+                ST8(R7 + oAIAttackVars_TargetPanelX, (u8)new_col);
                 R1 = new_col;
             }
         }
@@ -1085,7 +1085,7 @@ Next sub_80ECF8E(void) {
 
         if (lives != 0) {
             /* More iterations left: loop back into the setup phase. */
-            ST8(R7 + oAIAttackVars_Unk_01, 2);
+            ST8(R7 + oAIAttackVars_AttackElement, 2);
             /* `mov r0, #2` does not set flags in Thumb; flags stay from SUBS. */
             goto done;
         }
@@ -1125,7 +1125,7 @@ static void call_attack_type_handler(u32 idx, u32 target, u32 ai_vars,
 static void ai_attack_dispatch_sub_80ED13E(u32 ai_vars,
                                u32 r2, u32 r3, u32 r4, u32 r5, u32 r6,
                                u32 r8, u32 r9, u32 r10, u32 r11, u32 r12) {
-    u32 idx = LD8(ai_vars + oAIAttackVars_Unk_00);
+    u32 idx = LD8(ai_vars + oAIAttackVars_HitElement);
     u32 target = LD32(A_off_80ED150 + idx);
     call_attack_type_handler(idx, target, ai_vars,
                              r2, r3, r4, r5, r6, r8, r9, r10, r11, r12);
@@ -1455,7 +1455,7 @@ Next sub_80FD3CC(void) {
 
 /* ── sub_80FD4C8 ── */
 /* Enemy AI attack dispatcher. The AI state block holds an attack index in
- * its oAIAttackVars_Unk_00 byte; that index selects an entry of the jump
+ * its oAIAttackVars_HitElement byte; that index selects an entry of the jump
  * table at off_80FD4DC and this function calls the matching attack routine.
  * Everything the caller sees afterwards (r1, r5, r8-r12) is simply whatever
  * the dispatched handler left behind; r7 survives the call, matching the
@@ -1476,7 +1476,7 @@ static u32 call_attack_handler_sub_80FD4C8(u32 attack_index, u32 table_entry) {
 /* Read the attack index from the AI state block and run the handler it
  * selects. All results flow through from the handler untouched. */
 static void run_ai_attack(u32 state) {
-    u32 attack_index = LD8(state + oAIAttackVars_Unk_00);
+    u32 attack_index = LD8(state + oAIAttackVars_HitElement);
     u32 table_entry = LD32(A_off_80FD4DC + attack_index);
     call_attack_handler_sub_80FD4C8(attack_index, table_entry);
 }
@@ -1532,16 +1532,16 @@ static indirect_call_result call_indirect(u32 a0, u32 a1, u32 a2, u32 a3, u32 ta
 
 /* Write the "cannot reach destination" cooldown values into AI attack vars. */
 static void set_fail_timers(u32 ai_vars) {
-    ST16(ai_vars + oAIAttackVars_Unk_18, 0x50);
-    ST16(ai_vars + oAIAttackVars_Unk_10, 1);
-    ST16(ai_vars + oAIAttackVars_Unk_00, 8);
+    ST16(ai_vars + oAIAttackVars_AttackDuration, 0x50);
+    ST16(ai_vars + oAIAttackVars_StepTimer, 1);
+    ST16(ai_vars + oAIAttackVars_HitElement, 8);
 }
 
 /* Write the "slide animation + success timer" values into object and AI vars. */
 static void set_success_timers(u32 object, u32 ai_vars) {
     ST8(object + oBattleObject_CurAnim, 4);
-    ST16(ai_vars + oAIAttackVars_Unk_10, 3);
-    ST16(ai_vars + oAIAttackVars_Unk_00, 4);
+    ST16(ai_vars + oAIAttackVars_StepTimer, 3);
+    ST16(ai_vars + oAIAttackVars_HitElement, 4);
 }
 
 /* One AI attack-move step for a battle object.
@@ -1563,9 +1563,9 @@ static u32 do_attack_move(u32 object, u32 ai_vars) {
     u32 a2 = LD32(desc);
     u32 a3 = LD32(desc + 4);
 
-    /* Call the alliance's target-search routine at [ai_vars + oAIAttackVars_Unk_28]. */
-    u32 a0 = LD32(ai_vars + oAIAttackVars_Unk_2c);
-    u32 target = LD32(ai_vars + oAIAttackVars_Unk_28);
+    /* Call the alliance's target-search routine at [ai_vars + oAIAttackVars_PanelChooseCallback]. */
+    u32 a0 = LD32(ai_vars + oAIAttackVars_TargetObjectPtr);
+    u32 target = LD32(ai_vars + oAIAttackVars_PanelChooseCallback);
     indirect_call_result move = call_indirect(a0, target, a2, a3, target);
 
     if (move.r0 == 0) {
@@ -1591,13 +1591,13 @@ Next sub_80FD4E8(void) {
 
 /* ── sub_80FD548 ── */
 /* sub_80FD548: AI attack follow-through timer. Counts down the attack cooldown in
- * oAIAttackVars_Unk_10; once it expires, plays the recovery animation, commits the
+ * oAIAttackVars_StepTimer; once it expires, plays the recovery animation, commits the
  * object to its planned (future) panel position and switches the AI state machine
  * to idle-ish values (Unk_10 = 4, Unk_00 = 8). Leaves r1 as the panel-update helper
  * returned it (or untouched when returning early). */
 Next sub_80FD548(void) {
-    u32 timer = LD16(R7 + oAIAttackVars_Unk_10) - 1;
-    ST16(R7 + oAIAttackVars_Unk_10, timer);
+    u32 timer = LD16(R7 + oAIAttackVars_StepTimer) - 1;
+    ST16(R7 + oAIAttackVars_StepTimer, timer);
 
     if ((s32)timer > 0)
         RETURN_TO_CALLER(); /* still cooling down */
@@ -1615,14 +1615,14 @@ Next sub_80FD548(void) {
     GUEST_CALL(object_setCoordinatesFromPanels);
     GUEST_CALL(object_updateCollisionPanels); /* r1 passes through untouched */
 
-    ST16(R7 + oAIAttackVars_Unk_10, 4);
-    ST16(R7 + oAIAttackVars_Unk_00, 8);
+    ST16(R7 + oAIAttackVars_StepTimer, 4);
+    ST16(R7 + oAIAttackVars_HitElement, 8);
     RETURN_TO_CALLER();
 }
 
 /* ── sub_80FD574 ── */
 /* sub_80FD574(r5 = battle object, r7 = AI attack vars):
- * Ticks down the AI attack timer (oAIAttackVars_Unk_10) once per call.
+ * Ticks down the AI attack timer (oAIAttackVars_StepTimer) once per call.
  *
  * While the attack is still winding down (Unk_01 == 0): when the timer
  * reaches zero, reset the object's animation, clear flag 0x40, mark the
@@ -1636,10 +1636,10 @@ Next sub_80FD574(void) {
     u32 obj = R5;   /* battle object this AI state belongs to */
     u32 ai  = R7;   /* oAIAttackVars struct */
 
-    if (LD8(ai + oAIAttackVars_Unk_01) == 0) {
+    if (LD8(ai + oAIAttackVars_AttackElement) == 0) {
         /* Attack winding down: count the timer down to zero. */
-        u32 timer = (u32)LD16(ai + oAIAttackVars_Unk_10) - 1;
-        ST16(ai + oAIAttackVars_Unk_10, timer);
+        u32 timer = (u32)LD16(ai + oAIAttackVars_StepTimer) - 1;
+        ST16(ai + oAIAttackVars_StepTimer, timer);
         if ((s32)timer > 0)
             RETURN_TO_CALLER();
 
@@ -1651,14 +1651,14 @@ Next sub_80FD574(void) {
         GUEST_CALL(object_setFlag1);
 
         /* Restart the cooldown and switch to attack state 4. */
-        ST16(ai + oAIAttackVars_Unk_10, LD16(ai + oAIAttackVars_Unk_18));
-        ST8(ai + oAIAttackVars_Unk_01, 4);
+        ST16(ai + oAIAttackVars_StepTimer, LD16(ai + oAIAttackVars_AttackDuration));
+        ST8(ai + oAIAttackVars_AttackElement, 4);
         SET_FLAGS_NZ(4); /* from the original's mov r0, #4 */
         RETURN_TO_CALLER();
     } else {
         /* Attack finished: count the timer down, then exit the attack. */
-        u32 timer = (u32)LD16(ai + oAIAttackVars_Unk_10) - 1;
-        ST16(ai + oAIAttackVars_Unk_10, timer);
+        u32 timer = (u32)LD16(ai + oAIAttackVars_StepTimer) - 1;
+        ST16(ai + oAIAttackVars_StepTimer, timer);
         if ((s32)timer > 0)
             RETURN_TO_CALLER();
 
@@ -1671,7 +1671,7 @@ Next sub_80FD574(void) {
 /* AI attack command dispatcher.
  *
  * r7 points to an AI attack variable block; the byte at
- * oAIAttackVars_Unk_00 is a raw byte offset into the handler table at
+ * oAIAttackVars_HitElement is a raw byte offset into the handler table at
  * off_80FD5C0. The selected handler is entered with the dispatcher's live
  * register state (r0 = command byte, r1 = handler address, the caller's
  * r3/r5/r6/r7/r10 untouched, SP shifted down by the push {r7,lr}) and
@@ -1705,7 +1705,7 @@ static void call_attack_handler_sub_80FD5AE(u32 handler, u32 cmd, u32 r3, u32 r5
 /* Typed body: pick the handler for the command byte and run it. */
 static void dispatch_ai_attack(u32 vars, u32 r3, u32 r5, u32 r6, u32 r10,
                                u32 ret_lr) {
-    u32 cmd = LD8(vars + oAIAttackVars_Unk_00);
+    u32 cmd = LD8(vars + oAIAttackVars_HitElement);
     /* The table is indexed by the raw byte value, not by entry number. */
     u32 handler = LD32(A_off_80FD5C0 + cmd);
     call_attack_handler_sub_80FD5AE(handler, cmd, r3, r5, r6, vars, r10, ret_lr);
@@ -1718,14 +1718,14 @@ Next sub_80FD5AE(void) {
 
 /* ── sub_80FD638 ── */
 /* sub_80FD638(r5 = battle object, r7 = AI attack state):
- * Wind-up tick for an AI attack. Counts down oAIAttackVars_Unk_10; while it is
+ * Wind-up tick for an AI attack. Counts down oAIAttackVars_StepTimer; while it is
  * still positive there is nothing to do yet. When it expires, switch the object
  * to its attack animation, commit the reserved panels (FuturePanelX/Y ->
  * PanelX/Y), refresh the object's position and collision panels from them, and
  * reset the attack state (Unk_10 = 4 cooldown, Unk_00 = 8). */
 Next sub_80FD638(void) {
-    u32 countdown = LD16(R7 + oAIAttackVars_Unk_10) - 1;
-    ST16(R7 + oAIAttackVars_Unk_10, countdown);
+    u32 countdown = LD16(R7 + oAIAttackVars_StepTimer) - 1;
+    ST16(R7 + oAIAttackVars_StepTimer, countdown);
     if ((s32)countdown > 0)
         RETURN_TO_CALLER();
 
@@ -1742,22 +1742,22 @@ Next sub_80FD638(void) {
     GUEST_CALL(object_setCoordinatesFromPanels);
     GUEST_CALL(object_updateCollisionPanels);
 
-    ST16(R7 + oAIAttackVars_Unk_10, 4);
-    ST16(R7 + oAIAttackVars_Unk_00, 8);
+    ST16(R7 + oAIAttackVars_StepTimer, 4);
+    ST16(R7 + oAIAttackVars_HitElement, 8);
     RETURN_TO_CALLER();
 }
 
 /* ── sub_80FD664 ── */
 /* sub_80FD664(r7 = attack vars object):
- * Tick down the AI attack timer (oAIAttackVars_Unk_10). While it is still
+ * Tick down the AI attack timer (oAIAttackVars_StepTimer). While it is still
  * nonzero after the decrement, do nothing more. When it reaches zero, clear
  * the 0x40 bit on the object, mark it as currently moving (flag 1<<19) and
- * reset the attack state timer oAIAttackVars_Unk_00 to 0xC. */
+ * reset the attack state timer oAIAttackVars_HitElement to 0xC. */
 Next sub_80FD664(void) {
-    u32 counter = LD16(R7 + oAIAttackVars_Unk_10);
+    u32 counter = LD16(R7 + oAIAttackVars_StepTimer);
 
     counter -= 1;
-    ST16(R7 + oAIAttackVars_Unk_10, counter);
+    ST16(R7 + oAIAttackVars_StepTimer, counter);
 
     /* bgt on the zero-extended halfword: only an exact 0 falls through. */
     if ((s32)counter > 0)
@@ -1769,7 +1769,7 @@ Next sub_80FD664(void) {
     R0 = 1u << OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT;
     GUEST_CALL(object_setFlag1);
 
-    ST16(R7 + oAIAttackVars_Unk_00, 0xC);
+    ST16(R7 + oAIAttackVars_HitElement, 0xC);
     RETURN_TO_CALLER();
 }
 
@@ -1781,16 +1781,16 @@ Next sub_80FD664(void) {
  * Otherwise count the timer down; once it expires (reaches 0 or wraps),
  * store 0x10 into the halfword at offset 0 to advance to the next state. */
 Next sub_80FD682(void) {
-    if (LD8(R7 + oAIAttackVars_Unk_01) == 0) {
-        ST8(R7 + oAIAttackVars_Unk_01, 4);
+    if (LD8(R7 + oAIAttackVars_AttackElement) == 0) {
+        ST8(R7 + oAIAttackVars_AttackElement, 4);
         ST8(R5 + oBattleObject_CurAnim, 0);
-        ST16(R7 + oAIAttackVars_Unk_10, 0x1E);
+        ST16(R7 + oAIAttackVars_StepTimer, 0x1E);
     } else {
-        u32 timer = LD16(R7 + oAIAttackVars_Unk_10);
+        u32 timer = LD16(R7 + oAIAttackVars_StepTimer);
         timer -= 1;
-        ST16(R7 + oAIAttackVars_Unk_10, timer);
+        ST16(R7 + oAIAttackVars_StepTimer, timer);
         if ((s32)timer <= 0)
-            ST16(R7 + oAIAttackVars_Unk_00, 0x10);
+            ST16(R7 + oAIAttackVars_HitElement, 0x10);
     }
     RETURN_TO_CALLER();
 }
@@ -1839,24 +1839,24 @@ typedef struct { u32 r1, r5; } sub_80FD6A6_result;
 
 static sub_80FD6A6_result ai_attack_step(u32 r1, u32 r3, u32 r5, u32 r7) {
     /* --- First tick: begin windup --- */
-    if (LD8(r7 + oAIAttackVars_Unk_01) == 0) {
-        ST8(r7 + oAIAttackVars_Unk_01, 4);
+    if (LD8(r7 + oAIAttackVars_AttackElement) == 0) {
+        ST8(r7 + oAIAttackVars_AttackElement, 4);
         ST8(r5 + oBattleObject_CurAnim, 5);
         call_object_setCounterTime_result sc =
             call_object_setCounterTime(0x12, r5);
-        ST16(r7 + oAIAttackVars_Unk_10, 0x18);
+        ST16(r7 + oAIAttackVars_StepTimer, 0x18);
         return (sub_80FD6A6_result){ sc.r1, r5 };
     }
 
     /* --- Subsequent ticks: decrement windup counter --- */
-    u32 remaining = LD16(r7 + oAIAttackVars_Unk_10) - 1;
-    ST16(r7 + oAIAttackVars_Unk_10, remaining);
+    u32 remaining = LD16(r7 + oAIAttackVars_StepTimer) - 1;
+    ST16(r7 + oAIAttackVars_StepTimer, remaining);
     if ((s32)remaining > 0)
         return (sub_80FD6A6_result){ r1, r5 };
 
     /* --- Timer expired: fire the attack forward --- */
     /* Build attack ID: lower byte = direction index, upper byte = table value */
-    u32 dir_idx = LD8(r7 + oAIAttackVars_Unk_03);
+    u32 dir_idx = LD8(r7 + oAIAttackVars_AiDifficultyTier);
     u32 attack_id = dir_idx | ((u32)LD8(A_byte_80FD6F0 + dir_idx) << 8);
 
     /* Get the panel offset directly in front of this object */
@@ -1865,7 +1865,7 @@ static sub_80FD6A6_result ai_attack_step(u32 r1, u32 r3, u32 r5, u32 r7) {
 
     u32 target_x = front.r0 + LD8(r5 + oBattleObject_PanelX);
     u32 target_y = LD8(r5 + oBattleObject_PanelY);
-    u32 atk_type = LD8(r7 + oAIAttackVars_Unk_02);
+    u32 atk_type = LD8(r7 + oAIAttackVars_InitFlag);
     u32 damage   = LD32(r7 + oAIAttackVars_Damage);
 
     /* Spawn the attack hit at the computed position */
@@ -1873,7 +1873,7 @@ static sub_80FD6A6_result ai_attack_step(u32 r1, u32 r3, u32 r5, u32 r7) {
         call_sub_80C81A6(target_x, target_y, atk_type, r3, attack_id, damage);
 
     /* Transition to "recovery" state (var00 = 0x14) */
-    ST16(fired.r7 + oAIAttackVars_Unk_00, 0x14);
+    ST16(fired.r7 + oAIAttackVars_HitElement, 0x14);
 
     return (sub_80FD6A6_result){ fired.r1, fired.r5 };
 }
@@ -1892,19 +1892,19 @@ Next sub_80FD6A6(void) {
 
 /* ── sub_80FD6F4 ── */
 /* sub_80FD6F4(r5 = battle object ptr, r7 = attack vars ptr):
- * AI attack behaviour: on first call, snapshot a timer from oAIAttackVars_Unk_18 and start
+ * AI attack behaviour: on first call, snapshot a timer from oAIAttackVars_AttackDuration and start
  * counting; once the timer reaches zero, clear the current animation and exit the attack
  * state. Leaves R1 as the output (unchanged here, so callers' R1 flows through). */
 Next sub_80FD6F4(void) {
-    u8 state = LD8(R7 + oAIAttackVars_Unk_01);
+    u8 state = LD8(R7 + oAIAttackVars_AttackElement);
     if (state == 0) {
         /* First invocation: latch the countdown. */
-        ST8(R7 + oAIAttackVars_Unk_01, 4);
-        ST16(R7 + oAIAttackVars_Unk_10, LD16(R7 + oAIAttackVars_Unk_18));
+        ST8(R7 + oAIAttackVars_AttackElement, 4);
+        ST16(R7 + oAIAttackVars_StepTimer, LD16(R7 + oAIAttackVars_AttackDuration));
     } else {
         /* Subsequent calls: tick the countdown. */
-        u16 timer = LD16(R7 + oAIAttackVars_Unk_10) - 1;
-        ST16(R7 + oAIAttackVars_Unk_10, timer);
+        u16 timer = LD16(R7 + oAIAttackVars_StepTimer) - 1;
+        ST16(R7 + oAIAttackVars_StepTimer, timer);
         if (timer == 0) {
             ST8(R5 + oBattleObject_CurAnim, 0);
             R0 = 0;
@@ -1917,7 +1917,7 @@ Next sub_80FD6F4(void) {
 /* ── sub_80FD718 ── */
 /* sub_80FD718 — AI attack-script step dispatcher.
  *
- * r7 points to an AIAttackVars block; the byte at oAIAttackVars_Unk_00 holds
+ * r7 points to an AIAttackVars block; the byte at oAIAttackVars_HitElement holds
  * the current step, stored as a byte offset into the handler table at
  * off_80FD72C. The word at that offset is the thumb address of the handler
  * for this step. The handler is entered with the caller's registers intact
@@ -1931,7 +1931,7 @@ Next sub_80FD6F4(void) {
 static u32 call_attack_handler_sub_80FD718(u32 handler, u32 step, u32 table_entry,
                                u32 arg_r3, u32 arg_r5, u32 arg_r6, u32 arg_r10)
 {
-    R0 = step;          /* ldrb r0,[r7,#oAIAttackVars_Unk_00] */
+    R0 = step;          /* ldrb r0,[r7,#oAIAttackVars_HitElement] */
     R1 = table_entry;   /* ldr r1,[r1,r0] */
     R3 = arg_r3;
     R5 = arg_r5;
@@ -1945,7 +1945,7 @@ static void dispatch_attack_step(u32 vars, u32 arg_r3, u32 arg_r5,
                                  u32 arg_r6, u32 arg_r10)
 {
     u32 saved_vars = vars;                     /* push {r7} */
-    u32 step = LD8(vars + oAIAttackVars_Unk_00);
+    u32 step = LD8(vars + oAIAttackVars_HitElement);
     u32 handler = LD32(A_off_80FD72C + step);  /* ldr r1,[r1,r0] */
 
     call_attack_handler_sub_80FD718(handler, step, handler, arg_r3, arg_r5, arg_r6, arg_r10);
@@ -2017,7 +2017,7 @@ static u32 call_ai_panel_target(u32 arg0, u32 func_addr, u32 arg2, u32 arg3,
 static void ai_attack_select_panel(u32 obj, u32 r6, u32 ai_vars) {
     call_object_canMove_result_sub_80FD748 can_move = call_object_canMove_sub_80FD748(obj);
     if (can_move.z) {
-        ST8(ai_vars + oAIAttackVars_Unk_1a, 0);
+        ST8(ai_vars + oAIAttackVars_HasMoved, 0);
         call_object_exitAttackState(obj, r6, ai_vars);
         return;
     }
@@ -2027,14 +2027,14 @@ static void ai_attack_select_panel(u32 obj, u32 r6, u32 ai_vars) {
     u32 tbl_base = A_byte_80FD798 + (alliance << 3);
     u32 arg2 = LD32(tbl_base);
     u32 arg3 = LD32(tbl_base + 4);
-    u32 arg0 = LD32(ai_vars + oAIAttackVars_Unk_2c);
-    u32 target_fn = LD32(ai_vars + oAIAttackVars_Unk_28);
+    u32 arg0 = LD32(ai_vars + oAIAttackVars_TargetObjectPtr);
+    u32 target_fn = LD32(ai_vars + oAIAttackVars_PanelChooseCallback);
 
     u32 panel_y;
     u32 panel_x = call_ai_panel_target(arg0, target_fn, arg2, arg3, &panel_y);
 
     if (panel_x == 0) {
-        ST8(ai_vars + oAIAttackVars_Unk_1a, 0);
+        ST8(ai_vars + oAIAttackVars_HasMoved, 0);
         call_object_exitAttackState(obj, r6, ai_vars);
         return;
     }
@@ -2046,9 +2046,9 @@ static void ai_attack_select_panel(u32 obj, u32 r6, u32 ai_vars) {
     call_object_setFlag1_sub_80FD748(OBJECT_FLAGS_CANNOT_SLIDE, obj);
 
     ST8(obj + oBattleObject_CurAnim, 4);                  /* slide animation */
-    ST16(ai_vars + oAIAttackVars_Unk_10, 3);
-    ST8(ai_vars + oAIAttackVars_Unk_1a, 1);
-    ST16(ai_vars + oAIAttackVars_Unk_00, 4);
+    ST16(ai_vars + oAIAttackVars_StepTimer, 3);
+    ST8(ai_vars + oAIAttackVars_HasMoved, 1);
+    ST16(ai_vars + oAIAttackVars_HitElement, 4);
 }
 
 /* sub_80FD748(r5 = battle object, r6 = AI arg, r7 = AI attack vars)
@@ -2064,7 +2064,7 @@ Next sub_80FD748(void) {
  *   outputs: r1 = (preserved -- see comment)
  *   clobbers: nz, c, v, r0, r2, r3, lr
  *
- * Decrements oAIAttackVars_Unk_10. While it stays strictly positive (signed),
+ * Decrements oAIAttackVars_StepTimer. While it stays strictly positive (signed),
  * the function is a no-op. When it reaches zero or goes negative the object
  * is snapped onto its pre-reserved FuturePanel, the panel reservation is
  * released, its coordinates and collision panels are refreshed, animation 3
@@ -2077,12 +2077,12 @@ Next sub_80FD748(void) {
  * in either case. Our version matches both because no synthetic write to
  * R1 is introduced. */
 Next sub_80FD7A8(void) {
-    u32 timer = LD16(R7 + oAIAttackVars_Unk_10);
+    u32 timer = LD16(R7 + oAIAttackVars_StepTimer);
 
-    /* ldrh r0, [r7,#oAIAttackVars_Unk_10]; sub r0, #1; strh r0, [r7,...] */
+    /* ldrh r0, [r7,#oAIAttackVars_StepTimer]; sub r0, #1; strh r0, [r7,...] */
     SET_FLAGS_CMP(timer, 1);
     timer -= 1;
-    ST16(R7 + oAIAttackVars_Unk_10, timer);
+    ST16(R7 + oAIAttackVars_StepTimer, timer);
 
     /* bgt locret_80FD7D2 -- skip the body while the decremented timer is
      * still strictly positive (BGT = N==V && Z==0). */
@@ -2106,13 +2106,13 @@ Next sub_80FD7A8(void) {
     GUEST_CALL(object_setCoordinatesFromPanels);
     GUEST_CALL(object_updateCollisionPanels);
 
-    /* mov r0, #4; strh r0, [r7,#oAIAttackVars_Unk_10] */
+    /* mov r0, #4; strh r0, [r7,#oAIAttackVars_StepTimer] */
     R0 = 4;
-    ST16(R7 + oAIAttackVars_Unk_10, R0);
+    ST16(R7 + oAIAttackVars_StepTimer, R0);
 
-    /* mov r0, #8; strh r0, [r7,#oAIAttackVars_Unk_00] */
+    /* mov r0, #8; strh r0, [r7,#oAIAttackVars_HitElement] */
     R0 = 8;
-    ST16(R7 + oAIAttackVars_Unk_00, R0);
+    ST16(R7 + oAIAttackVars_HitElement, R0);
 
     RETURN_TO_CALLER();
 }
@@ -2127,9 +2127,9 @@ Next sub_80FD7A8(void) {
  * Clobbers: nz, c, v, r0, r2, lr
  */
 Next sub_80FD7D4(void) {
-    u16 counter = LD16(R7 + oAIAttackVars_Unk_10);
+    u16 counter = LD16(R7 + oAIAttackVars_StepTimer);
     counter--;
-    ST16(R7 + oAIAttackVars_Unk_10, counter);
+    ST16(R7 + oAIAttackVars_StepTimer, counter);
     SET_FLAGS_NZ(counter);
 
     if (!NEGATIVE_FLAG() && !ZERO_FLAG()) {
@@ -2145,7 +2145,7 @@ Next sub_80FD7D4(void) {
     R0 = 1 << OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT;
     GUEST_CALL(object_setFlag1);
 
-    ST16(R7 + oAIAttackVars_Unk_00, 0xC);
+    ST16(R7 + oAIAttackVars_HitElement, 0xC);
     SET_FLAGS_NZ(0xC);
 
     RETURN_TO_CALLER();
@@ -2161,24 +2161,24 @@ Next sub_80FD7D4(void) {
  *     timer down.
  *   - When the timer expires, load the follow-up delay into Unk_00 (0x10). */
 Next sub_80FD7F2(void) {
-    if (LD8(R7 + oAIAttackVars_Unk_01) == 0) {
+    if (LD8(R7 + oAIAttackVars_AttackElement) == 0) {
         /* Attack just triggered: set up state, animation and timer. */
-        ST8(R7 + oAIAttackVars_Unk_01, 4);
+        ST8(R7 + oAIAttackVars_AttackElement, 4);
         ST8(R5 + oBattleObject_CurAnim, 0);
-        ST16(R7 + oAIAttackVars_Unk_10, 10);
+        ST16(R7 + oAIAttackVars_StepTimer, 10);
     } else {
-        u32 timer = LD16(R7 + oAIAttackVars_Unk_10);
+        u32 timer = LD16(R7 + oAIAttackVars_StepTimer);
 
         /* Fire the attack on frames where timer bit 2 is clear. */
         if (!(timer & 4)) {
-            R0 = LD8(R7 + oAIAttackVars_Unk_0c);
+            R0 = LD8(R7 + oAIAttackVars_AttackBoost2);
             GUEST_CALL(sub_80FDCA4);
         }
 
         timer--;
-        ST16(R7 + oAIAttackVars_Unk_10, timer);
+        ST16(R7 + oAIAttackVars_StepTimer, timer);
         if ((s32)timer <= 0)
-            ST16(R7 + oAIAttackVars_Unk_00, 0x10); /* timer ran out: set delay */
+            ST16(R7 + oAIAttackVars_HitElement, 0x10); /* timer ran out: set delay */
     }
     RETURN_TO_CALLER();
 }
@@ -2192,31 +2192,31 @@ Next sub_80FD7F2(void) {
  * and, once the countdown expires, stores 0x14 into Unk_00 so the AI goes
  * back to picking a new action. */
 Next sub_80FD822(void) {
-    if (LD8(R7 + oAIAttackVars_Unk_01) == 0) {
+    if (LD8(R7 + oAIAttackVars_AttackElement) == 0) {
         /* Begin the attack: enter the charging state, play the charge
          * animation and start a 30-frame timer. */
-        ST8(R7 + oAIAttackVars_Unk_01, 4);
+        ST8(R7 + oAIAttackVars_AttackElement, 4);
         ST8(R5 + oBattleObject_CurAnim, 7);
         SET_FLAGS_NZ(0x1E);
-        ST16(R7 + oAIAttackVars_Unk_10, 0x1E);
+        ST16(R7 + oAIAttackVars_StepTimer, 0x1E);
         RETURN_TO_CALLER();
     }
 
     /* The attack is charging: fire it on frames where bit 2 of the
      * countdown is clear. */
-    u32 timer = LD16(R7 + oAIAttackVars_Unk_10);
+    u32 timer = LD16(R7 + oAIAttackVars_StepTimer);
     if (!(timer & 4)) {
-        R0 = LD8(R7 + oAIAttackVars_Unk_0c);
+        R0 = LD8(R7 + oAIAttackVars_AttackBoost2);
         GUEST_CALL(sub_80FDCA4);
     }
 
     /* Count this frame down; while the timer is still positive we're done,
      * otherwise reset the attack state. */
     SET_FLAGS_CMP(timer, 1);
-    ST16(R7 + oAIAttackVars_Unk_10, timer - 1);
+    ST16(R7 + oAIAttackVars_StepTimer, timer - 1);
     if (ZERO_FLAG() || NEGATIVE_FLAG() != OVERFLOW_FLAG()) {
         SET_FLAGS_NZ(0x14);
-        ST16(R7 + oAIAttackVars_Unk_00, 0x14);
+        ST16(R7 + oAIAttackVars_HitElement, 0x14);
     }
     RETURN_TO_CALLER();
 }
@@ -2241,9 +2241,9 @@ Next sub_80FD852(void) {
     u32 saved_R4 = R4;
     u32 saved_R6 = R6;
 
-    if (LD8(R7 + oAIAttackVars_Unk_01) == 0) {
+    if (LD8(R7 + oAIAttackVars_AttackElement) == 0) {
         /* First tick — set up the attack. */
-        ST8(R7 + oAIAttackVars_Unk_01, 4);
+        ST8(R7 + oAIAttackVars_AttackElement, 4);
 
         /* Counter window for the attack. */
         R0 = 0x18;
@@ -2254,9 +2254,9 @@ Next sub_80FD852(void) {
 
         /* Build the packed descriptor (r4) that sub_80C82A8 consumes:
          *   element-id | (sub-element << 8) | (direction << 16). */
-        R4  = LD8(R7 + oAIAttackVars_Unk_03);
-        R4 |= LD8(A_dword_80FD8AC + LD8(R7 + oAIAttackVars_Unk_03)) << 8;
-        R4 |= LD8(R7 + oAIAttackVars_Unk_0c)            << 16;
+        R4  = LD8(R7 + oAIAttackVars_AiDifficultyTier);
+        R4 |= LD8(A_dword_80FD8AC + LD8(R7 + oAIAttackVars_AiDifficultyTier)) << 8;
+        R4 |= LD8(R7 + oAIAttackVars_AttackBoost2)            << 16;
 
         /* Damage value goes in r6 for the callee. */
         R6 = LD32(R7 + oAIAttackVars_Damage);
@@ -2264,7 +2264,7 @@ Next sub_80FD852(void) {
         /* Spawn the hit/projectile. */
         R0 = LD8(R5 + oBattleObject_PanelX);
         R1 = LD8(R5 + oBattleObject_PanelY);
-        R2 = LD8(R7 + oAIAttackVars_Unk_02);
+        R2 = LD8(R7 + oAIAttackVars_InitFlag);
         GUEST_CALL(sub_80C82A8);
 
         /* Hit SFX. */
@@ -2273,18 +2273,18 @@ Next sub_80FD852(void) {
 
         /* Stash sub-element index as the frame counter ticked by the
          * else-branch on subsequent calls. */
-        ST16(R7 + oAIAttackVars_Unk_10,
-             LD8(A_dword_80FD8AC + LD8(R7 + oAIAttackVars_Unk_03)));
+        ST16(R7 + oAIAttackVars_StepTimer,
+             LD8(A_dword_80FD8AC + LD8(R7 + oAIAttackVars_AiDifficultyTier)));
 
         /* Asm leaves r1 = &dword_80FD8AC at exit. */
         R1 = A_dword_80FD8AC;
     } else {
         /* Wind-up animation in progress — count down its frames. */
-        u32 timer = LD16(R7 + oAIAttackVars_Unk_10) - 1;
-        ST16(R7 + oAIAttackVars_Unk_10, (u16)timer);
+        u32 timer = LD16(R7 + oAIAttackVars_StepTimer) - 1;
+        ST16(R7 + oAIAttackVars_StepTimer, (u16)timer);
         if (!((s32)timer > 0)) {
             /* Timer reached zero: hand off to the next attack state. */
-            ST16(R7 + oAIAttackVars_Unk_00, 0x18);
+            ST16(R7 + oAIAttackVars_HitElement, 0x18);
         }
     }
 
@@ -2303,13 +2303,13 @@ Next sub_80FD852(void) {
  *  each call; when it reaches 0, exit the attack state.
  *  Returns in r1 (untouched by this function). */
 Next sub_80FD8B0(void) {
-    if (LD8(R7 + oAIAttackVars_Unk_01) == 0) {
-        ST8(R7 + oAIAttackVars_Unk_01, 4);
+    if (LD8(R7 + oAIAttackVars_AttackElement) == 0) {
+        ST8(R7 + oAIAttackVars_AttackElement, 4);
         ST8(R5 + oBattleObject_CurAnim, 0);
-        ST16(R7 + oAIAttackVars_Unk_10, LD16(R7 + oAIAttackVars_Unk_18));
+        ST16(R7 + oAIAttackVars_StepTimer, LD16(R7 + oAIAttackVars_AttackDuration));
     } else {
-        u32 timer = LD16(R7 + oAIAttackVars_Unk_10) - 1;
-        ST16(R7 + oAIAttackVars_Unk_10, timer);
+        u32 timer = LD16(R7 + oAIAttackVars_StepTimer) - 1;
+        ST16(R7 + oAIAttackVars_StepTimer, timer);
         if ((s32)timer <= 0) {
             R0 = timer;  /* preserve r0 for callee */
             GUEST_CALL(object_exitAttackState);
@@ -2791,7 +2791,7 @@ Next sub_80FE05C(void) {
  * of four handlers that receive/return all guest registers; no typed C interface
  * can express that flow. */
 static void ai_attack_phase_dispatch(u32 r7) {
-    u32 index = LD8(r7 + oAIAttackVars_Unk_00);
+    u32 index = LD8(r7 + oAIAttackVars_HitElement);
     R0 = index;                                        /* byte the callee may inspect */
     R1 = LD32(A_off_80FE0E8 + index);                  /* Thumb function-pointer from table */
 
@@ -2806,7 +2806,7 @@ static void ai_attack_phase_dispatch(u32 r7) {
 }
 
 /* battle_aiDispatchAttackPhase_80FE0D4 – dispatch one of four AI attack-phase handlers by jump table.
- * r7 = AIAttackVars pointer; index byte read from oAIAttackVars_Unk_00. */
+ * r7 = AIAttackVars pointer; index byte read from oAIAttackVars_HitElement. */
 Next battle_aiDispatchAttackPhase_80FE0D4(void) {
     ai_attack_phase_dispatch(R7);
     RETURN_TO_CALLER();
@@ -2822,23 +2822,23 @@ Next battle_aiDispatchAttackPhase_80FE0D4(void) {
  * and load the windup timer with 14 frames. If the bit was already
  * set, go straight to the firing state instead. */
 Next sub_80FE0F8(void) {
-    if (LD8(R7 + oAIAttackVars_Unk_01) != 0) {
+    if (LD8(R7 + oAIAttackVars_AttackElement) != 0) {
         /* windup in progress: count the timer down */
-        s32 timer = (s32)LD16(R7 + oAIAttackVars_Unk_10) - 1;
-        ST16(R7 + oAIAttackVars_Unk_10, (u16)timer);
+        s32 timer = (s32)LD16(R7 + oAIAttackVars_StepTimer) - 1;
+        ST16(R7 + oAIAttackVars_StepTimer, (u16)timer);
         if (timer <= 0)
-            ST16(R7 + oAIAttackVars_Unk_00, 4); /* windup done: fire */
+            ST16(R7 + oAIAttackVars_HitElement, 4); /* windup done: fire */
         RETURN_TO_CALLER();
     }
 
     /* start a new windup */
-    ST8(R7 + oAIAttackVars_Unk_01, 4);
+    ST8(R7 + oAIAttackVars_AttackElement, 4);
 
     GUEST_CALL(GetAIDataUnk0x48Flag);
     R1 = 0x20;
     if (R0 & R1) {
         /* shot already fired this attack: go straight to firing */
-        ST16(R7 + oAIAttackVars_Unk_00, 4);
+        ST16(R7 + oAIAttackVars_HitElement, 4);
         RETURN_TO_CALLER();
     }
 
@@ -2846,7 +2846,7 @@ Next sub_80FE0F8(void) {
     R0 = 0x20;
     GUEST_CALL(SetAIDataUnk0x48Flag); /* clobbers r1 */
     ST8(R5 + oBattleObject_CurAnim, 8);
-    ST16(R7 + oAIAttackVars_Unk_10, 0xE);
+    ST16(R7 + oAIAttackVars_StepTimer, 0xE);
     RETURN_TO_CALLER();
 }
 
@@ -2925,9 +2925,9 @@ static MotionStepResult step_battle_object_motion(u32 object, u32 ai_vars) {
     call_object_setPanelsFromCoordinates(y + vy, vy);
     call_object_updateCollisionPanels();
 
-    u32 orig_timer = (u32)LD16(ai_vars + oAIAttackVars_Unk_10);
+    u32 orig_timer = (u32)LD16(ai_vars + oAIAttackVars_StepTimer);
     u32 timer = orig_timer - 1u;
-    ST16(ai_vars + oAIAttackVars_Unk_10, (u16)timer);
+    ST16(ai_vars + oAIAttackVars_StepTimer, (u16)timer);
 
     if ((s32)timer >= 0) {
         /* Still gliding. Emulate `subs r0, #1` via ADD(orig_timer, -1). */
@@ -2950,7 +2950,7 @@ static MotionStepResult step_battle_object_motion(u32 object, u32 ai_vars) {
     call_object_setFlag1(1u << OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT);
 
     u32 next_state = 0x0C;
-    ST16(ai_vars + oAIAttackVars_Unk_00, (u16)next_state);
+    ST16(ai_vars + oAIAttackVars_HitElement, (u16)next_state);
 
     /* Terminal flags on fall-through: N=Z=C=V=0. ADD(1,0) yields exactly that. */
     return (MotionStepResult){ next_state, 1u, 0u };
@@ -2966,7 +2966,7 @@ Next battle_aiAttack_stepGlide_80FE1B4(void) {
 /* ── battle_aiTickAttackTimer_80FE1FE ── */
 /* battle_aiTickAttackTimer_80FE1FE: AI attack driver for one oAIAttackVars block (r7).
  *
- * The byte at offset oAIAttackVars_Unk_01 (offset 1) is the attack's armed
+ * The byte at offset oAIAttackVars_AttackElement (offset 1) is the attack's armed
  * flag:
  *  - 0: the attack hasn't been started yet. Arm it: store 4 into the flag
  *       and copy the attack's charge time (Unk_18) into the countdown Unk_10.
@@ -2980,15 +2980,15 @@ Next battle_aiTickAttackTimer_80FE1FE(void) {
     if (LD8(R7 + 1) == 0) {
         /* start-up: arm the attack and load its countdown */
         ST8(R7 + 1, 4);
-        u32 timer = LD16(R7 + oAIAttackVars_Unk_18);
-        ST16(R7 + oAIAttackVars_Unk_10, timer);
+        u32 timer = LD16(R7 + oAIAttackVars_AttackDuration);
+        ST16(R7 + oAIAttackVars_StepTimer, timer);
         SET_FLAGS_NZ(4);        /* flags of the original's `mov r0,#4` */
         R0 = timer;             /* r0 ends holding the value written to Unk_10 */
     } else {
         /* armed: tick the countdown */
-        u32 left = LD16(R7 + oAIAttackVars_Unk_10);
+        u32 left = LD16(R7 + oAIAttackVars_StepTimer);
         u32 timer = left - 1;
-        ST16(R7 + oAIAttackVars_Unk_10, timer);
+        ST16(R7 + oAIAttackVars_StepTimer, timer);
         SET_FLAGS_CMP(left, 1); /* flags of the original's `subs r0,#1` */
         R0 = timer;
         if ((s32)timer <= 0)    /* bgt not taken: countdown expired */
@@ -3027,11 +3027,11 @@ static void call_attack_phase3(u32 state, u32 entry, u32 vars) {
 }
 
 /* Tail-dispatch to the current AI attack phase handler.
- * The state byte at [vars+oAIAttackVars_Unk_00] is the table offset (0,4,8,12);
+ * The state byte at [vars+oAIAttackVars_HitElement] is the table offset (0,4,8,12);
  * it indexes off_80FE230 to pick one of four handlers, each receiving the state
  * in r0 and its own entry address in r1. */
 static void ai_attack_dispatch_sub_80FE21E(u32 vars) {
-    u32 state = LD8(vars + oAIAttackVars_Unk_00);
+    u32 state = LD8(vars + oAIAttackVars_HitElement);
     u32 entry = LD32(A_off_80FE230 + state);
 
     switch (state) {
@@ -3059,10 +3059,10 @@ Next sub_80FE240(void) {
     u32 aiVars = R7;
     u32 battleObj = R5;
 
-    if (LD8(aiVars + oAIAttackVars_Unk_01) != 0) {
+    if (LD8(aiVars + oAIAttackVars_AttackElement) != 0) {
         /* Already initialised – tick down the delay counter */
-        s32 remaining = (s32)LD16(aiVars + oAIAttackVars_Unk_10) - 1;
-        ST16(aiVars + oAIAttackVars_Unk_10, (u16)remaining);
+        s32 remaining = (s32)LD16(aiVars + oAIAttackVars_StepTimer) - 1;
+        ST16(aiVars + oAIAttackVars_StepTimer, (u16)remaining);
 
         if (remaining > 0) {
             /* Still waiting – return unchanged */
@@ -3070,19 +3070,19 @@ Next sub_80FE240(void) {
         }
 
         /* Countdown expired: fire the attack */
-        ST16(aiVars + oAIAttackVars_Unk_00, 4);
+        ST16(aiVars + oAIAttackVars_HitElement, 4);
     } else {
         /* First tick: set up the attack state */
-        ST8(aiVars + oAIAttackVars_Unk_01, 4);
-        ST8(aiVars + oAIAttackVars_Unk_16, 0);
-        ST8(aiVars + oAIAttackVars_Unk_17, 0);
+        ST8(aiVars + oAIAttackVars_AttackElement, 4);
+        ST8(aiVars + oAIAttackVars_TargetPanelX, 0);
+        ST8(aiVars + oAIAttackVars_TargetPanelY, 0);
 
         GUEST_CALL(GetAIDataUnk0x48Flag);
 
         R1 = 0x20;  /* delay-required bit */
         if ((R0 & R1) == 0) {
             /* No delay: trigger the attack immediately */
-            ST16(aiVars + oAIAttackVars_Unk_00, 4);
+            ST16(aiVars + oAIAttackVars_HitElement, 4);
         } else {
             /* Delayed attack: clear the gate flag, begin countdown */
             R0 = 0x20;
@@ -3093,7 +3093,7 @@ Next sub_80FE240(void) {
             R0 = 0xE1;
             GUEST_CALL(PlaySoundEffect);
 
-            ST16(aiVars + oAIAttackVars_Unk_10, 0x13);  /* 19-tick delay */
+            ST16(aiVars + oAIAttackVars_StepTimer, 0x13);  /* 19-tick delay */
         }
     }
 
@@ -3110,25 +3110,25 @@ Next sub_80FE240(void) {
  * Leaves R0 and the NZCV flags as the original's last flag-setting
  * instruction does. */
 Next battle_aiAttackWindupTick_80FE284(void) {
-    if (LD8(R7 + 1 /* oAIAttackVars_Unk_01 */) == 0) {
+    if (LD8(R7 + 1 /* oAIAttackVars_AttackElement */) == 0) {
         /* Begin the wind-up phase. */
-        ST8(R7 + 1 /* oAIAttackVars_Unk_01 */, 4);
+        ST8(R7 + 1 /* oAIAttackVars_AttackElement */, 4);
         ST8(R5 + oBattleObject_CurAnim, 0);
         R0 = 0x1E;
-        ST16(R7 + oAIAttackVars_Unk_10, R0);
+        ST16(R7 + oAIAttackVars_StepTimer, R0);
         SET_FLAGS_NZ(R0);
     } else {
         /* Count the wind-up timer down; once it hits zero, attack. */
-        u32 remaining = LD16(R7 + oAIAttackVars_Unk_10);
+        u32 remaining = LD16(R7 + oAIAttackVars_StepTimer);
         u32 left = remaining - 1;
-        ST16(R7 + oAIAttackVars_Unk_10, left);
+        ST16(R7 + oAIAttackVars_StepTimer, left);
         SET_FLAGS_CMP(remaining, 1);
         if ((s32)left > 0) {
             R0 = left;
             RETURN_TO_CALLER();
         }
         R0 = 8;
-        ST16(R7 /* oAIAttackVars_Unk_00 */, R0);
+        ST16(R7 /* oAIAttackVars_HitElement */, R0);
         SET_FLAGS_NZ(R0);
     }
     RETURN_TO_CALLER();
@@ -3140,15 +3140,15 @@ Next battle_aiAttackWindupTick_80FE284(void) {
  * animation and exit the attack state.
  * r7 = AI attack vars pointer, r5 = battle object pointer. */
 static void ai_attack_countdown_tick(u32 battle_object, u32 ai_attack_vars) {
-    u8 phase = LD8(ai_attack_vars + oAIAttackVars_Unk_01);
+    u8 phase = LD8(ai_attack_vars + oAIAttackVars_AttackElement);
     if (phase == 0) {
-        ST8(ai_attack_vars + oAIAttackVars_Unk_01, 4);
-        ST16(ai_attack_vars + oAIAttackVars_Unk_10,
-             LD16(ai_attack_vars + oAIAttackVars_Unk_18));
+        ST8(ai_attack_vars + oAIAttackVars_AttackElement, 4);
+        ST16(ai_attack_vars + oAIAttackVars_StepTimer,
+             LD16(ai_attack_vars + oAIAttackVars_AttackDuration));
         return;
     }
-    u32 timer = LD16(ai_attack_vars + oAIAttackVars_Unk_10) - 1;
-    ST16(ai_attack_vars + oAIAttackVars_Unk_10, (u16)timer);
+    u32 timer = LD16(ai_attack_vars + oAIAttackVars_StepTimer) - 1;
+    ST16(ai_attack_vars + oAIAttackVars_StepTimer, (u16)timer);
     if ((s32)timer > 0)
         return;
     ST8(battle_object + oBattleObject_CurAnim, 0);
@@ -3166,7 +3166,7 @@ Next battle_aiAttackCountdownTick_80FE30C(void) {
 /* aiAttackDispatchHandler_80FE452: AI attack command dispatcher.
  *
  * r7 points to the AI attack state block. The byte at offset 0
- * (oAIAttackVars_Unk_00) indexes the handler table at off_80FE464:
+ * (oAIAttackVars_HitElement) indexes the handler table at off_80FE464:
  *     entry 0 -> sub_80FE46C
  *     entry 1 -> aiAttackState_tickTimer_sub_80FE4AC
  * Note the original indexes with the raw byte (ldr r1, [r1, r0]), so a
@@ -3180,7 +3180,7 @@ Next battle_aiAttackCountdownTick_80FE30C(void) {
  * (push/pop {r7} in the original). Everything else, including the flags,
  * passes through the handler untouched. */
 Next aiAttackDispatchHandler_80FE452(void) {
-    u32 selector = LD8(R7);              /* byte at oAIAttackVars_Unk_00 (offset 0) */
+    u32 selector = LD8(R7);              /* byte at oAIAttackVars_HitElement (offset 0) */
 
     R0 = selector;
     if (selector == 0) {
@@ -3206,15 +3206,15 @@ Next aiAttackDispatchHandler_80FE452(void) {
  * zero, exit the attack state via object_exitAttackState.
  */
 Next aiAttackState_tickTimer_sub_80FE4AC(void) {
-    if (LD8(R7 + oAIAttackVars_Unk_01) == 0) {
+    if (LD8(R7 + oAIAttackVars_AttackElement) == 0) {
         /* First-time initialization. */
-        ST8(R7 + oAIAttackVars_Unk_01, 4);
+        ST8(R7 + oAIAttackVars_AttackElement, 4);
         ST8(R5 + oBattleObject_CurAnim, 0);
-        ST16(R7 + oAIAttackVars_Unk_10, LD16(R7 + oAIAttackVars_Unk_18));
+        ST16(R7 + oAIAttackVars_StepTimer, LD16(R7 + oAIAttackVars_AttackDuration));
     } else {
         /* Tick the countdown timer. */
-        u32 timer = LD16(R7 + oAIAttackVars_Unk_10) - 1;
-        ST16(R7 + oAIAttackVars_Unk_10, (u16)timer);
+        u32 timer = LD16(R7 + oAIAttackVars_StepTimer) - 1;
+        ST16(R7 + oAIAttackVars_StepTimer, (u16)timer);
         if (!(timer & 0x80000000) && timer != 0) {
             /* timer > 0 signed -> still ticking, return. */
         } else {
@@ -3610,7 +3610,7 @@ Next sub_8109794(void) {
  * pattern, so GUEST_CALL_ADDR performs the original's "mov lr, pc; bx r1". */
 static void ai_attack_dispatch_sub_8109804(void) {
     /* selector byte from the attack-vars block */
-    R0 = LD8(R7 + oAIAttackVars_Unk_00);
+    R0 = LD8(R7 + oAIAttackVars_HitElement);
     /* table entry (4 bytes wide, indexed by raw selector as in ldr r1,[r1,r0]) */
     R1 = LD32(A_off_8109818 + R0);
     /* branch to handler; on return every guest register and flag holds
@@ -3639,8 +3639,8 @@ Next sub_8109820(void) {
     if (ZERO_FLAG()) goto fail;
 
     /* Load candidate panel coordinates and parameters, then validate. */
-    R0 = LD8(R7 + oAIAttackVars_Unk_16);
-    R1 = LD8(R7 + oAIAttackVars_Unk_17);
+    R0 = LD8(R7 + oAIAttackVars_TargetPanelX);
+    R1 = LD8(R7 + oAIAttackVars_TargetPanelY);
     R2 = LD32(R7 + oAIAttackVars_Unk_34);
     R3 = LD32(R7 + oAIAttackVars_Unk_38);
     GUEST_CALL(object_checkPanelParameters);
@@ -3648,18 +3648,18 @@ Next sub_8109820(void) {
 
     /* Panel OK: reload X/Y into r0/r1, write them as the future panel on
      * the battle object, then reserve the panel with those same args. */
-    R0 = LD8(R7 + oAIAttackVars_Unk_16);
+    R0 = LD8(R7 + oAIAttackVars_TargetPanelX);
     ST8(R5 + oBattleObject_FuturePanelX, (u8)R0);
-    R1 = LD8(R7 + oAIAttackVars_Unk_17);
+    R1 = LD8(R7 + oAIAttackVars_TargetPanelY);
     ST8(R5 + oBattleObject_FuturePanelY, (u8)R1);
     GUEST_CALL(object_reservePanel);
 
     R0 = OBJECT_FLAGS_CANNOT_SLIDE;
     GUEST_CALL(object_setFlag1);
 
-    ST16(R7 + oAIAttackVars_Unk_00, 4);
+    ST16(R7 + oAIAttackVars_HitElement, 4);
 
-    if (LD8(R7 + oAIAttackVars_Unk_03) != 0) {
+    if (LD8(R7 + oAIAttackVars_AiDifficultyTier) != 0) {
         GUEST_CALL(sub_81098C4);
     } else {
         GUEST_CALL(sub_810990E);
@@ -3668,7 +3668,7 @@ Next sub_8109820(void) {
     RETURN_TO_CALLER();
 
 fail:
-    ST8(R7 + oAIAttackVars_Unk_1a, 0);
+    ST8(R7 + oAIAttackVars_HasMoved, 0);
     GUEST_CALL(object_exitAttackState_801171C);
     RETURN_TO_CALLER();
 }
@@ -3676,8 +3676,8 @@ fail:
 /* ── sub_81098C4 ── */
 /* sub_81098C4: drive a battle object toward the AI's target panel.
  *
- * Reads the AI's current target panel (X from oAIAttackVars_Unk_16,
- * Y from oAIAttackVars_Unk_17) and the object's current panel,
+ * Reads the AI's current target panel (X from oAIAttackVars_TargetPanelX,
+ * Y from oAIAttackVars_TargetPanelY) and the object's current panel,
  * decides which axis is off (Y first, then X), writes the matching
  * velocity to the object, and stores the frame/duration pair that
  * the caller uses to know when to issue the hit.
@@ -3692,9 +3692,9 @@ Next sub_81098C4(void) {
     u32 ai  = R7;
 
     /* --- Y axis: AIUnk_17 vs object PanelY --- */
-    s32 dy    = (s32)((u8)LD8(ai + oAIAttackVars_Unk_17))
+    s32 dy    = (s32)((u8)LD8(ai + oAIAttackVars_TargetPanelY))
               - (s32)((u8)LD8(obj + oBattleObject_PanelY));
-    u32 speed = LD32(ai + oAIAttackVars_Unk_30);
+    u32 speed = LD32(ai + oAIAttackVars_ScratchVar);
     u32 yVel  = speed * (u32)dy;
 
     /* MUL preserves flags, but in the Thumb encoding it's the result
@@ -3712,7 +3712,7 @@ Next sub_81098C4(void) {
 
 x_axis:
     /* --- X axis: AIUnk_16 vs object PanelX --- */
-    s32 dx   = (s32)((u8)LD8(ai  + oAIAttackVars_Unk_16))
+    s32 dx   = (s32)((u8)LD8(ai  + oAIAttackVars_TargetPanelX))
              - (s32)((u8)LD8(obj + oBattleObject_PanelX));
     u32 xVel = speed * (u32)dx;
     SET_FLAGS_NZ(xVel);
@@ -3728,8 +3728,8 @@ x_axis:
     /* Both axes already match: zero both velocities, mark as hit. */
     ST32(obj + oBattleObject_XVelocity, 0);
     ST32(obj + oBattleObject_YVelocity, 0);
-    ST16(ai + oAIAttackVars_Unk_10, 1);
-    ST16(ai + oAIAttackVars_Unk_12, 1);
+    ST16(ai + oAIAttackVars_StepTimer, 1);
+    ST16(ai + oAIAttackVars_ChargeCycles, 1);
     goto done;
 
 divide_speed:
@@ -3737,8 +3737,8 @@ divide_speed:
      * Quotient in r0, remainder in r1; only r0 (whole frames) is kept. */
     R1 = speed;
     swi_call(6);
-    ST16(ai + oAIAttackVars_Unk_10, (u16)R0);
-    ST16(ai + oAIAttackVars_Unk_12, (u16)(R0 >> 1));
+    ST16(ai + oAIAttackVars_StepTimer, (u16)R0);
+    ST16(ai + oAIAttackVars_ChargeCycles, (u16)(R0 >> 1));
 
 done:
     RETURN_TO_CALLER();
@@ -3747,25 +3747,25 @@ done:
 /* ── battle_attackTimerTick_8109CBC ── */
 /* battle_attackTimerTick_8109CBC (r5 = battle object, r7 = this attack's variable block):
  * Per-frame tick for an AI attack. Counts the attack's remaining-frames
- * counter (oAIAttackVars_Unk_10) down by one; while it is still non-negative
+ * counter (oAIAttackVars_StepTimer) down by one; while it is still non-negative
  * the attack simply stays active for another frame. Once the counter runs out,
  * the attack's teardown helpers are run on the object's extra var, its state
- * word (pointed to by oAIAttackVars_Unk_30) is cleared, and the object leaves
+ * word (pointed to by oAIAttackVars_ScratchVar) is cleared, and the object leaves
  * the attack state. */
 Next battle_attackTimerTick_8109CBC(void) {
     /* Decrement the attack countdown (halfword), keeping the SUBS flags for
      * the early-out path. */
-    u32 timer = LD16(R7 + oAIAttackVars_Unk_10);
+    u32 timer = LD16(R7 + oAIAttackVars_StepTimer);
     SET_FLAGS_CMP(timer, 1);            /* sub r0, #1 */
     timer -= 1;
     R0 = timer;
-    ST16(R7 + oAIAttackVars_Unk_10, timer);
+    ST16(R7 + oAIAttackVars_StepTimer, timer);
     if ((s32)timer >= 0)                /* bge: attack still has frames left */
         RETURN_TO_CALLER();
 
     /* Timer expired. If the attack still owns a state word, run its two
      * cleanup helpers on the object's extra var, then zero the word. */
-    u32 statePtr = LD32(R7 + oAIAttackVars_Unk_30);
+    u32 statePtr = LD32(R7 + oAIAttackVars_ScratchVar);
     R0 = LD32(statePtr);
     if (R0 != 0) {
         R0 = LD32(R5 + oBattleObject_ExtraVars + 4);
@@ -3812,7 +3812,7 @@ static u32 dispatch_ai_attack_handler(u32 handler, u32 index, u32 tableEntry) {
 /* Read the sub-state index from the AI attack vars, look up its handler in
  * the dispatch table and run it. */
 static u32 run_ai_attack_step_sub_8109CE6(u32 attackVars) {
-    u32 index = LD8(attackVars + oAIAttackVars_Unk_00);
+    u32 index = LD8(attackVars + oAIAttackVars_HitElement);
     u32 handler = LD32(A_off_8109CF8 + index);
     return dispatch_ai_attack_handler(handler, index, handler);
 }
@@ -3848,9 +3848,9 @@ static void set_subs_flags_for_decrement(u32 loaded) {
  * Sets SUBS flags for the non-zero path; on the zero path the callee flags
  * (from GUEST_CALL) overwrite them, which matches the original. */
 static u32 ai_attack_countdown(u32 vars) {
-    u32 loaded = LD16(vars + oAIAttackVars_Unk_10);
+    u32 loaded = LD16(vars + oAIAttackVars_StepTimer);
     u32 counter = loaded - 1;
-    ST16(vars + oAIAttackVars_Unk_10, counter);
+    ST16(vars + oAIAttackVars_StepTimer, counter);
     set_subs_flags_for_decrement(loaded);
 
     if (counter != 0)
@@ -3859,8 +3859,8 @@ static u32 ai_attack_countdown(u32 vars) {
     call_object_clear_flag(0x40);
     call_object_set_flag1(1u << OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT);
 
-    ST16(vars + oAIAttackVars_Unk_10, LD16(vars + oAIAttackVars_Unk_18));
-    ST16(vars + oAIAttackVars_Unk_00, 0xC);
+    ST16(vars + oAIAttackVars_StepTimer, LD16(vars + oAIAttackVars_AttackDuration));
+    ST16(vars + oAIAttackVars_HitElement, 0xC);
     return 0xC;
 }
 
@@ -3872,24 +3872,24 @@ Next aiAttackVars_countdownSub_8109D98(void) {
 
 /* ── ai_attackTickDown_timerEndExit_8109DBA ── */
 /* ai_attackTickDown_timerEndExit_8109DBA (r5 = battle object, r7 = AI attack vars):
- * Tick down the attack timer at oAIAttackVars_Unk_10; the decremented
+ * Tick down the attack timer at oAIAttackVars_StepTimer; the decremented
  * count is left in r0 (and the flags reflect the subtraction). While the
  * timer is still counting, nothing else happens. When it reaches zero,
  * reset the object's current animation, mark the attack as finished
  * (Unk_1a = 1) and call object_exitAttackState with r0 = 1. */
 Next ai_attackTickDown_timerEndExit_8109DBA(void) {
-    u32 timer = LD16(R7 + oAIAttackVars_Unk_10);
+    u32 timer = LD16(R7 + oAIAttackVars_StepTimer);
 
     SET_FLAGS_CMP(timer, 1);   /* SUBS timer, #1 */
     timer -= 1;
-    ST16(R7 + oAIAttackVars_Unk_10, timer);
+    ST16(R7 + oAIAttackVars_StepTimer, timer);
     R0 = timer;                /* r0 holds the decremented timer on return */
 
     if (timer != 0)
         RETURN_TO_CALLER();
 
     ST8(R5 + oBattleObject_CurAnim, 0);
-    ST8(R7 + oAIAttackVars_Unk_1a, 1);
+    ST8(R7 + oAIAttackVars_HasMoved, 1);
 
     R0 = 1;
     GUEST_CALL(object_exitAttackState);
@@ -3905,7 +3905,7 @@ Next ai_attackTickDown_timerEndExit_8109DBA(void) {
  * and aiAttackTimer_tick_8109E4A) receive and return every CPU register, so C parameter
  * passing cannot express the call. */
 static void ai_attack_dispatch_sub_8109DD2(u32 self) {
-    u8 idx = LD8(self + oAIAttackVars_Unk_00);
+    u8 idx = LD8(self + oAIAttackVars_HitElement);
     u32 handler_addr = LD32(A_off_8109DE4 + idx);
     R0 = idx;
     R1 = handler_addr;
@@ -3943,7 +3943,7 @@ static u32 ai_exit_attack(u32 r0_val, u32 r1_val) {
     return R0;
 }
 
-#define oAIAttackVars_Unk_01 0x01
+#define oAIAttackVars_AttackElement 0x01
 #define oAIAttackVars_Unk_10_sub_8109E4A 0x10
 #define oAIAttackVars_Unk_30_sub_8109E4A 0x30
 #define AI_ATTACK_TIMER_INIT 0x28
@@ -3955,8 +3955,8 @@ static u32 ai_exit_attack(u32 r0_val, u32 r1_val) {
  * exits its attack state.
  * Returns the post-decrement timer (path 1) or the callee's r0 (path 2). */
 static u32 tick_ai_attack_timer(u32 r5, u32 r7) {
-    if (LD8(r7 + oAIAttackVars_Unk_01) == 0) {
-        ST8(r7 + oAIAttackVars_Unk_01, 1);
+    if (LD8(r7 + oAIAttackVars_AttackElement) == 0) {
+        ST8(r7 + oAIAttackVars_AttackElement, 1);
         ST16(r7 + oAIAttackVars_Unk_10_sub_8109E4A, AI_ATTACK_TIMER_INIT);
     }
 
@@ -4120,8 +4120,8 @@ Next battle_object_updatePhaseTick_8109FC4(void) {
 Next ai_attackStateStep_810A080(void) {
     if (LD8(R6 + 2) == 0) {
         /* Begin the attack: install handler and version-specific attack id. */
-        ST32(R7 + oAIAttackVars_Unk_28, A_sub_810A21A | 1);
-        ST16(R7 + oAIAttackVars_Unk_18,
+        ST32(R7 + oAIAttackVars_PanelChooseCallback, A_sub_810A21A | 1);
+        ST16(R7 + oAIAttackVars_AttackDuration,
              LD8(LD8(R4 + oAIData_Version_16) + A_byte_8109F46));
 
         R0 = 0xA;
@@ -4130,7 +4130,7 @@ Next ai_attackStateStep_810A080(void) {
         ST8(R6 + 2, 4);
         R0 = 4;
         SET_FLAGS_NZ(R0);
-    } else if (LD8(R7 + oAIAttackVars_Unk_1a) == 0) {
+    } else if (LD8(R7 + oAIAttackVars_HasMoved) == 0) {
         /* Attack phase not done yet: hand control to AI state 12. */
         ST8(R6 + 0, 0xC);
         ST16(R6 + 2, 0);

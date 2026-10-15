@@ -1,0 +1,72 @@
+name: oAIState_AttackCounter
+address: '0x5'
+kind: struct-field
+status: probable
+summary: 'Charged-attack tick counter: counts up each step, resets to 0 when the threshold (HP-scaled
+  or difficulty-tier-scaled) is reached, gating an attack roll.'
+details: Across nearly every boss/NavCust AI step the byte is read, compared against a small threshold
+  (2, 3, 4, 5, 7, or one looked up from a difficulty-tier table), incremented by 1 if below threshold,
+  and reset to 0 once it reaches it (e.g. asm31.s:129095 "cmp r0,#4 / bge reset; add r0,#1; strb"). On
+  the reset branch a GetPositiveSignedRNG & 0xF gate typically decides whether the attack fires. A few
+  callers set it to absolute values (0xC at asm31.s:109219, copied from oBattleObject at asm32.s:167 "strb
+  r0,[r4,#0x13] -> [r6,#oAIState_Unk_05]"), consistent with seeding/wiring the counter at AI init. Two
+  steppers (asm31.s:132579, 139661) EOR it with 1 each tick, effectively treating it as a 1-bit ping-pong,
+  which is still a "count up to a threshold" timer with threshold 1.
+evidence:
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Canonical "count up to N, then reset" pattern; threshold 4, reset branch zeroes the byte and
+    dispatches a sub-function.
+  refs:
+  - bn6f/asm/asm31.s:109219
+  reproduce: grep -n 'oAIState_Unk_05' bn6f/asm/asm31.s | head
+  result: '"ldrb r0, [r6,#oAIState_Unk_05]\ncmp r0, #4\nbge loc_80F492C\nldrb r0, [r6,#oAIState_Unk_05]\nadd
+    r0'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Threshold is looked up from a small table indexed by AI difficulty tier — exactly an attack-charge
+    counter scaled by difficulty.
+  refs:
+  - bn6f/asm/asm31.s:109219
+  reproduce: grep -n 'oAIState_Unk_05' bn6f/asm/asm31.s | head
+  result: '"bl battle_getAiDifficultyTier_800FE36\nldr r1, off_80F8538\nldrb r0, [r1,r0]\nldrb r1, [r6,#oAIStat'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Threshold scales with HP (7 above half HP, 4 below), matching a "wait this many turns before
+    attacking again" counter that adapts to the boss's HP.
+  refs:
+  - bn6f/asm/asm31.s:109219
+  reproduce: grep -n 'oAIState_Unk_05' bn6f/asm/asm31.s | head
+  result: '"mov r3, #7\nldrh r1, [r5,#oBattleObject_MaxHP]\nlsr r1, r1, #1\nldrh r2, [r5,#oBattleObject_HP]\ncm'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Threshold-1 toggle variant — counter ticks each step regardless and attacks every other step;
+    same conceptual timer.
+  refs:
+  - bn6f/asm/asm31.s:109219
+  reproduce: grep -n 'oAIState_Unk_05' bn6f/asm/asm31.s | head
+  result: '"ldrb r0, [r6,#oAIState_Unk_05]\nmov r1, #1\neor r1, r0\nstrb r1, [r6,#oAIState_Unk_05]\ntst
+    r0, r0"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Initialization — copied from the closest enemy's own AI-state byte at enemy-acquire time, seeding
+    the counter from the source instead of leaving it at 0.
+  refs:
+  - bn6f/asm/asm31.s:109219
+  reproduce: grep -n 'oAIState_Unk_05' bn6f/asm/asm31.s | head
+  result: '"ldrb r0, [r4,#0x13]\nstrb r0, [r6,#oAIState_Unk_05]"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Direct write to 0xC on a specific state transition, consistent with forcing the counter near
+    its threshold so the next step trips the attack branch.
+  refs:
+  - bn6f/asm/asm31.s:109219
+  reproduce: grep -n 'oAIState_Unk_05' bn6f/asm/asm31.s | head
+  result: '"mov r0, #0xc\nstrb r0, [r6,#oAIState_Unk_05]\nbl battleObject_clearAIDataUnknown_80E1662"'
+previous_names:
+- oAIState_Unk_05
+changes:
+- date: '2026-10-15'
+  what: rename oAIState_Unk_05 -> oAIState_AttackCounter
+  where: bn6f d2cd686c
+  tool: tools/rename_symbol.py

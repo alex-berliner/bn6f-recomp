@@ -1,0 +1,63 @@
+name: oAIAttackVars_TargetObjectPtr
+address: '0x2c'
+kind: struct-field
+status: probable
+summary: Pointer to the AI's current target BattleObject (resolved via battle_findPlayer or read from
+  AIData->BattleObjectPtr); used as the `this` argument to the AI's per-frame thunk stored in Unk_28,
+  and dereferenced at offsets 0x12/0x13 for the target's panel coordinates.
+details: The field is word-sized (229 accesses, virtually all word loads/stores) and is set almost exclusively
+  by `bl battle_findPlayer` (the inverse-alliance player lookup) immediately followed by `str r0, [r7,#oAIAttackVars_Unk_2c]`.
+  After being set, it is loaded into r0 and called as a function via `mov lr, pc; bx r1` where r1 holds
+  the thunk from Unk_28 — i.e. the AI's per-frame evaluator that takes (target, this). Loads frequently
+  dereference the stored pointer at +0x12/+0x13 to read the target's PanelX/PanelY. The struct doc says
+  "u8", but the actual storage is a word; this is the slot that holds the target BattleObject pointer.
+evidence:
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Direct write of a battle_findPlayer return value into the field — the canonical "save target
+    object pointer" idiom used by every AI attack sub-state initializer in this file.
+  refs:
+  - bn6f/asm/asm31.s:109108
+  reproduce: grep -n 'oAIAttackVars_Unk_2c' bn6f/asm/asm31.s | head
+  result: '"bl battle_findPlayer // (alliance: bool) -> * BattleObject\n\tstr r0, [r7,#oAIAttackVars_Unk_2c]"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: The stored value is passed as r0 into the Unk_28 callback, exactly matching a "target* as first
+    param, this* as second" calling convention for the AI per-frame evaluator.
+  refs:
+  - bn6f/asm/asm31.s:109108
+  reproduce: grep -n 'oAIAttackVars_Unk_2c' bn6f/asm/asm31.s | head
+  result: '"ldr r0, [r7,#oAIAttackVars_Unk_2c]\n\tldr r1, [r7,#oAIAttackVars_Unk_28]\n\tmov lr, pc\n\tbx
+    r1"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Pointer is null-tested, then dereferenced at offsets 0x12/0x13 — those offsets are the target
+    BattleObject's PanelX/PanelY, confirming the stored value is a BattleObject*.
+  refs:
+  - bn6f/asm/asm31.s:109108
+  reproduce: grep -n 'oAIAttackVars_Unk_2c' bn6f/asm/asm31.s | head
+  result: '"ldr r1, [r7,#oAIAttackVars_Unk_2c]\n\ttst r1, r1\n\tbeq loc_80F31E8\n\tldrb r0, [r1,#0x12]\n\tldrb '
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Field is initialized to NULL (0) when no target is locked yet (e.g. on a column-pattern path),
+    and downstream code's `tst r0, r0; beq` skips panel checks when no target exists.
+  refs:
+  - bn6f/asm/asm31.s:109108
+  reproduce: grep -n 'oAIAttackVars_Unk_2c' bn6f/asm/asm31.s | head
+  result: '"mov r0, #0\n\tstr r0, [r7,#oAIAttackVars_Unk_2c]"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Alternative initializer — copies the owning BattleObjectPtr from the AIData blob into the field,
+    again consistent with this slot holding the target/owner BattleObject reference.
+  refs:
+  - bn6f/asm/asm31.s:109108
+  reproduce: grep -n 'oAIAttackVars_Unk_2c' bn6f/asm/asm31.s | head
+  result: '"ldr r0, [r5,#oBattleObject_AIDataPtr]\n\tldr r0, [r0,#oAIData_BattleObjectPtr]\n\tstr r0,
+    [r7,#oAIA'
+previous_names:
+- oAIAttackVars_Unk_2c
+changes:
+- date: '2026-10-15'
+  what: rename oAIAttackVars_Unk_2c -> oAIAttackVars_TargetObjectPtr
+  where: bn6f d2cd686c
+  tool: tools/rename_symbol.py

@@ -1,0 +1,63 @@
+name: oAIAttackVars_InitFlag
+address: '0x2'
+kind: struct-field
+status: probable
+summary: Element type of the attack's hit/projectile (e.g., Fire, Aqua, Elec, Wood) passed as a parameter
+  to projectile-spawning routines.
+details: Across the asm corpus, this field is consistently loaded into r2 and forwarded alongside panelX/Y,
+  damage, and the 0c flags word into spawn routines such as sub_80C5176, sub_80C5578, sub_80C67D8, sub_80D07A0,
+  sub_80D19D4, sub_80D1442, sub_80D398E, sub_80D5718, spawnDollThunderObject_80D5890, sub_80D6B78, sub_80D7ED4,
+  sub_80DDBAC, sub_80DDDCC, sub_80DE660, sub_80CF91E, spawnRiskyHoneyObject_80D32FE, sub_80DB800, sub_80DB970,
+  sub_80F0B80's collision-region spawn, and the asm31 sub_80EC350 attack resolver. Each spawn call pattern
+  is `ldrb r2, [r7,#oAIAttackVars_Unk_02]` followed by panelX/panelY damage/0c — the same slot that BattleChip/projectile
+  spawners receive as the element byte. Initialization sites also assign distinct per-attack values (1,
+  2, 3, 0x10, 0x20, 0x40, 0x80), matching a small enum of element IDs rather than a flag or counter. No
+  access pattern is consistent with a boolean, counter, index into a non-element table, or angle magnitude.
+evidence:
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Passed as the element/type byte to a standard t3 projectile spawner alongside panelX/panelY/damage/0c.
+  refs:
+  - bn6f/asm/asm31.s:110514
+  reproduce: grep -n 'oAIAttackVars_Unk_02' bn6f/asm/asm31.s | head
+  result: '"ldrb r2, [r7,#oAIAttackVars_Unk_02]\n bl spawn_t3_0x12_80C6ADA"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Used by aiAttack_resolveDamage_80EC350 in the same canonical (panelX, panelY, r2=element, r3=flags,
+    r4=0c, r6=damage) spawner calling convention.
+  refs:
+  - bn6f/asm/asm31.s:110514
+  reproduce: grep -n 'oAIAttackVars_Unk_02' bn6f/asm/asm31.s | head
+  result: '"ldrb r2, [r7,#oAIAttackVars_Unk_02]\n mov r3, #0x18\n lsl r3, r3, #0x10\n ldr r6, [r7,#oAIAttackVar'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Per-attack init routine writes a small enum value (1) distinct from neighboring flag fields
+    Unk_03/Unk_04, matching an element identifier.
+  refs:
+  - bn6f/asm/asm31.s:110514
+  reproduce: grep -n 'oAIAttackVars_Unk_02' bn6f/asm/asm31.s | head
+  result: '"mov r0, #0x94\n strh r0, [r7,#oAIAttackVars_Unk_0a]\n mov r0, #1\n strb r0, [r7,#oAIAttackVars_Unk_'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: 'Another attack variant stores #2 — distinct per-attack element IDs (1, 2, 3, 0x10, 0x20, 0x40,
+    0x80) across many init functions.'
+  refs:
+  - bn6f/asm/asm31.s:110514
+  reproduce: grep -n 'oAIAttackVars_Unk_02' bn6f/asm/asm31.s | head
+  result: '"mov r0, #2\n strb r0, [r7,#oAIAttackVars_Unk_02]"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: OR-combines a bitmask from a small table (byte_80129E4) into this field, consistent with assembling
+    an element+flags byte from per-skill constants.
+  refs:
+  - bn6f/asm/asm31.s:110514
+  reproduce: grep -n 'oAIAttackVars_Unk_02' bn6f/asm/asm31.s | head
+  result: '"ldrb r1, [r6,#4]\n ldrb r2, [r6,#6]\n ldr r0, off_80129E0\n ldrb r0, [r0,r2]\n orr r1, r0\n
+    strb r1'
+previous_names:
+- oAIAttackVars_Unk_02
+changes:
+- date: '2026-10-15'
+  what: rename oAIAttackVars_Unk_02 -> oAIAttackVars_InitFlag
+  where: bn6f d2cd686c
+  tool: tools/rename_symbol.py

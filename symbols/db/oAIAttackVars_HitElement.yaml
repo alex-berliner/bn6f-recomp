@@ -1,0 +1,67 @@
+name: oAIAttackVars_HitElement
+address: '0x0'
+kind: struct-field
+status: hypothesis
+summary: AI attack sub-state index used to dispatch the next handler via a small jump table and to advance
+  between phases of the attack sequence.
+details: 'The vast majority of accesses (1130 total) read this byte with `ldrb r0, [r7,#oAIAttackVars_Unk_00]`
+  and immediately use it as an index into a 2/3-entry jump table (`ldr r1, [r1,r0]` followed by `bx r1`),
+  across many distinct dispatcher functions (e.g. `aiAttack_stepStateMachine_80EB04C`, `battle_aiAttackDispatch_80EB436`,
+  `aiAttack_dispatchStateHandler_80EBC0E`, `megamanChargeShotAiAttack_80EBE00`, `battle_aiAttackHandlerDispatch_80EBF10`,
+  `sub_80EC960`, `battle_aiAttackStateDispatch_80EC884`, etc.). Writes almost always use `strh` with small
+  enumerator values (0, 4, 8, 0xc, 0x10) to advance to the next phase — e.g. `mov r0, #4 / strh r0, [r7,#oAIAttackVars_Unk_00]`
+  after a countdown elapses, and `strh r0, [r7,#oAIAttackVars_Unk_00]` with #0 in `object_exitAttackState`
+  to reset. The dominant "3-entry phase byte at +0 (values 0/4/8)" pattern is exactly a sub-state machine
+  index.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: aiAttack_stepStateMachine_80EB04C uses the byte as a jump-table index into off_80EB074 to dispatch
+    the next state handler.
+  refs:
+  - bn6f/asm/asm31.s:33806
+  reproduce: grep -n 'oAIAttackVars_Unk_00' bn6f/asm/asm31.s | head
+  result: '"ldrb r0, [r7,#oAIAttackVars_Unk_00] / ldr r1, [r1,r0] / bx r1"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: battle_aiAttackHandlerDispatch_80EBF10 dispatches via a 3-entry jump table indexed by this byte
+    (symdb comment "phase byte at +0 (values 0/4/8)").
+  refs:
+  - bn6f/asm/asm31.s:33806
+  reproduce: grep -n 'oAIAttackVars_Unk_00' bn6f/asm/asm31.s | head
+  result: '"ldrb r0, [r7,#oAIAttackVars_Unk_00] / ldr r1, [r1,r0] / bx r1"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: object_exitAttackState zeroes the state on teardown so the dispatcher falls into the idle/exit
+    handler.
+  refs:
+  - bn6f/asm/asm31.s:33806
+  reproduce: grep -n 'oAIAttackVars_Unk_00' bn6f/asm/asm31.s | head
+  result: '"mov r0, #0 / strh r0, [r7,#oAIAttackVars_Unk_00]"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: After the Unk_10 countdown elapses, the handler writes state=4 to transition to the "finish/exit"
+    phase.
+  refs:
+  - bn6f/asm/asm31.s:33806
+  reproduce: grep -n 'oAIAttackVars_Unk_00' bn6f/asm/asm31.s | head
+  result: '"mov r0, #4 / strh r0, [r7,#oAIAttackVars_Unk_00]"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Beast-Out / transformation path writes state=4 to advance into the next phase after sprite/animation
+    setup.
+  refs:
+  - bn6f/asm/asm31.s:33806
+  reproduce: grep -n 'oAIAttackVars_Unk_00' bn6f/asm/asm31.s | head
+  result: '"mov r0, #4 / strh r0, [r7,#oAIAttackVars_Unk_00]"'
+previous_names:
+- oAIAttackVars_Unk_00
+changes:
+- date: '2026-10-15'
+  what: rename oAIAttackVars_Unk_00 -> oAIAttackVars_HitElement
+  where: bn6f 3a1a1321
+  tool: tools/rename_symbol.py
+- date: '2026-10-15'
+  what: rename oAIAttackVars_Unk_00 -> oAIAttackVars_HitElement
+  where: bn6f d2cd686c
+  tool: tools/rename_symbol.py

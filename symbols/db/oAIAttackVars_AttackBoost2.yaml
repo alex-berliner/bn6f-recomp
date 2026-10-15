@@ -1,0 +1,72 @@
+name: oAIAttackVars_AttackBoost2
+address: '0xc'
+kind: struct-field
+status: probable
+summary: AI attack element byte (e.g., Fire/Wood/Elec/etc.); initialized by many attack init routines
+  and used as element/element-flags argument in spawn calls and gating logic.
+details: 'Many attack-init functions store a small constant (0..0x1E) to Unk_0c that matches known chip/attack
+  element codes, and consumers load it as r4 alongside Damage/AttackBoost into spawn helpers (sub_80C6248,
+  battle_SpawnObjectOnFrontPanel_800FAAC, spawn_t3_0x12_80C6ADA, sub_80C5176, sub_80D75D4, etc.), where
+  r4 is consistently the element slot (e.g. `lsl r1, r1, #0x10; orr r4, r1` at asm31.s:110175 packs Unk_0c
+  into the spawn descriptor''s element byte).
+
+  Other contexts treat it as a player-facing counter/timer (incremented at asm31.s:121964 `add r0, #1;
+  strb r0, [r7,#oAIAttackVars_Unk_0c]`, decremented at asm31.s:123921 and asm31.s:126362), and as a "direction"
+  sentinel compared against player D-pad (asm31.s:109331 `cmp r0, r1; beq`), so a single homogeneous "element"
+  reading doesn''t cover all uses; the name is plausible for the dominant spawn-time element pattern but
+  cannot be declared probable without resolving the counter/flag uses.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Unk_0c is shifted into the top byte of r4 and OR'd into a spawn-arg word, the exact slot used
+    for element id when constructing projectiles.
+  refs:
+  - bn6f/asm/asm31.s:109331
+  reproduce: grep -n 'oAIAttackVars_Unk_0c' bn6f/asm/asm31.s | head
+  result: '"ldrb r1, [r7,#oAIAttackVars_Unk_0c] / lsl r1, r1, #0x18 / orr r4, r1"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: r4 (element) is loaded together with r6=Damage and AttackBoost, the canonical (element, damage,
+    attackBoost) triple passed to spawn helpers.
+  refs:
+  - bn6f/asm/asm31.s:109331
+  reproduce: grep -n 'oAIAttackVars_Unk_0c' bn6f/asm/asm31.s | head
+  result: '"ldr r4, [r7,#oAIAttackVars_Unk_0c]"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: an attacker-stat byte (Navi's element stat at offset 0x4D) is stored here, reinforcing that
+    Unk_0c carries element-like values.
+  refs:
+  - bn6f/asm/asm31.s:109331
+  reproduce: grep -n 'oAIAttackVars_Unk_0c' bn6f/asm/asm31.s | head
+  result: '"bl GetBattleNaviStatsByte_AllianceFromBattleObject / str r0, [r7,#oAIAttackVars_Unk_0c]"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: another element-stat initialization, consistent with element semantics.
+  refs:
+  - bn6f/asm/asm31.s:109331
+  reproduce: grep -n 'oAIAttackVars_Unk_0c' bn6f/asm/asm31.s | head
+  result: '"str r0, [r7,#oAIAttackVars_Unk_0c]" with r0 = result of GetBattleNaviStatsByte_(0x4D)'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: conflicting usage — here Unk_0c is compared as a held-D-pad direction sentinel, not as an element;
+    prevents a probable rating.
+  refs:
+  - bn6f/asm/asm31.s:109331
+  reproduce: grep -n 'oAIAttackVars_Unk_0c' bn6f/asm/asm31.s | head
+  result: '"ldrb r1, [r7,#oAIAttackVars_Unk_0c] / cmp r0, r1 / beq locret_80EB06C"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: counter-style decrement-and-test pattern, also inconsistent with a pure element id.
+  refs:
+  - bn6f/asm/asm31.s:109331
+  reproduce: grep -n 'oAIAttackVars_Unk_0c' bn6f/asm/asm31.s | head
+  result: '"ldrb r0, [r7,#oAIAttackVars_Unk_0c] / sub r0, #1 / strb r0, [r7,#oAIAttackVars_Unk_0c] / cmp
+    r0, #0'
+previous_names:
+- oAIAttackVars_Unk_0c
+changes:
+- date: '2026-10-15'
+  what: rename oAIAttackVars_Unk_0c -> oAIAttackVars_AttackBoost2
+  where: bn6f d2cd686c
+  tool: tools/rename_symbol.py

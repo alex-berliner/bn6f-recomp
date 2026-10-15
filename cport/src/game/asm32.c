@@ -91,7 +91,7 @@ static struct ai_step_result ai_step(u32 r4, u32 r5, u32 r6, u32 r7,
                                         pre.r10, pre.r11, pre.r12 };
     }
 
-    u32 state = LD8(pre.r6 + oAIState_Unk_00);
+    u32 state = LD8(pre.r6 + oAIState_ScriptId);
     u32 handler = LD32(A_off_810D9B4 + state);
 
     return call_ai_handler(handler, state,
@@ -136,11 +136,11 @@ Next sub_810DA00(void) {
 
     if (R0 != 0) {
         /* probe hit: move to AI state 0x0C */
-        ST8(R6 + oAIState_Unk_00, 0x0C);
+        ST8(R6 + oAIState_ScriptId, 0x0C);
     } else {
         /* probe missed: clear state+2, transition to state 0x08 */
         ST8(R6 + oAIState_Unk_02, (u8)R0);
-        ST8(R6 + oAIState_Unk_00, 0x08);
+        ST8(R6 + oAIState_ScriptId, 0x08);
     }
 
     RETURN_TO_CALLER();
@@ -209,7 +209,7 @@ static u32 ai_select_movement_target(u32 battle, u32 ai_state) {
     call_sub_8109708_result walkable = call_sub_8109708(front_x, front_y, extra_4, battle);
     if (walkable.r0 != 0) {
         /* Panel is blocked – give up, set state byte to 0xC. */
-        ST8(ai_state + oAIState_Unk_00, 0xC);
+        ST8(ai_state + oAIState_ScriptId, 0xC);
         return walkable.r1;
     }
 
@@ -218,7 +218,7 @@ static u32 ai_select_movement_target(u32 battle, u32 ai_state) {
     call_sub_80103F8_result enemy_res = call_sub_80103F8(opposing, battle);
     u32 enemy = enemy_res.r0;
 
-    ST8(ai_state + oAIState_Unk_05, LD8(enemy + 0x13));
+    ST8(ai_state + oAIState_AttackCounter, LD8(enemy + 0x13));
 
     /* Build the signed panel-X range [lo, hi] around our column. */
     call_object_getFrontDirection_result dir2 = call_object_getFrontDirection(battle);
@@ -244,7 +244,7 @@ static u32 ai_select_movement_target(u32 battle, u32 ai_state) {
         target_x = enemy_x - (s32)offset;
     }
 
-    ST8(ai_state + oAIState_Unk_04, (u8)target_x);
+    ST8(ai_state + oAIState_TurnCounter, (u8)target_x);
     ST8(ai_state + oAIState_Unk_02, 4);
 
     return (u32)lo;
@@ -293,7 +293,7 @@ typedef struct { u32 x; u32 y; } PanelStepResult;
 
 static PanelStepResult ai_step_panel_toward_target(u32 battle_obj, u32 ai_state) {
     /* --- Y axis attempt --- */
-    u32 target_y = LD8(ai_state + oAIState_Unk_05);
+    u32 target_y = LD8(ai_state + oAIState_AttackCounter);
     u32 panel_y  = LD8(battle_obj + oBattleObject_PanelY);
 
     if (panel_y != target_y) {
@@ -316,7 +316,7 @@ static PanelStepResult ai_step_panel_toward_target(u32 battle_obj, u32 ai_state)
 
     /* --- X axis attempt --- */
     u32 panel_x  = LD8(battle_obj + oBattleObject_PanelX);
-    u32 target_x = LD8(ai_state + oAIState_Unk_04);
+    u32 target_x = LD8(ai_state + oAIState_TurnCounter);
 
     if (panel_x == target_x) {
         /* Already aligned on X: no move possible. */
@@ -395,8 +395,8 @@ Next ai_DealQueuedAttackDamage_8112F34(void) {
     u32 savedR6 = R6;
     u32 savedR7 = R7;
 
-    R0 = LD8(vars + oAIAttackVars_Unk_16);
-    R1 = LD8(vars + oAIAttackVars_Unk_17);
+    R0 = LD8(vars + oAIAttackVars_TargetPanelX);
+    R1 = LD8(vars + oAIAttackVars_TargetPanelY);
     R4 = 0xA00 + LD8(vars + oAIAttackVars_Unk_0f);
     R2 = 0;
     R3 = 0;
@@ -456,10 +456,10 @@ static u32 do_ai_special_attack(u32 attacker, u32 ai_vars) {
 
     if (related == 1) {
         ST8(attacker + oBattleObject_CurAnim, 2);
-        ST32(ai_vars + oAIAttackVars_Unk_28, 0);
+        ST32(ai_vars + oAIAttackVars_PanelChooseCallback, 0);
 
         u32 victim = call_sub_80C4038(0, 0, 0, 0, 0x12810);
-        ST32(ai_vars + oAIAttackVars_Unk_30, victim);
+        ST32(ai_vars + oAIAttackVars_ScratchVar, victim);
 
         u32 flag_target = battle_SetObjectExtraFlag14_helper();
         u32 scaled = (u32)LD8(ai_vars + oAIAttackVars_Unk_0e) * 0xA;
@@ -468,10 +468,10 @@ static u32 do_ai_special_attack(u32 attacker, u32 ai_vars) {
         ST32(ai_vars + oAIAttackVars_Unk_34, (u32)object_getFrontDirection_helper());
 
         object_setCounterTime_helper(0x1E);
-        ST16(ai_vars + oAIAttackVars_Unk_00, 8);
+        ST16(ai_vars + oAIAttackVars_HitElement, 8);
         final_r0 = 8;
     } else if (related == 0) {
-        ST16(ai_vars + oAIAttackVars_Unk_00, 0xC);
+        ST16(ai_vars + oAIAttackVars_HitElement, 0xC);
         final_r0 = 0xC;
     }
 
@@ -512,11 +512,11 @@ static u32 exit_attack_state(u32 frames_left, u32 r1_in) {
  * mask once the animation check has run, otherwise the incoming r1 or whatever
  * the exit call left in it. */
 static u32 step_attack_state(u32 object, u32 attack, u32 r1) {
-    if (LD8(attack + oAIAttackVars_Unk_01) == 0) {
+    if (LD8(attack + oAIAttackVars_AttackElement) == 0) {
         /* first frame of the attack */
-        ST8(attack + oAIAttackVars_Unk_01, 1);
+        ST8(attack + oAIAttackVars_AttackElement, 1);
         ST8(object + oBattleObject_CurAnim, 3);
-        ST16(attack + oAIAttackVars_Unk_10, LD16(attack + oAIAttackVars_Unk_18));
+        ST16(attack + oAIAttackVars_StepTimer, LD16(attack + oAIAttackVars_AttackDuration));
     }
 
     u32 anim = LD8(object + oBattleObject_CurAnim);
@@ -526,8 +526,8 @@ static u32 step_attack_state(u32 object, u32 attack, u32 r1) {
             ST8(object + oBattleObject_CurAnim, 0); /* animation finished: stop it */
     }
 
-    u32 frames_left = LD16(attack + oAIAttackVars_Unk_10) - 1;
-    ST16(attack + oAIAttackVars_Unk_10, (u16)frames_left);
+    u32 frames_left = LD16(attack + oAIAttackVars_StepTimer) - 1;
+    ST16(attack + oAIAttackVars_StepTimer, (u16)frames_left);
     if ((s32)frames_left <= 0)
         r1 = exit_attack_state(frames_left, r1); /* countdown expired: leave the attack state */
     return r1;

@@ -1,0 +1,59 @@
+name: oAIAttackVars_AttackDuration
+address: '0x18'
+kind: struct-field
+status: probable
+summary: Saved duration (frames) to reload into the active attack windup timer each time the windup flag
+  (Unk_01) cycles; inited from caller arg or RNG helper, fixed literals (0x1e/0x3c/0x50) used for windups/cooldowns.
+details: Across ~50+ tick handlers the same pattern copies this field into Unk_10 (the live 16-bit timer)
+  when Unk_01 is 0, e.g. "ldrh r0, [r7,#oAIAttackVars_Unk_18]" / "strh r0, [r7,#oAIAttackVars_Unk_10]".
+  aiAttack_initVarsAndStart_80116AE stores the caller-supplied duration (r1) here. Transition sites overwriting
+  it with constant frame counts (0x1e=30, 0x3c=60, 0x50=80) match windup/cooldown intervals used elsewhere
+  in the same structs.
+evidence:
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Stored caller-supplied duration argument at init alongside other AIAttackVars priming; this
+    is the saved total duration, distinct from Unk_10 which is the live decrementing counter.
+  refs:
+  - bn6f/asm/asm31.s:173121
+  reproduce: grep -n 'oAIAttackVars_Unk_18' bn6f/asm/asm31.s | head
+  result: strh r1, [r7,#oAIAttackVars_Unk_18]
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: When the per-tick Unk_10 timer elapses, the saved duration from Unk_18 is reloaded back into
+    Unk_10 — classic "phase duration" semantics.
+  refs:
+  - bn6f/asm/asm31.s:109501
+  reproduce: grep -n 'oAIAttackVars_Unk_18' bn6f/asm/asm31.s | head
+  result: ldrh r0, [r7,#oAIAttackVars_Unk_18] / strh r0, [r7,#oAIAttackVars_Unk_10]
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Identical reload-on-idle pattern repeated in nearly every AI attack substate tick, confirming
+    Unk_18 is the canonical phase-duration storage slot.
+  refs:
+  - bn6f/asm/asm31.s:109501
+  reproduce: grep -n 'oAIAttackVars_Unk_18' bn6f/asm/asm31.s | head
+  result: ldrh r0, [r7,#oAIAttackVars_Unk_18] / strh r0, [r7,#oAIAttackVars_Unk_10]
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Value passed straight into sub_80D61A8 as a duration parameter for per-column attack row processing,
+    again consistent with a frame-count duration field.
+  refs:
+  - bn6f/asm/asm31.s:134535
+  reproduce: grep -n 'oAIAttackVars_Unk_18' bn6f/asm/asm31.s | head
+  result: ldrh r7, [r7,#oAIAttackVars_Unk_18]
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Transition into a substate seeds Unk_18 with a fixed 30-frame duration, the typical windup/cooldown
+    length used throughout the AI attack state machine.
+  refs:
+  - bn6f/asm/asm31.s:109501
+  reproduce: grep -n 'oAIAttackVars_Unk_18' bn6f/asm/asm31.s | head
+  result: 'mov r0, #0x1e / strh r0, [r7,#oAIAttackVars_Unk_18]'
+previous_names:
+- oAIAttackVars_Unk_18
+changes:
+- date: '2026-10-15'
+  what: rename oAIAttackVars_Unk_18 -> oAIAttackVars_AttackDuration
+  where: bn6f d2cd686c
+  tool: tools/rename_symbol.py

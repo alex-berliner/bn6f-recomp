@@ -1,0 +1,53 @@
+name: oAIAttackVars_PanelChooseCallback
+address: '0x28'
+kind: struct-field
+status: hypothesis
+summary: Function pointer (Thumb) called each AI tick to pick the next panel; its bool/coord return drives
+  FuturePanelX/Y.
+details: The overwhelming access pattern is `str rX, [r7,#oAIAttackVars_Unk_28]` storing the address of
+  a `sub_XXXXXX+1` (Thumb callback), followed by `ldr rX, [r7,#oAIAttackVars_Unk_28] ... mov lr, pc /
+  bx rX`. The callee's return is tested (`tst r0/r1, r0`) and the non-zero result is stored to `oBattleObject_FuturePanelX`
+  (or `oAIAttackVars_Unk_16`). One accessor comment ("AI callback (oAIAttackVars_Unk_28, set by sub_...;
+  previously disassembled as data bytes)") directly corroborates the callback interpretation. Storing
+  `r5+0x60` into it in sub_8100570 is the one outlier — looks like that function repurposes the slot as
+  a local scratch pointer.
+evidence:
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Loaded as a function pointer and invoked; on non-zero r0 the chosen panel X is committed.
+  refs:
+  - bn6f/asm/asm31.s:118759
+  reproduce: grep -n 'oAIAttackVars_Unk_28' bn6f/asm/asm31.s | head
+  result: '"ldr r1, [r7,#oAIAttackVars_Unk_28]  / mov lr, pc  / bx r1  / tst r0, r0  / beq loc_80F2F30  /
+    strb '
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Field is initialized with the address of a `sub_XXXXXX+1` symbol, exactly matching a Thumb callback
+    register.
+  refs:
+  - bn6f/asm/asm31.s:118759
+  reproduce: grep -n 'oAIAttackVars_Unk_28' bn6f/asm/asm31.s | head
+  result: '"ldr r0, off_80F2EC4  / str r0, [r7,#oAIAttackVars_Unk_28]"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Even when "set" from an offset table, the value is treated as an addressable pointer (it gets
+    indexed by DirectionFlip and stored) — consistent with a function-pointer slot, not raw data.
+  refs:
+  - bn6f/asm/asm31.s:118759
+  reproduce: grep -n 'oAIAttackVars_Unk_28' bn6f/asm/asm31.s | head
+  result: '"ldrb r0, [r5,#oBattleObject_DirectionFlip]  / mov r1, #0x14  / mul r0, r1  / ldr r1, off_80EF66C  /'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Authoritative comment confirms the field is the AI's panel-choose callback.
+  refs:
+  - bn6f/asm/asm31.s:118759
+  reproduce: grep -n 'oAIAttackVars_Unk_28' bn6f/asm/asm31.s | head
+  result: '"// AI callback (oAIAttackVars_Unk_28, set by sub_80FA01A; previously disassembled as data
+    bytes)"'
+previous_names:
+- oAIAttackVars_Unk_28
+changes:
+- date: '2026-10-15'
+  what: rename oAIAttackVars_Unk_28 -> oAIAttackVars_PanelChooseCallback
+  where: bn6f d2cd686c
+  tool: tools/rename_symbol.py

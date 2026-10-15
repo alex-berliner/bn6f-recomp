@@ -1,0 +1,52 @@
+name: oAIAttackVars_HasMoved
+address: '0x1a'
+kind: struct-field
+status: probable
+summary: Boolean flag indicating the battle object has completed its attack-step movement and reserved
+  a target panel.
+details: ">-\n  Out of 125 accesses, the field is overwhelmingly written as either `1` immediately after\
+  \ `object_reservePanel` and animation setup (`mov r0, #1; strb r0, [r7,#oAIAttackVars_Unk_1a]`), or\
+  \ `0` on the failure/exit path before `object_exitAttackState`. The few `ldrb` reads treat it as a boolean\
+  \ (`tst r0, r0`) gating post-movement logic. After the movement completes (timer at 0, `object_removePanelReserve`\
+  \ ran), the flag is set back to `1` to mark \"movement done\" — strong semantic match for a \"has finished\
+  \ attack-step move\" latch."
+evidence:
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Read as a boolean; if zero, clears `oAIState_Unk_05` and calls `sub_80F5AA0`, indicating the
+    flag gates a "post-move" AI side-effect.
+  refs:
+  - bn6f/asm/asm31.s:125967
+  reproduce: grep -n 'oAIAttackVars_Unk_1a' bn6f/asm/asm31.s | head
+  result: '"ldrb r0, [r7,#oAIAttackVars_Unk_1a]"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Set to 1 right after `object_reservePanel`, animation = 4, and `oAIAttackVars_Unk_10` (timer)
+    is initialized — the field marks "attack step reserved/started".
+  refs:
+  - bn6f/asm/asm31.s:125967
+  reproduce: grep -n 'oAIAttackVars_Unk_1a' bn6f/asm/asm31.s | head
+  result: '"mov r0, #1; strb r0, [r7,#oAIAttackVars_Unk_1a]"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Set to 1 after `object_removePanelReserve`, `object_setCollisionPanelsToCurrent`, and the CURRENTLY_MOVING
+    flag toggle — i.e. when the panel-advance has actually finished, the "has-moved" latch is raised.
+  refs:
+  - bn6f/asm/asm31.s:125967
+  reproduce: grep -n 'oAIAttackVars_Unk_1a' bn6f/asm/asm31.s | head
+  result: '"mov r0, #1; strb r0, [r7,#oAIAttackVars_Unk_1a]"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Cleared to 0 on the failure branch right before `object_exitAttackState`, reinforcing the boolean
+    (1 = active/has-moved, 0 = inactive/exited) interpretation.
+  refs:
+  - bn6f/asm/asm31.s:125967
+  reproduce: grep -n 'oAIAttackVars_Unk_1a' bn6f/asm/asm31.s | head
+  result: '"mov r0, #0; strb r0, [r7,#oAIAttackVars_Unk_1a]"'
+previous_names:
+- oAIAttackVars_Unk_1a
+changes:
+- date: '2026-10-15'
+  what: rename oAIAttackVars_Unk_1a -> oAIAttackVars_HasMoved
+  where: bn6f d2cd686c
+  tool: tools/rename_symbol.py

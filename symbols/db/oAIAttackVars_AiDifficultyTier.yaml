@@ -1,0 +1,58 @@
+name: oAIAttackVars_AiDifficultyTier
+address: '0x3'
+kind: struct-field
+status: probable
+summary: Difficulty tier index assigned to the AI attack (set by battle_getAiDifficultyTier_800FE36),
+  reused as a table index for attack-parameter lookups and to gate step-machines.
+details: 'The field is populated almost exclusively by the return value of `bl battle_getAiDifficultyTier_800FE36`
+  followed by `strb r0, [r7,#oAIAttackVars_Unk_03]`, and is then read into r0 and used as an index into
+  byte/u16 tables (e.g. `lsl r0, r0, #2`/`#1`/`#2` then `ldrb r0,[table,r0]` or `ldrh r0,[table,r0]`)
+  for animation/animation timing parameters (loc_80EB69A, loc_80EB0AA, sub_80EC844, sub_80EBD9C, sub_80EF0E2,
+  etc.). A few sites store hardcoded constants (0,1,2,3,4,8,9,0x10,0x11,0x14) which are consistent with
+  a small set of attack-mode ids that share the same slot; the getSlashBeastWaveAttackLockonTypeMaybe_80EAF26
+  helper reads Unk_03 directly as a table index. All observed uses match the "difficulty tier / mode id
+  indexing a lookup table" pattern.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Direct assignment from the difficulty-tier getter; field is the AI difficulty index.
+  refs:
+  - bn6f/asm/asm31.s:108612
+  reproduce: grep -n 'oAIAttackVars_Unk_03' bn6f/asm/asm31.s | head
+  result: bl battle_getAiDifficultyTier_800FE36 / strb r0, [r7,#oAIAttackVars_Unk_03]
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Read back and used as byte-sized table index, matching a tier/mode-id lookup.
+  refs:
+  - bn6f/asm/asm31.s:108612
+  reproduce: grep -n 'oAIAttackVars_Unk_03' bn6f/asm/asm31.s | head
+  result: ldrb r1, [r7,#oAIAttackVars_Unk_03] / ldrb r0, [r0,r1]
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Doubled then word-stride indexed into an off-table of function/animation pointers - classic
+    tier-index dispatch.
+  refs:
+  - bn6f/asm/asm31.s:108612
+  reproduce: grep -n 'oAIAttackVars_Unk_03' bn6f/asm/asm31.s | head
+  result: 'ldrb r0, [r7,#oAIAttackVars_Unk_03] / lsl r0, r0, #2 / ldr r0, [r1,r0]'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: symdb explicitly calls out "looks up a u16 from a table indexed by oAIAttackVars_Unk_03".
+  refs:
+  - bn6f/asm/asm31.s:108612
+  reproduce: grep -n 'oAIAttackVars_Unk_03' bn6f/asm/asm31.s | head
+  result: ldrb r0, [r7,#oAIAttackVars_Unk_03] / add r0, r0 / ldrh r0,[r4]
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Same word-indexed table pattern in another AI attack handler.
+  refs:
+  - bn6f/asm/asm31.s:108612
+  reproduce: grep -n 'oAIAttackVars_Unk_03' bn6f/asm/asm31.s | head
+  result: 'ldrb r1, [r7,#oAIAttackVars_Unk_03] / lsl r1, r1, #2 / ldr r3, [r3,r1]'
+previous_names:
+- oAIAttackVars_Unk_03
+changes:
+- date: '2026-10-15'
+  what: rename oAIAttackVars_Unk_03 -> oAIAttackVars_AiDifficultyTier
+  where: bn6f d2cd686c
+  tool: tools/rename_symbol.py

@@ -2737,7 +2737,7 @@ static void hive_block(u32 object) {
         u32 or_dmg = LD16(p) | LD16(p + 4) | LD16(p + 6) | LD16(p + 8);
         if (or_dmg != 0) {
             u32 aidata = LD32(object + oBattleObject_AIDataPtr) + 0xA0;
-            ST32(aidata + oAIAttackVars_Unk_30, 1);
+            ST32(aidata + oAIAttackVars_ScratchVar, 1);
             (void)call_PlaySoundEffect_hiveBlockHappensHere_802CEF4(0x6E, or_dmg);
             clear_collision_damage(c);
             return;
