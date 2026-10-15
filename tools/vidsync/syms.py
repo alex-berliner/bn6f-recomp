@@ -96,9 +96,9 @@ GS_COORD_INTERACTION = at("eGameState_CoordInteractionValue")         # the map'
 
 # ── overworld counters, event flags, mystery data ──
 S2001C04 = at("eStruct2001c04")
-ENC_STEPS = at("eStruct2001c04", "oS2001c04_Unk_12")        # walk counter: (>> 6, max 16) picks the encounter odds
-SNEAKRUN_STEPS = at("eStruct2001c04", "oS2001c04_Unk_24")   # SneakRun's movement counter
-LOCENEMY_STEPS = at("eStruct2001c04", "oS2001c04_Unk_28")   # LocEnemy's movement counter
+ENC_STEPS = at("eStruct2001c04", "oS2001c04_EncounterStepAccumulator")        # walk counter: (>> 6, max 16) picks the encounter odds
+SNEAKRUN_STEPS = at("eStruct2001c04", "oS2001c04_EncounterGate")   # SneakRun's movement counter
+LOCENEMY_STEPS = at("eStruct2001c04", "oS2001c04_EncounterGateFlag")   # LocEnemy's movement counter
 EVENT_FLAGS = at("eEventFlags")                             # flag n at byte n >> 3, mask 0x80 >> (n & 7)
 SUBCHIP_FLAGS = EVENT_FLAGS + (0x170A >> 3)                 # flags 0x170A (SneakRun on) and 0x170B (LocEnemy on)
 MYSTERY_DATA = at("eMysteryDataRolls")                    # u16 per mystery data id, rolled at jack-in
@@ -113,7 +113,7 @@ T1_OBJECTS = at("eT1BattleObject0")
 T1_ACTIVE = at("eActiveT1BattleObjectsBitfield")
 T1_OBJECT_SIZE = at("oT1BattleObject_Size")
 REWARD_GIVEN = 0x0200A00C   # TODO: name in bn6f (word_200A00C now): the battle reward actually given
-REWARD_SHOWN = at("eS20364C0", "oS20364C0_Unk_14")           # the result screen's display queue entry for it
+REWARD_SHOWN = at("eS20364C0", "oS20364C0_TickCounter")           # the result screen's display queue entry for it
 REWARD_NAVI_STATS = at("eBattleNaviStats203F4AC")            # rewards written here (and below) before the screen
 REWARD_RECORD = 0x02035268  # TODO: name in bn6f (dword_2035268 now): the reward record sub_800B444 copies back
 

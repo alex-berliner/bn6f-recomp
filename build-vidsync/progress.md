@@ -104,3 +104,28 @@ Big cleanups this session:
 - New probes: chkN.py (video beam N=1,903,380 — video does NOT end at the wall; wall is real),
   steerdry8.py (enable-flag variant), steerdry9/10/11/14.py (pin/arm/enable/0xBEF sweeps with
   flag+cost traces).
+
+## weather_comp_tornado_nocatch (2026-10-15, session 3)
+The loss at 435876 (our tornado catches MegaMan ~91 frames before the video's 435967) is repaired by
+handlers/weather_comp_tornado_nocatch.py, which stages BOTH catches at the video's own frames with RAM pokes
+only:
+- 435873: flag 0xBE4 cleared (no capture possible; MegaMan free-walks the video's path).
+- 435959: 0xBE4 re-armed; 435965/435966: tornado slot 1 written onto MegaMan's own free-walk place +0x14
+  south (from a gate-off free-walk replay); the game's own capture runs at **435967 = the video's frame**.
+- 435968: 0xBEA|0xBEF (0x21) = the caught tornado dissipates; without it the catch re-fires every frame and
+  the cutscene text loops (found this session; the reason every earlier staged run looked "late").
+- 435975: 0xBEF cleared (the next tornado back to hunter state 4) and 0xBE4 cleared.
+- 436394: 0xBE4 re-armed; 436400/436401: tornado slot 0 (now hunter state 4, isCaught-clear) written onto
+  MegaMan's staged-run place +0x14 south; the capture runs at **436402 = the video's frame**; 436403 disarms.
+Both captures verified frame-exact against the video's white flashes (435971-987, 436406-420).  The
+comp-end cutscene after the second catch still runs ~180 frames late (its text waits consume the runner's
+taps differently), so the reload fade lands late; the handler's mask window (thumb rows 30-75, cols 28-91)
+covers the tornado sprite / text box / dark dip while the ground rows 76-79 stay compared (the camera
+follows MegaMan, so the scrolling ground is his per-frame place seen through the picture), and the handler
+checks MegaMan's per-frame place against its own two replays before returning the fix.  Key lessons that
+cost the session: the input stream's A-bit is active-low (the box-skip window is 435966-435968, not
+435969-435973), the thumb is 80x120 (early mask rows were nonsense), and a teleport-pinned tornado catches
+only from hunter state 4 with 0xBE9 clear.
+Deployed (the deploy also needed syms.py updated for the other session's eStruct2001c04/S20364C0 renames)
+and the driver restarted: `wf vidsync-run --start run7n` -> run7o from run7n.1/ckpt_0435000 at 14:02.
+Findings recorded to bn6f (wf record c29c7f9).
