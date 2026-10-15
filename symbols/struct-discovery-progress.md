@@ -452,3 +452,33 @@ Notes:
 - The cport C build had macro redefinition warnings (non-fatal, C defines `oBattleObject_Param1` with `#define` that matches bn6f's `oBattleObject_Param1` define). These are pre-existing.
 
 Running total: 1 + 20 + 20 + 19 + 16 + 20 + 20 + 20 = **136 fields named**.
+
+## Batch 9 (20 fields, 2026-10-15)
+
+bn6f commits: `4b12bc30` (.inc), `fdae3ce0` (asm renames).
+Recomp commit pending.
+
+| Field | Old | New | Status |
+|---|---|---|---|
+| oBattleState_Unk_02_03 | u16 | `StatePhaseAndInitFlag` | probable |
+| oBattleState_Unk_11 | flags8 | `StateFlags` | probable |
+| oBattleState_Unk_20 | u16 | `LowHPAlertTimers` | hypothesis |
+| oBattleState_Unk_32 | u16 | `BattleStateFlags` | probable |
+| oBattleState_Unk_34 | u16 | `PlayerHPSnapshot` | probable |
+| oBattleState_Unk_36 | u16 | `Reward2Bonus` | probable |
+| oBattleState_Unk_3a | u16 | `PendingBattleEndAction` | hypothesis |
+| oBattleState_Unk_40 | u32 | `ChipUseFrameCounter` | hypothesis |
+| oBattleState_Unk_5c | u32 | `AlliancePermissionFlags` | probable |
+| oBattleState_Unk_60 | u32 | `FrameCounter` | probable |
+| oChatbox_Unk_03 | u8 | `SubState` | hypothesis |
+| oChatbox_Unk_0A | u8 | `ChoiceNumOptions` | hypothesis |
+| oChatbox_Unk_0B | u8 | `PageLoadReset` | hypothesis |
+| oChatbox_Unk_0E | u8 | `ResetFlag` | hypothesis |
+| oChatbox_Unk_12 | u8 | `ChoicesPageTag` | hypothesis |
+| oChatbox_Unk_14 | u8 | `ScriptTokenParam` | hypothesis |
+| oChatbox_Unk_15 | u8 | `ChoiceCursorSource` | hypothesis |
+| oGameState_Unk_09 | u8 | `JackOutLockState` | probable |
+| oObjectSprite_Unk_00 | u8 | `AnimationIndex` | probable |
+| oObjectSprite_Unk_01 | u8 | `AnimFrameDuration` | probable |
+
+Running total: 1 + 20 + 20 + 19 + 16 + 20 + 20 + 20 + 20 = **156 fields named**.
