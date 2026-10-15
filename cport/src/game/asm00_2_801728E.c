@@ -1155,7 +1155,7 @@ Next battleObject_resetCollisionState_801A2B0(void) {
 
     /* Restore the object's Z position from the AI data block. */
     u32 aiData = LD32(R5 + oBattleObject_AIDataPtr);
-    u32 z = LD16(aiData + oAIData_Unk_3c);
+    u32 z = LD16(aiData + oAIData_SavedZ16);
     ST16(R5 + oBattleObject_Z16, z);
 
     R3 = collisionData;

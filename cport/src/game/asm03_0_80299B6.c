@@ -592,7 +592,7 @@ Next battle_DispatchPendingEvent_802A0F8(void) {
  * (byte_20349A5) and leave that address in r3. The flags left behind are
  * those of the CMP of Unk_15 against 0 (the function's only flag-setting op). */
 Next battle_setUnk20349A5Flag_802A210(void) {
-    u32 unk15 = LD8(R5 + oBattleState_Unk_15);
+    u32 unk15 = LD8(R5 + oBattleState_PendingFieldChange);
 
     SET_FLAGS_CMP(unk15, 0);
     if (unk15 != 0) {

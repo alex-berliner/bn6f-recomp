@@ -1,0 +1,69 @@
+name: oChatbox_CursorX
+address: '0x1b'
+kind: struct-field
+status: probable
+summary: hypothesis TBD
+details: ''
+evidence:
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Initialized to 0x8d immediately after CursorIdx=0xe2; in BN tile coords (8x8 px per tile, BG
+    at 0x6000000), 0x8d is a valid X cursor pixel position. The pattern CursorIdx(this Y) then Unk_1B(X)
+    matche
+  refs:
+  - bn6f/asm/chatbox.s:1047
+  reproduce: grep -n 'oChatbox_Unk_1B' bn6f/asm/chatbox.s | head
+  result: '"mov r1, #0x8d; strb r1, [r5,#oChatbox_Unk_1B]"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: 'The two bytes are loaded together and OR''d into a single word with CursorIdx shifted to bits
+    16-23 and Unk_1B as the low byte — exactly how a packed (X, Y) cursor address is assembled for GBA
+    BG tile '
+  refs:
+  - bn6f/asm/chatbox.s:1047
+  reproduce: grep -n 'oChatbox_Unk_1B' bn6f/asm/chatbox.s | head
+  result: '"ldrb r0, [r5,#oChatbox_CursorIdx]; ldrb r1, [r5,#oChatbox_Unk_1B]; lsl r0, r0, #0x10; orr
+    r0, r1"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Both CursorIdx and Unk_1B are computed from the same base + a shared height offset r2 (held
+    as CurTileHeight16), confirming Unk_1B is the X counterpart whose value depends on the cursor's tile
+    height.
+  refs:
+  - bn6f/asm/chatbox.s:1047
+  reproduce: grep -n 'oChatbox_Unk_1B' bn6f/asm/chatbox.s | head
+  result: '"sub r1, #2; lsl r1, r1, #3; strb r1, [r5,#oChatbox_CursorIdx]; ... add r1, r1, r2; sub r1,
+    #2; lsl '
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Computed as Unk_19 + 0xc*script[4], the X-coordinate derivation from a script entry's base +
+    a per-entry tile-width-like offset; parallel to how CursorIdx is set to script[2]+0xaf just above.
+  refs:
+  - bn6f/asm/chatbox.s:1047
+  reproduce: grep -n 'oChatbox_Unk_1B' bn6f/asm/chatbox.s | head
+  result: '"ldrb r1, [r4,#3]; strb r1, [r5,#oChatbox_Unk_19]; mov r2, #0xc; ldrb r3, [r4,#4]; mul r2,
+    r3; add r'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: The simplest possible write pattern — script byte 2 → CursorIdx, script byte 3 → Unk_1B, two
+    consecutive bytes of a cursor descriptor (Y, X).
+  refs:
+  - bn6f/asm/chatbox.s:1047
+  reproduce: grep -n 'oChatbox_Unk_1B' bn6f/asm/chatbox.s | head
+  result: '"ldrb r1, [r4,#2]; strb r1, [r5,#oChatbox_CursorIdx]; ldrb r1, [r4,#3]; strb r1, [r5,#oChatbox_Unk_1'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Unk_1B = Unk_19 + 0xe*script[3], again the cursor-Y base (Unk_19) plus a width-derived increment,
+    producing the X coord of a cursor offset by a height-like script parameter.
+  refs:
+  - bn6f/asm/chatbox.s:1047
+  reproduce: grep -n 'oChatbox_Unk_1B' bn6f/asm/chatbox.s | head
+  result: '"mov r2, #0xa0; sub r2, r2, r0; lsr r2, r2, #1; strb r2, [r5,#oChatbox_Unk_19]; add r2, r2,
+    r0; strb'
+previous_names:
+- oChatbox_Unk_1B
+changes:
+- date: '2026-10-15'
+  what: rename oChatbox_Unk_1B -> oChatbox_CursorX
+  where: bn6f e29a50de
+  tool: tools/rename_symbol.py

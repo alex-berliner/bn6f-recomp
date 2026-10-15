@@ -202,7 +202,7 @@ static void emit_oam(u32 attr01, u32 tile, u32 unused, u32 mode) {
  * tile   = TILE_BASE + per-cell char offset from the layout table */
 static void emit_chatbox_grid(u32 chatbox) {
     u32 text_coord   = LD8(chatbox + oChatbox_TextScriptCharIdx);
-    u32 font_shift   = LD8(chatbox + oChatbox_Unk_19);
+    u32 font_shift   = LD8(chatbox + oChatbox_CursorY);
     u32 y_table      = A_byte_8040314;
     u32 char_table   = A_byte_8040324;
     u32 row_off_tbl  = A_dword_8040340;
@@ -388,9 +388,9 @@ static void chatbox_runScript_impl(u32 toolkit, u32 archive, u32 script_idx) {
     ST8(chatbox + oChatbox_CurTileWidth16, 0x1E);
     ST8(chatbox + oChatbox_CurTileHeight16, 8);
     ST8(chatbox + oChatbox_CursorIdx, 0xE2);
-    ST8(chatbox + oChatbox_Unk_1B, 0x8D);
+    ST8(chatbox + oChatbox_CursorX, 0x8D);
     ST8(chatbox + oChatbox_TextScriptCharIdx, 0x33);
-    ST8(chatbox + oChatbox_Unk_19, 0x6C);
+    ST8(chatbox + oChatbox_CursorY, 0x6C);
 
     /* Additional per-script state slots. */
     ST32(chatbox + 0x84, 0x19);
@@ -576,7 +576,7 @@ static u32 chatbox_config(u32 chatbox, u32 script_idx, u32 *out_r1) {
     ST32(chatbox + oChatbox_Unk_64, 0);
     ST8(chatbox + oChatbox_Unk_12, 0);
     ST8(chatbox + oChatbox_CurrLine, 0);
-    ST8(chatbox + oChatbox_Unk_17, 0);
+    ST8(chatbox + oChatbox_MugshotAnimTableIdx, 0);
     ST8(chatbox + 0x3D, 0);
     ST32(chatbox + 0x80, 0);
 
@@ -632,18 +632,18 @@ static void call_sub_802FE28(u32 a1, u32 a2, u32 not_used, u32 a4) {
 /* Drives one frame of the chatbox ED-select animation: streams a tile row into VRAM,
  * advances the frame index (wrapping to 1 at end), and queues the OAM DMA. */
 static void chatbox_ed_select_load_frame(u32 chatbox) {
-    u32 src_idx = LD8(chatbox + oChatbox_Unk_16);
+    u32 src_idx = LD8(chatbox + oChatbox_SelectCursorFrame);
     u32 src = ((u32)LD8(A_dword_80409B2 + src_idx) << 7) + A_byte_86A48C0;
     queue_eight_word_aligned_gfx_transfer(src, 0x6017F80u, 0x80u);
 
     u32 row_index = LD8(chatbox + 0x94);
     u32 x_origin = (u32)(LD32(chatbox + oChatbox_TileBufferOffset) + row_index - 6);
     u32 y_origin = (u32)LD8(chatbox + oChatbox_BoxGfxLoadState_0F) * 0xEu
-                 + (u32)LD8(chatbox + oChatbox_Unk_19) - 1u;
+                 + (u32)LD8(chatbox + oChatbox_CursorY) - 1u;
 
     /* Advance the frame counter; if the next table entry is 0xFF, wrap to slot 1
      * and pull the tile id from slot 0. Otherwise use the looked-up tile id. */
-    u32 frame = LD8(chatbox + oChatbox_Unk_16);
+    u32 frame = LD8(chatbox + oChatbox_SelectCursorFrame);
     u32 next_frame = frame + 1u;
     u32 frame_to_store = next_frame;
     u32 tile_id;
@@ -653,7 +653,7 @@ static void chatbox_ed_select_load_frame(u32 chatbox) {
     } else {
         tile_id = LD8(A_dword_80409B2 + next_frame);
     }
-    ST8(chatbox + oChatbox_Unk_16, (u8)frame_to_store);
+    ST8(chatbox + oChatbox_SelectCursorFrame, (u8)frame_to_store);
 
     /* Build OAM attr0 (y in bits 16..23) and attr1 (tile id in bits 0..11 + affine bit
      * merged in via the 0x40000000 OR on attr0 to set the affine flag). */
@@ -1274,7 +1274,7 @@ static u32 msgbox_run(u32 r4_in, u32 r5_in) {
         if (idx != 0xFF) {
             u32 entry = A_byte_8045DCC + (idx << 2);
             ST8(r5_in + oChatbox_CursorIdx, LD16(entry));
-            ST8(r5_in + oChatbox_Unk_1B, LD16(entry + 2));
+            ST8(r5_in + oChatbox_CursorX, LD16(entry + 2));
             r3_pre = idx << 2;
         } else {
             r3_pre = 0xFF;
@@ -2262,7 +2262,7 @@ static ClearMsgboxResult clear_msgbox(u32 script_ptr, u32 chatbox) {
     ST32(chatbox + oChatbox_Unk_64, 0);
     ST8(chatbox + oChatbox_Unk_12, 0);
     ST8(chatbox + oChatbox_CurrLine, 0);
-    ST8(chatbox + oChatbox_Unk_17, 0);
+    ST8(chatbox + oChatbox_MugshotAnimTableIdx, 0);
     ST8(chatbox + oChatbox_Unk_3D, 0);
     ST32(chatbox + oChatbox_Unk_80, 0);
     ST32(chatbox + oChatbox_PrintDelay, 4);
@@ -3207,10 +3207,10 @@ Next chatbox_initFromScriptEntry_80428C0(void) {
     ST8(R5 + oChatbox_CursorIdx, (u8)(charIdx + 0xAF));
 
     u8 row = LD8(R4 + 3);
-    ST8(R5 + oChatbox_Unk_19, row);
+    ST8(R5 + oChatbox_CursorY, row);
 
     u8 stride = LD8(R4 + 4);
-    ST8(R5 + oChatbox_Unk_1B, (u8)(row + 0xC * stride));
+    ST8(R5 + oChatbox_CursorX, (u8)(row + 0xC * stride));
 
     ST8(R5 + 0x94, charIdx);
 
@@ -3230,7 +3230,7 @@ Next chatbox_initFromScriptEntry_80428C0(void) {
 Next sub_80428EC(void) {
     u8 cursor = LD8(R4 + 2);
     ST8(R5 + oChatbox_CursorIdx, cursor);
-    ST8(R5 + oChatbox_Unk_1B, LD8(R4 + 3));
+    ST8(R5 + oChatbox_CursorX, LD8(R4 + 3));
     R4 += 4;
     R0 = 1;
     RETURN_TO_CALLER();

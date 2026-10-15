@@ -899,7 +899,7 @@ Next battle_isBattleOver(void) {
     if (flag12 == 0)
         RETURN_TO_CALLER();
 
-    u32 flag13 = LD8(R3 + oBattleState_Unk_13);
+    u32 flag13 = LD8(R3 + oBattleState_BattleOverSecondaryFlag);
     R1 = flag13;
     SET_FLAGS_NZ(flag13);
     if (flag13 == 0)
@@ -1518,7 +1518,7 @@ Next encryption_decryptPackTable30_800a7ea(void) {
  * nz from the low nibble, c from bit 3 of the original byte (the LSR carry-out). */
 Next battle_getStateByteNibbles_800A832(void) {
     u32 battleState = LD32(R10 + oToolkit_BattleStatePtr);
-    u32 stateByte = LD8(battleState + oBattleState_Unk_1f);
+    u32 stateByte = LD8(battleState + oBattleState_BattleResult);
 
     R1 = stateByte >> 4;
     R0 = stateByte & 0xF;
@@ -1538,7 +1538,7 @@ Next setTwoStructs_800A840(void) {
     u32 resultByte = R0;
 
     u32 battleState = LD32(R10 + oToolkit_BattleStatePtr);
-    ST8(battleState + oBattleState_Unk_1f, resultByte);
+    ST8(battleState + oBattleState_BattleResult, resultByte);
 
     /* eStruct200A008_setBattleResult takes the same byte in r0 and reads
      * the toolkit from r10; both are already in place. Its result in r1
@@ -2059,12 +2059,12 @@ Next zeroFill_800AB70(void) {
 Next battle_updatePhaseState_800AE0C(void) {
     u32 savedR4 = R4;
     u32 battle = LD32(R10 + oToolkit_BattleStatePtr);
-    u32 phase = LD8(battle + oBattleState_Unk_1c);
-    u32 prevPhase = LD8(battle + oBattleState_Unk_1b);
+    u32 phase = LD8(battle + oBattleState_PhaseMessageDelayCounter);
+    u32 prevPhase = LD8(battle + oBattleState_PanelSelectedCount);
 
     SET_FLAGS_CMP(phase, prevPhase);
     if ((s32)phase > (s32)prevPhase) {
-        ST8(battle + oBattleState_Unk_1b, phase);
+        ST8(battle + oBattleState_PanelSelectedCount, phase);
         SET_FLAGS_CMP(phase, 2);
         if ((s32)phase >= 2) {
             GUEST_CALL(GetBattleMode);
@@ -2081,12 +2081,12 @@ Next battle_updatePhaseState_800AE0C(void) {
     }
 
     {
-        u32 phaseTimer = LD8(battle + oBattleState_Unk_1d);
+        u32 phaseTimer = LD8(battle + oBattleState_MessageTimer);
         SET_FLAGS_NZ(phaseTimer);
         if (phaseTimer != 0) {
-            ST8(battle + oBattleState_Unk_1d, phaseTimer - 1);
+            ST8(battle + oBattleState_MessageTimer, phaseTimer - 1);
         } else {
-            ST8(battle + oBattleState_Unk_1c, 0);
+            ST8(battle + oBattleState_PhaseMessageDelayCounter, 0);
         }
     }
 
@@ -2099,8 +2099,8 @@ Next battle_updatePhaseState_800AE0C(void) {
 Next battle_bumpTimerAndReloadSubcount_800AE44(void) {
     u32 battleState = LD32(R10 + oToolkit_BattleStatePtr);
 
-    ST8(battleState + oBattleState_Unk_1c, LD8(battleState + oBattleState_Unk_1c) + 1);
-    ST8(battleState + oBattleState_Unk_1d, 10);
+    ST8(battleState + oBattleState_PhaseMessageDelayCounter, LD8(battleState + oBattleState_PhaseMessageDelayCounter) + 1);
+    ST8(battleState + oBattleState_MessageTimer, 10);
 
     /* output: r1 = battle state pointer (the original keeps r1 live) */
     R1 = battleState;

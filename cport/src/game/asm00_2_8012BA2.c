@@ -875,14 +875,14 @@ static void ai_navi_update(u32 battle_obj) {
 
     /* Timer-based decision: increment tick, wait for 60 frames */
     u32 ai_data = LD32(battle_obj + oBattleObject_AIDataPtr);
-    u32 timer = (u16)LD16(ai_data + oAIData_Unk_3a) + 1;
-    ST16(ai_data + oAIData_Unk_3a, timer);
+    u32 timer = (u16)LD16(ai_data + oAIData_ActionRerollFrameCounter) + 1;
+    ST16(ai_data + oAIData_ActionRerollFrameCounter, timer);
 
     if ((s32)timer < (s32)0x3C)
         return;
 
     /* Timer expired – reset and run action pair before deciding */
-    ST16(ai_data + oAIData_Unk_3a, 0);
+    ST16(ai_data + oAIData_ActionRerollFrameCounter, 0);
     ai_action_a(0, 0x2C);
     ai_action_b();
 
@@ -1433,7 +1433,7 @@ Next nullsub_6(void) {
 /* ── battle_tickPoisonHpLoss_8014498 ── */
 /* battle_tickPoisonHpLoss_8014498: decrement this battle object's HP by 1, but never let it drop
  * to 0 here. Does nothing once the battle is over, and only acts when the
- * AI data's flag at oAIData_Unk_36 is set. Leaves the AI data pointer in r3
+ * AI data's flag at oAIData_PoisonDamagePerTick is set. Leaves the AI data pointer in r3
  * for the caller (except when returning early on battle-over). */
 Next battle_tickPoisonHpLoss_8014498(void) {
     GUEST_CALL(battle_isBattleOver);
@@ -1441,7 +1441,7 @@ Next battle_tickPoisonHpLoss_8014498(void) {
         u32 aiData = LD32(R5 + oBattleObject_AIDataPtr);
         R3 = aiData;
 
-        if (LD16(aiData + oAIData_Unk_36) != 0) {
+        if (LD16(aiData + oAIData_PoisonDamagePerTick) != 0) {
             u32 hp = LD16(R5 + oBattleObject_HP);
             if (hp != 1) {
                 ST16(R5 + oBattleObject_HP, hp - 1);
@@ -1899,7 +1899,7 @@ static struct BattleEmotion read_battle_emotion(u32 alliance) {
 
     u32 emotion;
     u32 carry;
-    u32 unk36 = LD16(ai + oAIData_Unk_36);
+    u32 unk36 = LD16(ai + oAIData_PoisonDamagePerTick);
     if (unk36 != 0) {
         /* Branch taken right after the first TST: no CMP ever ran, so C is
          * still the 0 left by "adds r5, r0, #0". */
@@ -1911,7 +1911,7 @@ static struct BattleEmotion read_battle_emotion(u32 alliance) {
     } else if (LD16(ai + oAIData_Anger) != 0) {
         emotion = 3;
         carry = 1;          /* last CMP: mood, #0 (mood != 0); TST leaves C */
-    } else if (LD16(ai + oAIData_Unk_32) != 0) {
+    } else if (LD16(ai + oAIData_CounterHitChainFlag) != 0) {
         emotion = 1;
         carry = 1;
     } else if (mood == 0xFF) {
