@@ -575,3 +575,33 @@ Notes:
 - `BarrierCounterU16` for oCollisionData_Unk_1a_1b avoids name collision with the existing `BarrierBreakCounter` (which is the u8 view of the same bytes).
 
 Running total: 1 + 20 + 20 + 19 + 16 + 20 + 20 + 20 + 20 + 20 + 19 + 20 = **215 fields named**.
+
+## Batch 13 (20 fields, 2026-10-15)
+
+bn6f commits: `ffa77444` (.inc), `97f8c9ce` (asm renames).
+Recomp commit pending.
+
+| Field | Old | New | Status |
+|---|---|---|---|
+| oCamera_Unk_0a | u16 | `SavedCameraYInt` | probable |
+| oCamera_Unk_0c | u16 | `ShakeDuration` | probable |
+| oCamera_Unk_0e | u16 | `ShakeMagnitude` | probable |
+| oCamera_Unk_10 | u16 | `ShakeFrames` | hypothesis |
+| oCamera_Unk_12 | u16 | `ShakeIndex` | probable |
+| oCamera_Unk_14 | u32 | `PositionSrcPtr` | probable |
+| oCamera_Unk_18 | u32 | `MinX16_16` | hypothesis |
+| oCamera_Unk_1c | u32 | `MaxScrollX` | probable |
+| oCamera_Unk_20 | u32 | `CameraMinZ` | probable |
+| oCamera_Unk_24 | u32 | `MinY` | probable |
+| oCamera_Unk_48 | u32 | `ShakeOffsetX` | hypothesis |
+| oGameState_Unk_68 | u32 | `FrameCountdown` | probable |
+| oGameState_Unk_6c | u32 | `ZennyChecksumMirror` | probable |
+| oGameState_Unk_70 | u32 | `ProtectedBugfragsObfuscated` | probable |
+| oGameState_Unk_74 | u32 | `AntiTamperFlags` | probable |
+| oOverworldNPCObject_Unk_07 | u8 | `MovementCoordOffset` | probable |
+| oOverworldNPCObject_Unk_0f | u8 | `MovementDirectionPrev` | probable |
+| oOverworldNPCObject_Unk_50 | u32 | `BusyFlag` | probable |
+| oOverworldNPCObject_Unk_54 | u32 | `InteractionAreaPtr` | hypothesis |
+| oOverworldNPCObject_Unk_58 | u32 | `InteractionAreaHandle` | hypothesis |
+
+Running total: 1 + 20 + 20 + 19 + 16 + 20 + 20 + 20 + 20 + 20 + 19 + 20 + 20 = **235 fields named**.
