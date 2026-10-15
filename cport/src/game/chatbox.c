@@ -349,14 +349,14 @@ static void chatbox_runScript_impl(u32 toolkit, u32 archive, u32 script_idx) {
     u32 chatbox = LD32(toolkit + oToolkit_ChatboxPtr);
 
     /* Preserve four fields across the zero-fill that resets the rest of the struct. */
-    u32 saved_4C = LD32(chatbox + oChatbox_Unk_4C);
+    u32 saved_4C = LD32(chatbox + oChatbox_TextParam1);
     u32 saved_50 = LD32(chatbox + oChatbox_Unk_50);
     u32 saved_54 = LD32(chatbox + oChatbox_Unk_54);
     u32 saved_58 = LD32(chatbox + oChatbox_Unk_58);
 
     zero_fill(chatbox, CHATBOX_SIZE);
 
-    ST32(chatbox + oChatbox_Unk_4C, saved_4C);
+    ST32(chatbox + oChatbox_TextParam1, saved_4C);
     ST32(chatbox + oChatbox_Unk_50, saved_50);
     ST32(chatbox + oChatbox_Unk_54, saved_54);
     ST32(chatbox + oChatbox_Unk_58, saved_58);
@@ -378,7 +378,7 @@ static void chatbox_runScript_impl(u32 toolkit, u32 archive, u32 script_idx) {
     ST8(chatbox + oChatbox_BoxYX, 1);
     ST32(chatbox + oChatbox_Unk_74, 1);
     ST8(chatbox + oChatbox_JumpTableOffset_11, 1);
-    ST32(chatbox + oChatbox_Unk_78, 4);
+    ST32(chatbox + oChatbox_PrintDelay, 4);
 
     /* Copy the tile-geometry constants (8 halfwords from ROM) into the chatbox. */
     copy_halfwords(A_byte_8040494, chatbox + CHATBOX_TILE_GEOM_OFFSET, 8);
@@ -2265,7 +2265,7 @@ static ClearMsgboxResult clear_msgbox(u32 script_ptr, u32 chatbox) {
     ST8(chatbox + oChatbox_Unk_17, 0);
     ST8(chatbox + oChatbox_Unk_3D, 0);
     ST32(chatbox + oChatbox_Unk_80, 0);
-    ST32(chatbox + oChatbox_Unk_78, 4);
+    ST32(chatbox + oChatbox_PrintDelay, 4);
     ST8(chatbox + oChatbox_JumpTableOffset_11, 1);
     ST32(chatbox + oChatbox_Unk_74, 1);
 
@@ -3510,7 +3510,7 @@ Next chatbox_setCutsceneStateByte_8042FF4(void) {
 Next chatbox_setTextParams_8045EFC(void) {
     u32 chatbox = LD32(R10 + oToolkit_ChatboxPtr);
 
-    ST32(chatbox + oChatbox_Unk_4C, R0);
+    ST32(chatbox + oChatbox_TextParam1, R0);
     ST32(chatbox + oChatbox_Unk_50, R1);
     ST32(chatbox + oChatbox_Unk_54, R2);
     ST32(chatbox + oChatbox_Unk_58, R3);

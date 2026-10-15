@@ -402,7 +402,7 @@ Next sub_8017A38(void) {
     R0 = 0x10;
     GUEST_CALL(object_clearFlag2);
 
-    ST8(R5 + oBattleObject_Unk_1f, 0);
+    ST8(R5 + oBattleObject_AIType, 0);
     ST8(R5 + oBattleObject_CurAnim, 0);
     ST8(R5 + oBattleObject_CurAnimCopy, 0xFF);
 
@@ -1093,8 +1093,8 @@ Next battle_clearObjectStatusFlagsAndTimers_801A264(void) {
     ST16(collision + oCollisionData_Unk_1e, 0);
     ST16(collision + oCollisionData_BlindTimer, 0);
     ST16(collision + oCollisionData_Unk_22, 0);
-    ST16(collision + oCollisionData_Unk_2a, 0);
-    ST16(collision + oCollisionData_Unk_2c, 0);
+    ST16(collision + oCollisionData_HitInvulTimer, 0);
+    ST16(collision + oCollisionData_HitStunTimer, 0);
 
     RETURN_TO_CALLER();
 }
@@ -1120,7 +1120,7 @@ Next battle_object_clearFlagsAndCollisionCounter_801A284(void) {
 
 /* ── battleObject_clearHitFlags_801A29A ── */
 /* battleObject_clearHitFlags_801A29A(r5 = battle object): clear the object's flag bits 0x10000 in
- * both flag words and reset the halfword at oCollisionData_Unk_2a of its
+ * both flag words and reset the halfword at oCollisionData_HitInvulTimer of its
  * collision data. Leaves r0 = 0 (flags updated accordingly). */
 Next battleObject_clearHitFlags_801A29A(void) {
     R0 = 0x10000;
@@ -1131,7 +1131,7 @@ Next battleObject_clearHitFlags_801A29A(void) {
 
     R0 = 0;
     R3 = LD32(R5 + oBattleObject_CollisionDataPtr);
-    ST16(R3 + oCollisionData_Unk_2a, R0);
+    ST16(R3 + oCollisionData_HitInvulTimer, R0);
 
     SET_FLAGS_NZ(R0);
     RETURN_TO_CALLER();
@@ -1151,7 +1151,7 @@ Next battleObject_resetCollisionState_801A2B0(void) {
 
     /* Zero the collision data timer at offset 0x2c. */
     u32 collisionData = LD32(R5 + oBattleObject_CollisionDataPtr);
-    ST16(collisionData + oCollisionData_Unk_2c, 0);
+    ST16(collisionData + oCollisionData_HitStunTimer, 0);
 
     /* Restore the object's Z position from the AI data block. */
     u32 aiData = LD32(R5 + oBattleObject_AIDataPtr);
@@ -1672,13 +1672,13 @@ Next battle_aiAimTwoColumnsAheadOnSpecialPanel_801A75A(void) {
 
 /* ── battle_clearAIDataAndBarrier_801A7F4 ── */
 /* battle_clearAIDataAndBarrier_801A7F4(r5 = battle object):
- * Clear the object's AI state field at oAIData_Unk_60 and drop its
+ * Clear the object's AI state field at oAIData_SubordinateObjectPtr and drop its
  * barrier flag (offset 6 in its collision data). */
 Next battle_clearAIDataAndBarrier_801A7F4(void) {
     u32 aiData = LD32(R5 + oBattleObject_AIDataPtr);
     u32 collision = LD32(R5 + oBattleObject_CollisionDataPtr);
 
-    ST32(aiData + oAIData_Unk_60, 0);
+    ST32(aiData + oAIData_SubordinateObjectPtr, 0);
     ST8(collision + 6, 0);
 
     RETURN_TO_CALLER();

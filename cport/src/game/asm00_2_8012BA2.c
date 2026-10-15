@@ -2993,7 +2993,7 @@ Next battle_objectCountdownPhaseOrReset_8016E3C(void) {
     GUEST_CALL(object_clearFlag2);
 
     R0 = 0;
-    ST8(R5 + oBattleObject_Unk_1f, R0);
+    ST8(R5 + oBattleObject_AIType, R0);
     ST32(R5 + oBattleObject_CurPhaseAndPhaseInitialized,
          LD32(R5 + oBattleObject_PendingStateAction));
 

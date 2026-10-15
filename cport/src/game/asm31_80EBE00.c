@@ -1387,7 +1387,7 @@ static u32 detect_enemy_attack(u32 player_obj, u32 toolkit) {
     u32 enemy_panel_y = LD8(enemy_obj + oBattleObject_PanelY);
 
     /* Base of the 7-slot (step 4, up to 0x1C) Unk_a0 array in BattleState. */
-    u32 slot_base = LD32(toolkit + oToolkit_BattleStatePtr) + oBattleState_Unk_a0;
+    u32 slot_base = LD32(toolkit + oToolkit_BattleStatePtr) + oBattleState_BattleObjectList;
 
     for (s32 idx = 0; idx <= 0x1C; idx += 4) {
         u32 obj = LD32(slot_base + idx);

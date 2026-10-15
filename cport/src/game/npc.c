@@ -382,7 +382,7 @@ static void chatbox_cur_action_init(u32 npc_ptr, u32 toolkit_ptr, u32 r3) {
             /* mystery-data path: set up the chatbox and extract script info */
             u32 chatbox_ptr = LD32(toolkit_ptr + oToolkit_ChatboxPtr);
             u32 cb_data = LD32(npc_ptr + oOverworldNPCObject_Chatbox_90);
-            ST32(chatbox_ptr + oChatbox_Unk_4C, cb_data);
+            ST32(chatbox_ptr + oChatbox_TextParam1, cb_data);
 
             u32 mys_r0, mys_r1, mys_r2, mys_r3;
             call_mystery_setup(cb_data, chatbox_ptr, &mys_r0, &mys_r1, &mys_r2, &mys_r3);

@@ -1698,7 +1698,7 @@ Next renderInfo_8001788(void) {
     ST16(renderInfo + oRenderInfo_Unk_14, 0);
     ST16(renderInfo + oRenderInfo_Unk_16, 0);
     /* the original writes 0x1A before 0x18; the order has no visible effect */
-    ST16(renderInfo + oRenderInfo_Unk_1a, 0);
+    ST16(renderInfo + oRenderInfo_BG3ScrollY, 0);
     ST16(renderInfo + oRenderInfo_BG2ScrollX, 0);
 
     RETURN_TO_CALLER();
@@ -2179,7 +2179,7 @@ Next BGScrollCB_BG3Diagonal3to2Scroll(void) {
 
     u32 renderInfo = LD32(R10 + 8);
     ST16(renderInfo + oRenderInfo_BG2ScrollX, offsetX);
-    ST16(renderInfo + oRenderInfo_Unk_1a, offsetY);
+    ST16(renderInfo + oRenderInfo_BG3ScrollY, offsetY);
 
     R1 = renderInfo;
     R2 = offsetX;
@@ -2229,7 +2229,7 @@ Next BGScrollCB_BG3UpScroll(void) {
      * cheaply. */
     u32 r1 = R10;
     u32 render_info = LD32(r1 + oToolkit_RenderInfoPtr);
-    ST16(render_info + oRenderInfo_Unk_1a, (u16)(counter >> 4));
+    ST16(render_info + oRenderInfo_BG3ScrollY, (u16)(counter >> 4));
     RETURN_TO_CALLER();
 }
 

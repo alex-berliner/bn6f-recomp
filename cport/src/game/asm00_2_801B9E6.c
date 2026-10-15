@@ -43,7 +43,7 @@ Next RunAIAttack(void) {
         handler = LD32(R0 + tableIndex * 4);
     } else {
         tableIndex = curAction - 0x10;
-        u32 attackVar1d = LD8(attackVars + oAIAttackVars_Unk_1d);
+        u32 attackVar1d = LD8(attackVars + oAIAttackVars_PwrAtkState);
 
         if (attackVar1d == 1) {
             /* special case: dedicated routine instead of a table handler;

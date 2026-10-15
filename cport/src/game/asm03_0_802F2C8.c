@@ -318,9 +318,9 @@ Next camera_updateDerivedOffsets_803007C(void) {
  * Latch the camera's current position into its saved-position fields:
  * Unk_04 -> Unk_08 and Unk_06 -> Unk_0a. Returns r1 = the second halfword. */
 Next camera_SavePosition_803011A(void) {
-    R1 = LD16(R5 + 4);              /* oCamera_Unk_04: current x */
+    R1 = LD16(R5 + 4);              /* oCamera_ScrollX: current x */
     ST16(R5 + 8, R1);               /* oCamera_Unk_08: saved x */
-    R1 = LD16(R5 + 6);              /* oCamera_Unk_06: current y */
+    R1 = LD16(R5 + 6);              /* oCamera_CameraYInt: current y */
     ST16(R5 + oCamera_Unk_0a, R1);  /* oCamera_Unk_0a: saved y */
     RETURN_TO_CALLER();
 }
@@ -366,7 +366,7 @@ Next camera_applyScrollToBgLayers_8030158(void) {
     u32 inR4 = R4, inR6 = R6, inR7 = R7;
 
     /* camera current minus previous position:
-     * oCamera_Unk_04/06 = current X/Y, oCamera_Unk_08/oCamera_Unk_0a = previous X/Y */
+     * oCamera_ScrollX/06 = current X/Y, oCamera_Unk_08/oCamera_Unk_0a = previous X/Y */
     u32 scrollX = LD16(R5 + 4) - LD16(R5 + 8);
     u32 scrollY = LD16(R5 + 6) - LD16(R5 + oCamera_Unk_0a);
 
@@ -405,10 +405,10 @@ Next camera_applyScrollToBgLayers_8030158(void) {
 
     R0 = LD32(R10 + 8); /* oToolkit_RenderInfoPtr, reloaded as in the original */
     R6 = LD16(renderInfo + oRenderInfo_BG2ScrollX) + scrollX;
-    u32 baseY = LD16(renderInfo + oRenderInfo_Unk_1a);
+    u32 baseY = LD16(renderInfo + oRenderInfo_BG3ScrollY);
     R7 = baseY + scrollY;
     ST16(renderInfo + oRenderInfo_BG2ScrollX, R6);
-    ST16(renderInfo + oRenderInfo_Unk_1a, R7);
+    ST16(renderInfo + oRenderInfo_BG3ScrollY, R7);
     SET_FLAGS_ADD(baseY, scrollY);
 
     R4 = inR4;
@@ -467,8 +467,8 @@ Next camera_CopyScrollToRenderLayers_80302F8(void) {
     u32 toolkit = R10;
 
     u32 camera = LD32(toolkit + oToolkit_CameraPtr);
-    u32 camX = LD16(camera + 4) & 0xFF;  /* oCamera_Unk_04 */
-    u32 camY = LD16(camera + 6) & 0xFF;  /* oCamera_Unk_06 */
+    u32 camX = LD16(camera + 4) & 0xFF;  /* oCamera_ScrollX */
+    u32 camY = LD16(camera + 6) & 0xFF;  /* oCamera_CameraYInt */
 
     u32 render = LD32(toolkit + 8); /* oToolkit_RenderInfoPtr */
 
@@ -477,7 +477,7 @@ Next camera_CopyScrollToRenderLayers_80302F8(void) {
     ST16(render + oRenderInfo_BG2ScrollX, camX);
     ST16(render + oRenderInfo_BGScrollY, camY);
     ST16(render + oRenderInfo_Unk_16, camY);
-    ST16(render + oRenderInfo_Unk_1a, camY);
+    ST16(render + oRenderInfo_BG3ScrollY, camY);
 
     /* Registers left as the original leaves them. */
     R7 = toolkit;
@@ -503,17 +503,17 @@ Next renderInfo_SnapScrollToCamera_8030316(void) {
     u32 camera     = LD32(toolkit + oToolkit_CameraPtr);
     u32 renderInfo = LD32(toolkit + 8); /* oToolkit_RenderInfoPtr */
 
-    u32 camX = LD16(camera + 4) & 0xFF; /* oCamera_Unk_04 */
+    u32 camX = LD16(camera + 4) & 0xFF; /* oCamera_ScrollX */
     ST16(renderInfo + oRenderInfo_BGScrollXOffset, camX);
     ST16(renderInfo + oRenderInfo_Unk_14, camX);
 
-    u32 camY = LD16(camera + 6) & 0xFF; /* oCamera_Unk_06 */
+    u32 camY = LD16(camera + 6) & 0xFF; /* oCamera_CameraYInt */
     ST16(renderInfo + oRenderInfo_BGScrollY, camY);
     ST16(renderInfo + oRenderInfo_Unk_16, camY);
 
     R1 = 0;
     ST16(renderInfo + oRenderInfo_BG2ScrollX, 0);
-    ST16(renderInfo + oRenderInfo_Unk_1a, 0);
+    ST16(renderInfo + oRenderInfo_BG3ScrollY, 0);
 
     R2 = camY;
     R3 = renderInfo;
@@ -537,8 +537,8 @@ Next render_ClearScrollOffsets_8030336(void) {
     u32 camera = LD32(toolkit + oToolkit_CameraPtr);
     u32 renderInfo = LD32(toolkit + 8); /* oToolkit_RenderInfoPtr */
 
-    u32 camX = LD16(camera + 4) & 0xFF; /* oCamera_Unk_04 */
-    u32 camY = LD16(camera + 6) & 0xFF; /* oCamera_Unk_06 */
+    u32 camX = LD16(camera + 4) & 0xFF; /* oCamera_ScrollX */
+    u32 camY = LD16(camera + 6) & 0xFF; /* oCamera_CameraYInt */
 
     /* store the masked camera scroll, then zero it all out again */
     ST16(renderInfo + oRenderInfo_BGScrollXOffset, camX);
@@ -546,13 +546,13 @@ Next render_ClearScrollOffsets_8030336(void) {
     ST16(renderInfo + oRenderInfo_BG2ScrollX, camX);
     ST16(renderInfo + oRenderInfo_BGScrollY, camY);
     ST16(renderInfo + oRenderInfo_Unk_16, camY);
-    ST16(renderInfo + oRenderInfo_Unk_1a, camY);
+    ST16(renderInfo + oRenderInfo_BG3ScrollY, camY);
 
     R1 = 0;
     ST16(renderInfo + oRenderInfo_BGScrollXOffset, 0);
     ST16(renderInfo + oRenderInfo_BGScrollY, 0);
     ST16(renderInfo + oRenderInfo_BG2ScrollX, 0);
-    ST16(renderInfo + oRenderInfo_Unk_1a, 0);
+    ST16(renderInfo + oRenderInfo_BG3ScrollY, 0);
 
     R2 = camY;
     R3 = renderInfo;
