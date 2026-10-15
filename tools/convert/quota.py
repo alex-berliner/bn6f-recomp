@@ -29,7 +29,6 @@ m = get("https://api.minimax.io/v1/api/openplatform/coding_plan/remains", {"Auth
 snap["minimax"] = [{k: r.get(k) for k in ("model_name", "current_interval_total_count", "current_interval_usage_count",
                                           "current_interval_remaining_percent", "current_weekly_remaining_percent")}
                    for r in m.get("model_remains", [])] or m
-snap["openrouter"] = (get("https://openrouter.ai/api/v1/credits", {"Authorization": "Bearer " + key("openrouter")}).get("data"))
 text = json.dumps(snap, indent=1)
 if len(sys.argv) > 1:
     open(sys.argv[1], "w").write(text)
