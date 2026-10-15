@@ -695,3 +695,35 @@ Recomp commit pending.
 Notes: This batch required manual renames due to a quirk in `tools/rename_symbol.py` - when some renames succeed and others fail, the script rolls back ALL changes. Fixed by doing the renames in two separate commits.
 
 Running total: 1 + 20 + 20 + 19 + 16 + 20 + 20 + 20 + 20 + 20 + 19 + 20 + 20 + 20 + 20 + 18 = **293 fields named**.
+
+## Batch 17 (20 fields, 2026-10-15)
+
+bn6f commits: `be6beaaf` (manual batch 17).
+Recomp commit pending.
+
+| Field | Old | New | Status |
+|---|---|---|---|
+| oPanelData_Unk_18 | u32 | `PanelParameters` | hypothesis |
+| oPanelData_Unk_12 | u16 | `PanelStatusFlags` | hypothesis |
+| oPanelData_Unk_0d | u8 | `TypeBlinkFlag` | hypothesis |
+| oPanelData_Unk_09 | u8 | `BlinkPanelTypeSecondary` | hypothesis |
+| oPanelData_Unk_08 | u8 | `BlinkParamA` | hypothesis |
+| oOverworldNPCObject_Unk_0b | u8 | `ScriptPauseFlag` | hypothesis |
+| oCollisionData_Unk_68 | u32 | `LinkedCollisionIndices` | hypothesis |
+| oCollisionData_Unk_a0 | u32 | `ExtraElementDamageAccumulator` | hypothesis |
+| oCollisionData_Unk_92 | u16 | `PanelDamageAccumulatorU16` | hypothesis |
+| oCollisionData_Unk_90 | u16 | `PanelDamageAccumulatorU16a` | hypothesis |
+| oCollisionData_Unk_8e | u16 | `PanelDamage7` | hypothesis |
+| oObjectSprite_Unk_10 | u8 | `ScratchHalfword` | hypothesis |
+| oNaviStats_Unk_4f | u8 | `EmotionWindowBonusTurns` | hypothesis |
+| oNaviStats_Unk_4c | u8 | `NaviScriptState` | hypothesis |
+| oMapTilesState200be70_Unk_0c | u32 | `UnkCallback0C` | hypothesis |
+| oCutsceneCameraInfo_Unk_24 | u32 | `CutsceneCameraBackupZ` | hypothesis |
+| oRenderInfo_Unk_0a | u16 | `DisplayControlBits` | hypothesis |
+| oRenderInfo_Unk_0c | u16 | `RenderEntryCountA` | hypothesis |
+| oRenderInfo_Unk_0e | u16 | `RenderEntryCountB` | hypothesis |
+| oReqBBS2001150_Unk_28 | u32 | `FrameCounter` | hypothesis |
+
+Notes: Used `CutsceneCameraBackupZ` for oCutsceneCameraInfo_Unk_24 to avoid name conflict with existing `oCutsceneCameraInfo_OldZ` at offset 0x10.
+
+Running total: 1 + 20 + 20 + 19 + 16 + 20 + 20 + 20 + 20 + 20 + 19 + 20 + 20 + 20 + 20 + 18 + 20 = **313 fields named**. Exceeded 300 target.
