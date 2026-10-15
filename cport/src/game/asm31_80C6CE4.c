@@ -3723,7 +3723,7 @@ Next battle_objectLingerThenDestroyPhase_80DA974(void) {
         /* one-time setup for this phase */
         u32 battle = LD32(R10 + oToolkit_BattleStatePtr);
         R1 = LD16(R5 + 4); /* oBattleObject_Param1 */
-        ST16(battle + oBattleState_Unk_36, R1);
+        ST16(battle + oBattleState_Reward2Bonus, R1);
 
         ST8(R5 + oBattleObject_CurAnim, 1);
         ST16(R5 + oBattleObject_Timer, 0x5A);

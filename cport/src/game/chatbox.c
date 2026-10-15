@@ -574,7 +574,7 @@ static u32 chatbox_config(u32 chatbox, u32 script_idx, u32 *out_r1) {
     /* Clear the small script-state fields. */
     ST8(chatbox + oChatbox_TextScriptState_04, 0);
     ST32(chatbox + oChatbox_Unk_64, 0);
-    ST8(chatbox + oChatbox_Unk_12, 0);
+    ST8(chatbox + oChatbox_ChoicesPageTag, 0);
     ST8(chatbox + oChatbox_CurrLine, 0);
     ST8(chatbox + oChatbox_MugshotAnimTableIdx, 0);
     ST8(chatbox + 0x3D, 0);
@@ -717,7 +717,7 @@ static MugshotShowResult showMugshotInChatbox(u32 mugshotId, u32 attr01, u32 cha
     ST16(sprite + 0x14, 0);
 
     /* If the chatbox was already in state 3, carry that state over. */
-    u8 chatboxState = LD8(chatbox + oChatbox_Unk_0A);
+    u8 chatboxState = LD8(chatbox + oChatbox_ChoiceNumOptions);
     if (chatboxState == 3)
         ST8(sprite + 0x0, chatboxState);
 
@@ -1193,7 +1193,7 @@ static ButtonHaltResult chatbox_buttonhalt(u32 self, u32 script, u32 prev_script
      * while the wait is still running. */
     set_3e_flags(FLAGS_3E_UNK_0400_chatbox_E7_buttonhalt);
     set_3e_flags(FLAGS_3E_UNK_0020 | FLAGS_3E_UNK_0001_chatbox_E7_buttonhalt);
-    ST8(self + oChatbox_Unk_03, 0);
+    ST8(self + oChatbox_SubState, 0);
 
     switch (LD8(self + oChatbox_TextScriptState_04)) {
     case 2: /* already waiting for a button */
@@ -1568,7 +1568,7 @@ static ChatboxEbOptionResult chatbox_eb_option_run(u32 optionDef, u32 chatbox) {
 
     count++;
     ST32(chatbox + oChatbox_Unk_80, count);
-    ST8(chatbox + oChatbox_Unk_12, (u8)count);
+    ST8(chatbox + oChatbox_ChoicesPageTag, (u8)count);
     ST8(chatbox + oChatbox_ChoiceCursorPos, 0);
     ST8(chatbox + entryOff + 0xC, LD8(chatbox + oChatbox_BoxGfxLoadState_0F));
 
@@ -2260,7 +2260,7 @@ static ClearMsgboxResult clear_msgbox(u32 script_ptr, u32 chatbox) {
 
     ST8(chatbox + oChatbox_TextScriptState_04, 0);
     ST32(chatbox + oChatbox_Unk_64, 0);
-    ST8(chatbox + oChatbox_Unk_12, 0);
+    ST8(chatbox + oChatbox_ChoicesPageTag, 0);
     ST8(chatbox + oChatbox_CurrLine, 0);
     ST8(chatbox + oChatbox_MugshotAnimTableIdx, 0);
     ST8(chatbox + oChatbox_Unk_3D, 0);
@@ -2458,10 +2458,10 @@ static u32 chatbox_process_mugshot(u32 cmd, u32 chatbox) {
         }
     }
 
-    ST8(chatbox + oChatbox_Unk_14, flag_byte);
-    ST8(chatbox + oChatbox_Unk_0A, extra_byte);
+    ST8(chatbox + oChatbox_ScriptTokenParam, flag_byte);
+    ST8(chatbox + oChatbox_ChoiceNumOptions, extra_byte);
     ST8(chatbox + 0x98, extra_byte);
-    ST8(chatbox + oChatbox_Unk_0B, 0xFF);
+    ST8(chatbox + oChatbox_PageLoadReset, 0xFF);
 
     /* Trigger mugshot graphic refresh; callee sets R1/R2/R3/R7 as side effects */
     mugshot_refresh(mugshot_id, flag_byte);
@@ -3576,7 +3576,7 @@ Next chatbox_GetState_8045F4C(void) {
 Next chatbox_resetAndClearBuffers_8045F60(void) {
     ST32(R5 + oChatbox_TileBufferOffset, 0);
     ST8(R5 + oChatbox_BoxGfxLoadState_0F, 0);
-    ST8(R5 + oChatbox_Unk_0E, 0);
+    ST8(R5 + oChatbox_ResetFlag, 0);
     ST32(R5 + oChatbox_Unk_7C, 0);
 
     R0 = A_unk_200BEA0;

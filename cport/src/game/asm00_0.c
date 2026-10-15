@@ -1314,14 +1314,14 @@ Next calcAngle_800117C(void) {
 
 /* ── battle_orStateFlags5c_8001382 ── */
 /* battle_orStateFlags5c_8001382(r0 = flag bits): set the given bits in the current battle
- * state's word at oBattleState_Unk_5c.
+ * state's word at oBattleState_AlliancePermissionFlags.
  * Leaves r1 = battle state pointer and r2 = updated word. */
 Next battle_orStateFlags5c_8001382(void) {
     u32 battleState = LD32(R10 + oToolkit_BattleStatePtr);
 
     R1 = battleState;
-    R2 = LD32(battleState + oBattleState_Unk_5c) | R0;
-    ST32(battleState + oBattleState_Unk_5c, R2);
+    R2 = LD32(battleState + oBattleState_AlliancePermissionFlags) | R0;
+    ST32(battleState + oBattleState_AlliancePermissionFlags, R2);
 
     RETURN_TO_CALLER();
 }
@@ -1331,17 +1331,17 @@ Next battle_orStateFlags5c_8001382(void) {
  * (r10 holds the toolkit pointer on entry.) */
 Next battle_getStateUnk5c_800139A(void) {
     u32 battleState = LD32(R10 + oToolkit_BattleStatePtr);
-    R0 = LD32(battleState + oBattleState_Unk_5c);
+    R0 = LD32(battleState + oBattleState_AlliancePermissionFlags);
     RETURN_TO_CALLER();
 }
 
 /* ── battle_SetStateUnk5c_80013A2 ── */
 /* battle_SetStateUnk5c_80013A2(r0 = value, r10 = toolkit):
- * store a value into the current battle state (oBattleState_Unk_5c).
+ * store a value into the current battle state (oBattleState_AlliancePermissionFlags).
  * Returns the battle state pointer in r1. */
 Next battle_SetStateUnk5c_80013A2(void) {
     u32 battle = LD32(R10 + oToolkit_BattleStatePtr);
-    ST32(battle + oBattleState_Unk_5c, R0);
+    ST32(battle + oBattleState_AlliancePermissionFlags, R0);
     R1 = battle;
     RETURN_TO_CALLER();
 }

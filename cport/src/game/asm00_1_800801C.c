@@ -345,18 +345,18 @@ static void battle_state_update(u32 battle_state)
     u16 quarter_max = LD16(player + oBattleObject_MaxHP) / 4;
 
     battle_state = battle_state_in_r5();
-    u16 warning_active = LD16(battle_state + oBattleState_Unk_20); /* 1 while the siren plays */
+    u16 warning_active = LD16(battle_state + oBattleState_LowHPAlertTimers); /* 1 while the siren plays */
 
     if (hp > quarter_max) {
         if (warning_active == 0)
             return; /* warning not playing, nothing to stop */
-        ST16(battle_state + oBattleState_Unk_20, 0);
+        ST16(battle_state + oBattleState_LowHPAlertTimers, 0);
         sound_setup_800065A(0x1F, 0xFFFF, 0);            /* release the warning tone */
         sound_play_8000672(0x1F, SOUND_LOW_HP_OFF);
     } else {
         if (warning_active != 0)
             return; /* warning already playing */
-        ST16(battle_state + oBattleState_Unk_20, 1);
+        ST16(battle_state + oBattleState_LowHPAlertTimers, 1);
         sound_setup_800065A(0x1F, 0xFFFF, 0x100);         /* arm the warning tone */
         sound_play_8000672(0x1F, SOUND_LOW_HP_WARNING);
     }
@@ -1016,14 +1016,14 @@ Next battle_checkNaviFreeze_800A1D0(void) {
 /* ── battle_setFlags ── */
 /* battle_setFlags(r0 = flag bits):
  * Sets the given bits in the battle state's flags halfword
- * (BattleState + oBattleState_Unk_32), where the battle state is
+ * (BattleState + oBattleState_BattleStateFlags), where the battle state is
  * taken from the toolkit (r10).
  * Leaves r1 = battle state pointer, r2 = new flags value. */
 Next battle_setFlags(void) {
     u32 battle = LD32(R10 + oToolkit_BattleStatePtr);
 
-    u32 flags = LD16(battle + oBattleState_Unk_32) | R0;
-    ST16(battle + oBattleState_Unk_32, flags);
+    u32 flags = LD16(battle + oBattleState_BattleStateFlags) | R0;
+    ST16(battle + oBattleState_BattleStateFlags, flags);
 
     R1 = battle;
     R2 = flags;
@@ -1036,9 +1036,9 @@ Next battle_setFlags(void) {
  * r10 = toolkit pointer; r1 = battle state pointer, r2 = new flags. */
 Next battle_clearFlags(void) {
     u32 battleState = LD32(R10 + oToolkit_BattleStatePtr);
-    u32 flags = LD16(battleState + oBattleState_Unk_32) & ~R0;
+    u32 flags = LD16(battleState + oBattleState_BattleStateFlags) & ~R0;
 
-    ST16(battleState + oBattleState_Unk_32, flags);
+    ST16(battleState + oBattleState_BattleStateFlags, flags);
     R1 = battleState;
     R2 = flags;
     RETURN_TO_CALLER();
@@ -1337,10 +1337,10 @@ Next shuffleFolder_800A570(void) {
 }
 
 /* ── battle_getStateUnk40_800A704 ── */
-/* battle_getStateUnk40_800A704: return the value stored at oBattleState_Unk_40 of the
+/* battle_getStateUnk40_800A704: return the value stored at oBattleState_ChipUseFrameCounter of the
  * current battle state (accessed through the r10 toolkit pointer). */
 Next battle_getStateUnk40_800A704(void) {
-    R0 = LD32(LD32(R10 + oToolkit_BattleStatePtr) + oBattleState_Unk_40);
+    R0 = LD32(LD32(R10 + oToolkit_BattleStatePtr) + oBattleState_ChipUseFrameCounter);
     RETURN_TO_CALLER();
 }
 
@@ -1732,8 +1732,8 @@ Next setBattleStateUnk11Flag_800A9CA(void) {
     u32 flags = R0;
     u32 battle = LD32(R10 + oToolkit_BattleStatePtr);
 
-    ST8(battle + oBattleState_Unk_11,
-        LD8(battle + oBattleState_Unk_11) | flags);
+    ST8(battle + oBattleState_StateFlags,
+        LD8(battle + oBattleState_StateFlags) | flags);
 
     R3 = battle;
     RETURN_TO_CALLER();
@@ -1745,10 +1745,10 @@ Next setBattleStateUnk11Flag_800A9CA(void) {
  * Leaves r3 pointing at the battle state. */
 Next clearBattleStateUnk11Flag_800A9D6(void) {
     u32 battleState = LD32(R10 + oToolkit_BattleStatePtr);
-    u32 flags = LD8(battleState + oBattleState_Unk_11);
+    u32 flags = LD8(battleState + oBattleState_StateFlags);
 
     flags &= ~R0;
-    ST8(battleState + oBattleState_Unk_11, flags);
+    ST8(battleState + oBattleState_StateFlags, flags);
 
     R3 = battleState;
     RETURN_TO_CALLER();
@@ -1950,7 +1950,7 @@ Next battle_stateGotoPhase14_800AABC(void) {
 
     battle = LD32(R10 + oToolkit_BattleStatePtr);
     ST8(battle + 1, 0x14);   /* oBattleState_Index_01 */
-    ST16(battle + 2, 0);     /* oBattleState_Unk_02_03 */
+    ST16(battle + 2, 0);     /* oBattleState_StatePhaseAndInitFlag */
 
     R0 = battle;
     R1 = 0;

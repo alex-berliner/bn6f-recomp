@@ -109,10 +109,10 @@ Next object_isValidPanel(void) {
 /* ── drafted by Hyper GLM-5.3 Flash (farm batch 3) ── */
 
 /* battle_getFlags: read the battle's current flag word.
- * Returns (r0) the halfword at oBattleState_Unk_32 of the active battle state. */
+ * Returns (r0) the halfword at oBattleState_BattleStateFlags of the active battle state. */
 Next battle_getFlags(void) {
     u32 battle = LD32(R10 + oToolkit_BattleStatePtr);
-    R0 = LD16(battle + oBattleState_Unk_32);
+    R0 = LD16(battle + oBattleState_BattleStateFlags);
     RETURN_TO_CALLER();
 }
 

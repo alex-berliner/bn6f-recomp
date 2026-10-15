@@ -2270,7 +2270,7 @@ Next battle_main_8007800(void) {
     }
 
     /* Increment the per-frame battle counter */
-    ST32(R5 + oBattleState_Unk_60, LD32(R5 + oBattleState_Unk_60) + 1);
+    ST32(R5 + oBattleState_FrameCounter, LD32(R5 + oBattleState_FrameCounter) + 1);
 
     /* Query how many battle effects are currently active */
     GUEST_CALL(GetBattleEffects);
@@ -2554,7 +2554,7 @@ Next sub_8007B80(void) {
  * r5 = battle state object. If its phase byte (offset 3) is still zero,
  * start a 10-frame countdown and advance the phase to 4. Otherwise count
  * the halfword at oBattleState_CountdownTimer down by one; when it underflows,
- * write 4 to the halfword at offset 2 (oBattleState_Unk_02_03).
+ * write 4 to the halfword at offset 2 (oBattleState_StatePhaseAndInitFlag).
  * R0 ends as 4 when the countdown was started or finished, otherwise as
  * the decremented timer value. Flags come from the last flag-setting
  * instruction of the taken path: MOVS #4 (nz only) on the start/expire

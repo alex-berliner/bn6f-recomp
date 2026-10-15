@@ -474,7 +474,7 @@ Next battle_SpawnObjectOnFrontPanel_800FAAC(void) {
 
 /* ── battle_snapshotPlayerHP_800FAE0 ── */
 /* battle_snapshotPlayerHP_800FAE0: snapshot the player's current HP into the battle state
- * (oBattleState_Unk_34), used to track HP changes over the course of a turn.
+ * (oBattleState_PlayerHPSnapshot), used to track HP changes over the course of a turn.
  *
  * inputs:  r4 r5 r6 r10 (r10 = toolkit) lr
  * outputs: r2 r4 r5 r6 (r4/r5/r6 preserved; r2 as left by battle_findPlayer)
@@ -489,7 +489,7 @@ Next battle_snapshotPlayerHP_800FAE0(void) {
 
     /* If a player exists, remember its HP. */
     if (R0 != 0)
-        ST16(battle + oBattleState_Unk_34, LD16(R0 + oBattleObject_HP));
+        ST16(battle + oBattleState_PlayerHPSnapshot, LD16(R0 + oBattleObject_HP));
 
     RETURN_TO_CALLER();
 }

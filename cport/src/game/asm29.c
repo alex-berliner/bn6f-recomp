@@ -2037,7 +2037,7 @@ Next battle_rollRandomItemDrops_80AA88C(void) {
  * Forwards a six-word parameter block to sub_80AA910 (which reads its
  * arguments back from the caller's stack at [sp, #n]), then returns
  *   r0 = value returned by sub_80AA910,
- *   r1 = the current battle state's oBattleState_Unk_36 field.
+ *   r1 = the current battle state's oBattleState_Reward2Bonus field.
  * If r1 is 0 on entry, the helper is not called and (0, 0) is returned. */
 Next sub_80AA8E0(void) {
     u32 setupResult = 0;
@@ -2067,7 +2067,7 @@ Next sub_80AA8E0(void) {
 
         /* Read the current battle state's field 0x36 for the second result. */
         u32 battleState = LD32(R10 + oToolkit_BattleStatePtr);
-        battleFlag = LD16(battleState + oBattleState_Unk_36);
+        battleFlag = LD16(battleState + oBattleState_Reward2Bonus);
 
         /* r7 is outgoing-preserved, but the callee saw it as 0. */
         R7 = savedR7;
