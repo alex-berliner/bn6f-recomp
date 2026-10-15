@@ -49,8 +49,8 @@ OFF_PX, OFF_PY = 0x1C, 0x20  # the overworld player object's X/Y (s16.16)
 CATCH1_V, CATCH2_V = 435967, 436402  # the video's own catches (white flashes 435971-987 and 436406-420)
 C1, C2 = CATCH1_V, CATCH2_V          # our staged captures: the same frames (the inputs hold A down over
                                      # 435966-435968, so the cutscene's text box skips as the video's does)
-RESUME_AFTER = 24                    # the sync resumes this many frames after the second capture (its white
-                                     # flash ends ~436420)
+MAX_TAIL = 1200                      # frames after the second capture the comp must end (the map reload) in
+RELOAD_SETTLE = 40                   # frames after our map reload the sync resumes
 TAKE_OVER = 60                       # frames the sync must then hold on its own for the fix to count
 MASK_RECT = [30, 76, 28, 92]       # thumbnail rows 30-67, cols 28-91: the storm's tornado sprite, the
                                      # catch cutscene's text box and the tornado-over-camera dark dip; the
@@ -79,7 +79,7 @@ def try_fix(D: int, sync) -> tuple | None:
     if not ks:
         return None
     p0 = b.press_gf
-    hi = C2 + RESUME_AFTER + 16
+    hi = C2 + MAX_TAIL + 16
     pk = ks[:D - p0 + 1]                               # the path's own keys, to the loss
     lv = pk[-1][1]
     keys = list(pk) + [(b.key(lv + int(round(k * sync.bm.RATE))), lv + int(round(k * sync.bm.RATE)))
@@ -183,7 +183,8 @@ def try_fix(D: int, sync) -> tuple | None:
     pokes = first_catch + \
             [[C2 - 8, f'{fa4:#x}={(0xC4 & ~0x02) | 0x08:#04x}/1'],
              [C2 - 2, pins(second, pos2, C2 - 1)], [C2 - 1, pins(second, pos2, C2)],
-             [C2 + 1, f'{fa4:#x}=0xC4/1']]
+             [C2 + 1, f'{fa5:#x}=0x21/1'],                    # dissipate, as after the first catch (a disarm
+             [C2 + 8, f'{fa5:#x}=0x20/1,' + f'{fa4:#x}=0xC4/1']]  # at C2 + 1 cleared 0xBE6 too: no cutscene)
 
     # the guard: MegaMan's per-frame place through the second catch must be exactly the staged replay's
     pos3 = mm_track(pokes, C2 + 1)
@@ -199,20 +200,30 @@ def try_fix(D: int, sync) -> tuple | None:
     # the sync just after the second catch's white flash (R), and leaves D..R as a FREE window (pathcheck
     # skips it).  The guards above stand in for the picture: MegaMan's per-frame place equals the staged
     # replay's, and both captures fire at the video's frames.
-    R = C2 + RESUME_AFTER
-    if R - p0 >= len(keys):
-        log(f'  tornado nocatch: the keys end before the resume frame {R}')
-        return None
+    # the window runs on past the second catch until the comp ends and the map reloads (its put-back cutscene
+    # and the reload cannot be compared either: the clouds differ until the map changes), then RELOAD_SETTLE
+    # frames more: the sync resumes on the new map
     sync.set_emu_pokes(pokes)
     e.load(w0[1])
-    node, caught = w0[5], []
-    for g in range(W, R):
+    node, caught, here, reload_at = w0[5], [], bytes(e.read(syms.GS_MAP, 2)), None
+    g = W
+    while g < C2 + MAX_TAIL and (reload_at is None or g < reload_at + RELOAD_SETTLE):
         k, v = keys[g - p0]
         e.step(k)
         node = sync.bm.Node(k, v, node)
-        if e.read(fa4, 1)[0] & 0x02 and (not caught or caught[-1] < g - 30):
-            caught.append(g + 1)                       # a capture ran (0xBE6 set) on reaching frame g + 1
+        g += 1
+        if e.read(fa4, 1)[0] & 0x02 and (not caught or caught[-1] < g - 31):
+            caught.append(g)                           # a capture ran (0xBE6 set) on reaching frame g
+        if reload_at is None and g > C2 and bytes(e.read(syms.GS_MAP, 2)) != here:
+            reload_at = g
     sync.set_emu_pokes()
+    R = g
+    vids = [sync.b.T[min(max(keys[x - p0][1], 0), sync.b.N - 1)].mean() for x in range(C2, R)]
+    vdark = next((C2 + i for i, m in enumerate(vids) if i > 30 and (m < 20 or m > 235)), None)
+    log(f'  tornado nocatch: our map reloads at {reload_at}; the video fades (dark/bright) first at {vdark}')
+    if reload_at is None:
+        log(f'  tornado nocatch: the comp did not end within {MAX_TAIL} frames of the second catch')
+        return None
     if caught[:2] != [C1, C2]:
         log(f'  tornado nocatch: the played window captured at {caught} (wanted {C1} and {C2}): recipe off')
         return None
