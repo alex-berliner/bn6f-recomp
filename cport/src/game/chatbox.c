@@ -412,7 +412,7 @@ static void chatbox_runScript_impl(u32 toolkit, u32 archive, u32 script_idx) {
 
     /* Mirror the character index and set the page-transfer counter. */
     ST8(chatbox + CHATBOX_COPY_CHAR_OFFSET, LD8(chatbox + oChatbox_TextScriptCharIdx));
-    ST32(chatbox + oChatbox_Unk_90, 0xD);
+    ST32(chatbox + oChatbox_InitialUnk_90, 0xD);
 
     /* Queue the tilemap BG transfer and copy tile/font data. */
     queue_gfx_transfer(A_dword_86BEB20, 0x600DC80, GFX_TRANSFER_SIZE);
@@ -1556,7 +1556,7 @@ static ChatboxEbOptionResult chatbox_eb_option_run(u32 optionDef, u32 chatbox) {
     set_chatbox_flags_3e(FLAGS_3E_UNK_0010);
     ST16(chatbox + oChatbox_BoxYX, 0xA);
 
-    u32 count = LD32(chatbox + oChatbox_Unk_80);
+    u32 count = LD32(chatbox + oChatbox_ChoiceSlotCount);
     u32 entryOff = 0xA0 + count * 0x10;
 
     ST8(chatbox + entryOff,     LD8(optionDef + 1));
@@ -1567,7 +1567,7 @@ static ChatboxEbOptionResult chatbox_eb_option_run(u32 optionDef, u32 chatbox) {
     ST32(chatbox + entryOff + 8, unk70);
 
     count++;
-    ST32(chatbox + oChatbox_Unk_80, count);
+    ST32(chatbox + oChatbox_ChoiceSlotCount, count);
     ST8(chatbox + oChatbox_ChoicesPageTag, (u8)count);
     ST8(chatbox + oChatbox_ChoiceCursorPos, 0);
     ST8(chatbox + entryOff + 0xC, LD8(chatbox + oChatbox_BoxGfxLoadState_0F));
@@ -1579,12 +1579,12 @@ static ChatboxEbOptionResult chatbox_eb_option_run(u32 optionDef, u32 chatbox) {
 }
 
 /* chatbox_EB_option(r1 = unused, r4 = option definition, r5 = chatbox)
- * -> r0 = 1, r1 = oChatbox_Unk_80, r2 = entry offset + 0xC, r3 = oChatbox_TileBufferOffset word,
+ * -> r0 = 1, r1 = oChatbox_ChoiceSlotCount, r2 = entry offset + 0xC, r3 = oChatbox_TileBufferOffset word,
  *    r4 = optionDef + 4, nz/c/v from ADDS r4, #4. */
 Next chatbox_EB_option(void) {
     ChatboxEbOptionResult res = chatbox_eb_option_run(R4, R5);
     R0 = 1;
-    R1 = oChatbox_Unk_80;
+    R1 = oChatbox_ChoiceSlotCount;
     R2 = res.r2;
     R3 = res.r3;
     R4 = res.r4;
@@ -2264,7 +2264,7 @@ static ClearMsgboxResult clear_msgbox(u32 script_ptr, u32 chatbox) {
     ST8(chatbox + oChatbox_CurrLine, 0);
     ST8(chatbox + oChatbox_MugshotAnimTableIdx, 0);
     ST8(chatbox + oChatbox_DroppedName, 0);
-    ST32(chatbox + oChatbox_Unk_80, 0);
+    ST32(chatbox + oChatbox_ChoiceSlotCount, 0);
     ST32(chatbox + oChatbox_PrintDelay, 4);
     ST8(chatbox + oChatbox_JumpTableOffset_11, 1);
     ST32(chatbox + oChatbox_ScriptFlags, 1);

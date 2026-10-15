@@ -820,8 +820,8 @@ Next object_presentCollisionData(void) {
     /* Merge the flags still pending in the collision data with the ones the
      * current collision produced, then store the new flags passed in r1. */
     u32 flagsFromCollision = LD32(coll + oCollisionData_FlagsFromCollision);
-    u32 mergedFlags = LD32(coll + oCollisionData_Unk_54) | flagsFromCollision;
-    ST32(coll + oCollisionData_Unk_54, newFlags);
+    u32 mergedFlags = LD32(coll + oCollisionData_CollisionFlagsAccumulator) | flagsFromCollision;
+    ST32(coll + oCollisionData_CollisionFlagsAccumulator, newFlags);
 
     R0 = mergedFlags;
     R2 = flagsFromCollision;
@@ -832,7 +832,7 @@ Next object_presentCollisionData(void) {
          * the pending collision flags. */
         ST8(coll + oCollisionData_HitModifierFinal, 0);
         ST8(coll + 3, 0);
-        ST32(coll + oCollisionData_Unk_54, 0);
+        ST32(coll + oCollisionData_CollisionFlagsAccumulator, 0);
     }
 
     /* Always clear the resolved status effect and zero the object's
@@ -1089,10 +1089,10 @@ Next battle_clearObjectStatusFlagsAndTimers_801A264(void) {
     u32 collision = LD32(R5 + oBattleObject_CollisionDataPtr);
     R3 = collision;
 
-    ST16(collision + oCollisionData_Unk_1c, 0);
-    ST16(collision + oCollisionData_Unk_1e, 0);
+    ST16(collision + oCollisionData_StatusEffectTimer1, 0);
+    ST16(collision + oCollisionData_StatusEffectTimer, 0);
     ST16(collision + oCollisionData_BlindTimer, 0);
-    ST16(collision + oCollisionData_Unk_22, 0);
+    ST16(collision + oCollisionData_StatusEffectTimer8, 0);
     ST16(collision + oCollisionData_HitInvulTimer, 0);
     ST16(collision + oCollisionData_HitStunTimer, 0);
 
@@ -1102,7 +1102,7 @@ Next battle_clearObjectStatusFlagsAndTimers_801A264(void) {
 /* ── battle_object_clearFlagsAndCollisionCounter_801A284 ── */
 /* battle_object_clearFlagsAndCollisionCounter_801A284(r5 = battle object):
  * Clear the object's 0x800 status flag and its secondary flag 8, then zero
- * the halfword at oCollisionData_Unk_1c of its collision data.
+ * the halfword at oCollisionData_StatusEffectTimer1 of its collision data.
  * Returns r3 = pointer to the object's collision data. */
 Next battle_object_clearFlagsAndCollisionCounter_801A284(void) {
     R0 = 0x800;
@@ -1112,7 +1112,7 @@ Next battle_object_clearFlagsAndCollisionCounter_801A284(void) {
     GUEST_CALL(object_clearFlag2);
 
     u32 collision = LD32(R5 + oBattleObject_CollisionDataPtr);
-    ST16(collision + oCollisionData_Unk_1c, 0);
+    ST16(collision + oCollisionData_StatusEffectTimer1, 0);
     R3 = collision;
 
     RETURN_TO_CALLER();
@@ -1469,8 +1469,8 @@ Next battleObject_applyStatusEffect_801A554(void) {
 Next battle_ClearObjectCollisionResult_801A5E2(void) {
     u32 collisionData = LD32(R5 + oBattleObject_CollisionDataPtr);
 
-    ST32(collisionData + oCollisionData_Unk_48, 0);
-    ST32(collisionData + oCollisionData_Unk_48 + 4, 0); /* offset 0x4C */
+    ST32(collisionData + oCollisionData_LastHitObjectPtr, 0);
+    ST32(collisionData + oCollisionData_LastHitObjectPtr + 4, 0); /* offset 0x4C */
 
     RETURN_TO_CALLER();
 }

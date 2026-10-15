@@ -2312,7 +2312,7 @@ Next sub_800E994(void) {
  * Leaves r1/r2 as object_clearFlag left them (callers expect that). */
 Next object_clearInvulnerableTime(void) {
     u32 collisionData = LD32(R5 + oBattleObject_CollisionDataPtr);
-    ST16(collisionData + oCollisionData_Unk_28, 0);
+    ST16(collisionData + oCollisionData_InvulnerabilityTimer, 0);
 
     R0 = 8;
     GUEST_CALL(object_clearFlag);

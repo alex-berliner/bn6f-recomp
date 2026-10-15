@@ -2717,7 +2717,7 @@ static void clear_collision_damage(u32 c) {
     ST8(c + oCollisionData_HitModifierFinal, 0);
     ST8(c + oCollisionData_StatusEffectFinal, 0);
     ST16(c + 0xA4, 0);
-    ST16(c + oCollisionData_Unk_1c, 0);
+    ST16(c + oCollisionData_StatusEffectTimer1, 0);
     ST16(c + oCollisionData_HitInvulTimer, 0);
     ST16(c + oCollisionData_HitStunTimer, 0);
     ST32(c + oCollisionData_FlagsFromCollision,

@@ -965,7 +965,7 @@ Next battle_refreshNaviSpritePaletteFromForm_80100EC(void) {
 /* battle_tickCollisionTimer_8010162: tick the collision timer of the battle object whose pointer
  * lives at [r5 + oBattleObject_CollisionDataPtr].
  *
- * The halfword counter at oCollisionData_Unk_26 counts down once per call,
+ * The halfword counter at oCollisionData_HitCountdown counts down once per call,
  * unless it is parked at 0xFFFF. When the count reaches zero, sound effect
  * 0x94 plays. Afterwards the object's flags are tested for 0x400000: if that
  * bit is set, flag bit 4 is cleared, otherwise flag bit 4 is set.
@@ -986,7 +986,7 @@ Next battle_tickCollisionTimer_8010162(void) {
     R4 = col;    /* the flag routines below expect the collision pointer in r4 */
     R2 = 0xFFFF; /* dword_8010228: sentinel value carried in r2 */
 
-    u32 timer = LD16(col + oCollisionData_Unk_26);
+    u32 timer = LD16(col + oCollisionData_HitCountdown);
     if (timer != 0xFFFF) {
         if (timer == 0) {
             /* Counter already expired: skip the countdown, just drop bit 4. */
@@ -996,7 +996,7 @@ Next battle_tickCollisionTimer_8010162(void) {
             RETURN_TO_CALLER();
         }
         timer--;
-        ST16(col + oCollisionData_Unk_26, timer);
+        ST16(col + oCollisionData_HitCountdown, timer);
         if (timer == 0) {
             /* Countdown finished on this tick: play the warning sound. */
             R0 = 0x94;
@@ -1029,10 +1029,10 @@ Next battle_objectClearPendingHitIfCollisionProcessed_8010198(void) {
     R3 = collision;
 
     /* Nothing queued this frame? */
-    if (LD16(collision + oCollisionData_Unk_26) != 0) {
+    if (LD16(collision + oCollisionData_HitCountdown) != 0) {
         /* Only consume the hit if it produced collision effects. */
         if (LD32(collision + oCollisionData_FlagsFromCollision) != 0)
-            ST16(collision + oCollisionData_Unk_26, 0);
+            ST16(collision + oCollisionData_HitCountdown, 0);
     }
     RETURN_TO_CALLER();
 }
@@ -1044,7 +1044,7 @@ Next battle_objectClearPendingHitIfCollisionProcessed_8010198(void) {
 Next battle_resetCollisionState_80101C4(void) {
     u32 collision = LD32(R5 + oBattleObject_CollisionDataPtr);
 
-    ST16(collision + oCollisionData_Unk_26, 0);
+    ST16(collision + oCollisionData_HitCountdown, 0);
 
     R0 = 4;
     R1 = collision;
