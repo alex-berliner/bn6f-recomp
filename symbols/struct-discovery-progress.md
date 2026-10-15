@@ -542,3 +542,36 @@ Recomp commit pending.
 | oGameState_Unk_15 | u8 | `SavedByte` | hypothesis |
 
 Running total: 1 + 20 + 20 + 19 + 16 + 20 + 20 + 20 + 20 + 20 + 19 = **195 fields named**.
+
+## Batch 12 (20 fields, 2026-10-15)
+
+bn6f commits: `b9fbe7a5` (.inc), `c8e36299` (asm renames).
+Recomp commit pending.
+
+| Field | Old | New | Status |
+|---|---|---|---|
+| oChatbox_Unk_80 | u8 | `ChoiceSlotCount` | probable |
+| oChatbox_Unk_90 | u32 | `InitialUnk_90` | probable |
+| oCollisionData_Unk_03 | u8 | `HitFlagMask` | probable |
+| oCollisionData_Unk_15 | u8 | `SavedHitModifier` | hypothesis |
+| oCollisionData_Unk_17 | u8 | `BarrierRelatedValue` | hypothesis |
+| oCollisionData_Unk_1b | u8 | `BarrierBreakCooldown` | hypothesis |
+| oCollisionData_Unk_1a_1b | u16 | `BarrierCounterU16` | probable |
+| oCollisionData_Unk_1c | u16 | `StatusEffectTimer1` | hypothesis |
+| oCollisionData_Unk_1e | u16 | `StatusEffectTimer` | hypothesis |
+| oCollisionData_Unk_22 | u16 | `StatusEffectTimer8` | probable |
+| oCollisionData_Unk_26 | u16 | `HitCountdown` | probable |
+| oCollisionData_Unk_28 | u16 | `InvulnerabilityTimer` | probable |
+| oCollisionData_Unk_48 | u32 | `LastHitObjectPtr` | hypothesis |
+| oCollisionData_Unk_54 | u32 | `CollisionFlagsAccumulator` | hypothesis |
+| oCollisionData_Unk_60 | u32 | `StunSubTimer` | hypothesis |
+| oCollisionData_Unk_64 | u32 | `ExtraElementDamage` | hypothesis |
+| oCollisionData_Unk_6c | u32 | `CollisionFlags` | hypothesis |
+| oCollisionData_Unk_78 | u32 | `ElecElementDamageAccumulator` | hypothesis |
+| oCamera_Unk_02 | u8 | `Mode` | probable |
+| oCamera_Unk_03 | u8 | `ShakeEffectIndex` | hypothesis |
+
+Notes:
+- `BarrierCounterU16` for oCollisionData_Unk_1a_1b avoids name collision with the existing `BarrierBreakCounter` (which is the u8 view of the same bytes).
+
+Running total: 1 + 20 + 20 + 19 + 16 + 20 + 20 + 20 + 20 + 20 + 19 + 20 = **215 fields named**.
