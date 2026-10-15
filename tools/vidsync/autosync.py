@@ -1237,7 +1237,13 @@ PLUGINS = []
 for _path in sorted(_glob.glob(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'handlers', '[!_]*.py'))):
     _spec = importlib.util.spec_from_file_location('vidsync_handler_' + os.path.basename(_path)[:-3], _path)
     _mod = importlib.util.module_from_spec(_spec); _spec.loader.exec_module(_mod)
-    PLUGINS.append((_mod.NAME, lambda D, _m=_mod: _m.try_fix(D, sys.modules[__name__])))
+    def _guarded(D, _m=_mod):
+        try:
+            return _m.try_fix(D, sys.modules[__name__])
+        except Exception as e:   # a broken handler must not stop the driver: log it, skip it
+            log(f'  handler {_m.NAME} failed: {type(e).__name__}: {e}')
+            return None
+    PLUGINS.append((_mod.NAME, _guarded))
 if PLUGINS: log('handlers from handlers/:', ' '.join(name for name, _ in PLUGINS))
 
 LAST_FIX = [None, None]       # (loss, handler) of the last fix
