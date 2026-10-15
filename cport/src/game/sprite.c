@@ -150,25 +150,25 @@ Next sprite_initialize(void) {
     R0 = base + 4;
     SET_FLAGS_ADD(base, 4);
 
-    ST32(obj + oObjectSprite_Unk_18, R0);
+    ST32(obj + oObjectSprite_AnimationResourcePtr, R0);
 
     /* clear state, timers and coordinates */
     ST8 (obj + 3, 0);
     ST8 (obj + 0, 0);
-    ST32(obj + oObjectSprite_Unk_24, 0);
+    ST32(obj + oObjectSprite_SpriteRenderDataPtr, 0);
     ST8 (obj + 4, 0);
     ST16(obj + oObjectSprite_SpriteExtraBytes, 0);
     ST16(obj + 6, 0);
-    ST32(obj + oObjectSprite_Unk_2c, 0);
+    ST32(obj + oObjectSprite_ScriptParam, 0);
     ST16(obj + oObjectSprite_Unk_10, 0);
     ST16(obj + oObjectSprite_FrameCounter, 0);
     ST8 (obj + oObjectSprite_InitFlag, 0);
     ST8 (obj + 5, 0);
-    ST32(obj + oObjectSprite_Unk_30, 0);
-    ST32(obj + oObjectSprite_Unk_34, 0);
+    ST32(obj + oObjectSprite_SpriteFlags4Ptr, 0);
+    ST32(obj + oObjectSprite_ScratchByte, 0);
 
     /* no active frame: all bits set */
-    ST32(obj + oObjectSprite_Unk_28, 0xFFFFFFFF);
+    ST32(obj + oObjectSprite_SpriteAttrs2Ptr, 0xFFFFFFFF);
 
     /* default 8x8 sprite cell */
     ST8 (obj + oObjectSprite_OamAttributes, 8);

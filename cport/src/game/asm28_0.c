@@ -278,7 +278,7 @@ run_default:
     GUEST_CALL(chatbox_uncompMapTextArchives_803FD3C);
     {
         u32 gs      = LD32(R10 + oToolkit_GameStatePtr);
-        u32 scrIdx  = LD8(gs + oGameState_Unk_15);
+        u32 scrIdx  = LD8(gs + oGameState_SavedByte);
         R0 = scrIdx;
         GUEST_CALL(chatbox_runTrainScript);
     }

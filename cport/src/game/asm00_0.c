@@ -1281,7 +1281,7 @@ Next sub_80010EC(void) {
 /* ── gameState_setUnk09_8001172 ── */
 /* gameState_setUnk09_8001172(r0 = value, r10 = toolkit):
  * Store the byte value into the game state at offset 9 (field after
- * oGameState_Unk_15's group; no named macro exists for this offset),
+ * oGameState_SavedByte's group; no named macro exists for this offset),
  * with the game state pointer read from the toolkit struct.
  * Leaves the game state pointer in r3. */
 Next gameState_setUnk09_8001172(void) {
@@ -1628,7 +1628,7 @@ static u32 render_display_registers(u32 tk) {
     u32 ri = LD32(tk + oToolkit_RenderInfoPtr);
 
     /* Mosaic size (halfword at RenderInfo+2) -> MOSAIC register */
-    ST16(A_MosaicSize, LD16(ri + oRenderInfo_Unk_02));
+    ST16(A_MosaicSize, LD16(ri + oRenderInfo_MosaicSize));
 
     /* BG0 control block: 0x38 bytes starting at RenderInfo+4 */
     call_copy_words(ri + 4, A_BG0Control, 0x38);
@@ -1678,7 +1678,7 @@ Next SetRenderInfoLCDControl(void) {
 Next GetRenderInfoLCDControl(void) {
     u32 renderInfo = LD32(R10 + 8 /* oToolkit_RenderInfoPtr */);
 
-    R0 = LD16(renderInfo + 0 /* oRenderInfo_Unk_00 */);
+    R0 = LD16(renderInfo + 0 /* oRenderInfo_LCDControl */);
     RETURN_TO_CALLER();
 }
 
@@ -1695,8 +1695,8 @@ Next renderInfo_8001788(void) {
     ST16(renderInfo + oRenderInfo_Unk_0e, 0);
     ST16(renderInfo + oRenderInfo_BGScrollXOffset, 0);
     ST16(renderInfo + oRenderInfo_BGScrollY, 0);
-    ST16(renderInfo + oRenderInfo_Unk_14, 0);
-    ST16(renderInfo + oRenderInfo_Unk_16, 0);
+    ST16(renderInfo + oRenderInfo_BG1ScrollXAlt, 0);
+    ST16(renderInfo + oRenderInfo_BGScrollY2, 0);
     /* the original writes 0x1A before 0x18; the order has no visible effect */
     ST16(renderInfo + oRenderInfo_BG3ScrollY, 0);
     ST16(renderInfo + oRenderInfo_BG2ScrollX, 0);
@@ -1711,7 +1711,7 @@ Next renderInfo_8001788(void) {
 Next renderInfo_80017A0(void) {
     u32 renderInfo = LD32(R10 + 8 /* oToolkit_RenderInfoPtr */);
     R1 = 0;
-    ST16(renderInfo + 2 /* oRenderInfo_Unk_02 */, R1);
+    ST16(renderInfo + 2 /* oRenderInfo_MosaicSize */, R1);
     RETURN_TO_CALLER();
 }
 

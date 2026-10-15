@@ -94,7 +94,7 @@ Next chatbox_runScript_803FD78(void) {
      * dst  = &chatbox->Unk_68, where chatbox = R10->ChatboxPtr
      * copy 8 bytes (4 halfwords) */
     R0 = A_byte_803FD94;
-    R1 = LD32(R10 + oToolkit_ChatboxPtr) + oChatbox_Unk_68;
+    R1 = LD32(R10 + oToolkit_ChatboxPtr) + oChatbox_NextScriptDesc;
     R2 = 8;
     GUEST_CALL(CopyHalfwords);
 
@@ -376,7 +376,7 @@ static void chatbox_runScript_impl(u32 toolkit, u32 archive, u32 script_idx) {
     ST8(chatbox + 8, 2);
     ST32(chatbox + oChatbox_TextScriptSourcePtr, A_unk_200B2B0);
     ST8(chatbox + oChatbox_BoxYX, 1);
-    ST32(chatbox + oChatbox_Unk_74, 1);
+    ST32(chatbox + oChatbox_ScriptFlags, 1);
     ST8(chatbox + oChatbox_JumpTableOffset_11, 1);
     ST32(chatbox + oChatbox_PrintDelay, 4);
 
@@ -582,7 +582,7 @@ static u32 chatbox_config(u32 chatbox, u32 script_idx, u32 *out_r1) {
 
     /* Set jump-table offset / Unk_74 to 1. */
     ST8(chatbox + oChatbox_JumpTableOffset_11, 1);
-    ST32(chatbox + oChatbox_Unk_74, 1);
+    ST32(chatbox + oChatbox_ScriptFlags, 1);
 
     /* Mirror the current text-coordinate into unk_94. */
     u32 text_coord = LD8(chatbox + oChatbox_TextScriptCharIdx);
@@ -1232,7 +1232,7 @@ static ButtonHaltResult chatbox_buttonhalt(u32 self, u32 script, u32 prev_script
         clear_3e_flags(FLAGS_3E_UNK_0020 | FLAGS_3E_UNK_0001_chatbox_E7_buttonhalt);
         ST8(self + oChatbox_TextScriptState_04, 0);
         ST16(self + oChatbox_BoxYX, 0);
-        ST32(self + oChatbox_Unk_74, 1);
+        ST32(self + oChatbox_ScriptFlags, 1);
         out.script = script + 2; /* skip the opcode and its operand byte */
     }
     return out;
@@ -2267,7 +2267,7 @@ static ClearMsgboxResult clear_msgbox(u32 script_ptr, u32 chatbox) {
     ST32(chatbox + oChatbox_Unk_80, 0);
     ST32(chatbox + oChatbox_PrintDelay, 4);
     ST8(chatbox + oChatbox_JumpTableOffset_11, 1);
-    ST32(chatbox + oChatbox_Unk_74, 1);
+    ST32(chatbox + oChatbox_ScriptFlags, 1);
 
     /* Carry the current character index over to Unk_94, then have the
      * shared buffer routine reset and clear the print buffers. */

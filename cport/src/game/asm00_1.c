@@ -1741,7 +1741,7 @@ static void reset_state_for_new_location(u32 toolkit) {
     ST8(gs + oGameState_EnterMapFadeParam2,    0x10);
     ST8(gs + oGameState_CoordInteractionValue, 0);
     ST8(gs + 3,                                0);  /* Unk_03 */
-    ST8(gs + oGameState_Unk_15,                0);
+    ST8(gs + oGameState_SavedByte,                0);
     ST8(gs + oGameState_BattlePaused,          0);
     ST32(gs + oGameState_Unk_74,              0);
 
@@ -2492,7 +2492,7 @@ static struct EnterMapExit enter_map(u32 toolkit) {
     call_sub_8001172(0);
 
     /* Clear leftover interaction/coordination state from the previous map. */
-    ST8(game_state + oGameState_Unk_15, 0);
+    ST8(game_state + oGameState_SavedByte, 0);
     ST8(game_state + oGameState_CoordInteractionValue, 0);
     ST8(game_state + 3 /* oGameState_Unk_03 */, 0);
     ST32(game_state + oGameState_Unk_68, 0);

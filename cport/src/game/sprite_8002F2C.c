@@ -54,7 +54,7 @@ Next obj_getSpriteFlag10AndRenderInfoHigh_8002F3E(void) {
     u32 flag = LD8(sprite + 0x11) & 0x10; /* oObjectSprite_SpriteFlags */
 
     u32 renderInfo = LD32(R10 + 8); /* oToolkit_RenderInfoPtr */
-    u32 value = LD16(renderInfo + 2) & ~0xFFu; /* oRenderInfo_Unk_02 */
+    u32 value = LD16(renderInfo + 2) & ~0xFFu; /* oRenderInfo_MosaicSize */
 
     R0 = value >> 8;
     R2 = flag;
@@ -111,7 +111,7 @@ Next sprite_noShadow(void) {
 /* sprite_setUnk0x2c(r0 = value, r5 = object header):
  * The object header's TypeAndSpriteOffset byte (offset 2) holds the sprite ID
  * in its high nibble. Compute the address of the object's sprite struct from
- * that ID and store the value into its field at oObjectSprite_Unk_2c.
+ * that ID and store the value into its field at oObjectSprite_ScriptParam.
  * Leaves r3 pointing at that sprite struct; flags come from the address add. */
 Next sprite_setUnk0x2c(void) {
     u32 typeAndSprite = LD8(R5 + 2);            /* oObjectHeader_TypeAndSpriteOffset */
@@ -120,7 +120,7 @@ Next sprite_setUnk0x2c(void) {
     R3 = spriteId + R5;
     SET_FLAGS_ADD(spriteId, R5);
 
-    ST32(R3 + oObjectSprite_Unk_2c, R0);
+    ST32(R3 + oObjectSprite_ScriptParam, R0);
     RETURN_TO_CALLER();
 }
 
@@ -133,7 +133,7 @@ Next sprite_setUnk0x2c(void) {
 Next sprite_getUnk0x2c(void) {
     u32 spriteOffset = LD8(R5 + 2) & 0xF0;
 
-    R0 = LD32(R5 + spriteOffset + oObjectSprite_Unk_2c);
+    R0 = LD32(R5 + spriteOffset + oObjectSprite_ScriptParam);
     SET_FLAGS_ADD(spriteOffset, R5);
 
     RETURN_TO_CALLER();
