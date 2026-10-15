@@ -146,7 +146,7 @@ static u32 ow_player_process_action(u32 player_obj, u32 toolkit) {
     /* Begin scene transition: set flag, clear state, queue jumptable */
     ST8(anim_struct + oAnimState_TransitionFlag, 2);
     u32 game_state = LD32(toolkit + oToolkit_GameStatePtr);
-    ST8(game_state + oGameState_Unk_10, 0);
+    ST8(game_state + oGameState_OWPlayerBusyOrCutscene, 0);
     ST8(player_obj + oOWPlayerObject_Unk_07, 0);
 
     return call_set_jumptable(0x10, game_state);
@@ -528,7 +528,7 @@ Next ow_gatePendingTileInteraction_809DED4(void) {
 /* ow_tryTileInteraction_809DF00(r5 = overworld player object, r10 = toolkit):
  * Called when the player tries to interact with the tile in front of them.
  * ow_findInteractableNPC_809E01C checks whether tile interaction is currently blocked (e.g. by
- * a cutscene); if so, the game state byte oGameState_Unk_10 is set to 1 and
+ * a cutscene); if so, the game state byte oGameState_OWPlayerBusyOrCutscene is set to 1 and
  * the function returns 1. Otherwise the tile's interaction value
  * (oOWPlayerObject_Unk_0f) is copied into oGameState_CoordInteractionValue,
  * and if it is nonzero it is also latched into game state offset 0x03, then
@@ -540,7 +540,7 @@ Next ow_tryTileInteraction_809DF00(void) {
     if (R0 == 0) {
         /* Interaction is blocked: flag the state and report "blocked". */
         R7 = LD32(R10 + oToolkit_GameStatePtr);
-        ST8(R7 + oGameState_Unk_10, 1);
+        ST8(R7 + oGameState_OWPlayerBusyOrCutscene, 1);
         R0 = 1;
     } else {
         /* Interaction allowed: forward the tile's interaction value. */
@@ -1352,7 +1352,7 @@ Next MakeOWPlayerInvisible(void) {
 
 /* ── owPlayer_isBusyOrCutsceneActive_809E462 ── */
 /* owPlayer_isBusyOrCutsceneActive_809E462:
- * Reads the flag byte at oGameState_Unk_10 from the current game state.
+ * Reads the flag byte at oGameState_OWPlayerBusyOrCutscene from the current game state.
  * Returns r0 = that byte, r1 = game state pointer, and sets NZ flags on it
  * so callers can branch on whether the flag is zero. */
 Next owPlayer_isBusyOrCutsceneActive_809E462(void) {
@@ -1360,7 +1360,7 @@ Next owPlayer_isBusyOrCutsceneActive_809E462(void) {
     u32 gameState = LD32((u32)toolkit + oToolkit_GameStatePtr);
 
     R1 = gameState;
-    R0 = LD8(gameState + oGameState_Unk_10);
+    R0 = LD8(gameState + oGameState_OWPlayerBusyOrCutscene);
     SET_FLAGS_NZ(R0);
     RETURN_TO_CALLER();
 }

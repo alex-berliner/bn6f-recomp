@@ -897,8 +897,8 @@ Next ai_setBeastOutPwrAtk_800FFAA(void) {
  * Leaves r1 = updated field value, r3 = AI data pointer, NZ set on r1. */
 Next ClearAIData_Unk_44_Flag(void) {
     u32 *aiData = (u32 *)LD32(R5 + oBattleObject_AIDataPtr);
-    u32 flags = LD32((u32)aiData + oAIData_Unk_44) & ~R0;
-    ST32((u32)aiData + oAIData_Unk_44, flags);
+    u32 flags = LD32((u32)aiData + oAIData_AIFlags) & ~R0;
+    ST32((u32)aiData + oAIData_AIFlags, flags);
     R1 = flags;
     R3 = (u32)aiData;
     SET_FLAGS_NZ(flags);
@@ -908,10 +908,10 @@ Next ClearAIData_Unk_44_Flag(void) {
 /* ── GetAIData_Unk_44_Flag ── */
 /* GetAIData_Unk_44_Flag(r5 = battle object):
  * Loads the object's AI data pointer and returns its unknown-44 flag.
- * Outputs: r0 = oAIData_Unk_44 value, r3 = AI data pointer. */
+ * Outputs: r0 = oAIData_AIFlags value, r3 = AI data pointer. */
 Next GetAIData_Unk_44_Flag(void) {
     R3 = LD32(R5 + oBattleObject_AIDataPtr);
-    R0 = LD32(R3 + oAIData_Unk_44);
+    R0 = LD32(R3 + oAIData_AIFlags);
     RETURN_TO_CALLER();
 }
 
@@ -1169,8 +1169,8 @@ Next battle_tickAiSelfDrain_8010230(void) {
  * Leaves r1 = updated word and r3 = AI data pointer for the caller. */
 Next SetAIDataUnk0x48Flag(void) {
     u32 *aiData = (u32 *)LD32(R5 + oBattleObject_AIDataPtr);
-    u32 flags = LD32((u32)aiData + oAIData_Unk_48) | R0;
-    ST32((u32)aiData + oAIData_Unk_48, flags);
+    u32 flags = LD32((u32)aiData + oAIData_Flags) | R0;
+    ST32((u32)aiData + oAIData_Flags, flags);
     R1 = flags;
     R3 = (u32)aiData;
     RETURN_TO_CALLER();

@@ -1750,7 +1750,7 @@ static void reset_state_for_new_location(u32 toolkit) {
 
     /* Clear per-map interaction flags */
     ST8(gs + oGameState_Unk_11,                0);
-    ST8(gs + oGameState_Unk_10,                0);
+    ST8(gs + oGameState_OWPlayerBusyOrCutscene,                0);
 
     /* Map-transition tracking byte */
     ST8(0x200F410, 0);
@@ -2114,7 +2114,7 @@ static void init_new_game_data(u32 toolkit) {
     ST32(gs + oGameState_SavedRealWorldMapId, INITIAL_MAP_GROUP);
     ST32(gs + 0x58, INITIAL_MAP_GROUP);
     ST8(gs + oGameState_GameProgress, 0);
-    ST8(gs + oGameState_Unk_07, 0);
+    ST8(gs + oGameState_MapSubArea, 0);
     ST8(gs + oGameState_Unk_08, 0);
     ST32(gs + oGameState_PlayerX, 0);
     ST32(gs + oGameState_SavedRealWorldX, 0);

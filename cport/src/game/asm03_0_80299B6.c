@@ -2344,7 +2344,7 @@ Next battle_updateSlotBestRecords_802C9B8(void) {
 /* ── battle_syncEffectSlotBetweenBuffers_802C9EA ── */
 /* battle_syncEffectSlotBetweenBuffers_802C9EA: keep the halfword at +8 of the two effect buffers
  * (unk_2035260 / unk_203526C) in sync. Which buffer is source and which is
- * destination depends on oBattleState_Unk_10 in the current battle state.
+ * destination depends on oBattleState_LoserSide in the current battle state.
  * If the value read from the source is 0xFFFF, it is replaced by the result
  * of sub_80AABA4(byte at dst+1) before being written back. The whole thing
  * only runs when GetBattleEffects() reports effect bit 3. */
@@ -2359,7 +2359,7 @@ Next battle_syncEffectSlotBetweenBuffers_802C9EA(void) {
         R7 = A_unk_2035260;
 
         u32 battleState = LD32(R10 + oToolkit_BattleStatePtr);
-        if (LD8(battleState + oBattleState_Unk_10) != 0) {
+        if (LD8(battleState + oBattleState_LoserSide) != 0) {
             /* Swapped direction: unk_2035260 -> unk_203526C. */
             R6 = A_unk_2035260;
             R7 = A_unk_203526C;

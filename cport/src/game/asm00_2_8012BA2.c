@@ -2932,8 +2932,8 @@ static u32 battle_phase_advance(u32 obj) {
     u32 dy_raw, phase_raw;
     u32 dx_raw = call_sub_800E45E(&dy_raw, &phase_raw);
 
-    ST8(obj + oBattleObject_Unk_1c, dx_raw);
-    ST8(obj + oBattleObject_Unk_1d, dy_raw);
+    ST8(obj + oBattleObject_ContactPanelOffsetX, dx_raw);
+    ST8(obj + oBattleObject_ContactOffsetY, dy_raw);
     ST8(obj + oBattleObject_PhaseInitialized, phase_raw);
 
     if (phase_raw != 0) {

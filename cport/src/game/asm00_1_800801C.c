@@ -122,7 +122,7 @@ static u32 update_battle_end_wait(u32 controller, u32 toolkit, u32 preserved_r4)
 
         /* store the flipped outcome flag (win <-> lose) in the battle state */
         u32 battle = LD32(toolkit + oToolkit_BattleStatePtr);
-        ST8(battle + oBattleState_Unk_10, LD8(battle + oBattleState_PlayerSide) ^ 1);
+        ST8(battle + oBattleState_LoserSide, LD8(battle + oBattleState_PlayerSide) ^ 1);
 
         if (get_battle_effects_sub_800825A() & 8)        /* bit 3: the player lost */
             play_music(SONG_LOSER);
@@ -819,7 +819,7 @@ Next battle_DecrementAllianceCounterSlot4_800A104(void) {
  * alive actors that still get their turn. */
 Next relatedToIsBattleOver_800A11C(void) {
     u32 *battleState = (u32 *)LD32(R10 + oToolkit_BattleStatePtr);
-    u32 countSlot = (u32)LD8(R5 + oBattleObject_Alliance) + oBattleState_Unk_12;
+    u32 countSlot = (u32)LD8(R5 + oBattleObject_Alliance) + oBattleState_AliveAllianceCount;
 
     /* One fewer member of this actor's alliance. */
     ST8((u32)battleState + countSlot, (u8)LD8((u32)battleState + countSlot) - 1);
@@ -857,7 +857,7 @@ Next battle_getPhaseMode_800A152(void) {
 
     u32 battle = LD32(R10 + oToolkit_BattleStatePtr);
     u8 unk0d = LD8(battle + oBattleState_PlayerSide);
-    u8 unk04 = LD8(battle + 4); /* oBattleState_Unk_04 */
+    u8 unk04 = LD8(battle + 4); /* oBattleState_AliveActorTurnIndex */
 
     R2 = unk0d;
     R1 = unk04;
@@ -866,13 +866,13 @@ Next battle_getPhaseMode_800A152(void) {
         R0 = (unk0d != 0) ? 1 : 2;
         SET_FLAGS_NZ(unk0d);
     } else {
-        u8 unk05 = LD8(battle + 5); /* oBattleState_Unk_05 */
+        u8 unk05 = LD8(battle + 5); /* oBattleState_OpponentAliveCount */
         R1 = unk05;
         if (unk05 == 0) {
             R0 = (unk0d != 0) ? 2 : 1;
             SET_FLAGS_NZ(unk0d);
         } else {
-            R1 = LD8(battle + oBattleState_Unk_0b);
+            R1 = LD8(battle + oBattleState_BattleOverConditionFlag);
             R0 = (R1 != 0) ? 7 : 0;
             SET_FLAGS_NZ(R1);
         }
@@ -884,8 +884,8 @@ Next battle_getPhaseMode_800A152(void) {
 /* battle_isBattleOver: check whether the current battle should end.
  * Reads the battle state through the toolkit pointer in r10.
  * Returns r0 = 0 only when all end-of-battle conditions hold:
- * the two state flags (oBattleState_Unk_12/13) must be set and
- * oBattleState_Unk_0b must be clear; otherwise r0 = 1.
+ * the two state flags (oBattleState_AliveAllianceCount/13) must be set and
+ * oBattleState_BattleOverConditionFlag must be clear; otherwise r0 = 1.
  * r3 = the battle state pointer; r1 = the last flag byte examined;
  * flags reflect the last test. */
 Next battle_isBattleOver(void) {
@@ -893,7 +893,7 @@ Next battle_isBattleOver(void) {
 
     R3 = LD32(R10 + oToolkit_BattleStatePtr);
 
-    u32 flag12 = LD8(R3 + oBattleState_Unk_12);
+    u32 flag12 = LD8(R3 + oBattleState_AliveAllianceCount);
     R1 = flag12;
     SET_FLAGS_NZ(flag12);
     if (flag12 == 0)
@@ -905,7 +905,7 @@ Next battle_isBattleOver(void) {
     if (flag13 == 0)
         RETURN_TO_CALLER();
 
-    u32 flag0b = LD8(R3 + oBattleState_Unk_0b);
+    u32 flag0b = LD8(R3 + oBattleState_BattleOverConditionFlag);
     R1 = flag0b;
     SET_FLAGS_NZ(flag0b);
     if (flag0b != 0)

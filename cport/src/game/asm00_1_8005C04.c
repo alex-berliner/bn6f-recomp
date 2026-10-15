@@ -2211,7 +2211,7 @@ Next RemoveGivenAliveBattleActorFromList(void) {
  * state pointer; flags reflect the final address addition (adds r1, r1, r4).
  * r4 and r6 are saved and restored by the original, so they are preserved. */
 
-#define oBattleState_Unk_08 8    /* per-alliance entry counter base */
+#define oBattleState_AllianceEntryCount 8    /* per-alliance entry counter base */
 #define oBattleState_Unk_4C 0x4C /* per-alliance entry list base */
 
 Next battle_addObjectToAllianceEntryList_80077D2(void) {
@@ -2221,7 +2221,7 @@ Next battle_addObjectToAllianceEntryList_80077D2(void) {
     u32 alliance = LD16(R5 + oBattleObject_AllianceAndDirectionFlip);
 
     /* take (and increment) this alliance's next free entry slot */
-    u32 counterOffset = oBattleState_Unk_08 + alliance;
+    u32 counterOffset = oBattleState_AllianceEntryCount + alliance;
     u32 slot = LD8(battleState + counterOffset);
     ST8(battleState + counterOffset, slot + 1);
 
@@ -2283,7 +2283,7 @@ Next battle_main_8007800(void) {
      * R0 = raw state byte at offset 0x0A, R3 = effects count */
     R2 = R1;
     R1 = R0;
-    R0 = LD8(R5 + oBattleState_Unk_0a);
+    R0 = LD8(R5 + oBattleState_PauseFlag);
     R3 = effectsCount;
 
     /* TST R0, R0: sets N, Z from R0; C cleared; V unchanged */

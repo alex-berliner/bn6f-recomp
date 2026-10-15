@@ -461,7 +461,7 @@ static u32 npc_wait_close(u32 npc_ptr, u32 toolkit_ptr, u32 r7_in) {
 
     /* Path 2/3: read the close-animation gate from the game state. */
     u32 game_state_ptr = LD32(toolkit_ptr + oToolkit_GameStatePtr);
-    u8 anim_state = LD8(game_state_ptr + oGameState_Unk_10);
+    u8 anim_state = LD8(game_state_ptr + oGameState_OWPlayerBusyOrCutscene);
 
     if (anim_state != 0) {
         emit_tst_r0((u32)anim_state);

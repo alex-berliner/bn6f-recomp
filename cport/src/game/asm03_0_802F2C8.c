@@ -319,7 +319,7 @@ Next camera_updateDerivedOffsets_803007C(void) {
  * Unk_04 -> Unk_08 and Unk_06 -> Unk_0a. Returns r1 = the second halfword. */
 Next camera_SavePosition_803011A(void) {
     R1 = LD16(R5 + 4);              /* oCamera_ScrollX: current x */
-    ST16(R5 + 8, R1);               /* oCamera_Unk_08: saved x */
+    ST16(R5 + 8, R1);               /* oCamera_SavedScrollX: saved x */
     R1 = LD16(R5 + 6);              /* oCamera_CameraYInt: current y */
     ST16(R5 + oCamera_Unk_0a, R1);  /* oCamera_Unk_0a: saved y */
     RETURN_TO_CALLER();
@@ -366,7 +366,7 @@ Next camera_applyScrollToBgLayers_8030158(void) {
     u32 inR4 = R4, inR6 = R6, inR7 = R7;
 
     /* camera current minus previous position:
-     * oCamera_ScrollX/06 = current X/Y, oCamera_Unk_08/oCamera_Unk_0a = previous X/Y */
+     * oCamera_ScrollX/06 = current X/Y, oCamera_SavedScrollX/oCamera_Unk_0a = previous X/Y */
     u32 scrollX = LD16(R5 + 4) - LD16(R5 + 8);
     u32 scrollY = LD16(R5 + 6) - LD16(R5 + oCamera_Unk_0a);
 
