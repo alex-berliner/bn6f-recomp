@@ -635,3 +635,33 @@ Recomp commit pending.
 | oGameState_Unk_03 | u8 | `ChipDescDirtyFlag` | hypothesis |
 
 Running total: 1 + 20 + 20 + 19 + 16 + 20 + 20 + 20 + 20 + 20 + 19 + 20 + 20 + 20 = **255 fields named**.
+
+## Batch 15 (20 fields, 2026-10-15)
+
+bn6f commits: `80ceb88a` (.inc), `aed41812` (asm renames).
+Recomp commit pending.
+
+| Field | Old | New | Status |
+|---|---|---|---|
+| oCutsceneState_Unk_34 | ptr | `DefaultScriptTable` | hypothesis |
+| oCollisionData_Unk_7c | u32 | `CollisionFlagsAccumulated` | hypothesis |
+| oScreenFade_Unk_03 | u8 | `ActiveFlag` | probable |
+| oS20364C0_Unk_3a | u16 | `CursorAnimPhase` | hypothesis |
+| oS20364C0_Unk_1a | u8 | `EmotionSpriteVariant` | hypothesis |
+| oS20364C0_Unk_14 | u8 | `TickCounter` | probable |
+| oS20364C0_Unk_10 | u16 | `ChipSelectScrollTimer` | hypothesis |
+| oS20364C0_Unk_0b | u8 | `CustMenuStepTimer` | hypothesis |
+| oS2001c04_Unk_07 | u8 | `CurPETNaviId` | probable |
+| oS2000aa0_Unk_03 | u8 | `OWPlayerNaviInternetFlag` | hypothesis |
+| oPanelData_Unk_04 | u8 | `StatusOrVariant` | probable |
+| oPalette20097a0_Unk_08 | u32 | `PalettePointerOrIndex` | hypothesis |
+| oPalette20097a0_Unk_04 | u32 | `SourceAddress` | hypothesis |
+| oPalette20097a0_Unk_02 | u8 | `ColorCountOrDepth` | probable |
+| oPalette20097a0_Unk_01 | u8 | `Priority` | hypothesis |
+| oOverworldNPCObject_Unk_70 | u32 | `NextYBackup` | probable |
+| oOverworldNPCObject_Unk_1e | u8 | `MovementFlagBackup` | probable |
+| oOverworldNPCObject_Unk_1d | u8 | `CurActionBackup` | probable |
+| oOverworldMapObject_Unk_08 | u32 | `ObjectPtr` | hypothesis |
+| oLogoScreenState_Unk_05 | u8 | `State` | hypothesis |
+
+Running total: 1 + 20 + 20 + 19 + 16 + 20 + 20 + 20 + 20 + 20 + 19 + 20 + 20 + 20 + 20 = **275 fields named**.
