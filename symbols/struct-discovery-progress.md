@@ -322,3 +322,34 @@ C structs regenerated via tools/abi/gen_structs.py. The recomp C port
 files (cport/src/game/*.c) were updated by tools/rename_symbol.py
 which in turn re-ran the lifter against the renamed asm. Symdb check
 ~3575 entries, 0 problems. Gate: ok in 10.4 s.
+
+## Batch 5 (16 fields, 2026-10-15)
+
+bn6f commits: `dff38f7b`, `101f5141` (8), `565238b7`, `8c158a71`, `9e574819` (8).
+Recomp commit pending.
+
+| Field | Old | New | Status |
+|---|---|---|---|
+| oAIAttackVars_Unk_0a | u8 | `ExtraDamage` | hypothesis |
+| oCamera_Unk_04 | u16 | `ScrollX` | probable |
+| oCamera_Unk_06 | u16 | `CameraYInt` | probable |
+| oChatbox_Unk_78 | u32 | `PrintDelay` | probable |
+| oAIAttackVars_Unk_1b | u8 | `IsInvincible` | probable |
+| oBattleObject_Unk_1f | u8 | `AIType` | probable |
+| oCollisionData_Unk_2c | u16 | `HitStunTimer` | probable |
+| oBattleState_Unk_19 | u8 | `CustGaugeChargeLevel` | probable |
+| oBattleState_Unk_a0 | u0 | `BattleObjectList` | probable |
+| oRenderInfo_Unk_1a | u16 | `BG3ScrollY` | probable |
+| oCollisionData_Unk_2a | u16 | `HitInvulTimer` | probable |
+| oBattleState_Unk_1e | u8 | `BustingLevelCategory` | probable |
+| oChatbox_Unk_4C | u32 | `TextParam1` | probable |
+| oAIData_Unk_74 | ptr | `SpawnedSourceObjectPtr` | hypothesis |
+| oAIData_Unk_60 | ptr | `SubordinateObjectPtr` | hypothesis |
+| oAIAttackVars_Unk_1d | u8 | `PwrAtkState` | probable |
+
+Notes:
+- `ExtraDamage` for oAIAttackVars_Unk_0a (was `AttackElement` per LLM, but conflicts with the existing oAIAttackVars_AttackElement at offset 0x1).
+- `HitInvulTimer` for oCollisionData_Unk_2a (was `HitStunTimer` per LLM, but conflicts with the Unk_2c rename).
+- 2 AIData ptr fields (`SpawnedSourceObjectPtr`, `SubordinateObjectPtr`) are hypothesis because ptr-type Unk fields often have multiple roles.
+
+Running total: 1 + 20 + 20 + 19 + 16 = **76 fields named**.
