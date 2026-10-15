@@ -2200,11 +2200,11 @@ static void run_closing_scene(u32 work, u32 toolkit) {
     u8 mode = LD8(work + 0xD);
 
     /* bit 0 of the mode byte picks a word store into the game state (+0x78)
-     * or a byte store into oGameState_Unk_13 */
+     * or a byte store into oGameState_PendingByte */
     if (mode & 1)
         ST32(game_state + 0x78, exit_value);
     else
-        ST8(game_state + oGameState_Unk_13, (u8)exit_value);
+        ST8(game_state + oGameState_PendingByte, (u8)exit_value);
 
     /* the original re-reads the mode byte here rather than reusing the value */
     u8 mode_reread = LD8(work + 0xD);

@@ -157,12 +157,12 @@ Next sprite_initialize(void) {
     ST8 (obj + 0, 0);
     ST32(obj + oObjectSprite_Unk_24, 0);
     ST8 (obj + 4, 0);
-    ST16(obj + oObjectSprite_Unk_0a, 0);
+    ST16(obj + oObjectSprite_SpriteExtraBytes, 0);
     ST16(obj + 6, 0);
     ST32(obj + oObjectSprite_Unk_2c, 0);
     ST16(obj + oObjectSprite_Unk_10, 0);
-    ST16(obj + oObjectSprite_Unk_12, 0);
-    ST8 (obj + oObjectSprite_Unk_14, 0);
+    ST16(obj + oObjectSprite_FrameCounter, 0);
+    ST8 (obj + oObjectSprite_InitFlag, 0);
     ST8 (obj + 5, 0);
     ST32(obj + oObjectSprite_Unk_30, 0);
     ST32(obj + oObjectSprite_Unk_34, 0);
@@ -172,7 +172,7 @@ Next sprite_initialize(void) {
 
     /* default 8x8 sprite cell */
     ST8 (obj + oObjectSprite_OamAttributes, 8);
-    ST16(obj + oObjectSprite_Unk_16, 8);
+    ST16(obj + oObjectSprite_CurFrame, 8);
 
     RETURN_TO_CALLER();
 }
@@ -475,12 +475,12 @@ Next sprite_makeUnscalable(void) {
 
     ST8(sprite + oObjectSprite_SpriteFlags, R0 & ~R1);
 
-    R0 = LD8(sprite + oObjectSprite_Unk_13);
+    R0 = LD8(sprite + oObjectSprite_SpriteFlags3);
     R2 = R0;
     R1 = 0x3E;
     R0 = (R0 & R1) >> 1;                /* bit index within the flag word */
     R2 &= ~R1;
-    ST8(sprite + oObjectSprite_Unk_13, R2);
+    ST8(sprite + oObjectSprite_SpriteFlags3, R2);
     GUEST_CALL(flags_clearFlagWordBit_802FE6A);
 
     R5 = object;                        /* pop {r5} restores the header pointer */
@@ -500,7 +500,7 @@ Next sprite_getPalette(void) {
     u32 spriteData = header + spriteOffset;
 
     R3 = spriteData;
-    R0 = LD8(spriteData + 4 /* oObjectSprite_Unk_04 */);
+    R0 = LD8(spriteData + 4 /* oObjectSprite_PaletteIndex */);
     RETURN_TO_CALLER();
 }
 
@@ -679,7 +679,7 @@ Next sprite_setColorShader(void) {
     /* Sprite block base = header + (typeAndSpriteOffset high nibble << 4) */
     u32 spriteBlock = header + (LD8(header + oObjectHeader_TypeAndSpriteOffset_sprite_setColorShader) & 0xF0);
 
-    ST16(spriteBlock + oObjectSprite_Unk_06, shaderId);
+    ST16(spriteBlock + oObjectSprite_ColorShader, shaderId);
 
     R3 = spriteBlock;
     SET_FLAGS_ADD(spriteBlock, header); /* ADDS r3, r3, r5 */

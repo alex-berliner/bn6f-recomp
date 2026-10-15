@@ -58,12 +58,12 @@ Next sprite_setFlip(void) {
     SET_FLAGS_ADD(spriteOffset, R5); /* matches "add r3, r3, r5"; N/Z/C get overwritten below */
 
     /* set the flip bits (0x30) in sprite byte 0x13 */
-    u32 flipped = (LD8(sprite + oObjectSprite_Unk_13) & ~0x30) | (flipMode << 4);
-    ST8(sprite + oObjectSprite_Unk_13, flipped);
+    u32 flipped = (LD8(sprite + oObjectSprite_SpriteFlags3) & ~0x30) | (flipMode << 4);
+    ST8(sprite + oObjectSprite_SpriteFlags3, flipped);
 
     /* mirror the flip bits into sprite byte 0x16, replacing its old ones */
-    R1 = (LD8(sprite + oObjectSprite_Unk_16) & ~0x30) | (flipped & 0x30);
-    ST8(sprite + oObjectSprite_Unk_16, R1);
+    R1 = (LD8(sprite + oObjectSprite_CurFrame) & ~0x30) | (flipped & 0x30);
+    ST8(sprite + oObjectSprite_CurFrame, R1);
 
     R0 = 0x30;
     R2 = flipped & 0x30;

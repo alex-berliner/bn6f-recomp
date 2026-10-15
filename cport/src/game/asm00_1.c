@@ -1749,7 +1749,7 @@ static void reset_state_for_new_location(u32 toolkit) {
     ST8(gs + oGameState_BGMusicIndicator,     0x63);
 
     /* Clear per-map interaction flags */
-    ST8(gs + oGameState_Unk_11,                0);
+    ST8(gs + oGameState_CoordInteractionTriggered,                0);
     ST8(gs + oGameState_OWPlayerBusyOrCutscene,                0);
 
     /* Map-transition tracking byte */
@@ -2002,7 +2002,7 @@ static void init_new_game_data(u32 toolkit) {
     ST32(gs + oGameState_Unk_6c, 0xFFFFFFFF);
     ST32(gs + oGameState_Unk_70, 0xFFFFFFFF);
     ST32(gs + oGameState_CurBattleDataPtr, 0);
-    ST8(gs + oGameState_Unk_02, 0);
+    ST8(gs + oGameState_SavedChipDescByte, 0);
     ST8(gs + oGameState_CurPETNavi, 0);
     ST8(gs + oGameState_Unk_12, 0xFF);
 
@@ -2029,7 +2029,7 @@ static void init_new_game_data(u32 toolkit) {
     call_encryption_init();
     call_reset_key_items();
 
-    ST8(gs + oGameState_Unk_13, 0);
+    ST8(gs + oGameState_PendingByte, 0);
     ST32(gs + 0x78, 0);
 
     /* Overworld player / struct reset */

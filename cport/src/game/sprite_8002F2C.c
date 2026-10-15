@@ -73,7 +73,7 @@ Next sprite_getFlip(void) {
 
     /* oObjectHeader_SpriteOffset (byte at +2): sprite data offset, 16-aligned */
     u32 sprite = header + (LD8(header + 2) & 0xF0);
-    R0 = (LD8(sprite + oObjectSprite_Unk_16) & 0x30) >> 4;
+    R0 = (LD8(sprite + oObjectSprite_CurFrame) & 0x30) >> 4;
 
     RETURN_TO_CALLER();
 }

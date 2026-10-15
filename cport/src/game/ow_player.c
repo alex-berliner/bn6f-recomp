@@ -261,7 +261,7 @@ static void ow_player_input_tick(u32 player_r5, u32 toolkit_r10) {
     }
 
     u32 gamestate_ptr = LD32(toolkit_r10 + oToolkit_GameStatePtr);
-    if (LD8(gamestate_ptr + oGameState_Unk_11) != 0) {
+    if (LD8(gamestate_ptr + oGameState_CoordInteractionTriggered) != 0) {
         u32 facing = LD8(player_r5 + oOWPlayerObject_FacingDirection);
         u32 ptr = LD32(A_off_809DC0C + facing * 4);
         call_809DBC4(ptr, player_r5 + oOWPlayerObject_Unk_48);

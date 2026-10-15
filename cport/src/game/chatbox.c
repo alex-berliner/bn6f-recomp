@@ -350,16 +350,16 @@ static void chatbox_runScript_impl(u32 toolkit, u32 archive, u32 script_idx) {
 
     /* Preserve four fields across the zero-fill that resets the rest of the struct. */
     u32 saved_4C = LD32(chatbox + oChatbox_TextParam1);
-    u32 saved_50 = LD32(chatbox + oChatbox_Unk_50);
-    u32 saved_54 = LD32(chatbox + oChatbox_Unk_54);
-    u32 saved_58 = LD32(chatbox + oChatbox_Unk_58);
+    u32 saved_50 = LD32(chatbox + oChatbox_TextParam2);
+    u32 saved_54 = LD32(chatbox + oChatbox_ParamC);
+    u32 saved_58 = LD32(chatbox + oChatbox_TextParam4);
 
     zero_fill(chatbox, CHATBOX_SIZE);
 
     ST32(chatbox + oChatbox_TextParam1, saved_4C);
-    ST32(chatbox + oChatbox_Unk_50, saved_50);
-    ST32(chatbox + oChatbox_Unk_54, saved_54);
-    ST32(chatbox + oChatbox_Unk_58, saved_58);
+    ST32(chatbox + oChatbox_TextParam2, saved_50);
+    ST32(chatbox + oChatbox_ParamC, saved_54);
+    ST32(chatbox + oChatbox_TextParam4, saved_58);
 
     /* Store the script archive pointer and selected index. */
     ST32(chatbox + oChatbox_TextScriptPtr, archive);
@@ -374,7 +374,7 @@ static void chatbox_runScript_impl(u32 toolkit, u32 archive, u32 script_idx) {
     /* Configure initial display parameters. */
     ST8(chatbox, 1);
     ST8(chatbox + 8, 2);
-    ST32(chatbox + oChatbox_Unk_38, A_unk_200B2B0);
+    ST32(chatbox + oChatbox_TextScriptSourcePtr, A_unk_200B2B0);
     ST8(chatbox + oChatbox_BoxYX, 1);
     ST32(chatbox + oChatbox_Unk_74, 1);
     ST8(chatbox + oChatbox_JumpTableOffset_11, 1);
@@ -573,7 +573,7 @@ static u32 chatbox_config(u32 chatbox, u32 script_idx, u32 *out_r1) {
 
     /* Clear the small script-state fields. */
     ST8(chatbox + oChatbox_TextScriptState_04, 0);
-    ST32(chatbox + oChatbox_Unk_64, 0);
+    ST32(chatbox + oChatbox_TextScriptTimer, 0);
     ST8(chatbox + oChatbox_ChoicesPageTag, 0);
     ST8(chatbox + oChatbox_CurrLine, 0);
     ST8(chatbox + oChatbox_MugshotAnimTableIdx, 0);
@@ -2259,11 +2259,11 @@ static ClearMsgboxResult clear_msgbox(u32 script_ptr, u32 chatbox) {
     ST32(chatbox + oChatbox_CurrTextScriptPtr, script_ptr);
 
     ST8(chatbox + oChatbox_TextScriptState_04, 0);
-    ST32(chatbox + oChatbox_Unk_64, 0);
+    ST32(chatbox + oChatbox_TextScriptTimer, 0);
     ST8(chatbox + oChatbox_ChoicesPageTag, 0);
     ST8(chatbox + oChatbox_CurrLine, 0);
     ST8(chatbox + oChatbox_MugshotAnimTableIdx, 0);
-    ST8(chatbox + oChatbox_Unk_3D, 0);
+    ST8(chatbox + oChatbox_DroppedName, 0);
     ST32(chatbox + oChatbox_Unk_80, 0);
     ST32(chatbox + oChatbox_PrintDelay, 4);
     ST8(chatbox + oChatbox_JumpTableOffset_11, 1);
@@ -2678,7 +2678,7 @@ static ChatboxResult chatbox_load_text(u32 scriptPtr, u32 chatbox) {
 
     /* Advance past this 3-byte script command */
     u32 newScript = scriptPtr + 3;
-    ST32(chatbox + oChatbox_Unk_44, newScript);
+    ST32(chatbox + oChatbox_NextScriptCursorPtr, newScript);
 
     /* Store the script pointer at the per-line slot: base + (counter-1)*4 */
     u32 addend     = ((u32)counter - 1) * 4;
@@ -2764,7 +2764,7 @@ static ChatboxPushResult chatbox_push_text_level(u32 arg1, u32 arg2, u32 arg3, u
 
     /* when this level closes, resume the command list after this word */
     cmd += 4;
-    ST32(chat + oChatbox_Unk_44, cmd);
+    ST32(chat + oChatbox_NextScriptCursorPtr, cmd);
 
     /* stack the resume point for the level we just opened */
     u32 depth = LD8(chat + oChatbox_TextScriptDepth);  /* re-read: the callee may have changed it */
@@ -2832,7 +2832,7 @@ static u32 chatbox_advance(u32 script_ptr, u32 chatbox) {
     ST32(chatbox + oChatbox_TextScriptCursorPtr, dst);
 
     u32 new_ptr = script_ptr + 3;
-    ST32(chatbox + oChatbox_Unk_44, new_ptr);
+    ST32(chatbox + oChatbox_NextScriptCursorPtr, new_ptr);
 
     /* Save script position in the depth-indexed slot. */
     ST32(chatbox + 0x140 + (LD8(chatbox + oChatbox_TextScriptDepth) - 1) * 4, new_ptr);
@@ -3511,9 +3511,9 @@ Next chatbox_setTextParams_8045EFC(void) {
     u32 chatbox = LD32(R10 + oToolkit_ChatboxPtr);
 
     ST32(chatbox + oChatbox_TextParam1, R0);
-    ST32(chatbox + oChatbox_Unk_50, R1);
-    ST32(chatbox + oChatbox_Unk_54, R2);
-    ST32(chatbox + oChatbox_Unk_58, R3);
+    ST32(chatbox + oChatbox_TextParam2, R1);
+    ST32(chatbox + oChatbox_ParamC, R2);
+    ST32(chatbox + oChatbox_TextParam4, R3);
 
     RETURN_TO_CALLER();
 }
