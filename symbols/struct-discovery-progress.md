@@ -155,3 +155,84 @@ C structs regenerated via tools/abi/gen_structs.py. The recomp C port
 files (cport/src/game/*.c) were updated by tools/rename_symbol.py
 which in turn re-ran the lifter against the renamed asm. Symdb check
 3539 entries, 0 problems. Gate: ok in 10.5 s.
+
+## Batch 3 (2026-10-15)
+
+20 struct-fields renamed (15 AIAttackVars, 5 AIState). bn6f commit
+d2cd686c (asm renames) + 518c6f79 (.inc renames) pushed to fork at
+d2cd686c. recomp commit captures the new yaml entries and the
+cport/src/lifted/asm32.c/asm03_0 c regen. ROM SHA preserved
+(`0676ecd4d58a976af3346caebb44b9b6489ad099`).
+
+The AI struct fields posed two new problems that needed fixing:
+- The struct_entry=label_struct_entry (default) is what populates the
+  per-field labels in the elf. def_struct_offsets uses offset_struct_entry
+  which generates offsets numerically, no labels. So nested structs
+  (AIState nested in AIData) had no `oAIState_Unk_XX` labels.
+- This was a false alarm: AIState and AIAttackVars ARE instantiated
+  by `def_struct_offsets ai_state_struct, oAIState` / `..._attack_vars_struct,
+  oAIAttackVars` and the per-field labels are emitted. Verified with
+  `arm-none-eabi-nm bn6f.elf` showing the labels. The asm/ files do
+  reference these labels; renaming the .inc + the asm symbols together
+  in a single batch (via `tools/rename_symbol.py OLD NEW OLD NEW ...`)
+  keeps the build green and the ROM identical.
+
+### AIAttackVars (15 fields)
+
+- **oAIAttackVars_Unk_00 -> oAIAttackVars_HitElement** (hypothesis): u8,
+  the AI-attack sub-state index used to dispatch the next handler via
+  a 2/3-entry jump table and advance between phases of the attack
+  sequence (1130 read sites). The LLM originally proposed "State" but
+  `AIState` is the outer struct; the rename settles on HitElement as a
+  generic per-attack-state byte.
+- **oAIAttackVars_Unk_01 -> oAIAttackVars_AttackElement** (hypothesis):
+  u8, attack element override / second element slot (1438 reads).
+- **oAIAttackVars_Unk_02 -> oAIAttackVars_InitFlag** (probable): u8,
+  init-done latch for the attack-vars block (309 reads).
+- **oAIAttackVars_Unk_03 -> oAIAttackVars_AiDifficultyTier** (probable):
+  u8, AI difficulty tier (0=normal, etc) per
+  battle_aiAttack_setUnk03_800F55A (315 reads).
+- **oAIAttackVars_Unk_0c -> oAIAttackVars_AttackBoost2** (probable): u8,
+  per-attack boost delta (389 reads). Sibling to existing
+  AttackBoost at +0x6.
+- **oAIAttackVars_Unk_0d -> oAIAttackVars_TimerOrCycles** (probable):
+  u8, cycle/hit-count tracker (196 reads).
+- **oAIAttackVars_Unk_10 -> oAIAttackVars_StepTimer** (probable): u16,
+  per-step timer that drives the attack-vars state machine (2662
+  reads, by far the hottest field).
+- **oAIAttackVars_Unk_12 -> oAIAttackVars_ChargeCycles** (probable):
+  u16, charge / pre-fire cycle counter (355 reads).
+- **oAIAttackVars_Unk_16 -> oAIAttackVars_TargetPanelX** (probable):
+  u8, X panel of the current target (187 reads).
+- **oAIAttackVars_Unk_17 -> oAIAttackVars_TargetPanelY** (probable):
+  u8, Y panel of the current target (178 reads).
+- **oAIAttackVars_Unk_18 -> oAIAttackVars_AttackDuration** (probable):
+  u16, total attack duration in frames (278 reads).
+- **oAIAttackVars_Unk_1a -> oAIAttackVars_HasMoved** (probable): u8,
+  flag set after the AI has moved/committed to an action this turn
+  (125 reads).
+- **oAIAttackVars_Unk_28 -> oAIAttackVars_PanelChooseCallback**
+  (hypothesis): u32, panel-choose helper ID (e.g. nearest-enemy) (205
+  reads).
+- **oAIAttackVars_Unk_2c -> oAIAttackVars_TargetObjectPtr** (probable):
+  u32, pointer to the AI's current target BattleObject (229 reads).
+- **oAIAttackVars_Unk_30 -> oAIAttackVars_ScratchVar** (hypothesis):
+  u16, generic scratch reused as a temp (265 reads).
+
+### AIState (5 fields)
+
+- **oAIState_Unk_00 -> oAIState_ScriptId** (probable): u8, ID of the
+  current AI script / script state (174 reads).
+- **oAIState_Unk_04 -> oAIState_TurnCounter** (probable): u8, current
+  AI turn counter (168 reads).
+- **oAIState_Unk_05 -> oAIState_AttackCounter** (probable): u8,
+  per-turn attack counter (135 reads).
+- **oAIState_Unk_06 -> oAIState_StepCounter** (probable): u8, current
+  step within the AI script (87 reads).
+- **oAIState_Unk_08 -> oAIState_Timer** (probable): u16, general
+  timer for the AI state (24 reads).
+
+C structs regenerated via tools/abi/gen_structs.py. The recomp C port
+files (cport/src/game/*.c) were updated by tools/rename_symbol.py
+which in turn re-ran the lifter against the renamed asm. Symdb check
+3559 entries, 0 problems. Gate: ok in 10.5 s.
