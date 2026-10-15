@@ -383,3 +383,38 @@ Recomp commit pending.
 | oGameState_Unk_10 | u8 | `OWPlayerBusyOrCutscene` | probable |
 
 Running total: 1 + 20 + 20 + 19 + 16 + 20 = **96 fields named**.
+
+## Batch 7 (20 AIData fields, 2026-10-15)
+
+bn6f commits: `c5cc41fc` (.inc), `8174c8d0` (asm renames).
+Recomp commit pending.
+
+| Field | Old | New | Status |
+|---|---|---|---|
+| oAIData_Unk_02 | u8 | `DisableCounterDecrement` | probable |
+| oAIData_Unk_03 | u8 | `VersionVariant` | probable |
+| oAIData_Unk_04 | u8 | `NaviBonusIndex` | probable |
+| oAIData_Unk_09 | u8 | `PoisonTickCounter` | probable |
+| oAIData_Unk_0a | u8 | `SelfDestructTurnCounter` | probable |
+| oAIData_Unk_0b | u8 | `AIScratchByte` | probable |
+| oAIData_Unk_0c | u8 | `AiDifficultyTier` | hypothesis |
+| oAIData_Unk_0d | u8 | `ChargeShotStepIndex` | probable |
+| oAIData_Unk_0e | u8 | `AISubordinateSlot` | probable |
+| oAIData_Unk_0f | u8 | `BeastOutLockoutTimer` | probable |
+| oAIData_Unk_10 | u8 | `CounterHealDamage` | probable |
+| oAIData_Unk_12 | u8 | `CounterHitChain` | probable |
+| oAIData_Unk_13 | u8 | `BurstShotTimer` | probable |
+| oAIData_Unk_15 | u8 | `ChipUseDelayAlt` | probable |
+| oAIData_Unk_1a | u8 | `AttackTeardownScratch` | hypothesis |
+| oAIData_Unk_1c | u8 | `PanelDamageReactionFlag` | probable |
+| oAIData_Unk_2a | u16 | `FrozenJoypadReleased` | probable |
+| oAIData_Unk_2c | u16 | `TimeStopMirrorHeld` | probable |
+| oAIData_Unk_2e | u16 | `JoypadHeldPrev` | probable |
+| oAIData_Unk_30 | u16 | `JoypadFrozen` | probable |
+
+Notes:
+- 1 LLM-empty name (`""`) for oAIData_Unk_1a was overridden with `AttackTeardownScratch` (LLM couldn't determine the field's role).
+- The sed-based .inc edit initially overwrote the AIState/AIAttackVars sections (which share the same Unk_XX labels in a single AIData.inc file). Reverted those to keep the renames AIData-only.
+- The `oAIData_AiDifficultyTier` at offset 0xc is separate from the existing `oAIAttackVars_AiDifficultyTier` at AIAttackVars+0x3.
+
+Running total: 1 + 20 + 20 + 19 + 16 + 20 + 20 = **116 fields named**.
