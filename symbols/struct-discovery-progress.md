@@ -353,3 +353,33 @@ Notes:
 - 2 AIData ptr fields (`SpawnedSourceObjectPtr`, `SubordinateObjectPtr`) are hypothesis because ptr-type Unk fields often have multiple roles.
 
 Running total: 1 + 20 + 20 + 19 + 16 = **76 fields named**.
+
+## Batch 6 (20 fields, 2026-10-15)
+
+bn6f commits: `0480b3c4` (.inc), `bcccece9` (asm renames).
+Recomp commit pending.
+
+| Field | Old | New | Status |
+|---|---|---|---|
+| oAIData_Unk_40 | u32 | `TargetObjectPtr` | probable |
+| oAIData_Unk_44 | u32 | `AIFlags` | probable |
+| oAIData_Unk_48 | u32 | `Flags` | probable |
+| oAIData_Unk_50 | u32 | `SubordinateObjectUnk` | hypothesis |
+| oAIData_Unk_58 | u32 | `SubordinateAIObjectPtr` | hypothesis |
+| oBattleObject_Unk_1b | u8 | `PanelShiftCounter` | probable |
+| oBattleObject_Unk_1c | u8 | `ContactPanelOffsetX` | probable |
+| oBattleObject_Unk_1d | u8 | `ContactOffsetY` | probable |
+| oBattleObject_Unk_1e | u8 | `MoveToFuturePanelStepTimer` | probable |
+| oBattleState_Unk_04 | u8 | `AliveActorTurnIndex` | hypothesis |
+| oBattleState_Unk_05 | u8 | `OpponentAliveCount` | hypothesis |
+| oBattleState_Unk_08 | u8 | `AllianceEntryCount` | probable |
+| oBattleState_Unk_0a | u8 | `PauseFlag` | hypothesis |
+| oBattleState_Unk_0b | u8 | `BattleOverConditionFlag` | hypothesis |
+| oBattleState_Unk_0e | u8 | `PanelTurnCount` | hypothesis |
+| oBattleState_Unk_10 | u8 | `LoserSide` | probable |
+| oBattleState_Unk_12 | u8 | `AliveAllianceCount` | probable |
+| oCamera_Unk_08 | u16 | `SavedScrollX` | probable |
+| oGameState_Unk_07 | u8 | `MapSubArea` | probable |
+| oGameState_Unk_10 | u8 | `OWPlayerBusyOrCutscene` | probable |
+
+Running total: 1 + 20 + 20 + 19 + 16 + 20 = **96 fields named**.
