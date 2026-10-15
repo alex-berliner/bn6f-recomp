@@ -79,7 +79,7 @@ def try_fix(D: int, sync) -> tuple | None:
     if not ks:
         return None
     p0 = b.press_gf
-    hi = C2 + 16
+    hi = C2 + RESUME_AFTER + 16
     pk = ks[:D - p0 + 1]                               # the path's own keys, to the loss
     lv = pk[-1][1]
     keys = list(pk) + [(b.key(lv + int(round(k * sync.bm.RATE))), lv + int(round(k * sync.bm.RATE)))
@@ -201,6 +201,7 @@ def try_fix(D: int, sync) -> tuple | None:
     # replay's, and both captures fire at the video's frames.
     R = C2 + RESUME_AFTER
     if R - p0 >= len(keys):
+        log(f'  tornado nocatch: the keys end before the resume frame {R}')
         return None
     sync.set_emu_pokes(pokes)
     e.load(w0[1])
