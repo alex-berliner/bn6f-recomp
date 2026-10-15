@@ -522,7 +522,7 @@ Next sub_8009338(void) {
     if (R0 != 0) {
         R0 = LD32(R0 + oBattleObject_AIDataPtr);
         R1 = 1;
-        ST8(R0 + oAIData_Unk_0f, R1);
+        ST8(R0 + oAIData_BeastOutLockoutTimer, R1);
     }
 
     R0 = 1;
@@ -531,7 +531,7 @@ Next sub_8009338(void) {
     if (R0 != 0) {
         R0 = LD32(R0 + oBattleObject_AIDataPtr);
         R1 = 1;
-        ST8(R0 + oAIData_Unk_0f, R1);
+        ST8(R0 + oAIData_BeastOutLockoutTimer, R1);
     }
 
     /* Advance to battle state 12 and clear the counter halfword. */
@@ -794,12 +794,12 @@ Next input_recordStateChangeForEntry_800A0D6(void) {
 /* battle_DecrementAllianceCounterSlot4_800A104(r5 = battle object, r10 = toolkit):
  * Count down one of the alliance counters in the battle state (the slot
  * selected by this object's alliance + 4), but only while the AI data's
- * byte at offset oAIData_Unk_02 is zero. The decremented value is left
+ * byte at offset oAIData_DisableCounterDecrement is zero. The decremented value is left
  * in r2; if the early-out is taken, r2 is left untouched. */
 Next battle_DecrementAllianceCounterSlot4_800A104(void) {
     u32 aiData = LD32(R5 + oBattleObject_AIDataPtr);
 
-    if (LD8(aiData + 2 /* oAIData_Unk_02 */) == 0) {
+    if (LD8(aiData + 2 /* oAIData_DisableCounterDecrement */) == 0) {
         u32 battleState = LD32(R10 + oToolkit_BattleStatePtr);
         u32 slot = LD8(R5 + oBattleObject_Alliance) + 4;
 
@@ -1564,7 +1564,7 @@ Next sub_800A86E(void) {
         actor = LD32(slotPtr);
         if (actor != 0) {
             aiData = LD32(actor + oBattleObject_AIDataPtr);
-            R0 = LD8(aiData + oAIData_Unk_0e);
+            R0 = LD8(aiData + oAIData_AISubordinateSlot);
             if (R0 != 0xFF)
                 R1 = LD16(actor + oBattleObject_HP);
         }

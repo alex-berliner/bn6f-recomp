@@ -271,7 +271,7 @@ Next getBattleObjectPalette_800F334(void) {
     u32 aiData    = LD32(R5 + oBattleObject_AIDataPtr);
     u32 actorType = LD8(aiData);                    /* oAIData_ActorType is at offset 0 */
     u32 version   = LD8(aiData + oAIData_Version_16);
-    u32 unk03     = LD8(aiData + 3);                /* oAIData_Unk_03 */
+    u32 unk03     = LD8(aiData + 3);                /* oAIData_VersionVariant */
     u32 palette;
 
     if (actorType == ACTOR_TYPE_VIRUS) {
@@ -690,7 +690,7 @@ Next setChipsForPlayerObject_800FDEA(void) {
 /* ── battle_aiGetVersionedTableEntry_800FE12 ── */
 /* battle_aiGetVersionedTableEntry_800FE12(r0 = table base, r5 = battle object):
  * Reads one entry from the AI table at r0. For AI version 4 the table entry at
- * offset 8 is used and scaled by the byte at oAIData_Unk_0c; any other version
+ * offset 8 is used and scaled by the byte at oAIData_AiDifficultyTier; any other version
  * indexes the table with version * 2.
  * Returns r0 = value, r1 = AI data pointer, r2 = version * 2 / multiplier. */
 Next battle_aiGetVersionedTableEntry_800FE12(void) {
@@ -701,7 +701,7 @@ Next battle_aiGetVersionedTableEntry_800FE12(void) {
     R1 = aiData;
 
     if (version == 4) {
-        u32 mult = LD8(aiData + oAIData_Unk_0c);
+        u32 mult = LD8(aiData + oAIData_AiDifficultyTier);
         R0 = LD16(table + 8) * mult;
         R2 = mult;
     } else {
@@ -733,7 +733,7 @@ Next battle_getAiDifficultyTier_800FE36(void) {
         RETURN_TO_CALLER();
     }
 
-    u32 difficulty = LD8(aiData + oAIData_Unk_0c);
+    u32 difficulty = LD8(aiData + oAIData_AiDifficultyTier);
     R2 = difficulty;
 
     R0 = 0;
@@ -831,7 +831,7 @@ static void refresh_ai_data(u32 battle_object) {
         unk_04 = navi_stat_byte(0x44);   /* battle mode 9 has its own stat for this */
     else
         unk_04 = 0xFF;                   /* any other mode: "none" */
-    ST8(ai + oAIData_Unk_04, unk_04);
+    ST8(ai + oAIData_NaviBonusIndex, unk_04);
 
     ST8(ai + oAIData_BButton, navi_stat_byte(4));
 
@@ -1299,7 +1299,7 @@ static u32 per_frame_ai_update(u32 orig_r4, u32 battle_object_ptr) {
 
     u32 ai_data_ptr = LD32(battle_object_ptr + oBattleObject_AIDataPtr);
     tick_down_u8(ai_data_ptr + oAIData_ChipLockoutTimer);
-    tick_down_u8(ai_data_ptr + oAIData_Unk_15);
+    tick_down_u8(ai_data_ptr + oAIData_ChipUseDelayAlt);
 
     u8 alliance = LD8(battle_object_ptr + oBattleObject_Alliance);
     u32 entry = get_alliance_entry(alliance);

@@ -1167,7 +1167,7 @@ Next battleObject_resetCollisionState_801A2B0(void) {
 /* battle_toggleAllianceAndAccumulateCollisionToAiData_801A308 (r5 = battle object):
  * Flip the object's alliance (player <-> enemy), fetch the AI data block for
  * the new side via battle_getPlayerAIData_8010022, then add the collision halfword at
- * CollisionData+0x92 into the AI's byte at oAIData_Unk_10.
+ * CollisionData+0x92 into the AI's byte at oAIData_CounterHealDamage.
  * Preserves r4/r5/r6; returns nothing. */
 Next battle_toggleAllianceAndAccumulateCollisionToAiData_801A308(void) {
     u32 savedR4 = R4;
@@ -1181,7 +1181,7 @@ Next battle_toggleAllianceAndAccumulateCollisionToAiData_801A308(void) {
     /* Accumulate the collision value into the AI data byte. */
     u32 collisionData = LD32(object + oBattleObject_CollisionDataPtr);
     u32 collisionValue = LD16(collisionData + 0x92);
-    ST8(aiData + oAIData_Unk_10, LD8(aiData + oAIData_Unk_10) + collisionValue);
+    ST8(aiData + oAIData_CounterHealDamage, LD8(aiData + oAIData_CounterHealDamage) + collisionValue);
 
     R4 = savedR4;
     RETURN_TO_CALLER();
@@ -1660,7 +1660,7 @@ Next battle_aiAimTwoColumnsAheadOnSpecialPanel_801A75A(void) {
         target = R2 + 2;
         if ((s32)target > 7)
             target = 7;
-        ST8(R3 + oAIData_Unk_12, target);
+        ST8(R3 + oAIData_CounterHitChain, target);
         R4 = collisionData;      /* sub_801A77A expects the collision data pointer in r4 */
         GUEST_CALL(sub_801A77A);
         R4 = saved_r4;           /* restore the caller's r4, as the original's pop does */

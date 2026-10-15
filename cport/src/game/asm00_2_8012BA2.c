@@ -169,19 +169,19 @@ static JoypadResult update_navi_ai_joypad(u32 navi) {
     u32 r1_ts;
     if (!time_stop_active(&r1_ts)) {
         /* Time stop inactive: clear the secondary joypad mirror */
-        ST16(ai_data + oAIData_Unk_30, 0);
-        ST16(ai_data + oAIData_Unk_2a, 0);
-        ST16(ai_data + oAIData_Unk_2c, 0);
-        ST16(ai_data + oAIData_Unk_2e, 0);
+        ST16(ai_data + oAIData_JoypadFrozen, 0);
+        ST16(ai_data + oAIData_FrozenJoypadReleased, 0);
+        ST16(ai_data + oAIData_TimeStopMirrorHeld, 0);
+        ST16(ai_data + oAIData_JoypadHeldPrev, 0);
         return (JoypadResult){ r1_ts, prev_held, navi_buttons, navi };
     }
 
     /* Time stop active: update secondary joypad mirror with the same edge logic */
-    u32 old_unk = LD16(ai_data + oAIData_Unk_2a);
-    ST16(ai_data + oAIData_Unk_30, old_unk);
-    ST16(ai_data + oAIData_Unk_2a, navi_buttons);
-    ST16(ai_data + oAIData_Unk_2c, (~old_unk) & navi_buttons);
-    ST16(ai_data + oAIData_Unk_2e, (~navi_buttons) & old_unk);
+    u32 old_unk = LD16(ai_data + oAIData_FrozenJoypadReleased);
+    ST16(ai_data + oAIData_JoypadFrozen, old_unk);
+    ST16(ai_data + oAIData_FrozenJoypadReleased, navi_buttons);
+    ST16(ai_data + oAIData_TimeStopMirrorHeld, (~old_unk) & navi_buttons);
+    ST16(ai_data + oAIData_JoypadHeldPrev, (~navi_buttons) & old_unk);
     return (JoypadResult){ r1_ts, old_unk, navi_buttons, navi };
 }
 
@@ -762,7 +762,7 @@ Next applyChipAllianceEffect_8013AE4(void) {
 /* ── battle_aiAddCounterFromCollision_8013B20 ── */
 /* battle_aiAddCounterFromCollision_8013B20(r5 = battle object):
  * Checks two bytes of the object's collision data. When byte 0xA4 reports the
- * custom-bar/full-custom state (0x18), the AI's byte at oAIData_Unk_12 is
+ * custom-bar/full-custom state (0x18), the AI's byte at oAIData_CounterHitChain is
  * raised by the amount in collision byte 0xA5, saturating at 7.
  * Leaves r3 = collision data pointer; flags come from the last comparison
  * performed (TST on byte 0xA4 when it is zero, otherwise the CMP that decided
@@ -786,12 +786,12 @@ Next battle_aiAddCounterFromCollision_8013B20(void) {
     }
 
     /* Raise the AI counter by the given amount, saturating at 7. */
-    u32 counter = amount + LD8(ai + oAIData_Unk_12);
+    u32 counter = amount + LD8(ai + oAIData_CounterHitChain);
     SET_FLAGS_CMP(counter, 7);
     if (counter > 7)
         counter = 7;
     R2 = counter;
-    ST8(ai + oAIData_Unk_12, counter);
+    ST8(ai + oAIData_CounterHitChain, counter);
     RETURN_TO_CALLER();
 }
 
@@ -886,7 +886,7 @@ static void ai_navi_update(u32 battle_obj) {
     ai_action_a(0, 0x2C);
     ai_action_b();
 
-    u32 current_state = LD8(ai_data + oAIData_Unk_0b);
+    u32 current_state = LD8(ai_data + oAIData_AIScratchByte);
 
     /* Build 16-entry mark table:
      *  - weight[i] == current_state && state==0 → mark 1 (stay)
@@ -906,7 +906,7 @@ static void ai_navi_update(u32 battle_obj) {
     u32 rng_val = get_positive_rng();
     u32 index = swi6_mod(rng_val, 16);
     u32 new_state = mark[index];
-    ST8(ai_data + oAIData_Unk_0b, new_state);
+    ST8(ai_data + oAIData_AIScratchByte, new_state);
 
     /* Dispatch based on chosen state */
     if (new_state == 2) {
@@ -1063,11 +1063,11 @@ static void handle_panel_damage(u32 obj) {
      *   normal path  -> reset to 0
      *   anim-locked  -> set to 1, unless it's already 1 (then bail) */
     if (prevent_anim == 0) {
-        ST8(ai + oAIData_Unk_1c, 0);
+        ST8(ai + oAIData_PanelDamageReactionFlag, 0);
     } else {
-        if (LD8(ai + oAIData_Unk_1c) != 0)
+        if (LD8(ai + oAIData_PanelDamageReactionFlag) != 0)
             return;
-        ST8(ai + oAIData_Unk_1c, 1);
+        ST8(ai + oAIData_PanelDamageReactionFlag, 1);
     }
 
     dispatch_damage_handler(
@@ -1712,7 +1712,7 @@ Next battle_isObjectInSpecialAiState_80159A2(void) {
 
 /* ── battle_TickAIDataTimer0f_8015A16 ── */
 /* battle_TickAIDataTimer0f_8015A16(r0 = battle object):
- * Counts down the one-byte timer at oAIData_Unk_0f of the object's AI data.
+ * Counts down the one-byte timer at oAIData_BeastOutLockoutTimer of the object's AI data.
  * The timer is left alone when it is disabled (0xFF), already at zero, or when
  * the object's navi stats byte 0x29 is non-zero (i.e. the feature is off).
  *
@@ -1736,12 +1736,12 @@ Next battle_TickAIDataTimer0f_8015A16(void) {
         RETURN_TO_CALLER();
 
     u32 aiData = LD32(battleObject + oBattleObject_AIDataPtr);
-    u32 timer = LD8(aiData + oAIData_Unk_0f);
+    u32 timer = LD8(aiData + oAIData_BeastOutLockoutTimer);
     R1 = aiData;
 
     if (timer != 0xFF && timer != 0) {
         timer--;
-        ST8(aiData + oAIData_Unk_0f, timer);
+        ST8(aiData + oAIData_BeastOutLockoutTimer, timer);
     }
     R2 = timer;
 
