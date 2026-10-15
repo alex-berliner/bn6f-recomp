@@ -482,3 +482,33 @@ Recomp commit pending.
 | oObjectSprite_Unk_01 | u8 | `AnimFrameDuration` | probable |
 
 Running total: 1 + 20 + 20 + 19 + 16 + 20 + 20 + 20 + 20 = **156 fields named**.
+
+## Batch 10 (20 fields, 2026-10-15)
+
+bn6f commits: `eeb8df24` (.inc), `5995013d` (asm renames).
+Recomp commit pending.
+
+| Field | Old | New | Status |
+|---|---|---|---|
+| oBattleState_Unk_64 | u16 | `SpriteRenderFrameCounter` | hypothesis |
+| oChatbox_Unk_38 | u32 | `TextScriptSourcePtr` | hypothesis |
+| oChatbox_Unk_3D | u8 | `DroppedName` | hypothesis |
+| oChatbox_Unk_44 | u32 | `NextScriptCursorPtr` | probable |
+| oChatbox_Unk_50 | u32 | `TextParam2` | probable |
+| oChatbox_Unk_54 | u32 | `ParamC` | hypothesis |
+| oChatbox_Unk_58 | u32 | `TextParam4` | hypothesis |
+| oChatbox_Unk_64 | u16 | `TextScriptTimer` | hypothesis |
+| oGameState_Unk_02 | u8 | `SavedChipDescByte` | hypothesis |
+| oGameState_Unk_11 | u8 | `CoordInteractionTriggered` | hypothesis |
+| oGameState_Unk_13 | u8 | `PendingByte` | hypothesis |
+| oObjectSprite_Unk_02 | u8 | `AttributeFlags` | probable |
+| oObjectSprite_Unk_04 | u8 | `PaletteIndex` | probable |
+| oObjectSprite_Unk_05 | u8 | `PaletteRowIndex` | probable |
+| oObjectSprite_Unk_06 | u16 | `ColorShader` | probable |
+| oObjectSprite_Unk_0a | u16 | `SpriteExtraBytes` | hypothesis |
+| oObjectSprite_Unk_12 | u8 | `FrameCounter` | hypothesis |
+| oObjectSprite_Unk_13 | u8 | `SpriteFlags3` | probable |
+| oObjectSprite_Unk_14 | u8 | `InitFlag` | hypothesis |
+| oObjectSprite_Unk_16 | u16 | `CurFrame` | probable |
+
+Running total: 1 + 20 + 20 + 19 + 16 + 20 + 20 + 20 + 20 + 20 = **176 fields named**.
