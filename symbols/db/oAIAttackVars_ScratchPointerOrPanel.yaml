@@ -1,0 +1,57 @@
+name: oAIAttackVars_ScratchPointerOrPanel
+address: '0x3c'
+kind: struct-field
+status: probable
+summary: Scratch field reused per-attack — either a heap-allocated handle from sub_800FE28/sub_80D4C0A
+  or a small panel/counter value (e.g., ChargeCycles>>1, packed PanelXY), depending on the attack in progress.
+details: The same slot is loaded as a full 32-bit word in five places (e.g. `str r0, [r7,#oAIAttackVars_Unk_3c]`
+  after `bl sub_800FE28` at asm31:156508), strongly indicating a heap pointer — yet at asm32:10598 it
+  is written with `oBattleObject_PanelXY` (a packed 16-bit coordinate) and at asm31:175084 with `ChargeCycles>>1`
+  (a tiny loop threshold compared to `ChargeCycles`). These uses are incompatible for a single u8; the
+  field is shared scratch space across different attack routines.
+evidence:
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Stores the result of sub_800FE28 (a heap allocator) into the field — a 32-bit pointer handle,
+    not a u8.
+  refs:
+  - bn6f/asm/asm31.s:142298
+  reproduce: grep -n 'oAIAttackVars_Unk_3c' bn6f/asm/asm31.s | head
+  result: '"bl sub_800FE28 / str r0, [r7,#oAIAttackVars_Unk_3c]"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Another call storing a 32-bit return value here, again pointer-like.
+  refs:
+  - bn6f/asm/asm31.s:142298
+  reproduce: grep -n 'oAIAttackVars_Unk_3c' bn6f/asm/asm31.s | head
+  result: '"bl sub_80E8770 / str r0, [r7,#oAIAttackVars_Unk_3c]"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Yet another allocator-style return stored as a full word.
+  refs:
+  - bn6f/asm/asm31.s:142298
+  reproduce: grep -n 'oAIAttackVars_Unk_3c' bn6f/asm/asm31.s | head
+  result: '"bl sub_80D4C0A / str r0, [r7,#oAIAttackVars_Unk_3c]"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Stores a packed panel coordinate (X|Y<<8) here; later `cmp` against current PanelXY — so the
+    field holds a small panel-XY halfword in this routine.
+  refs:
+  - bn6f/asm/asm31.s:142298
+  reproduce: grep -n 'oAIAttackVars_Unk_3c' bn6f/asm/asm31.s | head
+  result: '"ldrh r0, [r5,#oBattleObject_PanelXY] / str r0, [r7,#oAIAttackVars_Unk_3c]"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Stores `ChargeCycles >> 1` (=2) as a comparison threshold against the running ChargeCycles —
+    a small counter/half-value, contradicting the pointer usage above.
+  refs:
+  - bn6f/asm/asm31.s:142298
+  reproduce: grep -n 'oAIAttackVars_Unk_3c' bn6f/asm/asm31.s | head
+  result: '"mov r0, #5 / strh r0, [r7,#oAIAttackVars_ChargeCycles] / lsr r0, r0, #1 / str r0, [r7,#oAIAttackVar'
+previous_names:
+- oAIAttackVars_Unk_3c
+changes:
+- date: '2026-10-15'
+  what: rename oAIAttackVars_Unk_3c -> oAIAttackVars_ScratchPointerOrPanel
+  where: bn6f c1151c67
+  tool: tools/rename_symbol.py

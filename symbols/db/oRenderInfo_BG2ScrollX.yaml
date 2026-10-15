@@ -1,0 +1,63 @@
+name: oRenderInfo_BG2ScrollX
+address: '0x18'
+kind: struct-field
+status: probable
+summary: Horizontal background scroll offset (BG2/BG3 layer X), snapshotted from the camera each frame
+  and accumulated with camera-delta for parallax/lag.
+details: 'In renderInfo_SnapScrollToCamera_8030316 and render_ClearScrollOffsets_8030336, Unk_18 is treated
+  as one of three parallel X-axis scroll slots (alongside Unk_10 and Unk_14), each receiving camera_Unk_04
+  masked with 0xFF — exactly the GBA BGxHOFF write pattern.
+
+  In camera_applyScrollToBgLayers_8030158, Unk_18 is loaded, added with the camera-delta r1, and stored
+  back alongside the matching Unk_1a (Y) — the per-frame scroll lag/parallax accumulator.
+
+  Three BGScrollCB_* functions (BG3Diagonal3to2, BG3SlowRight, BG3FastLeft) compute a shifted counter
+  value and write it into Unk_18, identifying it as the auto-scroll target for BG3 X.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: SnapScroll writes camera_Unk_04 & 0xFF into Unk_18 alongside the same value into Unk_10/Unk_14
+    — the third BG X-scroll slot.
+  refs:
+  - bn6f/asm/asm00_0.s:3158
+  reproduce: grep -n 'oRenderInfo_Unk_18' bn6f/asm/asm00_0.s | head
+  result: '"strh r1, [r3,#oRenderInfo_Unk_18]"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Camera scroll callback loads Unk_18 and adds the per-frame camera-delta — confirms it is an
+    accumulated horizontal scroll offset, paired with Unk_1a as its Y twin.
+  refs:
+  - bn6f/asm/asm00_0.s:3158
+  reproduce: grep -n 'oRenderInfo_Unk_18' bn6f/asm/asm00_0.s | head
+  result: '"ldrh r6, [r0,#oRenderInfo_Unk_18] / add r6, r6, r1 / strh r6, [r0,#oRenderInfo_Unk_18]"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: BGScrollCB_BG3SlowRightScroll writes (counter >> 4) into Unk_18 — i.e. this slot is the BG3
+    X auto-scroll target.
+  refs:
+  - bn6f/asm/asm00_0.s:3158
+  reproduce: grep -n 'oRenderInfo_Unk_18' bn6f/asm/asm00_0.s | head
+  result: '"strh r2, [r1,#oRenderInfo_Unk_18]"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: BGScrollCB_BG3Diagonal3to2Scroll writes the (counter-8) >> 4 value into Unk_18 while writing
+    (counter-4) >> 4 into Unk_1a — diagonal 3:2 X/Y auto-scroll confirming X/Y pairing.
+  refs:
+  - bn6f/asm/asm00_0.s:3158
+  reproduce: grep -n 'oRenderInfo_Unk_18' bn6f/asm/asm00_0.s | head
+  result: '"strh r2, [r1,#oRenderInfo_Unk_18]"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: render_ClearScrollOffsets_8030336 zeros Unk_18 together with the other scroll slots — consistent
+    with a renderable scroll register.
+  refs:
+  - bn6f/asm/asm00_0.s:3158
+  reproduce: grep -n 'oRenderInfo_Unk_18' bn6f/asm/asm00_0.s | head
+  result: '"strh r1, [r3,#oRenderInfo_Unk_18]"'
+previous_names:
+- oRenderInfo_Unk_18
+changes:
+- date: '2026-10-15'
+  what: rename oRenderInfo_Unk_18 -> oRenderInfo_BG2ScrollX
+  where: bn6f c1151c67
+  tool: tools/rename_symbol.py

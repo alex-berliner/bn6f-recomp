@@ -1693,13 +1693,13 @@ Next renderInfo_8001788(void) {
 
     ST16(renderInfo + oRenderInfo_Unk_0c, 0);
     ST16(renderInfo + oRenderInfo_Unk_0e, 0);
-    ST16(renderInfo + oRenderInfo_Unk_10, 0);
-    ST16(renderInfo + oRenderInfo_Unk_12, 0);
+    ST16(renderInfo + oRenderInfo_BGScrollXOffset, 0);
+    ST16(renderInfo + oRenderInfo_BGScrollY, 0);
     ST16(renderInfo + oRenderInfo_Unk_14, 0);
     ST16(renderInfo + oRenderInfo_Unk_16, 0);
     /* the original writes 0x1A before 0x18; the order has no visible effect */
     ST16(renderInfo + oRenderInfo_Unk_1a, 0);
-    ST16(renderInfo + oRenderInfo_Unk_18, 0);
+    ST16(renderInfo + oRenderInfo_BG2ScrollX, 0);
 
     RETURN_TO_CALLER();
 }
@@ -2145,8 +2145,8 @@ Next BGScrollCB_BG1Diagonal3to2Scroll(void) {
 
     /* r1 = toolkit render info pointer; store both scroll values there. */
     u32 renderInfo = LD32(R10 + oToolkit_RenderInfoPtr);
-    ST16(renderInfo + oRenderInfo_Unk_10, scrollX);
-    ST16(renderInfo + oRenderInfo_Unk_12, scrollY);
+    ST16(renderInfo + oRenderInfo_BGScrollXOffset, scrollX);
+    ST16(renderInfo + oRenderInfo_BGScrollY, scrollY);
 
     R1 = renderInfo;
     R2 = scrollX;
@@ -2178,7 +2178,7 @@ Next BGScrollCB_BG3Diagonal3to2Scroll(void) {
     u32 offsetY = counter1 >> 4;
 
     u32 renderInfo = LD32(R10 + 8);
-    ST16(renderInfo + oRenderInfo_Unk_18, offsetX);
+    ST16(renderInfo + oRenderInfo_BG2ScrollX, offsetX);
     ST16(renderInfo + oRenderInfo_Unk_1a, offsetY);
 
     R1 = renderInfo;
@@ -2208,7 +2208,7 @@ Next BGScrollCB_BG1UpScroll(void) {
     /* Convert counter to scroll position (divide by 16) and write it. */
     u32 scroll = counter >> 4;
     u32 renderInfoPtr = LD32(R10 + oToolkit_RenderInfoPtr);
-    ST16(renderInfoPtr + oRenderInfo_Unk_12, scroll);
+    ST16(renderInfoPtr + oRenderInfo_BGScrollY, scroll);
 
     RETURN_TO_CALLER();
 }

@@ -17,7 +17,7 @@
  * Clears the mosaic bit (0x10) in the object's sprite flag byte.
  * The sprite struct is selected by the high nibble of the object's
  * type/sprite-offset byte, so the flag byte lives at
- * r5 + (typeAndSpriteOffset & 0xF0) + oObjectSprite_Unk_11.
+ * r5 + (typeAndSpriteOffset & 0xF0) + oObjectSprite_SpriteFlags.
  * Leaves r0 = 0x10 (the cleared mask), r1 = new flag byte,
  * r3 = address of the sprite struct, and flags from the address add. */
 Next sprite_clearMosaic(void) {
@@ -30,8 +30,8 @@ Next sprite_clearMosaic(void) {
     R3 = sprite;
     SET_FLAGS_ADD(spriteOffset, obj);
 
-    u32 flags = LD8(sprite + oObjectSprite_Unk_11) & ~0x10;
-    ST8(sprite + oObjectSprite_Unk_11, flags);
+    u32 flags = LD8(sprite + oObjectSprite_SpriteFlags) & ~0x10;
+    ST8(sprite + oObjectSprite_SpriteFlags, flags);
 
     R0 = 0x10;
     R1 = flags;
@@ -51,7 +51,7 @@ Next obj_getSpriteFlag10AndRenderInfoHigh_8002F3E(void) {
     u32 spriteOffset = LD8(object + 2); /* oObjectHeader_SpriteOffset */
     u32 sprite = object + (spriteOffset & 0xF0);
 
-    u32 flag = LD8(sprite + 0x11) & 0x10; /* oObjectSprite_Unk_11 */
+    u32 flag = LD8(sprite + 0x11) & 0x10; /* oObjectSprite_SpriteFlags */
 
     u32 renderInfo = LD32(R10 + 8); /* oToolkit_RenderInfoPtr */
     u32 value = LD16(renderInfo + 2) & ~0xFFu; /* oRenderInfo_Unk_02 */
@@ -94,7 +94,7 @@ Next sprite_noShadow(void) {
     u32 sprite = R5 + (offset & ~0xFu);     /* round down to 16-byte record */
     SET_FLAGS_ADD(sprite, R5);
 
-    u32 attrs = LD8(sprite + 3);            /* oObjectSprite_Unk_03 */
+    u32 attrs = LD8(sprite + 3);            /* oObjectSprite_SpriteFlags2 */
     attrs |= 4;                             /* no-shadow bit on */
     attrs &= ~1u;                           /* bit 0 off */
     SET_FLAGS_NZ(attrs);

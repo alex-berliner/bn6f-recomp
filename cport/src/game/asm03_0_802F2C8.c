@@ -404,10 +404,10 @@ Next camera_applyScrollToBgLayers_8030158(void) {
     }
 
     R0 = LD32(R10 + 8); /* oToolkit_RenderInfoPtr, reloaded as in the original */
-    R6 = LD16(renderInfo + oRenderInfo_Unk_18) + scrollX;
+    R6 = LD16(renderInfo + oRenderInfo_BG2ScrollX) + scrollX;
     u32 baseY = LD16(renderInfo + oRenderInfo_Unk_1a);
     R7 = baseY + scrollY;
-    ST16(renderInfo + oRenderInfo_Unk_18, R6);
+    ST16(renderInfo + oRenderInfo_BG2ScrollX, R6);
     ST16(renderInfo + oRenderInfo_Unk_1a, R7);
     SET_FLAGS_ADD(baseY, scrollY);
 
@@ -472,10 +472,10 @@ Next camera_CopyScrollToRenderLayers_80302F8(void) {
 
     u32 render = LD32(toolkit + 8); /* oToolkit_RenderInfoPtr */
 
-    ST16(render + oRenderInfo_Unk_10, camX);
+    ST16(render + oRenderInfo_BGScrollXOffset, camX);
     ST16(render + oRenderInfo_Unk_14, camX);
-    ST16(render + oRenderInfo_Unk_18, camX);
-    ST16(render + oRenderInfo_Unk_12, camY);
+    ST16(render + oRenderInfo_BG2ScrollX, camX);
+    ST16(render + oRenderInfo_BGScrollY, camY);
     ST16(render + oRenderInfo_Unk_16, camY);
     ST16(render + oRenderInfo_Unk_1a, camY);
 
@@ -504,15 +504,15 @@ Next renderInfo_SnapScrollToCamera_8030316(void) {
     u32 renderInfo = LD32(toolkit + 8); /* oToolkit_RenderInfoPtr */
 
     u32 camX = LD16(camera + 4) & 0xFF; /* oCamera_Unk_04 */
-    ST16(renderInfo + oRenderInfo_Unk_10, camX);
+    ST16(renderInfo + oRenderInfo_BGScrollXOffset, camX);
     ST16(renderInfo + oRenderInfo_Unk_14, camX);
 
     u32 camY = LD16(camera + 6) & 0xFF; /* oCamera_Unk_06 */
-    ST16(renderInfo + oRenderInfo_Unk_12, camY);
+    ST16(renderInfo + oRenderInfo_BGScrollY, camY);
     ST16(renderInfo + oRenderInfo_Unk_16, camY);
 
     R1 = 0;
-    ST16(renderInfo + oRenderInfo_Unk_18, 0);
+    ST16(renderInfo + oRenderInfo_BG2ScrollX, 0);
     ST16(renderInfo + oRenderInfo_Unk_1a, 0);
 
     R2 = camY;
@@ -541,17 +541,17 @@ Next render_ClearScrollOffsets_8030336(void) {
     u32 camY = LD16(camera + 6) & 0xFF; /* oCamera_Unk_06 */
 
     /* store the masked camera scroll, then zero it all out again */
-    ST16(renderInfo + oRenderInfo_Unk_10, camX);
+    ST16(renderInfo + oRenderInfo_BGScrollXOffset, camX);
     ST16(renderInfo + oRenderInfo_Unk_14, camX);
-    ST16(renderInfo + oRenderInfo_Unk_18, camX);
-    ST16(renderInfo + oRenderInfo_Unk_12, camY);
+    ST16(renderInfo + oRenderInfo_BG2ScrollX, camX);
+    ST16(renderInfo + oRenderInfo_BGScrollY, camY);
     ST16(renderInfo + oRenderInfo_Unk_16, camY);
     ST16(renderInfo + oRenderInfo_Unk_1a, camY);
 
     R1 = 0;
-    ST16(renderInfo + oRenderInfo_Unk_10, 0);
-    ST16(renderInfo + oRenderInfo_Unk_12, 0);
-    ST16(renderInfo + oRenderInfo_Unk_18, 0);
+    ST16(renderInfo + oRenderInfo_BGScrollXOffset, 0);
+    ST16(renderInfo + oRenderInfo_BGScrollY, 0);
+    ST16(renderInfo + oRenderInfo_BG2ScrollX, 0);
     ST16(renderInfo + oRenderInfo_Unk_1a, 0);
 
     R2 = camY;

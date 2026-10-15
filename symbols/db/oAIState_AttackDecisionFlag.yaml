@@ -1,0 +1,54 @@
+name: oAIState_AttackDecisionFlag
+address: '0x3'
+kind: struct-field
+status: probable
+summary: One-shot / toggle flag guarding an AI sub-decision (set to 4 to mark dispatch consumed in sub_8101E24-family;
+  XOR-toggled 0↔1 in attack-stagger logic; flags attack-roll init in Mettaur decide-attack).
+details: The dominant pattern across 12 of 16 accesses is a "if zero, write 4 and dispatch" one-shot latch
+  (sub_8101E24/E4A/E70/E96/EBC/EE2), which is inconsistent with a counter or timer — nothing decrements
+  or tests against a threshold. The Mettaur decide-attack site (sub_810A0EE) sets it to 1 (not 4) and
+  checks ==0, suggesting "have we rolled yet?". The XOR-1 toggle at sub_8107DE flips it between attack
+  phases. The mixing of constants 1, 4, and XOR-1 prevents a clean single-word name; the safest label
+  captures the common "guarding whether an AI decision has been made/queued" semantic.
+evidence:
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: One-shot pattern — only dispatches when the byte is 0, then writes the sentinel 4 so subsequent
+    calls skip the branch.
+  refs:
+  - bn6f/asm/asm31.s:156167
+  reproduce: grep -n 'oAIState_Unk_03' bn6f/asm/asm31.s | head
+  result: '"ldrb r0, [r6,#oAIState_Unk_03] / tst r0, r0 / bne loc_8101E38 / mov r0, #4 / strb r0, [r6,#oAIState'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Identical latch pattern with a different callback, confirming the field is a generic "dispatched?"
+    flag rather than per-action state.
+  refs:
+  - bn6f/asm/asm31.s:156167
+  reproduce: grep -n 'oAIState_Unk_03' bn6f/asm/asm31.s | head
+  result: '"ldrb r0, [r6,#oAIState_Unk_03] / ... mov r0, #4 / strb r0, [r6,#oAIState_Unk_03] / ldr r0,
+    =sub_810'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Boolean 0↔1 toggle between attack phases — only the low bit matters here, inconsistent with
+    the sentinel-4 writes seen elsewhere.
+  refs:
+  - bn6f/asm/asm31.s:156167
+  reproduce: grep -n 'oAIState_Unk_03' bn6f/asm/asm31.s | head
+  result: '"ldrb r0, [r6,#oAIState_Unk_03] / mov r1, #1 / eor r1, r0 / strb r1, [r6,#oAIState_Unk_03]
+    / tst r0,'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Rolls GetPositiveSignedRNG & 0xF only on first entry, then sets flag to 1 — exactly a "have
+    we decided attack yet?" guard.
+  refs:
+  - bn6f/asm/asm31.s:156167
+  reproduce: grep -n 'oAIState_Unk_03' bn6f/asm/asm31.s | head
+  result: '"ldrb r0, [r6,#oAIState_Unk_03] / cmp r0, #0 / bne loc_810A114 / mov r0, #1 / strb r0, [r6,#oAIState'
+previous_names:
+- oAIState_Unk_03
+changes:
+- date: '2026-10-15'
+  what: rename oAIState_Unk_03 -> oAIState_AttackDecisionFlag
+  where: bn6f c1151c67
+  tool: tools/rename_symbol.py

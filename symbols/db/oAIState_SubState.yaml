@@ -1,0 +1,69 @@
+name: oAIState_SubState
+address: '0x2'
+kind: struct-field
+status: probable
+summary: AI sub-state index that drives a 2-entry handler dispatch table and per-script progress (e.g.,
+  init vs. active vs. wait/timeout) within each AI script step.
+details: ">\n  Heavy evidence as a sub-state index. At asm32.s:128 (`sub_810DA24`), `ldrb r0, [r6,#oAIState_Unk_02]`\
+  \ is used to index `off_810DA40/off_810DA44`, dispatching to one of two handlers (\"off_810DA44:0\"\
+  \ -> handler 0, \"off_810DA44:1\" -> handler 1). The same 2-entry dispatch pattern recurs at asm32.s:6238\
+  \ (`sub_8110EB8`, indexing `off_8110ED0/off_8110ED4`) and at asm31.s:173151 (`sub_810A0BA`, indexing\
+  \ `off_810A0C8/off_810A0CC`). Beyond dispatch, the field is used as a classic 0/1 progress flag: it\
+  \ is set to 1 to enter the \"active\" branch (asm32.s:5143 SnakeArm, 16273 sub_81164EC, 16474 sub_8116758),\
+  \ then set back to 0 when a timer expires; in ProtoMan routines (asm31.s:143346/143520/168518/168575/168637)\
+  \ it is XORed with 1 (`eor r1, r0`) and `tst`-tested to alternate between two branches; and it is zeroed\
+  \ alongside `oAIState_ScriptId` changes at every script transition, e.g., asm31.s:156095-156125, asm31.s:173127-173142,\
+  \ asm32.s:6298."
+evidence:
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Field indexes a 2-entry handler table (off_810DA44:0 / :1), confirming a sub-state role.
+  refs:
+  - bn6f/asm/asm31.s:143306
+  reproduce: grep -n 'oAIState_Unk_02' bn6f/asm/asm31.s | head
+  result: ldrb r0, [r6,#oAIState_Unk_02]  /  ldr r1, [r1,r0]  /  bx r1
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Same 2-entry dispatch pattern in sub_8110EB8, reinforcing sub-state semantics.
+  refs:
+  - bn6f/asm/asm31.s:143306
+  reproduce: grep -n 'oAIState_Unk_02' bn6f/asm/asm31.s | head
+  result: ldrb r0, [r6,#oAIState_Unk_02]  /  ldr r1, [r1,r0]  /  bx r1
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Third independent 2-entry dispatch (off_810A0C8 / off_810A0CC) keyed on this field.
+  refs:
+  - bn6f/asm/asm31.s:143306
+  reproduce: grep -n 'oAIState_Unk_02' bn6f/asm/asm31.s | head
+  result: ldrb r0, [r6,#oAIState_Unk_02]  /  ldr r1, [r1,r0]  /  bx r1
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Classic init-then-active sub-state transition (0 -> 1) used to gate init code and start a Timer.
+  refs:
+  - bn6f/asm/asm31.s:143306
+  reproduce: grep -n 'oAIState_Unk_02' bn6f/asm/asm31.s | head
+  result: 'ldrb r0, [r6,#oAIState_Unk_02]  /  cmp r0, #0  /  strb r0, #1,[r6,#oAIState_Unk_02]'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Field alternated 0<->1 each RNG roll to pick between two AI behaviors, consistent with a sub-state
+    toggle.
+  refs:
+  - bn6f/asm/asm31.s:143306
+  reproduce: grep -n 'oAIState_Unk_02' bn6f/asm/asm31.s | head
+  result: ldrb r0, [r6,#oAIState_Unk_02]  /  eor r1, r0  /  strb r1, [r6,#oAIState_Unk_02]  /  tst r0,
+    r0
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Field is reset to 0 every time the AI advances to a new ScriptId, i.e., it tracks the step within
+    a script.
+  refs:
+  - bn6f/asm/asm31.s:143306
+  reproduce: grep -n 'oAIState_Unk_02' bn6f/asm/asm31.s | head
+  result: strh r0, [r6,#oAIState_Unk_02]  (paired with strb of new oAIState_ScriptId)
+previous_names:
+- oAIState_Unk_02
+changes:
+- date: '2026-10-15'
+  what: rename oAIState_Unk_02 -> oAIState_SubState
+  where: bn6f c1151c67
+  tool: tools/rename_symbol.py

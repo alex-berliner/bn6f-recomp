@@ -115,7 +115,7 @@ Next battle_addBarrierHitAdjust_800F1DC(void) {
             RETURN_TO_CALLER();
         }
         if (barrier == 8) {
-            u32 unk16 = LD8(coll + oCollisionData_Unk_16);
+            u32 unk16 = LD8(coll + oCollisionData_BarrierHP);
 
             R2 = unk16;
             if (unk16 == 0) {

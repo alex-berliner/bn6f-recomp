@@ -113,10 +113,10 @@ Next sprite_setPriority_8002E14(void) {
     R0 <<= 2;
 
     R2 = 0xC;
-    R1 = LD8(R3 + oObjectSprite_Unk_15) & ~R2;
+    R1 = LD8(R3 + oObjectSprite_OamAttributes) & ~R2;
     R1 |= R0;
     SET_FLAGS_NZ(R1);           /* flags of the final ORR */
-    ST8(R3 + oObjectSprite_Unk_15, R1);
+    ST8(R3 + oObjectSprite_OamAttributes, R1);
 
     RETURN_TO_CALLER();
 }

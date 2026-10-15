@@ -127,7 +127,7 @@ Next sprite_load(void) {
 
     /* Stash the requested id (original r0) into the sprite's Unk_03 field. */
     R5 = sprite;
-    ST8(R5 + oObjectSprite_Unk_03, (u8)R1);
+    ST8(R5 + oObjectSprite_SpriteFlags2, (u8)R1);
 
     /* Restore preserved r5 (r4 is never touched in the register file). */
     R5 = object_base;
@@ -171,7 +171,7 @@ Next sprite_initialize(void) {
     ST32(obj + oObjectSprite_Unk_28, 0xFFFFFFFF);
 
     /* default 8x8 sprite cell */
-    ST8 (obj + oObjectSprite_Unk_15, 8);
+    ST8 (obj + oObjectSprite_OamAttributes, 8);
     ST16(obj + oObjectSprite_Unk_16, 8);
 
     RETURN_TO_CALLER();
@@ -403,7 +403,7 @@ Next sprite_getMosaicScalingParameters(void) {
      * attached to the object, in 16-byte units from the header. */
     u32 sprite = obj + (LD8(obj + 2) & 0xF0);
 
-    R2 = LD8(sprite + oObjectSprite_Unk_11) & 0xC;
+    R2 = LD8(sprite + oObjectSprite_SpriteFlags) & 0xC;
 
     u32 params = LD32(R10 + oToolkit_Unk2009740_Ptr);
     R0 = LD8(params + 2);
@@ -466,14 +466,14 @@ Next sprite_makeUnscalable(void) {
     R5 = sprite;                        /* body and callee see the sprite block */
 
     R1 = 3;
-    R0 = LD8(sprite + oObjectSprite_Unk_11);
+    R0 = LD8(sprite + oObjectSprite_SpriteFlags);
     if ((R0 & R1) == 0) {
         SET_FLAGS_NZ(R0 & R1);          /* tst r1, r0: C/V stay from the ADDS */
         R5 = object;                    /* pop {r5} restores the header pointer */
         RETURN_TO_CALLER();
     }
 
-    ST8(sprite + oObjectSprite_Unk_11, R0 & ~R1);
+    ST8(sprite + oObjectSprite_SpriteFlags, R0 & ~R1);
 
     R0 = LD8(sprite + oObjectSprite_Unk_13);
     R2 = R0;
@@ -522,7 +522,7 @@ Next sprite_setAnimation(void) {
 /* ── sprite_getFinalPalette ── */
 /* Sprite palette lookup helpers. The object header's TypeAndSpriteOffset
  * byte is at offset 2; its upper nibble is the sprite's VRAM tile offset,
- * which indexes the object's sprite record list. oObjectSprite_Unk_15 is
+ * which indexes the object's sprite record list. oObjectSprite_OamAttributes is
  * the final palette byte of a sprite record. */
 #define oObjectHeader_TypeAndSpriteOffset 2
 
@@ -535,7 +535,7 @@ Next sprite_getFinalPalette(void) {
     u32 spriteOffset = LD8(R0 + oObjectHeader_TypeAndSpriteOffset) & 0xF0;
     u32 sprite = R0 + spriteOffset;
 
-    R1 = LD8(sprite + oObjectSprite_Unk_15) & 0xF0;
+    R1 = LD8(sprite + oObjectSprite_OamAttributes) & 0xF0;
     RETURN_TO_CALLER();
 }
 
@@ -558,8 +558,8 @@ static SpritePaletteInfo clear_final_palette(u32 header) {
     u8  shifted      = (u8)((type_and_off >> 4) << 4); /* same as & 0xF0 */
     u32 sprite       = header + shifted;
 
-    u8 masked = (u8)LD8(sprite + oObjectSprite_Unk_15) & 0x0F;
-    ST8(sprite + oObjectSprite_Unk_15, masked);
+    u8 masked = (u8)LD8(sprite + oObjectSprite_OamAttributes) & 0x0F;
+    ST8(sprite + oObjectSprite_OamAttributes, masked);
 
     return (SpritePaletteInfo){ .sprite_ptr = sprite, .masked = masked, .shifted = shifted };
 }
@@ -609,7 +609,7 @@ Next sprite_getFrameParameters(void) {
  *       struct belongs to this object
  *   +3: sprite state byte within that struct */
 #define oObjectHeader_TypeAndSpriteOffset_sprite_hasShadow 2
-#define oObjectSprite_Unk_03              3
+#define oObjectSprite_SpriteFlags2              3
 
 /* sprite_hasShadow(r5 = object):
  * Mark the object's current sprite as casting a shadow: set bit 0 and clear
@@ -624,10 +624,10 @@ Next sprite_hasShadow(void) {
     u32 sprite = select + R5;
     SET_FLAGS_ADD(select, R5);
 
-    u32 state = LD8(sprite + oObjectSprite_Unk_03);
+    u32 state = LD8(sprite + oObjectSprite_SpriteFlags2);
     state |= 1;   /* has shadow */
     state &= ~4;  /* clear the "no shadow" flag */
-    ST8(sprite + oObjectSprite_Unk_03, state);
+    ST8(sprite + oObjectSprite_SpriteFlags2, state);
     /* bic only updates N/Z; C/V from the ADDS above must survive */
     SET_FLAGS_NZ(state);
 

@@ -1,0 +1,55 @@
+name: oAIAttackVars_PanelParamFlags2
+address: '0x38'
+kind: struct-field
+status: probable
+summary: Secondary panel-mask parameter paired with Unk_34; often a static bitmask constant (e.g. 0xf880080,
+  0x3800000, 0x10) used in object_checkPanelParameters calls and as a hit-element flag for spawned child
+  attack objects.
+details: In many accesses the field is loaded as a word and passed as the r3 (mask) argument to object_checkPanelParameters
+  alongside Unk_34 (paired "panel param args" from GetAllianceDependentPanelParamArgs — see asm31.s:175513,
+  175704, asm32.s:8132, 10616). In sub_810209E/sub_81020F0 it is initialized via sub_800FE28 from a per-version
+  dword table (dword_8101A30/...50) and its low byte is copied into TimerOrCycles/Unk_0e, suggesting the
+  high bytes are a panel-validity bitmask. The pair is also cleared to 0 when a step begins (asm31.s:156954,
+  142297) and used as a tst-tested "child object" pointer elsewhere, but those reads treat it as a pointer
+  — i.e. the field is reused as either a bitmask or an object pointer depending on attack phase. Two competing
+  roles (mask vs. object handle) prevent a probable rating.
+evidence:
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Stored as the second return value of GetAllianceDependentPanelParamArgs, the standard panel-param
+    mask, then to object_setAttack0 — confirms the "panel param mask" role.
+  refs:
+  - bn6f/asm/asm31.s:127867
+  reproduce: grep -n 'oAIAttackVars_Unk_38' bn6f/asm/asm31.s | head
+  result: '"str r3, [r7,#oAIAttackVars_Unk_38]"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Constant bitmask literal written here, with Unk_34 cleared — consistent with a static panel-validity
+    mask rather than a runtime value.
+  refs:
+  - bn6f/asm/asm31.s:127867
+  reproduce: grep -n 'oAIAttackVars_Unk_38' bn6f/asm/asm31.s | head
+  result: '"str r3, [r7,#oAIAttackVars_Unk_38]   // r3 = dword 0xf880080"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Here the field stores a 16-bit packed panel coordinate for collision-state comparison — a different
+    role from the panel-mask usage, reinforcing the hypothesis rating.
+  refs:
+  - bn6f/asm/asm31.s:127867
+  reproduce: grep -n 'oAIAttackVars_Unk_38' bn6f/asm/asm31.s | head
+  result: '"ldrh r0, [r5,#oBattleObject_PanelXY] / str r0, [r7,#oAIAttackVars_Unk_38]"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: In some attack flows the field holds a spawned child object pointer that is later tst-checked
+    and freed via sub_80B8E7C/sub_80B8E58 — a third semantic role, hence hypothesis.
+  refs:
+  - bn6f/asm/asm31.s:127867
+  reproduce: grep -n 'oAIAttackVars_Unk_38' bn6f/asm/asm31.s | head
+  result: '"str r0, [r7,#oAIAttackVars_Unk_38]   // r0 = spawn_t1_0x5_tempAttackObject_80B8E30 return"'
+previous_names:
+- oAIAttackVars_Unk_38
+changes:
+- date: '2026-10-15'
+  what: rename oAIAttackVars_Unk_38 -> oAIAttackVars_PanelParamFlags2
+  where: bn6f c1151c67
+  tool: tools/rename_symbol.py

@@ -1,0 +1,59 @@
+name: oS20364C0_StateHandled
+address: '0x2'
+kind: struct-field
+status: probable
+summary: '"Per-state ''already handled/transitioning'' guard flag set TRUE once a custMenu sub-state has
+  done its work, and reset to 0 when a new sub-state is dispatched."'
+details: 'Across every access, this byte is set to 0 (often with `strh r0, [r5,#oS20364C0_Unk_02]`, occasionally
+  `strb`) immediately after `JumpOffset01` is overwritten with a new dispatch opcode — i.e. it is cleared
+  on every state transition. The two `ldrb ... cmp #0` reads both check it against FALSE/0 to gate a one-shot
+  init path (e.g. `scrollStrip_update_8026BF4` initializes Unk_40/Unk_44 only on first entry and then
+  writes TRUE; `battle_custMenuAnimateCursorToOK_8026B04` plays its select SFX only while it is 0). This
+  0/1 boolean lifecycle is consistent with a "this state has been processed" latch.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: '"battle_custMenuAnimateCursorToOK_8026B04 gates its one-shot init (PlaySoundEffect + write
+    to 0x40/0x44) on this byte being 0."'
+  refs:
+  - bn6f/asm/asm03_0.s:915
+  reproduce: grep -n 'oS20364C0_Unk_02' bn6f/asm/asm03_0.s | head
+  result: '"ldrb r0, [r5,#oS20364C0_Unk_02] / cmp r0, #0"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: '"After the one-shot init runs, a non-zero value (0x78, not 1!) is written — consistent with
+    the latch being any non-zero truthy."'
+  refs:
+  - bn6f/asm/asm03_0.s:915
+  reproduce: grep -n 'oS20364C0_Unk_02' bn6f/asm/asm03_0.s | head
+  result: '"strb r0, [r5,#oS20364C0_Unk_02]   (r0 = 0x78)"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: '"scrollStrip_update_8026BF4 uses the byte as a ''first tick'' guard, branching past initialization
+    when non-zero."'
+  refs:
+  - bn6f/asm/asm03_0.s:915
+  reproduce: grep -n 'oS20364C0_Unk_02' bn6f/asm/asm03_0.s | head
+  result: '"ldrb r0, [r5,#oS20364C0_Unk_02] / cmp r0, #FALSE"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: '"Sets the byte to TRUE (=1) right after the first-time init, confirming boolean usage."'
+  refs:
+  - bn6f/asm/asm03_0.s:915
+  reproduce: grep -n 'oS20364C0_Unk_02' bn6f/asm/asm03_0.s | head
+  result: '"mov r0, #TRUE / strb r0, [r5,#oS20364C0_Unk_02]"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: '"Every custMenu transition site clears this byte to 0 in lock-step with writing a new JumpOffset01
+    opcode — the canonical reset of the per-state handled flag."'
+  refs:
+  - bn6f/asm/asm03_0.s:915
+  reproduce: grep -n 'oS20364C0_Unk_02' bn6f/asm/asm03_0.s | head
+  result: '"strh r0, [r5,#oS20364C0_Unk_02]   (r0 = 0)  ... paired with `strb r0, [r5,#oS20364C0_JumpOffset01]`'
+previous_names:
+- oS20364C0_Unk_02
+changes:
+- date: '2026-10-15'
+  what: rename oS20364C0_Unk_02 -> oS20364C0_StateHandled
+  where: bn6f c1151c67
+  tool: tools/rename_symbol.py

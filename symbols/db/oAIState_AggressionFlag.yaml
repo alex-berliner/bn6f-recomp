@@ -1,0 +1,63 @@
+name: oAIState_AggressionFlag
+address: '0x7'
+kind: struct-field
+status: probable
+summary: Boolean flag (0/1) tracking an aggressive AI behavior toggle, flipped via XOR with 1 in multiple
+  combat routines.
+details: Four separate functions (lines 151466, 152717, 154938, 160308, 163366) all use the identical
+  `eor r1, r0` / `strb` / `tst r0, r0` pattern to toggle the field between 0 and 1. It is read with a
+  boolean test (`tst r0, r0`), reset to 0 alongside AttackCounter/StepCounter on state transitions (line
+  152748, 143442), and incremented in a counter-style progression at line 143442 — but the dominating
+  pattern is boolean XOR-toggling tied to HP-threshold checks (MaxHP>>1 vs HP), consistent with an aggression/aggressive-mode
+  flag.
+evidence:
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: XOR-toggles field then branches on old value being zero → classic 0/1 boolean flip with branch
+    on prior state.
+  refs:
+  - bn6f/asm/asm31.s:143403
+  reproduce: grep -n 'oAIState_Unk_07' bn6f/asm/asm31.s | head
+  result: '"ldrb r0, [r6,#oAIState_Unk_07] / mov r1, #1 / eor r1, r0 / strb r1, [r6,#oAIState_Unk_07]
+    / tst r0,'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Same XOR-with-1 toggle and boolean test pattern, preceded by HP-threshold compare — confirms
+    flag toggles on low-HP states.
+  refs:
+  - bn6f/asm/asm31.s:143403
+  reproduce: grep -n 'oAIState_Unk_07' bn6f/asm/asm31.s | head
+  result: '"ldrb r0, [r6,#oAIState_Unk_07] / mov r1, #1 / eor r1, r0 / strb r1, [r6,#oAIState_Unk_07]
+    / tst r0,'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Same toggle pattern immediately after `cmp r1, r2 / bgt` (HP < MaxHP/2), gating behavior change.
+  refs:
+  - bn6f/asm/asm31.s:143403
+  reproduce: grep -n 'oAIState_Unk_07' bn6f/asm/asm31.s | head
+  result: '"ldrb r0, [r6,#oAIState_Unk_07] / tst r0, r0 / mov r1, #1 / eor r0, r1 / strb r0, [r6,#oAIState_Unk_'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Field is bulk-reset to 0 alongside other AI counters on a battle-state transition, treating
+    it as part of the AI state machine.
+  refs:
+  - bn6f/asm/asm31.s:143403
+  reproduce: grep -n 'oAIState_Unk_07' bn6f/asm/asm31.s | head
+  result: '"mov r0, #0 / strb r0, [r6,#oAIState_AttackCounter] / strb r0, [r6,#oAIState_StepCounter] /
+    strb r0,'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Also used as an incrementing counter in one routine, but the dominant pattern across the 17
+    accesses is boolean toggling — counted as "use as counter" is only a small minority.
+  refs:
+  - bn6f/asm/asm31.s:143403
+  reproduce: grep -n 'oAIState_Unk_07' bn6f/asm/asm31.s | head
+  result: '"ldrb r0, [r6,#oAIState_Unk_07] / cmp r0, #4 / bge loc_80FBB8C / ldrb r0, [r6,#oAIState_Unk_07]
+    / ad'
+previous_names:
+- oAIState_Unk_07
+changes:
+- date: '2026-10-15'
+  what: rename oAIState_Unk_07 -> oAIState_AggressionFlag
+  where: bn6f c1151c67
+  tool: tools/rename_symbol.py

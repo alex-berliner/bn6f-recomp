@@ -1,0 +1,65 @@
+name: oAIAttackVars_AiAttackParam
+address: '0x34'
+kind: struct-field
+status: probable
+summary: Generic scratch/parameter slot used by AI attack state-machine handlers for per-attack values
+  (timers, velocities, pointer-as-int, panel masks, etc.).
+details: 'Across ~110 accesses this slot holds wildly different kinds of data depending on the attacking
+  Navi/attack: timer counts (e.g. 0x20 decrementing in Wind style attack at asm31.s:133331), pointer/index
+  values into a "param args" table returned by GetAllianceDependentPanelParamArgs (asm31.s:175512, asm32.s:8131),
+  front-direction multiplier copied into XVelocity (asm31.s:121874), result of sub_80E8770 used as a teardown
+  flag (asm31.s:124310), and a packed byte loaded from an offset table (asm32.s:6324). The consistent
+  pattern is that it''s the "second parameter word" paired with oAIAttackVars_Unk_38 — same value often
+  initialized to the same constant (e.g. 3 in many AttackBoost init blocks), then read back to seed StepTimer
+  (asm31.s:157288, asm32.s:1514) or to feed object_checkPanelParameters alongside Unk_38. The field is
+  not a u8 — it is loaded/stored as word and halfword in many sites — so the struct size declaration is
+  wrong; treat naming as hypothesis until typed.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Used as a down-counter initialized to 0x20 (cycles/frames before re-sound) — timer-like use.
+  refs:
+  - bn6f/asm/asm31.s:110324
+  reproduce: grep -n 'oAIAttackVars_Unk_34' bn6f/asm/asm31.s | head
+  result: '"ldr r0, [r7,#oAIAttackVars_Unk_34] / sub r0, #1 / str r0, ... / bgt ..."'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Holds a signed magnitude multiplied by object_getFrontDirection() to compute X velocity — numeric/scratch
+    use, not a u8 (loaded as word).
+  refs:
+  - bn6f/asm/asm31.s:110324
+  reproduce: grep -n 'oAIAttackVars_Unk_34' bn6f/asm/asm31.s | head
+  result: '"ldr r1, [r7,#oAIAttackVars_Unk_34] / mul r1, r0 / str r1, [r5,#oBattleObject_XVelocity]"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Stores the r2 return from GetAllianceDependentPanelParamArgs — a pointer to a panel-param arg
+    table that is later passed to object_checkPanelParameters (asm32.s:5363). Paired with Unk_38 as a
+    (paramPtr, paramPtr2) pair.
+  refs:
+  - bn6f/asm/asm31.s:110324
+  reproduce: grep -n 'oAIAttackVars_Unk_34' bn6f/asm/asm31.s | head
+  result: '"bl GetAllianceDependentPanelParamArgs / str r2, [r7,#oAIAttackVars_Unk_34] / str r3, [r7,#oAIAttack'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Loaded via strh from a versioned offset table (byte_8110E50), later read into StepTimer (asm32.s:5514).
+    Indicates this slot holds a 16-bit duration/count copied from a per-version table.
+  refs:
+  - bn6f/asm/asm31.s:110324
+  reproduce: grep -n 'oAIAttackVars_Unk_34' bn6f/asm/asm31.s | head
+  result: '"ldrb r0, [r0,r1] / strh r0, [r7,#oAIAttackVars_Unk_34]"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Stores an oBattleObject-relative pointer (0x60+0x5 / 0x64+0x5 etc.) — used as a pointer to a
+    sibling/extra-vars region, dereferenced via Unk_38/r2 path (e.g. asm32.s:150263 dereferences [Unk_34]
+    then reads byte at offset 6). Conflicts with u8 typing.
+  refs:
+  - bn6f/asm/asm31.s:110324
+  reproduce: grep -n 'oAIAttackVars_Unk_34' bn6f/asm/asm31.s | head
+  result: '"mov r0, #0x64 / add r0, r0, r5 / str r0, [r7,#oAIAttackVars_Unk_34]"'
+previous_names:
+- oAIAttackVars_Unk_34
+changes:
+- date: '2026-10-15'
+  what: rename oAIAttackVars_Unk_34 -> oAIAttackVars_AiAttackParam
+  where: bn6f c1151c67
+  tool: tools/rename_symbol.py

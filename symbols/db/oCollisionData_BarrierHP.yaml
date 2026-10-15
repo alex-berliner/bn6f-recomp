@@ -1,0 +1,58 @@
+name: oCollisionData_BarrierHP
+address: '0x16'
+kind: struct-field
+status: probable
+summary: Hit point counter for the active barrier (8/0xA) — decremented by incoming damage, zeroed when
+  barrier breaks.
+details: The field is set from a barrier-type lookup table alongside Barrier, Unk_14, Unk_17, and Unk_1a_1b
+  (asm00_2.s:23694), and is consistently decremented by damage and tested for 0 to break the barrier (asm00_2.s:23907-23923).
+  It is also used as a "barrier active" flag check (tst r0,r0) in multiple places (asm31.s:87113, asm31.s:87157,
+  asm00_2.s:645), matching HP-style counter semantics where nonzero means intact.
+evidence:
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Initialized from a 6-byte barrier template table indexed by Barrier, paired with Unk_14/Unk_17/Unk_1a_1b
+    — the durability stat of the barrier.
+  refs:
+  - bn6f/asm/asm31.s:87113
+  reproduce: grep -n 'oCollisionData_Unk_16' bn6f/asm/asm31.s | head
+  result: '"ldrh r1, [r0]\nstrb r1, [r3,#oCollisionData_Unk_16]"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Subtracted by element damage and when result <= 0 the barrier is cleared and Unk_16 reset to
+    0 — classic HP/durability drain.
+  refs:
+  - bn6f/asm/asm31.s:87113
+  reproduce: grep -n 'oCollisionData_Unk_16' bn6f/asm/asm31.s | head
+  result: '"ldrb r1, [r4,#oCollisionData_Unk_16]\nsub r1, r1, r0\nstrb r1, [r4,#oCollisionData_Unk_16]\nbgt
+    loc'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Used as a boolean "barrier still has HP" gate for barrier=8 and barrier=0xA branches.
+  refs:
+  - bn6f/asm/asm31.s:87113
+  reproduce: grep -n 'oCollisionData_Unk_16' bn6f/asm/asm31.s | head
+  result: '"ldrh r0, [r4,#oCollisionData_Unk_16]\ntst r0, r0\nbeq loc_801A860"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Explicitly zeroed when the barrier transitions to state 0x10 (broken/cleared), confirming the
+    field is the per-barrier HP that is wiped on break.
+  refs:
+  - bn6f/asm/asm31.s:87113
+  reproduce: grep -n 'oCollisionData_Unk_16' bn6f/asm/asm31.s | head
+  result: '"mov r0, #0\nstrh r0, [r4,#oCollisionData_Unk_16]"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Nonzero value causes the action to early-return, i.e. the barrier still has HP and blocks the
+    effect.
+  refs:
+  - bn6f/asm/asm31.s:87113
+  reproduce: grep -n 'oCollisionData_Unk_16' bn6f/asm/asm31.s | head
+  result: '"ldrb r0, [r3,#oCollisionData_Unk_16]\ntst r0, r0\nbne locret_80E0CA8"'
+previous_names:
+- oCollisionData_Unk_16
+changes:
+- date: '2026-10-15'
+  what: rename oCollisionData_Unk_16 -> oCollisionData_BarrierHP
+  where: bn6f c1151c67
+  tool: tools/rename_symbol.py

@@ -139,7 +139,7 @@ Next sub_810DA00(void) {
         ST8(R6 + oAIState_ScriptId, 0x0C);
     } else {
         /* probe missed: clear state+2, transition to state 0x08 */
-        ST8(R6 + oAIState_Unk_02, (u8)R0);
+        ST8(R6 + oAIState_SubState, (u8)R0);
         ST8(R6 + oAIState_ScriptId, 0x08);
     }
 
@@ -148,13 +148,13 @@ Next sub_810DA00(void) {
 
 /* ── sub_810DA24 ── */
 /* sub_810DA24: AI state dispatcher.
- * R6 points to the AI state struct; the byte at offset oAIState_Unk_02
+ * R6 points to the AI state struct; the byte at offset oAIState_SubState
  * selects the per-state handler via the jump table at off_810DA44
  * (0 -> sub_810DA4C, 1 -> sub_810DAAA). The handler is called and returns
  * back here; whatever registers it leaves behind (r1, r5, r8-r12) are
  * handed straight on to our caller. */
 Next sub_810DA24(void) {
-    u32 state = LD8(R6 + oAIState_Unk_02);
+    u32 state = LD8(R6 + oAIState_SubState);
 
     if (state == 0)
         GUEST_CALL(sub_810DA4C);
@@ -245,7 +245,7 @@ static u32 ai_select_movement_target(u32 battle, u32 ai_state) {
     }
 
     ST8(ai_state + oAIState_TurnCounter, (u8)target_x);
-    ST8(ai_state + oAIState_Unk_02, 4);
+    ST8(ai_state + oAIState_SubState, 4);
 
     return (u32)lo;
 }
@@ -397,7 +397,7 @@ Next ai_DealQueuedAttackDamage_8112F34(void) {
 
     R0 = LD8(vars + oAIAttackVars_TargetPanelX);
     R1 = LD8(vars + oAIAttackVars_TargetPanelY);
-    R4 = 0xA00 + LD8(vars + oAIAttackVars_Unk_0f);
+    R4 = 0xA00 + LD8(vars + oAIAttackVars_AttackStepIndex);
     R2 = 0;
     R3 = 0;
     R6 = LD32(vars + 8);
@@ -462,10 +462,10 @@ static u32 do_ai_special_attack(u32 attacker, u32 ai_vars) {
         ST32(ai_vars + oAIAttackVars_ScratchVar, victim);
 
         u32 flag_target = battle_SetObjectExtraFlag14_helper();
-        u32 scaled = (u32)LD8(ai_vars + oAIAttackVars_Unk_0e) * 0xA;
+        u32 scaled = (u32)LD8(ai_vars + oAIAttackVars_SubStepIndex) * 0xA;
         ST16(flag_target + oBattleObject_Timer, scaled);
 
-        ST32(ai_vars + oAIAttackVars_Unk_34, (u32)object_getFrontDirection_helper());
+        ST32(ai_vars + oAIAttackVars_AiAttackParam, (u32)object_getFrontDirection_helper());
 
         object_setCounterTime_helper(0x1E);
         ST16(ai_vars + oAIAttackVars_HitElement, 8);

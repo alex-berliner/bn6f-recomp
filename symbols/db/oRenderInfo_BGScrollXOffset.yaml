@@ -1,0 +1,60 @@
+name: oRenderInfo_BGScrollXOffset
+address: '0x10'
+kind: struct-field
+status: probable
+summary: Horizontal BG scroll offset written into RenderInfo for the active background layer (BG1/BG3
+  depending on context).
+details: ">\n  Field is cleared by the per-frame init at renderInfo_8001788 (alongside sibling\n  Unk_12/Unk_14/Unk_16).\
+  \ Multiple BG scroll callbacks (BG1Diagonal3to2Scroll,\n  BG1SlowRightScroll, BG1FastLeftScroll) compute\
+  \ a tile-aligned horizontal delta\n  from oBGScrollCBCounters_Counter0 and store it here, while the\
+  \ sibling Unk_12\n  receives the vertical delta. camera_applyDeltaToRenderInfoScroll_8030136 and\n \
+  \ sub_8030194 add the camera X delta to this field and propagate to Unk_14 (and\n  Unk_16 for Y), matching\
+  \ a layered scroll-buffer scheme. camera_CopyScrollToRenderLayers_80302F8\n  and renderInfo_SnapScrollToCamera_8030316\
+  \ mask the camera X position to 0xFF\n  and store it here, with the Y component going to Unk_12 — Unk_10\
+  \ = X, Unk_12 = Y\n  is unambiguous across 13 accesses."
+evidence:
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Cleared each frame alongside other scroll fields, consistent with a per-frame X scroll accumulator.
+  refs:
+  - bn6f/asm/asm00_0.s:3153
+  reproduce: grep -n 'oRenderInfo_Unk_10' bn6f/asm/asm00_0.s | head
+  result: '"strh r1, [r0,#oRenderInfo_Unk_10]"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: BG1 diagonal scroll CB writes horizontal component (counter0-derived) here; vertical goes to
+    Unk_12.
+  refs:
+  - bn6f/asm/asm00_0.s:3153
+  reproduce: grep -n 'oRenderInfo_Unk_10' bn6f/asm/asm00_0.s | head
+  result: '"strh r2, [r1,#oRenderInfo_Unk_10]"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: BG1SlowRightScroll stores counter0>>4 here (X); only X written, confirming axis assignment.
+  refs:
+  - bn6f/asm/asm00_0.s:3153
+  reproduce: grep -n 'oRenderInfo_Unk_10' bn6f/asm/asm00_0.s | head
+  result: '"strh r2, [r1,#oRenderInfo_Unk_10]"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: camera_applyDeltaToRenderInfoScroll adds camera X delta to this field, then mirrors into Unk_14
+    — layered X scroll buffer.
+  refs:
+  - bn6f/asm/asm00_0.s:3153
+  reproduce: grep -n 'oRenderInfo_Unk_10' bn6f/asm/asm00_0.s | head
+  result: '"ldrh r6, [r0,#oRenderInfo_Unk_10]  add r6, r6, r1  strh r6, [r0,#oRenderInfo_Unk_10]"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: camera X (masked 0xFF) fans out to Unk_10/Unk_14/Unk_18 while Y fans to Unk_12/Unk_16/Unk_1a
+    — 3-layer X scroll propagation.
+  refs:
+  - bn6f/asm/asm00_0.s:3153
+  reproduce: grep -n 'oRenderInfo_Unk_10' bn6f/asm/asm00_0.s | head
+  result: '"strh r1, [r3,#oRenderInfo_Unk_10]  strh r1, [r3,#oRenderInfo_Unk_14]  strh r1, [r3,#oRenderInfo_Unk'
+previous_names:
+- oRenderInfo_Unk_10
+changes:
+- date: '2026-10-15'
+  what: rename oRenderInfo_Unk_10 -> oRenderInfo_BGScrollXOffset
+  where: bn6f c1151c67
+  tool: tools/rename_symbol.py

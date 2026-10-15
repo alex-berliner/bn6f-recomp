@@ -328,7 +328,7 @@ Next sub_80EC350(void) {
 
     /* atkBoost (u16) goes into the high half of r7; unk14 (u16) is the low half. */
     u32 atkBoost = ((u32)LD16(aiVars + oAIAttackVars_AttackBoost)) << 16;
-    u32 unk14    = (u32)LD16(aiVars + oAIAttackVars_Unk_14);
+    u32 unk14    = (u32)LD16(aiVars + oAIAttackVars_ChipID);
     u32 atkFlags = unk14 + atkBoost;
 
     /* sub_80E192C(r0=panelX, r1=panelY, r2=unk02, r3=unk03,
@@ -368,7 +368,7 @@ Next sub_80EC350(void) {
         /* r1 = 1 if unk14 >= 0x170, else 0. */
         u32 r1_arg;
         {
-            u32 cur_unk14 = LD16(R7 + oAIAttackVars_Unk_14);
+            u32 cur_unk14 = LD16(R7 + oAIAttackVars_ChipID);
             SET_FLAGS_CMP((s32)cur_unk14, 0x170);
             if (cur_unk14 < 0x170) {
                 r1_arg = 0;
@@ -944,7 +944,7 @@ Next sub_80ECF48(void) {
     R0 = (u32)1 << OBJECT_FLAGS_UNK_BIT_22_BIT;
     GUEST_CALL(object_setFlag1);
 
-    ST8(R7 + oAIAttackVars_Unk_0e, 9);
+    ST8(R7 + oAIAttackVars_SubStepIndex, 9);
     ST32(R7 + oAIAttackVars_ScratchVar, (u32)-1);
     ST16(R7 + oAIAttackVars_HitElement, 4);
 
@@ -1078,9 +1078,9 @@ Next sub_80ECF8E(void) {
 
     /* ---- Decrement bounce iteration counter ---- */
     {
-        u32 orig_lives = LD8(R7 + oAIAttackVars_Unk_0e);
+        u32 orig_lives = LD8(R7 + oAIAttackVars_SubStepIndex);
         u32 lives = orig_lives - 1;
-        ST8(R7 + oAIAttackVars_Unk_0e, (u8)lives);
+        ST8(R7 + oAIAttackVars_SubStepIndex, (u8)lives);
         SET_FLAGS_CMP(orig_lives, 1);  /* `subs r0, r0, #1` for the beq below */
 
         if (lives != 0) {
@@ -3641,8 +3641,8 @@ Next sub_8109820(void) {
     /* Load candidate panel coordinates and parameters, then validate. */
     R0 = LD8(R7 + oAIAttackVars_TargetPanelX);
     R1 = LD8(R7 + oAIAttackVars_TargetPanelY);
-    R2 = LD32(R7 + oAIAttackVars_Unk_34);
-    R3 = LD32(R7 + oAIAttackVars_Unk_38);
+    R2 = LD32(R7 + oAIAttackVars_AiAttackParam);
+    R3 = LD32(R7 + oAIAttackVars_PanelParamFlags2);
     GUEST_CALL(object_checkPanelParameters);
     if (R0 == 0) goto fail;
 

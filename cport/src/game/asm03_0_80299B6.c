@@ -1088,7 +1088,7 @@ Next objStepFinishSetState4_802BE0C(void) {
 
     /* clear the render info frame counter: renderInfo = toolkit->renderInfo */
     u32 renderInfo = LD32(toolkit + 8 /* oToolkit_RenderInfoPtr */);
-    ST16(renderInfo + oRenderInfo_Unk_18, 0);
+    ST16(renderInfo + oRenderInfo_BG2ScrollX, 0);
 
     /* battle_eStruct2035280_postEvent_801E0A0(0, 0); r5 is live for the callee, so restore it first */
     R0 = 0;
@@ -1279,7 +1279,7 @@ Next custMenu_handleInputQueuePop_802BED4(void) {
     if (value == 0) {
         /* nothing queued: hand control back to the state dispatcher */
         ST8(R5 + 1, 8);         /* oS20364C0_JumpOffset01 */
-        ST16(R5 + 2, 0);        /* oS20364C0_Unk_02 */
+        ST16(R5 + 2, 0);        /* oS20364C0_StateHandled */
         R0 = 0;
         SET_FLAGS_NZ(0);
     } else {

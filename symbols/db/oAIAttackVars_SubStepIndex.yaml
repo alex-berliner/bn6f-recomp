@@ -1,0 +1,67 @@
+name: oAIAttackVars_SubStepIndex
+address: '0xe'
+kind: struct-field
+status: probable
+summary: Current step/phase index within a multi-stage attack sequence (incremented each StepTimer wraparound,
+  bounded by a sibling counter, also used as animation/variant selector).
+details: The field is overwhelmingly treated as a counter that is incremented (or decremented) each main
+  loop iteration and compared against a threshold (3 at asm31.s:112187, 5 at asm31.s:154135, TimerOrCycles
+  at asm31.s:145581, Unk_0f at asm32.s:9328). It is also used as an index multiplied by 2/4 to fetch animation
+  frames, sprite-flip entries, and timer-table values, and its consistent initialization immediately after
+  oAIAttackVars_TimerOrCycles from the same per-attack data tables (e.g., asm31.s:129418, 142032, 149751,
+  156334) shows it encodes the per-attack step configuration. At asm32.s:2634 it serves as the high-nibble
+  variant index combined with an RNG-derived low nibble.
+evidence:
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: increments Unk_0e each tick and wraps to 0 once >=3 — classic sub-step cycling counter
+  refs:
+  - bn6f/asm/asm31.s:112180
+  reproduce: grep -n 'oAIAttackVars_Unk_0e' bn6f/asm/asm31.s | head
+  result: '"ldrb r1, [r7,#oAIAttackVars_Unk_0e]; add r1, #1; cmp r1, #3; blt loc_80EC662; mov r1, #0"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: counts up from 0 toward TimerOrCycles — drives a multi-spawn loop (vase spawning)
+  refs:
+  - bn6f/asm/asm31.s:112180
+  reproduce: grep -n 'oAIAttackVars_Unk_0e' bn6f/asm/asm31.s | head
+  result: '"ldrb r0, [r7,#oAIAttackVars_Unk_0e]; add r0, #1; strb r0, [r7,#oAIAttackVars_Unk_0e]; ldrb
+    r1, [r7,'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: counts down to 0, gating termination of an attack phase
+  refs:
+  - bn6f/asm/asm31.s:112180
+  reproduce: grep -n 'oAIAttackVars_Unk_0e' bn6f/asm/asm31.s | head
+  result: '"ldrb r0, [r7,#oAIAttackVars_Unk_0e]; sub r0, #1; strb r0, [r7,#oAIAttackVars_Unk_0e]; beq
+    loc_80ED0'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: used as index (×1) into a sprite-flip/direction table — confirms it's a small-state integer
+  refs:
+  - bn6f/asm/asm31.s:112180
+  reproduce: grep -n 'oAIAttackVars_Unk_0e' bn6f/asm/asm31.s | head
+  result: '"ldrb r0, [r7,#oAIAttackVars_Unk_0e]; lsl r1, r1, #1; add r0, r0, r1; ldr r1, off_80FCB44"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: init pattern — Unk_0e loaded immediately after TimerOrCycles from sequential per-attack table
+    entries, marking it as the per-attack step-config byte
+  refs:
+  - bn6f/asm/asm31.s:112180
+  reproduce: grep -n 'oAIAttackVars_Unk_0e' bn6f/asm/asm31.s | head
+  result: '"strb r1, [r7,#oAIAttackVars_TimerOrCycles]; strb r2, [r7,#oAIAttackVars_Unk_0e]"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Unk_0e is the high-nibble variant selector combined with a random low nibble to pick an attack
+    table row
+  refs:
+  - bn6f/asm/asm31.s:112180
+  reproduce: grep -n 'oAIAttackVars_Unk_0e' bn6f/asm/asm31.s | head
+  result: '"ldrb r2, [r7,#oAIAttackVars_Unk_0e]; lsl r2, r2, #4; add r0, r0, r2"'
+previous_names:
+- oAIAttackVars_Unk_0e
+changes:
+- date: '2026-10-15'
+  what: rename oAIAttackVars_Unk_0e -> oAIAttackVars_SubStepIndex
+  where: bn6f 166b5cdf
+  tool: tools/rename_symbol.py

@@ -1,0 +1,59 @@
+name: oAIAttackVars_AttackStepIndex
+address: '0xf'
+kind: struct-field
+status: probable
+summary: Counter/index that tracks the current step or repetition within a multi-phase AI attack
+details: 'The field is repeatedly incremented with `add r0, #1; strb r0, [r7,#oAIAttackVars_Unk_0f]` and
+  compared against thresholds like 3 or 4 (asm31.s:130501, asm32.s:14489, asm32.s:9331) to gate progression.
+  It is also used as an offset into a panel-delta table (`sub r1, #1; ldrsb r2, [r1,r3]` at asm31.s:132466),
+  and combined with StepTimer shifted left 8 to build panel coordinates for attack effects. However, several
+  accesses treat it as a fixed initializer (0, 1, 3, 4) or copy it to CurAnim, so the meaning is not perfectly
+  uniform across all sites — hypothesis status warranted.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Incremented each tick and compared against threshold 3, behaving as a phase/iteration counter
+  refs:
+  - bn6f/asm/asm31.s:116522
+  reproduce: grep -n 'oAIAttackVars_Unk_0f' bn6f/asm/asm31.s | head
+  result: '"ldrb r0, [r7,#oAIAttackVars_Unk_0f]\n\tadd r0, #1\n\tstrb r0, [r7,#oAIAttackVars_Unk_0f]\n\tcmp
+    r0,'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Used as an index into a signed-byte table to compute a panel offset, indicating it encodes a
+    step/direction offset
+  refs:
+  - bn6f/asm/asm31.s:116522
+  reproduce: grep -n 'oAIAttackVars_Unk_0f' bn6f/asm/asm31.s | head
+  result: '"ldrb r1, [r7,#oAIAttackVars_Unk_0f]\n\tsub r1, #1\n\tldr r2, off_80F635C\n\tadd r1, r1, r2\n\tldrsb'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Compared as an upper bound against Unk_0e which is itself incremented; Unk_0f acts as a target
+    step count
+  refs:
+  - bn6f/asm/asm31.s:116522
+  reproduce: grep -n 'oAIAttackVars_Unk_0f' bn6f/asm/asm31.s | head
+  result: '"ldrb r1, [r7,#oAIAttackVars_Unk_0f]\n\tcmp r0, r1\n\tblt loc_8112962"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Ticked and tested against bit 2, typical of a 4-step attack-cycle counter
+  refs:
+  - bn6f/asm/asm31.s:116522
+  reproduce: grep -n 'oAIAttackVars_Unk_0f' bn6f/asm/asm31.s | head
+  result: '"ldrb r0, [r7,#oAIAttackVars_Unk_0f]\n\tadd r0, #1\n\tstrb r0, [r7,#oAIAttackVars_Unk_0f]\n\tmov
+    r1,'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Loaded with a value from a target-object byte and compared to 2, consistent with a step/phase
+    index
+  refs:
+  - bn6f/asm/asm31.s:116522
+  reproduce: grep -n 'oAIAttackVars_Unk_0f' bn6f/asm/asm31.s | head
+  result: '"strb r0, [r7,#oAIAttackVars_Unk_0e]\n\tstrb r1, [r7,#oAIAttackVars_Unk_0f]\n\tcmp r1, #2"'
+previous_names:
+- oAIAttackVars_Unk_0f
+changes:
+- date: '2026-10-15'
+  what: rename oAIAttackVars_Unk_0f -> oAIAttackVars_AttackStepIndex
+  where: bn6f c1151c67
+  tool: tools/rename_symbol.py

@@ -1,0 +1,59 @@
+name: oRenderInfo_BGScrollY
+address: '0x12'
+kind: struct-field
+status: probable
+summary: BG1/BG3 vertical (Y) scroll offset register pushed to the GBA BG scroll registers each frame.
+details: ">\n  Always paired with Unk_10 (the X counterpart) and fed exclusively by per-frame BG scroll\n\
+  \  callbacks that compute `counter >> 4` (a 1/16 subpixel-to-tile shift) or by\n  camera_applyDeltaToRenderInfoScroll\
+  \ adding the camera Y delta. Cleared to 0 in\n  renderInfo_clearEntryCounts, and copied directly from\
+  \ oCamera_Unk_06 (the camera's\n  Y position) by camera_CopyScrollToRenderLayers — the canonical \"\
+  vertical scroll\" usage.\n  The name is a u8 in struct but all asm accesses are strh/ldrh (16-bit GBA\
+  \ register\n  stores), matching the other Unk_XX fields in this block."
+evidence:
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: BGScrollCB_BG1Diagonal3to2Scroll writes Counter1>>4 (Y-component of diagonal scroll) here, matching
+    BGScrollY semantics.
+  refs:
+  - bn6f/asm/asm00_0.s:3154
+  reproduce: grep -n 'oRenderInfo_Unk_12' bn6f/asm/asm00_0.s | head
+  result: '"strh r3, [r1,#oRenderInfo_Unk_12]"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: BGScrollCB_BG1UpScroll explicitly described as writing the vertical scroll value into the BG1
+    render-info slot — direct Y-scroll use.
+  refs:
+  - bn6f/asm/asm00_0.s:3154
+  reproduce: grep -n 'oRenderInfo_Unk_12' bn6f/asm/asm00_0.s | head
+  result: '"strh r3, [r1,#oRenderInfo_Unk_12]"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: camera_applyDeltaToRenderInfoScroll_8030136 adds the camera Y delta (r4 = oCamera_Unk_06 - oCamera_Unk_0a)
+    into this field, then mirrors to Unk_14/Unk_16 — exactly BG1/BG3/BG-effect vertical scroll registers.
+  refs:
+  - bn6f/asm/asm00_0.s:3154
+  reproduce: grep -n 'oRenderInfo_Unk_12' bn6f/asm/asm00_0.s | head
+  result: '"ldrh r7, [r0,#oRenderInfo_Unk_12] / add r7, r7, r4 / strh r7, [r0,#oRenderInfo_Unk_12]"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: camera_CopyScrollToRenderLayers writes the masked camera Y (oCamera_Unk_06 & 0xFF) here, confirming
+    it is the vertical scroll register mirrored to BG layers.
+  refs:
+  - bn6f/asm/asm00_0.s:3154
+  reproduce: grep -n 'oRenderInfo_Unk_12' bn6f/asm/asm00_0.s | head
+  result: '"and r2, r4 / strh r2, [r3,#oRenderInfo_Unk_12]"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Cleared each frame in renderInfo_clearEntryCounts, consistent with a per-frame BG scroll register
+    reloaded from a live counter.
+  refs:
+  - bn6f/asm/asm00_0.s:3154
+  reproduce: grep -n 'oRenderInfo_Unk_12' bn6f/asm/asm00_0.s | head
+  result: '"strh r1, [r0,#oRenderInfo_Unk_12]"'
+previous_names:
+- oRenderInfo_Unk_12
+changes:
+- date: '2026-10-15'
+  what: rename oRenderInfo_Unk_12 -> oRenderInfo_BGScrollY
+  where: bn6f c1151c67
+  tool: tools/rename_symbol.py

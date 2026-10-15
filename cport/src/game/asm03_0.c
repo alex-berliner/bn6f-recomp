@@ -367,7 +367,7 @@ static void s20364c0_finalize(u32 self) {
  * passes them forward through multiple GUEST_CALLs to battleObject_chipSelectAnimTick_8029C08. */
 static void s20364c0_update(u32 self, u32 toolkit, u32 r4, u32 r6) {
     /* --- Initialization (only when state flag is zero) --- */
-    if (LD8(self + oS20364C0_Unk_02) == 0) {
+    if (LD8(self + oS20364C0_StateHandled) == 0) {
         play_sound_effect(SOUND_SELECT_79);
 
         u32 render_info = LD32(toolkit + oToolkit_RenderInfoPtr);
@@ -379,7 +379,7 @@ static void s20364c0_update(u32 self, u32 toolkit, u32 r4, u32 r6) {
 
         ST32(self + 0x44, TILE_ROW_COUNT);
         ST32(self + 0x40, TILE_ANIM_TOTAL);
-        ST8(self + oS20364C0_Unk_02, TILE_ANIM_TOTAL);
+        ST8(self + oS20364C0_StateHandled, TILE_ANIM_TOTAL);
     }
 
     /* --- Tile-rendering loop --- */
@@ -443,7 +443,7 @@ static void s20364c0_update(u32 self, u32 toolkit, u32 r4, u32 r6) {
         } else {
             ST8(self + oS20364C0_JumpOffset01, JUMP_OFFSET_TRIGGER);
         }
-        ST16(self + oS20364C0_Unk_02, 0);
+        ST16(self + oS20364C0_StateHandled, 0);
     }
 
     /* --- Finalize: call object method that produces this function's return registers --- */
@@ -517,10 +517,10 @@ static void call_sub_8029C08(u32 self) {
 static void sub_8026BF4_impl(u32 self, u32 toolkit) {
     /* First-run init: set the gate flag, clear extra pointers, dispatch
      * a BG update, and clear battle-state bit 2 of unk11. */
-    if (LD8(self + oS20364C0_Unk_02) == FALSE) {
+    if (LD8(self + oS20364C0_StateHandled) == FALSE) {
         ST32(self + oS20364C0_Extra_Unk_44, 0);
         ST32(self + oS20364C0_Extra_Unk_40, 0);
-        ST8(self + oS20364C0_Unk_02, TRUE);
+        ST8(self + oS20364C0_StateHandled, TRUE);
         call_dispatch_801DACC(0x2000);
         call_sub_8029D80();
         call_clear_battle_state_unk11_flag(4);
@@ -590,7 +590,7 @@ Next custMenuUpdateWaitSelectionState_8026CCC(void) {
         /* record the selection and hand control to the 0x40 state handler */
         ST16(R5 + oS20364C0_Unk_38, result);
         ST8(R5 + 1, 0x40);   /* oS20364C0_JumpOffset01 */
-        ST8(R5 + 2, 0);      /* oS20364C0_Unk_02 */
+        ST8(R5 + 2, 0);      /* oS20364C0_StateHandled */
         ST32(R5 + 0x40, 0);
 
         R0 = 0;

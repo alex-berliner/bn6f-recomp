@@ -1,0 +1,57 @@
+name: oObjectSprite_OamAttributes
+address: '0x15'
+kind: struct-field
+status: probable
+summary: 'Packed OAM attribute byte: high nibble = OBJ palette slot (set via sprite_setFinalPalette, initialized
+  to 8), bits 2-3 = OAM priority (set via sprite_setPriority_8002E14).'
+details: Multiple sprite functions consistently use distinct bit-fields of this byte. sprite_getFinalPalette
+  masks with 0xF0 to extract the palette index; sprite_setFinalPalette/sprite_forceWhitePalette clear-and-set
+  the high nibble. sprite_setPriority_8002E14 uses mask 0x0C and shifts left by 2, isolating bits 2-3
+  for OAM priority. asm38.s loads the byte, ANDs with 0xF0, and ORs in a shifted value from sub_3006108
+  — the same palette-slot assignment idiom.
+evidence:
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: High nibble is read out as the OBJ palette slot; symdb explicitly labels this the "final palette
+    byte".
+  refs:
+  - bn6f/asm/asm38.s:786
+  reproduce: grep -n 'oObjectSprite_Unk_15' bn6f/asm/asm38.s | head
+  result: '"ldrb r0, [r3,#oObjectSprite_Unk_15] / mov r1, #0xf0 / and r1, r0"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: High nibble is the writable palette-slot field (cleared then ORed with new palette index).
+  refs:
+  - bn6f/asm/asm38.s:786
+  reproduce: grep -n 'oObjectSprite_Unk_15' bn6f/asm/asm38.s | head
+  result: '"ldrb r0, [r3,#oObjectSprite_Unk_15] / bic r0, #0xf0 / orr r0, r1 / strb r0, [r3,#oObjectSprite_Unk_'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Bits 2-3 are the OAM priority field (mask 0x0C, value shifted by 2).
+  refs:
+  - bn6f/asm/asm38.s:786
+  reproduce: grep -n 'oObjectSprite_Unk_15' bn6f/asm/asm38.s | head
+  result: '"mov r2, #0xc / ldrb r1, [r3,#oObjectSprite_Unk_15] / bic r1, r2 / lsl r0, #2 / orr r1, r0
+    / strb r1'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Default OBJ palette slot 8 on sprite initialization — matches the high-nibble palette interpretation.
+  refs:
+  - bn6f/asm/asm38.s:786
+  reproduce: grep -n 'oObjectSprite_Unk_15' bn6f/asm/asm38.s | head
+  result: '"mov r0, #8 / strb r0, [r5,#oObjectSprite_Unk_15]"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Same palette-slot write idiom in sprite_ensureGfxResident, confirming high nibble = palette
+    index loaded into OBJ palette slot.
+  refs:
+  - bn6f/asm/asm38.s:786
+  reproduce: grep -n 'oObjectSprite_Unk_15' bn6f/asm/asm38.s | head
+  result: '"ldrb r1, [r5,#oObjectSprite_Unk_15] / bic r1, #0xf0 / lsl r0, #4 / orr r1, r0 / strb r1, [r5,#oObje'
+previous_names:
+- oObjectSprite_Unk_15
+changes:
+- date: '2026-10-15'
+  what: rename oObjectSprite_Unk_15 -> oObjectSprite_OamAttributes
+  where: bn6f c1151c67
+  tool: tools/rename_symbol.py

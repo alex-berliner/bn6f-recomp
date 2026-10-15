@@ -1,0 +1,66 @@
+name: oAIAttackVars_ChargeReadyFlag
+address: '0x4'
+kind: struct-field
+status: probable
+summary: Boolean flag indicating a charged/ready attack state (0 = not ready, 1 = ready).
+details: 'The field is overwhelmingly written as 0 during attack initialization sequences, but is written
+  as 1 in exactly two cases: sub_8011CB4 (when chip ids 0x53/0x54 are selected) and sub_8012044 (alongside
+  AiDifficultyTier=1). The two ldrb reads (asm31.s:118900, 119077) test it against 0 to gate a special
+  action (oBattleObject_CurAction = 0x41). This read-after-test-zero pattern is consistent with a boolean
+  readiness/gating flag rather than a counter or indexed value, but the precise meaning of the 1 state
+  cannot be confirmed without further context.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Set to 1 for chip ids 0x53/0x54 (special chips), establishing that non-zero values are semantically
+    meaningful.
+  refs:
+  - bn6f/asm/asm31.s:118900
+  reproduce: grep -n 'oAIAttackVars_Unk_04' bn6f/asm/asm31.s | head
+  result: '"mov r1, #1; strb r1, [r7,#oAIAttackVars_Unk_04]"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Set to 1 in sub_8012044 alongside AiDifficultyTier=1, a relatively rare non-zero write.
+  refs:
+  - bn6f/asm/asm31.s:118900
+  reproduce: grep -n 'oAIAttackVars_Unk_04' bn6f/asm/asm31.s | head
+  result: '"mov r0, #1; strb r0, [r7,#oAIAttackVars_Unk_04]"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Reset to 0 as part of clearing the entire AIAttackVars struct after a damage cap calculation
+    — consistent with a transient flag cleared between attacks.
+  refs:
+  - bn6f/asm/asm31.s:118900
+  reproduce: grep -n 'oAIAttackVars_Unk_04' bn6f/asm/asm31.s | head
+  result: '"mov r0, #0; strb r0, [r7,#oAIAttackVars_Unk_04]"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Cleared to 0 when the AI tries to execute a queued chip but the input code (0x20/0x29/0x2d/5)
+    doesn't match — i.e., flag is cleared on non-trigger input.
+  refs:
+  - bn6f/asm/asm31.s:118900
+  reproduce: grep -n 'oAIAttackVars_Unk_04' bn6f/asm/asm31.s | head
+  result: '"mov r0, #0; strb r0, [r7,#oAIAttackVars_Unk_04]"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Read and tested against 0 to gate setting CurAction=0x41, confirming boolean usage in a decision
+    branch.
+  refs:
+  - bn6f/asm/asm31.s:118900
+  reproduce: grep -n 'oAIAttackVars_Unk_04' bn6f/asm/asm31.s | head
+  result: '"ldrb r1, [r7,#oAIAttackVars_Unk_04]; cmp r1, #0; beq loc_80EF7C6"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Written from stack-loaded value (from chip data), suggesting the value originates from chip/AI
+    state rather than being a hardcoded 0/1.
+  refs:
+  - bn6f/asm/asm31.s:118900
+  reproduce: grep -n 'oAIAttackVars_Unk_04' bn6f/asm/asm31.s | head
+  result: '"ldr r0, [sp]; strb r0, [r7,#oAIAttackVars_Unk_04]"'
+previous_names:
+- oAIAttackVars_Unk_04
+changes:
+- date: '2026-10-15'
+  what: rename oAIAttackVars_Unk_04 -> oAIAttackVars_ChargeReadyFlag
+  where: bn6f c1151c67
+  tool: tools/rename_symbol.py
