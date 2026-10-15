@@ -137,7 +137,7 @@ static void init_battle_navi_sprite(u32 obj) {
         if (transform)
             sprId = TRANSFORM_SPRITE_ID;
     }
-    ST8(obj + oBattleObject_Unk_0c, sprId);
+    ST8(obj + BattleObject_DirectionAngle, sprId);
 
     /* Set initial animation from Param2. */
     u8 anim = LD8(obj + oBattleObject_Param2);
@@ -1263,7 +1263,7 @@ Next sub_80C0C48(void) {
         GUEST_CALL(sub_80E199A);
         u32 derived = R0;
 
-        R0 = LD8(obj + oBattleObject_Unk_0c);
+        R0 = LD8(obj + BattleObject_DirectionAngle);
         R1 = LD8(obj + oBattleObject_Unk_0d);
         R5 = LD32(obj + oBattleObject_RelatedObject1Ptr);
         R6 = derived;
@@ -1380,7 +1380,7 @@ Next sub_80C0DD8(void) {
 
     /* Write panel coordinates into both the canonical and mirror fields. */
     ST8(new_obj + oBattleObject_PanelX, panel_x);
-    ST8(new_obj + oBattleObject_Unk_0c, panel_x);
+    ST8(new_obj + BattleObject_DirectionAngle, panel_x);
     ST8(new_obj + oBattleObject_PanelY, panel_y);
     ST8(new_obj + oBattleObject_Unk_0d, panel_y);
 
@@ -2197,7 +2197,7 @@ static void update_active_flag(u32 obj) {
         ST8(obj + oObjectHeader_Flags,
             LD8(obj + oObjectHeader_Flags) | ANIM_ACTIVE);
 
-        if (LD8(obj + oBattleObject_Unk_0c) == 0) {
+        if (LD8(obj + BattleObject_DirectionAngle) == 0) {
             ST8(obj + oObjectHeader_Flags,
                 LD8(obj + oObjectHeader_Flags) & ANIM_CLEAR_MASK);
         }
@@ -2312,7 +2312,7 @@ Next SpawnCounterPinkRingMaybe_80C4C12(void) {
         ST32(ring + oBattleObject_ExtraVars + 4, R7);
         ST32(R7, ring);
 
-        ST8(ring + oBattleObject_Unk_0c, 1);
+        ST8(ring + BattleObject_DirectionAngle, 1);
 
         /* set the pause-update flag on the ring's object header;
          * the original leaves the flag value in r2 */
