@@ -709,7 +709,7 @@ Next sub_800C6F0(void) {
         u32 panel = R0;
 
         u32 alliance = LD8(panel + oPanelData_Alliance);
-        u32 unk04    = LD8(panel + oPanelData_Unk_04);
+        u32 unk04    = LD8(panel + oPanelData_StatusOrVariant);
         if (alliance == unk04) continue;
 
         total++;
@@ -1572,7 +1572,7 @@ Next object_checkPanelTypeMatchesValue_800D618(void) {
         RETURN_TO_CALLER();
     }
 
-    R1 = LD8(R0 + 4);                 /* oPanelData_Unk_04 */
+    R1 = LD8(R0 + 4);                 /* oPanelData_StatusOrVariant */
     R2 = LD8(R0 + 3);                 /* oPanelData_Alliance */
 
     if (R1 == R2) {

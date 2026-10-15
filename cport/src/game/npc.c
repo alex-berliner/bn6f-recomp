@@ -1749,9 +1749,9 @@ Next sub_809F5B0(void) {
  * switch it to the "in chatbox" state, and clear the action/movement
  * fields while the conversation runs. */
 Next npc_beginChatboxState_809F5FC(void) {
-    ST8(R5 + oOverworldNPCObject_Unk_1d,
+    ST8(R5 + oOverworldNPCObject_CurActionBackup,
         LD8(R5 + oOverworldNPCObject_CurAction));
-    ST8(R5 + oOverworldNPCObject_Unk_1e,
+    ST8(R5 + oOverworldNPCObject_MovementFlagBackup,
         LD8(R5 + oOverworldNPCObject_MovementFlag_0a));
     ST8(R5 + oOverworldNPCObject_CurState, NPC_CUR_STATE_IN_CHATBOX);
     ST8(R5 + oOverworldNPCObject_CurAction, 0);
@@ -1778,9 +1778,9 @@ Next npc_resetToStandardState_809F612(void) {
 
     ST8(R5 + oOverworldNPCObject_CurState, NPC_CUR_STATE_STANDARD);
     ST8(R5 + oOverworldNPCObject_CurAction_sub_809F612,
-        LD8(R5 + oOverworldNPCObject_Unk_1d));
+        LD8(R5 + oOverworldNPCObject_CurActionBackup));
     ST8(R5 + oOverworldNPCObject_MovementFlag_0a,
-        LD8(R5 + oOverworldNPCObject_Unk_1e));
+        LD8(R5 + oOverworldNPCObject_MovementFlagBackup));
 
     R1 = OW_NPC_UNK_FLAGS_60_0x1000 | OW_NPC_UNK_FLAGS_60_FACE_PLAYER_WHEN_INTERACTED_sub_809F612;
     if ((LD32(R5 + oOverworldNPCObject_UnkFlags_60) & R1) == 0) {

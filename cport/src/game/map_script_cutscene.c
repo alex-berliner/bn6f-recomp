@@ -1146,7 +1146,7 @@ static u32 start_cutscene(u32 toolkit, u32 script, u32 param) {
 
     /* Dialogue comes from the cutscene text archive; Unk_34 gets its default table. */
     ST32(state + oCutsceneState_TextArchivePtr, A_eTextScript202DA04);
-    ST32(state + oCutsceneState_Unk_34, A_off_8036EC4);
+    ST32(state + oCutsceneState_DefaultScriptTable, A_off_8036EC4);
 
     return A_off_8036EC4;
 }
@@ -3258,14 +3258,14 @@ static u32 cutscene_warp_cmd(u32 cutscene) {
     if (param & 0x20) {
         /* Remember the following halfword as the argument of a later warp. */
         u32 pending = read_operand_word(2);
-        ST32(cutscene + oCutsceneState_Unk_34, pending);
+        ST32(cutscene + oCutsceneState_DefaultScriptTable, pending);
         return 6;
     }
 
     /* Warp now: argument halfword (or the pending one for bit 0x80), then a byte. */
     u32 warp_arg = read_operand_word(3);
     if (param & 0x80)
-        warp_arg = LD32(cutscene + oCutsceneState_Unk_34);
+        warp_arg = LD32(cutscene + oCutsceneState_DefaultScriptTable);
 
     u32 screen = read_screen_byte(warp_arg);
 

@@ -1224,7 +1224,7 @@ Next writeCurPETNaviToS2001c04_Unk07_80010c6(void) {
 
     u32 s2001c04 = LD32(R10 + oToolkit_S2001c04_Ptr);
     R3 = s2001c04;
-    ST8(s2001c04 + 7 /* oS2001c04_Unk_07 */, R0);
+    ST8(s2001c04 + 7 /* oS2001c04_CurPETNaviId */, R0);
 
     RETURN_TO_CALLER();
 }

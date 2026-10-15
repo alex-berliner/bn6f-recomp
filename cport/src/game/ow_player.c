@@ -45,7 +45,7 @@ static FacingAnimResult load_facing_anim(u32 r3, u32 player, u32 toolkit) {
     /* The extra group byte only applies to internet map groups. */
     u32 group_byte = 0;
     if ((s32)LD8(game_state + oGameState_MapGroup) >= (s32)INTERNET_MAP_GROUP_START)
-        group_byte = LD8(A_eStruct2000aa0 + oS2000aa0_Unk_03);
+        group_byte = LD8(A_eStruct2000aa0 + oS2000aa0_OWPlayerNaviInternetFlag);
     out.r1_out = group_byte;
 
     u32 facing = LD8(player + oOWPlayerObject_FacingDirection);

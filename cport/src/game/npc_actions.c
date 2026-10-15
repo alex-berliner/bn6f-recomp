@@ -56,7 +56,7 @@ Next npc_nonCutsceneMovementInit_809E704(void) {
     u32 dir = LD8(npc + oOverworldNPCObject_MovementDirection);
     u32 step = A_NPCMovementIterationDeltas + dir * 4;        /* {s16 dx, s16 dy} in pixels */
     u32 x = LD32(npc + oOverworldNPCObject_X), y = LD32(npc + oOverworldNPCObject_Y);
-    ST32(npc + oOverworldNPCObject_Unk_70, x + (LDS16(step) << 16));
+    ST32(npc + oOverworldNPCObject_NextYBackup, x + (LDS16(step) << 16));
     ST32(npc + oOverworldNPCObject_Unk_74, y + (LDS16(step + 2) << 16));
 
     /* frames = ceil(0x80000 / speed / 0x1000), through the BIOS divide */
@@ -110,7 +110,7 @@ Next npc_nonCutsceneMovementUpdate_809E7D8(void) {
     SET_FLAGS_CMP(timer, 1);              /* as the original (sub r0, #1) */
     ST16(npc + oOverworldNPCObject_Timer, R0);
     if (R0 == 0) {                        /* step done: snap to its target */
-        ST32(npc + oOverworldNPCObject_X, LD32(npc + oOverworldNPCObject_Unk_70));
+        ST32(npc + oOverworldNPCObject_X, LD32(npc + oOverworldNPCObject_NextYBackup));
         ST32(npc + oOverworldNPCObject_Y, LD32(npc + oOverworldNPCObject_Unk_74));
         u32 steps = LD8(npc + NPC_MOVEMENT_DISTANCE);
         R0 = steps - 1;

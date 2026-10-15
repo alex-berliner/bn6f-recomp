@@ -1283,12 +1283,12 @@ Next custMenu_handleInputQueuePop_802BED4(void) {
         R0 = 0;
         SET_FLAGS_NZ(0);
     } else {
-        ST16(R5 + oS20364C0_Unk_10, value);
+        ST16(R5 + oS20364C0_ChipSelectScrollTimer, value);
 
         /* short confirmation hold if Unk_0c says so, otherwise a long one */
         R1 = LD8(R5 + oS20364C0_FirstBattleTutorialStep);
         u32 hold = (R1 != 0) ? 1 : 0x1E;
-        ST8(R5 + oS20364C0_Unk_0b, hold);
+        ST8(R5 + oS20364C0_CustMenuStepTimer, hold);
 
         R0 = 4;
         ST8(R5 + 3, 4);         /* oS20364C0_Unk_03 */

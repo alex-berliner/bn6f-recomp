@@ -1870,7 +1870,7 @@ static u32 logoScreen_init(u32 state) {
     call_sub_80015FC(0xe);
 
     /* offset 5 flag selects fade mode and LCD bits */
-    u8 transition_flag = LD8(state + oLogoScreenState_Unk_05);
+    u8 transition_flag = LD8(state + oLogoScreenState_State);
     u32 fade_mode = (transition_flag != 0) ? 4 : 0xC;
     u16 lcd_control = (transition_flag != 0) ? 0xC0 : 0x40;
 

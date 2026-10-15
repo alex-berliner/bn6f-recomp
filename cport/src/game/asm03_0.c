@@ -2481,7 +2481,7 @@ Next custMenuPressOK_8028D3A(void) {
         R0 = LD8(menu + oS20364C0_Unk_19);
         GUEST_CALL(sub_802937A);
     } else {
-        u16 unk3a = LD16(menu + oS20364C0_Unk_3a);
+        u16 unk3a = LD16(menu + oS20364C0_CursorAnimPhase);
         if (unk3a != 0) {
             R0 = unk3a;
             GUEST_CALL(sub_80293B0);
