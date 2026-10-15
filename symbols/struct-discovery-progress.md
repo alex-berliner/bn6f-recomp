@@ -512,3 +512,33 @@ Recomp commit pending.
 | oObjectSprite_Unk_16 | u16 | `CurFrame` | probable |
 
 Running total: 1 + 20 + 20 + 19 + 16 + 20 + 20 + 20 + 20 + 20 = **176 fields named**.
+
+## Batch 11 (19 fields, 2026-10-15)
+
+bn6f commits: `318e0544` (.inc), `b2960686` (asm renames).
+Recomp commit pending.
+
+| Field | Old | New | Status |
+|---|---|---|---|
+| oObjectSprite_Unk_18 | u32 | `AnimationResourcePtr` | probable |
+| oObjectSprite_Unk_1c | u32 | `AnimationSubFramePtr` | probable |
+| oObjectSprite_Unk_20 | u32 | `AnimFrameDataPtr` | probable |
+| oObjectSprite_Unk_24 | u32 | `SpriteRenderDataPtr` | hypothesis |
+| oObjectSprite_Unk_28 | u32 | `SpriteAttrs2Ptr` | hypothesis |
+| oObjectSprite_Unk_2c | u32 | `ScriptParam` | hypothesis |
+| oObjectSprite_Unk_30 | u32 | `SpriteFlags4Ptr` | hypothesis |
+| oObjectSprite_Unk_34 | u32 | `ScratchByte` | hypothesis |
+| oCollisionData_Unk_14 | u8 | `BarrierIndex` | hypothesis |
+| oCollisionData_Unk_16 | u16 | `BarrierHP` | probable |
+| oCollisionData_Unk_1a | u16 | `BarrierBreakCounter` | probable |
+| oChatbox_Unk_68 | u16 | `NextScriptDesc` | probable |
+| oChatbox_Unk_74 | u32 | `ScriptFlags` | probable |
+| oRenderInfo_Unk_00 | u16 | `LCDControl` | probable |
+| oRenderInfo_Unk_02 | u16 | `MosaicSize` | probable |
+| oRenderInfo_Unk_14 | u16 | `BG1ScrollXAlt` | hypothesis |
+| oRenderInfo_Unk_16 | u16 | `BGScrollY2` | probable |
+| oAIData_Unk_18 | u8 | `AISubState` | probable |
+| oBattleState_Unk_04_05 | u16 | `AliveActorAndOpponent` | probable |
+| oGameState_Unk_15 | u8 | `SavedByte` | hypothesis |
+
+Running total: 1 + 20 + 20 + 19 + 16 + 20 + 20 + 20 + 20 + 20 + 19 = **195 fields named**.
