@@ -15,18 +15,24 @@ in-flight `wf record` to finish first; bn6f is committed and pushed to
 `fork` per batch, recomp is committed locally with explicit paths only.
 
 Helpers (gitignored under `build/repro/sf/`):
-- `probe.py`     — builds struct-field context, calls the LLM, stores
-                    /tmp/llm_<field>.txt
-- `process.py`   — orchestrator: probe + verify + write entry + rename
-                    + commit (.inc change first, then asm offset)
+- `probe.py`           — builds struct-field context, calls the LLM, stores
+                          /tmp/llm_<field>.txt
+- `probe_parallel.py`  — runs multiple probes in parallel (mp.Pool, 4
+                          workers; the LLM client already paces itself)
+- `process.py`         — orchestrator: probe + verify + write entry + rename
+                          + commit (.inc change first, then asm offset)
+- `run_batch.py`       — drives `process.py` over a list of fields
 
 ## Tally
 
 | batch | fields examined | renamed (hypothesis or probable) | hypothesis-only | dropped |
 |-------|-----------------|----------------------------------|-----------------|---------|
 | 1     | 1               | 1                                | 1               | 0       |
+| 2     | 20              | 20                               | 3               | 0       |
 
-Running total: named 1, hypothesis 1, dropped 0 (struct-field kind only).
+Running total: named 21, hypothesis 4, dropped 0 (struct-field kind only).
+Structs touched: BattleObject, AIData, BattleState, Chatbox, GameState,
+OverworldPlayerObject.
 
 ## Batch 1 (2026-10-15)
 
@@ -52,3 +58,100 @@ Running total: named 1, hypothesis 1, dropped 0 (struct-field kind only).
 Tool: tools/abi/gen_structs.py refreshed `cport/include/gen/structs.h`
 (gitignored); symdb check + gate pass. The C struct rename in `cport/`
 isn't tracked; the asm rename lives in bn6f.
+
+## Batch 2 (2026-10-15)
+
+20 struct-fields renamed (17 probable, 3 hypothesis). Recomp commit
+3ebe7544 + 381b5673, bn6f renames pushed to fork at 71cb4299.
+ROM SHA preserved (`0676ecd4d58a976af3346caebb44b9b6489ad099`).
+
+### AIData (4 fields)
+
+- **oAIData_Unk_4c -> oAIData_AIScriptCounter** (probable): u32, the
+  counter incremented by `battle_incrementAIDataUnk4c_8014432` /
+  cleared by `battle_clearAIDataField4c_8014424` / read by
+  `battleObject_aiGetUnk4cPtr_801442C`. A per-AI tick counter.
+- **oAIData_Unk_5c -> oAIData_AIScriptOffset** (probable): ptr, used
+  as a pointer to the next AI-script instruction / data cursor (read
+  as a full 32-bit word and dereferenced via `[r0, #0x10]`). Cleared
+  in the same path that clears the temp-attack object.
+- **oAIData_Unk_68 -> oAIData_TempAttackObjectPtr** (probable): u32,
+  pointer to a spawned type-1 temp attack object (populated by
+  `spawn_t1_0x5_tempAttackObject_80B8E30` and cleared on attack
+  exit). The 116 accesses all follow the same pattern of "set/clear
+  pointer, deref offset 0x10/0x11".
+- **oAIData_Unk_78 -> oAIData_BattleObjectPtr** (probable): ptr,
+  cached back-pointer to the owning BattleObject. Read as a pointer
+  and passed to AI helpers in sub_810222C / sub_800FE28; the
+  function `battle_SetObjectAIDataField78_800F318` writes to it.
+
+### BattleObject (5 fields)
+
+- **oBattleObject_Unk_0d -> oBattleObject_MoveSubState** (probable):
+  u8, sub-state within the move/animation phase, used as a jump-table
+  index in 4 distinct dispatchers.
+- **oBattleObject_Unk_0f -> oBattleObject_ContactState** (hypothesis):
+  u8, hit/contact sub-state (jump table index 0..3).
+- **oBattleObject_Unk_19 -> oBattleObject_WobbleOrEffectTimer**
+  (hypothesis): u8, wobble/effect countdown decremented in render
+  loop; once it reaches 0 the parent field is restored.
+- **oBattleObject_Unk_30 -> oBattleObject_ChipID** (probable): u16,
+  the MegaChip ID this object was instantiated from — used in
+  object.s to look up the chip via `getChip8021DA8(which_chip)` and
+  propagated to spawned child objects alongside the inherited panel
+  XY/element/alliance fields. The 16-bit wobble-pattern saves are a
+  secondary reuse of the same storage.
+- **oBattleObject_Unk_32 -> oBattleObject_Z16Save** (probable): u16,
+  scratch field saved alongside Z16 for wobble restore (the LLM's
+  suggested Z16Save name; this is the lower-of-two-u16 region so
+  the struct definition says `u16 Unk_32`).
+- **oBattleObject_Unk_5c -> oBattleObject_PendingStateAction**
+  (probable): u32, a saved copy of
+  `CurStateActionPhaseAndPhaseInitialized` that is restored into
+  that field when a transient one-shot flag is cleared. The
+  save/restore handshake is the only access pattern.
+
+### BattleState (6 fields)
+
+- **oBattleState_Unk_02 -> oBattleState_StatePhase** (probable): u8,
+  per-state sub-phase counter.
+- **oBattleState_Unk_03 -> oBattleState_SubPhaseInitFlag** (probable):
+  u8, init-done latch. Read with `ldrb; tst; bne`; written with
+  literal `4` after a one-time setup call. Recurs across 40+
+  sub-state handlers.
+- **oBattleState_Unk_07 -> oBattleState_BattlePhase** (probable):
+  u8, battle phase / end-sequence counter, incremented in
+  `battle_initCustomScreen_8026840` and tested against 1 and 0xF.
+- **oBattleState_Unk_0d -> oBattleState_PlayerSide** (probable): u8,
+  side identifier (0/1); XORed with BattleObject to detect other
+  player at 15+ sites.
+- **oBattleState_Unk_1a -> oBattleState_State4EventCount**
+  (probable): u8, per-frame event counter for battle state 4
+  (loop input).
+- **oBattleState_Unk_28 -> oBattleState_CountdownTimer** (probable):
+  u8 (per the LLM; the struct says u16, so the C field is named
+  accordingly), the 16/8-bit timer that drives state advances.
+
+### Chatbox (2 fields)
+
+- **oChatbox_Unk_05 -> oChatbox_TextScriptDepth** (probable): u8,
+  script nesting depth counter (incremented on push, decremented on
+  return).
+- **oChatbox_Unk_70 -> oChatbox_TileBufferOffset** (probable): u32,
+  offset into chatbox tile buffer (cursor position).
+
+### GameState (1 field)
+
+- **oGameState_Unk_14 -> oGameState_BattleEndSubState** (probable):
+  u8, sub-state of battle-end sequence (jump table).
+
+### OverworldPlayerObject (1 field)
+
+- **oOWPlayerObject_Unk_0a -> oOWPlayerObject_ActionSubState**
+  (probable): u8, secondary sub-state / action dispatcher index
+  (jump table; values 0, 4, 8, 0x98 written).
+
+C structs regenerated via tools/abi/gen_structs.py. The recomp C port
+files (cport/src/game/*.c) were updated by tools/rename_symbol.py
+which in turn re-ran the lifter against the renamed asm. Symdb check
+3539 entries, 0 problems. Gate: ok in 10.5 s.
