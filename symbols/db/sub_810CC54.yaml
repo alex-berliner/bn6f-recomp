@@ -1,0 +1,55 @@
+name: sub_810CC54
+address: '0x0810CC54'
+kind: function
+previous_names: []
+status: hypothesis
+summary: Per-object attack-state cleanup that releases panel reservations, clears/flags ObjectFlags1, refreshes
+  pixel coordinates and spawns a type-4 effect object 0 (Story 6 calibrated poke).
+interface: (r5 = BattleObjectPtr [in/out], r6 = ?, r7 = ?, lr = ?) -> r1 = spawned-effect BattleObjectPtr ; side
+  effects updates object panel reservation, ObjectFlags1, pixel coords and spawns a type-4 effect object 0.
+details: 'The recorded snap_story6_* callers (lr=0x0810c9c4, consistent stack) hand in r0=0x1c, r1=0x0810cc55 (code+1,
+  Thumb address, so the object pointer slot), r2=0x80 (collision ObjectFlags1 bit), r3=3 (panel-release behavior
+  arg). At exit the function writes a tiny per-call return value in r0 -- successive runs of `snap_story6` show
+  r0 counting down 0x29,0x28,0x1f,0x1e,0x1d,0x1c (always result < r0 initial minus a few, and C flag set): consistent
+  with a documented `object_exitAttackState` postlude that resets state then returns a freshly-decremented counter.
+
+  Order of operations implied by the callee palette matches: `object_exitAttackState` (the dump master), `object_removePanelReserve`,
+  `object_clearFlag`/`object_setFlag1` (toggling `OBJECT_FLAGS_SUPERARMOR` and `MOVE_COMPLETE` around the collisions-recompute),
+  `object_getCoordinatesForPanels`/`object_setCoordinatesFromPanels` (rebuilds pixel X/Y from the new panel), `object_updateCollisionPanels`,
+  and finally `spawn_t1_0x0_EffectObject` (a type-4 object with effect type 0 -- the "appearance/disappearance"
+  effect used by custom-counter BattleChip "Poke" Story-6 line).
+
+  The function is a private helper used only by the Story 6 sub-battle calibration set so no assembly listing is
+  in `bn6f/asm`; the captured r0-return is the only outward signal callers consume.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- "callee" `object_exitAttackState` matches the post-attack-step master that resets `CurState`/`CurAction`
+    for the per-frame tick. - All four object-flag and panel helpers and the special `spawn_t1_0x0_EffectObject`
+    (effect-type 0) appear; `effect_type` 0 is the disappearance puff used by poke-style chips. - Captured: lr=0x0810c9c4
+    in every sample; snap_story6_* filenames all map to the same controller on RomVersion 0x80 (Falzar). - Exit
+    r0 returns a small monotonic-changing value while C-flag flips off, consistent with returning a per-frame state
+    counter used by the master state machine.'
+  refs:
+  - bn6f/data/dat31.s
+  reproduce: 'python3 tools/asmcat.py 0x0810CC54
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): object_exitAttackStateSpawnEffect_810CC54
+
+    '
+open_questions:
+- r1 returning the spawned effect object is plausible (`spawn_t1_0x0_EffectObject` returns the spawned pointer in
+  r0; the contract writes r1 but not r0, so r1 may be a copy) but I have not inspected the assembly.
+- Whether r6/r7 are column/row delta, alliance, or hit-flags for the spike is unclear -- seeing the actual bl-list
+  of 0x0810cc54 would settle this.
+sources:
+- discovery session 2026-10-14 batch 44 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ae9cb8d5
+  tool: tools/symdoc.py

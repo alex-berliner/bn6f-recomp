@@ -1,0 +1,75 @@
+name: sub_80EC8A0
+address: '0x080EC8A0'
+kind: function
+previous_names: []
+status: hypothesis
+summary: 'Runs one frame of a battle object AI attack routine: phase 0 starts a charge, plays a sound, sets flags
+  and spawns a type-1 temp attack object; phase 5 spawns the actual projectile via type-3 spawn at the panel in
+  front of the attacker; in either case increments an `Unk_10` tick and writes `0x4` to `AIAttackVars.Unk_00` once
+  it reaches `0xA`, treating the routine as done.'
+interface: (r0/r1 caller-saved scratch) -> r0 = branch state (1/2/4 per captured exit) ; writes AIAttackVars.Unk_01,
+  Unk_00, Unk_10 on r7 and the working object's CollisionData flags via object_setFlag1
+details: '- r5 = current BattleObject, r7 = its AIAttackVars (r5->AIDataPtr + 0xA0), r10 = toolkit (per project
+  convention).
+
+  - Branch on AIAttackVars.Unk_01 (the captured `0x04` saved at the tail). If zero: charge setup branch at 0x80EC8B0
+  calls `object_setAnimation(9)`, `object_setDefaultCounterTime()` (r0=0x10), zeros Unk_10, sets OBJECT_FLAGS_UNK_BIT_22_BIT
+  (0x00400000) on the object''s CollisionData via `object_setFlag1`, calls `sub_80EC934` (returns 0/1) to build
+  `r4 = (ret<<8)+0x13`, adds 0x68 to the AIDataPtr to get `r7` again, calls `spawn_t1_0x5_tempAttackObject_80B8E30(r7)`
+  (subtype-5 temp attack object using AttackVars at AIData+0x68), plays SFX 0xAF, and writes `0x04` to Unk_01.
+
+  - Subsequent calls with Unk_01==4: at loc_80EC8DE, when Unk_10 == 5 (the `cmp r0,#5` at 0x80EC8E0), spawn the
+  real attack with `battle_SpawnAndInitObjectType3_80C4FFE`. Args built: r0 = PanelX + object_getFrontDirection(),
+  r1 = PanelY, r4 = AIAttackVars.Unk_0c, r3 = 0x18<<16 (=0x180000), r6 = AIAttackVars.Damage + AIAttackVars.AttackBoost
+  (the harm/damage fields at +0x08 and +0x06), r2 = r6 (or vice versa — the assembly has `ldrh r2,[r7,#AttackBoost]`
+  after loading r6).
+
+  - After the conditional spawn, Unk_10 is incremented and when it reaches 0xA, `AIAttackVars.Unk_00 = 4`, which
+  is the "done" sentinel used by AI state dispatch (compare with the `Unk_00` writes elsewhere in 0x80EC... routines).
+
+  - Caller interpretation: this is an AI-attack step that takes ~10 frames total — `0x04` written to Unk_00 by other
+  AI-attack routines at this address range seems to mark "finished" and let the AI state machine advance. The temp-attack-object
+  spawn at AIData+0x68 plus the "Damage/AttackBoost" used as type-3 spawn payload hints at a "charge an element
+  shot, then fire it" pattern (snake-arm/wave-pattern objects that materialize in front of the unit), but the chip
+  ID isn''t read here so it''s identified only by inference from r4=0x13.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0,[r7,#oAIAttackVars_Unk_01]` + `tst r0,r0` at 0x80EC8A4 is the charge/setup vs fire branch.
+    - `mov r0,#9; bl object_setAnimation` at 0x80EC8AA sets the charge animation. - `bl object_setDefaultCounterTime`
+    at 0x80EC8AE (resets the BattleObject counter to 0x10). - `mov r0,#1; lsl r0,r0,#OBJECT_FLAGS_UNK_BIT_22_BIT`
+    at 0x80EC8B4..0x80EC8B6 sets flag 0x400000 (USING_ACTION) before the temp attack is spawned. - `bl sub_80EC934`
+    returns 0/1 (per its `in=[''r5''], out=[''r0'',''r1'']` contract and the captured exits r0=1/2/4 here), giving
+    `r4 = (val<<8)+0x13`. - `ldr r7,[r5,#oBattleObject_AIDataPtr]; add r7,#0x68` then `bl spawn_t1_0x5_tempAttackObject_80B8E30`
+    shows AIData+0x68 is reused as the temp attack param pointer. - `mov r0,#0xaf; bl PlaySoundEffect` at 0x80EC8F4
+    (0xAF is the chargin SFX). - At loc_80EC8DE the second branch reads `AIAttackVars.Unk_10` (u16), checks `cmp
+    r0,#5`, then builds spawn args from Damage+AttackBoost fields and calls the type-3 spawner at the panel in front
+    of the actor. - `strh r0,[r7,#oAIAttackVars_Unk_00]` with `mov r0,#4` at 0x80EC908 writes the "finished" sentinel.
+    - Captured exits r0={1,2,4} per `r4`/object type telltale; the 4 in particular is what this routine consistently
+    ends on once Unk_10 reaches 0xA.'
+  refs:
+  - bn6f/asm/asm31.s
+  reproduce: 'python3 tools/asmcat.py 0x080EC8A0
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battle_AIAttackVars_ChargeSnakeArmOrShockWave_80EC8A0
+
+    '
+open_questions:
+- Which chip/attack this actually is. The `0x13` payload and 0xAF SFX could be any of multiple "charge-then-fire"
+  Navi/virus attacks; the caller list is empty in the inputs, so identification is shallow.
+- Whether the `push {r7}` / `pop {r7}` around `sub_80EC934`+spawn is preserving r7 over the spawner or just window-dressing;
+  project convention says r7 is caller-saved across `bl`, but the explicit push implies `spawn_t1_0x5_tempAttackObject_80B8E30`
+  clobbers it.
+- The callers section is empty, so the "AI attack step" framing relies on register convention (r5=BattleObject,
+  r7=AIAttackVars) consistent with the surrounding 0x80EC8xx cluster.
+sources:
+- discovery session 2026-10-14 batch 44 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ae9cb8d5
+  tool: tools/symdoc.py

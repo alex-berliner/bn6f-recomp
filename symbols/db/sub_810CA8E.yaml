@@ -1,0 +1,81 @@
+name: sub_810CA8E
+address: '0x0810CA8E'
+kind: function
+previous_names: []
+status: hypothesis
+summary: Computes an available adjacent panel step from `r5`'s battle object towards `r10.Toolkit` (used by an AI/object
+  pathing decision).
+interface: (r5 = battle object pointer) -> r0 = selected adjacent panel index 0x1..0xC (or 0x0 to indicate none)
+  ; r1 = side-effects (NZ flag set on success) ; kills many registers
+details: 'The captured call snapshots are all from a single call site (lr=0x0810c9c4) with the same
+
+  argument state: r0=0x08 (an action/mode byte), r1=0x0810ca8f (the function itself +1,
+
+  likely a `bx`/`blx` thumb-bit tail-call target), r2=0x80, r3=0x03. The function clearly
+
+  treats r5 as a battle object: it calls `object_checkPanelParameters_800CC86` (testing
+
+  panel flags), `object_getCoordinatesForPanels_800E276` (panel->pixel conversion),
+
+  `object_removePanelReserve_801BB46` (releasing a panel reservation owned by r5),
+
+  `object_setCollisionRegion_801A07C` (writing region into r5''s collision data),
+
+  `object_setCoordinatesFromPanels_800E29C` (recompute r5''s pixel X/Y from its panels),
+
+  `object_setCounterTime_800E9DC` (writes a counter into r5; matches an `in r0,r5,r10`
+
+  contract), `object_updateCollisionPanels_801A04C` (sync r5''s panel pos into collision),
+
+  `spawn_t1_0x0_EffectObject_80E05F6` (spawn a type-4 effect with param0=0), and
+
+  `sub_801DC7C` (claim a battle status slot for r5). The varied r0 exits (0x1, 0x2, 0xB,
+
+  0xC) look like adjacent-panel indices returned to the caller, with the Carry/equal flags
+
+  set depending on which direction is chosen.
+
+
+  Because the assembly was not actually dumped (`sub_810CA8E not found in bn6f/asm`),
+
+  the above is reconstructed from the callee contract set and the captured-call register
+
+  signature. All observation comes from indirect evidence (callee list + entry/exit
+
+  state), not raw instructions.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: "- callee `object_setCollisionRegion` and `object_setCoordinatesFromPanels` both take\n  `r5` as the in-register\
+    \ battle object; consistent with `r5` being the focal object.\n- callee `sub_801DC7C` claims a battle-status\
+    \ list slot for `r5`, after position/state\n  has been updated.\n- callee `spawn_t1_0x0_EffectObject` spawns\
+    \ an effect with type=1, effecttype=0; this\n  is the only \"create-new-thing\" callee, so the function likely\
+    \ declares a new step or\n  a path.\n- exit r0 values in snapshots range over 0x1, 0x2, 0xB, 0xC; matches the\
+    \ 12 adjacent\n  panel indices a step-decider would return (0 = \"no step\", 1..12 for the 12\n  neighbours\
+    \ / panel slots).\n- captured-call site lr=0x0810c9c4 is consistent with a single repeated caller, not a\n \
+    \ shared library helper."
+  refs:
+  - bn6f/data/dat31.s
+  reproduce: 'python3 tools/asmcat.py 0x0810CA8E
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): object_pickPanelStepBasedOnRange_810CA8E
+
+    '
+open_questions:
+- Without assembly disassembly the exact panel-set it queries and the scoring rule are unknown; the "step picker"
+  role is inferred from the mix of panel-test, panel- coordinate and panel-unreserve calls in one function.
+- The exact meaning of r0=0x8, r2=0x80, r3=0x3 on entry (mode byte plus a mask and a panel set index?) is not pinned
+  down.
+- The caller at 0x0810c9c4 is unidentified; finding it would settle whether this is an AI action-decider, a movement
+  planner, or a sub-step inside an attack handler.
+sources:
+- discovery session 2026-10-14 batch 44 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ae9cb8d5
+  tool: tools/symdoc.py

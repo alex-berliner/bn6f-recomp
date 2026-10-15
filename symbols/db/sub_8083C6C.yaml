@@ -1,0 +1,71 @@
+name: sub_8083C6C
+address: '0x08083C6C'
+kind: function
+previous_names: []
+status: hypothesis
+summary: Handles a "story 7" on-touch BBS by clearing/storing event flags and then running the player NPC script-array
+  trigger via reqBBS_81409E4.
+interface: (r0 = unused, r1 = 0x40, r2 = 0, r3 = pointer/word 0x02001d25) -> r0 = 0, NZ+C+ flags cleared ; no other
+  caller-visible state
+details: 'Behaviour inferred from captured-call snapshots (r0=0, r1=0x40, r2=0, r3=0x02001d25 fixed across
+
+  all 40 captures) plus the direct callees listed. The block reads/writes a few event/story flags
+
+  using SetEventFlag / SetEventFlagFromImmediate / TestEventFlag / TestEventFlagFromImmediate
+
+  (r10 is the toolkit, so flag IDs live in the EventFlags block) and ultimately tail/forward-calls
+
+  reqBBS_81409E4 (which polls the OW player''s NPC script-array for a coord-touch trigger such as
+
+  an on-touch BBS). The "snap_story7_*" capture names and the r1=0x40 story-tag word are the only
+
+  hints at the story-7 chapter context.
+
+  Because assembly was not produced (sub_8083C6C not found in bn6f/asm), the exact flag IDs,
+
+  branch order and r4/r5 usage shown in the in/out contract cannot be re-checked. The contract''s
+
+  `out` includes many caller-saved regs that are clobbered by the BBS helper, consistent with this
+
+  being a thin wrapper that sets up r4/r5/r10/lr for reqBBS_81409E4.
+
+  Return value is 0 with Z+C clear at exit (flags "-ZC-" / "----" at entry means NZ+C are *set*
+
+  on exit of the captured snapshot frame, while a different snapshot shows "-ZC-"; treat as
+
+  probable not certain).
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: "- All 40 captured entries share r0=0, r1=0x40, r2=0, r3=0x02001d25, sp=03007dac, lr=08035e88,\n  strongly\
+    \ suggesting a single, deterministic wrapper around an event-flag + BBS pair.\n- Callee set contains exactly\
+    \ the four SetEventFlag*/TestEventFlag* helpers plus the BBS\n  trigger reqBBS_81409E4, which matches a \"check/set\
+    \ a story flag, then fire an on-touch BBS\".\n- Capture filenames `snap_story7_*.bin` and r1=0x40 (a likely\
+    \ story/chapter tag) point at a\n  story-7 specific touch BBS, fitting the `reqBBS_81409E4` summary \"overworld\
+    \ player NPC\n  script-array ... on-touch BBS\".\n- Contract in lists r4/r5/r10/lr, matching reqBBS_81409E4's\
+    \ \"in=['r10','lr']\" plus saved\n  scratch; contract out lists all caller-saved regs and lr, matching the BBS\
+    \ helper's out."
+  refs:
+  - bn6f/data/dat21.s
+  reproduce: 'python3 tools/asmcat.py 0x08083C6C
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): owMapObject_runBBSStory7Touch_8083C6C
+
+    '
+open_questions:
+- No assembly is available, so the exact flag IDs, whether flags are set before/after the BBS trigger, and whether
+  the function tail-calls reqBBS_81409E4 or falls through, are unknown.
+- The fixed r3=0x02001d25 (EWRAM pointer) suggests a per-call context block, but its layout is not visible from
+  the 4-byte register value alone. Disassembling 0x08083c6c (or pulling it from a sibling ROM image) would settle
+  all of the above.
+sources:
+- discovery session 2026-10-14 batch 44 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ae9cb8d5
+  tool: tools/symdoc.py

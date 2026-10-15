@@ -1,0 +1,64 @@
+name: sub_80EB450
+address: '0x080EB450'
+kind: function
+previous_names: []
+status: hypothesis
+summary: 'AI buster attack step: plays the buster fire/hit sounds and spawns the buster shot, charge-pellet and
+  the temporary attack object for an AttackVars-driven attack.'
+interface: (r7 = AIAttackVars*, r5 = battle object (caster), r2, r10) -> no return ; side effects spawns battle
+  objects, plays SFX, mutates AIAttackVars and the caster's flag/animation
+details: "- On first entry (`AIAttackVars_Unk_01 == 0`), starts animation 0x0E, calls `sub_80EB562`, sets `OBJECT_FLAGS_UNK_BIT_22`\
+  \ on the caster, then sets Unk_01=4 and Unk_10=0 (`strh r0,[r7,#oAIAttackVars_Unk_10]`).\n- On the second tick\
+  \ (`Unk_10 == 1`) plays `SOUND_BUSTER_6A`; branches on `Unk_03`:\n  * Unk_03==2 path: plays SFX 0xFF, computes\
+  \ front-panel pixel coords via `object_getFrontDirection`/`object_getCoordinatesForPanels` (r6 = Damage ptr, r7\
+  \ saved around), and dispatches through `sub_80C6248` with r3=0xC0000, r4=6 (likely \"charge shot\" / cannon).\n\
+  \  * Other path (Unk_03!=2): uses `battle_SpawnObjectOnFrontPanel_800FAAC` with `Unk_0c` (chip-id like) and Damage;\
+  \ if Unk_03==1, sets Unk_0d=1, spawns again with the charge-pellet type and writes 0xFF to Unk_0d; spawns a third\
+  \ front-panel object unconditionally.\n- Always reaches `loc_80EB4E6` which calls `spawn_t1_0x5_tempAttackObject_80B8E30`\
+  \ with r7 = r5 + 0x4c (the caster's `RelatedObject1Ptr`), spawning the temporary attack object bound to the caster.\n\
+  - At the end (`Unk_10 > 4` ⇒ `Unk_00 = 4`), advances `Unk_10` by 1 each call, terminating the AI attack state.\n\
+  - Captured callers all push LR=0x080eb442 (the +1 of the Thumb BL at 0x080eb440-ish); r1 = 0x080eb451 (so this\
+  \ is invoked via `BL 0x080EB450` with r1 already set to `0x080EB450|1`); r3 = 0x02034880 (an IWRAM pointer).\n\
+  - The exit r0 values 1..4 correspond to the `Unk_10` counter / final `Unk_00` write; this function is \"void-like\"\
+  \ (r0 not a real return), so the contract listing r0 in `out` is incidental.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-14'
+  detail: '- `ldrb r0,[r7,#oAIAttackVars_Unk_01]; tst r0,r0; bne loc_80EB472` — branches past init when the step
+    counter is non-zero. - `mov r0,#0xe; bl object_setAnimation` followed by `mov r0,#1; lsl r0,r0,#OBJECT_FLAGS_UNK_BIT_22_BIT;
+    bl object_setFlag1` and `mov r0,#4; strb r0,[r7,#oAIAttackVars_Unk_01]; mov r0,#0; strh r0,[r7,#oAIAttackVars_Unk_10]`
+    — exact init sequence on first entry. - `cmp r0,#1; bne loc_80EB4F2` gates the firing branch on `Unk_10 == 1`.
+    - `mov r0,#SOUND_BUSTER_6A; bl PlaySoundEffect` then `cmp r0,#2` on `Unk_03` selects the cannon/cannon-style
+    path. - `bl battle_SpawnObjectOnFrontPanel_800FAAC` with `r3 = 0x180000` is repeated up to three times when
+    `Unk_03 == 1`, and the toggling of `[r7,#oAIAttackVars_Unk_0d]` between 1 and 0xFF marks the projectile frame.
+    - `mov r7,#0x4c; add r7,r7,r5; bl spawn_t1_0x5_tempAttackObject_80B8E30` derives r7 from caster+0x05c and matches
+    `oBattleObject_RelatedObject1Ptr` offset. - `add r0,#1; strh r0,[r7,#oAIAttackVars_Unk_10]; cmp r0,#4; ble locret_80EB500`
+    and `mov r0,#4; strh r0,[r7,#oAIAttackVars_Unk_00]` — clear step-counter semantics in `AIAttackVars`. - Captured
+    entry r3 = 0x02034880 across all six samples confirms a stable AI/battle context ptr in r3, and the varying
+    exit r0 maps to the Unk_10 counter being returned (or the AIState value 4).'
+  refs:
+  - bn6f/asm/asm31.s
+  reproduce: 'python3 tools/asmcat.py 0x080EB450
+
+    '
+  result: the body read as described above
+  note: 'Proposed name (pending rename): battle_aiAttackVars_runBusterSequence_80EB450
+
+    '
+open_questions:
+- Exact AIAttackVars field meanings (`Unk_00`/`Unk_01`/`Unk_03`/`Unk_0c`/`Unk_0d`/`Unk_10`/`Unk_12`) — names in
+  the struct are still `Unk_*`, so whether `Unk_03==2` is "cannon/cannon GS" vs a different buster variant can't
+  be confirmed without more callers.
+- Whether the `sub_80EB562` helper is part of the same AI attack state machine or performs additional setup (e.g.
+  locking the caster, hiding navi cust).
+- True identity of the second/third `battle_SpawnObjectOnFrontPanel` calls when `Unk_03 == 1` (likely the charge
+  pellet + the cancel-cust anim marker, but unverified).
+- Role of the captured entry `r1 = 0x080eb451` (Thumb BL+1 address) — likely just the caller's saved LR pushed for
+  re-entry; not an input.
+sources:
+- discovery session 2026-10-14 batch 44 (outside model minimax/MiniMax-M3)
+changes:
+- date: '2026-10-14'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ae9cb8d5
+  tool: tools/symdoc.py
