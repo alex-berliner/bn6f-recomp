@@ -1743,7 +1743,7 @@ static void reset_state_for_new_location(u32 toolkit) {
     ST8(gs + 3,                                0);  /* Unk_03 */
     ST8(gs + oGameState_SavedByte,                0);
     ST8(gs + oGameState_BattlePaused,          0);
-    ST32(gs + oGameState_Unk_74,              0);
+    ST32(gs + oGameState_AntiTamperFlags,              0);
 
     /* Default BGM indicator for overworld */
     ST8(gs + oGameState_BGMusicIndicator,     0x63);
@@ -1998,9 +1998,9 @@ static void init_new_game_data(u32 toolkit) {
     ST16(gs + oGameState_LastMapGroup, 0xFFFF);
     ST32(gs + oGameState_ProtectedZenny, 0);
     ST32(gs + oGameState_ProtectedBugfrags, 0);
-    ST32(gs + oGameState_Unk_74, 0);
-    ST32(gs + oGameState_Unk_6c, 0xFFFFFFFF);
-    ST32(gs + oGameState_Unk_70, 0xFFFFFFFF);
+    ST32(gs + oGameState_AntiTamperFlags, 0);
+    ST32(gs + oGameState_ZennyChecksumMirror, 0xFFFFFFFF);
+    ST32(gs + oGameState_ProtectedBugfragsObfuscated, 0xFFFFFFFF);
     ST32(gs + oGameState_CurBattleDataPtr, 0);
     ST8(gs + oGameState_SavedChipDescByte, 0);
     ST8(gs + oGameState_CurPETNavi, 0);
@@ -2495,7 +2495,7 @@ static struct EnterMapExit enter_map(u32 toolkit) {
     ST8(game_state + oGameState_SavedByte, 0);
     ST8(game_state + oGameState_CoordInteractionValue, 0);
     ST8(game_state + 3 /* oGameState_Unk_03 */, 0);
-    ST32(game_state + oGameState_Unk_68, 0);
+    ST32(game_state + oGameState_FrameCountdown, 0);
 
     /* Drop all the temporary mode flags a cutscene/battle may have left set. */
     clear_event_flag_EnterMap(0x1719);     /* EVENT_1719 */
@@ -3011,7 +3011,7 @@ static void map_trigger_enter_on_warp(void) {
 
 /* GameState::Tick (self in r5): run every overworld subsystem's frame update,
  * then, while a screen fade is running, step the warp countdown in
- * oGameState_Unk_68 — play cue sounds at fixed steps and, once it expires,
+ * oGameState_FrameCountdown — play cue sounds at fixed steps and, once it expires,
  * finish the warp via the chatbox and the map's on-warp-enter event. */
 static void game_state_tick(u32 self) {
     run_overworld_updates();
@@ -3019,14 +3019,14 @@ static void game_state_tick(u32 self) {
     if (!screen_fade_active())
         return;
 
-    s32 countdown = (s32)LD32(self + oGameState_Unk_68) - 1;
+    s32 countdown = (s32)LD32(self + oGameState_FrameCountdown) - 1;
     if (countdown < 0) {
         /* Timer ran out (field is still 0 on disk): complete the map warp. */
         run_chatbox_8040818();
         map_trigger_enter_on_warp();
         return;
     }
-    ST32(self + oGameState_Unk_68, countdown);
+    ST32(self + oGameState_FrameCountdown, countdown);
 
     if (countdown == 0x29) {
         play_sound_effect_sub_800536E(0x171); /* late warp cue */

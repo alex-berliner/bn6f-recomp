@@ -170,20 +170,20 @@ static CameraSavedRegisters camera_init(u32 x, u32 y, u32 z, u32 map_group, u32 
 
     /* Clear the camera block, preserving Unk_03 and Unk_14 across the fill. */
     u32 mode = LD8(camera + 3);
-    u32 unk14 = LD32(camera + oCamera_Unk_14);
+    u32 unk14 = LD32(camera + oCamera_PositionSrcPtr);
     zero_fill_by_word_camera_init_802FF4C(camera, 0x4C);
     ST8(camera + 3, mode);
-    ST32(camera + oCamera_Unk_14, unk14);
+    ST32(camera + oCamera_PositionSrcPtr, unk14);
 
     /* Movement limits from the map dimensions, in 1/4-tile fixed point (<< 18):
      * Unk_1c/Unk_20 hold the maxima, Unk_18/Unk_24 the negated minima. */
     u32 map_tiles = A_eMapTilesState200be70;
     u32 x_limit = (LD8(map_tiles + oMapTilesState200be70_MapWidth) - 0x1E) << 18;
-    ST32(camera + oCamera_Unk_1c, x_limit);
-    ST32(camera + oCamera_Unk_18, 0 - x_limit);
+    ST32(camera + oCamera_MaxScrollX, x_limit);
+    ST32(camera + oCamera_MinX16_16, 0 - x_limit);
     u32 y_limit = (LD8(map_tiles + oMapTilesState200be70_MapHeight) - 0x14) << 18;
-    ST32(camera + oCamera_Unk_20, y_limit);
-    ST32(camera + oCamera_Unk_24, 0 - y_limit);
+    ST32(camera + oCamera_CameraMinZ, y_limit);
+    ST32(camera + oCamera_MinY, 0 - y_limit);
 
     /* Place the camera at the player's position and clear the scroll state. */
     ST32(camera + oCamera_X, x);
@@ -321,7 +321,7 @@ Next camera_SavePosition_803011A(void) {
     R1 = LD16(R5 + 4);              /* oCamera_ScrollX: current x */
     ST16(R5 + 8, R1);               /* oCamera_SavedScrollX: saved x */
     R1 = LD16(R5 + 6);              /* oCamera_CameraYInt: current y */
-    ST16(R5 + oCamera_Unk_0a, R1);  /* oCamera_Unk_0a: saved y */
+    ST16(R5 + oCamera_SavedCameraYInt, R1);  /* oCamera_SavedCameraYInt: saved y */
     RETURN_TO_CALLER();
 }
 
@@ -333,10 +333,10 @@ Next nullsub_7(void) {
 
 /* ── camera_LoadPositionFromSource_8030126 ── */
 /* camera_LoadPositionFromSource_8030126: copy the camera position from the data block referenced by
- * oCamera_Unk_14 into the camera's X/Y/Z fields.  Leaves r7 pointing at that
+ * oCamera_PositionSrcPtr into the camera's X/Y/Z fields.  Leaves r7 pointing at that
  * block and r2 holding the Z value (both are read by callers). */
 Next camera_LoadPositionFromSource_8030126(void) {
-    R7 = LD32(R5 + oCamera_Unk_14);
+    R7 = LD32(R5 + oCamera_PositionSrcPtr);
 
     R2 = LD32(R7 + 0);
     ST32(R5 + oCamera_X, R2);
@@ -366,13 +366,13 @@ Next camera_applyScrollToBgLayers_8030158(void) {
     u32 inR4 = R4, inR6 = R6, inR7 = R7;
 
     /* camera current minus previous position:
-     * oCamera_ScrollX/06 = current X/Y, oCamera_SavedScrollX/oCamera_Unk_0a = previous X/Y */
+     * oCamera_ScrollX/06 = current X/Y, oCamera_SavedScrollX/oCamera_SavedCameraYInt = previous X/Y */
     u32 scrollX = LD16(R5 + 4) - LD16(R5 + 8);
-    u32 scrollY = LD16(R5 + 6) - LD16(R5 + oCamera_Unk_0a);
+    u32 scrollY = LD16(R5 + 6) - LD16(R5 + oCamera_SavedCameraYInt);
 
     R1 = scrollX;
     R4 = scrollY;
-    R2 = LD16(R5 + oCamera_Unk_0a);
+    R2 = LD16(R5 + oCamera_SavedCameraYInt);
 
     /* oToolkit_RenderInfoPtr lives at offset 8 in the toolkit struct */
     u32 renderInfo = LD32(R10 + 8);
@@ -425,7 +425,7 @@ Next camera_writeUnk03_14_80301b2(void) {
     u32 camera = LD32(R10 + oToolkit_CameraPtr);
 
     ST8(camera + 3, R0);
-    ST32(camera + oCamera_Unk_14, R1);
+    ST32(camera + oCamera_PositionSrcPtr, R1);
 
     R2 = camera;
     RETURN_TO_CALLER();
@@ -446,14 +446,14 @@ Next SetCameraXYZ(void) {
 /* ── camera_initShakeEffect_80302a8 ── */
 /* camera_initShakeEffect_80302a8:
  *   Triggers a camera shake effect.
- *   r0 = shake magnitude (stored at oCamera_Unk_0e)
- *   r1 = shake duration/period (stored at oCamera_Unk_0c)
+ *   r0 = shake magnitude (stored at oCamera_ShakeMagnitude)
+ *   r1 = shake duration/period (stored at oCamera_ShakeDuration)
  *   Output: r2 holds the camera struct pointer (loaded from r10).
  */
 Next camera_initShakeEffect_80302a8(void) {
     u32 camera = LD32(R10 + oToolkit_CameraPtr);
-    ST16(camera + oCamera_Unk_0e, R0);
-    ST16(camera + oCamera_Unk_0c, R1);
+    ST16(camera + oCamera_ShakeMagnitude, R0);
+    ST16(camera + oCamera_ShakeDuration, R1);
     R2 = camera;
     RETURN_TO_CALLER();
 }

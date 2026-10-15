@@ -469,7 +469,7 @@ static u32 npc_wait_close(u32 npc_ptr, u32 toolkit_ptr, u32 r7_in) {
     }
 
     /* Path 3: animation finished – clear NPC sub-state byte and reset to standard. */
-    ST8(npc_ptr + oOverworldNPCObject_Unk_07, 0);
+    ST8(npc_ptr + oOverworldNPCObject_MovementCoordOffset, 0);
     npc_reset_to_standard(game_state_ptr);
     return game_state_ptr;
 }
@@ -1720,10 +1720,10 @@ static void refresh_npc_interaction_area(u32 npc_ptr, u32 r2_in, u32 *r2_out, u3
                  0x804,
                  OW_OBJECT_INTERACTION_AREA_FLAG_0x80000,
                  OW_OBJECT_INTERACTION_AREA_FLAG_0x10000 | OW_OBJECT_INTERACTION_AREA_FLAG_0x40000,
-                 npc_ptr + oOverworldNPCObject_Unk_54).r2;
+                 npc_ptr + oOverworldNPCObject_InteractionAreaPtr).r2;
     }
 
-    ST32(npc_ptr + oOverworldNPCObject_Unk_54, 0);
+    ST32(npc_ptr + oOverworldNPCObject_InteractionAreaPtr, 0);
     *r2_out = r2;
     *r5_out = npc_ptr;
 }
@@ -1804,7 +1804,7 @@ Next npc_resetToStandardState_809F612(void) {
  * marker) and returns 1 in r0 if any of them is set, 0 otherwise.
  * Also leaves the flag word in r1 and the mask 0x50000 in r2, as the original does. */
 Next npc_overworld_CheckStateFlags50000_809F638(void) {
-    u32 flags = LD32(R5 + oOverworldNPCObject_Unk_54);
+    u32 flags = LD32(R5 + oOverworldNPCObject_InteractionAreaPtr);
 
     R1 = flags;
     R2 = 0x50000;
@@ -1852,8 +1852,8 @@ static Sub809F68C_Result clear_npc_busy_flags(void) {
     u32 end = cursor + 0xD80;
 
     do {
-        u32 flags = LD32(cursor + oOverworldNPCObject_Unk_50);
-        ST32(cursor + oOverworldNPCObject_Unk_50, flags & ~1u);
+        u32 flags = LD32(cursor + oOverworldNPCObject_BusyFlag);
+        ST32(cursor + oOverworldNPCObject_BusyFlag, flags & ~1u);
         cursor += oOverworldNPCObject_Size;
     } while ((s32)cursor < (s32)end);
 

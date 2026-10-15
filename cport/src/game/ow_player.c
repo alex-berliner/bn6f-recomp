@@ -674,7 +674,7 @@ Next ow_findInteractableNPC_809E01C(void) {
     R2 = arrayEnd;
 
     while ((s32)npc < (s32)arrayEnd) {
-        u32 state = LD32(npc + oOverworldNPCObject_Unk_50);
+        u32 state = LD32(npc + oOverworldNPCObject_BusyFlag);
         if ((state & 1) != 0) {
             /* NPC slot is live: skip it if interaction is disabled. */
             u32 unkFlags = LD32(npc + oOverworldNPCObject_UnkFlags_60);

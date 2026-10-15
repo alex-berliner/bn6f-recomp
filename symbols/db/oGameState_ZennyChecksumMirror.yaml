@@ -1,0 +1,38 @@
+name: oGameState_ZennyChecksumMirror
+address: '0x6c'
+kind: struct-field
+status: probable
+summary: '"Zenny checksum mirror (u32)."'
+details: ''
+evidence:
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: On new-game init, after Zenny are zeroed, Unk_6c is set to mvn (bitwise inverse) of 0 i.e. 0xFFFFFFFF,
+    establishing the mirror invariant together with Zenny=0.
+  refs:
+  - bn6f/asm/asm00_1.s:4080
+  reproduce: grep -n 'oGameState_Unk_6c' bn6f/asm/asm00_1.s | head
+  result: '"str r0, [r5,#oGameState_Unk_6c]"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: When the encryption flag (bit 0 of Unk_74) is clear, the routine re-encrypts Zenny and refreshes
+    Unk_6c with `~Zenny`, keeping the mirror in sync after legitimate zenny changes.
+  refs:
+  - bn6f/asm/asm00_1.s:4080
+  reproduce: grep -n 'oGameState_Unk_6c' bn6f/asm/asm00_1.s | head
+  result: '"mvn r1, r0 / str r1, [r4,#oGameState_Unk_6c]"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Anti-cheat verify compares live Zenny against `~Unk_6c`; equality means the mirror is intact,
+    otherwise it falls through to set the Unk_74 tamper flag — classic checksum-mirror tamper detection.
+  refs:
+  - bn6f/asm/asm00_1.s:4080
+  reproduce: grep -n 'oGameState_Unk_6c' bn6f/asm/asm00_1.s | head
+  result: '"ldr r1, [r4,#oGameState_Unk_6c] / mvn r1, r1 / cmp r0, r1 / beq loc_8006F90"'
+previous_names:
+- oGameState_Unk_6c
+changes:
+- date: '2026-10-15'
+  what: rename oGameState_Unk_6c -> oGameState_ZennyChecksumMirror
+  where: bn6f 97f8c9ce
+  tool: tools/rename_symbol.py

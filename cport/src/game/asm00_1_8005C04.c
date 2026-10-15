@@ -1258,13 +1258,13 @@ Next encryption_initAll_8006d00(void) {
 }
 
 /* ── gameState_GetUnk74_8006DEC ── */
-/* gameState_GetUnk74_8006DEC(): return the current game state's field at oGameState_Unk_74.
+/* gameState_GetUnk74_8006DEC(): return the current game state's field at oGameState_AntiTamperFlags.
  * Inputs: none (R10 = toolkit pointer).
  * Outputs: r0 = game state -> Unk_74. Preserves r4-r7. */
 Next gameState_GetUnk74_8006DEC(void) {
     u32 *toolkit = (u32 *)R10;
     u32 *gameState = (u32 *)LD32((u32)toolkit + oToolkit_GameStatePtr);
-    R0 = LD32((u32)gameState + oGameState_Unk_74);
+    R0 = LD32((u32)gameState + oGameState_AntiTamperFlags);
     RETURN_TO_CALLER();
 }
 
@@ -1422,7 +1422,7 @@ Next encryption_testPack_8006e84(void) {
  * Re-encrypt the player's zenny counter. Stores the raw (plaintext) amount
  * where Unk2005028 points, and keeps a bitwise-NOT mirror of it in the game
  * state (an anti-tamper check) unless that mirror is currently suppressed
- * by bit 0 of oGameState_Unk_74. The stored value is the plaintext amount
+ * by bit 0 of oGameState_AntiTamperFlags. The stored value is the plaintext amount
  * XORed with the global obfuscation key at dword_2000060.
  * All argument registers (r0-r7) are preserved; r10 is the toolkit pointer. */
 Next encryption_zenny_8006f54(void) {
@@ -1430,8 +1430,8 @@ Next encryption_zenny_8006f54(void) {
     u32 zenny = LD32(gameState + oGameState_ProtectedZenny);
 
     /* Maintain the inverted copy of the zenny amount unless it is held. */
-    if (!(LD32(gameState + oGameState_Unk_74) & 1))
-        ST32(gameState + oGameState_Unk_6c, ~zenny);
+    if (!(LD32(gameState + oGameState_AntiTamperFlags) & 1))
+        ST32(gameState + oGameState_ZennyChecksumMirror, ~zenny);
 
     /* Store zenny XOR the global key into the encrypted wallet pointer. */
     u32 key = LD32(A_dword_2000060);
@@ -1445,8 +1445,8 @@ Next encryption_zenny_8006f54(void) {
  *
  * Validates the protected copy of the player's zenny two ways:
  *   1. oGameState_ProtectedZenny must be the bitwise complement of the
- *      shadow copy in oGameState_Unk_6c; otherwise bit 0 of
- *      oGameState_Unk_74 (cheat-detected flags) is set.
+ *      shadow copy in oGameState_ZennyChecksumMirror; otherwise bit 0 of
+ *      oGameState_AntiTamperFlags (cheat-detected flags) is set.
  *   2. oGameState_ProtectedZenny XOR the key in dword_2000060 must equal
  *      the checksum stored behind the pointer at
  *      toolkit + oToolkit_Unk2005028_Ptr.
@@ -1458,9 +1458,9 @@ Next encryption_zenny_8006f78(void) {
     u32 gameState = LD32(R10 + oToolkit_GameStatePtr);
     u32 zenny = LD32(gameState + oGameState_ProtectedZenny);
 
-    if (zenny != ~LD32(gameState + oGameState_Unk_6c)) {
-        u32 flags = LD32(gameState + oGameState_Unk_74);
-        ST32(gameState + oGameState_Unk_74, flags | 1);
+    if (zenny != ~LD32(gameState + oGameState_ZennyChecksumMirror)) {
+        u32 flags = LD32(gameState + oGameState_AntiTamperFlags);
+        ST32(gameState + oGameState_AntiTamperFlags, flags | 1);
     }
 
     u32 keyedZenny = zenny ^ LD32(A_dword_2000060);
@@ -1478,7 +1478,7 @@ Next encryption_zenny_8006f78(void) {
 /* encryption_bugfrags_8006fac:
  * Recomputes the obfuscated BugFrag counter. Reads the protected BugFrag
  * count from the game state; unless save-flag bit 1 is set, stores its
- * bitwise complement into the checksum slot (oGameState_Unk_70). Then
+ * bitwise complement into the checksum slot (oGameState_ProtectedBugfragsObfuscated). Then
  * scrambles the count with the value at dword_20018B8 and writes the
  * result to the display/state pointer at oToolkit_Unk2005030_Ptr.
  * All argument registers (r0-r7) are preserved; the original push/pop
@@ -1487,8 +1487,8 @@ Next encryption_bugfrags_8006fac(void) {
     u32 gameState = LD32(R10 + oToolkit_GameStatePtr);
     u32 bugfrags = LD32(gameState + oGameState_ProtectedBugfrags);
 
-    if (!(LD32(gameState + oGameState_Unk_74) & 2))
-        ST32(gameState + oGameState_Unk_70, ~bugfrags);
+    if (!(LD32(gameState + oGameState_AntiTamperFlags) & 2))
+        ST32(gameState + oGameState_ProtectedBugfragsObfuscated, ~bugfrags);
 
     u32 scramble = LD32(A_dword_20018B8);
     u32 output = LD32(R10 + oToolkit_Unk2005030_Ptr);
@@ -1513,10 +1513,10 @@ Next encryption_bugfrags_8006fd0(void) {
     u32 bugfrags = LD32(gameState + oGameState_ProtectedBugfrags);
 
     /* Counter vs. its one's-complement shadow: refresh the tamper flag on mismatch. */
-    u32 shadow = LD32(gameState + oGameState_Unk_70);
+    u32 shadow = LD32(gameState + oGameState_ProtectedBugfragsObfuscated);
     if (bugfrags != ~shadow) {
-        u32 stateFlags = LD32(gameState + oGameState_Unk_74);
-        ST32(gameState + oGameState_Unk_74, stateFlags | 2);
+        u32 stateFlags = LD32(gameState + oGameState_AntiTamperFlags);
+        ST32(gameState + oGameState_AntiTamperFlags, stateFlags | 2);
     }
 
     /* Compare the XOR-obfuscated counter against its stored mirror. */

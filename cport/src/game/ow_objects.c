@@ -436,7 +436,7 @@ Next npc_createInteractionAreas_809F526(void) {
         R3 = radius;
         R4 = areaFlag;
         R5 = 0x50001; /* OW_OBJECT_INTERACTION_AREA_FLAG_0x1 | 0x10000 | 0x40000 */
-        R6 = npc + oOverworldNPCObject_Unk_50;
+        R6 = npc + oOverworldNPCObject_BusyFlag;
         R7 = flags60;
         GUEST_CALL(createOWObjectInteractionArea_80037ac);
 
@@ -448,7 +448,7 @@ Next npc_createInteractionAreas_809F526(void) {
             R2 = z;
             R3 = radius;
             R4 = areaFlag;
-            R6 = npc + oOverworldNPCObject_Unk_50;
+            R6 = npc + oOverworldNPCObject_BusyFlag;
         } else {
             /* Area 2: the larger interaction range, written to Unk_58.
              * r2/r3 keep the callee's results; r4/r5/r6 stay as set here. */
@@ -458,15 +458,15 @@ Next npc_createInteractionAreas_809F526(void) {
             R3 = radius;
             R4 = 0x400000; /* OW_OBJECT_INTERACTION_AREA_FLAG_0x400000 */
             R5 = 0xA00000; /* OW_OBJECT_INTERACTION_AREA_FLAG_0x200000 | 0x800000 */
-            R6 = npc + oOverworldNPCObject_Unk_58;
+            R6 = npc + oOverworldNPCObject_InteractionAreaHandle;
             GUEST_CALL(createOWObjectInteractionArea_80037ac);
         }
         R5 = npc; /* r5 is popped back to the object pointer */
     }
 
     /* The scratch records are only needed while building the areas. */
-    ST32(npc + oOverworldNPCObject_Unk_50, 0);
-    ST32(npc + oOverworldNPCObject_Unk_58, 0);
+    ST32(npc + oOverworldNPCObject_BusyFlag, 0);
+    ST32(npc + oOverworldNPCObject_InteractionAreaHandle, 0);
     R5 = npc;
     R7 = savedR7; /* pop {r7,pc} restores the caller's r7 */
     RETURN_TO_CALLER();

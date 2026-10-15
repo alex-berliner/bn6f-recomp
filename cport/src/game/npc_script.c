@@ -44,15 +44,15 @@ Next npc_init_809E590(void) {
     ST32(npc + oOverworldNPCObject_HiddenOAMPieces, 0);
     ST32(npc + oOverworldNPCObject_HiddenOAMPiecesUpdate, 0);
     ST8(npc + oOverworldNPCObject_MovementDirection, 0);
-    ST8(npc + oOverworldNPCObject_Unk_0f, 0);
+    ST8(npc + oOverworldNPCObject_MovementDirectionPrev, 0);
     ST8(npc + oOverworldNPCObject_InteractionLocked, 0);
     ST8(npc + NPC_UNK_07, 0);
     ST8(npc + oOverworldNPCObject_PaletteIndex, 0);
     ST32(npc + oOverworldNPCObject_UnkFlags_60, 0);
     ST32(npc + oOverworldNPCObject_LayerPriorityOverride, 0);
-    ST32(npc + oOverworldNPCObject_Unk_50, 0);
-    ST32(npc + oOverworldNPCObject_Unk_54, 0);
-    ST32(npc + oOverworldNPCObject_Unk_58, 0);
+    ST32(npc + oOverworldNPCObject_BusyFlag, 0);
+    ST32(npc + oOverworldNPCObject_InteractionAreaPtr, 0);
+    ST32(npc + oOverworldNPCObject_InteractionAreaHandle, 0);
     ST8(npc + oOverworldNPCObject_CenterOffsetX, 0);
     ST8(npc + oOverworldNPCObject_CenterOffsetY, 0);
     ST8(npc + oOverworldNPCObject_CenterOffsetZ, 0);
@@ -126,7 +126,7 @@ Next npc_standard_809E5E2(void) {
         GUEST_CALL(sprite_setUnk0x2c);
 
     /* remember what the sprite now shows */
-    ST8(npc + oOverworldNPCObject_Unk_0f, LD8(npc + oOverworldNPCObject_MovementDirection));
+    ST8(npc + oOverworldNPCObject_MovementDirectionPrev, LD8(npc + oOverworldNPCObject_MovementDirection));
     ST8(npc + oOverworldNPCObject_AnimationSelectUpdate, LD8(npc + oOverworldNPCObject_AnimationSelect));
     ST16(npc + oOverworldNPCObject_NPCSpriteUpdate, LD16(npc + oOverworldNPCObject_NPCSprite));
     R0 = LD32(npc + oOverworldNPCObject_HiddenOAMPieces);
