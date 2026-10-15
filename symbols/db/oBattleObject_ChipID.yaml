@@ -1,0 +1,62 @@
+name: oBattleObject_ChipID
+address: '0x30'
+kind: struct-field
+status: probable
+summary: ID of the MegaChip this battle object was instantiated from; used to index getChip8021DA8 for
+  chip data and propagated to spawned child objects.
+details: ">\n  In object.s the field is read with `ldrh` and passed directly to `getChip8021DA8(which_chip)`\
+  \ (object.s:242, 252, 355, 365, 493, 503), matching a chip-index parameter. The same 16-bit value is\
+  \ loaded into r7 and written to freshly spawned child BattleObjects across ~30 spawn-helper sites (e.g.\
+  \ asm31.s:47586, 86604, 90705, 100019) alongside the inherited panel XY / element / alliance / damage\
+  \ fields. The `sub 0xdd; cmp 0x3b` range check (object.s:437, asm31.s:88921) corresponds exactly to\
+  \ the MegaChip ID range. The 16-bit wobble-pattern uses (storing X16/Z16 for snap-back after a random-variance\
+  \ animation) are a secondary reuse of the same storage and are consistent with these being \"spawned-from-this-chip\"\
+  \ effect/summon objects whose original chip ID is no longer needed once they enter their wobble phase."
+evidence:
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Value passed as `which_chip` index into `getChip8021DA8` — unambiguously a chip ID.
+  refs:
+  - bn6f/asm/asm31.s:47514
+  reproduce: grep -n 'oBattleObject_Unk_30' bn6f/asm/asm31.s | head
+  result: '"ldrh r0, [r5,#oBattleObject_Unk_30]"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Range-test 0xDD..0x118 = MegaChip ID range, confirming chip-ID semantics.
+  refs:
+  - bn6f/asm/asm31.s:47514
+  reproduce: grep -n 'oBattleObject_Unk_30' bn6f/asm/asm31.s | head
+  result: '"ldrh r0, [r5,#oBattleObject_Unk_30]; sub r0, #0xdd; cmp r0, #0x3b"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Child BattleObject inherits the parent's field value as part of a standard "propagate to spawned
+    child" block (with PanelX/Y, Element, Alliance, Damage) — the parent's chip ID is being forwarded
+    to the child.
+  refs:
+  - bn6f/asm/asm31.s:47514
+  reproduce: grep -n 'oBattleObject_Unk_30' bn6f/asm/asm31.s | head
+  result: '"str r7, [r0,#oBattleObject_Unk_30]"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: 'Secondary reuse: the slot is overwritten with the current X16 at wobble-init and later snap-restored
+    — repurposed as saved original X position, but only after the chip-ID copy is no longer needed for
+    this object.'
+  refs:
+  - bn6f/asm/asm31.s:47514
+  reproduce: grep -n 'oBattleObject_Unk_30' bn6f/asm/asm31.s | head
+  result: '"ldrh r0, [r5,#oBattleObject_X16]; strh r0, [r5,#oBattleObject_Unk_30]"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Parent-to-child propagation of a 32-bit-aligned value, consistent with the field being a 16-bit
+    chip ID zero-extended into r7.
+  refs:
+  - bn6f/asm/asm31.s:47514
+  reproduce: grep -n 'oBattleObject_Unk_30' bn6f/asm/asm31.s | head
+  result: '"ldr r7, [r5,#oBattleObject_Unk_30] ... str r7, [r0,#oBattleObject_Unk_30]"'
+previous_names:
+- oBattleObject_Unk_30
+changes:
+- date: '2026-10-15'
+  what: rename oBattleObject_Unk_30 -> oBattleObject_ChipID
+  where: bn6f d93c5c95
+  tool: tools/rename_symbol.py

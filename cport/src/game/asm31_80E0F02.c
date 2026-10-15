@@ -228,7 +228,7 @@ Next sub_80E1854(void) {
         ST8(R5 + oBattleObject_PhaseInitialized, 4);
 
         /* Poke the related object, except when Unk_19 holds the value 0x17. */
-        if (LD8(R5 + oBattleObject_Unk_19) != 0x17) {
+        if (LD8(R5 + oBattleObject_WobbleOrEffectTimer) != 0x17) {
             R0 = LD32(R5 + oBattleObject_RelatedObject1Ptr);
             R1 = 1;
             GUEST_CALL(sub_80E1332);
@@ -278,7 +278,7 @@ static void call_timefreeze_handler(u32 obj) {
     u32 savedR7 = R7;
 
     u32 handler = LD32(A_off_802CD5C
-                       + ((u32)LD8(obj + oBattleObject_Unk_19) << 2));
+                       + ((u32)LD8(obj + oBattleObject_WobbleOrEffectTimer) << 2));
 
     R0 = LD8(obj + oBattleObject_PanelX);
     R1 = LD8(obj + oBattleObject_PanelY);
@@ -287,7 +287,7 @@ static void call_timefreeze_handler(u32 obj) {
     R4 = LD32(obj + oBattleObject_Params);
     R5 = LD32(obj + oBattleObject_RelatedObject1Ptr);
     R6 = LD32(obj + oBattleObject_DamageAndStaminaDamageCounterDisabler)
-       + LD16(obj + oBattleObject_Unk_32);
+       + LD16(obj + oBattleObject_Z16Save);
     R7 = obj + TIMEFREEZE_STATE_BLOCK;
 
     GUEST_CALL_ADDR(handler);
@@ -302,9 +302,9 @@ static void call_timefreeze_handler(u32 obj) {
 
 /* Copy the object's current state into the global time-freeze snapshot. */
 static void snapshot_object_state(u32 obj) {
-    ST8(TIMEFREEZE_SNAPSHOT_BASE,       LD8(obj + oBattleObject_Unk_19));
+    ST8(TIMEFREEZE_SNAPSHOT_BASE,       LD8(obj + oBattleObject_WobbleOrEffectTimer));
     ST8(A_byte_203C961,                 LD8(obj + oBattleObject_Element));
-    ST16(A_word_203C962,                LD16(obj + oBattleObject_Unk_32));
+    ST16(A_word_203C962,                LD16(obj + oBattleObject_Z16Save));
     ST32(A_dword_203C964,               LD32(obj + oBattleObject_DamageAndStaminaDamageCounterDisabler));
     ST32(A_byte_203C968,                LD32(obj + oBattleObject_Params));
 }
@@ -314,7 +314,7 @@ static void timefreeze_run_phase(u32 obj) {
         call_timefreeze_handler(obj);
 
         /* Snapshot the object if the handler left it in phase 0xDD..0x118. */
-        u32 phase = LD16(obj + oBattleObject_Unk_30);
+        u32 phase = LD16(obj + oBattleObject_ChipID);
         if ((u32)(phase - SNAPSHOT_PHASE_MIN) <= SNAPSHOT_PHASE_RANGE)
             snapshot_object_state(obj);
 
@@ -373,7 +373,7 @@ Next sub_80E18F8(void) {
     int endPhase;
 
     if (LD8(self + oBattleObject_PhaseInitialized) == 0) {
-        u32 unk19 = LD8(self + oBattleObject_Unk_19);
+        u32 unk19 = LD8(self + oBattleObject_WobbleOrEffectTimer);
         if (unk19 == 0 || unk19 == 0x17) {
             /* The phase cannot run in this state: cut it short right away. */
             endPhase = 1;
@@ -1442,7 +1442,7 @@ Next aiAttack_windupTick_80EBD3C(void) {
         ST32(R5 + oBattleObject_RelatedObject1Ptr, 0);
 
         u32 ai = LD32(R5 + oBattleObject_AIDataPtr);
-        ST32(ai + oAIData_Unk_68, 0);
+        ST32(ai + oAIData_TempAttackObjectPtr, 0);
 
         R0 = 7;                 /* animation id */
         R1 = ai;                /* AI data the animation applies to */

@@ -122,7 +122,7 @@ static u32 update_battle_end_wait(u32 controller, u32 toolkit, u32 preserved_r4)
 
         /* store the flipped outcome flag (win <-> lose) in the battle state */
         u32 battle = LD32(toolkit + oToolkit_BattleStatePtr);
-        ST8(battle + oBattleState_Unk_10, LD8(battle + oBattleState_Unk_0d) ^ 1);
+        ST8(battle + oBattleState_Unk_10, LD8(battle + oBattleState_PlayerSide) ^ 1);
 
         if (get_battle_effects_sub_800825A() & 8)        /* bit 3: the player lost */
             play_music(SONG_LOSER);
@@ -156,7 +156,7 @@ static u32 update_battle_end_wait(u32 controller, u32 toolkit, u32 preserved_r4)
 
     /* wait is over: hand the controller and the game state to the follow-up */
     ST8(controller + oEndCtrl_Next, 2);
-    ST8(LD32(toolkit + oToolkit_GameStatePtr) + oGameState_Unk_14, 2);
+    ST8(LD32(toolkit + oToolkit_GameStatePtr) + oGameState_BattleEndSubState, 2);
     set_unk02(1);
 
     return preserved_r4;
@@ -405,7 +405,7 @@ Next task484_RunFrame_800927C(void) {
  * entry address; r2-r12 pass through untouched. The handler's results
  * (registers and flags) flow straight back to our caller. */
 Next battle_dispatchStatePhase_80092A0(void) {
-    u32 phase = LD8(R5 + 2); /* oBattleState_Unk_02 */
+    u32 phase = LD8(R5 + 2); /* oBattleState_StatePhase */
     u32 handler = LD32(A_off_80092B4 + phase);
 
     R0 = phase;
@@ -434,11 +434,11 @@ Next battle_dispatchStatePhase_80092A0(void) {
 /* battle_runState4CountdownOrAdvance_80092C0: battle-flow helper driven from the battle state object in r5.
  *
  * - If the state byte at offset 3 is already running, count the 16-bit timer
- *   (oBattleState_Unk_28) down; while it is still positive just return with
+ *   (oBattleState_CountdownTimer) down; while it is still positive just return with
  *   the decremented timer in r0. When it expires, write 4 into the 16-bit
  *   field at offset 2 (whose upper half is the state byte, so this also
  *   clears it) and return.
- * - Otherwise, if the pending flag oBattleState_Unk_1a is set, start a fresh
+ * - Otherwise, if the pending flag oBattleState_State4EventCount is set, start a fresh
  *   countdown of 10, set the state byte to 4 and return.
  * - Otherwise hand control to battle state 8 with sub-state 0.
  *
@@ -450,9 +450,9 @@ Next battle_dispatchStatePhase_80092A0(void) {
 Next battle_runState4CountdownOrAdvance_80092C0(void) {
     if (LD8(R5 + 3) != 0) {
         /* State already running: tick the countdown timer. */
-        u32 timer = LD16(R5 + oBattleState_Unk_28);
+        u32 timer = LD16(R5 + oBattleState_CountdownTimer);
         SET_FLAGS_CMP(timer, 1);
-        ST16(R5 + oBattleState_Unk_28, timer - 1);
+        ST16(R5 + oBattleState_CountdownTimer, timer - 1);
         if ((s32)(timer - 1) >= 0) {
             /* Still counting down. */
             R0 = timer - 1;
@@ -464,10 +464,10 @@ Next battle_runState4CountdownOrAdvance_80092C0(void) {
         }
     } else {
         /* Idle: check whether something is pending. */
-        R1 = LD8(R5 + oBattleState_Unk_1a);
+        R1 = LD8(R5 + oBattleState_State4EventCount);
         if (R1 != 0) {
             /* Begin a fresh 10-frame countdown and enter state 4. */
-            ST16(R5 + oBattleState_Unk_28, 10);
+            ST16(R5 + oBattleState_CountdownTimer, 10);
             R0 = 4;
             SET_FLAGS_NZ(4);
             ST8(R5 + 3, 4);
@@ -591,7 +591,7 @@ Next battle_waitLinkSync_8009478(void) {
     if (LD8(state + 3) == 0) {
         /* First run: reset the tracked-ID state and start the wait timer. */
         GUEST_CALL(sub_800B428);
-        ST16(state + oBattleState_Unk_28, 0);
+        ST16(state + oBattleState_CountdownTimer, 0);
         ST8(state + 3, 4);
         R0 = 4;
         SET_FLAGS_NZ(4);
@@ -614,8 +614,8 @@ Next battle_waitLinkSync_8009478(void) {
     /* Still waiting: count frames; r0 stays equal to the incremented
      * timer. After 180 frames, force progress by switching the battle
      * state to its next handler (state index lives at offset 0). */
-    u32 timer = LD16(state + oBattleState_Unk_28) + 1;
-    ST16(state + oBattleState_Unk_28, timer);
+    u32 timer = LD16(state + oBattleState_CountdownTimer) + 1;
+    ST16(state + oBattleState_CountdownTimer, timer);
     R0 = timer;
     SET_FLAGS_CMP(timer, 0xB4);
     if ((s32)timer > 0xB4) {
@@ -856,7 +856,7 @@ Next battle_getPhaseMode_800A152(void) {
     }
 
     u32 battle = LD32(R10 + oToolkit_BattleStatePtr);
-    u8 unk0d = LD8(battle + oBattleState_Unk_0d);
+    u8 unk0d = LD8(battle + oBattleState_PlayerSide);
     u8 unk04 = LD8(battle + 4); /* oBattleState_Unk_04 */
 
     R2 = unk0d;
@@ -1454,11 +1454,11 @@ Next battle_countOpponentActorsWithNameIdInRange_800A7A6(void) {
 }
 
 /* ── battle_getStateByte0d_800A7E2 ── */
-/* battle_getStateByte0d_800A7E2: return the byte at oBattleState_Unk_0d of the current battle state
+/* battle_getStateByte0d_800A7E2: return the byte at oBattleState_PlayerSide of the current battle state
  * (r10 = toolkit). */
 Next battle_getStateByte0d_800A7E2(void) {
     u32 battleState = LD32(R10 + oToolkit_BattleStatePtr);
-    R0 = LD8(battleState + oBattleState_Unk_0d);
+    R0 = LD8(battleState + oBattleState_PlayerSide);
     RETURN_TO_CALLER();
 }
 
@@ -1699,7 +1699,7 @@ Next battle_IsBattleEnding_800A97A(void) {
 /* ── LoadVirusNameIDsForUpToFourSlots_800A998 ── */
 /* LoadVirusNameIDsForUpToFourSlots_800A998(r0 = name_id_arr: *u16[4]):
  * Collects the NameIDs of the living actors on one side of the battle
- * (the side selected by oBattleState_Unk_0d, flipped via 1^side) into
+ * (the side selected by oBattleState_PlayerSide, flipped via 1^side) into
  * the caller's 4-slot u16 array, skipping empty actor slots.
  * Returns the number of entries written.
  * r4 is saved and restored by the original, so it stays unchanged. */
@@ -1708,7 +1708,7 @@ Next LoadVirusNameIDsForUpToFourSlots_800A998(void) {
 
     u32 battleState = LD32(R10 + oToolkit_BattleStatePtr);
     /* 1 ^ side: flip the actor list selector. */
-    u32 side = 1 ^ LD8(battleState + oBattleState_Unk_0d);
+    u32 side = 1 ^ LD8(battleState + oBattleState_PlayerSide);
     u32 actors = battleState + side * 0x10 + oBattleState_AliveBattleActors;
 
     u32 byteOffset = 0;
@@ -1776,7 +1776,7 @@ Next battle_networkInvert(void) {
     u32 value = R0;
 
     R1 = LD32(R10 + oToolkit_BattleStatePtr);
-    R2 = LD8(R1 + oBattleState_Unk_0d);
+    R2 = LD8(R1 + oBattleState_PlayerSide);
     R0 = value ^ R2;
 
     SET_FLAGS_NZ(R0);
@@ -2151,7 +2151,7 @@ Next sub_800AE54(void) {
  *   If battle effect bit 3 (0x8) is clear:
  *     mode = effect bit 0 (0 or 1), arg1 = 0, r3 = 1, r2 = raw effects value.
  *   If bit 3 is set:
- *     mode = 2, arg1 = battleState->oBattleState_Unk_0d with its low bit
+ *     mode = 2, arg1 = battleState->oBattleState_PlayerSide with its low bit
  *     flipped, unless battle_getStateByteNibbles_800A832 returned 1.
  *
  * r4-r7 and r10 pass through untouched; everything else is whatever
@@ -2165,7 +2165,7 @@ Next battle_bustingLevelCategoryForEffect_800AF84(void) {
         u32 nibble = R0;
 
         u32 statePtr = LD32(R10 + oToolkit_BattleStatePtr);
-        u32 stateByte = LD8(statePtr + oBattleState_Unk_0d);
+        u32 stateByte = LD8(statePtr + oBattleState_PlayerSide);
 
         if (nibble != 1) {
             R2 = 1;
@@ -2253,7 +2253,7 @@ static CallerRegs validate_hand_chip(u32 r0In, u32 r1In, u32 r2In,
         return (CallerRegs){ r0In, r1In, r2In };     /* flag 0x40: hand untouched */
 
     u32 battleState = LD32(toolkit + oToolkit_BattleStatePtr);
-    u32 naviId = LD8(battleState + oBattleState_Unk_0d);
+    u32 naviId = LD8(battleState + oBattleState_PlayerSide);
 
     /* Hand layout: one leading byte, then 2-byte chip entries from offset 2;
      * the leading byte selects the entry under scrutiny. */

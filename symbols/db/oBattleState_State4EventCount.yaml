@@ -1,0 +1,56 @@
+name: oBattleState_State4EventCount
+address: '0x1a'
+kind: struct-field
+status: probable
+summary: Countdown/queue counter for state-4 battle events; initialized from BattleSettings[5], incremented
+  on effect bit 0x400, and used to index a settings table.
+details: ">\n  Consistently initialized via `ldrb r1, [r1,#5]` from oBattleState_BattleSettings (asm00_1.s:13428,\
+  \ 14086, 14581, 14995) or incremented (`add r1, #1`) when `GetBattleEffects & 0x400` is set — matching\
+  \ symdb's \"Countdown or Advance\" semantics. The loaded value is then passed as the second arg to `battle_dispatchKindEffect_801E792`\
+  \ (asm00_1.s:13601, 14246, 14710, 15124) and used to index `byte_203CA50` after `sub #1; add r0,r0`\
+  \ (asm03_0.s:15231), confirming it is a numeric event index/counter."
+evidence:
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Field is seeded from BattleSettings byte 5, i.e. a per-battle-configured starting count.
+  refs:
+  - bn6f/asm/asm31.s:86396
+  reproduce: grep -n 'oBattleState_Unk_1a' bn6f/asm/asm31.s | head
+  result: '"ldrb r1, [r1,#5]  ; strb r1, [r5,#oBattleState_Unk_1a]"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: When battle-effects bit 0x400 is set, the field is incremented (advance/queue step).
+  refs:
+  - bn6f/asm/asm31.s:86396
+  reproduce: grep -n 'oBattleState_Unk_1a' bn6f/asm/asm31.s | head
+  result: '"ldrb r1, [r5,#oBattleState_Unk_1a]  ; add r1, #1  ; strb r1, [r5,#oBattleState_Unk_1a]"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Field is tested for zero to gate writing 0xa into Unk_28 — i.e. "countdown reached zero" branch.
+  refs:
+  - bn6f/asm/asm31.s:86396
+  reproduce: grep -n 'oBattleState_Unk_1a' bn6f/asm/asm31.s | head
+  result: '"ldrb r1, [r5,#oBattleState_Unk_1a]  ; tst r1, r1  ; beq loc_80092E6"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: The counter value is passed as the effect-dispatch argument, treating it as a state-4 event
+    index.
+  refs:
+  - bn6f/asm/asm31.s:86396
+  reproduce: grep -n 'oBattleState_Unk_1a' bn6f/asm/asm31.s | head
+  result: '"ldrb r1, [r5,#oBattleState_Unk_1a]  ; bl battle_dispatchKindEffect_801E792"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Value (minus 1, doubled) is used as a byte-table index into a battle-settings opt table — a
+    lookup pattern consistent with an event/counter value, not a flag or scratch byte.
+  refs:
+  - bn6f/asm/asm31.s:86396
+  reproduce: grep -n 'oBattleState_Unk_1a' bn6f/asm/asm31.s | head
+  result: '"ldrb r0, [r7,#oBattleState_Unk_1a]  ; sub r0, #1  ; add r0, r0, r0  ; ... byte_203CA50"'
+previous_names:
+- oBattleState_Unk_1a
+changes:
+- date: '2026-10-15'
+  what: rename oBattleState_Unk_1a -> oBattleState_State4EventCount
+  where: bn6f 67940843
+  tool: tools/rename_symbol.py

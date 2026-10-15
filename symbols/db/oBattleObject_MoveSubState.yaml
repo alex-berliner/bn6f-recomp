@@ -1,0 +1,65 @@
+name: oBattleObject_MoveSubState
+address: '0xd'
+kind: struct-field
+status: probable
+summary: Sub-state index used by the per-object move-step handlers (and a few other dispatcher tables)
+  to select between their inner phases (typically 0, 4, and 8 — "wait / pick target / arrived").
+details: ">\n  All observed uses are consistent with a small enum-style state index. Every store sets\
+  \ it to one of three literals (0, 4, or 8), and every load feeds it directly into a tail-jump table\
+  \ (`ldr r1, [r1,r0]` / `bx r1`) to pick one of three sub-handlers, mirroring the existing CurAction/CurState\
+  \ dispatchers in this struct.\n  Specifically: the move-step handlers (battleObject_initMoveStep_80178D4\
+  \ and friends) store #4 when they have just reserved a FuturePanel, store #8 when they finish arrival/cleanup,\
+  \ and store #0 in the turn-end / damage handlers; the value is then read back by sub_80178B6 / sub_8017CC0\
+  \ / sub_8017E26 / battleObjectStateDispatcher_8016CE8 to jump into the matching sub-routine. The \"\
+  strb r1, [r0,#oBattleObject_Unk_0d]\" alongside `DirectionAngle = PanelX` and `Element = PanelY` in\
+  \ spawn code is just initializing the new object with the source's panel Y as a default sub-state."
+evidence:
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: battleObjectStateDispatcher_8016CE8 uses this byte as an index into a 3-entry function table
+    to select one of three per-object handlers — classic sub-state dispatch.
+  refs:
+  - bn6f/asm/asm31.s:19115
+  reproduce: grep -n 'oBattleObject_Unk_0d' bn6f/asm/asm31.s | head
+  result: '"ldrb r0, [r5,#oBattleObject_Unk_0d] / ldr r1, [r1,r0] / bx r1"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: 'After reserving the FuturePanel, the move-step handler writes #4 here, marking "en route to
+    destination" sub-state.'
+  refs:
+  - bn6f/asm/asm31.s:19115
+  reproduce: grep -n 'oBattleObject_Unk_0d' bn6f/asm/asm31.s | head
+  result: '"strb r0, [r5,#oBattleObject_Unk_0d]   (with r0 = #4)"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: 'After arrival (CurPhase = 0x18, coordinates reconciled), the move-step handler writes #8 —
+    "arrived / done" sub-state.'
+  refs:
+  - bn6f/asm/asm31.s:19115
+  reproduce: grep -n 'oBattleObject_Unk_0d' bn6f/asm/asm31.s | head
+  result: '"strb r0, [r5,#oBattleObject_Unk_0d]   (with r0 = #8)"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: battleObject_dispatchActionHandler_801B394 (and the matching blocks at 25033, 25280, 25437,
+    25596, 25752) clear this byte to 0 when resetting CurAction/CurPhase to their "rest" values, consistent
+    with a sub-state machine index being zeroed on entry.
+  refs:
+  - bn6f/asm/asm31.s:19115
+  reproduce: grep -n 'oBattleObject_Unk_0d' bn6f/asm/asm31.s | head
+  result: '"strb r0, [r5,#oBattleObject_Unk_0d]   (with r0 = #0)"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: dispatchBattleObjectHandler_80178B6 (and the parallel dispatchers at 20103 / 20283) again use
+    the byte purely as a small table index selecting among sub_80178D4 / sub_8017992 / sub_8017A38 — the
+    same 0/4/8 sub-state contract written by the move-step handlers above.
+  refs:
+  - bn6f/asm/asm31.s:19115
+  reproduce: grep -n 'oBattleObject_Unk_0d' bn6f/asm/asm31.s | head
+  result: '"ldrb r0, [r5,#oBattleObject_Unk_0d] / ldr r1, [r1,r0] / bx r1"'
+previous_names:
+- oBattleObject_Unk_0d
+changes:
+- date: '2026-10-15'
+  what: rename oBattleObject_Unk_0d -> oBattleObject_MoveSubState
+  where: bn6f 40738752
+  tool: tools/rename_symbol.py

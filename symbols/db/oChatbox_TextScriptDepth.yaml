@@ -1,0 +1,57 @@
+name: oChatbox_TextScriptDepth
+address: '0x5'
+kind: struct-field
+status: probable
+summary: Nesting depth (1-based) of the currently-running text-display script levels in the chatbox.
+details: ">\n  The field is incremented (+1) at the start of every text-advance opcode handler\n  (chatbox_8041FB4,\
+  \ chatbox_loadNaviTextLine_80420BC, chatbox_pushTextLevel_8042128,\n  chatbox_80421D8, chatbox_804222C,\
+  \ dead_804303C, chatbox_80430A0, etc.) and\n  decremented (−1) by every corresponding \"sub r0,#1 /\
+  \ ldr r1,=0x140 / mul r0,#4 /\n  add r1,r1,r0 / ldr r4,[r5,r1]\" epilogue, which computes a slot in\
+  \ a\n  depth-indexed pointer table at chatbox+0x140. The chatbox_E6_end handler\n  treats 0 as \"nothing\
+  \ to pop\" and otherwise subtracts 1 to index that same\n  0x140 table, confirming the value is a 1-based\
+  \ depth/count of pushed text\n  levels."
+evidence:
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: ">\n      chatbox_E6_end treats the field as a \"pushed-text-level count\": 0 means\n      nothing\
+    \ to pop; otherwise the (count-1) indexes a pointer saved at\n      chatbox+0x140+(count-1)*4, and\
+    \ the field is then decremented back. This\n      is the canonical push/pop pair for a stack of nested\
+    \ text scripts."
+  refs:
+  - bn6f/asm/chatbox.s:2540
+  reproduce: grep -n 'oChatbox_Unk_05' bn6f/asm/chatbox.s | head
+  result: '"ldrb r0, [r5,#oChatbox_Unk_05]  ; tst r0,r0 / beq .if_8040EB2 ; sub r0,#1 ; ldr r1,=0x140
+    ; mul r2,'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: ">\n      chatbox_8041FB4 (one of the script-advance handlers) unconditionally\n      bumps\
+    \ the field on entry, matching the \"push a new text level\" half of\n      the pair."
+  refs:
+  - bn6f/asm/chatbox.s:2540
+  reproduce: grep -n 'oChatbox_Unk_05' bn6f/asm/chatbox.s | head
+  result: '"ldrb r0, [r5,#oChatbox_Unk_05] ; add r0,#1 ; strb r0, [r5,#oChatbox_Unk_05]"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: ">\n      chatbox_pushTextLevel_8042128 both increments (push) and later\n      decrements via\
+    \ the same depth-indexed 0x140+(depth-1)*4 expression,\n      confirming the field is the live count\
+    \ being pushed/popped."
+  refs:
+  - bn6f/asm/chatbox.s:2540
+  reproduce: grep -n 'oChatbox_Unk_05' bn6f/asm/chatbox.s | head
+  result: '"ldrb r0, [r5,#oChatbox_Unk_05] ; add r0,#1 ; strb r0,[r5,#oChatbox_Unk_05] ; ... push {r0}
+    ... ldrb'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: ">\n      chatbox_80421D8 (yet another opcode handler) follows the same\n      increment-on-entry\
+    \ convention, reinforcing that every text-display\n      opcode increases this depth counter."
+  refs:
+  - bn6f/asm/chatbox.s:2540
+  reproduce: grep -n 'oChatbox_Unk_05' bn6f/asm/chatbox.s | head
+  result: '"ldrb r0, [r5,#oChatbox_Unk_05] ; add r0,#1 ; strb r0, [r5,#oChatbox_Unk_05]"'
+previous_names:
+- oChatbox_Unk_05
+changes:
+- date: '2026-10-15'
+  what: rename oChatbox_Unk_05 -> oChatbox_TextScriptDepth
+  where: bn6f 1fd813d4
+  tool: tools/rename_symbol.py

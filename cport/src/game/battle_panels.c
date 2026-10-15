@@ -65,7 +65,7 @@ enum {
 
 /* BattleState +0xD: the field is mirrored (flipped). */
 static u32 field_flipped(void) {
-    return LD8(LD32(R10 + oToolkit_BattleStatePtr) + oBattleState_Unk_0d);
+    return LD8(LD32(R10 + oToolkit_BattleStatePtr) + oBattleState_PlayerSide);
 }
 
 /* First BG tile column of the 5-tile-wide block of field `column`; each

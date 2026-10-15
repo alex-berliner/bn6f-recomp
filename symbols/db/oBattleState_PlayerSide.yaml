@@ -1,0 +1,87 @@
+name: oBattleState_PlayerSide
+address: '0xd'
+kind: struct-field
+status: probable
+summary: Boolean (0/1) flag indicating which side of the battle is currently active — 0 for player, 1
+  for opponent (or vice versa); used to select per-side tables, branches, and actor-side tests.
+details: 'The field is used in ~15+ sites as a "side" identifier: repeatedly XOR''d against oBattleObject_Alliance
+  to test "is this actor on the current side?" (e.g. battleObject_joinAlly_80163B4, the visibility/emotion
+  handlers at 8016964/80169CE/8018206, battleObject_applyEmotionShaderIfCounterReady_8016CA4), multiplied
+  by 8/0x10/0xC to index per-side tables (battle_getStateTableEntryPtr_802C8EA, setupNaviDisplay_802C34E,
+  drawPanelOverlay_800C0BA), XOR''d with inputs to swap between player/enemy data (battle_networkInvert,
+  battle_getStoryFlagFromBattleState_802CE60, LoadVirusNameIDsForUpToFourSlots_800A998), and passed as
+  the ''alliance'' parameter to callPossiblyGetBattleEmotion_8015B54. It is also propagated into oBattleState_Unk_10
+  (sometimes XOR''d with 1) at turn boundaries (asm00_1.s:11174/11267/11845/11965/12408/12528/12952/13072),
+  strongly suggesting Unk_10 is the next-side-to-act. All observed values are 0 or 1.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Used to flip between AlivePlayerActors (offset 0) and AliveOpponentActors (offset 0x10) — a
+    clean "which side" boolean.
+  refs:
+  - bn6f/asm/asm00_2.s:2037
+  reproduce: grep -n 'oBattleState_Unk_0d' bn6f/asm/asm00_2.s | head
+  result: '"ldrb r1, [r3,#oBattleState_Unk_0d] ... eor r0, r1 ... add r1, #0x10"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Compared (XOR) against oBattleObject_Alliance to gate "join ally" — standard "same side?" test,
+    confirming the byte is a side/team identifier.
+  refs:
+  - bn6f/asm/asm00_2.s:2037
+  reproduce: grep -n 'oBattleState_Unk_0d' bn6f/asm/asm00_2.s | head
+  result: '"ldrb r1, [r1,#oBattleState_Unk_0d] ... eor r0, r1 ... bne loc_80163D6"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Used as index * 8 into a 2-entry per-side table — confirms only values 0 and 1 are valid and
+    selects between two side-specific structures.
+  refs:
+  - bn6f/asm/asm00_2.s:2037
+  reproduce: grep -n 'oBattleState_Unk_0d' bn6f/asm/asm00_2.s | head
+  result: '"ldrb r2, [r1,#oBattleState_Unk_0d] ... ldr r0, =dword_2036820 ... add r0, r0, r2*8"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Used as index * 0xC into a 12-byte per-side result/reward record — another per-side table lookup.
+  refs:
+  - bn6f/asm/asm00_2.s:2037
+  reproduce: grep -n 'oBattleState_Unk_0d' bn6f/asm/asm00_2.s | head
+  result: '"ldrb r1, [r1,#oBattleState_Unk_0d] ... mov r2, #0xc ... mul r1, r2 ... add r0, r0, r1"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: battle_networkInvert XORs caller input with this byte to "flip" the result based on side — only
+    meaningful if it represents side identity.
+  refs:
+  - bn6f/asm/asm00_2.s:2037
+  reproduce: grep -n 'oBattleState_Unk_0d' bn6f/asm/asm00_2.s | head
+  result: '"ldrb r2, [r1,#oBattleState_Unk_0d] ... eor r0, r2 ... mov pc, lr"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: battle_getStoryFlagFromBattleState XORs the parameter with the byte to select a per-side story/turn
+    entry — classic per-side selection.
+  refs:
+  - bn6f/asm/asm00_2.s:2037
+  reproduce: grep -n 'oBattleState_Unk_0d' bn6f/asm/asm00_2.s | head
+  result: '"ldrb r1, [r1,#oBattleState_Unk_0d] ... eor r0, r1 ... mul r0, #0x10"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Copied verbatim into Unk_10 at turn end; in sibling handler at 11267 it's XOR'd with 1 first
+    — Unk_0d is the "current side" and Unk_10 becomes the "next side".
+  refs:
+  - bn6f/asm/asm00_2.s:2037
+  reproduce: grep -n 'oBattleState_Unk_0d' bn6f/asm/asm00_2.s | head
+  result: '"ldrb r1, [r0,#oBattleState_Unk_0d] ... strb r1, [r0,#oBattleState_Unk_10]"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Passed directly as the 'alliance' argument to the emotion lookup — the function names its first
+    arg 'alliance', confirming the byte is a side/team identifier.
+  refs:
+  - bn6f/asm/asm00_2.s:2037
+  reproduce: grep -n 'oBattleState_Unk_0d' bn6f/asm/asm00_2.s | head
+  result: '"ldrb r0, [r5,#oBattleState_Unk_0d] ... bl callPossiblyGetBattleEmotion_8015B54 // (alliance:
+    u8)"'
+previous_names:
+- oBattleState_Unk_0d
+changes:
+- date: '2026-10-15'
+  what: rename oBattleState_Unk_0d -> oBattleState_PlayerSide
+  where: bn6f ab0d2f67
+  tool: tools/rename_symbol.py

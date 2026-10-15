@@ -1,0 +1,56 @@
+name: oAIData_AIScriptCounter
+address: '0x4c'
+kind: struct-field
+status: probable
+summary: Counter incremented by the AI each tick and read by AI script helpers; cleared to 0 on battle
+  init / chip-use reset.
+details: 'The field is accessed exclusively through four tiny helper thunks with highly consistent semantics:
+
+  battle_clearAIDataField4c_8014424 stores 0, battle_incrementAIDataUnk4c_8014432 does "load → add 1 →
+
+  store", and battleObject_aiGetUnk4cPtr_801442C returns the value. It''s also explicitly zeroed at
+
+  bn6f/asm/asm00_2.s:12611 alongside oAIData_Anger after a "mark used action" reset. The plain
+
+  increment-1 pattern (no conditional, no scaling) is the strongest signature for a monotonic tick
+
+  / script-step counter rather than a state or flag.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Zeroed together with Anger right after clearing chips-used flags, i.e. a per-turn/per-action
+    AI scratch reset.
+  refs:
+  - bn6f/asm/asm00_2.s:12607
+  reproduce: grep -n 'oAIData_Unk_4c' bn6f/asm/asm00_2.s | head
+  result: '"str r0, [r1,#oAIData_Unk_4c]"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Dedicated clear helper — `mov r1,#0; str r1,[r0,#oAIData_Unk_4c]` — confirms the field holds
+    a resettable accumulator.
+  refs:
+  - bn6f/asm/asm00_2.s:12607
+  reproduce: grep -n 'oAIData_Unk_4c' bn6f/asm/asm00_2.s | head
+  result: '"str r1, [r0,#oAIData_Unk_4c]"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Getter thunk returning the word in r0; reading-and-returning without modification = plain value
+    semantics.
+  refs:
+  - bn6f/asm/asm00_2.s:12607
+  reproduce: grep -n 'oAIData_Unk_4c' bn6f/asm/asm00_2.s | head
+  result: '"ldr r0, [r0,#oAIData_Unk_4c]"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Canonical "load → +1 → store" bump pattern; only sensible interpretation is a monotonic counter.
+  refs:
+  - bn6f/asm/asm00_2.s:12607
+  reproduce: grep -n 'oAIData_Unk_4c' bn6f/asm/asm00_2.s | head
+  result: '"ldr r1, [r0,#oAIData_Unk_4c] / add r1,#1 / str r1, [r0,#oAIData_Unk_4c]"'
+previous_names:
+- oAIData_Unk_4c
+changes:
+- date: '2026-10-15'
+  what: rename oAIData_Unk_4c -> oAIData_AIScriptCounter
+  where: bn6f 2106594d
+  tool: tools/rename_symbol.py

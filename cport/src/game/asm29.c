@@ -2003,7 +2003,7 @@ static u32 roll_random_drop(u32 toolkit) {
     for (i = 0; i < 4; i++) {
         u32 state = LD32(slot);
         if (state != 0) {
-            u32 table = item_table_for(LD16(state + oBattleState_Unk_28));
+            u32 table = item_table_for(LD16(state + oBattleState_CountdownTimer));
 
             rng >>= 4;
             u32 index = rng & 0x1E;   /* halfword-aligned table offset */

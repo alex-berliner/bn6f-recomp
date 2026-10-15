@@ -1413,13 +1413,13 @@ Next battle_runObjectAI_80143FC(void) {
 }
 
 /* ── battle_clearAIDataField4c_8014424 ── */
-/* battle_clearAIDataField4c_8014424: clear the AI state field (oAIData_Unk_4c) of the battle
+/* battle_clearAIDataField4c_8014424: clear the AI state field (oAIData_AIScriptCounter) of the battle
  * object's AI data. Returns 0 in r1. */
 Next battle_clearAIDataField4c_8014424(void) {
     u32 aiData = LD32(R5 + oBattleObject_AIDataPtr);
 
     R1 = 0;
-    ST32(aiData + oAIData_Unk_4c, 0);
+    ST32(aiData + oAIData_AIScriptCounter, 0);
 
     RETURN_TO_CALLER();
 }
@@ -2180,7 +2180,7 @@ typedef struct { u32 r0; u32 r1; } R0R1;
 /* Phase-initialization step for a battle object.
  *
  * - phaseInitialized == 0 (first entry):
- *     - if the object's alliance differs from the opposing side (`oBattleState_Unk_0d`),
+ *     - if the object's alliance differs from the opposing side (`oBattleState_PlayerSide`),
  *       try to add a unique entry to the battle list, store 4 into phaseInitialized,
  *       and fall through to the common BIC path;
  *     - else set bit 1 of oObjectHeader_Flags, write 8 to
@@ -2201,7 +2201,7 @@ static R0R1 sub_80163B4_typed(u32 obj, u32 toolkit) {
     if (phaseInit == 0) {
         u32 battleState = LD32(toolkit + oToolkit_BattleStatePtr);
         u8 allianceObj      = LD8(obj + oBattleObject_Alliance);
-        u8 opposingAlliance = LD8(battleState + oBattleState_Unk_0d);
+        u8 opposingAlliance = LD8(battleState + oBattleState_PlayerSide);
 
         if (allianceObj == opposingAlliance) {
             out.r0 = join_same_alliance(obj);
@@ -2385,7 +2385,7 @@ Next battle_objectIntroEntryAndActedSetup_8016460(void) {
     } else {
         /* Skip the effect when the object fights on the side the current
          * battle state expects (eor result zero means "alliances equal"). */
-        R1 = LD8(LD32(toolkit + oToolkit_BattleStatePtr) + oBattleState_Unk_0d);
+        R1 = LD8(LD32(toolkit + oToolkit_BattleStatePtr) + oBattleState_PlayerSide);
         R0 = LD8(self + oBattleObject_Alliance);
         SET_FLAGS_NZ(R0 ^ R1);                     /* eor r0, r1 */
         playEntryEffect = (R0 != 0);
@@ -2741,22 +2741,22 @@ static void apply_random_variance(u32 amplitude, u32 x16, u32 y, u32 z16,
 static u32 step_battle_object_wobble(u32 obj, u32 r1_in, u32 r2_in, u32 r3_in, u32 r4_in,
                                      u32 *out_r1, u32 *out_r2, u32 *out_r3, u32 *out_r4) {
     if (!LD8(obj + oBattleObject_PreventAnim)) {
-        ST16(obj + oBattleObject_Unk_30, LD16(obj + oBattleObject_X16));
-        ST16(obj + oBattleObject_Unk_32, LD16(obj + oBattleObject_Z16));
-        ST8(obj + oBattleObject_Unk_19, 0);
+        ST16(obj + oBattleObject_ChipID, LD16(obj + oBattleObject_X16));
+        ST16(obj + oBattleObject_Z16Save, LD16(obj + oBattleObject_Z16));
+        ST8(obj + oBattleObject_WobbleOrEffectTimer, 0);
         ST8(obj + oBattleObject_PreventAnim, 4);
     }
 
     u32 coll_word = LD16(LD32(obj + oBattleObject_CollisionDataPtr) + 0x80);
     if (coll_word)
-        ST8(obj + oBattleObject_Unk_19, 0x1E);
+        ST8(obj + oBattleObject_WobbleOrEffectTimer, 0x1E);
 
-    u32 wobble = LD8(obj + oBattleObject_Unk_19);
+    u32 wobble = LD8(obj + oBattleObject_WobbleOrEffectTimer);
     if (wobble) {
-        ST8(obj + oBattleObject_Unk_19, (u8)(wobble - 1));
-        u32 x16 = (u32)LD16(obj + oBattleObject_Unk_30) << 16;
+        ST8(obj + oBattleObject_WobbleOrEffectTimer, (u8)(wobble - 1));
+        u32 x16 = (u32)LD16(obj + oBattleObject_ChipID) << 16;
         u32 y   = LD32(obj + oBattleObject_Y);
-        u32 z16 = (u32)LD16(obj + oBattleObject_Unk_32) << 16;
+        u32 z16 = (u32)LD16(obj + oBattleObject_Z16Save) << 16;
         u32 vx = 0, vy = 0, vz = 0;
         apply_random_variance(3, x16, y, z16, &vx, &vy, &vz);
         u32 dst = obj + 0x34;
@@ -2767,8 +2767,8 @@ static u32 step_battle_object_wobble(u32 obj, u32 r1_in, u32 r2_in, u32 r3_in, u
         *out_r2 = vy;
         *out_r3 = vz;
     } else {
-        ST16(obj + oBattleObject_X16, LD16(obj + oBattleObject_Unk_30));
-        ST16(obj + oBattleObject_Z16, LD16(obj + oBattleObject_Unk_32));
+        ST16(obj + oBattleObject_X16, LD16(obj + oBattleObject_ChipID));
+        ST16(obj + oBattleObject_Z16, LD16(obj + oBattleObject_Z16Save));
         *out_r1 = coll_word;
         *out_r2 = r2_in;
         *out_r3 = r3_in;
@@ -2807,7 +2807,7 @@ Next object_genericDestroy(void) {
 /* ── battleObjectStateDispatcher_8016CE8 ── */
 /* battleObjectStateDispatcher_8016CE8: battle object state dispatcher.
  *
- * R5 points to a battle object. Its byte at oBattleObject_Unk_0d holds a
+ * R5 points to a battle object. Its byte at oBattleObject_MoveSubState holds a
  * *byte offset* into the handler table at off_8016CFC (Thumb `ldr rd,[rn,rm]`
  * adds the index register unscaled), so the three handlers are selected by
  * offsets 0, 4 and 8:
@@ -2822,7 +2822,7 @@ Next object_genericDestroy(void) {
  * function's caller.
  */
 Next battleObjectStateDispatcher_8016CE8(void) {
-    u32 state = LD8(R5 + oBattleObject_Unk_0d);
+    u32 state = LD8(R5 + oBattleObject_MoveSubState);
 
     R0 = state;
     R1 = LD32(A_off_8016CFC + state);   /* handler address, as the original leaves it */
@@ -2949,13 +2949,13 @@ static u32 battle_phase_advance(u32 obj) {
         ST8(obj + oBattleObject_FuturePanelY, new_fy);
         call_reserve_panel(new_fx, new_fy);
 
-        ST8(obj + oBattleObject_Unk_0d, 4);
+        ST8(obj + oBattleObject_MoveSubState, 4);
         return 4;
     }
 
     /* No pending phase step – return to idle. */
     ST8(obj + oBattleObject_CurPhase, 0x18);
-    ST8(obj + oBattleObject_Unk_0d, 8);
+    ST8(obj + oBattleObject_MoveSubState, 8);
     return 8;
 }
 
@@ -2995,12 +2995,12 @@ Next battle_objectCountdownPhaseOrReset_8016E3C(void) {
     R0 = 0;
     ST8(R5 + oBattleObject_Unk_1f, R0);
     ST32(R5 + oBattleObject_CurPhaseAndPhaseInitialized,
-         LD32(R5 + oBattleObject_Unk_5c));
+         LD32(R5 + oBattleObject_PendingStateAction));
 
     /* Thumb `mov r0, #0` is MOVS, so it sets N/Z (C/V still come from
      * object_clearFlag2); the following store doesn't touch flags. */
     SET_FLAGS_NZ(R0);
-    ST32(R5 + oBattleObject_Unk_5c, R0);
+    ST32(R5 + oBattleObject_PendingStateAction, R0);
 
     RETURN_TO_CALLER();
 }

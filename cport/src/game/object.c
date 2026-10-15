@@ -302,7 +302,7 @@ static void draw_chip_name(u32 obj) {
     chip_flags_clear(CHIP_FLAG_MASK);
     event_dispatch(CHIP_FLAG_MASK);
 
-    u32 chip_idx = LD16(obj + oBattleObject_Unk_30);
+    u32 chip_idx = LD16(obj + oBattleObject_ChipID);
     u32 data = chip_data_ptr(chip_idx);
 
     u32 damage = 0;
@@ -310,7 +310,7 @@ static void draw_chip_name(u32 obj) {
     /* ChipData+9 bit 1 set means this chip has damage to display */
     if ((LD8(data + 9) >> 1) & 1) {
         damage = LD16(obj + oBattleObject_Damage);
-        extra  = LD16(obj + oBattleObject_Unk_32);
+        extra  = LD16(obj + oBattleObject_Z16Save);
     }
 
     /* Network battle uses a different banner ID than normal */
@@ -413,7 +413,7 @@ Next sub_800BDB2(void) {
  * panel-XY routine (sub_800ABC6), then set CurPhaseAndPhaseInitialized = 4.
  * Otherwise we advance CurAction by 4 and zero out CurPhaseAndPhaseInitialized. */
 Next sub_800BDD0(void) {
-    u32 unk30 = LD16(R5 + oBattleObject_Unk_30);
+    u32 unk30 = LD16(R5 + oBattleObject_ChipID);
     u32 actionWindow = unk30 - 0xDD;
 
     if (actionWindow <= 0x3B) {
@@ -1965,7 +1965,7 @@ static bool panel_check_alliance(u32 x, u32 y, u32 panel_y) {
  * panel (object position + offset) belongs to the object's alliance;
  * otherwise the result is (0, 0, 0). */
 static ContactOffset get_contact_offset(u32 obj) {
-    u8 type = LD8(obj + oBattleObject_Unk_0f);
+    u8 type = LD8(obj + oBattleObject_ContactState);
     ContactOffset raw = dispatch_contact_handler(type);
 
     u32 panel_y = LD8(obj + oBattleObject_PanelY);

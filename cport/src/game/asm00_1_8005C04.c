@@ -2375,7 +2375,7 @@ Next battle_state_endPhaseWithEffect_80079A8(void) {
     effect = R0;
 
     /* Record the effect byte in the battle state and in the camera. */
-    ST8(R5 + oBattleState_Unk_0d, effect);
+    ST8(R5 + oBattleState_PlayerSide, effect);
     R1 = 0x20099CC;                          /* eCamera + 0x4C (eCamera.unk_4C) */
     ST8(R1, effect);
 
@@ -2419,7 +2419,7 @@ Next battle_state_finishBattlePhase_80079d0(void) {
 
     R0 = 0xC;
     SET_FLAGS_NZ(R0);
-    ST8(R5 + 2 /* oBattleState_Unk_02 */, R0);
+    ST8(R5 + 2 /* oBattleState_StatePhase */, R0);
 
     RETURN_TO_CALLER();
 }
@@ -2553,7 +2553,7 @@ Next sub_8007B80(void) {
 /* battle_stateCountdownTick_8007BD0: battle-state countdown tick.
  * r5 = battle state object. If its phase byte (offset 3) is still zero,
  * start a 10-frame countdown and advance the phase to 4. Otherwise count
- * the halfword at oBattleState_Unk_28 down by one; when it underflows,
+ * the halfword at oBattleState_CountdownTimer down by one; when it underflows,
  * write 4 to the halfword at offset 2 (oBattleState_Unk_02_03).
  * R0 ends as 4 when the countdown was started or finished, otherwise as
  * the decremented timer value. Flags come from the last flag-setting
@@ -2562,9 +2562,9 @@ Next sub_8007B80(void) {
 Next battle_stateCountdownTick_8007BD0(void) {
     if (LD8(R5 + 3) != 0) {
         /* countdown already running: tick it down once */
-        u32 prev = LD16(R5 + oBattleState_Unk_28);
+        u32 prev = LD16(R5 + oBattleState_CountdownTimer);
         u32 timer = prev - 1;
-        ST16(R5 + oBattleState_Unk_28, timer);
+        ST16(R5 + oBattleState_CountdownTimer, timer);
         if ((s32)timer >= 0) {
             /* still counting: flags are those of the subtract */
             R0 = timer;
@@ -2578,7 +2578,7 @@ Next battle_stateCountdownTick_8007BD0(void) {
         }
     } else {
         /* not started yet: set timer to 10 and enter phase 4 */
-        ST16(R5 + oBattleState_Unk_28, 0xA);
+        ST16(R5 + oBattleState_CountdownTimer, 0xA);
         R0 = 4;
         ST8(R5 + 3, R0);
         SET_FLAGS_NZ(R0);

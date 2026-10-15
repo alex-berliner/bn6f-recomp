@@ -243,12 +243,12 @@ Next object_setAnimation(void) {
 
 /* ── battle_SetObjectAIDataField78_800F318 ── */
 /* battle_SetObjectAIDataField78_800F318(r0 = value, r5 = battle object):
- * Store r0 into the object's AI data at offset oAIData_Unk_78, if it has any. */
+ * Store r0 into the object's AI data at offset oAIData_BattleObjectPtr, if it has any. */
 Next battle_SetObjectAIDataField78_800F318(void) {
     u32 aiData = LD32(R5 + oBattleObject_AIDataPtr);
 
     if (aiData != 0)
-        ST32(aiData + oAIData_Unk_78, R0);
+        ST32(aiData + oAIData_BattleObjectPtr, R0);
 
     R1 = aiData;
     RETURN_TO_CALLER();
@@ -484,7 +484,7 @@ Next battle_snapshotPlayerHP_800FAE0(void) {
     u32 battle = LD32(R10 + oToolkit_BattleStatePtr);
 
     /* Look up the player object (argument: which alliance to search). */
-    R0 = LD8(battle + oBattleState_Unk_0d);
+    R0 = LD8(battle + oBattleState_PlayerSide);
     GUEST_CALL(battle_findPlayer);
 
     /* If a player exists, remember its HP. */

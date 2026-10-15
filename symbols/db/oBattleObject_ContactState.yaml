@@ -1,0 +1,60 @@
+name: oBattleObject_ContactState
+address: '0xf'
+kind: struct-field
+status: hypothesis
+summary: Tracks an object's contact/collision-handling sub-state (values 0–4 seen), driving the contact
+  dispatch table.
+details: "<summary>\n  The field is written with small constants (0, 1, 2, 3, 4) across collision routines\
+  \ and read in `battle_objectResolveContactOffset_800E468` to dispatch to `battle_dispatchObjectContactHandler_800E498`,\
+  \ suggesting it indexes a contact-state handler. However, several writes (e.g., value 1 paired with\
+  \ `object_setFlag2 0x100`/`clearFlag2 0x4` in hit-reaction code at 24219/24344/24411/24452/24543, and\
+  \ the duplicate `strb r0, [r5,#oBattleObject_Unk_0f]` store on 24543–24544) are not obviously part of\
+  \ a contact-state machine and may simply be \"hit-applied\" flag storage, so the name is plausible but\
+  \ not certain."
+evidence:
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Field is loaded as an argument/selector for a contact-handler dispatcher, indicating it indexes/selects
+    a contact state.
+  refs:
+  - bn6f/asm/asm00_2.s:17287
+  reproduce: grep -n 'oBattleObject_Unk_0f' bn6f/asm/asm00_2.s | head
+  result: '"ldrb r0, [r5,#oBattleObject_Unk_0f]\n\tbl battle_dispatchObjectContactHandler_800E498"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Field is compared against constant 3 to gate AI data update (writing 5 to AIData_Unk_38), then
+    cleared to 0 — consistent with a state value transitioning through phases.
+  refs:
+  - bn6f/asm/asm00_2.s:17287
+  reproduce: grep -n 'oBattleObject_Unk_0f' bn6f/asm/asm00_2.s | head
+  result: '"ldrb r0, [r5,#oBattleObject_Unk_0f]\n\tcmp r0, #3\n\tbne loc_8016722"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: After collision-direction resolution, the field is set to 3, marking a post-contact state.
+  refs:
+  - bn6f/asm/asm00_2.s:17287
+  reproduce: grep -n 'oBattleObject_Unk_0f' bn6f/asm/asm00_2.s | head
+  result: '"mov r0, #3\n\tstrb r0, [r5,#oBattleObject_Unk_0f]"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Field takes values 2 and 3 in collision-reset sub-routines, again fitting a small state enum.
+  refs:
+  - bn6f/asm/asm00_2.s:17287
+  reproduce: grep -n 'oBattleObject_Unk_0f' bn6f/asm/asm00_2.s | head
+  result: '"mov r0, #2\n\tstrb r0, [r5,#oBattleObject_Unk_0f]" / "mov r0, #3\n\tstrb r0, [r5,#oBattleObject_Unk'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Field is set to 1 whenever HitModifierFinal bit 0x40 fires and `object_setFlag2 0x100`/`clearFlag2
+    0x4` are issued — also state-machine-like, but the exact state semantics (hit-marker vs. contact-state)
+    are ambiguous.
+  refs:
+  - bn6f/asm/asm00_2.s:17287
+  reproduce: grep -n 'oBattleObject_Unk_0f' bn6f/asm/asm00_2.s | head
+  result: '"mov r0, #1\n\tstrb r0, [r5,#oBattleObject_Unk_0f]"  (repeated)'
+previous_names:
+- oBattleObject_Unk_0f
+changes:
+- date: '2026-10-15'
+  what: rename oBattleObject_Unk_0f -> oBattleObject_ContactState
+  where: bn6f 4fc3b3b9
+  tool: tools/rename_symbol.py

@@ -1,0 +1,49 @@
+name: oBattleObject_Z16Save
+address: '0x32'
+kind: struct-field
+status: probable
+summary: Saved Z16 coordinate used as a position anchor for wobble/teleport effects and as a half-word
+  payload traveling alongside Damage.
+details: Mirrors X16→Unk_30 as the Z half of the saved anchor (`ldrh r0,[Z16]; strh r0,[Unk_32]`), feeds
+  that saved Z into `AddRandomVarianceToTwoCoords` with variance=3, and is restored back to Z16 when the
+  wobble ends. In asm31.s, Unk_32 is consistently `ldrh`'d and added into r6 (loaded from Damage/StaminaDamage)
+  to form a (damage, unk32) payload passed to spawn/dimming helpers — exactly matching how a saved positional
+  offset is packed alongside the damage word.
+evidence:
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Unk_32 is the saved Z16 anchor, paired with Unk_30 saving X16.
+  refs:
+  - bn6f/asm/asm31.s:84349
+  reproduce: grep -n 'oBattleObject_Unk_32' bn6f/asm/asm31.s | head
+  result: '"ldrh r0, [r5,#oBattleObject_Z16]\n\tstrh r0, [r5,#oBattleObject_Unk_32]"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Saved Z (shifted to 24.8 fixed-point like X16/Y) is passed as the Z coordinate with ±3 variance
+    — exactly the Z16 backup usage.
+  refs:
+  - bn6f/asm/asm31.s:84349
+  reproduce: grep -n 'oBattleObject_Unk_32' bn6f/asm/asm31.s | head
+  result: '"ldrh r3, [r5,#oBattleObject_Unk_32]\n\tlsl r3, r3, #0x10\n\tmov r0, #3\n\tbl AddRandomVarianceToTwo'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: When the wobble timer expires, Unk_32 is written back into Z16, clinching it as the saved Z16.
+  refs:
+  - bn6f/asm/asm31.s:84349
+  reproduce: grep -n 'oBattleObject_Unk_32' bn6f/asm/asm31.s | head
+  result: '"ldrh r0, [r5,#oBattleObject_Unk_32]\n\tstrh r0, [r5,#oBattleObject_Z16]"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Unk_32 is halfword-ORed into the Damage word as a packed payload for spawn-effect helpers (consistent
+    with a saved coord word reused as data).
+  refs:
+  - bn6f/asm/asm31.s:84349
+  reproduce: grep -n 'oBattleObject_Unk_32' bn6f/asm/asm31.s | head
+  result: '"ldr r6, [r5,#oBattleObject_DamageAndStaminaDamageCounterDisabler]\n\tldrh r2, [r5,#oBattleObject_Un'
+previous_names:
+- oBattleObject_Unk_32
+changes:
+- date: '2026-10-15'
+  what: rename oBattleObject_Unk_32 -> oBattleObject_Z16Save
+  where: bn6f 2d0ff4ff
+  tool: tools/rename_symbol.py

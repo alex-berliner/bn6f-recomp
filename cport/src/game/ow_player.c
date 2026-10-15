@@ -14,7 +14,7 @@
  * map groups); each array holds one 12-byte entry per facing direction. */
 
 typedef struct {
-    u32 r0_out;        /* always 4: also stored to oOWPlayerObject_Unk_0a */
+    u32 r0_out;        /* always 4: also stored to oOWPlayerObject_ActionSubState */
     u32 r1_out;        /* eStruct2000aa0 group byte in internet maps, else 0 */
     u32 r3_out;        /* caller's r3, passed through untouched */
     u32 r6_out;        /* game state pointer */
@@ -64,7 +64,7 @@ static FacingAnimResult load_facing_anim(u32 r3, u32 player, u32 toolkit) {
     ST32(player + oOWPlayerObject_Unk_38, LD32(entry + 4));
     ST32(player + oOWPlayerObject_Unk_3c, LD32(entry + 8));
     ST8(player + oOWPlayerObject_AnimationSelect, LD8(entry));
-    ST8(player + oOWPlayerObject_Unk_0a, 4);
+    ST8(player + oOWPlayerObject_ActionSubState, 4);
 
     out.r0_out = 4;
     out.anim_array = anim_array;
@@ -97,7 +97,7 @@ Next calledWhenUsingSlipRun_809D6BC(void) {
 /* register form: computed dispatch to player action handler via jump table;
  * the handler modifies caller-visible registers r0-r6 and r8-r12 */
 static void ow_player_dispatch_action(u32 player_obj) {
-    u32 idx = LD8(player_obj + oOWPlayerObject_Unk_0a);
+    u32 idx = LD8(player_obj + oOWPlayerObject_ActionSubState);
     R5 = player_obj;
     switch (idx) {
         case 0: GUEST_CALL(sub_809D7A8); break;
@@ -174,7 +174,7 @@ Next ow_player_setCounterTalkStateAfterNpcInteract_809D7C8(void) {
     SET_FLAGS_CMP(R0, 4);
     if (R0 == 4) {
         R0 = 8;
-        ST8(R5 + oOWPlayerObject_Unk_0a, R0);
+        ST8(R5 + oOWPlayerObject_ActionSubState, R0);
         /* mov r0,#8 only updates N/Z; C/V stay as the CMP left them */
         SET_FLAGS_NZ(R0);
     }
@@ -641,7 +641,7 @@ Next owPlayer_setJumptableIndex09AndOthers_809e004(void) {
     u32 value = R0;
     u32 player = R5;
 
-    ST8(player + oOWPlayerObject_Unk_0a, 0);
+    ST8(player + oOWPlayerObject_ActionSubState, 0);
 
     u32 jumptableIndex = LD8(player + 9);
     SET_FLAGS_CMP(jumptableIndex, 0x10);

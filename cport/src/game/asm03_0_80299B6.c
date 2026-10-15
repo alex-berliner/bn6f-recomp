@@ -845,7 +845,7 @@ static void beast_update_out_counter(u32 toolkit, u32 dest) {
         return;
     }
 
-    u8 alliance = LD8(battle_state + oBattleState_Unk_0d);
+    u8 alliance = LD8(battle_state + oBattleState_PlayerSide);
 
     /* Beast/transform forms 0xA and 0x16 bypass the "beast over" override. */
     u8 transformation = guest_get_transformation(alliance, battle_state);
@@ -877,7 +877,7 @@ static void beast_update_out_counter(u32 toolkit, u32 dest) {
      * damage taken >= agitation, shave remaining overflow from the counter. */
     u8 mood = guest_get_battle_navi_stats_byte(alliance, 0x63);
     if (mood != 0) {
-        u8 damage = LD8(battle_state + oBattleState_Unk_07);
+        u8 damage = LD8(battle_state + oBattleState_BattlePhase);
         if ((s32)damage >= (s32)mood) {
             s32 reduction = (s32)damage - (s32)mood + 1;
             overflow -= reduction;
@@ -962,7 +962,7 @@ Next folder_tallyChipsByClass_802A4FC(void) {
 Next battle_getActorEmotion_802A564(void) {
     u32 battleState = LD32(R10 + oToolkit_BattleStatePtr);
 
-    R0 = LD8(battleState + oBattleState_Unk_0d);
+    R0 = LD8(battleState + oBattleState_PlayerSide);
     if (LD8(R5 + 0x15) == 0)
         GUEST_CALL(callPossiblyGetBattleEmotion_8015B54);
     else
@@ -988,7 +988,7 @@ Next battle_isBeastOverEnabled_802A5A0(void) {
         u32 battleMode = R0;
         if (battleMode != 1 && battleMode != 6 && battleMode != 7 && battleMode != 9) {
             u32 battleState = LD32(R10 + oToolkit_BattleStatePtr);
-            R0 = LD8(battleState + oBattleState_Unk_0d);
+            R0 = LD8(battleState + oBattleState_PlayerSide);
             R1 = 0x61;
             GUEST_CALL(GetBattleNaviStatsByte);
             if (R0 == 1)
@@ -1020,7 +1020,7 @@ Next battle_checkActiveSlot8NaviStatReady_802A5DA(void) {
 
         if (mode == 0 || mode == 5 || mode == 8 || mode == 0xA || mode == 0xB) {
             u32 battleState = LD32(R10 + oToolkit_BattleStatePtr);
-            R0 = LD8(battleState + oBattleState_Unk_0d);
+            R0 = LD8(battleState + oBattleState_PlayerSide);
             R1 = 0x60;
             GUEST_CALL(GetBattleNaviStatsByte);
 
@@ -1749,7 +1749,7 @@ static u32 permuted_record(u32 navi) {
 static void setup_navi_display(u32 attr_base, u32 toolkit) {
     /* Select the attribute entry: slot = battle state byte +0xD */
     u32 bstate = LD32(toolkit + oToolkit_BattleStatePtr);
-    u32 slot   = LD8(bstate + oBattleState_Unk_0d);
+    u32 slot   = LD8(bstate + oBattleState_PlayerSide);
     u32 entry  = attr_base + slot * NAVI_ENTRY_SIZE;
 
     /* Clear the 32-byte display struct and copy relevant fields */
@@ -2222,7 +2222,7 @@ Next battle_getStateTableEntryPtr_802C8EA(void) {
 
     R1 = R10;
     battleState = LD32(R1 + oToolkit_BattleStatePtr);
-    R2 = (u32)LD8(battleState + oBattleState_Unk_0d) * 8;
+    R2 = (u32)LD8(battleState + oBattleState_PlayerSide) * 8;
     R0 = A_dword_2036820 + R2;
     SET_FLAGS_ADD(A_dword_2036820, R2);
     RETURN_TO_CALLER();
@@ -2581,13 +2581,13 @@ Next zeroFill_802CE54(void) {
 /* battle_getStoryFlagFromBattleState_802CE60(r0 = index):
  * Fetch one 16-byte entry from the table at unk_2036720. The index is
  * scrambled by XORing it with the current battle state's shuffle key
- * (oBattleState_Unk_0d) before scaling it to the entry size, so callers
+ * (oBattleState_PlayerSide) before scaling it to the entry size, so callers
  * get a shuffled-but-deterministic entry for the current battle.
  * Returns r0 = entry halfword at +0, r1 = entry word at +4,
  *         r2 = entry halfword at +2. */
 Next battle_getStoryFlagFromBattleState_802CE60(void) {
     u32 battleState = LD32(R10 + oToolkit_BattleStatePtr);
-    u32 shuffleKey = LD8(battleState + oBattleState_Unk_0d);
+    u32 shuffleKey = LD8(battleState + oBattleState_PlayerSide);
 
     u32 entry = A_unk_2036720 + ((R0 ^ shuffleKey) * 0x10);
 

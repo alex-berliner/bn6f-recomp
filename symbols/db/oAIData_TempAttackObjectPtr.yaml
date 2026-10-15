@@ -1,0 +1,52 @@
+name: oAIData_TempAttackObjectPtr
+address: '0x68'
+kind: struct-field
+status: probable
+summary: Pointer to a spawned temporary type-1 attack helper object (created by spawn_t1_0x5_tempAttackObject_80B8E30);
+  cleared when the attack/action ends.
+details: 'The field is consistently loaded as a 32-bit pointer and either dereferenced (e.g., `ldrb r1,
+  [r0,#0x10]` to read/temp an anim state) or passed to helpers `sub_80B8E58`/`sub_80B8E70`/`sub_80B8E7C`.
+  It is populated by `add r7, #oAIData_Unk_68; bl spawn_t1_0x5_tempAttackObject_80B8E30` and cleared (set
+  to 0) at every attack/action exit alongside `oBattleObject_RelatedObject1Ptr` and `object_exitAttackState`.
+  Note: the prompt labels this as u8 but the struct declares u32 and all accesses are word-sized pointer
+  ops.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: The field's address is taken and passed to the spawner, confirming it holds a pointer to a spawned
+    t1 type-5 attack object.
+  refs:
+  - bn6f/asm/asm31.s:109978
+  reproduce: grep -n 'oAIData_Unk_68' bn6f/asm/asm31.s | head
+  result: '"ldr r7, [r5,#oBattleObject_AIDataPtr] / add r7, #oAIData_Unk_68 / bl spawn_t1_0x5_tempAttackObject_'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: The loaded pointer is dereferenced as a struct (offset 0x10 is an anim/state byte that gets
+    incremented), confirming it is a pointer to a live helper object.
+  refs:
+  - bn6f/asm/asm31.s:109978
+  reproduce: grep -n 'oAIData_Unk_68' bn6f/asm/asm31.s | head
+  result: '"ldr r0, [r5,#oBattleObject_AIDataPtr] / ldr r0, [r0,#oAIData_Unk_68] / ldrb r1, [r0,#0x10]
+    / add r1'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: The field is zeroed (pointer cleared) at attack termination — typical handle-release pattern.
+  refs:
+  - bn6f/asm/asm31.s:109978
+  reproduce: grep -n 'oAIData_Unk_68' bn6f/asm/asm31.s | head
+  result: '"mov r0, #0 / str r0, [r7,#oAIData_Unk_68]"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: The pointer is passed to a cleanup/teardown helper (sub_80B8E58) on action exit, matching a
+    "temp object pointer released on shutdown" pattern.
+  refs:
+  - bn6f/asm/asm31.s:109978
+  reproduce: grep -n 'oAIData_Unk_68' bn6f/asm/asm31.s | head
+  result: '"ldr r0, [r5,#oBattleObject_AIDataPtr] / ldr r0, [r0,#oAIData_Unk_68] / bl sub_80B8E58"'
+previous_names:
+- oAIData_Unk_68
+changes:
+- date: '2026-10-15'
+  what: rename oAIData_Unk_68 -> oAIData_TempAttackObjectPtr
+  where: bn6f e0b230d6
+  tool: tools/rename_symbol.py

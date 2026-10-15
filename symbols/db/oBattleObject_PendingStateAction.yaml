@@ -1,0 +1,62 @@
+name: oBattleObject_PendingStateAction
+address: '0x5c'
+kind: struct-field
+status: probable
+summary: Scratch field holding a saved copy of the CurStateActionPhaseAndPhaseInitialized word that gets
+  restored back into that field when a transient one-shot flag (e.g., attack/animation/exit-pending bit)
+  is cleared.
+details: In every example the field is read with `ldr`, compared/tested against zero, and when zero the
+  current CurStateActionPhaseAndPhaseInitialized word is stored into it (snapshot); when the trigger condition
+  fires, that snapshot is copied back into CurStateActionPhaseAndPhaseInitialized and Unk_5c is cleared
+  to zero with `mov r0,#0; str r0,[r5,#oBattleObject_Unk_5c]`. This save/restore-around-an-ack idiom matches
+  a "pending state to restore on confirmation" purpose, and only ever holds a previously-observed full
+  state word, so a u32 is the natural type.
+evidence:
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: 'Classic restore-then-clear sequence: snapshot value is copied back into CurStateActionPhaseAndPhaseInitialized
+    and the scratch is zeroed.'
+  refs:
+  - bn6f/asm/asm32.s:7428
+  reproduce: grep -n 'oBattleObject_Unk_5c' bn6f/asm/asm32.s | head
+  result: '"ldr r0, [r5,#oBattleObject_Unk_5c] / str r0, [r5,#oBattleObject_CurStateActionPhaseAndPhaseInitiali'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: If the field is currently zero it is initialized by capturing the live CurStateActionPhaseAndPhaseInitialized
+    word, then used as the pending-restore slot.
+  refs:
+  - bn6f/asm/asm32.s:7428
+  reproduce: grep -n 'oBattleObject_Unk_5c' bn6f/asm/asm32.s | head
+  result: '"mov r0,#0; str r0,[r5,#oBattleObject_Unk_5c] / ldr r0,[r5,#oBattleObject_Unk_5c]; tst r0,r0
+    / ldr r'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: 'Pending-state pattern repeated inside action-handler dispatch: only capture the live state
+    word on first entry after a flag clear.'
+  refs:
+  - bn6f/asm/asm32.s:7428
+  reproduce: grep -n 'oBattleObject_Unk_5c' bn6f/asm/asm32.s | head
+  result: '"ldr r0, [r5,#oBattleObject_Unk_5c]; tst r0,r0 / bne <skip> / ldr r0,[r5,#oBattleObject_CurStateActi'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Same capture-or-restore handshake after object_exitAttackState; field acts as the queued state
+    to push into the live state word once exit conditions resolve.
+  refs:
+  - bn6f/asm/asm32.s:7428
+  reproduce: grep -n 'oBattleObject_Unk_5c' bn6f/asm/asm32.s | head
+  result: '"ldr r0, [r5,#oBattleObject_Unk_5c]; cmp r0,#0; beq skip / mov r0,#0; str r0,[r5,#oBattleObject_Unk_'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Status-effect handler also uses this field as the deferred-restore slot for the CurStateActionPhaseAndPhaseInitialized
+    word.
+  refs:
+  - bn6f/asm/asm32.s:7428
+  reproduce: grep -n 'oBattleObject_Unk_5c' bn6f/asm/asm32.s | head
+  result: '"ldr r0, [r5,#oBattleObject_Unk_5c]; tst r0,r0 / bne <skip> / ldr r0,[r5,#oBattleObject_CurStateActi'
+previous_names:
+- oBattleObject_Unk_5c
+changes:
+- date: '2026-10-15'
+  what: rename oBattleObject_Unk_5c -> oBattleObject_PendingStateAction
+  where: bn6f b8747b90
+  tool: tools/rename_symbol.py

@@ -418,7 +418,7 @@ static void s20364c0_update(u32 self, u32 toolkit, u32 r4, u32 r6) {
     if (progress == 0) {
         u32 battle_state = LD32(toolkit + oToolkit_BattleStatePtr);
 
-        if (LD8(battle_state + oBattleState_Unk_07) == 1) {
+        if (LD8(battle_state + oBattleState_BattlePhase) == 1) {
             render_enemy_virus_names();
         } else {
             damage_player_leave_1hp(0);

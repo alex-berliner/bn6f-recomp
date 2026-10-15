@@ -712,7 +712,7 @@ static void advance_battle_object_phase(u32 object) {
         call_spawn_t1_0x0_EffectObject_result spawn_result =
             call_spawn_t1_0x0_EffectObject(effect_type, effect_param, effect_coord, 0x26);
 
-        ST8(object + oBattleObject_Unk_19, 0x1F);
+        ST8(object + oBattleObject_WobbleOrEffectTimer, 0x1F);
         /* PlaySoundEffect: r0 = sound id, r2 = bank/voice; r2 is whatever the
          * effect spawner left behind, which the wrapper preserves for us. */
         call_PlaySoundEffect_sub_80C088C(0x94, spawn_result.r2);
@@ -736,14 +736,14 @@ static void advance_battle_object_phase(u32 object) {
     }
 
     {
-        s32 frames_left = (s32)LD8(object + oBattleObject_Unk_19) - 2;
-        ST8(object + oBattleObject_Unk_19, (u8)frames_left);
+        s32 frames_left = (s32)LD8(object + oBattleObject_WobbleOrEffectTimer) - 2;
+        ST8(object + oBattleObject_WobbleOrEffectTimer, (u8)frames_left);
         if (frames_left > 0)
             return;
 
         /* Animation over: keep the object hidden and complete the phase. */
         ST8(object + oObjectHeader_Flags, LD8(object + oObjectHeader_Flags) | 0x02);
-        ST8(object + oBattleObject_Unk_19, 0);
+        ST8(object + oBattleObject_WobbleOrEffectTimer, 0);
         ST16(object + oBattleObject_CurPhaseAndPhaseInitialized, 4);
     }
 }
@@ -1264,7 +1264,7 @@ Next sub_80C0C48(void) {
         u32 derived = R0;
 
         R0 = LD8(obj + BattleObject_DirectionAngle);
-        R1 = LD8(obj + oBattleObject_Unk_0d);
+        R1 = LD8(obj + oBattleObject_MoveSubState);
         R5 = LD32(obj + oBattleObject_RelatedObject1Ptr);
         R6 = derived;
         GUEST_CALL(sub_80CE224);
@@ -1321,7 +1321,7 @@ Next sub_80C0DB0(void) {
     /* Apply the colour shader to the battle object sprite. The shader index
      * is computed from the object's Unk_19 field as: idx * 0x421 (i.e.
      * (idx << 5 + idx) << 5 + idx), selecting one of a packed table. */
-    u32 idx = LD8(R5 + oBattleObject_Unk_19);
+    u32 idx = LD8(R5 + oBattleObject_WobbleOrEffectTimer);
     R0 = ((idx << 5) + idx) << 5;
     R0 = R0 + idx;
     GUEST_CALL(sprite_setColorShader);
@@ -1382,7 +1382,7 @@ Next sub_80C0DD8(void) {
     ST8(new_obj + oBattleObject_PanelX, panel_x);
     ST8(new_obj + BattleObject_DirectionAngle, panel_x);
     ST8(new_obj + oBattleObject_PanelY, panel_y);
-    ST8(new_obj + oBattleObject_Unk_0d, panel_y);
+    ST8(new_obj + oBattleObject_MoveSubState, panel_y);
 
     /* Inherit alliance and facing direction from the source object. */
     ST16(new_obj + oBattleObject_AllianceAndDirectionFlip,

@@ -160,8 +160,8 @@ static void begin_destruction_sequence(u32 obj) {
     ST8(obj + oBattleObject_PreventAnim, 0);
 
     u32 ai = LD32(obj + oBattleObject_AIDataPtr);
-    ST32(ai + oAIData_Unk_5c, 0);
-    ST32(ai + oAIData_Unk_68, 0);
+    ST32(ai + oAIData_AIScriptOffset, 0);
+    ST32(ai + oAIData_TempAttackObjectPtr, 0);
 
     play_sound_effect_sub_801746E(0x6C, ai);
 
@@ -333,7 +333,7 @@ Next battle_endTurnMarkActed_8017888(void) {
 
 /* ── sub_80178B6 ── */
 /* sub_80178B6(r5 = battle object):
- * Trampoline/dispatcher: reads the object's handler selector (oBattleObject_Unk_0d,
+ * Trampoline/dispatcher: reads the object's handler selector (oBattleObject_MoveSubState,
  * which stores a byte offset into the jump table) and tail-calls the matching
  * handler battleObject_initMoveStep_80178D4 / battleObject_applyVerticalMovement_8017992 / sub_8017A38. The original pushes lr, sets
  * lr = pc and branches through the table, so the callee returns straight back
@@ -341,7 +341,7 @@ Next battle_endTurnMarkActed_8017888(void) {
  * On entry to the handler, r0 holds the selector byte and r1 holds the table
  * entry (the Thumb handler pointer), exactly as the bx r1 sequence leaves them. */
 Next sub_80178B6(void) {
-    u32 kind = LD8(R5 + oBattleObject_Unk_0d);
+    u32 kind = LD8(R5 + oBattleObject_MoveSubState);
 
     /* r1 at handler entry is the raw jump-table entry, as loaded by `ldr r1, [r1,r0]`. */
     R0 = kind;
@@ -2104,7 +2104,7 @@ static void object_clear_flag2(u32 flag) {
  *
  * Each set bit of the hit modifier puts the target into the matching state via
  * its status flags; the "reaction" bits additionally mark the object at
- * oBattleObject_Unk_0f so the rest of the battle code knows the reaction fired.
+ * oBattleObject_ContactState so the rest of the battle code knows the reaction fired.
  */
 static void apply_hit_modifiers(u32 object, u32 collision) {
     u32 hitModifier = LD8(collision + oCollisionData_HitModifierFinal);
@@ -2125,11 +2125,11 @@ static void apply_hit_modifiers(u32 object, u32 collision) {
         /* Alternate reaction: take flag 0x100 and drop the flinch flag again. */
         object_set_flag2(OBJ_FLAG2_STATUS_0x100);
         object_clear_flag2(OBJ_FLAG2_FLINCH);
-        ST8(object + oBattleObject_Unk_0f, 1); /* original stores this twice */
+        ST8(object + oBattleObject_ContactState, 1); /* original stores this twice */
     } else if (!(object_flags() & OBJ_FLAGS_0x100040)) {
         /* Weaker reaction, skipped if the target is already in a 0x100040 state. */
         object_set_flag2(OBJ_FLAG2_STATUS_0x10);
-        ST8(object + oBattleObject_Unk_0f, 1);
+        ST8(object + oBattleObject_ContactState, 1);
     }
 }
 

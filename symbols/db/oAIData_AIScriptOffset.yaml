@@ -1,0 +1,60 @@
+name: oAIData_AIScriptOffset
+address: '0x5c'
+kind: struct-field
+status: probable
+summary: Pointer to a spawned counter/auxiliary BattleObject (e.g., the pink counter-ring) that the AI
+  may dispatch into each frame; zeroed on respawn/cleanup.
+details: 'All 7 reads use `ldr r0, [r0,#oAIData_Unk_5c]` (32-bit word load, not byte) followed by `tst
+  r0, r0` then `beq/bne`, i.e., it is a nullable pointer checked against NULL. The 2 writes use `str r0,
+  [r1,#oAIData_Unk_5c]` to clear it (`mov r0, #0`). In asm00_2.s:11181 the field is allocated lazily on
+  first use and then dispatched (via sub_80C4C3A / sub_80C4C46 / sub_80C4C4C, which all share the 0x80C4C..
+  family) when the object ticks each frame in asm31.s, exactly matching a "per-frame tick function pointer
+  / spawned-obj pointer" pattern. The struct definition already declares it as `ptr Unk_5c`.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Pointer-sized slot that is tested for NULL; only allocated/used after a beast-out emotion check,
+    consistent with a lazily-spawned counter-ring BattleObject.
+  refs:
+  - bn6f/asm/asm31.s:88164
+  reproduce: grep -n 'oAIData_Unk_5c' bn6f/asm/asm31.s | head
+  result: '"ldr r0, [r0,#oAIData_Unk_5c]  ; tst r0, r0 / bne locret"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: On multiple path-completion / hit reactions the AI dereferences this pointer and calls the same
+    0x80C4C3A dispatcher — i.e., it is a live BattleObject handle whose per-frame hook is invoked.
+  refs:
+  - bn6f/asm/asm31.s:88164
+  reproduce: grep -n 'oAIData_Unk_5c' bn6f/asm/asm31.s | head
+  result: '"ldr r0, [r0,#oAIData_Unk_5c]  ; bl sub_80C4C3A"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Cleared to NULL alongside Unk_00 (RelatedObject1Ptr) and Unk_68 in a "force white-flash / reset
+    phase" routine — typical teardown of a spawned child object pointer.
+  refs:
+  - bn6f/asm/asm31.s:88164
+  reproduce: grep -n 'oAIData_Unk_5c' bn6f/asm/asm31.s | head
+  result: '"str r0, [r1,#oAIData_Unk_5c]  ; with r0 = 0"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Again zeroed together with RelatedObject1Ptr and Unk_68 when re-entering the standard attack
+    flow, confirming lifecycle pairing.
+  refs:
+  - bn6f/asm/asm31.s:88164
+  reproduce: grep -n 'oAIData_Unk_5c' bn6f/asm/asm31.s | head
+  result: '"str r0, [r1,#oAIData_Unk_5c]  ; with r0 = 0"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: 'Per-frame tick: NULL check then dispatch — i.e., a stored BattleObject pointer whose update
+    function is invoked from the object ticker, parallel to Unk_58 right above it.'
+  refs:
+  - bn6f/asm/asm31.s:88164
+  reproduce: grep -n 'oAIData_Unk_5c' bn6f/asm/asm31.s | head
+  result: '"ldr r0, [r0,#oAIData_Unk_5c]  ; tst r0, r0 / beq ; bl sub_80C4C46 / sub_80C4C4C"'
+previous_names:
+- oAIData_Unk_5c
+changes:
+- date: '2026-10-15'
+  what: rename oAIData_Unk_5c -> oAIData_AIScriptOffset
+  where: bn6f 698e7420
+  tool: tools/rename_symbol.py

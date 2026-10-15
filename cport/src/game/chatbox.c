@@ -637,7 +637,7 @@ static void chatbox_ed_select_load_frame(u32 chatbox) {
     queue_eight_word_aligned_gfx_transfer(src, 0x6017F80u, 0x80u);
 
     u32 row_index = LD8(chatbox + 0x94);
-    u32 x_origin = (u32)(LD32(chatbox + oChatbox_Unk_70) + row_index - 6);
+    u32 x_origin = (u32)(LD32(chatbox + oChatbox_TileBufferOffset) + row_index - 6);
     u32 y_origin = (u32)LD8(chatbox + oChatbox_BoxGfxLoadState_0F) * 0xEu
                  + (u32)LD8(chatbox + oChatbox_Unk_19) - 1u;
 
@@ -1457,7 +1457,7 @@ Next chatbox_E9_newline(void) {
     u32 state = (u32)LD8(R5 + oChatbox_BoxGfxLoadState_0F) + 1;
 
     ST8(R5 + oChatbox_BoxGfxLoadState_0F, state);
-    ST32(R5 + oChatbox_Unk_70, 0);
+    ST32(R5 + oChatbox_TileBufferOffset, 0);
 
     if (state == 3) {
         /* Box graphics fully loaded: raise the ready flag. */
@@ -1540,12 +1540,12 @@ static void set_chatbox_flags_3e(u32 mask) {
 /* Register state the original leaves behind for its caller. */
 typedef struct {
     u32 r2; /* offset (relative to the chatbox) of the new entry's gfx-load-state byte */
-    u32 r3; /* word copied from oChatbox_Unk_70 */
+    u32 r3; /* word copied from oChatbox_TileBufferOffset */
     u32 r4; /* optionDef + 4, the caller's next option definition */
 } ChatboxEbOptionResult;
 
 /* Add one entry to the chatbox's option list. The three parameter bytes of the
- * definition at optionDef ([1], [2], [3]) plus the shared oChatbox_Unk_70 word
+ * definition at optionDef ([1], [2], [3]) plus the shared oChatbox_TileBufferOffset word
  * are copied into the free 0x10-byte slot, the entry count is bumped, the
  * choice cursor is reset, and the box's gfx-load-state byte is copied into the
  * slot's trailer. Note the entry addressing uses an offset from the chatbox
@@ -1563,7 +1563,7 @@ static ChatboxEbOptionResult chatbox_eb_option_run(u32 optionDef, u32 chatbox) {
     ST8(chatbox + entryOff + 4, LD8(optionDef + 2));
     ST8(chatbox + entryOff + 5, LD8(optionDef + 3));
 
-    u32 unk70 = LD32(chatbox + oChatbox_Unk_70);
+    u32 unk70 = LD32(chatbox + oChatbox_TileBufferOffset);
     ST32(chatbox + entryOff + 8, unk70);
 
     count++;
@@ -1579,7 +1579,7 @@ static ChatboxEbOptionResult chatbox_eb_option_run(u32 optionDef, u32 chatbox) {
 }
 
 /* chatbox_EB_option(r1 = unused, r4 = option definition, r5 = chatbox)
- * -> r0 = 1, r1 = oChatbox_Unk_80, r2 = entry offset + 0xC, r3 = oChatbox_Unk_70 word,
+ * -> r0 = 1, r1 = oChatbox_Unk_80, r2 = entry offset + 0xC, r3 = oChatbox_TileBufferOffset word,
  *    r4 = optionDef + 4, nz/c/v from ADDS r4, #4. */
 Next chatbox_EB_option(void) {
     ChatboxEbOptionResult res = chatbox_eb_option_run(R4, R5);
@@ -1612,8 +1612,8 @@ Next chatbox_EC_label(void) {
     else
         advance = operand * 8;   /* otherwise: index into 8-byte-wide table */
 
-    newCursor = LD32(R5 + oChatbox_Unk_70) + advance;
-    ST32(R5 + oChatbox_Unk_70, newCursor);
+    newCursor = LD32(R5 + oChatbox_TileBufferOffset) + advance;
+    ST32(R5 + oChatbox_TileBufferOffset, newCursor);
 
     newCounter = LD32(R5 + oChatbox_Unk_7C) + advance * 4;
     ST32(R5 + oChatbox_Unk_7C, newCounter);
@@ -2648,8 +2648,8 @@ typedef struct {
  * slot in the buffer pool, advance the line counter and script pointer. */
 static ChatboxResult chatbox_load_text(u32 scriptPtr, u32 chatbox) {
     /* Bump the per-chatbox line counter */
-    u8 counter = (u8)(LD8(chatbox + oChatbox_Unk_05) + 1);
-    ST8(chatbox + oChatbox_Unk_05, counter);
+    u8 counter = (u8)(LD8(chatbox + oChatbox_TextScriptDepth) + 1);
+    ST8(chatbox + oChatbox_TextScriptDepth, counter);
 
     /* Identify which PET navi is speaking */
     u8 naviId = get_cur_pet_navi();
@@ -2744,7 +2744,7 @@ static ChatboxPushResult chatbox_push_text_level(u32 arg1, u32 arg2, u32 arg3, u
     ChatboxPushResult out;
 
     /* one more nested text level is now open */
-    ST8(chat + oChatbox_Unk_05, LD8(chat + oChatbox_Unk_05) + 1);
+    ST8(chat + oChatbox_TextScriptDepth, LD8(chat + oChatbox_TextScriptDepth) + 1);
 
     /* where does the text for this box come from? */
     u32 slot = LD8(cmd + 3);
@@ -2767,7 +2767,7 @@ static ChatboxPushResult chatbox_push_text_level(u32 arg1, u32 arg2, u32 arg3, u
     ST32(chat + oChatbox_Unk_44, cmd);
 
     /* stack the resume point for the level we just opened */
-    u32 depth = LD8(chat + oChatbox_Unk_05);  /* re-read: the callee may have changed it */
+    u32 depth = LD8(chat + oChatbox_TextScriptDepth);  /* re-read: the callee may have changed it */
     u32 historyOffset = 0x140 + (depth - 1) * 4;
     ST32(chat + historyOffset, cmd);
 
@@ -2809,8 +2809,8 @@ static inline call_CopyWords_result call_CopyWords(u32 r0, u32 r1, u32 r2) {
  * Returns the destination address (becomes the new r4). */
 static u32 chatbox_advance(u32 script_ptr, u32 chatbox) {
     /* Bump the one-byte recursion depth on the chatbox struct. */
-    u32 depth = LD8(chatbox + oChatbox_Unk_05) + 1;
-    ST8(chatbox + oChatbox_Unk_05, depth);
+    u32 depth = LD8(chatbox + oChatbox_TextScriptDepth) + 1;
+    ST8(chatbox + oChatbox_TextScriptDepth, depth);
 
     /* Each table entry is 8 bytes: [src u32, word_count u32]. */
     u32 table = A_byte_8043B54 + ((u32)LD8(script_ptr + 2) << 3);
@@ -2835,7 +2835,7 @@ static u32 chatbox_advance(u32 script_ptr, u32 chatbox) {
     ST32(chatbox + oChatbox_Unk_44, new_ptr);
 
     /* Save script position in the depth-indexed slot. */
-    ST32(chatbox + 0x140 + (LD8(chatbox + oChatbox_Unk_05) - 1) * 4, new_ptr);
+    ST32(chatbox + 0x140 + (LD8(chatbox + oChatbox_TextScriptDepth) - 1) * 4, new_ptr);
 
     return dst;
 }
@@ -3574,7 +3574,7 @@ Next chatbox_GetState_8045F4C(void) {
  * (same 0xF00 size, still in r1 from the first call).
  * Leaves r1 = 0xF00 and the flags from the last ZeroFillByEightWords. */
 Next chatbox_resetAndClearBuffers_8045F60(void) {
-    ST32(R5 + oChatbox_Unk_70, 0);
+    ST32(R5 + oChatbox_TileBufferOffset, 0);
     ST8(R5 + oChatbox_BoxGfxLoadState_0F, 0);
     ST8(R5 + oChatbox_Unk_0E, 0);
     ST32(R5 + oChatbox_Unk_7C, 0);

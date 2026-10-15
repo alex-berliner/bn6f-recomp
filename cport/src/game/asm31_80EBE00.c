@@ -247,10 +247,10 @@ Next aiAttack_genericSpawnAndCountdown_80EBF30(void) {
 /* battle_aiWindRackAttackStep_80EBFF4(r5 = battle object, r7 = AI attack vars):
  * Wind-rack attack AI step. On the first run (attack state byte at r7+1 == 0)
  * it starts the attack animation (10), bumps the counter at
- * oAIData_Unk_68->0x10, sets the timer oAIAttackVars_Unk_10 to 10 and marks
+ * oAIData_TempAttackObjectPtr->0x10, sets the timer oAIAttackVars_Unk_10 to 10 and marks
  * the attack as started (state byte = 4). Every run then counts Unk_10 down;
  * while it is still >= 0 the attack continues. When it expires, the related
- * object reference is cleared, the pointer at oAIData_Unk_68 is reset to NULL
+ * object reference is cleared, the pointer at oAIData_TempAttackObjectPtr is reset to NULL
  * and the object leaves its attack state.
  * Flags/r0 on return: those of the timer decrement (SUBS) if the attack is
  * still running; otherwise whatever object_exitAttackState leaves. */
@@ -258,7 +258,7 @@ Next battle_aiWindRackAttackStep_80EBFF4(void) {
     if (LD8(R7 + 1 /* oAIAttackVars_Unk_01 */) == 0) {
         /* First tick of the attack: play animation 10 and init state. */
         u32 aiData = LD32(R5 + oBattleObject_AIDataPtr);
-        u32 counterBlock = LD32(aiData + oAIData_Unk_68);
+        u32 counterBlock = LD32(aiData + oAIData_TempAttackObjectPtr);
 
         R1 = LD8(counterBlock + 0x10) + 1;
         ST8(counterBlock + 0x10, R1);
@@ -285,7 +285,7 @@ Next battle_aiWindRackAttackStep_80EBFF4(void) {
     /* Timer expired: detach and exit the attack state. */
     ST32(R5 + oBattleObject_RelatedObject1Ptr, 0);
     u32 aiData = LD32(R5 + oBattleObject_AIDataPtr);
-    ST32(aiData + oAIData_Unk_68, 0);
+    ST32(aiData + oAIData_TempAttackObjectPtr, 0);
 
     R0 = 0;
     GUEST_CALL(object_exitAttackState);
@@ -514,7 +514,7 @@ Next sub_80EC81E(void) {
     R0 = 0;
     ST32(R5 + oBattleObject_RelatedObject1Ptr, R0);
     R1 = LD32(R5 + oBattleObject_AIDataPtr);
-    ST32(R1 + oAIData_Unk_68, 0);
+    ST32(R1 + oAIData_TempAttackObjectPtr, 0);
     GUEST_CALL(object_exitAttackState);
 
     RETURN_TO_CALLER();
@@ -601,7 +601,7 @@ Next ai_attackTickDelayTimer_80EC90E(void) {
     /* Timer expired: detach the object we were tracking and exit. */
     ST32(R5 + oBattleObject_RelatedObject1Ptr, 0);
     u32 aiData = LD32(R5 + oBattleObject_AIDataPtr);
-    ST32(aiData + oAIData_Unk_68, 0);
+    ST32(aiData + oAIData_TempAttackObjectPtr, 0);
 
     R0 = 0;
     R1 = aiData;
@@ -862,7 +862,7 @@ Next sub_80ECAA4(void) {
      * clear an AIData slot, then exit the attack state. */
     ST32(R5 + oBattleObject_RelatedObject1Ptr, 0);
     R1 = LD32(R5 + oBattleObject_AIDataPtr);
-    ST32(R1 + oAIData_Unk_68, 0);
+    ST32(R1 + oAIData_TempAttackObjectPtr, 0);
     GUEST_CALL(object_exitAttackState);
 
     RETURN_TO_CALLER();
@@ -980,7 +980,7 @@ Next sub_80ECF8E(void) {
         if (state != 2) {
             /* First entry: poke the AI data sub-struct, set anim 0xD. */
             u32 aiData = LD32(r5 + oBattleObject_AIDataPtr);
-            u32 unk68  = LD32(aiData + oAIData_Unk_68);
+            u32 unk68  = LD32(aiData + oAIData_TempAttackObjectPtr);
             ST8(unk68 + 0x10, 1);
             R0 = 0xD;
             GUEST_CALL(object_setAnimation);
@@ -1094,7 +1094,7 @@ Next sub_80ECF8E(void) {
          * sub-struct reference, then exit the attack state. */
         u32 aiData = LD32(r5 + oBattleObject_AIDataPtr);
         ST32(r5 + oBattleObject_RelatedObject1Ptr, 0);
-        ST32(aiData + oAIData_Unk_68, 0);
+        ST32(aiData + oAIData_TempAttackObjectPtr, 0);
         R0 = 0;
         R1 = aiData;
         GUEST_CALL(object_exitAttackState);

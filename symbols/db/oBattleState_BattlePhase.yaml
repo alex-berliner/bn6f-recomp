@@ -1,0 +1,59 @@
+name: oBattleState_BattlePhase
+address: '0x7'
+kind: struct-field
+status: probable
+summary: Battle phase / end-sequence counter incremented during the chip-select (custom) screen init and
+  tested throughout the battle to gate cleanup and end-of-battle logic.
+details: 'The field is incremented in battle_initCustomScreen_8026840 (the chip-select init that "advances
+  the battle phase counter" per its symdb summary) and its value is tested against thresholds to decide
+  post-turn behavior. It is compared to #1 in multiple sub_8014xxx functions to skip battle_clearObjectStatusFlagsAndTimers,
+  and to #0xf in battle_IsBattleEnding_800A97A to detect the end phase. It is also fed into eStruct200A008_setUnk03
+  alongside the post-move validation result, consistent with a phase/dispatcher counter.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: In battle_initCustomScreen_8026840 the field is loaded then incremented and stored back, matching
+    the symdb note that it "advances the battle phase counter".
+  refs:
+  - bn6f/asm/asm31.s:106480
+  reproduce: grep -n 'oBattleState_Unk_07' bn6f/asm/asm31.s | head
+  result: '"ldrb r0, [r2,#oBattleState_Unk_07]\nadd r1, r0, #1\nstrb r1, [r2,#oBattleState_Unk_07]"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: battle_IsBattleEnding_800A97A tests the field against 0xf to gate the "battle ending" return,
+    consistent with a phase/counter reaching its terminal value.
+  refs:
+  - bn6f/asm/asm31.s:106480
+  reproduce: grep -n 'oBattleState_Unk_07' bn6f/asm/asm31.s | head
+  result: '"ldrb r1, [r3,#oBattleState_Unk_07]\ncmp r1, #0xf\nblt loc_800A994\nmov r0, #1"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: sub_80145C2 (start-of-turn open) skips status-clear when field == 1, then re-cleared for other
+    phases — a phase gate.
+  refs:
+  - bn6f/asm/asm31.s:106480
+  reproduce: grep -n 'oBattleState_Unk_07' bn6f/asm/asm31.s | head
+  result: '"ldrb r0, [r0,#oBattleState_Unk_07]\ncmp r0, #1\nbeq locret_80145D2\nbl battle_clearObjectStatusFlag'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: Post-move chip-hand validation pushes the field into eStruct200A008_setUnk03, used as a phase
+    parameter when reporting the validation result.
+  refs:
+  - bn6f/asm/asm31.s:106480
+  reproduce: grep -n 'oBattleState_Unk_07' bn6f/asm/asm31.s | head
+  result: '"ldrb r0, [r5,#oBattleState_Unk_07]\nbl eStruct200A008_setUnk03"'
+- method: assembly-reading
+  date: '2026-10-15'
+  detail: sub_8026A28 (eS20364C0 dispatcher tick) branches on phase == 1, again consistent with a phase
+    counter.
+  refs:
+  - bn6f/asm/asm31.s:106480
+  reproduce: grep -n 'oBattleState_Unk_07' bn6f/asm/asm31.s | head
+  result: '"ldrb r0, [r0,#oBattleState_Unk_07]\ncmp r0, #1\nbne loc_8026BB6"'
+previous_names:
+- oBattleState_Unk_07
+changes:
+- date: '2026-10-15'
+  what: rename oBattleState_Unk_07 -> oBattleState_BattlePhase
+  where: bn6f 44a99e65
+  tool: tools/rename_symbol.py

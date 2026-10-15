@@ -4304,7 +4304,7 @@ static void run_phase_init(u32 bo_addr, u32 toolkit_addr) {
 
     u32 fade_kind;
     if ((effects & 0x400) != 0) {
-        u8 unk_1a = LD8(state_addr + oBattleState_Unk_1a);
+        u8 unk_1a = LD8(state_addr + oBattleState_State4EventCount);
         fade_kind = (unk_1a > 1) ? 8 : 0;
     } else {
         u8 mode = LD8(LD32(state_addr + oBattleState_BattleSettings) + 5);
@@ -4427,7 +4427,7 @@ Next sub_80E07E0(void) {
         u32 alliance = LD16(saved_r5 + oBattleObject_AllianceAndDirectionFlip);
         ST16(obj + oBattleObject_AllianceAndDirectionFlip, (u16)alliance);
         ST32(obj + oBattleObject_DamageAndStaminaDamageCounterDisabler, R6);
-        ST32(obj + oBattleObject_Unk_30, R7);
+        ST32(obj + oBattleObject_ChipID, R7);
     }
     R0 = obj;
     RETURN_TO_CALLER();
