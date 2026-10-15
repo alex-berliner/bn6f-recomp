@@ -32,6 +32,8 @@ rows 76-79 compared -- the camera follows MegaMan, so the scrolling ground is hi
 picture and the mask cannot hide a divergence in him -- and MegaMan's own per-frame place is additionally
 checked against this handler's replays in the validation pass.  The reload-tail repair is the follow-up loss."""
 
+import numpy as np
+
 NAME = "weather_comp_tornado_nocatch"
 
 BACK = 120               # frames before the loss to watch from
@@ -47,7 +49,10 @@ OFF_PX, OFF_PY = 0x1C, 0x20  # the overworld player object's X/Y (s16.16)
 CATCH1_V, CATCH2_V = 435967, 436402  # the video's own catches (white flashes 435971-987 and 436406-420)
 C1, C2 = CATCH1_V, CATCH2_V          # our staged captures: the same frames (the inputs hold A down over
                                      # 435966-435968, so the cutscene's text box skips as the video's does)
-MASK_RECT = [30, 76, 28, 92]         # thumbnail rows 30-67, cols 28-91: the storm's tornado sprite, the
+RESUME_AFTER = 24                    # the sync resumes this many frames after the second capture (its white
+                                     # flash ends ~436420)
+TAKE_OVER = 60                       # frames the sync must then hold on its own for the fix to count
+MASK_RECT = [30, 76, 28, 92]       # thumbnail rows 30-67, cols 28-91: the storm's tornado sprite, the
                                      # catch cutscene's text box and the tornado-over-camera dark dip; the
                                      # ground rows 68-79 stay compared (the camera follows MegaMan, so the
                                      # scrolling ground is his per-frame place seen through the picture)
@@ -88,7 +93,7 @@ def try_fix(D: int, sync) -> tuple | None:
         pos = {}
         for g in range(W, end + 1):
             if g > W:
-                e.step(keys[g - p0][0])
+                e.step(keys[g - 1 - p0][0])   # (key i steps frame i to i+1)
             p = e.u32(syms.GS_OW_PLAYER_PTR)
             if p:
                 pos[g] = (e.u32(p + OFF_PX), e.u32(p + OFF_PY))
@@ -101,7 +106,7 @@ def try_fix(D: int, sync) -> tuple | None:
     e.load(w0[1])
     for g in range(W, D + 9):
         if g > W:
-            e.step(keys[g - p0][0])
+            e.step(keys[g - 1 - p0][0])   # (key i steps frame i to i+1)
         p = e.u32(syms.GS_OW_PLAYER_PTR)
         if p:
             pos0[g] = (e.u32(p + OFF_PX), e.u32(p + OFF_PY))
@@ -160,7 +165,7 @@ def try_fix(D: int, sync) -> tuple | None:
     got = None
     for g in range(W, C2 + 1):
         if g > W:
-            e.step(keys[g - p0][0])
+            e.step(keys[g - 1 - p0][0])   # (key i steps frame i to i+1)
             f4 = e.read(fa4, 1)[0]
             if got is None and f4 & 0x02:
                 got = g                                # the capture ran
@@ -187,22 +192,45 @@ def try_fix(D: int, sync) -> tuple | None:
             log(f'  tornado nocatch: MegaMan diverged from the staged replay at {g} (emulator not deterministic)')
             return None
 
-    # the validation: smoke-test that the pokes apply and both captures fire (the flag reads inside the
-    # evaluate); the picture is NOT held to the usual cost bar here -- the storm's tornado sprites, text
-    # box, dark dip and comp-end reload fade cover the whole screen and are covered by the LENIENT window
-    # instead.  The honest guards are the two checks above: MegaMan's per-frame place equals the staged
-    # replay's, and the captures fire at the video's frames.
-    ck = sync.ck_file(w0)
-    ck['mask'] = MASK_RECT
-    r = sync.evaluate([(ck, pokes, C2 + 2, 'TN')])['TN']
-    log(f'  tornado nocatch: evaluate reaches {r[0]} (mean cost {r[1]:.3f} masked)')
-    if r[0] < C2:
-        log('  tornado nocatch: the staged captures did not both fire')
+    # The storm cannot be synced against the video: its clouds, dark dip and flashes fill the screen and no
+    # mask leaves enough to compare (a masked sync from W gives up at ~435929, before either catch).  So,
+    # as try_kill does past a battle's end, this handler plays the window itself: the path's keys to the
+    # loss, the video's display keys after it, with the pokes; it adds a path node for every frame, resumes
+    # the sync just after the second catch's white flash (R), and leaves D..R as a FREE window (pathcheck
+    # skips it).  The guards above stand in for the picture: MegaMan's per-frame place equals the staged
+    # replay's, and both captures fire at the video's frames.
+    R = C2 + RESUME_AFTER
+    if R - p0 >= len(keys):
         return None
-    log(f'  tornado nocatch: take both staged captures at {C1} and {C2} (mean cost {r[1]:.3f})')
-    # lenient through the storm and its reload tail: the storm's own effects fill the screen and the
-    # comp-end cutscene's text waits make the whole reload run ~180 frames late in our runner
-    sync.LENIENT.append((D - 10, C2 + 500))
-    return w0, pokes
+    sync.set_emu_pokes(pokes)
+    e.load(w0[1])
+    node, caught = w0[5], []
+    for g in range(W, R):
+        k, v = keys[g - p0]
+        e.step(k)
+        node = sync.bm.Node(k, v, node)
+        if e.read(fa4, 1)[0] & 0x02 and (not caught or caught[-1] < g - 30):
+            caught.append(g + 1)                       # a capture ran (0xBE6 set) on reaching frame g + 1
+    sync.set_emu_pokes()
+    if caught[:2] != [C1, C2]:
+        log(f'  tornado nocatch: the played window captured at {caught} (wanted {C1} and {C2}): recipe off')
+        return None
+    gg, h = e.gf()
+    if gg != R:
+        log(f'  tornado nocatch: the played window ended at game {gg}, not {R}')
+        return None
+    slot = sync.RSLOT - 1
+    e.save(slot)
+    w2 = (R, slot, h, keys[R - p0][1] - sync.bm.RATE * h, np.array([0.5 * abs(o) for o in sync.bm.OFFS]), node)
+    # the sync must take over from R: the comp's end (its text box and the reload) against the video
+    r = sync.evaluate([(sync.ck_file(w2), [], R + 600, 'TN')])['TN']
+    log(f'  tornado nocatch: played {W}..{R} (captures at {C1} and {C2}); the sync from {R} reaches {r[0]} '
+        f'(mean cost {r[1]:.3f})')
+    if r[0] < R + TAKE_OVER:
+        log('  tornado nocatch: the sync does not take over after the storm')
+        return None
+    e.load(slot)                                       # (evaluate may have used the machine)
+    sync.FREE.append((D, R))
+    return w2, [p for p in pokes if p[0] < R]
 
 
