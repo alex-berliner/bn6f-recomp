@@ -418,3 +418,37 @@ Notes:
 - The `oAIData_AiDifficultyTier` at offset 0xc is separate from the existing `oAIAttackVars_AiDifficultyTier` at AIAttackVars+0x3.
 
 Running total: 1 + 20 + 20 + 19 + 16 + 20 + 20 = **116 fields named**.
+
+## Batch 8 (20 fields, 2026-10-15)
+
+bn6f commits: `56896f4e` (.inc), `e29a50de` (asm renames).
+Recomp commit pending.
+
+| Field | Old | New | Status |
+|---|---|---|---|
+| oAIData_Unk_32 | u16 | `CounterHitChainFlag` | hypothesis |
+| oAIData_Unk_36 | u16 | `PoisonDamagePerTick` | probable |
+| oAIData_Unk_38 | u16 | `CollisionFreezeTimer` | probable |
+| oAIData_Unk_3a | u16 | `ActionRerollFrameCounter` | probable |
+| oAIData_Unk_3c | u16 | `SavedZ16` | probable |
+| oAIData_Unk_54 | u32 | `BubbleSourceObjectPtr` | hypothesis |
+| oBattleState_Unk_13 | u8 | `BattleOverSecondaryFlag` | hypothesis |
+| oBattleState_Unk_14 | u8 | `BackgroundType` | hypothesis |
+| oBattleState_Unk_15 | u8 | `PendingFieldChange` | hypothesis |
+| oBattleState_Unk_16 | u8 | `PanelTurnStepCounter` | probable |
+| oBattleState_Unk_17 | u8 | `BeastOutFlag` | hypothesis |
+| oBattleState_Unk_18 | u8 | `PhaseStepIndex` | hypothesis |
+| oBattleState_Unk_1b | u8 | `PanelSelectedCount` | probable |
+| oBattleState_Unk_1c | u8 | `PhaseMessageDelayCounter` | probable |
+| oBattleState_Unk_1d | u8 | `MessageTimer` | probable |
+| oBattleState_Unk_1f | u8 | `BattleResult` | probable |
+| oChatbox_Unk_16 | u8 | `SelectCursorFrame` | probable |
+| oChatbox_Unk_17 | u8 | `MugshotAnimTableIdx` | probable |
+| oChatbox_Unk_19 | u8 | `CursorY` | probable |
+| oChatbox_Unk_1B | u8 | `CursorX` | probable |
+
+Notes:
+- `PhaseStepIndex` for oBattleState_Unk_18 conflicts with the earlier batch-5 `oBattleState_PhaseStepIndex` (which was at offset 0x18, a u0 marker). Wait, that's the same field - this is a duplicate rename! Need to verify and possibly drop one.
+- The cport C build had macro redefinition warnings (non-fatal, C defines `oBattleObject_Param1` with `#define` that matches bn6f's `oBattleObject_Param1` define). These are pre-existing.
+
+Running total: 1 + 20 + 20 + 19 + 16 + 20 + 20 + 20 = **136 fields named**.
