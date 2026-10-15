@@ -665,3 +665,33 @@ Recomp commit pending.
 | oLogoScreenState_Unk_05 | u8 | `State` | hypothesis |
 
 Running total: 1 + 20 + 20 + 19 + 16 + 20 + 20 + 20 + 20 + 20 + 19 + 20 + 20 + 20 + 20 = **275 fields named**.
+
+## Batch 16 (18 fields, 2026-10-15)
+
+bn6f commits: `59754762` (S2001c04 manual), `6b3e729c` (16 more manual).
+Recomp commit pending.
+
+| Field | Old | New | Status |
+|---|---|---|---|
+| oS2001c04_Unk_24 | u32 | `EncounterGate` | hypothesis |
+| oS2001c04_Unk_28 | u32 | `EncounterGateFlag` | hypothesis |
+| oS200ace0_Unk_1a | u16 | `ScriptTimer16` | hypothesis |
+| oS200ace0_Unk_1c | u32 | `PendingFixedAnimationId` | hypothesis |
+| oS20364C0_Unk_03 | u8 | `CustMenuStep` | hypothesis |
+| oS20364C0_Unk_17 | u8 | `ChipSelectReady` | hypothesis |
+| oS20364C0_Unk_18 | u8 | `BattleInitFlag` | hypothesis |
+| oS20364C0_Unk_19 | u8 | `HasPendingAction` | hypothesis |
+| oS20364C0_Unk_38 | u16 | `PuppeteerSwitchElement` | hypothesis |
+| oS2011E30_Unk_07 | u8 | `EffectPending` | probable |
+| oStartScreen_Unk_03 | u8 | `SpriteIndex` | hypothesis |
+| oStartScreen_Unk_0C | u8 | `NumIcons` | hypothesis |
+| oCutsceneState_Unk_04 | u8 | `CutsceneParam32` | hypothesis |
+| oCutsceneState_Unk_08 | u0 | `CutsceneScriptVars` | hypothesis |
+| eCutsceneState_Unk_04 | u8 | `CutsceneParam32` | hypothesis |
+| eCutsceneState_Unk_08 | u0 | `CutsceneScriptVars` | hypothesis |
+| oBattleState_Unk_12_13 | u16 | `HeldChipIndex` | probable |
+| oGameState_Unk_12 | u8 | `LastMapChangeCounter` | probable |
+
+Notes: This batch required manual renames due to a quirk in `tools/rename_symbol.py` - when some renames succeed and others fail, the script rolls back ALL changes. Fixed by doing the renames in two separate commits.
+
+Running total: 1 + 20 + 20 + 19 + 16 + 20 + 20 + 20 + 20 + 20 + 19 + 20 + 20 + 20 + 20 + 18 = **293 fields named**.
