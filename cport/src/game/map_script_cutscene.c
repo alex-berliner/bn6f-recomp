@@ -1192,8 +1192,8 @@ Next cutscene_end_8036ED4(void) {
 
     /* Clear the two halfword counters in the s2001c04 struct. */
     u32 unk2001c04 = LD32(R10 + oToolkit_S2001c04_Ptr);
-    ST16(unk2001c04 + oS2001c04_Unk_12, 0);
-    ST16(unk2001c04 + oS2001c04_Unk_14, 0);
+    ST16(unk2001c04 + oS2001c04_EncounterStepAccumulator, 0);
+    ST16(unk2001c04 + oS2001c04_EncounterRollValue, 0);
 
     /* ClearEventFlagFromImmediate(EVENT_1731): flag group 0x17, bit 0x31. */
     R0 = 0x17;

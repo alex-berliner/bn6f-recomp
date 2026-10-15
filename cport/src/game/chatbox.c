@@ -436,11 +436,11 @@ Next chatbox_runScript(void) {
  *   row 1 (idx 1): L-button textscripts             (real world / internet)
  * Within a row the lookup goes [world][map group] and, for the normal tables
  * only, one level further down by [map number]; the final index into the
- * resulting pointer array is oGameState_Unk_08. */
+ * resulting pointer array is oGameState_ChatboxMessageSlot. */
 typedef struct {
     u32 text;      /* r0: the selected LZ77-compressed text script pointer */
     u32 slotTable; /* r3 before the final index is added, kept for the flags */
-    u32 slotOffset;/* r2 as the original leaves it: 4 * oGameState_Unk_08 */
+    u32 slotOffset;/* r2 as the original leaves it: 4 * oGameState_ChatboxMessageSlot */
     u32 slotPtr;   /* r3 as the original leaves it: &table[Unk_08] */
 } CompTextLookup;
 
@@ -451,7 +451,7 @@ static CompTextLookup select_comp_text_by_map_chatbox_selectCompTextByMap_804073
     u32 gameState = LD32(toolkit + oToolkit_GameStatePtr);
     u32 mapGroup  = LD8(gameState + oGameState_MapGroup);
     u32 mapNumber = LD8(gameState + oGameState_MapNumber);
-    u32 textSlot  = LD8(gameState + oGameState_Unk_08);
+    u32 textSlot  = LD8(gameState + oGameState_ChatboxMessageSlot);
 
     /* Real-world and internet areas use separate halves of every table. */
     u32 worldOffset = 0;

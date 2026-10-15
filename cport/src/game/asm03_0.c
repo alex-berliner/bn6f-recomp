@@ -149,7 +149,7 @@ Next sub_8026A50(void) {
     GUEST_CALL(battle_allocateActorIndex_802FE48);            /* -> r0 */
 
     result = R0;
-    ST8(R5 + oS20364C0_Unk_0e, result); /* remember the result on the object */
+    ST8(R5 + oS20364C0_ActorIndex, result); /* remember the result on the object */
 
     R3 = result;                        /* arguments for sprite_setAffineTransform_802FE7A */
     R1 = 0x40;
@@ -426,7 +426,7 @@ static void s20364c0_update(u32 self, u32 toolkit, u32 r4, u32 r6) {
         }
 
         /* Choose next state based on the mode byte in self */
-        u8 mode = LD8(self + oS20364C0_Unk_0c);
+        u8 mode = LD8(self + oS20364C0_FirstBattleTutorialStep);
         bool go_wait;
 
         if (mode == 0xFF) {

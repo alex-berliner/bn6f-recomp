@@ -840,19 +840,19 @@ static u32 process_battle_panels(void) {
         for (u32 col = 1; col <= PANEL_COLS; col++) {
             u32 pd       = call_get_panel_data(col, row);
             u8  alliance = LD8(pd + oPanelData_Alliance);
-            ST8(pd + oPanelData_Unk_07, alliance);
+            ST8(pd + oPanelData_CachedAlliance, alliance);
 
-            u16 cell_timer = LD16(pd + oPanelData_Unk_10);
+            u16 cell_timer = LD16(pd + oPanelData_ClaimTimer);
             if (cell_timer != 0) {
                 cell_timer--;
-                ST16(pd + oPanelData_Unk_10, cell_timer);
+                ST16(pd + oPanelData_ClaimTimer, cell_timer);
 
                 /* extract bit 2 of the decremented timer */
                 u8 toggle = (cell_timer & 4) >> 2;
                 final_r3  = toggle;
 
-                u8 vis = LD8(pd + oPanelData_Unk_07);
-                ST8(pd + oPanelData_Unk_07, vis ^ toggle);
+                u8 vis = LD8(pd + oPanelData_CachedAlliance);
+                ST8(pd + oPanelData_CachedAlliance, vis ^ toggle);
             } else {
                 final_r3 = alliance;
             }
@@ -1057,7 +1057,7 @@ Next object_breakPanel(void) {
 /* ── object_highlightPanel ── */
 /* object_highlightPanel(r0, r1 = object):
  * If the object stands on a valid panel, fetch its panel data offset and
- * set the flag byte at offset 1 (oPanelData_Unk_01) to 1.
+ * set the flag byte at offset 1 (oPanelData_HighlightState) to 1.
  * Returns r0 = panel data offset (or the validity check result when the
  * panel is invalid), r1 = 1 when the flag was written. Flags: those left
  * by the validity check when the panel is invalid, otherwise NZ from the
@@ -1094,7 +1094,7 @@ Next object_highlightPanel(void) {
  * Claim the panel the given battle object stands on for `alliance`: look up
  * the object's panel data, and if the panel is in use (panel type byte != 0),
  * store the new alliance id in it, clear its halfword field at
- * oPanelData_Unk_10, and refresh the panel's parameters.
+ * oPanelData_ClaimTimer, and refresh the panel's parameters.
  * Leaves r4-r7 untouched; r3 carries the panel type (early exit) or whatever
  * object_updatePanelParameters leaves in it. */
 Next object_setPanelAlliance(void) {
@@ -1116,7 +1116,7 @@ Next object_setPanelAlliance(void) {
     R3 = type;
     if (type != 0) {
         ST8(panel + 3, alliance); /* oPanelData_Alliance */
-        ST16(panel + oPanelData_Unk_10, 0);
+        ST16(panel + oPanelData_ClaimTimer, 0);
 
         R0 = object;
         R1 = param;

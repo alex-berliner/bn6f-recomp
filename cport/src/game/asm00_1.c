@@ -900,8 +900,8 @@ static OWPairResult scan_ow_pairs(u32 r4_in, u32 r6_in) {
             r4 = inner;
 
             /* Quick reject: shared bits between outer Unk_0c and inner Unk_08 */
-            u32 outer_mask = LD32(outer + oOWObjectInteractionArea_Unk_0c);
-            u32 inner_mask = LD32(inner + oOWObjectInteractionArea_Unk_08);
+            u32 outer_mask = LD32(outer + oOWObjectInteractionArea_InteractionFlagMask);
+            u32 inner_mask = LD32(inner + oOWObjectInteractionArea_Flags);
             if ((outer_mask & inner_mask) == 0)
                 continue;
 
@@ -915,11 +915,11 @@ static OWPairResult scan_ow_pairs(u32 r4_in, u32 r6_in) {
 
             /* OR combined mask into outer area's event-flag word (*Unk_10) */
             u32 combined = outer_mask & inner_mask;
-            u32 outer_evt = LD32(outer + oOWObjectInteractionArea_Unk_10);
+            u32 outer_evt = LD32(outer + oOWObjectInteractionArea_InteractionFlags);
             ST32(outer_evt, combined | LD32(outer_evt));
 
             /* If outer has the snap-player flag, copy inner coords to player */
-            u32 outer_unk08 = LD32(outer + oOWObjectInteractionArea_Unk_08);
+            u32 outer_unk08 = LD32(outer + oOWObjectInteractionArea_Flags);
             if (outer_unk08 & OW_OBJECT_INTERACTION_AREA_FLAG_0x200000) {
                 u32 player = A_eOWPlayerObject;
                 ST16(player + oOWPlayerObject_Unk_72,
@@ -931,9 +931,9 @@ static OWPairResult scan_ow_pairs(u32 r4_in, u32 r6_in) {
             }
 
             /* OR (outer Unk_08) & (inner Unk_0c) into inner area's event word */
-            u32 inner_mask2 = LD32(inner + oOWObjectInteractionArea_Unk_0c);
+            u32 inner_mask2 = LD32(inner + oOWObjectInteractionArea_InteractionFlagMask);
             u32 combined2 = outer_unk08 & inner_mask2;
-            u32 inner_evt = LD32(inner + oOWObjectInteractionArea_Unk_10);
+            u32 inner_evt = LD32(inner + oOWObjectInteractionArea_InteractionFlags);
             ST32(inner_evt, combined2 | LD32(inner_evt));
         }
 
@@ -2115,7 +2115,7 @@ static void init_new_game_data(u32 toolkit) {
     ST32(gs + 0x58, INITIAL_MAP_GROUP);
     ST8(gs + oGameState_GameProgress, 0);
     ST8(gs + oGameState_MapSubArea, 0);
-    ST8(gs + oGameState_Unk_08, 0);
+    ST8(gs + oGameState_ChatboxMessageSlot, 0);
     ST32(gs + oGameState_PlayerX, 0);
     ST32(gs + oGameState_SavedRealWorldX, 0);
     ST32(gs + oGameState_SavedInternetX, 0);
@@ -2494,7 +2494,7 @@ static struct EnterMapExit enter_map(u32 toolkit) {
     /* Clear leftover interaction/coordination state from the previous map. */
     ST8(game_state + oGameState_SavedByte, 0);
     ST8(game_state + oGameState_CoordInteractionValue, 0);
-    ST8(game_state + 3 /* oGameState_Unk_03 */, 0);
+    ST8(game_state + 3 /* oGameState_ChipDescDirtyFlag */, 0);
     ST32(game_state + oGameState_FrameCountdown, 0);
 
     /* Drop all the temporary mode flags a cutscene/battle may have left set. */
@@ -2542,7 +2542,7 @@ static struct EnterMapExit enter_map(u32 toolkit) {
 
     /* Clear the warp-state byte. */
     u32 warp = LD32(toolkit + oToolkit_Warp2011bb0_Ptr);
-    ST8(warp + oWarp2011bb0_Unk_10, 0);
+    ST8(warp + oWarp2011bb0_WarpState, 0);
 
     /* Hand control to the on-map update subsystem (gamestate_OnMapUpdate). */
     ST8(game_state + 0 /* oGameState_SubsystemIndex */, 4);
@@ -3624,7 +3624,7 @@ static u32 check_map_warp_start(u32 entry_r5, u32 toolkit) {
 
     /* Arm the warp in the shared warp state block. */
     u32 warp = LD32(toolkit + oToolkit_Warp2011bb0_Ptr);
-    ST8(warp + oWarp2011bb0_Unk_10, 1);
+    ST8(warp + oWarp2011bb0_WarpState, 1);
     ST8(warp + oWarp2011bb0_WarpIndex, (u8)warp_index);
     ST8(warp + oWarp2011bb0_MapGroupTransitionType, 0);
 

@@ -355,8 +355,8 @@ Next createOWObjectInteractionArea_80037ac(void) {
     ST32(entry + AREA_XY_PACKED, R1);
     ST32(entry + AREA_Z_KIND, R2);
     ST32(entry + AREA_WORD_08, R4);
-    ST32(entry + oOWObjectInteractionArea_Unk_0c, R5);
-    ST32(entry + oOWObjectInteractionArea_Unk_10, R6);
+    ST32(entry + oOWObjectInteractionArea_InteractionFlagMask, R5);
+    ST32(entry + oOWObjectInteractionArea_InteractionFlags, R6);
 
     ST32(countPtr, count + 1);
     SET_FLAGS_ADD(count, 1); /* mirrors the original's ADDS r0, #1 */

@@ -141,7 +141,7 @@ static EnterMapOnWarpResult trigger_enter_map_on_warp(u32 toolkit) {
         target_map_id = LD32(game_state + oGameState_SavedInternetMapId);
     } else {
         /* same-world warp: the (just copied) warp entry carries the destination */
-        ST8(warp + oWarp2011bb0_Unk_10, 2);
+        ST8(warp + oWarp2011bb0_WarpState, 2);
         x = LD32(warp + oWarp2011bb0_X);
         y = LD32(warp + oWarp2011bb0_Y);
         z = LD32(warp + oWarp2011bb0_Z);
@@ -169,8 +169,8 @@ static EnterMapOnWarpResult trigger_enter_map_on_warp(u32 toolkit) {
 
     /* reset the warp animation state */
     u32 warp_state = LD32(toolkit + oToolkit_S2001c04_Ptr);
-    ST16(warp_state + oS2001c04_Unk_12, 0);
-    ST16(warp_state + oS2001c04_Unk_14, 0);
+    ST16(warp_state + oS2001c04_EncounterStepAccumulator, 0);
+    ST16(warp_state + oS2001c04_EncounterRollValue, 0);
 
     result.old_map_group = previous_group;
     result.player_z = z;
@@ -357,7 +357,7 @@ Next subsystem_launchMail(void) {
 Next warp_ArmPendingTransition_8005EEC(void) {
     u32 warp = LD32(R10 + oToolkit_Warp2011bb0_Ptr);
 
-    ST8(warp + oWarp2011bb0_Unk_10, 1);
+    ST8(warp + oWarp2011bb0_WarpState, 1);
     ST8(warp + oWarp2011bb0_WarpIndex, R1 + 1);
     ST32(warp + oWarp2011bb0_WarpDataPtr, R0);
     ST8(warp + oWarp2011bb0_MapGroupTransitionType, R2);
@@ -435,12 +435,12 @@ Next warp_setSubsystemIndexTo0x14AndOthers_8005f14(void) {
 
 /* ── warp_LoadCurrentAndReadUnk10_8005F28 ── */
 /* warp_LoadCurrentAndReadUnk10_8005F28: load the warp helper struct for the current area (found via the
- * toolkit in r10) and fetch its byte at oWarp2011bb0_Unk_10.
+ * toolkit in r10) and fetch its byte at oWarp2011bb0_WarpState.
  * Returns r0 = warp struct pointer, r1 = that byte; flags reflect (r1 - 0),
  * so callers typically test whether the byte is zero. */
 Next warp_LoadCurrentAndReadUnk10_8005F28(void) {
     R0 = LD32(R10 + oToolkit_Warp2011bb0_Ptr);
-    R1 = LD8(R0 + oWarp2011bb0_Unk_10);
+    R1 = LD8(R0 + oWarp2011bb0_WarpState);
     SET_FLAGS_CMP(R1, 0);
     RETURN_TO_CALLER();
 }

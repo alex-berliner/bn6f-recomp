@@ -728,7 +728,7 @@ Next fadeScreenAndAdvanceState_802A2E8(void) {
         R1 = 0xA;
         GUEST_CALL(loc_8006274);
 
-        ST8(R5 + oS20364C0_Unk_13, 0);
+        ST8(R5 + oS20364C0_FadeSeqIndex, 0);
 
         R0 = 4;
         SET_FLAGS_NZ(R0);
@@ -1286,7 +1286,7 @@ Next custMenu_handleInputQueuePop_802BED4(void) {
         ST16(R5 + oS20364C0_Unk_10, value);
 
         /* short confirmation hold if Unk_0c says so, otherwise a long one */
-        R1 = LD8(R5 + oS20364C0_Unk_0c);
+        R1 = LD8(R5 + oS20364C0_FirstBattleTutorialStep);
         u32 hold = (R1 != 0) ? 1 : 0x1E;
         ST8(R5 + oS20364C0_Unk_0b, hold);
 
