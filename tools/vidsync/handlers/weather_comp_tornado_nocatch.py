@@ -33,6 +33,7 @@ picture and the mask cannot hide a divergence in him -- and MegaMan's own per-fr
 checked against this handler's replays in the validation pass.  The reload-tail repair is the follow-up loss."""
 
 import numpy as np
+from feat import emu_thumb
 
 NAME = "weather_comp_tornado_nocatch"
 
@@ -214,13 +215,15 @@ def try_fix(D: int, sync) -> tuple | None:
         g += 1
         if e.read(fa4, 1)[0] & 0x02 and (not caught or caught[-1] < g - 31):
             caught.append(g)                           # a capture ran (0xBE6 set) on reaching frame g
-        if reload_at is None and g > C2 and bytes(e.read(syms.GS_MAP, 2)) != here:
-            reload_at = g
+        if reload_at is None and g > C2 + 30 and g % 2 == 0:
+            m = float(emu_thumb(e.shot()).mean())
+            if m < 20 or m > 235:
+                reload_at = g                          # our screen fades (the comp's end and reload)
     sync.set_emu_pokes()
     R = g
     vids = [sync.b.T[min(max(keys[x - p0][1], 0), sync.b.N - 1)].mean() for x in range(C2, R)]
     vdark = next((C2 + i for i, m in enumerate(vids) if i > 30 and (m < 20 or m > 235)), None)
-    log(f'  tornado nocatch: our map reloads at {reload_at}; the video fades (dark/bright) first at {vdark}')
+    log(f'  tornado nocatch: our screen fades (dark/bright) first at {reload_at}; the video\'s at {vdark}')
     if reload_at is None:
         log(f'  tornado nocatch: the comp did not end within {MAX_TAIL} frames of the second catch')
         return None
