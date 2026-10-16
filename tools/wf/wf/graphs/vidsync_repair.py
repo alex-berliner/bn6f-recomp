@@ -32,7 +32,8 @@ def vidsync_repair_graph() -> Graph["VidsyncRepairState"]:
         transitions=[
             Transition(after=find_the_loss, go_to=render_the_loss, when=loss_found),
             Transition(after=find_the_loss, go_to=write_report, when=no_loss_found),
-            Transition(after=render_the_loss, go_to=classify_the_loss),
+            Transition(after=render_the_loss, go_to=classify_the_loss, when=not_classified_yet),
+            Transition(after=render_the_loss, go_to=brief_the_model, when=classified_already),
             Transition(after=classify_the_loss, go_to=brief_the_model, when=handler_wanted),
             Transition(after=classify_the_loss, go_to=write_report, when=no_handler_wanted),
             Transition(after=brief_the_model, go_to=ask_model_for_a_handler),
@@ -414,6 +415,15 @@ def write_report(given: ReportInput) -> ReportOutput:
 
 
 # ── decisions ──────────────────────────────────────────────────────────
+
+def not_classified_yet(state: VidsyncRepairState) -> bool:
+    return state.loss_class is None
+
+
+def classified_already(state: VidsyncRepairState) -> bool:
+    """Started with the loss classified (vidsync-tick's decide): no pause at classify_the_loss."""
+    return state.loss_class is not None and state.loss_class.ask_model
+
 
 def loss_found(state: VidsyncRepairState) -> bool:
     return state.case is not None

@@ -21,6 +21,8 @@ launcher at the root) is `python -m wf ARGS` with this folder's venv.
   python -m wf vidsync-repair --run NAME [--loss G] [--model P/M]... [--max-attempts N]
   python -m wf vidsync-ready [--checkpoint PATH|RUN] [--most G] [--out-dir DIR] [--every N] [--local DIR] [--import]
   python -m wf vidsync-status [RUN]        # the driver's state on 192.168.1.175 (furthest frame, last event)
+  python -m wf vidsync-tick [--run NAME]    # one check-in (for a 15-minute recurring prompt): acts on the
+                                            # routine cases, stops at `decide` for the rest
   python -m wf waiting RUN_ID              # what a paused run needs
   python -m wf answer  RUN_ID ANSWER.json  # give it, and carry on
   python -m wf retry   RUN_ID              # carry on a failed or interrupted run from where it stopped
@@ -56,6 +58,7 @@ from wf.graphs.verify import VerifyReport, VerifyState, all_readable, run_verify
 from wf.graphs.vidsync_ready import VidsyncReadyState, vidsync_ready_graph
 from wf.graphs.vidsync_repair import VidsyncRepairState, vidsync_repair_graph
 from wf.graphs.vidsync_run import VidsyncRunState, vidsync_run_graph
+from wf.graphs.vidsync_tick import VidsyncTickState, note_waiting, vidsync_tick_graph
 from wf.tools.sources import TIERS, Tier
 from wf.tools.vidsync import driver_status
 from wf.repo import REPO, RUNS, SNAPSHOTS
@@ -173,6 +176,11 @@ class VidsyncReadyCommand(BaseModel):
     import_route: bool = Field(alias="import")
 
 
+class VidsyncTickCommand(BaseModel):
+    command: Literal["vidsync-tick"]
+    run: RunName | None
+
+
 class VidsyncStatusCommand(BaseModel):
     command: Literal["vidsync-status"]
     run: RunName | None
@@ -218,7 +226,7 @@ class DocsCommand(BaseModel):
 
 
 Command = (VerifyCommand | CaptureCommand | FarmCommand | QueueCommand | DraftsCommand | ConvertCommand | RecordCommand
-           | VidsyncRunCommand | VidsyncRepairCommand | VidsyncReadyCommand | VidsyncStatusCommand | WaitingCommand | AnswerCommand | RetryCommand | StatusCommand | FreezeCommand | ThawCommand
+           | VidsyncRunCommand | VidsyncRepairCommand | VidsyncReadyCommand | VidsyncTickCommand | VidsyncStatusCommand | WaitingCommand | AnswerCommand | RetryCommand | StatusCommand | FreezeCommand | ThawCommand
            | ArchiveCommand | DocsCommand)
 
 
@@ -245,6 +253,8 @@ def main() -> None:
             start_vidsync_repair(command)
         case VidsyncReadyCommand():
             start_vidsync_ready(command)
+        case VidsyncTickCommand():
+            start_vidsync_tick(command)
         case VidsyncStatusCommand():
             print(driver_status(command.run).model_dump_json(indent=2))
         case WaitingCommand():
@@ -379,6 +389,14 @@ def start_vidsync_ready(command: VidsyncReadyCommand) -> None:
                               out_dir=command.out_dir, name=command.name, every=command.every,
                               local_ready=command.local, import_wanted=command.import_route)
     print_outcome(vidsync_ready_graph().start(start, run_id))
+
+
+def start_vidsync_tick(command: VidsyncTickCommand) -> None:
+    run_id, run_dir = new_run("vidsync-tick")
+    outcome = vidsync_tick_graph().start(VidsyncTickState(run_dir=run_dir, run=command.run), run_id)
+    if isinstance(outcome, Paused):
+        note_waiting(run_dir, run_id)
+    print_outcome(outcome)
 
 
 def new_run(workflow: str) -> tuple[str, Path]:
@@ -585,6 +603,9 @@ def parse_command() -> Command:
     vready.add_argument("--local", type=Path, help="copy it here (default: build-vidsync/ready)")
     vready.add_argument("--import", action="store_true",
                         help="then tools/import_route.py and lockstep the port on beastsp (replays it here)")
+
+    vtick = commands.add_parser("vidsync-tick", help="one check-in on the sync: act on routine cases, stop at decide")
+    vtick.add_argument("--run", help="the run to look at (default: the one started last)")
 
     vstatus = commands.add_parser("vidsync-status", help="the driver's state on the driver PC")
     vstatus.add_argument("run", nargs="?")

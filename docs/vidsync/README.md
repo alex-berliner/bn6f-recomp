@@ -104,7 +104,28 @@ or `./wf vidsync-status`.
 |---|---|
 | `wf vidsync-run --start CHECKPOINT\|RUN` | deploy to both PCs, restart the worker server and the driver (the next run name: run7k → run7l), watch: every 5 min the furthest game frame; stuck = it has not moved for 30 min (not log silence: the driver logs while it searches); hourly `pathcheck` of the newest checkpoint (a path that no longer holds restarts from a clean checkpoint 300 frames before its first loss, `pathcheck.py --save`); a stuck driver (or one that gave up at a loss) opens a `vidsync-repair`. `--no-deploy` without `--start` only watches; `--watch-hours H` ends the watch |
 | `wf vidsync-repair --run RUN [--loss D]` | the loss rendered with the probes (`compare.png`: emulator beside the video before the loss; `video.png`: the video after it) → Claude classifies it (pause: `LossClass`) → a brief with the symbols/db entries and the routines' assembly → an outside model (tier/strong) writes `handlers/NAME.py` → Claude reviews (pause: `HandlerReview`) → test from the loss checkpoint on the driver PC's own workers (`autosync.py --handlers NAME --until D+600`, then `pathcheck`) → Claude records what was learnt (pause: `Findings`; the `record` workflow) → commit, deploy, restart past the loss |
+| `wf vidsync-tick [--run RUN]` | one check-in (the way the hand-run sync was kept going, 10-10..10-13): the driver's state and its log digest (`remote/digest.py`: the fixes at the current loss, which handlers came back, each handler's last line, the RNG search, recent fixes' mean costs, a traceback), sorted by `wf/tools/vidsync_triage.py`. Routine (moving, or under 30 min on a loss): only a line, and an hourly `pathcheck` (broken: restart from a clean checkpoint). A plain crash: restart from the newest checkpoint (twice in a row at most). A loop, a suspect fix, a traceback, an internal error, 30 min on one loss, or a driver that gave up: the loss is rendered and the run waits at `decide` for one `Decision` (wait, restart (deploy first after a code change; a suspect fix restarts from before it), repair (opens `vidsync-repair` with the class, past its classify pause), escalate). One decision waits at a time; what carries between check-ins is in `build-wf-state/vidsync-tick.json` |
 | `wf vidsync-ready [--checkpoint C\|RUN] [--import]` | export (verified with mgba_run and emu_server), cut segments, check every segment follows the run (long segments and save-chain breaks reported), copy here (`build-vidsync/ready`); `--import` runs `tools/import_route.py` and lockstep on `beastsp` (that replays the route on this machine, so it is asked for) |
+
+### Keeping it going: the check-in
+
+`vidsync-run` watches for hours and, when stuck, opens a repair that waits at `classify_the_loss`; nothing
+answers that until a person looks. The hand-run sync moved because Claude looked every 15 minutes and most
+stalls were fixed by a small change (a handler's threshold, a driver bug, a rollback) rather than a new
+handler. `vidsync-tick` is that check-in. Run it from a recurring prompt (session cron, every 15 minutes):
+
+> vidsync check-in. Run `./wf vidsync-tick`. If it printed one line, reply with that line (no recap when
+> nothing changed). If it stopped at `decide`: read `./wf waiting RUN_ID` (the triage, the digest, the
+> pictures in build-wf-runs/RUN_ID), look at the pictures, and answer with `./wf answer RUN_ID decision.json`
+> (a `Decision`: wait / restart / repair / escalate). A change to tools/vidsync goes in first (commit), then
+> restart with `"deploy": true`. Time box: two hours of looking at one loss, then escalate with what you found
+> and the options (an outcome write with a free window, outside models, or the user's call). Every discovery
+> about a symbol goes into symbols/db (the record workflow).
+
+`decision.json` examples: `{"action": "wait", "snooze_minutes": 60, "note": "the RNG search is close"}`;
+`{"action": "restart", "deploy": true, "note": "try_kill: delete inside the current battle"}` (from the
+newest checkpoint, or before a suspect fix; `"checkpoint": "data/auto/run7y.0/fix_0003"` names one);
+`{"action": "repair", "loss_class": {...}}` (a `LossClass`); `{"action": "escalate", "note": "..."}`.
 
 ## Next (from the transfer plan)
 

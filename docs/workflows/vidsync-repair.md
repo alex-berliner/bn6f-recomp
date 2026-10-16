@@ -29,7 +29,7 @@ seconds after it), made on the driver PC with the probes and copied here.
 
 - reads: `case: LossCase`, `run_dir: Path`
 - produces: `pictures: tuple[Path, ...]`
-- then: `classify_the_loss`
+- then: `classify_the_loss` when `not_classified_yet`; `brief_the_model` when `classified_already`
 
 ### `write_report` (step)
 
@@ -82,10 +82,11 @@ request changes (the notes go to the next attempt), or reject.
 
 Put the handler in tools/vidsync/handlers, deploy to the driver PC, and sync from the loss checkpoint
 with only that handler to 600 frames past the loss, on that PC's own workers; then pathcheck the path. A
-handler that fails is taken out of the tree again.
+handler that fails is taken out of the tree again, and the driver the test stopped starts again (the next
+run from its newest checkpoint): a failed test never leaves the sync stopped waiting for a person.
 
 - reads: `case: LossCase`, `handler: HandlerCandidate`, `attempts: int`, `feedback: tuple[str, ...]`, `run_dir: Path`
-- produces: `test: HandlerTest`, `feedback: tuple[str, ...]`
+- produces: `test: HandlerTest`, `feedback: tuple[str, ...]`, `restarted_as: typing.Optional[RunName]`
 - then: `record_findings` when `test_passed`; `brief_the_model` when `test_failed_attempts_left`; `write_report` when `test_failed_no_attempts_left`
 
 ### `record_findings` (pause point)
