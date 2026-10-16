@@ -258,15 +258,17 @@ def try_fix(D: int, sync) -> tuple | None:
             caught.append(g + 1)                       # a capture ran (0xBE6 set) on reaching frame g + 1
     tail_state = os.path.join(sync.A.out, 'tornado_nocatch_tail.state')
     e.savef(tail_state)
+    # (keys[x - p0] steps frame x to x + 1: its video frame is the picture of frame x + 1, the frame fade_of
+    # names when that step's picture is faded)
     vids = [float(sync.b.T[min(max(keys[x - p0][1], 0), sync.b.N - 1)].mean()) for x in range(C2, C2 + MAX_TAIL)]
-    vfade = next((C2 + i for i, m in enumerate(vids) if i > 200 and faded(m)), None)
+    vfade = next((C2 + i + 1 for i, m in enumerate(vids) if i > 200 and faded(m)), None)
     if vfade is None:
         log('  tornado nocatch: the video does not fade after the second catch')
         sync.set_emu_pokes()
         return None
     video = lambda g: keys[g - p0][0]
     tapper = lambda P, S: (lambda g: A_DOWN if g >= C2 + 2 + S and (g - C2 - 2 - S) % P == 0 else NO_KEYS)
-    shifted = lambda d: (lambda g: keys[g - p0 + d][0])     # the video's keys, d frames early
+    shifted = lambda d: (lambda g: keys[min(g - p0 + d, len(keys) - 1)][0])   # the video's keys, d frames early
     schedules = [('video', video)] + [(f'video{-d:+d}', shifted(d)) for d in range(1, 81)] + \
                 [(f'A/{P}+{S}', tapper(P, S)) for P in (2, 3, 4, 6, 8) for S in range(0, 60, 2)]
     tried, chosen = [], None
