@@ -1302,6 +1302,7 @@ def repair(D):
         return w, new
     for jmax, group, need in stages:
         for f, p, q in group:
+            if not write_ok(f - 2, D): continue
             w = state_at(f - 2)          # a write at W goes in at the end of the step W -> W+1: before the step f-1 -> f that is the event
             if w is None: continue
             r = try_at(w, D, ('P' if p else '') + ('S' if q else ''), jmax)
@@ -1313,10 +1314,16 @@ def repair(D):
     if r: return r
     return repair_fixed(D)
 
+def write_ok(W, D):
+    """A write point the RNG search may use: not inside a FREE window (a handler's or a kill's staged frames:
+    a replay from there lacks the pokes the window needs, ck_file keeps only those before W) nor before one that
+    starts before the loss (a fix at W drops the later pokes, the window's too, while the window stays)."""
+    return not any(W < z for a, z in FREE if a <= D)
+
 def repair_fixed(D):
     end_v = b.N - bm.K - 2
     for d in DISTS:
-        gs = [r[0] for r in ring if r[0] <= D - d]
+        gs = [r[0] for r in ring if r[0] <= D - d and write_ok(r[0], D)]
         if not gs: break
         w = ancestor(gs[-1])
         if w is None: log(f'  no ancestor state at {gs[-1]}'); continue
