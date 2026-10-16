@@ -54,6 +54,7 @@ C1, C2 = CATCH1_V, CATCH2_V          # our staged captures: the same frames (the
 A_DOWN, NO_KEYS = 0x3FE, 0x3FF     # KEYINPUT (active low): A held; nothing
 faded = lambda m: m < 20 or m > 235  # a thumbnail mean that is a dark or bright fade
 MAX_TAIL = 1200                      # frames after the second capture the comp must end (the map reload) in
+FADE_SLACK = 2                       # frames our fade may differ from the video's (the sync's offsets take it)
 RELOAD_SETTLE = 40                   # frames after our map reload the sync resumes
 TAKE_OVER = 60                       # frames the sync must then hold on its own for the fix to count
 MASK_RECT = [30, 76, 28, 92]       # thumbnail rows 30-67, cols 28-91: the storm's tornado sprite, the
@@ -245,10 +246,15 @@ def try_fix(D: int, sync) -> tuple | None:
     tried, chosen = [], None
     for name, f in schedules:
         fd = fade_of(f, vfade + 120)
-        tried.append(f'{name}:{fd}')
+        tried.append((name, f, fd))
         if fd == vfade:
-            chosen = (name, f); break
-    log(f'  tornado nocatch: the video fades at {vfade}; schedules (fade frame): ' + ' '.join(tried[-12:]))
+            break
+    near = [t for t in tried if t[2] is not None and abs(t[2] - vfade) <= FADE_SLACK]
+    if near:
+        name, f, fd = min(near, key=lambda t: abs(t[2] - vfade))
+        chosen = (name, f)
+    shown = [f'{n}:{fd}' for n, _, fd in tried if n == 'video' or n.startswith('video')][:81]
+    log(f'  tornado nocatch: the video fades at {vfade}; the video\'s keys shifted (fade frame): ' + ' '.join(shown[::4]))
     if chosen is None:
         log('  tornado nocatch: no cutscene key schedule fades on the video\'s frame')
         sync.set_emu_pokes()
