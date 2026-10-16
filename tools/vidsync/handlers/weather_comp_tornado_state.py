@@ -35,13 +35,13 @@ HOLD = 300               # frames past the loss the sync is run to
 TAKE = 100               # a fix must get this far past the loss (the comp's next tornado is the next loss)
 N_OBJ = 56
 TORNADO = 0x1A           # map object type byte (+1)
-ACTIVE = 4               # state +8: active (moving or paused)
+LIVE = (4, 8)            # state +8: active (moving or paused), or held by flag 0xBEF during a cutscene
 
 
 def _tornadoes(e, syms):
     objs, osz = syms.OW_MAP_OBJECTS, syms.OW_MAP_OBJECT_SIZE
     buf = bytes(e.read(objs, osz * N_OBJ))
-    return [i for i in range(N_OBJ) if buf[i * osz] & 1 and buf[i * osz + 1] == TORNADO and buf[i * osz + 8] == ACTIVE]
+    return [i for i in range(N_OBJ) if buf[i * osz] & 1 and buf[i * osz + 1] == TORNADO and buf[i * osz + 8] in LIVE]
 
 
 def match(D: int, sync) -> bool:
@@ -131,14 +131,17 @@ def try_fix(D: int, sync) -> tuple | None:
         log(f'  tornado state: best placement {bp} ({qs[bp]:.0f}); {len(fine)} fine ones')
         cands.update(fine)
         qs.update(sync.evaluate([(ck, ex, keys, vids, at, tid) for tid, ex in fine.items()]))
-    good = sorted((q, tid) for tid, q in qs.items())[:TOP]
+    # the best of each family (a movement write keeps the tornado's own motion: a placement only where none
+    # does as well), each judged by a sync
+    good = sorted((q, tid) for tid, q in qs.items() if ':X' not in tid)[:TOP // 2] + \
+           sorted((q, tid) for tid, q in qs.items() if ':X' in tid)[:TOP // 2]
     log('  tornado state: quick best ' + ' '.join(f'{tid} {q:.0f}' for q, tid in good[:6]))
     if not good or good[0][0] >= q0:
         log('  tornado state: no write scores better than the path')
         return None
     until = D + HOLD
     res = sync.evaluate([(ck, cands[tid], until, tid) for q, tid in good])
-    best = max(good, key=lambda t: (res[t[1]][0], -res[t[1]][1]))[1]
+    best = max(good, key=lambda t: (res[t[1]][0], ':X' not in t[1], -res[t[1]][1]))[1]
     log(f'  tornado state: synced: ' + ' '.join(f'{tid}->{res[tid][0]} ({res[tid][1]:.2f})' for q, tid in good[:6])
         + f'; best {best} to {res[best][0]} (mean cost {res[best][1]:.3f})')
     if res[best][0] < D + TAKE:
