@@ -32,6 +32,7 @@ rows 76-79 compared -- the camera follows MegaMan, so the scrolling ground is hi
 picture and the mask cannot hide a divergence in him -- and MegaMan's own per-frame place is additionally
 checked against this handler's replays in the validation pass.  The reload-tail repair is the follow-up loss."""
 
+import os
 import numpy as np
 from feat import emu_thumb
 
@@ -50,6 +51,8 @@ OFF_PX, OFF_PY = 0x1C, 0x20  # the overworld player object's X/Y (s16.16)
 CATCH1_V, CATCH2_V = 435967, 436402  # the video's own catches (white flashes 435971-987 and 436406-420)
 C1, C2 = CATCH1_V, CATCH2_V          # our staged captures: the same frames (the inputs hold A down over
                                      # 435966-435968, so the cutscene's text box skips as the video's does)
+A_DOWN, NO_KEYS = 0x3FE, 0x3FF     # KEYINPUT (active low): A held; nothing
+faded = lambda m: m < 20 or m > 235  # a thumbnail mean that is a dark or bright fade
 MAX_TAIL = 1200                      # frames after the second capture the comp must end (the map reload) in
 RELOAD_SETTLE = 40                   # frames after our map reload the sync resumes
 TAKE_OVER = 60                       # frames the sync must then hold on its own for the fix to count
@@ -201,32 +204,63 @@ def try_fix(D: int, sync) -> tuple | None:
     # the sync just after the second catch's white flash (R), and leaves D..R as a FREE window (pathcheck
     # skips it).  The guards above stand in for the picture: MegaMan's per-frame place equals the staged
     # replay's, and both captures fire at the video's frames.
-    # the window runs on past the second catch until the comp ends and the map reloads (its put-back cutscene
-    # and the reload cannot be compared either: the clouds differ until the map changes), then RELOAD_SETTLE
-    # frames more: the sync resumes on the new map
+    # The window runs on past the second catch until the comp ends (the screen fades: it reloads the same
+    # map), then RELOAD_SETTLE frames more; the sync resumes after the reload.  The put-back cutscene between
+    # the catch and the fade waits on A taps, and with the video's display keys ours fades ~44 frames late:
+    # the runner's taps meet our text boxes at other moments.  So the cutscene's keys are chosen here: the
+    # video's, or A every P frames from C2 + 2 + S, whichever schedule fades on the video's own fade frame
+    # (a departure from the video's inputs inside this FREE window, like the pokes).
+    def fade_of(keyf, upto):
+        """From the saved state after the second catch: the first frame our screen is dark or bright."""
+        e.loadf(tail_state)
+        for g in range(C2 + 2, upto):
+            e.step(keyf(g))
+            if g + 1 > C2 + 200 and faded(float(emu_thumb(e.shot()).mean())):
+                return g + 1
+        return None
+
     sync.set_emu_pokes(pokes)
     e.load(w0[1])
-    node, caught, here, reload_at = w0[5], [], bytes(e.read(syms.GS_MAP, 2)), None
-    g = W
-    while g < C2 + MAX_TAIL and (reload_at is None or g < reload_at + RELOAD_SETTLE):
+    node, caught = w0[5], []
+    for g in range(W, C2 + 2):
         k, v = keys[g - p0]
         e.step(k)
         node = sync.bm.Node(k, v, node)
+        if e.read(fa4, 1)[0] & 0x02 and (not caught or caught[-1] < g - 30):
+            caught.append(g + 1)                       # a capture ran (0xBE6 set) on reaching frame g + 1
+    tail_state = os.path.join(sync.A.out, 'tornado_nocatch_tail.state')
+    e.savef(tail_state)
+    vids = [float(sync.b.T[min(max(keys[x - p0][1], 0), sync.b.N - 1)].mean()) for x in range(C2, C2 + MAX_TAIL)]
+    vfade = next((C2 + i for i, m in enumerate(vids) if i > 200 and faded(m)), None)
+    if vfade is None:
+        log('  tornado nocatch: the video does not fade after the second catch')
+        sync.set_emu_pokes()
+        return None
+    video = lambda g: keys[g - p0][0]
+    tapper = lambda P, S: (lambda g: A_DOWN if g >= C2 + 2 + S and (g - C2 - 2 - S) % P == 0 else NO_KEYS)
+    schedules = [('video', video)] + [(f'A/{P}+{S}', tapper(P, S)) for P in (2, 3, 4, 6, 8) for S in range(0, 60, 2)]
+    tried, chosen = [], None
+    for name, f in schedules:
+        fd = fade_of(f, vfade + 120)
+        tried.append(f'{name}:{fd}')
+        if fd == vfade:
+            chosen = (name, f); break
+    log(f'  tornado nocatch: the video fades at {vfade}; schedules (fade frame): ' + ' '.join(tried[:12]) +
+        (' ...' if len(tried) > 12 else ''))
+    if chosen is None:
+        log('  tornado nocatch: no cutscene key schedule fades on the video\'s frame')
+        sync.set_emu_pokes()
+        return None
+    log(f'  tornado nocatch: the put-back cutscene with keys {chosen[0]}')
+    e.loadf(tail_state)
+    g = C2 + 2
+    while g < vfade + RELOAD_SETTLE:
+        k = chosen[1](g)
+        e.step(k)
+        node = sync.bm.Node(k, keys[g - p0][1], node)
         g += 1
-        if e.read(fa4, 1)[0] & 0x02 and (not caught or caught[-1] < g - 31):
-            caught.append(g)                           # a capture ran (0xBE6 set) on reaching frame g
-        if reload_at is None and g > C2 + 30 and g % 2 == 0:
-            m = float(emu_thumb(e.shot()).mean())
-            if m < 20 or m > 235:
-                reload_at = g                          # our screen fades (the comp's end and reload)
     sync.set_emu_pokes()
     R = g
-    vids = [sync.b.T[min(max(keys[x - p0][1], 0), sync.b.N - 1)].mean() for x in range(C2, R)]
-    vdark = next((C2 + i for i, m in enumerate(vids) if i > 30 and (m < 20 or m > 235)), None)
-    log(f'  tornado nocatch: our screen fades (dark/bright) first at {reload_at}; the video\'s at {vdark}')
-    if reload_at is None:
-        log(f'  tornado nocatch: the comp did not end within {MAX_TAIL} frames of the second catch')
-        return None
     if caught[:2] != [C1, C2]:
         log(f'  tornado nocatch: the played window captured at {caught} (wanted {C1} and {C2}): recipe off')
         return None
