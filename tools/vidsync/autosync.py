@@ -1034,7 +1034,14 @@ def try_kill(D, side=1):
         kill = ','.join(f'{a + 0x24:#x}=0x0000/2' for a in foes2)
         log(f'  {"kill" if side else "die"}: {len(foes2)} enemies; {how}: the video has it at game ~{gR} -> delete at ~{W0}')
         ck = ck_file(w2); until = gR + 300
-        tasks = [(ck, [[W0 + d, kill]], until, f'K{d}') for d in range(0, 13, 2)]
+        # the field too: a battle that went another way may have another field than the video's (run8e at
+        # 539262: the video's enemy side all grass from the runner's chips, ours plain), seen to the fade
+        fields = {'': ''}
+        for kind in (0x02, 0x04, 0x06):
+            fields[f'F{kind}'] = ','.join(f'{syms.PANELS + (row * 8 + col) * syms.PANEL_SIZE + syms.PANEL_TYPE:#x}={kind:#x}/1'
+                                          for row in (1, 2, 3) for col in (4, 5, 6))
+        tasks = [(ck, [[W0 + d, kill + (',' + spec if spec else '')]], until, f'K{d}{name}')
+                 for d in range(0, 13, 2) for name, spec in fields.items()]
         res = evaluate(tasks)
         # (a close match only: a deletion that cuts short a battle the video goes on with scrapes by at 1.7-2.0;
         # the right ones were 0.7-1.2)
