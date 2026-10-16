@@ -1150,10 +1150,12 @@ def set_emu_pokes(extra=()):
 
 def state_at(g, extra=()):
     """A ring-style entry for the best path at game frame g (stepped from the ring entry before it), with the
-    run's pokes and extra ones."""
-    gs = [r[0] for r in ring if r[0] <= g]
-    if not gs: return None
-    w = ancestor(gs[-1])
+    run's pokes and extra ones. The latest ring entry on the best path is used: one that holds another path's
+    machine (a fix that played frames itself, past the ring entries it went on from) is passed over."""
+    w = None
+    for rg in reversed([r[0] for r in ring if r[0] <= g]):
+        w = ancestor(rg)
+        if w is not None: break
     if w is None: return None
     ks = path_keys(); p0 = b.press_gf
     set_emu_pokes(extra)
@@ -1415,7 +1417,10 @@ while True:
             if list(p) not in b.pokes: b.pokes.append(list(p))
         b.pokes.sort(key=lambda p: p[0])
         set_emu_pokes()
-        while ring and ring[-1][0] > g:
+        # ring entries past the fix's machine, and past the loss: a fix past the loss (try_kill, a handler that
+        # plays a window itself) leaves the old path's entries in (D, g], which no longer lie on the best path
+        cut = min(D, g) if lost else g
+        while ring and ring[-1][0] > cut:
             for slot2, *_ in ring.pop()[2].values(): ring_free.append(slot2)
         if not keep_later and REPLAY is not None: REPLAY = None; log('replay off: the path left the replayed one')
         bad = 0; last_v = []; nfix += 1
