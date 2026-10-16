@@ -1047,11 +1047,41 @@ def try_kill(D, side=1):
         # the right ones were 0.7-1.2)
         ok = [t for t in tasks if res[t[3]][0] >= gR + 120 and res[t[3]][1] < KILL_COST]
         if not ok:
-            log(f'  {"kill" if side else "die"}: no deletion time holds (furthest {max(r[0] for r in res.values())}, want {gR + 120}, best mean cost {min(r[1] for r in res.values()):.2f})'); continue
+            log(f'  {"kill" if side else "die"}: no deletion time holds (furthest {max(r[0] for r in res.values())}, want {gR + 120}, best mean cost {min(r[1] for r in res.values()):.2f})')
+            if how.startswith('black') and W0 >= D:
+                r2 = kill_through_black(D, W0, gR, kill, vD, side)
+                if r2: return r2
+            continue
         t = max(ok, key=lambda t: (res[t[3]][0], -res[t[3]][1]))
         log(f'  {"kill" if side else "die"}: delete at {t[1][0][0]} holds to {res[t[3]][0]} (mean cost {res[t[3]][1]:.3f})')
         if W0 > D: FREE.append((D, W0))
         return w2, [t[1][0]]
+    return None
+
+def kill_through_black(D, W0, gB, kill, vD, side):
+    """A battle that ends in black (a story battle: the scene goes on on the map) and went another way than the
+    video's: its last stretch cannot match (the field, MegaMan's HP: run8e at 539262, the video's LifeSword ends a
+    navi on a field of grass and ice). Delete at W0 (+-a few frames), play the video's keys to the video's black
+    frame gB without comparing (a FREE window), and judge the sync from there."""
+    who = "kill" if side else "die"
+    for d in (0, 4, 8, -4, 12):
+        Wd = W0 + d
+        if Wd < D: continue
+        wD = state_at(D)
+        if wD is None: return None
+        b.e.load(wD[1]); set_emu_pokes([[Wd, kill]]); node = wD[5]
+        for g in range(D, gB):              # (each frame on the path: its keys are the trace's)
+            vg = vD + int(round((g - D) * bm.RATE)); k = b.key(vg); b.e.step(k); node = bm.Node(k, vg, node)
+        dark = float(np.asarray(b.e.shot(), np.float32).mean())
+        gg, h = b.e.gf(); slot = RSLOT - 1; b.e.save(slot); set_emu_pokes()
+        if dark > 40:
+            log(f'  {who} through black: deleting at {Wd}, ours is not dark at {gB} (mean {dark:.0f})'); continue
+        w3 = (gB, slot, h, vD + int(round((gB - D) * bm.RATE)) - bm.RATE * h, np.array([0.5 * abs(o) for o in bm.OFFS]), node)
+        r = evaluate([(ck_file(w3), [], gB + 300, 'KB')] * 2)['KB']
+        log(f'  {who} through black: deleting at {Wd}, the sync from {gB} reaches {r[0]} (mean cost {r[1]:.3f})')
+        if r[0] >= gB + 300 and r[1] < KILL_COST:
+            FREE.append((D, gB))
+            return w3, [[Wd, kill]]
     return None
 
 # subchips with a movement counter (submenu_subchip_8124230 etc.): event flag byte/mask, counter address.
