@@ -17,7 +17,8 @@ from wf.tools.git import commit_files
 from wf.tools.locks import MAIN_TREE, held
 from wf.tools.sources import TIERS, Tier, first_up
 from wf.tools.vidsync import (DRIVER_PC, PCS, HandlerTest, LossCase, PcDeploy, deploy, find_loss, newest_checkpoint,
-                              next_run_name, render_loss, restart_workers, run_names, start_driver, test_handler)
+                              next_run_name, render_loss, restart_after_test, restart_workers, run_names,
+                              start_driver, test_handler)
 from wf.tools.vidsync_brief import HANDLERS, Brief, HandlerCandidate, LossClass, ask_model_for_handler, write_brief
 from wf.types import CommitHash, FrameCount, LogPath, ModelSpec, Rename, Result, RunName, SymbolName
 
@@ -272,13 +273,15 @@ class TestInput(Result):
 class TestOutput(Result):
     test: HandlerTest
     feedback: tuple[str, ...]
+    restarted_as: RunName | None = None
 
 
 @workflow.step
 def test_from_the_loss(given: TestInput) -> TestOutput:
     """Put the handler in tools/vidsync/handlers, deploy to the driver PC, and sync from the loss checkpoint
     with only that handler to 600 frames past the loss, on that PC's own workers; then pathcheck the path. A
-    handler that fails is taken out of the tree again."""
+    handler that fails is taken out of the tree again, and the driver the test stopped starts again (the next
+    run from its newest checkpoint): a failed test never leaves the sync stopped waiting for a person."""
     assert given.handler.code is not None
     path = HANDLERS / f"{given.handler.name}.py"
     _ = path.write_text(given.handler.code)
@@ -289,10 +292,11 @@ def test_from_the_loss(given: TestInput) -> TestOutput:
     test = test_handler(given.case, given.handler.name, given.attempts)
     if not test.passed:
         path.unlink()
+        restarted = restart_after_test(given.case, test)
         summary = (f"test of attempt {given.attempts}: reached {test.reached} (needed {test.needed}), fixes "
                    f"{test.fixes}, pathcheck {'holds' if test.pathcheck_holds else 'does not hold'}; log: "
                    + " | ".join(test.log_tail[-8:]))
-        return TestOutput(test=test, feedback=given.feedback + (summary,))
+        return TestOutput(test=test, feedback=given.feedback + (summary,), restarted_as=restarted)
     return TestOutput(test=test, feedback=given.feedback)
 
 

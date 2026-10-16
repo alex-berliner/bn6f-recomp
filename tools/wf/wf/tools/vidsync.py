@@ -305,6 +305,7 @@ class HandlerTest(Result):
     fixes: int
     pathcheck_holds: bool
     log_tail: tuple[ToolMessage, ...]
+    driver_was_alive: bool = False      # the production driver ran before the test stopped it
 
     @property
     def passed(self) -> bool:
@@ -313,11 +314,25 @@ class HandlerTest(Result):
 
 def test_handler(case: LossCase, handler: str, attempt: int, hold: int = 600) -> HandlerTest:
     """autosync.py from the loss checkpoint with only this handler (--handlers, no RNG search) to `hold` frames
-    past the loss (--until), then pathcheck.py on its result. The driver is stopped first (the test needs the
-    PC's cores)."""
+    past the loss (--until), then pathcheck.py on its result. A smoke test first (the handler imports on the
+    driver PC, with its syms); then the driver is stopped (the test needs the PC's cores) and whether it ran is
+    noted, so a failed test can restart it (restart_after_test)."""
     assert case.checkpoint is not None
     out = RemotePath(f"data/auto/{case.run}-test-{handler}-{attempt}")
     needed = FrameCount(case.loss + hold)
+    smoke = (". ~/vidsync/recomp/tools/vidsync/remote/env.sh && cd $V && python3 -c "
+             f"'import sys; sys.path.insert(0, \".\"); import syms, importlib; m = importlib.import_module(\"handlers.{handler}\"); "
+             "assert callable(m.try_fix) and m.NAME' && echo smoke-ok\n")
+    try:
+        smoked = "smoke-ok" in on_pc(DRIVER_PC, smoke, timeout=180)
+    except RemoteError as error:
+        smoked, why = False, str(error)[-300:]
+    else:
+        why = "it did not import"
+    if not smoked:
+        return HandlerTest(out_dir=out, reached=None, needed=needed, fixes=0, pathcheck_holds=False,
+                           log_tail=(ToolMessage(f"smoke test failed: {why}"),), driver_was_alive=False)
+    alive = driver_status().alive
     stop_driver()
     _ = on_pc(DRIVER_PC, f"rm -rf ~/vidsync/data/auto/{case.run}-test-{handler}-{attempt}\n", timeout=120)
     sync = run_job(DRIVER_PC, f"test-{handler}-{attempt}", "py.sh", "autosync.py", "data/full", case.checkpoint.path,
@@ -331,7 +346,21 @@ def test_handler(case: LossCase, handler: str, attempt: int, hold: int = 600) ->
         check = run_job(DRIVER_PC, f"test-{handler}-{attempt}-pathcheck", "py.sh", "pathcheck.py", f"{out}/result.json")
         holds = any(line.startswith("holds to the end") for line in check.log_tail)
     return HandlerTest(out_dir=out, reached=reached, needed=needed, fixes=int(fixes_text[1]) if fixes_text else 0,
-                       pathcheck_holds=holds, log_tail=sync.log_tail[-25:])
+                       pathcheck_holds=holds, log_tail=sync.log_tail[-25:], driver_was_alive=alive)
+
+
+def restart_after_test(case: LossCase, test: HandlerTest) -> RunName | None:
+    """A failed test stopped a running driver: start it again as the next run from the run's newest
+    checkpoint (it goes on searching at the loss; the handlers that failed there are kept in its checkpoints).
+    None when the driver was not running before the test."""
+    if not test.driver_was_alive:
+        return None
+    checkpoint = newest_checkpoint(case.run)
+    if checkpoint is None:
+        return None
+    run = next_run_name(case.run, run_names())
+    start_driver(run, checkpoint.path)
+    return run
 
 
 # ── helpers ────────────────────────────────────────────────────────────
