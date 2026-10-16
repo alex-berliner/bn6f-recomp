@@ -1402,6 +1402,10 @@ def repair_fixed(D):
     return None
 
 ck_every = A.every
+# the ring starts at the resume point: otherwise it starts at the next multiple of RING_EVERY, and a trigger or
+# a write point in between is out of reach (run8a, 10-16: resumed at 498267, the encounter's trigger at 498269
+# was never seen, so try_formations never ran at the loss 498358)
+snap()
 bad = 0; last_v = []; status = 'end of video'; t0 = time.time(); g0 = b.g; nfix = 0
 while True:
     # a stretch of frames at once (b.run: in C while there is one branch); it ends where a frame below may
