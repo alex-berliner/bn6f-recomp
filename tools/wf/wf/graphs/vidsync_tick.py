@@ -28,6 +28,9 @@ from wf.tools.vidsync import (DRIVER_PC, PCS, Checkpoint, DriverStatus, LossCase
                               driver_status, find_loss, newest_checkpoint, next_run_name, now, render_loss,
                               resolve_checkpoint, restart_workers, run_job, run_names, start_driver)
 from wf.tools.vidsync_brief import LossClass
+from wf.tools.vidsync_learn import learn_from_run
+from wf.tools.git import commit_files
+from wf.repo import REPO
 from wf.tools.vidsync_triage import LossDigest, Triage, TriageKind, fix_frame, loss_digest, triage
 from wf.types import FrameCount, LogPath, RemotePath, Result, RunName, ToolMessage
 
@@ -35,6 +38,7 @@ PROJECT = "recomp-vidsync"
 VIDEO_FRAMES = 1903801
 MEMORY = STATE_DIR / "vidsync-tick.json"
 PATHCHECK_MINUTES = 60
+LEARN_MINUTES = 60
 CRASH_RESTARTS = 2
 
 
@@ -48,7 +52,8 @@ def vidsync_tick_graph() -> Graph["VidsyncTickState"]:
             Transition(after=check_in, go_to=render_for_decision, when=needs_decision),
             Transition(after=check_in, go_to=pathcheck_if_due, when=routine),
             Transition(after=restart_after_crash, go_to=write_report),
-            Transition(after=pathcheck_if_due, go_to=write_report),
+            Transition(after=pathcheck_if_due, go_to=learn_if_due),
+            Transition(after=learn_if_due, go_to=write_report),
             Transition(after=render_for_decision, go_to=decide),
             Transition(after=decide, go_to=act_on_decision),
             Transition(after=act_on_decision, go_to=write_report),
@@ -64,6 +69,8 @@ def run_vidsync_tick(start: "VidsyncTickState", run_id: str, tracked: bool = Tru
 
 class TickMemory(BaseModel):
     last_pathcheck_at: float = 0
+    last_learn_at: float = 0
+    learned_fixes: list[str] = []          # fixes whose writes are in symbols/db already (run:dir:n)
     pathchecked: list[str] = []            # checkpoints already replayed against the video
     snoozed: dict[str, float] = {}         # loss (game frame) -> until when it is not brought up again
     crash_restarts: int = 0                # restarts in a row after a crash with no traceback (0 once alive)
@@ -127,6 +134,7 @@ class VidsyncTickState(BaseModel):
     deployed: tuple[PcDeploy, ...] = ()
     repair_run: str | None = None
     pathcheck: str | None = None
+    learned: str | None = None
     report: TickReport | None = None
 
 
@@ -229,6 +237,36 @@ def pathcheck_if_due(given: PathcheckInput) -> PathcheckOutput:
     run = next_run_name(given.status.run, run_names())
     start_driver(run, out)
     return PathcheckOutput(memory=memory, pathcheck=f"lost at {first_loss}: restarted from {out}", restarted_as=run)
+
+
+class LearnInput(Result):
+    memory: TickMemory
+    status: DriverStatus
+
+
+class LearnOutput(Result):
+    memory: TickMemory
+    learned: str | None
+
+
+@workflow.step
+def learn_if_due(given: LearnInput) -> LearnOutput:
+    """Once an hour, what the run's new fixes wrote goes into symbols/db as runtime evidence on the entries of
+    the fields they wrote (wf/tools/vidsync_learn.py), committed; written addresses with no entry are listed
+    in build-vidsync/learned.md for `record`. Nothing is renamed here."""
+    memory = given.memory.model_copy(deep=True)
+    if now() - memory.last_learn_at < LEARN_MINUTES * 60:
+        return LearnOutput(memory=memory, learned=None)
+    memory.last_learn_at = now()
+    learned, seen = learn_from_run(given.status.run, set(memory.learned_fixes))
+    memory.learned_fixes = sorted(seen)[-5000:]
+    note = f"learned: {len(learned.entries)} entries got evidence, {len(learned.unnamed)} addresses unnamed"
+    if learned.entries:
+        commit_files(tuple(REPO / e for e in learned.entries),
+                     f"symbols/db: runtime evidence from the vidsync sync's fixes (run {given.status.run}: "
+                     f"{len(learned.entries)} entries)\n\nWritten by wf vidsync-tick's learn step "
+                     "(wf/tools/vidsync_learn.py).")
+    return LearnOutput(memory=memory, learned=note)
 
 
 def first_loss_of(lines: tuple[ToolMessage, ...]) -> FrameCount | None:
@@ -354,6 +392,7 @@ class ReportInput(Result):
     restarted_as: RunName | None
     repair_run: str | None
     pathcheck: str | None
+    learned: str | None
     memory: TickMemory | None
     memory_path: Path
 
@@ -369,7 +408,7 @@ def write_report(given: ReportInput) -> ReportOutput:
     and what carries to the next check-in saved."""
     memory = (given.memory or load_memory(given.memory_path)).model_copy(deep=True)
     line = report_line(given.status, given.triage, given.decision, given.restarted_as, given.repair_run,
-                       given.pathcheck, memory.waiting)
+                       given.pathcheck, memory.waiting, given.learned)
     memory.history = (memory.history + [line])[-40:]
     save_memory(memory, given.memory_path)
     return ReportOutput(report=TickReport(line=line, triage=given.triage, decision=given.decision,
@@ -378,7 +417,8 @@ def write_report(given: ReportInput) -> ReportOutput:
 
 
 def report_line(status: DriverStatus | None, sorted_: Triage | None, decision: Decision | None,
-                restarted: RunName | None, repair: str | None, pathcheck: str | None, waiting: str | None) -> str:
+                restarted: RunName | None, repair: str | None, pathcheck: str | None, waiting: str | None,
+                learned: str | None = None) -> str:
     if status is None:
         return "no driver status"
     where = (f"{status.run} at {status.furthest} ({100 * (status.furthest or 0) / VIDEO_FRAMES:.1f}%), "
@@ -397,6 +437,8 @@ def report_line(status: DriverStatus | None, sorted_: Triage | None, decision: D
         did.append(f"repair opened: {repair}")
     if pathcheck:
         did.append(f"pathcheck {pathcheck}")
+    if learned:
+        did.append(learned)
     return where + "; " + doing + ("; " + "; ".join(did) if did else "")
 
 

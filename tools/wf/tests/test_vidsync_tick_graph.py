@@ -15,6 +15,7 @@ from wf.graphs.vidsync_tick import (Action, Decision, TickMemory, VidsyncTickSta
                                     run_vidsync_tick, vidsync_tick_graph)
 from wf.tools.vidsync import Checkpoint, DriverEnd, DriverStatus, JobResult, LossCase, PcDeploy
 from wf.tools.vidsync_brief import HandlerName, LossClass, LossKind
+from wf.tools.vidsync_learn import Learned
 from wf.tools.vidsync_triage import FixRecord, LossDigest, TriageKind, triage
 from wf.types import FrameCount, LogPath, PcHost, RemotePath, RunName, ToolMessage
 
@@ -105,6 +106,7 @@ class FakePcs:
     deployed: int = 0
     repairs: list[object] = field(default_factory=list[object])
     pathcheck_lines: list[str] = field(default_factory=lambda: ["holds to the end pokes 12"])
+    learned: list[str] = field(default_factory=list[str])
 
     def install(self, monkeypatch: pytest.MonkeyPatch) -> None:
         def newest_checkpoint(run: RunName | RemotePath, most: FrameCount | None = None) -> Checkpoint | None:
@@ -159,11 +161,16 @@ class FakePcs:
         def repair_graph() -> FakeRepair:
             return FakeRepair()
 
+        def learn_from_run(run: RunName, seen: set[str]) -> tuple[Learned, set[str]]:
+            self.learned.append(run)
+            return Learned(), seen
+
         fakes: dict[str, object] = {
             "driver_status": driver_status, "loss_digest": loss_digest, "newest_checkpoint": newest_checkpoint,
             "resolve_checkpoint": resolve_checkpoint, "run_job": run_job, "run_names": run_names,
             "start_driver": start_driver, "deploy": deploy, "restart_workers": restart_workers,
             "find_loss": find_loss, "render_loss": render_loss, "now": now, "vidsync_repair_graph": repair_graph,
+            "learn_from_run": learn_from_run,
         }
         for name, fake in fakes.items():
             monkeypatch.setattr(vidsync_tick, name, fake)

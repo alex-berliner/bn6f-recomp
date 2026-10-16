@@ -6,6 +6,10 @@ kept going (10-10..10-13), as a workflow. It reads the driver's state and the lo
 
 - moving, or on a loss for less than 30 minutes: nothing to do; every hour the path is checked against the
   video (pathcheck), and a broken path restarts from a clean checkpoint before its first loss;
+  and every hour what the run's new fixes wrote goes into symbols/db (wf/tools/vidsync_learn.py, the fix
+  list from remote/fixlog.py): each written field's entry gets a `runtime` evidence item (handler, frames,
+  the fix's log line as the repro), committed; written addresses with no entry are listed in
+  build-vidsync/learned.md for `record` (nothing is renamed here);
 - the driver died without a traceback: restart from its newest checkpoint (at most twice in a row);
 - a loop, a suspect fix, a crash with a traceback, an internal error, 30 minutes on one loss, or the driver gave
   up: the loss is rendered and the run stops at `decide`, for Claude to look and choose one Decision:

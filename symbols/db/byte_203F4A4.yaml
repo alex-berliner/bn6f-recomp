@@ -3,48 +3,63 @@ address: '0x0203F4A4'
 kind: ram
 previous_names: []
 status: confirmed
-summary: 'Payload of the received (loopback) battle link packet: the battle seed the primary RNG is restored
-  from at battle phase 8; later the 12-byte battle result record (reward word at +8, 0x0203F4AC).'
+summary: 'Payload of the received (loopback) battle link packet: the battle seed the primary RNG is restored from
+  at battle phase 8; later the 12-byte battle result record (reward word at +8, 0x0203F4AC).'
 evidence:
 - method: assembly-reading
   date: '2026-10-13'
-  detail: dword_203F4A0 is the received packet's marker word, this its payload. sub_800B444 copies 12
-    bytes from here to unk_2035260 (the result record setupNaviDisplay_802C34E reads); transferBattleHandNaviStats_800B3D8
+  detail: dword_203F4A0 is the received packet's marker word, this its payload. sub_800B444 copies 12 bytes from
+    here to unk_2035260 (the result record setupNaviDisplay_802C34E reads); transferBattleHandNaviStats_800B3D8
     copies 0x50 bytes from here when the first byte is not 0xFF.
   reproduce: grep -n -A12 '^sub_800B444:' bn6f/asm/asm00_1.s
-  result: 'CopyWords(0xC) from byte_203F4A4 to unk_2035260 and from byte_203F5A4 to unk_203526C, then
-    battle_syncEffectSlotBetweenBuffers_802C9EA (asm00_1.s:18668-18680).'
+  result: CopyWords(0xC) from byte_203F4A4 to unk_2035260 and from byte_203F5A4 to unk_203526C, then battle_syncEffectSlotBetweenBuffers_802C9EA
+    (asm00_1.s:18668-18680).
 - method: runtime
   date: '2026-10-13'
-  detail: 'Primary-RNG fixes in a battle intro hold only when this word is written as well: the primary
-    is restored from it at phase 8. The reward on its way to the result screen was read at 0x0203F4AC
-    (+8) and its copy at dword_2035268 (vidsync: a RAM fix is kept only when the sync then follows the
-    video for hundreds of frames; writes land at main_awaitFrame''s entry, the end of a game frame).'
+  detail: 'Primary-RNG fixes in a battle intro hold only when this word is written as well: the primary is restored
+    from it at phase 8. The reward on its way to the result screen was read at 0x0203F4AC (+8) and its copy at dword_2035268
+    (vidsync: a RAM fix is kept only when the sync then follows the video for hundreds of frames; writes land at
+    main_awaitFrame''s entry, the end of a game frame).'
   reproduce: grep -n 'SEEDS' tools/vidsync/segments.py; grep -n 'def check_reward' tools/vidsync/autosync.py
-  result: 'SEEDS = (rf.PRIMARY, syms.BATTLE_SEED_COPY_LINK, syms.BATTLE_SEED_COPY) at segments.py:42,
-    compared after every segment junction (lines 109 and 140); check_reward at autosync.py:873.'
+  result: SEEDS = (rf.PRIMARY, syms.BATTLE_SEED_COPY_LINK, syms.BATTLE_SEED_COPY) at segments.py:42, compared after
+    every segment junction (lines 109 and 140); check_reward at autosync.py:873.
 - method: runtime
   date: '2026-10-13'
-  detail: 'The loopback timing: the seed written at battle phase 4 (dword_203CBE4) arrives here about
-    61-62 frames later, one word per frame, highest index first - the window an RNG fix in a battle intro
-    has to cover.'
+  detail: 'The loopback timing: the seed written at battle phase 4 (dword_203CBE4) arrives here about 61-62 frames
+    later, one word per frame, highest index first - the window an RNG fix in a battle intro has to cover.'
   refs:
   - bn6f/asm/asm01.s
-  reproduce: awk 'index($0,"sub_801FF18:")==1{f=1} f{print} f&&/thumb_func_end/{exit}' bn6f/asm/asm01.s
-    | grep -nE 'store|dword_203F4A0|str r1'; awk 'index($0,"sub_801FFD6:")==1{f=1} f{print}
-    f&&/thumb_func_end/{exit}' bn6f/asm/asm01.s | grep -nE 'store 3|dword_203CBE0'
-  result: 'sub_801FF18 loads dword_203F4A0 and, under the "transfer buffer store" comments, writes one
-    slot''s word per call at [r7,r0] (idx-scaled); sub_801FFD6''s store 3 drains dword_203CBE0 with the
-    index counting down one per call (sub r0,#1 before the store) - highest index first. The 61-62-frame
-    arrival is the vidsync runtime observation.'
+  reproduce: awk 'index($0,"sub_801FF18:")==1{f=1} f{print} f&&/thumb_func_end/{exit}' bn6f/asm/asm01.s | grep -nE
+    'store|dword_203F4A0|str r1'; awk 'index($0,"sub_801FFD6:")==1{f=1} f{print} f&&/thumb_func_end/{exit}' bn6f/asm/asm01.s
+    | grep -nE 'store 3|dword_203CBE0'
+  result: sub_801FF18 loads dword_203F4A0 and, under the "transfer buffer store" comments, writes one slot's word
+    per call at [r7,r0] (idx-scaled); sub_801FFD6's store 3 drains dword_203CBE0 with the index counting down one
+    per call (sub r0,#1 before the store) - highest index first. The 61-62-frame arrival is the vidsync runtime
+    observation.
+- method: runtime
+  date: '2026-10-16'
+  detail: 'vidsync run run7y: 3 fix(es) by the encounter handler wrote byte_203F4A4 (games 482567..498267); after
+    each, the sync matched the video again (the field decides what the video shows there).'
+  reproduce: 'grep -n '' fix 34: '' data/auto/run7y.0.out   # in ~/vidsync on the driver PC; remote/py.sh pathcheck.py
+    data/auto/run7y.0/fix_0034.json replays the path with it'
+  result: '12:18:02 fix 34: write 0x2001c16=0x400/2,0x20013f0=0x1e7a7550/4,0x203cbe4=0x1e7a7550/4,0x203f4a4=0x1e7a7550/4
+    at game 498267; going on from there'
+- method: runtime
+  date: '2026-10-16'
+  detail: 'vidsync run run7y: 1 fix(es) by the rng handler wrote byte_203F4A4 (games 461952..461952); after each,
+    the sync matched the video again (the field decides what the video shows there).'
+  reproduce: 'grep -n '' fix 20: '' data/auto/run7y.0.out   # in ~/vidsync on the driver PC; remote/py.sh pathcheck.py
+    data/auto/run7y.0/fix_0020.json replays the path with it'
+  result: '11:47:32 fix 20: write 0x20013f0=0xcb4e43a/4,0x203cbe4=0xcb4e43a/4,0x203f4a4=0xcb4e43a/4 at game 461952;
+    going on from there'
 related:
 - dword_203CBE4
 - sub_800B444
 - dword_2035268
 - ePrimaryRngSeed
 open_questions:
-- 0x0203F4AC (+8) is also the start of the symbol eBattleNaviStats203F4AC (72 bytes); whether that name
-  fits, given the reward word there, is not settled.
+- 0x0203F4AC (+8) is also the start of the symbol eBattleNaviStats203F4AC (72 bytes); whether that name fits, given
+  the reward word there, is not settled.
 sources:
 - vidsync docs/vidsync/SYMBOL_DOSSIER.md (vidsync commit 80649ee)
 - Claude session_01MV9x1XXyanCy3FkvpEo7b7 (ingest of the vidsync dossier, assembly checks)

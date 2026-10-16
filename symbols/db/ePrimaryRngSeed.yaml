@@ -3,35 +3,49 @@ address: '0x020013F0'
 kind: ram
 previous_names: []
 status: confirmed
-summary: 'Primary RNG state (u32): GetRNG steps it as x'' = (rotl(x,1) + 1) ^ 0x873CA9E5; most random
-  decisions read it.'
+summary: 'Primary RNG state (u32): GetRNG steps it as x'' = (rotl(x,1) + 1) ^ 0x873CA9E5; most random decisions
+  read it.'
 details: 'During a battle intro the seed is snapshotted into dword_203CBE4 at battle phase 4 (battle_initBattleStateBuffer_800B144)
-  and restored at phase 8 from the link loopback copy byte_203F4A4, so a fix made there must write all
-  three addresses. Every primary advance site is catalogued in docs/vidsync/BN6F_SYMBOLS.md section 1:
-  the per-frame ticks (title screen, PET submenu except states 0x18/0x1C, chip trader, every map load,
-  New Game about 0x300+, each save about 97, each load 1, shop items, every hit spark, every MegaMan charge
-  shot, stat-gated NaviCust bugs, story explosions, falling objects, the battle''s own sub_81209DC calls)
-  and the one-off decisions. NPCs do not use the RNG (bn6f/asm/npc.s has no RNG calls; movement is scripted).
-  With the same restored seed, same folder and same inputs the whole battle replays deterministically,
-  AI and drops included.'
+  and restored at phase 8 from the link loopback copy byte_203F4A4, so a fix made there must write all three addresses.
+  Every primary advance site is catalogued in docs/vidsync/BN6F_SYMBOLS.md section 1: the per-frame ticks (title
+  screen, PET submenu except states 0x18/0x1C, chip trader, every map load, New Game about 0x300+, each save about
+  97, each load 1, shop items, every hit spark, every MegaMan charge shot, stat-gated NaviCust bugs, story explosions,
+  falling objects, the battle''s own sub_81209DC calls) and the one-off decisions. NPCs do not use the RNG (bn6f/asm/npc.s
+  has no RNG calls; movement is scripted). With the same restored seed, same folder and same inputs the whole battle
+  replays deterministically, AI and drops included.'
 evidence:
 - method: runtime
   date: '2026-10-13'
-  detail: 'The sync driver writes it in almost every luck fix; the game''s next random decisions then
-    follow the states the step formula predicts (vidsync: a RAM fix is kept only when the sync then follows
-    the video for hundreds of frames; writes land at main_awaitFrame''s entry, the end of a game frame).'
-  reproduce: 'grep -n ''PRIMARY'' tools/vidsync/rngfix.py   # the fixes are made by tools/vidsync/autosync.py
-    (needs the vidsync data)'
-  result: 'rngfix.py:10 (PRIMARY, SECONDARY = syms.PRIMARY_RNG_SEED, syms.SECONDARY_RNG_SEED) and :24
-    (the ''if addr == PRIMARY'' writer); the fixes themselves ran over the BeastSP recording - hundreds
-    kept.'
+  detail: 'The sync driver writes it in almost every luck fix; the game''s next random decisions then follow the
+    states the step formula predicts (vidsync: a RAM fix is kept only when the sync then follows the video for hundreds
+    of frames; writes land at main_awaitFrame''s entry, the end of a game frame).'
+  reproduce: 'grep -n ''PRIMARY'' tools/vidsync/rngfix.py   # the fixes are made by tools/vidsync/autosync.py (needs
+    the vidsync data)'
+  result: rngfix.py:10 (PRIMARY, SECONDARY = syms.PRIMARY_RNG_SEED, syms.SECONDARY_RNG_SEED) and :24 (the 'if addr
+    == PRIMARY' writer); the fixes themselves ran over the BeastSP recording - hundreds kept.
 - method: runtime
   date: '2026-10-13'
-  detail: 'Determinism from a restored seed: with the same seed, folder and inputs the whole battle replays
-    (AI decisions and drops), which is what lets the sync driver''s seed fixes hold for hundreds of frames.'
+  detail: 'Determinism from a restored seed: with the same seed, folder and inputs the whole battle replays (AI
+    decisions and drops), which is what lets the sync driver''s seed fixes hold for hundreds of frames.'
   reproduce: grep -n 'SEEDS' tools/vidsync/segments.py
-  result: 'SEEDS = (rf.PRIMARY, syms.BATTLE_SEED_COPY_LINK, syms.BATTLE_SEED_COPY) at segments.py:42;
-    the per-junction check reads all three (lines 109, 140).'
+  result: SEEDS = (rf.PRIMARY, syms.BATTLE_SEED_COPY_LINK, syms.BATTLE_SEED_COPY) at segments.py:42; the per-junction
+    check reads all three (lines 109, 140).
+- method: runtime
+  date: '2026-10-16'
+  detail: 'vidsync run run7y: 3 fix(es) by the encounter handler wrote ePrimaryRngSeed (games 482567..498267); after
+    each, the sync matched the video again (the field decides what the video shows there).'
+  reproduce: 'grep -n '' fix 34: '' data/auto/run7y.0.out   # in ~/vidsync on the driver PC; remote/py.sh pathcheck.py
+    data/auto/run7y.0/fix_0034.json replays the path with it'
+  result: '12:18:02 fix 34: write 0x2001c16=0x400/2,0x20013f0=0x1e7a7550/4,0x203cbe4=0x1e7a7550/4,0x203f4a4=0x1e7a7550/4
+    at game 498267; going on from there'
+- method: runtime
+  date: '2026-10-16'
+  detail: 'vidsync run run7y: 1 fix(es) by the rng handler wrote ePrimaryRngSeed (games 461952..461952); after each,
+    the sync matched the video again (the field decides what the video shows there).'
+  reproduce: 'grep -n '' fix 20: '' data/auto/run7y.0.out   # in ~/vidsync on the driver PC; remote/py.sh pathcheck.py
+    data/auto/run7y.0/fix_0020.json replays the path with it'
+  result: '11:47:32 fix 20: write 0x20013f0=0xcb4e43a/4,0x203cbe4=0xcb4e43a/4,0x203f4a4=0xcb4e43a/4 at game 461952;
+    going on from there'
 related:
 - eSecondaryRngSeed
 - dword_203CBE4
