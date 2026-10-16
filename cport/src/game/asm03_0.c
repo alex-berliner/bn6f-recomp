@@ -588,7 +588,7 @@ Next custMenuUpdateWaitSelectionState_8026CCC(void) {
         SET_FLAGS_CMP(result, 0xFF);
 
         /* record the selection and hand control to the 0x40 state handler */
-        ST16(R5 + oS20364C0_Unk_38, result);
+        ST16(R5 + oS20364C0_PuppeteerSwitchElement, result);
         ST8(R5 + 1, 0x40);   /* oS20364C0_JumpOffset01 */
         ST8(R5 + 2, 0);      /* oS20364C0_StateHandled */
         ST32(R5 + 0x40, 0);
@@ -2477,8 +2477,8 @@ Next custMenuPressOK_8028D3A(void) {
     GUEST_CALL(custMenu_confirmAndProcessSelectedChips_8029110);
     GUEST_CALL(sub_80293F8);
 
-    if (LD8(menu + oS20364C0_Unk_19) != 0) {
-        R0 = LD8(menu + oS20364C0_Unk_19);
+    if (LD8(menu + oS20364C0_HasPendingAction) != 0) {
+        R0 = LD8(menu + oS20364C0_HasPendingAction);
         GUEST_CALL(sub_802937A);
     } else {
         u16 unk3a = LD16(menu + oS20364C0_CursorAnimPhase);

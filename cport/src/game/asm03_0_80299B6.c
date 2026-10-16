@@ -1291,7 +1291,7 @@ Next custMenu_handleInputQueuePop_802BED4(void) {
         ST8(R5 + oS20364C0_CustMenuStepTimer, hold);
 
         R0 = 4;
-        ST8(R5 + 3, 4);         /* oS20364C0_Unk_03 */
+        ST8(R5 + 3, 4);         /* oS20364C0_CustMenuStep */
         SET_FLAGS_NZ(4);
     }
     RETURN_TO_CALLER();
@@ -2710,9 +2710,9 @@ static void clear_collision_damage(u32 c) {
     ST16(panel + 4, 0);
     ST16(panel + 6, 0);
     ST16(panel + 8, 0);
-    ST16(c + oCollisionData_Unk_8e, 0);
-    ST16(c + oCollisionData_Unk_90, 0);
-    ST16(c + oCollisionData_Unk_92, 0);
+    ST16(c + oCollisionData_PanelDamage7, 0);
+    ST16(c + oCollisionData_PanelDamageAccumulatorU16a, 0);
+    ST16(c + oCollisionData_PanelDamageAccumulatorU16, 0);
     ST32(c + 0x74, 0);
     ST8(c + oCollisionData_HitModifierFinal, 0);
     ST8(c + oCollisionData_StatusEffectFinal, 0);

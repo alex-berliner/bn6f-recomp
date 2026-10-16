@@ -2004,7 +2004,7 @@ static void init_new_game_data(u32 toolkit) {
     ST32(gs + oGameState_CurBattleDataPtr, 0);
     ST8(gs + oGameState_SavedChipDescByte, 0);
     ST8(gs + oGameState_CurPETNavi, 0);
-    ST8(gs + oGameState_Unk_12, 0xFF);
+    ST8(gs + oGameState_LastMapChangeCounter, 0xFF);
 
     /* Zero out / set initial S2001c04 (scenario-state) fields */
     u32 s2001c04 = LD32(toolkit + oToolkit_S2001c04_Ptr);

@@ -45,7 +45,7 @@ static bool on_map(u32 tiles, u32 x, u32 y) {
 static TileIds tile_ids_at(u32 tiles, u32 x, u32 y) {
     if (!on_map(tiles, x, y))
         x = y = 0;
-    u32 tilemap = LD32(tiles + oMapTilesState200be70_Unk_0c);
+    u32 tilemap = LD32(tiles + oMapTilesState200be70_UnkCallback0C);
     u32 cell = x * 2 + y * (LD8(tiles + TILES_MAP_WIDTH) * 2);
     return (TileIds){
         .first = LD16(tilemap + LD32(tilemap + 4) + cell),
@@ -67,7 +67,7 @@ Next getMapCellTileIds_80305E4(void) {
     R0 = ids.first;
     R1 = ids.second;
     R2 = ids.first;                                   /* as the original: the last id loaded */
-    R3 = LD32(tiles + oMapTilesState200be70_Unk_0c);  /* as the original: the tilemap */
+    R3 = LD32(tiles + oMapTilesState200be70_UnkCallback0C);  /* as the original: the tilemap */
     R4 = 0;                                           /* as the original: its loop counter, run down */
     R6 = y * row_bytes;
     R7 = row_bytes;

@@ -2061,7 +2061,7 @@ Next battle_sceneFrameSetup_801DA24(void) {
      * (oToolkit_RenderInfoPtr in the disassembly). */
     u32 renderInfo = LD32(R10 + 8);
 
-    ST16(renderInfo + oRenderInfo_Unk_0a, 0x1F09);
+    ST16(renderInfo + oRenderInfo_DisplayControlBits, 0x1F09);
 
     /* dataList (off_801ECB4) */
     R0 = A_off_801ECB4;

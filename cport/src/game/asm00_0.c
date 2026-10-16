@@ -1691,8 +1691,8 @@ Next GetRenderInfoLCDControl(void) {
 Next renderInfo_8001788(void) {
     u32 renderInfo = LD32(R10 + 8);
 
-    ST16(renderInfo + oRenderInfo_Unk_0c, 0);
-    ST16(renderInfo + oRenderInfo_Unk_0e, 0);
+    ST16(renderInfo + oRenderInfo_RenderEntryCountA, 0);
+    ST16(renderInfo + oRenderInfo_RenderEntryCountB, 0);
     ST16(renderInfo + oRenderInfo_BGScrollXOffset, 0);
     ST16(renderInfo + oRenderInfo_BGScrollY, 0);
     ST16(renderInfo + oRenderInfo_BG1ScrollXAlt, 0);

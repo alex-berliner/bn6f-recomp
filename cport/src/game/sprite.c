@@ -160,7 +160,7 @@ Next sprite_initialize(void) {
     ST16(obj + oObjectSprite_SpriteExtraBytes, 0);
     ST16(obj + 6, 0);
     ST32(obj + oObjectSprite_ScriptParam, 0);
-    ST16(obj + oObjectSprite_Unk_10, 0);
+    ST16(obj + oObjectSprite_ScratchHalfword, 0);
     ST16(obj + oObjectSprite_FrameCounter, 0);
     ST8 (obj + oObjectSprite_InitFlag, 0);
     ST8 (obj + 5, 0);

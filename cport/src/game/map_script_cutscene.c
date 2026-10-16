@@ -1137,7 +1137,7 @@ static u32 start_cutscene(u32 toolkit, u32 script, u32 param) {
 
     ST32(state + oCutsceneState_CutsceneScriptPos, script);
     ST32(state + oCutsceneState_originalCutsceneScriptPos_40, script);
-    ST32(state + oCutsceneState_Unk_04, param);
+    ST32(state + oCutsceneState_CutsceneParam32, param);
 
     /* The three secondary script slots start out parked on the dummy script. */
     ST32(state + oCutsceneState_CutsceneScriptPos2, A_DummyCutsceneScript);

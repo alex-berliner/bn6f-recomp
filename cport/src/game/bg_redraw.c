@@ -191,7 +191,7 @@ Next copyTilemapLayerRowsToWindow_8030892(void) {
 /* Redraw both tilemap layers into the window whose origin is camera tile
  * (window_x, window_y). */
 static void redraw_from_tilemap(u32 tiles, u32 window_x, u32 window_y) {
-    u32 tilemap = LD32(tiles + oMapTilesState200be70_Unk_0c);
+    u32 tilemap = LD32(tiles + oMapTilesState200be70_UnkCallback0C);
     u32 map_width = LD8(tiles + TILES_MAP_WIDTH);
     u32 map_height = LD8(tiles + TILES_MAP_HEIGHT);
     copy_layer_rows(tilemap + LD32(tilemap + TILEMAP_LAYER_1), 1, map_width, map_height,

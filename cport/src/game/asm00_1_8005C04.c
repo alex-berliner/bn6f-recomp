@@ -1640,7 +1640,7 @@ Next battle_SpawnEnemyObjects_8007358(void) {
  * terminated by an entry whose kind byte is 0xF0) and spawns each battle
  * object through the handler selected by the entry's kind. Afterwards it
  * snapshots the current halfword at oBattleState_AliveActorAndOpponent into
- * oBattleState_Unk_12_13 and copies the alive-actor words over the battle
+ * oBattleState_HeldChipIndex and copies the alive-actor words over the battle
  * actor slots.
  *
  * Register notes: the dispatch loop keeps the entry pointer in r6 itself, so
@@ -1689,7 +1689,7 @@ Next SpawnBattleObjectUsingBattleEntityConfig_8007368(void) {
 
     /* Carry the current value of Unk_04_05 over to Unk_12_13 for the newly
      * spawned battle actors. */
-    ST16(R5 + oBattleState_Unk_12_13, LD16(R5 + oBattleState_AliveActorAndOpponent));
+    ST16(R5 + oBattleState_HeldChipIndex, LD16(R5 + oBattleState_AliveActorAndOpponent));
 
     /* Copy the 8 alive-actor words over the battle actor array. */
     u32 battleState = LD32(R10 + oToolkit_BattleStatePtr);

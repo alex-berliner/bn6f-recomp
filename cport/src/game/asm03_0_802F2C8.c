@@ -616,7 +616,7 @@ static void init_map_tiles_state(u32 map_group, u32 map_number) {
          LD32(descriptor + oMapBGDescriptor_PalettePtr));
     ST32(state + oMapTilesState200be70_TilesetPtr,
          LD32(descriptor + oMapBGDescriptor_TilesetPtr));
-    ST32(state + oMapTilesState200be70_Unk_0c, decomp_buffer);
+    ST32(state + oMapTilesState200be70_UnkCallback0C, decomp_buffer);
 }
 
 /* initMapTilesState_803037c(r0 = map_group, r1 = map_number) -> ()

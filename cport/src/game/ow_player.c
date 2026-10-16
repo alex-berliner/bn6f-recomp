@@ -912,7 +912,7 @@ Next owPlayer_RequestFixedAnimation_809E14C(void) {
         GUEST_CALL(SetEventFlagFromImmediate);
     } else {
         /* Denied: remember the requested animation for later. */
-        ST8(A_eStruct200ace0 + oS200ace0_Unk_1c, R4);
+        ST8(A_eStruct200ace0 + oS200ace0_PendingFixedAnimationId, R4);
     }
 
     /* pop {r4-r7,pc} */

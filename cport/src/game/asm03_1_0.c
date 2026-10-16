@@ -1796,8 +1796,8 @@ Next tryStartNotificationCutscene_8035054(void) {
     if (!ZERO_FLAG()) {
         u32 gameState = LD32(R10 + oToolkit_GameStatePtr);
 
-        /* oGameState_Unk_12 being 0xFF blocks the notification. */
-        if (LD8(gameState + oGameState_Unk_12) != 0xFF) {
+        /* oGameState_LastMapChangeCounter being 0xFF blocks the notification. */
+        if (LD8(gameState + oGameState_LastMapChangeCounter) != 0xFF) {
             /* Event flag 0x171A requests the notification (text scripts set
              * it), passed here as the (high, low) immediate pair. The answer
              * is the Z flag: r0 is the flag's whole byte, nonzero whenever any

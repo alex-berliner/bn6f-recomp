@@ -1322,7 +1322,7 @@ Next NPCCommand_run_secondary_script(void) {
  * Returns r0 = 1, r6 = script pointer advanced by 2, and nz/c/v as set by the
  * ADDS r6, #2 pointer increment. */
 Next NPCCommand_pause_secondary_script(void) {
-    ST8(R5 + oOverworldNPCObject_Unk_0b, 0);
+    ST8(R5 + oOverworldNPCObject_ScriptPauseFlag, 0);
 
     R0 = LD8(R6 + 1);
     ST16(R5 + oOverworldNPCObject_Timer_22, R0);
