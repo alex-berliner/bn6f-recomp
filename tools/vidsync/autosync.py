@@ -278,13 +278,16 @@ def try_formations(f, p, D):
     res = evaluate([(ck, [[f, rf.spec(BATTLE_PTR, q)]], end, f'B{q:x}') for q in ents])
     reach = lambda q: res[f'B{q:x}'][0]
     m = lambda q: res[f'B{q:x}'][1]
-    order = sorted(ents, key=lambda q: (-reach(q), m(q)))
+    # reach wins only by a clear margin (60 frames): within it, the cheaper (run8b: 80b7264 got 8 frames past the
+    # right 80b7254 at cost 2.09 against 1.67 and replaced it)
+    far = max(reach(q) for q in ents)
+    order = sorted(ents, key=lambda q: (reach(q) < far - 60, m(q)))
     q = order[0]
     log(f'  formation at {f}: entry {q:x} syncs to {reach(q)} of {end} (mean cost {m(q):.3f}'
         + (f'; next {order[1]:x} to {reach(order[1])}, {m(order[1]):.3f}' if len(order) > 1 else '')
         + (f'; the path has {p:x}: to {reach(p)}, {m(p):.3f})' if p in ents else ')'))
     if reach(q) <= D: return None
-    if q == p or (p in ents and reach(q) <= reach(p) and m(q) > 0.85 * m(p)): return None
+    if q == p or (p in ents and reach(q) < reach(p) + 60 and m(q) > 0.85 * m(p)): return None
     t = (ck, [[f, rf.spec(BATTLE_PTR, q)]], until, f'B{q:x}')
     r = evaluate([t])[t[3]]
     if r[0] >= until: log(f'  formation at {f}: B{q:x} holds to {until}')
@@ -1282,7 +1285,8 @@ def repair(D):
     ev = events(D); EVENTS[:] = ev
     last = max([p[0] for p in b.pokes] + [0])      # encounters before the last write held to there already
     for f, p in reversed(TRIGGERS):
-        if f <= last or (ONLY is not None and 'formations' not in ONLY): continue
+        # (a trigger within 2 frames after the last write is that write: a formation fix's own pointer)
+        if f <= last + 2 or (ONLY is not None and 'formations' not in ONLY): continue
         r = try_formations(f, p, D)
         if r: return r
     r = None if ONLY is not None and 'reward' not in ONLY else check_reward(max(ring[0][0], D - 900), D)   # a reward given just before the loss (its screen differs)
