@@ -2,7 +2,7 @@
 it) or, with --text, one screen for a person. RUN defaults to ~/vidsync/runbase (the run job_driver.sh started
 last); its directories are data/auto/RUN.0, RUN.1, ... (supervise.sh starts a new one after a crash).
 
-  furthest   the furthest game frame any of the run's logs reached ("game N" in auto.log), the progress measure
+  furthest   the furthest game frame any of the run's logs reached (its "game N video" lines), the progress measure
   alive      whether the run's driver (supervise.sh or autosync.py) is running
   ended      when it is not: done (end of the video), stuck (autosync gave up at a loss), error, crashed
   loss       the game frame of the loss it is repairing, if the last event is a loss
@@ -13,7 +13,9 @@ import os
 import re
 import sys
 
-GAME = re.compile(r"(?:near )?game (\d+)")
+# progress: the sync's own frame lines ("HH:MM:SS game N video ...") and a test's end; not "lost the video near
+# game N", which a driver stuck there logs again and again
+GAME = re.compile(r"^\d\d:\d\d:\d\d (?:game|done: reached game) (\d+)")
 EVENT = re.compile(r"lost the video|^.{9}fix \d|done:|stuck|internal error")
 LOSS = re.compile(r"lost the video near game (\d+)")
 
