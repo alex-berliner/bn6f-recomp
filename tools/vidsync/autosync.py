@@ -270,17 +270,21 @@ def try_formations(f, p, D):
     # the sync itself over the battle's start (intro, custom screen): a quick score on the path's video mapping
     # favours the path's entry (a different enemy count moves the custom screen by ~30 frames, which the path's
     # mapping absorbed for its own entry)
-    end = min(D, f + 400)
+    # The sync runs past the loss into the battle (to D+150 at least): a loss at the battle's start falls in the
+    # white transition, where every entry looks the same (run7z, 10-16: the video's entry 80b7254 scored 0.644
+    # against the path's 0.664 up to D=498358 and was rejected; its grass and poison field shows ~60 frames
+    # later). An entry that holds further wins; at equal reach, the cheaper one if clearly cheaper.
+    end = max(D + 150, f + 400)
     res = evaluate([(ck, [[f, rf.spec(BATTLE_PTR, q)]], end, f'B{q:x}') for q in ents])
-    full = [q for q in ents if res[f'B{q:x}'][0] >= end]
-    if not full: return None
-    order = sorted(full, key=lambda q: res[f'B{q:x}'][1])
+    reach = lambda q: res[f'B{q:x}'][0]
     m = lambda q: res[f'B{q:x}'][1]
-    log(f'  formation at {f}: entry {order[0]:x} syncs best to {end} (mean cost {m(order[0]):.3f}'
-        + (f', next {m(order[1]):.3f}' if len(order) > 1 else '')
-        + (f'; the path has {p:x}: {m(p):.3f})' if p in full else f'; the path has {p:x}: lost)'))
+    order = sorted(ents, key=lambda q: (-reach(q), m(q)))
     q = order[0]
-    if q == p or (p in full and m(q) > 0.85 * m(p)): return None
+    log(f'  formation at {f}: entry {q:x} syncs to {reach(q)} of {end} (mean cost {m(q):.3f}'
+        + (f'; next {order[1]:x} to {reach(order[1])}, {m(order[1]):.3f}' if len(order) > 1 else '')
+        + (f'; the path has {p:x}: to {reach(p)}, {m(p):.3f})' if p in ents else ')'))
+    if reach(q) <= D: return None
+    if q == p or (p in ents and reach(q) <= reach(p) and m(q) > 0.85 * m(p)): return None
     t = (ck, [[f, rf.spec(BATTLE_PTR, q)]], until, f'B{q:x}')
     r = evaluate([t])[t[3]]
     if r[0] >= until: log(f'  formation at {f}: B{q:x} holds to {until}')
