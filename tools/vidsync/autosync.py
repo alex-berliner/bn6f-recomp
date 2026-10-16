@@ -28,6 +28,8 @@ ap.add_argument('vdir'); ap.add_argument('start'); ap.add_argument('out')
 ap.add_argument('--remote'); ap.add_argument('--workers', type=int, default=14)
 ap.add_argument('--every', type=int, default=5000)
 ap.add_argument('--until', type=int, help='stop once the sync reaches this game frame (a handler test)')
+ap.add_argument('--budget-hours', type=float, default=4.0,
+                help='hours one loss may take (handlers and RNG search) before the driver stops there as stuck')
 ap.add_argument('--handlers', help='only these repair handlers, comma-separated (built-in names or handlers/ '
                 'modules), and no RNG search: a handler test from a loss checkpoint (vidsync-repair)')
 A = ap.parse_args()
@@ -724,7 +726,9 @@ FREE = [tuple(x) for x in json.load(open(A.start + '.json')).get('free', [])]   
 def save_ck(path):
     """bm.checkpoint, with the overlay windows (resume takes them back)"""
     bm.checkpoint(b, path, [])
-    c = json.load(open(path + '.json')); c['lenient'] = LENIENT; c['free'] = FREE; json.dump(c, open(path + '.json', 'w'))
+    c = json.load(open(path + '.json')); c['lenient'] = LENIENT; c['free'] = FREE
+    c['last_fix'] = LAST_FIX; c['failed'] = {str(d): sorted(v) for d, v in FAILED.items()}
+    json.dump(c, open(path + '.json', 'w'))
 OVERLAY_MASK = [0, 52, 6, 114]    # thumbnail rows/columns a stream alert covers (its text runs to ~100 px down)
 def lossmax(g):
     return rf.LOSS
@@ -1197,6 +1201,7 @@ def try_at(w, D, which, jmax, base=()):
             if 'S' in which: cands.append(('S', sgn))
     top = (D, None); nsync = 0; res_cost = {}
     for i in range(0, len(cands), WAVE * 4):
+        if over_budget(): break
         writes = {}
         for r, j in cands[i:i + WAVE * 4]:
             addr, x0 = (rf.PRIMARY, P0) if r == 'P' else (rf.SECONDARY, S0)
@@ -1232,10 +1237,11 @@ def try_at(w, D, which, jmax, base=()):
     log(f'  W={w[0]} ({which}, |j| <= {jmax}): furthest {top[0]}, synced {nsync} of {len(cands)}')
     return None
 
-# repair handlers outside this file (handlers/NAME.py, handlers/__init__.py): tried after the built-in ones,
-# before the RNG search
+# repair handlers outside this file (handlers/NAME.py, handlers/__init__.py): one with a match(D, sync) that
+# says the loss is its kind is tried first, before the built-in ones; the others after them, before the RNG search
 import importlib.util, glob as _glob
 PLUGINS = []
+MATCHERS = {}                 # handler name -> its guarded match(D)
 for _path in sorted(_glob.glob(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'handlers', '[!_]*.py'))):
     _spec = importlib.util.spec_from_file_location('vidsync_handler_' + os.path.basename(_path)[:-3], _path)
     _mod = importlib.util.module_from_spec(_spec); _spec.loader.exec_module(_mod)
@@ -1246,11 +1252,26 @@ for _path in sorted(_glob.glob(os.path.join(os.path.dirname(os.path.abspath(__fi
             log(f'  handler {_m.NAME} failed: {type(e).__name__}: {e}')
             return None
     PLUGINS.append((_mod.NAME, _guarded))
+    if hasattr(_mod, 'match'):
+        def _match(D, _m=_mod):
+            try:
+                return bool(_m.match(D, sys.modules[__name__]))
+            except Exception as e:
+                log(f'  handler {_m.NAME} match failed: {type(e).__name__}: {e}')
+                return False
+        MATCHERS[_mod.NAME] = _match
 if PLUGINS: log('handlers from handlers/:', ' '.join(name for name, _ in PLUGINS))
 
-LAST_FIX = [None, None]       # (loss, handler) of the last fix
-FAILED = {}                   # loss -> handlers whose fix there came back to it
+# (loss, handler) of the last fix, and loss -> handlers whose fix there came back to it: kept in the
+# checkpoints, so a restarted driver does not ask them again
+_ck0 = json.load(open(A.start + '.json'))
+LAST_FIX = list(_ck0.get('last_fix', [None, None]))
+FAILED = {int(d): set(v) for d, v in _ck0.get('failed', {}).items()}
+DEADLINE = [None]             # when the current loss's search gives up (--budget-hours)
+def over_budget():
+    return DEADLINE[0] is not None and time.time() > DEADLINE[0]
 def repair(D):
+    DEADLINE[0] = time.time() + A.budget_hours * 3600
     ks = b.keys_of(b.branches[0])
     json.dump({'press_gf': b.press_gf, 'status': f'lost near {D}', 'lenient': LENIENT, 'free': FREE, 'keys': [k for k, v in ks], 'vid': [v for k, v in ks],
                'pokes': b.pokes}, open(os.path.join(A.out, f'loss_{D}.json'), 'w'))
@@ -1269,10 +1290,20 @@ def repair(D):
         if LAST_FIX[1] == 'overlay':    # its window goes too (the run would compare less than the tasks do)
             LENIENT[:] = [x for x in LENIENT if not x[0] <= D < x[1]]
     skip = set().union(*[v for d, v in FAILED.items() if abs(d - D) <= 30])
+    allowed = lambda name: name not in skip and (ONLY is None or name in ONLY)
+    # handlers that recognise this loss (a cheap match) first: hours of built-ins and RNG search come after
+    first = [(name, h) for name, h in PLUGINS if name in MATCHERS and allowed(name) and MATCHERS[name](D)]
+    if first: log('  handlers matching this loss: ' + ' '.join(name for name, _ in first))
+    for name, h in first:
+        r = h(D)
+        if r: LAST_FIX[:] = [D, name]; return r
+    tried = {name for name, _ in first}
     for name, h in (('offset', try_offset), ('overlay', try_overlay), ('hand', try_hand), ('gmd', try_gmd),
                     ('subchip', try_subchip), ('position', try_position), ('relocate', try_relocate), ('tornado', try_tornado), ('mapobj', try_mapobj),
-                    ('encounter', try_encounter), ('kill', try_kill), ('die', lambda D: try_kill(D, 0)), *PLUGINS):
-        if name in skip or (ONLY is not None and name not in ONLY): continue
+                    ('encounter', try_encounter), ('kill', try_kill), ('die', lambda D: try_kill(D, 0)),
+                    *[(name, h) for name, h in PLUGINS if name not in MATCHERS]):
+        if not allowed(name) or name in tried: continue
+        if over_budget(): log(f'  the search budget ({A.budget_hours} h) is spent'); return None
         if name == 'die' and 'kill' in skip: continue    # (ending the battle was not it: the video's MegaMan lives)
         r = h(D)
         if r: LAST_FIX[:] = [D, name]; return r
@@ -1300,8 +1331,11 @@ def repair(D):
         assert b.e.gf() == (w[0], w[2]), (b.e.gf(), w[0], w[2])
         log(f'  no write holds; the furthest partial: {new[-1][1]} at {w[0]} reaches {far} ({far - D} past the loss, mean cost {c:.3f})')
         return w, new
-    for jmax, group, need in stages:
+    for k, (jmax, group, need) in enumerate(stages):
+        log(f'  RNG search stage {k + 1} of {len(stages)}: {len(group)} write points, |j| <= {jmax}; '
+            f'{(DEADLINE[0] - time.time()) / 3600:.1f} h of the budget left')
         for f, p, q in group:
+            if over_budget(): log(f'  the search budget ({A.budget_hours} h) is spent'); return None
             if not write_ok(f - 2, D): continue
             w = state_at(f - 2)          # a write at W goes in at the end of the step W -> W+1: before the step f-1 -> f that is the event
             if w is None: continue
@@ -1312,6 +1346,7 @@ def repair(D):
             if r: return r
     r = take_partial(PARTIAL)
     if r: return r
+    if over_budget(): log(f'  the search budget ({A.budget_hours} h) is spent'); return None
     return repair_fixed(D)
 
 def write_ok(W, D):
@@ -1338,6 +1373,7 @@ def repair_fixed(D):
                 cands.append(('P', s)); cands.append(('S', s))
         top = (base, None)            # the furthest partial so far
         for i in range(0, len(cands), WAVE):
+            if over_budget(): return None
             wave = cands[i:i + WAVE]
             tasks = []
             for n, (r, j) in enumerate(wave):

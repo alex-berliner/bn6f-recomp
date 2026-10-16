@@ -29,6 +29,17 @@ COMP_LIVE = 0x28        # the comp's live counters run to +0x28, where the torna
 NEAR_HIT = 24           # px: nearer than checkHitPlayer's 20 the tornado on MegaMan is a hit, not a capture
 
 
+def match(D: int, sync) -> bool:
+    '''Cheap: is this loss the comp's orb trail (on the map, the comp's tornado live as map object 0)?'''
+    syms, e = sync.syms, sync.b.e
+    w = sync.state_at(max(D - BACK, sync.ring[0][0]))
+    if w is None:
+        return False
+    e.load(w[1])
+    return (e.read(syms.GS_SUBSYSTEM, 1)[0] == 4 and e.u32(syms.OW_MAP_OBJECTS + 4) == TORNADO_ID
+            and bool(e.read(syms.OW_MAP_OBJECTS, 1)[0] & 1))
+
+
 def try_fix(D: int, sync) -> tuple | None:
     '''The sync lost the video near game frame D: a fix, or None.'''
     syms, b, e, log = sync.syms, sync.b, sync.b.e, sync.log

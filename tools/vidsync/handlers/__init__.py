@@ -1,7 +1,8 @@
 """Repair handlers outside autosync.py: one module per handler, written for a loss the built-in ones could not
 fix (the vidsync-repair workflow: an outside model writes it from a brief, Claude reviews it, a test from the
 loss checkpoint must sync 600 frames past the loss). autosync.py loads every handlers/NAME.py at start and tries
-them, in name order, after its built-in handlers and before the RNG search.
+them in name order: those whose match() says yes first, the rest after its built-in handlers, before the RNG
+search.
 
 A handler module defines
 
@@ -10,7 +11,13 @@ A handler module defines
     def try_fix(D: int, sync) -> tuple | None:
         '''The sync lost the video near game frame D: a fix, or None.'''
 
-`sync` is the running autosync module: its beam (`sync.b`), the ring of past machines (`sync.state_at(g)`,
+and, optionally,
+
+    def match(D: int, sync) -> bool:
+        '''Cheap (a few state reads, no syncs): is this loss the kind this handler fixes?'''
+
+A handler with match() is tried first, before the built-in handlers, at every loss it matches; one without it
+is tried after them. `sync` is the running autosync module: its beam (`sync.b`), the ring of past machines (`sync.state_at(g)`,
 `sync.ancestor(g)`), the candidate judges (`sync.path_reach(w, extra, until, D)` on this machine,
 `sync.evaluate(tasks)` on the workers, `sync.try_at(w, D, which, jmax)` for RNG writes), `sync.log(...)`, and
 the game's addresses by name (`sync.syms`, tools/vidsync/syms.py). A fix is `(w, pokes)`: `w` the ring-style

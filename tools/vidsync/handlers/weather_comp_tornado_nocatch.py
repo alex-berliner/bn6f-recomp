@@ -63,6 +63,32 @@ MASK_RECT = [30, 76, 28, 92]       # thumbnail rows 30-67, cols 28-91: the storm
                                      # scrolling ground is his per-frame place seen through the picture)
 
 
+def match(D: int, sync) -> bool:
+    '''Cheap: the comp's storm (map 0x83:0x01, on the map) with a live tornado near MegaMan just before D.'''
+    syms, e = sync.syms, sync.b.e
+    w = sync.state_at(max(D - 3, sync.ring[0][0]))
+    if w is None:
+        return False
+    e.load(w[1])
+    if e.read(syms.GS_SUBSYSTEM, 1)[0] != 4 or bytes(e.read(syms.GS_MAP, 2)) != bytes([0x83, 0x01]):
+        return False
+    s32 = lambda v: v - (1 << 32) if v >= 1 << 31 else v
+    p = e.u32(syms.GS_OW_PLAYER_PTR)
+    if not p:
+        return False
+    mx, my = s32(e.u32(p + OFF_PX)) >> 16, s32(e.u32(p + OFF_PY)) >> 16
+    objs, osz = syms.OW_MAP_OBJECTS, syms.OW_MAP_OBJECT_SIZE
+    buf = bytes(e.read(objs, osz * N_OBJ))
+    for i in range(N_OBJ):
+        o = i * osz
+        if buf[o] & 1 and buf[o + OFF_TYPE] == TORNADO:
+            x = s32(int.from_bytes(buf[o + OFF_X:o + OFF_X + 4], 'little')) >> 16
+            y = s32(int.from_bytes(buf[o + OFF_Y:o + OFF_Y + 4], 'little')) >> 16
+            if (x - mx) ** 2 + (y - my) ** 2 <= NEAR * NEAR:
+                return True
+    return False
+
+
 def try_fix(D: int, sync) -> tuple | None:
     '''The sync lost the video near game frame D: a fix, or None.'''
     syms, b, e, log = sync.syms, sync.b, sync.b.e, sync.log
