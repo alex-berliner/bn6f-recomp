@@ -19,6 +19,7 @@ port 7241). `./wf status` says where every run is.
 | [vidsync-run](workflows/vidsync-run.md) | the `beastsp` route rebuilt from a speedrun video ([vidsync](vidsync/README.md)): deploy to the two compute PCs, restart the sync driver, watch it (stuck: no progress for 30 min), hourly pathcheck, a repair when stuck |
 | [vidsync-repair](workflows/vidsync-repair.md) | a new repair handler for a loss: rendered, classified by Claude, written by an outside model from a brief with the symbols/db entries and assembly, reviewed, tested from the loss; findings go through record |
 | [vidsync-ready](workflows/vidsync-ready.md) | the sync exported and cut into segments on the driver PC, checked, copied here; with `--import`, the `beastsp` route grows |
+| [vidsync-tick](workflows/vidsync-tick.md) | one check-in on the sync (the recurring 15-minute prompt): the driver's state and a digest of its log at the loss, sorted by rules (loop, suspect fix, crash, 30 min on one loss); routine cases act alone (hourly pathcheck, clean restart), the rest wait for one decision: wait, restart, repair or escalate |
 
 What running them taught about cost and speed: [EFFICIENCY.md](workflows/EFFICIENCY.md).
 
