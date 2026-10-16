@@ -81,7 +81,7 @@ def digest(run: str) -> dict[str, object]:
                 came_back.append(hm[1])
             continue
         m = HANDLER.match(line)
-        if m:
+        if m and m[1].strip() != "from":           # ("  from: machine ...": where a fix resumed, not a handler)
             name = "rng" if m[1].startswith("W=") else m[1].strip()
             last_handler = (name, m[2])
             if name == "rng":

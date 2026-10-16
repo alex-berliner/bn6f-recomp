@@ -24,7 +24,7 @@ LOOP_FIXES = 3           # fixes at one loss that make it a loop
 EMPTY_FIXES = 2          # empty fixes (no write) at one loss
 SUSPECT_COST = {"kill": 1.5, "die": 1.5}   # a fix of these handlers at or above this mean cost is suspect
 SUSPECT_COST_ANY = 2.0   # any other handler's
-SUSPECT_REACH = 3000     # a loss this soon after a suspect fix is put down to it
+SUSPECT_REACH = 1000     # a loss this soon after a suspect fix (the latest fix) is put down to it
 STALL_MINUTES = 30
 
 
@@ -120,7 +120,10 @@ def triage(status: DriverStatus, digest: LossDigest | None) -> Triage:
                                       "newest checkpoint; none: restart from the newest checkpoint"),
                           evidence=tuple(evidence + ([ToolMessage(tb)] if tb else [])), needs_claude=tb is not None)
     if digest is not None and loss is not None:
-        bad = next((f for f in reversed(digest.recent_fixes[-4:]) if suspect_fix(f)), None)
+        # the latest fix only: one followed by a good fix and a long match was not the loss's doing (run7y, 10-16:
+        # an encounter fix at 482567, a good hand fix after it, an ordinary encounter at 484645)
+        latest = digest.recent_fixes[-1] if digest.recent_fixes else None
+        bad = latest if latest is not None and suspect_fix(latest) else None
         if bad is not None:
             frame = fix_frame(bad)
             if frame is not None and 0 <= loss - frame <= SUSPECT_REACH:

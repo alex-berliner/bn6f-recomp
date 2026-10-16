@@ -75,6 +75,16 @@ def test_run7ys_relocate_that_scraped_past_is_suspect() -> None:
     assert result.kind is TriageKind.SUSPECT_FIX and result.suspect is not None and result.suspect.handler == "relocate"
 
 
+def test_a_poor_fix_followed_by_a_good_one_is_not_suspect() -> None:
+    poor = FixRecord(n=24, at="11:50:00", handler="encounter", mean_cost=2.024, empty=False,
+                     writes="write 0x2001c16=0x400/2 at game 482567; going on from there")
+    good = FixRecord(n=26, at="11:51:00", handler="hand", mean_cost=1.152, empty=False,
+                     writes="write 0x203cdb0=0x1/4 at game 482700; going on from there")
+    result = triage(status("run7y", 484645, loss=484645), digest_of(
+        "run7y", loss=484645, minutes_on_loss=4.0, recent_fixes=[poor.model_dump(), good.model_dump()]))
+    assert result.kind is TriageKind.SEARCHING
+
+
 def test_a_good_fix_is_not_suspect() -> None:
     good = FixRecord(n=1, at="00:00:13", handler="kill", mean_cost=0.84, empty=False,
                      writes="write 0x203aaac=0x0000/2 at game 370285; going on from there")
