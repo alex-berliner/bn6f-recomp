@@ -207,8 +207,9 @@ def try_fix(D: int, sync) -> tuple | None:
     # The window runs on past the second catch until the comp ends (the screen fades: it reloads the same
     # map), then RELOAD_SETTLE frames more; the sync resumes after the reload.  The put-back cutscene between
     # the catch and the fade waits on A taps, and with the video's display keys ours fades ~44 frames late:
-    # the runner's taps meet our text boxes at other moments.  So the cutscene's keys are chosen here: the
-    # video's, or A every P frames from C2 + 2 + S, whichever schedule fades on the video's own fade frame
+    # MegaMan starts his walk from another place (the knock carries him only part of the way to the put-back
+    # point).  So the keys after the catch are chosen here: the video's, the video's d frames early, or A
+    # every P frames from C2 + 2 + S, whichever schedule fades on the video's own fade frame
     # (a departure from the video's inputs inside this FREE window, like the pokes).
     def fade_of(keyf, upto):
         """From the saved state after the second catch: the first frame our screen is dark or bright."""
@@ -238,15 +239,16 @@ def try_fix(D: int, sync) -> tuple | None:
         return None
     video = lambda g: keys[g - p0][0]
     tapper = lambda P, S: (lambda g: A_DOWN if g >= C2 + 2 + S and (g - C2 - 2 - S) % P == 0 else NO_KEYS)
-    schedules = [('video', video)] + [(f'A/{P}+{S}', tapper(P, S)) for P in (2, 3, 4, 6, 8) for S in range(0, 60, 2)]
+    shifted = lambda d: (lambda g: keys[g - p0 + d][0])     # the video's keys, d frames early
+    schedules = [('video', video)] + [(f'video{-d:+d}', shifted(d)) for d in range(1, 81)] + \
+                [(f'A/{P}+{S}', tapper(P, S)) for P in (2, 3, 4, 6, 8) for S in range(0, 60, 2)]
     tried, chosen = [], None
     for name, f in schedules:
         fd = fade_of(f, vfade + 120)
         tried.append(f'{name}:{fd}')
         if fd == vfade:
             chosen = (name, f); break
-    log(f'  tornado nocatch: the video fades at {vfade}; schedules (fade frame): ' + ' '.join(tried[:12]) +
-        (' ...' if len(tried) > 12 else ''))
+    log(f'  tornado nocatch: the video fades at {vfade}; schedules (fade frame): ' + ' '.join(tried[-12:]))
     if chosen is None:
         log('  tornado nocatch: no cutscene key schedule fades on the video\'s frame')
         sync.set_emu_pokes()
