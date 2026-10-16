@@ -129,3 +129,30 @@ only from hunter state 4 with 0xBE9 clear.
 Deployed (the deploy also needed syms.py updated for the other session's eStruct2001c04/S20364C0 renames)
 and the driver restarted: `wf vidsync-run --start run7n` -> run7o from run7n.1/ckpt_0435000 at 14:02.
 Findings recorded to bn6f (wf record c29c7f9).
+
+## Session 5 (2026-10-16, dedicated vidsync agent)
+
+| time | furthest game frame | what happened | result |
+|---|---|---|---|
+| 08:30 | 435,876 (run7x stuck since 23:47) | audit fixes committed: ring entries past min(D, g) dropped + state_at skips off-path entries (3c008cd4); RNG search skips FREE windows (78d5a817); plugins with match() first, per-loss budget --budget-hours 4, failed handlers kept in checkpoints, RNG stage logs (6b66b492); status.py progress only from "game N video" lines (1ac3cd36); failed handler test restarts the driver + smoke test (c68d3c69); nocatch fade off-by-one (fb047b29); clutter probes moved to build-vidsync/old-probes | driver logic otherwise unchanged |
+| 08:40 | 435,876 | **the loss re-read from pictures** (probes/postcatch.py, tornfit.py): the video's MegaMan is never caught here. At ~435930 his rainbow-orb ring closes around tornado 1 ("The Rainbow Power washed the typhoon away"), at ~436402 around tornado 0 ("...The rain's stopped!": the comp is won). The old nocatch handler staged two catches of MegaMan: wrong premise, retired | |
+| 08:55 | 435,876 | two causes found: (1) the input display drops A for 1-2 frames (video 443917, 443929-30, 443938, 443944) while the trail is laid; any frame without A resets the trail (sub_809005C), but the video's trail never resets, so the display is wrong: bits_fixes.json corrects it (d5432e5b). (2) our tornado 1 sits paused at (48,232) on his path (160-frame pause since 435704) while the video's moves on and pauses at ~(1,204): one movement-state write at 435799 (moving, dir 3, 10 frames left, 0 segments) puts it on the video's track; with both, our ring captures it at 435930-932 as the video's and the capture cutscene matches (cost ~2) | new handler weather_comp_tornado_state (searches that write per tornado); test running from run7n.1/ckpt_0435000 |
+| 09:20 | 435,876 | handler test (test-tstate-1): movement write to tornado 1 at 435769 syncs to 435999 (mean 1.60), short of the 150-frame bar; after the capture our game runs ~4 frames behind and tornado 0 (shown by the video near (-95,67) from ~436016) is off our screen | handler extended: placements (a tornado put near MegaMan, held paused; moving ones on blocked tiles loop forever in repickDirection) and a 100-frame bar, so the driver chains tornado 1, then tornado 0 |
+| 09:58 | 435,876 | deployed (fa804f68 + working tree), `wf vidsync-run --start data/auto/run7n.1/ckpt_0435000 --watch-hours 8 --no-repair` -> run7y | |
+| 10:18 | 435,999 | run7y fix 1: tornado 1 placed at (0,208), paused 128, at 435805 (the handler's pick; mean cost 1.67); next loss 435999 = tornado 0, handler searching | symbols/db entries for the orb ring written, record running |
+| 10:19 | 436,362 | run7y fix 2 (built-in relocate): MegaMan +(6,-10) px at 435999 (our capture ran ~2 frames late, he walked on a little); synced to 436362, just before the video's second capture | handler did not match there (tornadoes held in state 8 by 0xBEF): fixed for the next restart |
+| 10:29 | **438,428** | run7y fix 3 (tornado_state): tornado 0 placed at (-238,98), paused 199, at 436243; the second ring capture and "The rain's stopped!" play as in the video; **the comp-2 loss is past (+2,550 frames)** | departures in comp 2: A held where the display drops it (bits_fixes.json), tornado 1 placed at (0,208) at 435805, MegaMan +(6,-10) at 435999, tornado 0 placed at 436243 |
+| 10:30 | 438,428 | next loss: comp 3 (map 0x83:0x02); the video's tornado catches MegaMan ("Uwaaaah!!") at ~438430, ours is elsewhere; handler searching | symbols/db: 6 ring routines + eWeatherCompState fields (650dbc05); bn6f renames pushed (fork/recomp-fixes 0b2a8a49); recomp's bn6f pointer not moved: the port no longer builds against bn6f HEAD because of the struct-field batches (oGameState_Unk_12 etc.), not these renames |
+| 10:51 | 440,026 | run7y fix 4 (tornado_state): comp 3, tornado 0 placed at (244,181), paused 68, at 438341: it catches MegaMan as the video's does ("Uwaaaah!!"), mean cost 0.78; then fix 5 formation at 439316 (ordinary random battle); loss 440026 in that battle, built-ins working | pathcheck of the path through 438428: **holds to the end** (220 pokes) |
+
+## 498358 (2026-10-16, benchmark session "originput")
+
+| time | furthest | what happened |
+|---|---|---|
+| 12:18 | 498,358 | loss at a battle's start; `formation at 498269: entry 80b7254 syncs best to 498358 (0.644, next 0.646; the path has 80b7224: 0.664)` was logged, but the rule "clearly cheaper (< 0.85x)" rejected it: the scoring ended at D, inside the white transition |
+| 12:40-16:25 | 498,358 | RNG search, wait, restart from before the encounter fix (deterministic repeat), escalate |
+| 16:25 | | probe: entry 80b7254 written at 498269 gives the video's field (grass/poison panels, Piranha2, mystery data) for every RNG value: the field comes with the entry, not the RNG |
+| 16:29 | | try_formations syncs past the loss (D+150) and ranks by reach (64e0dadc); restart via vidsync-tick (run8a) |
+| 16:31 | | run8a: formations never ran: the ring began at the next multiple of 30 after the resume (498270), the trigger at 498269 out of reach; fixed: a ring entry at the resume point (1e481cab) |
+| 16:43 | 498,700 | run8b fix 1: 80b7254 at 498269 holds to 498700; then a formation fix's own write was taken for a new trigger and 80b7264 (8 frames further, cost 2.09 vs 1.67) replaced it; fixed: reach wins by 60 frames only, triggers within 2 frames of the last write skipped (commit after 1e481cab) |
+| 16:56 | 503,540 | run8c (from run8b fix_0001): hand fix, formation kept the path's entry at 500080, on to 503,540 |

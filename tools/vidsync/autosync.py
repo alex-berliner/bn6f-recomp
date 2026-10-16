@@ -228,7 +228,9 @@ FORM_TOP = 3
 BIG = []                     # event frames where an RNG jumped far (a battle's setup, the folder shuffle)
 RECENT = 600                 # frames before a loss whose events get the first narrow pass
 PARTIAL_EARLY = 150          # a partial fix this far past the loss is taken after a narrow stage
-OFFSET_COST = 2.5          # the mean cost an offset jump must sync at
+OFFSET_COST = 2.0          # the mean cost an offset jump must sync at (real jumps 0.7-1.3; run8c's 2.08 at
+                           # 530673 covered roaming map objects)
+SUBCHIP_COST = 1.8
 PARTIALS = []                # (reached, w, pokes) of partial fixes found during a repair
 
 ENC_ROOTS = tuple(syms.ENC_ROOTS + 8 * k for k in range(4))   # pickBattleSettingsEntry_80AA5F4 picks one by flags
@@ -1066,6 +1068,10 @@ def try_subchip(D):
     if not ok: return None
     t = min(ok, key=lambda t: res[t[3]][1])
     log(f'  subchip: {len(ok)} hold to {until}; take {t[3]} (mean cost {res[t[3]][1]:.3f})')
+    # a real expiry is a matter of frames and matches well; many that hold, or a poor match, mean the write is
+    # not what the loss needs (run8c, 10-16: 70 of 160 held at 2.08 at 530684, covering roaming map objects)
+    if res[t[3]][1] >= SUBCHIP_COST or len(ok) > len(tasks) // 4:
+        log(f'  subchip: not taken (cost {res[t[3]][1]:.3f}, {len(ok)} of {len(tasks)} hold)'); return None
     return w, [t[1][0]]
 
 def try_hand(D):
