@@ -62,10 +62,36 @@ class Branch:
         self.mem, self.seed = mem, seed
 
 
+BITS_FIXES = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'bits_fixes.json')
+
+
+def load_bits(vdir):
+    """The input display's bits (bits.npy) with bits_fixes.json's corrections when they are this video's (its
+    frame count) -> (bits, the path of a .npy holding them, for emu_server). A corrected copy is written beside
+    bits.npy under a name carrying its contents' hash (written once; concurrent writers rename atomically)."""
+    path = os.path.abspath(f'{vdir}/bits.npy')
+    B = np.load(path)
+    try:
+        spec = json.load(open(BITS_FIXES))
+    except (OSError, ValueError):
+        return B, path
+    if spec.get('frames') != len(B) or not spec.get('fixes'):
+        return B, path
+    B = B.copy()
+    for f in spec['fixes']:
+        B[f['v0']:f['v1'] + 1] = (B[f['v0']:f['v1'] + 1] | f.get('set', 0)) & ~np.uint16(f.get('clear', 0))
+    import hashlib
+    fixed = os.path.join(os.path.dirname(path), f'bits.fixed.{hashlib.sha1(B.tobytes()).hexdigest()[:12]}.npy')
+    if not os.path.exists(fixed):
+        tmp = f'{fixed}.{os.getpid()}.tmp.npy'
+        np.save(tmp, B); os.replace(tmp, fixed)
+    return B, fixed
+
+
 class Beam:
     def __init__(self, vdir, log=print):
         self.T, _ = video(vdir)
-        self.B = np.load(f'{vdir}/bits.npy')
+        self.B, bits_path = load_bits(vdir)
         self.N = len(self.T)
         self.log = log
         self.e = Emu()
@@ -74,7 +100,7 @@ class Beam:
         self.pokes = []                # [game frame, "ADDR=VALUE/SIZE,..."]: the route harness's .poke lines
         # the single-branch stretches in C (emu_server's follow); VIDSYNC_FAST=0 runs every frame here
         self.fast = (self.C_ERRS and os.environ.get('VIDSYNC_FAST', '1') != '0'
-                     and self.e.cmd(f'bits {os.path.abspath(vdir)}/bits.npy {self.N}')[0] == 'ok')
+                     and self.e.cmd(f'bits {bits_path} {self.N}')[0] == 'ok')
 
     def add_poke(self, g, spec):
         self.pokes.append([g, spec]); self.e.poke(g, spec)
