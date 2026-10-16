@@ -50,7 +50,8 @@ def kv(g):
 
 
 e = Emu(); e.loadf(sys.argv[2]); g, _ = e.gf()
-for pg, ps in r['pokes']:
+EXTRA = json.load(open(os.environ['EXTRA'])) if os.environ.get('EXTRA') else []   # [[g, spec], ...] more pokes
+for pg, ps in list(r['pokes']) + EXTRA:
     if pg >= g: e.poke(pg, ps)
 while g < G1:
     e.step(kv(g)[0]); g += 1
