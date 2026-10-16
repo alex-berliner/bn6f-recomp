@@ -40,11 +40,14 @@ bn6f).
 | Checks | `pathcheck.py` | Replays a result with plain steps: does the path hold against the video to the end |
 | Export | `export_trace.py`, `segments.py` (the vidsync-ready workflow) | `ready/`: the trace, pokes and save (verified with `mgba_run`), and save-file segments every ~20k frames for the port validator |
 
-Repair handlers (`autosync.py`), in the order tried at each loss: formations (battle pointer), reward, video
-offset, stream overlay, hand/folder, green mystery data, subchip expiry, position, relocate, Weather tornado,
-map object, encounter, kill (enemy HP 0 when the video's battle ends), die (MegaMan HP 0), RNG writes at
-random events (primary and secondary, widening), fixed-point fallbacks. A handler whose fix comes back to the
-same loss is skipped there next time.
+Repair handlers (`autosync.py`), in the order tried at each loss: formations (battle pointer), reward, then
+the `handlers/` modules whose cheap `match(D, sync)` recognises the loss, then video offset, stream overlay,
+hand/folder, green mystery data, subchip expiry, position, relocate, Weather tornado, map object, encounter,
+kill (enemy HP 0 when the video's battle ends), die (MegaMan HP 0), the other `handlers/` modules, RNG writes
+at random events (primary and secondary, widening; never at a write point inside or before a FREE window),
+fixed-point fallbacks. A handler whose fix comes back to the same loss is skipped there next time (kept in
+the checkpoints, so a restart remembers); a loss gets `--budget-hours` (default 4) before the driver stops
+there as stuck.
 
 ## State (2026-10-13)
 
@@ -113,6 +116,12 @@ or `./wf vidsync-status`.
 
 - **Never insert waits.** `iCurrFrame` decides encounter formations and mystery data, so the trace keeps the
   video's frame count.
+- **The input display can misread a button for a frame.** `tools/vidsync/bits_fixes.json` lists corrections
+  to `bits.npy` with the evidence that the game saw other keys (beam.load_bits applies them; emu_server reads a
+  corrected copy, `bits.fixed.HASH.npy`). The first: A dropped for single frames while MegaMan lays the
+  Weather comp's orb trail (any frame without A drops the trail; the video's never drops).
+- **The picture lags the game's logic by a frame** (OAM goes out at the next vblank): a write judged by the
+  picture is judged on the picture after the next step.
 - **Pokes go in at `main_awaitFrame` entry.** The `.poke` format is `GAME_FRAME ADDR=VALUE/SIZE,...` (hex).
   The harness unwraps the u16 game frame.
 - **The battle seed is restored at phase 8** from 0x0203F4A4. A seed write in a battle intro must also write
