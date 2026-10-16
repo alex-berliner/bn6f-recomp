@@ -23,7 +23,7 @@ import time
 
 LOSS = re.compile(r"^(\d\d:\d\d:\d\d) lost the video near game (\d+)")
 FIX = re.compile(r"^(\d\d:\d\d:\d\d) fix (\d+): (.*)")
-HANDLER = re.compile(r"^\d\d:\d\d:\d\d   ([a-z][a-z _]*?|W=\d+[^:]*): (.*)")
+HANDLER = re.compile(r"^\d\d:\d\d:\d\d   ([a-z][a-z _]*?(?: at \d+)?|W=\d+[^:]*): (.*)")   # ("formation at F: ...")
 MEAN = re.compile(r"mean cost (\d+\.\d+)")
 NEAR = 30            # a loss within this many frames of another is the same loss
 
