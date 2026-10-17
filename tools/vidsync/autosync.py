@@ -77,7 +77,7 @@ class Remote:
         Remote.batch += 1; tag = f'{os.getpid()}.{Remote.batch}:'
         want = {}; self.left = []
         try: self._run(tasks, out, tag, want)
-        except (OSError, ValueError) as ex:          # a timeout is an OSError; a cut line, bad JSON
+        except Exception as ex:          # a timeout is an OSError; a cut line, bad JSON (a bug: logged, run here)
             log('remote workers lost:', repr(ex), sum(tid_of(t) not in out for t in tasks), 'tasks run here')
             self.left = [t for t in tasks if tid_of(t) not in out]; self.down = time.time()
             try: self.s.close()
@@ -444,12 +444,13 @@ def reach_many(w, extras, until, D):
     p0 = b.press_gf; ks = reach_keys(until, D)[w[0] - p0:until - p0]
     ck = ck_file(w)
     run = [list(p) for p in b.pokes]
-    tasks = [{'kind': 'path', 'id': tid, 'ck': ck, 'pokes': run + [list(x) for x in ex], 'keys': [k for k, _ in ks],
+    tid_s = {str(tid): tid for tid in extras}       # (task ids are strings: the remote's carry a prefix)
+    tasks = [{'kind': 'path', 'id': str(tid), 'ck': ck, 'pokes': run + [list(x) for x in ex], 'keys': [k for k, _ in ks],
               'vids': [v for _, v in ks], 'until': until, 'windows': [list(x) for x in LENIENT], 'mask': OVERLAY_MASK}
              for tid, ex in extras.items()]
-    res = {tid: list(r) for tid, r in evaluate(tasks).items()}
+    res = {tid_s[tid]: list(r) for tid, r in evaluate(tasks).items()}
     if 'path' not in PAR_OK:
-        ids = list(dict.fromkeys([tasks[0]['id'], tasks[-1]['id']]))     # (one run here, one on the remote)
+        ids = list(dict.fromkeys([tid_s[tasks[0]['id']], tid_s[tasks[-1]['id']]]))     # (one run here, one on the remote)
         here = [list(path_reach(w, extras[t], until, D)) for t in ids]
         if not par_check('path', here, [res[t] for t in ids]):
             return {tid: path_reach(w, ex, until, D) for tid, ex in extras.items()}
