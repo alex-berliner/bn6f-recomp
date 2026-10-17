@@ -1,0 +1,127 @@
+name: sub_809FA68
+address: '0x0809FA68'
+kind: function
+previous_names: []
+status: confirmed
+summary: Rolls one mystery data record, a weighted pick of its placement and a weighted pick of its contents (contents
+  indexes in an exclusion list weigh 0); the green mystery data roll at every jack-in and New Game.
+interface: (r0 = placement table or NULL, r1 = contents table, r2 = exclusion list of contents indexes, ended by
+  0xFF) -> r0 = placement index (0 when r0 was NULL), r1 = contents index. Preserves r4-r7; r2, r3 and flags clobbered.
+  Uses a 0x20-byte weight buffer on the stack. Each pick calls pickWeightedIndex_8000E3A, which advances the primary
+  RNG 2 + (rng >> 30) + (iCurrFrame & 3) times.
+details: "Both tables are lists of 8-byte entries; byte 0 = 0 ends the list, byte 1 is the entry's weight. For each\
+  \ list\nthe weights are copied into the stack buffer (no bound check: more than 32 entries would overrun it) and\n\
+  pickWeightedIndex_8000E3A(buffer, count) returns the index.\n- Placement pass, skipped when r0 is NULL (the result\
+  \ is then 0). In the mystery data tables the entries are\n  `01 20 xx xx yy yy 00 00`: weight 0x20, and bytes\
+  \ 2-5 look like two signed 16-bit coordinates\n  (e.g. 0xFF86, 0xFEFA).\n- Contents pass over r1's table: an entry\
+  \ whose index appears in the r2 list gets weight 0, the others their\n  byte 1. In the contents tables byte 0\
+  \ is the item kind (seen: 1, 3 with a zenny amount at +4, 5).\nCallers:\n- mysteryData_processMapGroups_809F9DC\
+  \ (asm28_1.s:62), for each type-5 record (12 bytes: type, u16 id,\n  placement table at +4, contents table at\
+  \ +8) of each internet map: r2 is a 16-byte 0xFF-filled list per map\n  to which each record's contents pick is\
+  \ appended, so two records of one map never get the same contents\n  index. sub_809FACE then stores the pair at\
+  \ eMysteryDataRolls + 2*(id - 0x1400): byte 0 = placement,\n  byte 1 = contents. That roll runs from initNewGameData_8004DF0\
+  \ (asm00_1.s:4144) and\n  resetPetNaviSetup_8033FDC (asm03_1_0.s:1080), which vidsync observes at every jack-in.\n\
+  - sub_809FD70 (asm28_1.s:622), the gold mystery data roll: r0 = 0 (no placement), r1 = the chosen gold\n  record's\
+  \ table, r2 an all-0xFF list; it keeps only r1 (byte_2000210+2).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-17'
+  detail: Two loops over 8-byte entries (stop at byte 0 = 0) copy byte 1 into the stack buffer and call pickWeightedIndex_8000E3A;
+    the first is skipped when r0 is 0, the second stores weight 0 for an index found in the 0xFF-ended list at r2.
+    Returns the first pick in r0 and the second in r1.
+  refs:
+  - bn6f/asm/asm28_1.s:99
+  - bn6f/asm/asm28_1.s:104
+  - bn6f/asm/asm28_1.s:131
+  - bn6f/asm/asm28_1.s:152
+  - bn6f/asm/asm00_0.s:1656
+  - pickWeightedIndex_8000E3A
+  reproduce: 'awk ''index($0,"sub_809FA68:")==1{f=1} f{print NR": "$0} f&&/thumb_func_end/{exit}'' bn6f/asm/asm28_1.s
+
+    awk ''index($0,"pickWeightedIndex_8000E3A:")==1{f=1} f{print NR": "$0} f&&/thumb_func_end/{exit}'' bn6f/asm/asm00_0.s'
+  result: body asm28_1.s:99-158; tst r0, r0 / beq at 104-105, the two bl pickWeightedIndex_8000E3A at 120 and 152,
+    exclusion scan 131-143 (weight 0 at 140, byte 1 at 143)
+- method: caller-analysis
+  date: '2026-10-17'
+  detail: Two calls. mysteryData_processMapGroups_809F9DC passes the record's +4 and +8 tables and the per-map exclusion
+    list, appends the returned r1 to that list and stores (r0, r1) with sub_809FACE as bytes 0 and 1 of the record's
+    eMysteryDataRolls halfword. sub_809FD70 passes r0 = 0, the gold record's table and a 0xFF-filled list and stores
+    r1 at byte_2000210+2.
+  refs:
+  - bn6f/asm/asm28_1.s:57
+  - bn6f/asm/asm28_1.s:62
+  - bn6f/asm/asm28_1.s:63
+  - bn6f/asm/asm28_1.s:68
+  - bn6f/asm/asm28_1.s:161
+  - bn6f/asm/asm28_1.s:622
+  - mysteryData_processMapGroups_809F9DC
+  - sub_809FD70
+  reproduce: 'grep -n ''bl sub_809FA68'' bn6f/asm/*.s
+
+    sed -n ''44,72p;160,169p;602,624p'' bn6f/asm/asm28_1.s'
+  result: asm28_1.s:62 and :622 only
+- method: runtime
+  date: '2026-10-13'
+  detail: 'vidsync''s sync driver, mystery data handler (try_gmd): for each green record of the map it counts the
+    record''s +4 and +8 tables the way this function walks them (8-byte entries until byte 0 is 0, gmd_records),
+    and writes each pair x | y << 8 (x < count of the +4 table, y < count of the +8 table) to the record''s eMysteryDataRolls
+    halfword just before the map is entered, keeping a write only when the sync then matches the video for hundreds
+    of frames. Kept fixes (runs run7y, run8j, see eMysteryDataRolls) show that these two bytes, the picks this function
+    returns, decide what the map shows. The driver does not re-run the weighted picks themselves.'
+  refs:
+  - tools/vidsync/autosync.py:383
+  - tools/vidsync/autosync.py:407
+  - tools/vidsync/autosync.py:830
+  - tools/vidsync/autosync.py:868
+  - eMysteryDataRolls
+  reproduce: grep -n -e 'def gmd_records' -e 'count(b.e.u32(q + 4))' -e 'def try_gmd' -e 'x | y << 8' -e 'GMD_BASE
+    =' tools/vidsync/autosync.py
+  result: autosync.py:381 (GMD_BASE = eMysteryDataRolls), 383, 407, 830, 867-868
+- method: data-inspection
+  date: '2026-10-17'
+  detail: 'Cross-check of the byte order with the video: vidsync''s probes (pk2_search.py, pt_table.py) look for
+    the video''s Central Area rolls, 0x0005 at eMysteryDataRolls+4 (id 0x1402) and 0x0106 at +0x16 (id 0x140B, "placement
+    1, 600z"). In the data, record 0x140B''s contents table byte_80A1BB8 has at index 6 the entry 03 20 FF FF 58
+    02 (kind 3, 0x258 = 600 zenny), and record 0x1402''s table byte_80A1A60 at index 5 has 03 20 FF FF C8 00 (200
+    zenny, the "200 Zenny" of wait_filter2.py), so byte 1 (the contents pick, r1) indexes the +8 table and byte
+    0 (r0) the +4 table.'
+  refs:
+  - tools/vidsync/pk2_search.py:9
+  - tools/vidsync/pt_table.py:14
+  - bn6f/data/dat28.s:1268
+  - bn6f/data/dat28.s:1289
+  - bn6f/data/dat28.s:1313
+  - bn6f/data/dat28.s:1338
+  reproduce: 'grep -n ''GMD = '' tools/vidsync/pk2_search.py tools/vidsync/pt_table.py
+
+    grep -n -A2 -e ''0x14020005'' -e ''0x140B0005'' bn6f/data/dat28.s
+
+    sed -n ''1289,1295p;1338,1344p'' bn6f/data/dat28.s'
+  result: 'byte_80A1BB8 entries: 1/0x1E, 1/0x36, 1/0x48, 1/0xC0, 3/200z, 3/400z, 3/600z, 5/1; byte_80A1A60 entry
+    5 = 3/200z'
+- method: coverage
+  date: '2026-10-17'
+  detail: Executed by 19 recorded routes (battle, battles1, battles2, battlesweep, beastsp, fuzz, maps, menus2,
+    menus3, story1-story9, wander), so lockstep compares the ported game's state after it there.
+  reproduce: grep -l '^0809fa68 ' tools/traces/coverage/*.prof
+  result: 19 files
+related:
+- mysteryData_processMapGroups_809F9DC
+- pickWeightedIndex_8000E3A
+- sub_809FD70
+- eMysteryDataRolls
+open_questions:
+- autosync.py's two-record candidates (the comment "positions are byte 1, one record per position; contents kept")
+  vary byte 1 and keep byte 0, which by the code and the data is varying the contents, not the position. The exclusion
+  list does make contents indexes unique per map, not positions.
+- The meaning of placement bytes 2-5 (coordinates?) and of the contents kinds other than 3 (zenny) was not checked.
+- suggested name mysteryData_rollPlacementAndContents_809FA68 (it returns the placement and the contents picks of
+  a mystery data record)
+sources:
+- vidsync docs/vidsync/BN6F_SYMBOLS.md
+- Claude session_01DywpM9x1GYhwUsv45iVPi1 (review of Hyper glm-5.3-flash drafts)
+changes:
+- date: '2026-10-17'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b95be76c
+  tool: tools/symdoc.py

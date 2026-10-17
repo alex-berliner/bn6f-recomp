@@ -1,0 +1,70 @@
+name: eOWPlayerObject_X
+address: '0x02009F5C'
+kind: ram
+previous_names: []
+status: confirmed
+summary: 'MegaMan''s overworld X position (eOWPlayerObject +0x1C, s16.16: pixels in the high halfword); the start of
+  the object''s Coords (X, Y, Z, then NextX/Y/Z).'
+details: |
+  Field X of overworld_player_object_struct (include/structs/OverworldPlayerObject.inc:29, loc 0x1C) instantiated
+  at eOWPlayerObject = 0x02009F40 (ewram.s:775). The code reaches it through GameState.OverworldPlayerObjectPtr,
+  which SpawnOWPlayerObject's result (eOWPlayerObject) is stored into (ow_player.s:195, 2077). The integer pixel
+  part is the high halfword (oOWObjectCoords_X = 2, read with ldrsh, e.g. owObject_lineDraw_8030CAC).
+  Writers: the movement handlers add the step (+0x38) to it each frame (owPlayer_applyCountdownUpdate_809D5C4,
+  owPlayer_ApplyKnockbackOrSnapToTarget_809D730), set it back from NextX when a frame's move is cancelled, and
+  owPlayer_copyCoordsToNextCoords..._809e188/_809e1d8 set it (keeping the old value in NextX); clampPlayerPosition_809E3D6
+  clamps it to bounds held in eStruct2000aa0. Readers include ReadOWPlayerObjectCoords, owPlayer_isMoving_809DFA0
+  (X != NextX), the collision sweep (checkCollision_8030b6a -> owObject_lineDraw_8030CAC, from NextX/Y to X/Y)
+  and map_triggerEnterMapOnWarp_8005C04, which saves it on a real-world/internet crossing (asm00_1.s:5845).
+  vidsync (BN6F_SYMBOLS.md, level R): try_relocate in tools/vidsync/autosync.py writes it, with Y, NextX and NextY,
+  through syms.GS_OW_PLAYER_PTR (offset 0x1C) to move MegaMan where the video has him; segment junctions
+  (tools/vidsync/segments.py) write the 0x30 bytes from +0x1C; try_position and probes read +0x1C to trace his walk.
+evidence:
+- method: assembly-reading
+  date: '2026-10-17'
+  detail: Layout from the struct include and ewram.s; the pointer from SpawnOWPlayerObject; the reads and writes
+    named above, by name (oOWPlayerObject_X) and at offset 0x1C on the GameState pointer.
+  refs:
+  - bn6f/include/structs/OverworldPlayerObject.inc:29
+  - bn6f/ewram.s:775
+  - bn6f/asm/ow_player.s:2077
+  - bn6f/asm/ow_player.s:573
+  - bn6f/asm/ow_player.s:2799
+  - bn6f/asm/ow_player.s:2323
+  reproduce: |
+    sed -n '28,35p' bn6f/include/structs/OverworldPlayerObject.inc; sed -n '775,777p' bn6f/ewram.s
+    grep -rn 'oOWPlayerObject_X\]' bn6f/asm bn6f/maps | awk -F: '{print $1}' | sort | uniq -c
+    sed -n '2070,2078p;2323,2331p' bn6f/asm/ow_player.s
+  result: 'X at loc 0x1C of the struct at 0x2009f40; 32 named accesses (25 in ow_player.s); SpawnOWPlayerObject''s
+    r5 stored into oGameState_OverworldPlayerObjectPtr; ReadOWPlayerObjectCoords returns X/Y/Z in r0-r2'
+- method: runtime
+  date: '2026-10-17'
+  detail: 'Written by the vidsync sync driver: try_relocate writes MegaMan''s X (with Y, NextX, NextY) at +0x1C of
+    GameState.OverworldPlayerObjectPtr in 16-pixel and 2-pixel steps, keeping a place only when the picture then
+    matches the video and the path holds 150 frames past the loss; run run8j''s fixes wrote this field
+    (build-vidsync/learned.md, the vidsync-tick learn step, listed it as written without an entry). try_position
+    reads +0x1C/+0x20 each frame to trace the walk before an encounter.'
+  refs:
+  - tools/vidsync/autosync.py:526
+  - tools/vidsync/autosync.py:542
+  - tools/vidsync/segments.py:151
+  - tools/vidsync/syms.py:92
+  - docs/vidsync/BN6F_SYMBOLS.md
+  reproduce: |
+    grep -n 'def try_relocate\|(0x1C, x), (0x20, y), (0x28, x), (0x2C, y)\|u32(po + 0x1C)' tools/vidsync/autosync.py
+    grep -n 'po + 0x1C' tools/vidsync/segments.py; grep -n 'GS_OW_PLAYER_PTR =' tools/vidsync/syms.py
+  result: 'autosync.py:526 def try_relocate, 542/546 the writes at +0x1C/+0x20/+0x28/+0x2C, 502/538 the reads;
+    segments.py:151 the junction write; syms.py:92 GS_OW_PLAYER_PTR = eGameState.oGameState_OverworldPlayerObjectPtr'
+related:
+- eOWPlayerObject
+- eOWPlayerObject_Y
+- eOWPlayerObject_NextX
+- ReadOWPlayerObjectCoords
+- eGameState
+open_questions:
+- 'Several battle_* entries (e.g. battle_scrollStep_80314CC, battle_aiPointLeftOfLineSideTest_8031C42) describe a
+  captured r0 = 0x02009F5C as an AIData struct; 0x02009F5C is this field, the start of MegaMan''s Coords, so those
+  routines probably take the player''s Coords (not checked here).'
+sources:
+- vidsync docs/vidsync/BN6F_SYMBOLS.md
+- Claude session_01DywpM9x1GYhwUsv45iVPi1 (review of Hyper glm-5.3-flash drafts)

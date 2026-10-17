@@ -1,0 +1,66 @@
+name: byte_80A93C0
+address: '0x080A93C0'
+kind: data
+previous_names: []
+status: probable
+summary: 'Brightness ramp of the Mr. Weather comp map object type 0x1B''s fade: 4, 6, ..., 0x1E, 0x1F, then 0xFF
+  (end); sub_80A937C applies entry [r5+0x24] >> 1 as a grey color shader.'
+details: '16 bytes at asm29.s:8459-8461: 0x04, 0x06, 0x08, 0x0A, 0x0C, 0x0E, 0x10, 0x12, 0x14, 0x16, 0x18, 0x1A,
+  0x1C,
+
+  0x1E, 0x1F, 0xFF. Its only reader is sub_80A937C (through the literal off_80A93BC, asm29.s:8457), which each
+
+  frame takes entry [r5+0x24] >> 1 (so each value lasts two frames, 30 frames for the 15 values), passes
+
+  v | v << 5 | v << 10 (the same 5-bit level in red, green and blue) to sprite_setColorShader, and increments
+
+  [r5+0x24]; at the 0xFF entry it sets state +8 = 0xC, calls sub_80A93D0 and sets EVENT_BE7 instead of the
+
+  shader (the counter still increments).
+
+  sub_80A937C runs from sub_80A9360, the state-8 handler of map object type 0x1B (sub_80A92B8), which its state-4
+
+  handler sub_80A931C enters when EVENT_BE6 is set (owMapObject_weatherTornado_checkHitPlayer_80A91A4 sets it when
+
+  a tornado reaches MegaMan while EVENT_BE4 is set). vidsync''s BN6F_SYMBOLS.md
+
+  lists this as the white fade of type 0x1B (the rainbow orbs, "probably") and notes a white fade seen in both
+
+  the run and the video at game 432736; which object''s fade that was was not checked, and vidsync never reads
+
+  or writes the table.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-17'
+  detail: Table and its only reader read; no other reference to byte_80A93C0 or off_80A93BC.
+  refs:
+  - bn6f/asm/asm29.s:8459
+  - bn6f/asm/asm29.s:8425
+  - bn6f/asm/asm29.s:8378
+  reproduce: 'awk ''/^sub_80A937C:/{f=1} f{print FNR": "$0} f&&/thumb_func_end/{exit}'' bn6f/asm/asm29.s
+
+    grep -rn ''byte_80A93C0\|off_80A93BC'' bn6f/asm bn6f/data bn6f/maps | grep -v symdb
+
+    '
+  result: sub_80A937C at asm29.s:8425-8462 (ldr r3, off_80A93BC at 8429 and 8435, sprite_setColorShader, the 0xFF
+    branch with EVENT_BE7, the table at 8459-8461); the only references are those two loads and the literal at 8458
+related:
+- sub_80A937C
+- sub_80A9360
+- sub_80A931C
+- sub_80A92B8
+open_questions:
+- Whether sprite_setColorShader adds this level (a fade to white) or blends towards it (not read); vidsync calls
+  it a white fade from the picture.
+- 'suggested name: owMapObject1B_fadeLevels_80A93C0 (a table of fade levels; the object''s identity as the rainbow
+  orbs is vidsync''s "probably")'
+sources:
+- vidsync docs/vidsync/BN6F_SYMBOLS.md
+- Claude session_01DywpM9x1GYhwUsv45iVPi1 (review of Hyper glm-5.3-flash drafts)
+changes:
+- date: '2026-10-17'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b95be76c
+  tool: tools/symdoc.py

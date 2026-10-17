@@ -1,0 +1,89 @@
+name: object_spawnCollisionEffect
+address: '0x0801A0D4'
+kind: function
+previous_names: []
+status: probable
+summary: Spawns the hit-effect object for the battle object in r5's last collision at its own coordinates, jittered
+  by up to 8 pixels in X and Z (1 primary GetRNG), unless the collision flags or a HitEffect of 0xFF rule it out.
+interface: (r5 = BattleObject *) -> when it spawns, r0 = the new effect object or 0 (object_spawnRelatedChildEffect_80E08C4,
+  Z set on 0); when it returns early, r0 = the caller's r0 or 0xFF; r4 and r6 preserved; clobbers r1-r3, lr and
+  the flags.
+details: 'Body (asm00_2.s:22498-22520): r3 = obj->CollisionDataPtr, r6 = its FlagsFromCollision (+0x70). It returns
+  at once
+
+  when no bit of 0x3F800000 is set, when bit 0 is set, or when the HitEffect byte (+0x9) is 0xFF. Otherwise r4 =
+
+  HitEffect, r1-r3 = the object''s Coords (X, Y, Z, 16.16 fixed point, +0x34/+0x38/+0x3C), and
+
+  AddRandomVarianceToTwoCoords(0xF) draws one GetRNG and adds ((r & 0xF) - 7) << 16 to X (r1) and
+
+  (((r >> 16) & 0xF) - 7) << 16 to Z (r3), Y unchanged. object_spawnRelatedChildEffect_80E08C4 then spawns a type-4
+
+  battle object (object_spawnType4 with r0 = 4, r1-r3 the position, r4 the HitEffect), links it to this object
+
+  (RelatedObject1Ptr) and gives it this object''s Alliance.
+
+
+  battleObject_spawnHitEffectAtPanel_801A100, right after it, is the same code except for the position: the centre
+
+  of the panel the object stands on (convertXYToPanelXY_800E258, object_getCoordinatesForPanels, Z = 0x10 << 16)
+
+  instead of the object''s own coordinates.
+
+
+  Called from 119 places, all `bl object_spawnCollisionEffect` in asm31.s (battle object handlers, with r5 the
+
+  object). vidsync (docs/vidsync/RANDOM_EVENTS.md) counts it among the hit-spark sources that advance the primary
+  RNG
+
+  by one; that is read from the code, vidsync has no runtime finding for it.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-17'
+  detail: 'Body read with its two callees. The 0x3F800000 / bit 0 / HitEffect 0xFF early returns, ldmia of three
+    words from r5 + 0x34 into r1-r3 (oBattleObject_Coords, X/Y/Z), mov r0, #0xf, bl AddRandomVarianceToTwoCoords
+    (one bl GetRNG, jitter added to r1 and r3), bl object_spawnRelatedChildEffect_80E08C4 (mov r0, #4, bl object_spawnType4,
+    then RelatedObject1Ptr and Alliance on the new object).'
+  refs:
+  - bn6f/asm/asm00_2.s:22498-22520
+  - bn6f/asm/asm00_2.s:26641-26664
+  - bn6f/asm/asm31.s:86701-86717
+  - bn6f/include/structs/BattleObject.inc:131-137
+  - bn6f/include/structs/CollisionData.inc:102
+  - bn6f/include/structs/CollisionData.inc:158
+  reproduce: 'sed -n ''22498,22520p;26641,26664p'' bn6f/asm/asm00_2.s
+
+    sed -n ''86701,86717p'' bn6f/asm/asm31.s
+
+    sed -n ''131,137p'' bn6f/include/structs/BattleObject.inc
+
+    '
+  result: as described; one bl GetRNG in AddRandomVarianceToTwoCoords
+- method: caller-analysis
+  date: '2026-10-17'
+  detail: Every reference is a direct call from asm31.s; the name appears nowhere else but at the definition.
+  reproduce: 'grep -rn ''bl object_spawnCollisionEffect'' bn6f/asm | cut -d: -f1 | sort | uniq -c
+
+    grep -rn ''object_spawnCollisionEffect'' bn6f/asm | grep -vc ''bl object_spawnCollisionEffect''
+
+    '
+  result: 119 bn6f/asm/asm31.s; 3 other lines (thumb_func_start, the label, thumb_func_end)
+related:
+- battleObject_spawnHitEffectAtPanel_801A100
+- object_spawnRelatedChildEffect_80E08C4
+- AddRandomVarianceToTwoCoords
+- object_setCollisionHitEffect
+open_questions:
+- What the FlagsFromCollision bits 0x3F800000 and bit 0 mean (some hit happened; bit 0 vetoes the effect).
+- 'suggested name: object_spawnHitEffectAtObject (the twin of battleObject_spawnHitEffectAtPanel_801A100, placing
+  the effect at the object''s own coordinates instead of its panel''s centre)'
+sources:
+- vidsync docs/vidsync/BN6F_SYMBOLS.md
+- Claude session_01DywpM9x1GYhwUsv45iVPi1 (review of Hyper glm-5.3-flash drafts)
+changes:
+- date: '2026-10-17'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b95be76c
+  tool: tools/symdoc.py

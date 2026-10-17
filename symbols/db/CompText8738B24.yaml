@@ -1,0 +1,111 @@
+name: CompText8738B24
+address: '0x08738B24'
+kind: data
+previous_names: []
+status: probable
+summary: LZ-compressed text archive of MegaMan's Humor-program jokes, shown on an L press while Humor is installed;
+  each area's script picks its joke with the random-branch text opcode F0.
+details: 'Data, not code: dat38_87.s includes it as an .incbin of data/textscript/compressed/CompText8738B24.s.lz,
+  built
+
+  from the readable source data/textscript/compressed/CompText8738B24.s (a size word 0x2D7C00, then the text
+
+  archive).
+
+
+  Use: the only reference is the literal MegamanJokesCompText8099294 (= CompText8738B24 + COMPRESSED_PTR_FLAG,
+
+  asm28_0.s:509), loaded at asm28_0.s:475 in RunLMessageTextScript (the L-button message). That function shows
+
+  it only when the current PET navi is 0 (MegaMan) and NaviStats.Humor == 1; in the real world it also needs
+
+  EVENT_PET_NAVI_ACTIVE set and EVENT_COPYBOT_ACTIVE and EVENT_172A clear. Otherwise it tries
+
+  NaviStats.Poem == 1 (CompText873A528, the Poem program''s poems), else the map''s normal L message. The archive
+
+  is decompressed (DecompressTextArchiveForCutscene2) and script 0 is run.
+
+
+  Contents: script 0 is a dispatcher of ts_check_area tests (real-world areas 0-6 and internet groups
+
+  0x80-0x96) that jumps to a per-area script; scripts 1-4 split some of those by sub-area. Seven per-area
+
+  scripts (unk10, unk20, ... unk70) open with
+
+  `ts_jump_random 0x47, 0x20 x6, 0, 0, 0xFF, N+1 .. N+5, 0xFF, 0xFF`, i.e. text opcode F0 0x47: eight weights
+
+  and eight target scripts (0xFF = go on with the current script), six of them weighted 0x20. So each L press
+
+  tells one of six jokes for the area: the one written inline after the opcode or scripts N+1..N+5. The opcode''s
+
+  handler chatbox_F0_jump draws (iCurrFrame & 3) + 2 GetRNG values and takes (r & 0x3FF) % 192; with r uniform
+
+  the first two outcomes get 192/1024 each and the other four 160/1024 (1024 = 5*192 + 64). Bit 7 of 0x47 is
+
+  clear, so EVENT_1709 does not matter here. The jokes are MegaMan (mugshot 0x37) talking to Lan (mugshot 0),
+
+  e.g. "Lan,c''mon... Buy a chip..." in unk10.
+
+  '
+evidence:
+- method: data-inspection
+  date: '2026-10-17'
+  detail: The readable source of the archive has seven ts_jump_random (F0 0x47) opcodes, one at the top of each
+    per-area joke script, each with six 0x20 weights over the targets 0xFF (continue) and five more joke scripts;
+    script 0 dispatches by area with ts_check_area. The text is MegaMan's jokes (e.g. unk10, "Lan,c'mon... Buy a
+    chip...").
+  refs:
+  - bn6f/data/textscript/compressed/CompText8738B24.s:343
+  - bn6f/data/textscript/compressed/CompText8738B24.s:344
+  - bn6f/include/bytecode/text_script_commands.inc:769
+  reproduce: 'grep -n -e ts_jump_random -e ''def_text_script CompText8738B24_unk[1-7]0$'' bn6f/data/textscript/compressed/CompText8738B24.s
+
+    sed -n ''343,370p'' bn6f/data/textscript/compressed/CompText8738B24.s'
+  result: 7 ts_jump_random lines (344, 664, 944, 1217, 1463, 1712, 1920), all 0x47 with weights 0x20 x6, 0, 0 and
+    targets 0xFF, N+1..N+5, 0xFF, 0xFF (N = 10, 20, ... 70)
+- method: assembly-reading
+  date: '2026-10-17'
+  detail: Defined as an .incbin of the compressed archive; referenced once, as the pool word MegamanJokesCompText8099294
+    (CompText8738B24 + COMPRESSED_PTR_FLAG) that RunLMessageTextScript loads when the current navi is 0 and its
+    Humor stat byte is 1, then decompresses and runs script 0. The F0 handler chatbox_F0_jump (chatbox.s:4400; vidsync's
+    docs cite 4288) draws (iCurrFrame & 3) + 2 GetRNG values and picks by (r & 0x3FF) % (sum of weights), storing
+    nothing.
+  refs:
+  - bn6f/data/dat38_87.s:7
+  - bn6f/asm/asm28_0.s:441
+  - bn6f/asm/asm28_0.s:475
+  - bn6f/asm/asm28_0.s:509
+  - bn6f/asm/chatbox.s:4400
+  - RunLMessageTextScript
+  - chatbox_F0_jump
+  reproduce: 'grep -rn CompText8738B24 bn6f/asm bn6f/data/dat38_87.s
+
+    sed -n ''441,511p'' bn6f/asm/asm28_0.s
+
+    awk ''index($0,"chatbox_F0_jump:")==1{f=1} f{print} f&&/thumb_func_end/{exit}'' bn6f/asm/chatbox.s'
+  result: dat38_87.s:7 (label) and :8 (.incbin), asm28_0.s:475 (ldr) and :509 (.word); nothing else
+- method: assembly-reading
+  date: '2026-10-13'
+  detail: vidsync's own reading (level A, never written or read by its sync driver) lists this archive among the
+    users of chatbox_F0_jump as the Humor-program jokes. It groups CompText873A528 with it as Humor jokes too, but
+    the code shows that one only with NaviStats.Poem == 1 and its text is poems.
+  refs:
+  - docs/vidsync/BN6F_SYMBOLS.md:301
+  - docs/vidsync/RANDOM_EVENTS.md:416
+  reproduce: grep -n CompText8738B24 docs/vidsync/BN6F_SYMBOLS.md docs/vidsync/RANDOM_EVENTS.md
+related:
+- RunLMessageTextScript
+- chatbox_F0_jump
+- CompText873A528
+open_questions:
+- Which area values the ts_check_area/ts_check_sub_area tests in scripts 0-4 stand for was not mapped to area names.
+- suggested name CompTextHumorJokes8738B24 (the asm's own literal is MegamanJokesCompText8099294; the form follows
+  CompTextScriptNaviCustAndFolders86D82C4)
+sources:
+- vidsync docs/vidsync/BN6F_SYMBOLS.md
+- Claude session_01DywpM9x1GYhwUsv45iVPi1 (review of Hyper glm-5.3-flash drafts)
+changes:
+- date: '2026-10-17'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b95be76c
+  tool: tools/symdoc.py

@@ -1,39 +1,36 @@
 name: ShuffleHwordList_SecondaryRNG
 address: '0x08000D12'
 kind: function
-status: hypothesis
-summary: In-place Fisher–Yates-style shuffle of a u16 array using the secondary RNG and BIOS Sqrt as the index source.
-interface: 'void shuffleHwordList_SecondaryRNG_08000D12(const u16 *r0_array, u32 r1_rngState, u32 r2_count);
-
-  // returns r0 = r0_array, r1 = r1_rngState, r2 = 0, r3 = last computed halfword byte-offset;
-
-  // clobbers nz,c,v; preserves r0/r1/r4/r5/r6/r7.
+status: confirmed
+summary: 'Shuffles a u16 list in place by r2 random swaps: each swap picks two indices as secondary-RNG values modulo
+  the list length (BIOS Div).'
+interface: '(r0 = u16 *list, r1 = list length, r2 = number of swaps, at least 1) -> r0, r1 unchanged, r2 = 0, r3
+  = 2 * the first index of the last swap; r4-r6 restored; clobbers flags.
 
   '
-details: 'Performs `r2` iterations. Per iteration it pushes r0/r1/r2/r3, calls
+details: 'Each round calls GetPositiveSignedRNGSecondary twice. After each call r0 is the random value and r1 the
+  list length (kept on the stack across the call), and `svc 6` is the BIOS Div: r0 = r0 / r1, r1 = r0 % r1. The
+  two remainders are the indices (rng % length, each in 0..length-1); doubled, they are byte offsets, and the two
+  halfwords are swapped. r2 counts the rounds down to 0 (a do-while: r2 = 0 would run 2^32 rounds). It is not a
+  Fisher-Yates shuffle: the same index can come twice (a no-op swap), and how well the list is mixed depends on
+  the number of swaps the caller asks for.
 
-  `GetPositiveSignedRNGSecondary` once, pipes its result through the GBA BIOS `Sqrt` SWI
-
-  (svc 6) — whose R1 quotient is the actual usable index — and repeats the pair
-
-  (GetPositiveSignedRNGSecondary then Sqrt) to obtain a second index. The two indices are
-
-  doubled (`add r3, r3, r3` / `add r4, r4, r4`) to turn them into byte offsets for `ldrh`/`strh`,
-
-  then the halfwords at those offsets in the array pointer passed in r0 are swapped. r2 is
-
-  decremented and the loop repeats until r2 == 0. Final outputs restore r0/r1 to their incoming
-
-  values, set r2 = 0 (the consumed count), and leave r3 = the last generated index*2. Note
-
-  GetPositiveSignedRNGSecondary is called twice per swap but the Sqrt result from the first
-
-  pair is what is consumed (it uses R1 from the SWI as the index) — i.e. the RNG seed in r1 is
-
-  threaded through both the C helper and the BIOS SWI as if the SWI were part of the RNG mix.
+  The twin ShuffleHwordList_PrimaryRNG does the same with the primary RNG.
 
   '
 evidence:
+- method: assembly-reading
+  date: '2026-10-17'
+  detail: 'svc 6 is the GBA BIOS Div (r0 / r1: quotient in r0, remainder in r1), not Sqrt (svc 8). r1 holds the
+    list length across both GetPositiveSignedRNGSecondary calls (push {r1} / pop {r1}), so the index taken from
+    r1 after each svc is rng % length. Corrects the earlier reading of this entry, which took svc 6 for Sqrt and
+    r1 for an RNG state.'
+  refs:
+  - bn6f/asm/asm00_0.s:1455-1484
+  - ShuffleHwordList_PrimaryRNG
+  reproduce: awk 'index($0,"ShuffleHwordList_SecondaryRNG:")==1{f=1} f{print} f&&/thumb_func_end/{exit}' bn6f/asm/asm00_0.s
+  result: 'svc 6 twice; mov r3, r1 and mov r4, r1 after them; add r3, r3, r3 / add r4, r4, r4; ldrh/strh swap; sub
+    r2, #1; bne'
 - method: readable-c
   date: '2026-10-10'
   detail: Written by hyper/qwen3.8-flash through the convert workflow (9 attempt(s), run convert-20261010-210643);
@@ -84,6 +81,10 @@ changes:
   what: doc comment (symdb block) at the definition
   where: bn6f 27d1cdb8
   tool: tools/symdoc.py
+- date: '2026-10-17'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b95be76c
+  tool: tools/symdoc.py
 coverage:
 - battle
 - battles1
@@ -100,14 +101,14 @@ coverage:
 - story7
 - story8
 - story9
+related:
+- ShuffleHwordList_PrimaryRNG
 open_questions:
-- Why is the BIOS Sqrt interposed between the two RNG calls instead of just using the RNG value directly as an index
-  — is the Sqrt normalizing a uniform-square distribution?
-- Does the function rely on GetPositiveSignedRNGSecondary mutating r1 as its state seed for the next iteration?
-- Where is the shuffled array used (battle-order randomization, chip-deck shuffle, encounter table)?
+- Where each caller uses it, and with how many swaps (battle-order randomization, chip lists, encounters).
 sources:
 - tools/wf run convert-20261010-210643
 - recomp 4e46892
+- Claude session_01DywpM9x1GYhwUsv45iVPi1 (svc 6 read as Div; found reviewing ShuffleHwordList_PrimaryRNG)
 signature:
   c: void ShuffleHwordList_SecondaryRNG(u8 *r0, u8 r1, u8 r2)
   params:

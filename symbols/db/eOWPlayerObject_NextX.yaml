@@ -1,0 +1,79 @@
+name: eOWPlayerObject_NextX
+address: '0x02009F68'
+kind: ram
+previous_names: []
+status: probable
+summary: 'MegaMan''s overworld X at the start of the current move (eOWPlayerObject +0x28, s16.16): copied from X before
+  each frame''s movement, put back into X when the move is cancelled; despite the name, his previous X, not a target.'
+details: |
+  Field NextX of overworld_player_object_struct (include/structs/OverworldPlayerObject.inc:32, loc 0x28; NextY and
+  NextZ follow) in eOWPlayerObject = 0x02009F40. What the code does with it (bn6f/asm/ow_player.s):
+    - owPlayer_update_809D348, MegaMan's per-frame state (state 1 of owPlayer_main), first copies X/Y/Z into
+      NextX/Y/Z (273-278), then runs the movement handler, which adds the step to X/Y; the init state sub_809D270
+      (231-236) and ow_player_updateCollisionAndPos_809D800 (911-916) do the same copy before they move him;
+    - owPlayer_applyCountdownUpdate_809D5C4 (607-613) and owPlayer_ApplyKnockbackOrSnapToTarget_809D730 (781-787)
+      copy NextX/Y/Z back into X/Y/Z on a frame where he does not move;
+    - owPlayer_isMoving_809DFA0 (1921) reports a move when X/Y/Z differ from NextX/Y/Z;
+    - owPlayer_copyCoordsToNextCoords..._809e188 (2288) and _809e1d8 (2356) save X into NextX before setting or
+      offsetting X;
+    - clampPlayerPosition_809E3D6 (2799) restores X from NextX when it clamps Y;
+    - the collision sweep checkCollision_8030b6a -> owObject_lineDraw_8030CAC (asm03_0.s:23399) walks the tiles
+      from (NextX, NextY) to (X, Y), reading the pixel halfwords oOWObjectCoords_NextX/NextY (Coords + 0xE/0x12).
+  So it is the position the frame's move started from. vidsync's BN6F_SYMBOLS.md calls +0x28/+0x2C/+0x30 the
+  "walk target" that "the game pulls him back towards", and its segments.py comment says "where he walks to";
+  the code read here does not support that reading.
+  vidsync (level R): try_relocate writes NextX = X (and NextY = Y) along with X/Y when it moves MegaMan; segment
+  junctions restore it in the 0x30 bytes from +0x1C.
+evidence:
+- method: assembly-reading
+  date: '2026-10-17'
+  detail: Every named access (oOWPlayerObject_NextX/NextY, 16 in ow_player.s), the raw +0x28/+0x2C accesses in
+    clampPlayerPosition_809E3D6 and the Coords-relative reads in owObject_lineDraw_8030CAC read.
+  refs:
+  - bn6f/include/structs/OverworldPlayerObject.inc:32
+  - bn6f/asm/ow_player.s:260
+  - bn6f/asm/ow_player.s:573
+  - bn6f/asm/ow_player.s:765
+  - bn6f/asm/ow_player.s:1921
+  - bn6f/asm/ow_player.s:2799
+  - bn6f/asm/asm03_0.s:23399
+  reproduce: |
+    grep -rn 'oOWPlayerObject_NextX\|oOWPlayerObject_NextY\|oOWObjectCoords_NextX\|oOWObjectCoords_NextY' bn6f/asm bn6f/maps
+    sed -n '260,280p;605,614p;779,788p;1921,1940p' bn6f/asm/ow_player.s
+    awk '/^clampPlayerPosition_809E3D6:/{f=1} f{print FNR": "$0} f&&/thumb_func_end/{exit}' bn6f/asm/ow_player.s
+  result: '18 lines: ow_player.s 234/235, 276/277, 914/915, 2294/2296, 2363/2368 (stores: X copied in), 608/609,
+    782/783 (loads put back into X/Y), 1925/1929 (owPlayer_isMoving compares), asm03_0.s:23402/23404 (the sweep''s
+    start); clampPlayerPosition_809E3D6 loads +0x28 into +0x1C at 2835-2836 and 2844-2845'
+- method: runtime
+  date: '2026-10-17'
+  detail: 'Written by the vidsync sync driver: try_relocate writes NextX at +0x28 of GameState.OverworldPlayerObjectPtr
+    with the same value as X (and NextY = Y), and the game then goes on from the new place matching the video (the
+    path must hold 150 frames past the loss); run run8j''s fixes wrote this field (build-vidsync/learned.md listed it
+    as written without an entry). This shows that NextX = X is a consistent stationary state at a new place; no run
+    wrote NextX alone or differently from X.'
+  refs:
+  - tools/vidsync/autosync.py:542
+  - tools/vidsync/segments.py:150
+  - docs/vidsync/BN6F_SYMBOLS.md
+  reproduce: |
+    grep -n '(0x1C, x), (0x20, y), (0x28, x), (0x2C, y)' tools/vidsync/autosync.py
+    grep -n 'NextX/Y/Z\|po + 0x1C + k' tools/vidsync/segments.py
+  result: 'autosync.py:542 and 546 (the same x at 0x1C and 0x28, y at 0x20 and 0x2C); segments.py:150-151'
+related:
+- eOWPlayerObject
+- eOWPlayerObject_X
+- eOWPlayerObject_NextY
+- owPlayer_update_809D348
+- owPlayer_isMoving_809DFA0
+- owObject_lineDraw_8030CAC
+- clampPlayerPosition_809E3D6
+open_questions:
+- 'Why a relocation needs NextX written at all: owPlayer_update_809D348 overwrites it with X at the start of every
+  update, so a lone X write would not be pulled back by that copy. Something read before MegaMan''s next update
+  (another object, the camera, the collision sweep in a state that skips the copy) may use the stale value; not
+  tested (try_relocate always writes both).'
+- 'suggested name: eOWPlayerObject_PrevX (the X the current move started from; "Next" reads as a target, which the
+  code does not support). The struct field NextX (and oOWObjectCoords_NextX) would change with it.'
+sources:
+- vidsync docs/vidsync/BN6F_SYMBOLS.md
+- Claude session_01DywpM9x1GYhwUsv45iVPi1 (review of Hyper glm-5.3-flash drafts)

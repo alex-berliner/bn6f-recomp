@@ -1,0 +1,102 @@
+name: submenu_subchip_8124230
+address: '0x08124230'
+kind: function
+previous_names: []
+status: probable
+summary: Sub-chip menu step for using SneakRun - sets EVENT_170A, starts its counter (eStruct2001c04+0x24 = 0x1770,
+  6000), moves the menu to state 0x10 and runs chatbox script 0xA with the menu's message halfword.
+interface: (r5 = sub-chip menu state, r10 = toolkit) -> void; writes EVENT_170A, the u32 at eStruct2001c04+0x24,
+  menu byte +0x02 and the chatbox's +0x4C; r4 preserved; returns whatever chatbox_runScript201C100_812474C leaves
+  in r0-r3.
+details: 'Body (asm33.s:2287-2307): SetEventFlagFromImmediate(EVENT_170A); str 0x1770 to [toolkit->S2001c04 + 0x24]
+  (32
+
+  bits); strb 0x10 to menu +0x02; the halfword at menu +0x10 to [toolkit->Chatbox + 0x4C] (32-bit str);
+
+  chatbox_runScript201C100_812474C(0xA). It is mode 8 of the sub-chip menu dispatcher submenu_subchip_dispatch_8124144
+
+  (jt_8124188, asm33.s:2163-2169). Its siblings there do the same for the other sub-chips: submenu_subchip_812425C
+
+  sets EVENT_1709 (no counter), submenu_subchip_812427C sets EVENT_170B and 0x1770 at +0x28 (and copies +0x1C to
+  +0x2C),
+
+  submenu_subchip_81242AC sets EVENT_1708 and state 0x14.
+
+
+  The flag and counter are what make SneakRun last. npc_80350BC (asm03_1_0.s:2721), on internet maps (MapGroup >=
+
+  0x80), clears EVENT_170A and starts the cutscene byte_8099DC0 (r1 = 1, the "<item> just expired!" message) once
+  the
+
+  flag is set and the counter is 0; EVENT_170B with +0x28 gives the same cutscene with r1 = 0.
+
+  endOfSection_NaviSetup_80340F6 zeroes both counters and clears EVENT_170A, EVENT_170B and EVENT_1709. The
+
+  random-encounter code reads +0x24 (asm29.s:10761, named oS2001c04_EncounterGate there).
+
+
+  Which flag is which sub-chip is vidsync''s: its subchip handler calls EVENT_170A (byte 0x02001F69, mask 0x20)
+  with
+
+  the counter at 0x02001C28 "SneakRun", and EVENT_170B (mask 0x10) with 0x02001C2C "LocEnemy" (docs/vidsync/BN6F_SYMBOLS.md,
+
+  level R for the flags and counters); nothing in this entry ties the names to the flags independently.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-17'
+  detail: Body read; with npc_80350BC (the expiry check on EVENT_170A / +0x24 and EVENT_170B / +0x28) and its place
+    in jt_8124188.
+  refs:
+  - bn6f/asm/asm33.s:2287-2307
+  - bn6f/asm/asm33.s:2163-2169
+  - bn6f/asm/asm03_1_0.s:2721-2760
+  - bn6f/asm/asm03_1_0.s:1190-1200
+  reproduce: 'sed -n ''2163,2169p;2287,2307p'' bn6f/asm/asm33.s
+
+    awk ''index($0,"npc_80350BC:")==1{f=1} f{print NR": "$0} f&&/thumb_func_end/{exit}'' bn6f/asm/asm03_1_0.s
+
+    grep -rn ''EVENT_170A'' bn6f/asm
+
+    '
+  result: 'movflag EVENT_170A / SetEventFlagFromImmediate; ldr r0, =0x1770; str r0, [r4,#0x24]; mov r0, #0x10; strb
+    r0, [r5,#2]; ldrh r0, [r5,#0x10]; str r0, [r4,#0x4c]; mov r0, #0xa; bl chatbox_runScript201C100_812474C. EVENT_170A
+    is named only here, in npc_80350BC and in endOfSection_NaviSetup_80340F6.'
+- method: runtime
+  date: '2026-10-17'
+  detail: Not of this function itself (vidsync never ran or hooked it) but of the two fields it sets. vidsync's
+    subchip handler (try_subchip) writes EVENT_170A's byte with mask 0x20 and 0 to the counter at eStruct2001c04+0x24
+    at the end of a frame near a loss on an internet map, so that the expiry cutscene starts when the video's does,
+    and keeps the write only when the sync then follows the speedrun video. One such fix is in the recorded BeastSP
+    route (tools/traces/beastsp.poke, vidsync's kept fixes) at game frame 208526.
+  refs:
+  - tools/vidsync/autosync.py:1167-1191
+  - tools/vidsync/syms.py:100
+  - tools/vidsync/syms.py:103
+  - tools/traces/beastsp.poke
+  reproduce: 'grep -n ''SUBCHIPS\|def try_subchip'' tools/vidsync/autosync.py
+
+    grep -n ''SNEAKRUN_STEPS\|SUBCHIP_FLAGS'' tools/vidsync/syms.py
+
+    grep -n ''0x2001c28'' tools/traces/beastsp.poke
+
+    '
+  result: 'route line 69: 208526:208527 0x2001f69=0x20/1,0x2001c28=0x0/4'
+related:
+- submenu_subchip_dispatch_8124144
+- npc_80350BC
+- eStruct2001c04
+- endOfSection_NaviSetup_80340F6
+open_questions:
+- What decrements the counter at +0x24 (vidsync - while MegaMan moves) and how the encounter code uses it at asm29.s:10761.
+- 'suggested name: submenu_subchip_useSneakRun (mode 8 of the sub-chip menu; EVENT_170A and the 6000 counter are
+  SneakRun''s per vidsync''s runtime fixes)'
+sources:
+- vidsync docs/vidsync/BN6F_SYMBOLS.md
+- Claude session_01DywpM9x1GYhwUsv45iVPi1 (review of Hyper glm-5.3-flash drafts)
+changes:
+- date: '2026-10-17'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b95be76c
+  tool: tools/symdoc.py

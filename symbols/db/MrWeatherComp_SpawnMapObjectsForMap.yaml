@@ -1,0 +1,63 @@
+name: MrWeatherComp_SpawnMapObjectsForMap
+address: '0x0806A1DE'
+kind: function
+previous_names: []
+status: probable
+summary: 'Mr. Weather comp (map group 0x83): spawns the current map''s map objects by passing its spawn list (off_806A1F8[MapNumber])
+  to SpawnObjectsFromList.'
+interface: (r10 = toolkit) -> r0 = the number of objects spawned (SpawnObjectsFromList's result); no register arguments;
+  r4-r7 preserved
+details: "Body (maps/MrWeatherComp/loader.s:204-215): r0 = GameState.MapNumber (through oToolkit_GameStatePtr),\n\
+  r0 = off_806A1F8[MapNumber], bl SpawnObjectsFromList, return. off_806A1F8 has one list per comp map\n(MR_WEATHER_COMP_NUM_MAPS\
+  \ = 3), each a map_object_spawn_data_struct list (type 5 = OBJECT_SPAWN_TYPE_OVERWORLD_MAP,\nso SpawnOverworldMapObject)\
+  \ ended by a 0xFF word (maps/MrWeatherComp/data.s:2-37):\n  map 0 byte_806A204: Index 0x03, ObjectID 0x1D at (-0x2A,\
+  \ -0xB6, -0xC) px\n  map 1 byte_806A21C: Index 0x03, ObjectID 0x1E at (0x182, 0xE, 0) px\n  map 2 byte_806A234:\
+  \ Index 0x03, ObjectID 0x1F at (0x1C2, 0xE, 0) px; Index 0x00, ObjectID 0x2E at (0x1D4, -0x32, -0x40) px\n(Index\
+  \ is the map object's header byte +1, which picks its update routine in OverworldMapObjectUpdateJumptable;\nObjectID\
+  \ goes to +4.) The Weather comp's tornadoes (type 0x1A) and orbs (0x1B) are not in these lists.\nTwo callers:\
+  \ MrWeatherComp_EnterMapGroup calls it directly when a comp map is entered (loader.s:35), and\nmapObject_spawnMapObjectsForMap\
+  \ reaches it through InternetSpawnMapObjectJumptable[0x83 - 0x80] (the respawn\npath a script command and sub_80893F4\
+  \ use). vidsync's BN6F_SYMBOLS.md lists it (level A) as the example of\nthat table's entries; vidsync never reads\
+  \ or writes anything of it.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-17'
+  detail: Body, spawn lists and both call paths read; the lists' field meanings come from include/rom_structs/MapObjectSpawnData.inc
+    and ObjectSpawnData.inc and from SpawnOverworldMapObject (asm00_1.s:3169), which stores r0 at +1 and r4 at +4.
+  refs:
+  - bn6f/maps/MrWeatherComp/loader.s:204
+  - bn6f/maps/MrWeatherComp/loader.s:35
+  - bn6f/maps/MrWeatherComp/data.s:2
+  - bn6f/asm/asm03_1_0.s:1806
+  - bn6f/asm/asm03_1_0.s:2825
+  reproduce: 'awk ''/^MrWeatherComp_SpawnMapObjectsForMap:/{f=1} f{print FILENAME":"FNR": "$0} f&&/thumb_func_end/{exit}''
+    bn6f/maps/MrWeatherComp/loader.s
+
+    sed -n ''216,221p'' bn6f/maps/MrWeatherComp/loader.s; sed -n ''1,37p'' bn6f/maps/MrWeatherComp/data.s
+
+    grep -rn ''MrWeatherComp_SpawnMapObjectsForMap'' bn6f/asm bn6f/maps
+
+    '
+  result: 'the body above (loader.s:204-215), the three lists (data.s:2-37), and the two references: bl at loader.s:35
+    (MrWeatherComp_EnterMapGroup) and .word at asm03_1_0.s:1806 (InternetSpawnMapObjectJumptable entry 3)'
+- method: coverage
+  date: '2026-10-17'
+  detail: Executed in two recorded routes, beastsp and maps, so lockstep checks it there.
+  reproduce: grep -l '^0806a1de ' tools/traces/coverage/*.prof
+  result: tools/traces/coverage/beastsp.prof, tools/traces/coverage/maps.prof
+related:
+- SpawnObjectsFromList
+- InternetSpawnMapObjectJumptable
+- mapObject_spawnMapObjectsForMap
+- MrWeatherComp_EnterMapGroup
+open_questions:
+- What the map objects of type 3 with ObjectID 0x1D/0x1E/0x1F, and type 0 with ObjectID 0x2E, are in the comp (not
+  read).
+sources:
+- vidsync docs/vidsync/BN6F_SYMBOLS.md
+- Claude session_01DywpM9x1GYhwUsv45iVPi1 (review of Hyper glm-5.3-flash drafts)
+changes:
+- date: '2026-10-17'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b95be76c
+  tool: tools/symdoc.py

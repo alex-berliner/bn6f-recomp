@@ -1,0 +1,85 @@
+name: unk_808F5C4
+address: '0x0808F5C4'
+kind: data
+previous_names: []
+status: probable
+summary: 'Warp data entry (WarpData, 0x10 bytes) for the Mr. Weather comp cleanup cutscene''s jack-out warp: map
+  0x00:0x00, warp type 0, facing 4, X/Y/Z 0; with transition type 1 the destination comes from GameState''s saved
+  real-world place instead.'
+details: 'dat24.s:3066-3067: `.word 0x04000000, 0, 0, 0`. Read as include/rom_structs/WarpData.inc: +0 MapGroup
+  0x00,
+
+  +1 MapNumber 0x00, +2 warpType_02 0x00, +3 FacingDirection 0x04, +4/+8/+0xC X/Y/Z = 0. Its one reference is
+
+  cutscenescript_808F594''s `cs_warp_cmd_8038040_2 byte1=0x1 byte2=0x01 ptr3=unk_808F5C4` (dat24.s:3055).
+
+  CutsceneCmd_warp_cmd_8038040 (map_script_cutscene.s:5675) with byte1 bit 0 set calls
+
+  warp_setSubsystemIndexTo0x14AndOthers_8005f14 with r0 = this pointer, r1 = 0, r2 = byte2 = 1;
+
+  warp_ArmPendingTransition_8005EEC stores it as Warp2011bb0.WarpDataPtr with WarpIndex 1 and
+
+  MapGroupTransitionType 1. map_triggerEnterMapOnWarp_8005C04 then copies entry WarpIndex - 1 (this one) into
+
+  Warp2011bb0 (asm00_1.s:5793-5799), but for MapGroupTransitionType 1 (MAP_GROUP_TRANSITION_TYPE_INTERNET_TO_REAL_WORLD)
+
+  takes the destination from GameState.SavedRealWorldX/Y/Z, FacingDirection and MapId (asm00_1.s:5870, 5886), so
+
+  this entry''s map and coordinates do not pick where MegaMan lands: the warp jacks him out to the real-world
+
+  place he jacked in from. unk_8088FDC (asm23.s:302) and unk_808C188 (asm24.s:248) hold the same words and are
+
+  used with the same byte1=1, byte2=1. The word after it, off_808F5D4 (`.word eWeatherCompState`), is a separate
+
+  label that routines in asm25.s read eWeatherCompState through (via literals pointing at it); the warp reads only
+
+  0x10 bytes. vidsync''s BN6F_SYMBOLS.md lists it (level A) as the warp of cutscenescript_808F594; vidsync never
+  reads or writes it.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-17'
+  detail: The four words, the cutscene command that passes them, the command's handler and the warp code that reads
+    the entry read; layout from include/rom_structs/WarpData.inc.
+  refs:
+  - bn6f/data/dat24.s:3066
+  - bn6f/data/dat24.s:3055
+  - bn6f/asm/map_script_cutscene.s:5675
+  - bn6f/asm/asm00_1.s:6245
+  - bn6f/asm/asm00_1.s:5779
+  - bn6f/include/rom_structs/WarpData.inc
+  reproduce: 'sed -n ''3055p;3066,3069p'' bn6f/data/dat24.s
+
+    grep -rn ''unk_808F5C4'' bn6f/asm bn6f/data bn6f/maps | grep -v symdb
+
+    awk ''/^CutsceneCmd_warp_cmd_8038040:/{f=1} f{print FNR": "$0} f&&/thumb_func_end/{exit}'' bn6f/asm/map_script_cutscene.s
+
+    sed -n ''6245,6255p;5790,5800p;5866,5893p'' bn6f/asm/asm00_1.s
+
+    grep -n ''MAP_GROUP_TRANSITION_TYPE_INTERNET_TO_REAL_WORLD'' bn6f/constants/constants.inc
+
+    '
+  result: the words 0x04000000, 0, 0, 0 then off_808F5D4 (eWeatherCompState); one reference (dat24.s:3055); the
+    handler's .param0bit0set path (r0 = ptr, r1 = 0, r2 = byte2, bl warp_setSubsystemIndexTo0x14AndOthers_8005f14);
+    WarpIndex = r1 + 1; CopyWords from WarpDataPtr + (WarpIndex - 1) * 0x10; transition type 1 (constants.inc:86)
+    branches to .internetToRealWorld, which loads the GameState.SavedRealWorld* fields
+related:
+- cutscenescript_808F594
+- CutsceneCmd_warp_cmd_8038040
+- map_triggerEnterMapOnWarp_8005C04
+- warp_ArmPendingTransition_8005EEC
+open_questions:
+- The path from subsystem 0x14 to map_triggerEnterMapOnWarp_8005C04 (called from map_setupEnterMapAfterWarp_803423C,
+  map_beginEnterMapOnWarpStep4_80342EC and asm00_1.s:4786) was not traced, nor whether anything on it reads the
+  entry's warpType_02 (0) or FacingDirection (4).
+- 'suggested name: warpData_jackOutToRealWorld_808F5C4 (a WarpData entry whose own destination is unused: the internet-to-real-world
+  transition restores the saved real-world place)'
+sources:
+- vidsync docs/vidsync/BN6F_SYMBOLS.md
+- Claude session_01DywpM9x1GYhwUsv45iVPi1 (review of Hyper glm-5.3-flash drafts)
+changes:
+- date: '2026-10-17'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b95be76c
+  tool: tools/symdoc.py

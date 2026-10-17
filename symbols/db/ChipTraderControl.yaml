@@ -1,0 +1,83 @@
+name: ChipTraderControl
+address: '0x0804A304'
+kind: function
+previous_names: []
+status: probable
+summary: Per-frame callback of the chip trader subsystem (main_subsystemJumpTable 0x34) that runs the trader screen's
+  current state handler, updates its objects and advances the primary RNG once, discarding the value.
+interface: '() -> nothing meaningful. Calls the state handler with r5 = &sSubmenu. Preserves r4-r7 and r8, r9, r12
+  (saved on the stack); r0-r2 come back holding the caller''s r8, r9, r12; r3 and flags clobbered. Side effect:
+  one GetRNG call (primary seed advanced), its result dropped.'
+details: "The main loop calls it through main_subsystemJumpTable (main.s:95, entry 0x34) while the chip trader is\
+  \ the\nactive subsystem. Each frame:\n- r5 = sSubmenu; the byte at sSubmenu+0 is used directly as a byte offset\
+  \ into off_804A33C (ldr r0, [r0, r1]),\n  so states are multiples of 4: 0 sub_804A360, 4 sub_804A3FC, 8 sub_804A460,\
+  \ 0xC sub_804A4D4, 0x10 sub_804A460\n  again, 0x14 sub_804A514, 0x18 sub_804A54C. The table's eighth word is eS200AC80,\
+  \ an EWRAM address, not code.\n  The handlers set the state with strb to [r5] (values 4, 0x10, 0x18 among them).\
+  \ sub_804A360 (state 0) sets\n  the screen up: clears VRAM and other buffers, zero-fills 0x3C0 bytes at word_202A020\
+  \ and builds a chip search\n  table at unk_202A3E0 (buildChipSearchTable_811FE7C).\n- then, whatever the state:\
+  \ entity_runAllUpdateHandlers_80465BC, battle_updateEStructSprites_80465F8,\n  sub_804AFB8, sub_804AFE4 and GetRNG.\
+  \ The GetRNG result is overwritten at once by the pop of the saved\n  r8/r9/r12, so the call only moves the primary\
+  \ stream, one step per chip trader frame.\nThe trader's random picks (chipTraderWeightedRandomMaybe_804BD7C, sub_804BE88,\n\
+  chipTraderGetRewardFromRedraw_804BF94, called from asm03_2.s:9388-9429 and 9668-9742) are not called from this\n\
+  body; whether they are reached from its state handlers was not traced.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-17'
+  detail: The body dispatches through off_804A33C by the sSubmenu state byte (a byte offset), then unconditionally
+    calls entity_runAllUpdateHandlers_80465BC, battle_updateEStructSprites_80465F8, sub_804AFB8, sub_804AFE4 and
+    GetRNG, and restores r8/r9/r12 from the stack into r0-r2 and back, dropping GetRNG's value.
+  refs:
+  - bn6f/asm/asm03_2.s:7306
+  - bn6f/asm/asm03_2.s:7314
+  - bn6f/asm/asm03_2.s:7322
+  - bn6f/asm/asm03_2.s:7331
+  - GetRNG
+  - sSubmenu
+  reproduce: 'awk ''index($0,"ChipTraderControl:")==1{f=1} f{print} f&&/thumb_func_end/{exit}'' bn6f/asm/asm03_2.s
+
+    awk ''NR>=7343 && NR<=7600'' bn6f/asm/asm03_2.s | grep -n -e ''strb r0, \[r5\]'' -B1'
+  result: body at asm03_2.s:7306-7342 (state byte read at 7314, bl GetRNG at 7322, then pop {r0-r2} at 7323; table
+    at 7331-7339); states 4, 0x18, 4, 0x10 stored to [r5] by the handlers
+- method: caller-analysis
+  date: '2026-10-17'
+  detail: Its only reference is entry 0x34 of main_subsystemJumpTable, the main loop's per-frame subsystem callback
+    table (main.s dispatches on the toolkit's MainJumptableIndex byte).
+  refs:
+  - bn6f/asm/main.s:95
+  - bn6f/asm/main.s:67
+  reproduce: 'grep -rn ChipTraderControl bn6f/asm
+
+    sed -n ''30,42p;67,96p'' bn6f/asm/main.s'
+  result: main.s:95 (.word ChipTraderControl+1 under the 0x34 comment) and the definition only
+- method: assembly-reading
+  date: '2026-10-13'
+  detail: vidsync's reading lists the chip trader as a per-frame primary advance (one GetRNG a frame) and notes
+    it is not on the any% route; its sync driver never runs, writes or reads it. Its docs cite asm03_2.s:7061, which
+    is stale (the definition is at 7306).
+  refs:
+  - docs/vidsync/BN6F_SYMBOLS.md:38
+  - docs/vidsync/RANDOM_EVENTS.md:46
+  - docs/vidsync/RANDOM_EVENTS.md:401
+  reproduce: grep -n ChipTraderControl docs/vidsync/BN6F_SYMBOLS.md docs/vidsync/RANDOM_EVENTS.md
+- method: coverage
+  date: '2026-10-17'
+  detail: No recorded route executes it, so lockstep does not check it anywhere.
+  reproduce: grep -l '^0804a304 ' tools/traces/coverage/*.prof
+  result: no file
+related:
+- GetRNG
+- sSubmenu
+- chipTraderWeightedRandomMaybe_804BD7C
+- chipTraderGetRewardFromRedraw_804BF94
+open_questions:
+- Whether chipTraderWeightedRandomMaybe_804BD7C, sub_804BE88 and chipTraderGetRewardFromRedraw_804BF94 are reached
+  from the state handlers (and so share this subsystem's frames) was not traced.
+- What states 8, 0xC and 0x14 do, and whether the eighth table word (eS200AC80) is ever indexed, is not established.
+sources:
+- vidsync docs/vidsync/BN6F_SYMBOLS.md
+- Claude session_01DywpM9x1GYhwUsv45iVPi1 (review of Hyper glm-5.3-flash drafts)
+changes:
+- date: '2026-10-17'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b95be76c
+  tool: tools/symdoc.py

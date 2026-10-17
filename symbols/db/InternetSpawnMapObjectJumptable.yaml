@@ -1,0 +1,60 @@
+name: InternetSpawnMapObjectJumptable
+address: '0x0803483C'
+kind: data
+previous_names: []
+status: probable
+summary: Per internet map group (0x80-0x96) the routine that spawns that area's map objects, or NULL; called by
+  mapObject_spawnMapObjectsForMap with index MapGroup - 0x80.
+details: "23 words (INTERNET_NUM_GROUPS) at asm03_1_0.s:1802-1825, each a Thumb pointer (+1) to an area's\n*_SpawnMapObjectsForMap\
+  \ or NULL:\n  0x80 RobotControlComp, 0x81 AquariumComp, 0x82 JudgeTreeComp, 0x83 MrWeatherComp, 0x84 NULL,\n \
+  \ 0x85 PavilionComp, 0x86 NULL, 0x87 NULL, 0x88 HomePages, 0x89-0x8B NULL, 0x8C Comps1, 0x8D Comps2,\n  0x8E-0x8F\
+  \ NULL, 0x90 CentralArea, 0x91 SeasideArea, 0x92 GreenArea, 0x93 Underground, 0x94 SkyACDCArea,\n  0x95 Undernet,\
+  \ 0x96 GraveyardImmortalArea.\nIts one reader, mapObject_spawnMapObjectsForMap (asm03_1_0.s:2825-2845), takes\
+  \ GameState.MapGroup, uses\nRealWorldSpawnMapObjectJumptable below 0x80 (INTERNET_MAP_GROUP_START) and this table\
+  \ from there\n(index MapGroup - 0x80), and calls the entry with `mov lr, pc; bx r2` without testing it for NULL\
+  \ (a NULL\nentry would branch to address 0). Each area routine picks its list by MapNumber and calls SpawnObjectsFromList\n\
+  (e.g. MrWeatherComp_SpawnMapObjectsForMap). mapObject_spawnMapObjectsForMap is called from a script command\n\
+  (map_script_cutscene.s:5620) and from sub_80893F4 (asm23.s:678); the areas' EnterMapGroup routines call their\n\
+  spawn routine directly on map entry (MrWeatherComp_EnterMapGroup, maps/MrWeatherComp/loader.s:35), not through\n\
+  this table. Laid out like its neighbours NPCList_maps80 (before it) and InternetLoadBGAnimJumptable (after\nit),\
+  \ with the same NULL slots. vidsync's BN6F_SYMBOLS.md lists it at level A (assembly only); vidsync never\nreads\
+  \ or writes it.\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-17'
+  detail: The 23 entries and the dispatch in mapObject_spawnMapObjectsForMap read; an entry's group is 0x80 + its
+    index (the reader subtracts INTERNET_MAP_GROUP_START = 0x80, constants/enums/GameAreas.inc:13; INTERNET_NUM_GROUPS
+    = 23, GameAreas.inc:10).
+  refs:
+  - bn6f/asm/asm03_1_0.s:1802
+  - bn6f/asm/asm03_1_0.s:2825
+  - bn6f/constants/enums/GameAreas.inc:13
+  reproduce: 'sed -n ''1802,1825p'' bn6f/asm/asm03_1_0.s
+
+    awk ''/^mapObject_spawnMapObjectsForMap:/{f=1} f{print FNR": "$0} f&&/thumb_func_end/{exit}'' bn6f/asm/asm03_1_0.s
+
+    grep -rn ''InternetSpawnMapObjectJumptable\|bl mapObject_spawnMapObjectsForMap'' bn6f/asm bn6f/maps
+
+    '
+  result: 'the 23 words above; ldr r2, =InternetSpawnMapObjectJumptable at asm03_1_0.s:2835 after sub r0, #INTERNET_MAP_GROUP_START,
+    then ldr r2, [r2,r0]; mov lr, pc; bx r2 with no NULL test; two callers (asm23.s:678, map_script_cutscene.s:5620)'
+related:
+- mapObject_spawnMapObjectsForMap
+- MrWeatherComp_SpawnMapObjectsForMap
+- SpawnObjectsFromList
+- InternetLoadBGAnimJumptable
+open_questions:
+- constants/enums/GameAreas.inc disagrees with this table after group 0x85; its enum has three unused groups between
+  PAVILION_COMP and HOMEPAGES and one between COMPS_2 and CENTRAL_AREA (counting one group per new_group, HOMEPAGES
+  would be 0x89), while its comments, this table and InternetLoadBGAnimJumptable put HomePages at 0x88 and Comps1/Comps2
+  at 0x8C/0x8D; the GROUP_ constants are not used elsewhere.
+- Whether anything stops the respawn command from running in a NULL group (0x84, 0x86, 0x87, 0x89-0x8B, 0x8E, 0x8F),
+  or those groups have no maps it could run in (not read).
+sources:
+- vidsync docs/vidsync/BN6F_SYMBOLS.md
+- Claude session_01DywpM9x1GYhwUsv45iVPi1 (review of Hyper glm-5.3-flash drafts)
+changes:
+- date: '2026-10-17'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b95be76c
+  tool: tools/symdoc.py

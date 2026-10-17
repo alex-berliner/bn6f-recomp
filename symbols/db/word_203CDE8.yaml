@@ -1,0 +1,125 @@
+name: word_203CDE8
+address: '0x0203CDE8'
+kind: ram
+previous_names: []
+status: confirmed
+summary: Slot 28 of the battle folder eBattleFolder (u16 chip id | code << 9); while the folder is built it holds
+  the first Tag chip, which the shuffle then moves into the folder.
+details: 'bn6f/ewram.s gives eBattleFolder (0x0203CDB0) only `.space 56` (slots 0-27), then this label (2 bytes)
+  and
+
+  byte_203CDEA (6 bytes); but the folder is 30 u16 (60 bytes, 0x0203CDB0..0x0203CDEB): every copy into or out of
+
+  it moves 0x3C bytes, and the code addresses slots 28 and 29 as eBattleFolder+0x38 and +0x3A. So this is slot 28,
+
+  and the first 2 bytes of byte_203CDEA are slot 29; the label split is the disassembler''s, not a separate
+
+  variable.
+
+
+  battle_populateBattleFolder_800A3E4 (asm00_1.s:16151) builds the folder from a 30-chip source (normally the Navi''s
+
+  current folder in S_Chip_2002178, 0x3C bytes per folder, picked by Navi stats byte 0x2D). When battle effect bit
+
+  0x80 is set it takes two per-folder choices from the Navi stats: pet_getCurNaviChainedLookup_800A4E0 (byte 0x2E
+  +
+
+  folder) gives the index of the chip that goes to slot 0 (the Regular chip) and sets BattleState+0x17;
+
+  pet_getCurNaviStatusPair_800A506 (bytes 0x56/0x57 + 2 * folder) gives two indices, the Tag chip pair, whose chips
+  go
+
+  to slot 28 (this word) and slot 29, and sets BattleState+0x44. The other chips fill the remaining slots in order.
+
+  shuffleFolder_800A570 is then called with those two flags: it leaves the first non-Giga entry (Regular) and the
+
+  last two (the Tag pair) out of the shuffle (the disassembly''s own comments there say "reg?" and "tag?"), and
+
+  afterwards, with a third roll r = GetPositiveSignedRNGSecondary % 0x13, stores r + 1 in BattleState+0x45 and swaps
+
+  the Tag pair at work-buffer +0x38/+0x3A with entries r + 1 and r + 2. So in the shuffled folder the Tag pair sits
+
+  together at r + 1, r + 2 and slot 28 holds an ordinary chip. Without the Tag flag, slot 28 is simply the folder''s
+
+  29th chip after the shuffle.
+
+
+  sub_800A318 (asm00_1.s:16037, no references in bn6f) is an older form of the same build: it copies the folder
+
+  first and then swaps the Regular chip into slot 0 and the Tag pair into slots 28 and 29 (with a special case when
+
+  the second Tag chip already sits in slot 28), before the same shuffleFolder_800A570 call. Its lines
+
+  asm00_1.s:16110-16124 are the ldrh/strh pairs at +0x38 and +0x3A.
+
+
+  During the battle a used chip''s slot reads 0xFFFF (vidsync''s hand handler, tools/vidsync/autosync.py try_hand).
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-17'
+  detail: 'All references to +0x38. In battle_populateBattleFolder_800A3E4 the copy loop runs r2 = 0..0x3A in steps
+    of 2 (cmp r2, #0x3c); the source entry at the Regular index goes to +0, the one at the first Tag index to [eBattleFolder,
+    #0x38] (asm00_1.s:16237), the one at the second to +0x3A (16245), the rest in order. In the unreferenced sub_800A318
+    the Tag pair is swapped into +0x38 / +0x3A after pet_getCurNaviStatusPair_800A506 (asm00_1.s:16110-16124). shuffleFolder_800A570
+    swaps its work buffer''s +0x38 / +0x3A with entries r + 1, r + 2 (asm00_1.s:16490-16509) and copies 0x3C bytes
+    back to the folder (16512-16517).'
+  refs:
+  - bn6f/ewram.s:3153-3158
+  - bn6f/asm/asm00_1.s:16094-16141
+  - bn6f/asm/asm00_1.s:16210-16252
+  - bn6f/asm/asm00_1.s:16410-16433
+  - bn6f/asm/asm00_1.s:16486-16517
+  reproduce: 'sed -n ''3153,3158p'' bn6f/ewram.s
+
+    grep -n ''word_203CDE8\|byte_203CDEA'' bn6f/asm/asm00_1.s
+
+    sed -n ''16094,16141p;16210,16252p'' bn6f/asm/asm00_1.s
+
+    sed -n ''16410,16433p;16486,16517p'' bn6f/asm/asm00_1.s
+
+    '
+  result: eBattleFolder .space 56, word_203CDE8 .space 2, byte_203CDEA .space 6; +0x38 accesses at asm00_1.s:16110,
+    16112, 16237 and +0x3A at 16116, 16118, 16122, 16124, 16245; nothing else names either label
+- method: runtime
+  date: '2026-10-17'
+  detail: vidsync's hand handler (try_hand) reads the battle folder as 60 bytes from eBattleFolder (30 u16) and
+    writes the reordered folder back over 0x0203CDB0..0x0203CDEB, this word included, at the end of a frame; the
+    fixes it keeps are those after which the sync follows the speedrun video. The recorded BeastSP route in recomp
+    (tools/traces/beastsp.poke, vidsync's kept fixes) holds 81 such folder writes, each ending with 0x203cde8=SLOTS28_29/4
+    (chip values, or 0xffffffff for used chips in a later turn).
+  refs:
+  - tools/vidsync/autosync.py:1230
+  - tools/vidsync/syms.py:108
+  - tools/traces/beastsp.poke
+  - symbols/db/eBattleFolder.yaml
+  reproduce: 'grep -n ''b.e.read(FOLDER, 60)\|^FOLDER'' tools/vidsync/autosync.py
+
+    grep -c ''0x203cde8='' tools/traces/beastsp.poke
+
+    grep -n -m3 -o ''0x203cde8=[0-9a-fx]*/4'' tools/traces/beastsp.poke
+
+    '
+  result: 81 folder writes; the first three at route lines 9, 11, 20 write 0x203cde8=0x6052447, 0x24481636, 0x6050236
+    (slot 28 = 0x2447, 0x1636, 0x0236; slot 29 = 0x0605, 0x2448, 0x0605)
+related:
+- eBattleFolder
+- battle_populateBattleFolder_800A3E4
+- shuffleFolder_800A570
+- pet_getCurNaviStatusPair_800A506
+- pet_getCurNaviChainedLookup_800A4E0
+open_questions:
+- 'suggested name: eBattleFolder_Slot28 (the 29th of the folder''s 30 u16; the first Tag chip while the folder is
+  built). Better still, give eBattleFolder its full 60 bytes in bn6f/ewram.s and drop this label and byte_203CDEA,
+  whose first 2 bytes are slot 29.'
+- Which battle-effect flag bit 0x80 is (it gates both the Regular chip and the Tag pair); BattleState+0x17 is named
+  oBattleState_BeastOutFlag in battle_populateBattleFolder_800A3E4, which the Regular-chip use here contradicts.
+sources:
+- vidsync docs/vidsync/BN6F_SYMBOLS.md
+- Claude session_01DywpM9x1GYhwUsv45iVPi1 (review of Hyper glm-5.3-flash drafts)
+changes:
+- date: '2026-10-17'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b95be76c
+  tool: tools/symdoc.py

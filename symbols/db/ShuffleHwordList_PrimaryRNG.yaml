@@ -1,0 +1,94 @@
+name: ShuffleHwordList_PrimaryRNG
+address: '0x08000CDA'
+kind: function
+previous_names: []
+status: probable
+summary: Shuffles a list of u16 in place with the primary RNG, making r2 swaps of two entries, each index a GetPositiveSignedRNG
+  draw mod r1 (the list length).
+interface: (r0 = u16 *list, r1 = n, the list length (each index is a draw mod n), r2 = number of swaps, must be
+  nonzero) -> r0 = list, r1 = n, r2 = 0, r3 = 2 * the last swap's first index; r4-r6 preserved; clobbers lr and
+  the flags. Two GetPositiveSignedRNG calls per swap.
+details: 'Body (asm00_0.s:1419-1448), r2 times: GetPositiveSignedRNG (the primary seed''s next value with bit 31
+  cleared),
+
+  BIOS Div (svc 6, r0 / r1) and the remainder in r1 is index a; a second draw and Div give index b. Both are
+
+  doubled to byte offsets and the halfwords list[a] and list[b] are swapped. r0, r1 and r2 are pushed around the
+
+  calls, so the list pointer and n reach every iteration unchanged; r2 counts down to 0 (sub / bne), so r2 = 0
+
+  on entry would loop about 2^32 times (the one caller checks for an empty list first). The two draws are
+
+  independent: a swap may pick the same index twice. It is the primary-RNG twin of ShuffleHwordList_SecondaryRNG
+
+  (same code, GetPositiveSignedRNGSecondary) and the halfword version of ShuffleByteList_PrimaryRNG.
+
+
+  The one caller, sub_802E6EC (asm03_0.s:17862), takes the 0x42-byte record byte_203CA80 + 0x42 * r0
+
+  (sub_802E490), collects the entries that are not 0xFFFF (the three at +0, +2, +4, then the 0xFFFF-terminated
+
+  list from +6) into a stack buffer, shuffles them with r1 = r2 = their count, and writes them back into the same
+
+  slots. sub_802E790 calls it during a 50-frame countdown (record byte +0x4E of getEntryPtr_2036120_1D0_802E070),
+
+  on the frames where countdown % 10 == 9 (five times), and plays SOUND_CUR_MOVE_80 after it on the side where
+
+  battle_networkInvert returns 0.
+
+
+  ShuffleHwordList_SecondaryRNG''s entry (hypothesis) reads svc 6 as Sqrt and r1 as an RNG state; svc 6 is the BIOS
+
+  Div, and r1 is the divisor, as here.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-17'
+  detail: 'Body read. Per swap, two `bl GetPositiveSignedRNG`, each followed by `svc 6` with the caller''s r1 as
+    the divisor and `mov r3, r1` / `mov r4, r1` keeping the remainder; `add r3, r3, r3` / `add r4, r4, r4`, then
+    the ldrh/ldrh/strh/strh swap at [r0]; `sub r2, #1` / `bne loc_8000CDC`; push {r4-r6,lr} ... pop {r4-r6,pc}.'
+  refs:
+  - bn6f/asm/asm00_0.s:1419-1448
+  - GetPositiveSignedRNG
+  reproduce: 'awk ''index($0,"ShuffleHwordList_PrimaryRNG:")==1{f=1} f{print NR": "$0} f&&/thumb_func_end/{exit}''
+    bn6f/asm/asm00_0.s
+
+    awk ''index($0,"GetPositiveSignedRNG:")==1{f=1} f{print NR": "$0} f&&/thumb_func_end/{exit}'' bn6f/asm/asm00_0.s
+
+    '
+  result: 'the body at asm00_0.s:1420-1448 as described; GetPositiveSignedRNG (asm00_0.s:2833) steps ePrimaryRngSeed
+    and returns it with bit 31 cleared (lsl #1 / lsr #1)'
+- method: caller-analysis
+  date: '2026-10-17'
+  detail: One call site, in sub_802E6EC, with r0 = a 0x3C-byte stack buffer and r1 = r2 = the number of entries
+    copied into it, after `tst r3, r3` / `beq` skips an empty list. sub_802E6EC's only caller is sub_802E790 (asm03_0.s:18003),
+    which calls it when the countdown at +0x4E, divided by 10 (svc 6), leaves remainder 9.
+  refs:
+  - bn6f/asm/asm03_0.s:17912
+  - bn6f/asm/asm03_0.s:17862-17952
+  - bn6f/asm/asm03_0.s:17955-18027
+  reproduce: 'grep -rn ''ShuffleHwordList_PrimaryRNG\|bl sub_802E6EC'' bn6f/asm
+
+    sed -n ''17862,17952p'' bn6f/asm/asm03_0.s
+
+    '
+  result: bl ShuffleHwordList_PrimaryRNG only at asm03_0.s:17912 (mov r1, r3 / mov r2, r3 before it); bl sub_802E6EC
+    only at asm03_0.s:18003
+related:
+- ShuffleHwordList_SecondaryRNG
+- ShuffleByteList_PrimaryRNG
+- GetPositiveSignedRNG
+- ePrimaryRngSeed
+open_questions:
+- What the shuffled list is in game terms (the 0x42-byte records at byte_203CA80, one per r0, and what sub_802E790's
+  50-frame effect is); vidsync lists this function only as a reader of the primary seed, with no runtime finding
+  of its own.
+sources:
+- vidsync docs/vidsync/BN6F_SYMBOLS.md
+- Claude session_01DywpM9x1GYhwUsv45iVPi1 (review of Hyper glm-5.3-flash drafts)
+changes:
+- date: '2026-10-17'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b95be76c
+  tool: tools/symdoc.py

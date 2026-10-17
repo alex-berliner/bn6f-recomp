@@ -1,0 +1,73 @@
+name: loc_803F870
+address: '0x0803F870'
+kind: function
+previous_names: []
+status: probable
+summary: Failure path inside toolkit_initAndVerifyWorkArea_0803F838, taken when the work area's checksum or the
+  info-text timestamp check fails - result TRUE, EVENT_1704 cleared, primary RNG seed reset to 0xA338244F (SeedRNG).
+interface: A branch target, not a function (reached by bne from two places in toolkit_initAndVerifyWorkArea_0803F838).
+  Sets r4 = TRUE, clears EVENT_1704, calls SeedRNG, then joins the shared tail at loc_803F87E (RandomizeExtraToolkitPointers,
+  r0 = r4, tst r0, r0, pop {r1-r7,pc}), so the function returns r0 = TRUE with Z clear.
+details: 'toolkit_initAndVerifyWorkArea_0803F838 (asm03_1_1.s:13806) runs sub_814D8F0 and encryption_save_memSetFlags_8006E0E
+
+  over the 0x6710-byte work area at timer_2000000, then SetExtraToolkitPointers, and checks two things in order:
+
+  verifyEwramWorkAreaChecksum_803F8C4 (bne at asm03_1_1.s:13823) and infoText_IsTimestampUnchanged_803F8F4 (bne
+  at
+
+  13825). Either failure branches here. When both pass it sets r4 = FALSE and sets EVENT_1704 instead, and does
+  not
+
+  touch the RNG seed.
+
+
+  So SeedRNG (ePrimaryRngSeed = 0xA338244F) runs again on this path only. RandomizeExtraToolkitPointers, on both
+  paths,
+
+  draws one GetRNG. Callers of the function: sub_8000F86 (asm00_0.s:1878) and the start screen (asm03_0.s:19904),
+
+  each continuing only when it returns FALSE (bne past the follow-up).
+
+
+  vidsync (docs/vidsync/BN6F_SYMBOLS.md section 1, level A) notes the same: SeedRNG runs on load only if the save
+
+  checksum or timestamp check fails. Its line reference there (asm03_1_1.s:13567) is stale; the label is at 13830.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-17'
+  detail: 'The enclosing function read. The first `bne loc_803F870` follows bl verifyEwramWorkAreaChecksum_803F8C4,
+    the second bl infoText_IsTimestampUnchanged_803F8F4; the label does mov r4, #TRUE, movflag EVENT_1704 / ClearEventFlagFromImmediate,
+    bl SeedRNG and falls into loc_803F87E. SeedRNG stores 0xA338244F to ePrimaryRngSeed.'
+  refs:
+  - bn6f/asm/asm03_1_1.s:13806-13847
+  - bn6f/asm/asm00_0.s:1878
+  - bn6f/asm/asm03_0.s:19904
+  reproduce: 'sed -n ''13806,13847p'' bn6f/asm/asm03_1_1.s
+
+    grep -rn ''loc_803F870\|bl toolkit_initAndVerifyWorkArea_0803F838'' bn6f/asm
+
+    awk ''index($0,"SeedRNG:")==1{f=1} f{print} f&&/thumb_func_end/{exit}'' bn6f/asm/asm00_0.s
+
+    '
+  result: bne loc_803F870 at asm03_1_1.s:13823 (after the checksum) and 13825 (after the timestamp check); the label
+    at 13830; the function is called from asm00_0.s:1878 and asm03_0.s:19904
+related:
+- toolkit_initAndVerifyWorkArea_0803F838
+- SeedRNG
+- verifyEwramWorkAreaChecksum_803F8C4
+- infoText_IsTimestampUnchanged_803F8F4
+- RandomizeExtraToolkitPointers
+open_questions:
+- What EVENT_1704 means to the rest of the game (set when the work area checks out, cleared here).
+- 'suggested name: toolkit_initAndVerifyWorkArea_onCheckFail (a local label of toolkit_initAndVerifyWorkArea_0803F838:
+  the path where the checksum or the timestamp check failed)'
+sources:
+- vidsync docs/vidsync/BN6F_SYMBOLS.md
+- Claude session_01DywpM9x1GYhwUsv45iVPi1 (review of Hyper glm-5.3-flash drafts)
+changes:
+- date: '2026-10-17'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b95be76c
+  tool: tools/symdoc.py

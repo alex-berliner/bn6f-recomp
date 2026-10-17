@@ -1,0 +1,128 @@
+name: dword_203CBE0
+address: '0x0203CBE0'
+kind: ram
+previous_names: []
+status: probable
+summary: Word 0 of the outgoing battle link packet, a tag naming what the packet carries (0x12345678 the battle-start
+  state, 0x1F2F3F4F the result record, ...); it is sent last, so the receiver waits for it to know the packet arrived.
+details: 'The packet starts here and its payload follows at dword_203CBE4 (+4). Every writer fills the payload,
+  stores a
+
+  tag word here, then calls battle_requestSetBattleMode_80200A4(N), which stores N in eStruct203F7D8+3 and sets
+  bit
+
+  0 of eStruct203F7D8+2. N is the packet''s length in words, tag included (see the sizes below), so that function
+
+  is misnamed. The transfer builders sub_801FF18 and sub_801FFD6 then decrement eStruct203F7D8+3 and put
+
+  dword_203CBE0[count] into the outgoing record (eStruct2036780+8), one word per frame, highest index first;
+
+  the tag word goes out last.
+
+
+  | writer | tag | N | payload |
+
+  |---|---|---|---|
+
+  | battle_initBattleStateBuffer_800B144 | 0x12345678 | 0x3E | +4 ePrimaryRngSeed, +8 BattleSettings ptr, +0xC Navi
+  stats (0x64 bytes), +0x70/+0x98 two 0x28-byte blocks, +0xC0..+0xF4 (last word +0xF4 = 62 words) |
+
+  | battle_backupStateForRestart_800B3A2 | 0x56789123 | 0x32 | 0x50 + 0x64 + 0x10 bytes from +4 (to +0xC8 = 50 words)
+  |
+
+  | sub_800B428 | 0x1F2F3F4F | 4 | the 12-byte result record sub_802C8FA writes at +4 |
+
+  | sub_800B484 | 0xF1F1F1F1 | 0x10 | 0x3C bytes from byte_203F6D0 at +4 |
+
+  | sub_800B4B2 | 0xA9B8C7D6 | 3 | two words at +4, +8 |
+
+
+  The receiving side checks the tag: battle_doBothTrackedIdsMatch_800B46C(tag) is TRUE when dword_203F4A0 and
+
+  dword_203F5A0 (word 0 of the two received packets) both hold it; battle_state_finishBattlePhase_80079d0 waits
+  for
+
+  0x12345678 (asm00_1.s:10145) and two other battle states wait for 0x1F2F3F4F (asm00_1.s:13829, 14428).
+
+  chatbox_resetPrinterState_801FE00 clears the packet (ZeroFillByEightWords(dword_203CBE0, 0x100)) together with
+
+  dword_203F4A0 (0x200) and eStruct203F7D8.
+
+
+  vidsync (docs/vidsync/RANDOM_EVENTS.md section 1): in single player the packet comes back through a loopback into
+
+  dword_203F4A0; the seed (word 1) reaches 0x0203F4A4 about 61-62 frames after phase 4 and the tag one frame later.
+
+  vidsync''s RNG fixes write the seed word at +4 (dword_203CBE4, runtime evidence there); it never reads or writes
+
+  this word.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-17'
+  detail: The five writers of the tag word, each followed by battle_requestSetBattleMode_80200A4 with the packet's
+    length in words (0x3E, 0x32, 4, 0x10, 3, matching the last payload offset each one writes); that function stores
+    r0 in eStruct203F7D8+3 and sets bit 0 of eStruct203F7D8+2.
+  refs:
+  - bn6f/asm/asm00_1.s:18396
+  - bn6f/asm/asm00_1.s:18564-18567
+  - bn6f/asm/asm00_1.s:18693-18708
+  - bn6f/asm/asm00_1.s:18765-18769
+  - bn6f/asm/asm00_1.s:18831-18839
+  - bn6f/asm/asm00_1.s:18860-18867
+  - bn6f/asm/asm01.s:432
+  - bn6f/ewram.s:3109
+  reproduce: 'grep -n ''0x12345678\|0x56789123\|0x1f2f3f4f\|0xf1f1f1f1\|0xa9b8c7d6\|bl battle_requestSetBattleMode_80200A4''
+    bn6f/asm/asm00_1.s | awk -F: ''$1>18380 && $1<18900''
+
+    grep -n -A6 ''^battle_requestSetBattleMode_80200A4:'' bn6f/asm/asm01.s
+
+    '
+  result: 'tag loads at 18564, 18693, 18765, 18831, 18860, each followed by bl battle_requestSetBattleMode_80200A4
+    (18567, 18708, 18769, 18839, 18867) with mov r0 = 0x3E, 0x32, 4, 0x10, 3; battle_requestSetBattleMode_80200A4
+    does strb r0, [eStruct203F7D8, #3] and orr #1 into +2'
+- method: caller-analysis
+  date: '2026-10-17'
+  detail: 'Readers. sub_801FF18 and sub_801FFD6 decrement eStruct203F7D8+3 and load dword_203CBE0[count] (lsl r0,
+    #2 / ldr r0, [r0, r1]) into eStruct2036780+8 ("transfer buffer store 3"); chatbox_resetPrinterState_801FE00
+    zero-fills 0x100 from here. On the receiving side the same tags are waited for through battle_doBothTrackedIdsMatch_800B46C.'
+  refs:
+  - bn6f/asm/asm01.s:20
+  - bn6f/asm/asm01.s:280-292
+  - bn6f/asm/asm01.s:402-414
+  - bn6f/asm/asm00_1.s:10145
+  - bn6f/asm/asm00_1.s:13829
+  - bn6f/asm/asm00_1.s:14428
+  reproduce: 'grep -n ''dword_203CBE0'' bn6f/asm/asm01.s
+
+    sed -n ''280,292p;402,414p'' bn6f/asm/asm01.s
+
+    grep -n -B1 ''bl battle_doBothTrackedIdsMatch_800B46C'' bn6f/asm/asm00_1.s
+
+    '
+  result: the drain at asm01.s:280-292 (sub_801FF18) and 402-414 (sub_801FFD6); the receiver's waits on 0x12345678
+    (10145) and 0x1F2F3F4F (13829, 14428)
+related:
+- dword_203CBE4
+- battle_initBattleStateBuffer_800B144
+- battle_backupStateForRestart_800B3A2
+- sub_800B428
+- sub_801FF18
+- sub_801FFD6
+- battle_doBothTrackedIdsMatch_800B46C
+- byte_203F4A4
+open_questions:
+- 'suggested name: eLinkPacketOut_Tag (word 0 of the outgoing battle link packet, the tag the receiver waits for;
+  the packet is the 0x100 bytes chatbox_resetPrinterState_801FE00 clears)'
+- 'battle_requestSetBattleMode_80200A4 takes the packet length in words, not a battle mode (suggested name for it:
+  link_startPacketSend)'
+- What the 0xF1F1F1F1 (sub_800B484) and 0xA9B8C7D6 (sub_800B4B2) packets are for in game terms.
+sources:
+- vidsync docs/vidsync/BN6F_SYMBOLS.md
+- Claude session_01DywpM9x1GYhwUsv45iVPi1 (review of Hyper glm-5.3-flash drafts)
+changes:
+- date: '2026-10-17'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b95be76c
+  tool: tools/symdoc.py

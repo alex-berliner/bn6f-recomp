@@ -1,0 +1,72 @@
+name: sub_8143220
+address: '0x08143220'
+kind: function
+previous_names: []
+status: probable
+summary: Cybercrow record r0 gets a new random countdown at +0x02 of 0x1E + (GetRNG & 0x3F) frames (30-93), and
+  its state byte becomes 1 unless it is 3 (sub_81432FA).
+interface: (r0 = crow slot index 0-7) -> r0 = the record's state byte from before the call (sub_81432FA's ldrb),
+  r1 = 0x14; r4-r7 preserved (push/pop r4-r7); clobbers r2, r3, lr and the flags. One primary GetRNG.
+details: "Body (asm37_1.s:2846-2864): sub_81431F8(r0) gives the record byte_2000D20 + r0 * 0x14 (8 records of 0x14\n\
+  bytes); GetRNG & 0x3F plus the constant 0x1E (dword_8143244) is stored as the halfword at record +0x02; then\n\
+  sub_81432FA(r0, 1), which stores 1 in the record's state byte +0x00 unless that byte is 3. Its twin sub_8143204,\n\
+  right before it, sets the halfword at +0x06 the same way (0x1E + (GetRNG & 0x3F)) and leaves the state alone.\n\
+  \nCallers, each with the crow's slot index (the map object's byte +4, or the slot being filled):\n- sub_8143314\
+  \ (asm37_1.s:3011), the crow spawn: sub_8143204, then this.\n- sub_80A8BBC (asm29.s:7349): sub_8143204, then this,\
+  \ after clearing the object's byte +1, when sub_80A8D02's\n  r1 << 8 is within +-0x400.\n- sub_80A8CCC (asm29.s:7496),\
+  \ the type 0x18 map object's wobble: while the state is 2 it counts +0x02 down and,\n  when it runs out, changes\
+  \ the heading at +0x04 by +-(GetRNG % 0x60) << 8; it calls this when the countdown\n  has run out, and on every\
+  \ frame where the state is not 2.\n- sub_80A8DB0 (asm29.s:7618), which starts the byte_808C2F0 cutscene and plays\
+  \ sound 0x122: sub_8143204, then\n  this.\n\nvidsync (docs/vidsync/RANDOM_EVENTS.md, Cybercrow lesson; level A)\
+  \ counts it in the 4 primary calls per crow spawn\n(2 in sub_8143314, 1 in sub_8143204, 1 here) and in the wobble's\
+  \ \"2 calls + 1 via sub_8143220\".\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-17'
+  detail: 'Body and its two callees read. sub_81431F8 multiplies r0 by 0x14 and adds byte_2000D20; GetRNG & 0x3F,
+    + 0x1E, strh at [r5, #2]; mov r0, r4 / mov r1, #1 / bl sub_81432FA, which does strb r1 into [record] unless
+    ldrb [record] == 3.'
+  refs:
+  - bn6f/asm/asm37_1.s:2819-2864
+  - bn6f/asm/asm37_1.s:2973-2986
+  reproduce: 'sed -n ''2819,2864p'' bn6f/asm/asm37_1.s
+
+    awk ''index($0,"sub_81432FA:")==1{f=1} f{print NR": "$0} f&&/thumb_func_end/{exit}'' bn6f/asm/asm37_1.s
+
+    '
+  result: as described; one bl GetRNG in the body
+- method: caller-analysis
+  date: '2026-10-17'
+  detail: 'The four call sites, each passing a crow slot index (ldrb r0, [r5, #4] in the three map-object routines,
+    mov r0, r4 in the spawn loop); in three of them sub_8143204 is called first with the same index.'
+  refs:
+  - bn6f/asm/asm29.s:7349
+  - bn6f/asm/asm29.s:7496
+  - bn6f/asm/asm29.s:7618
+  - bn6f/asm/asm37_1.s:3011
+  reproduce: 'grep -n -B3 ''bl sub_8143220'' bn6f/asm/asm29.s bn6f/asm/asm37_1.s
+
+    awk ''index($0,"sub_80A8CCC:")==1{f=1} f{print NR": "$0} f&&/thumb_func_end/{exit}'' bn6f/asm/asm29.s
+
+    '
+  result: calls at asm29.s:7349, 7496, 7618 and asm37_1.s:3011; in sub_80A8CCC the state != 2 branch (bne loc_80A8CFA)
+    lands on the call too
+related:
+- sub_8143204
+- sub_81431F8
+- sub_81432FA
+- sub_8143314
+- sub_80A8CCC
+open_questions:
+- What the record's states 1, 2 and 3 mean (this sets state 1; the wobble counts +0x02 down only in state 2), and
+  what moves a crow from state 1 to 2.
+- 'suggested name: crow_rerollTimerAndSetState1 (sets the crow record''s +0x02 countdown at random and its state
+  to 1); a game-terms name once the states are known'
+sources:
+- vidsync docs/vidsync/BN6F_SYMBOLS.md
+- Claude session_01DywpM9x1GYhwUsv45iVPi1 (review of Hyper glm-5.3-flash drafts)
+changes:
+- date: '2026-10-17'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b95be76c
+  tool: tools/symdoc.py

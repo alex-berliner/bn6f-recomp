@@ -1,0 +1,123 @@
+name: off_81166B0
+address: '0x081166B0'
+kind: data
+previous_names: []
+status: probable
+summary: Action table of the virus AI with index 0x1F, slot 0x1F of off_8109050; 9 Thumb handlers run by RunAIAttack,
+  picked by the object's CurAction (0..8).
+details: 'Nine words (asm32.s:16383-16391), each a Thumb handler (+1) that works on the battle object in r5:
+
+
+  | CurAction | handler |
+
+  |---|---|
+
+  | 0 | sub_81166F2: clears bit 1 of the object header flags; if bit 1 of battle_getStateUnk5c_800139A is set, CurAction
+  = 1 and the phase halfword = 0 |
+
+  | 1 | battle_ResetObjectActionState_80165B8 |
+
+  | 2 | sub_811670E: relatedToIsBattleOver_800A11C, RemoveGivenAliveBattleActorFromList, CurState = CUR_STATE_DESTROY
+  |
+
+  | 3 | sub_80166AE (shared: ForMettaur_8109EF4 has it at CurAction 3 too) |
+
+  | 4 | battleObject_initAndRunAI_8016B02 |
+
+  | 5 | battleObjectStateDispatcher_8016CE8 |
+
+  | 6 | sub_8016B36 |
+
+  | 7 | sub_8016B72 |
+
+  | 8 | battle_updateCustGauge_8116720: runs the AI script through off_8116754, clears header flag bit 1, then SetCustGauge((MaxHP
+  - HP) * halfword +0x80) |
+
+
+  How it is reached: battle_8108F74 loads off_8109050[AIData.AIIndex] and passes it to battle_801B1C4, which hands
+
+  it to RunAIAttack; RunAIAttack indexes it by CurAction * 4 (CurAction >= 0x10 goes to AIAttackJumptable instead).
+
+  ForMettaur_8109EF4, slot 1 of the same table, is built the same way (its comments mark the CurAction of each
+
+  word), with more entries after CurAction 8.
+
+
+  The same AI index has sub_81166D4 as its hook in off_8109250 (slot 0x1F, dispatched by
+
+  battle_dispatchActorHandlerByType_800F35C): it sets PanelX = 7 (off the 6-column field), updates the collision
+
+  panels and stores 0x4000 / MaxHP at halfword +0x80. With handler 8 that makes the Custom Gauge proportional to
+  the
+
+  HP this object has lost: (MaxHP - HP) * 0x4000 / MaxHP. vidsync''s family map (docs/vidsync/BN6F_SYMBOLS.md
+
+  section 7, read from the order of the virus names) puts Tuby at AI index 0x1F; the handlers here look more like
+
+  a hidden helper object than a virus.
+
+
+  Right before it is byte_81165C4 (asm32.s:16362-16381), slot 0x1F of the per-AI data table off_81090D0, so the
+
+  same AI index''s data; its tail is 0xFF filler and 8 zero bytes.
+
+  '
+evidence:
+- method: data-inspection
+  date: '2026-10-17'
+  detail: The nine words of the table and the bodies of sub_81166F2, sub_811670E, battle_updateCustGauge_8116720
+    and sub_81166D4 right after it.
+  refs:
+  - bn6f/asm/asm32.s:16382-16391
+  - bn6f/asm/asm32.s:16392-16469
+  - bn6f/asm/asm32.s:16362-16381
+  reproduce: 'n=$(grep -n ''^off_81166B0:'' bn6f/asm/asm32.s | cut -d: -f1); sed -n "$((n-20)),$((n+87))p" bn6f/asm/asm32.s
+
+    grep -n ''byte_81165C4'' bn6f/asm/asm31.s
+
+    '
+  result: 'the nine .word lines in the order of the table above; sub_81166D4 (mov r0, #7; strb r0, [r5, #oBattleObject_PanelX];
+    0x4000 / MaxHP by svc 6 to [r5 + 0x80]) is not in the table'
+- method: caller-analysis
+  date: '2026-10-17'
+  detail: Its one reference is slot 0x1F (offset 0x7C) of off_8109050, the virus action table battle_8108F74 indexes
+    by AIData.AIIndex * 4 and passes to battle_801B1C4, whose stored argument goes to RunAIAttack (asm00_2.s:25134-25135);
+    RunAIAttack loads [table + CurAction * 4] and calls it. sub_81166D4 is slot 0x1F of off_8109250.
+  refs:
+  - bn6f/asm/asm31.s:171200
+  - bn6f/asm/asm31.s:171263-171264
+  - bn6f/asm/asm31.s:171529-171530
+  - bn6f/asm/asm31.s:171170-171181
+  - bn6f/asm/asm00_2.s:25134-25135
+  - bn6f/asm/asm00_2.s:25988-26017
+  reproduce: 'grep -rn ''off_81166B0\|sub_81166D4+1'' bn6f/asm
+
+    sed -n ''171170,171181p;171262,171264p;171528,171530p'' bn6f/asm/asm31.s
+
+    sed -n ''25134,25135p;25988,26017p'' bn6f/asm/asm00_2.s
+
+    '
+  result: .word off_81166B0 at asm31.s:171264 under the comment "// 0x7C" inside off_8109050 (171200-171264); .word
+    sub_81166D4+1 at 171530 under "// 0x7C" in off_8109250
+related:
+- off_8109050
+- off_8109250
+- RunAIAttack
+- battle_801B1C4
+- battle_8108F74
+- battle_updateCustGauge_8116720
+- ForMettaur_8109EF4
+open_questions:
+- Which object uses AI index 0x1F (vidsync's map says Tuby; a Custom Gauge driven by lost HP and a home at PanelX
+  7 suggest a hidden helper object of some special battle), and what CurActions 6 and 7 (sub_8016B36, sub_8016B72)
+  do.
+- 'suggested name: aiActionTable_1F_81166B0 (the CurAction handler table of AI index 0x1F; a family name once the
+  object is known)'
+sources:
+- vidsync docs/vidsync/BN6F_SYMBOLS.md
+- Claude session_01DywpM9x1GYhwUsv45iVPi1 (review of Hyper glm-5.3-flash drafts)
+changes:
+- date: '2026-10-17'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b95be76c
+  tool: tools/symdoc.py

@@ -1,0 +1,116 @@
+name: sub_809FD70
+address: '0x0809FD70'
+kind: function
+previous_names: []
+status: probable
+summary: Rolls the gold mystery data at the start of each mystery data roll, picking a GoldMysteryDataEntries record
+  (map) by weight and a contents index from its table, into byte_2000210+2..+5, and clearing +6.
+interface: '() -> nothing meaningful. Writes byte_2000210 +2 (u8 contents index), +3 (u8 record index), +4 (u16
+  map: group in +4, map number in +5) and clears +6 (u16). Preserves r4-r7; r0-r3 and flags clobbered. Uses 0x30
+  bytes of stack. Two weighted picks (pickWeightedIndex_8000E3A, the second through sub_809FA68), each advancing
+  the primary RNG 2 + (rng >> 30) + (iCurrFrame & 3) times.'
+details: "- Clears byte_2000210+2 (strb) and +6, +4 (strh); +3 is not cleared, only written.\n- Walks GoldMysteryDataEntries,\
+  \ 12-byte records {u32 map, table pointer, u32 weight}, until a record whose first\n  word is 0, copying the low\
+  \ byte of +8 into a stack weight buffer, and calls pickWeightedIndex_8000E3A. The index\n  goes to +3 and the\
+  \ low halfword of the record's first word to +4.\n- Calls sub_809FA68(r0 = 0, r1 = the record's table at +4, r2\
+  \ = a 16-byte 0xFF-filled list): no placement pick,\n  a contents pick over the table with nothing excluded. The\
+  \ contents index (r1) goes to +2.\nThe fields after this roll, from the code that reads them:\n- mysteryData_processMapGroups_809F9DC\
+  \ calls this first, then for each internet map calls\n  record_writeU16IfIdMatches_809FDCE(group, map number,\
+  \ count of type-5 records on that map), which writes the\n  count to +6 when group | map << 8 equals +4. Then\
+  \ rollInternetMysteryData_809FDE0 (if +6 is not 0) picks one of\n  those records uniformly and replaces +6 with\
+  \ its mystery data id, or 0.\n- goldMysteryData_GetEntryDataIfIdMatches_809FE44: for the id in +6, returns the\
+  \ table of record +3 (r4) and\n  the contents index +2 (r3). sub_809FE5E and sub_809FE7A read +4/+5 (and +2).\n\
+  So +4/+5 is the map holding the gold mystery data, +6 which of its green records becomes gold, +3 the gold\nrecord\
+  \ and +2 what the gold one contains.\nGoldMysteryDataEntries has 27 records: 18 for maps (groups 0x90-0x96, weight\
+  \ 0x20 each) and 9 with map 0x0001\n(weight 0xC0, table byte_80A3570). Map 0x0001 is group 0x01, a real-world\
+  \ group, which never matches the\ninternet groups record_writeU16IfIdMatches_809FDCE is called with, so +6 stays\
+  \ 0 for those and no gold\nmystery data appears: with weights 18*0x20 = 576 and 9*0xC0 = 1728, no gold in 3 rolls\
+  \ out of 4 (reading of\nthe data, not observed).\n"
+evidence:
+- method: assembly-reading
+  date: '2026-10-17'
+  detail: The body clears +2, +6 and +4 of byte_2000210, builds the weights from byte +8 of each 12-byte GoldMysteryDataEntries
+    record (first word 0 ends), picks with pickWeightedIndex_8000E3A, stores the index at +3 and the record's first
+    halfword at +4, then calls sub_809FA68 with r0 = 0, r1 = [record+4] and a 0xFF-filled list and stores the returned
+    r1 at +2.
+  refs:
+  - bn6f/asm/asm28_1.s:577
+  - bn6f/asm/asm28_1.s:601
+  - bn6f/asm/asm28_1.s:609
+  - bn6f/asm/asm28_1.s:622
+  - bn6f/asm/asm28_1.s:623
+  - byte_2000210
+  - GoldMysteryDataEntries
+  reproduce: 'awk ''index($0,"sub_809FD70:")==1{f=1} f{print NR": "$0} f&&/thumb_func_end/{exit}'' bn6f/asm/asm28_1.s'
+  result: 'body asm28_1.s:577-627; strb +3 at 603, strh +4 at 609, mov r0, #0 / ldr r1, [r1,#4] at 610-611, bl sub_809FA68
+    at 622, strb r1, [r6,#0x2] at 623'
+- method: caller-analysis
+  date: '2026-10-17'
+  detail: Called only from mysteryData_processMapGroups_809F9DC (asm28_1.s:27), before its map walk. The readers
+    of the fields it sets are record_writeU16IfIdMatches_809FDCE (compares +4, writes +6), rollInternetMysteryData_809FDE0
+    (reads +4/+5 and +6, writes +6), goldMysteryData_GetEntryDataIfIdMatches_809FE44 (+6, +3, +2), sub_809FE5E and
+    sub_809FE7A (+4, +5, +2).
+  refs:
+  - bn6f/asm/asm28_1.s:27
+  - bn6f/asm/asm28_1.s:635
+  - bn6f/asm/asm28_1.s:653
+  - bn6f/asm/asm28_1.s:724
+  - mysteryData_processMapGroups_809F9DC
+  - record_writeU16IfIdMatches_809FDCE
+  - rollInternetMysteryData_809FDE0
+  - goldMysteryData_GetEntryDataIfIdMatches_809FE44
+  reproduce: 'grep -rn sub_809FD70 bn6f/asm
+
+    sed -n ''635,646p;653,701p;724,790p'' bn6f/asm/asm28_1.s'
+  result: one bl, at asm28_1.s:27
+- method: data-inspection
+  date: '2026-10-17'
+  detail: GoldMysteryDataEntries holds 27 records, 9 of them {0x0001, byte_80A3570, 0xC0} and 18 for internet maps
+    0x0290, 0x0091 ... 0x0296 with weight 0x20; the records' tables are contents tables (e.g. byte_80A357C has kind
+    5 and kind 3 = 10000 zenny entries; byte_80A3570 a single kind-5 entry).
+  refs:
+  - bn6f/data/dat28.s:2337
+  - bn6f/data/dat28.s:2394
+  - bn6f/data/dat28.s:2396
+  reproduce: 'sed -n ''2337,2402p'' bn6f/data/dat28.s
+
+    sed -n ''2337,2393p'' bn6f/data/dat28.s | grep -c byte_80A3570'
+  result: 9 records point at byte_80A3570; 27 table pointers in all
+- method: assembly-reading
+  date: '2026-10-13'
+  detail: vidsync's own reading (level A; its sync driver never writes or reads the gold fields) maps byte_2000210
+    as +2 slot, +3 entry, +4 map, +6 which green becomes gold. The code agrees on +3, +4 and +6; +2 is the contents
+    index into the gold record's table, not a slot.
+  refs:
+  - docs/vidsync/BN6F_SYMBOLS.md:228
+  - docs/vidsync/RANDOM_EVENTS.md:372
+  - docs/vidsync/RANDOM_EVENTS.md:445
+  reproduce: grep -n sub_809FD70 docs/vidsync/BN6F_SYMBOLS.md docs/vidsync/RANDOM_EVENTS.md
+- method: coverage
+  date: '2026-10-17'
+  detail: Executed by 19 recorded routes (battle, battles1, battles2, battlesweep, beastsp, fuzz, maps, menus2,
+    menus3, story1-story9, wander), so lockstep compares the ported game's state after it there.
+  reproduce: grep -l '^0809fd70 ' tools/traces/coverage/*.prof
+  result: 19 files
+related:
+- mysteryData_processMapGroups_809F9DC
+- sub_809FA68
+- pickWeightedIndex_8000E3A
+- record_writeU16IfIdMatches_809FDCE
+- rollInternetMysteryData_809FDE0
+- goldMysteryData_GetEntryDataIfIdMatches_809FE44
+- GoldMysteryDataEntries
+- byte_2000210
+open_questions:
+- That map 0x0001 records mean "no gold mystery data this time" is read from the data and the match in record_writeU16IfIdMatches_809FDCE,
+  not observed in the game.
+- What byte_2000210+0/+1 and the rest of the struct hold (npc.s clears +0 and +8) is outside this function.
+- suggested name rollGoldMysteryData_809FD70 (the gold counterpart of rollInternetMysteryData_809FDE0)
+sources:
+- vidsync docs/vidsync/BN6F_SYMBOLS.md
+- Claude session_01DywpM9x1GYhwUsv45iVPi1 (review of Hyper glm-5.3-flash drafts)
+changes:
+- date: '2026-10-17'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b95be76c
+  tool: tools/symdoc.py

@@ -1,0 +1,97 @@
+name: SpawnObjectsFromList
+address: '0x08003570'
+kind: function
+previous_names: []
+status: probable
+summary: Spawns every object of a list of 0x14-byte ObjectSpawnData entries (ended by a type byte 0xFF) through
+  SpawnObjectJumptable[type]; returns how many spawned.
+interface: i32 SpawnObjectsFromList(const ObjectSpawnData *list /* r0 */) -> r0 = number of entries whose spawn
+  routine returned an object (r5 != 0); r4-r7 preserved (push/pop); r1-r3, lr, flags and whatever the spawn routines
+  clobber are not
+details: 'Body (asm00_1.s:801-851). Entry layout (include/rom_structs/ObjectSpawnData.inc): +0 Type (u8), +1 Index
+  (u8),
+
+  +2/+3 padding, +4 X, +8 Y, +0xC Z (u32, s16.16), +0x10 ObjectID (u32); 0x14 bytes. For each entry until a Type
+
+  of 0xFF: r6 = SpawnObjectJumptable[Type] (asm00_1.s:2: 0 SpawnOWPlayerObject, 1 object_spawnType1,
+
+  2 SpawnOverworldNPCObject, 3 object_spawnType3, 4 object_spawnType4, 5 SpawnOverworldMapObject), then
+
+  r0 = Index, r1 = X, r2 = Y, r3 = Z, r4 = ObjectID and `mov lr, pc; bx r6` (r4 and the list pointer r7 are
+
+  pushed around the call). A spawn routine returns the new object in r5 (0 = no free slot, as in
+
+  SpawnOverworldMapObject''s .noFreeMapObjects); a nonzero r5 counts the entry. The list pointer advances 0x14
+
+  either way. The lists in the map folders use map_object_spawn_data_struct (MapObjectSpawnData.inc), which is
+
+  this layout with Type 5 (OBJECT_SPAWN_TYPE_OVERWORLD_MAP), and end with `.word 0xFF`.
+
+  26 direct calls: the 22 areas'' *_SpawnMapObjectsForMap in bn6f/maps/*/loader.s (towns and internet areas;
+
+  e.g. MrWeatherComp_SpawnMapObjectsForMap, reached on map entry and through InternetSpawnMapObjectJumptable), sub_8035450
+  (asm03_1_0.s:3216),
+
+  beast_spawnObjectsAndSetup_8141F7C (asm37_1.s:618), MapScriptCmd_spawn_or_free_objects (map_script_cutscene.s:1411)
+
+  and CutsceneCmd_spawn_or_free_ow_map_or_npc_objects (map_script_cutscene.s:5594). Of these, sub_8035450
+
+  discards the count (returns 0). vidsync''s BN6F_SYMBOLS.md names it (level A) as the end of the internet-area
+
+  spawn chain; vidsync never reads or writes anything of it.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-17'
+  detail: Loop, call convention and count read; the entry layout from ObjectSpawnData.inc, the routine table SpawnObjectJumptable
+    (asm00_1.s:2-8, through SpawnObjectJumptable_p at asm00_1.s:1144).
+  refs:
+  - bn6f/asm/asm00_1.s:801
+  - bn6f/asm/asm00_1.s:2
+  - bn6f/include/rom_structs/ObjectSpawnData.inc:12
+  - bn6f/asm/asm00_1.s:3169
+  reproduce: 'awk ''/^SpawnObjectsFromList:/{f=1} f{print FNR": "$0} f&&/thumb_func_end/{exit}'' bn6f/asm/asm00_1.s
+
+    sed -n ''1,8p'' bn6f/asm/asm00_1.s; sed -n ''12,25p'' bn6f/include/rom_structs/ObjectSpawnData.inc
+
+    '
+  result: 'push {r4-r7,lr}; r7 = list, r4 = 0; loop: ldrb type, 0xFF -> done; r6 = table[type]; push {r4,r7}; r0
+    = [r7+1] (byte), r1-r4 = [r7+4..+0x10]; mov lr, pc; bx r6; pop {r4,r7}; r5 != 0 -> r4 += 1; r7 += 0x14; done:
+    r0 = r4; pop {r4-r7,pc}'
+- method: caller-analysis
+  date: '2026-10-17'
+  detail: 26 direct bl sites, 22 of them the areas' *_SpawnMapObjectsForMap in loader.s files; no other reference
+    (no table or literal pool entry points at it).
+  reproduce: 'grep -rnE ''bl SpawnObjectsFromList\b'' bn6f/asm bn6f/maps | wc -l
+
+    grep -rlE ''bl SpawnObjectsFromList\b'' bn6f/maps | wc -l
+
+    grep -rnE ''bl SpawnObjectsFromList\b'' bn6f/asm
+
+    grep -rnE ''SpawnObjectsFromList\+1|=SpawnObjectsFromList'' bn6f/asm bn6f/maps bn6f/data || echo ''no other
+    reference''
+
+    '
+  result: 26; 22; asm03_1_0.s:3216, asm37_1.s:618, map_script_cutscene.s:1411 and 5594; no other reference
+- method: coverage
+  date: '2026-10-17'
+  detail: Executed in all 20 recorded routes, so lockstep checks it there.
+  reproduce: grep -l '^08003570 ' tools/traces/coverage/*.prof | wc -l
+  result: '20'
+related:
+- SpawnOverworldMapObject
+- MrWeatherComp_SpawnMapObjectsForMap
+- InternetSpawnMapObjectJumptable
+- npc_freeAllObjectsThenSpawnObjectsFromList
+open_questions:
+- The spawn routines of types 1, 3 and 4 (object_spawnType1/3/4) were not read; that they too return the object
+  in r5 is assumed from the shared loop.
+sources:
+- vidsync docs/vidsync/BN6F_SYMBOLS.md
+- Claude session_01DywpM9x1GYhwUsv45iVPi1 (review of Hyper glm-5.3-flash drafts)
+changes:
+- date: '2026-10-17'
+  what: doc comment (symdb block) at the definition
+  where: bn6f b95be76c
+  tool: tools/symdoc.py
