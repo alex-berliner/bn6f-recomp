@@ -1,0 +1,50 @@
+name: eT1BattleObject0_HP
+address: '0x0203A9D4'
+kind: ram
+previous_names: []
+status: confirmed
+summary: MegaMan's current HP in a battle (u16, eT1BattleObject0 + 0x24, oBattleObject_HP); the HP box shows a copy
+  of it (eStruct2035280+0x24) taken on hits and heals.
+details: 'Object 0 of eT1BattleObjects is MegaMan. Damage and healing change this field and then copy it to the
+  HP box''s shown value (battle_eStruct2035280_postEvent_801E0A0 / sub_801E0BC read it through eStruct2035280+0x48),
+  so a write here alone does not change the box until the next hit or heal; it takes the hits that follow from the
+  written value (vidsync: 170 written became 120 after a 50-damage hit 8 frames later). HP carries over after the
+  battle.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-17'
+  detail: The struct definition puts `u16 HP` at loc=0x24; eT1BattleObject0 is the first t1_battle_object_struct
+    in eT1BattleObjects.
+  refs:
+  - bn6f/include/structs/BattleObject.inc:105-106
+  - bn6f/ewram.s:3025
+  reproduce: 'sed -n ''105,106p'' bn6f/include/structs/BattleObject.inc
+
+    sed -n ''3025p'' bn6f/ewram.s
+
+    arm-none-eabi-nm bn6f/bn6f.elf | grep '' eT1BattleObject0$\| eT1BattleObject0_HP$''
+
+    '
+  result: u16 HP // loc=0x24; eT1BattleObject0 0x0203a9b0, eT1BattleObject0_HP 0x0203a9d4
+- method: runtime
+  date: '2026-10-17'
+  detail: 'vidsync''s hp handler (try_hp) at run8m''s navi battle (loss 615517, ours deleted at 10 HP, the video''s
+    MegaMan at 170): writing 170 here (with the box''s copy, eStruct2035280+0x24) at game 615427 made the battle
+    follow the video, and the enemy''s deletion then held (run8n fixes 1-2). A probe write of 170 read 120 eight
+    frames later after a hit; 10 read 0.'
+  refs:
+  - tools/vidsync/autosync.py
+  - eStruct2035280
+  reproduce: grep -n 'def try_hp' -A12 tools/vidsync/autosync.py
+  result: 'run8n fix 1: write 0x203a9d4=0xaa/2,0x20352a4=0xaa/2,0x20352c4=0x44d7/4 at game 615427 (data/auto/run8n.0/auto.log
+    on the driver PC)'
+related:
+- eT1BattleObjects
+- eStruct2035280
+- eT1BattleObject2_HP
+open_questions:
+- Where MegaMan's HP is kept between battles (navi stats) and when the battle copies it in and out.
+sources:
+- Claude session_01DywpM9x1GYhwUsv45iVPi1 (vidsync try_hp at run8m 615517)

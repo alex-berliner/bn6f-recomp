@@ -1,0 +1,50 @@
+name: eT1BattleObject3_HP
+address: '0x0203AC5C'
+kind: ram
+previous_names: []
+status: confirmed
+summary: Current HP (u16) of T1 battle object 3 (eT1BattleObject3 + 0x24, oBattleObject_HP), usually an enemy; writing
+  0 deletes it.
+details: 'The same field as eT1BattleObject2_HP, for object 3: eT1BattleObject3 is at 0x0203AC38 (0x0203A9B0 + 3
+  * 0xD8), its u16 HP at +0x24 (MaxHP at +0x26). The code reaches it only through a battle-object pointer (`[r5,
+  #oBattleObject_HP]`), never by this name or address.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-17'
+  detail: The struct definition puts `u16 HP` at loc=0x24; eT1BattleObject3 is the fourth t1_battle_object_struct
+    in eT1BattleObjects, and the ELF symbol is 0x0203AC38 + 0x24.
+  refs:
+  - bn6f/include/structs/BattleObject.inc:105-106
+  - bn6f/ewram.s:3028
+  reproduce: 'sed -n ''105,106p'' bn6f/include/structs/BattleObject.inc
+
+    sed -n ''3028p'' bn6f/ewram.s
+
+    arm-none-eabi-nm bn6f/bn6f.elf | grep '' eT1BattleObject3$\| eT1BattleObject3_HP$''
+
+    '
+  result: u16 HP // loc=0x24; eT1BattleObject3 0x0203ac38, eT1BattleObject3_HP 0x0203ac5c
+- method: runtime
+  date: '2026-10-17'
+  detail: vidsync's kill handler (try_kill) writes 0 to each live enemy's HP at +0x24 at the frame that makes the
+    battle end when the video's does; the sync keeps the write only when the game then follows the video. The BeastSP
+    route (tools/traces/beastsp.poke, vidsync's kept fixes) writes 0x203ac5c=0x0000/2 in 5 fixes.
+  refs:
+  - tools/vidsync/autosync.py
+  - tools/traces/beastsp.poke
+  - eT1BattleObject2_HP
+  reproduce: 'grep -n ''def try_kill\|def enemies_alive'' tools/vidsync/autosync.py
+
+    grep -n ''0x203ac5c=0x0000/2'' tools/traces/beastsp.poke
+
+    '
+  result: '5 route lines (55, 57, 75, 189, 199), e.g. line 55: 144359:144360 0x203ab84=0x0000/2,0x203ac5c=0x0000/2'
+related:
+- eT1BattleObjects
+- eT1BattleObject2_HP
+- eActiveT1BattleObjectsBitfield
+open_questions: []
+sources:
+- 'Claude session_01DywpM9x1GYhwUsv45iVPi1 (run8m: the learn step listed it unnamed)'

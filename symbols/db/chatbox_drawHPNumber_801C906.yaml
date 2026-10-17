@@ -4,12 +4,20 @@ kind: function
 previous_names:
 - sub_801C906
 status: probable
-summary: Builds per-digit tile rows for an HP display in the chatbox, copies them to a BG tile block and
-  queues the digit GFX source into VRAM.
-interface: (r5 = AIData*, r10 = Toolkit*) -> r0 = pointer to digit-tile-id array (in stack temp / re-used);
-  no callee-restore outputs
-details: 'Routine runs at 0x0801c906. r5 points at an AIData-like record (JoypadPressed at +0x24 is read
-  as u16,
+summary: 'Draws the battle HP box: eStruct2035280+0x24 (the shown HP) as BCD digit tiles into BG tile block 3 at
+  the box''s position, and queues the digit graphics.'
+interface: (r5 = eStruct2035280, as runFlaggedCallbacks_801BF64 passes it; r10 = Toolkit*) -> nothing meaningful;
+  called for bit 7 of eStruct2035280+0x44
+details: 'r5 is eStruct2035280, not an AIData record: runFlaggedCallbacks_801BF64 loads it into r5 and calls this
+  as entry 7 of off_801BF88 when bit 7 of +0x44 is set. It reads the u16 at +0x24 (the HP the box shows, copied
+  from MegaMan''s object HP on hits and heals), converts it with memory_bcdConvert, builds a 4x2 tile-id patch (digit
+  tiles from 0xD1A0, leading positions blank via the 0xAAAA mask and countHexDigits_8000C5C) and copies it with
+  CopyBackgroundTiles at column +1 + 1, row +2 of tile block 3; then queues 0x20 bytes of digit graphics from dword_86E1C78
+  + 0x20 * byte +3 to 0x03001B00.
+
+
+  (Earlier reading, kept for reference:) Routine runs at 0x0801c906. r5 points at an AIData-like record (JoypadPressed
+  at +0x24 is read as u16,
 
   then split into per-digit BCD nibbles via memory_bcdConvert). It reads those four digits back from
 
@@ -21,32 +29,42 @@ details: 'Routine runs at 0x0801c906. r5 points at an AIData-like record (Joypad
 
   `0xD1A0 + 2*v`, +1 = top tile).
 
-  It writes pairs into an 8-byte stack buffer at r6, then calls CopyBackgroundTiles with
-
-  j = AIIndex+1, i = Unk_02, tileBlock = 3, j_size = 4, i_size = 2 (a 4x2 patch for the HP readout),
-
-  where the tile-id pair list is the on-stack array. After that it pops r5 and reads Unk_03 of the
-
-  AIData, multiplies by 32, adds a base pointer (loaded via `dword_86E1C78` at `off_801C970`) and
-
-  QueueEightWordAlignedGFXTransfer-s 0x20 bytes from that address into IWRAM at 0x03001B00,
-
-  presumably to refresh the small BG3/chatbox HP readout tile slab.
-
-  Returns nothing meaningful in caller-visible registers; restores r4/r6/r7/lr and ends in `--/NZCV=----`.
-
-  '
+  It writes pairs into an 8-byte stack buffer at r6, then calls CopyBackgroundTiles wi'
 evidence:
 - method: assembly-reading
+  date: '2026-10-17'
+  detail: The caller is runFlaggedCallbacks_801BF64 (r5 = eStruct2035280, entry 7 of off_801BF88); +0x24 of that
+    struct is the shown HP (see eStruct2035280), so the 'JoypadPressed' reading of the earlier entry was the AIData
+    struct's field name at the same offset, not what is read.
+  refs:
+  - bn6f/asm/asm00_2.s:26903
+  - bn6f/asm/asm00_2.s:28284
+  - eStruct2035280
+  reproduce: sed -n '26903,26940p' bn6f/asm/asm00_2.s
+  result: ldr r5, off_801BFE8 // =eStruct2035280; off_801BF88 entry 7 = chatbox_drawHPNumber_801C906+1
+- method: runtime
+  date: '2026-10-17'
+  detail: 'Writing eStruct2035280+0x24 and setting bit 7 of +0x44 makes this routine draw the written HP: vidsync''s
+    hp handler (try_hp, tools/vidsync/autosync.py) at run8m''s loss 615517: writing only MegaMan''s object HP (eT1BattleObject0
+    +0x24) left the HP box unchanged for every value tried over 2-24 frames (box error 20.1 for all, log 17:24:09);
+    writing eStruct2035280+0x24 too and setting bit 7 of +0x44 made the box show the written value within 6 frames:
+    of 1..820 the video''s box matched 170 (error 20.1 -> 13.4, log 17:25:44), and that write (0x203a9d4=0xaa/2,0x20352a4=0xaa/2,0x20352c4=0x44d7/4
+    at game 615427) then synced with the video (run8n fix 1).'
+  refs:
+  - tools/vidsync/autosync.py
+  - eT1BattleObject0
+  reproduce: grep -n 'def try_hp' -A60 tools/vidsync/autosync.py | grep -n 'hud\|0x44\|0x24'
+  result: 'run8n fix 1: write 0x203a9d4=0xaa/2,0x20352a4=0xaa/2,0x20352c4=0x44d7/4 at game 615427 (the driver''s
+    log on the driver PC, data/auto/run8n.0/auto.log)'
+- method: assembly-reading
   date: '2026-10-14'
-  detail: '- `ldrh r0,[r5,#0x24]` + `bl memory_bcdConvert` (JoypadPressed reinterpreted as HP/BCD source).
-    - `bl countHexDigits_8000C5C` then `lsl r1,r0` xored with `0xAAAA` per nibble pairs => 2-digit-tile
-    packing. - Stack frame `sub sp,#0x10` and the 4-pair strh loop at loc_801C92A building the u16 tile-id
-    array. - `CopyBackgroundTiles(... j:r5+1 = AIIndex+1, i:r5+2 = Unk_02, tileBlock32x32:3, j_size:4,
-    i_size:2)` - 4x2 layout for HP readout. - Final `ldr r0,[r5,#3]` (Unk_03) shifted by 5 (= *32) is
-    the per-character offset into a 0x20-byte digit GFX blob; `QueueEightWordAlignedGFXTransfer(byte_3001B00,
-    dword_86E1C78 + offset, 0x20)` reloads digit graphics into IWRAM/VRAM staging. - Caller origin `lr=0801bf7c`
-    aligns with chatbox/battle update routines that own this AIData pointer.'
+  detail: '- `ldrh r0,[r5,#0x24]` + `bl memory_bcdConvert` (JoypadPressed reinterpreted as HP/BCD source). - `bl
+    countHexDigits_8000C5C` then `lsl r1,r0` xored with `0xAAAA` per nibble pairs => 2-digit-tile packing. - Stack
+    frame `sub sp,#0x10` and the 4-pair strh loop at loc_801C92A building the u16 tile-id array. - `CopyBackgroundTiles(...
+    j:r5+1 = AIIndex+1, i:r5+2 = Unk_02, tileBlock32x32:3, j_size:4, i_size:2)` - 4x2 layout for HP readout. - Final
+    `ldr r0,[r5,#3]` (Unk_03) shifted by 5 (= *32) is the per-character offset into a 0x20-byte digit GFX blob;
+    `QueueEightWordAlignedGFXTransfer(byte_3001B00, dword_86E1C78 + offset, 0x20)` reloads digit graphics into IWRAM/VRAM
+    staging. - Caller origin `lr=0801bf7c` aligns with chatbox/battle update routines that own this AIData pointer.'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x0801C906
@@ -56,12 +74,6 @@ evidence:
   note: 'Proposed name (pending rename): chatbox_drawHPNumber_801C906
 
     '
-open_questions:
-- The exact BG layer used (constant `3` for tile block 3 with the call layout suggests BG3 chatbox overlay).
-- Whether the four digits represent total HP, current HP or something else; field names (Unk_02/Unk_03)
-  only show they are indexes/counters.
-sources:
-- discovery session 2026-10-14 batch 44 (outside model minimax/MiniMax-M3)
 changes:
 - date: '2026-10-14'
   what: doc comment (symdb block) at the definition
@@ -71,6 +83,18 @@ changes:
   what: rename sub_801C906 -> chatbox_drawHPNumber_801C906
   where: bn6f 0823ec4c
   tool: tools/rename_symbol.py
+- date: '2026-10-17'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 688dfc0f
+  tool: tools/symdoc.py
+related:
+- eStruct2035280
+- runFlaggedCallbacks_801BF64
+open_questions:
+- The BG layer of tile block 3 (the battle HUD layer).
+sources:
+- discovery session 2026-10-14 batch 44 (outside model minimax/MiniMax-M3)
+- Claude session_01DywpM9x1GYhwUsv45iVPi1 (vidsync try_hp)
 stamp:
   rom: rom:dbfb4a9c23471b5a
   range: 0x0801C906-0x0801C984

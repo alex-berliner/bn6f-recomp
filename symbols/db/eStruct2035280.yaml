@@ -1,0 +1,72 @@
+name: eStruct2035280
+address: '0x02035280'
+kind: ram
+previous_names: []
+status: probable
+summary: 'The battle screen''s HUD state: the HP box''s shown HP at +0x24 (a copy of MegaMan''s, updated on hits
+  and heals), its tile position, and the redraw/request bits.'
+details: 'Fields read from the code (s_2035280_struct in bn6f):
+
+  - +0x01 / +0x02: the HP box''s tile column and row (chatbox_drawHPNumber_801C906 passes +1 + 1 and +2 to CopyBackgroundTiles).
+
+  - +0x03: index of the digit graphics block (x 0x20) that routine queues.
+
+  - +0x24 (u16): the HP the box shows. Written only by battle_eStruct2035280_postEvent_801E0A0 and sub_801E0BC,
+  both copying [+0x48]->+0x24 (the battle object''s HP); so the box changes on those events (a hit, a heal), not
+  when the object''s HP changes by itself.
+
+  - +0x40: request bits (eStruct2035280_SetRequestBits_801BECC; the post-event routine ORs 0x80).
+
+  - +0x44: callback bits: runFlaggedCallbacks_801BF64 calls off_801BF88[k] for each set bit k, lowest first; bit
+  7 is chatbox_drawHPNumber_801C906 (the HP box), bit 2 battle_renderHpOverlays_801C202.
+
+  - +0x48: pointer to the battle object whose HP the box shows (MegaMan''s in the battles vidsync looked at).
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-17'
+  detail: The only writes of +0x24 are `ldr r2, [r3,#0x48]; ldrh r2, [r2,#0x24]; strh r2, [r3,#0x24]` in battle_eStruct2035280_postEvent_801E0A0
+    and the same in sub_801E0BC; runFlaggedCallbacks_801BF64 loads r5 = eStruct2035280 and walks the bits of +0x44
+    over off_801BF88, whose entry 7 is chatbox_drawHPNumber_801C906, which draws `ldrh r0, [r5,#0x24]` as BCD digits
+    at column +1 + 1, row +2.
+  refs:
+  - bn6f/asm/asm00_2.s:26903
+  - bn6f/asm/asm00_2.s:28284
+  - bn6f/asm/asm00_2.s:31553
+  - bn6f/asm/asm00_2.s:31569
+  reproduce: 'grep -n -i ''20352a4'' bn6f/asm/*.s
+
+    sed -n ''26903,26940p'' bn6f/asm/asm00_2.s
+
+    sed -n ''28284,28324p'' bn6f/asm/asm00_2.s'
+  result: two strh to +0x24 (asm00_2.s:31558, 31574), both from [+0x48]+0x24; off_801BF88 entry 7 = chatbox_drawHPNumber_801C906
+- method: runtime
+  date: '2026-10-17'
+  detail: 'vidsync''s hp handler (try_hp, tools/vidsync/autosync.py) at run8m''s loss 615517: writing only MegaMan''s
+    object HP (eT1BattleObject0 +0x24) left the HP box unchanged for every value tried over 2-24 frames (box error
+    20.1 for all, log 17:24:09); writing eStruct2035280+0x24 too and setting bit 7 of +0x44 made the box show the
+    written value within 6 frames: of 1..820 the video''s box matched 170 (error 20.1 -> 13.4, log 17:25:44), and
+    that write (0x203a9d4=0xaa/2,0x20352a4=0xaa/2,0x20352c4=0x44d7/4 at game 615427) then synced with the video
+    (run8n fix 1).'
+  refs:
+  - tools/vidsync/autosync.py
+  - eT1BattleObject0
+  reproduce: grep -n 'def try_hp' -A60 tools/vidsync/autosync.py | grep -n 'hud\|0x44\|0x24'
+  result: 'run8n fix 1: write 0x203a9d4=0xaa/2,0x20352a4=0xaa/2,0x20352c4=0x44d7/4 at game 615427 (the driver''s
+    log on the driver PC, data/auto/run8n.0/auto.log)'
+related:
+- chatbox_drawHPNumber_801C906
+- runFlaggedCallbacks_801BF64
+- battle_eStruct2035280_postEvent_801E0A0
+- eT1BattleObject0
+open_questions:
+- The other fields of s_2035280_struct; whether +0x48 can point at another object (a link battle).
+- 'suggested name: eBattleHud (the battle screen HUD state); +0x24 oBattleHud_ShownHP'
+sources:
+- Claude session_01DywpM9x1GYhwUsv45iVPi1 (vidsync try_hp at run8m 615517)
+changes:
+- date: '2026-10-17'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 688dfc0f
+  tool: tools/symdoc.py
