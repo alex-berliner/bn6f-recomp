@@ -79,9 +79,50 @@ def quick_score(e, ck, extra, keys, vids, at, span=3, cap=None):
 
 _E = None
 def _qtask(t):
+    ck, extra, keys, vids, at, tid = t[:6]
+    return tid, quick_score(_emu(), ck, extra, keys, vids, at, **(t[6] if len(t) > 6 else {}))
+
+# ---- the driver's own judges, on the workers: path_reach (the path's keys from W with a write, no sync) and a
+# grid of RAM writes each scored by the picture a few frames later (try_relocate, try_mapobj, try_tornado)
+def path_score(e, ck, pokes, keys, vids, until, windows=(), mask=(), loss=LOSS):
+    """From ck's machine with pokes (all of them: the run's and the write), keys[i] at game frame ck['g'] + i
+    against video frame vids[i]: [the game frame where the picture leaves the video (30 frames above loss), or
+    until; the mean frame cost]. The comparison leaves out mask inside the windows (the overlay's)."""
+    e.pokes_clear()
+    for g, s in pokes: e.poke(g, s)
+    e.loadf(ck['state'])
+    on = None; bad = 0; tot = 0.0; n = 0
+    for i, g in enumerate(range(ck['g'], until)):
+        want = any(a <= g < z for a, z in windows)
+        if want != on: e.cmd('mask ' + (' '.join(map(str, mask)) if want else '')); on = want
+        e.step(keys[i]); c = min(e.errs(vids[i] - 3, 7)); tot += c; n += 1
+        bad = bad + 1 if c > loss else 0
+        if bad >= 30: return [g - 30, tot / n]
+    return [until, tot / max(n, 1)]
+
+def grid_score(e, ck, pokes, cands, keys, vid, span, mask=()):
+    """From ck's machine with pokes, for each candidate (a list of [addr, value] 32-bit writes made at once):
+    the writes, keys stepped, then the best picture error over video frames vid - span .. vid + span."""
+    e.pokes_clear(); e.cmd('mask ' + ' '.join(map(str, mask)))
+    for g, s in pokes: e.poke(g, s)
+    e.loadf(ck['state']); e.save(1)
+    out = []
+    for ws in cands:
+        e.load(1)
+        for a, v in ws: e.cmd(f'write32 {a:x} {v:x}')
+        for k in keys: e.step(k)
+        out.append(min(e.errs(vid - span, 2 * span + 1)))
+    return out
+
+def _emu():
     global _E
     if _E is None:
         from emu import Emu
         _E = Emu()
-    ck, extra, keys, vids, at, tid = t[:6]
-    return tid, quick_score(_E, ck, extra, keys, vids, at, **(t[6] if len(t) > 6 else {}))
+    return _E
+def _ptask(t):
+    return t['id'], path_score(_emu(), t['ck'], t['pokes'], t['keys'], t['vids'], t['until'], t['windows'], t['mask'])
+def _gtask(t):
+    return t['id'], grid_score(_emu(), t['ck'], t['pokes'], t['cands'], t['keys'], t['vid'], t['span'], t['mask'])
+KINDS = {'path': _ptask, 'grid': _gtask}
+

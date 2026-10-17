@@ -40,7 +40,8 @@ def log(*a):
     s = time.strftime('%H:%M:%S ') + ' '.join(str(x) for x in a)
     print(s, flush=True); LOG.write(s + '\n'); LOG.flush()
 
-def tid_of(t): return t[3] if len(t) == 4 else t[5]
+def tid_of(t): return t['id'] if isinstance(t, dict) else t[3] if len(t) == 4 else t[5]
+def ck_of(t): return t['ck'] if isinstance(t, dict) else t[0]
 
 class Remote:
     """The worker server on the other machine."""
@@ -83,8 +84,10 @@ class Remote:
             except OSError: pass
     def _run(self, tasks, out, tag, want):
         for t in tasks:
-            c = dict(t[0]); c['state'] = Remote.names[t[0]['state']]
-            if len(t) == 4:
+            c = dict(ck_of(t)); c['state'] = Remote.names[ck_of(t)['state']]
+            if isinstance(t, dict):
+                m = dict(t, op=t['kind'], id=tag + t['id'], ck=c)
+            elif len(t) == 4:
                 m = {'op': 'task', 'id': tag + t[3], 'ck': c, 'extra': t[1], 'until': t[2]}
             else:
                 m = {'op': 'quick', 'id': tag + t[5], 'ck': c, 'extra': t[1], 'keys': t[2], 'vids': t[3], 'at': t[4],
@@ -106,14 +109,15 @@ if A.remote:
     except OSError as ex: log('no remote workers:', ex)
 
 def evaluate(tasks):
-    """tasks: [(ck, extra, until, id)] (a sync: -> game frame reached) or [(ck, extra, keys, vids, at, id)] (the
-    quick pass: -> picture error) -> {id: result}; split between this machine and the remote."""
+    """tasks: [(ck, extra, until, id)] (a sync: -> game frame reached), [(ck, extra, keys, vids, at, id)] (the
+    quick pass: -> picture error) or [{'kind': 'path' | 'grid', 'id', 'ck', ...}] (the driver's own judges,
+    reach_many and grid) -> {id: result}; split between this machine and the remote."""
     out = {}
-    fn = rf._task if len(tasks[0]) == 4 else rf._qtask
+    fn = rf.KINDS[tasks[0]['kind']] if isinstance(tasks[0], dict) else rf._task if len(tasks[0]) == 4 else rf._qtask
     if remote and len(tasks) > 1 and remote.ok():
         k = len(tasks) // 2
         try:
-            for path in {t[0]['state'] for t in tasks[k:]}: remote.put(os.path.basename(path), path)
+            for path in {ck_of(t)['state'] for t in tasks[k:]}: remote.put(os.path.basename(path), path)
         except OSError as ex: remote.down = time.time(); log('remote workers lost:', repr(ex)); return evaluate(tasks)
         th = threading.Thread(target=remote.run, args=(tasks[k:], out)); th.start()
         for tid, r in pool.imap_unordered(fn, tasks[:k]): out[tid] = r
@@ -409,8 +413,7 @@ def path_reach(w, extra, until, D):
     the picture leaves the video (30 frames above the loss cost), or until. From the loss D on the path's video
     mapping is the sync losing it: the video goes on at its rate from D, keys read from it. A candidate judged
     this way differs from the path only by its write."""
-    p0 = b.press_gf; ks = path_keys()[:D - p0 + 1]
-    lv = ks[-1][1]; ks = list(ks) + [(b.key(lv + int(round(k * bm.RATE))), lv + int(round(k * bm.RATE))) for k in range(1, until - D + 2)]
+    p0 = b.press_gf; ks = reach_keys(until, D)
     set_emu_pokes(extra); b.e.load(w[1]); bad = 0; tot = 0.0; n = 0
     for g in range(w[0], until):
         mask_for(g)
@@ -418,6 +421,67 @@ def path_reach(w, extra, until, D):
         bad = bad + 1 if c > rf.LOSS else 0
         if bad >= 30: set_emu_pokes(); return g - 30, tot / n
     set_emu_pokes(); return until, tot / max(n, 1)
+
+def reach_keys(until, D):
+    """path_reach's (key, video frame) for each game frame from the press on: the path's to D, then the video's
+    read on at its rate."""
+    p0 = b.press_gf; ks = path_keys()[:D - p0 + 1]
+    lv = ks[-1][1]
+    return list(ks) + [(b.key(lv + int(round(k * bm.RATE))), lv + int(round(k * bm.RATE))) for k in range(1, until - D + 2)]
+
+# the workers' judges are checked against this machine's on their first use in a run: True once they agree,
+# False when they do not (logged; the judging stays here)
+PAR_OK = {}
+def par_check(kind, here, there):
+    PAR_OK[kind] = here == there
+    log(f'  workers judge {kind!r} as this machine does' if PAR_OK[kind] else
+        f'  workers judge {kind!r} otherwise than this machine ({there} vs {here}): judging here this run')
+    return PAR_OK[kind]
+
+def reach_many(w, extras, until, D):
+    """path_reach(w, extra, until, D) for each of extras ({id: extra pokes}), on the workers -> {id: result}"""
+    if PAR_OK.get('path') is False: return {tid: path_reach(w, ex, until, D) for tid, ex in extras.items()}
+    p0 = b.press_gf; ks = reach_keys(until, D)[w[0] - p0:until - p0]
+    ck = ck_file(w)
+    run = [list(p) for p in b.pokes]
+    tasks = [{'kind': 'path', 'id': tid, 'ck': ck, 'pokes': run + [list(x) for x in ex], 'keys': [k for k, _ in ks],
+              'vids': [v for _, v in ks], 'until': until, 'windows': [list(x) for x in LENIENT], 'mask': OVERLAY_MASK}
+             for tid, ex in extras.items()]
+    res = {tid: list(r) for tid, r in evaluate(tasks).items()}
+    if 'path' not in PAR_OK:
+        ids = list(dict.fromkeys([tasks[0]['id'], tasks[-1]['id']]))     # (one run here, one on the remote)
+        here = [list(path_reach(w, extras[t], until, D)) for t in ids]
+        if not par_check('path', here, [res[t] for t in ids]):
+            return {tid: path_reach(w, ex, until, D) for tid, ex in extras.items()}
+    return res
+
+def grid_here(w, cands, keys, vid, span):
+    """grid on this machine"""
+    set_emu_pokes(); out = []
+    for ws in cands:
+        b.e.load(w[1])
+        for a, v in ws: b.e.cmd(f'write32 {a:x} {v:x}')
+        for k in keys: b.e.step(k)
+        out.append(min(b.e.errs(vid - span, 2 * span + 1)))
+    return out
+
+def grid(w, cands, keys, vid, span):
+    """For each candidate (a list of [addr, value] 32-bit writes): from w's machine (with the run's pokes), the
+    writes, keys stepped, then the best picture error over video frames vid - span .. vid + span; on the
+    workers, in chunks -> [error]"""
+    if PAR_OK.get('grid') is False or len(cands) < 2: return grid_here(w, cands, keys, vid, span)
+    ck = ck_file(w); run = [list(p) for p in b.pokes]
+    mask = OVERLAY_MASK if MASK_ON[0] else []
+    n = max(1, -(-len(cands) // (3 * (A.workers + (15 if remote else 0)))))
+    tasks = [{'kind': 'grid', 'id': f'g{i}', 'ck': ck, 'pokes': run, 'cands': cands[i:i + n], 'keys': keys,
+              'vid': vid, 'span': span, 'mask': mask} for i in range(0, len(cands), n)]
+    res = evaluate(tasks)
+    out = [x for i in range(0, len(cands), n) for x in res[f'g{i}']]
+    if 'grid' not in PAR_OK:
+        ids = sorted({0, len(cands) - 1})
+        if not par_check('grid', grid_here(w, [cands[i] for i in ids], keys, vid, span), [out[i] for i in ids]):
+            return grid_here(w, cands, keys, vid, span)
+    return out
 
 GS_PLAYER = syms.GS_PLAYER_XYZ          # GameState.PlayerX/Y/Z: where the map (re)load puts MegaMan (after a battle too)
 OW_PLAYER_PTR = syms.GS_OW_PLAYER_PTR      # GameState.OverworldPlayerObjectPtr: live coords at +0x1C/+0x20/+0x24 (16.16)
@@ -448,8 +512,9 @@ def try_position(D):
     w2 = state_at(W)
     if w2 is None: return None
     until = D + 200; best = None
-    for x, y in cands:
-        r = path_reach(w2, [[W, f'{GS_PLAYER:#x}={x:#x}/4,{GS_PLAYER + 4:#x}={y:#x}/4']], until, D)
+    res = reach_many(w2, {i: [[W, f'{GS_PLAYER:#x}={x:#x}/4,{GS_PLAYER + 4:#x}={y:#x}/4']] for i, (x, y) in enumerate(cands)}, until, D)
+    for i, (x, y) in enumerate(cands):
+        r = res[i]
         if best is None or (r[0], -r[1]) > (best[0][0], -best[0][1]): best = (r, x, y)
     log(f'  position: {len(cands)} places tried; best ({best[1]:#x}, {best[2]:#x}) reaches {best[0][0]} (mean cost {best[0][1]:.3f})')
     if best[0][0] >= D + 150:
@@ -474,16 +539,16 @@ def try_relocate(D):
     def spec(dx, dy):
         x, y = (x0 + (dx << 16)) & 0xFFFFFFFF, (y0 + (dy << 16)) & 0xFFFFFFFF
         return ','.join(f'{po + o:#x}={v:#x}/4' for o, v in ((0x1C, x), (0x20, y), (0x28, x), (0x2C, y)))
-    def err(dx, dy):
-        b.e.load(w[1])
-        x, y = (x0 + (dx << 16)) & 0xFFFFFFFF, (y0 + (dy << 16)) & 0xFFFFFFFF
-        for o, v in ((0x1C, x), (0x20, y), (0x28, x), (0x2C, y)): b.e.cmd(f'write32 {po + o:x} {v:x}')
-        for k in range(3): b.e.step(ks[D + k - p0][0] if D + k - p0 < len(ks) else 0x3FF)
-        return min(b.e.errs(vT + int(round(3 * bm.RATE)) - 2, 5))     # (the path's mapping after D is the loss)
-    set_emu_pokes()
-    e0 = err(0, 0)
-    best = min((err(dx, dy), dx, dy) for dx in range(-1024, 1025, 16) for dy in range(-1024, 1025, 16))
-    best = min([best] + [(err(best[1] + a, best[2] + c), best[1] + a, best[2] + c) for a in range(-14, 15, 2) for c in range(-14, 15, 2)])
+    def errs(pts):
+        def writes(dx, dy):
+            x, y = (x0 + (dx << 16)) & 0xFFFFFFFF, (y0 + (dy << 16)) & 0xFFFFFFFF
+            return [[po + o, v] for o, v in ((0x1C, x), (0x20, y), (0x28, x), (0x2C, y))]
+        keys = [ks[D + k - p0][0] if D + k - p0 < len(ks) else 0x3FF for k in range(3)]
+        es = grid(w, [writes(dx, dy) for dx, dy in pts], keys, vT + int(round(3 * bm.RATE)), 2)   # (the path's mapping after D is the loss)
+        return [(e, dx, dy) for e, (dx, dy) in zip(es, pts)]
+    coarse = errs([(0, 0)] + [(dx, dy) for dx in range(-1024, 1025, 16) for dy in range(-1024, 1025, 16)])
+    e0 = coarse[0][0]; best = min(coarse[1:])
+    best = min([best] + errs([(best[1] + a, best[2] + c) for a in range(-14, 15, 2) for c in range(-14, 15, 2)]))
     log(f'  relocate: MegaMan +({best[1]}, {best[2]}) px matches the video at {D} ({best[0]:.2f}; where he is {e0:.2f})')
     if best[0] > rf.LOSS or (best[1], best[2]) == (0, 0): return None
     poke = [D, spec(best[1], best[2])]
@@ -493,6 +558,11 @@ def try_relocate(D):
     return None
 
 MAPOBJS, MAPOBJ_SIZE = syms.OW_MAP_OBJECTS, syms.OW_MAP_OBJECT_SIZE     # eOverworldMapObjects (56): X +0xC, Y +0x10 (s16.16)
+def obj_errs(w, a, x0, y0, pts, keys, vT):
+    """For each (dx, dy) px: the map object at a moved there from (x0, y0) at w, keys stepped, the picture
+    against video frames vT +- 2 -> [(error, dx, dy)]"""
+    cands = [[[a + 0xC, (x0 + (dx << 16)) & 0xFFFFFFFF], [a + 0x10, (y0 + (dy << 16)) & 0xFFFFFFFF]] for dx, dy in pts]
+    return [(e, dx, dy) for e, (dx, dy) in zip(grid(w, cands, keys, vT, 2), pts)]
 def try_mapobj(D):
     """A roaming map object (the Weather comp's tornado) goes another way than the video's: for each map object
     that moved in the last 60 frames, the place (16 px steps over +-512 px, then 2 px around the best) whose
@@ -521,16 +591,11 @@ def try_mapobj(D):
         b.e.load(w[1]); now = objs()
         for n in [n for n in movers if n in now]:
             a = MAPOBJS + n * MAPOBJ_SIZE; x0, y0 = now[n]; vT = ks[W + 3 - p0][1]
-            def err(dx, dy):
-                b.e.load(w[1])
-                b.e.cmd(f'write32 {a + 0xC:x} {(x0 + (dx << 16)) & 0xFFFFFFFF:x}')
-                b.e.cmd(f'write32 {a + 0x10:x} {(y0 + (dy << 16)) & 0xFFFFFFFF:x}')
-                for k in range(3): b.e.step(ks[W + k - p0][0])
-                return min(b.e.errs(vT - 2, 5))
-            set_emu_pokes()
-            e0 = err(0, 0)
-            best = min((err(dx, dy), dx, dy) for dx in range(-512, 513, 16) for dy in range(-512, 513, 16))
-            best = min([best] + [(err(best[1] + i, best[2] + j), best[1] + i, best[2] + j) for i in range(-14, 15, 2) for j in range(-14, 15, 2)])
+            coarse = obj_errs(w, a, x0, y0, [(0, 0)] + [(dx, dy) for dx in range(-512, 513, 16) for dy in range(-512, 513, 16)],
+                              [ks[W + k - p0][0] for k in range(3)], vT)
+            e0 = coarse[0][0]; best = min(coarse[1:])
+            best = min([best] + obj_errs(w, a, x0, y0, [(best[1] + i, best[2] + j) for i in range(-14, 15, 2) for j in range(-14, 15, 2)],
+                                         [ks[W + k - p0][0] for k in range(3)], vT))
             log(f'  map object {n} at {W}: +({best[1]}, {best[2]}) px matches the video ({best[0]:.2f}; where it is {e0:.2f})')
             if (best[1], best[2]) != (0, 0) and best[0] < e0 - 0.05 and (best_all is None or best[0] < best_all[0]):
                 spec = f'{a + 0xC:#x}={(x0 + (best[1] << 16)) & 0xFFFFFFFF:#x}/4,{a + 0x10:#x}={(y0 + (best[2] << 16)) & 0xFFFFFFFF:#x}/4'
@@ -547,9 +612,10 @@ def try_mapobj(D):
     if best_all is None: return None
     _, W, specs = best_all
     best = None
-    for sp in specs:
-        w = state_at(W)                # (state_at keeps one slot)
-        r = path_reach(w, [[W, sp]], D + 400, D)
+    w = state_at(W)                    # (state_at keeps one slot)
+    res = reach_many(w, {i: [[W, sp]] for i, sp in enumerate(specs)}, D + 400, D)
+    for i, sp in enumerate(specs):
+        r = res[i]
         log(f'  map object: {sp[:90]}: the path from there reaches {r[0]} (mean cost {r[1]:.3f})')
         if best is None or r[0] > best[0][0]: best = (r, sp)
     if best[0][0] >= D + 150: return state_at(W), [[W, best[1]]]
@@ -568,15 +634,9 @@ def try_tornado(D):
     s32 = lambda v: v - (1 << 32) if v >= 1 << 31 else v
     x0, y0 = s32(b.e.u32(MAPOBJS + 0xC)), s32(b.e.u32(MAPOBJS + 0x10))
     ks = path_keys(); p0 = b.press_gf; vT = ks[W + 3 - p0][1]
-    def err(dx, dy):
-        b.e.load(w[1])
-        b.e.cmd(f'write32 {MAPOBJS + 0xC:x} {(x0 + (dx << 16)) & 0xFFFFFFFF:x}')
-        b.e.cmd(f'write32 {MAPOBJS + 0x10:x} {(y0 + (dy << 16)) & 0xFFFFFFFF:x}')
-        for k in range(3): b.e.step(ks[W + k - p0][0])
-        return min(b.e.errs(vT - 2, 5))
-    set_emu_pokes()
-    best = min((err(dx, dy), dx, dy) for dx in range(-512, 513, 16) for dy in range(-512, 513, 16))
-    best = min([best] + [(err(best[1] + i, best[2] + j), best[1] + i, best[2] + j) for i in range(-14, 15, 2) for j in range(-14, 15, 2)])
+    keys = [ks[W + k - p0][0] for k in range(3)]
+    best = min(obj_errs(w, MAPOBJS, x0, y0, [(dx, dy) for dx in range(-512, 513, 16) for dy in range(-512, 513, 16)], keys, vT))
+    best = min([best] + obj_errs(w, MAPOBJS, x0, y0, [(best[1] + i, best[2] + j) for i in range(-14, 15, 2) for j in range(-14, 15, 2)], keys, vT))
     pos = f'{MAPOBJS + 0xC:#x}={(x0 + (best[1] << 16)) & 0xFFFFFFFF:#x}/4,{MAPOBJS + 0x10:#x}={(y0 + (best[2] << 16)) & 0xFFFFFFFF:#x}/4'
     log(f'  tornado: +({best[1]}, {best[2]}) px at {W} ({best[0]:.2f})')
     w = state_at(W); ck = ck_file(w)
@@ -824,7 +884,7 @@ def try_gmd(D):
     log(f'  mystery data: map {here.hex()} entered at {fm}, records ' + ' '.join(f'{r:x}({a}x{c})' for r, a, c in recs)
         + f': {len(tasks)} writes')
     until = min(until, D + 200)
-    res = {t[3]: path_reach(w, [t[1][0]], until, D) for t in tasks}
+    res = reach_many(w, {t[3]: [t[1][0]] for t in tasks}, until, D)
     ok = [t for t in tasks if res[t[3]][0] >= until]
     if ok:
         if len(ok) == len(tasks): log('  mystery data: every write holds (not the cause)'); return None

@@ -18,8 +18,10 @@ and, optionally,
 
 A handler with match() is tried first, before the built-in handlers, at every loss it matches; one without it
 is tried after them. `sync` is the running autosync module: its beam (`sync.b`), the ring of past machines (`sync.state_at(g)`,
-`sync.ancestor(g)`), the candidate judges (`sync.path_reach(w, extra, until, D)` on this machine,
-`sync.evaluate(tasks)` on the workers, `sync.try_at(w, D, which, jmax)` for RNG writes), `sync.log(...)`, and
+`sync.ancestor(g)`), the candidate judges (`sync.path_reach(w, extra, until, D)` on this machine and
+`sync.reach_many(w, {id: extra}, until, D)` for many writes at once on the workers, `sync.grid(w, cands, keys,
+vid, span)` for a grid of RAM writes judged by the picture, `sync.evaluate(tasks)` for syncs and quick passes on
+the workers, `sync.try_at(w, D, which, jmax)` for RNG writes), `sync.log(...)`, and
 the game's addresses by name (`sync.syms`, tools/vidsync/syms.py). A fix is `(w, pokes)`: `w` the ring-style
 entry the sync goes on from (as state_at returns it), `pokes` the RAM writes `[[game_frame, "ADDR=VALUE/SIZE,..."]]`
 that join the run's (the .poke format: hex, applied at main_awaitFrame entry). Model a handler on the built-in

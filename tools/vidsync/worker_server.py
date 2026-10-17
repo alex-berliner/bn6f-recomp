@@ -1,6 +1,7 @@
 """worker_server.py VDIR PORT [WORKERS]: rngfix candidates for a driver on another machine, over TCP.
 Newline JSON: {"op": "put", "name", "state"(base64)} stores a checkpoint's machine; {"op": "task", "id", "ck",
-"extra", "until"} runs one (ck['state'] names a put) -> {"id", "reached"}."""
+"extra", "until"} runs one (ck['state'] names a put) -> {"id", "reached"}; "quick", and the driver's judges
+"path" and "grid" (rngfix.KINDS: the message is the task), the same way."""
 import sys, os, json, socket, threading, base64
 sys.path.insert(0, os.path.dirname(__file__))
 from multiprocessing import Pool
@@ -32,6 +33,9 @@ def serve(conn, addr):
             elif m['op'] == 'quick':
                 ck = dict(m['ck']); ck['state'] = os.path.join(store, ck['state'])
                 pool.apply_async(rngfix._qtask, ((ck, m['extra'], m['keys'], m['vids'], m['at'], m['id'], m.get('opts', {})),), callback=reply)
+            elif m['op'] in rngfix.KINDS:       # a driver judge ('path', 'grid'): the message is the task
+                m['ck'] = dict(m['ck'], state=os.path.join(store, m['ck']['state']))
+                pool.apply_async(rngfix.KINDS[m['op']], (m,), callback=reply)
     except (OSError, ValueError) as ex: print('driver error', addr, repr(ex), flush=True)
     print('driver gone', addr, flush=True)
 while True:                     # a thread per driver: a half-dead old line never blocks a new driver
