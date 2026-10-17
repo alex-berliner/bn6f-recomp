@@ -1,0 +1,58 @@
+name: eT1BattleObject1_HP
+address: '0x0203AAAC'
+kind: ram
+previous_names: []
+status: confirmed
+summary: Current HP (u16) of T1 battle object 1 (eT1BattleObject1 + 0x24, oBattleObject_HP), usually an enemy; writing
+  0 deletes it.
+details: 'The same field as eT1BattleObject2_HP, for object 1: eT1BattleObject1 is at 0x0203AA88 (0x0203A9B0 + 1
+  * 0xD8), its u16 HP at +0x24 (MaxHP at +0x26). The code reaches it only through a battle-object pointer (`[r5,
+  #oBattleObject_HP]`), never by this name or address.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-17'
+  detail: The struct definition puts `u16 HP` at loc=0x24; eT1BattleObject1 is the second t1_battle_object_struct
+    in eT1BattleObjects, and the ELF symbol is 0x0203AA88 + 0x24.
+  refs:
+  - bn6f/include/structs/BattleObject.inc:105-106
+  - bn6f/ewram.s:3026
+  reproduce: 'sed -n ''105,106p'' bn6f/include/structs/BattleObject.inc
+
+    sed -n ''3026p'' bn6f/ewram.s
+
+    arm-none-eabi-nm bn6f/bn6f.elf | grep '' eT1BattleObject1$\| eT1BattleObject1_HP$''
+
+    '
+  result: u16 HP // loc=0x24; eT1BattleObject1 0x0203aa88, eT1BattleObject1_HP 0x0203aaac
+- method: runtime
+  date: '2026-10-17'
+  detail: vidsync's kill handler (try_kill) writes 0 to each live enemy's HP at +0x24 at the frame that makes the
+    battle end when the video's does; the sync keeps the write only when the game then follows the video. The BeastSP
+    route (tools/traces/beastsp.poke, vidsync's kept fixes) writes 0x203aaac=0x0000/2 in 15 fixes.
+  refs:
+  - tools/vidsync/autosync.py
+  - tools/traces/beastsp.poke
+  - eT1BattleObject2_HP
+  reproduce: 'grep -n ''def try_kill\|def enemies_alive'' tools/vidsync/autosync.py
+
+    grep -n ''0x203aaac=0x0000/2'' tools/traces/beastsp.poke
+
+    '
+  result: '15 route lines (50, 57, 59, 64, 143, 159, 161, 174, 178, 180, 182, 189, 191, 193, 199), e.g. line 50:
+    127560:127561 0x203aaac=0x0000/2'
+- method: runtime
+  date: '2026-10-17'
+  detail: 'vidsync run run8n: 3 fix(es) by the kill handler wrote eT1BattleObject1_HP (games 615481..656980); after
+    each, the sync matched the video again (the field decides what the video shows there).'
+  reproduce: 'grep -n '' fix 12: '' data/auto/run8n.0.out   # in ~/vidsync on the driver PC; remote/py.sh pathcheck.py
+    data/auto/run8n.0/fix_0012.json replays the path with it'
+  result: '17:43:11 fix 12: write 0x203aaac=0x0000/2 at game 656980; going on from there'
+related:
+- eT1BattleObjects
+- eT1BattleObject2_HP
+- eActiveT1BattleObjectsBitfield
+open_questions: []
+sources:
+- 'Claude session_01DywpM9x1GYhwUsv45iVPi1 (run8m: the learn step listed it unnamed)'
