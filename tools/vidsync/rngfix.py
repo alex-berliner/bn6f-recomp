@@ -30,14 +30,15 @@ def spec(addr, val, size=4):
 
 def run_task(b, ck, extra, until, bad_max=30):
     """From checkpoint ck (meta dict with 'state' a file path) with ck's pokes and extra ones: [the game frame
-    reached before the sync's frame cost stays above 2 for bad_max frames, or until; the mean frame cost]."""
+    reached before the sync's frame cost stays above the loss cost for bad_max frames or its video frame stalls
+    (moves under 3 frames in 60: the driver's loss too), or until; the mean frame cost]."""
     for br in getattr(b, 'branches', []): b.free.append(br.slot)
     b.e.pokes_clear(); b.pokes = []
     for g, s in ck['pokes'] + extra: b.add_poke(g, s)
     slot = b.free.pop(); b.e.loadf(ck['state']); b.e.save(slot)
     b.g, b.v0 = ck['g'], ck['v0']
     b.branches = [bm.Branch(slot, ck['h'], np.array(ck['cost']), bm.Node(ck['key'], ck['v'], None))]
-    bad = 0; tot = 0.0; n = 0
+    bad = 0; tot = 0.0; n = 0; last_v = []
     loss = ck.get('loss', LOSS)
     b.e.cmd('mask ' + ' '.join(str(x) for x in ck.get('mask', [])))   # (a stream overlay's area left out)
     while b.g < until:
@@ -45,6 +46,10 @@ def run_task(b, ck, extra, until, bad_max=30):
             tot += best; n += 1
             bad = bad + 1 if best > loss else 0
             if bad >= bad_max: return [g - bad_max, tot / n]
+            # (without this a write the driver loses at once as stalled held here: run8l took the same write at
+            # 599859 twenty times)
+            last_v.append(v); del last_v[:-60]
+            if len(last_v) == 60 and last_v[-1] - last_v[0] < 3: return [g - 60, tot / n]
             if v >= b.N - bm.K - 2: return [until, tot / n]   # the video ends
     return [b.g, tot / max(n, 1)]
 
