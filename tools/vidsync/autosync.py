@@ -231,6 +231,7 @@ PARTIAL_EARLY = 150          # a partial fix this far past the loss is taken aft
 OFFSET_COST = 2.0          # the mean cost an offset jump must sync at (real jumps 0.7-1.3; run8c's 2.08 at
                            # 530673 covered roaming map objects)
 SUBCHIP_COST = 1.8
+RNG_COST = 2.6           # an RNG write must sync under this mean cost
 PARTIALS = []                # (reached, w, pokes) of partial fixes found during a repair
 
 ENC_ROOTS = tuple(syms.ENC_ROOTS + 8 * k for k in range(4))   # pickBattleSettingsEntry_80AA5F4 picks one by flags
@@ -1278,7 +1279,8 @@ def try_at(w, D, which, jmax, base=()):
         good = sorted((q, tid) for tid, q in qs.items())[:QUICK_TOP]
         tasks = [(ck, writes[tid], until, tid) for q, tid in good]; nsync += len(tasks)
         res = evaluate(tasks)
-        ok = [t for t in tasks if res[t[3]][0] >= until]
+        # (a write that holds at a cost above the loss line is no match: run8i took P96 at 3.14 seven times)
+        ok = [t for t in tasks if res[t[3]][0] >= until and res[t[3]][1] < RNG_COST]
         # the chosen one again, alone, on this machine: a fix the run then loses at once (the loop at 370434)
         while ok:
             t = min(ok, key=lambda t: res[t[3]][1])
