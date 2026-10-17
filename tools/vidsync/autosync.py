@@ -289,7 +289,10 @@ def try_formations(f, p, D):
         + (f'; next {order[1]:x} to {reach(order[1])}, {m(order[1]):.3f}' if len(order) > 1 else '')
         + (f'; the path has {p:x}: to {reach(p)}, {m(p):.3f})' if p in ents else ')'))
     if reach(q) <= D: return None
-    if q == p or (p in ents and reach(q) < reach(p) + 60 and m(q) > 0.85 * m(p)): return None
+    # a further entry must also match about as well (run8i: 80af990 got 150 frames further than the path's
+    # 80afa20 at 1.88 against 1.40; the path's was lost to its hand, not its entry); else clearly cheaper
+    if q == p or (p in ents and not (m(q) < 0.85 * m(p) or (reach(q) >= reach(p) + 60 and m(q) <= 1.1 * m(p)))):
+        return None
     t = (ck, [[f, rf.spec(BATTLE_PTR, q)]], until, f'B{q:x}')
     r = evaluate([t])[t[3]]
     if r[0] >= until: log(f'  formation at {f}: B{q:x} holds to {until}')
