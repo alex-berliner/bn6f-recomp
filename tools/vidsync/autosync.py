@@ -1016,6 +1016,62 @@ def enemies_alive(side=1):
         if mx and hp and b.e.read(a + 0x16, 1)[0] == side: out.append(a)
     return out
 
+HP_BOX = (slice(1, 15), slice(2, 46))      # MegaMan's HP box, top left of the battle screen
+HP_STEPS = 6               # frames after the write the box is judged at
+def try_hp(D):
+    """In a battle MegaMan's HP is not the video's (the box top left): the battle went another way well before
+    the loss, hits the RNG search cannot bring back. Write the HP (and its meter's last shown value) whose box
+    matches the video's, at the latest ring frame before the loss where ours is still alive (the hit that
+    deletes ours must meet the video's HP); the enemies' HP is the kill handler's at the next loss. (HP carries
+    over after the battle: later battles start from it.)"""
+    a = T1_OBJS
+    for back in range(30, 631, 30):
+        W = D - back
+        if W < ring[0][0]: return None
+        w = state_at(W)
+        if w is None: return None
+        b.e.load(w[1])
+        if b.e.read(syms.GS_SUBSYSTEM, 1)[0] != 0x0C:
+            log(f'  hp: not in a battle at {W} (subsystem {b.e.read(syms.GS_SUBSYSTEM, 1)[0]:#x})'); return None
+        hp, mx = (int.from_bytes(b.e.read(a + o, 2), 'little') for o in (0x24, 0x26))
+        if not (mx and hp): continue
+        # no hit within the frames the box is judged over (else the box shows the hit, not the write)
+        set_emu_pokes(); ks = path_keys(); p0 = b.press_gf
+        for g in range(W, W + HP_STEPS): b.e.step(ks[g - p0][0])
+        if int.from_bytes(b.e.read(a + 0x24, 2), 'little') == hp: break
+    else:
+        return None
+    b.e.load(w[1])
+    meter = next((m for m in (syms.HP_METERS + 0x14 * i for i in range(4))
+                  if b.e.read(m, 1)[0] & 1 and b.e.u32(m + 0xC) == a), None)
+    m0 = b.e.u32(meter) if meter else 0
+    ks = path_keys(); p0 = b.press_gf
+    V = video_frame(ks[W + HP_STEPS - 1 - p0][1])          # (the screen after the steps W .. W + HP_STEPS - 1)
+    if V is None: log('  hp: no video frame'); return None
+    vb = V[HP_BOX] - V[HP_BOX].mean()
+    # the box shows eStruct2035280+0x24, copied from MegaMan's HP only on a hit or heal: written too, with the
+    # box's redraw bit (chatbox_drawHPNumber_801C906, bit 7 of +0x44: runFlaggedCallbacks_801BF64)
+    hud = syms.BATTLE_HUD; s24, s44 = b.e.u32(hud + 0x24), b.e.u32(hud + 0x44) | 0x80
+    def err(h):
+        b.e.load(w[1])
+        b.e.cmd(f'write32 {a + 0x24:x} {mx << 16 | h:x}')
+        b.e.cmd(f'write32 {hud + 0x24:x} {(s24 & 0xFFFF0000) | h:x}')
+        b.e.cmd(f'write32 {hud + 0x44:x} {s44:x}')
+        if meter: b.e.cmd(f'write32 {meter:x} {(m0 & 0xFFFF) | h << 16:x}')
+        for g in range(W, W + HP_STEPS): b.e.step(ks[g - p0][0])
+        E = b.e.shot().astype(np.float32)[HP_BOX]
+        return float(np.abs((E - E.mean()) - vb).mean())
+    set_emu_pokes()
+    es = {h: err(h) for h in range(1, mx + 1)}
+    h = min(es, key=es.get)
+    log(f'  hp: MegaMan {hp}/{mx} at {W}; the video\'s box matches {h} (box error {es[hp]:.1f} -> {es[h]:.1f})')
+    if h == hp or es[h] > 0.8 * es[hp]: return None      # (the rest of the box differs too: 170 at 0.67 at 615427)
+    poke = [W, f'{a + 0x24:#x}={h:#x}/2,{hud + 0x24:#x}={h:#x}/2,{hud + 0x44:#x}={s44:#x}/4' + (f',{meter + 2:#x}={h:#x}/2' if meter else '')]
+    r = path_reach(w, [poke], D + 400, D)
+    log(f'  hp: the path from there reaches {r[0]} (mean cost {r[1]:.3f})')
+    # the box is checked against the video itself: taken unless the path does worse than before
+    return (w, [poke]) if r[0] >= D else None
+
 KILL_COST = 1.5
 def try_kill(D, side=1):
     """A battle that went another way than the video's (its AI, hands, damage): end it when the video's does
@@ -1432,7 +1488,7 @@ def repair(D):
     tried = {name for name, _ in first}
     for name, h in (('offset', try_offset), ('overlay', try_overlay), ('hand', try_hand), ('gmd', try_gmd),
                     ('subchip', try_subchip), ('position', try_position), ('relocate', try_relocate), ('tornado', try_tornado), ('mapobj', try_mapobj),
-                    ('encounter', try_encounter), ('kill', try_kill), ('die', lambda D: try_kill(D, 0)),
+                    ('encounter', try_encounter), ('hp', try_hp), ('kill', try_kill), ('die', lambda D: try_kill(D, 0)),
                     *[(name, h) for name, h in PLUGINS if name not in MATCHERS]):
         if not allowed(name) or name in tried: continue
         if over_budget(): log(f'  the search budget ({A.budget_hours} h) is spent'); return None
