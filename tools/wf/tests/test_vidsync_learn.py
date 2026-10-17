@@ -42,3 +42,12 @@ def test_a_field_named_by_syms_py_gets_the_evidence(tmp_path: Path, monkeypatch)
     assert again.entries == ()                       # the fix was seen
     other, _ = learn(RunName("run7y"), [fix(35, "encounter", [(0x02001C16, 0x500, 2)])], namer, by_name, seen)
     assert other.entries == ()                       # this run and handler have their evidence already
+
+
+def test_a_field_label_without_an_entry_goes_to_its_struct(tmp_path: Path) -> None:
+    by_name = {"ePanelData": tmp_path / "ePanelData.yaml", "eStruct2035280": tmp_path / "eStruct2035280.yaml"}
+    namer = Namer({}, {}, by_name, {})
+    assert namer.owner("ePanelData4_1_Type") == "ePanelData"
+    assert namer.owner("eStruct2035280_UnkFlags_44") == "eStruct2035280"
+    assert namer.owner("eT1BattleObject0_HP") is None
+    assert namer.owner("word_203CDE8") is None

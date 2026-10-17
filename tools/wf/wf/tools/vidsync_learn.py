@@ -121,7 +121,19 @@ class Namer:
             return f"{addr:#x}", None
         label, off = self.labels[i], addr - self.values[i]
         shown = label if off == 0 else f"{label}+{off:#x}"
-        return shown, (label if label in self.by_name else None)
+        return shown, self.owner(label)
+
+    def owner(self, label: str) -> str | None:
+        """The entry for a label: its own, else the struct's it is a field of (bn6f names a struct's fields
+        BASE_FIELD and an array's elements BASEn: ePanelData4_1_Type -> ePanelData, eStruct2035280_UnkFlags_44
+        -> eStruct2035280)."""
+        name = label
+        while name:
+            if name in self.by_name:
+                return name
+            cut = name.rstrip("0123456789")
+            name = cut if cut != name else (name.rsplit("_", 1)[0] if "_" in name else "")
+        return None
 
 
 def evidence_item(run: RunName, handler: str, shown: str, fixes: list[Fix], today: str) -> dict:
