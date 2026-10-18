@@ -556,23 +556,40 @@ def try_position(D):
             xy = (b.e.u32(po + 0x1C), b.e.u32(po + 0x20))
             if not trail or trail[-1][1] != xy: trail.append((g, xy))
         if inb: dark = g
-    if dark is None or dark < D - 1500 or len(trail) < 3: return None
-    walk = [xy for g, xy in trail if g <= dark][-60:]
-    if len(walk) < 3: return None
+    if dark is None or dark < D - 1500:
+        log(f'  position: no battle to go by (from {w[0]}: battle until {dark})'); return None
     s32 = lambda v: v - (1 << 32) if v >= 1 << 31 else v
-    (x1, y1), (x0, y0) = walk[-1], walk[-2]
-    dx, dy = s32(x1) - s32(x0), s32(y1) - s32(y0)
-    cands = list(dict.fromkeys(walk + [((s32(x1) + k * dx) & 0xFFFFFFFF, (s32(y1) + k * dy) & 0xFFFFFFFF) for k in range(1, 40)]))
     W = dark - 40                                    # still in the battle: before the map reload reads it
     w2 = state_at(W)
     if w2 is None: return None
+    walk = [xy for g, xy in trail if g <= dark][-60:]
+    if len(walk) >= 3:
+        (x1, y1), (x0, y0) = walk[-1], walk[-2]
+        dx, dy = s32(x1) - s32(x0), s32(y1) - s32(y0)
+        cands = list(dict.fromkeys(walk + [((s32(x1) + k * dx) & 0xFFFFFFFF, (s32(y1) + k * dy) & 0xFFFFFFFF) for k in range(1, 40)]))
+    else:
+        # battles back to back with no walk between to go by (run8s 827311): a grid around where the reload
+        # would put him, 32 px steps over +-1024 px
+        b.e.load(w2[1]); gx, gy = s32(b.e.u32(GS_PLAYER)), s32(b.e.u32(GS_PLAYER + 4))
+        cands = [((gx + (i << 16)) & 0xFFFFFFFF, (gy + (j << 16)) & 0xFFFFFFFF)
+                 for i in range(-1024, 1025, 32) for j in range(-1024, 1025, 32)]
     until = D + 200; best = None
-    res = reach_many(w2, {i: [[W, f'{GS_PLAYER:#x}={x:#x}/4,{GS_PLAYER + 4:#x}={y:#x}/4']] for i, (x, y) in enumerate(cands)}, until, D)
-    for i, (x, y) in enumerate(cands):
-        r = res[i]
-        if best is None or (r[0], -r[1]) > (best[0][0], -best[0][1]): best = (r, x, y)
+    def judge(cands, best):
+        res = reach_many(w2, {i: [[W, f'{GS_PLAYER:#x}={x:#x}/4,{GS_PLAYER + 4:#x}={y:#x}/4']] for i, (x, y) in enumerate(cands)}, until, D)
+        for i, (x, y) in enumerate(cands):
+            r = res[i]
+            if best is None or (r[0], -r[1]) > (best[0][0], -best[0][1]): best = (r, x, y)
+        return best
+    best = judge(cands, best)
+    if len(walk) < 3:
+        # then 2 px steps around the best of the grid (run8s 827311: the video's place is ~15 px off the grid's)
+        bx, by = s32(best[1]), s32(best[2])
+        best = judge([((bx + (i << 16)) & 0xFFFFFFFF, (by + (j << 16)) & 0xFFFFFFFF)
+                      for i in range(-32, 33, 2) for j in range(-32, 33, 2)], best)
     log(f'  position: {len(cands)} places tried; best ({best[1]:#x}, {best[2]:#x}) reaches {best[0][0]} (mean cost {best[0][1]:.3f})')
-    if best[0][0] >= D + 150:
+    # (a place that holds 100 frames at a low cost is taken too: the walk then meets the next event, an encounter
+    # the video's walk had elsewhere: run8s 827311, 827423 at 1.56)
+    if best[0][0] >= D + 150 or (best[0][0] >= D + 100 and best[0][1] < 1.6):
         KEEP_NEXT[0] = True
         return w2, [[W, f'{GS_PLAYER:#x}={best[1]:#x}/4,{GS_PLAYER + 4:#x}={best[2]:#x}/4']]
     return None
