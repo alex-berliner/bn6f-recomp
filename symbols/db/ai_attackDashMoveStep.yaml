@@ -1,0 +1,52 @@
+name: ai_attackDashMoveStep
+address: '0x081107F2'
+kind: function
+status: probable
+summary: 'Per-frame update for a dash/charge attack state: moves the object by its velocity, syncs panels
+  mid-move, and on timer expiry commits it to the target panel and switches to the next attack state.'
+interface: (r5 = battle object, r7 = AI attack vars) -> void; object fields X/Y updated, AIAttackVars
+  step/attack state mutated
+details: Each call adds oBattleObject_XVelocity/YVelocity to the object's X/Y, so it flies along a straight
+  path. When oAIAttackVars_StepTimer equals oAIAttackVars_ChargeCycles it syncs PanelX/Y and the collision
+  record from the current position (object_setPanelsFromCoordinates + object_updateCollisionPanels). It
+  decrements StepTimer every frame; when it goes negative, it copies FuturePanelX/Y into PanelX/Y (committing
+  the pre-reserved destination), releases the panel reserve, snaps pixel coordinates to the panel grid,
+  sets collision panels to current, sets HasMoved = 1, reloads StepTimer from oAIAttackVars_AttackDuration,
+  and calls object_setAttack0(9) to enter attack state 9. So this is the travel phase of an AI attack
+  that dashes from a reserved panel to a future panel before striking.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'adds XVelocity/YVelocity to X/Y each frame — straight-line flight toward the target; StepTimer==ChargeCycles
+    triggers object_setPanelsFromCoordinates + object_updateCollisionPanels mid-flight; on StepTimer<0:
+    FuturePanelX/Y -> PanelX/Y, object_removePanelReserve, coordinates snapped from panels; sets oAIAttackVars_HasMoved
+    = 1 and calls object_setAttack0(9) to hand off to the strike state; called from sub_81107BC in recorded
+    beastsp/battlesweep routes — AI attack dispatch of a dash-type boss move'
+  refs:
+  - bn6f/asm/asm32.s:5388
+  - 0x081107BC sub_81107BC
+  - 0x0801BB46 object_removePanelReserve
+  - 0x0801A066 object_setCollisionPanelsToCurrent
+  - 0x0800E29C object_setCoordinatesFromPanels
+  reproduce: python3 tools/asmcat.py 0x081107F2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- which exact boss/attack uses attack state 9 after this move
+- meaning of ChargeCycles vs AttackDuration initial values set by the caller
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 62ad2570
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_81107F2 -> ai_attackDashMoveStep
+  where: bn6f 2b08d76c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81107F2

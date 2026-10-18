@@ -1,0 +1,52 @@
+name: sprite_setEntityAnimation
+address: '0x0811A610'
+kind: function
+status: probable
+summary: Sets a battle entity's sprite animation to the given index (with data load and no-shadow flag),
+  unless it already shows that animation.
+interface: (r0 = animation index, r1 = entity index into eStructArr2008450) -> void; flags from getStructFrom2008450's
+  status byte
+details: r1 indexes the 0x58-byte battle-entity struct array at 0x2008450 via getStructFrom2008450; r0
+  is the wanted animation index. It bails if the entity is absent, if status byte 0 has bit 0x8 set (invisible/undrawable),
+  or if byte +0xC already equals the requested animation, so repeated calls for the same animation are
+  no-ops. Otherwise it stores the index into +0xC (which sprite_setAnimation reads), calls sprite_loadAnimationData
+  on the entity's sprite, and sprite_noShadow to clear the shadow flag. Callers in the battle AI/action
+  dispatch (e.g. sub_8129758 on action 3, decideBattleAction_8129AC8, sub_8129C74) invoke it when an entity's
+  state changes, consistent with swapping to that state's animation.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: getStructFrom2008450 call with r1 as index, then tst r0,#8 / bne exit gates on the entry's status
+    flag; ldrb r0,[r5,#0xc]; cmp r4,r0; beq exit — early-out when byte 0xC already holds the requested
+    animation, then strb r0,[r5,#0xc]; tail sequence sprite_setAnimation -> sprite_loadAnimationData ->
+    sprite_noShadow applies the new animation to the entity's sprite; callers sub_8129758/sub_8129C74
+    (battle state dispatch, state 3/4 transitions) call it with an action/state index, matching per-state
+    animations
+  refs:
+  - bn6f/asm/asm32.s:25085
+  - 0x08129AC8 decideBattleAction_8129AC8
+  - 0x08129758 sub_8129758
+  - 0x08129808 sub_8129808
+  - 0x080466C4 getStructFrom2008450
+  - 0x080026A4 sprite_loadAnimationData
+  - 0x08002F90 sprite_noShadow
+  reproduce: python3 tools/asmcat.py 0x0811A610
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- menus3
+open_questions:
+- exact meaning of status bit 0x8 (hidden vs. disabled) and whether +0xC is 'current animation' or 'last-requested'
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 62ad2570
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_811A610 -> sprite_setEntityAnimation
+  where: bn6f 2b08d76c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811A610

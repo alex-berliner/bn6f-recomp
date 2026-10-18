@@ -1,0 +1,54 @@
+name: submenu_redrawFolderScreen
+address: '0x08125D94'
+kind: function
+status: probable
+summary: Per-frame redraw of the chip-folder select screen, laying out tile strips, chip icons and selection
+  slots into tile block 2, with a two-layout variant selected by screen state.
+interface: (r5/r7 = folder-screen work struct) -> r0 = undefined; no meaningful flags; draws via BG/callee
+  routines
+details: Reads state from struct+0x5C; when zero the screen is dormant and it returns immediately, otherwise
+  it renders. State 0x27 uses one layout (r5=0x70 variant of sub_812626C, tile offsets base+1/+6/+4/+0xE),
+  any other state uses a second layout (r5=0x71, offsets base+3/+1/+0xB), where base is struct+0x74 minus
+  0x83 (a tile-map index). All drawing targets the work buffer byte_2017A00 and chip data dword_201E420,
+  ending in VRAM tile block 2 (0x6007000 via battle_loadChipIconSprites). struct+0x22 is passed as the
+  first argument to packSelectionSlots and the icon loader, so it is the selected folder/slot index table.
+  Chip icon GFX come from byte_81249DC as the icon table for battle_loadChipIconSprites.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: tst/beq on [r7,#0x5C] and cmp with 0x27 selects two render layouts (loc_8125E10); calls battle_loadChipIconSprites_8126430
+    with [r7,#0x22], dword_201E420, byte_81249DC and VRAM 0x6007000; calls packSelectionSlots_8126494
+    with [r7,#0x22] and dword_201E420, matching 7-slot chip selection packing; bg_drawTileStripTileBlock2/bg_drawTileRegion2x14/bg_copyTilePatchBlock2
+    all use [r7,#0x74]-0x83+offset and byte_2017A00 as tile source; sub_812626C r5=0x70 vs 0x71 and differing
+    tile offsets are the only differences between the two state branches
+  refs:
+  - bn6f/asm/asm33.s:5720
+  - 0x08124D30 battle_objTickTimerAndRefreshSpritePairs_8124D30
+  - 0x08124DCC sprite_shieldUpdate_8124DCC
+  - 0x08124CE8 sub_8124CE8
+  - 0x08126430 battle_loadChipIconSprites_8126430
+  - 0x081264E4 bg_copyTilePatchBlock2_81264E4
+  - 0x08126484 bg_drawTileRegion2x14_8126484
+  reproduce: python3 tools/asmcat.py 0x08125D94
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- story2
+open_questions:
+- exact meaning of state values in struct+0x5C (0x27 vs others) and which screen layout each corresponds
+  to
+- what sub_812625C and sub_812626C do concretely (both write the byte_2017A00 buffer)
+- exact role of struct+0x22 (folder index vs selection cursor)
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 62ad2570
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8125D94 -> submenu_redrawFolderScreen
+  where: bn6f 2b08d76c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8125D94

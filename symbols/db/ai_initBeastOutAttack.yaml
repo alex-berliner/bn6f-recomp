@@ -1,0 +1,56 @@
+name: ai_initBeastOutAttack
+address: '0x0810C212'
+kind: function
+status: probable
+summary: 'Enemy AI step that initializes a Beast Out-style attack: loads per-version difficulty parameters,
+  picks a target/enemy, chooses a panel-callback, and sets attack0.'
+interface: (r4 = AI data holder, r5 = self BattleObject, r7 = AIAttackVars) -> r0 = 0 if the beast-out
+  chip attack already acted, else void after configuring attack vars; clobbers lr
+details: First calls battleObject_tryBeastOutChipAttack_810C282 and returns immediately if it acted. Otherwise
+  it reads oAIData_Version_16 from r4 and indexes five byte tables (byte_810C1D2/1BA/1C6/1CC/1C0) plus
+  a word table (byte_810C19C, *4) to fill oAIAttackVars fields AiDifficultyTier, AttackBoost2, TimerOrCycles,
+  SubStepIndex, AttackDuration, Damage and ScratchVar, hardcoding ExtraDamage=0xA. It XORs the object's
+  Alliance with 1 and finds the closest enemy object; if one exists it stores it as TargetObjectPtr and
+  callback sub_810C2B2, otherwise callback sub_8015C48 (a fallback panel chooser). If object_getFlag has
+  bit 0xA000 set, AttackBoost2 is forced to 0x50 and the callback is replaced by sub_8015C48. Finally
+  object_setAttack0(0xA) arms the attack slot; the beastsp/battlesweep routes and the beast-out callee
+  tie this to boss Beast Out AI.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl battleObject_tryBeastOutChipAttack_810C282 / bne locret: bails out if the beast-out chip
+    attack already fired; per-version table loads: ldrb r1,[r4,#oAIData_Version_16]; ldrb r0,[table,r1]
+    -> strb into AiDifficultyTier, AttackBoost2, TimerOrCycles, SubStepIndex; strh into AttackDuration,
+    Damage; mov r0,#0xa; strh [r7,#oAIAttackVars_ExtraDamage] hardcodes ExtraDamage=10; eor alliance w/1
+    then bl battleObject_findClosestEnemyBattleObject_80103F8; result stored to TargetObjectPtr with callback
+    sub_810C2B2, else callback sub_8015C48; flag test 0xA000 -> AttackBoost2=0x50 and callback sub_8015C48,
+    then mov r0,#0xa; bl object_setAttack0'
+  refs:
+  - bn6f/asm/asm31.s:177136
+  - 0x080103F8 battleObject_findClosestEnemyBattleObject_80103F8
+  - 0x0810C282 battleObject_tryBeastOutChipAttack_810C282
+  - 0x0801A166 object_getFlag
+  reproduce: python3 tools/asmcat.py 0x0810C212
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- exact meaning of the per-version byte tables (byte_810C19C..1D2) and which boss/version each index maps
+  to
+- what sub_810C2B2 (target-panel callback) and sub_8015C48 (fallback callback) choose, and the semantics
+  of flag bit 0xA000
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 62ad2570
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810C212 -> ai_initBeastOutAttack
+  where: bn6f 2b08d76c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810C212

@@ -1,0 +1,52 @@
+name: ai_teleportToPanelStep
+address: '0x08112820'
+kind: function
+status: probable
+summary: AI attack-state step that counts down on a highlighted destination panel, then warps the enemy
+  object onto it with spawn effects and resets the step timer.
+interface: (r0-r3 unused on entry; r5 = battle object, r7 = AI attack vars) -> r0 = 0/8 stored; flags
+  from comparisons and callees
+details: It is a per-frame step handler for an AI attack routine. While oAIAttackVars_StepTimer counts
+  down, it highlights the object's FuturePanelX/Y (skipping when timer==4 via bit test), and at timer==3
+  spawns effect 0x15 at the destination panel's screen coordinates. When the timer reaches 0, it spawns
+  an effect 0x10+0x14 at coordinates stored at r5+0x34 (three halfwords/words loaded via ldmia), copies
+  FuturePanelX/Y into PanelX/PanelY, releases the old panel reservation, recomputes pixel coordinates
+  and collision panels, calls sub_81096BA, sets HitElement=8, and reloads StepTimer with 3 for the next
+  phase.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrh r0,[r7,#oAIAttackVars_StepTimer] with blt/beq/bit-test dispatch drives a multi-phase countdown
+    (start of fn); bl object_highlightPanel on FuturePanelX/Y marks the target panel during the countdown;
+    on timer==0: strb FuturePanelX->PanelX, strb FuturePanelY->PanelY, then bl object_removePanelReserve;
+    bl object_setCoordinatesFromPanels + object_updateCollisionPanels reposition the object after the
+    move; two spawn_t1_0x0_EffectObject calls (types 0x15 and 0x10+0x14) give spawn-in/warp-out visual
+    effects'
+  refs:
+  - bn6f/asm/asm32.s:9167
+  - 0x0800E276 object_getCoordinatesForPanels
+  - 0x0800CBD8 object_highlightPanel
+  - 0x0801BB46 object_removePanelReserve
+  reproduce: python3 tools/asmcat.py 0x08112820
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- Exact attack identity (battlesweep/beastsp route context) and what sub_81096BA does would confirm which
+  enemy/attack this step belongs to
+- Meaning of the three values loaded from r5+0x34 used as the effect spawn coordinates
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 62ad2570
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8112820 -> ai_teleportToPanelStep
+  where: bn6f 2b08d76c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8112820

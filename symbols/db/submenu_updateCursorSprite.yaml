@@ -1,0 +1,55 @@
+name: submenu_updateCursorSprite
+address: '0x08117C70'
+kind: function
+status: probable
+summary: 'Per-frame update for a menu cursor object: resets its sprite animation when flagged, then redraws
+  the cursor/highlight.'
+interface: (r0/r5 = cursor object pointer) -> r0 = clobbered; flags from tst of frame attribute byte
+details: Writes 0x23 into the object's first byte (an ID/type or cursor kind marker), then if the byte
+  at +0xC is nonzero, clears that flag, sets animation index 0 via sprite_setAnimation, reloads the animation
+  data, and marks the sprite shadowless. It then reads the current frame's parameters and, when the attribute
+  byte has bits 0xC0 set (cursor/highlight variant), calls sub_8117CD4, which draws the menu cursor slid
+  horizontally with the menu scroll. Essentially a state-sync-plus-draw routine for a cursor-like sprite
+  object.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: strb 0x23 into [r5] and conditional reset of [r5+0xC] followed by setAnimation(0)/loadAnimationData/noShadow
+    re-initializes the sprite only when dirty; tst of sprite_getFrameParameters result against 0xC0 gates
+    the draw path on the frame's attribute byte; callee sub_8117CD4 is documented as drawing the menu
+    cursor/highlight with a highlighted tile variant; all callees are sprite-subsystem functions, matching
+    a sprite object update routine
+  refs:
+  - bn6f/asm/asm32.s:19403
+  - 0x08002DEA sprite_getFrameParameters
+  - 0x080026A4 sprite_loadAnimationData
+  - 0x08002F90 sprite_noShadow
+  reproduce: python3 tools/asmcat.py 0x08117C70
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battles1
+- battles2
+- beastsp
+- maps
+- menus3
+- story4
+- story6
+- story8
+- story9
+open_questions:
+- no caller captured, so the object structure at r5 (field 0x23 meaning, +0xC flag semantics) is inferred
+  only from callee behavior
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 62ad2570
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8117C70 -> submenu_updateCursorSprite
+  where: bn6f 2b08d76c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8117C70

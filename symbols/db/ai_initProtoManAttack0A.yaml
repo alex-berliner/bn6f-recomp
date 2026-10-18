@@ -1,0 +1,57 @@
+name: ai_initProtoManAttack0A
+address: '0x080FBE60'
+kind: function
+status: probable
+summary: 'Initializes one of ProtoMan''s AI attack states: records difficulty tier, resets state vars,
+  stores the attack''s panel-choose callback and duration/boost values, targets the opposing player, and
+  sets the object''s attack to 0xA.'
+interface: (r0 = attacker BattleObject, r5 = same object, r7 = oAIAttackVars struct) -> r0 clobbered;
+  writes tier/initFlag/callback/AttackDuration/AttackBoost2/ScratchVar/TargetObjectPtr into r7 struct
+  and attack id 0xA onto the object
+details: Stores battle_getAiDifficultyTier result into oAIAttackVars_AiDifficultyTier and clears InitFlag,
+  then zeroes a value passed to sub_80FBF92 (likely a reset/clear of remaining attack state). It loads
+  the callback pointer sub_80FCD70+1 into oAIAttackVars_PanelChooseCallback, and fills oAIAttackVars_AttackDuration
+  and oAIAttackVars_AttackBoost2 from helper calls sub_80FBD04/sub_80FBD18, which presumably scale with
+  the difficulty tier. It computes ScratchVar = 100 + r5 (object pointer as scratch anchor/handle) and
+  stores the opposite-alliance player object (battle_findPlayer with alliance EOR 1) as TargetObjectPtr.
+  Finally object_setAttack0(0xA) puts the object into attack state 0xA. This is a per-attack 'begin attack'
+  initializer used by the ProtoMan AI decision routines.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'strb r0,[r7,#oAIAttackVars_AiDifficultyTier] + strb r0(0),[r7,#oAIAttackVars_InitFlag]: resets
+    an AI attack-state struct; ldr r0,off_80FC064 (=sub_80FCD70+1); str r0,[r7,#oAIAttackVars_PanelChooseCallback]:
+    installs an attack-specific callback; bl sub_80FBD04 / sub_80FBD18 feeding strh ... AttackDuration
+    and strb ... AttackBoost2: loads attack parameters; eor alliance with 1 then battle_findPlayer stored
+    into oAIAttackVars_TargetObjectPtr: picks the enemy player as target; all four callers are RNG-gated
+    ProtoMan AI steps (GetPositiveSignedRNG & 0xF < 0xC/0xE), consistent with attack selection'
+  refs:
+  - bn6f/asm/asm31.s:143858
+  - 0x080FBA24 sub_80FBA24
+  - 0x080FBA9A sub_80FBA9A
+  - 0x080FBB34 sub_80FBB34
+  - 0x0800FE36 battle_getAiDifficultyTier_800FE36
+  - 0x080103BC battle_findPlayer
+  - 0x08011680 object_setAttack0
+  reproduce: python3 tools/asmcat.py 0x080FBE60
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- What attack 0xA is in game terms (slash, shot, etc.) — needs the attack-state handler or sub_80FCD70's
+  panel-choosing logic
+- What sub_80FBD04/sub_80FBD18 return exactly (duration/boost scaling by difficulty)
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 62ad2570
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80FBE60 -> ai_initProtoManAttack0A
+  where: bn6f 2b08d76c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FBE60

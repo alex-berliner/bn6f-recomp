@@ -1,0 +1,52 @@
+name: object_spawnFrontPanelEffect
+address: '0x08107A30'
+kind: function
+status: probable
+summary: Spawns a type-0 effect object on the panel directly in front of the given battle object, with
+  the effect kind taken from a lookup table indexed by the argument.
+interface: (r0 = effect-kind table index) -> r0 = spawned effect object pointer; uses r5 as battle object
+  pointer
+details: r0 indexes a small table (dword_8107A60) to get a base kind byte, which is combined with the
+  object's horizontal flip shifted left 8 (kind | flip<<8). It then reads the object's PanelX, adds object_getFrontDirection
+  (+1/-1) to get the adjacent front panel, converts that column/row to 16.16 screen pixel coordinates
+  via object_getCoordinatesForPanels, and calls spawn_t1_0x0_EffectObject with the computed x, y, the
+  packed kind, and a constant 0x100000 (16 << 16, likely a fixed-point z/height or param). Returns the
+  spawned effect object pointer from the spawn wrapper.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r4, [r1,r0] with r1 = dword_8107A60: effect kind looked up by r0; table contains 0x393A;
+    lsl r0, r0, #8 after object_getFlip: flip flag is packed into the upper byte of the effect kind; add
+    r0, r0, [r5,#oBattleObject_PanelX] after object_getFrontDirection: target panel is the object''s front-adjacent
+    column; bl object_getCoordinatesForPanels then bl spawn_t1_0x0_EffectObject: converts panel to pixels
+    and spawns effect type 0; Called from sub_81072B8/810733E/8107518 in the same battle-effect code region
+    (battlesweep routes)'
+  refs:
+  - bn6f/asm/asm31.s:168288
+  - 0x081072B8 sub_81072B8
+  - 0x0810733E sub_810733E
+  - 0x08107518 sub_8107518
+  - 0x0800E276 object_getCoordinatesForPanels
+  - 0x0800E456 object_getFlip
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x08107A30
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- Exact meaning of the table byte vs the flip<<8 bits inside the spawned effect's kind field
+- Meaning of the constant fourth argument 0x100000 to the effect spawn (z height vs behavior param)
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 62ad2570
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8107A30 -> object_spawnFrontPanelEffect
+  where: bn6f 2b08d76c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8107A30

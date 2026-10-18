@@ -2593,7 +2593,7 @@ Next sub_8124CE8(void) {
     ST32(R5 + 0x70, 0xFF);
     GUEST_CALL(battle_runTransition_8125444);
     GUEST_CALL(battle_drawCustFolderSlots_8125D10);
-    GUEST_CALL(sub_8125D94);
+    GUEST_CALL(submenu_redrawFolderScreen);
 
     /* Update sprite frame/duration pair #4 from the live halfwords. */
     R0 = LD32(R5 + 0x58);
@@ -2640,9 +2640,9 @@ static void call_sub_8125D10(void) {
     GUEST_CALL(battle_drawCustFolderSlots_8125D10);
 }
 
-/* register form: calls sub_8125D94 outside this file, which has no typed C interface yet */
+/* register form: calls submenu_redrawFolderScreen outside this file, which has no typed C interface yet */
 static void call_sub_8125D94(void) {
-    GUEST_CALL(sub_8125D94);
+    GUEST_CALL(submenu_redrawFolderScreen);
 }
 
 /* register form: calls sprite_setStructHalfwordPairOnThree_8117084 outside this file, which has no typed C interface yet */
@@ -2729,10 +2729,10 @@ static inline call_sub_8125444_result call_sub_8125444_sub_8124D78(u32 r5) {
 }
 
 typedef struct { u32 r4, r5, r6, r7, r8, r9; } call_sub_8125D94_result;
-/* register form: generated wrapper: sub_8125D94 has no typed C interface yet */
+/* register form: generated wrapper: submenu_redrawFolderScreen has no typed C interface yet */
 static inline call_sub_8125D94_result call_sub_8125D94_sub_8124D78(u32 r5) {
     R5 = r5;
-    GUEST_CALL(sub_8125D94);
+    GUEST_CALL(submenu_redrawFolderScreen);
     return (call_sub_8125D94_result){ R4, R5, R6, R7, R8, R9 };
 }
 
@@ -2846,9 +2846,9 @@ static void call_sub_8125444_sub_8124DCC(void) {
     GUEST_CALL(battle_runTransition_8125444);
 }
 
-/* register form: calls sub_8125D94 outside this file, which has no typed C interface yet */
+/* register form: calls submenu_redrawFolderScreen outside this file, which has no typed C interface yet */
 static void call_sub_8125D94_sub_8124DCC(void) {
-    GUEST_CALL(sub_8125D94);
+    GUEST_CALL(submenu_redrawFolderScreen);
 }
 
 /* register form: calls bg_drawArenaTiles_8125E78 outside this file, which has no typed C interface yet */

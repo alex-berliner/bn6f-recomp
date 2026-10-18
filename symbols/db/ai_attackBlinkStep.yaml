@@ -1,0 +1,53 @@
+name: ai_attackBlinkStep
+address: '0x080F1756'
+kind: function
+status: probable
+summary: AI attack-state handler that teleports the object onto its previously reserved panel (anim 3),
+  then waits 8 frames before leaving the attack state.
+interface: (r0 = unused entry scratch; r5 = battle object, r7 = AI attack vars) -> r0 clobbered; state
+  advances until oAIAttackVars_StepTimer expires
+details: On first invocation (AttackElement == 0) it sets AttackElement = 4 and animation 3, releases
+  the panel reserve on the object's current panel, copies FuturePanelX/Y into PanelX/Y, releases the reserve
+  on the destination panel too, and syncs the pixel coordinates, collision panels, region 1 and moving
+  flags (clears 0x40 and 0x400000, sets the currently-moving bit). It then loads StepTimer = 8. On every
+  later call it just decrements StepTimer and, when it hits zero, calls object_exitAttackState so control
+  returns to normal AI. The panel copy from Future to Cur with the reserve released at both ends is characteristic
+  of an instant blink/teleport move rather than a walk. off_2010608 plus the value 6 after the routine
+  look like an AI script table entry (pointer + id) that dispatches to this handler.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne makes the first entry an init path that stores
+    element 4 and anim 3 (asm lines 2-7); double object_removePanelReserve around copying FuturePanelX/Y
+    into PanelX/Y commits a previously reserved destination tile (asm lines 10-15); object_setCoordinatesFromPanels
+    + object_updateCollisionPanels + object_setCollisionRegion(1) immediately follow the panel move; StepTimer
+    = 8 then a countdown with bgt and object_exitAttackState shows a fixed-duration post-move hold (asm
+    tail); callee summaries (removePanelReserve, updateCollisionPanels, setFlag1/clearFlag on ObjectFlags1)
+    match a battle object relocation routine
+  refs:
+  - bn6f/asm/asm31.s:123088
+  - 0x0801A15C object_clearFlag
+  - 0x0801BB46 object_removePanelReserve
+  - 0x0801A07C object_setCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080F1756
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- beastsp
+open_questions:
+- which enemy AI script (via off_2010608) invokes this, to confirm it is a blink-forward attack step
+- meaning of AttackElement value 4 and animation id 3 for the specific enemy
+- whether the actual damage-dealing part of the attack runs in a different state after this one exits
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 62ad2570
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F1756 -> ai_attackBlinkStep
+  where: bn6f 2b08d76c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F1756

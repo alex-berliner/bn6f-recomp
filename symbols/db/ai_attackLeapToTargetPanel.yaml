@@ -1,0 +1,51 @@
+name: ai_attackLeapToTargetPanel
+address: '0x0810349C'
+kind: function
+status: probable
+summary: 'AI attack-state step: has the enemy lunge/jump onto a panel chosen by a per-alliance callback,
+  reserving it and playing the lunge animation, or aborts the attack.'
+interface: (r0 = battle object (r5), r7 = AI attack vars) -> r0 = ?; sets oAIAttackVars_HasMoved, StepTimer,
+  HitElement and object anim/flags
+details: 'First checks object_canMove; if the object is blocked it clears HasMoved and exits the attack
+  state via object_exitAttackState. Otherwise it indexes byte_81034EC by Alliance*8 to fetch two words
+  passed to the oAIAttackVars_PanelChooseCallback, called with r0 = oAIAttackVars_TargetObjectPtr; the
+  callback returns success flag plus panel X in r0 and Y in r1. On success it stores FuturePanelX/FuturePanelY,
+  claims the panel with object_reservePanel, sets OBJECT_FLAGS_CANNOT_SLIDE via object_setFlag1, switches
+  CurAnim to 4 (the lunge/jump anim), and primes the state machine: StepTimer=3, HasMoved=1, HitElement=4.
+  The per-alliance table words (0x10/0x0F8800A0 for alliance 0, 0x30/0x0F880080 for alliance 1) are callback
+  parameters, likely attack variant or speed data.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_canMove gates the action; failure path only sets HasMoved=0 and bl object_exitAttackState;
+    ldr r1,[r7,#oAIAttackVars_PanelChooseCallback]; mov lr,pc; bx r1 — callback returns panel x/y which
+    are stored to FuturePanelX/Y; bl object_reservePanel after storing FuturePanel coords, then OBJECT_FLAGS_CANNOT_SLIDE
+    via object_setFlag1; CurAnim=4, StepTimer=3, HasMoved=1, HitElement=4 all written to oAIAttackVars/oBattleObject
+    on success; table byte_81034EC indexed by lsl r0,#3 (Alliance*8) supplies the two words passed to
+    the panel-choose callback
+  refs:
+  - bn6f/asm/asm31.s:159239
+  - 0x0800E5E2 object_canMove
+  - 0x0801BB1C object_reservePanel
+  - 0x0801A152 object_setFlag1
+  reproduce: python3 tools/asmcat.py 0x0810349C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- what the callback parameters in byte_81034EC mean (attack id? speed?) and which enemy attack uses this
+  step — needs the caller in the AI state machine
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 62ad2570
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810349C -> ai_attackLeapToTargetPanel
+  where: bn6f 2b08d76c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810349C

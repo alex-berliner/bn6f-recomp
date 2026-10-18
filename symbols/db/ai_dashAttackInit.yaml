@@ -1,0 +1,52 @@
+name: ai_dashAttackInit
+address: '0x0810FE5C'
+kind: function
+status: probable
+summary: 'Enemy AI attack setup: reserves its panel, targets the nearest enemy, and launches a version-indexed
+  dash/lunge with attack 0xA.'
+interface: (r5 = BattleObject, r6 = AI state, r7 = AI attack vars) -> r0 = 0 stored to oAIState_ScriptId;
+  sets velocities, attack vars, CANNOT_SLIDE flag
+details: If object_canMove fails, it clears oBattleObject_ExtraVars and ends the AI script (script id
+  0). Otherwise it copies its panelX/panelY to offset 0x64/0x65 and calls object_reservePanel to claim
+  its own tile, then finds the closest enemy (alliance XOR 1) into oAIAttackVars_TargetObjectPtr. Attack
+  stats (duration, damage, extra damage, step timer) are looked up in byte tables indexed by oAIData_Version_16,
+  so values differ per game version. It sets oBattleObject_YVelocity from a word table, multiplies it
+  by object_getFrontDirection to form XVelocity, and uses BIOS Div (SWI 6) of 0x280000 by the velocity,
+  stashing quotient/derived values at object offsets 0x75/0x76 (likely timer/dividend scratch fields).
+  Finally it sets OBJECT_FLAGS_CANNOT_SLIDE, starts attack 0xA via object_setAttack0, zeroes oAIAttackVars_AttackElement
+  and fields 0x6e/0x6f, and ends the script.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_reservePanel after copying own panelX/Y to 0x64/0x65 claims its tile before moving;
+    bl battleObject_findClosestEnemyBattleObject_80103F8 with alliance^1 stores target into oAIAttackVars_TargetObjectPtr;
+    stat tables byte_810FD30/810FD1A/810FD50/810FD20/810FD28 indexed by oAIData_Version_16 feed AttackDuration/Damage/ExtraDamage/StepTimer;
+    YVelocity from dword table * object_getFrontDirection stored to XVelocity, then SWI 6 Div 0x280000/velocity
+    writes offsets 0x75/0x76; object_setFlag1(OBJECT_FLAGS_CANNOT_SLIDE) + object_setAttack0(0xa) + zeroed
+    AttackElement and ScriptId end the attack setup
+  refs:
+  - bn6f/asm/asm32.s:4299
+  - 0x080103F8 battleObject_findClosestEnemyBattleObject_80103F8
+  - 0x0800E5E2 object_canMove
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x0810FE5C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- Which boss/enemy uses this script (callers unknown), and the exact meaning of scratch fields 0x75/0x76
+  and the 0x280000 division (likely a frame count or arc timing for the lunge)
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 62ad2570
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810FE5C -> ai_dashAttackInit
+  where: bn6f 2b08d76c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810FE5C

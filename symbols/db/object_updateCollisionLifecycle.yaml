@@ -1,0 +1,55 @@
+name: object_updateCollisionLifecycle
+address: '0x080DD15C'
+kind: function
+status: probable
+summary: 'Per-frame update for a battle object that resolves its pending collision: spawns the hit effect,
+  dispatches a per-action handler, and marks the object for destruction once the battle is over or the
+  collision flags say so.'
+interface: (r5 = battle object) -> r0 = destroyed? (1 if CurState set to CUR_STATE_DESTROY, else 0); calls
+  are flag-based branches, no return value used
+details: This is a shared collision-lifecycle step for a battle object held in r5. If time-stop is active
+  it does nothing (returns via pop {pc}). Otherwise it tears down the object's collision data (object_removeCollisionData),
+  spawns the hit-effect object at the last collision coordinates (object_spawnCollisionEffect), and checks
+  battle_isBattleOver. If the battle is over OR the collision's FlagsFromCollision field (read via oBattleObject_CollisionDataPtr)
+  is nonzero, it clears the object's collision region, re-presents collision data, and writes CUR_STATE_DESTROY
+  into the combined CurState/phase field — the object will be removed next update. Otherwise it jumps
+  through a 3-entry dispatch table (off_80DD1A0) indexed by oBattleObject_CurAction, then calls object_presentCollisionData
+  to refresh this frame's collision state. The dispatch handlers (sub_80DD1AC/204/22E) are action-specific
+  updates; the caller sub_80DD0D0 runs this on its objects during battle.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl battle_isTimeStop + bne locret: whole update is skipped while time is frozen; bl object_removeCollisionData
+    / object_spawnCollisionEffect back-to-back: consumes the recorded collision and produces its hit effect;
+    tst r0,r0 on oCollisionData_FlagsFromCollision and battle_isBattleOver both lead to object_clearCollisionRegion
+    + CUR_STATE_DESTROY store; ldr r1,[r1,r0] off_80DD1A0 indexed by oBattleObject_CurAction with mov
+    lr,pc; bx r1: per-action dispatch of 3 handlers; bl object_presentCollisionData on both paths keeps
+    the frame''s collision presentation consistent with the project''s summary of that helper'
+  refs:
+  - bn6f/asm/asm31.s:79480
+  - 0x080DD0D0 sub_80DD0D0
+  - 0x0800A18E battle_isBattleOver
+  - 0x0800A098 battle_isTimeStop
+  - 0x0801A074 object_clearCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080DD15C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- What the three dispatched handlers (sub_80DD1AC/204/22E) do per action value would confirm which object
+  class uses this (e.g. enemy vs. effect object)
+- Exact semantics of oCollisionData_FlagsFromCollision bits (destroy-on-hit vs. survive)
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 62ad2570
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80DD15C -> object_updateCollisionLifecycle
+  where: bn6f 2b08d76c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DD15C

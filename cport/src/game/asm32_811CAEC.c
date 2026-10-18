@@ -299,7 +299,7 @@ Next pet_initMenu_811EC10(void) {
  * is whatever drawCurrentMapName_811F08C (the last callee) leaves behind. */
 Next mapName_runSequence_811EC50(void) {
     GUEST_CALL(queueGFXTransfersFromTable_811EC68);
-    GUEST_CALL(sub_811EFB8);
+    GUEST_CALL(ow_renderMapNameHudGfx);
     GUEST_CALL(updateMapNameDisplay_811F014);
     GUEST_CALL(drawMapNamesScreen_811F050);
     GUEST_CALL(drawCurrentMapName_811F08C);

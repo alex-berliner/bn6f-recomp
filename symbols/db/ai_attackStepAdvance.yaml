@@ -1,0 +1,52 @@
+name: ai_attackStepAdvance
+address: '0x080FA144'
+kind: function
+status: probable
+summary: 'Enemy AI attack state step: initiates a lunge onto the reserved target panel, then counts down
+  a short timer before handing off to the next attack phase.'
+interface: (r5 = battle object, r7 = oAIAttackVars) -> void; sets AttackElement/StepTimer/HitElement in
+  r7 block, mutates object panel/flags
+details: 'Runs as a per-frame AI attack step. On entry with oAIAttackVars_AttackElement == 0 it starts
+  the move: sets AttackElement = 4, switches the object to anim 3, commits FuturePanelX/Y into PanelX/Y,
+  releases the reserved panel via object_removePanelReserve, recomputes pixel coordinates from panels,
+  syncs the collision record with facing (object_updateCollisionPanels), clears collision flag 0x40, and
+  sets the ''currently moving'' bit (1 << OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT) in ObjectFlags1, plus StepTimer
+  = 9. On later frames (AttackElement nonzero) it simply decrements StepTimer each frame; when it reaches
+  0 it writes HitElement = 8, signaling the attack state machine to advance to its next phase.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne splits first-run init from per-frame countdown
+    (loc_80FA17C); init path copies FuturePanelX/Y to PanelX/Y then calls object_removePanelReserve, object_setCoordinatesFromPanels,
+    object_updateCollisionPanels — a panel-commit move; object_setFlag1 with 1<<OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT
+    and object_clearFlag 0x40 mark the object as in-motion; tail decrements oAIAttackVars_StepTimer and
+    writes oAIAttackVars_HitElement = 8 on expiry, a phase-advance signal; recorded routes battlesweep/chips
+    match an enemy AI attack routine; callee set is entirely battle-object/AI helpers
+  refs:
+  - bn6f/asm/asm31.s:140132
+  - 0x0801A15C object_clearFlag
+  - 0x0801BB46 object_removePanelReserve
+  - 0x0800E29C object_setCoordinatesFromPanels
+  reproduce: python3 tools/asmcat.py 0x080FA144
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+- chips
+open_questions:
+- exact AI attack state machine that reads HitElement=8 / AttackElement=4 (which handler consumes them)
+- meaning of collision flag 0x40 and AttackElement value 4
+- which enemies/attacks route through this step
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 62ad2570
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80FA144 -> ai_attackStepAdvance
+  where: bn6f 2b08d76c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FA144

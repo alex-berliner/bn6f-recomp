@@ -1,0 +1,53 @@
+name: ai_tryStepTowardTargetRow
+address: '0x080F3F24'
+kind: function
+status: probable
+summary: 'AI attack-state movement step: moves the object one panel vertically toward a stored target
+  row, reserving the panel and setting slide velocity.'
+interface: (r5 = battle object, r7 = AI attack vars) -> r0 = void; calls object_exitAttackState on failure
+details: If object_canMove passes, the routine reads the object's PanelY and a target row from oAIAttackVars_AttackBoost2,
+  deriving a +1/-1 vertical step direction (negative if the object is below/above the target row). It
+  adds the step to Y and validates the resulting panel with object_checkPanelParameters using per-alliance
+  mask pairs from byte_80F3F8C (both alliances use mask 1 / ~mask 0x0F8800A0 vs 0x0F880080). On success
+  it stores FuturePanelX/Y, claims the panel via object_reservePanel, looks up a per-difficulty-tier word
+  from byte_80F3FA0 (0x45000/0x55000/0x65000/0x70000), and calls sub_80F46A4 to get X/Y velocities and
+  a step duration, storing velocities in oBattleObject_X/YVelocity and the duration in oAIAttackVars_StepTimer.
+  It then calls sub_80F3FB0, sets OBJECT_FLAGS_CANNOT_SLIDE in the object's flags (so it can't be knocked
+  off its reserved panel), and sets oAIAttackVars_HitElement = 8 (contact element while stepping). If
+  the panel check or canMove fails, it exits the attack state via object_exitAttackState.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_canMove / beq exit: only moves when the object is free to act; cmp r1, r2 / neg r3:
+    step direction derived from PanelY vs oAIAttackVars_AttackBoost2, only Y changes (add r1, r1, r3);
+    bl object_checkPanelParameters with byte_80F3F8C masks indexed by oBattleObject_Alliance, then strb
+    to FuturePanelX/Y and bl object_reservePanel; byte_80F3FA0 table indexed by oAIAttackVars_AiDifficultyTier*4
+    feeds sub_80F46A4 whose r0/r1 are stored to X/YVelocity and r2 to StepTimer; OBJECT_FLAGS_CANNOT_SLIDE
+    via object_setFlag1 and HitElement=8 set after committing to the move'
+  refs:
+  - bn6f/asm/asm31.s:127894
+  - 0x0800E5E2 object_canMove
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0801BB1C object_reservePanel
+  reproduce: python3 tools/asmcat.py 0x080F3F24
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- Exact meaning of oAIAttackVars_AttackBoost2 (target row vs. something else) not confirmed
+- What sub_80F3FB0 does (probably starts the step animation/state) is unknown
+- Semantics of the byte_80F3FA0 words (speed scaling for sub_80F46A4) not verified
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 62ad2570
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F3F24 -> ai_tryStepTowardTargetRow
+  where: bn6f 2b08d76c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F3F24

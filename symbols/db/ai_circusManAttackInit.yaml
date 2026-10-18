@@ -1,0 +1,51 @@
+name: ai_circusManAttackInit
+address: '0x080FEB20'
+kind: function
+status: probable
+summary: 'Initializes the CircusMan AI''s per-attack state: difficulty tier, timers, panel-choose callback,
+  and target object, then enters attack state 0xA.'
+interface: (r0 = attack-related arg passed to sub_80FEBE4, r5 = owning BattleObject, r7 = oAIAttackVars
+  state block) -> r0 = 0xA (attack state set via object_setAttack0)
+details: Stores the AI difficulty tier (from battle_getAiDifficultyTier_800FE36) into oAIAttackVars_AiDifficultyTier
+  and clears InitFlag. Installs sub_80FF614+1 as the oAIAttackVars_PanelChooseCallback and zeroes fields
+  via sub_80FEBE4. Calls sub_80FE9B0 and sub_80FE9E4 to derive the attack duration, boost, and timer values
+  stored into oAIAttackVars_AttackDuration/AttackBoost2/TimerOrCycles. Sets two scratch pointers to r5+0x74
+  and r5+0x78. Resolves the target as battle_findPlayer(Alliance ^ 1), i.e. the opposing-side player object,
+  storing it in oAIAttackVars_TargetObjectPtr, and finally calls object_setAttack0 with 0xA to enter the
+  attack state.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: strb r0,[r7,#oAIAttackVars_AiDifficultyTier] after bl battle_getAiDifficultyTier_800FE36 — state
+    init; ldr r0,=sub_80FF614+1; str r0,[r7,#oAIAttackVars_PanelChooseCallback] — installs AI callback;
+    bl battle_findPlayer with r0 = oBattleObject_Alliance eor 1 — target is the opposite side's player;
+    mov r0,#0xA; bl object_setAttack0 — enters attack state 0xA at the end; Caller 0x080FE8E4 is a CircusMan
+    AI step that RNG-gates reaching this routine
+  refs:
+  - bn6f/asm/asm31.s:149677
+  - 0x080FE8E4 sub_80FE8E4
+  - 0x0800FE36 battle_getAiDifficultyTier_800FE36
+  - 0x080103BC battle_findPlayer
+  - 0x08011680 object_setAttack0
+  reproduce: python3 tools/asmcat.py 0x080FEB20
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- Exact meaning of sub_80FE9B0/sub_80FE9E4 return values (attack duration/boost derivation)
+- What fields at r5+0x74 and r5+0x78 are (object scratch slots used as param pointers)
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 62ad2570
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80FEB20 -> ai_circusManAttackInit
+  where: bn6f 2b08d76c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FEB20

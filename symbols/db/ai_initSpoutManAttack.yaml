@@ -1,0 +1,53 @@
+name: ai_initSpoutManAttack
+address: '0x080F7886'
+kind: function
+status: probable
+summary: 'Initializes SpoutMan''s AI attack: sets up attack variables, targets the opposing player, and
+  starts attack 0xB.'
+interface: (r0 = unused/scratch, r5 = attacker BattleObject, r7 = AIAttackVars struct) -> r0 = result
+  of object_setAttack0; struct fields written
+details: Reads the enemy AI difficulty tier and stores it in oAIAttackVars_AiDifficultyTier, sets InitFlag
+  = 2, then fills the attack duration (from sub_80F7768), a boost value and timer/cycle count (from sub_80F778C).
+  Calls sub_80F78FA with r0=1 (likely an RNG/panel helper that must run before target selection). It computes
+  the target as battle_findPlayer(alliance XOR 1), i.e. the object on the opposite side, storing it as
+  TargetObjectPtr, and stores a panel-choose callback (sub_80F8256). ScratchVar is set to object pointer
+  + 0x60, and object_setAttack0 with id 0xB starts the attack state.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: strb r0,[r7,#oAIAttackVars_AiDifficultyTier] after bl battle_getAiDifficultyTier_800FE36 initializes
+    attack state; eor r0,r1 (alliance^1) then bl battle_findPlayer -> str [r7,#oAIAttackVars_TargetObjectPtr]
+    targets the opposing side; ldr r0,off_80F79EC =sub_80F8256+1 stored into oAIAttackVars_PanelChooseCallback,
+    a per-attack panel selection routine; mov r0,#0xb; bl object_setAttack0 launches attack 0xB at the
+    end of setup; Caller sub_80F7690 is the SpoutMan AI step and gates this call with an RNG roll (GetPositiveSignedRNG
+    & 0xF < 0xC)
+  refs:
+  - bn6f/asm/asm31.s:135033
+  - 0x080F7690 sub_80F7690
+  - 0x0800FE36 battle_getAiDifficultyTier_800FE36
+  - 0x080103BC battle_findPlayer
+  - 0x08011680 object_setAttack0
+  reproduce: python3 tools/asmcat.py 0x080F7886
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- Exact roles of sub_80F7768/sub_80F778C (duration/boost derivation) and sub_80F78FA(1) are unverified
+- What attack 0xB does visually (water attack type) is inferred from the caller's identity, not from this
+  code
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 62ad2570
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F7886 -> ai_initSpoutManAttack
+  where: bn6f 2b08d76c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F7886

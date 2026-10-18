@@ -1,0 +1,47 @@
+name: battle_timedSelfDestructState
+address: '0x080D8B18'
+kind: function
+status: probable
+summary: Battle-object state that spawns an effect once, waits 4 frames, then destroys the owning object.
+interface: (r5 = battle object) -> void; sets oBattleObject_PhaseInitialized, Timer, CurStateActionPhaseAndPhaseInitialized
+details: 'First-frame path (PhaseInitialized==0): zeroes CurAnim, reads three words from [r5+0x34] into
+  r1-r3, sets r4=0x14 and calls spawn_t1_0x0_EffectObject, then writes Timer=4 and sets PhaseInitialized=4.
+  Every frame it decrements Timer; when it reaches 0 it calls battle_dispatchDestroyEvents_802EF5C (destroy
+  sub-event signal), clearEntryOfBattleStateBattleObjectList_800F656 (remove from object list), object_clearCollisionRegion,
+  and stores CUR_STATE_DESTROY into CurStateActionPhaseAndPhaseInitialized. The 0x34 source and the 0x14
+  argument look like effect position/params and an effect kind or size passed to the spawn wrapper. r4
+  is live across the spawn call, so it is part of the spawn argument set.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb/tst on PhaseInitialized guards a one-shot init that zeroes CurAnim and calls spawn_t1_0x0_EffectObject
+    with args from [r5+0x34]; Timer=4 then ldrh/sub/strh/bgt implements a fixed 4-frame countdown before
+    teardown; On expiry it chains battle_dispatchDestroyEvents_802EF5C, clearEntryOfBattleStateBattleObjectList_800F656
+    and object_clearCollisionRegion; Final store of CUR_STATE_DESTROY to CurStateActionPhaseAndPhaseInitialized
+    matches other destroy transitions
+  refs:
+  - bn6f/asm/asm31.s:70109
+  - 0x0802EF5C battle_dispatchDestroyEvents_802EF5C
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x080E05F6 spawn_t1_0x0_EffectObject
+  reproduce: python3 tools/asmcat.py 0x080D8B18
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- beastsp
+open_questions:
+- Exact meaning of the three words at offset 0x34 and the r4=0x14 argument to the effect spawn wrapper
+- Which battle states/objects use this handler (no caller known; only beastsp routes hit it)
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 62ad2570
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D8B18 -> battle_timedSelfDestructState
+  where: bn6f 2b08d76c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D8B18

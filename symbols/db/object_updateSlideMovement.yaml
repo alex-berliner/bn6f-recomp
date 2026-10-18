@@ -1,0 +1,56 @@
+name: object_updateSlideMovement
+address: '0x080D8A3C'
+kind: function
+status: probable
+summary: 'Battle-object movement phase: slides the object along X toward its FuturePanel target at XVelocity,
+  aborting if the target panel becomes invalid, then snaps panels and ends the action.'
+interface: (r5 = battle object pointer, r0 = 0 on entry for phase init) -> r0 = 0 when the move finishes,
+  else non-zero/returns while moving; flags clobbered
+details: 'Phase-gated via oBattleObject_PhaseInitialized: on first entry it calls sub_80D8C10(FuturePanelX,
+  FuturePanelY) and only arms the phase (sets PhaseInitialized = 4) if that check passes. Each tick it
+  computes newX = X + XVelocity and uses IsR2BetweenR0AndR1 with ExtraVars as a target X to detect when
+  the slide has reached or passed the destination. If the target X is crossed, sub_80D8BBC runs, the target
+  panels are re-validated, and Timer2 counts down frames before the move completes. Completion (loc_80D8A7E)
+  calls object_setCoordinatesFromPanels and object_updateCollisionPanels, sets CurAction = 4 and clears
+  CurPhaseAndPhaseInitialized; if mid-slide the target becomes invalid or the object already entered the
+  next panel, it finishes early by snapping the current coordinates instead. Otherwise it commits newX
+  to X and refreshes PanelX/PanelY and collision panels each step.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'add r0 = XVelocity + X with r1 = old X and r2 = ExtraVars passed to IsR2BetweenR0AndR1: arrival
+    test against a target X (loc around 80D8A50); sub_80D8C10(FuturePanelX, FuturePanelY) gates phase
+    init and re-validates the move target before each state change; Completion block calls object_setCoordinatesFromPanels
+    + object_updateCollisionPanels, sets CurAction = 4 and zero phase (loc_80D8A7E); Mid-slide branch
+    stores newX to oBattleObject_X then calls object_setPanelsFromCoordinates + object_updateCollisionPanels
+    (loc_80D8AAA); Recorded route is beastsp and callees are all battle-object movement helpers, matching
+    a dash/slide action phase'
+  refs:
+  - bn6f/asm/asm31.s:69992
+  - 0x0800E6E8 IsR2BetweenR0AndR1
+  - 0x0800E24C convertBattleObjectXYToPanelXY_800E24C
+  - 0x0800E29C object_setCoordinatesFromPanels
+  reproduce: python3 tools/asmcat.py 0x080D8A3C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- beastsp
+open_questions:
+- Purpose of sub_80D8BBC and exact meaning of the sub_80D8C10 return value (target-panel occupied vs.
+  still-valid) are unknown
+- Which action IDs feed this phase (what sets CurAction before it) and what CurAction = 4 means downstream
+- Semantics of ExtraVars as the destination X and Timer2 as a post-arrival delay are inferred, not confirmed
+  by a caller
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 62ad2570
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D8A3C -> object_updateSlideMovement
+  where: bn6f 2b08d76c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D8A3C

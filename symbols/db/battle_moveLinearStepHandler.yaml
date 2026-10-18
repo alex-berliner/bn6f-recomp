@@ -1,0 +1,50 @@
+name: battle_moveLinearStepHandler
+address: '0x080D7186'
+kind: function
+status: probable
+summary: Battle-object state handler that moves an object along its velocity, stepping it one panel at
+  a time for 3 steps, then destroys it.
+interface: (r0 = unused, r5 = battle object ptr) -> r0 = clobbered; sets CurPhase, Timer, ExtraVars+4,
+  X/Y, panel fields, and CurState=DESTROY on the object
+details: 'On entry with CurPhase==0 it sets phase 4 and calls the unknown sub_80D71FE (likely per-object
+  init of velocity/timer). Otherwise it integrates XVelocity/YVelocity into X/Y, recomputes the object''s
+  panel coords from pixels and syncs its collision panels/facing, then decrements Timer. When the timer
+  expires it increments ExtraVars+4 as a panel-step counter: for the first 2 steps it snaps pixels back
+  to panel centers via object_setCoordinatesFromPanels and resets the phase to run again; after the 3rd
+  step it clears the collision region and sets CurState to DESTROY, ending the object. The 3-step count
+  is hard-coded, so this is a fixed-range straight-line mover typical of a projectile or wave-type attack.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: integrates oBattleObject_XVelocity/YVelocity into X/Y then calls object_setPanelsFromCoordinates
+    and object_updateCollisionPanels (movement + collision sync); decrements oBattleObject_Timer with
+    bgt to loop until the per-step delay elapses; increments ExtraVars+4 and compares to 3, giving exactly
+    three panel steps before despawn; on final step calls object_clearCollisionRegion then writes CUR_STATE_DESTROY
+    to oBattleObject_CurState; intermediate steps call object_setCoordinatesFromPanels and zero CurPhaseAndPhaseInitialized
+    to re-enter the step phase
+  refs:
+  - bn6f/asm/asm31.s:66848
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0800E29C object_setCoordinatesFromPanels
+  - 0x0800E2AC object_setPanelsFromCoordinates
+  reproduce: python3 tools/asmcat.py 0x080D7186
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- what sub_80D71FE initializes (velocity/timer values) to confirm the movement range and speed
+- which callers create objects with this handler and what object/attack uses it
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 62ad2570
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D7186 -> battle_moveLinearStepHandler
+  where: bn6f 2b08d76c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D7186

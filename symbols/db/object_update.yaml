@@ -1,0 +1,50 @@
+name: object_update
+address: '0x080D9434'
+kind: function
+status: probable
+summary: 'Per-frame update of a battle object: collision refresh, action dispatch, and battle-over teardown.'
+interface: (r5 = battle object, r0..r2 scratch) -> r0 = handler result / void; object state fields may
+  be modified
+details: 'Runs each battle frame for one object (r5): if the battle is paused it returns immediately;
+  otherwise it tears down and re-spawns the object''s collision data via object_removeCollisionData/object_spawnCollisionEffect.
+  If the battle is over it clears the collision region and sets the object state to CUR_STATE_DESTROY.
+  When a collision flag is set and CurAction isn''t already 0xC, it clears the collision region and rewrites
+  CurAction to 8 (a generic hit/stunned action). Unless time-stop is active, it dispatches through the
+  table off_80D9484 indexed by CurAction (entries sub_80D9498/80D94B8/80D94C2/80D94E6) with lr=pc for
+  ARM->THUMB return; while time-stopped it instead calls object_presentCollisionData.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl battle_isPaused ... bne locret: early-out when battle is paused (0x080D9436); bl battle_isBattleOver;
+    bne -> object_clearCollisionRegion + state = CUR_STATE_DESTROY (0x080D9460-0x080D947E); ldrb [r5,#oBattleObject_CurAction];
+    ldr r1,[r1,r0]; bx r1: jump table over off_80D9484 indexed by CurAction (0x080D946C); cmp CurAction,
+    #0xc then strb #8: remaps a finished action to the generic action 8 on collision (0x080D9454-0x080D945C);
+    bne -> object_presentCollisionData when battle_isTimeStop: refresh collision state instead of dispatching
+    during time-stop (0x080D946A-0x080D9478)'
+  refs:
+  - bn6f/asm/asm31.s:71344
+  - 0x0800A18E battle_isBattleOver
+  - 0x0800A03C battle_isPaused
+  - 0x0800A098 battle_isTimeStop
+  reproduce: python3 tools/asmcat.py 0x080D9434
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- What the four action handlers (sub_80D9498 etc.) do, to confirm the CurAction action-id numbering
+- Which route in 'battlesweep' invokes this per object, to confirm the r5 object pointer is set up by
+  the caller
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 62ad2570
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D9434 -> object_update
+  where: bn6f 2b08d76c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D9434

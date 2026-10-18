@@ -1,0 +1,52 @@
+name: ai_attackStepSpawnFrontHitbox
+address: '0x0810AFD4'
+kind: function
+status: probable
+summary: AI attack step handler that, on step 4, spawns an element-typed effect and a damaging collision
+  region one panel in front of the attacker, then counts down the step timer to finish the attack.
+interface: (r5 = battle object, r7 = oAIAttackVars) -> r0 = result of spawn calls; sets oAIAttackVars_ScratchVar
+  = 1 when StepTimer reaches 0; flags from spawn calls
+details: 'This is a per-frame AI attack step: it increments oAIAttackVars_AttackStepIndex and only performs
+  the actual spawn when the index reaches 4. It reads the object''s Element and front direction (via object_getFlip/object_getFrontDirection),
+  converts PanelX+frontDir and PanelY to screen coordinates with object_getCoordinatesForPanels, and spawns
+  effect type 0x16 (0x17 on higher AiDifficultyTier) at that panel via spawn_t1_0x0_EffectObject. It then
+  calls object_spawnCollisionRegion at the same panel with r2 = Element, r4 = 0x705ff00 | (4 on easy,
+  2 otherwise) as collision flags, r6 = oAIAttackVars_Damage and r7 = 3 (extra args passed in r4-r7 per
+  project convention). Each frame afterwards it decrements oAIAttackVars_StepTimer, and when it hits zero
+  it stores 1 into oAIAttackVars_ScratchVar to signal the attack sequence is complete. The effect palette/flags
+  varying with Element suggests one shared effect script rendering differently per element (heat/aqua/elec/wood).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r7,#AttackStepIndex]; cmp r0,#4; bne — spawn code only runs once at step 4; object_getFrontDirection
+    + PanelX then object_getCoordinatesForPanels positions the effect one panel ahead of the user; orr
+    r4,#0x16/#0x17 by AiDifficultyTier selects the effect id before spawn_t1_0x0_EffectObject; ldr r4,=0x705ff00,
+    orr 4 or 2 by difficulty, r6 = oAIAttackVars_Damage passed to object_spawnCollisionRegion; StepTimer
+    decrement with ScratchVar=1 on zero matches other AI attack step handlers' completion pattern
+  refs:
+  - bn6f/asm/asm31.s:174913
+  - 0x0800E276 object_getCoordinatesForPanels
+  - 0x0800E456 object_getFlip
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x0810AFD4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- Which attack(s) in the AI attack table use this handler (what enemy/attack name it corresponds to) —
+  needs the attack table entry referencing 0x810AFD4
+- Exact meaning of collision-region fields 0x705ff00 flags and r7 = 3 (probably region size/lifetime)
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 62ad2570
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810AFD4 -> ai_attackStepSpawnFrontHitbox
+  where: bn6f 2b08d76c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810AFD4

@@ -1,0 +1,53 @@
+name: ai_swordyTryStartAttack
+address: '0x0810B436'
+kind: function
+status: probable
+summary: 'Swordy-family AI attack step: finds a panel to target and launches attack id 0xC, otherwise
+  falls back to its move/step logic.'
+interface: (r0/r5 = battle object, r7 = AI attack vars) -> r0 = 0 via object_setAttack0 on success; flags
+  from callees
+details: 'Runs only if sub_810B58A reports not busy. It gets the object''s facing direction, then using
+  the alliance field and PanelY looks up an 8-byte panel-effect param entry and calls object_getClosestPanelMatchingRowFiltered
+  to find a target panel X; if found it stores that X in oAIAttackVars_TargetPanelX, stores X+direction
+  via sub_810B598 (apparently a validation/range check), rolls the Swordy RNG step (sub_810B6F0), re-loads
+  the alliance-dependent params into oAIAttackVars_AiAttackParam and oAIAttackVars_PanelParamFlags2, and
+  starts attack 0xC with object_setAttack0. If no panel was found, it checks the object flag word against
+  0xa000: if set, it proceeds only when sub_810B6B4 returns nonzero; otherwise when sub_810B62E returns
+  nonzero — in both cases falling into sub_810B5BE, the family''s step/move handler.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: strb r0,[r7,#oAIAttackVars_TargetPanelX] then GetAllianceDependentPanelParamArgs into oAIAttackVars_AiAttackParam/PanelParamFlags2
+    shows it is preparing an AI attack; mov r0,#0xc; bl object_setAttack0 is the attack launch (attack
+    id 12); callee sub_810B6F0 is documented as a Swordy-family step using GetPositiveSignedRNG&1, identifying
+    the enemy family; fallback path tests flag 0xa000 via object_getFlag and branches to sub_810B5BE,
+    matching AI move/step dispatch; uses oBattleObject_Alliance/PanelY with the panel-param table and
+    object_getFrontDirection, consistent with a front-row targeting attack
+  refs:
+  - bn6f/asm/asm31.s:175491
+  - 0x081096FA GetAllianceDependentPanelParamArgs
+  - 0x0800D086 object_getClosestPanelMatchingRowFiltered
+  - 0x0801A166 object_getFlag
+  reproduce: python3 tools/asmcat.py 0x0810B436
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- exact attack id 0xC's visual/effect (which Swordy attack variant)
+- what sub_810B598 validates with X+direction
+- which of sub_810B6B4/sub_810B62E correspond to specific movement states
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 62ad2570
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810B436 -> ai_swordyTryStartAttack
+  where: bn6f 2b08d76c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810B436

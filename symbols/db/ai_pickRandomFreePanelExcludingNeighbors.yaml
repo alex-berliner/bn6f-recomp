@@ -1,0 +1,55 @@
+name: ai_pickRandomFreePanelExcludingNeighbors
+address: '0x080F53EA'
+kind: function
+status: probable
+summary: Temporarily reserves the four panels adjacent to an object, picks a random free panel matching
+  the caller's attribute filters (i.e. not adjacent to the object) and returns its coordinates, or 0 if
+  none exist.
+interface: (r0/r2 = required attr bitmask, r1/r3 = forbidden attr bitmask, r5 = object) -> r0 = panel
+  x (low 3 bits of list byte), r1 = panel y (high nibble); r0 = 0 if no candidate panel
+details: 'Using the offset table byte_80F547C = {(-1,0),(0,-1),(1,0),(0,1)}, the function calls object_reservePanel
+  four times to reserve the panels adjacent to the object at r5 (coords at r5+0x12/0x13). It then calls
+  object_getPanelsExceptCurrentFiltered with the two attribute masks to list matching, still-unreserved
+  panels into a 0x18-byte buffer at sp+8 (count in r6), after which a second loop releases the four neighbor
+  reservations via object_removePanelReserve. If the list is empty it retries the filter call once; if
+  still empty it returns 0. Otherwise it draws GetPositiveSignedRNG and uses svc 6 (__rt_divmod) remainder
+  to index the list, returning x = byte&7 in r0 and y = byte>>4 in r1. Quirk: r5 (and possibly r0/r1)
+  are read but not saved, so the caller must set r5 before the call; no known caller confirms the register-result
+  convention.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'byte_80F547C holds four signed (dx,dy) pairs used in a 4x loop around object_reservePanel with
+    r5+0x12/+0x13 coords — reserving the N/S/E/W neighbors; object_getPanelsExceptCurrentFiltered is called
+    with the saved attr masks (r2/r3 from sp) filling the sp+8 buffer, count in r6; the same four offsets
+    drive a second loop over object_removePanelReserve, undoing the neighbor reservations; GetPositiveSignedRNG
+    + svc 6 with r1=entry count picks a random list entry; lsr #4 / lsl 0x1d+lsr 0x1d split the byte into
+    high-nibble and low-3-bit coordinates; bne/beq on r6 around a retry of the filtered panel scan returns
+    0 when no candidate panel exists'
+  refs:
+  - bn6f/asm/asm31.s:130537
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x0800CE64 object_getPanelsExceptCurrentFiltered
+  - 0x0801BB46 object_removePanelReserve
+  reproduce: python3 tools/asmcat.py 0x080F53EA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- No known caller, so the meaning/order of the returned (r0=x, r1=y) pair and the r5-as-argument convention
+  are inferred, not confirmed
+- Exact semantics of the required/forbidden attribute bitmask arguments to object_getPanelsExceptCurrentFiltered
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 62ad2570
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F53EA -> ai_pickRandomFreePanelExcludingNeighbors
+  where: bn6f 2b08d76c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F53EA

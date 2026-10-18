@@ -1,0 +1,56 @@
+name: ai_prepareTargetedAttack
+address: '0x08112340'
+kind: function
+status: probable
+summary: 'AI attack-script step: decrements a turn counter and, while it is still positive, selects a
+  target panel, records direction/panel params, and starts attack state 0xC; when the counter runs out
+  it resets the script id.'
+interface: (r5 = battle object, r6 = AI state block, r7 = AI attack-vars block) -> r0 = 1 after setup
+  or via callees; also writes script id (oAIState_ScriptId) and many oAIAttackVars_* fields
+details: It pre-decrements oAIState_TurnCounter; if the result is negative (counter was 0) it clears oAIState_ScriptId
+  and returns without acting. Otherwise it calls sub_811252C to obtain a target panel; if that returns
+  0 it also aborts the same way. On success it stores the target x/y into oAIAttackVars_TargetPanelX/Y,
+  XORs oBattleObject_Alliance with oBattleObject_DirectionFlip to select a parameter-table side, saves
+  the object's own panel x/y into oBattleObject_ExtraVars/ExtraVars+4, classifies the delta to the target
+  via sub_800E994 into ExtraVars+8, sets oAIAttackVars_AiDifficultyTier to 1, loads a version-dependent
+  word (oAIData_Version_16 << 2 indexed off oAIState_Unk_0c) into oAIAttackVars_ScratchVar, fetches an
+  alliance-dependent panel param entry with GetAllianceDependentPanelParamArgs (byte_81125E0 table) storing
+  param/flags into oAIAttackVars_AiAttackParam and oAIAttackVars_PanelParamFlags2, sets attack 0xC via
+  object_setAttack0, and tail-dispatches the attack handler sub_8109804.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r6,#oAIState_TurnCounter]; sub r0,#1; strb; bmi loc_8112392 — countdown gate that resets
+    oAIState_ScriptId when expired; bl sub_811252C; strb r0/r1 to oAIAttackVars_TargetPanelX/Y — stores
+    the chosen target panel; eor r4 (oBattleObject_Alliance, oBattleObject_DirectionFlip) then bl GetAllianceDependentPanelParamArgs
+    off byte_81125E0 — picks team/flip-dependent panel params; bl sub_800E994 (direction classifier) with
+    object and target panel coords, result to oBattleObject_ExtraVars+8; mov r0,#0xc; bl object_setAttack0;
+    bl sub_8109804 (attack-handler dispatcher) — enters attack state
+  refs:
+  - bn6f/asm/asm32.s:8617
+  - 0x081096FA GetAllianceDependentPanelParamArgs
+  - 0x0800E994 sub_800E994
+  - 0x08109804 sub_8109804
+  reproduce: python3 tools/asmcat.py 0x08112340
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- What sub_811252C uses to choose the target panel (likely player position or AI difficulty logic)
+- Exact meaning of oAIState_TurnCounter semantics (frames vs. sub-steps) and the version word stored in
+  ScratchVar
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 62ad2570
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8112340 -> ai_prepareTargetedAttack
+  where: bn6f 2b08d76c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8112340

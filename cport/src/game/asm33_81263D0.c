@@ -4150,7 +4150,7 @@ Next battle_object_advanceState3_8129738(void) {
  * Reads entity field at offset 0x1D and asks battleObject_advanceChipAnimFrames_812B318 what to do with it.
  * If battleObject_advanceChipAnimFrames_812B318 signals a follow-up (r1 != 0), call sub_812B218.
  * If the chosen action is 3, set the entity's state byte to 0x14 and call
- * sub_811A610(0, 0).
+ * sprite_setEntityAnimation(0, 0).
  * Outputs: r4 = battleObject_advanceChipAnimFrames_812B318's r2 (the action), r5/r6 preserved. */
 Next sub_8129758(void) {
     /* Ask battleObject_advanceChipAnimFrames_812B318 what to do with entity[0x1D]. */
@@ -4164,13 +4164,13 @@ Next sub_8129758(void) {
         GUEST_CALL(sub_812B218);
     }
 
-    /* Action 3: enter state 0x14 and call sub_811A610(0, 0). */
+    /* Action 3: enter state 0x14 and call sprite_setEntityAnimation(0, 0). */
     if (R4 == 3) {
         R0 = 0x14;
         ST8(R5 + 3, (u8)R0);
         R0 = 0;
         R1 = 0;
-        GUEST_CALL(sub_811A610);
+        GUEST_CALL(sprite_setEntityAnimation);
     }
 
     RETURN_TO_CALLER();
@@ -4305,7 +4305,7 @@ Next sub_81297DC(void) {
 /* ── sub_8129808 ── */
 /* sub_8129808: takes r5 = some battle object pointer (has a byte at +0x1d and +3),
  * reads its state index byte, calls battleObject_advanceChipAnimFrames_812B318, and based on results either
- * does nothing or flips the object's state to 4 and calls sub_811A610(1,0).
+ * does nothing or flips the object's state to 4 and calls sprite_setEntityAnimation(1,0).
  * Preserves r4/r5/r6 for the caller; clobbers r0-r3 and lr internally. */
 Next sub_8129808(void) {
     u8 state_index = LD8(R5 + 0x1D);
@@ -4327,7 +4327,7 @@ Next sub_8129808(void) {
     ST8(R5 + 3, new_state);
     R0 = 1;
     R1 = 0;
-    GUEST_CALL(sub_811A610);
+    GUEST_CALL(sprite_setEntityAnimation);
 
     RETURN_TO_CALLER();
 }
@@ -4636,7 +4636,7 @@ Next sub_8129918(void) {
 /* sub_8129948(r5 = some struct):
  * Reads the byte at r5+0x1D and passes it to battleObject_advanceChipAnimFrames_812B318.
  * Saves battleObject_advanceChipAnimFrames_812B318's r2 in r4. If its r1 is nonzero, also calls sub_812B218.
- * If r4 == 3, sets state byte at r5+3 to 4 and calls sub_811A610(3, 0). */
+ * If r4 == 3, sets state byte at r5+3 to 4 and calls sprite_setEntityAnimation(3, 0). */
 Next sub_8129948(void) {
     u8 slot = LD8(R5 + 0x1D);
 
@@ -4654,7 +4654,7 @@ Next sub_8129948(void) {
         ST8(R5 + 3, 4);
         R0 = 3;
         R1 = 0;
-        GUEST_CALL(sub_811A610);
+        GUEST_CALL(sprite_setEntityAnimation);
     }
 
     RETURN_TO_CALLER();
@@ -4957,7 +4957,7 @@ Next sub_8129A98(void) {
 /* decideBattleAction_8129AC8(r5 = entity, lr = return):
  *   Picks a battle-side action for the entity at r5: asks battleObject_advanceChipAnimFrames_812B318 what
  *   kind to do (r2 = kind, r1 = valid). If valid and kind == 2 we mark the
- *   entity's action byte (r5+3 = 4) and trigger the move event (sub_811A610);
+ *   entity's action byte (r5+3 = 4) and trigger the move event (sprite_setEntityAnimation);
  *   otherwise we delegate to battleObject_advanceChipAnimFrames_812B318's sibling sub_812B218.
  *   outputs: r4 r5 r6  preserved: r4 r5 r6 r7 */
 Next decideBattleAction_8129AC8(void) {
@@ -4975,7 +4975,7 @@ Next decideBattleAction_8129AC8(void) {
         ST8(R5 + 3, 4);
         R0 = 2;
         R1 = 0;
-        GUEST_CALL(sub_811A610);
+        GUEST_CALL(sprite_setEntityAnimation);
     } else {
         GUEST_CALL(sub_812B218);
     }
@@ -5174,7 +5174,7 @@ Next sub_8129C28(void) {
  *    nothing to do;
  *  - if the reported value differs from the state byte, sub_812B218 fixes the
  *    object up instead;
- *  - otherwise store 4 at +0x03 and call sub_811A610 with a selector based on
+ *  - otherwise store 4 at +0x03 and call sprite_setEntityAnimation with a selector based on
  *    the id at +0x02 (0x14 -> 4, 0x18 -> 5, anything else -> 7) and r1 = 0.
  * The original pushes r4 only to use it as scratch for the compare and pops the
  * saved value back on return, so r4 leaves this function holding its incoming
@@ -5215,7 +5215,7 @@ Next sub_8129C74(void) {
 
     R0 = selector;
     R1 = 0;
-    GUEST_CALL(sub_811A610);
+    GUEST_CALL(sprite_setEntityAnimation);
     R4 = savedR4;
     RETURN_TO_CALLER();
 }

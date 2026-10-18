@@ -1,0 +1,52 @@
+name: object_hitStateHandler
+address: '0x080D8310'
+kind: function
+status: probable
+summary: 'Per-frame state handler for a battle object that has just been hit: spawns the hit effect, tears
+  down its collision data, and either destroys the object or dispatches to an action-specific handler
+  via CurAction.'
+interface: (r0/r5 = battle object) -> r0 = destroyed state value when destroying; flags used for battle-over/timestop
+  checks
+details: Runs with the battle object in r5 (standard state-handler convention). It first removes the object's
+  collision data and spawns a hit-effect object from the last collision's position (with up to 8px jitter).
+  If the battle is over, or the collision's flags byte in the CollisionData is nonzero, it clears the
+  collision region, frees and nulls the object's ExtraVars pointer, and sets the object's state to CUR_STATE_DESTROY.
+  Otherwise, if time is not stopped, it dispatches through a 3-entry jump table indexed by oBattleObject_CurAction
+  (off_80D8370) to per-action handlers, then refreshes the object's per-frame collision state via object_presentCollisionData.
+  This reads as the shared 'object hit / dying' state used by attackable battle objects.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sub_80D8310 opens with bl object_removeCollisionData + bl object_spawnCollisionEffect, the
+    hit-reaction sequence; both the battle-over branch (loc_80D8356) and the flags-nonzero branch store
+    #CUR_STATE_DESTROY into oBattleObject_CurStateActionPhaseAndPhaseInitialized; flags check loads oBattleObject_CollisionDataPtr
+    then oCollisionData_FlagsFromCollision and tst r0,r0 to decide destroy vs continue; loc_80D8340 indexes
+    off_80D8370 (3 handlers sub_80D837C/80D83A0/80D83CC) with oBattleObject_CurAction, then calls object_presentCollisionData;
+    Callee battle_isBattleOver/battle_isTimeStop confirm this runs inside the normal battle frame loop'
+  refs:
+  - bn6f/asm/asm31.s:68997
+  - 0x0800A18E battle_isBattleOver
+  - 0x0800A098 battle_isTimeStop
+  - 0x0801A074 object_clearCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080D8310
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- What the three action handlers (sub_80D837C/80D83A0/80D83CC) do, to confirm whether this is e.g. a 'hit'
+  vs 'flinch' state
+- Which objects use this state and with which CurAction values 0-2
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 62ad2570
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D8310 -> object_hitStateHandler
+  where: bn6f 2b08d76c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D8310

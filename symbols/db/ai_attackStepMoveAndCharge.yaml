@@ -1,0 +1,52 @@
+name: ai_attackStepMoveAndCharge
+address: '0x0810379E'
+kind: function
+status: probable
+summary: 'Per-frame AI attack step: enemy hops to its target panel and, after a 3-frame delay, signals
+  the attack hit.'
+interface: (r0 = element? read from [r7+oAIAttackVars_AttackElement], r5 = battle object ptr, r7 = AI
+  attack vars) -> void; updates AttackElement, CurAnim, PanelX/Y, flags, StepTimer, HitElement
+details: 'Runs as a state handler over an AI attack-vars struct (r7) and battle object (r5). If oAIAttackVars_AttackElement
+  is zero it begins the attack: sets AttackElement = 4 and CurAnim = 3 (lunge/charge animation), copies
+  FuturePanelX/Y into PanelX/Y, then calls object_removePanelReserve, object_setCoordinatesFromPanels
+  and object_updateCollisionPanels to commit the move; it clears ObjectFlags1 bit 0x40 and sets bit 1<<OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT,
+  and sets StepTimer = 3. On later frames it decrements StepTimer; when it reaches zero it stores 0x24
+  into oAIAttackVars_HitElement, presumably a marker consumed by the next AI attack phase to apply the
+  hit.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: tst r0, r0 / bne loc_81037D6 splits first-call init from per-frame countdown on [r7,#oAIAttackVars_AttackElement];
+    strb FuturePanelX/Y -> PanelX/Y then bl object_removePanelReserve / object_setCoordinatesFromPanels
+    / object_updateCollisionPanels commits the move to the target panel; mov r0,#3; strb r0,[r5,#oBattleObject_CurAnim]
+    plays the attack animation during the approach; object_clearFlag 0x40 and object_setFlag1 1<<OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT
+    mark the object as moving; strh r0,[r7,#oAIAttackVars_StepTimer] with 3, decremented each call, then
+    mov r0,#0x24; strh r0,[r7,#oAIAttackVars_HitElement] fires the hit after the delay
+  refs:
+  - bn6f/asm/asm31.s:159662
+  - 0x0801A15C object_clearFlag
+  - 0x0801BB46 object_removePanelReserve
+  - 0x0800E29C object_setCoordinatesFromPanels
+  reproduce: python3 tools/asmcat.py 0x0810379E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- What consumes oAIAttackVars_HitElement = 0x24 afterwards (the hit-application step) — unknown without
+  the caller/state machine
+- Which attack/element value 4 corresponds to and which enemy uses this route (route 'battlesweep' only
+  hints)
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 62ad2570
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810379E -> ai_attackStepMoveAndCharge
+  where: bn6f 2b08d76c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810379E

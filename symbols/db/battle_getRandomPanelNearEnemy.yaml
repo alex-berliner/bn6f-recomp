@@ -1,0 +1,55 @@
+name: battle_getRandomPanelNearEnemy
+address: '0x0810AD18'
+kind: function
+status: probable
+summary: Picks a random enemy of the given battle object's team and returns packed panel coordinates of
+  a random panel near it.
+interface: (r5 = battle object; buffer on stack) -> r0 = packed panel coords (panelX<<4 | panelY&7) or
+  failure value; flags from final masking
+details: Collects the battle objects returned by object_getEnemyByNameRange (ID range 1..0xAE, alliance
+  filter = r5's oBattleObject_Alliance) into a pointer list at sp. For each listed object that is not
+  r5 itself, it looks up the alliance-dependent panel param entry (table byte_810AE08, indexed by that
+  object's alliance) using its PanelX/PanelY, then calls GetRandomRelativePanelFiltered with r4=8 to get
+  a random reachable panel near it; successful results are packed as (r1<<4)|r0 and queued in a byte array
+  at sp+0x10, with the count at sp+0x1C. The inner loop uses push/pop of r3/r6 to preserve the list cursor
+  and counter across the calls that clobber them. If any candidates were queued, GetPositiveSignedRNG
+  + svc 6 (DivRem by count) picks one entry at random, and the low nibble's low 3 bits (panelY) and high
+  nibble (panelX) are unpacked into r0/r1, with the packed byte ending in r0. If there are no enemies
+  or no valid panels, it returns without queuing (r0 = 0/enemy-lookup result).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r3,[r5,#oBattleObject_Alliance]; bl object_getEnemyByNameRange with r1=1, r2=0xAE fills
+    the sp buffer of enemy object pointers; cmp r1,r5 skip + ldrb PanelX/PanelY + GetAllianceDependentPanelParamArgs(byte_810AE08)
+    + GetRandomRelativePanelFiltered(r4=8) per candidate; strb r0,[r3,#0x10] after orr r0,r1 lsl 4 queues
+    packed coords with count at [r7,#0x1c]; svc 6 (DivRem of GetPositiveSignedRNG by count) then ldrb
+    r0,[sp+0x10+r1] picks a random queued entry; lsr r1,#4 / lsl #0x1d + lsr #0x1d unpack the entry into
+    panelX (high nibble) and panelY (low 3 bits) as the return value'
+  refs:
+  - bn6f/asm/asm31.s:174642
+  - 0x0810AD10 sub_810AD10
+  - 0x081096FA GetAllianceDependentPanelParamArgs
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x08015E46 GetRandomRelativePanelFiltered
+  reproduce: python3 tools/asmcat.py 0x0810AD18
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- Exact consumer of the returned packed coords (sub_810AD10 wrapper's caller) — which attack/effect uses
+  a panel near a random enemy
+- Meaning of the r4=8 argument to GetRandomRelativePanelFiltered (range or list id)
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 62ad2570
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810AD18 -> battle_getRandomPanelNearEnemy
+  where: bn6f 2b08d76c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810AD18

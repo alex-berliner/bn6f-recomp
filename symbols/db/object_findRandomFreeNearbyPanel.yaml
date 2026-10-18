@@ -1,0 +1,55 @@
+name: object_findRandomFreeNearbyPanel
+address: '0x08108C10'
+kind: function
+status: probable
+summary: Picks a random free battle panel in the 3x3 area around an object (falling back to anywhere,
+  then to its own tile), using temporary panel reservations to filter out occupied/claimed tiles.
+interface: (r0 = object whose byte 0x13 (row) is the ignore-row for the panel scan, r2 = required panel
+  attribute mask, r3 = forbidden panel attribute mask, r5 = object whose x/y at +0x12/+0x13 anchor the
+  offsets) -> r0 = panel column, r1 = panel row; no flags of interest
+details: It walks a 9-entry table at byte_8108CA8 of signed (dx,dy) offsets — (0,0) plus the 8 surrounding
+  tiles — and calls object_reservePanel for each tile around the object at r5+0x12/+0x13, so reserved
+  panels count as unavailable. It then calls object_getPanelsIgnoreColumnFiltered (skipping the row in
+  r0's byte 0x13, applying the r2/r3 attribute masks) into a stack buffer, releases all nine reservations,
+  and if any candidates were found picks one with GetPositiveSignedRNG modulo the count (svc 6), unpacking
+  the packed (col | row<<4) byte into column and row. If no nearby panel passes the filter it retries
+  with object_getPanelsExceptCurrentFiltered over the whole grid; if that also fails it returns the object's
+  own x/y unchanged.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 9-iteration loop over byte_8108CA8 pairs calling object_reservePanel with table offset + r5+0x12/+0x13
+    (loc_8108C1C); object_getPanelsIgnoreColumnFiltered called with r0 = object byte 0x13 and r7 = sp+0xc
+    output buffer, result count in r6 (8108C44); matching 9-iteration loop calling object_removePanelReserve
+    to undo the reservations (loc_8108C50); GetPositiveSignedRNG + svc 6 modulo of r6 then 'col = b&7,
+    row = b>>4' from the packed panel byte (8108C86-8108C9C); fallback to object_getPanelsExceptCurrentFiltered,
+    then to object's own +0x12/+0x13 coords (8108C76-8108C9A)
+  refs:
+  - bn6f/asm/asm31.s:170632
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x0800CE64 object_getPanelsExceptCurrentFiltered
+  - 0x0800CFA6 object_getPanelsIgnoreColumnFiltered
+  reproduce: python3 tools/asmcat.py 0x08108C10
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- Which object/caller invokes this (no callers known) — needed to confirm the semantics of r0 byte 0x13
+  (ignore row) and whether r0 and r5 are the same object
+- The exact meaning of the r2/r3 attribute bitmasks depends on object_getPanelsExceptCurrentFiltered's
+  panel attribute field layout
+- What game behavior consumes the returned col/row (likely a boss/AI teleport or move)
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 62ad2570
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8108C10 -> object_findRandomFreeNearbyPanel
+  where: bn6f 2b08d76c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8108C10

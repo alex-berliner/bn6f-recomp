@@ -1,0 +1,52 @@
+name: battle_tryUseSelectedChip
+address: '0x0810B54C'
+kind: function
+status: probable
+summary: If a battle object has a chip selected and its timers allow, starts using that chip (write params,
+  begin attack, consume chip) and reports success.
+interface: (r5 = battle object, passed through caller) -> r0 = 1 if chip use started, 0 otherwise; flags
+  clobbered
+details: 'Fetches the object''s selected chip via battle_getSelectedChipForUse_800ED90; r3 acts as a ''has
+  a chip'' flag and r0 holds the chip value whose low 9 bits (lsl/lsr by 0x17) are the chip ID. Three
+  gates must pass: chip selected, battle state field oBattleState_Unk_40 >= 0x12C (300), and sub_810B584(object)
+  >= 3 (likely a per-object charge/delay counter). On success it calls somethingWriteChipParams_80126E4
+  with the chip ID, sets the object''s attack via object_setAttack0, and consumes the queued chip via
+  battleObject_decrementChipHeldAndClearChip_800F322, returning 1. Quirk: r5 is never set inside the function
+  — it relies on the caller having loaded the object into r5 and is only preserved via the push/pop.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'mov r0, r5 / bl battle_getSelectedChipForUse_800ED90 then tst r3,r3 / beq — only proceeds when
+    a chip is selected; bl battle_getStateUnk40_800A704; cmp r0, #0x12c; blt — gate on battle timer/state
+    reaching 300; bl sub_810B584; cmp r0, #3; blt — second gate on a per-object counter/state; lsl/lsr
+    r4 by 0x17 then bl somethingWriteChipParams_80126E4 — extracts 9-bit chip ID and loads its params;
+    bl object_setAttack0 + bl battleObject_decrementChipHeldAndClearChip_800F322 + mov r6,#1 — begins
+    attack, consumes chip, returns success'
+  refs:
+  - bn6f/asm/asm31.s:175624
+  - 0x0810B36C sub_810B36C
+  - 0x0800F322 battleObject_decrementChipHeldAndClearChip_800F322
+  - 0x0800ED90 battle_getSelectedChipForUse_800ED90
+  - 0x0800A704 battle_getStateUnk40_800A704
+  reproduce: python3 tools/asmcat.py 0x0810B54C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- exact meaning of the >=300 field oBattleState_Unk_40 (frames since battle start vs. a custom rule timer)
+- what sub_810B584 measures per object (charge time? AI cooldown?) — its body was not shown
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 62ad2570
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810B54C -> battle_tryUseSelectedChip
+  where: bn6f 2b08d76c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810B54C
