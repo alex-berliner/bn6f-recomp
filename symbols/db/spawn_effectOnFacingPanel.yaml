@@ -1,0 +1,52 @@
+name: spawn_effectOnFacingPanel
+address: '0x08115DA4'
+kind: function
+status: probable
+summary: 'Spawns effect #22 on the panel directly in front of the given battle object, with its side (alliance
+  XOR flip) encoded in the spawn parameter.'
+interface: (r5 = battle object ptr) -> r0 = spawned effect object ptr; destroys r0-r3
+details: Reads oBattleObject_Alliance and oBattleObject_DirectionFlip from the object at r5, XORs them
+  and shifts left 8 to form a side tag pushed on the stack. Calls object_getFrontDirection to get +1/-1,
+  adds it to oBattleObject_PanelX (leaving PanelY unchanged), and converts the resulting panel column/row
+  to 16.16 screen pixel coordinates via object_getCoordinatesForPanels. Then pops the side tag, ORs it
+  with the literal 0x16 (the effect id/parameter), and calls spawn_t1_0x0_EffectObject with r0=x, r1=y,
+  r2=?, r3=0, r4=0x16|side<<8. The high bit of the parameter presumably selects the effect's palette/orientation
+  per alliance side. The byte tables after the function (0x28/0x3C/0x64/0x78, etc.) belong to the sibling
+  state handlers in off_8115DE0, not this routine.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb/eor of Alliance and DirectionFlip followed by object_getFrontDirection gives the facing
+    multiplier; add r0, r0, PanelX before object_getCoordinatesForPanels places the effect one panel ahead
+    of the object; pop {r0}; orr r4, r0 with byte literal 0x16 builds the effect parameter including the
+    side tag; tail call to spawn_t1_0x0_EffectObject, whose known summary says it spawns a type-4 effect
+    object; caller sub_8115CF8 is in the same state-handler table (off_8115DE0) as sub_8115CD8/sub_8115E4C,
+    confirming battle-object context
+  refs:
+  - bn6f/asm/asm32.s:15595
+  - 0x08115CF8 sub_8115CF8
+  - 0x0800E276 object_getCoordinatesForPanels
+  - 0x0800E2CA object_getFrontDirection
+  - 0x080E05F6 spawn_t1_0x0_EffectObject
+  reproduce: python3 tools/asmcat.py 0x08115DA4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- exact meaning of the 0x16 parameter to the effect (effect id vs. animation id)
+- what r2/r3 to the spawn wrapper mean (r2 is the converted y coordinate; r3=0 purpose unclear)
+- which gameplay situation the caller sub_8115CF8 triggers this from (likely a boss/wind attack, unconfirmed)
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8115DA4 -> spawn_effectOnFacingPanel
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8115DA4

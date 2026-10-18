@@ -1,0 +1,50 @@
+name: battle_tutFullSynchroTextStep
+address: '0x0800951E'
+kind: function
+status: probable
+summary: 'Battle-tutorial step: shows the Full Synchro tutorial text once, waits for the chatbox to close,
+  then records whether Full Synchro was achieved and advances the tutorial state.'
+interface: (r5 = *BattleState) -> void; writes oBattleState_Index_01 (0x10/0x14), sets oBattleState_SubPhaseInitFlag
+  = 4, zeroes oBattleState_StatePhaseAndInitFlag; flags set by callee branches
+details: 'Uses r5 as a battle-state struct (fields oBattleState_SubPhaseInitFlag, oBattleState_Index_01,
+  oBattleState_StatePhaseAndInitFlag). First pass runs chatbox_runScript with TextScriptBattleTutFullSynchro
+  index 0xA and stores 4 into the init flag; subsequent passes first poll chatbox flag 0x80 (script still
+  active/box open) and bail while set. Once the box is free, GetBattleEffects is consulted: bit 1 of the
+  mask selects 0x10 (synchro done) vs 0x14 (not done), which is stored in oBattleState_Index_01 as the
+  value the tutorial logic later reads. Finally StatePhaseAndInitFlag is cleared to 0, moving the tutorial
+  to its next phase. Only meaningful during the Full Synchro battle tutorial.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#oBattleState_SubPhaseInitFlag]; tst/bne = one-time init vs poll pattern; bl chatbox_runScript
+    with =TextScriptBattleTutFullSynchro and r1=#0xa names the tutorial message; chatbox_mask_eFlags2009F38(0x80)
+    bne exit = waits for the chatbox to be dismissed; GetBattleEffects + tst r0,#2 picking 0x10 vs 0x14
+    ties the branch to a battle-effect outcome (Full Synchro); strb r2,[r5,#oBattleState_Index_01] then
+    StatePhaseAndInitFlag=0 = advance tutorial state
+  refs:
+  - bn6f/asm/asm00_1.s:13941
+  - 0x0802D246 GetBattleEffects
+  - 0x08045F3C chatbox_mask_eFlags2009F38
+  - 0x08040384 chatbox_runScript
+  reproduce: python3 tools/asmcat.py 0x0800951E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- beastsp
+- menus2
+open_questions:
+- Exact meaning of battle-effects bit 1 (Full Synchro achieved vs some other effect) and how oBattleState_Index_01
+  0x10/0x14 is consumed by the rest of the tutorial
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_800951E -> battle_tutFullSynchroTextStep
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800951E

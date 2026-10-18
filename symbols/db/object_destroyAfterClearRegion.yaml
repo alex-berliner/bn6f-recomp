@@ -1,0 +1,47 @@
+name: object_destroyAfterClearRegion
+address: '0x080CF76C'
+kind: function
+status: probable
+summary: Battle-object routine that first removes the object from its collision region, then destroys
+  it.
+interface: (r0 = battle object pointer, passed through to both callees) -> r0 = object_genericDestroy
+  result; no meaningful flags
+details: 'This is a two-call wrapper: it calls object_clearCollisionRegion to zero the object''s collision-region
+  byte so it stops registering in its current region, then calls object_genericDestroy, the standard battle-object
+  destructor that releases panel tile reserves, collision data, and object memory. It looks like a destroy/on-destroy
+  routine for an object that needs to leave its collision region explicitly before being freed, possibly
+  because genericDestroy alone does not clear the region byte. It appears in recorded battle routes (battlesweep),
+  so it runs during normal battle gameplay. With no known callers the exact object type that uses it as
+  its destructor is unidentified.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'immediately calls object_clearCollisionRegion before object_genericDestroy (asm lines 2-3);
+    object_genericDestroy is the documented generic battle-object destructor releasing panel reserves,
+    collision data, and memory; order matters: region-clear precedes destruction, implying the object
+    must leave the collision grid first'
+  refs:
+  - bn6f/asm/asm31.s:50685
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x08016C8A object_genericDestroy
+  reproduce: python3 tools/asmcat.py 0x080CF76C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- which object's destructor/onDestroy pointer points here — no callers known, need an object template
+  or creation site referencing 0x080CF76C
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80CF76C -> object_destroyAfterClearRegion
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CF76C

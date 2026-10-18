@@ -1,0 +1,58 @@
+name: ai_commitStepMove
+address: '0x08109D70'
+kind: function
+status: probable
+summary: 'AI attack helper: on a 3-frame step timer, commits an object''s staged future panel position
+  as its real one and refreshes panel state and collision.'
+interface: (r5 = battle object, r7 = AI attack vars) -> r0 = 8 (HitElement value written); no meaningful
+  return
+details: 'Each call decrements oAIAttackVars_StepTimer; when it reaches zero the staged oBattleObject_FuturePanelX/Y
+  are copied into oBattleObject_PanelX/Y, the panel reserve held by the object is released (object_removePanelReserve),
+  pixel coordinates are recomputed from the new panels (object_setCoordinatesFromPanels), and the collision
+  record plus facing are synced (object_updateCollisionPanels). The timer is then reloaded with 3 so the
+  move commits every 3rd frame, and oAIAttackVars_HitElement is set to 8, presumably the element/damage
+  type applied when this step attack lands. Runs inside AI attack routines during battles. Quirk: HitElement
+  is written after the commit, so it likely parameterizes the next commit rather than the one just performed.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrh/sub/strh on oAIAttackVars_StepTimer with bne skip = frame-countdown gate; copies oBattleObject_FuturePanelX/Y
+    into oBattleObject_PanelX/Y before the three panel calls; callee summaries: removePanelReserve, setCoordinatesFromPanels,
+    updateCollisionPanels all act on the just-committed panel position; reload of StepTimer with #3 and
+    strh #8 to oAIAttackVars_HitElement after the commit block'
+  refs:
+  - bn6f/asm/asm31.s:173190
+  - 0x0801BB46 object_removePanelReserve
+  - 0x0800E29C object_setCoordinatesFromPanels
+  - 0x0801A04C object_updateCollisionPanels
+  reproduce: python3 tools/asmcat.py 0x08109D70
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battles1
+- battles2
+- battlesweep
+- beastsp
+- fuzz
+- menus2
+- story2
+- story5
+- story6
+- story8
+- story9
+open_questions:
+- what attack variant(s) call this (no caller identified) and what HitElement=8 selects
+- whether the 3-frame period or the element value is configured elsewhere in the AI attack setup
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8109D70 -> ai_commitStepMove
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8109D70

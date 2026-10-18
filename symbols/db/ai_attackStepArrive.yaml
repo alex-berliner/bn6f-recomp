@@ -1,0 +1,49 @@
+name: ai_attackStepArrive
+address: '0x080F5C00'
+kind: function
+status: probable
+summary: 'AI attack state step: on timer expiry, commits the object to its reserved target panel and arms
+  the next attack phase'
+interface: (r0/r7 = battle object AI vars, r5 = battle object) -> r0 = clobbered; sets CurAnim=3, PanelX/Y=FuturePanelX/Y,
+  StepTimer=3, HitElement=8
+details: Decrements oAIAttackVars_StepTimer; while positive it just returns. On expiry it copies oBattleObject_FuturePanelX/Y
+  into oBattleObject_PanelX/Y, calls object_removePanelReserve to drop the reservation on the target panel,
+  then object_setCoordinatesFromPanels and object_updateCollisionPanels to snap the sprite to the new
+  panel and refresh collision/facing. It sets CurAnim to 3 (presumably a land/action animation), reloads
+  StepTimer with 3 for the next state, and writes 8 into oAIAttackVars_HitElement, likely a flag or element
+  ID consumed by the following attack step.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrh/sub/strh on oAIAttackVars_StepTimer with bgt locret: frame-countdown gate for the state;
+    FuturePanelX/Y copied to PanelX/Y then object_removePanelReserve: committing a previously reserved
+    move/attack panel; object_setCoordinatesFromPanels + object_updateCollisionPanels right after: re-derive
+    pixel pos and collision from the new panel; mov r0,#3 strb [r5,#oBattleObject_CurAnim]: switches to
+    animation 3 on arrival; strh #8 into oAIAttackVars_HitElement and StepTimer reset to 3: arms the subsequent
+    hit/attack phase'
+  refs:
+  - bn6f/asm/asm31.s:131864
+  - 0x0801BB46 object_removePanelReserve
+  - 0x0800E29C object_setCoordinatesFromPanels
+  - 0x0801A04C object_updateCollisionPanels
+  reproduce: python3 tools/asmcat.py 0x080F5C00
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- exact meaning of HitElement=8 (hitbox id vs element flag) and which AI attack routine consumes it
+- which enemy/attack script dispatches to this state
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F5C00 -> ai_attackStepArrive
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F5C00

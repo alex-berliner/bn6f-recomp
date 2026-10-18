@@ -1,0 +1,51 @@
+name: ai_attackFlyOffStep
+address: '0x080FA31E'
+kind: function
+status: probable
+summary: Staged AI attack routine that arms an element-4 attack, then after a delay makes the object drop
+  collision, lose its shadow, fly off-screen (Z=0xFF), and deal hit element 4 each cycle until cycles
+  run out.
+interface: (r5 = battle object, r7 = AI attack vars) -> r0 = destroyed/cleared result of sub_801DD34;
+  updates oAIAttackVars fields on r7 and oBattleObject_Z16 on r5
+details: 'First call (AttackElement==0) arms the attack: sets AttackElement=4 and StepTimer=0x14 (20 frames).
+  On later calls it reads the object''s collision-data flags and, if flags match the per-alliance mask
+  from byte_80FA374 (indexed by Alliance<<2), clears the object''s collision region. It then counts down
+  StepTimer; when it hits zero it clears the collision region again, clears this object''s record in the
+  byte_203EB50 table via sub_801DD34 (keyed by r5), removes its shadow, sets Z16=0xFF (flies off-screen),
+  and decrements TimerOrCycles. While cycles remain it sets HitElement=4, otherwise 0x10 (finished/none).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'loc_80FA31E arm phase: strb #4,[r7,#oAIAttackVars_AttackElement]; strh #0x14 StepTimer; byte_80FA374
+    masks 0x500/0xA00 checked against oCollisionData_FlagsFromCollision by Alliance index; on timer expiry:
+    object_clearCollisionRegion, sprite_noShadow, strh #0xff -> oBattleObject_Z16; TimerOrCycles>0 sets
+    HitElement=4, else HitElement=0x10 — repeating strike then end; route tags ''battlesweep''/''chips''
+    and callees (collision/shadow) match an airborne attack exit'
+  refs:
+  - bn6f/asm/asm31.s:140814
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x08002F90 sprite_noShadow
+  - 0x0801DD34 sub_801DD34
+  reproduce: python3 tools/asmcat.py 0x080FA31E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+- chips
+open_questions:
+- which enemy/boss uses this attack (no known caller)
+- exact meaning of element index 4 and HitElement 0x10
+- what the byte_203EB50 table records (why the record is cleared on exit)
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80FA31E -> ai_attackFlyOffStep
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FA31E

@@ -1,0 +1,51 @@
+name: battle_regenEnemyUpdate
+address: '0x0810E854'
+kind: function
+status: probable
+summary: Per-frame update for a battle object that regenerates HP and switches its (and an attached child
+  object's) animation based on remaining HP.
+interface: (r5 = battle object) -> void; no return value, flags clobbered
+details: 'Every frame, unless the battle is paused or time-stopped, it increments a frame counter at ExtraVars+0x10;
+  once it passes 4 it heals the object: if HP>0 and HP<MaxHP it does HP+=1 (roughly +1 HP every 4 frames,
+  counter is stored without being reset to 0). It then returns early if a flag at ExtraVars+0x1c is set.
+  Otherwise it picks an animation index from HP: >0x50 -> index 0, <=0x50 -> 1, <=0x1e -> 2, and returns
+  immediately if HP==0. Table byte_810E8D4 maps index {0,1,2} to {anim 0/no extra (0xFF), anim 1 + extra
+  6, anim 2 + extra 7}: the anim byte goes into oBattleObject_CurAnim, and for a non-0xFF extra it writes
+  it to ExtraVars+4 object''s field +0x10, or calls sub_810EB42 if no child object exists; on 0xFF it
+  resets the child timer (battle_ResetObjectTimerTo8) and NULLs the ExtraVars+4 pointer.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl battle_isPaused / battle_isTimeStop with early-out branch skips all per-frame work (sub_810E854+2..+8);
+    counter at ExtraVars+0x10 compared to 4 gates 'ldrh HP; HP<MaxHP -> strh HP+1', i.e. periodic HP regen;
+    HP thresholds 0x50/0x1e select r1=0/1/2 indexing byte_810E8D4 ({0,0xFF},{1,6},{2,7}); ldrb result
+    stored to oBattleObject_CurAnim; extra byte stored to [ExtraVars+4 object +0x10] or sub_810EB42 spawned
+    when pointer NULL; extra==0xFF path calls battle_ResetObjectTimerTo8_80C4072 and clears ExtraVars+4,
+    ending the child-object anim
+  refs:
+  - bn6f/asm/asm32.s:1790
+  - 0x080C4072 battle_ResetObjectTimerTo8_80C4072
+  - 0x0800A03C battle_isPaused
+  - 0x0800A098 battle_isTimeStop
+  reproduce: python3 tools/asmcat.py 0x0810E854
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- Which enemy/boss this handler belongs to (no known caller; only the battlesweep route reaches it)
+- What sub_810EB42 does — presumably spawns/initializes the child object stored at ExtraVars+4
+- Meaning of the flag at ExtraVars+0x1c and why anim updates are gated behind it
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810E854 -> battle_regenEnemyUpdate
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810E854

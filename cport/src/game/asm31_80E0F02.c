@@ -95,16 +95,16 @@ Next battle_setExtraAnimState_80E0F2E(void) {
 }
 
 /* ── sub_80E1332 ── */
-/* sub_80E1332: pure tail call into sub_80C0F52.
+/* sub_80E1332: pure tail call into battle_spawnLinkedObjType2d.
  *
- * The original pushes its return address, calls sub_80C0F52, then pops that
+ * The original pushes its return address, calls battle_spawnLinkedObjType2d, then pops that
  * address straight into the PC, so every register (r1-r7, the c/v flags) and
  * the eventual return target come straight out of the callee. All arguments
  * the caller passed in r0-r4 are simply forwarded untouched. */
 Next sub_80E1332(void) {
     u32 return_addr = LR;
 
-    GUEST_CALL(sub_80C0F52);
+    GUEST_CALL(battle_spawnLinkedObjType2d);
 
     LR = return_addr;
     RETURN_TO_CALLER();

@@ -1,0 +1,48 @@
+name: ai_testMapGroupEventFlag
+address: '0x0808CF34'
+kind: function
+status: probable
+summary: Returns whether the event flag associated with the current map group's AI mode is set.
+interface: () -> r0 = 1 if event flag table[aiMode] is set, else 0; ZF clobbered by TestEventFlag
+details: Calls ai_getAIModeForMapGroup_808D084 to get the current map group's AI mode selector, shifts
+  it left once (u16 stride), and indexes the halfword table at byte_808CF84 to obtain a flag ID. Passes
+  that ID to TestEventFlag and returns 1 in r0 if the flag is set, otherwise 0; r4-r7 are preserved. The
+  table at 0x808CF84 maps AI modes/map groups to story-flag IDs, so this is a per-map conditional check.
+  Its only known caller, init_beastSpScenario, uses it as part of deciding how to initialize the Beast+
+  special-scenario mode.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl ai_getAIModeForMapGroup_808D084 then lsl r0,r0,#1 and ldrh r1,[r1,r0]: AI mode indexes a
+    u16 table at off_808CF78->byte_808CF84; bl TestEventFlag with the loaded halfword, then beq/mov r4,#1:
+    returns flag state as 0/1; Caller init_beastSpScenario (0x0808CA68) invokes it during Beast+ scenario
+    setup, fitting a story-flag condition test; Callee ai_getAIModeForMapGroup_808D084 returns 3 for map
+    group 0x85 else MapNumber, tying the flag to the current map'
+  refs:
+  - bn6f/asm/asm24.s:1702
+  - 0x0808CA68 init_beastSpScenario
+  - 0x0802F168 TestEventFlag
+  - 0x0808D084 ai_getAIModeForMapGroup_808D084
+  reproduce: python3 tools/asmcat.py 0x0808CF34
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- beastsp
+- maps
+open_questions:
+- Contents of the flag table at byte_808CF84 (which flag IDs map to which map groups) not shown
+- How init_beastSpScenario branches on the return value — a full caller listing would confirm the exact
+  scenario effect
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_808CF34 -> ai_testMapGroupEventFlag
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_808CF34

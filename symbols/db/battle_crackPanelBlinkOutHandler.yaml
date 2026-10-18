@@ -1,0 +1,50 @@
+name: battle_crackPanelBlinkOutHandler
+address: '0x080CE690'
+kind: function
+status: probable
+summary: 'Battle object tick handler: on entry plays a sound effect and cracks the panel under the object,
+  then blinks it out and destroys itself after a 12-frame timer.'
+interface: (r5 = battle object ptr) -> void; sets oBattleObject_CurPhase, Timer, object flag bit 1, and
+  CurStateActionPhaseAndPhaseInitialized = CUR_STATE_DESTROY
+details: On phase 0 it advances the object to phase 1, clears its collision region, loads Timer with 12,
+  and plays sound effect 0x1D0 (0xD1+0xFF); if Param2 is nonzero it also calls sub_8109794 to crack the
+  tile at the object's PanelX/PanelY. While Timer <= 8 it first clears flag bit 1 of oObjectHeader_Flags
+  (visibility) and re-sets it on alternate frames (Timer bit 1), producing a blink. Timer is decremented
+  each tick; when it underflows the object's state is set to CUR_STATE_DESTROY, removing it. r4/r6/r7
+  are pushed but unused.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'phase 0 block: bl object_clearCollisionRegion, Timer=12, bl PlaySoundEffect with r0=0xD1+0xFF=0x1D0;
+    ldrb Param2 nonzero -> bl sub_8109794 with r0=PanelX, r1=PanelY (known panel-crack handler); Timer<=8
+    branch clears then conditionally re-sets bit 1 of oObjectHeader_Flags each other frame (blink); Timer
+    decrement then bge skip: sets word at CurStateActionPhaseAndPhaseInitialized to CUR_STATE_DESTROY
+    when Timer goes negative'
+  refs:
+  - bn6f/asm/asm31.s:48439
+  - 0x080005CC PlaySoundEffect
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x08109794 sub_8109794
+  reproduce: python3 tools/asmcat.py 0x080CE690
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- which object/spell uses this handler (no callers known), so the in-game identity of the blinking object
+  and the meaning of Param2's bitfield are unconfirmed
+- exact meaning of sound effect 0x1D0 and of flag bit 1 (assumed visibility)
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80CE690 -> battle_crackPanelBlinkOutHandler
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CE690

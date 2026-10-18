@@ -1,0 +1,48 @@
+name: beast_getMapGroupIdBase
+address: '0x081420F0'
+kind: function
+status: probable
+summary: Returns a per-MapGroup base value from a small table plus the caller's local index, used by the
+  beast-spread object setup to build flag/object IDs for the current map group.
+interface: (r0 = local index/id to offset) -> r0 = tableBase[currentMapGroup] + r0; flags clobbered by
+  call
+details: 'Calls battle_getEnemyIndexFromMapGroup_8142080 to get the current MapGroup''s entry (or 0xff)
+  in the 3-entry table byte_81420A8. It then indexes byte_8142120 with that index times 4 and reads a
+  halfword — so the table is 3 halfword entries stored at 4-byte stride. The returned halfword is added
+  to the r0 argument and returned. Given the sole caller beast_spawnObjectsAndSetup_8141F7C spawns scriptable
+  overworld map objects and checks/sets a flag set per MapGroup, this is most plausibly a base-ID lookup
+  (flag or object ID base) so each map group''s objects/flags occupy a distinct ID range. The ldrh with
+  lsl #2 (4-byte stride halfwords) is the main quirk of the table layout.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl battle_getEnemyIndexFromMapGroup_8142080 selects the table row from the current MapGroup;
+    ldrh r0,[r1,r0] with lsl #2 reads a halfword base at 4-byte stride from byte_8142120; add r0,r0,r4
+    returns base + caller-supplied index, a classic base+id composition; only caller beast_spawnObjectsAndSetup_8141F7C
+    handles per-MapGroup beast flags and spawned overworld objects, matching a base-ID use'
+  refs:
+  - bn6f/asm/asm37_1.s:775
+  - 0x08141F7C beast_spawnObjectsAndSetup_8141F7C
+  - 0x08142080 battle_getEnemyIndexFromMapGroup_8142080
+  reproduce: python3 tools/asmcat.py 0x081420F0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- beastsp
+open_questions:
+- whether the result is a flag ID, object ID, or another base value — the caller's use of the return value
+  would confirm
+- contents/meaning of the three halfword entries in byte_8142120
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_81420F0 -> beast_getMapGroupIdBase
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81420F0

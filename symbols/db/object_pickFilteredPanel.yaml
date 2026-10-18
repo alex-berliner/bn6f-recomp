@@ -1,0 +1,50 @@
+name: object_pickFilteredPanel
+address: '0x080F3784'
+kind: function
+status: probable
+summary: Returns a candidate panel (x in r0, y in r1) from a battle object's row that matches panel-flag
+  parameters, either randomly chosen or the object's own panel.
+interface: (r0 = battle object ptr, r2 = required panel-flag mask, r3 = forbidden panel-flag mask, r4
+  = mode flag, r5 = object for mode 1) -> r0 = panel x (0 on failure), r1 = panel y; flags clobbered
+details: Mode is taken from caller-set r4. With r4==0 it calls object_getPanelsInRowFiltered using the
+  row/byte at [r0+0x13] and the two masks, filling a stack buffer with packed panel coordinates (low 3
+  bits x, bits 4-7 y); if any match, it draws GetPositiveSignedRNG and reduces it with svc 6 modulo the
+  count to pick one entry, unpacking it into x (r0) and y (r1). With r4!=0 it takes the object's own [r5+oBattleObject_PanelX]
+  and [r0+0x13], pushes (x,y), and asks object_checkPanelParameters whether that panel passes the masks;
+  if so the popped pair is returned unchanged, otherwise r0=0 signals failure. Note it never saves/restores
+  r4 and r5, so callers must set these before the call — likely hand-written or compiler-tail-merged code.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_getPanelsInRowFiltered with row [r0+0x13] and buffer sp+0xC, count kept in r6 (loc
+    around 80F37A0); bl GetPositiveSignedRNG then svc 6 with r1=count: RNG modulo to index the packed-coordinate
+    buffer (80F37A6-80F37B2); lsr r1,#4 / lsl #0x1d,lsr #0x1d splits the packed byte into y and x&7 before
+    returning (80F37AE-80F37B8); r4!=0 branch reads [r5+oBattleObject_PanelX] and calls object_checkPanelParameters
+    with the same masks, returning the panel pair on success (80F37BA-80F37C8); failure path loc_80F37D0
+    sets r0=0 only'
+  refs:
+  - bn6f/asm/asm31.s:127334
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0800D012 object_getPanelsInRowFiltered
+  reproduce: python3 tools/asmcat.py 0x080F3784
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- No caller is recorded, so the convention of passing arguments in r4/r5 is inferred, not confirmed; the
+  exact panel-flag bit meanings in r2/r3 and which battle effect uses this are unknown.
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F3784 -> object_pickFilteredPanel
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F3784

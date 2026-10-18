@@ -1,0 +1,51 @@
+name: object_phaseHighlightPanelThenSurface
+address: '0x080CCE64'
+kind: function
+status: probable
+summary: Per-frame phase handler for a battle object that keeps its panel highlighted for a delay, then
+  sets Z=0, re-enables collision/shadow, and switches to action 4.
+interface: (r5 = battle object pointer; r0 = scratch) -> void; calls object_highlightPanel, object_setCollisionRegion(1),
+  sprite_hasShadow
+details: On phase 0 it stores 4 into oBattleObject_CurPhase, copies oBattleObject_Param3 into oBattleObject_Timer
+  and clears Timer2, so 4 is the 'wait' phase. While waiting it increments Timer2 every frame and, every
+  8th frame (lsr r0,#3 carry check), calls object_highlightPanel with the object's PanelX/PanelY to keep
+  the panel flagged as highlighted. When the Timer counts down below zero, it calls object_setCollisionRegion
+  with region index 1 (re-enabling collision), zeroes oBattleObject_Z16 (drops the object to ground level),
+  turns the sprite shadow on via sprite_hasShadow, sets oBattleObject_CurAction to 4 and clears the phase/phase-initialized
+  halfword. This reads like a buried/underground or delayed-spawn object that marks its panel while hidden
+  and then surfaces.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb [r5,#oBattleObject_CurPhase]; strb #4 -> sets phase 4 and seeds Timer from Param3 on first
+    call; lsr r0,#3 + bcs gates object_highlightPanel(PanelX,PanelY) to every 8 frames; sub Timer/#1,
+    then bl object_setCollisionRegion with r0=1 when it expires; strh #0 -> oBattleObject_Z16 and bl sprite_hasShadow
+    right after the timer expires; strb #4 -> oBattleObject_CurAction and strh #0 -> CurPhaseAndPhaseInitialized
+    ends the routine'
+  refs:
+  - bn6f/asm/asm31.s:45276
+  - 0x0800CBD8 object_highlightPanel
+  - 0x0801A07C object_setCollisionRegion
+  - 0x08002E3C sprite_hasShadow
+  reproduce: python3 tools/asmcat.py 0x080CCE64
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- No caller is known, so what object/chip uses this handler is unclear
+- Meaning of CurAction=4 (despawn vs. idle) needs the phase dispatch table
+- Whether Param3 is a frame delay in ticks set by the spawner is unconfirmed
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80CCE64 -> object_phaseHighlightPanelThenSurface
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CCE64

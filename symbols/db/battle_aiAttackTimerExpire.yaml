@@ -1,0 +1,46 @@
+name: battle_aiAttackTimerExpire
+address: '0x08108580'
+kind: function
+status: probable
+summary: 'AI attack step timer: when the countdown hits zero, reset the attacker''s animation/state and
+  finish the attack step setup.'
+interface: (r7 = AI attack vars, r5 = battle object) -> r0 = ?; sets ObjectFlags1 CURRENTLY_MOVING_1 bit,
+  clears 0x40 bitfield, writes HitElement=0xC, writes StepTimer=0 on expiry
+details: Decrements oAIAttackVars_StepTimer and returns early while it is still positive (bgt). When the
+  timer reaches zero, it stores 0 into oBattleObject_CurAnim (reset to default/none animation), calls
+  object_clearFlag with 0x40, calls object_setFlag1 with the CURRENTLY_MOVING_1 bit, and sets oAIAttackVars_HitElement
+  to 0xC. It does not rearm the timer, so it only acts on the tick the timer hits zero. The exact meaning
+  of element 0xC and the 0x40 flag depends on the attack that set up this step.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrh/strh on r7,#oAIAttackVars_StepTimer with sub #1 and bgt — a countdown gate; strb 0 into
+    r5,#oBattleObject_CurAnim resets the object''s current animation; object_clearFlag(0x40) and object_setFlag1(1<<CURRENTLY_MOVING_1_BIT)
+    toggle the object''s collision flags; strh 0xC into r7,#oAIAttackVars_HitElement assigns the attack
+    element for the step; recorded route: battlesweep — runs during battle AI attack processing'
+  refs:
+  - bn6f/asm/asm31.s:170278
+  - 0x0801A15C object_clearFlag
+  - 0x0801A152 object_setFlag1
+  reproduce: python3 tools/asmcat.py 0x08108580
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- 'no callers known: which AI attack sets up StepTimer, CurAnim, and the 0x40 flag before this runs'
+- what element value 0xC denotes in the HitElement table
+- whether HitElement=0xC is conditional on the attack type in a caller
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8108580 -> battle_aiAttackTimerExpire
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8108580

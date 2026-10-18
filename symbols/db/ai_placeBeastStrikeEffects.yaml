@@ -1,0 +1,58 @@
+name: ai_placeBeastStrikeEffects
+address: '0x080EC710'
+kind: function
+status: probable
+summary: AI attack helper that places up to three positioned strike/effect placements around the acting
+  battle object's front panel, used by the Beast-SP attack sequence.
+interface: (r0 = battle object, r1 = unused?, r3 = z/height param passed on to sub_80C6248) -> r0 = result
+  of last sub_80C6248 call; r5 must already point to a battle object (PanelX/PanelY and oAIAttackVars_SubStepIndex
+  are read through it).
+details: 'Reads NaviStats byte 0x2C for the object''s alliance, subtracts 0xB and looks up byte_80EC784
+  (indices 0xB-0x10 map to 1-5, everything else 0), ORing the value into bits 24-31 of the saved r0 and
+  then adding 2 - a value that is never passed through a standard register, so it is either dead or consumed
+  by sub_80C6248 via a non-standard register convention. It then converts panel (panelX + frontDirection,
+  panelY) to 16.16 pixel coordinates and calls sub_80C6248 with (x, y, r3) plus x/y/r3 pushed on the stack.
+  If the caller''s AI attack SubStepIndex is non-zero, it calls sub_80C6248 twice more: at x - frontDirection*30px
+  with y - 24px, then y + 24px with the z argument reduced by 12 - i.e. a second column one panel further
+  forward, spread over the rows above and below. The 0x1E0000/0x180000/0x300000/0xC00000 constants are
+  16.16 fixed-point pixel offsets (30, 24, 48, 12 px).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl GetBattleNaviStatsByte_AllianceFromBattleObject with r1=0x2C then table byte_80EC784 selects
+    a variant 1-5 from the navi/form byte; bl object_getFrontDirection + object_getCoordinatesForPanels(panelX+dir,
+    panelY) shows placement is at the object's front panel in pixel space; three calls to sub_80C6248
+    with r1/r2 shifted by 0x1E0000 (x), 0x180000/0x300000 (y) and 0xC00000 (r3) show multi-point offset
+    placement; ldrb r0,[r5,#oAIAttackVars_SubStepIndex]; cmp r0,#0 gates the second/third placements on
+    the AI attack substep; sole caller sub_80EC5EC and route 'beastsp' tie it to the Beast-SP attack scripting
+  refs:
+  - bn6f/asm/asm31.s:112590
+  - 0x080EC5EC sub_80EC5EC
+  - 0x08013774 GetBattleNaviStatsByte_AllianceFromBattleObject
+  - 0x0800E276 object_getCoordinatesForPanels
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x080EC710
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- beastsp
+open_questions:
+- What sub_80C6248 is (spawn effect, move object, set attack target?) and whether it consumes r4/r6 as
+  extra arguments - this would confirm what exactly is placed at the computed positions
+- Why r5 is used without being set in this function - the caller sub_80EC5EC must show what r5 points
+  to (same battle object as r0, or a separate AI attack state)
+- Meaning of the r4 bits 24-31 table value and the +2 increment, and what NaviStats byte 0x2C actually
+  encodes (form/cross/beast id?)
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80EC710 -> ai_placeBeastStrikeEffects
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EC710

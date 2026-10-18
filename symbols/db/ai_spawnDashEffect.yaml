@@ -1,0 +1,52 @@
+name: ai_spawnDashEffect
+address: '0x0810B21C'
+kind: function
+status: probable
+summary: Spawns an effect/illusion battle object at the current object's X/Y/Z position, oriented by its
+  facing, used when an AI attack finishes charging and starts its dash.
+interface: (r5 = battle object pointer, no args in r0-r3) -> r0 = result of spawnIllusionObject_80E33FA;
+  no meaningful flags
+details: 'Gets the object''s effective facing via object_getFlip and builds a parameter word as (flip
+  << 24) | 0x404. It reads the object''s oBattleObject_X/Y/Z fields from r5 and passes them as position,
+  plus two constants: r6 = 0x83E0 and r7 = 0x1010014 (likely a sprite/effect resource id and flags or
+  a kind/variant pair). It delegates entirely to spawnIllusionObject_80E33FA, so the spawned thing is
+  a secondary/''illusion'' battle object rather than a full actor. Only its sole caller, ai_attackFinishChargeStartDash,
+  is known, which runs this right before the attack dash begins — consistent with a dash dust/afterimage
+  or charge-release effect spawned at the attacker''s tile. Note r5 is used without being saved or set
+  here, so the target object pointer must be established by the caller.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_getFlip then lsl r4,r0,#0x18 / orr r4,0x404 packs facing into the spawn parameter;
+    ldr r1/r2/r3,[r5,#oBattleObject_X/Y/Z] uses the caller's battle object position; dword_810B238 = 0x83E0
+    and dword_810B23C = 0x1010014 are fixed resource/flag constants for the spawned object; bl spawnIllusionObject_80E33FA
+    does the actual creation; the routine is only argument marshalling; sole caller ai_attackFinishChargeStartDash
+    invokes it right before committing the dash toward the target panel
+  refs:
+  - bn6f/asm/asm31.s:175827
+  - 0x0810B270 ai_attackFinishChargeStartDash
+  - 0x0810B1F4 sub_810B1F4
+  - 0x0800E456 object_getFlip
+  - 0x080E33FA spawnIllusionObject_80E33FA
+  reproduce: python3 tools/asmcat.py 0x0810B21C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- spawnIllusionObject_80E33FA's parameter meaning (which of r0/r6/r7 is sprite id, kind, or flags) is
+  unknown, so what visual this is (afterimage vs dust) is unconfirmed
+- whether 0x83E0 is a truncated ROM pointer or an id, and what 0x1010014 encodes
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810B21C -> ai_spawnDashEffect
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810B21C

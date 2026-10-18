@@ -1,0 +1,53 @@
+name: ai_updateTimedAttack
+address: '0x080F7E68'
+kind: function
+status: probable
+summary: 'Per-frame update for an AI attack state: initializes the attack on its first run, then counts
+  down a step timer and exits the attack state when it expires.'
+interface: (r7 = battle object's AI attack vars, r5 = battle object) -> r0 = clobbered; sets AttackElement,
+  StepTimer, object flags and anim.
+details: 'Runs as a state-machine tick on r7''s oAIAttackVars. On first run (AttackElement == 0) it initializes:
+  stores AttackElement = 4, clears ObjectFlags1 bit 0x40 on the object''s collision data, sets the ''currently
+  moving'' flag (1 << OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT), sets the object''s CurAnim (r5+oBattleObject_CurAnim)
+  to 0, and copies AttackDuration into StepTimer as the countdown. If the ScratchVar points to another
+  structure (a linked object/effect), it stores 2 at +0xb, likely selecting its state/anim. On subsequent
+  ticks it decrements StepTimer each frame, and when it reaches 0 calls object_exitAttackState to leave
+  the attack.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb/tst on oAIAttackVars_AttackElement with bne makes element==0 the ''not yet started'' branch
+    (first instructions); strb #4 to AttackElement then object_clearFlag(0x40) and object_setFlag1(1<<CURRENTLY_MOVING_1)
+    only in the init branch; ldrh AttackDuration -> strh StepTimer: the countdown length is the attack''s
+    configured duration; ldr ScratchVar; strb #2,[r0,#0xb] writes a state byte into a separately allocated
+    structure on init only; Decrement branch falls into object_exitAttackState when StepTimer hits 0,
+    ending the attack'
+  refs:
+  - bn6f/asm/asm31.s:136214
+  - 0x0801A15C object_clearFlag
+  - 0x0801A152 object_setFlag1
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x080F7E68
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- Which specific enemy attack this handler belongs to (element/type 4 and the cleared 0x40 flag would
+  need a caller or table to confirm)
+- What structure the ScratchVar points to and what storing 2 at +0xb selects (likely a spawned object's
+  anim/state)
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F7E68 -> ai_updateTimedAttack
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F7E68

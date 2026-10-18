@@ -1,0 +1,55 @@
+name: object_findMatchingPanelRunEnd
+address: '0x080E5386'
+kind: function
+status: probable
+summary: Finds the far edge of a contiguous run of same-status panels starting from the nearest panel
+  matching a side-dependent filter, returning its coordinates.
+interface: (r5 = battle object) -> r0 = x column, r1 = y row of last matching panel; r0 = 0 if no panel
+  qualifies or it has flag 0x800000
+details: Indexes byte_80E5400 with ((Alliance ^ DirectionFlip) ^ 1)*8 to pick an 8-byte filter (0x20 in
+  word0 for one side, word1 for the other) and calls object_getClosestPanelMatchingRowFiltered, getting
+  candidate panel x,y. If object_getPanelParameters at that spot has bit 0x800000 set (likely hole/invalid
+  panel) it returns 0. Otherwise it steps x by the object's Param1 in the direction from object_getFlipDirection,
+  looping while the panel keeps the same 0x20 status bit, lacks 0x800000, and stays in the 1..6 column
+  range; it backs off one step and returns the coordinates of the last panel that still matched. With
+  Param1 = 0 it just returns the initially found panel. This looks like targeting/movement logic that
+  measures how far a panel condition extends from an object.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'byte_80E5400 holds two 8-byte entries (0x20 in word 0 vs word 1) selected by Alliance^DirectionFlip^1,
+    passed as r0,r1 to object_getClosestPanelMatchingRowFiltered; tst r0, 0x800000 after object_getPanelParameters
+    leads to ''mov r0,#0'' early return (loc_80E53F2); loop loc_80E53D0: add r0,r6 / bounds check cmp
+    r2,#6 / re-check 0x800000 and 0x20 equality, then sub r0,r6 before returning; object_getFlipDirection
+    on (Alliance, DirectionFlip) supplies the step sign r6; no known caller summary; sub_80E52B0 is itself
+    undocumented, run in battlesweep/beastsp routes'
+  refs:
+  - bn6f/asm/asm31.s:97414
+  - 0x080E52B0 sub_80E52B0
+  - 0x0800D086 object_getClosestPanelMatchingRowFiltered
+  - 0x0800E2CE object_getFlipDirection
+  - 0x0800C8F8 object_getPanelParameters
+  reproduce: python3 tools/asmcat.py 0x080E5386
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- What panel-state bit 0x20 and 0x800000 mean in this game's panel-flags word (hole? cracked? grass?)
+- What sub_80E52B0 does with the returned coordinates — needed to tell whether this is attack targeting,
+  movement, or AI placement
+- Exact meaning of the two filter words in object_getClosestPanelMatchingRowFiltered's parameter pair
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80E5386 -> object_findMatchingPanelRunEnd
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E5386

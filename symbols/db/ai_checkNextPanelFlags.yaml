@@ -1,0 +1,48 @@
+name: ai_checkNextPanelFlags
+address: '0x08110D58'
+kind: function
+status: probable
+summary: Tests whether the object's next vertical-movement position lands on a panel whose status flags
+  match a fixed mask, returning 1/0.
+interface: (r5 = battle object, reads oBattleObject_X/Y/YVelocity/Z) -> r0 = 1 if panel flags & byte_8110DB0
+  nonzero, else 0; flags clobbered
+details: Takes the object's current X/Y, adds YVelocity to Y (the next step of the motion), and uses the
+  object's Z, converting that screen position to field panel coordinates with convertXYToPanelXY_800E258.
+  It then fetches the panel status word via object_getPanelParameters and ANDs it with the constant mask
+  byte_8110DB0. If any masked flag is set it returns 1, otherwise 0. This is a boolean 'is the panel I'm
+  about to reach flagged' test used by attack AIs; the mask byte itself is data at 8110DB0 (snapshot shows
+  0).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'adds r2=YVelocity to Y before convertXYToPanelXY_800E258 — testing the next position, not current;
+    bl object_getPanelParameters then ''and r0, r1'' with byte_8110DB0 — masked panel-flag test; returns
+    only 0 or 1 (mov #0 / mov #1) — pure boolean predicate; callers ai_lungeAttackUpdate and ai_updateDiveAttack
+    both move/dive an object and need to validate the target panel'
+  refs:
+  - bn6f/asm/asm32.s:6138
+  - 0x08110B70 ai_lungeAttackUpdate
+  - 0x081109F6 ai_updateDiveAttack
+  - 0x0800E258 convertXYToPanelXY_800E258
+  - 0x0800C8F8 object_getPanelParameters
+  reproduce: python3 tools/asmcat.py 0x08110D58
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- beastsp
+open_questions:
+- actual value/meaning of mask byte_8110DB0 (hole/broken/occupied?) — data not shown
+- exact panel-flag bit meanings in object_getPanelParameters result
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8110D58 -> ai_checkNextPanelFlags
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8110D58

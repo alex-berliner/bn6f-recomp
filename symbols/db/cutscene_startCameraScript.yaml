@@ -1,0 +1,48 @@
+name: cutscene_startCameraScript
+address: '0x08089CC4'
+kind: function
+status: probable
+summary: Cutscene step that loads camera script byte_8089480 into a context object and starts it playing.
+interface: (r5 = scenario/cutscene context object; args unused) -> r0 clobbered; stores camera script
+  ptr at [r5,#0x3c], sets byte [r5,#0x13] = 1
+details: First refreshes the scenario-effect player-offset matrix via battleObject_scenarioEffectInitPlayerOffsetMatrix_81429CA,
+  then loads the address byte_8089480, saves it into the context object field at +0x3C, and hands it to
+  SetCutsceneCameraScript, which points the cutscene camera engine at that script and resets its command
+  timer. Finally sets byte +0x13 to 1, likely an 'active/running' flag or step counter for the cutscene.
+  r5 is the caller-provided context struct; r0-r3 inputs are ignored.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldr r0, off_8089CD8 =byte_8089480 / str r0,[r5,#0x3c]: script pointer cached in the object;
+    bl SetCutsceneCameraScript immediately after, with r0 = byte_8089480, per its known summary; strb
+    r0(=1),[r5,#0x13]: toggles a byte-sized state flag on the same object; leading bl battleObject_scenarioEffectInitPlayerOffsetMatrix_81429CA
+    ties it to scenario-effect setup; both callers (sub_808964C, sub_80896D4) are the only users; route
+    capture shows it runs in beastsp cutscenes'
+  refs:
+  - bn6f/asm/asm23.s:1784
+  - 0x0808964C sub_808964C
+  - 0x080896D4 sub_80896D4
+  - 0x08036F98 SetCutsceneCameraScript
+  - 0x081429CA battleObject_scenarioEffectInitPlayerOffsetMatrix_81429CA
+  reproduce: python3 tools/asmcat.py 0x08089CC4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- beastsp
+open_questions:
+- exact meaning of the byte at r5+0x13 and the object struct layout
+- what cutscene(s) use script byte_8089480 specifically
+- why the player-offset matrix is refreshed here rather than by the caller
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8089CC4 -> cutscene_startCameraScript
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8089CC4

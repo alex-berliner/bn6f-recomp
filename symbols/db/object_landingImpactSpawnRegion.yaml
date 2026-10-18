@@ -1,0 +1,50 @@
+name: object_landingImpactSpawnRegion
+address: '0x080D5A9C'
+kind: function
+status: probable
+summary: Spawns the crack/impact collision region on the panel where the landing object touched down.
+interface: (r5 = battle object) -> r0 = spawn result; no flags of note
+details: Reads the object's PanelX, PanelY and Element fields (oBattleObject offsets) and passes them
+  as r0-r2 with r3=0 to object_spawnCollisionRegion, i.e. it spawns a tile-space collision region at the
+  panel the object is over, with the element possibly selecting the panel-crack type. The immediate 0x15050A01
+  in r4 is a packed constant for the spawn (likely hitbox extents/flags for a one-tile ground region),
+  r7=3 is a spawn kind, and r6 carries the object's DamageAndStaminaDamageCounterDisabler word through
+  so the spawned region inherits damage/disabler data. Only r4/r6/r7 are preserved across the call, matching
+  object_spawnCollisionRegion's clobber set. The caller object_landingImpactState invokes this as part
+  of its impact sequence (camera shake, sound, panel crack) and then destroys itself, so this is the one-shot
+  'place the cracked-panel hitbox' step.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0/r1 from oBattleObject_PanelX/PanelY and r2 from oBattleObject_Element are the spawn
+    coordinates/type; ldr r6, [r5,#oBattleObject_DamageAndStaminaDamageCounterDisabler] forwards the object's
+    damage/disabler word into the region; r4=0x15050A01 and r7=3 are fixed spawn parameters (packed hitbox
+    shape + region kind 3); sole callee object_spawnCollisionRegion matches a spawnCollisionRegion(x,
+    y, element, ?, params, damage, kind) call shape; caller object_landingImpactState plays impact animation,
+    shakes camera, cracks the panel, then destroys itself around this call
+  refs:
+  - bn6f/asm/asm31.s:63996
+  - 0x080D5994 object_landingImpactState
+  - 0x080C536A object_spawnCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080D5A9C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+- chips
+open_questions:
+- exact field packing of the 0x15050A01 constant and what kind 3 means inside object_spawnCollisionRegion
+- whether Element selects the cracked-panel element or something else
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D5A9C -> object_landingImpactSpawnRegion
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D5A9C

@@ -1,0 +1,51 @@
+name: object_updateCollisionSideAndFlags
+address: '0x080DFCE0'
+kind: function
+status: probable
+summary: Battle-object update that repositions the object's collision region and rewrites its self-collision
+  type flags based on a stored sub-state in ExtraVars.
+interface: (r5 = battle object) -> r0 = collision data pointer from object_setCollisionRegion; no meaningful
+  flags
+details: 'Works on the battle object in r5. It first clears bits 0x3000 of CollisionData_SelfCollisionTypeFlags
+  (so both 0x1000 and 0x2000 subtypes are removed) and calls sub_80DFDAC. It then branches on ExtraVars:
+  0 clears the object''s collision region entirely (removes it from the grid); 1 sets collision region
+  1 and sets flag 0x1000; 2 sets region 1 and sets flag 0x2000; any other value changes nothing. Cases
+  1 and 2 reset ExtraVars to 0, making this a one-shot state transition. Finally it calls object_highlightCurrentCollisionPanels,
+  typical for objects whose panel occupancy must be redrawn, e.g. a trap/panel-effect object moving onto
+  the enemy side.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bic r1, 0x3000 on oCollisionData_SelfCollisionTypeFlags clears both type bits before the switch;
+    ExtraVars==0 path calls object_clearCollisionRegion, i.e. leaves the collision grid; ExtraVars==1/2
+    paths call object_setCollisionRegion with region 1 and OR in 0x1000 vs 0x2000; both region-setting
+    paths store 0 back into oBattleObject_ExtraVars (one-shot transition); tail call object_highlightCurrentCollisionPanels
+    matches other battle objects that change occupied panels
+  refs:
+  - bn6f/asm/asm31.s:85431
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0801A07C object_setCollisionRegion
+  - 0x0800CCBE object_highlightCurrentCollisionPanels
+  reproduce: python3 tools/asmcat.py 0x080DFCE0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- what sub_80DFDAC does (called before the state switch, possibly animation/state bookkeeping)
+- which game object uses this (no caller known); a caller would show the object type and meaning of the
+  0x1000/0x2000 collision flags
+- why region index 1 specifically — presumably the enemy-side region, but unconfirmed
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80DFCE0 -> object_updateCollisionSideAndFlags
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DFCE0

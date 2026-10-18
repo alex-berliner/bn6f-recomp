@@ -1,0 +1,47 @@
+name: ai_battlesweepTick
+address: '0x080F306C'
+kind: function
+status: probable
+summary: 'AI attack step timer tick: when the timer expires, ends the attack pose and tags the object
+  with hit element 0xC.'
+interface: (r5 = battle object, r7 = AI attack vars) -> r0 clobbered; flags set by comparison after decrement
+details: Decrements oAIAttackVars_StepTimer and returns immediately while it is still positive. On reaching
+  zero it resets oBattleObject_CurAnim to 0, clears flag 0x40 in the object's ObjectFlags1 via object_clearFlag,
+  and ORs in bit 0x40 (1 << OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT) via object_setFlag1, marking the object
+  as currently moving again. It then writes 0xC to oAIAttackVars_HitElement, presumably selecting the
+  element/type of the sweep's hitbox. Each call is a one-frame step of an attack animation/hold period
+  driven by an external scheduler.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrh r0,[r7,#oAIAttackVars_StepTimer]; sub #1; strh; bgt locret — a countdown that gates the
+    body (sub_80F306C+2); strb r0(0),[r5,#oBattleObject_CurAnim] — animation reset on expiry (sub_80F306C+0xC);
+    bl object_clearFlag with 0x40 then object_setFlag1 with 0x40<<CURRENTLY_MOVING_1_BIT — flag bookkeeping
+    via known callees (sub_80F306C+0x10..0x18); mov r0,#0xC; strh [r7,#oAIAttackVars_HitElement] — sets
+    hit element at expiry (sub_80F306C+0x1E); Recorded route ''battlesweep'' matches the timer/element
+    bookkeeping pattern'
+  refs:
+  - bn6f/asm/asm31.s:126340
+  - 0x0801A15C object_clearFlag
+  - 0x0801A152 object_setFlag1
+  reproduce: python3 tools/asmcat.py 0x080F306C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- No caller is known, so what drives the timer and what flag 0x40 means (attack-pose lock?) are unconfirmed
+- What HitElement value 0xC corresponds to (element table entry) needs the hitbox/element data to confirm
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F306C -> ai_battlesweepTick
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F306C

@@ -1,0 +1,49 @@
+name: ai_resetAttackCollision
+address: '0x0810FB54'
+kind: function
+status: probable
+summary: Restores a battle object's collision record and clears its status-effect base value when an AI
+  attack ends and the enemy returns home.
+interface: (r0 = battle object pointer) -> r0 = result of object_setCollisionStatusEffect1; flags clobbered
+details: Wrapper that calls object_updateCollisionData with constant arguments (0x10, 2, 3) to rewrite
+  the object's collision record — hit modifier, pending damage and both sides' collision type flags —
+  then calls object_setCollisionStatusEffect1 with 0 to clear the collision status-effect base value.
+  r0 (the object) is passed straight through from the caller untouched. Both known callers are AI attack
+  handlers (swoop attack update, return-to-home-panel) that invoke this right before resetting their attack
+  state. The four byte tables appended after the function are pointer-referenced data (values 2, 0x35,
+  3, 0x10 in 4-byte entries) belonging to this address range but not consumed by this code path.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_updateCollisionData with r1=0x10, r2=2, r3=3 refreshes the collision record (sub_810FB54
+    lines 2-5); bl object_setCollisionStatusEffect1 with r0=0 clears the status-effect base value (lines
+    6-7); callers ai_swoopAttackUpdate and ai_returnToHomePanel both 'reset the attack state' on expiry,
+    matching a collision-restore helper; only callees are collision-data writers, so the function's sole
+    effect is on collision state
+  refs:
+  - bn6f/asm/asm32.s:3956
+  - 0x0810F96C ai_returnToHomePanel
+  - 0x0810F898 ai_swoopAttackUpdate
+  - 0x0801A258 object_setCollisionStatusEffect1
+  - 0x0801A082 object_updateCollisionData
+  reproduce: python3 tools/asmcat.py 0x0810FB54
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- exact semantics of updateCollisionData arguments (0x10, 2, 3) — which collision fields they map to
+- purpose of the four byte tables at 810FB6C/88/A4/C0 and what code reads them
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810FB54 -> ai_resetAttackCollision
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810FB54

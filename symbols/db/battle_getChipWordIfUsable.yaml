@@ -1,0 +1,66 @@
+name: battle_getChipWordIfUsable
+address: '0x0802A53C'
+kind: function
+status: probable
+summary: Returns the given battle chip word unchanged if the chip cannot be used in battle, otherwise
+  returns the fixed word 0x3785.
+interface: (r0 = chip-selection word, chip id in low byte) -> r0 = same word if battle_canUseChip_800AFBA
+  returns 0, else literal 0x3785; flags clobbered by bl
+details: 'Tiny wrapper: copies r0 to r4, calls battle_canUseChip_800AFBA (which validates navi level,
+  dark chips and pack integrity from the chip id in the low byte), and branches on its result: nonzero
+  (usable) leads to `ldr r0, =0x3785`, zero returns the saved original word. No other registers or memory
+  are touched; r1-r7 are preserved. All meaning hinges on what consumer 0x3785 — not a chip id derivable
+  from the input — stands for in the battle chip-word stream.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl battle_canUseChip_800AFBA with the raw input word; bne loc_802A54A selects the constant-return
+    path (asm loc flow); loc_802A54A: ldr r0, dword_802A560 =0x3785 — the only non-passthrough return
+    value is a hardcoded literal; fallthrough path does `mov r0, r4` — echo of the untouched input word
+    when the chip is judged unusable; only callee battle_canUseChip_800AFBA confirms the input is a chip
+    word (chip id in low byte)'
+  refs:
+  - bn6f/asm/asm03_0.s:9264
+  - 0x0802806C folder_findFirstChipWithFlag_802806C
+  - 0x0800AFBA battle_canUseChip_800AFBA
+  reproduce: python3 tools/asmcat.py 0x0802A53C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- beastsp
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- what 0x3785 means to the caller (dummy/forbidden chip word, battle command, or other code) — need a
+  caller site showing where the return value is stored
+- whether battle_canUseChip_800AFBA's nonzero truly means 'usable' (polarity) — would flip which path
+  is the substitute
+- why the known caller folder_findFirstChipWithFlag_802806C branches here; its folder-scan summary does
+  not explain the use
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_802A53C -> battle_getChipWordIfUsable
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802A53C

@@ -1,0 +1,48 @@
+name: sprite_updateAnimFacingPlayer
+address: '0x080A5CE4'
+kind: function
+status: probable
+summary: Updates a sprite object's animation so it faces toward the overworld player's position.
+interface: (r0 = object whose animation to update) -> r0 = animation-changed flag from sprite_updateAnimByAngleToTarget;
+  no flags guaranteed
+details: 'The routine fetches the overworld player object via ReadOWPlayerObjectCoords, which returns
+  the player object pointer plus its X/Y/Z coordinates in registers, and immediately calls sprite_updateAnimByAngleToTarget
+  with those coordinates as the target. sprite_updateAnimByAngleToTarget computes the octant of the angle
+  from the animated object to the target and only reapplies sprite state when the selected animation actually
+  changes. So the combined effect is: make r0''s sprite play the animation corresponding to the direction
+  toward the player. The push/pop of r4-r7 suggests the full body copies the player coords into argument
+  registers for the second call (the listing appears abbreviated). It is exercised on recorded beastsp
+  routes, consistent with overworld NPCs/threats orienting toward the player.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl ReadOWPlayerObjectCoords loads the player object and its coords (callee summary) as the target
+    position; bl sprite_updateAnimByAngleToTarget then selects the animation from the angle to that target;
+    no other code between the two calls, so the player position is the sole target fed to the angle routine;
+    used in recorded beastsp overworld routes, where sprites orienting to the player makes sense
+  refs:
+  - bn6f/asm/asm29.s:2011
+  - 0x0809E1AE ReadOWPlayerObjectCoords
+  - 0x080A5E08 sprite_updateAnimByAngleToTarget
+  reproduce: python3 tools/asmcat.py 0x080A5CE4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- beastsp
+open_questions:
+- exact argument-register shuffling between the two calls (listing seems trimmed), i.e. which of r0-r3
+  carry the target coords into sprite_updateAnimByAngleToTarget
+- which overworld objects call this (no callers captured) to confirm it is an NPC-facing-player helper
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80A5CE4 -> sprite_updateAnimFacingPlayer
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A5CE4

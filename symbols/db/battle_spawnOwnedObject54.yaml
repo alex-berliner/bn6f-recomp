@@ -1,0 +1,63 @@
+name: battle_spawnOwnedObject54
+address: '0x080C4038'
+kind: function
+status: probable
+summary: Spawns auxiliary battle object 0x54 tethered to a given owner object, inheriting the owner's
+  position/alliance and stashing four caller parameters in its ExtraVars.
+interface: (r0 = param D (also passed as spawn params), r1-r3 = params A-C (also passed as spawn x/y/z),
+  r5 = owner BattleObject) -> r0 = new object ptr or NULL; flags set by mov r0,r5
+details: Calls object_spawnType1 with id 0x54, forwarding r1-r3 as x/y/z and the original r0 as the stack-passed
+  params argument. If spawning fails it returns 0. On success the four entry arguments are stored to the
+  new object's ExtraVars (+0xC, +8, +4, +0 in reverse order), the object's X, Y, Z and AllianceAndDirectionFlip
+  are overwritten with the owner's values from entry r5, and RelatedObject1Ptr is set to the owner, linking
+  child to owner. ObjectHeader_Flags gets 0x14 (bits 0x4 and 0x10) ORed in, and ExtraVars+0x10 and +0x14
+  (two timers/counters) are cleared. The owner pointer is a hidden fifth argument in r5, not part of the
+  C-level argument list.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'mov r0,#0x54; bl object_spawnType1 — spawns type-1 object id 0x54, forwarding r1-r3 and the
+    stacked original r0 as spawn args; pop {r1-r4} then str r1/r2/r3/r4 to ExtraVars+0xC/+8/+4/+0 — the
+    four entry args are cached on the new object; ldr from [r5,#X/Y/Z/AllianceAndDirectionFlip]; str to
+    [r0,...] and str r5,[r0,#RelatedObject1Ptr] — new object copies position/alliance from and links back
+    to the entry-r5 owner; ldrb flags; orr #0x14; strb, plus zeroing ExtraVars+0x10 and +0x14; callers
+    ai_attackChargeStep and battle_objectVanishFromField both act on a battle object, consistent with
+    r5 being that object as owner'
+  refs:
+  - bn6f/asm/asm31.s:26262
+  - 0x081103A0 ai_attackChargeStep
+  - 0x08112FBA ai_attackState_SetupSpecial_8112FBA
+  - 0x080D795C battle_objectVanishFromField
+  - 0x08003320 object_spawnType1
+  reproduce: python3 tools/asmcat.py 0x080C4038
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battles2
+- battlesweep
+- beastsp
+- chips
+- fuzz
+- menus3
+- story2
+- story4
+- story6
+- story8
+- story9
+open_questions:
+- what battle entity id 0x54 actually is and what its type-1 initialiser does with the forwarded x/y/z/params
+- exact meaning of the four ExtraVars slots and flag bits 0x4/0x10 set here
+- whether any caller relies on the return value beyond the NULL check
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80C4038 -> battle_spawnOwnedObject54
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C4038

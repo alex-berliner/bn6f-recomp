@@ -1,0 +1,50 @@
+name: init_applyBeastSpScenarioEventFlags
+address: '0x0808CE70'
+kind: function
+status: probable
+summary: 'Applies a per-AI-mode preset of Beast+ scenario event flags: sets one flag and clears a run
+  of flags for each entry of the table selected by the current map group''s AI mode.'
+interface: () -> void; reads current map-group AI mode via ai_getAIModeForMapGroup_808D084
+details: 'Fetches an AI-mode value (0..3) from ai_getAIModeForMapGroup_808D084 and uses it to index a
+  4-entry table of pointers (off_808CEBC) to 8-byte flag records. Each record is {u16 flagToSet, u16 clearRangeStart,
+  u16 clearCount, u16 pad}: it calls SetEventFlag with the first halfword, then ClearEventFlagRange with
+  start and count from the next two. It iterates 3 entries normally, but 4 entries when the AI mode is
+  >= 3 (map group 0x85), giving that mode an extra record (0xFFA-0xFFD). Data values fall in 0x9DD-0x9F9
+  for modes 0-2 and 0xFC6-0xFFD for mode 3, consistent with Beast+ story flag IDs. Only side effects are
+  the event flags; no return value.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl ai_getAIModeForMapGroup_808D084; ldr r4,[r4,r0] selects one of 4 record tables by AI mode
+    (0x0808CE70-0x808CE8A); bl SetEventFlag with halfword at offset 0 of each 8-byte record (loc_808CE84
+    loop); bl ClearEventFlagRange with r0=record+2, r2=record+4, i.e. start and count of a flag run; cmp
+    r8,#3 / cmp r7,#4 vs #3: loops 4 records only when AI mode >= 3; Sole caller init_beastSpScenario
+    wipes state and clears story flags, matching a flag-preset applier'
+  refs:
+  - bn6f/asm/asm24.s:1642
+  - 0x0808CA68 init_beastSpScenario
+  - 0x0802F1AC ClearEventFlagRange
+  - 0x0802F114 SetEventFlag
+  - 0x0808D084 ai_getAIModeForMapGroup_808D084
+  reproduce: python3 tools/asmcat.py 0x0808CE70
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- beastsp
+- maps
+open_questions:
+- Exact meaning/IDs of the individual event flags (e.g. whether 0x9F6 etc. are Beast+ story progression
+  flags) would need the flag table or in-game context
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_808CE70 -> init_applyBeastSpScenarioEventFlags
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_808CE70

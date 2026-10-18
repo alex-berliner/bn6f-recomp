@@ -1,0 +1,51 @@
+name: battle_pickRandomPanelFromEffectParam
+address: '0x0810AD88'
+kind: function
+status: probable
+summary: Looks up the battle's team-dependent panel-effect parameters and returns a random panel chosen
+  relative to the battle object's panel using a fixed filter.
+interface: (r5 = battle/panel-effect object) -> r0 = selected panel id; r1 = args pointer from param lookup
+  (clobbered)
+details: Reads two bytes at [r5,#0x12] and [r5,#0x13] and uses them with the byte_810AE08 table index
+  to call GetAllianceDependentPanelParamArgs, which returns an entry indexed by the battle object's alliance
+  field (its param word and args pointer). It then loads the byte at [r5,#0x16] (a base panel id) and
+  calls GetRandomRelativePanelFiltered, which picks a random reachable panel relative to that panel via
+  the PanelOffsetListsPointerTable. r4 is set to 0x2c just before that call, apparently read by the callee
+  as a filter/offset-list selector. The final random panel id is returned in r0. No known callers, so
+  the exact effect this serves (e.g. a panel-conversion or stage gimmick step in the battlesweep route)
+  is unconfirmed.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#0x12]/ldrb r1,[r5,#0x13] then bl GetAllianceDependentPanelParamArgs with table
+    byte_810AE08 — fetches team-dependent panel params; ldrb r6,[r5,#0x16] + bl GetRandomRelativePanelFiltered
+    — base panel for the random pick comes from the object; mov r4,#0x2c immediately before the random-panel
+    call — a fixed argument consumed by the callee; returns r0 directly from GetRandomRelativePanelFiltered
+    — function's result is the chosen panel; route tag 'battlesweep' — runs during battle execution, consistent
+    with a panel-effect step
+  refs:
+  - bn6f/asm/asm31.s:175296
+  - 0x081096FA GetAllianceDependentPanelParamArgs
+  - 0x08015E46 GetRandomRelativePanelFiltered
+  reproduce: python3 tools/asmcat.py 0x0810AD88
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- No known callers, so the owning effect/script (what consumes the returned panel) is unidentified
+- What r4=0x2c means inside GetRandomRelativePanelFiltered (filter id vs. offset-list entry)
+- Meaning of the [r5+0x12]/[r5+0x13] fields passed as args to the param lookup
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810AD88 -> battle_pickRandomPanelFromEffectParam
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810AD88

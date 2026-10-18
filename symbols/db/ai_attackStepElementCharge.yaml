@@ -1,0 +1,52 @@
+name: ai_attackStepElementCharge
+address: '0x081072B8'
+kind: function
+status: probable
+summary: 'AI attack step: arms an element-4 attack with animation, sound and a front-panel effect, then
+  counts down 20 frames before firing via sub_8107A00.'
+interface: (r0 = attack context/object passed through to callees, r5 = battle object, r7 = AI attack vars
+  struct) -> r0 = 0 after spawn call, clobbered; flags from timer compare
+details: 'State machine keyed on oAIAttackVars_AttackElement: on first invocation (element 0) it sets
+  element 4, switches the battle object''s CurAnim to 0xC, calls object_setCounterTime(0x18), plays M4A
+  sound effect 0x1C5 (0xC6+0xFF), and spawns front-panel effect kind 0 on the panel in front of the object
+  via object_spawnFrontPanelEffect, then loads oAIAttackVars_StepTimer with 0x14. On later ticks it decrements
+  StepTimer; when it reaches 0x11 it calls sub_8107A00 (presumably the attack''s actual hit/projectile
+  spawn), and when it reaches 0 it stores 0x18 into oAIAttackVars_HitElement, likely signaling the attack
+  phase''s end or clearing the hit element. The element value 4 suggests a specific elemental attack chosen
+  elsewhere.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne: re-entrant state machine, first entry is
+    the setup branch; strb #4 to oAIAttackVars_AttackElement and strb #0xC to oBattleObject_CurAnim: sets
+    element and attack animation; bl object_setCounterTime with r0=0x18 and bl PlaySoundEffect with 0xC6+0xFF=0x1C5;
+    bl object_spawnFrontPanelEffect with r0=0 then StepTimer=0x14: telegraph effect plus 20-frame countdown;
+    timer==0x11 calls sub_8107A00; timer==0 stores 0x18 into oAIAttackVars_HitElement'
+  refs:
+  - bn6f/asm/asm31.s:167802
+  - 0x080005CC PlaySoundEffect
+  - 0x08107A30 object_spawnFrontPanelEffect
+  - 0x0800E9DC object_setCounterTime
+  reproduce: python3 tools/asmcat.py 0x081072B8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- What sub_8107A00 does (presumed the actual attack spawn at 17 frames)
+- Which attack/element value 4 corresponds to in the enemy's attack table and why HitElement gets 0x18
+  at the end
+- Which caller dispatches this routine among the AI attack table entries
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_81072B8 -> ai_attackStepElementCharge
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81072B8

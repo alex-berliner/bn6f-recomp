@@ -368,7 +368,7 @@ Next sub_810DCCE(void) {
         R2 = 4;
         R3 = 0;
         R4 = 0x10B04; /* creation parameter table */
-        GUEST_CALL(sub_80C4038);
+        GUEST_CALL(battle_spawnOwnedObject54);
         ST32(R5 + oBattleObject_ExtraVars + 8, R0);
     } else {
         /* Already created: expose the handle and leave its comparison flags. */
@@ -414,10 +414,10 @@ Next ai_DealQueuedAttackDamage_8112F34(void) {
 }
 
 /* ── ai_attackState_SetupSpecial_8112FBA ── */
-/* register form: calls sub_80C4038 outside this file, which has no typed C interface yet */
+/* register form: calls battle_spawnOwnedObject54 outside this file, which has no typed C interface yet */
 static u32 call_sub_80C4038(u32 a0, u32 a1, u32 a2, u32 a3, u32 a4) {
     R0 = a0; R1 = a1; R2 = a2; R3 = a3; R4 = a4;
-    GUEST_CALL(sub_80C4038);
+    GUEST_CALL(battle_spawnOwnedObject54);
     return R0;
 }
 
@@ -443,7 +443,7 @@ static u32 object_setCounterTime_helper(u32 frames) {
 /* "Special" attack setup on an AI attacker.
  * Phase depends on attacker.oBattleObject_RelatedObject1Ptr:
  *   1 -> set attacker anim=2, clear AI Unk_28, look up the victim object
- *        (sub_80C4038 with payload 0x12810) and store as AI Unk_30, turn the
+ *        (battle_spawnOwnedObject54 with payload 0x12810) and store as AI Unk_30, turn the
  *        victim's extra flag 14 on, set its timer to AI Unk_0e * 10, save the
  *        front direction as AI Unk_34, set the counter time to 30 frames,
  *        and write AI Unk_00 = 8.

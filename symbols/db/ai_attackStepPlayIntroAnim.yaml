@@ -1,0 +1,52 @@
+name: ai_attackStepPlayIntroAnim
+address: '0x0810AF50'
+kind: function
+status: probable
+summary: 'One step of a boss AI attack routine: on entry sets an object flag and plays a difficulty-scaled
+  animation, then waits until the animation''s end-frame marker before handing off to the next substep.'
+interface: (r5 = battle object, r7 = AI attack vars) -> void; sets oAIAttackVars_AttackStepIndex=1 then
+  oAIAttackVars_SubStepIndex=4, anim index in r5, flag bit 22 via callee
+details: When oAIAttackVars_AttackStepIndex is 0 (first run), it sets the step index to 1, clears the
+  scratch var, ORs bit OBJECT_FLAGS_UNK_BIT_22 into the object's ObjectFlags1 (likely a state/invuln-type
+  flag for this attack), and sets oBattleObject_CurAnim to 3*AiDifficultyTier+1, i.e. one of three difficulty-dependent
+  animation variants. On subsequent calls it calls sprite_getFrameParameters and waits until the frame's
+  attribute byte has bit 0x80 (the animation-end marker). When that fires it advances oBattleObject_CurAnim
+  by one (to the follow-up/return animation), sets object_setCounterTime to 0x1E (30 frames), and writes
+  4 into oAIAttackVars_SubStepIndex to move the attack state machine to its next phase.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackStepIndex]; cmp #0 branches a one-shot init vs per-frame wait
+    path; strb anim = AiDifficultyTier*3+1 into [r5,#oBattleObject_CurAnim] picks a difficulty-tiered
+    animation; bl object_setFlag1 with r0 = 1<<OBJECT_FLAGS_UNK_BIT_22_BIT sets a battle object flag on
+    attack start; bl sprite_getFrameParameters; tst r0,#0x80 uses the frame attribute byte''s end-marker
+    bit as the wait condition; bl object_setCounterTime with 0x1E and strh #4,[r7,#oAIAttackVars_SubStepIndex]
+    chains into the next attack substep'
+  refs:
+  - bn6f/asm/asm31.s:175435
+  - 0x0801A152 object_setFlag1
+  - 0x08002DEA sprite_getFrameParameters
+  - 0x0800E9DC object_setCounterTime
+  reproduce: python3 tools/asmcat.py 0x0810AF50
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- No known caller, so which boss/attack state machine owns r7's oAIAttackVars and what substep 4 does
+  next is unconfirmed
+- The exact meaning of ObjectFlags1 bit 22 and of the 30-frame counter set after the animation ends
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810AF50 -> ai_attackStepPlayIntroAnim
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810AF50

@@ -202,7 +202,7 @@ static void gen_script_list_8001158(Cpu *in, u32 (*rnd)(void)) {
 }
 
 /* dispatchBattleObjectBehavior_802BF4C: a selector its table has (as kJumpTables gives the others), and
- * for its handler sub_802C044 row numbers the game has: that handler reads a halfword of its 0x74-byte
+ * for its handler battle_chipSelectAnimTileStep row numbers the game has: that handler reads a halfword of its 0x74-byte
  * stack buffer at 4 + 2 * unk_2035320[[r5+0xB]], and a random byte reads past the buffer into its own
  * pushed return address, which is the original's return point in the dispatcher on one side and the
  * caller's on the port's (GUEST_CALL keeps LR). */

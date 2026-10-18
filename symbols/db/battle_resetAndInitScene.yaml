@@ -1,0 +1,50 @@
+name: battle_resetAndInitScene
+address: '0x0811F758'
+kind: function
+status: probable
+summary: Tears down the current mode, jumps the main jumptable to state 0x28, and reinitializes the battle
+  scene.
+interface: () -> r0 = destroyed; sets Toolkit+SubmenuPtr byte to 0x18, runs main-state teardown and battle_initScene
+details: 'It first calls mainState_resetGameAndGoto28_8005524, which frees type-0x21 objects, runs the
+  standard clear/init passes, and advances the main state jumptable to state 0x28. It then reads the toolkit
+  pointer from r10, loads the Toolkit''s SubmenuPtr field (offset from oToolkit_SubmenuPtr), and stores
+  0x18 into it — likely selecting a mode/entry used by the battle scene. Finally it calls battle_initScene_8129248,
+  which clears VRAM/GFX, primes the toolkit render-info block (0x1F40 at offset 0), and starts the battle
+  opening. The trailing words (.word 0x40, ePETMenuData pointer) are adjacent data, not referenced by
+  this function''s code. Net effect: a ''go to battle'' restart path rather than a normal gameplay step.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl mainState_resetGameAndGoto28_8005524 — teardown + jumptable to state 0x28 before anything
+    else; ldr r0,[r10,#oToolkit_SubmenuPtr]; strb 0x18 — writes mode/entry id 0x18 into the toolkit submenu
+    byte; bl battle_initScene_8129248 — ends by initializing the battle scene (VRAM clear, render-info
+    0x1F40, opening cutscene); trailing off_811F76C/.word ePETMenuData are unreferenced pool/data, tying
+    it to menu-driven use (route: menus3); no other reads/writes in the 14-instruction body — it is purely
+    a sequencer of the two state calls'
+  refs:
+  - bn6f/asm/asm32.s:35034
+  - 0x080499CE chatbox_closeFadeHandler_80499CE
+  - 0x08049058 sub_8049058
+  - 0x08129248 battle_initScene_8129248
+  - 0x08005524 mainState_resetGameAndGoto28_8005524
+  reproduce: python3 tools/asmcat.py 0x0811F758
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- menus3
+open_questions:
+- exact meaning of submenu byte 0x18 and main-jumptable state 0x28 (would need the jumptable handler)
+- which menu action routes into the caller at 0x08049058 to confirm it is 'start/restart battle'
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_811F758 -> battle_resetAndInitScene
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811F758

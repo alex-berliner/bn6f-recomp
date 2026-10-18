@@ -1,0 +1,48 @@
+name: ai_battlesweepStep
+address: '0x08103380'
+kind: function
+status: probable
+summary: One tick of an AI attack that periodically commits the object's move to its future panel (step
+  forward) while animating and setting a hit element.
+interface: (r5 = battle object, r7 = oAIAttackVars of this attack state) -> void; no return value
+details: On each call, decrements oAIAttackVars_StepTimer at r7 and returns early until it reaches 0.
+  When it expires, sets the object's current animation to 3, copies FuturePanelX/FuturePanelY into PanelX/PanelY,
+  then calls object_removePanelReserve (releasing the panel held for the move), object_setCoordinatesFromPanels
+  (snap pixel position to the new panel), and object_updateCollisionPanels (sync collision/facing). It
+  then reloads the step timer with 3 so the next step occurs three frames later, and sets oAIAttackVars_HitElement
+  to 8. This is the per-step update of a multi-tick movement attack; the route context labels it 'battlesweep'.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrh r0,[r7,#StepTimer]; sub/strh; bgt exit — per-tick countdown gate; strb FuturePanelX/Y
+    -> PanelX/Y just before object_removePanelReserve — commits the reserved move; bl object_setCoordinatesFromPanels
+    + object_updateCollisionPanels — pixel position and collision sync after the step; strh #3 -> StepTimer
+    and strh #8 -> HitElement after the move — periodic step with a fixed hit element; strb #3 -> [r5,#oBattleObject_CurAnim]
+    — plays a movement animation on the step frame'
+  refs:
+  - bn6f/asm/asm31.s:159601
+  - 0x0801BB46 object_removePanelReserve
+  - 0x0800E29C object_setCoordinatesFromPanels
+  - 0x0801A04C object_updateCollisionPanels
+  reproduce: python3 tools/asmcat.py 0x08103380
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- No caller known, so which enemy/attack selects this state and what HitElement 8 means in the element
+  table is unconfirmed
+- Whether the 'battlesweep' route name matches this exact state needs a caller or state-machine table
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8103380 -> ai_battlesweepStep
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8103380

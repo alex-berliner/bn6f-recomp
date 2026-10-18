@@ -1,0 +1,53 @@
+name: ai_spawnStrikePanelPattern
+address: '0x080F9A18'
+kind: function
+status: probable
+summary: Spawns a boss attack strike on the 3 panels of one of 8 coordinate patterns, skipping invalid
+  panels, for the wood attack's strike step.
+interface: (r0 = pattern/sub-step index 0-7, r5 = attacker battle object, r7 = AI attack vars) -> void;
+  calls object_checkPanelParameters and sub_80CCFAC
+details: 'r0 selects a 9-byte pattern in byte_80F9A94 (8 patterns x 3 entries of x,y,flag). For each entry
+  the x coordinate is mirrored (7-x) when the attacker''s oBattleObject_Alliance is 0, then shifted by
+  neg(object_getFrontDirection()) * sub_80F9AE8, so the pattern lands on the target side. object_checkPanelParameters
+  is called with the dword_80F9AE0 mask (require 0x10000, forbid 0) — likely a ''panel not hole/broken''
+  test — and only matching panels get a hit spawned via sub_80CCFAC with packed params: difficulty tier,
+  table flag (<<8), AttackBoost2 (<<16), SubStepIndex (<<24), plus the attack''s Damage and InitFlag from
+  the oAIAttackVars struct at r7.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'mul r6,#9 + off_80F9A90 index byte_80F9A94: table of 8x9 bytes, 3 (x,y,flag) triples per pattern;
+    tst alliance / sub r0,r3: mirrors x (7-x) for one side; add r0,[sp] applies neg(getFrontDirection())*sub_80F9AE8
+    offset; ldr r3,off_80F9ADC before object_checkPanelParameters: mask {require 0x10000, forbid 0} gates
+    which panels get strikes; orr packing of oAIAttackVars fields (tier/boost/substep/damage/initFlag)
+    into sub_80CCFAC args: spawns the damage entity; sole caller ai_woodAttackStrikeStep passes sub-step
+    index on timeout, matching per-difficulty sub-step strike behavior'
+  refs:
+  - bn6f/asm/asm31.s:139755
+  - 0x080F961A ai_woodAttackStrikeStep
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0800E2CA object_getFrontDirection
+  - 0x080CCFAC sub_80CCFAC
+  reproduce: python3 tools/asmcat.py 0x080F9A18
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- what sub_80F9AE8 computes (offset magnitude/direction semantics) and what panel state bit 0x10000 denotes
+  exactly
+- what entity/behavior sub_80CCFAC spawns (strike effect vs hitbox) and whether the table bytes are (x,y)
+  or (y,x)
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F9A18 -> ai_spawnStrikePanelPattern
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F9A18

@@ -1,0 +1,56 @@
+name: ai_pickRandomPanelEffectCheck
+address: '0x08114040'
+kind: function
+status: probable
+summary: 'AI helper: randomly selects one of 16 panel-effect table entries, resolves its alliance-dependent
+  params for the object''s panel, and runs the panel flag check on it.'
+interface: (r5 = battle object, fields oBattleObject_PanelX/PanelY read) -> r0 = result of panelFlagCheck_8015D80;
+  clobbers r4-r7, lr
+details: Draws a non-negative RNG value, masks to 0-15, and indexes a 16-word pointer table at off_8114100
+  (entries at off_8114100..off_811413C). It then loads the battle object's current panel X (r5+oBattleObject_PanelX)
+  and Y (r5+oBattleObject_PanelY) and calls GetAllianceDependentPanelParamArgs with the selected table
+  entry (r4) and a byte table at byte_8114160 (r3), which returns a param word and args pointer indexed
+  by the object's alliance field. That result is passed straight into panelFlagCheck_8015D80, the AI's
+  filtered random relative panel picker, so the random index most likely selects which panel-effect/attack
+  descriptor to evaluate. No other state is read or written; the function is a thin 'random descriptor
+  -> panel check' wrapper executed on the battlesweep route.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'and r0,#0xF then ldr r4,[off_81143B0,r0]: random index into a 16-entry word table off_8114100;
+    ldrb r0/r1,[r5,#oBattleObject_PanelX/PanelY]: the check is anchored to the battle object''s current
+    panel; bl GetAllianceDependentPanelParamArgs with r3=byte_8114160 and the random table entry: alliance-dependent
+    panel-effect param lookup; bl panelFlagCheck_8015D80: result is consumed by the known AI panel flag-check/picker;
+    Only called from sub_8113F94 and recorded on the battlesweep route, consistent with enemy AI behavior
+    code'
+  refs:
+  - bn6f/asm/asm32.s:12215
+  - 0x08113F94 sub_8113F94
+  - 0x081096FA GetAllianceDependentPanelParamArgs
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x08015D80 panelFlagCheck_8015D80
+  reproduce: python3 tools/asmcat.py 0x08114040
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- Contents of off_8114100 and byte_8114160 are not shown; dumping them would reveal which 16 panel effects/attack
+  descriptors are being chosen
+- Caller sub_8113F94's purpose is unknown; it would confirm whether this is attack targeting or a different
+  AI decision
+- Exact argument convention of GetAllianceDependentPanelParamArgs (role of r4 vs r3) should be confirmed
+  from its own body
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8114040 -> ai_pickRandomPanelEffectCheck
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8114040

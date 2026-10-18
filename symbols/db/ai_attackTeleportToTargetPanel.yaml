@@ -1,0 +1,50 @@
+name: ai_attackTeleportToTargetPanel
+address: '0x080F6C76'
+kind: function
+status: probable
+summary: AI attack step that instantly moves the acting battle object onto the target panel, resets its
+  animation, and queues a hit with element 0xC.
+interface: (r0 = battle object ptr? unused/ignored, r5 = battle object, r7 = AI attack vars) -> r0 = 0;
+  stores CurAnim=0, PanelX/Y = TargetPanelX/Y, HitElement=0xC
+details: Zeroes the object's current animation, copies the target panel coordinates from the AI attack
+  variables (oAIAttackVars_TargetPanelX/Y) into the object's PanelX/PanelY, then calls object_setCoordinatesFromPanels
+  to recompute pixel position and object_updateCollisionPanels to sync collision panels and facing. Calls
+  the unknown helper sub_80F7154 (likely the follow-up damage/attack effect given it runs after the move
+  completes). Finally stores 0xC into oAIAttackVars_HitElement, suggesting a caller state machine reads
+  this element for the resulting strike.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: strb r0,[r5,#oBattleObject_CurAnim] with r0=0 resets the object's animation before the move;
+    ldrb from oAIAttackVars_TargetPanelX/Y and strb into oBattleObject_PanelX/PanelY repositions onto
+    the AI's target panel; bl object_setCoordinatesFromPanels / object_updateCollisionPanels confirm this
+    is a panel-grid move of a battle object; strh 0xC into oAIAttackVars_HitElement tags the move with
+    a fixed damage element; sub_80F7154 is invoked as the only unknown step, immediately after the position
+    update
+  refs:
+  - bn6f/asm/asm31.s:133969
+  - 0x0800E29C object_setCoordinatesFromPanels
+  - 0x0801A04C object_updateCollisionPanels
+  - 0x080F7154 sub_80F7154
+  reproduce: python3 tools/asmcat.py 0x080F6C76
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- what sub_80F7154 does (likely the actual attack/damage effect)
+- which enemy/boss attack uses this step and what element 0xC maps to
+- why r0 is ignored despite being passed
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F6C76 -> ai_attackTeleportToTargetPanel
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F6C76

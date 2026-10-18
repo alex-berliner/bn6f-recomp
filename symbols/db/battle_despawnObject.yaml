@@ -1,0 +1,55 @@
+name: battle_despawnObject
+address: '0x081162AE'
+kind: function
+status: probable
+summary: 'Deactivates a battle object: resets its action state, sets object flag 0x800000, and removes
+  it from its collision region.'
+interface: (r0 = battle object ptr, passed through to callees) -> r0 = 0 from battle_ResetObjectActionState_80165B8;
+  no meaningful flags
+details: The function takes a battle object pointer in r0 and immediately calls battle_ResetObjectActionState_80165B8,
+  which sets the object's current action to 8 and clears its current phase and phase-initialized flag.
+  It then ORs the flag bit 0x800000 into the object's CollisionData ObjectFlags1 word via object_setFlag1,
+  and finally clears the object's collision region byte with object_clearCollisionRegion so it no longer
+  occupies a collision region. This is the classic teardown sequence for a battle object being removed
+  or marked as dead (flag 0x800000 in ObjectFlags1). The data after the function (off_81163F0 handler
+  table and adjacent byte tables) indicates this routine is itself an entry in an object definition's
+  handler table, consistent with an on-removal/death handler rather than a general utility. No other behavior
+  is performed and nothing is read back.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl battle_ResetObjectActionState_80165B8 then bl object_setFlag1 with dword_81162F4 = 0x800000,
+    then bl object_clearCollisionRegion — a teardown sequence on the same r0; object_setFlag1's summary
+    (ORs bits into ObjectFlags1) shows the 0x800000 object flag being added; object_clearCollisionRegion's
+    summary (clears collision region byte, removing it from its region) confirms deactivation; off_81163F0
+    handler table (sub_8116470, battle_ResetObjectActionState_80165B8, battleObject_initAndRunAI_8016B02,
+    battleObjectStateDispatcher_8016CE8, ...) immediately after shows this routine belongs to an object
+    definition's handler list; no callers known; only reach is the recorded 'battlesweep' route, where
+    objects get destroyed
+  refs:
+  - bn6f/asm/asm32.s:16191
+  - 0x080165B8 battle_ResetObjectActionState_80165B8
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0801A152 object_setFlag1
+  reproduce: python3 tools/asmcat.py 0x081162AE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- Exact meaning of ObjectFlags1 bit 0x800000 (dead/removed vs. no-hit) — needs another user of that flag
+- Which handler-table slot this routine occupies in off_81163F0 (e.g., on-delete vs. on-death) and which
+  object definition uses it
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_81162AE -> battle_despawnObject
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81162AE

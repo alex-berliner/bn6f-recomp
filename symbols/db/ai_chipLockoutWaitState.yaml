@@ -1,0 +1,49 @@
+name: ai_chipLockoutWaitState
+address: '0x08089ACA'
+kind: function
+status: probable
+summary: AI state handler that idles while the chip lockout timer runs, then on expiry performs an action,
+  restarts the 30-frame lockout, and switches the AI state to 0x68.
+interface: (r5 = AIData struct pointer, r0 unused on entry) -> r0 = 1 always; flags from battle_tickChipLockout
+  used internally
+details: Per-frame AI step returning 1 (continue/handled). Calls battle_tickChipLockout, which decrements
+  AIData+0x18 and reports whether it reached zero; if not, the function does nothing else and returns
+  1. When the lockout expires it calls sub_8089CA4 with r0=0xC (unknown — likely queues an AI action/command),
+  writes 0x1E back to AIData+0x18 so the 30-frame lockout restarts, and stores byte 0x68 to AIData+0x00
+  to select the next AI state. The r4-r7 push/pop is vestigial. Runs on the beastsp recorded route, i.e.
+  during battle AI updates.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl battle_tickChipLockout_8089CB4; beq loc_8089AE4 — return 1 without changes while the lockout
+    timer is still counting; bl ai_setAIDataUnk18_8089CB4-path: mov r0,#0x1e — reloads AIData+0x18 (ChipLockoutTimer)
+    with 30 frames on expiry; strb r0(=0x68),[r5] — writes 0x68 to AIData+0x00, the AI state/state byte;
+    mov r0,#0xc; bl sub_8089CA4 — unknown side action taken once when the lockout lapses; always mov r0,#1
+    before pop — a boolean ''still busy/continue'' return typical of AI step handlers'
+  refs:
+  - bn6f/asm/asm23.s:1477
+  - 0x08089CB0 ai_setAIDataUnk18_8089CB0
+  - 0x08089CB4 battle_tickChipLockout_8089CB4
+  - 0x08089CA4 sub_8089CA4
+  reproduce: python3 tools/asmcat.py 0x08089ACA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- beastsp
+open_questions:
+- What sub_8089CA4(0xC) does — likely an AI command setter, needed to name the transition precisely
+- Which AI states lead into/away from state 0x68, and what state byte 0x68 means in the AI state table
+- Whether callers invoke this via an AI state dispatch table (no direct callers captured)
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8089ACA -> ai_chipLockoutWaitState
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8089ACA

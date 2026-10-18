@@ -1,0 +1,56 @@
+name: battle_collectKeyItemCounts
+address: '0x08135E18'
+kind: function
+status: probable
+summary: Builds a caller-supplied list of (id, remaining-count) pairs for items/chips 0x91-0x14C the player
+  owns, after subtracting those already taken by the 25-slot toolkit list.
+interface: (r6 = cursor pointer to output buffer on entry) -> writes u16 pairs {id, count} at [r6], advancing
+  by 4; returns final cursor in r6; flags not meaningful.
+details: 'Iterates ids r4 = 0x91..0x14C and calls CheckKeyItem(r4), which returns an owned count (r7);
+  zero means skip. For each of the 25 entries of the oToolkit_Unk2004190 array (entry halfword + 0x90
+  == id, i.e. entries store id-0x90) it decrements r7, so entries already consumed by that list are excluded;
+  if the remainder is still nonzero it looks up the 0x10-byte battle-object descriptor slot (id-0x90)
+  via battleObject_getByIndex and skips the id if byte [slot+3] == 0. Surviving ids are appended as two
+  halfwords (id, remaining count) through a cursor pointer kept at [sp]: the caller passes the buffer
+  pointer in r6, which is stored at function entry and reloaded as the end pointer before the pop, so
+  the updated cursor is returned in r6. The id range width (0x14C-0x90 = 0xBC) suggests a full item/chip
+  table indexed by id-0x90.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'loop bound: `ldr r0, off_8135ED0 // =0x14c; cmp r4, r0; ble` over r4 starting at 0x91; count
+    minus already-used: `sub r7, #1` when entry halfword + 0x90 == r4 across r6 = 0..0x18 (25 entries);
+    validity gate: `bl battleObject_getByIndex_813B780; ldrb r1, [r0,#3]; cmp r1, #0; beq skip`; output:
+    `strh r4, [r0]; strh r7, [r0,#2]; add r0, #4; str r0, [sp]` appends pairs via cursor; cursor convention:
+    `str r6, [sp]` on entry and `ldr r6, [sp]` right before `pop {r4,r5,r7,pc}` returns the advanced pointer
+    in r6'
+  refs:
+  - bn6f/asm/asm36.s:12194
+  - 0x08135D9C sub_8135D9C
+  - 0x0813B780 battleObject_getByIndex_813B780
+  - 0x0813B9FC toolkit_getUnk2004190EntryPtr_813B9FC
+  - 0x0803CE28 CheckKeyItem
+  reproduce: python3 tools/asmcat.py 0x08135E18
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- beastsp
+open_questions:
+- Exact meaning of the 25-entry oToolkit_Unk2004190 array whose entries store id-0x90 (folder, equipped
+  list, or something else)
+- Whether CheckKeyItem returns an owned count for chips or literal key items, and what byte +3 of the
+  battle-object descriptor means
+- What sub_8135D9C does with the produced list (its body was not shown)
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8135E18 -> battle_collectKeyItemCounts
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8135E18

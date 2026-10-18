@@ -1,0 +1,50 @@
+name: ai_attackStepToTarget
+address: '0x080F6C1C'
+kind: function
+status: probable
+summary: 'AI attack-state handler: moves the enemy onto a chosen target panel (non-element phase), then
+  after a short delay triggers the hit (element phase), or aborts if it cannot move.'
+interface: (r7 = AI attack vars struct) -> void; uses/sets AttackElement, TargetPanelX/Y, HasMoved, StepTimer,
+  HitElement
+details: Runs as a per-frame AI attack state on a battle object (r7 = AIAttackVars). If AttackElement
+  is 0 (not yet started), it sets it to 4 and checks object_canMove; if blocked it clears HasMoved and
+  exits via object_exitAttackState. If free to move, it calls the stored PanelChooseCallback (via mov
+  lr,pc / bx) which returns target panel X (r0) and Y (r1); these are stored, then object_setFlag1 sets
+  OBJECT_FLAGS_CANNOT_SLIDE and bit (1<<22) so the object stays put, HasMoved=1, CurAnim=4 (move/charge
+  anim), TimerOrCycles=0 and StepTimer=3. On later frames (AttackElement nonzero) it counts StepTimer
+  down from 3, and when it expires sets HitElement=8, which presumably makes the step attack connect.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne splits start phase vs. countdown phase;
+    bl object_canMove then beq loc_80F6C6C which clears HasMoved and calls object_exitAttackState on failure;
+    mov lr,pc; bx r1 on oAIAttackVars_PanelChooseCallback, results stored to TargetPanelX/Y; two bl object_setFlag1
+    calls set OBJECT_FLAGS_CANNOT_SLIDE and 1<<22, then HasMoved=1, CurAnim=4, StepTimer=3; countdown:
+    sub StepTimer; bgt exit; then mov r0,#8; strh HitElement triggers the hit'
+  refs:
+  - bn6f/asm/asm31.s:133921
+  - 0x0800E5E2 object_canMove
+  - 0x0801A152 object_setFlag1
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x080F6C1C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- exact meaning of ObjectFlags bit 1<<22
+- which enemies use this attack state and what the PanelChooseCallback returns in edge cases
+- whether element value 4 or HitElement 8 encode a specific attack type
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F6C1C -> ai_attackStepToTarget
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F6C1C

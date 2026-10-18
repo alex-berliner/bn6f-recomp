@@ -1,0 +1,54 @@
+name: battle_highlightCrossPanels
+address: '0x080C7030'
+kind: function
+status: probable
+summary: 'Marks a T/cross-shaped attack area on the battle grid: a 3-panel-tall column at the object''s
+  own column plus a 4-panel horizontal ray forward from its row.'
+interface: (r0 = column x of the object/area) -> r0 = clobbered; r5 must already hold the battle object
+  pointer (read, not saved); no return value
+details: First loop (r6 = 0..2) validates and highlights panels (r0, [PanelY]-1..+1), i.e. the vertical
+  column of 3 at x = r0. Second loop (r6 = 1..4) computes x = object_getFrontDirection()*r6 + [PanelX]
+  at y = [PanelY], skips the panel when it equals r0 (already highlighted), and highlights the rest —
+  a one-row ray 4 panels in the object's facing direction, so the shape is a cross/T opening forward.
+  Uses oBattleObject_PanelX/PanelY of the object in r5, which the function never sets itself, so the caller
+  must have loaded it. Panel coordinates are 1-based and checked with object_isValidPanel before each
+  object_highlightPanel call, so edge panels are safely clipped.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'loop 1: object_isValidPanel(r4, [PanelY]+r6-1) then object_highlightPanel for r6=0..2 → vertical
+    3-panel column at x=r4; loop 2: mul r0,r6 with object_getFrontDirection and add [PanelX] → forward
+    ray of 4 panels on row [PanelY]; cmp r0,r4 / beq locret path skips the already-highlighted column,
+    confirming r0 is the object''s own column; callees object_isValidPanel/object_highlightPanel are the
+    known grid-highlight helpers, so this is battle panel-area highlighting; called from sub_80C6E90 on
+    routes battlesweep/beastsp, consistent with a battle attack-area highlight'
+  refs:
+  - bn6f/asm/asm31.s:32521
+  - 0x080C6E90 sub_80C6E90
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800CBD8 object_highlightPanel
+  - 0x0800CC72 object_isValidPanel
+  reproduce: python3 tools/asmcat.py 0x080C7030
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- caller sub_80C6E90 not shown, so what sets r5 and what attack/feature uses this exact cross shape is
+  unconfirmed
+- whether the shape is a T or full cross depends on the caller's r0 argument being PanelX, inferred from
+  the skip comparison
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80C7030 -> battle_highlightCrossPanels
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C7030

@@ -1,0 +1,51 @@
+name: ai_chargedPanelStrikeUpdate
+address: '0x0810E666'
+kind: function
+status: probable
+summary: Per-frame AI attack-state update that charges, then on the final step spawns a damage collision
+  region on the object's panel with a matching effect and sound, then resets the attack state.
+interface: (r5 = battle object, r7 = oAIAttackVars struct) -> r0 = sub_810EB5C result; modifies AI vars
+  and object state
+details: 'Uses caller-set r5 (battle object) and r7 (AI attack vars). When oAIAttackVars_StepTimer ==
+  8 it fires: calls object_spawnCollisionRegion on the object''s PanelX/PanelY with type 2, size 3 and
+  the damage from oAIAttackVars_Damage, and calls sub_801BD3C (likely spawning a visible effect/projectile)
+  with panel coords, param 0x32, 0x10, and Alliance EOR DirectionFlip so the effect matches the object''s
+  facing side. It then resets a timer to 8 on the object pointer stored at oBattleObject_ExtraVars+4 (a
+  spawned child/effect) and zeroes that pointer. Each frame it increments oAIAttackVars_ChargeCycles,
+  playing sound 0x185 on cycle 4 (charge whine), and decrements StepTimer; when StepTimer goes negative
+  it clears ChargeCycles, sets oAIAttackVars_HitElement to 0x10 and oAIAttackVars_AttackElement to 0,
+  ending the attack. Finally calls sub_810EB5C (per-frame follow-up, unknown).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrh r0,[r7,#oAIAttackVars_StepTimer]; cmp r0,#8 gates the strike block (asm start); bl object_spawnCollisionRegion
+    with panel X/Y, r2=2, r6=oAIAttackVars_Damage spawns the damage region; bl sub_801BD3C with Alliance
+    EOR DirectionFlip ties effect spawn to object facing; cmp r0,#4 + PlaySoundEffect(0x185) plays a sound
+    mid-charge; StepTimer<0 branch resets ChargeCycles and both element fields, ending the attack
+  refs:
+  - bn6f/asm/asm32.s:1560
+  - 0x080005CC PlaySoundEffect
+  - 0x080C4072 battle_ResetObjectTimerTo8_80C4072
+  - 0x080C536A object_spawnCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x0810E666
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- Exact meaning of sub_801BD3C's args (0x32, 0x10) and whether it spawns a visual effect or projectile
+- What sub_810EB5C does after the strike
+- Which enemy AI route(s) select this attack and what the 0x10 element constant denotes (likely 'none')
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810E666 -> ai_chargedPanelStrikeUpdate
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810E666

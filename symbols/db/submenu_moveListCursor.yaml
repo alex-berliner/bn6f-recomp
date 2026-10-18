@@ -1,0 +1,56 @@
+name: submenu_moveListCursor
+address: '0x08125820'
+kind: function
+status: probable
+summary: Moves a scrolling menu list cursor from Up/Down (one row, auto-scrolling at the edges) and L/R
+  (whole-page jumps), playing the cursor-move sound effect when the position changes.
+interface: (r0 = pressed-keys bitfield (L=0x200 R=0x100 Up=0x40 Down=0x80), r1 = rows per page, r2 = wrap-around
+  flag, struct in r5+r8 with u16 fields +0x12 count, +0x14 cursor row, +0x18 scroll offset) -> r0 clobbered
+  (=0x18), r7 = 0xFF if cursor moved else 0; updates +0x14/+0x18
+details: Reads the total item count from +0x12, the cursor row from +0x14 and the scroll/page-start offset
+  from +0x18. Up decrements the cursor row, clamping at 0; if wrap is enabled and the list is scrolled
+  to the very top it wraps to the last row of the last page. Down increments the cursor row up to min(count-1,
+  pageSize-1); when already on the bottom row it instead advances the scroll offset, clamped to count-pageSize,
+  wrapping back to row 0 / scroll 0 when wrap is set. L and R shift the scroll offset by a full page (pageSize
+  = r1), clamped to [0, count-pageSize]. If both stored fields are unchanged afterwards it returns with
+  r7=0 without a sound; otherwise it plays SOUND_MENU_CUR_MOVE and sets r7=0xFF. The return value convention
+  (r7 instead of r0) is unusual and worth confirming against callers.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: tst with 0x200/0x100/0x40/0x80 (off_81258E0/E4) shows r0 is a GBA key bitfield driving L/R/Up/Down
+    movement; ldrh/strh on r5+r8+0x12/0x14/0x18 with clamp math against r9=r1-1 shows a cursor row and
+    scroll offset being updated; cmp of new r2/r3 against the old +0x14/+0x18 values gates the SOUND_MENU_CUR_MOVE
+    call in PlaySoundEffect; caller battle_input_tick_8125784 'routes cursor navigation to sub_8125820'
+    and menu_handleStartAndDpad_8125594 feeds d-pad input, matching a menu list cursor; r12 (arg r2) only
+    ever selects between clamping and wrap-to-end behaviour, i.e. a wrap-around flag
+  refs:
+  - bn6f/asm/asm33.s:4940
+  - 0x08125784 battle_input_tick_8125784
+  - 0x08125594 menu_handleStartAndDpad_8125594
+  - 0x081255F8 sub_81255F8
+  - 0x080005CC PlaySoundEffect
+  reproduce: python3 tools/asmcat.py 0x08125820
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- story2
+open_questions:
+- exact field semantics of +0x12 (total items vs page count) and the off-by-one in the wrap target are
+  not fully pinned down
+- which specific menu/battle screen owns the struct (both a battle input tick and a generic menu handler
+  call it)
+- whether callers actually consume the r7 changed-flag or just re-read the struct fields
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8125820 -> submenu_moveListCursor
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8125820

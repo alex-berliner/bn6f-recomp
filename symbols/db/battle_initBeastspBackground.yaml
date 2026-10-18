@@ -1,0 +1,52 @@
+name: battle_initBeastspBackground
+address: '0x0804CD5C'
+kind: function
+status: probable
+summary: 'Initializes a static battle background: uploads its tiles and palette, resets scroll/render
+  state, and renders the BG layer-3 tile map.'
+interface: () -> void; no meaningful return, clobbers r4-r7
+details: 'Queues a 160-byte (20-tile) transfer from ROM byte_86A3EA0 into VRAM at 0x600CC00 (a BG tile
+  block) and a 32-byte (one 16-color palette) transfer into byte_3001B00, the BG palette staging buffer.
+  It then resets RenderInfo: clears the scroll offsets at +0x18/+0x1A and writes 9 to +0xA (layer/mode
+  selector). Four bytes 0x48,0x37,0x10,0x00 are written through the oToolkit_Unk2009740_Ptr object, likely
+  display/blend control for the background. Fields at r5+0x11..0x15 are cleared (0x15 set to 2) and r5+0x10
+  is finally set to 4, an init-state/phase marker for a state machine. SetDummyBGScrollCallbacks makes
+  the background non-scrolling, and battle_renderBgLayer3TilesAndHandleEvent_804CDD4 fills the layer-3
+  map, branching on the story flag EVENT_BF0 for which layout to copy. Recorded only from the beastsp
+  route, suggesting a scenario-specific battle backdrop.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'QueueEightWordAlignedGFXTransfer twice: ROM byte_86A3EA0 -> VRAM 0x600CC00 (0xA0 bytes) and
+    byte_86A3E80 -> byte_3001B00 (0x20 bytes = one palette); RenderInfo fields +0xA/+0x18/+0x1A written,
+    matching the RenderInfo layout used by battle_renderBgLayer3TilesAndHandleEvent_804CDD4 which follows;
+    SetDummyBGScrollCallbacks call pins the background to no scrolling/HBlank effects; r5+0x10 = 4 after
+    setup, a typical init-complete state byte; Called only in the recorded beastsp route, consistent with
+    a one-off battle background setup'
+  refs:
+  - bn6f/asm/asm03_2.s:11427
+  - 0x08001974 SetDummyBGScrollCallbacks
+  - 0x0804CDD4 battle_renderBgLayer3TilesAndHandleEvent_804CDD4
+  - 0x08000AC8 QueueEightWordAlignedGFXTransfer
+  reproduce: python3 tools/asmcat.py 0x0804CD5C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- beastsp
+open_questions:
+- Which in-game background byte_86A3EA0 corresponds to (which battle/scenario uses it)
+- Exact meaning of the bytes 0x48,0x37,0x10,0 written to Unk2009740
+- Purpose of sub_804CDCC invoked at the end
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_804CD5C -> battle_initBeastspBackground
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_804CD5C

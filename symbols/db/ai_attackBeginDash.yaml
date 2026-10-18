@@ -1,0 +1,54 @@
+name: ai_attackBeginDash
+address: '0x080F4144'
+kind: function
+status: probable
+summary: 'Sets up an AI-controlled dash attack: asks the alliance''s AI callback to pick a target panel,
+  reserves it, and starts velocity-based movement toward it.'
+interface: (r5 = battle object, r7 = AI attack vars) -> r0 = undefined; sets vars fields, no meaningful
+  return
+details: 'If the object can move (object_canMove), it indexes byte_80F419C by the object''s Alliance *
+  8 to fetch a pair of function pointers, then long-calls the one in oAIAttackVars_PanelChooseCallback
+  with the target object ptr in r0; the callback returns a panel X in r0 and Y in r1, stored to FuturePanelX/Y.
+  It reserves that panel via object_reservePanel, then reads a per-difficulty speed from byte_80F41B0
+  (tier<<2 indexed: 0x4CCC, 0x9999, 0xE666 fixed-point) through sub_80F46A4 to fill XVelocity/YVelocity,
+  sets oAIAttackVars_StepTimer, and calls ai_attackStepMovement to actually move each tick toward the
+  reserved panel. It flags the object OBJECT_FLAGS_CANNOT_SLIDE and writes HitElement = 8. If movement
+  is blocked or the callback rejects the panel (returns 0), it instead writes HitElement = 0xC and does
+  nothing else.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldr r1,[r7,#oAIAttackVars_PanelChooseCallback]; mov lr,pc; bx r1 — alliance-table callback
+    picks FuturePanelX/Y (off_80F4198/byte_80F419C indexed by Alliance<<3); bl object_reservePanel right
+    after storing FuturePanelX/Y — claims the chosen panel for the dash; ldr r2,[r3,r2] from byte_80F41B0
+    (AiDifficultyTier<<2) feeds sub_80F46A4 whose outputs go to oBattleObject_XVelocity/YVelocity; bl
+    ai_attackStepMovement + strh r2,[r7,#oAIAttackVars_StepTimer] — hands off to the per-tick movement
+    stepper with a timer; strh #8 / strh #0xC into oAIAttackVars_HitElement on the success/failure branches
+    — two distinct hit attributes depending on whether the dash was initiated'
+  refs:
+  - bn6f/asm/asm31.s:128510
+  - 0x080F41C0 ai_attackStepMovement
+  - 0x0800E5E2 object_canMove
+  - 0x0801BB1C object_reservePanel
+  reproduce: python3 tools/asmcat.py 0x080F4144
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- Exact meaning of HitElement values 8 vs 0xC (element/attribute ids)
+- What sub_80F46A4 normalizes (speed conversion details) and what the PanelChooseCallback's two function
+  pointers per alliance differ in
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F4144 -> ai_attackBeginDash
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F4144

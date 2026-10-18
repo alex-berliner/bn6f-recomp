@@ -1,0 +1,57 @@
+name: ai_runChipAttackState
+address: '0x080EBD9C'
+kind: function
+status: probable
+summary: Enemy-AI attack state handler that fires the AI's chip attack (via a per-difficulty handler)
+  and queues the chip's battle-effect spawn, then transitions to exiting the attack state.
+interface: (r0 = unused on entry, r5 = battle object ptr, r7 = oAIAttackVars ptr) -> r0 = 1 stored to
+  oAIAttackVars_AttackElement; no return value used
+details: 'Two-phase state machine keyed on oAIAttackVars_AttackElement: while 0, it loads Damage/AttackBoost2/AiDifficultyTier/InitFlag/AttackBoost/ChipID
+  from the AI attack vars and dispatches through off_80EBDF8 (= off_802CCB4 indexed by tier<<2), a per-difficulty
+  AI routine, passing PanelX, PanelY, InitFlag and AttackBoost<<16 | ChipID with a long-call (lr=pc).
+  After it returns, it looks up the alliance''s byte_203CF00 entry and, if the +8 field is zero, calls
+  battle_queueEffectRequest(alliance, chipID>=0x170 ? 1 : 0, chipID) — the 0x170 threshold likely picks
+  the version-exclusive chip effect variant — then sets AttackElement = 1. On later invocations (element
+  nonzero) it calls object_exitAttackState to leave the attack. The entry+8 check prevents queueing a
+  duplicate effect request.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]; bne -> object_exitAttackState: nonzero element means
+    attack already done, exit state; off_80EBDF8 table indexed by AiDifficultyTier<<2 with lr=pc long
+    call: per-difficulty AI attack routine off_802CCB4; byte_203CF00_getEntryPtr_800BF5C on oBattleObject_Alliance
+    + tst of entry+8: only queue effect when none active; cmp chipID with 0x170 selecting r1 for battle_queueEffectRequest:
+    version-split chip effect choice; strb r0(1),[r7,#oAIAttackVars_AttackElement] after queueing: one-shot
+    latch for the state'
+  refs:
+  - bn6f/asm/asm31.s:111304
+  - 0x0800BF16 battle_queueEffectRequest
+  - 0x0800BF5C byte_203CF00_getEntryPtr_800BF5C
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x080EBD9C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- beastsp
+- chips
+- menus2
+- menus3
+- story2
+open_questions:
+- What the per-tier routine off_802CCB4 actually does (aim/target selection vs. direct spawn) — its code
+  wasn't shown
+- Meaning of oAIAttackVars fields Damage/AttackBoost/AttackBoost2 passed to the tier routine
+- Whether r1=0/1 to battle_queueEffectRequest is a Gregar/Falzar chip variant selector or another parameter
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80EBD9C -> ai_runChipAttackState
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EBD9C

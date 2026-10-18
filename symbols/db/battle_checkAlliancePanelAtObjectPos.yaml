@@ -1,0 +1,56 @@
+name: battle_checkAlliancePanelAtObjectPos
+address: '0x0810B646'
+kind: function
+status: probable
+summary: Tests whether the battle panel under an object (Y shifted by a stored offset) satisfies the panel-flag
+  requirement taken from the alliance-indexed panel-parameter table, returning the panel coordinates when
+  it matches.
+interface: (r5 = battle object ptr, r0/r1/r2 set up internally) -> r0 = panel X, r1 = panel Y when the
+  check passes (0 otherwise, exact failure path unclear); flags set by cmp before pop
+details: 'Reads oBattleObject_PanelX and oBattleObject_PanelY from the battle object in r5, adds the word
+  at oBattleObject_ExtraVars+8 to Y (a stored Y offset, e.g. from movement/knockback state), and saves
+  X/Y on the stack. It then calls GetAllianceDependentPanelParamArgs with the table base byte_810B6E0
+  (loaded via off_810B77C) to fetch the panel-type parameter and args for the object''s alliance, and
+  feeds the result to object_checkPanelParameters, which verifies the target panel''s mask bits. The stack
+  push of {x,y,lr} is a tail-call trick: on success the pop reloads X into r0 and Y into r1 as the return
+  values, so the caller receives the coordinates of the matching panel. The cmp r0,#0 result appears unused
+  because pop discards flags, suggesting a conditional return path the listing compresses (12 instructions
+  vs 10 shown). Given the callers run during battlesweep and beast-over special routes, this is likely
+  a condition check for a panel-dependent battle effect tied to the beast/alliance state.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb [r5,#oBattleObject_PanelX]/[r5,#oBattleObject_PanelY] + add r1,r1,r2(ExtraVars+8) builds
+    the target panel coords; ldr r3, off_810B77C (byte_810B6E0) feeds GetAllianceDependentPanelParamArgs,
+    which indexes by alliance; bl object_checkPanelParameters immediately after, whose summary is a panel-flag-mask
+    test; pop {r0,r1,pc} returns the saved X/Y as r0/r1, i.e. coords of the matched panel; only caller
+    sub_810B62E and recorded routes (battlesweep, beastsp) place it in battle object panel logic
+  refs:
+  - bn6f/asm/asm31.s:176370
+  - 0x0810B62E sub_810B62E
+  - 0x081096FA GetAllianceDependentPanelParamArgs
+  - 0x0800CC86 object_checkPanelParameters
+  reproduce: python3 tools/asmcat.py 0x0810B646
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- Exact meaning of byte_810B6E0 parameter word (which panel types the mask encodes)
+- What ExtraVars+8 represents (Y offset source) and why the check uses it
+- 'The two unlisted instructions around cmp/pop: whether failure returns 0 or falls through with stale
+  r0'
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810B646 -> battle_checkAlliancePanelAtObjectPos
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810B646

@@ -1,0 +1,47 @@
+name: battle_state4WaitLinkReady
+address: '0x08009784'
+kind: function
+status: probable
+summary: 'Battle main-state phase handler: kicks off the battle intro effect once, then waits for the
+  linked/cross-net battle to be ready before advancing the phase to 8.'
+interface: (r5 = battle state struct) -> void; advances oBattleState_StatePhaseAndInitFlag to 8 when link
+  battle is ready
+details: On first run (SubPhaseInitFlag == 0) it calls battle_dispatchKindEffect_801E792 with kind 0 and
+  r1 = oBattleState_State4EventCount to start the intro/effect animation, then latches SubPhaseInitFlag
+  to 4 so it fires only once. On subsequent runs it polls comm_checkCrossNetBattleReady_801E754; while
+  that returns nonzero it just returns (stay in this phase), and when it returns 0 it writes 8 into the
+  StatePhase field of oBattleState_StatePhaseAndInitFlag, moving to the next battle phase. r5 is the battle
+  state struct used by the battle sweep loop.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#oBattleState_SubPhaseInitFlag]; tst/bne gates one-shot dispatch of battle_dispatchKindEffect_801E792
+    (r0=0, r1=State4EventCount); strb #4 into SubPhaseInitFlag marks the intro effect as dispatched; bl
+    comm_checkCrossNetBattleReady_801E754 polls link readiness on later iterations; strh #8 into oBattleState_StatePhaseAndInitFlag
+    advances the battle phase when ready'
+  refs:
+  - bn6f/asm/asm00_1.s:14261
+  - 0x0801E792 battle_dispatchKindEffect_801E792
+  - 0x0801E754 comm_checkCrossNetBattleReady_801E754
+  reproduce: python3 tools/asmcat.py 0x08009784
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- exact semantics of comm_checkCrossNetBattleReady's 0/1/2 return (which value means 'ready')
+- what kind 0 in battle_dispatchKindEffect triggers visually
+- which caller assigns this as the state-4 handler in the battle sweep table
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8009784 -> battle_state4WaitLinkReady
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8009784

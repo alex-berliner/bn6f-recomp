@@ -1,0 +1,51 @@
+name: ai_attackChargeUpdate
+address: '0x080FF284'
+kind: function
+status: probable
+summary: 'AI attack state-machine step: starts a charged attack, flashes the target panel while charging,
+  and fires the element-4 hit when the timer expires.'
+interface: (r0 = scratch only, reads oAIAttackVars from r7, battle object from r5) -> r0 = HitElement
+  code written into oAIAttackVars; no return value used
+details: 'On first entry (AttackElement == 0) it begins the attack: sets AttackElement = 4, copies the
+  target object''s panel coords (offsets 0x12/0x13) into TargetPanelX/Y after validating them with object_isValidPanel,
+  plays battle-object animation 0xC, sets counter time 6 via object_setCounterTime, loads StepTimer from
+  AttackBoost2, and clears AttackStepIndex and ChargeCycles. While charging it increments ChargeCycles
+  and every 8th cycle calls object_highlightPanel on the target panel (blinking aim marker), decrementing
+  StepTimer each tick. When StepTimer reaches 0 it writes HitElement = 4, handing off to the attack''s
+  damage step. If the target panel was invalid at start, it immediately writes HitElement = 0x24 (abort/fail
+  code) without charging.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'tst on oAIAttackVars_AttackElement branches between init (mov #4 strb) and charge loop; object_isValidPanel
+    called on target object''s [0x12]/[0x13], result stored into TargetPanelX/Y; loc_80FF2BE: ChargeCycles++,
+    lsr #3 carry gates object_highlightPanel on TargetPanelX/Y (periodic flash); StepTimer countdown ending
+    writes HitElement = 4; invalid-panel path writes HitElement = 0x24; object_setCounterTime(6) and oBattleObject_CurAnim
+    = 0xC on init, matching an attack wind-up'
+  refs:
+  - bn6f/asm/asm31.s:151122
+  - 0x0800CBD8 object_highlightPanel
+  - 0x0800CC72 object_isValidPanel
+  - 0x0800E9DC object_setCounterTime
+  reproduce: python3 tools/asmcat.py 0x080FF284
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- which enemy/AI attack uses element 4 and what HitElement 0x24 means downstream (next step handler not
+  shown)
+- meaning of AttackBoost2 as the charge duration source and oAIAttackVars layout beyond named fields
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80FF284 -> ai_attackChargeUpdate
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FF284

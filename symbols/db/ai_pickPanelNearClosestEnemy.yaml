@@ -1,0 +1,54 @@
+name: ai_pickPanelNearClosestEnemy
+address: '0x08116044'
+kind: function
+status: probable
+summary: 'AI helper: finds the closest enemy battle object and picks a filtered panel adjacent/near it
+  using a per-state relative-offset list, for AI targeting.'
+interface: (implicit r5 = BattleObject; no register args) -> r0 = panelFlagCheck result (selected panel/coords);
+  clobbers r0-r4
+details: Reads the object's alliance (oBattleObject_Alliance), XORs it with 1 to get the opposing side,
+  and calls battleObject_findClosestEnemyBattleObject to locate the nearest enemy object. Uses that enemy's
+  panel coordinates (offsets 0x12/0x13) as the base panel. Field 0x68 of the acting object, shifted left
+  2, indexes the pointer table off_81160C4, selecting a relative-offset panel candidate list (0x7F-terminated
+  format per panelFlagCheck). GetAllianceDependentPanelParamArgs (r3 = byte_8116190 data) supplies the
+  panel-effect param word and args for the base panel, and panelFlagCheck walks the offset list, transforming
+  offsets by facing and filtering candidate panels. This appears in AI/battlesweep routes, consistent
+  with an AI attack/move panel selection step.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'eor r0,#1 on oBattleObject_Alliance then bl battleObject_findClosestEnemyBattleObject_80103F8
+    — searches the opposing side for the nearest enemy; ldrb r1,[r5,#0x68]; lsl r1,#2; ldr r4,[off_81160C4,r1]
+    — per-object index selects a candidate panel-offset list; ldrb r0,[r0,#0x12]/ldrb r1,[r0,#0x13] —
+    base panel = closest enemy''s panel X/Y; bl panelFlagCheck_8015D80 — known summary: filtered random
+    relative panel picker with 0x7F-terminated offset lists and facing transform; only caller 0x08115FCE
+    in recorded battlesweep routes — AI context'
+  refs:
+  - bn6f/asm/asm32.s:15922
+  - 0x08115FCE sub_8115FCE
+  - 0x081096FA GetAllianceDependentPanelParamArgs
+  - 0x080103F8 battleObject_findClosestEnemyBattleObject_80103F8
+  - 0x08015D80 panelFlagCheck_8015D80
+  reproduce: python3 tools/asmcat.py 0x08116044
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- exact semantics of field 0x68 (AI state/attack pattern index?) and contents of off_81160C4
+- what panelFlagCheck returns precisely (coords, object slot, or success flag)
+- meaning of the param word and byte_8116190 args consumed via GetAllianceDependentPanelParamArgs
+- how the chosen panel is consumed by the caller sub_8115FCE
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8116044 -> ai_pickPanelNearClosestEnemy
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8116044

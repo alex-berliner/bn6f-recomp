@@ -210,10 +210,10 @@ static void call_sub_8033B30(u32 self) {
     GUEST_CALL(sub_8033B30);
 }
 
-/* register form: calls sub_8033B46 outside this file, which has no typed C interface yet */
+/* register form: calls internet_redrawOverworldUi outside this file, which has no typed C interface yet */
 static void call_sub_8033B46(u32 self) {
     R5 = self;
-    GUEST_CALL(sub_8033B46);
+    GUEST_CALL(internet_redrawOverworldUi);
 }
 
 /* register form: calls sub_8033B5C outside this file, which has no typed C interface yet */
@@ -1359,9 +1359,9 @@ static inline void call_sub_803537C(void) {
 }
 
 typedef struct { u32 r2, r5, r6, r7, r8, r9, r10, r11, r12; } call_sub_80353DA_result;
-/* register form: generated wrapper: sub_80353DA has no typed C interface yet */
+/* register form: generated wrapper: ow_loadEventGfxAnims has no typed C interface yet */
 static inline call_sub_80353DA_result call_sub_80353DA(void) {
-    GUEST_CALL(sub_80353DA);
+    GUEST_CALL(ow_loadEventGfxAnims);
     return (call_sub_80353DA_result){ R2, R5, R6, R7, R8, R9, R10, R11, R12 };
 }
 
@@ -1413,7 +1413,7 @@ static void load_map(u32 map_group, u32 map_number) {
     call_owPlayer_80350a8();
     call_npc_spawnOverworldNPCObjectsForMap(R5, R6, R7);
 
-    /* sub_803537C runs first, then sub_80353DA on the r0/r1 it leaves behind.
+    /* sub_803537C runs first, then ow_loadEventGfxAnims on the r0/r1 it leaves behind.
      * Both are typed wrappers; their interface already encodes the leftover
      * semantics, so just chain them. */
     call_sub_803537C();

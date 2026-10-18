@@ -1,0 +1,47 @@
+name: ai_checkGuardFrame
+address: '0x08110B50'
+kind: function
+status: probable
+summary: Checks the object's current sprite frame for a guard attribute and, if present, resets the animation,
+  sets the GUARD object flag, and re-tags the AI attack as a guard hit.
+interface: (r4 = battle object ptr, r5 = battle object ptr (CurAnim), r7 = AI attack vars ptr) -> r0 =
+  sprite_getFrameParameters result; no meaningful return, flags clobbered
+details: Calls sprite_getFrameParameters (r4 as object) and tests bit 0x80 of the returned attribute byte;
+  if clear, nothing happens. When the bit is set, it zeroes oBattleObject_CurAnim (restart animation),
+  ORs OBJECT_FLAGS_GUARD into the object's CollisionData ObjectFlags1 via object_setFlag1, then writes
+  0x20 to oAIAttackVars_HitElement and 0 to oAIAttackVars_AttackElement, effectively turning the attack
+  into a guard-type hit. Uses r5 and r7 as object/attack-var pointers, so callers must have those set
+  up (typical AI-attack handler convention).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: tst r0,#0x80 after sprite_getFrameParameters gates the whole body on a frame attribute bit;
+    strb r0,[r5,#oBattleObject_CurAnim] with 0 resets the object's animation on guard frame; mov r0,#OBJECT_FLAGS_GUARD;
+    bl object_setFlag1 marks the object with the guard flag; strh 0x20,[r7,#oAIAttackVars_HitElement]
+    + 0 -> AttackElement sets the guard hit element
+  refs:
+  - bn6f/asm/asm32.s:5867
+  - 0x0801A152 object_setFlag1
+  - 0x08002DEA sprite_getFrameParameters
+  reproduce: python3 tools/asmcat.py 0x08110B50
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- exact meaning of HitElement 0x20 (presumably the guard element constant, not verified against an enum)
+- which sprite frames/attacks set attribute bit 0x80 and whether the bit means 'guard' specifically
+- no known caller to confirm r4/r5/r7 aliasing conventions
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8110B50 -> ai_checkGuardFrame
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8110B50

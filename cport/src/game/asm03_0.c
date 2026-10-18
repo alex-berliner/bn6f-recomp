@@ -1599,7 +1599,7 @@ Next table_findFirstOccupiedEntry_8028050(void) {
 
 /* folder_findFirstChipWithFlag_802806C(r4 = chip slot list, r5 = owner struct):
  * Walk the ten slots in order.  For each slot flagged 0 at +0, map the
- * halfword at [slot+8] to a chip id (sub_802A53C, masked to 9 bits),
+ * halfword at [slot+8] to a chip id (battle_getChipWordIfUsable, masked to 9 bits),
  * fetch that chip's data, and test the 0x20 flag in its status byte
  * (+9).  The first matching slot's index is stored at [r5+7] and the
  * scan stops.  [r5+7] is left alone when it is already non-zero or no
@@ -1620,7 +1620,7 @@ Next folder_findFirstChipWithFlag_802806C(void) {
             R0 = LD16(LD32(slot + 8));
             R4 = slot; /* keep the guest view of the loop state in sync */
             R6 = i;
-            GUEST_CALL(sub_802A53C); /* chip word -> chip id */
+            GUEST_CALL(battle_getChipWordIfUsable); /* chip word -> chip id */
             R0 &= 0x1FF;             /* keep the 9-bit chip id */
             GUEST_CALL(getChip8021DA8);
             R0 = LD8(R0 + 9); /* chip status byte */
@@ -3257,10 +3257,10 @@ static u32 tutorial_script_3(u32 state) {
     return R0;
 }
 
-/* register form: calls sub_8029A1E outside this file, which has no typed C interface yet */
+/* register form: calls battle_tutorialCheckEmotionMsg outside this file, which has no typed C interface yet */
 static u32 tutorial_script_4(u32 state) { /* tutorial states 4 and 5 share this check */
     R0 = state;
-    GUEST_CALL(sub_8029A1E);
+    GUEST_CALL(battle_tutorialCheckEmotionMsg);
     return R0;
 }
 

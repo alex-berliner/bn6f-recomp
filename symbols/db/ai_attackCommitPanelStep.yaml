@@ -1,0 +1,48 @@
+name: ai_attackCommitPanelStep
+address: '0x080F3040'
+kind: function
+status: probable
+summary: 'AI attack state tick: when its step timer expires, commits the object onto its reserved future
+  panel and resets the timer for the next attack step.'
+interface: (r5 = battle object, r7 = AI attack vars) -> void; flags from subtractions only
+details: Called repeatedly as part of an AI-controlled attack sequence. It decrements oAIAttackVars_StepTimer;
+  while still positive it just returns. On expiry it sets the object's current animation to 3, copies
+  FuturePanelX/FuturePanelY into PanelX/PanelY, releases the panel reservation with object_removePanelReserve,
+  recomputes the object's pixel coordinates from panels, syncs collision panels and facing via object_updateCollisionPanels,
+  then reloads StepTimer with 5 and stores 8 into oAIAttackVars_HitElement before returning.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrh r0,[r7,#StepTimer]; sub r0,#1; bgt return — a per-call countdown timer gating the body;
+    strb FuturePanelX/Y -> PanelX/Y then bl object_removePanelReserve — commits the reserved panel move;
+    bl object_setCoordinatesFromPanels and bl object_updateCollisionPanels — resync pixel position and
+    collision to the new panel; mov r0,#5; strh r0,[r7,#StepTimer] and mov r0,#8; strh r0,[r7,#HitElement]
+    — restart step timer and set an AI attack var; anim = 3 stored to oBattleObject_CurAnim — plays a
+    move/attack-related animation state
+  refs:
+  - bn6f/asm/asm31.s:126316
+  - 0x0801BB46 object_removePanelReserve
+  - 0x0800E29C object_setCoordinatesFromPanels
+  - 0x0801A04C object_updateCollisionPanels
+  reproduce: python3 tools/asmcat.py 0x080F3040
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- No known caller, so which AI attack routine drives this and how HitElement=8 is consumed downstream
+  is unconfirmed
+- Exact meaning of anim state 3 and the 8 stored to HitElement (element id vs. state flag) is unclear
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F3040 -> ai_attackCommitPanelStep
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F3040

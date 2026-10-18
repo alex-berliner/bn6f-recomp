@@ -1295,12 +1295,12 @@ static void call_pet_add(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4, u32 r6) {
     SP = sp;
 }
 
-/* register form: sub_803CFB0 callee may clobber preserved regs */
+/* register form: pet_updateNaviStatByte9FromKeyItems callee may clobber preserved regs */
 static void call_post_item_hook(void) {
     u32 sp = SP;
     SP -= 20;
     ST32(SP, R4); ST32(SP + 4, R5); ST32(SP + 8, R6); ST32(SP + 12, R7); ST32(SP + 16, LR);
-    GUEST_CALL(sub_803CFB0);
+    GUEST_CALL(pet_updateNaviStatByte9FromKeyItems);
     R4 = LD32(SP); R5 = LD32(SP + 4); R6 = LD32(SP + 8); R7 = LD32(SP + 12); LR = LD32(SP + 16);
     SP = sp;
 }

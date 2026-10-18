@@ -1,0 +1,48 @@
+name: ai_attackPanelStrikeStep
+address: '0x0810733E'
+kind: function
+status: probable
+summary: 'AI attack step handler: arms an attack on the panel in front of the enemy, then counts down
+  and sets the hit element when the strike lands.'
+interface: (r5 = battle object, r7 = oAIAttackVars) -> void; no meaningful return
+details: 'Standard two-phase AI attack step. On the first call (AttackElement == 0) it initializes: sets
+  AttackElement = 4, plays enemy attack anim 0xC on the object (mirrored to CurAnimCopy = 0xFF), arms
+  object_setCounterTime(0x18), plays sound 0x1C6, spawns a type-0 effect (kind 1) on the panel in front
+  via object_spawnFrontPanelEffect, and sets StepTimer = 0x14. On later calls it decrements StepTimer;
+  when it reaches 0x11 it calls sub_8107A00(1) (likely spawning the actual hit object), and when it hits
+  0 it writes HitElement = 0x20, marking the attack resolved.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb [r7,#oAIAttackVars_AttackElement] / bne loc_810736C splits init phase from countdown phase;
+    init phase: anim 0xC, object_setCounterTime(0x18), PlaySoundEffect(0x1C6), object_spawnFrontPanelEffect(1);
+    countdown: StepTimer-- with special case at 0x11 calling sub_8107A00(1), then HitElement=0x20 at 0;
+    uses object_spawnFrontPanelEffect: ''effect on panel directly in front of the given battle object'''
+  refs:
+  - bn6f/asm/asm31.s:167877
+  - 0x080005CC PlaySoundEffect
+  - 0x08107A30 object_spawnFrontPanelEffect
+  - 0x0800E9DC object_setCounterTime
+  reproduce: python3 tools/asmcat.py 0x0810733E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- Which enemy/attack this belongs to (which AI table entry points here) — determines a more specific name
+- What sub_8107A00(1) spawns (the hit/attack object?) and why it fires at timer 0x11
+- Meaning of AttackElement 4 vs HitElement 0x20 in these enums
+- Which effect kind 1 is in object_spawnFrontPanelEffect's lookup table
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810733E -> ai_attackPanelStrikeStep
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810733E

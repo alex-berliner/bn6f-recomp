@@ -1,0 +1,53 @@
+name: battle_stepWaitForStateRunUpdate
+address: '0x0812B26C'
+kind: function
+status: probable
+summary: Entity step wrapper that polls a state value and runs the battle frame update with command 0x13
+  when the state is 0x18 or 0x1c, otherwise 0x12.
+interface: () -> r0 = command id (0x13 if sub_8132290()==0x18 or 0x1c else 0x12) passed to battle_runFrameUpdate;
+  no return value used
+details: Calls sub_8132290 with no arguments and compares its return to 0x18 and 0x1c; on either match
+  it keeps r4=0x13, otherwise sets r4=0x12, then calls battle_runFrameUpdate with that value as the command/message
+  id. Since battle_runFrameUpdate feeds that id into sub_812B2C4 and advances entity update handlers,
+  this selects between two update behaviors for the current step. All six callers are eStruct (200BC30)
+  step dispatchers, so this is a reusable step handler, likely one that stalls until some tracked state
+  reaches one of two completion values. The constants 0x18/0x1c versus 0x12/0x13 suggest the query is
+  a step/animation/frame state rather than a random draw.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: sub_8132290 result tested against 0x18 and 0x1c selects r4=0x13 else 0x12 (cmp/beq chain, mov
+    r4); r4 is passed as the command id to battle_runFrameUpdate, whose summary says it takes a command/message
+    id; all six callers are eStruct step dispatchers (sub_8129F04, sub_812AEE0, sub_812A76C, sub_812A8EC,
+    sub_812AAC0, sub_812ABEC); function takes no arguments and uses only r4/scratch, consistent with a
+    parameterless step handler
+  refs:
+  - bn6f/asm/asm33.s:16675
+  - 0x08129F04 sub_8129F04
+  - 0x0812AEE0 sub_812AEE0
+  - 0x0812A76C sub_812A76C
+  - 0x0812B25C battle_runFrameUpdate
+  - 0x08132290 sub_8132290
+  reproduce: python3 tools/asmcat.py 0x0812B26C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- menus3
+open_questions:
+- what sub_8132290 reads/returns (state byte, animation counter, timer?) to know what states 0x18 and
+  0x1c mean
+- what battle_runFrameUpdate does differently with command 0x12 vs 0x13
+- which entity types/steps route through this handler
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_812B26C -> battle_stepWaitForStateRunUpdate
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_812B26C

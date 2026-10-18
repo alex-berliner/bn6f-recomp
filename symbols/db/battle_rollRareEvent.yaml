@@ -1,0 +1,49 @@
+name: battle_rollRareEvent
+address: '0x0801C4AE'
+kind: function
+status: probable
+summary: 'At battle setup, rolls the battle RNG for a rare event: stores a scaled random halfword in the
+  battle state, and on the rare hit sets battle flag 0x2 and plays sound 0x8F.'
+interface: (r5 = battle state struct) -> writes halfword at [r5+0x20]; may set battle flag bit 1 via battle_setFlags;
+  r0 clobbered
+details: Reads the battle state flags halfword and bails out early if bit 0x2 is already set, so the roll
+  happens at most once per battle. Calls sub_800A70C (unidentified, almost certainly the battle RNG rand),
+  multiplies the result by 0x4000 and uses GBA BIOS svc 6 (Div) by 0x2D0 (720), scaling the random number
+  into roughly [0,0x4000]. The halfword result is stored at [r5+0x20] of the battle state struct. If the
+  scaled value comes out exactly 0x4000, it ORs flag bit 0x2 into the battle flags and plays sound effect
+  0x8F — a rare-event check (mystery data / bonus appearance style), with the exact trigger odds depending
+  on the range of sub_800A70C's return value.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'tst r0, #2 / bne skips everything if battle flag 0x2 already set; svc 6 = BIOS Div: result
+    = rand*0x4000/720, strh''d to [r5+0x20]; cmp result with 0x4000 selects only the extreme end of the
+    scaled range; on that hit: battle_setFlags(2) then PlaySoundEffect(0x8F); both callees battle_getFlags/battle_setFlags
+    operate on the battle state at oBattleState_Unk_32'
+  refs:
+  - bn6f/asm/asm00_2.s:27707
+  - 0x080005CC PlaySoundEffect
+  - 0x0800A2F0 battle_getFlags
+  - 0x0800A2D8 battle_setFlags
+  reproduce: python3 tools/asmcat.py 0x0801C4AE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- what sub_800A70C returns (RNG range determines the trigger odds)
+- what battle flag 0x2 and sound 0x8F correspond to (mystery data spawn? rare virus? upgrade?)
+- what consumers read the random halfword at battle state +0x20 for
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_801C4AE -> battle_rollRareEvent
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_801C4AE

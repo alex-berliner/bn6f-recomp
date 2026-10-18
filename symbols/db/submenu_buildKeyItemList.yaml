@@ -1,0 +1,52 @@
+name: submenu_buildKeyItemList
+address: '0x081289C4'
+kind: function
+status: probable
+summary: Builds the ordered list of owned key items into a work buffer for a menu screen, storing the
+  entry count.
+interface: (r0 unused, r5 = screen state block) -> r0 = undefined; writes key-item list to eTextScript201BF00
+  and count halfword to [r5+0x1E]
+details: 'First zeroes 0xDE bytes (111 halfword entries) at eTextScript201BF00. Then for each id 0..0x6E
+  it calls CheckKeyItem(id); nonzero (owned) means an entry is written at buffer + 2*byte_81286C4[id]:
+  byte 0 = item id, byte 1 = value returned by CheckKeyItem, using byte_81286C4 as a per-item ordering/priority
+  table so entries land at fixed slots. The count of owned items is stored as a halfword at [r5+0x1E].
+  Finally it compacts the array in place: for each of the 111 halfword slots, any nonzero entry is shifted
+  left past following zero (unowned) slots, producing a gap-free list ordered by the priority table. Quirk:
+  entries whose id byte is 0 are dropped by the compaction pass since it tests the whole halfword for
+  zero.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ZeroFillByByte(eTextScript201BF00, 0xDE) clears an array of exactly 0x6F halfword entries,
+    matching the loop bound 0x6f; bl CheckKeyItem with beq skip: entry written only when the key item
+    is owned (strb r4 / strb r0 at base + 2*byte_81286C4[id]); strh r6,[r5,#0x1e] stores the owned-item
+    count into the caller''s state block; second loop (loc_81289FA) shifts nonzero halfwords left over
+    zero slots — in-place compaction of the list; caller sub_8128750 is a screen/scene init that runs
+    this during a menus3 route, fitting a menu list build'
+  refs:
+  - bn6f/asm/asm33.s:11245
+  - 0x08128750 sub_8128750
+  - 0x080008B4 ZeroFillByByte
+  - 0x0803CE28 CheckKeyItem
+  reproduce: python3 tools/asmcat.py 0x081289C4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- menus3
+open_questions:
+- exact meaning of the byte CheckKeyItem returns (owned flag vs. count/status)
+- what the menu at the caller displays this list as (key items screen vs. something reusing the same IDs)
+- whether byte_81286C4 is a sort priority or a display-slot mapping
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_81289C4 -> submenu_buildKeyItemList
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81289C4

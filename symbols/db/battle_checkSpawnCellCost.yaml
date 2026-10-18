@@ -1,0 +1,52 @@
+name: battle_checkSpawnCellCost
+address: '0x081349E8'
+kind: function
+status: probable
+summary: Looks up a 0x20-byte record in the spawn-panel table at word_202A020 and returns flag bits telling
+  whether its stored cost value fits the remaining 60-unit budget and the navi's RegUp allowance.
+interface: '(r5 = handler struct: cell indices at +0x20/+0x24, value at +0x64, navi byte at +0x14) ->
+  r0 = 2-bit status (bit1 clear if 0x3C-[r5+0x64] >= value, bit0 clear if RegUP-or-0x1E >= value, 3 if
+  record flag unset), r1 = record value; no flags'
+details: It indexes word_202A020 by ([r5+0x20]+[r5+0x24])*0x20, giving a table of 0x20-byte records. If
+  bit7 of the record's +0x1C halfword is clear it returns 3 immediately with r1 = 0. Otherwise it takes
+  the high halfword of the record's +0x18 word as a cost r4. It clears return bit1 when the remaining
+  amount 0x3C - [r5+0x64] covers the cost, and clears return bit0 when the allowance — 0x1E while a submenu
+  is open, else the RegUP byte from the current PET navi's NaviStats — covers it. So a fully passing check
+  returns 0 and any set bit marks a failed comparison; records without the bit7 flag are reported as failing
+  both. The exact meaning of the 60 and 30 constants and of the record structure is inferred, not confirmed.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: index math add r0,r0,r1 / mul by 0x20 / ldr r7,off_8134A38 targets word_202A020 record table;
+    ldrh r0,[r7,#0x1c] lsr 7 gates entry; ldr r4,[r7,#0x18] lsr 0x10 is the compared cost; cmp r1,r4 after
+    0x3C-[r5+0x64] clears bit1; after RegUP/0x1E clears bit0 via bic on r6=3; callees submenu_isOpen_81355D8
+    and GetNaviStatsAddrGivenCurPETNavi (oNaviStats_RegUP) provide the two limits; caller battle_confirmSpawnPanel
+    'rejects occupied or blocked spots', consistent with nonzero = reject
+  refs:
+  - bn6f/asm/asm36.s:9511
+  - 0x08133C9C battle_confirmSpawnPanel
+  - 0x08133D64 sub_8133D64
+  - 0x0801401E GetNaviStatsAddrGivenCurPETNavi
+  - 0x081355D8 submenu_isOpen_81355D8
+  reproduce: python3 tools/asmcat.py 0x081349E8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- beastsp
+open_questions:
+- what word_202A020's 0x20-byte records represent (which board/state) and what the +0x18 cost counts
+- what the 0x3C (60) budget at r5+0x64 and the 0x1E (30) submenu constant measure
+- why flag-less records return 3 and how the caller weighs bit0 vs bit1
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_81349E8 -> battle_checkSpawnCellCost
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81349E8

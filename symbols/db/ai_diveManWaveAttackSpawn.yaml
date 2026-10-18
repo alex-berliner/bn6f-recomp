@@ -1,0 +1,51 @@
+name: ai_diveManWaveAttackSpawn
+address: '0x080FE6C8'
+kind: function
+status: probable
+summary: 'AI attack routine: scans rows 1-3 on the target side and spawns a DiveMan wave object on each
+  panel that matches the attack''s panel filters.'
+interface: (r5 = attacker battle object, r7 = oAIAttackVars struct) -> r0 = number of waves spawned; flags
+  from final cmp/tst
+details: Loops r4 = 1..3 (three columns/rows relative to the foe's side). For each, object_getClosestPanelMatchingRowFiltered
+  finds the closest valid panel using a per-alliance table (byte_80FE780 + alliance*8, giving a row-range
+  pair), then object_checkPanelParameters re-verifies that panel against a second per-alliance table (byte_80FE794).
+  On success it calls spawnDivemanWaveObject_80CB1E2 with the found coordinates in r0/r1, the panel coordinates,
+  and the attack's init flag, AI difficulty tier, and damage read from the oAIAttackVars struct (oAIAttackVars_InitFlag,
+  _AiDifficultyTier, _Damage). The mov r2,#1/#6 branch on alliance is dead code since r2 is reloaded immediately
+  afterward. Returns the spawn count accumulated on the stack.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: loop add r4,#1; cmp r4,#3; ble loc_80FE6D2 scans three rows with object_getClosestPanelMatchingRowFiltered;
+    per-alliance tables off_80FE77C/off_80FE790 indexed by alliance<<8 supply row range and panel parameter
+    masks; spawn only after object_checkPanelParameters returns nonzero for the found panel; bl spawnDivemanWaveObject_80CB1E2
+    with oAIAttackVars_InitFlag/_AiDifficultyTier/_Damage in r4/r7/r6 context; caller sub_80FE3EC plus
+    oAIAttackVars fields indicate this runs as a boss AI attack step (battlesweep/beastsp routes)
+  refs:
+  - bn6f/asm/asm31.s:149677
+  - 0x080FE3EC sub_80FE3EC
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0800D086 object_getClosestPanelMatchingRowFiltered
+  - 0x080CB1E2 spawnDivemanWaveObject_80CB1E2
+  reproduce: python3 tools/asmcat.py 0x080FE6C8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- exact semantics of the byte_80FE780/byte_80FE794 table entries (row ranges vs. panel masks) and whether
+  spawnDivemanWaveObject's r2 argument is really alliance*8 or a dead-register artifact
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80FE6C8 -> ai_diveManWaveAttackSpawn
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FE6C8

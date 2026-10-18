@@ -1,0 +1,55 @@
+name: battle_pickPanelNearClosestEnemy
+address: '0x08116090'
+kind: function
+status: probable
+summary: 'Battle AI helper: finds the enemy closest to the acting object (opposite team), reads its panel
+  coords, and picks a random nearby panel from a relative-offset list using alliance-dependent panel-effect
+  parameters.'
+interface: (r5 = battle object) -> r0 = result of panelFlagCheck_8015D80 (chosen panel/param word); r4/r7
+  clobbered as callee-saved restored
+details: 'Reads the acting object''s oBattleObject_Alliance byte and XORs it with 1 to get the opposing
+  team, then calls battleObject_findClosestEnemyBattleObject_80103F8 to get the nearest enemy of that
+  team. From that enemy it loads the two panel-coordinate bytes at offsets 0x12 and 0x13 and passes them
+  with table pointer byte_8116190 to GetAllianceDependentPanelParamArgs, which selects an 8-byte alliance-indexed
+  panel-effect parameter entry (param word + args pointer). Finally it calls the AI''s filtered random
+  relative-panel picker panelFlagCheck_8015D80 with candidate list byte_8116180, which transforms the
+  relative offsets by facing and checks panel flags. Net effect: select a panel in the vicinity of the
+  closest enemy, parameterized by team, presumably for an attack/panel effect in the battlesweep route.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#oBattleObject_Alliance]; eor r0,#1 before bl battleObject_findClosestEnemyBattleObject_80103F8
+    — searches the opposite team; ldrb r1,[r0,#0x13]/ldrb r0,[r0,#0x12] after the find call — reads the
+    found enemy's panel x/y for the param lookup; ldr r3,=byte_8116190 then bl GetAllianceDependentPanelParamArgs
+    — alliance-indexed panel-effect parameter table; ldr r4,=byte_8116180 then bl panelFlagCheck_8015D80
+    — random relative-offset panel list filtered by panel flags; only caller sub_8115FCE runs on the recorded
+    battlesweep route, consistent with an attack/AI panel-targeting step
+  refs:
+  - bn6f/asm/asm32.s:15962
+  - 0x08115FCE sub_8115FCE
+  - 0x081096FA GetAllianceDependentPanelParamArgs
+  - 0x080103F8 battleObject_findClosestEnemyBattleObject_80103F8
+  - 0x08015D80 panelFlagCheck_8015D80
+  reproduce: python3 tools/asmcat.py 0x08116090
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- exact return convention of panelFlagCheck_8015D80 (chosen panel struct vs flag word) not shown here
+- what the battlesweep caller does with the picked panel (attack spawn vs panel effect)
+- why findClosestEnemyBattleObject receives the flipped alliance in r0 while panel coords come via the
+  stack set by the caller
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8116090 -> battle_pickPanelNearClosestEnemy
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8116090

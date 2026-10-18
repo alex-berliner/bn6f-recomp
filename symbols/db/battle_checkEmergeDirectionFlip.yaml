@@ -1,0 +1,51 @@
+name: battle_checkEmergeDirectionFlip
+address: '0x0800F46C'
+kind: function
+status: probable
+summary: Returns a battle object's DirectionFlip for its panel-landing/emerge animation, forced to 0 when
+  the battle's panel column pattern is one of three special layouts.
+interface: (implicit r5 = battle object ptr) -> r0 = DirectionFlip byte, or 0 if panel pattern is 0x30/0x38/0x3c;
+  flags not meaningful
+details: Queries the active battle's panel column pattern via GetBattlePanelColumnPattern and compares
+  it to 0x30, 0x38, and 0x3c (likely full-field/special panel layouts, e.g. from certain area or boss
+  encounters). If none match, it returns the object's oBattleObject_DirectionFlip byte read from [r5,#oBattleObject_DirectionFlip];
+  otherwise it returns 0, suppressing the flip. r5 is a high-register parameter set by the caller to the
+  battle object being moved. All callers are AI move/landing handlers (ai_relocateToFuturePanel, battleObject_commitMoveLanding
+  and related sub_8014Fxx/8015xxx helpers) that place an object on its reserved future panel with an emerge-style
+  animation, so this is the flip lookup for that placement.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'asm: bl GetBattlePanelColumnPattern then three cmp #0x30/0x38/0x3c + beq returning 0; asm fallback:
+    ldrb r0,[r5,#oBattleObject_DirectionFlip] — returns the object''s stored flip flag; caller 0x08014D08
+    ai_relocateToFuturePanel warps object onto its future panel with emerge animation, consistent with
+    a flip check; caller 0x08014B18 battleObject_commitMoveLanding commits FuturePanelXY and restarts
+    AI attack script, same move flow; callee GetBattlePanelColumnPattern summary confirms r0 is the battle
+    panel column pattern, not random data'
+  refs:
+  - bn6f/asm/asm00_2.s:1131
+  - 0x08014D08 ai_relocateToFuturePanel
+  - 0x08014B18 battleObject_commitMoveLanding_8014B18
+  - 0x08014F40 sub_8014F40
+  - 0x0802D26A GetBattlePanelColumnPattern
+  reproduce: python3 tools/asmcat.py 0x0800F46C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- beastsp
+open_questions:
+- what panel patterns 0x30/0x38/0x3c represent (which areas or bosses set them)
+- how each caller uses the return value (sets DirectionFlip vs. passes it to an emerge/spawn routine)
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_800F46C -> battle_checkEmergeDirectionFlip
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800F46C

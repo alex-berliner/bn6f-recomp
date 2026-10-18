@@ -1,0 +1,47 @@
+name: sprite_applyFrameAttrMode8
+address: '0x080A87D2'
+kind: function
+status: probable
+summary: If the current sprite frame's attribute byte has bit 7 set, writes 8 to object field +8, then
+  runs the sprite update.
+interface: (r0 = object/sprite ptr passed to sprite_getFrameParameters; r5 = object ptr, pre-set by caller)
+  -> r0 = result of sprite_update; no meaningful return
+details: Calls sprite_getFrameParameters and tests bit 0x80 of the returned attribute byte; when set it
+  stores the constant 8 into byte +8 of the object at r5, presumably selecting a render/blend mode or
+  state for that frame. It then calls sprite_update on the same object, so the flag check is applied before
+  the frame is drawn. Note the function never initializes r5 itself, so callers must set r5 to the object
+  beforehand (a callee-saved-register convention rather than an argument). The route evidence only shows
+  it under beastsp, suggesting it handles a Beast Out-specific frame attribute.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'tst r0,#0x80 after bl sprite_getFrameParameters gates the store (sub_80A87D2); strb r0(=8),[r5,#8]
+    writes a fixed value into object field +8; trailing bl sprite_update keeps the object''s sprite ticking
+    after the attribute check; getFrameParameters callee summary: returns tile index / flip-disable flag
+    / attribute byte of current frame'
+  refs:
+  - bn6f/asm/asm29.s:6858
+  - 0x08002DEA sprite_getFrameParameters
+  - 0x080026C4 sprite_update
+  reproduce: python3 tools/asmcat.py 0x080A87D2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- beastsp
+open_questions:
+- meaning of object field +8 = 8 (render mode, palette, state?)
+- which caller sets r5 and what object type it points to
+- semantic of attribute bit 0x80 in the frame parameter table
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80A87D2 -> sprite_applyFrameAttrMode8
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A87D2

@@ -1,0 +1,48 @@
+name: object_tickMoveLifetime
+address: '0x080E2358'
+kind: function
+status: probable
+summary: 'Battle-object update: decrement lifetime timer, move object by its velocity each frame, and
+  free the object when the timer expires or the battle ends.'
+interface: (r5 = battle object pointer) -> void; frees the object slot when Timer <= 0 or battle is over
+details: 'Reads the battle object at r5. First returns without action if battle_isBattleOver says the
+  battle is ending, or if battle_isTimeStop indicates a time-stop freeze (in both of the battle-over case
+  it goes straight to freeing, since the battle-over branch falls into the free path). Otherwise decrements
+  oBattleObject_Timer; if it hits 0 or below, the object is released via object_freeMemory. While the
+  timer is still positive, adds oBattleObject_XVelocity to oBattleObject_X and oBattleObject_YVelocity
+  to oBattleObject_Y, i.e. straight-line movement with no other behavior. Object fields used: Timer, X,
+  Y, XVelocity, YVelocity.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl battle_isBattleOver + tst/bne loc_80E2382: battle-over goes directly to object_freeMemory;
+    bl battle_isTimeStop + bne locret: time-stop skips the whole update; ldrh r0,[r5,#oBattleObject_Timer];
+    sub #1; strh; ble loc_80E2382: timer expiry frees the object; ldr/str pairs on oBattleObject_XVelocity/X
+    and YVelocity/Y: per-frame velocity integration; bl object_freeMemory as the only teardown callee:
+    object slot release on expiry'
+  refs:
+  - bn6f/asm/asm31.s:90774
+  - 0x0800A18E battle_isBattleOver
+  - 0x0800A098 battle_isTimeStop
+  - 0x08003458 object_freeMemory
+  reproduce: python3 tools/asmcat.py 0x080E2358
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- Which object type(s) use this as their update handler (projectile vs. effect) — no caller listing available
+- Whether velocity units need a shift/scale elsewhere, since this code adds them raw to X/Y
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80E2358 -> object_tickMoveLifetime
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E2358

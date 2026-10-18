@@ -1,0 +1,51 @@
+name: ai_pickRandomPanelScanningColumns
+address: '0x081038A4'
+kind: function
+status: probable
+summary: AI helper that scans battle columns from the far side inward, and once a column contains matching
+  panels, picks one at random and returns its row (plus a nibble field in r1).
+interface: (r0 = battle object, r2/r3 = filter args passed through, r5 = same/related object, hidden)
+  -> r0 = row (low 3 bits of panel byte), r1 = high nibble of that byte; returns 0 if no column has panels
+details: The function negates object_getFrontDirection to get a scan step, then walks columns starting
+  at 6 (or 1 if the byte at [r5+0x16] is nonzero), staying within 1..6. For each column it calls object_getPanelsInColumnIgnoreRowFiltered
+  with r1 = [r0+0x13] plus the passthrough r2/r3, which fills a buffer at sp+0x10 and returns the match
+  count. If a column is non-empty, it calls GetPositiveSignedRNG and svc 6 (modulo) to pick a random buffer
+  entry, returning the entry's low 3 bits (the row within the column) with the high nibble in r1. If every
+  column is exhausted without a match, it returns 0. This is characteristic of an AI attack/target-selection
+  routine that finds a random panel in the nearest occupied column starting from the enemy's back edge.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'neg r0 after object_getFrontDirection gives the column scan step; loop bounds cmp r4,#1 / cmp
+    r4,#6 keep it on the 6-column field; [r5+0x16] toggles the starting column between 6 and 1 (loc_81038C2:
+    mov r4,#1 vs mov r4,#6); object_getPanelsInColumnIgnoreRowFiltered fills sp+0x10 and its count r6
+    gates the loop exit; GetPositiveSignedRNG + svc 6 (r0 % r6) indexes the buffer at sp+0x10 to pick
+    a random panel byte; return value: lsr r1,#4 / lsl+lsr by 0x1d splits the byte into a high nibble
+    (r1) and 3-bit row (r0); 0 when no match (loc_81038F8)'
+  refs:
+  - bn6f/asm/asm31.s:160338
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800CF14 object_getPanelsInColumnIgnoreRowFiltered
+  reproduce: python3 tools/asmcat.py 0x081038A4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- exact meaning of the [r5+0x16] flag (start-side selector?) and of the r1/r2/r3 filter arguments to object_getPanelsInColumnIgnoreRowFiltered
+- what the high nibble of the returned panel byte encodes (column? panel state?)
+- which caller(s) invoke this — none are known, so the object structure and AI context are unconfirmed
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_81038A4 -> ai_pickRandomPanelScanningColumns
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81038A4

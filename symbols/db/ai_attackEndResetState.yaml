@@ -1,0 +1,49 @@
+name: ai_attackEndResetState
+address: '0x0810A9AE'
+kind: function
+status: probable
+summary: 'AI attack-state cleanup: resets the battle object''s animation, step timer, collision region,
+  panel reservation and hit element so it returns to its neutral AI state.'
+interface: (r5 = battle object ptr, r7 = AI attack vars ptr) -> r0 = clobbered; no return value
+details: If the object's ExtraVars (oBattleObject_ExtraVars) is nonzero the whole body is skipped, letting
+  a special state persist. Otherwise it reads a halfword at r5+0x7C, doubles it (<<2) as an index into
+  the table at byte_810A9E4, and stores the fetched byte into oBattleObject_CurAnim, selecting the idle/post-attack
+  animation per AI variant. It copies oAIAttackVars_AttackDuration into oAIAttackVars_StepTimer to restart
+  the step timer, calls object_setCollisionRegion with region 1, releases the object's reserved panel
+  at PanelX/PanelY via object_removePanelReserve, clears bit 0x40 of ObjectFlags1 with object_clearFlag,
+  and stores 8 into oAIAttackVars_HitElement, wiping any attack-specific element.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'tst ExtraVars / bne locret: body only runs for objects in normal state; ldrh r1,[r5,#0x7c];
+    lsl r1,#2; ldr r0,[off_810A9E0,r1]; strb r0,[r5,#CurAnim] picks anim from variant table; strh AttackDuration->StepTimer
+    restarts the AI step timer; bl object_setCollisionRegion with r0=1 plus object_removePanelReserve
+    undoes attack-time collision/panel booking; object_clearFlag(0x40) and HitElement=8 reset attack flag
+    and element in the AI attack vars'
+  refs:
+  - bn6f/asm/asm31.s:174770
+  - 0x0801A15C object_clearFlag
+  - 0x0801BB46 object_removePanelReserve
+  - 0x0801A07C object_setCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x0810A9AE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- exact meaning of ObjectFlags1 bit 0x40 and element value 8
+- what ExtraVars nonzero represents (state that must not be reset)
+- which attack routine calls this — no caller is currently known
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810A9AE -> ai_attackEndResetState
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810A9AE

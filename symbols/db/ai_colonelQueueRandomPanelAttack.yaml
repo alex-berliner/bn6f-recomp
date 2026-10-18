@@ -1,0 +1,50 @@
+name: ai_colonelQueueRandomPanelAttack
+address: '0x08101606'
+kind: function
+status: probable
+summary: 'Colonel AI attack step: arms a random-filtered-panel chooser callback, fetches the attack duration,
+  and switches the enemy into attack state 4/id 9.'
+interface: (r0 = enemy object (unused here), r7 = object struct) -> r0 = 9 (return of object_setAttack4);
+  sets oAIAttackVars_PanelChooseCallback and oAIAttackVars_AttackDuration
+details: Stores the pointer to object_pickRandomFilteredPanel into the AI attack vars' PanelChooseCallback
+  field at [r7], so a later AI step uses it to select a target panel. Calls sub_8101484 to get a duration
+  and writes it as a halfword into oAIAttackVars_AttackDuration. Finally calls object_setAttack4 with
+  r0 = 9 to put the enemy into attack mode 4 with attack id 9. Called from the Colonel AI state machine
+  (sub_81013AA) after state guards and a random 1-or-2 pick, i.e. one of Colonel's randomly chosen panel-targeting
+  attacks. The panel selection itself is deferred to the callback, so this function only queues it.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'str r0, [r7,#oAIAttackVars_PanelChooseCallback] with r0 = object_pickRandomFilteredPanel+1:
+    queues the panel-choice callback; bl sub_8101484 / strh r0, [r7,#oAIAttackVars_AttackDuration]: duration
+    fetched from helper and stored; mov r0, #9 / bl object_setAttack4: enters attack state 4 id 9; callers
+    in sub_81013AA (Colonel AI) guard states 1/2/3 and pick GetPositiveSignedRNG&1+1 before calling; route
+    ''battlesweep'' only: it runs during battle AI processing'
+  refs:
+  - bn6f/asm/asm31.s:155779
+  - 0x081013AA sub_81013AA
+  - 0x0810141E sub_81013AA
+  - 0x0810138C sub_810138C
+  - 0x08011690 object_setAttack4
+  - 0x08101484 sub_8101484
+  reproduce: python3 tools/asmcat.py 0x08101606
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- exact attack represented by id 9 (which Colonel move uses a random filtered panel)
+- what sub_8101484 computes (fixed value vs. derived from object state)
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8101606 -> ai_colonelQueueRandomPanelAttack
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8101606

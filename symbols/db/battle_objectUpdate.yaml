@@ -1,0 +1,48 @@
+name: battle_objectUpdate
+address: '0x080E99C0'
+kind: function
+status: probable
+summary: 'Per-frame update for a battle object: destroys it when the battle is over, otherwise runs its
+  update logic unless a time-stop freeze is active.'
+interface: () -> r0 = clobbered; uses r5 = battle object pointer; writes object->curState = CUR_STATE_DESTROY
+  on battle over
+details: This is an object update tick that takes no arguments, operating on the object pointer kept in
+  r5 (set by the caller/loop elsewhere). If battle_isBattleOver returns nonzero, the object's combined
+  state/action/phase word (oBattleObject_CurStateActionPhaseAndPhaseInitialized) is set to CUR_STATE_DESTROY,
+  ending the object. Otherwise, if battle_isTimeStop says the battle is frozen (flags bit 2), the function
+  does nothing this frame; only when the battle is running normally does it call sub_80E99DC, presumably
+  the object's actual behavior/update body.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl battle_isBattleOver / bne loc_80E99D6: battle-over check gates the whole update; mov r0,#CUR_STATE_DESTROY;
+    str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]: destroy path writes the object
+    state word; bl battle_isTimeStop / bne locret_80E99DA: skips the update while time-stop is active;
+    bl sub_80E99DC only reached when battle running and not time-stopped: the per-frame behavior call;
+    no argument loads; r5 holds the object, indicating a fixed-register update callback pattern'
+  refs:
+  - bn6f/asm/asm31.s:107217
+  - 0x0800A18E battle_isBattleOver
+  - 0x0800A098 battle_isTimeStop
+  - 0x080E99DC sub_80E99DC
+  reproduce: python3 tools/asmcat.py 0x080E99C0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- what object/entity this update belongs to (sub_80E99DC's body would show its behavior)
+- how r5 is set to the object pointer by the dispatching caller
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80E99C0 -> battle_objectUpdate
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E99C0

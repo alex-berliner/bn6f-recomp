@@ -1,0 +1,54 @@
+name: ai_shakeGroundAttackTick
+address: '0x08105DE6'
+kind: function
+status: probable
+summary: Per-frame update for an AI attack that periodically shakes the camera and, after a timer runs
+  out, marks the attack as landing (HitElement = 0x14).
+interface: (r5 = battle object, r7 = AI attack vars) -> void; no return value, attack state mutated in
+  r7
+details: 'On the first invocation (AttackElement == 0) it initializes the attack: sets AttackElement to
+  4, switches the object''s current animation to 0x1A, plays sound effect 0xF3, sets the object''s counter
+  time to 6, calls sub_8106690 (unknown helper), copies AttackBoost2 into StepTimer as the attack''s duration,
+  and triggers a camera shake of magnitude 2 / duration 10 plus ChargeCycles = 10. On subsequent ticks
+  it decrements ChargeCycles and re-fires the same (2,10) camera shake each time it reaches zero, producing
+  a continuous rumbling while the attack is active. It also decrements StepTimer every frame; when that
+  reaches zero it writes 0x14 into oAIAttackVars_HitElement, which is presumably the signal another routine
+  uses to apply the attack''s actual hit/damage. The routine touches only the AI attack-vars block at
+  r7 and the object header field CurAnim at r5.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne — initializes only once, so this is a per-frame
+    state handler; strb r0,[r5,#oBattleObject_CurAnim] (anim 0x1A) + PlaySoundEffect(0xF3) — starts the
+    attack's animation and SFX; two calls to camera_initShakeEffect_80302a8(2,10) — one at start, one
+    repeating every 10 frames via ChargeCycles; StepTimer decrement loop ending with strh 0x14,[r7,#oAIAttackVars_HitElement]
+    — delayed signal that the attack lands; object_setCounterTime(6) ties the routine into the battle-object
+    attack framework
+  refs:
+  - bn6f/asm/asm31.s:165059
+  - 0x080005CC PlaySoundEffect
+  - 0x080302A8 camera_initShakeEffect_80302a8
+  - 0x0800E9DC object_setCounterTime
+  reproduce: python3 tools/asmcat.py 0x08105DE6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- Purpose of sub_8106690 (called once during initialization) — likely spawns the attack's object/projectile
+- What HitElement = 0x14 is consumed by, which would confirm the exact attack (element 4, ground-shaking)
+  and whether the shake is thunder/quake themed
+- Which enemy/boss AI dispatches this routine — no callers known
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8105DE6 -> ai_shakeGroundAttackTick
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8105DE6

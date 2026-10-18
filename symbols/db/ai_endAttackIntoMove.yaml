@@ -1,0 +1,48 @@
+name: ai_endAttackIntoMove
+address: '0x0810B15C'
+kind: function
+status: probable
+summary: AI action callback that wraps up an attack and hands the battle object over to its moving state
+interface: () -> void; operates on the current battle object via the object_* helpers' implicit self pointer
+details: Clears bit 0x40 of the current object's CollisionData ObjectFlags1 (likely an attack-active/invulnerable-style
+  flag set while attacking), then ORs in the 1<<OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT bit of the same word,
+  marking the object as currently moving. Finally it calls object_exitAttackState to leave the attack
+  state cleanly. The routine takes no arguments of its own; the object_* helpers act on the engine's current-object
+  pointer. This end-attack-then-mark-moving sequence is the typical shape of an AI action/state transition
+  step, e.g. a boss script stepping from an attack phase back into movement.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: calls object_clearFlag with 0x40 on the implicit current object's ObjectFlags1; sets ObjectFlags1
+    bit 1<<OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT via object_setFlag1; ends with object_exitAttackState,
+    so the routine transitions out of an attack; no other logic present — it is purely a state-change
+    sequence, 11 instructions; recorded route is battlesweep, consistent with an AI battle-behavior step
+  refs:
+  - bn6f/asm/asm31.s:175731
+  - 0x0801A15C object_clearFlag
+  - 0x0801A152 object_setFlag1
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x0810B15C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- no known callers, so it is unconfirmed which AI script/state table invokes this and for which enemy
+  or boss
+- the exact meaning of ObjectFlags1 bit 0x40 is unknown
+- whether the 1<<OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT set here triggers the movement phase directly or
+  just a flag consumed later
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810B15C -> ai_endAttackIntoMove
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810B15C

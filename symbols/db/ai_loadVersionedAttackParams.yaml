@@ -1,0 +1,50 @@
+name: ai_loadVersionedAttackParams
+address: '0x080FBF92'
+kind: function
+status: probable
+summary: Fetches two difficulty/version-scaled parameter values from AI tables and packs them into the
+  attack-vars damage field for the selected ProtoMan attack.
+interface: (r0 = attack index, r5 = battle object from caller) -> stores packed parameters at [AIDataPtr+0xA0]
+  (oAIAttackVars_Damage); r0 clobbered
+details: 'Given an attack index in r0, reads a halfword from byte_80FBFFC at index*8 and another from
+  byte_80FC038 at index*8, both through battle_aiGetVersionedTableEntry (which applies the battle object''s
+  AI version, with a scaled variant for version 4). The two halfwords are combined into a 32-bit value
+  (low half from the first table, high half from the second) and stored at AIDataPtr+0xA0, the AI attack-vars
+  damage/parameters slot. Quirk: the function never loads r5 itself — it relies on the caller having the
+  battle object in r5, so it is an internal helper for the nearby init functions. The three direct callers
+  are all ProtoMan attack-init routines, matching the parameter-table pattern.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'asm: two battle_aiGetVersionedTableEntry_800FE12 calls on byte_80FBFFC and byte_80FC038 with
+    r0*8 stride; asm: ''orr r6, r0'' after ''lsl r0,#0x10'' packs the two table reads into one word; asm:
+    ''str r6,[r3,#oAIAttackVars_Damage]'' with r3 = [r5+oBattleObject_AIDataPtr]+0xA0; callers ai_initProtoManAttack0A
+    / ai_initProtoManPanelAttack / ai_protoManInitAttack all ''set attack timing/panel-choose callback
+    ... and kick off attack state'', i.e. the same init flow this helper feeds parameters into'
+  refs:
+  - bn6f/asm/asm31.s:144462
+  - 0x080FBE60 ai_initProtoManAttack0A
+  - 0x080FBE9C ai_initProtoManPanelAttack
+  - 0x080FBEE8 ai_protoManInitAttack
+  - 0x0800FE12 battle_aiGetVersionedTableEntry_800FE12
+  reproduce: python3 tools/asmcat.py 0x080FBF92
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- exact meaning of the high halfword from byte_80FC038 (second parameter packed above the damage) — would
+  need the table data or a reader of oAIAttackVars_Damage to confirm
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80FBF92 -> ai_loadVersionedAttackParams
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FBF92

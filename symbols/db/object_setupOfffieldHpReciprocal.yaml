@@ -1,0 +1,54 @@
+name: object_setupOfffieldHpReciprocal
+address: '0x081166D4'
+kind: function
+status: probable
+summary: Hides the battle object off-field at panel X=7 and stores a 0x4000/MaxHP fixed-point reciprocal
+  at object+0x80.
+interface: (r5 = battle object, no args) -> r0 = 0x4000/MaxHP stored to [r5+0x80]; object moved to panel
+  (7, unchanged Y), collision cleared
+details: Runs on the object held in r5. First object_clearCollisionRegion removes it from its collision
+  region, then PanelX is set to 7 (one past the last panel column, i.e. off-field), and object_setCoordinatesFromPanels/object_updateCollisionPanels
+  refresh the pixel position and facing for that new panel. Finally it loads MaxHP from the object, divides
+  0x4000 (16384, i.e. 2^14 fixed point) by it with BIOS SWI 6 (Div), and stores the halfword result at
+  object+0x80. That value is a reciprocal of MaxHP suitable for computing HP-fraction quantities (x *
+  recip >> 14 = x/MaxHP), but what reads it is not visible here. No argument registers are touched, so
+  callers must set up r5 before calling.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'strb r0,#7 -> oBattleObject_PanelX then setCoordinatesFromPanels/updateCollisionPanels: object
+    is repositioned to off-field panel X=7 (sub_81166D4 lines 4-8); bl object_clearCollisionRegion first
+    thing: collision removed before repositioning; ldrh r1,[r5,#oBattleObject_MaxHP]; r0=0x4000; svc 6
+    (Div): computes 16384/MaxHP; strh r0,[r5,#0x80]: result stored as halfword into an unknown object
+    field; r5 used without being set in the function: caller must pass the battle object via r5; no known
+    callers, only recorded route executions (battlesweep, beastsp)'
+  refs:
+  - bn6f/asm/asm32.s:16498
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0800E29C object_setCoordinatesFromPanels
+  - 0x0801A04C object_updateCollisionPanels
+  reproduce: python3 tools/asmcat.py 0x081166D4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- What structure field lives at battle object +0x80 and which code reads the 0x4000/MaxHP value (would
+  show what HP-fraction behavior this initializes)
+- Which attack or gameplay effect (battlesweep / beastsp routes) invokes this and what r5 object it operates
+  on
+- Whether panel Y is expected to be already set by the caller, since only PanelX is written
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_81166D4 -> object_setupOfffieldHpReciprocal
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81166D4

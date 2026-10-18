@@ -13,7 +13,7 @@
  *
  * Reads the phase byte at offset 0 of the AI attack state (r7) and tail-calls
  * the corresponding charge shot attack routine through the table off_80EBE14:
- *   +0 -> sub_80EBE20, +4 -> battle_aiBusterAttackTick_80EBE54, +8 -> battleObject_aiAttackTickCharge_80EBEB2
+ *   +0 -> battle_aiAttackWindupTick, +4 -> battle_aiBusterAttackTick_80EBE54, +8 -> battleObject_aiAttackTickCharge_80EBEB2
  *
  * Note the original indexes the table with the raw byte (`ldr r1, [r1, r0]`),
  * so the stored phase values are byte offsets (0, 4, 8), not entry indices.
@@ -23,7 +23,7 @@
  *
  * Incoming-register artifacts kept for exactness: R0 = the phase byte (the
  * ldrb overwrites the incoming r0), and R1 = the callee's thumb entry word
- * (e.g. sub_80EBE20+1), an artifact of loading the branch target into r1.
+ * (e.g. battle_aiAttackWindupTick+1), an artifact of loading the branch target into r1.
  */
 #define CHARGE_ATTACK_TABLE 0x080EBE14
 
@@ -33,8 +33,8 @@ Next megamanChargeShotAiAttack_80EBE00(void) {
     switch (phase) {
     case 0:
         R0 = phase;
-        R1 = LD32(CHARGE_ATTACK_TABLE + 0); /* sub_80EBE20 (thumb) */
-        GUEST_CALL(sub_80EBE20);
+        R1 = LD32(CHARGE_ATTACK_TABLE + 0); /* battle_aiAttackWindupTick (thumb) */
+        GUEST_CALL(battle_aiAttackWindupTick);
         break;
     case 4:
         R0 = phase;
@@ -3167,7 +3167,7 @@ Next battle_aiAttackCountdownTick_80FE30C(void) {
  *
  * r7 points to the AI attack state block. The byte at offset 0
  * (oAIAttackVars_HitElement) indexes the handler table at off_80FE464:
- *     entry 0 -> sub_80FE46C
+ *     entry 0 -> ai_stageWoodAttackHit
  *     entry 1 -> aiAttackState_tickTimer_sub_80FE4AC
  * Note the original indexes with the raw byte (ldr r1, [r1, r0]), so a
  * selector of 4 selects the second entry; in practice the field only ever
@@ -3184,8 +3184,8 @@ Next aiAttackDispatchHandler_80FE452(void) {
 
     R0 = selector;
     if (selector == 0) {
-        R1 = LD32(A_off_80FE464);        /* .word sub_80FE46C+1 */
-        GUEST_CALL(sub_80FE46C);
+        R1 = LD32(A_off_80FE464);        /* .word ai_stageWoodAttackHit+1 */
+        GUEST_CALL(ai_stageWoodAttackHit);
     } else {
         R1 = LD32(A_off_80FE464 + 4);    /* .word aiAttackState_tickTimer_sub_80FE4AC+1 */
         GUEST_CALL(aiAttackState_tickTimer_sub_80FE4AC);
@@ -3788,7 +3788,7 @@ Next battle_attackTimerTick_8109CBC(void) {
  * Reads the AI attack sub-state byte from the AIAttackVars struct pointed to
  * by r7 and jumps to its handler through the table at off_8109CF8:
  *   0x00 -> sub_8109D08
- *   0x04 -> sub_8109D70
+ *   0x04 -> ai_commitStepMove
  *   0x08 -> aiAttackVars_countdownSub_8109D98
  *   0x0c -> ai_attackTickDown_timerEndExit_8109DBA
  * The handler is entered with r0 = sub-state index and r1 = its own table
@@ -4108,7 +4108,7 @@ Next battle_object_updatePhaseTick_8109FC4(void) {
  *
  * Behavior:
  *  - On the first tick (state subfield at +2 == 0) the attack is initialized:
- *    the per-attack step handler (sub_810A21A) is installed in Unk_28, the
+ *    the per-attack step handler (battle_findApproachPanelTowardEnemy) is installed in Unk_28, the
  *    attack id for this game version (byte_8109F46 indexed by version) is
  *    stored in Unk_18, object_setAttack0(10) starts the attack, and the
  *    substate counter is set to 4.
@@ -4120,7 +4120,7 @@ Next battle_object_updatePhaseTick_8109FC4(void) {
 Next ai_attackStateStep_810A080(void) {
     if (LD8(R6 + 2) == 0) {
         /* Begin the attack: install handler and version-specific attack id. */
-        ST32(R7 + oAIAttackVars_PanelChooseCallback, A_sub_810A21A | 1);
+        ST32(R7 + oAIAttackVars_PanelChooseCallback, A_battle_findApproachPanelTowardEnemy | 1);
         ST16(R7 + oAIAttackVars_AttackDuration,
              LD8(LD8(R4 + oAIData_Version_16) + A_byte_8109F46));
 

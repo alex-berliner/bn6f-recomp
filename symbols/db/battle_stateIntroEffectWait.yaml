@@ -1,0 +1,52 @@
+name: battle_stateIntroEffectWait
+address: '0x080092F0'
+kind: function
+status: probable
+summary: 'Battle state handler: on entry fires the queued battle sub-effect (intro/effect kind), then
+  waits until cross-net battle readiness allows advancing to state phase 8.'
+interface: (r5 = battleState struct) -> void; reads/writes oBattleState_SubPhaseInitFlag, oBattleState_State4EventCount,
+  oBattleState_StatePhaseAndInitFlag
+details: A per-frame battle state step for one state (state 4?) of the battle state machine. On first
+  invocation (SubPhaseInitFlag == 0) it calls battle_dispatchKindEffect_801E792 with the kind byte taken
+  from oBattleState_State4EventCount (dispatching effect kind 0-ish, likely the battle intro effect) and
+  stores 4 into SubPhaseInitFlag so the effect only starts once. On every later frame it polls comm_checkCrossNetBattleReady_801E754;
+  while that returns nonzero it stays in the current phase, and once it returns 0 it writes phase 8 into
+  oBattleState_StatePhaseAndInitFlag to move the battle state machine on. Being executed on the battlesweep/beastsp
+  routes with no other callers fits a battle-intro state handler that waits for the intro effect and link-battle
+  sync before continuing.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb/tst on oBattleState_SubPhaseInitFlag with bne makes the dispatch a one-shot init (asm
+    80092F2-80092F6); bl battle_dispatchKindEffect_801E792 with r1 = oBattleState_State4EventCount starts
+    the queued battle sub-effect; strb #4 to oBattleState_SubPhaseInitFlag marks the effect as already
+    started; bl comm_checkCrossNetBattleReady_801E754 then tst/bne keeps the state until it returns 0;
+    strh #8 to oBattleState_StatePhaseAndInitFlag advances the battle phase when the check passes'
+  refs:
+  - bn6f/asm/asm00_1.s:13613
+  - 0x0801E792 battle_dispatchKindEffect_801E792
+  - 0x0801E754 comm_checkCrossNetBattleReady_801E754
+  reproduce: python3 tools/asmcat.py 0x080092F0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- exact semantics of comm_checkCrossNetBattleReady_801E754's 0/1/2 return (which value means 'proceed')
+- what effect kind oBattleState_State4EventCount holds at this point and which state number this handler
+  serves
+- what state/phase 8 does next in the battle state machine
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80092F0 -> battle_stateIntroEffectWait
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80092F0

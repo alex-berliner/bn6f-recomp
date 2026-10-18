@@ -1,0 +1,46 @@
+name: battle_deleteBattleObject
+address: '0x0811670E'
+kind: function
+status: probable
+summary: 'Tears down a battle actor: decrements its alliance count, clears it from the alive-actor list,
+  and marks its state as destroy'
+interface: (r0 = unused; actor pointer expected in r5) -> r0 = destroyed; sets object state to CUR_STATE_DESTROY
+details: Acts on a battle object whose pointer is held in r5, not passed in r0 (the incoming r0 is discarded).
+  It first calls the battle-over bookkeeping routine, which decrements the actor's alliance member count
+  and clears its entries in the alive-actor turn list when an actor leaves. It then calls RemoveGivenAliveBattleActorFromList
+  to clear every slot in the 8-entry alive player actor list that points to this actor. Finally it stores
+  CUR_STATE_DESTROY into the object's state/phase field, so the object's update loop will run its destroy
+  phase. The r5 convention suggests this is called from a shared object-dispatch path rather than directly.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl relatedToIsBattleOver_800A11C — decrements alliance count and clears turn-list entries for
+    a leaving actor; mov r0,r5; bl RemoveGivenAliveBattleActorFromList — clears the actor from the 8-entry
+    alive list; mov r0,#CUR_STATE_DESTROY; str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]
+    — transitions the object to the destroy state; no use of incoming r0; only r5 is the object pointer,
+    implying a dispatcher caller convention
+  refs:
+  - bn6f/asm/asm32.s:16532
+  - 0x080077B4 RemoveGivenAliveBattleActorFromList
+  - 0x0800A11C relatedToIsBattleOver_800A11C
+  reproduce: python3 tools/asmcat.py 0x0811670E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- beastsp
+open_questions:
+- no callers captured — the r5-based calling convention and which route invokes this (e.g. actor HP reaches
+  0 vs. explicit deletion) are unconfirmed
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_811670E -> battle_deleteBattleObject
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811670E

@@ -2625,7 +2625,7 @@ Next chatbox_closeFadeHandler_80499CE(void) {
         R0 = 0x40;
         GUEST_CALL(SetRenderInfoLCDControl);
         GUEST_CALL(chatbox_8040818);
-        GUEST_CALL(sub_811F758);
+        GUEST_CALL(battle_resetAndInitScene);
     } else {
         /* Screen fade still active: bail out via the alternate path. */
         GUEST_CALL(battle_moduleInit_803A820);

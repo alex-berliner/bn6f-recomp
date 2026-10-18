@@ -1,0 +1,55 @@
+name: ai_initAttackState
+address: '0x0810806E'
+kind: function
+status: probable
+summary: 'Initializes the enemy AI''s attack state: records difficulty tier, sets substate 2, picks a
+  panel-choose callback, computes attack duration/boost, and targets the opposing player before starting
+  attack 12.'
+interface: (r7 = AIAttackVars struct, r5 = AI's BattleObject) -> r0 = clobbered; writes oAIAttackVars
+  fields, sets attack 0xC via object_setAttack0
+details: Stores the AI difficulty tier (from battle_getAiDifficultyTier) into oAIAttackVars_AiDifficultyTier
+  and clears the InitFlag. Calls sub_8108124 with r0=2, presumably selecting substate 2 of the AI attack
+  state machine, and installs sub_8108CBA as oAIAttackVars_PanelChooseCallback, implying the attack picks
+  a panel to strike. sub_8107F48 and sub_8107F5C supply the AttackDuration, AttackBoost2, and TimerOrCycles
+  initial values. It then eors the object's Alliance bit and calls battle_findPlayer to store the opposing
+  player's object pointer in oAIAttackVars_TargetObjectPtr. Finally it invokes object_setAttack0 with
+  0xC, beginning the attack itself. All four callers appear to be distinct AI attack entry points that
+  share this common initialization.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'strb r0,[r7,#oAIAttackVars_AiDifficultyTier] + strb of 0 to InitFlag: sets up oAIAttackVars
+    state; ldr r0,=sub_8108CBA+1; str r0,[r7,#oAIAttackVars_PanelChooseCallback]: registers a panel-choosing
+    callback; eor r0,r1 with Alliance then bl battle_findPlayer: target is the object''s opponent player;
+    mov r0,#0xc; bl object_setAttack0: launches attack id 12; four callers sub_8107C94/8107CF0/8107D62/8107DD4
+    share this init, matching per-attack AI entry points'
+  refs:
+  - bn6f/asm/asm31.s:169619
+  - 0x08107C94 sub_8107C94
+  - 0x08107CF0 sub_8107CF0
+  - 0x08107D62 sub_8107D62
+  - 0x0800FE36 battle_getAiDifficultyTier_800FE36
+  - 0x080103BC battle_findPlayer
+  - 0x08011680 object_setAttack0
+  reproduce: python3 tools/asmcat.py 0x0810806E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- exact meaning of substate value 2 set via sub_8108124
+- what attack 0xC is in game terms
+- semantics of AttackBoost2 vs TimerOrCycles fields set from sub_8107F5C
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810806E -> ai_initAttackState
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810806E

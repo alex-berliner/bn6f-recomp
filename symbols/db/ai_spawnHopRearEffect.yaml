@@ -1,0 +1,49 @@
+name: ai_spawnHopRearEffect
+address: '0x08115446'
+kind: function
+status: probable
+summary: Spawns an effect-object (effect type 0) 14 px behind the AI battle object's facing direction,
+  likely the dust/puff of a hop.
+interface: (r5 = battle object ptr) -> r0 = spawned effect object ptr; flags clobbered
+details: Reads the object's facing via object_getFrontDirection and computes a 14-pixel X offset (0xe
+  << 16) scaled by that direction, i.e. opposite to where the object faces. Loads the object's position
+  triple from [r5+0x34] (X, Y, Z) with ldmia, applies X -= 14*dir and Z += byte_81154E8 (currently 0,
+  a tweakable Z offset), then calls spawn_t1_0x0_EffectObject to create a type-4/effect-0 battle object
+  at that spot and returns its pointer. No other fields of the object are touched.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_getFrontDirection; mul r4, r0 with r4=0xe<<16 gives a signed 14px offset following
+    facing (asm lines 2-5); ldmia r0! with r0=r5+0x34 loads three words, matching the object position
+    struct at +0x34 (asm lines 6-7); sub r1,r1,r4 and ldr r4,byte_81154E8 (=0) applied to r3 are position
+    adjustments before spawning (asm lines 8-10); bl spawn_t1_0x0_EffectObject with mov r4,#1 returns
+    the new effect object (asm lines 11-12); sole game caller ai_hopStepUpdate is a hop/leap update, matching
+    a hop dust effect behind the mover
+  refs:
+  - bn6f/asm/asm32.s:14536
+  - 0x08115398 ai_hopStepUpdate
+  - 0x08115432 sub_8115432
+  - 0x0800E2CA object_getFrontDirection
+  - 0x080E05F6 spawn_t1_0x0_EffectObject
+  reproduce: python3 tools/asmcat.py 0x08115446
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- exact visual of effect type 0 (dust vs generic puff) not confirmable from this function
+- byte_81154E8's constant is 0 here; whether other build sites use nonzero Z offsets is unknown
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8115446 -> ai_spawnHopRearEffect
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8115446

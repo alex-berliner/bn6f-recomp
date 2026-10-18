@@ -1,0 +1,49 @@
+name: ai_attackTimerStep
+address: '0x080F8A48'
+kind: function
+status: probable
+summary: 'Per-frame tick of an AI attack step: counts down a frame timer and, when it expires, transitions
+  the object into its moving/attacking state with a fixed hit element.'
+interface: (r7 = battle object AI attack vars) -> void; flags from the timer subtraction
+details: Runs each frame against r7 = the current battle object's AI attack variable block. It decrements
+  oAIAttackVars_StepTimer and returns immediately if the result is still positive. When the timer reaches
+  zero it clears ObjectFlags1 bit 0x40 (likely an attack-charge/telegraph flag set while waiting), sets
+  the OBJECT_FLAGS_CURRENTLY_MOVING_1 bit so the object's movement/attack logic activates, and writes
+  HitElement = 0xC into oAIAttackVars_HitElement for the hit that the attack will deal.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrh/sub/strh on [r7,#oAIAttackVars_StepTimer] with 'bgt locret' = frame-countdown gate, asm
+    lines 2-5; object_clearFlag(0x40) drops a standing flag only on timer expiry; object_setFlag1(1<<OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT)
+    marks the object as now moving/attacking; strh 0xC into oAIAttackVars_HitElement assigns a fixed element
+    to the upcoming hit; uses only r7-relative fields, matching AI attack script step handlers that receive
+    no r0 args
+  refs:
+  - bn6f/asm/asm31.s:137710
+  - 0x0801A15C object_clearFlag
+  - 0x0801A152 object_setFlag1
+  reproduce: python3 tools/asmcat.py 0x080F8A48
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- Which attack or enemy uses this step (no callers found in snapshots; dispatched via AI attack script
+  tables)
+- What ObjectFlags1 bit 0x40 means in this context
+- Which element value 0xC (HitElement = 12) corresponds to
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F8A48 -> ai_attackTimerStep
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F8A48

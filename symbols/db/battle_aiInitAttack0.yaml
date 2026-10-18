@@ -1,0 +1,53 @@
+name: battle_aiInitAttack0
+address: '0x08108014'
+kind: function
+status: probable
+summary: 'Initializes an enemy AI''s attack routine: reads AI difficulty tier, sets up attack state, targets
+  the opposing player, and starts attack 0.'
+interface: (r0 = enemy BattleObject passed via callee convention, r5/r7 = object and AI attack vars) ->
+  r0 = destroyed; sets oAIAttackVars fields
+details: This is a per-object AI attack initializer. It calls battle_getAiDifficultyTier_800FE36 and stores
+  the resulting tier (0-2) into oAIAttackVars_AiDifficultyTier, then writes 2 to oAIAttackVars_InitFlag.
+  It calls sub_8108124 with r0=0 (some reset, argument 0), then sub_8107EE8/sub_8107EFC to fetch the attack
+  duration and a boost value into oAIAttackVars_AttackDuration and oAIAttackVars_AttackBoost2. It computes
+  the opposing alliance (Alliance EOR 1), resolves that object via battle_findPlayer, and stores it as
+  oAIAttackVars_TargetObjectPtr. Finally it starts the object's attack 0 via object_setAttack0 with duration
+  0xa (10 frames?). The four callers (sub_8107C94/CF0/D62/DD4) look like a jump-table of AI attack-case
+  handlers all sharing this common init path.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: strb r0,[r7,#oAIAttackVars_AiDifficultyTier] after bl battle_getAiDifficultyTier_800FE36 stores
+    the AI tier; mov r0,#2; strb r0,[r7,#oAIAttackVars_InitFlag] marks the attack vars as initialized;
+    eor r0,r1 with Alliance then bl battle_findPlayer; str r0,[r7,#oAIAttackVars_TargetObjectPtr] selects
+    the opposing player as target; mov r0,#0xa; bl object_setAttack0 at the tail actually starts the attack;
+    four sibling callers sub_8107C94/CF0/D62/DD4 all funnel into this common attack init
+  refs:
+  - bn6f/asm/asm31.s:169577
+  - 0x08107C94 sub_8107C94
+  - 0x08107CF0 sub_8107CF0
+  - 0x08107D62 sub_8107D62
+  - 0x0800FE36 battle_getAiDifficultyTier_800FE36
+  - 0x080103BC battle_findPlayer
+  - 0x08011680 object_setAttack0
+  reproduce: python3 tools/asmcat.py 0x08108014
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- what sub_8108124, sub_8107EE8 and sub_8107EFC compute (attack duration/boost sources), and which AI
+  attack types the four callers correspond to
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8108014 -> battle_aiInitAttack0
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8108014

@@ -1,0 +1,49 @@
+name: ai_attackPhaseUpdate
+address: '0x080FC118'
+kind: function
+status: probable
+summary: 'Advances an enemy''s two-phase attack timer: first the wind-up/step phase, then the active attack
+  phase which ends via object_exitAttackState.'
+interface: (r0 unused/overwritten; r5 = battle object, r7 = oAIAttackVars) -> void; no meaningful return
+details: 'Reads oAIAttackVars_AttackElement to pick a phase. Phase 0 (wind-up): decrements StepTimer;
+  when it hits 0, resets the object''s CurAnim to 0, clears collision flag 0x40, sets the ObjectFlags1
+  ''currently moving'' bit, reloads StepTimer from AttackDuration, and writes AttackElement = 4 as a sentinel
+  meaning ''attack active''. Any nonzero element (i.e. phase 4): just decrements StepTimer and, on expiry,
+  calls object_exitAttackState to end the attack. All state lives in the oAIAttackVars block addressed
+  off r7 plus the object header at r5.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne splits the two phases; phase-0 expiry sets
+    CurAnim=0, clears flag 0x40 via object_clearFlag, sets moving bit via object_setFlag1; mov r0,#4;
+    strb r0,[r7,#oAIAttackVars_AttackElement] writes the attack-active sentinel; nonzero phase falls through
+    to bl object_exitAttackState after the same StepTimer countdown; StepTimer is reloaded from AttackDuration
+    only in phase 0, so AttackDuration times the second phase
+  refs:
+  - bn6f/asm/asm31.s:144631
+  - 0x0801A15C object_clearFlag
+  - 0x0801A152 object_setFlag1
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x080FC118
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- what element value 4 means in the caller's element scheme (actual element id vs generic 'attacking'
+  sentinel)
+- meaning of collision flag 0x40 that gets cleared
+- which enemy/attack uses this (no known caller) and what animation/pose CurAnim=0 resumes
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80FC118 -> ai_attackPhaseUpdate
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FC118

@@ -1,0 +1,50 @@
+name: ai_startAttack
+address: '0x0810BCBC'
+kind: function
+status: probable
+summary: 'AI routine that begins a version-dependent enemy attack: loads duration/damage from per-version
+  tables, sets step timer, blocks sliding, and selects attack 10.'
+interface: (r0..r7 = battle object / AI context in fixed registers) -> r0 = 0; sets oAIState_ScriptId
+  = 0
+details: When object_canMove says the enemy is free to act, it reads the AI version byte (oAIData_Version_16)
+  and indexes three byte tables (byte_810BBF0 -> AttackDuration, byte_810BBC8 -> Damage, byte_810BBD0
+  -> ExtraDamage), storing them into the oAIAttackVars fields of the object. It then calls sub_810BD94
+  to fill AttackBoost2 and sub_810BD5E, sets StepTimer to 10, calls sub_810B9EC, ORs OBJECT_FLAGS_CANNOT_SLIDE
+  into the object flags, and calls object_setAttack0 with attack id 0xA. Finally it clears oAIState_ScriptId
+  to 0 whether or not the attack started, so the AI script state machine restarts. The version-indexed
+  tables suggest the same AI serves both game versions (Gregar/Falzar) with different attack stats.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r1,[r4,#oAIData_Version_16] + byte table loads strh into oAIAttackVars_AttackDuration/Damage/ExtraDamage;
+    bl object_canMove / beq skip gates the whole setup on the object being free to act; mov r0,#OBJECT_FLAGS_CANNOT_SLIDE;
+    bl object_setFlag1 disables sliding during the attack; mov r0,#0xa; bl object_setAttack0 selects attack
+    10 before resetting state; mov r0,#0; strb r0,[r6,#oAIState_ScriptId] runs unconditionally at the
+    end, resetting the AI script index
+  refs:
+  - bn6f/asm/asm31.s:177137
+  - 0x0800E5E2 object_canMove
+  - 0x0801A152 object_setFlag1
+  - 0x08011680 object_setAttack0
+  reproduce: python3 tools/asmcat.py 0x0810BCBC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- What sub_810BD94, sub_810BD5E and sub_810B9EC do (likely boost/effect setup and movement start)
+- Which enemy/attack this belongs to and what attack id 10 is, needs the AI script table entry that dispatches
+  to it
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810BCBC -> ai_startAttack
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810BCBC

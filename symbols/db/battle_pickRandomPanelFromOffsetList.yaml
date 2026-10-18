@@ -1,0 +1,53 @@
+name: battle_pickRandomPanelFromOffsetList
+address: '0x08110020'
+kind: function
+status: probable
+summary: Scans a list of relative panel offsets against panel-parameter masks, then returns one uniformly
+  random matching panel (x, y, and candidate count).
+interface: (r0 = base x, r1 = base y, r2/r3 = panel-parameter mask sets, r4 = offset list (signed byte
+  pairs, 0x7F terminator), r5 = object (byte 0x13 = row to exclude), r6 = alliance id) -> r0 = chosen
+  x (0-6), r1 = chosen y, r2 = number of candidates; returns r2 = 0 if none matched
+details: 'Converts r6 via object_getAllianceDirection to a +1/-1 side multiplier, then iterates r4 as
+  2-byte entries (signed x-offset, signed y-offset) until a 0x7F terminator. For each entry it computes
+  absolute x = baseX + offX*dir and y = baseY + offY and calls object_checkPanelParameters with the two
+  masks from r2/r3; matches whose y equals byte [r5+0x13] are skipped (likely the caster''s own row).
+  Each match is packed as x | (y<<4) into a stack list. If any candidates exist, it calls GetPositiveSignedRNG
+  and BIOS Div (svc 6) to get rand % count as the index, then unpacks the entry: r0 = x (masked to 3 bits
+  via lsl/lsr 29), r1 = y (nibble), r2 = count.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_getAllianceDirection with r6 before the loop shows side-relative offset mirroring;
+    ldrsb on [r4] / [r4,#1] with 0x7F terminator and add r4,#2 shows a signed 2-byte offset table; bl
+    object_checkPanelParameters with x,y and the r2/r3 mask args filters candidates; cmp y, [r5,#0x13]
+    / beq skip shows a row exclusion tied to a battle-object field; svc 6 (BIOS Div) with rand/count and
+    ldrb [sp,r1] shows uniform random selection from the stack list
+  refs:
+  - bn6f/asm/asm32.s:4550
+  - 0x0811000E sub_811000E
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0800E2C2 object_getAllianceDirection
+  reproduce: python3 tools/asmcat.py 0x08110020
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- What battle-object structure r5 points to and the exact meaning of field 0x13 (excluded row)
+- Which panel-parameter masks callers pass (e.g., hole/cracked/normal) and where the offset lists live
+  in ROM
+- Caller sub_811000E's context (which attack/chip uses this) to confirm game-term framing
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8110020 -> battle_pickRandomPanelFromOffsetList
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8110020

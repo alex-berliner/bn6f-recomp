@@ -1,0 +1,50 @@
+name: ai_attackTimerEnd
+address: '0x08103660'
+kind: function
+status: probable
+summary: 'Per-frame AI attack timer tick: counts down the object''s attack step timer and, once expired,
+  resets the animation, clears a state flag, marks the object as moving, and sets the attack element.'
+interface: (r0,r1 unused by caller?) -> void; r5 = battle object, r7 = oAIAttackVars of the object
+details: 'Every call decrements the halfword StepTimer at r7+oAIAttackVars_StepTimer and returns while
+  it is still positive. When the timer reaches zero it executes a one-time transition: CurAnim (byte at
+  r5+oBattleObject_CurAnim) is set to 0 (idle/neutral animation), ObjectFlags bit 0x40 is cleared via
+  object_clearFlag, the CURRENTLY_MOVING_1 bit (1<<OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT) is set via object_setFlag1,
+  and oAIAttackVars_HitElement is set to 0xC. This reads like the end of an AI wind-up/pause phase before
+  an attack whose hit element is 0xC. The function never reloads StepTimer, so the caller (an AI state
+  machine) must reinitialize it to restart the phase.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrh/strh on r7+oAIAttackVars_StepTimer with `sub r0,#1; bgt` skips all side effects until the
+    timer runs out; strb r0(=0) into r5+oBattleObject_CurAnim resets the object's current animation when
+    the timer expires; object_clearFlag with 0x40 and object_setFlag1 with 1<<OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT
+    touch the object's CollisionData ObjectFlags; strh r0(=0xC) into r7+oAIAttackVars_HitElement assigns
+    a fixed hit element for the upcoming attack; r5/r7 set up by the caller plus oAIAttackVars fields
+    show this is an AI attack-state helper called per frame
+  refs:
+  - bn6f/asm/asm31.s:160004
+  - 0x0801A15C object_clearFlag
+  - 0x0801A152 object_setFlag1
+  reproduce: python3 tools/asmcat.py 0x08103660
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- No caller is known, so the AI state/branch that uses this (and what StepTimer is initialized to) is
+  unknown
+- Meaning of ObjectFlags bit 0x40 and of HitElement value 0xC is not confirmed from the shown code
+- Whether the function is invoked every frame from a shared AI dispatch or only in one attack routine
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8103660 -> ai_attackTimerEnd
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8103660

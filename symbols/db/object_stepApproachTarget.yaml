@@ -1,0 +1,52 @@
+name: object_stepApproachTarget
+address: '0x080AA0B8'
+kind: function
+status: probable
+summary: Per-frame object step that eases a 32-bit counter at obj+0x14 toward a target value returned
+  by sub_80AA134 and raises event flag 1640 once the counter's high half reaches 0x20 while obj+4 is 0.
+interface: (r0 = unused on entry; r5 = overworld object struct) -> updates [r5+0x14] by ±1 toward sub_80AA134([r5+4])
+  and sets/clears EVENT_1640; no return value
+details: 'r5 points to an overworld object record. It reads the byte at +0x04, passes it to sub_80AA134
+  to get a target value, and compares it with the 32-bit value at +0x14; if they differ it adds ±1 (r4
+  = 1, negated when current > target) and stores the result back, so +0x14 slowly approaches the target
+  each call. Independently, when byte +0x04 is 0 it sets EVENT_1640, then checks (value >> 16) == 0x20:
+  if true the flag stays set, otherwise it is cleared — so the flag is only held while byte4==0 and the
+  counter''s upper half equals 0x20 (≈0x200000). Finally it calls sprite_update on the object''s sprite
+  struct. Likely a lift/moving-platform-style object whose counter is a height or progress value in 16.16
+  form.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'cmp r0,r1 / neg r4 / add r1,r1,r4 / str r1,[r5,#0x14]: eases +0x14 by 1 toward sub_80AA134''s
+    result; lsr r0,#0x10; cmp r0,#0x20 gates whether EVENT_1640 stays set; SetEventFlagFromImmediate/ClearEventFlagFromImmediate
+    of the same flag EVENT_1640 bracket the threshold check; bl sprite_update at the end shows it is a
+    per-frame object step handler; only caller is object_initSprite''s dispatch, consistent with a step
+    handler table entry'
+  refs:
+  - bn6f/asm/asm29.s:10161
+  - 0x080AA078 object_initSprite
+  - 0x0802F12C ClearEventFlagFromImmediate
+  - 0x0802F110 SetEventFlagFromImmediate
+  - 0x080026C4 sprite_update
+  reproduce: python3 tools/asmcat.py 0x080AA0B8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- maps
+open_questions:
+- what sub_80AA134(byte4) measures (player position? tile under object?) and thus what the target means
+- what structure field +0x14 represents (height/progress in 16.16?) and what object type uses it
+- what gameplay state EVENT_1640 gates and why byte4==0 is required
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80AA0B8 -> object_stepApproachTarget
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80AA0B8

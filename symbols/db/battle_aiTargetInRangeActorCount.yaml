@@ -1,0 +1,50 @@
+name: battle_aiTargetInRangeActorCount
+address: '0x080319FE'
+kind: function
+status: probable
+summary: Checks whether a target-relative position falls within a fixed half-panel rectangle and returns
+  3 if it does, else 2, for AI use.
+interface: (r0 = entity ptr, r1 = target ref?) -> r0 = 3 if the rectangle test hits, else 2; flags from
+  last call
+details: First calls battle_calcRelPosToTarget_803172E to fill the scratch buffer with the entity's (and
+  next-position's) coordinates relative to a doubled target point. It then sets up a fixed rectangle of
+  0x10 x 0x10 at offset (0,0) and calls battleObject_isHitByPanelRectangle_8031570 with it. The hit flag
+  (0/1) is fed directly as the AI-index argument to battle_aiIndexToActorCount_8031980, so the function's
+  return value is 3 (AI index 1 = hit) or 2 (otherwise). Effectively this maps 'target within a 16x16-pixel
+  box ahead' to a per-actor count used by an AI sub-state. The hit test result is otherwise discarded;
+  only the mapped count escapes.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl battle_calcRelPosToTarget_803172E first, preparing the relative-position scratch buffer;
+    mov r2,#0 / mov r4,#0x10 / mov r3,#0x10 / mov r5,#0 before the hit test: fixed 0x10x0x10 rect at origin;
+    hit result in r0 is passed unchanged as AI index to battle_aiIndexToActorCount_8031980 (3 for 1, else
+    2); pop {pc} with r0 = that count, so the boolean is only consumed through this mapping; both callees
+    are battle-object/AI helpers, placing this in battle AI logic'
+  refs:
+  - bn6f/asm/asm03_0.s:25430
+  - 0x08031570 battleObject_isHitByPanelRectangle_8031570
+  - 0x08031980 battle_aiIndexToActorCount_8031980
+  - 0x0803172E battle_calcRelPosToTarget_803172E
+  reproduce: python3 tools/asmcat.py 0x080319FE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- beastsp
+open_questions:
+- exact argument meaning of battle_calcRelPosToTarget (entity vs target roles)
+- which AI sub-state consumes the 3-vs-2 return, and what the 0x10x0x10 rectangle is anchored to (front
+  panel of the actor?)
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80319FE -> battle_aiTargetInRangeActorCount
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80319FE

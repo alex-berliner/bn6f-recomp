@@ -3524,14 +3524,14 @@ static inline call_playSoundEffect_7A_81258E8_result call_playSoundEffect_7A_812
 }
 
 typedef struct { u32 r5, r7, r9, r10, r12; } call_sub_8125820_result;
-/* register form: generated wrapper: sub_8125820 has no typed C interface yet */
+/* register form: generated wrapper: submenu_moveListCursor has no typed C interface yet */
 static inline call_sub_8125820_result call_sub_8125820(u32 r0, u32 r1, u32 r2, u32 r5, u32 r8) {
     R0 = r0;
     R1 = r1;
     R2 = r2;
     R5 = r5;
     R8 = r8;
-    GUEST_CALL(sub_8125820);
+    GUEST_CALL(submenu_moveListCursor);
     return (call_sub_8125820_result){ R5, R7, R9, R10, R12 };
 }
 
@@ -3540,7 +3540,7 @@ static inline call_sub_8125820_result call_sub_8125820(u32 r0, u32 r1, u32 r2, u
  * Start+B           → confirm exit & fade
  * pressed bit 0     → dedicated handler (sub_81266E0)
  * Select held       → write state byte on battle object, play cue 7A
- * cursor field set  → try sub_8125820 navigation when D-pad or A/B held,
+ * cursor field set  → try submenu_moveListCursor navigation when D-pad or A/B held,
  *                     then restore the temporarily-written 16-bit field.
  */
 
@@ -3596,7 +3596,7 @@ static battle_input_tick_result battle_input_tick(
     }
 
     /* Temporarily install cursor into 16-bit field at obj+0x3A,
-       dispatch navigation via sub_8125820, then restore. */
+       dispatch navigation via submenu_moveListCursor, then restore. */
     u16 saved_3a = LD16(obj + 0x3A);
     ST16(obj + 0x3A, (u16)cursor);
 

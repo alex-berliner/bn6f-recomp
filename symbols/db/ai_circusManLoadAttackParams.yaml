@@ -1,0 +1,52 @@
+name: ai_circusManLoadAttackParams
+address: '0x080FEBE4'
+kind: function
+status: probable
+summary: Loads two per-difficulty CircusMan attack parameters from the AI version tables into the attack
+  state's damage word.
+interface: (r0 = attack/index selector, r5 = battle object) -> r0 = combined params word; stores word
+  at AIData+0xA0 (oAIAttackVars_Damage)
+details: Takes an index in r0 (per caller, the difficulty tier/attack slot), multiplies it by 8, and reads
+  a halfword from two parallel parameter tables (byte_80FEC44 and byte_80FEC68) via battle_aiGetVersionedTableEntry,
+  so the values are AI-version dependent (with the special v4 scaled entry). The first halfword is kept
+  as the low word and the second is shifted left 16 and ORRed in, forming one 32-bit value that is stored
+  at battleObject->AIData+0xA0, the oAIAttackVars_Damage field (its upper half covering the adjacent attack-var
+  halfword). Both CircusMan attack-init callers invoke it right after filling per-attack state, so this
+  word is the attack's parameters (e.g. damage plus a companion counter/variant value).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: mul r0,#8 + two calls to battle_aiGetVersionedTableEntry_800FE12 with different table bases
+    = versioned param lookup; lsl r0,#0x10; orr r6 packs two halfwords into one word before the store;
+    str r6,[r3,#oAIAttackVars_Damage] with r3 = [r5,#oBattleObject_AIDataPtr]+0xA0; both callers (ai_circusManAttackInit,
+    ai_circusmanInitAttackState) run it while setting up CircusMan attack state 0xA / 0xC
+  refs:
+  - bn6f/asm/asm31.s:150249
+  - 0x080FEB20 ai_circusManAttackInit
+  - 0x080FEB9E ai_circusmanInitAttackState
+  - 0x080FEB64 sub_80FEB64
+  - 0x0800FE12 battle_aiGetVersionedTableEntry_800FE12
+  reproduce: python3 tools/asmcat.py 0x080FEBE4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- What the upper halfword of the stored word means (second field at AIData+0xA2) — needs the code that
+  consumes the attack vars
+- Whether r0 is exactly the difficulty tier or an attack-variant index — callers pass it from the tier
+  read but the table layout (stride 8) isn't dumped
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80FEBE4 -> ai_circusManLoadAttackParams
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FEBE4

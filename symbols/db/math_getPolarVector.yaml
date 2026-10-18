@@ -1,0 +1,49 @@
+name: math_getPolarVector
+address: '0x080011A0'
+kind: function
+status: probable
+summary: converts an angle index plus magnitude into a (dx, dy) vector using the cosine/sine tables, with
+  the y component negated for screen coordinates
+interface: (r0 = angle table index, r1 = magnitude/scale) -> r0 = cos(angle)*mag >> 8, r1 = -sin(angle)*mag
+  >> 8; flags clobbered, r2-r3 clobbered
+details: Doubles the angle index and reads math_cosTable and the parallel table byte_80066E0 (almost certainly
+  the sine table, same stride) as halfwords. It negates the sine value and multiplies both by r1, then
+  arithmetic-shifts right by 8 (fixed-point 8.8 scale), returning r0 = x and r1 = y. The negated sine
+  gives a vector rotated in screen space (y down), i.e. (mag*cos, -mag*sin). No memory is written and
+  no other state is touched; it is a pure leaf helper. The nearby functions sub_80011C0 and sub_80012C6
+  are almost certainly the companion sin/cos-only variants.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrsh r3, [math_cosTable, r0*2]; mul r3, r1; asr r0, r3, #8 — x = cos*mag>>8; ldrsh r2, [byte_80066E0,
+    r0*2]; neg r2; mul; asr r1 — y = -table2*mag>>8, parallel table at same index is the sine half of
+    the trig tables; caller math_getThrowSpeeds (0x08001330) uses it to derive throw velocity components
+    from an angle, matching a polar-to-vector conversion; callers sub_80011C0/sub_80012C6 sit immediately
+    around it in the math helper block, consistent with a trig helper family; asr #8 with 8.8 fixed-point
+    magnitude matches other battle math helpers using cosTable'
+  refs:
+  - bn6f/asm/asm00_0.s:2274
+  - 0x080D761C battleObject_initStaticActor_80D761C
+  - 0x08001330 math_getThrowSpeeds
+  - 0x080011C0 sub_80011C0
+  reproduce: python3 tools/asmcat.py 0x080011A0
+  result: 'proposed by hyper/glm-5.3-flash; cross-checked by minimax/MiniMax-M3: agree; run wf investigate
+    investigate-20261018-182231'
+coverage:
+- battle
+- battlesweep
+- beastsp
+- chips
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80011A0 -> math_getPolarVector
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80011A0

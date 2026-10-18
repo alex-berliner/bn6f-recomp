@@ -1,0 +1,55 @@
+name: ai_setClosestEnemyPanelTarget
+address: '0x08111C88'
+kind: function
+status: probable
+summary: 'AI helper: finds the closest enemy battle object, checks its panel against an alliance-dependent
+  required-panel condition, and if it matches records it as the AI''s target, returning 1.'
+interface: (r5 = battle object, r4 = target byte out, r7 = AI attack vars out) -> r0 = 1 if target set
+  (0 if panel check failed); writes x|(y<<4) to [r4] and panel x to [r7+oAIAttackVars_AttackBoost2]
+details: Reads the caller's battle object's Alliance field (r5+oBattleObject_Alliance), XORs it with 1
+  to get the opposing team, and asks battleObject_findClosestEnemyBattleObject_80103F8 for the nearest
+  enemy. It takes that object's panel coords (0x12 = x, 0x13 = y) and passes them with the static table
+  pointer off_8111D70 to GetAllianceDependentPanelParamArgs, which yields the panel requirement param
+  and args. object_checkPanelParameters tests the enemy's panel against that requirement; on success the
+  encoded coords (x | y<<4) are stored to [r4] and the raw x to oAIAttackVars_AttackBoost2, returning
+  1, otherwise r0 stays 0 from the check. The XOR-1 alliance flip and the shared param table suggest this
+  is used by panel-conditioned enemy attacks whose target panel depends on which side the object is on.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#oBattleObject_Alliance]; eor r0,#1 then bl battleObject_findClosestEnemyBattleObject_80103F8
+    — nearest enemy of the opposite team; ldrb r1,[r0,#0x13]/ldrb r0,[r0,#0x12] then bl GetAllianceDependentPanelParamArgs
+    with r3=off_8111D70 — fetch panel requirement for the enemy's coords by alliance; bl object_checkPanelParameters;
+    beq locret — only on panel match does it write results; strb r0,[r4] with x|(y<<4) and strb x to [r7,#oAIAttackVars_AttackBoost2];
+    mov r0,#1 — stores chosen target and signals success; callees' known summaries (find closest enemy
+    battle object, alliance-dependent panel param, panel flag test) match this flow exactly
+  refs:
+  - bn6f/asm/asm32.s:7922
+  - 0x081096FA GetAllianceDependentPanelParamArgs
+  - 0x080103F8 battleObject_findClosestEnemyBattleObject_80103F8
+  - 0x0800CC86 object_checkPanelParameters
+  reproduce: python3 tools/asmcat.py 0x08111C88
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- Contents of the table at off_8111D70 (what panel requirement each alliance entry encodes)
+- Which AI structure/field r4 points at and the exact semantic of oAIAttackVars_AttackBoost2 (why x alone
+  is stored there)
+- Which attacks/AI routines call this (no direct caller recorded; only battlesweep/beastsp routes hit
+  it)
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8111C88 -> ai_setClosestEnemyPanelTarget
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8111C88

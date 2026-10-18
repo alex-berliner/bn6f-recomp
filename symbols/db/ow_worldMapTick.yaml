@@ -1,0 +1,58 @@
+name: ow_worldMapTick
+address: '0x080342C6'
+kind: function
+status: probable
+summary: 'Per-frame update of the world-map screen: resets a state field to 8 while a screen fade is active,
+  then advances the map''s animation table.'
+interface: () -> void; reads caller's r5 as state struct ptr; sets bytes [r5]=8, [r5+1]=0 conditionally;
+  flags clobbered by calls
+details: Runs every frame of the world-map screen (seen in beastsp, maps, menus, story routes). It calls
+  IsScreenFadeActive and, if a fade is in progress (beq skips the stores when not fading), writes 8 to
+  byte 0 and 0 to byte 1 of the struct pointed to by r5 — most plausibly an animation/sub-mode selector
+  being forced to a fixed frame during fades. It then tail-calls sub_80343B0, which per the project advances
+  the world-map animation table, queues its row palette, restamps the 32x20 BG tile block, ticks entities,
+  and drains queued GFX. r5 is used without being set, so the caller holds the world-map state pointer
+  in r5 and this routine is a frame-step helper of that screen.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl IsScreenFadeActive; beq skip; mov r0,#8; strb r0,[r5]; mov r0,#0; strb r0,[r5,#1] — fade-gated
+    reset of two state bytes; bl sub_80343B0 then pop {pc} — unconditional tail-call into the known world-map
+    animation/queue drain step; r5 used without setup in a thumb routine — caller holds the map state
+    struct in r5, indicating an inline frame-update role; callee sub_80343B0's known summary names the
+    world-map animation table and BG restamp, fixing the subsystem context; called on recorded routes
+    maps/beastsp/menus/story — consistent with a world-map screen tick run in many flows
+  refs:
+  - bn6f/asm/asm03_1_0.s:1400
+  - 0x080343B0 sub_80343B0
+  - 0x080062F8 IsScreenFadeActive
+  reproduce: python3 tools/asmcat.py 0x080342C6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- beastsp
+- maps
+- menus2
+- story1
+- story2
+- story4
+- story5
+- story8
+open_questions:
+- Exact meaning of the r5 struct fields (byte0=8, byte1=0) — need the caller to identify the struct and
+  what state 8 selects
+- Whether the stores happen when the fade is active or when it just ended depends on IsScreenFadeActive's
+  zf polarity, which the callee's code would confirm
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80342C6 -> ow_worldMapTick
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80342C6

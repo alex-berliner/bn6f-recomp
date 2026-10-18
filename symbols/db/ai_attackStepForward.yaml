@@ -1,0 +1,48 @@
+name: ai_attackStepForward
+address: '0x08108298'
+kind: function
+status: probable
+summary: 'AI attack state tick: every 3rd frame the object takes one step — commits its reserved future
+  panel, moves/re-collides, and marks a hit element for the attack.'
+interface: (r5 = battle object, r7 = oAIAttackVars) -> r0 = 8 (clobbered); updates object panel/coords/anim
+  state
+details: 'Decrement oAIAttackVars_StepTimer; while positive just return. When it hits zero: set CurAnim
+  to 3, copy FuturePanelX/Y into PanelX/Y (the panel the object reserved/moved toward), release that panel
+  reservation, recompute pixel coordinates from panels, and update collision panels + facing. Then restart
+  StepTimer at 3 and set oAIAttackVars_HitElement to 8, which is presumably the element/type flag the
+  attack registers on contact. This reads as the periodic ''advance one panel'' step of an AI attack (e.g.
+  a hop or lunge) driven by the object''s AI attack vars.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrh r0,[r7,#oAIAttackVars_StepTimer]; sub/strh; bgt exit — frame-gated tick; copies FuturePanelX/Y
+    to PanelX/Y before object_removePanelReserve — commits the reserved target panel; calls object_setCoordinatesFromPanels
+    then object_updateCollisionPanels after the commit; mov r0,#3; strh [r7,#oAIAttackVars_StepTimer]
+    — fixed 3-frame step cadence; strh #8 into oAIAttackVars_HitElement — attack''s hit element set each
+    step'
+  refs:
+  - bn6f/asm/asm31.s:169861
+  - 0x0801BB46 object_removePanelReserve
+  - 0x0800E29C object_setCoordinatesFromPanels
+  - 0x0801A04C object_updateCollisionPanels
+  reproduce: python3 tools/asmcat.py 0x08108298
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- No known callers, so which enemy/attack state machine invokes this step handler is unconfirmed
+- Meaning of HitElement value 8 (which element/attack attribute) not verified from this function alone
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8108298 -> ai_attackStepForward
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8108298

@@ -1,0 +1,52 @@
+name: ow_objectBrightenToWhiteUpdate
+address: '0x080A796C'
+kind: function
+status: probable
+summary: Overworld object update handler that fades the object's sprite color from dark gray to white
+  over ~30 frames and then frees the object.
+interface: (r5 = overworld object ptr; no args) -> void; updates object fields 0x14 and 0x24
+details: This looks like a per-frame update callback for a temporary overworld effect object. It reads
+  the object's frame counter at [r5+0x24] and uses counter>>1 as an index into two 16-byte tables. The
+  first table (byte_80A79B0) yields an amount added to [r5+0x14] each frame (4,4,4,3,2,1, then 0 — a decaying
+  accumulator, likely a rising/offset or blend coordinate). The second table (byte_80A79C4) yields a gray
+  level b, which is expanded to b | b<<5 | b<<10 — the same 5-bit value in all three RGB channels — and
+  passed to sprite_setColorShader, so the sprite is tinted a uniform gray that brightens from 4 toward
+  31 (white). When the first table yields 0xFF (index 15, i.e. frame 30), the object is released via FreeOverworldMapObject
+  instead. sprite_update is called every frame regardless. The pattern is the classic 'dissolve into light
+  / burn away' vanish effect.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'lsr r0,#1 + ldrb from byte_80A79B0/byte_80A79C4: frame counter>>1 indexes two lookup tables;
+    orr r0 of b|b<<5|b<<10 before sprite_setColorShader builds a grayscale color (R=G=B); byte_80A79C4
+    ramps 0x4..0x1F: gray level increases each frame, i.e. brighten to white; byte_80A79B0 ends in 0xFF
+    and that branch calls FreeOverworldMapObject: object despawns after ~30 frames; str [r5,#0x24] increment
+    and tail sprite_update: per-frame object update callback on a map object (r5)'
+  refs:
+  - bn6f/asm/asm29.s:5023
+  - 0x080048B2 FreeOverworldMapObject
+  - 0x08002ED0 sprite_setColorShader
+  - 0x080026C4 sprite_update
+  reproduce: python3 tools/asmcat.py 0x080A796C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- beastsp
+open_questions:
+- Meaning of the [r5+0x14] accumulator (position offset vs. blend coordinate) depends on the object struct
+  layout
+- Which in-game effect object uses this handler (beastsp route only) — a caller assigning it as an update
+  callback would confirm the context, e.g. beast-out transformation or enemy dissolve
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80A796C -> ow_objectBrightenToWhiteUpdate
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A796C

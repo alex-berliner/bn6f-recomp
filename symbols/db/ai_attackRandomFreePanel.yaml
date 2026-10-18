@@ -1,0 +1,51 @@
+name: ai_attackRandomFreePanel
+address: '0x08107FF4'
+kind: function
+status: probable
+summary: 'AI attack setup: queues a callback that picks a random free nearby panel, targets the player,
+  and enters attack state 9'
+interface: (r5 = attacker BattleObject, r7 = its oAIAttackVars) -> r0 destroyed; sets PanelChooseCallback,
+  AttackDuration, TargetObjectPtr, attack state 9
+details: Stores object_findRandomFreeNearbyPanel into oAIAttackVars_PanelChooseCallback so the AI's panel
+  selection is deferred/randomized, then calls sub_8107EB0 and stores its result as AttackDuration. It
+  XORs the attacker's oBattleObject_Alliance with 1 and passes that to battle_findPlayer to cache the
+  opposing player object in oAIAttackVars_TargetObjectPtr. Finally it calls object_setAttack4 with state
+  9 to transition the object into the attack phase. The four callers are presumably per-panel-count or
+  per-element variants that share this common setup tail.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldr r0,=object_findRandomFreeNearbyPanel; str r0,[r7,#oAIAttackVars_PanelChooseCallback] — random
+    panel callback installed; bl battle_findPlayer with alliance^1; str r0,[r7,#oAIAttackVars_TargetObjectPtr]
+    — target set to opposite-side player; bl sub_8107EB0; strh r0,[r7,#oAIAttackVars_AttackDuration] —
+    attack timer from helper; mov r0,#9; bl object_setAttack4 — enters attack state 9; four sibling callers
+    (8107C94/CF0/D62/DD4) share this tail, fitting an AI attack dispatch table
+  refs:
+  - bn6f/asm/asm31.s:169560
+  - 0x08107C94 sub_8107C94
+  - 0x08107CF0 sub_8107CF0
+  - 0x08107D62 sub_8107D62
+  - 0x080103BC battle_findPlayer
+  - 0x08011690 object_setAttack4
+  - 0x08107EB0 sub_8107EB0
+  reproduce: python3 tools/asmcat.py 0x08107FF4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- what sub_8107EB0 computes for AttackDuration (element/level dependent?)
+- exact meaning of attack state 9 and which boss/menu route invokes the four callers
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8107FF4 -> ai_attackRandomFreePanel
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8107FF4

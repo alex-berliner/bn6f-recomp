@@ -1,0 +1,50 @@
+name: ai_loadColonelAttackParams
+address: '0x0810176E'
+kind: function
+status: probable
+summary: Loads a Colonel AI attack's packed parameter pair (two halfwords from versioned AI tables) into
+  the attack-vars damage slot.
+interface: (r0 = attack id/index) -> r0 = packed params stored at oAIDataPtr+0xA0 (oAIAttackVars_Damage);
+  no meaningful return in r0
+details: Given an attack index in r0, it multiplies by 8 and reads a halfword from the AI-version-dependent
+  table at byte_81017D8 via battle_aiGetVersionedTableEntry_800FE12, then reads a second halfword from
+  byte_8101814 with the same index. It packs the first value into the low halfword and the second (shifted
+  left 16) into the high halfword of one word, then stores that word at aiDataPtr+0xA0, i.e. oAIAttackVars_Damage
+  of Colonel's per-attack vars. The x8 row stride suggests each table row holds 4 halfword entries of
+  which only two are consumed. Both tables are versioned, so values differ by battle AI difficulty/version.
+  Called only from Colonel attack-init routines and two small wrappers, all immediately after resetting
+  the oAIAttackVars block.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: mul r0,#8 + bl battle_aiGetVersionedTableEntry_800FE12 twice with off_81017C4 and off_8101800
+    tables (sub_810176E); lsl r0,#0x10 ; orr r6,r0 packs second table entry into upper halfword; str r6,[r3,#oAIAttackVars_Damage]
+    after add r3,#0xA0 from oBattleObject_AIDataPtr; All callers (ai_colonelInitPanelAttack, ai_initColonelAttack,
+    ai_initColonelPanelAttack) set up Colonel attack vars then branch here
+  refs:
+  - bn6f/asm/asm31.s:155965
+  - 0x0810161A ai_colonelInitPanelAttack
+  - 0x081016C8 ai_initColonelAttack
+  - 0x081016FE ai_initColonelPanelAttack
+  - 0x0800FE12 battle_aiGetVersionedTableEntry_800FE12
+  reproduce: python3 tools/asmcat.py 0x0810176E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- Semantics of the two packed halfwords (e.g. damage vs. panel/step count) unknown without the table contents
+  at byte_81017D8/byte_8101814 or how oAIAttackVars_Damage is consumed downstream
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810176E -> ai_loadColonelAttackParams
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810176E

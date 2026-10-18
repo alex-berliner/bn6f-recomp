@@ -1,0 +1,54 @@
+name: ow_updateApproachObject
+address: '0x080A9FB8'
+kind: function
+status: probable
+summary: 'Per-frame map-object update: steps the object''s 16.16 value at +0x14 by 1 toward a target from
+  sub_80AA04C, and for object kind 8 sets event flag EVENT_1640 while the value''s high word equals 0x20.'
+interface: (r0 = object kind byte from [r5+4], r5 = object struct) -> r0 = sprite_update result; updates
+  [r5+0x14] and event flag EVENT_1640
+details: 'r5 is an overworld object struct: byte +4 is the object kind, +0x14 a 32-bit (16.16 fixed point)
+  counter. sub_80AA04C(kind) yields a target; if the counter already equals it nothing changes, otherwise
+  the counter moves ±0x10000 (one integer unit) per call toward the target (signed compare, so it works
+  in both directions). When kind == 8, the routine sets flag EVENT_1640 and then clears it again unless
+  counter>>16 == 0x20, leaving the flag set exactly on frames where the counter''s integer part is 32
+  — effectively a threshold trigger. Finally calls sprite_update on the object so its sprite follows the
+  updated state.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: cmp r0, r1 / bge+bne blocks add ±0x10000 to [r5+0x14] only when it differs from sub_80AA04C's
+    return (80A9FB8–80A9FD8); ldrb r0,[r5,#4]; cmp r0,#8 gates the SetEventFlagFromImmediate/ClearEventFlagFromImmediate
+    pair for EVENT_1640 (80A9FF6 region); flag is set then conditionally cleared unless lsr r0,#0x10 ==
+    0x20, so it reflects counter high word == 32 (80A9FE6–80A9FF4); tail call bl sprite_update shows this
+    is an object tick run alongside sprite updates (80A9FF6); caller ow_initObjectSprite initializes the
+    same struct's sprite, confirming r5 is an overworld object
+  refs:
+  - bn6f/asm/asm29.s:10034
+  - 0x080A9F78 ow_initObjectSprite
+  - 0x0802F12C ClearEventFlagFromImmediate
+  - 0x0802F110 SetEventFlagFromImmediate
+  - 0x080026C4 sprite_update
+  reproduce: python3 tools/asmcat.py 0x080A9FB8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- maps
+open_questions:
+- what sub_80AA04C computes from the kind byte (the target value) — needed to name the counter's game
+  meaning
+- which object uses kind 8 and what event flag EVENT_1640 gates in that map
+- what field +0x14 represents visually (timer, fill level, position) — sprite/animation data for these
+  objects would confirm
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80A9FB8 -> ow_updateApproachObject
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A9FB8

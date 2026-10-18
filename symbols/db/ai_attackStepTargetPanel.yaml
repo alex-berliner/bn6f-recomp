@@ -1,0 +1,53 @@
+name: ai_attackStepTargetPanel
+address: '0x080F3472'
+kind: function
+status: probable
+summary: 'AI attack state-machine step: ask a per-alliance callback for a target panel, reserve it, lock
+  the object onto it and arm the attack (anim/timer/element), else fail with HitElement=0x18.'
+interface: (r5 = battle object, r7 = oAIAttackVars) -> r0 = destroyed; on success sets FuturePanelX/Y,
+  reserves panel, sets flag OBJECT_FLAGS_CANNOT_SLIDE, CurAnim=4, StepTimer=4, HitElement=8; on failure
+  HitElement=0x18
+details: Increments oAIAttackVars_SubStepIndex, bails to HitElement=0x18 if object_canMove says the object
+  can't act. It then indexes byte_80F34DC by Alliance*8 to fetch two words (r2/r3) and calls the stored
+  oAIAttackVars_PanelChooseCallback (via mov lr,pc/bx), which returns success in r0 with r0/r1 = target
+  panel X/Y. On success those are written to oBattleObject_FuturePanelX/Y, object_reservePanel claims
+  the panel, OBJECT_FLAGS_CANNOT_SLIDE is set via object_setFlag1, CurAnim=4 and StepTimer=4 run a short
+  windup, and HitElement=8 records the attack element/type. Once SubStepIndex > 1, a struct pointer in
+  oAIAttackVars_ScratchVar (if non-null) gets [0xB]=1 plus the target X/Y at offsets 6/7 — likely activating
+  a target marker/warning for the upcoming attack.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_canMove + beq loc_80F34D0 sets HitElement=0x18 on failure (attack step abort path);
+    ldr r1,[r7,#oAIAttackVars_PanelChooseCallback]; mov lr,pc; bx r1 — per-alliance callback from off_80F34D8
+    table returns panel X/Y stored into FuturePanelX/FuturePanelY; bl object_reservePanel then mov r0,#OBJECT_FLAGS_CANNOT_SLIDE;
+    bl object_setFlag1 — object commits to the chosen panel; CurAnim=4 / StepTimer=4 / HitElement=8 writes
+    are the attack windup state; HitElement=0x18 is the failure value; ScratchVar deref writes [0xB]=1
+    and offsets 6/7 = target X/Y only when SubStepIndex>1, matching a target-indicator struct being armed
+  refs:
+  - bn6f/asm/asm31.s:126901
+  - 0x0800E5E2 object_canMove
+  - 0x0801BB1C object_reservePanel
+  - 0x0801A152 object_setFlag1
+  reproduce: python3 tools/asmcat.py 0x080F3472
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- No caller known, so which enemies/AI dispatch table route here is unconfirmed
+- Meaning of the two words passed (r2/r3) from byte_80F34DC per alliance, and the exact schema of the
+  ScratchVar struct (offsets 6/7/0xB)
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F3472 -> ai_attackStepTargetPanel
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F3472

@@ -1,0 +1,50 @@
+name: battle_aiInitAttackPanelSelect
+address: '0x08101652'
+kind: function
+status: probable
+summary: 'Initializes one AI-driven enemy attack state: per-difficulty timing, a panel-choose callback,
+  and the opposing player as target.'
+interface: (r7 = AI attack state struct, r5 = attacker BattleObject) -> r0 = clobbered; initializes oAIAttackVars
+  fields and starts attack 0xA
+details: Sets oAIAttackVars_AttackBoost2 to 4 and stores the enemy's AI difficulty tier (battle_getAiDifficultyTier)
+  into oAIAttackVars_AiDifficultyTier, then clears the InitFlag. Calls sub_810176E with 1 (likely phase/mode
+  select), then sub_81014C0 and sub_81014D4 whose results are stored as AttackDuration and TimerOrCycles
+  (difficulty-dependent timing). Installs sub_81038A4 as the PanelChooseCallback, resolves the target
+  by calling battle_findPlayer with the attacker's Alliance XOR 1 (i.e., the opposing player object),
+  and finally invokes object_setAttack0 with id 0xA to kick off the attack.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: strb r0,[r7,#oAIAttackVars_AiDifficultyTier] after bl battle_getAiDifficultyTier_800FE36 stores
+    the tier in the AI attack state struct; bl battle_findPlayer with alliance eor 1 and str into oAIAttackVars_TargetObjectPtr
+    targets the opposing player; ldr r0,=sub_81038A4+1; str into oAIAttackVars_PanelChooseCallback installs
+    the per-attack panel chooser; mov r0,#0xa; bl object_setAttack0 launches the attack as the final step;
+    results of sub_81014C0/81014D4 stored as AttackDuration/TimerOrCycles show difficulty-scaled attack
+    timing setup
+  refs:
+  - bn6f/asm/asm31.s:155821
+  - 0x0810144A sub_810144A
+  - 0x0800FE36 battle_getAiDifficultyTier_800FE36
+  - 0x080103BC battle_findPlayer
+  - 0x08011680 object_setAttack0
+  reproduce: python3 tools/asmcat.py 0x08101652
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- which specific attack id 0xA is in game terms (name of sub_81038A4's panel selection would clarify)
+- what sub_810176E(r0=1) switches (likely attack phase or handler table index)
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8101652 -> battle_aiInitAttackPanelSelect
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8101652

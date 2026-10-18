@@ -1,0 +1,52 @@
+name: ai_rushInitCollisionData
+address: '0x0810FB30'
+kind: function
+status: probable
+summary: Prepares the rush attack's hitbox by loading version-specific collision parameters and a status
+  effect from tables and writing them into the attacker's battle-object collision data.
+interface: (r4 = battle object/AI data) -> void; calls object_updateCollisionData and object_setCollisionStatusEffect1
+details: Reads the AI-data version field (oAIData_Version_16) from the acting object and shifts it left
+  2 to index four pointer tables (byte_810FB88, byte_810FB6C, byte_810FBA4) with version*4. The three
+  loaded values are passed with the shifted index to object_updateCollisionData, which fills the object's
+  collision record (hit modifier, pending damage, collision type flags) — so each enemy version gets its
+  own damage/element/collision-type hitbox. It then loads a single value from a second version-indexed
+  table (byte_810FBC0) and passes it to object_setCollisionStatusEffect1, attaching a status effect to
+  the same collision data. Called only from ai_rushAttackStep right when the telegraphed rush attack enables
+  its hitbox, this is the per-version hit/strength setup for that attack.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r4,#oAIData_Version_16]; lsl r0,#2 then three table lookups give version-indexed collision
+    params (asm 2-10); bl object_updateCollisionData writes those params into the object's collision record
+    (callee summary); second table byte_810FBC0 indexed by version feeds object_setCollisionStatusEffect1,
+    a status base value (asm 11-16); sole caller ai_rushAttackStep invokes it at the 'enable the hitbox'
+    phase of the telegraphed rush attack
+  refs:
+  - bn6f/asm/asm32.s:3936
+  - 0x0810F6C4 ai_rushAttackStep
+  - 0x0801A258 object_setCollisionStatusEffect1
+  - 0x0801A082 object_updateCollisionData
+  reproduce: python3 tools/asmcat.py 0x0810FB30
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- which status effect the byte_810FBC0 table entries encode (setCollisionStatusEffect1's value mapping
+  is unknown)
+- why the shifted version index is also passed as r0 to object_updateCollisionData — the exact first-argument
+  convention of that callee needs checking
+- actual numeric contents of the version tables (damage/element per enemy version)
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810FB30 -> ai_rushInitCollisionData
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810FB30

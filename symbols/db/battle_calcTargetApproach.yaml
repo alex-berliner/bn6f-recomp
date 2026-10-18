@@ -1,0 +1,58 @@
+name: battle_calcTargetApproach
+address: '0x0800120E'
+kind: function
+status: probable
+summary: Math helper that computes, from a target descriptor and current position, how many frames an
+  approach takes and the per-frame step toward it.
+interface: '(r0 = target struct ptr: +0 dx, +4 dy, +8 target coord, all 8.8 fixed point; r1 = cur x, r2
+  = cur y, r3 = cur coord on the driven axis, r4 = speed (0 = special case), r6 = divisor/param) -> r0/r1
+  = computed step count and per-frame delta (rounded), or 0,0 when already at/past target'
+details: 'When r4 != 0 it reads two 8.8 fixed-point deltas from [r0] and [r0+4], shifts each right by
+  8 to get pixel distances, squares and sums them, and takes an integer square root, scaling back <<8;
+  dividing by r4 (SWI_Div) yields the frame count, rounded by comparing the remainder against half the
+  divisor (lsr r4,#1; cmp r1,r4; add #1). If the frame count is nonzero it re-reads [r0+8], divides the
+  remaining displacement (r3 - target) by the frame count, and applies a second rounding correction using
+  negated r6 and the remainder. When r4 == 0 it instead takes the single delta r3 - [r0+8], divides by
+  r6>>8, square-roots, and rounds up if the low byte is nonzero, returning 0/0 immediately when the displacement
+  is non-negative. All arithmetic is signed fixed-point with round-to-nearest via remainder checks; the
+  routine is pure math with no memory writes.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldmia r0!,{r5,r7} then (delta>>8)^2 summed and SWI_Sqrt at 0x8001240-0x8001252: 2D distance
+    in 8.8 fixed point; bl SWI_Div with r1=r4 and remainder-vs-half-divisor check (lsr r4,#1; cmp r1,r4;
+    add #1): frames = distance/speed, rounded; ldr r0,[r0] after the +8 advance, then (r3-target)/frames
+    with neg r6 remainder correction: per-frame step toward the target coord; r4==0 path divides by r6>>8
+    then square-roots and rounds via low-byte test (tst r0,#0xff), returning 0 when displacement >= 0;
+    Caller 0x080D761C battleObject_initStaticActor_80D761C sets up a battle object''s position/state,
+    consistent with precomputing a movement approach at spawn'
+  refs:
+  - bn6f/asm/asm00_0.s:2351
+  - 0x080D761C battleObject_initStaticActor_80D761C
+  - 0x080CD50C sub_80CD50C
+  - 0x080D9D6C sub_80D9D6C
+  - 0x0814D8BC SWI_Div
+  - 0x0814D8C8 SWI_Sqrt
+  reproduce: python3 tools/asmcat.py 0x0800120E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- chips
+open_questions:
+- Exact meaning of r6 (divisor sign/scale) in the rounding correction
+- Which axis r3 corresponds to and why only one axis is divided for the final step
+- Semantics of the r4==0 one-dimensional path (free fall? fixed-speed slide?) — a caller like sub_80CD50C
+  or sub_80D9D6C with known context would confirm
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_800120E -> battle_calcTargetApproach
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800120E

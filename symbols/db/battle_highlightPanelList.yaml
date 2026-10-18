@@ -1,0 +1,49 @@
+name: battle_highlightPanelList
+address: '0x08102EC0'
+kind: function
+status: probable
+summary: When a battle-state condition bit is set, walks a null-terminated list of packed panel coordinates
+  and highlights each panel.
+interface: (r0 = pointer to byte list of packed panel coords, 0-terminated) -> void; corrupts r4 flags
+details: 'First reads battle state field Unk_40 via battle_getStateUnk40_800A704 and tests bit 3 (lsr
+  #3 into carry); if clear the whole routine does nothing. Otherwise it iterates bytes at r0 until a 0
+  byte. Each byte is split: bits 0-2 (lsl 0x1d/lsr 0x1d) are passed as r0 and bits 4-7 (lsr #4) as r1
+  to object_highlightPanel, which sets the panel data flag byte at offset 1 to 1, i.e. marks that panel
+  highlighted. The 3-bit field suits an x coordinate (0-7) and the 4-bit field a y coordinate (0-5) of
+  the 6x8 battle grid, though the exact argument meaning of highlightPanel is inferred from its single
+  documented use. The list is presumably in the caller''s data or an object structure; the caller sub_8102428
+  is itself undocumented.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl battle_getStateUnk40_800A704 + lsr r0,#3 / bcc: whole loop gated on bit 3 of battle state
+    Unk_40; ldrb r0,[r4]; tst/beq: walks a byte array terminated by 0; lsr r1,r0,#4 and lsl/lsr 0x1d:
+    byte split into 4-bit and 3-bit fields passed as two args; bl object_highlightPanel: marks each addressed
+    panel''s flag byte at offset 1, i.e. highlights it'
+  refs:
+  - bn6f/asm/asm31.s:158983
+  - 0x08102428 sub_8102428
+  - 0x0800A704 battle_getStateUnk40_800A704
+  - 0x0800CBD8 object_highlightPanel
+  reproduce: python3 tools/asmcat.py 0x08102EC0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- exact meaning of the two highlightPanel arguments (x/y vs other encoding)
+- what battle state bit 3 (Unk_40) represents
+- where the coordinate list comes from — caller sub_8102428 is undocumented
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8102EC0 -> battle_highlightPanelList
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8102EC0

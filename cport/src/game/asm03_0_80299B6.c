@@ -1365,7 +1365,7 @@ static void dispatch_behavior_vtable(void) {
     if (selector == 0)
         GUEST_CALL(setupChipListVisual_802BF6C);
     else if (selector == 4)
-        GUEST_CALL(sub_802C044);
+        GUEST_CALL(battle_chipSelectAnimTileStep);
     else
         GUEST_CALL(sub_802C0A4);
 

@@ -1,0 +1,50 @@
+name: chatbox_renderGlyphViaTable
+address: '0x08127578'
+kind: function
+status: probable
+summary: Tail-call shim that preloads a fixed table pointer into r6 and jumps into the chatbox glyph renderer.
+interface: (args as chatbox_renderGlyph_8127580) -> r6 = dword_86B7AE0, then tail-jumps to chatbox_renderGlyph_8127580;
+  returns/flags as that callee.
+details: The whole body is push {r4-r7,lr}; ldr r6,=dword_86B7AE0; b chatbox_renderGlyph_8127580. It exists
+  only to supply r6 — presumably a glyph/bitmap lookup table or base pointer — before entering the shared
+  glyph renderer, which otherwise must receive r6 from its caller. Because it pushes lr without ever popping,
+  the branch is a tail call and the renderer returns directly to this function's caller. Callers are the
+  event-163 chatbox progress handler and the PET Navi intro stat-line printer, both text-drawing contexts,
+  so this variant selects a particular glyph source used by those texts. The pushed registers are saved
+  for the callee's benefit, not used locally.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: body is only push {r4-r7,lr}; ldr r6, off_81275A4; b loc_8127584 with no local use of r4-r7/r6;
+    off_81275A4 points at dword_86B7AE0, the sole value this wrapper sets before branching; loc_8127584
+    is exactly chatbox_renderGlyph_8127580, the known glyph renderer; both recorded callers (81273B4 event-163
+    handler, 812741C PET Navi intro) are chatbox/text-drawing routines
+  refs:
+  - bn6f/asm/asm33.s:8656
+  - 0x081273B4 chatbox_event163Progress_81273B4
+  - 0x0812741C petNaviIntro_812741C
+  - 0x08127584 chatbox_renderGlyph_8127580
+  reproduce: python3 tools/asmcat.py 0x08127578
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- beastsp
+- menus3
+- story2
+open_questions:
+- what dword_86B7AE0 actually points to (glyph/font table vs. renderer state struct) — needs the renderer's
+  known internals or data dump
+- why callers route through this wrapper instead of setting r6 themselves
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8127578 -> chatbox_renderGlyphViaTable
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8127578

@@ -1,0 +1,55 @@
+name: object_slideXAndCheckPanel
+address: '0x080E54FC'
+kind: function
+status: probable
+summary: Moves a battle object forward by its X velocity, destroying it if it leaves the field or its
+  lifetime counter expires, and starts its hole-fall action if it lands on a hole panel.
+interface: (r5 = battle object, no args) -> r0 = 1 if object still alive, else 0; destroys object by writing
+  CUR_STATE_DESTROY to its state field
+details: Takes r5 as the battle object (project's this-register convention). Adds oBattleObject_XVelocity
+  into oBattleObject_X, then recomputes PanelX/PanelY via object_setPanelsFromCoordinates. If the new
+  panel is invalid, or the word pointed to by oBattleObject_ExtraVars+0xc (looks like a lifetime/hold
+  counter) is zero, it zeroes that counter word and sets the object's state to CUR_STATE_DESTROY. Otherwise
+  it reads the panel status word via object_getPanelParameters and tests bit 0x4000000 for alliance 0
+  (player side) or bit 0x8000000 otherwise (enemy side) — the per-side hole/off-panel flags. If the bit
+  is set it sets oBattleObject_CurAction = 4 with phase 0, presumably a falling/destroyed animation state.
+  Returns 1 in r0 on the survive path (fallthrough leaves r0 = panel flags masked nonzero) and 0 after
+  the destroy branch.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'add r0,r0,r1 / str [XVelocity->X] then bl object_setPanelsFromCoordinates: integrates X velocity
+    into position; beq after object_isCurrentPanelValid plus cmp [ExtraVars+0xc],0 both lead to mov r0,#CUR_STATE_DESTROY:
+    destroy on off-field or expired counter; cmp r2,#0 choosing off_80E55B8 (0x4000000) vs off_80E55BC
+    (0x8000000) keyed on oBattleObject_Alliance: per-side panel flag bit; strb #4 to oBattleObject_CurAction
+    and clear phase when panel-flag bit set: enter action 4 (hole reaction); callees object_setPanelsFromCoordinates
+    / object_isCurrentPanelValid / object_getPanelParameters match the position-update, validity and panel-flag
+    checks'
+  refs:
+  - bn6f/asm/asm31.s:97620
+  - 0x0800C8F8 object_getPanelParameters
+  - 0x0800CC66 object_isCurrentPanelValid
+  - 0x0800E2AC object_setPanelsFromCoordinates
+  reproduce: python3 tools/asmcat.py 0x080E54FC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- No recorded caller, so which objects run this (sliding swept objects?) is unconfirmed
+- Meaning of the counter at ExtraVars+0xc (lifetime vs. hold-until flag) is inferred only from the zero-check
+- What CurAction 4 specifically represents (hole fall vs. other destruction) needs an action-table lookup
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80E54FC -> object_slideXAndCheckPanel
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E54FC

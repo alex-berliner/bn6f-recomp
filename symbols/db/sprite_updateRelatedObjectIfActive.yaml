@@ -1,0 +1,49 @@
+name: sprite_updateRelatedObjectIfActive
+address: '0x080C00EA'
+kind: function
+status: probable
+summary: Conditionally advances a battle object's sprite this frame, returning whether it ran.
+interface: (r5 = battle object ptr) -> r0 = 1 if sprite updated, 0 if skipped; sets flags via callees
+  only
+details: A guarded wrapper around UpdateBattleObjectSprite that uses r5 (not r0) as the owning object
+  pointer. It bails out (returns 0) when the battle is paused, when a time-stop is active, when the object's
+  RelatedObject1 has HP 0, or when the related object's CollisionData ObjectFlags1 has any bit of mask
+  0x80110c00 set (a table of flags that suppress sprite updates). Otherwise it calls UpdateBattleObjectSprite
+  and returns 1. The result flag suggests callers need to know whether the update actually happened this
+  frame.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl battle_isPaused / battle_isTimeStop with bne to the return-0 path guards the whole update;
+    ldr [r5,#oBattleObject_RelatedObject1Ptr]; ldrh HP; beq skip — sprite skipped when related object
+    is dead; tst ObjectFlags1, dword_80C0170(=0x80110c00); bne skip — flag mask gates the update; bl UpdateBattleObjectSprite;
+    mov r4,#1 — success path returns 1 via r4; input comes through r5 (object ptr), so callers at 0x80C004C/0x80C0072
+    set r5 before the call
+  refs:
+  - bn6f/asm/asm31.s:17409
+  - 0x080C004C sub_80C004C
+  - 0x080C0072 sub_80C0072
+  - 0x0801BC64 UpdateBattleObjectSprite
+  - 0x0800A03C battle_isPaused
+  - 0x0800A098 battle_isTimeStop
+  reproduce: python3 tools/asmcat.py 0x080C00EA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- What objects the callers (sub_80C004C/sub_80C0072) pass in r5, and which ObjectFlags1 bits the 0x80110c00
+  mask corresponds to by name
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80C00EA -> sprite_updateRelatedObjectIfActive
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C00EA

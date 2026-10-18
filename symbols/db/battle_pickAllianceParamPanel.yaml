@@ -1,0 +1,49 @@
+name: battle_pickAllianceParamPanel
+address: '0x08114060'
+kind: function
+status: probable
+summary: Picks a random candidate panel for a battle object, using an alliance-dependent parameter table
+  and a fixed relative-offset panel list.
+interface: (r5 = battle object) -> r0 = result of panelFlagCheck (panel pick / success); no flags documented
+details: Reads the object's PanelX/PanelY and passes them with the table byte_8114160 to GetAllianceDependentPanelParamArgs,
+  which resolves an 8-byte entry indexed by the object's alliance (team) field, yielding a param word
+  and args pointer. It then calls panelFlagCheck_8015D80 with the candidate list byte_8114150, which walks
+  relative panel offsets (0x7F-terminated), transforms them by the object's facing, and applies a filter
+  (the param/args just fetched) to pick a random valid panel. The object pointer is taken from r5 rather
+  than r0, so r0 is consumed as PanelX immediately. The result is whatever panelFlagCheck_8015D80 returns,
+  presumably the chosen panel coords or a success flag for the caller at 0x08113F94.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#oBattleObject_PanelX]/ldrb r1,...PanelY shows it operates on a battle object's
+    panel position; bl GetAllianceDependentPanelParamArgs with table byte_8114160 ties the filter args
+    to the object's alliance; bl panelFlagCheck_8015D80 with list byte_8114150 shows it selects a panel
+    from a relative-offset candidate list; caller sub_8113F94 and 'battlesweep' routes place it inside
+    battle-side AI/effect logic
+  refs:
+  - bn6f/asm/asm32.s:12232
+  - 0x08113F94 sub_8113F94
+  - 0x081096FA GetAllianceDependentPanelParamArgs
+  - 0x08015D80 panelFlagCheck_8015D80
+  reproduce: python3 tools/asmcat.py 0x08114060
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- what sub_8113F94 does with the returned panel choice (attack target vs. panel effect placement)
+- the contents of byte_8114150 and byte_8114160 (which panel list and which alliance-dependent params)
+- the exact return convention of panelFlagCheck_8015D80 (coords in r0/r1 vs. bool)
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8114060 -> battle_pickAllianceParamPanel
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8114060

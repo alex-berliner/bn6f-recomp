@@ -1,0 +1,48 @@
+name: battle_applyGuardStatus
+address: '0x08110E76'
+kind: function
+status: probable
+summary: Marks the current battle object as guarding and unable to slide, then stores a random 0-3 value
+  in one of its extra vars (likely a timer/counter for the status).
+interface: (r5 = battle object pointer, object-script context) -> void; r0 clobbered
+details: Called in an object script where r5 holds the acting battle object. It ORs OBJECT_FLAGS_GUARD
+  and then OBJECT_FLAGS_CANNOT_SLIDE into the object's CollisionData ObjectFlags1 via object_setFlag1,
+  making the object block damage and immovable by sliding. It then advances the primary RNG and masks
+  the result with 3, storing the 0-3 value into oBattleObject_ExtraVars+8, most plausibly a remaining-duration
+  or phase counter for the guard state. No caller is known, so which chip/Navi script invokes it and what
+  the stored value counts down are unconfirmed.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sub_8110E76+2/+6: two bl object_setFlag1 with #OBJECT_FLAGS_GUARD and #OBJECT_FLAGS_CANNOT_SLIDE;
+    bl GetPositiveSignedRNG; and r0,#3; str r0,[r5,#oBattleObject_ExtraVars+8] stores a random 0-3 into
+    the object''s extra var; r5 used directly as the object base with an oBattleObject_ offset, matching
+    object-script convention; Captured execution in battlesweep/beastsp routes suggests a battle chip/boss
+    script context'
+  refs:
+  - bn6f/asm/asm32.s:6234
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x0801A152 object_setFlag1
+  reproduce: python3 tools/asmcat.py 0x08110E76
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- no known callers, so which chip or boss script triggers this is unknown
+- what oBattleObject_ExtraVars+8 counts (duration in frames/turns vs. animation variant) needs the code
+  that reads it back
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8110E76 -> battle_applyGuardStatus
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8110E76

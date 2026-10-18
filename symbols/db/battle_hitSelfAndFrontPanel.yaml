@@ -1,0 +1,54 @@
+name: battle_hitSelfAndFrontPanel
+address: '0x080C8660'
+kind: function
+status: probable
+summary: Battle-object action that plays a sound, applies an effect to its own panel and the panel it
+  faces (skipping the front one if that panel is flagged, e.g. a hole), then destroys itself.
+interface: (r5 = battle object) -> r0 = CUR_STATE_DESTROY stored to oBattleObject_CurStateActionPhaseAndPhaseInitialized;
+  no return value
+details: Plays sound effect 0x1D via PlaySoundEffect, then calls sub_80C8806 with the object's PanelX,
+  PanelY, Element and Param1 with 0x100 ORed into the high byte, plus r6 = oBattleObject_DamageAndStaminaDamageCounterDisabler
+  — so sub_80C8806 is likely a 'spawn hit/attack effect at panel' helper. It then computes the adjacent
+  panel using object_getFrontDirection (+1/-1 by alliance/DirectionFlip) and queries its status with object_getPanelParameters;
+  if bit 0x10 is clear it repeats the sub_80C8806 call for that front panel with the 0x100 flag cleared,
+  and with it does not. Finally it writes CUR_STATE_DESTROY to the object's state field, ending the object.
+  The 0x10 panel-status bit is presumably 'hole/broken panel', which the attack cannot cross; the 0x100
+  Param1 flag likely marks the hit variant (self vs front).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: mov r0,#0x1e; add r0,#0xff; bl PlaySoundEffect — plays SFX 0x1D at entry; first sub_80C8806
+    call passes own PanelX/PanelY/Element and Param1|0x100 in r3:r4, r6 = damage counter word; object_getFrontDirection
+    then object_getPanelParameters on x+dir,y; tst r0,#0x10 gates the second call; second call clears
+    the 0x100 bit (mov r3,#0; lsl r3,#8) before repeating sub_80C8806; mov r0,#CUR_STATE_DESTROY; str
+    to oBattleObject_CurStateActionPhaseAndPhaseInitialized — object removes itself afterwards
+  refs:
+  - bn6f/asm/asm31.s:35560
+  - 0x080005CC PlaySoundEffect
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800C8F8 object_getPanelParameters
+  reproduce: python3 tools/asmcat.py 0x080C8660
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- What sub_80C8806 does exactly (spawn hit effect vs. deal damage) — its own disassembly is not shown
+- Meaning of the 0x10 panel-status bit (hole vs. broken vs. other) and of the 0x100 Param1 flag
+- Which object(s)/attack invoke this — no callers are known, and which SFX 0x1D is would confirm the attack
+  identity
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80C8660 -> battle_hitSelfAndFrontPanel
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C8660

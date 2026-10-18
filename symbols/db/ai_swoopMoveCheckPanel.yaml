@@ -1,0 +1,54 @@
+name: ai_swoopMoveCheckPanel
+address: '0x0810FBD8'
+kind: function
+status: probable
+summary: Moves the flying enemy one step along the X or Y velocity axis, then bails to a handler if the
+  destination panel has the 0x800000 flag set.
+interface: (r0 = axis selector, 0 = move along Y, nonzero = move along X; r5 = battle object) -> r0 =
+  result of sub_810FACA (often 0); moves oBattleObject_X or oBattleObject_Y by the matching velocity component.
+details: 'The r0 flag picks the axis: if 0, the object''s Y gains YVelocity, otherwise X gains XVelocity.
+  The new (X,Y) plus the object''s Z are passed to convertXYToPanelXY_800E258 to get the panel under the
+  prospective position. object_getPanelParameters then returns that panel''s flag word, and bit 0x800000
+  is tested; if set, sub_810FACA is called (likely a turn-around/retarget reaction, since it is only invoked
+  on this collision) and its return becomes r0. Note object_getPanelParameters returns 0 for off-field
+  coordinates, so the exit is skipped there and only the in-field 0x800000 flag (possibly a hole/void-panel
+  marker) triggers the handler.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: tst r0,r0 / bne selects X-vs-Y axis, add r1,r1,r2 or add r0,r0,r2 applies the matching velocity
+    field; bl convertXYToPanelXY_800E258 maps the stepped position to panel coordinates using oBattleObject_Z;
+    ldr r1,dword_810FCDC (=0x800000); tst r0,r1 tests a single panel flag from object_getPanelParameters;
+    bl sub_810FACA is reached only when the flag is set, otherwise plain return at locret_810FC0A; Both
+    callers are in the swoop-attack AI (ai_swoopAttackUpdate and its neighbors sub_810F770/sub_810F7EC),
+    matching a movement-with-collision step
+  refs:
+  - bn6f/asm/asm32.s:3989
+  - 0x0810F898 ai_swoopAttackUpdate
+  - 0x0810F770 sub_810F770
+  - 0x0810F7EC sub_810F7EC
+  - 0x0800E258 convertXYToPanelXY_800E258
+  - 0x0800C8F8 object_getPanelParameters
+  - 0x0810FACA sub_810FACA
+  reproduce: python3 tools/asmcat.py 0x0810FBD8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- meaning of panel flag 0x800000 (hole/void/broken?)
+- what sub_810FACA does on collision and what it returns
+- why the callers pass different axis selectors (alternating flight path?)
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810FBD8 -> ai_swoopMoveCheckPanel
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810FBD8

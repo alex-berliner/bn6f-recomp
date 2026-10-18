@@ -1,0 +1,62 @@
+name: battle_findApproachPanelTowardEnemy
+address: '0x0810A21A'
+kind: function
+status: probable
+summary: Given a battle object, finds the panel one row toward the nearest opposing-team object's row
+  and returns those coords if the panel passes an alliance-dependent parameter check, else returns 0.
+interface: (r5 = battle object) -> r0 = panel X, r1 = panel Y on success; r0 = 0 if the enemy is on the
+  same row or the candidate panel fails the check
+details: 'Reads the subject''s Alliance from r5, flips it with EOR 1 to get the opposing team, and asks
+  battleObject_findClosestEnemyBattleObject_80103F8 for the closest enemy (panel coords must be pre-set
+  on the stack by the caller, since none are pushed here). It compares the found object''s byte at offset
+  0x13 (a row/Y value) against the subject''s PanelY: if equal it bails with 0, otherwise it adjusts PanelY
+  by ±1 to step one row toward the enemy. The candidate panel (subject PanelX, adjusted Y) is validated
+  via GetAllianceDependentPanelParamArgs + object_checkPanelParameters, whose table entry is selected
+  by the subject''s alliance. Only on success does it return the candidate coords in r0/r1; r4/r6 are
+  used as scratch copies of X/Y.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#oBattleObject_Alliance]; mov r1,#1; eor r0,r1; bl findClosestEnemyBattleObject
+    — targets the opposite alliance; ldrb r0,[r0,#0x13]; cmp r0,r1(PanelY); beq return-0 / blt sub #1
+    / else add #1 — steps one row toward enemy''s row; bl GetAllianceDependentPanelParamArgs; bl object_checkPanelParameters
+    — candidate panel must match alliance-dependent panel params; mov r0,r4; mov r1,r6 before pop — returns
+    panel X and adjusted Y only when the check passed; locret reached with r0=0 on equal-rows or failed-check
+    paths — failure signaling'
+  refs:
+  - bn6f/asm/asm31.s:173945
+  - 0x081096FA GetAllianceDependentPanelParamArgs
+  - 0x080103F8 battleObject_findClosestEnemyBattleObject_80103F8
+  - 0x0800CC86 object_checkPanelParameters
+  reproduce: python3 tools/asmcat.py 0x0810A21A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battles1
+- battles2
+- battlesweep
+- beastsp
+- fuzz
+- menus2
+- story2
+- story5
+- story6
+- story8
+- story9
+open_questions:
+- Caller unknown, so the exact consumer (enemy movement AI, script command, etc.) and what offset 0x13
+  on the found object is (row/Y) are unconfirmed; stack-passed panel coords to findClosestEnemyBattleObject
+  must be set by the caller, not visible here
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810A21A -> battle_findApproachPanelTowardEnemy
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810A21A

@@ -1,0 +1,46 @@
+name: ai_attackTimerExpired
+address: '0x080FD98C'
+kind: function
+status: probable
+summary: Counts down an AI attack's step timer; on expiry clears flag 0x40, marks the object as moving,
+  and sets the attack's hit element to Random.
+interface: (r7 = battle object AI attack vars) -> void; sets no meaningful flags of its own
+details: Decrementing is done in place on the ObjectAttackVars StepTimer halfword at r7+0x?; while it
+  is still >0 the function returns immediately. When the timer hits zero, it clears ObjectFlags bit 0x40
+  via object_clearFlag, ORs the CURRENTLY_MOVING_1 flag into ObjectFlags1 via object_setFlag1, and stores
+  0xC (element 'Random') into oAIAttackVars_HitElement. This looks like the point in an enemy attack script
+  where a windup ends and the actual hit/movement begins with a random-element attack.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrh/strh on oAIAttackVars_StepTimer with sub #1 and bgt locret: a delay loop that does nothing
+    until the timer expires; bl object_clearFlag with r0=0x40: clears an ObjectFlags bit once the timer
+    runs out; bl object_setFlag1 with r0 = 1<<OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT: marks the object as
+    starting to move; strh #0xC into oAIAttackVars_HitElement: assigns element value 0xC to the attack;
+    callees object_clearFlag/object_setFlag1 confirm r7 points at a battle object''s collision/AI data'
+  refs:
+  - bn6f/asm/asm31.s:147871
+  - 0x0801A15C object_clearFlag
+  - 0x0801A152 object_setFlag1
+  reproduce: python3 tools/asmcat.py 0x080FD98C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- No callers known, so what sets StepTimer and which attack/state uses it (e.g. which enemy AI) is unconfirmed
+- Exact meaning of ObjectFlags bit 0x40 and whether 0xC is officially 'random' element needs cross-checking
+  against the element table
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80FD98C -> ai_attackTimerExpired
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FD98C

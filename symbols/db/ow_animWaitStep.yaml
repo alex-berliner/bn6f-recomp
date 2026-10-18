@@ -1,0 +1,50 @@
+name: ow_animWaitStep
+address: '0x080A7E6C'
+kind: function
+status: probable
+summary: 'Overworld NPC-script step: plays an animation variant, starts a ~30-frame wait, decrements a
+  repeat counter, then advances the script state.'
+interface: (r0-r3 = scratch; r5 = object struct ptr, r7 = script/state struct ptr) -> r0 = 4 written to
+  [r5,#9]; no return value
+details: The state struct at r7 holds a remaining-count byte at +2 and an animation/direction index at
+  +3. It sets the object's sprite animation to ([r7,#3]+4) via sprite_setAnimation and reloads the animation
+  data, then stores 30 (0x1E) into the object's frame-timer field [r5,#0x24]. It fetches the player's
+  overworld facing direction and calls sub_80A8038; if the result equals [r7,#3], the decrement amount
+  becomes [r7,#2] instead of 1, so the counter is zeroed in that case. Otherwise it subtracts 1 (or the
+  whole count) from [r7,#2] and, while the counter is still positive, calls sub_80A8020 to keep waiting.
+  Finally it writes state 4 into [r5,#9], presumably the object's AI/script phase byte, ending the step.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl sprite_setAnimation with r0 = [r7,#3]+4 selects an animation tied to the struct''s index
+    byte; str 0x1E -> [r5,#0x24] loads a 30-frame timer into the object struct; bl GetOWPlayerFacingDirection
+    and cmp r0, [r7,#3] compares player facing to the state byte; ldrb r6,[r7,#2] / sub r0,r0,r6 / ble
+    skip: counter at +2 is decremented until exhausted; mov r0,#4; strb r0,[r5,#9] sets a phase/state
+    byte to 4 before returning'
+  refs:
+  - bn6f/asm/asm29.s:5739
+  - 0x0809E2B8 GetOWPlayerFacingDirection
+  - 0x080026A4 sprite_loadAnimationData
+  - 0x08002DA4 sprite_setAnimation
+  reproduce: python3 tools/asmcat.py 0x080A7E6C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- beastsp
+open_questions:
+- Meaning of the [r5,#9]=4 phase byte and of sub_80A8020/sub_80A8038 (likely wait/advance helpers) is
+  inferred only; a caller showing the state-machine table would confirm the script semantics and why the
+  counter is cleared when the player's facing matches.
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80A7E6C -> ow_animWaitStep
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A7E6C

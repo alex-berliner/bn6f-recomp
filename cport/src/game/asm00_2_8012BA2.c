@@ -848,9 +848,9 @@ static void ai_action_c(void) {
     GUEST_CALL(sub_80143CE);
 }
 
-/* register form: calls sub_801443C outside this file, which has no typed C interface yet */
+/* register form: calls ai_clearCounterHitChainFlag outside this file, which has no typed C interface yet */
 static void ai_action_d(void) {
-    GUEST_CALL(sub_801443C);
+    GUEST_CALL(ai_clearCounterHitChainFlag);
 }
 
 /* AI tick for a battle navi.  Builds a 16-slot probability table from a

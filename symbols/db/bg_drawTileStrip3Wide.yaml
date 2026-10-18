@@ -1,0 +1,49 @@
+name: bg_drawTileStrip3Wide
+address: '0x0812625C'
+kind: function
+status: probable
+summary: Thin wrapper that copies a 3-tile-wide vertical strip of tile IDs into BG tile block 2, used
+  by battle/custom-screen and folder-screen redraws.
+interface: (r0 = start column j, r1 = start row i, r2 = tileIds *const u16, r3 = strip height in half-tiles)
+  -> void
+details: 'It is a pure argument-shuffling wrapper around CopyBackgroundTiles: it hardcodes which_tile_block_32x32
+  = 2 (the tile block used by the chip-select/folder/arena draw passes) and j_size = 3, computes i_size
+  = r3*2 (lsl r5, r3, #1), and forwards (j, i, tileIds) unchanged. So each call paints a fixed 3-wide
+  column of tiles, with the caller supplying the tile-id array and the length. It touches no state of
+  its own, which is why all six callers are BG-layout routines writing tile strips and chip-slot graphics.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'mov r2, #2 / mov r4, #3 then bl CopyBackgroundTiles with r5 = r3<<1 fixes block 2, j_size 3,
+    i_size = 2*r3; caller battle_drawCustFolderSlots_8125D10 paints chip-slot strips using BG tile block
+    2; caller submenu_redrawFolderScreen lays out tile strips and chip icons into tile block 2; caller
+    bg_drawArenaTiles_8125E78 renders arena floor tiles, same block; no other work in the body: push,
+    two shifts/moves, bl, pop'
+  refs:
+  - bn6f/asm/asm33.s:6321
+  - 0x08125D10 battle_drawCustFolderSlots_8125D10
+  - 0x08125E78 bg_drawArenaTiles_8125E78
+  - 0x08125D94 submenu_redrawFolderScreen
+  - 0x080018C2 CopyBackgroundTiles
+  reproduce: python3 tools/asmcat.py 0x0812625C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- maps
+- story2
+open_questions:
+- exact semantics of CopyBackgroundTiles' j/i_size units (tiles vs half-tiles) not verified from its body
+- whether r3 is a count of source rows or of destination half-tiles
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_812625C -> bg_drawTileStrip3Wide
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_812625C

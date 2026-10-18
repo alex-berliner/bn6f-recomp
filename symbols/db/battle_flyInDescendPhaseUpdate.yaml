@@ -1,0 +1,51 @@
+name: battle_flyInDescendPhaseUpdate
+address: '0x080DC7FC'
+kind: function
+status: probable
+summary: Battle-object phase handler that flies the object in from its side of the field, descends it
+  onto its target panel, and then chooses its next action according to the panel's state.
+interface: (r5 = battle object) -> void; no return value used
+details: 'Standard phase update keyed off oBattleObject_PhaseInitialized: on first entry it gets the alliance
+  facing multiplier via object_getFrontDirection, sets XVelocity to ±0x40000 and ZVelocity to -0x80000,
+  loads Timer=0x14, and marks the phase initialized. Each subsequent frame it advances X and Z by the
+  velocities (so the object slides inward while dropping from Z=0x100000 down to 0 over 20 frames); at
+  Timer==0x0A it plays sound effect 0x140 via PlaySoundEffect. When the timer expires it snaps Z to 0,
+  sets collision region 1 via object_setCollisionRegion, copies PanelX/PanelY into ExtraVars+8/+0xC, clears
+  ExtraVars+0x18/0x1C, and calls sub_80DC9EC(panelX,panelY), which returns a flag; the object''s CurAction
+  is set to 8 if that flag is nonzero, otherwise 4, and CurPhaseAndPhaseInitialized is reset to 0 to advance
+  to the next phase.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#oBattleObject_PhaseInitialized]/bne shows one-time init setting XVelocity=front*0x40000
+    and ZVelocity=0xfff80000 (asm at 0x80DC7FC-0x80DC818); Timer==0x0A branch calls PlaySoundEffect with
+    0x41+0xFF=0x140 mid-descent (0x80DC81A-0x80DC826); Timer expiry zeroes Z, calls object_setCollisionRegion(.,1),
+    and saves PanelX/PanelY to ExtraVars+8/+0xC (0x80DC838-0x80DC84E); sub_80DC9EC(panelX,panelY) result
+    selects CurAction 8 vs 4, then CurPhaseAndPhaseInitialized=0 ends the phase (0x80DC850-0x80DC85C);
+    remaining frames integrate X+=XVelocity, Z+=ZVelocity, matching a fly-in-and-land motion (0x80DC860-0x80DC86C)
+  refs:
+  - bn6f/asm/asm31.s:78486
+  - 0x080005CC PlaySoundEffect
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0801A07C object_setCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080DC7FC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- Which battle object/attack uses this phase (no callers known), and what sub_80DC9EC tests on the panel
+  (hole/broken/occupied) that flips CurAction between 4 and 8
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80DC7FC -> battle_flyInDescendPhaseUpdate
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DC7FC

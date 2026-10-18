@@ -1,0 +1,55 @@
+name: ai_pickRandomPanelNearEnemyPanel
+address: '0x0810EBB8'
+kind: function
+status: probable
+summary: AI helper that locates the closest enemy-side panel matching a filter and then picks a random
+  panel from a relative-offset candidate list around it, likely for targeting an attack.
+interface: (r5 = battle object, no register args) -> r0 = panel result from panelFlagCheck_8015D80 (or
+  0 if no enemy panel found); r4-r7 preserved
+details: Reads the object's alliance byte at [r5+#oBattleObject_Alliance], XORs it with 1 to look at the
+  opposing team, and calls object_getClosestPanelMatchingRowFiltered with (team, 2, 0, 0x20) to find the
+  nearest panel on the enemy's rows passing the filter; if none, returns immediately. On success it looks
+  up the 8-byte alliance-indexed entry at byte_810EC30 via GetAllianceDependentPanelParamArgs, then calls
+  panelFlagCheck_8015D80 with the 0x7F-terminated relative-offset list byte_810EBE4 (offset pairs like
+  (0,-1),(0,1),(1,1)...) to randomly select one of the panels around/relative to that target. A near-duplicate
+  routine at 0x0810EBF4 (currently dead code) is identical except it uses a different candidate list byte_810EC24,
+  suggesting a second attack pattern variant. The function operates on the object held in r5, which the
+  sole caller sub_810EBB0 must set up; the return value is whatever the panel picker produced.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#oBattleObject_Alliance]; eor r0,#1 — targets the enemy team's side; bl object_getClosestPanelMatchingRowFiltered
+    with r1=2,r2=0,r3=0x20; beq exit if no panel matches; ldr r3,=byte_810EC30; bl GetAllianceDependentPanelParamArgs
+    — per-alliance params for the filter; ldr r4,=byte_810EBE4 (0x7F-terminated offset list); bl panelFlagCheck_8015D80
+    — random relative panel pick, per that callee's known summary; dead_810EBF4 is byte-identical except
+    the candidate list (byte_810EC24), showing this is one of a family of attack-pattern target pickers
+  refs:
+  - bn6f/asm/asm32.s:2255
+  - 0x0810EBB0 sub_810EBB0
+  - 0x081096FA GetAllianceDependentPanelParamArgs
+  - 0x0800D086 object_getClosestPanelMatchingRowFiltered
+  - 0x08015D80 panelFlagCheck_8015D80
+  reproduce: python3 tools/asmcat.py 0x0810EBB8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- What the filter id 0x20 (r3) matches (panel type/state) and what the param word in byte_810EC30 selects
+- What the return value of panelFlagCheck_8015D80 is (panel index vs. side effect) and which attack/AI
+  behavior consumes it
+- Why the second variant (dead_810EBF4) is unreferenced — is it truly dead or reached via a table not
+  seen here
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810EBB8 -> ai_pickRandomPanelNearEnemyPanel
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810EBB8

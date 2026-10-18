@@ -1,0 +1,50 @@
+name: ai_tenguStartPanelAttack
+address: '0x080F9154'
+kind: function
+status: probable
+summary: 'TenguMan AI: selects a target panel via a callback and starts his attack state with an RNG-chosen
+  duration.'
+interface: () -> r0 = destroyed; sets oAIAttackVars_PanelChooseCallback and oAIAttackVars_AttackDuration
+  on the AI struct at r7, enters attack mode 4
+details: Stores a pointer to the sub_80F993A callback into the AI attack vars at [r7,#oAIAttackVars_PanelChooseCallback],
+  then calls sub_80F90BA (itself an RNG-gated TenguMan AI step) and stores its return value as oAIAttackVars_AttackDuration,
+  i.e. how long the attack stays active. Finally sets attack mode 4 (with parameter 9) via object_setAttack4,
+  making TenguMan enter this attack's active state; the callback presumably runs each frame to position/drop
+  the tornado effect on the chosen panel. The caller (sub_80F9000) gates this behind GetPositiveSignedRNG&0xF<0xE,
+  so it is a common AI move choice.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldr r0, off_80F92C4 / str r0,[r7,#oAIAttackVars_PanelChooseCallback] sets the per-frame attack
+    callback (sub_80F9154); bl sub_80F90BA then strh r0,[r7,#oAIAttackVars_AttackDuration] derives the
+    attack length from the other AI step; mov r0,#9; bl object_setAttack4 switches the object into attack
+    state 4; caller sub_80F9000 gates this branch with GetPositiveSignedRNG&0xF<0xE (a random AI move
+    selection)
+  refs:
+  - bn6f/asm/asm31.s:138602
+  - 0x080F9000 sub_80F9000
+  - 0x080F90BA sub_80F90BA
+  - 0x08011690 object_setAttack4
+  reproduce: python3 tools/asmcat.py 0x080F9154
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- exact attack identity (tornado vs gust) — depends on what sub_80F993A spawns and what attack id 4/param
+  9 maps to
+- why sub_80F90BA, itself an RNG-gated step, is reused as the duration source rather than a plain rand
+  call
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F9154 -> ai_tenguStartPanelAttack
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F9154

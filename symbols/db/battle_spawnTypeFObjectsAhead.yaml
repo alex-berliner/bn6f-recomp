@@ -1,0 +1,60 @@
+name: battle_spawnTypeFObjectsAhead
+address: '0x080E0754'
+kind: function
+status: probable
+summary: Battle-object state routine that, once, spawns one or three element-carrying type-0xF objects
+  (at the row's edge panel or in front of a matching panel), then counts 60 frames before advancing to
+  action 0xC.
+interface: (r5 = battle object; r4 = alliance, r6 = damageCounterDisabler + Z16Save, r2 = element passed
+  to callee) -> r0 = spawned object header or 0; sets oBattleObject_Timer and oBattleObject_PhaseInitialized.
+details: 'Runs per frame with r5 as the owning battle object. While PhaseInitialized is 0 it performs
+  the spawn once: if oBattleObject_Param1 is 0 it takes object_getEdgePanelMatchingRow''s panel and spawns
+  a single type-0xF object; otherwise it calls battle_scanPanelsInFront_800D58C to find the first panel
+  ahead holding something of the object''s alliance, and spawns three objects in a loop (r1 = 1..3, args
+  preserved by push/pop around each call). Each spawn inherits the owner''s alliance, element and counter
+  values (r6 = damageAndStaminaDisabler + Z16Save), and the spawned header gets flag 0x10 OR-ed in. After
+  spawning, Timer is set to 0x3C (60 frames) and phase to 4; every subsequent call decrements Timer, and
+  when it expires sets CurAction = 0xC and phase = 0. byte_80E07D0 looks like a small parameter table
+  (0x20 values) used elsewhere in this object''s definition.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#oBattleObject_PhaseInitialized] / tst gates the one-shot spawn and sets PhaseInitialized=4
+    with Timer=0x3C afterwards; Param1==0 branch calls object_getEdgePanelMatchingRow and spawns once;
+    Param1!=0 calls battle_scanPanelsInFront_800D58C then loops r1=1..3 calling battle_spawnTypeFObjectInitState_80C6548;
+    Alliance/element/DamageCounterDisabler+Z16Save are loaded from r5 and handed to the type-F spawn callee,
+    whose known summary matches 'spawns type 0xF object with element, inherited alliance, counter disabler';
+    Spawned object's oObjectHeader_Flags gets 0x10 OR-ed in both branches; When Timer underflows, oBattleObject_CurAction=0xC
+    and CurPhaseAndPhaseInitialized=0, ending the state
+  refs:
+  - bn6f/asm/asm31.s:86753
+  - 0x0800D58C battle_scanPanelsInFront_800D58C
+  - 0x080C6548 battle_spawnTypeFObjectInitState_80C6548
+  - 0x0800D4C2 object_getEdgePanelMatchingRow
+  reproduce: python3 tools/asmcat.py 0x080E0754
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- beastsp
+- menus2
+- menus3
+- story2
+open_questions:
+- No caller is known, so which chip/attack/enemy owns this object (and what the spawned type-0xF object
+  is in game terms) is unidentified
+- The exact meaning of r1 = 1..3 in the spawn callee (row/column offset vs. index) and the role of byte_80E07D0's
+  0x20 entries are unclear without battle_spawnTypeFObjectInitState_80C6548's internals
+- What flag 0x10 on oObjectHeader_Flags means (e.g. just-spawned/no-collision) is not shown here
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80E0754 -> battle_spawnTypeFObjectsAhead
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E0754

@@ -1,0 +1,49 @@
+name: ai_attackStepTimerEnd
+address: '0x080FC208'
+kind: function
+status: probable
+summary: 'AI attack-var handler: when the attack''s StepTimer runs out, ends the charge/hold state, marks
+  the object as moving, and sets hit element 0xC.'
+interface: (r7 = battle object with AI attack vars) -> void; sets/clears ObjectFlags1 bits and writes
+  oAIAttackVars_HitElement
+details: Decrements the object's oAIAttackVars_StepTimer at [r7,#...] and returns while it is still >0.
+  Once the timer expires (result <= 0), it clears ObjectFlags1 bit 0x40 via object_clearFlag (likely a
+  per-attack state such as charging/holding), sets the ObjectFlags1 'currently moving' bit (1 << OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT)
+  via object_setFlag1, and stores 0xC into oAIAttackVars_HitElement. The early-out via bgt means the post-timer
+  actions run on the tick the counter reaches zero and also every later call while it stays <= 0. It operates
+  purely on the battle object pointed to by r7, consistent with AI attack step handlers that run in the
+  battle sweep route.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrh/strh on [r7,#oAIAttackVars_StepTimer] with ''sub #1; bgt locret'' = countdown gate for
+    one-time transition; calls object_clearFlag(0x40) and object_setFlag1(1<<OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT),
+    touching CollisionData ObjectFlags1; writes constant 0xC to [r7,#oAIAttackVars_HitElement], the element/attribute
+    field used by AI attack vars; executed only from the battlesweep route with object_* callees, matching
+    AI attack per-tick handlers'
+  refs:
+  - bn6f/asm/asm31.s:144752
+  - 0x0801A15C object_clearFlag
+  - 0x0801A152 object_setFlag1
+  reproduce: python3 tools/asmcat.py 0x080FC208
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- No known callers, so the meaning of ObjectFlags1 bit 0x40 and hit element 0xC (which attack/element
+  id) is unconfirmed
+- Whether callers guarantee this runs only once at timer expiry or repeatedly while the timer is <= 0
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80FC208 -> ai_attackStepTimerEnd
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FC208

@@ -1,0 +1,54 @@
+name: battle_pickRandomPanelInFrontColumn
+address: '0x080F8DA8'
+kind: function
+status: probable
+summary: Scans battle columns outward from the far edge toward the object until one contains qualifying
+  panels, then returns one of those panels chosen at random.
+interface: (r0 = object handle for getFrontDirection, r1 = unused, r2/r3 = args forwarded to object_getPanelsInColumnFiltered;
+  r5 = battle object whose [0x16] side flag selects start column 1 or 6) -> r0 = 0 if no panels found,
+  else encoded panel ID (low 3 bits = column, bits 4-7 = row); clobbers r4/r6/r7
+details: Reads the object's side/flip flag at [r5+0x16] to pick a starting column (1 if set, else 6),
+  and negates object_getFrontDirection to get a ±1 column step. It repeatedly calls object_getPanelsInColumnFiltered,
+  keeping only the step bounds 1..6, until a column yields at least one panel whose object_checkPanelParameters
+  passes; the panel IDs go into a 0xC-byte stack buffer. If found, GetPositiveSignedRNG is fed to BIOS
+  SWI 6 (Div) with the panel count, and the remainder in r1 indexes the buffer. The selected byte's low
+  3 bits and high nibble are kept as the returned panel coordinates. If the walk exhausts columns 1-6
+  without a hit, it returns 0.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'neg r0,r0 after object_getFrontDirection gives the column step direction (asm line 4-6); mov
+    r4,#6 / mov r4,#1 from tst [r5,#0x16] selects which edge column the walk starts from; loop calls object_getPanelsInColumnFiltered
+    and re-steps while r4 stays within 1..6 (loc_80F8DC4..loc_80F8DF8); svc 6 (GBA Div) with r1=count
+    leaves the remainder in r1, used as buffer index: ldrb r0,[sp+0xC,r1]; lsr 4 / lsl 0x1d+lsr 0x1d split
+    the panel byte into row and column nibble for the return value'
+  refs:
+  - bn6f/asm/asm31.s:138184
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800CFDC object_getPanelsInColumnFiltered
+  reproduce: python3 tools/asmcat.py 0x080F8DA8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- Exact caller/game effect unknown (recorded routes battlesweep, beastsp, chips suggest a chip or boss
+  script) — caller would confirm what the returned encoded panel is used for
+- Meaning of the [r5+0x16] flag bit and what object_checkPanelParameters filters for (empty? own-side?
+  broken?) needs the callee's details to name precisely
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F8DA8 -> battle_pickRandomPanelInFrontColumn
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F8DA8

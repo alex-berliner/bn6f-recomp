@@ -1,0 +1,49 @@
+name: object_placeInFrontOfRelated
+address: '0x080DFDAC'
+kind: function
+status: probable
+summary: Snaps this battle object onto the panel directly in front of its related object (owner), then
+  refreshes pixel coords and collision.
+interface: (r0 = unused at entry; r5 = battle object, non-standard) -> r0/r1 clobbered by callees; object
+  r5 repositioned
+details: 'Reads the object at r5 (note: no prologue saves/sets r5, so the caller must have it in place,
+  an odd calling convention). It calls object_getFrontDirection to get the +1/-1 facing multiplier, loads
+  RelatedObject1Ptr from r5, then writes RelatedObject1''s PanelY into r5''s PanelY and RelatedObject1''s
+  PanelX plus the facing offset into r5''s PanelX — i.e. one panel ahead of the related object on its
+  side. It then calls object_setCoordinatesFromPanels to recompute pixel X/Y and object_updateCollisionPanels
+  to sync the new panel into the collision record.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_getFrontDirection supplies the +1/-1 X offset (sub_80DFDAC+4); ldr r1,[r5,#oBattleObject_RelatedObject1Ptr]
+    then ldrb/strb PanelX/PanelY copy the related object's panel, X offset by r0 (asm lines 5-12); trailing
+    bl object_setCoordinatesFromPanels and bl object_updateCollisionPanels refresh pixel position and
+    collision after the move; only caller sub_80DFCE0 runs on the battlesweep route, consistent with a
+    battle-entity repositioning step
+  refs:
+  - bn6f/asm/asm31.s:85549
+  - 0x080DFCE0 sub_80DFCE0
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800E29C object_setCoordinatesFromPanels
+  - 0x0801A04C object_updateCollisionPanels
+  reproduce: python3 tools/asmcat.py 0x080DFDAC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- Why the object arrives in r5 rather than r0 — need sub_80DFCE0's body to confirm the convention
+- What kind of entity uses RelatedObject1 this way (summon/projectile vs cursor) — caller context needed
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80DFDAC -> object_placeInFrontOfRelated
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DFDAC

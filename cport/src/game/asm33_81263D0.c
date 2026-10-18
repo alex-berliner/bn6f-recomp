@@ -1323,7 +1323,7 @@ Next chatbox_event163Progress_81273B4(void) {
     R3 = A_eTextScript201BF20;
     R4 = A_unk_201A600;
     R6 = data;
-    GUEST_CALL(sub_8127578);
+    GUEST_CALL(chatbox_renderGlyphViaTable);
 
     /* restore r4-r7 like the original's pop {r4-r7,pc} */
     R4 = r4; R5 = r5; R6 = r6; R7 = r7;
@@ -2873,7 +2873,7 @@ Next sub_8128750(void) {
     ST16(R5 + 0x22, 0xFF);
     ST8(R5 + 0x0E, 0xFF);
 
-    GUEST_CALL(sub_81289C4);
+    GUEST_CALL(submenu_buildKeyItemList);
     GUEST_CALL(sub_8128A44);
     GUEST_CALL(sub_8128AB0);
     GUEST_CALL(sub_8128B34);
@@ -3728,10 +3728,10 @@ static void run_secondary_update(void) {
     GUEST_CALL(battle_updateEStructSprites_80465F8);
 }
 
-/* register form: calls sub_812B29C outside this file, which has no typed C interface yet */
+/* register form: calls submenu_positionOptionSprite outside this file, which has no typed C interface yet */
 static void set_menu_tick(u32 ticks) {
     R0 = ticks;
-    GUEST_CALL(sub_812B29C);
+    GUEST_CALL(submenu_positionOptionSprite);
 }
 
 /*
@@ -3834,7 +3834,7 @@ Next scene_runFadePopTick_8129400(void) {
     GUEST_CALL(entity_runAllUpdateHandlers_80465BC);
     GUEST_CALL(battle_updateEStructSprites_80465F8);
     R0 = 0x0D;
-    GUEST_CALL(sub_812B29C);
+    GUEST_CALL(submenu_positionOptionSprite);
 
     RETURN_TO_CALLER();
 }
@@ -3899,8 +3899,8 @@ Next menu_runScreens3Step_81295D8(void) {
     RETURN_TO_CALLER();
 
 intro:
-    /* original: bl sub_812AFC8 (no R0 set; holds return of the call that led here) */
-    GUEST_CALL(sub_812AFC8);
+    /* original: bl screens3_loadBackgroundTiles (no R0 set; holds return of the call that led here) */
+    GUEST_CALL(screens3_loadBackgroundTiles);
     /* original: ldr r0,=byte_812913C; bl loadEntryPairTable_812B1DC */
     R0 = A_byte_812913C;
     GUEST_CALL(loadEntryPairTable_812B1DC);
@@ -5359,7 +5359,7 @@ Next sub_8129D58(void) {
  * The entity's step selector is fetched via eStruct200BC30_getJumpOffset00 and
  * used to index a small handler table (off_8129F1C):
  *   entry 0 -> sub_8129F28, entries 1 and 2 -> sub_8129FE0.
- * After the handler returns, sub_812B26C performs the step's epilogue.
+ * After the handler returns, battle_stepWaitForStateRunUpdate performs the step's epilogue.
  *
  * All other registers (r2-r6, r8-r12) are pass-through inputs to the handler
  * and its results (r5, r8-r12) flow straight back to the caller. */
@@ -5378,7 +5378,7 @@ Next sub_8129F04(void) {
     }
 
     /* common epilogue after the step handler */
-    GUEST_CALL(sub_812B26C);
+    GUEST_CALL(battle_stepWaitForStateRunUpdate);
 
     RETURN_TO_CALLER();
 }
@@ -5604,11 +5604,11 @@ Next pet_tickEntitiesAndExitToMap_812AEC8(void) {
 /* ── sub_812AEE0 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12; bool z, n, c, v; } call_sub_812B26C_result;
-/* register form: generated wrapper: sub_812B26C has no typed C interface yet */
+/* register form: generated wrapper: battle_stepWaitForStateRunUpdate has no typed C interface yet */
 static inline call_sub_812B26C_result call_sub_812B26C(u32 r5, u32 r6) {
     R5 = r5;
     R6 = r6;
-    GUEST_CALL(sub_812B26C);
+    GUEST_CALL(battle_stepWaitForStateRunUpdate);
     return (call_sub_812B26C_result){ R0, R1, R2, R3, R4, R5, R6, R7, R8, R9, R10, R11, R12, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
 }
 
@@ -5620,7 +5620,7 @@ static inline call_sub_812B26C_result call_sub_812B26C(u32 r5, u32 r6) {
  * table entry (handlers reach the parameter data stored after their code
  * through it) and r1 = the selector byte, while r5/r6/r10 pass through
  * unchanged. When the handler returns, the shared post-update routine
- * sub_812B26C runs with the r5/r6 the handler left behind; its results
+ * battle_stepWaitForStateRunUpdate runs with the r5/r6 the handler left behind; its results
  * in r5 r8 r9 r10 r11 r12 are this function's outputs. */
 
 /* register form: one-shot helper for the dispatch-table call — the

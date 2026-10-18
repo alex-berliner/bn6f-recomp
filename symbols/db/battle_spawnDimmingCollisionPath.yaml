@@ -1,0 +1,56 @@
+name: battle_spawnDimmingCollisionPath
+address: '0x080C6F50'
+kind: function
+status: probable
+summary: Spawns a line of dimming collision regions from the object forward along its row (up to 4 panels,
+  stopping short of a target column), plus a two-tile-tall column at the target column, each lasting a
+  set time.
+interface: (r0 = lifetime for each region's Timer, r1 = target column; r5 = battle object) -> r0 = last
+  spawned region object; no flags of note
+details: With r5 pointing at a battle object, it first loops rows PanelY-1 and PanelY at the r1 column,
+  validating each with object_isValidPanel, and calls object_spawnDimmingCollisionRegion(col=r1, row,
+  element=[r5+Element], 0, types=0x4050201, r6=[r5+DamageAndStaminaDamageCounterDisabler], r7=3), then
+  writes r0 into the new object's Timer. It then walks columns PanelX + object_getFrontDirection()*1..4
+  on PanelY, spawning the same region on each column, but stops (without spawning) as soon as a column
+  equals the r1 target column, so the forward trail never reaches the target column itself. The caller
+  must set r5 to the acting object before calling. The 0x3 in r7 and the keep-updating-during-timestop
+  property suggest an attack that persists through timestop; the exact move identity is not visible from
+  this function alone.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'loc_80C6F5A: loops r6=0..1 spawning regions at (r1, PanelY-1+r6) guarded by object_isValidPanel;
+    loc_80C6F8E: r6=1..4, r0 = object_getFrontDirection()*r6 + PanelX, spawns at (r0, PanelY) until r0
+    == r1 target column; Both loops pass dword_80C6FC0=0x4050201 and r7=3 to object_spawnDimmingCollisionRegion
+    and then strh r0 (original param) into oBattleObject_Timer; Element and DamageAndStaminaDamageCounterDisabler
+    are read from r5''s battle object, so r5 must be pre-set by caller sub_80C6E90'
+  refs:
+  - bn6f/asm/asm31.s:32403
+  - 0x080C6E90 sub_80C6E90
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800CC72 object_isValidPanel
+  - 0x080C53A6 object_spawnDimmingCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080C6F50
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- Which in-game attack/chip or boss move invokes this (routes battlesweep/beastsp suggest a beast-related
+  attack)
+- Exact meaning of r7=3 and the 0x4050201 type bitmask in object_spawnDimmingCollisionRegion
+- What sub_80C6E90 does with r5 and why the target column is excluded from the forward trail
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80C6F50 -> battle_spawnDimmingCollisionPath
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C6F50

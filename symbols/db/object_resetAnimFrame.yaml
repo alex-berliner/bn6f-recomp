@@ -1,0 +1,50 @@
+name: object_resetAnimFrame
+address: '0x080C4C3A'
+kind: function
+status: probable
+summary: 'Resets a battle object''s animation/state for its landing-warp: writes state id 8 into obj+0x08
+  and zeroes the counter pointed to by obj+0x64.'
+interface: (r0 = battle object) -> r0 untouched; obj+0x08 = 8, *(u32*)(obj+0x64 deref) = 0
+details: 'Takes a battle object pointer in r0, stores the constant 8 into field +0x08, then loads a pointer
+  from field +0x64 and stores 0 through it. All recorded callers are in the AI attack/move-commit path:
+  ai_relocateToFuturePanel (warp onto reserved future panel with emerge animation) and battleObject_commitMoveLanding_8014B18
+  (landing commit) plus three nearby unnamed handlers, so this is invoked whenever an object is placed
+  on a panel and its emerge/landing sequence begins. Field +0x08 behaves like an animation/state selector
+  (value 8) and the word behind +0x64 like its frame or step counter, which the function restarts at zero.
+  The function is position-independent and returns via mov pc, lr.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sub_80C4C3A: ''str r1,[r0,#8]'' with r1=8 sets a fixed state/animation id on the object; sub_80C4C3A:
+    ''ldr r2,[r0,#0x64]'' / ''str r1,[r2]'' zeroes the counter reached via the object''s +0x64 pointer;
+    caller 0x08014D08 ai_relocateToFuturePanel is described as warping a object onto its future panel
+    with an emerge-style animation; caller 0x08014B18 battleObject_commitMoveLanding_8014B18 commits a
+    panel landing, matching a reset of landing/emerge animation state; no callees and only two stores
+    — a pure state-reset helper rather than logic'
+  refs:
+  - bn6f/asm/asm31.s:27877
+  - 0x08014D08 ai_relocateToFuturePanel
+  - 0x08014B18 battleObject_commitMoveLanding_8014B18
+  - 0x08014F40 sub_8014F40
+  reproduce: python3 tools/asmcat.py 0x080C4C3A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- beastsp
+open_questions:
+- exact meaning of field +0x08 (animation index vs. action/state id) and what structure obj+0x64 points
+  to (animation frame data? AI script state?); a look at the code that reads obj+0x08 and *(obj+0x64)
+  later would confirm
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80C4C3A -> object_resetAnimFrame
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C4C3A

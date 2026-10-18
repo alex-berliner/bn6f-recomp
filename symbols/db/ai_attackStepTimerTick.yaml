@@ -1,0 +1,50 @@
+name: ai_attackStepTimerTick
+address: '0x08103528'
+kind: function
+status: probable
+summary: Per-frame tick of an AI attack's step timer; when the timer runs out it ends the attack state,
+  resetting the object to its base animation and marking it as moving again.
+interface: (r7 = AI attack vars of the acting object, r5 = battle object) -> r0 = 0/1 (timer expiry) unused;
+  no return value used
+details: 'Called every frame during an AI attack sequence: it decrements oAIAttackVars_StepTimer and returns
+  immediately while the timer is still positive. On expiry it sets oBattleObject_CurAnim to 0 (return
+  to idle/neutral animation), clears collision ObjectFlags1 bit 0x40 (likely an attack-active/immobile
+  bit), and sets the OBJECT_FLAGS_CURRENTLY_MOVING_1 bit so the object can move again. Finally it writes
+  0xC into oAIAttackVars_HitElement, presumably restoring a default/none hit-element for the next action.
+  The routine is the tail of some larger AI attack state machine, sharing the object pointer (r5) and
+  attack variable block (r7) with its caller.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrh/sub/strh on oAIAttackVars_StepTimer with ''bgt locret'' = frame-countdown that only acts
+    on expiry; strb #0 to oBattleObject_CurAnim resets the object''s current animation; bl object_clearFlag
+    with 0x40 then object_setFlag1 with 1<<OBJECT_FLAGS_CURRENTLY_MOVING_1 re-enables movement; strh #0xc
+    to oAIAttackVars_HitElement restores a default hit element after the attack; executed only from recorded
+    ''battlesweep'' routes, matching per-frame AI battle logic'
+  refs:
+  - bn6f/asm/asm31.s:159835
+  - 0x0801A15C object_clearFlag
+  - 0x0801A152 object_setFlag1
+  reproduce: python3 tools/asmcat.py 0x08103528
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- No caller is known, so what attack/state this timer belongs to (which enemy/AI routine owns StepTimer)
+  is unconfirmed
+- Exact meaning of ObjectFlags1 bit 0x40 and HitElement value 0xC (default vs a specific element) is not
+  proven from this code alone
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8103528 -> ai_attackStepTimerTick
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8103528

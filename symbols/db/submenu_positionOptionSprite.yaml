@@ -1,0 +1,49 @@
+name: submenu_positionOptionSprite
+address: '0x0812B29C'
+kind: function
+status: probable
+summary: Repositions the sub-menu's option sprite (ID 0x78) to the x-slot matching the given option index,
+  unless a flag disables it.
+interface: (r0 = option index into context struct at r5) -> void; r0-r3 clobbered, no return value
+details: Reads the flag byte [r5+0x1b]; if bit 0 is set it exits without touching the sprite. Otherwise
+  it loads a byte at r5[index] (the per-option field selected by r0), multiplies it by 0x20 and adds 0x28
+  to build an x coordinate, and calls sprite_setPositionById with sprite ID 0x78, that x, and a fixed
+  y of 2. The 0x20 spacing per index is typical of horizontally laid-out menu entries (e.g. chip folder/grid
+  slots). The flag check acts as a visibility/enable gate for the repositioning.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#0x1b]; tst r0,r1(=1); bne return — early-out when flag bit0 set; ldrb r1,[r5,r6];
+    mul r1,#0x20; add r1,#0x28 — x coordinate derived from indexed byte; ldr r0,=0x78; mov r2,#2; bl sprite_setPositionById_811C23C
+    — moves sprite ID 0x78 to (x,2); Callers 0x812933C/0x8129400 are sub-menu input/fade-pop handlers
+    that drive cursor movement, matching index-driven repositioning
+  refs:
+  - bn6f/asm/asm33.s:16706
+  - 0x0812933C battle_submenuInputUpdate_812933C
+  - 0x08129400 scene_runFadePopTick_8129400
+  - 0x0811C23C sprite_setPositionById_811C23C
+  - 0x0812B2FC sub_812B2C4
+  reproduce: python3 tools/asmcat.py 0x0812B29C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- maps
+- menus3
+- story2
+open_questions:
+- Which sprite ID 0x78 is (cursor vs. icon) — needs the sprite table at getStructFrom2008450
+- Exact meaning of the byte at r5[index] (slot/column index vs. something else) and what structure r5
+  points to
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_812B29C -> submenu_positionOptionSprite
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_812B29C

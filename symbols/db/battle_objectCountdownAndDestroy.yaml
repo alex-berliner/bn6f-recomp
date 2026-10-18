@@ -1,0 +1,51 @@
+name: battle_objectCountdownAndDestroy
+address: '0x080D9C54'
+kind: function
+status: probable
+summary: State handler that ticks a battle object's lifetime timer down, plays a sound near the end, and
+  on expiry releases its reserved panel and moves it to the destroy state.
+interface: (r5 = battle object ptr) -> void; on timer expiry sets oBattleObject_CurStateActionPhaseAndPhaseInitialized
+  to CUR_STATE_DESTROY
+details: r5 points at a battle object. While the object's Timer is 2 it triggers sub_80E11E0 with r4=0x601,
+  plays sound 0x1BD, and calls sub_80D9CE4 with the object's ExtraVars byte 2 and its DamageAndStaminaDamageCounterDisabler.
+  The Timer is then decremented each frame; when it reaches 0, if ExtraVars byte 3 is nonzero it calls
+  sub_80D9CE4 again with r1=0, clears the object's collision region, frees the panel reserved at FuturePanelX/FuturePanelY
+  via object_removePanelReserve, sets the state to CUR_STATE_DESTROY, and clears flag bit 2 in oObjectHeader_Flags.
+  Objects with this handler are temporary panel-occupying effects that vanish after a fixed lifetime.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrh r0,[r5,#oBattleObject_Timer] / sub r0,#1 / strh / bgt — per-frame countdown of the object's
+    lifetime; bl PlaySoundEffect with r0=0xBE then add r0,#0xFF (id 0x1BD) fired at Timer==2, a pre-vanish
+    sound cue; bl object_clearCollisionRegion then ldrb FuturePanelX/Y + bl object_removePanelReserve
+    — releases the panel this object held; mov r0,#CUR_STATE_DESTROY; str r0,[r5,#CurStateActionPhase...]
+    — sends the object to its destroy state when the timer runs out; bic r0,#2 on oObjectHeader_Flags
+    — clears the object's active/collidable flag as it self-destructs
+  refs:
+  - bn6f/asm/asm31.s:72621
+  - 0x080005CC PlaySoundEffect
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0801BB46 object_removePanelReserve
+  reproduce: python3 tools/asmcat.py 0x080D9C54
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+- chips
+open_questions:
+- Identity of sub_80E11E0 (called with r4=0x601) and sub_80D9CE4 to know exactly what effect/animation
+  plays and what ExtraVars byte 3 selects
+- Which chip or object uses this handler, to give a game-specific name
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D9C54 -> battle_objectCountdownAndDestroy
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D9C54

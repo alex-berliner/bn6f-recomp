@@ -1,0 +1,50 @@
+name: ai_spawnIllusionOfSelf
+address: '0x080F57DE'
+kind: function
+status: probable
+summary: Spawns an illusion/afterimage entity (kind 0x308) at the acting enemy's position with its facing,
+  as part of an enemy AI attack.
+interface: (r5 = battle object ptr, held by caller; r0-r3 unused) -> r0 = spawned illusion object from
+  spawnIllusionObject_80E33FA; flags from that call
+details: Reads the object's effective facing via object_getFlip and packs it as r4 = 0x308 | (flip <<
+  24), the 0x308 being the illusion entity kind passed to the spawner. Loads three words starting at r5+0x34
+  (the object's stored position/panel coordinate triple) into r1-r3 as the spawn location. Tail-calls
+  spawnIllusionObject_80E33FA and returns its result directly. All callers are enemy AI attack-step routines
+  (ai_attackStepChoosePanelAndCharge and neighbors), so the illusion is created during attack setup —
+  likely a decoy/clone tied to the charge or strike.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_getFlip then r4 = flip<<24 | 0x308 builds the spawn descriptor (sub_80F57DE start);
+    add r0,r0,r5; ldmia r0!,{r1-r3} copies the object's +0x34 coordinate triple as spawn args; tail bl
+    spawnIllusionObject_80E33FA with r4 set is the only side effect; caller ai_attackStepChoosePanelAndCharge
+    is an enemy AI attack step reserving panels and charging
+  refs:
+  - bn6f/asm/asm31.s:131428
+  - 0x080F4D50 ai_attackStepChoosePanelAndCharge
+  - 0x080F4C44 sub_80F4C44
+  - 0x080F5028 sub_80F5028
+  - 0x0800E456 object_getFlip
+  - 0x080E33FA spawnIllusionObject_80E33FA
+  reproduce: python3 tools/asmcat.py 0x080F57DE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- exact meaning of the three words at obj+0x34 (world x/y/z vs panel coords)
+- what entity kind 0x308 renders as in game
+- which specific attack/behavior uses the spawned illusion
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F57DE -> ai_spawnIllusionOfSelf
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F57DE

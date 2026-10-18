@@ -1,0 +1,55 @@
+name: screens3_loadBackgroundTiles
+address: '0x0812AFC8'
+kind: function
+status: probable
+summary: 'Sets up one ''screens3'' menu screen: copies a full 30x20 background tilemap into BG tile block
+  1 and then renders its two text GFX panels.'
+interface: () -> (); no args or return value; calls CopyBackgroundTiles and sub_812B430, so r0-r3 are
+  clobbered
+details: 'The body is just two calls: CopyBackgroundTiles(0, 0, tile_block=1, tile_ids=unk_201D120, j_size=0x1E,
+  i_size=0x14) writes an entire 30x20 BG map (full GBA text-mode screen) into tile block 1 using the tile-id
+  table at unk_201D120, then calls sub_812B430, which decompresses eTextScript201BA20 via eDecompBuffer2013A00
+  and renders two text GFX panels into VRAM slots 0x20/0x21. The data tables right after the routine (off_812B0C0
+  etc.) hold per-screen decompression source/dest pairs, so the sibling functions at 0x812A424-0x812BFAC
+  are parallel screen-setup variants. This is a per-screen load step in the screens3 sub-menu, not a per-frame
+  tick.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'mov r2,#1 / mov r4,#0x1e / mov r5,#0x14 then bl CopyBackgroundTiles with tile_ids=unk_201D120:
+    full-screen 30x20 tilemap copy to tile block 1; immediately followed by bl sub_812B430, whose known
+    summary is rendering two eTextScript201BA20 text panels into VRAM slots 0x20/0x21; caller 0x81295D8
+    menu_runScreens3Step_81295D8 is the per-frame tick of the screens3 sub-menu, matching a screen (re)load
+    helper; adjacent data tables off_812B0C0/812B0CC/812B0E4 list compressed source + eDecompBuffer2013A00
+    dest pairs, the same gfx-load pattern used by this screen family; function takes no input and returns
+    nothing, consistent with a stateless screen-setup routine rather than a step/update handler'
+  refs:
+  - bn6f/asm/asm33.s:16419
+  - 0x081295D8 menu_runScreens3Step_81295D8
+  - 0x0812A424 sub_812A424
+  - 0x0812A694 sub_812A694
+  - 0x0812B430 sub_812B430
+  - 0x080018C2 CopyBackgroundTiles
+  reproduce: python3 tools/asmcat.py 0x0812AFC8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- menus3
+open_questions:
+- Which exact screens3 screen (help text, message list, etc.) this variant draws is unknown; the callers
+  0x812A424-0x812BFAC would need disassembly to tell the screens apart
+- Whether unk_201D120 is a tilemap or a tile-id index table for CopyBackgroundTiles depends on that callee's
+  exact semantics
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_812AFC8 -> screens3_loadBackgroundTiles
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_812AFC8

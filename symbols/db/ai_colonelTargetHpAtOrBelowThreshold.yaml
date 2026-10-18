@@ -1,0 +1,49 @@
+name: ai_colonelTargetHpAtOrBelowThreshold
+address: '0x081015E4'
+kind: function
+status: probable
+summary: 'Colonel AI helper: returns 1 if the opposing side''s HP is at or below a value derived from
+  sub_810179C(4), else 0.'
+interface: (r0 unused) -> r0 = 1 if target HP <= threshold, else 0; flags clobbered by calls
+details: Reads the caller battle object's Alliance field (r5, set by caller), XORs it with 1, and passes
+  the inverted alliance to battle_findPlayer to fetch the opposing side's battle object. Loads its oBattleObject_HP
+  halfword and calls sub_810179C with argument 4 to obtain a threshold value, masked to 16 bits. It returns
+  0 when target HP is strictly greater than that threshold, and 1 otherwise. The two call sites in the
+  Colonel AI step both sit behind state guards and an RNG-driven 1-or-2 pick, so this test likely gates
+  a finisher or special attack choice against a weakened opponent. The exact meaning of the threshold
+  from sub_810179C(4) is unknown.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#oBattleObject_Alliance]; eor r0,#1; bl battle_findPlayer — fetches the opposite
+    alliance's object; ldrh r4,[r0,#oBattleObject_HP] — target HP is the compared quantity; mov r0,#4;
+    bl sub_810179C; lsl/lsr r1,#16 — threshold from callee(4), truncated to 16 bits; cmp r4,r1; bgt ret0;
+    mov r0,#1 — returns 1 only when HP <= threshold; callers sub_81013AA guard states 1/2/3 then pick
+    1-or-2 via GetPositiveSignedRNG&1+1 — attack-selection context
+  refs:
+  - bn6f/asm/asm31.s:155759
+  - 0x081013AA sub_81013AA
+  - 0x0810141E sub_81013AA
+  - 0x080103BC battle_findPlayer
+  - 0x0810179C sub_810179C
+  reproduce: python3 tools/asmcat.py 0x081015E4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- 'What sub_810179C(4) computes (threshold source: turn count, remaining chips, AI difficulty value?)
+  would pin down the exact decision rule'
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_81015E4 -> ai_colonelTargetHpAtOrBelowThreshold
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81015E4

@@ -1,0 +1,52 @@
+name: battle_getLoserEffectTimer
+address: '0x0800A8B2'
+kind: function
+status: probable
+summary: Looks up a frame-timer value for the loser sequence from a table indexed by a byte in the acting
+  side's NaviStats record.
+interface: () -> r0 = byte from byte_800A8C8[NaviStats[side].0x29]; no flags of interest
+details: 'Takes no arguments of its own: it first reads battle state byte 0x0d via battle_getStateByte0d_800A7E2
+  and passes that as the side selector to GetBattleNaviStatsByte with offset 0x29. The returned byte is
+  used as an index into the 12-byte table byte_800A8C8 (0x08, then 0x64,0x68,...,0x8C — steps of 4), and
+  the looked-up byte is returned in r0. The values look like frame counts (8 vs 100–140), matching the
+  loser-sequence caller which ''picks an effect timer''. The state byte 0x0d presumably selects player/enemy
+  (or similar) whose NaviStats byte 0x29 (form/navi-related field) determines which delay applies.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl battle_getStateByte0d_800A7E2 then mov r1,#0x29; bl GetBattleNaviStatsByte — result byte
+    comes from NaviStats offset 0x29 of the state-selected side; ldr r1,off_800A8C4; ldrb r0,[r0,r1] —
+    table lookup byte_800A8C8[index] with entries 0x8,0x64..0x8C; only caller battle_runLoserSequence_800825A
+    'picks an effect timer', consistent with the 8/100–140 frame-sized table values; table entry 0 is
+    0x08 while entries 1..11 are an even 4-step ramp, suggesting a default vs per-form delay
+  refs:
+  - bn6f/asm/asm00_1.s:17016
+  - 0x0800825A battle_runLoserSequence_800825A
+  - 0x080136CC GetBattleNaviStatsByte
+  - 0x0800A7E2 battle_getStateByte0d_800A7E2
+  reproduce: python3 tools/asmcat.py 0x0800A8B2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battle
+- battlesweep
+- beastsp
+- chips
+- fuzz
+open_questions:
+- exact meaning of NaviStats offset 0x29 (form/cross/navi id?) and of battle state byte 0x0d
+- how battle_runLoserSequence_800825A consumes the returned value (timer vs index) is not visible from
+  the summary alone
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_800A8B2 -> battle_getLoserEffectTimer
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800A8B2

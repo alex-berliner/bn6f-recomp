@@ -1,0 +1,62 @@
+name: battle_chipSelectAnimTileStep
+address: '0x0802C044'
+kind: function
+status: probable
+summary: 'Animates the chip-select screen reveal: draws one tile of a 7x6 tile block per call, with a
+  tick sound every 4th tile, until all 42 tiles are placed.'
+interface: (r0 = row buffer fill target? unused after fill, r5 = UI state struct ptr) -> void; r5+0xB
+  counter incremented, r5+3 set to 8 on completion
+details: Each call first fills a 0x2A-halfword stack row with ascending tile IDs starting at 0xC1E8 (battle_fillChipSelectRow_802C588).
+  It then reads counter [r5+0xB]; if >= 0x2A it instead stores 8 to [r5+3] and 0x1E to [r5+0xB] and returns
+  (animation finished). Otherwise it indexes unk_2035320[counter] to get v, picks the halfword at sp+4+v*2
+  (tile 0xC1E8+v) into sp+0, divides v by 7 via SWI 6, and calls blitTileBlockToRowBuffer_802C4B6 with
+  x/y = (v%7)+14 / (v/7)+10 (after an r0/r1 swap), copying one halfword into the 24-halfword-wide buffer
+  at unk_2034B30. The counter is stored back incremented, and PlaySoundEffect(0x7E) fires when (counter
+  & 3) == 3. unk_2035320 is a 42-entry byte table mapping the animation frame to which tile/position is
+  drawn next.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'svc 6 (BIOS Div) with r1=7, then r0=rem+0xE / r1=quot+0xA passed to blitTileBlockToRowBuffer_802C4B6
+    -> 7-wide grid positioning; ldrh r1,[r6,r1] with r1=v*2+4 picks a tile from the row just filled with
+    0xC1E8.. by battle_fillChipSelectRow_802C588 (0x2A halfwords); counter at [r5,#0xb]: bmi check against
+    0x2A resets it to 0x1E and writes 8 to [r5,#3] when the 42-tile sequence ends; PlaySoundEffect(0x7E)
+    guarded by and r0,3 / cmp 3 -> tick every 4th tile drawn'
+  refs:
+  - bn6f/asm/asm03_0.s:12451
+  - 0x080005CC PlaySoundEffect
+  - 0x0802C588 battle_fillChipSelectRow_802C588
+  - 0x0802C4B6 blitTileBlockToRowBuffer_802C4B6
+  reproduce: python3 tools/asmcat.py 0x0802C044
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battles1
+- battles2
+- beastsp
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- which struct r5 points to and the meaning of the state byte [r5+3]=8 and the 0x1E reset value
+- contents/order of the unk_2035320 table (linear or shuffled tile order)
+- what the 7x6 tile block at (14,10) depicts on screen and which exact screen/mode invokes this (no caller
+  captured)
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_802C044 -> battle_chipSelectAnimTileStep
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802C044

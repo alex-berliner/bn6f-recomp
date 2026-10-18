@@ -1,0 +1,49 @@
+name: battle_crackPanelObjectDestroy
+address: '0x080C87DC'
+kind: function
+status: probable
+summary: Battle object teardown that cracks the panel it occupies if conditions on its params and the
+  panel state hold, then destroys itself.
+interface: (r5 = battle object pointer) -> r0 = 0 from object_genericDestroy; destroys the object
+details: Reads the object's PanelX/PanelY and fetches the panel status word via object_getPanelParameters.
+  If panel flag 0x10 (cracked/broken panel) is set, and the object's Param1 >= 2 and Param2 != 0, it calls
+  object_crackPanel on its own coordinates before tearing itself down with object_genericDestroy. Param2
+  looks like an enable/charge flag and Param1 a state/threshold field. If the panel is not flagged 0x10
+  or either param check fails, it skips straight to the destructor. r5 is the standard battle-object base
+  pointer, so the function takes no explicit arguments.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0/r1 from oBattleObject_PanelX/PanelY then bl object_getPanelParameters reads own panel
+    status; tst r0,#0x10 gates the crack on a panel-status bit; Param1 >= 2 and Param2 != 0 checks use
+    oBattleObject_Param1/Param2; bl object_crackPanel with the same PanelX/PanelY cracks the occupied
+    panel; tail bl object_genericDestroy releases panel tiles, collision data and object memory
+  refs:
+  - bn6f/asm/asm31.s:35760
+  - 0x08016C8A object_genericDestroy
+  - 0x0800C8F8 object_getPanelParameters
+  - 0x0800C938 object_crackPanel
+  reproduce: python3 tools/asmcat.py 0x080C87DC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- Which in-game object uses this teardown (needs a caller/spawner to identify, e.g. a bomb or cube that
+  breaks the panel under it)
+- exact meaning of panel flag 0x10 and of Param1>=2 / Param2
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80C87DC -> battle_crackPanelObjectDestroy
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C87DC

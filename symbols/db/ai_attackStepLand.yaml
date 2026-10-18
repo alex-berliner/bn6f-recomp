@@ -1,0 +1,50 @@
+name: ai_attackStepLand
+address: '0x080F8A1C'
+kind: function
+status: probable
+summary: 'One tick of an AI attack step: counts the step timer down, and on expiry lands the object on
+  its reserved destination panel, switching to anim 3 and arming hit element 8.'
+interface: (r5 = battle object, r7 = AI attack vars) -> void; no return value used
+details: Each call decrements oAIAttackVars_StepTimer and returns immediately while it is still positive.
+  When it hits zero, the object copies FuturePanelX/Y into PanelX/Y (committing the reserved move target),
+  calls object_removePanelReserve to clear the panel reservation, then recomputes pixel coordinates via
+  object_setCoordinatesFromPanels and refreshes collision/facing via object_updateCollisionPanels. It
+  sets oBattleObject_CurAnim to 3 (an attack/step pose), reloads StepTimer with 3 frames so the next step
+  repeats at that cadence, and writes HitElement = 8 so the landing applies a hit. r0 after the calls
+  must be clobbered-safe, hence the reloaded constants.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'StepTimer decrement with ''bgt locret'' gates everything else, so this is a timed tick handler;
+    FuturePanelX/Y copied to PanelX/Y then object_removePanelReserve: commits and frees a previously reserved
+    panel; object_setCoordinatesFromPanels + object_updateCollisionPanels: repositions the object onto
+    the new panel; StepTimer reset to 3 and HitElement set to 8: repeating step cadence with an attack
+    payload'
+  refs:
+  - bn6f/asm/asm31.s:137686
+  - 0x0801BB46 object_removePanelReserve
+  - 0x0800E29C object_setCoordinatesFromPanels
+  - 0x0801A04C object_updateCollisionPanels
+  reproduce: python3 tools/asmcat.py 0x080F8A1C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- Which attack/AI uses this (callers not captured) and what element id 8 corresponds to
+- Where the initial StepTimer value and FuturePanel target are set before the first tick
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F8A1C -> ai_attackStepLand
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F8A1C

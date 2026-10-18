@@ -210,7 +210,7 @@ Next checkLayerPriority_80318b0(void) {
             case 2:  GUEST_CALL(sub_80319B6); break;
             case 3:  GUEST_CALL(sub_80319CE); break;
             case 4:  GUEST_CALL(sub_80319E6); break;
-            case 9:  GUEST_CALL(sub_80319FE); break;
+            case 9:  GUEST_CALL(battle_aiTargetInRangeActorCount); break;
             case 10: GUEST_CALL(sub_8031A16); break;
             case 11: GUEST_CALL(sub_8031A2E); break;
             case 12: GUEST_CALL(sub_8031A46); break;

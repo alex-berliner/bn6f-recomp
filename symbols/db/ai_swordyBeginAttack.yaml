@@ -1,0 +1,53 @@
+name: ai_swordyBeginAttack
+address: '0x0810B5BE'
+kind: function
+status: probable
+summary: 'Sets up the Swordy-family AI''s attack: stores the target panel, picks version-dependent params,
+  sets attack id 0xA, and enters the attack handler.'
+interface: (r0 = target panel X, r1 = target panel Y; r4 = battle object AIData, r7 = AI attack-vars block)
+  -> tail-calls attack dispatcher, no return value
+details: Stores r0/r1 into oAIAttackVars_TargetPanelX/Y and writes 1 to oAIAttackVars_AiDifficultyTier.
+  It then indexes the table at byte_810B5F4 by oAIData_Version_16<<2 and stores the resulting word in
+  oAIAttackVars_ScratchVar (values 0x50/0x70/0x90 look like timing/count params). It calls GetAllianceDependentPanelParamArgs
+  with the byte_810B6E0 table to get a param word (stored to oAIAttackVars_AiAttackParam) and an args
+  pointer (stored to oAIAttackVars_PanelParamFlags2). Finally it calls object_setAttack0 with attack id
+  0xA and tail-calls sub_8109804, which dispatches to an AI-attack handler via the selector byte in the
+  attack-vars block.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: strb r0/r1 into oAIAttackVars_TargetPanelX/Y at the start records the caller's chosen target
+    panel; off_810B5F0 table indexed by oAIData_Version_16<<2 fills oAIAttackVars_ScratchVar with 0x50/0x70/0x90
+    per version; bl GetAllianceDependentPanelParamArgs stores param/args into oAIAttackVars_AiAttackParam
+    and oAIAttackVars_PanelParamFlags2; mov r0,#0xa; bl object_setAttack0 selects attack id 0xA on the
+    battle object; bl sub_8109804 tail-call enters the AI-attack handler dispatcher, matching the Swordy
+    attack flow of caller ai_swordyTryStartAttack
+  refs:
+  - bn6f/asm/asm31.s:176306
+  - 0x0810B436 ai_swordyTryStartAttack
+  - 0x0810B3E4 sub_810B3E4
+  - 0x081096FA GetAllianceDependentPanelParamArgs
+  - 0x08109804 sub_8109804
+  - 0x08011680 object_setAttack0
+  reproduce: python3 tools/asmcat.py 0x0810B5BE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- Exact meaning of the version-indexed words in byte_810B5F4 (timing vs. damage variant) and the semantics
+  of the 0xA attack id's handler would be confirmed by reading sub_8109804's targets
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810B5BE -> ai_swordyBeginAttack
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810B5BE

@@ -88,9 +88,9 @@ static u32 battle_get_phase_mode(void) { /* register form: calls battle_getPhase
     GUEST_CALL(battle_getPhaseMode_800A152);
     return R0;
 }
-static u32 battle_800A8B2(u32 phase_mode) { /* register form: calls sub_800A8B2, which has no typed C interface yet (noted by the tool) */
+static u32 battle_800A8B2(u32 phase_mode) { /* register form: calls battle_getLoserEffectTimer, which has no typed C interface yet (noted by the tool) */
     R0 = phase_mode;
-    GUEST_CALL(sub_800A8B2);
+    GUEST_CALL(battle_getLoserEffectTimer);
     return R0;
 }
 static void comm_801E792(u32 value) { /* register form: calls battle_dispatchKindEffect_801E792, which has no typed C interface yet (noted by the tool) */
@@ -288,7 +288,7 @@ static void run_state_phase_handler(u32 table_offset)
     case 0x0C: GUEST_CALL(battle_stepRunAndDecideResult_800938A); break;
     case 0x10: GUEST_CALL(battle_DispatchStatePhase_800945C); break;
     case 0x14: GUEST_CALL(battle_initFadeToBattleResult_80094DA); break;
-    case 0x18: GUEST_CALL(sub_800951E); break;
+    case 0x18: GUEST_CALL(battle_tutFullSynchroTextStep); break;
     case 0x1C: GUEST_CALL(sub_8009552); break;
     case 0x20: GUEST_CALL(sub_8009594); break;
     case 0x24: GUEST_CALL(sub_80095C8); break;
@@ -398,7 +398,7 @@ Next task484_RunFrame_800927C(void) {
  *
  * r5 points to the battle state; the byte at offset 2 selects an entry in
  * the handler table at off_80092B4 (entries at byte offsets 0, 4 and 8):
- *   0 -> battle_runState4CountdownOrAdvance_80092C0, 4 -> sub_80092F0, 8 -> sub_8009314.
+ *   0 -> battle_runState4CountdownOrAdvance_80092C0, 4 -> battle_stateIntroEffectWait, 8 -> sub_8009314.
  *
  * The original does `ldr r1, [table, phase]; mov lr, pc; bx r1`, so the
  * handler is entered with r0 = the phase byte and r1 = its own (Thumb)
@@ -415,8 +415,8 @@ Next battle_dispatchStatePhase_80092A0(void) {
     case 0x080092C1: /* battle_runState4CountdownOrAdvance_80092C0 + 1 (Thumb) */
         GUEST_CALL(battle_runState4CountdownOrAdvance_80092C0);
         break;
-    case 0x080092F1: /* sub_80092F0 + 1 (Thumb) */
-        GUEST_CALL(sub_80092F0);
+    case 0x080092F1: /* battle_stateIntroEffectWait + 1 (Thumb) */
+        GUEST_CALL(battle_stateIntroEffectWait);
         break;
     case 0x08009315: /* sub_8009314 + 1 (Thumb) */
         GUEST_CALL(sub_8009314);

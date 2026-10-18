@@ -1,0 +1,52 @@
+name: battle_initAiAttackVars
+address: '0x080F65C4'
+kind: function
+status: probable
+summary: 'Initializes the per-object AI attack state: stores the enemy difficulty tier, sets the init
+  flag and panel-choose callback, targets the opposing player, and starts attack0 id 0xB.'
+interface: (r0 = BattleObject r5/r7 attack state base, no args used) -> r0 = clobbered; writes oAIAttackVars
+  fields on r7
+details: This is an attack-setup routine for the battle AI. It reads the enemy AI data's difficulty byte
+  via battle_getAiDifficultyTier_800FE36 and stores the tier (0-2) into oAIAttackVars_AiDifficultyTier,
+  then sets oAIAttackVars_InitFlag to 1. It calls sub_80F663C with r0=1 (purpose unknown, likely clearing/arming
+  attack vars), installs sub_80F6FD0+1 as oAIAttackVars_PanelChooseCallback, and resolves the target by
+  XOR-ing the object's oBattleObject_Alliance with 1 and calling battle_findPlayer, storing the opposing
+  player pointer in oAIAttackVars_TargetObjectPtr. Finally it invokes object_setAttack0 with 0xB, selecting
+  the attack behaviour the callback will drive. The caller sub_80F64B0 appears to be a dispatch of such
+  per-attack init routines.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl battle_getAiDifficultyTier_800FE36 then strb r0,[r7,#oAIAttackVars_AiDifficultyTier] — stores
+    AI tier into attack vars; strb r0(=1),[r7,#oAIAttackVars_InitFlag] and ldr off_80F66E0(=sub_80F6FD0+1)
+    stored to oAIAttackVars_PanelChooseCallback — arms a per-attack callback; eor alliance with 1 then
+    bl battle_findPlayer; str r0,[r7,#oAIAttackVars_TargetObjectPtr] — targets the opposite-alliance (player-side)
+    object; mov r0,#0xb; bl object_setAttack0 — selects attack behaviour id 0xB; single caller sub_80F64B0
+    and tail structure suggest an attack-init table entry setting up oAIAttackVars
+  refs:
+  - bn6f/asm/asm31.s:133122
+  - 0x080F64B0 sub_80F64B0
+  - 0x0800FE36 battle_getAiDifficultyTier_800FE36
+  - 0x080103BC battle_findPlayer
+  - 0x08011680 object_setAttack0
+  reproduce: python3 tools/asmcat.py 0x080F65C4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- What sub_80F663C(r0=1) does (likely resets/clears oAIAttackVars) and what attack 0xB does specifically
+- What sub_80F6FD0 (the panel-choose callback) decides during the panel-selection phase
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F65C4 -> battle_initAiAttackVars
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F65C4

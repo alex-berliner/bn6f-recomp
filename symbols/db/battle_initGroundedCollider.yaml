@@ -1,0 +1,54 @@
+name: battle_initGroundedCollider
+address: '0x080F7154'
+kind: function
+status: probable
+summary: 'Resets a battle object to a grounded default state: zero height, shadow on, collision region
+  1, and a blank status-UI entry.'
+interface: (r5 = battle object pointer, passed implicitly by caller) -> r0 = 0; flags clobbered by calls
+details: The function operates on the object in r5, which is set up by the callers rather than passed
+  in r0-r3. It zeroes the halfword at oBattleObject_Z16 (the object's height/Z position), turns on the
+  sprite's shadow via sprite_hasShadow, stores collision region 1 into the object's collision data via
+  object_setCollisionRegion, and finally calls the status-list routine at 0x203EB50 with r0=0 and r1=0,
+  claiming a slot with name ID 0 and HP 0. This combination (height 0, shadow, region 1, blank status
+  entry) looks like standard setup for a ground-level obstacle or stage-side collider that should not
+  show a meaningful name/HP in the status UI. Four nearby callers all use it, suggesting a shared init
+  helper.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: strh r0,[r5,#oBattleObject_Z16] with r0=0 clears the object's height field; bl sprite_hasShadow
+    enables the object's shadow bit in its sprite state; mov r0,#1; bl object_setCollisionRegion sets
+    collision region index 1; mov r0,#0; mov r1,#0; bl sub_801DC7C claims a status slot with name ID 0
+    and HP 0; r5 is never set inside the function, so all four callers must place the object pointer in
+    r5
+  refs:
+  - bn6f/asm/asm31.s:134598
+  - 0x080F678E sub_80F678E
+  - 0x080F695C sub_80F695C
+  - 0x080F6C76 sub_80F6C76
+  - 0x0801A07C object_setCollisionRegion
+  - 0x08002E3C sprite_hasShadow
+  - 0x0801DC7C sub_801DC7C
+  reproduce: python3 tools/asmcat.py 0x080F7154
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- What object type the four callers construct in r5 (obstacle vs. stage entity) is not visible from this
+  function alone
+- Meaning of collision region index 1 and of the oBattleObject_Z16 field name needs confirmation from
+  the struct map
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F7154 -> battle_initGroundedCollider
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F7154

@@ -1,0 +1,50 @@
+name: init_clearBeastSpEventFlagTable
+address: '0x0808CE28'
+kind: function
+status: probable
+summary: In Beast+ scenario setup, looks up a per-AI-mode table and, for each entry whose gate flag is
+  set, clears a consecutive range of event flags.
+interface: () -> void; reads current map group's AI mode, no args; clobbers r0-r3
+details: 'Gets the AI mode for the current map group (3 for map group 0x85, else the map''s MapNumber
+  byte) and uses it *4 as an index into the pointer table at off_808CEB8. Each table entry is 8 bytes:
+  a u16 gate flag at +0, a u16 start flag at +2, and a u16 count at +4. If TestEventFlag(gate) is true,
+  it calls ClearEventFlagRange(start, count), clearing that run of story flags; entries are otherwise
+  skipped. It iterates entries until the loop counter limit: 4 entries if the AI mode is >= 3, otherwise
+  3. Called once from init_beastSpScenario, matching its ''clears related story flags'' behavior; the
+  flag ranges presumably reset per-mode Beast+ scenario progress.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl ai_getAIModeForMapGroup_808D084 then ldr r4,[r4,r0] with r0=mode*4 selects the table by AI
+    mode (0x0808CE2C-0x0808CE38); ldrh [r4,r6] + bl TestEventFlag gates each 8-byte-strided entry (loc_808CE3C);
+    ldrh at +2 and +4 feed ClearEventFlagRange(r0=start, r1=count) (0x0808CE48-0x0808CE56); loop bound
+    is 4 when mode >= 3 else 3 (cmp r8,#3 / cmp r7,#4 vs cmp r7,#3); sole caller init_beastSpScenario
+    is documented as wiping work state and clearing related story flags
+  refs:
+  - bn6f/asm/asm24.s:1601
+  - 0x0808CA68 init_beastSpScenario
+  - 0x0802F1AC ClearEventFlagRange
+  - 0x0802F168 TestEventFlag
+  - 0x0808D084 ai_getAIModeForMapGroup_808D084
+  reproduce: python3 tools/asmcat.py 0x0808CE28
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- beastsp
+- maps
+open_questions:
+- contents of the table pointed to by off_808CEBC (which flags/ranges belong to which AI mode) not verified
+  from data dump
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_808CE28 -> init_clearBeastSpEventFlagTable
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_808CE28

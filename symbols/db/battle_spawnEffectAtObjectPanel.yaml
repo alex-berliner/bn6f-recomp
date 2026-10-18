@@ -1,0 +1,51 @@
+name: battle_spawnEffectAtObjectPanel
+address: '0x08101218'
+kind: function
+status: probable
+summary: Spawns a type-4 effect object (effect type 0, variant 3, orientation chosen by the object's facing)
+  at the battle object's panel position.
+interface: (r0 = battle object pointer, r5-relative fields read) -> r0 = spawned effect object pointer;
+  no flags of interest
+details: Calls object_getFlip on the object in r5 (alliance XOR DirectionFlip), then builds r4 = (flip
+  << 8) + 3, i.e. an effect variant/graphics selector where the high byte encodes which side the effect
+  is mirrored for. It reads the object's oBattleObject_PanelX/oBattleObject_PanelY and converts them to
+  16.16 pixel coordinates via object_getCoordinatesForPanels, passes x in r1, y in r2, 0x200000 in r3
+  (likely a Z/height or render param), and r4 as the effect kind, to spawn_t1_0x0_EffectObject which spawns
+  a type-4 battle object with effect type 0 and returns its pointer. The function is a leaf besides that
+  spawn; no state of the source object is modified.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_getFlip then lsl r4, r0, #8; add r4, r4, #3 builds a facing-dependent effect id;
+    ldrb r0/r1 from oBattleObject_PanelX/Y then bl object_getCoordinatesForPanels converts the panel to
+    pixel coords; bl spawn_t1_0x0_EffectObject with r3 = 0x20<<16 passes the effect spawn parameters;
+    r5 holds the battle object throughout but is never written, so it is read-only input'
+  refs:
+  - bn6f/asm/asm31.s:155304
+  - 0x08100894 sub_8100894
+  - 0x0800E276 object_getCoordinatesForPanels
+  - 0x0800E456 object_getFlip
+  - 0x080E05F6 spawn_t1_0x0_EffectObject
+  reproduce: python3 tools/asmcat.py 0x08101218
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+open_questions:
+- what effect variant 3 (and the flip-shifted variants 0x103) renders — the effect object's graphics table
+  would tell
+- meaning of the r3 = 0x200000 argument to spawn_t1_0x0_EffectObject (height above panel vs priority)
+- what sub_8100894 is, to confirm which in-game event triggers this effect
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8101218 -> battle_spawnEffectAtObjectPanel
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8101218

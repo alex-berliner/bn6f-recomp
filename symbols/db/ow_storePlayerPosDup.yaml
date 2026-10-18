@@ -1,0 +1,49 @@
+name: ow_storePlayerPosDup
+address: '0x0808CC84'
+kind: function
+status: probable
+summary: Reads the overworld player object's X/Y position and stores it twice into the caller's work structure
+  (as current and duplicate/previous coords).
+interface: (r0 = unused, r5 = target work struct) -> r0 destroyed; stores halfword X at +0x16/+0x1a and
+  Y at +0x18/+0x1c; no flags meaningful
+details: Calls ReadOWPlayerObjectCoords, which returns X in r0, Y in r1 (packed halfwords) and a pointer
+  to the player object. Both values are arithmetic-shifted right by 16, converting the packed 16.16 or
+  low/high halves to signed halfword coordinates. The results are written to r5 at offsets 0x16 and 0x18,
+  then the same values are written again to offsets 0x1a and 0x1c — evidently a 'current' and a copy (likely
+  last/previous or mirrored slot) so both pairs start equal. r5 is not set inside, so the caller must
+  have prepared the work struct pointer; the only known caller is init_beastSpScenario, which wipes its
+  buffer before calling. No return value is produced; it just pops {pc}.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl ReadOWPlayerObjectCoords supplies player X/Y to r0/r1 (asm line 2); asr r0,#16 / asr r1,#16
+    unpack the packed coords to halfwords (lines 3-4); strh pair at [r5,#0x16/#0x18] then identical pair
+    at [r5,#0x1a/#0x1c] shows duplicate storage (lines 5-8); only known caller init_beastSpScenario initializes
+    Beast+ scenario work, so r5 is that buffer (caller list)
+  refs:
+  - bn6f/asm/asm24.s:1382
+  - 0x0808CA68 init_beastSpScenario
+  - 0x0809E1AE ReadOWPlayerObjectCoords
+  reproduce: python3 tools/asmcat.py 0x0808CC84
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- beastsp
+- maps
+open_questions:
+- semantic difference between the two coord slots (0x16/0x18 vs 0x1a/0x1c) — a consumer of offsets 0x1a/0x1c
+  would confirm if they are 'previous position'
+- what structure r5 points to and whether other code later reads these fields
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_808CC84 -> ow_storePlayerPosDup
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_808CC84

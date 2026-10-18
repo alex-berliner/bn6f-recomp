@@ -1,0 +1,54 @@
+name: ai_attackSpawnVariant
+address: '0x08111BFE'
+kind: function
+status: probable
+summary: 'Spawns one of an AI enemy''s attacks: dispatches a per-variant handler, randomly picks an entry
+  from its result, and creates the attack object in front of the user.'
+interface: (r0 = attack variant index 0-4; r5 = battle object, r7 = AI attack vars) -> r0 = 1 if an attack
+  was spawned, 0 otherwise
+details: 'The variant index selects one of five handler functions from the table at off_8111C74 (each
+  handler is called via `lr=pc; bx r6`). First object_getFlag is checked against 0xA000: if set, sub_8111D28
+  runs instead of the table handler. If the handler returns nonzero (a count), GetPositiveSignedRNG and
+  SWI 6 (Div) pick a random byte from the caller''s stack buffer (sp[0..count-1]); that byte''s high nibble
+  and low 3 bits are packed as (nibble<<24 | bits<<16) with a constant 0x2800 added and the low byte ORed
+  with oAIAttackVars_StepTimer. sub_80C579E is then called with that packed value plus position offset
+  in front of the object (x += direction*0x30000, z += 0xC0000, direction from object_getFrontDirection)
+  and oAIAttackVars_Damage and oAIAttackVars_PanelChooseCallback, likely spawning the attack object; returns
+  1 on success.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'off_8111C74: table of 5 handler pointers indexed by r0<<2, called with lr=pc; bx r6; tst r0,
+    #0xa000 after object_getFlag branches to alternate path sub_8111D28; GetPositiveSignedRNG + svc 6
+    (Div) + ldrb [sp, remainder] = random pick from stack buffer; packed value: (byte fields <<8) + 0x28,
+    ORed with [r7+oAIAttackVars_StepTimer], passed to sub_80C579E; x += frontDirection*0x30000, z += 0xC0000,
+    plus oAIAttackVars_Damage/PanelChooseCallback passed to sub_80C579E'
+  refs:
+  - bn6f/asm/asm32.s:7858
+  - 0x08111BDE sub_8111BDE
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x0801A166 object_getFlag
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x08111BFE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- Exact meaning of the packed value fields (element/type nibble vs panel bits) and what sub_80C579E creates
+- What the five variant handlers at sub_8111C88..sub_8111D46 write into the stack buffer
+- Semantics of sub_8111D28 (flag 0xA000 alternate path)
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8111BFE -> ai_attackSpawnVariant
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8111BFE

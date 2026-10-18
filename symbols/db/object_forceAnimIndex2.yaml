@@ -1,0 +1,49 @@
+name: object_forceAnimIndex2
+address: '0x081188CC'
+kind: function
+status: probable
+summary: Marks an object's state as 1, runs an unknown handler, then switches the object's sprite animation
+  to index 2 (reloading it only if not already active).
+interface: (r0 = object ptr in r5 usage, no args read from r0 by callee setAnimation) -> void; sets [r5]=1,
+  [r5+0xC]=2, conditionally calls sprite_setAnimation(2)
+details: Writes 1 to byte [r5], calls unknown sub_8118AB0 (r0=1 at call), then writes 2 to [r5+0xC]. It
+  compares 2 with the byte at [r5+0xD]; if they differ it tail-calls sprite_setAnimation (which stores
+  r0=2 into the sprite slot's animation-index byte) followed by sprite_loadAnimationData, so the new animation
+  is only re-armed when the object wasn't already on it. r5+0xC/0xD thus look like requested-vs-current
+  animation fields of the object struct. The early-out avoids restarting a looping animation every frame.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'strb #1,[r5] then bl sub_8118AB0 with r0=1: sets a state byte and passes it to an unknown handler;
+    ldrb r1,[r5,#0xD]; cmp #2,r1; beq skip: skips work when animation 2 is already the current one; sprite_setAnimation
+    stores its r0 into the slot''s first byte, and r0 is still 2 here, so it selects animation index 2;
+    sprite_loadAnimationData immediately after: reloads frame data for the newly selected animation; recorded
+    route ''beastsp'' runs it, consistent with an object/animation state step during beast-out sequences'
+  refs:
+  - bn6f/asm/asm32.s:21254
+  - 0x080026A4 sprite_loadAnimationData
+  - 0x08002DA4 sprite_setAnimation
+  - 0x08118AB0 sub_8118AB0
+  reproduce: python3 tools/asmcat.py 0x081188CC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231'
+coverage:
+- beastsp
+open_questions:
+- what sub_8118AB0 does with r0=1 (state machine tick? event dispatch?)
+- exact layout of the object struct around r5+0x0, +0xC, +0xD
+- which caller/context invokes this (route 'beastsp' only shows it runs during beast-out; a caller would
+  confirm it is a per-frame step vs. a one-shot transition)
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f edd8d9a9
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_81188CC -> object_forceAnimIndex2
+  where: bn6f 5155625d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81188CC
