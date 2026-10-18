@@ -794,6 +794,45 @@ def try_encounter(D):
     log(f'  encounter: {len(ok)} start it; take {t[3]} (to {res[t[3]][0]}, mean cost {res[t[3]][1]:.3f})')
     return state_at(f - 2), [t[1][0]]          # (again: state_at's scratch slot held another write point)
 
+def try_pick(D):
+    """The video's random battle is another entry of the map's list than ours: the entry is picked by
+    iCurrFrame % (eligible entries) (pickBattleSettingsEntry_80AA5F4), and our iCurrFrame runs off the video's
+    (a lag frame). Where the picked virus battle is too weak for MegaMan the game drops it (battle_tryEncounter_
+    80AA4C0's power check), so the video's battle (run8o 773227: Seaside Area 1's navi entry 0x80B5B6C, DiveMan,
+    power 0xFF) can start only through the pick. At each primary-RNG roll of the last 64 frames: RNG moves that
+    pass the encounter roll (the battle pointer changes), each with iCurrFrame moved by 0..15; the sync picks."""
+    w = state_at(D)
+    if w is None: return None
+    b.e.load(w[1])
+    if b.e.read(syms.GS_SUBSYSTEM, 1)[0] != 4: return None
+    rolls = [f for f, p, q in EVENTS if p and D - 64 <= f <= D + 2]
+    ks = path_keys(); p0 = b.press_gf; tasks = []; at = {}
+    for f in rolls[-3:]:
+        W = f - 2
+        wf = state_at(W)
+        if wf is None: continue
+        b.e.load(wf[1]); P0 = b.e.u32(rf.PRIMARY); F0 = int.from_bytes(b.e.read(syms.ICURR_FRAME, 2), 'little')
+        bp0 = b.e.u32(BATTLE_PTR); passing = []
+        set_emu_pokes()
+        for j in (x for k in range(1, 301) for x in (k, -k)):
+            b.e.load(wf[1]); b.e.cmd(f'write32 {rf.PRIMARY:x} {rf.rng_move(P0, j):x}')
+            for g in range(W, W + 3): b.e.step(ks[g - p0][0])
+            if b.e.u32(BATTLE_PTR) != bp0: passing.append(j)
+            if len(passing) == 2: break
+        if not passing: continue
+        ck = ck_file(wf); at[f] = W
+        for j in passing:
+            for df in range(16):
+                spec = rf.spec(rf.PRIMARY, rf.rng_move(P0, j)) + f',{syms.ICURR_FRAME:#x}={(F0 + df) & 0xFFFF:#x}/2'
+                tasks.append((ck, [[W, spec]], D + 300, f'K{f}:{j}:{df}'))
+    if not tasks: return None
+    res = evaluate(tasks)
+    t = max(tasks, key=lambda t: (res[t[3]][0], -res[t[3]][1]))
+    log(f'  pick: {len(tasks)} RNG moves with iCurrFrame moved; furthest {t[3]} to {res[t[3]][0]} (mean cost {res[t[3]][1]:.3f})')
+    if res[t[3]][0] < D + PARTIAL: return None
+    f = int(t[3][1:].split(':')[0])
+    return state_at(at[f]), [t[1][0]]          # (again: state_at's scratch slot held another write point)
+
 LENIENT = list(LENIENT_START)  # [(from, to)]: game frames where a stream overlay covers part of the video
 FREE = [tuple(x) for x in json.load(open(A.start + '.json')).get('free', [])]   # [(from, to)]: frames a kill
                                # plays with the video's keys up to the deletion, its battle not the video's
@@ -1488,7 +1527,7 @@ def repair(D):
     tried = {name for name, _ in first}
     for name, h in (('offset', try_offset), ('overlay', try_overlay), ('hand', try_hand), ('gmd', try_gmd),
                     ('subchip', try_subchip), ('position', try_position), ('relocate', try_relocate), ('tornado', try_tornado), ('mapobj', try_mapobj),
-                    ('encounter', try_encounter), ('hp', try_hp), ('kill', try_kill), ('die', lambda D: try_kill(D, 0)),
+                    ('encounter', try_encounter), ('pick', try_pick), ('hp', try_hp), ('kill', try_kill), ('die', lambda D: try_kill(D, 0)),
                     *[(name, h) for name, h in PLUGINS if name not in MATCHERS]):
         if not allowed(name) or name in tried: continue
         if over_budget(): log(f'  the search budget ({A.budget_hours} h) is spent'); return None
