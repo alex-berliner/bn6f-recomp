@@ -795,12 +795,14 @@ def try_encounter(D):
     return state_at(f - 2), [t[1][0]]          # (again: state_at's scratch slot held another write point)
 
 def try_pick(D):
-    """The video's random battle is another entry of the map's list than ours: the entry is picked by
-    iCurrFrame % (eligible entries) (pickBattleSettingsEntry_80AA5F4), and our iCurrFrame runs off the video's
-    (a lag frame). Where the picked virus battle is too weak for MegaMan the game drops it (battle_tryEncounter_
-    80AA4C0's power check), so the video's battle (run8o 773227: Seaside Area 1's navi entry 0x80B5B6C, DiveMan,
-    power 0xFF) can start only through the pick. At each primary-RNG roll of the last 64 frames: RNG moves that
-    pass the encounter roll (the battle pointer changes), each with iCurrFrame moved by 0..15; the sync picks."""
+    """The video's random battle is one ours cannot pick: the entry is iCurrFrame % (eligible entries)
+    (pickBattleSettingsEntry_80AA5F4) and a picked battle too weak for MegaMan is dropped (battle_tryEncounter_
+    80AA4C0's power check). run8o 773227: the video's battle is Seaside Area 1's navi entry 0x80B5B6C (DiveMan),
+    ours picks a virus entry at the same frame and drops it (our iCurrFrame is 2 off the video's there; iCurrFrame
+    is the game-frame counter the keys replay by, so it is not written). The way in without the pick: LocEnemy's
+    preset (S2001c04 +0x28 a countdown, +0x2C the battle), which a passing encounter roll takes on an even RNG draw,
+    without the power check. At each primary-RNG roll of the last 64 frames: each entry of the map's list as the
+    preset with a short countdown (8, gone ~16 frames later) and an RNG move that starts it; the sync picks."""
     w = state_at(D)
     if w is None: return None
     b.e.load(w[1])
@@ -811,24 +813,27 @@ def try_pick(D):
         W = f - 2
         wf = state_at(W)
         if wf is None: continue
-        b.e.load(wf[1]); P0 = b.e.u32(rf.PRIMARY); F0 = int.from_bytes(b.e.read(syms.ICURR_FRAME, 2), 'little')
-        bp0 = b.e.u32(BATTLE_PTR); passing = []
-        set_emu_pokes()
-        for j in (x for k in range(1, 301) for x in (k, -k)):
-            b.e.load(wf[1]); b.e.cmd(f'write32 {rf.PRIMARY:x} {rf.rng_move(P0, j):x}')
-            for g in range(W, W + 3): b.e.step(ks[g - p0][0])
-            if b.e.u32(BATTLE_PTR) != bp0: passing.append(j)
-            if len(passing) == 2: break
-        if not passing: continue
+        b.e.load(wf[1]); P0 = b.e.u32(rf.PRIMARY)
+        ents = battle_table(b.e.u32(BATTLE_PTR))
+        set_emu_pokes(); found = {}
+        for q in ents:
+            for j in (x for k in range(0, 101) for x in ((k, -k) if k else (0,))):
+                b.e.load(wf[1])
+                b.e.cmd(f'write32 {rf.PRIMARY:x} {rf.rng_move(P0, j):x}')
+                b.e.cmd(f'write32 {syms.ENC_GATE:x} 8'); b.e.cmd(f'write32 {syms.ENC_PRESET:x} {q:x}')
+                for g in range(W, W + 5):
+                    b.e.step(ks[g - p0][0])
+                    if b.e.read(syms.GS_SUBSYSTEM, 1)[0] != 4: break
+                if b.e.read(syms.GS_SUBSYSTEM, 1)[0] != 4: found[q] = j; break
+        if not found: continue
         ck = ck_file(wf); at[f] = W
-        for j in passing:
-            for df in range(16):
-                spec = rf.spec(rf.PRIMARY, rf.rng_move(P0, j)) + f',{syms.ICURR_FRAME:#x}={(F0 + df) & 0xFFFF:#x}/2'
-                tasks.append((ck, [[W, spec]], D + 300, f'K{f}:{j}:{df}'))
-    if not tasks: return None
+        for q, j in found.items():
+            spec = rf.spec(rf.PRIMARY, rf.rng_move(P0, j)) + f',{syms.ENC_GATE:#x}=0x8/4,{syms.ENC_PRESET:#x}={q:#x}/4'
+            tasks.append((ck, [[W, spec]], D + 300, f'K{f}:{q:x}:{j}'))
+    if not tasks: log('  pick: no entry starts as a preset'); return None
     res = evaluate(tasks)
     t = max(tasks, key=lambda t: (res[t[3]][0], -res[t[3]][1]))
-    log(f'  pick: {len(tasks)} RNG moves with iCurrFrame moved; furthest {t[3]} to {res[t[3]][0]} (mean cost {res[t[3]][1]:.3f})')
+    log(f'  pick: {len(tasks)} entries started as LocEnemy presets; furthest {t[3]} to {res[t[3]][0]} (mean cost {res[t[3]][1]:.3f})')
     if res[t[3]][0] < D + PARTIAL: return None
     f = int(t[3][1:].split(':')[0])
     return state_at(at[f]), [t[1][0]]          # (again: state_at's scratch slot held another write point)

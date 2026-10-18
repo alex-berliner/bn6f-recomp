@@ -97,6 +97,8 @@ GS_COORD_INTERACTION = at("eGameState_CoordInteractionValue")         # the map'
 # ── overworld counters, event flags, mystery data ──
 S2001C04 = at("eStruct2001c04")
 ENC_STEPS = at("eStruct2001c04", "oS2001c04_EncounterStepAccumulator")        # walk counter: (>> 6, max 16) picks the encounter odds
+ENC_GATE = at("eStruct2001c04", "oS2001c04_EncounterGateFlag")              # LocEnemy's countdown (0x1770 when chosen): nonzero, half the passing rolls take ENC_PRESET
+ENC_PRESET = at("eStruct2001c04", "oS2001c04_OptCurBattleDataPtr")          # LocEnemy's battle: taken as is, without the power check
 SNEAKRUN_STEPS = at("eStruct2001c04", "oS2001c04_EncounterGate")   # SneakRun's movement counter
 LOCENEMY_STEPS = at("eStruct2001c04", "oS2001c04_EncounterGateFlag")   # LocEnemy's movement counter
 EVENT_FLAGS = at("eEventFlags")                             # flag n at byte n >> 3, mask 0x80 >> (n & 7)
