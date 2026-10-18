@@ -528,15 +528,23 @@ def try_relocate(D):
     tell apart on a repeating map, a return from battle): find the place whose picture matches the video at the
     loss (MegaMan's coordinates and walk target written, 16 px steps over +-1024 px, then 2 px around the best)
     and write it there; the path's keys from there must hold."""
+    D0 = D
     w = state_at(D)
     if w is None: return None
     b.e.load(w[1])
-    if b.e.read(syms.GS_SUBSYSTEM, 1)[0] != 4: return None                 # on the map only
+    if b.e.read(syms.GS_SUBSYSTEM, 1)[0] != 4:
+        # the loss can fall in a menu that closes onto the map a few frames later (run8r 810390: the PET menu
+        # closed onto Undernet 1 with MegaMan elsewhere): the first map frame after it, on the video's keys
+        for g in range(D + 1, min(D + 40, b.g)):
+            w = state_at(g); b.e.load(w[1])
+            if b.e.read(syms.GS_SUBSYSTEM, 1)[0] == 4: D = g; break
+        else:
+            return None
     po = b.e.u32(OW_PLAYER_PTR)
     if not 0x02000000 <= po < 0x02040000: return None
     s32 = lambda v: v - (1 << 32) if v >= 1 << 31 else v
     x0, y0 = s32(b.e.u32(po + 0x1C)), s32(b.e.u32(po + 0x20))
-    ks = path_keys(); p0 = b.press_gf; vT = ks[D - p0][1]
+    p0 = b.press_gf; ks = reach_keys(D + 10, D0); vT = ks[D - p0][1]
     def spec(dx, dy):
         x, y = (x0 + (dx << 16)) & 0xFFFFFFFF, (y0 + (dy << 16)) & 0xFFFFFFFF
         return ','.join(f'{po + o:#x}={v:#x}/4' for o, v in ((0x1C, x), (0x20, y), (0x28, x), (0x2C, y)))
@@ -553,9 +561,12 @@ def try_relocate(D):
     log(f'  relocate: MegaMan +({best[1]}, {best[2]}) px matches the video at {D} ({best[0]:.2f}; where he is {e0:.2f})')
     if best[0] > rf.LOSS or (best[1], best[2]) == (0, 0): return None
     poke = [D, spec(best[1], best[2])]
-    r = path_reach(w, [poke], D + 400, D)
+    w = state_at(D)
+    r = path_reach(w, [poke], D0 + 400, D0)
     log(f'  relocate: the path from there reaches {r[0]} (mean cost {r[1]:.3f})')
-    if r[0] >= D + 150: KEEP_NEXT[0] = True; return w, [poke]
+    # a place that clearly matches (half the error or less) is right even when the path then meets the next event
+    # (run8r 810390: 6.00 -> 1.17, the path then to 810522, where the video's random battle starts)
+    if r[0] >= D0 + 150 or (best[0] <= 0.5 * e0 and r[0] >= D0 + 60): KEEP_NEXT[0] = True; return w, [poke]
     return None
 
 MAPOBJS, MAPOBJ_SIZE = syms.OW_MAP_OBJECTS, syms.OW_MAP_OBJECT_SIZE     # eOverworldMapObjects (56): X +0xC, Y +0x10 (s16.16)
