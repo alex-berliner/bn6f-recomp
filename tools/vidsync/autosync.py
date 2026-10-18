@@ -1200,8 +1200,9 @@ def try_hp(D):
     poke = [W, f'{a + 0x24:#x}={h:#x}/2,{hud + 0x24:#x}={h:#x}/2,{hud + 0x44:#x}={s44:#x}/4' + (f',{meter + 2:#x}={h:#x}/2' if meter else '')]
     r = path_reach(w, [poke], D + 400, D)
     log(f'  hp: the path from there reaches {r[0]} (mean cost {r[1]:.3f})')
-    # the box is checked against the video itself: taken unless the path does worse than before
-    return (w, [poke]) if r[0] >= D else None
+    # the box is checked against the video itself: taken when the path gets clearly past the loss (run8y 897863:
+    # 560 written over our result screen reached 3 frames past it, and the next loss was the same battle's end)
+    return (w, [poke]) if r[0] >= D + 30 else None
 
 KILL_COST = 1.5
 def try_kill(D, side=1):
