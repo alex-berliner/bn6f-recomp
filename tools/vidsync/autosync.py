@@ -1161,6 +1161,9 @@ def try_hp(D):
         b.e.load(w[1])
         if b.e.read(syms.GS_SUBSYSTEM, 1)[0] != 0x0C:
             log(f'  hp: not in a battle at {W} (subsystem {b.e.read(syms.GS_SUBSYSTEM, 1)[0]:#x})'); return None
+        # ours already won (the result screen): the video's battle goes on, which no HP write brings back
+        # (run8x 897863: 560 written over our result screen scraped 30 frames past the loss)
+        if not enemies_alive(): log(f'  hp: no enemy left at {W}: our battle is over'); return None
         hp, mx = (int.from_bytes(b.e.read(a + o, 2), 'little') for o in (0x24, 0x26))
         if not (mx and hp): continue
         # no hit within the frames the box is judged over (else the box shows the hit, not the write)
