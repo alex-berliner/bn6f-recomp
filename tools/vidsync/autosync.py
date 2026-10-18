@@ -1460,6 +1460,67 @@ def try_hand(D):
     if sum(e1) < 0.8 * sum(e0) and res[0] >= c + 30: return w, [poke]
     return None
 
+def try_redraw(D):
+    """A hand thrown away on the custom screen (the trash: the chips picked for it are marked 0xFFFF, then go to
+    the end of the folder and the hand fills up from the front, run8u 839864) draws the folder's next chips. For
+    each new slot in turn, put each of the rest of the folder's chips (or a pack chip) at its folder place just
+    before the redraw, render the new hand and compare that slot with the video, as try_hand does a hand's."""
+    last = max([p[0] for p in b.pokes] + [0])
+    ks = path_keys(); p0 = b.press_gf
+    g1 = max(last + 1, D - 1500, ring[0][0])
+    w = state_at(g1)
+    if w is None: return None
+    b.e.load(w[1]); redraws = []; prev = None
+    for g in range(g1, min(D + 30, b.g)):
+        b.e.step(ks[g - p0][0])
+        head = list(np.frombuffer(b.e.read(FOLDER, 10), np.uint16))
+        if prev is not None and 0xFFFF in prev and 0xFFFF not in head: redraws.append((g + 1, prev.count(0xFFFF)))
+        prev = head
+    if not redraws: return None
+    r, m = redraws[-1]; f = r - 2; c = r + 4; k = 5 - m
+    if f <= last or c > b.g: return None
+    w = state_at(f)
+    if w is None: return None
+    b.e.load(w[1]); base = list(np.frombuffer(b.e.read(FOLDER, 60), np.uint16)); pack = pack_chips()
+    places = [i for i in range(5, 30) if base[i] not in (0, 0xFFFF)]
+    if len(places) < m: return None
+    V = video_frame(ks[c - p0 - 1][1])
+    if V is None: log('  redraw: no video frame'); return None
+    def render(fo):
+        set_emu_pokes([[f, folder_spec(fo)]])
+        b.e.load(w[1])
+        for g in range(f, c): b.e.step(ks[g - p0][0])
+        set_emu_pokes()
+        return b.e.shot().astype(np.float32)
+    def err(E, i):
+        y, x = slot_box(i); a, bb = E[y, x], V[y, x]
+        return float(np.abs((a - a.mean()) - (bb - bb.mean())).mean())
+    E = render(base); e0 = [err(E, k + t) for t in range(m)]
+    fo = list(base)
+    for t in range(m):
+        p = places[t]; best = None; seen = set()
+        for q in places[t:]:
+            if fo[q] in seen: continue
+            seen.add(fo[q]); tr = list(fo); tr[p], tr[q] = tr[q], tr[p]
+            e = err(render(tr), k + t)
+            if best is None or e < best[0]: best = (e, tr)
+        for x in sorted(pack - set(fo)):
+            tr = list(fo); tr[p] = x
+            e = err(render(tr), k + t)
+            if e < best[0]: best = (e, tr)
+        fo = best[1]
+    E = render(fo); e1 = [err(E, k + t) for t in range(m)]
+    log(f'  redraw at {r} ({m} thrown away): ' + ' '.join(f'{base[i]:04x}' for i in places[:m]) + ' -> ' +
+        ' '.join(f'{fo[i]:04x}' for i in places[:m]) + f'; slot error {sum(e0):.1f} -> {sum(e1):.1f}')
+    if fo == base or sum(e1) >= sum(e0): return None
+    ck = ck_file(w); until = D + MARGIN
+    poke = [f, folder_spec(fo)]
+    res = evaluate([(ck, [poke], until, 'RD')] * 2)['RD']
+    log(f'  redraw: the sync gets to {res[0]} (mean cost {res[1]:.3f})')
+    if res[0] >= D + PARTIAL or res[0] >= until or (sum(e1) < 0.9 * sum(e0) and res[0] >= D): return w, [poke]
+    if sum(e1) < 0.8 * sum(e0) and res[0] >= c + 30: return w, [poke]
+    return None
+
 def set_emu_pokes(extra=()):
     b.e.pokes_clear()
     for pg, ps in list(b.pokes) + list(extra): b.e.poke(pg, ps)
@@ -1614,13 +1675,13 @@ def repair(D):
         r = h(D)
         if r: LAST_FIX[:] = [D, name]; return r
     tried = {name for name, _ in first}
-    order = [('offset', try_offset), ('overlay', try_overlay), ('hand', try_hand), ('gmd', try_gmd),
+    order = [('offset', try_offset), ('overlay', try_overlay), ('hand', try_hand), ('redraw', try_redraw), ('gmd', try_gmd),
              ('subchip', try_subchip), ('position', try_position), ('relocate', try_relocate), ('tornado', try_tornado), ('mapobj', try_mapobj),
              ('encounter', try_encounter), ('pick', try_pick), ('library', try_library), ('hp', try_hp), ('kill', try_kill), ('die', lambda D: try_kill(D, 0)),
              *[(name, h) for name, h in PLUGINS if name not in MATCHERS]]
     # a battle whose folder shuffle no fix has held to yet: its first hand goes before a video jump (a wrong hand
     # costs little on the custom screen, and the offset handler re-anchored over one, run8t 839618)
-    if any(q and f in set(BIG) and f > last for f, p, q in ev): order.sort(key=lambda x: x[0] != 'hand')
+    if any(q and f in set(BIG) and f > last for f, p, q in ev): order.sort(key=lambda x: x[0] not in ('hand', 'redraw'))
     for name, h in order:
         if not allowed(name) or name in tried: continue
         if over_budget(): log(f'  the search budget ({A.budget_hours} h) is spent'); return None
