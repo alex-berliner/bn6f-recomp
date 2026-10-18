@@ -295,7 +295,11 @@ def try_formations(f, p, D):
     log(f'  formation at {f}: entry {q:x} syncs to {reach(q)} of {end} (mean cost {m(q):.3f}'
         + (f'; next {order[1]:x} to {reach(order[1])}, {m(order[1]):.3f}' if len(order) > 1 else '')
         + (f'; the path has {p:x}: to {reach(p)}, {m(p):.3f})' if p in ents else ')'))
-    if reach(q) <= D: return None
+    # an entry that matches the battle's start clearly better (the enemies and field on show) is taken even when
+    # no entry gets past the loss (run9a 933827: 80b31c8 at 1.24 against the path's 80b31a8 at 1.88, both to the
+    # loss): its hand and moves come next
+    clear = p in ents and q != p and m(q) < 0.75 * m(p) and reach(q) >= reach(p) - 5
+    if reach(q) <= D and not clear: return None
     # a further entry must also match about as well (run8i: 80af990 got 150 frames further than the path's
     # 80afa20 at 1.88 against 1.40; the path's was lost to its hand, not its entry); else clearly cheaper
     if q == p or (p in ents and not (m(q) < 0.85 * m(p) or (reach(q) >= reach(p) + 60 and m(q) <= 1.1 * m(p)))):
