@@ -1614,10 +1614,14 @@ def repair(D):
         r = h(D)
         if r: LAST_FIX[:] = [D, name]; return r
     tried = {name for name, _ in first}
-    for name, h in (('offset', try_offset), ('overlay', try_overlay), ('hand', try_hand), ('gmd', try_gmd),
-                    ('subchip', try_subchip), ('position', try_position), ('relocate', try_relocate), ('tornado', try_tornado), ('mapobj', try_mapobj),
-                    ('encounter', try_encounter), ('pick', try_pick), ('library', try_library), ('hp', try_hp), ('kill', try_kill), ('die', lambda D: try_kill(D, 0)),
-                    *[(name, h) for name, h in PLUGINS if name not in MATCHERS]):
+    order = [('offset', try_offset), ('overlay', try_overlay), ('hand', try_hand), ('gmd', try_gmd),
+             ('subchip', try_subchip), ('position', try_position), ('relocate', try_relocate), ('tornado', try_tornado), ('mapobj', try_mapobj),
+             ('encounter', try_encounter), ('pick', try_pick), ('library', try_library), ('hp', try_hp), ('kill', try_kill), ('die', lambda D: try_kill(D, 0)),
+             *[(name, h) for name, h in PLUGINS if name not in MATCHERS]]
+    # a battle whose folder shuffle no fix has held to yet: its first hand goes before a video jump (a wrong hand
+    # costs little on the custom screen, and the offset handler re-anchored over one, run8t 839618)
+    if any(q and f in set(BIG) and f > last for f, p, q in ev): order.sort(key=lambda x: x[0] != 'hand')
+    for name, h in order:
         if not allowed(name) or name in tried: continue
         if over_budget(): log(f'  the search budget ({A.budget_hours} h) is spent'); return None
         if name == 'die' and 'kill' in skip: continue    # (ending the battle was not it: the video's MegaMan lives)
