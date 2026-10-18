@@ -320,8 +320,8 @@ def run_record(pairs: list[tuple[str, str]], run_id: str, run_dir: str, log_path
                f"entries written by tools/investigate_land.py, checked with tools/symdb.py, "
                f"landed through the record workflow.\n"
                f"\n"
-               f"Co-Authored-By: pi agent (hyper/glm-5.3-flash)\n"
-               f"Pi-Session: 01a15098-714b-71d3-a0b3-d9fb7b804fb5\n")
+               f"Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>\n"
+               f"Claude-Session: https://claude.ai/code/session_019re4QNxn4vzb3ZkL7vj4gs\n")
     message_path = os.path.join(run_dir, "land_message.txt")
     with open(message_path, "w", encoding="utf-8") as f:
         f.write(message)
