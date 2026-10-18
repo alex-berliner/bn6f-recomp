@@ -3,19 +3,31 @@ address: '0x02009F6C'
 kind: ram
 previous_names: []
 status: probable
-summary: 'MegaMan''s overworld Y at the start of the current move (eOWPlayerObject +0x2C, s16.16): copied from Y before
-  each frame''s movement, put back into Y when the move is cancelled; despite the name, his previous Y, not a target.'
-details: |
-  Field NextY of overworld_player_object_struct (include/structs/OverworldPlayerObject.inc:33, loc 0x2C) in
+summary: 'MegaMan''s overworld Y at the start of the current move (eOWPlayerObject +0x2C, s16.16): copied from Y
+  before each frame''s movement, put back into Y when the move is cancelled; despite the name, his previous Y, not
+  a target.'
+details: 'Field NextY of overworld_player_object_struct (include/structs/OverworldPlayerObject.inc:33, loc 0x2C)
+  in
+
   eOWPlayerObject = 0x02009F40. Handled together with NextX at every site (bn6f/asm/ow_player.s): copied from Y
+
   at the start of owPlayer_update_809D348 (277), in sub_809D270 (235) and ow_player_updateCollisionAndPos_809D800
+
   (915) and by owPlayer_copyCoordsToNextCoords..._809e188/_809e1d8 (2296, 2368); copied back into Y on a frame
+
   without a move (609, 783); compared with Y by owPlayer_isMoving_809DFA0 (1929); clampPlayerPosition_809E3D6
+
   restores Y from it when it clamps X (2817-2818, 2826-2827); the collision sweep owObject_lineDraw_8030CAC starts
+
   at its pixel halfword (oOWObjectCoords_NextY, asm03_0.s:23404). See eOWPlayerObject_NextX for the reading and
-  for vidsync's differing "walk target" description.
+
+  for vidsync''s differing "walk target" description.
+
   vidsync (level R): try_relocate writes NextY = Y along with X/Y/NextX when it moves MegaMan; segment junctions
+
   restore it in the 0x30 bytes from +0x1C.
+
+  '
 evidence:
 - method: assembly-reading
   date: '2026-10-17'
@@ -27,23 +39,33 @@ evidence:
   - bn6f/asm/ow_player.s:1921
   - bn6f/asm/ow_player.s:2799
   - bn6f/asm/asm03_0.s:23404
-  reproduce: |
-    grep -rn 'oOWPlayerObject_NextY\|oOWObjectCoords_NextY' bn6f/asm bn6f/maps
-    awk '/^clampPlayerPosition_809E3D6:/{f=1} f{print FNR": "$0} f&&/thumb_func_end/{exit}' bn6f/asm/ow_player.s
-  result: 'ow_player.s 235, 277, 915, 2296, 2368 (stores from Y), 609, 783 (loads put back into Y), 1929 (isMoving),
-    asm03_0.s:23404 (the sweep''s start); clampPlayerPosition_809E3D6 loads +0x2C into +0x20 at 2817-2818 and 2826-2827'
+  reproduce: 'grep -rn ''oOWPlayerObject_NextY\|oOWObjectCoords_NextY'' bn6f/asm bn6f/maps
+
+    awk ''/^clampPlayerPosition_809E3D6:/{f=1} f{print FNR": "$0} f&&/thumb_func_end/{exit}'' bn6f/asm/ow_player.s
+
+    '
+  result: ow_player.s 235, 277, 915, 2296, 2368 (stores from Y), 609, 783 (loads put back into Y), 1929 (isMoving),
+    asm03_0.s:23404 (the sweep's start); clampPlayerPosition_809E3D6 loads +0x2C into +0x20 at 2817-2818 and 2826-2827
 - method: runtime
   date: '2026-10-17'
   detail: 'Written by the vidsync sync driver: try_relocate writes NextY at +0x2C of GameState.OverworldPlayerObjectPtr
     with the same value as Y (and NextX = X), and the game then goes on from the new place matching the video (the
-    path must hold 150 frames past the loss); run run8j''s fixes wrote this field (build-vidsync/learned.md listed it
-    as written without an entry). No run wrote NextY alone or differently from Y.'
+    path must hold 150 frames past the loss); run run8j''s fixes wrote this field (build-vidsync/learned.md listed
+    it as written without an entry). No run wrote NextY alone or differently from Y.'
   refs:
   - tools/vidsync/autosync.py:542
   - tools/vidsync/segments.py:150
   - docs/vidsync/BN6F_SYMBOLS.md
   reproduce: grep -n '(0x1C, x), (0x20, y), (0x28, x), (0x2C, y)' tools/vidsync/autosync.py
-  result: 'autosync.py:542 and 546 (the same y at 0x20 and 0x2C)'
+  result: autosync.py:542 and 546 (the same y at 0x20 and 0x2C)
+- method: runtime
+  date: '2026-10-18'
+  detail: 'vidsync run run9a: 1 fix(es) by the relocate handler wrote eOWPlayerObject_NextY (games 895870..895870);
+    after each, the sync matched the video again (the field decides what the video shows there).'
+  reproduce: 'grep -n '' fix 1: '' data/auto/run9a.0.out   # in ~/vidsync on the driver PC; remote/py.sh pathcheck.py
+    data/auto/run9a.0/fix_0001.json replays the path with it'
+  result: '16:01:37 fix 1: write 0x2009f5c=0xffed0000/4,0x2009f60=0x2ec000/4,0x2009f68=0xffed0000/4,0x2009f6c=0x2ec000/4
+    at game 895870; going on from there'
 related:
 - eOWPlayerObject
 - eOWPlayerObject_Y
