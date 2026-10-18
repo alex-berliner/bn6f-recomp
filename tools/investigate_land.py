@@ -221,6 +221,10 @@ def select(rows: list[Row], run_dir: str, syms: dict[str, int], code: list[tuple
         if row.old in names:
             skipped.append((row.address, row.old, row.proposed, "the function already has a symbols/db entry"))
             continue
+        if os.path.exists(os.path.join(ROOT, "bn6f", "asm", f"{row.old}.s")):
+            skipped.append((row.address, row.old, row.proposed,
+                            "its name is also an asm include file: the rename would rewrite the include path, not the file"))
+            continue
         if counts[row.proposed] > 1:
             skipped.append((row.address, row.old, row.proposed,
                             f"proposed for {counts[row.proposed]} functions in the run"))
