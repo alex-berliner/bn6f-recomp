@@ -325,6 +325,60 @@ def try_offset(D, back=40, span=90):
     log(f'  video offset: a jump of {d} frames at {w[0]} holds to {until} (mean cost {res[t[3]][1]:.3f})')
     return (w[0], w[1], w[2], w[3] + d, w[4], w[5]), []
 
+LIBRARY_FLAGS = (0x1E20, 0x2020, 0x2220)   # event flag base + chip id: the chip is in the library (any of the three)
+def library_standard(have):
+    """Standard chip ids as countEventFlagChips_81207F8(0) counts them (ChipData byte 9 bit 0x40, and bit 0x20 or
+    (byte 0x16 bit 0 clear and byte 7 == 0)): (ids counted, ids missing) by have(id)."""
+    got, miss = [], []
+    for i in range(0x140):
+        c = b.e.read(syms.CHIP_DATA + 44 * i, 0x18)
+        if not c[9] & 0x40 or not (c[9] & 0x20 or (not c[0x16] & 1 and c[7] == 0)): continue
+        (got if have(i) else miss).append(i)
+    return got, miss
+
+def try_library(D):
+    """A door that counts the library (Undernet 2's: "the beast's seal and 100 S[tandard chips]", text script
+    command ts_check_library_standard 100..200) lets the video through and not ours: our library lacks chips the
+    video's got from rewards and trades that went otherwise. Set the library flags of the first missing standard
+    chips, a few more each try, before the door's script reads them (600 frames before the loss: run8r 814379's
+    dialog ran ~300 frames); the sync picks the fewest that hold."""
+    W = max(D - 600, ring[0][0])
+    w = state_at(W)
+    if w is None: return None
+    b.e.load(w[1])
+    flag = lambda n: b.e.read(EVENT_FLAGS + (n >> 3), 1)[0] & (0x80 >> (n & 7))
+    got, missing = library_standard(lambda i: any(flag(base + i) for base in LIBRARY_FLAGS))
+    n = len(got)
+    if not missing or n >= 100: return None
+    extras = {}
+    for k in sorted({100 - n, 100 - n + 2, 100 - n + 5, 100 - n + 10}):
+        if k <= 0 or k > len(missing): continue
+        byts = {}
+        for i in missing[:k]:
+            fl = LIBRARY_FLAGS[0] + i; a = EVENT_FLAGS + (fl >> 3)
+            byts[a] = byts.get(a, b.e.read(a, 1)[0]) | (0x80 >> (fl & 7))
+        extras[k] = [[W, ','.join(f'{a:#x}={v:#04x}/1' for a, v in sorted(byts.items()))]]
+    if not extras: return None
+    # the door's own dialog then runs on (its "Confirmed..." page) where ours had closed, a few frames off the
+    # video's (run8r 814379: 9 frames behind it): synced from just before the loss with the video re-anchored
+    W2 = D - 5; tasks = []; at = {}
+    for k, ex in extras.items():
+        w2 = state_at(W2, ex)
+        if w2 is None: continue
+        ck = ck_file(w2); at[k] = w2
+        ck = dict(ck, state=ck['state'] + f'.L{k}'); shutil.copyfile(ck_file(w2)['state'], ck['state'])
+        for d in range(-30, 31):
+            c = dict(ck); c['v0'] = ck['v0'] + d
+            tasks.append((c, [], D + MARGIN, f'L{k}:{d}'))
+    res = evaluate(tasks)
+    t = max(tasks, key=lambda t: (res[t[3]][0], -res[t[3]][1]))
+    log(f'  library: {n} standard chips in ours; furthest {t[3]} to {res[t[3]][0]} (mean cost {res[t[3]][1]:.3f})')
+    if res[t[3]][0] < D + PARTIAL: return None
+    k, d = map(int, t[3][1:].split(':'))
+    log(f'  library: +{k} chips ({", ".join(f"{i:#x}" for i in missing[:k])}) and the video {d:+d} frames let the path through')
+    w2 = state_at(W2, extras[k])
+    return (w2[0], w2[1], w2[2], w2[3] + d, w2[4], w2[5]), extras[k]
+
 OK_RGB = np.array([247., 135., 114.])   # the custom screen's OK button, mean colour over [115:125, 92:110]
 FOLDER = syms.BATTLE_FOLDER          # the battle's shuffled folder: 30 u16 chips (id | code << 9); the hand is the first 5
 VIDEO = os.path.join(gamepaths.VIDSYNC_DATA, 'full.mp4')
@@ -1545,7 +1599,7 @@ def repair(D):
     tried = {name for name, _ in first}
     for name, h in (('offset', try_offset), ('overlay', try_overlay), ('hand', try_hand), ('gmd', try_gmd),
                     ('subchip', try_subchip), ('position', try_position), ('relocate', try_relocate), ('tornado', try_tornado), ('mapobj', try_mapobj),
-                    ('encounter', try_encounter), ('pick', try_pick), ('hp', try_hp), ('kill', try_kill), ('die', lambda D: try_kill(D, 0)),
+                    ('encounter', try_encounter), ('pick', try_pick), ('library', try_library), ('hp', try_hp), ('kill', try_kill), ('die', lambda D: try_kill(D, 0)),
                     *[(name, h) for name, h in PLUGINS if name not in MATCHERS]):
         if not allowed(name) or name in tried: continue
         if over_budget(): log(f'  the search budget ({A.budget_hours} h) is spent'); return None

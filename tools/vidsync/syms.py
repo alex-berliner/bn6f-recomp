@@ -107,6 +107,7 @@ MYSTERY_DATA = at("eMysteryDataRolls")                    # u16 per mystery data
 
 # ── chips ──
 CHIP_PACK = 0x02002230      # TODO: name in bn6f (unk_2002230 now): a count byte per chip id and code
+CHIP_DATA = at("ChipDataArr_8021DA8")                         # 44 bytes per chip id (getChip8021DA8)
 BATTLE_FOLDER = at("eBattleFolder")                          # 30 u16 chips (id | code << 9); the hand is the first 5
 
 # ── battle ──
