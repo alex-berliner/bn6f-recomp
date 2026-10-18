@@ -1790,6 +1790,10 @@ ck_every = A.every
 # was never seen, so try_formations never ran at the loss 498358)
 snap()
 bad = 0; last_v = []; status = 'end of video'; t0 = time.time(); g0 = b.g; nfix = 0
+# losses asked for (VIDSYNC_LOSE_AT, comma-separated game frames: job_driver.sh reads ~/vidsync/lose_at.env): a
+# picture that went wrong under the loss bar (run8z: the map off from 895845 after the PET menu, lost only at 898232)
+LOSE_AT = sorted(int(x) for x in os.environ.get('VIDSYNC_LOSE_AT', '').split(',') if x.strip() and int(x) > b.g)
+forced = None
 while True:
     # a stretch of frames at once (b.run: in C while there is one branch); it ends where a frame below may
     # snapshot, log or checkpoint, and b.run stops after a frame above the desync cost, a stall or the video's end
@@ -1808,6 +1812,8 @@ while True:
         stalled = len(last_v) == 60 and last_v[-1] - last_v[0] < 3
         if bad >= 30 or stalled:
             lost = True; break
+        if LOSE_AT and g >= LOSE_AT[0]:
+            forced = LOSE_AT.pop(0); lost = True; break
         if v >= b.N - bm.K - 2:
             end = True; break
         if A.until is not None and g >= A.until:
@@ -1826,10 +1832,17 @@ while True:
             if fix: log('reward fix'); keep_later = True
     if lost or fix:
         if not fix:
-            D = b.g - (30 if bad >= 30 else 60)
-            log(f'lost the video near game {D} (video {v}){" (stalled)" if stalled else ""}: looking for an RNG write')
+            D = forced if forced is not None else b.g - (30 if bad >= 30 else 60)
+            log(f'lost the video near game {D} (video {v}){" (stalled)" if stalled else ""}{" (asked for)" if forced is not None else ""}: looking for an RNG write')
             log('  last frames (game, cost, video): ' + ' '.join(f'{g_}:{c_}:{v_}' for g_, c_, v_ in recent_fv[::4]))
+            # a loss asked for is MegaMan's place on the map (the sync held there): only those handlers, and the
+            # run goes on when they find nothing
+            was_forced = forced is not None; forced = None
+            if was_forced: only_was, ONLY = ONLY, {'position', 'relocate'}
             KEEP_NEXT[0] = False; fix = repair(D); keep_later = keep_later or KEEP_NEXT[0]
+            if was_forced:
+                ONLY = only_was
+                if fix is None: log(f'  the loss asked for at {D}: no place fixed it; going on'); continue
             if fix is None:
                 status = f'stuck near game {D} (video {v}): no RNG write found'
                 log(status); break
