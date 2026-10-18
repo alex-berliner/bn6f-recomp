@@ -211,13 +211,15 @@ def events(D, back=2400):
     if w is None: return []
     ks = path_keys(); p0 = b.press_gf
     b.e.load(w[1]); P, S = b.e.u32(rf.PRIMARY), b.e.u32(rf.SECONDARY); rows = []
-    bp = b.e.u32(BATTLE_PTR); TRIGGERS.clear()
+    bp = b.e.u32(BATTLE_PTR); sub = b.e.read(syms.GS_SUBSYSTEM, 1)[0]; TRIGGERS.clear()
     for g in range(w[0], min(D, b.g)):
         b.e.step(ks[g - p0][0]); P2, S2 = b.e.u32(rf.PRIMARY), b.e.u32(rf.SECONDARY)
         rows.append((g + 1, dist(P, P2), dist(S, S2))); P, S = P2, S2
-        bp2 = b.e.u32(BATTLE_PTR)
-        if bp2 != bp and 0x08000000 <= bp2 < 0x0A000000: TRIGGERS.append((g + 1, bp2))
-        bp = bp2
+        bp2 = b.e.u32(BATTLE_PTR); sub2 = b.e.read(syms.GS_SUBSYSTEM, 1)[0]
+        # a trigger sets the pointer and leaves the map (subsystem 4 -> 8) on the same frame; an encounter that
+        # rolls the same entry as the one before leaves the pointer as it was (run8w 895986, 80b4530 twice)
+        if 0x08000000 <= bp2 < 0x0A000000 and (bp2 != bp or (sub == 4 and sub2 == 8)): TRIGGERS.append((g + 1, bp2))
+        bp, sub = bp2, sub2
     if not rows: return []
     import collections
     mp = collections.Counter(r[1] for r in rows).most_common(1)[0][0]
