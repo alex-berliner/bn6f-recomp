@@ -68,9 +68,9 @@ static void set_object_animation(u32 animation) {
     GUEST_CALL(object_setAnimation);
 }
 
-/* register form: calls sub_80EB562 outside this file, which has no typed C interface yet */
+/* register form: calls ai_clearAttackVar outside this file, which has no typed C interface yet */
 static void run_charge_handler_80EB562(void) {
-    GUEST_CALL(sub_80EB562);
+    GUEST_CALL(ai_clearAttackVar);
 }
 
 /* register form: calls object_setFlag1 outside this file, which has no typed C interface yet */
@@ -296,7 +296,7 @@ Next battle_aiWindRackAttackStep_80EBFF4(void) {
 /* ── sub_80EC350 ── */
 /* sub_80EC350(r5 = battle object ptr, r7 = AIAttackVars ptr)
  * AI attack handler: computes the attack outcome via sub_80E192C, and if the
- * opposing alliance slot is empty, optionally invokes sub_800BF16 to trigger
+ * opposing alliance slot is empty, optionally invokes battle_queueEffectRequest to trigger
  * an extra effect, then exits the attack state.
  *
  * inputs:  r5 r7 r10 lr
@@ -379,7 +379,7 @@ Next sub_80EC350(void) {
         R0 = LD8(R5 + oBattleObject_Alliance);
         R1 = r1_arg;
         R2 = result;
-        GUEST_CALL(sub_800BF16);
+        GUEST_CALL(battle_queueEffectRequest);
     }
 
     GUEST_CALL(object_exitAttackState);
@@ -439,7 +439,7 @@ Next sub_80EC7C0(void) {
         R0 = 0xE;
         GUEST_CALL(object_setAnimation);
 
-        GUEST_CALL(sub_80EB562);
+        GUEST_CALL(ai_clearAttackVar);
 
         GUEST_CALL(object_setDefaultCounterTime);
 
@@ -699,10 +699,10 @@ static inline void call_object_setAnimation(u32 r0, u32 r5) {
 }
 
 typedef struct { u32 r3, r4, r5, r6, r7, r8, r9; } call_sub_80EB562_result;
-/* register form: generated wrapper: sub_80EB562 has no typed C interface yet */
+/* register form: generated wrapper: ai_clearAttackVar has no typed C interface yet */
 static inline call_sub_80EB562_result call_sub_80EB562(u32 r5) {
     R5 = r5;
-    GUEST_CALL(sub_80EB562);
+    GUEST_CALL(ai_clearAttackVar);
     return (call_sub_80EB562_result){ R3, R4, R5, R6, R7, R8, R9 };
 }
 

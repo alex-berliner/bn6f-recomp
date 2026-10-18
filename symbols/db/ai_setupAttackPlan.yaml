@@ -1,0 +1,54 @@
+name: ai_setupAttackPlan
+address: '0x08111E14'
+kind: function
+status: probable
+summary: 'Enemy AI per-turn attack initializer: on each AI turn it picks a difficulty-scaled attack setup
+  (attack 0xB) or a panel-targeted attack (attack 0xA) and fills the AI attack variables.'
+interface: (r5 = battle object, r4 = AI data, r6 = AI state, r7 = AI attack vars) -> r0 = 0/1 from battleObject_tryUseSelectedChip;
+  flags from tst/cmp only
+details: First lets battleObject_tryUseSelectedChip commit a selected chip and exits if it did. On turn
+  counter 0 it runs sub_8111F70 (likely a condition to attack), and unless >=2 actors match (0x60,0x73,0x78)
+  it sets ExtraDamage=0xA and loads damage/stepTimer/attackDuration from three per-difficulty byte tables
+  indexed by oAIData_Version, sets PanelChooseCallback to r5+0x60, derives AiDifficultyTier from version
+  (2 or 3, forced to 1 if flag 0xa000 set), issues object_setAttack0(0xB), and sets turn counter/ExtraVars
+  to 1. Otherwise it clears the turn counter, stores a target panel (from sub_8111F08 or the object's
+  own PanelX/Y), fetches alliance-dependent panel param args into AiAttackParam/PanelParamFlags2, loads
+  AttackDuration from a table, adds 0x3C if flag 0x8000 is set, clears TargetObjectPtr, sets PanelChooseCallback
+  to sub_8111F94+1, and issues object_setAttack0(0xA) before calling sub_8111A00.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: byte_8111EF0/EF6/EFC are per-version (difficulty) tables for Damage, StepTimer, AttackDuration,
+    indexed by oAIData_Version_16; two branches call object_setAttack0 with 0xB vs 0xA — the standard
+    AI 'begin attack state' setter; PanelChooseCallback is set to r5+0x60 or sub_8111F94+1, matching AI
+    attack-var layout; GetAllianceDependentPanelParamArgs result is stored into AiAttackParam/PanelParamFlags2
+    for the attack's panel effect; turn counter byte_8111F02 (0x1E..0x82) reads as per-difficulty step
+    timing values
+  refs:
+  - bn6f/asm/asm32.s:8060
+  - 0x081096FA GetAllianceDependentPanelParamArgs
+  - 0x08111FAE battleObject_tryUseSelectedChip_8111FAE
+  - 0x0801A166 object_getFlag
+  reproduce: python3 tools/asmcat.py 0x08111E14
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- what sub_8111F70 and sub_8111F08 test (visibility? player on own side?) to confirm the attack-choice
+  condition
+- which enemy this AI belongs to and what its attacks 0xA/0xB do
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8111E14 -> ai_setupAttackPlan
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8111E14

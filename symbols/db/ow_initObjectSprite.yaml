@@ -1,0 +1,48 @@
+name: ow_initObjectSprite
+address: '0x080A9F78'
+kind: function
+status: probable
+summary: 'Initializes an overworld object''s sprite from fields in its struct: loads the sprite resource,
+  sets animation, priority and palette, then advances the object''s state.'
+interface: () -> void; operates on the current object in r5, tail-calls sub_80A9FB8
+details: 'The object struct in r5 is configured for sprite setup: state byte [r5] is set to 3 on entry.
+  sprite_load is called with r0=0x80, r1=0x1c and the sprite id from [r5+5]; the animation index [r5+6],
+  shadow-off flag, priority [r5+7] and palette 0 are then applied via the sprite_* helpers, which act
+  on an implicit current-object pointer. sub_80AA04C is called with [r5+4] and its result stored as a
+  word at [r5+0x14] (likely a computed sprite/dimension value). Field [r5+0x24] is cleared, [r5+8] is
+  set to 4 (next state/mode), and sub_80A9FB8 is tail-called to finish the step.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r2,[r5,#5] then bl sprite_load — sprite id comes from the object struct; ldrb r0,[r5,#6]
+    / bl sprite_setAnimation and ldrb r0,[r5,#7] / bl sprite_setPriority_8002E14 — animation and priority
+    read from struct bytes 6/7; bl sprite_loadAnimationData and bl sprite_noShadow — full sprite attachment
+    for a map object; bl sub_80AA04C with ldrb r0,[r5,#4]; str r0,[r5,#0x14] — derived value cached in
+    the object; strb #4,[r5,#8] then bl sub_80A9FB8 — state byte advanced and a follow-up setup step run'
+  refs:
+  - bn6f/asm/asm29.s:9944
+  - 0x080026E4 sprite_load
+  - 0x080026A4 sprite_loadAnimationData
+  - 0x08002F90 sprite_noShadow
+  reproduce: python3 tools/asmcat.py 0x080A9F78
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- maps
+open_questions:
+- Meaning of the fixed sprite_load arguments 0x80 and 0x1c (resource bank/flags?)
+- What sub_80AA04C computes from [r5+4] into [r5+0x14]
+- What sub_80A9FB8 does after the state byte is set to 4, and which callers set [r5] to 3 before entering
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80A9F78 -> ow_initObjectSprite
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A9F78

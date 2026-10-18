@@ -1,0 +1,57 @@
+name: ai_attackStepMovement
+address: '0x080F41C0'
+kind: function
+status: probable
+summary: 'Per-tick movement step for an AI attack/object: advances its position by velocity, and on timer
+  expiry snaps it onto its reserved target panel and flags it as arrived.'
+interface: (r5 = battle object, r7 = oAIAttackVars) -> void; sets object X/Y += velocity, decrements StepTimer,
+  on expiry copies FuturePanelX/Y to PanelX/Y and sets ObjectFlags1 bit 1 (currently moving) and HitElement
+  = 0xC
+details: Each call adds the object's XVelocity/YVelocity to its X/Y world position, then recomputes panel
+  coordinates from the position (object_setPanelsFromCoordinates) and updates collision panels. It decrements
+  the oAIAttackVars_StepTimer; while the timer is still >= 0 the function just returns. When the timer
+  underflows, the object's PanelX/PanelY are set from FuturePanelX/FuturePanelY (the pre-reserved destination),
+  the panel reservation is released (object_removePanelReserve), pixel coordinates and collision panels
+  are synced to the new panel, flag 0x40 in the collision flags is cleared, ObjectFlags1 bit 1 (CURRENTLY_MOVING_1)
+  is set, and oAIAttackVars_HitElement is written with 0xC (likely element NONE/neutral for the attack's
+  hit). This is the movement phase of an AI-driven attack that flies to a target panel before its hit
+  phase.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'adds XVelocity/YVelocity to X/Y then calls object_setPanelsFromCoordinates and object_updateCollisionPanels
+    — position integration per tick; decrements oAIAttackVars_StepTimer and bge-loops out until it goes
+    negative — per-frame step with a move duration; on expiry: copies FuturePanelX/Y into PanelX/Y and
+    calls object_removePanelReserve — arrives at the pre-reserved panel; clears 0x40 collision flag, sets
+    ObjectFlags1 bit 1, writes 0xC to oAIAttackVars_HitElement — state transition into the hit phase;
+    caller sub_80F4144 and route ''battlesweep'' fit an AI attack that sweeps across panels toward its
+    target'
+  refs:
+  - bn6f/asm/asm31.s:128221
+  - 0x080F4144 sub_80F4144
+  - 0x0801A15C object_clearFlag
+  - 0x0801BB46 object_removePanelReserve
+  - 0x0801A066 object_setCollisionPanelsToCurrent
+  reproduce: python3 tools/asmcat.py 0x080F41C0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- exact meaning of HitElement = 0xC (element NONE vs some wind/neutral id) — would need the hit/damage
+  code that reads oAIAttackVars_HitElement
+- which attack(s) use this via sub_80F4144 (route 'battlesweep' suggests a panel-sweep attack) to confirm
+  the semantics of flag 0x40
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F41C0 -> ai_attackStepMovement
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F41C0

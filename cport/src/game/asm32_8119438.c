@@ -1102,12 +1102,12 @@ Next npc_ClearBusyFlagAndResetState_811A138(void) {
 
 /* ── stateObj_advanceToState0x10_811A148 ── */
 /* stateObj_advanceToState0x10_811A148(r5 = state object pointer):
- * If the byte at r5+4 is still zero, run its initialization (sub_8119EEC).
+ * If the byte at r5+4 is still zero, run its initialization (menu_drawChipDescription).
  * Then mark the object with state 0x10 at r5+9 and advance it via sprite_scaleShrinkStep_811A160.
  * r5 is preserved; r0 on return is whatever sprite_scaleShrinkStep_811A160 left there. */
 Next stateObj_advanceToState0x10_811A148(void) {
     if (LD8(R5 + 4) == 0)
-        GUEST_CALL(sub_8119EEC);
+        GUEST_CALL(menu_drawChipDescription);
 
     ST8(R5 + 9, 0x10);
 

@@ -1,0 +1,52 @@
+name: ai_stepFinishMoveToPanel
+address: '0x081099DA'
+kind: function
+status: probable
+summary: AI attack step routine that, on the last tick of a move, teleports the object onto its reserved
+  future panel and updates its battle state.
+interface: (r5 = battle object, r7 = AI attack vars struct) -> void; spawns effect objects, no return
+  value
+details: Runs once per frame for an enemy's scripted movement attack. While oAIAttackVars_StepTimer equals
+  3 and the AI difficulty tier has bit 1 set, it spawns an effect at the destination panel (FuturePanelX/Y
+  converted to pixel coordinates via object_getCoordinatesForPanels, r3=0x100000). Each tick decrements
+  StepTimer; on reaching 0 it spawns another effect built from fields at object+0x34..0x39 (plus 0x100000
+  offset), copies FuturePanelX/Y into PanelX/PanelY, calls object_removePanelReserve, object_setCoordinatesFromPanels
+  and object_updateCollisionPanels (recomputing position and facing), then calls sub_81096BA (likely the
+  attack action itself). On hard difficulty (tier bit 0) it also forces the animation to oAIAttackVars_AttackStepIndex.
+  Finally it reloads StepTimer from oAIAttackVars_AiAttackParam and sets HitElement to 8.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: copy of FuturePanelX/Y into PanelX/Y followed by object_removePanelReserve + object_setCoordinatesFromPanels
+    + object_updateCollisionPanels shows a panel move being committed; effect spawn before the move uses
+    object_getCoordinatesForPanels on FuturePanelX/FuturePanelY, i.e. a pre-move marker at the destination
+    tile; StepTimer countdown with reload from oAIAttackVars_AiAttackParam shows a per-frame step of a
+    timed AI attack; Callees' known summaries (panel-reserve release, coordinate/collision sync) match
+    a teleport-onto-panel completion step
+  refs:
+  - bn6f/asm/asm31.s:172294
+  - 0x0800E276 object_getCoordinatesForPanels
+  - 0x0801BB46 object_removePanelReserve
+  - 0x0800E29C object_setCoordinatesFromPanels
+  reproduce: python3 tools/asmcat.py 0x081099DA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- No callers captured, so which enemy/attack script selects this step is unknown
+- Purpose of fields at object+0x34..0x39 and sub_81096BA (probable attack fire) not confirmed
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_81099DA -> ai_stepFinishMoveToPanel
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81099DA

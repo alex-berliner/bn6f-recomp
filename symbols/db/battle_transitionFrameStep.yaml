@@ -1,0 +1,51 @@
+name: battle_transitionFrameStep
+address: '0x08009D58'
+kind: function
+status: probable
+summary: 'One per-frame step of a battle transition/effect: raises request bits 0x404, runs the transition
+  dispatch, refreshes the battle scene, and posts an empty event.'
+interface: () -> r0 = 0/void; sets request bits 0x404 in eStruct2035280+0x40, posts event with r0=0, r1=0
+details: The routine ORs 0x404 into the request dword at eStruct2035280+0x40 via eStruct2035280_SetRequestBits_801BECC,
+  then passes the same 0x404 to dispatch_801DA48, so the mask drives both the request flags and the dispatcher
+  selection for this step. It then calls battle_sceneFrameSetup_801DA24 to queue the battle scene's graphics
+  transfers and refresh render info, and finally posts event (r0=0, r1=0) through battle_eStruct2035280_postEvent_801E0A0,
+  which zeroes the event halfword/byte fields — i.e. signals 'no further event this step'. Its position
+  inside the battlesweep route and sole caller sub_8009CD0 suggest it is one state of a battle entry/transition
+  sequence stepped each frame until the 0x404 request completes.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldr r0, =0x404; bl eStruct2035280_SetRequestBits_801BECC — raises request bits 0x404; ldr r0,
+    =0x404; bl dispatch_801DA48 — same mask fed to the battle dispatcher for this frame; bl battle_sceneFrameSetup_801DA24
+    — refreshes battle scene transfers/render info each call; mov r0,#0; mov r1,#0; bl battle_eStruct2035280_postEvent_801E0A0
+    — posts a null/complete event; Called only from sub_8009CD0 within the battlesweep route, fitting
+    a stepped transition state
+  refs:
+  - bn6f/asm/asm00_1.s:15053
+  - 0x08009CD0 sub_8009CD0
+  - 0x0801E0A0 battle_eStruct2035280_postEvent_801E0A0
+  - 0x0801DA24 battle_sceneFrameSetup_801DA24
+  - 0x0801BECC eStruct2035280_SetRequestBits_801BECC
+  reproduce: python3 tools/asmcat.py 0x08009D58
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- What transition/effect request 0x404 names (which battle subsystem consumes those bits)
+- What dispatch_801DA48 does with the mask — its body would confirm whether this is a wipe/fade or custom-effect
+  step
+- What sub_8009CD0's surrounding state machine is (entry transition vs. battle end)
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8009D58 -> battle_transitionFrameStep
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8009D58

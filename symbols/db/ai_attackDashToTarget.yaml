@@ -1,0 +1,56 @@
+name: ai_attackDashToTarget
+address: '0x080F5BA4'
+kind: function
+status: probable
+summary: 'AI attack step: asks the alliance''s panel-choose callback for a panel adjacent toward the target,
+  reserves it, and plays a dash/tackle animation while sliding is blocked.'
+interface: (r5 = battle object ptr, r7 = AI attack vars) -> r0 = ?; sets object FuturePanelX/Y, anim,
+  flags and attack-vars state
+details: If object_canMove says the object is free, it indexes byte_80F5BF0 by Alliance*8 to fetch a two-word
+  entry (a panel-choosing callback pointer per alliance) and calls it via mov lr,pc/bx with r0 = target
+  object pointer and r1 = the callback stored in oAIAttackVars_PanelChooseCallback. The callback returns
+  a panel position (x in r0, y in r1); a nonzero r0 means a panel was found, so the routine stores them
+  into oBattleObject_FuturePanelX/Y, claims the panel with object_reservePanel, sets OBJECT_FLAGS_CANNOT_SLIDE
+  via object_setFlag1, switches the object's CurAnim to 4, and sets oAIAttackVars_StepTimer=3 and HitElement=4
+  to continue the attack. If the object can't move or the callback fails, it clears oAIAttackVars_HasMoved
+  and exits the attack state via object_exitAttackState.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_canMove / beq loc_80F5BE0: whole body gated on the object being free to act; ldr
+    r1,[r7,#oAIAttackVars_PanelChooseCallback] + mov lr,pc; bx r1: invokes an alliance-indexed panel-selection
+    callback (off_80F5BEC -> byte_80F5BF0); strb r0,[r5,#oBattleObject_FuturePanelX] / strb r1,...FuturePanelY
+    followed by bl object_reservePanel: claims the chosen panel for this object; mov r0,#OBJECT_FLAGS_CANNOT_SLIDE;
+    bl object_setFlag1 and CurAnim=4: marks a committed, non-sliding move animation; failure path strb
+    r0,[r7,#oAIAttackVars_HasMoved] + bl object_exitAttackState: aborts the attack step when no move is
+    possible'
+  refs:
+  - bn6f/asm/asm31.s:131440
+  - 0x0800E5E2 object_canMove
+  - 0x0801BB1C object_reservePanel
+  - 0x0801A152 object_setFlag1
+  reproduce: python3 tools/asmcat.py 0x080F5BA4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- which enemy attack this handler belongs to (no callers known; identified only via recorded battlesweep
+  route)
+- exact meaning of CurAnim=4, StepTimer=3 and HitElement=4 (animation/effect ids not yet mapped)
+- the per-alliance table entries at byte_80F5BF0 (callback addresses look like 0x0F88xxxx-style data and
+  need decoding)
+- what the callback's arguments in r2/r3 (table words) actually represent
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F5BA4 -> ai_attackDashToTarget
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F5BA4

@@ -1,0 +1,54 @@
+name: ai_updateDiveAttack
+address: '0x081109F6'
+kind: function
+status: probable
+summary: 'Per-frame AI attack step: an object dives downward toward a target row and, when its timer expires,
+  resurfaces/lands on the saved panel (or aborts and snaps back to its original panel).'
+interface: (r5 = battle object, r7 = AI attack vars; args in r0-r3 unused) -> r0 = scratch from last callee;
+  updates object panel/coords, flags, attack vars
+details: Decrements the word at [r5+0x7E] (attack step timer) and, while it is still >=0, adds oBattleObject_YVelocity
+  to Y each frame (descending) and re-syncs panels/collision — a flying/diving motion. When the timer
+  goes negative, it takes the panel Y saved at [r5+0x7B] as the landing row, updates TargetPanelX/Y in
+  the r7 attack-var struct, recomputes pixel coordinates and collision panels, and sets HitElement=0xC
+  / AttackElement=0 for the surfacing hit. If sub_8110D58 reports failure mid-dive, it clears object-flag
+  bit 1, resets StepTimer from Unk_32, restores the panel from [r5+0x78/0x79], calls sub_81110C8 and sub_811109C
+  (likely effects/markers at the panels), releases the reserved panel via object_removePanelReserve, zeroes
+  ExtraVars+0xC, sets collision region 1, and sets HitElement=0x28 instead. Uses the standard battle AI
+  convention r5=object, r7=oAIAttackVars scratch struct.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: sub r0,#1 / strh on [r5+0x7E] with tst/blt splits the active-dive vs landing paths; active path
+    adds oBattleObject_YVelocity to oBattleObject_Y each call, then object_setPanelsFromCoordinates +
+    object_updateCollisionPanels; landing path loads [r5+0x7B] into PanelY and TargetPanelY and sets HitElement=0xC
+    (loc_8110A16); abort path clears object flag 2, restores panels from [r5+0x78/0x79], calls object_removePanelReserve
+    and sets HitElement=0x28 (loc_8110A3E); all callees are battle-object panel/collision helpers, confirming
+    r5 is a battle object and this is an AI attack step
+  refs:
+  - bn6f/asm/asm32.s:5646
+  - 0x0801BB46 object_removePanelReserve
+  - 0x0801A07C object_setCollisionRegion
+  - 0x0800E29C object_setCoordinatesFromPanels
+  reproduce: python3 tools/asmcat.py 0x081109F6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- what sub_8110D58, sub_81110C8 and sub_811109C actually test/draw (no known callers documented this routine)
+- which enemy/attack uses this state and what HitElement 0xC vs 0x28 map to
+- meaning of fields 0x78/0x79 (original panel?) and 0x7B (landing row) in the object struct
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_81109F6 -> ai_updateDiveAttack
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81109F6

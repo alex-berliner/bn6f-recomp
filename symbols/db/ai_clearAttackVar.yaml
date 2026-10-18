@@ -1,0 +1,62 @@
+name: ai_clearAttackVar
+address: '0x080EB562'
+kind: function
+status: probable
+summary: Resets a per-object AI attack variable (AIData+0x68) to zero, used by attack state machines when
+  their attack ends.
+interface: (r5 = battle object; no args) -> r0 = clobbered by call; no meaningful return
+details: Loads the battle object's AIData pointer (oBattleObject_AIDataPtr from r5), computes AIData+0x68,
+  and calls sub_80EB572 with that address in r0 and r1 = 0, which almost certainly writes 0 into that
+  field. Every known caller is an AI attack routine (buster shot, thunder-style attack) whose summaries
+  show state ticking and completion, so this is the cleanup/reset of the attack's progress variable on
+  the final tick or when returning to idle. The shared callee with r1=0 strongly indicates a plain 'set
+  field to 0' helper rather than anything object- or sprite-related.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldr r1,[r5,#oBattleObject_AIDataPtr] / add r0,r0,#0x68 targets AIData field 0x68; mov r1,#0
+    before bl sub_80EB572: a zeroing write of one AI-data field; all listed callers (0x080EBE54, 0x080EB450,
+    0x080EC7C0, 0x080ECA50) are AI attack tick/state routines per their summaries'
+  refs:
+  - bn6f/asm/asm31.s:110009
+  - 0x080EBE54 battle_aiBusterAttackTick_80EBE54
+  - 0x080EB450 sub_80EB450
+  - 0x080EC7C0 sub_80EC7C0
+  - 0x080EB572 sub_80EB572
+  reproduce: python3 tools/asmcat.py 0x080EB562
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- beastsp
+- chips
+- fuzz
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- sub_80EB572 is unnamed; confirming it is a simple str r1,[r0] (or small setter) would raise confidence
+- exact meaning of AIData+0x68 (attack tick counter vs. attack id) would need a read of the callers' stores
+  to that field
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80EB562 -> ai_clearAttackVar
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EB562

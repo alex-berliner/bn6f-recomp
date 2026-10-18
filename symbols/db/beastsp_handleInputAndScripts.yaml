@@ -1,0 +1,53 @@
+name: beastsp_handleInputAndScripts
+address: '0x081334C8'
+kind: function
+status: probable
+summary: 'Input/state step handler for a beast-SP-related text sequence: reacts to B+Select and chatbox
+  progress, playing sounds and advancing scripts 0xb/0x10/0x11 while updating a context''s state bytes.'
+interface: (r5 = context struct, caller-provided) -> r0 = last call's return; writes state bytes [r5+2],
+  [r5+3] and word [r5+0x68]
+details: 'If a submenu is open it returns immediately, except when the submenu state is 0x30, in which
+  case it sets [r5+3]=0xc; state 0x24 also just returns. Otherwise it checks chatbox flag bit 0x20 of
+  eFlags2009F38: if clear, it waits for B or Select, and on a new press sets [r5+2]=0x10, plays SOUND_EXIT_SUBMENU
+  and runs text script 0xb. If the chatbox flag is set, it plays SOUND_MENU_SELECT and branches on chatbox_GetState:
+  nonzero state leads to sub_8134FE0, [r5+0x68]=0xc, script 0x10 and [r5+3]=8; zero state runs script
+  0x11 with [r5+3]=4 and [r5+0x68]=0. The context r5 is never set up in this function, so the caller must
+  preload it. Scripts come from the eTextScript2028A20 archive via the chatbox trampoline. The pattern
+  (exit sound + B/Select + sequential scripts + small state machine fields) fits a scripted tutorial/cutscene
+  advance step.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl submenu_isOpen_81355D8 ... cmp r0,#0x24 / #0x30 with early returns shows it only runs when
+    no submenu (or a specific one) is active; bl IsButtonPressed with JOYPAD_SELECT|JOYPAD_B followed
+    by SOUND_EXIT_SUBMENU and script 0xb shows a dismiss/exit input path; bne on chatbox_mask_eFlags2009F38
+    bit 0x20 splits ''text waiting'' vs ''no text'' handling; three chatbox_runScript_803FD9C_on_eTextScript2028A20
+    calls with indices 0xb/0x10/0x11 and distinct state stores (0x8, 0x4, 0xc) show a script-sequenced
+    state machine; recorded execution on the beastsp route links it to the beast-SP sequence'
+  refs:
+  - bn6f/asm/asm36.s:6641
+  - 0x0811F7EC IsButtonPressed
+  - 0x080005CC PlaySoundEffect
+  - 0x08045F4C chatbox_GetState_8045F4C
+  reproduce: python3 tools/asmcat.py 0x081334C8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- beastsp
+open_questions:
+- Which screen or cutscene owns the r5 context and what its fields 2, 3 and 0x68 mean downstream
+- What sub_8134FE0 does in the 'chatbox active' branch
+- What text scripts 0xb/0x10/0x11 of eTextScript2028A20 say (would confirm it is the beast-SP tutorial/cutscene)
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_81334C8 -> beastsp_handleInputAndScripts
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81334C8

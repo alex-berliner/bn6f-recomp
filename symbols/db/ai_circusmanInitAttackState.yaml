@@ -1,0 +1,53 @@
+name: ai_circusmanInitAttackState
+address: '0x080FEB9E'
+kind: function
+status: probable
+summary: 'Initializes CircusMan''s AI attack state: reads difficulty tier, fills attack parameters from
+  helpers, picks the opposing player as target, and launches attack id 0xC.'
+interface: (r0 = battle object? passed via r5/r7 base, r7 = oAIAttackVars struct) -> r0 = destroyed; sets
+  up oAIAttackVars and starts attack 0xC
+details: Reads the enemy AI difficulty byte (via battle_getAiDifficultyTier) and stores it in oAIAttackVars_AiDifficultyTier,
+  then clears the InitFlag. Calls four helpers (sub_80FEBE4 with arg 2, sub_80FEA74, sub_80FEAA8, sub_80FEABC,
+  sub_80FEAD8) whose results fill AttackDuration, AttackBoost2, ScratchVar, TimerOrCycles and SubStepIndex
+  — i.e. it gathers randomized/per-difficulty attack parameters. Stores r5+0x7C as AiAttackParam, looks
+  up the opposing object with battle_findPlayer(alliance XOR 1) into TargetObjectPtr, and finally calls
+  object_setAttack0(0xC) to begin the attack. This is the one-time initialization of a CircusMan AI attack
+  routine, called from its AI step when the RNG rolls (first <0xE) pass.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: strb r0,[r7,#oAIAttackVars_AiDifficultyTier] after bl battle_getAiDifficultyTier_800FE36 (lines
+    2-3); chain of helper calls each immediately stored into oAIAttackVars_* fields (AttackDuration, AttackBoost2,
+    ScratchVar, TimerOrCycles, SubStepIndex); bl battle_findPlayer with r0 = oBattleObject_Alliance eor
+    1, result stored to oAIAttackVars_TargetObjectPtr; bl object_setAttack0 with r0=0xC as final action
+    before pop; caller sub_80FE8E4 is a CircusMan AI step gating this with GetPositiveSignedRNG&0xF <
+    0xE
+  refs:
+  - bn6f/asm/asm31.s:149736
+  - 0x080FE8E4 sub_80FE8E4
+  - 0x0800FE36 battle_getAiDifficultyTier_800FE36
+  - 0x080103BC battle_findPlayer
+  - 0x08011680 object_setAttack0
+  reproduce: python3 tools/asmcat.py 0x080FEB9E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- what attack id 0xC actually is for CircusMan (attack name/behavior lives in the attack handler)
+- what the helper routines sub_80FEA74/AA8/ABC/AD8 compute (durations? panel/row choices?)
+- 'the exact base-object argument convention: r5/r7 are not set in this routine, so how callers set them
+  is unverified'
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80FEB9E -> ai_circusmanInitAttackState
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FEB9E

@@ -1,0 +1,48 @@
+name: battle_initObjectSprite
+address: '0x080BC19C'
+kind: function
+status: probable
+summary: 'Battle-object initializer: loads sprite 0x80 onto the object, mirrors the related object''s
+  palette, starts animation 3, and enters the update state.'
+interface: (r5 = battle object) -> void; r0-r3 scratch
+details: Takes the object in r5 (never passed in r0, so it is a closure-style handler). It calls sprite_load
+  with (0x80, 4, 3), then sprite_loadAnimationData and sprite_removeShadow, so the object renders sprite
+  0x80 with no ground shadow. It reads the palette byte from the object's RelatedObject1Ptr's sprite and
+  writes it back via sprite_setPalette, making this object match its related object's palette. It sets
+  the current animation (and its copy) to 3 via strh and sprite_setAnimation, runs one sprite_update,
+  and sets CurStateActionPhaseAndPhaseInitialized to CUR_STATE_UPDATE so the object's per-frame update
+  runs next. Finally it stores 0x60 at object offset 0x65 and tail-calls sub_80BC1DA before returning.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: mov r0,#0x80; mov r1,#4; mov r2,#3; bl sprite_load — loads a fixed sprite 0x80; ldr r0,[r5,#oBattleObject_RelatedObject1Ptr];
+    bl sprite_getPalette; bl sprite_setPalette — copies palette from related object; mov r0,#3; strh r0,[r5,#oBattleObject_CurAnimAndCurAnimCopy];
+    bl sprite_setAnimation — animation 3; mov r0,#CUR_STATE_UPDATE; str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]
+    — enters update state; sprite_loadAnimationData/sprite_removeShadow callees match a spawn/init sprite
+    setup routine
+  refs:
+  - bn6f/asm/asm31.s:8756
+  - 0x08002D8C sprite_getPalette
+  - 0x080026E4 sprite_load
+  - 0x080026A4 sprite_loadAnimationData
+  reproduce: python3 tools/asmcat.py 0x080BC19C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- No caller is known, so which battle object uses sprite 0x80 and when this init runs is unclear
+- Meaning of the 0x60 byte stored at offset 0x65 and the role of sub_80BC1DA are unknown
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80BC19C -> battle_initObjectSprite
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BC19C

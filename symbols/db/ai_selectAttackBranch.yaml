@@ -1,0 +1,51 @@
+name: ai_selectAttackBranch
+address: '0x080F3A24'
+kind: function
+status: probable
+summary: Enemy AI per-turn decision routine that randomly branches into one of four attack setups and
+  programs the AI attack-vars block for the chosen move.
+interface: (r5 = enemy BattleObject, r6 = its AI state, r7 = its AI attack-vars struct) -> r0 = destroyed;
+  sets oAIAttackVars fields and calls object_setAttack0/4
+details: On entry it checks a condition via sub_80F3C1C; if that fails, it instead counts turns in oAIState_TurnCounter
+  and, once the counter reaches 3, forces one specific setup (attack id 0xA) with InitFlag=3, resetting
+  the counter. Otherwise it draws GetPositiveSignedRNG & 0xF and picks one of four ranges (0-3, 4-5, 6-7,
+  >=8). Each branch stores battle_getAiDifficultyTier_800FE36 into oAIAttackVars_AiDifficultyTier, sets
+  a duration from a helper (sub_80F3B7A/B8C/BB0/BD4/BF8), a panel-choose callback (sub_80F45B8 in some
+  branches), the opponent object via battle_findPlayer(alliance^1) into oAIAttackVars_TargetObjectPtr,
+  and scratch/param pointers (0x60/0x64/0x68 + r5, i.e. fields inside the object), then dispatches with
+  object_setAttack0(0xA/0xB/0xC/0xD) or object_setAttack4(9). This is the top-level 'pick what the boss
+  does this turn' handler for one enemy's AI.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: GetPositiveSignedRNG result & 0xF drives four-way branch to distinct attack setups (loc_80F3A94/ACE/AF6/fallthrough);
+    Each branch ends in object_setAttack0 with a distinct attack id (0xA, 0xB, 0xC, 0xD) or object_setAttack4(9);
+    battle_getAiDifficultyTier_800FE36 result stored to oAIAttackVars_AiDifficultyTier in all four branches;
+    battle_findPlayer(alliance eor 1) result stored to oAIAttackVars_TargetObjectPtr — target is the opposing
+    player; oAIState_TurnCounter increment/reset guards the forced first setup after 3 turns
+  refs:
+  - bn6f/asm/asm31.s:127261
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x0800FE36 battle_getAiDifficultyTier_800FE36
+  - 0x080103BC battle_findPlayer
+  reproduce: python3 tools/asmcat.py 0x080F3A24
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- Which enemy/boss this AI belongs to (depends on the containing AI table not shown)
+- Exact semantics of sub_80F3C1C's gate and the helpers sub_80F3BB0/BD4/BF8/B7A that compute durations
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F3A24 -> ai_selectAttackBranch
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F3A24

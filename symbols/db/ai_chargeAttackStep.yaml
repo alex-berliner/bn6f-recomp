@@ -1,0 +1,54 @@
+name: ai_chargeAttackStep
+address: '0x080FC444'
+kind: function
+status: probable
+summary: AI attack state that continuously slides the attacking object toward a reserved target panel,
+  hitting whatever it reaches
+interface: (r5 = battle object, r7 = AI attack vars) -> r0 = scratch from helper; sets HitElement when
+  attack resolves
+details: On first entry (AttackElement==0) it marks the attack as element 4, clears an ObjectFlags1 bit,
+  asks sub_80FCE5C for a target panel; if none it exits the attack state. It stores the target in TargetPanelX/Y,
+  copies the current panel into FuturePanelX/Y, reserves the target panel via object_reservePanel, sets
+  OBJECT_FLAGS_CANNOT_SLIDE, and calls sub_80D4C0A(object+9, -1) to set up movement (result saved in ScratchPointerOrPanel).
+  Every tick it adds YVelocity/Y and XVelocity/X to the object's position, recomputes PanelX/PanelY from
+  coordinates via object_setPanelsFromCoordinates and object_updateCollisionPanels, and calls sub_80FCFA8
+  when the panel column changed (likely facing/animation update). It decrements StepTimer and, when the
+  timer runs out or the object's panel equals the target panel, stores 0x14 into HitElement, ending the
+  move. This is a per-frame step function of a dash/rush body attack, not an instantaneous strike.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: element 4 written to oAIAttackVars_AttackElement and guarded by bne, so the block is once-per-attack
+    setup (sub_80FC444 start); object_reservePanel called right after storing TargetPanelX/Y from sub_80FCE5C,
+    plus OBJECT_FLAGS_CANNOT_SLIDE via object_setFlag1; per-tick X += XVelocity, Y += YVelocity then object_setPanelsFromCoordinates/object_updateCollisionPanels
+    sync the collision panels; timer expiry and arrival at the target panel both funnel to 'mov r0,#0x14;
+    strh r0,[r7,#oAIAttackVars_HitElement]'; sub_80FCE5C returning 0 leads to object_exitAttackState,
+    so it is an optional target acquisition that can fail
+  refs:
+  - bn6f/asm/asm31.s:144583
+  - 0x0801A15C object_clearFlag
+  - 0x0801BB1C object_reservePanel
+  - 0x0801A152 object_setFlag1
+  reproduce: python3 tools/asmcat.py 0x080FC444
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- What sub_80FCE5C, sub_80FCFA8, and sub_80D4C0A actually do (target search, animation/facing, velocity
+  setup) is unverified
+- Which caller/state machine invokes this (no callers known) and what HitElement 0x14 maps to in the damage
+  code
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80FC444 -> ai_chargeAttackStep
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FC444

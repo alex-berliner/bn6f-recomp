@@ -919,7 +919,7 @@ Next battle_dispatchObjectUpdateOrEffect_81333A0(void) {
     else if (objType == 0xC)
         GUEST_CALL(battleObject_submenuDispatchByBeastSpIndex_8133484);
     else /* objType == 0x10 */
-        GUEST_CALL(sub_8133788);
+        GUEST_CALL(battle_beastOutMenuStateUpdate);
 
     /* Sync battle state from the object and finalize the handler call */
     GUEST_CALL(battle_setFieldsFromObj_81340FC);

@@ -1,0 +1,51 @@
+name: spawn_initBattleObject
+address: '0x080C471C'
+kind: function
+status: probable
+summary: 'Spawn-time initializer for a battle object: places it on the field from its coordinates, loads
+  its sprite and starting animation, copies palette/facing from its related object, and enters the update
+  state.'
+interface: (r0 = battle object ptr, r5 = same object/header ptr) -> r0 = sub_80C4766 result; sets oBattleObject_CurStateActionPhaseAndPhaseInitialized
+  = CUR_STATE_UPDATE
+details: Recomputes PanelX/PanelY from the object's world position, then loads a fixed sprite (args 0x80/0x10/0x5A)
+  plus its animation data and clears its shadow. Sets oObjectHeader_Flags bit 1 (likely 'initialized/active').
+  The starting animation index is copied from oBattleObject_Param1 into CurAnim and CurAnimCopy, so the
+  caller selects the initial pose via Param1. Palette and horizontal flip are inherited from oBattleObject_RelatedObject1Ptr,
+  indicating this object is a palette/facing-mirrored counterpart of a parent entity. Finally marks the
+  object's state as CUR_STATE_UPDATE and tail-calls sub_80C4766.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'object_setPanelsFromCoordinates + sprite_load/sprite_loadAnimationData/sprite_noShadow sequence
+    = standard battle-object sprite spawn block; ldrb Param1 / strb CurAnim,CurAnimCopy: initial animation
+    comes from Param1; sprite_getPalette on oBattleObject_RelatedObject1Ptr + sprite_setPalette: palette
+    inherited from a related/parent object; object_getFlip + sprite_setFlip: facing mirrors the related
+    object; mov r0,#CUR_STATE_UPDATE; str [CurStateActionPhaseAndPhaseInitialized]; bl sub_80C4766: hands
+    off to the per-state update handler'
+  refs:
+  - bn6f/asm/asm31.s:27145
+  - 0x0800E456 object_getFlip
+  - 0x0800E2AC object_setPanelsFromCoordinates
+  - 0x08002D8C sprite_getPalette
+  reproduce: python3 tools/asmcat.py 0x080C471C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- Identity of the sprite resource passed to sprite_load (0x80/0x10/0x5A) — which entity this spawns
+- What sub_80C4766 does (its update handler would confirm the entity type)
+- 'No known callers: who allocates the object and sets Param1/RelatedObject1Ptr before this runs'
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80C471C -> spawn_initBattleObject
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C471C

@@ -1,0 +1,51 @@
+name: object_initSpawnOnPanel
+address: '0x080CB71C'
+kind: function
+status: probable
+summary: 'Init phase of a battle object: places it at its panel coordinates, builds its hitbox from a
+  per-variant table, then hands it to the normal update state with a sound cue.'
+interface: (r5 = battle object) -> r0 destroyed; sets oBattleObject_Timer2 = 1 and state phase to CUR_STATE_UPDATE
+details: This is an object's first-run/init handler. It recomputes the object's pixel X/Y from its panel
+  grid position via object_setCoordinatesFromPanels, then allocates a collision-data slot; if allocation
+  fails the object is freed immediately (object_freeMemory) and the routine exits. On success it reads
+  a 3-byte entry (indexed by oBattleObject_Param1 * 3) from the table at byte_80CB6F0 — evidently width/height/offset
+  hitbox dimensions — into object_setupCollisionData, sets hit effect 0xFF, and runs object_presentCollisionData
+  for the frame. It then sets Timer2 to 1, switches the object's state field to CUR_STATE_UPDATE so subsequent
+  frames use the update handler, calls the helper sub_80CB762, and plays sound effect 0xAE. Param1 therefore
+  selects one of several hitbox variants of the same spawned object.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_setCoordinatesFromPanels then bl object_createCollisionData: panel-position placement
+    + hitbox allocation on entry; bne / bl object_freeMemory: aborts by freeing the object when no collision
+    slot is available; ldrb r3,[r5,#oBattleObject_Param1]; mul r3,#3; ldr r2,off_80CB8FC(=byte_80CB6F0):
+    picks a 3-byte hitbox entry per Param1 variant; mov r0,#CUR_STATE_UPDATE; str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]:
+    transitions the object to its update phase; mov r0,#0xae; bl PlaySoundEffect: plays a fixed sound
+    effect when the object comes into existence'
+  refs:
+  - bn6f/asm/asm31.s:42083
+  - 0x080005CC PlaySoundEffect
+  - 0x08019892 object_createCollisionData
+  - 0x08003458 object_freeMemory
+  reproduce: python3 tools/asmcat.py 0x080CB71C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- What object type uses this init (which caller assigns it as state handler) and what sound 0xAE corresponds
+  to
+- What sub_80CB762 does and the exact meaning of the 3 bytes in byte_80CB6F0 (dimensions vs offsets)
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80CB71C -> object_initSpawnOnPanel
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CB71C

@@ -286,11 +286,11 @@ Next bg_copyTilePatchBlock2_81264E4(void) {
 }
 
 /* ── sub_81264F4 ── */
-/* sub_81264F4: fixed-argument wrapper around sub_8126570.
+/* sub_81264F4: fixed-argument wrapper around battle_queueAnimatedOamEntry.
  *
  * It loads a constant argument set (two screen coordinates and two sizes in
  * r0-r3, a data table pointer in r4, a hardware-register mirror address in
- * r6, and a second table pointer in r7) and tail-calls sub_8126570, which
+ * r6, and a second table pointer in r7) and tail-calls battle_queueAnimatedOamEntry, which
  * draws/updates something using them.
  *
  * r5 and r10 arrive from the caller and are forwarded untouched. Although
@@ -308,7 +308,7 @@ Next sub_81264F4(void) {
     R6 = 0x40000000;
     R7 = A_dword_8124A94;
 
-    GUEST_CALL(sub_8126570);
+    GUEST_CALL(battle_queueAnimatedOamEntry);
 
     /* pop {r4-r7} - restore the caller's register values */
     R4 = saved_r4;
@@ -320,7 +320,7 @@ Next sub_81264F4(void) {
 }
 
 /* ── wrapper_sub8126570_fixedArgs_812650C ── */
-/* wrapper_sub8126570_fixedArgs_812650C: parameter-filling wrapper around sub_8126570.
+/* wrapper_sub8126570_fixedArgs_812650C: parameter-filling wrapper around battle_queueAnimatedOamEntry.
  * Sets up the four size arguments and the pointers to the byte_8124A84 /
  * dword_8124A94 data, invokes the worker, and restores its own saved
  * r4-r7 on the way out. r2/r3 (and the flags) come straight from the
@@ -341,10 +341,10 @@ Next wrapper_sub8126570_fixedArgs_812650C(void) {
     R6 = 0x40000000;        /* constant passed through to the worker */
     R7 = A_dword_8124A94;   /* pointer to the dword_8124A94 table */
 
-    GUEST_CALL(sub_8126570);
+    GUEST_CALL(battle_queueAnimatedOamEntry);
 
     /* pop {r4-r7,pc} -- r4-r7 end exactly as they came in; r2/r3 are
-     * whatever sub_8126570 left behind. */
+     * whatever battle_queueAnimatedOamEntry left behind. */
     R4 = savedR4;
     R5 = savedR5;
     R6 = savedR6;
@@ -353,7 +353,7 @@ Next wrapper_sub8126570_fixedArgs_812650C(void) {
 }
 
 /* ── sub_8126524 ── */
-/* sub_8126524: thin wrapper around sub_8126570.
+/* sub_8126524: thin wrapper around battle_queueAnimatedOamEntry.
  * Sets up fixed arguments for the callee: r0-r3 = constants (rect at 90,32,
  * size 40x12), r4 = pointer to byte_8124A84, r6 = flags 0x40000000,
  * r7 = pointer to dword_8124A94. r5 passes through untouched.
@@ -371,7 +371,7 @@ Next sub_8126524(void) {
     R6 = 0x40000000;
     R7 = A_dword_8124A94;
 
-    GUEST_CALL(sub_8126570);
+    GUEST_CALL(battle_queueAnimatedOamEntry);
 
     R4 = saved_r4;
     R5 = saved_r5;
@@ -381,10 +381,10 @@ Next sub_8126524(void) {
 }
 
 /* ── sub_8126554 ── */
-/* sub_8126554: thin argument-setup wrapper around sub_8126570.
+/* sub_8126554: thin argument-setup wrapper around battle_queueAnimatedOamEntry.
  * It loads a fixed set of arguments (counts/positions 90, 32, 60, 12 plus
  * pointers to the data tables byte_8124A84 and dword_8124A94, and the
- * 0x40000000 flag word), invokes sub_8126570, and hands its r1-r3 results
+ * 0x40000000 flag word), invokes battle_queueAnimatedOamEntry, and hands its r1-r3 results
  * and flags straight back to the caller. r4-r7 are preserved for the
  * caller, exactly as the original's push/pop does. */
 Next sub_8126554(void) {
@@ -398,7 +398,7 @@ Next sub_8126554(void) {
     R6 = 0x40000000;
     R7 = A_dword_8124A94;
 
-    GUEST_CALL(sub_8126570);
+    GUEST_CALL(battle_queueAnimatedOamEntry);
 
     /* pop {r4-r7}: the callee's r4-r7 do not escape this wrapper */
     R4 = saved_r4;
@@ -573,10 +573,10 @@ Next battle_updateChipSprite_8126630(void) {
 
 /* ── sub_812674C ── */
 /* Helper for sub_812674C: blit `tiles` tiles of the graphic whose tile data
- * lives at byte_8124A8C into the buffer at dword_8124A94 via sub_8126570,
+ * lives at byte_8124A8C into the buffer at dword_8124A94 via battle_queueAnimatedOamEntry,
  * with the first tile at x-coordinate `x`, y = 0x14.  `attr` carries the
  * extra attribute bits for the blit (0x10000000 vs. none).  Whatever
- * sub_8126570 leaves in R3 stays there, since the caller returns it. */
+ * battle_queueAnimatedOamEntry leaves in R3 stays there, since the caller returns it. */
 static void blit_graphic(u32 x, u32 tiles, u32 attr)
 {
     R0 = x;
@@ -586,7 +586,7 @@ static void blit_graphic(u32 x, u32 tiles, u32 attr)
     R4 = A_byte_8124A8C;
     R6 = attr;
     R7 = A_dword_8124A94;
-    GUEST_CALL(sub_8126570);
+    GUEST_CALL(battle_queueAnimatedOamEntry);
 }
 
 /* sub_812674C(r5 = reveal state):
@@ -595,7 +595,7 @@ static void blit_graphic(u32 x, u32 tiles, u32 attr)
  * (x = 0x58, 15 tiles, attribute 0x10000000) is drawn; the right part
  * (x = 0xE2, 16 tiles, no attribute bits) is drawn either right away
  * (step 0) or while the table byte_81267A0 still maps the step counter to
- * a segment index below the limit.  sub_8126570's r3 result is passed
+ * a segment index below the limit.  battle_queueAnimatedOamEntry's r3 result is passed
  * through to the caller; r4-r7 are preserved. */
 Next sub_812674C(void) {
     /* The original pushes r4-r7 and pops them before returning, so the
@@ -609,7 +609,7 @@ Next sub_812674C(void) {
         /* Keep drawing the right part only while segments remain: the
          * table maps the step counter to the number of segments already
          * done, and we stop once it reaches the limit at R5+0xE.  Both
-         * state bytes are re-read here because sub_8126570 may have
+         * state bytes are re-read here because battle_queueAnimatedOamEntry may have
          * advanced the animation. */
         u32 limit = LD8(R5 + 0xE);
         u32 segment = LD8(A_byte_81267A0 + LD8(R5 + 0xD));
@@ -1959,7 +1959,7 @@ Next battle_sceneReset_8127A1C(void) {
  * update sequence runs for every object. */
 Next sub_8127ACC(void) {
     /* State handler from off_8127AF8 (setFadeModeIfFading_8127B08, B18, B94, BE4), entered
-     * as the original: r0 = handler, r1 = state byte (sub_8127B94 reads r1). */
+     * as the original: r0 = handler, r1 = state byte (chatbox_completeCutsceneStep reads r1). */
     R1 = LD8(R5 + 2);
     R0 = LD32(0x08127AF8u + R1);
     GUEST_CALL_ADDR(R0);
@@ -2862,7 +2862,7 @@ Next sub_8128750(void) {
     ST8(R5 + 0x01, 4);
     ST8(R5 + 0x02, 0);
 
-    GUEST_CALL(sub_81288FC);
+    GUEST_CALL(init_loadScreenAssets);
 
     /* A couple of flag bytes cleared. */
     ST8(R5 + 0x0F, 0);
@@ -3945,7 +3945,7 @@ intro:
  *        (Thumb pointer, e.g. sub_812968C+1),
  *   R1 = the state id,
  * and it returns back into this dispatcher. Afterwards the battle event
- * routine sub_812B25C runs with event id 0xE in R0.
+ * routine battle_runFrameUpdate runs with event id 0xE in R0.
  *
  * Passes through: in r4 r5 r6 r7 r10, out r5 r8 r9 r10 r11 r12. */
 Next sub_8129658(void) {
@@ -3967,7 +3967,7 @@ Next sub_8129658(void) {
     }
 
     R0 = 0xE;
-    GUEST_CALL(sub_812B25C);
+    GUEST_CALL(battle_runFrameUpdate);
 
     RETURN_TO_CALLER();
 }
@@ -4258,13 +4258,13 @@ Next battle_runSubsystemSlice_81297C0(void) {
 /* ── sub_81297DC ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12; bool z, n, c, v; } call_sub_812B25C_result_sub_81297DC;
-/* register form: generated wrapper: sub_812B25C has no typed C interface yet */
+/* register form: generated wrapper: battle_runFrameUpdate has no typed C interface yet */
 static inline call_sub_812B25C_result_sub_81297DC call_sub_812B25C_sub_81297DC(u32 r0, u32 r4, u32 r5, u32 r6) {
     R0 = r0;
     R4 = r4;
     R5 = r5;
     R6 = r6;
-    GUEST_CALL(sub_812B25C);
+    GUEST_CALL(battle_runFrameUpdate);
     return (call_sub_812B25C_result_sub_81297DC){ R0, R1, R2, R3, R4, R5, R6, R7, R8, R9, R10, R11, R12, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
 }
 
@@ -4549,13 +4549,13 @@ Next sub_81298F8(void) {
 /* ── sub_8129918 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12; bool z, n, c, v; } call_sub_812B25C_result;
-/* register form: generated wrapper: sub_812B25C has no typed C interface yet */
+/* register form: generated wrapper: battle_runFrameUpdate has no typed C interface yet */
 static inline call_sub_812B25C_result call_sub_812B25C(u32 r0, u32 r4, u32 r5, u32 r6) {
     R0 = r0;
     R4 = r4;
     R5 = r5;
     R6 = r6;
-    GUEST_CALL(sub_812B25C);
+    GUEST_CALL(battle_runFrameUpdate);
     return (call_sub_812B25C_result){ R0, R1, R2, R3, R4, R5, R6, R7, R8, R9, R10, R11, R12, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
 }
 
@@ -4570,13 +4570,13 @@ static inline call_sub_812B25C_result call_sub_812B25C(u32 r0, u32 r4, u32 r5, u
  * The original dispatches with `mov lr, pc; bx r0`, so the handler starts with
  * r0 = its own table entry, r1 = the state byte, and every other register
  * (r2-r7, r10-r12, SP) exactly as the caller of sub_8129918 left them. When it
- * returns, the common follow-up sub_812B25C runs with r0 = 0x12 and whatever
- * r4/r5/r6 the handler left behind; sub_812B25C's results (r5, r8-r12) are
+ * returns, the common follow-up battle_runFrameUpdate runs with r0 = 0x12 and whatever
+ * r4/r5/r6 the handler left behind; battle_runFrameUpdate's results (r5, r8-r12) are
  * this function's results.
  */
 
 /* The dispatched handler may change r4/r5/r6, and the follow-up call to
- * sub_812B25C must see the changed values, so the dispatch helper reads them
+ * battle_runFrameUpdate must see the changed values, so the dispatch helper reads them
  * back out of the guest registers and hands them to the typed code. */
 typedef struct {
     u32 r4, r5, r6;
@@ -4606,7 +4606,7 @@ static text_step_result sub_8129918_body(u32 obj) {
     u32 state = LD8(obj + 3);
     handler_regs h = call_text_handler(state);
 
-    /* r1/r2/r3/r7/r8/r9/r11/r12 and r10 reach sub_812B25C exactly as the
+    /* r1/r2/r3/r7/r8/r9/r11/r12 and r10 reach battle_runFrameUpdate exactly as the
      * dispatched handler left them: the wrapper only loads its parameter
      * registers (r0, r4, r5, r6) and passes the live guest registers through. */
     call_sub_812B25C_result follow = call_sub_812B25C(0x12, h.r4, h.r5, h.r6);
@@ -4857,13 +4857,13 @@ Next sub_8129A20(void) {
 /* ── sub_8129A98 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12; bool z, n, c, v; } call_sub_812B25C_result_sub_8129A98;
-/* register form: generated wrapper: sub_812B25C has no typed C interface yet */
+/* register form: generated wrapper: battle_runFrameUpdate has no typed C interface yet */
 static inline call_sub_812B25C_result_sub_8129A98 call_sub_812B25C_sub_8129A98(u32 r0, u32 r4, u32 r5, u32 r6) {
     R0 = r0;
     R4 = r4;
     R5 = r5;
     R6 = r6;
-    GUEST_CALL(sub_812B25C);
+    GUEST_CALL(battle_runFrameUpdate);
     return (call_sub_812B25C_result_sub_8129A98){ R0, R1, R2, R3, R4, R5, R6, R7, R8, R9, R10, R11, R12, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
 }
 
@@ -4874,7 +4874,7 @@ static inline call_sub_812B25C_result_sub_8129A98 call_sub_812B25C_sub_8129A98(u
 /* routines from the dispatch table at off_8129AB0.  The chosen routine */
 /* runs with the caller's context in r4-r7/r10 and may update r4/r5    */
 /* (e.g. sub_8129B34 hands back a new object pointer and state).  The  */
-/* shared follow-up sub_812B25C is then called with command 0x12 and   */
+/* shared follow-up battle_runFrameUpdate is then called with command 0x12 and   */
 /* those updated registers; its results are what the callers observe.  */
 /* ------------------------------------------------------------------ */
 
@@ -4928,7 +4928,7 @@ static AiStepResult battle_ai_step(u32 r4, u32 r5, u32 r6, u32 r7, u32 r10) {
     PhaseHandlerResult left = run_phase_handler(handler, phase,
                                                 r4, r5, r6, r7, r10);
 
-    /* sub_812B25C also reads r10 as it stands after the handler, exactly
+    /* battle_runFrameUpdate also reads r10 as it stands after the handler, exactly
      * like the original's bl. */
     call_sub_812B25C_result_sub_8129A98 after = call_sub_812B25C_sub_8129A98(0x12, left.r4, left.r5, left.r6);
 
@@ -5081,20 +5081,20 @@ Next chipSelectInit_8129B90(void) {
 /* ── sub_8129C28 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12; bool z, n, c, v; } call_sub_812B25C_result_sub_8129C28;
-/* register form: generated wrapper: sub_812B25C has no typed C interface yet */
+/* register form: generated wrapper: battle_runFrameUpdate has no typed C interface yet */
 static inline call_sub_812B25C_result_sub_8129C28 call_sub_812B25C_sub_8129C28(u32 r0, u32 r4, u32 r5, u32 r6) {
     R0 = r0;
     R4 = r4;
     R5 = r5;
     R6 = r6;
-    GUEST_CALL(sub_812B25C);
+    GUEST_CALL(battle_runFrameUpdate);
     return (call_sub_812B25C_result_sub_8129C28){ R0, R1, R2, R3, R4, R5, R6, R7, R8, R9, R10, R11, R12, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
 }
 
 /* sub_8129C28 — one step of a state machine.
  * The state byte at [r5+3] selects a handler from the table at off_8129C40.
  * The handler runs with r0 = its own (Thumb) address and r1 = the state index.
- * When it returns, sub_812B25C(0x13) is called with the handler's leftover
+ * When it returns, battle_runFrameUpdate(0x13) is called with the handler's leftover
  * r4/r5/r6, and that call's register results are the results of the step. */
 
 /* The dispatch handlers' leftover r4/r5/r6, which feed the follow-up call. */
@@ -5132,7 +5132,7 @@ typedef struct {
 /* Typed body of sub_8129C28. r7 and r10 are only listed so their entry
  * values stay live: this function never touches the guest registers it
  * does not write, so they flow through untouched (r10 reaches
- * sub_812B25C unchanged, as the original requires). */
+ * battle_runFrameUpdate unchanged, as the original requires). */
 static StepResult sub_8129C28_step(u32 r4, u32 r5, u32 r6, u32 r7, u32 r10) {
     StepResult out;
 
@@ -5141,7 +5141,7 @@ static StepResult sub_8129C28_step(u32 r4, u32 r5, u32 r6, u32 r7, u32 r10) {
     u32 handler = LD32(A_off_8129C40 + index);
     HandlerRegs left = run_state_handler_sub_8129C28(handler, index);
 
-    /* Tail work: sub_812B25C(0x13) with the handler's register state. */
+    /* Tail work: battle_runFrameUpdate(0x13) with the handler's register state. */
     call_sub_812B25C_result_sub_8129C28 tail =
         call_sub_812B25C_sub_8129C28(0x13, left.r4, left.r5, left.r6);
 
@@ -5548,14 +5548,14 @@ Next sub_8129FE0(void) {
 
 /* ── menu_subMenu_dispatchByIndex_812A008 ── */
 /* menu_subMenu_dispatchByIndex_812A008: redraw the e-Link sprite, run its palette/animation start,
- * then if something was just received (sub_81465BC != 0) reset the e-Link
+ * then if something was just received (rfu_initLinkSession != 0) reset the e-Link
  * state machine and switch it to state 4 with sub-state 3.
  * r5 points at the e-Link work area; R5 and R6 pass through unchanged. */
 Next menu_subMenu_dispatchByIndex_812A008(void) {
     GUEST_CALL(sprite_drawIfFlagSet_812B504);
     GUEST_CALL(crt0_start_800027C);
 
-    GUEST_CALL(sub_81465BC);
+    GUEST_CALL(rfu_initLinkSession);
     if (R0 != 0) {
         GUEST_CALL(eLinkState_ResetForNewUse_803DE88);
         ST8(R5 + 2, 4);        /* e-Link state = 4 */

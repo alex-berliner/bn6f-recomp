@@ -1,0 +1,53 @@
+name: battle_initVariantObject
+address: '0x080D9A74'
+kind: function
+status: probable
+summary: 'Initializes a battle object: picks one of several 5-byte variants by Param1, loads its sprite/collision,
+  applies the variant''s palette, then hands off to its per-frame update handler.'
+interface: (r0 = oBattleObject_Param1 byte of object in r5) -> r0 = 1 on success / freed object on failure;
+  sets object state to CUR_STATE_UPDATE
+details: Uses r5 as the battle-object pointer (caller must set it). It reads Param1, multiplies by 5,
+  and indexes table byte_80D9A20, storing the entry pointer in oBattleObject_ExtraVars; entry byte 4 is
+  later passed to sprite_setPalette, so entries are 5-byte records ending in a palette index. It then
+  calls battleObject_initSpriteAndCollision with fixed sprite data 0x1001052 / 0xa050300; on failure it
+  frees the object and returns. On success it runs sub_801A146, clears the object's collision region,
+  refreshes collision data, applies the variant palette, sets flag bit 2 in oObjectHeader_Flags, stores
+  CUR_STATE_UPDATE into oBattleObject_CurStateActionPhaseAndPhaseInitialized, and calls the state handler
+  sub_80D9ABA.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#oBattleObject_Param1]; mov r1,#5; mul; add off byte_80D9A20 → variant table indexed
+    by Param1 with 5-byte entries; ldrb r0,[r0,#4] followed by bl sprite_setPalette → entry byte 4 is
+    the palette; bl battleObject_initSpriteAndCollision_8011504 with constants 0x1001052/0xa050300, failure
+    path bl object_freeMemory; str CUR_STATE_UPDATE,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized];
+    bl sub_80D9ABA → installs its update state and jumps to the handler; bl object_clearCollisionRegion
+    + bl object_presentCollisionData reset the object's collision state at spawn
+  refs:
+  - bn6f/asm/asm31.s:72170
+  - 0x08011504 battleObject_initSpriteAndCollision_8011504
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x08003458 object_freeMemory
+  reproduce: python3 tools/asmcat.py 0x080D9A74
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+- chips
+open_questions:
+- What byte_80D9A20's remaining entry bytes mean and what enemy/attack this object is (table contents
+  and sub_80D9ABA's behavior would tell)
+- What sub_801A146 does and what flag bit 2 (oObjectHeader_Flags |= 2) enables
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D9A74 -> battle_initVariantObject
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D9A74

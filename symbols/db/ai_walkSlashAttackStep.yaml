@@ -1,0 +1,56 @@
+name: ai_walkSlashAttackStep
+address: '0x080ECE18'
+kind: function
+status: probable
+summary: Per-frame update for an AI Navi attack that dashes forward over matching panels and then swings,
+  spawning a hitbox and playing a slash SFX.
+interface: (r5 = battle object, r7 = AIData/oAIAttackVars state) -> void; no meaningful return
+details: 'On first invocation (AttackElement == 0) it adds AttackBoost to Damage, reads the object''s
+  facing via object_getFrontDirection, and walks the object forward panel-by-panel (up to 5 steps, r6
+  = 0x14 counting down by 4): for each panel it looks up the alliance-dependent panel param entry byte_80ECEAC
+  and, while object_checkPanelParameters passes, calls sub_80ECF00 (likely a panel-trail/step effect with
+  the remaining step count) and repeats. Once a panel fails the check (or 5 panels traversed) it sets
+  animation 0x0A, resets the counter timer to default, spawns tempAttackObject_80B8E30 as the hitbox,
+  sets ObjectFlags bit 22 (probably invulnerable/passthrough during the move), zeroes StepTimer and sets
+  AttackElement = 4. On every subsequent call it just increments StepTimer until it reaches 0x18 (24 frames),
+  then calls sub_80ECF00 with r2=0, plays SFX 0x8A, increments the temp attack object''s counter at +0x10,
+  and sets HitElement = 4. The AttackElement guard makes the setup branch run exactly once per attack
+  activation.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb/tst on oAIAttackVars_AttackElement with bne skips setup, so the walk/spawn block is one-time
+    init; loop loc_80ECE34 advances PanelX by frontDirection and decrements r6 from 0x14 by 4, gating
+    on object_checkPanelParameters via byte_80ECEAC; setup calls spawn_t1_0x5_tempAttackObject_80B8E30
+    with AIDataPtr+0x68 and sets ObjectFlags bit OBJECT_FLAGS_UNK_BIT_22_BIT; timer path: strh StepTimer,
+    cmp #0x18, then PlaySoundEffect(0x8A) and temp object byte +0x10 increment at the swing moment; callees
+    list (object_getFrontDirection, object_setDefaultCounterTime, GetAllianceDependentPanelParamArgs)
+    matches a forward dash attack on the battle grid'
+  refs:
+  - bn6f/asm/asm31.s:113287
+  - 0x081096FA GetAllianceDependentPanelParamArgs
+  - 0x080005CC PlaySoundEffect
+  - 0x0800CC86 object_checkPanelParameters
+  reproduce: python3 tools/asmcat.py 0x080ECE18
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- beastsp
+open_questions:
+- What attack/element value 4 maps to and which Navi/BeastOut attack script calls this (no callers known;
+  only that it runs on 'beastsp' routes)
+- What sub_80ECF00 draws/writes on the panel (trail vs footprint vs panel change)
+- Exact meaning of ObjectFlags bit 22 and of the +0x10 counter in the temp attack object
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80ECE18 -> ai_walkSlashAttackStep
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80ECE18

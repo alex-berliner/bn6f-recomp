@@ -1,0 +1,52 @@
+name: battle_initPanelMover
+address: '0x080E5494'
+kind: function
+status: probable
+summary: Initializes a battle object that spawns at a panel, loads its sprite/animation, and flies straight
+  forward with speed set by its ExtraVars field.
+interface: (r5 = battle object; no args) -> r0 = new state word; sets XVelocity, Timer2, flags, state
+details: Recomputes the object's pixel position from its panel coords (object_setCoordinatesFromPanels),
+  loads sprite resource (0x80, 4, 2), selects animation 9, loads its animation data, removes the shadow,
+  and sets palette 0. It then reads the object's facing multiplier (object_getFrontDirection), multiplies
+  it by [r5+oBattleObject_ExtraVars], and stores the product as XVelocity, so ExtraVars acts as a signed
+  speed. It divides the constant 0x280000 by that same speed via SWI 6 (Div) and stores the 16-bit quotient
+  into Timer2, making the travel time inversely proportional to speed. Finally it sets bit 2 of the object
+  header flags, writes the object's pointer into the struct at [ExtraVars+0xC] (registering with some
+  owner/target), and transitions to the CUR_STATE_UPDATE state.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sprite_load(0x80,4,2) + anim 9 + sprite_loadAnimationData + sprite_noShadow + palette 0: full
+    sprite setup for the entity; bl object_getFrontDirection; mul r0,r1 with [ExtraVars]; str -> oBattleObject_XVelocity:
+    horizontal velocity = facing * speed field; ldr r0,=0x280000; svc 6; strh r0,[Timer2]: lifetime/delay
+    frames = 0x280000 / speed (SWI Div); str r5,[ExtraVars+0xC]: object registers itself into another
+    structure''s pointer field; mov r0,#CUR_STATE_UPDATE; str [CurState...]: ends by handing control to
+    the per-frame update state'
+  refs:
+  - bn6f/asm/asm31.s:97291
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800E29C object_setCoordinatesFromPanels
+  - 0x080026E4 sprite_load
+  reproduce: python3 tools/asmcat.py 0x080E5494
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- Which sprite resource 0x80/anim 9 corresponds to (identity of the entity, e.g. an attack or moving obstacle)
+- Meaning of the structure at ExtraVars+0xC that receives the object pointer
+- Exact semantics of Timer2's 0x280000/speed value (frames until despawn vs. something else)
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80E5494 -> battle_initPanelMover
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E5494

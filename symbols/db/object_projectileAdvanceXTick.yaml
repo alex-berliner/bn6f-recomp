@@ -1,0 +1,48 @@
+name: object_projectileAdvanceXTick
+address: '0x080D4B00'
+kind: function
+status: probable
+summary: 'Per-tick update for a straight-flying battle object: after an optional delay it advances X by
+  its velocity, plays a sound once when passing column 2, and destroys itself at column 7.'
+interface: (r5 = battle object) -> r0 = 0; updates oBattleObject_X, PanelX/PanelY, collision record; may
+  set state to CUR_STATE_DESTROY
+details: If Param1 is nonzero it decrements it and returns, acting as a startup delay. Otherwise it adds
+  XVelocity to X, then recomputes the object's panels from its position and syncs the collision record/facing.
+  When the object reaches PanelX 2 while Param2 is 1, it clears Param2 and plays sound effect 0xFF (a
+  one-shot trigger). When PanelX reaches 7 it clears its collision region and sets its state word to CUR_STATE_DESTROY,
+  i.e. it flies off the far side of the field and despawns.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'loc_80D4B0E: X += XVelocity then object_setPanelsFromCoordinates/object_updateCollisionPanels
+    — straight X motion each tick; PanelX==2 && Param2==1 branch clears Param2 and calls PlaySoundEffect(0xFF)
+    — one-shot mid-field sound cue; PanelX==7 branch calls object_clearCollisionRegion and stores CUR_STATE_DESTROY
+    into the state word — self-destruction at far column; Param1 nonzero path just decrements and returns
+    — a pre-flight delay counter'
+  refs:
+  - bn6f/asm/asm31.s:61806
+  - 0x080005CC PlaySoundEffect
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0800E2AC object_setPanelsFromCoordinates
+  reproduce: python3 tools/asmcat.py 0x080D4B00
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- Which attack spawns this object (no callers known); exact meaning of Param2 beyond the one-shot sound
+  trigger; whether sound 0xFF is a whoosh or impact cue
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D4B00 -> object_projectileAdvanceXTick
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D4B00

@@ -1,0 +1,55 @@
+name: battle_bombFlightPhase
+address: '0x080CEC7C'
+kind: function
+status: probable
+summary: 'Phase handler for a thrown-bomb battle object: flies it forward at a per-type speed, highlights
+  panels under it, and on landing cracks the panel, spawns an explosion effect, plays the bomb-hit sound
+  and destroys itself.'
+interface: (r5 = battle object; entry r0 ignored) -> mutates object X/Z velocity, Timer, CurPhase; on
+  landing may crack panel and set CurStateActionPhaseAndPhaseInitialized = CUR_STATE_DESTROY
+details: 'On phase 0 it stores 4 into oBattleObject_CurPhase, reads the front direction, indexes byte_80CED18
+  with Param1*8 to load an X/Z velocity pair (X multiplied by the +1/-1 front direction, Z negated — a
+  forward-flying projectile), and sets Timer from byte_80CED3C[Param1] (20/18/16/14 frames). During flight
+  it integrates X and Z, refreshes PanelX/PanelY via object_setPanelsFromCoordinates, and every 8 frames
+  (Timer2>>3) highlights the panel it is over via object_highlightPanel using ExtraVars+4/+8. When the
+  timer expires it checks the panel status word from object_getPanelParameters against an alliance-indexed
+  mask (byte_80CED50: 0x15800010 for alliance 0, 0x2A800010 for alliance 1) and, if the panel matches,
+  cracks it with object_crackPanel, spawns an effect object copying three words from object+0x34, plays
+  SOUND_HIT_BOMB_1, calls sub_80CEE38, and always enters the destroy state afterwards. Param1 thus selects
+  one of four bomb variants with different speeds and flight times.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r1,[r5,#Param1]; lsl r1,#3; ldr off_80CED14 -> 8-byte velocity/timer table per bomb type
+    (byte_80CED18, byte_80CED3C); phase!=0 adds XVelocity/ZVelocity to X/Z and calls object_setPanelsFromCoordinates
+    each frame; alliance-scaled load of byte_80CED50 masks object_getPanelParameters result before cracking
+    the panel (object_crackPanel); spawn_t1_0x0_EffectObject with 3 words copied from r5+0x34 plus PlaySoundEffect(SOUND_HIT_BOMB_1);
+    falls through to CUR_STATE_DESTROY store regardless of panel match after the timer runs out
+  refs:
+  - bn6f/asm/asm31.s:49198
+  - 0x080005CC PlaySoundEffect
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800C8F8 object_getPanelParameters
+  reproduce: python3 tools/asmcat.py 0x080CEC7C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- What sub_80CEE38 does (presumably the explosion damage to objects on the panel)
+- Which in-game bomb/chip/enemy attack spawns this object and sets Param1 and the fields at object+0x34
+- Exact meaning of the panel status bits in the 0x15800010/0x2A800010 masks (cracked/broken/panel-side
+  flags)
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80CEC7C -> battle_bombFlightPhase
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CEC7C

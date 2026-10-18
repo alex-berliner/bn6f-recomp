@@ -1,0 +1,53 @@
+name: object_spawnTableHazard
+address: '0x080D6952'
+kind: function
+status: probable
+summary: 'Initializes a battle object as a table-defined trap/hazard: sets up its collision data from
+  a per-Param1 entry, or frees the object if it can''t spawn.'
+interface: (r5 = battle object, r5->Param1 selects entry in byte_80D6914) -> void; object freed via object_freeMemory
+  on failure
+details: Reads the 8-byte table entry byte_80D6914[Param1*8], stores its address in the object's ExtraVars,
+  then checks the object's panel with object_isCurrentPanelValid; on failure (or if object_createCollisionData
+  returns no slot) the object is freed. On success it fills the new collision-data slot via object_setupCollisionData
+  (bytes [0],[1] and word [4] of the entry), writes entry byte [3] into collision data +1, byte [2] as
+  hit effect via object_setCollisionHitEffect, and byte [5] as a status-effect base via object_setCollisionStatusEffect1;
+  if byte [6] is nonzero it calls sub_801A4D0 with byte [7]. It then stores the object pointer as ObjectHeader
+  of its RelatedObject1Ptr (marks itself as the collision's parent), runs object_presentCollisionData
+  for the first frame, and sets the object state to CUR_STATE_UPDATE before tail-calling sub_80D69B8 (likely
+  its state handler).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r1,[r5,#oBattleObject_Param1]; mul r1,#8; add r4,table → per-variant 8-byte config table
+    kept in ExtraVars; bl object_isCurrentPanelValid ... beq loc_80D6976: bl object_freeMemory — despawn
+    when panel invalid; bl object_setupCollisionData / object_setCollisionHitEffect / object_setCollisionStatusEffect1
+    with table bytes 0-5 → collision/hazard parameters; str r5,[r0,#oBattleObject_ObjectHeader] via RelatedObject1Ptr
+    — object claims parent slot of related/collision object; mov r0,#CUR_STATE_UPDATE; str -> CurStateActionPhase...;
+    bl sub_80D69B8 — hands off to the object''s ongoing state handler'
+  refs:
+  - bn6f/asm/asm31.s:65769
+  - 0x08019892 object_createCollisionData
+  - 0x08003458 object_freeMemory
+  - 0x0800CC66 object_isCurrentPanelValid
+  reproduce: python3 tools/asmcat.py 0x080D6952
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- Which in-game object/trap uses this (no callers known, so the identity of byte_80D6914 entries is unconfirmed)
+- Purpose of sub_801A4D0 and entry bytes [6]/[7]
+- Whether sub_80D69B8 is this object family's shared state machine
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D6952 -> object_spawnTableHazard
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D6952

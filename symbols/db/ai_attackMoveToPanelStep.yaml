@@ -1,0 +1,53 @@
+name: ai_attackMoveToPanelStep
+address: '0x08100C48'
+kind: function
+status: probable
+summary: 'AI attack state handler: picks a target panel via a callback, moves the object onto it (reserving
+  it), then after a short delay flags a hit with element 4.'
+interface: (r0 = unused on entry; r5 = battle object, r7 = oAIAttackVars, PanelChooseCallback in r7) ->
+  void; clobbers r0-r3, lr
+details: On first entry (AttackElement == 0) it writes element 4 into oAIAttackVars_AttackElement, then
+  if object_canMove passes it loads a 2-word argument pair from byte_8100CA8 indexed by Alliance*8 and
+  tail-calls the stored PanelChooseCallback (lr=pc, bx). The callback returns the chosen panel X in r0
+  (must be nonzero) and Y in r1, which are stored into oBattleObject_FuturePanelX/Y; the function then
+  claims the panel via object_reservePanel, sets OBJECT_FLAGS_CANNOT_SLIDE via object_setFlag1, sets CurAnim=4,
+  marks HasMoved=1 and StepTimer=2. On later calls (AttackElement != 0) it just decrements StepTimer and,
+  when it reaches 0, writes HitElement=4. If the object cannot move or the callback fails (returns 0),
+  it clears HasMoved and calls object_exitAttackState. The per-alliance table's words (0x10/0x0F8800A0,
+  0x30/0x0F880080) are opaque callback arguments, not pointers in any obvious space.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst; bne loc_8100C8C — two-phase state keyed on AttackElement;
+    ldr r0,[r7,#oAIAttackVars_PanelChooseCallback]; mov lr,pc; bx r0 — indirect panel-choice call whose
+    r0/r1 results are stored to FuturePanelX/Y; bl object_reservePanel; mov r0,#OBJECT_FLAGS_CANNOT_SLIDE;
+    bl object_setFlag1 — claims the target panel and locks sliding during the move; strb r0,[r5,#oBattleObject_CurAnim]
+    with 4, HasMoved=1, StepTimer=2 — enters a 2-frame move/attack anim state; loc_8100C8C decrements
+    StepTimer then sets HitElement=4; failure path calls object_exitAttackState
+  refs:
+  - bn6f/asm/asm31.s:153956
+  - 0x0800E5E2 object_canMove
+  - 0x0801BB1C object_reservePanel
+  - 0x0801A152 object_setFlag1
+  reproduce: python3 tools/asmcat.py 0x08100C48
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- No callers known, so which enemy/attack uses this state and what element 4 corresponds to is unconfirmed
+- What the PanelChooseCallback is (set elsewhere in the AI attack setup) and what the byte_8100CA8 argument
+  words mean
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8100C48 -> ai_attackMoveToPanelStep
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8100C48

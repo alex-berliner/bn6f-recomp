@@ -1,0 +1,50 @@
+name: ai_throwObjectStep
+address: '0x08115340'
+kind: function
+status: probable
+summary: AI attack state handler that throws a projectile toward the object's targeted future panel, launching
+  it on a computed arc.
+interface: (r5 = battle object, r7 = AI attack vars) -> void
+details: 'Runs as an AI attack step: first clears the object''s collision region if the collision flags
+  match 0xc000000, then ticks a step timer (oAIAttackVars_StepTimer); once the timer counts below zero
+  it reads the object''s FuturePanelX/Y, converts them to pixel coordinates, computes throw velocities
+  with math_getThrowSpeeds (range 0x1e), stores them into XVelocity/ZVelocity, clears the collision region
+  again, clears ObjectFlags1 bit 1, sets the object''s current animation to 4 and oAIAttackVars_HitElement
+  to 0x10, then calls sub_8115398 (likely spawn of the projectile). The use of FuturePanel targets, fixed-point
+  coordinates and throw-speed math indicates an enemy lobbing a bomb-style object onto a panel, consistent
+  with its use in battlesweep/beastsp routes.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: reads oBattleObject_FuturePanelX/Y and calls object_getCoordinatesForPanels to aim at a target
+    panel; calls math_getThrowSpeeds with r4=0x1e and stores results into XVelocity/ZVelocity — projectile
+    launch arc; StepTimer countdown at oAIAttackVars_StepTimer with reload 0x1e shows a timed attack step;
+    clears collision region + ObjectFlags1 bit 1 and sets CurAnim=4 before spawning via sub_8115398; callee
+    object_clearFlag/clearCollisionRegion are battle-object helpers, confirming battle AI context
+  refs:
+  - bn6f/asm/asm32.s:14310
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0801A15C object_clearFlag
+  - 0x0800E276 object_getCoordinatesForPanels
+  reproduce: python3 tools/asmcat.py 0x08115340
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- what sub_8115398 and sub_8115432 spawn/animate (exact projectile type and object id)
+- which enemy AI table routes here, to confirm the attack name
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8115340 -> ai_throwObjectStep
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8115340

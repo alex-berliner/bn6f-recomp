@@ -1,0 +1,55 @@
+name: ai_pickMoveTargetFromClosestEnemy
+address: '0x08111674'
+kind: function
+status: probable
+summary: 'Enemy-AI movement picker: reserves the object''s own panel, finds the closest enemy, computes
+  a move target/direction via an alliance-dependent parameter table, and stores it into the object''s
+  AI fields.'
+interface: (r0 = battle object, r5 = battle object) -> r0 = ?; writes fields 0x64 (random 0-3), 0x65/0x66
+  (computed target values) on the object; flags from tst r0,r0
+details: Takes a BattleObject in r5. It reserves the panel at the object's own PanelX/PanelY (object_reservePanel),
+  then finds the closest enemy of the opposite alliance via battleObject_findClosestEnemyBattleObject_80103F8.
+  It reads an entry from the alliance-dependent panel parameter table byte_8111740 (index = Alliance*5+1,
+  type 2) with GetAllianceDependentPanelParamArgs, then calls the adjacent helper sub_8111750 with r5
+  = the enemy object, r6 = own Alliance and r4 = 0xF; r5 is swapped by push/pop tricks. If that helper
+  returns nonzero, the two returned values are stored at object offsets 0x65 and 0x66, and a fresh GetRNG
+  value &3 is stored at offset 0x64, before the panel reserve is released again. The reserve-then-release
+  of the object's own panel suggests it holds its tile while planning a move, then frees it.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_reservePanel / ...removePanelReserve bracket the routine, using the object's own PanelX/PanelY
+    (asm lines after push); bl battleObject_findClosestEnemyBattleObject_80103F8 with Alliance eor 1 gives
+    the nearest opposing object; GetAllianceDependentPanelParamArgs called with Alliance*5+1 and type
+    2 from table byte_8111740; pop {r5} before bl sub_8111750 swaps r5 to the closest enemy, with r6 =
+    own Alliance and r4 = 0xF as arguments; Nonzero result is stored at object+0x65/+0x66 and (GetRNG()&3)
+    at object+0x64, typical of AI move-target/direction fields
+  refs:
+  - bn6f/asm/asm32.s:7129
+  - 0x08111438 sub_8111438
+  - 0x081096FA GetAllianceDependentPanelParamArgs
+  - 0x0800151C GetRNG
+  - 0x080103F8 battleObject_findClosestEnemyBattleObject_80103F8
+  reproduce: python3 tools/asmcat.py 0x08111674
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- Purpose of sub_8111750 (it computes the values stored at 0x65/0x66) is unknown — its code would confirm
+  whether this picks a movement target
+- Exact meaning of fields 0x64-0x66 in the BattleObject and of the table entry (param + args) selected
+  by GetAllianceDependentPanelParamArgs
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8111674 -> ai_pickMoveTargetFromClosestEnemy
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8111674

@@ -1,0 +1,51 @@
+name: battle_initSpriteEnterUpdate
+address: '0x080E798C'
+kind: function
+status: probable
+summary: Battle-object initializer that loads a fixed sprite resource onto the object, sets animation/palette/flip,
+  and transitions the object's state machine to CUR_STATE_UPDATE.
+interface: (r0 = object header in r5, r1-r3 = scratch; uses sprite ids 0x80, 0x0c, 0x1b) -> r0 = 0 (state
+  word set to CUR_STATE_UPDATE); no flags guaranteed
+details: It first calls sub_80E7AB0, then loads sprite resource group 0x80 with indices 0x0c/0x1b into
+  the object and runs the animation loader on the attached sprite block. It marks the sprite shadowless,
+  ORs flag bit 0x2 into the object header's Flags byte (likely a 'visible/active' or 'has-sprite' bit),
+  selects animation index 2 (written to both oBattleObject_CurAnim and oBattleObject_CurAnimCopy) via
+  sprite_setAnimation, reloads animation data, and sets palette 0. Finally it reads the object's effective
+  facing via object_getFlip and passes it to sprite_setFlip so the sprite mirrors correctly, then stores
+  CUR_STATE_UPDATE into oBattleObject_CurStateActionPhaseAndPhaseInitialized, ending the object's init
+  phase. The hardcoded resource ids suggest it is the one-shot setup for one specific enemy/boss object.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: sprite_load called with constants 0x80/0xc/0x1b, then sprite_loadAnimationData — sprite resource
+    setup; ldrb/orr/strb on oObjectHeader_Flags sets bit 2 after sprite_noShadow; mov r0,#2 stored to
+    oBattleObject_CurAnim and oBattleObject_CurAnimCopy then sprite_setAnimation; object_getFlip feeding
+    sprite_setFlip mirrors the sprite per alliance/DirectionFlip; str CUR_STATE_UPDATE to oBattleObject_CurStateActionPhaseAndPhaseInitialized
+    ends the routine as a state-machine transition
+  refs:
+  - bn6f/asm/asm31.s:102414
+  - 0x0800E456 object_getFlip
+  - 0x080026E4 sprite_load
+  - 0x080026A4 sprite_loadAnimationData
+  reproduce: python3 tools/asmcat.py 0x080E798C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- 'No known caller: which object uses this (the hardcoded sprite ids would identify the enemy) and what
+  sub_80E7AB0 does'
+- Exact meaning of header Flags bit 0x2 set here
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80E798C -> battle_initSpriteEnterUpdate
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E798C

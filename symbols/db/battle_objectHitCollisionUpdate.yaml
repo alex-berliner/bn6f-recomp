@@ -1,0 +1,53 @@
+name: battle_objectHitCollisionUpdate
+address: '0x080D20E8'
+kind: function
+status: probable
+summary: 'Per-frame update for a battle object while it is inside a hit collision: spawns the hit effect,
+  applies damage, and either destroys the object or dispatches its hit-reaction by CurAction.'
+interface: (r5 = battle object) -> void; r0 clobbered by calls, flags clobbered
+details: 'Uses r5 as an oBattleObject. It first removes the object''s collision data (object_removeCollisionData)
+  and spawns the hit-effect object at the collision coordinates (object_spawnCollisionEffect). If the
+  battle is over it skips to destruction; otherwise it calls object_applyDamage with r0=0, and a negative
+  result also leads to destruction. Destruction checks the collision''s flags word (oCollisionData_FlagsFromCollision)
+  against a per-alliance mask from byte_80D2144 (alliance*4 index; alliance 1 -> 0x05000080, alliance
+  2 -> 0x0A000080): if any bit matches, the collision region is cleared and CurState is set to CUR_STATE_DESTROY.
+  Otherwise, unless time is stopped, it dispatches via a table indexed by oBattleObject_CurAction to sub_80D214C
+  or sub_80D2176; when time is stopped it calls object_presentCollisionData instead. Quirk: the mask table
+  bytes 0x0/0x80/0x05 vs 0x0/0x80/0x0A encode which collision flag bits are lethal for each alliance.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_removeCollisionData / object_spawnCollisionEffect at top: teardown + hit effect for
+    an object in a collision; ldr r2,[r5,#oBattleObject_CollisionDataPtr]; ldr r2,[r2,#oCollisionData_FlagsFromCollision];
+    tst against byte_80D2144[Alliance*4] gate destruction; mov r0,#CUR_STATE_DESTROY; strb r0,[r5,#oBattleObject_CurState]
+    on the destruction path; ldr r1,[off_80D2138 + CurAction*4]; bx dispatch to two CurAction hit-reaction
+    handlers; bne path calls object_presentCollisionData, matching ''refreshes collision state while present
+    in a collision'' callee summary'
+  refs:
+  - bn6f/asm/asm31.s:56141
+  - 0x0800A18E battle_isBattleOver
+  - 0x0800A098 battle_isTimeStop
+  - 0x0801A074 object_clearCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080D20E8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- No known caller, so the exact state/trigger that enters this handler (which CurState selects it) is
+  unconfirmed
+- What sub_80D214C and sub_80D2176 do per CurAction (e.g. knockback vs flinch) is unknown
+- Whether object_applyDamage with r0=0 targets object index 0 or means something else needs its signature
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D20E8 -> battle_objectHitCollisionUpdate
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D20E8

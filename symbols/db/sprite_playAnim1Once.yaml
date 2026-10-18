@@ -1,0 +1,60 @@
+name: sprite_playAnim1Once
+address: '0x08117C9C'
+kind: function
+status: probable
+summary: Switches an object to animation 1 (only if not already playing it), reloads its sprite data,
+  disables its shadow, and each call marks the object with 1 when the current frame's attribute byte has
+  bits 0xC0 set.
+interface: (r5 = object/sprite-slot pointer) -> void; sets r5[0x0]=1 if frame attribute & 0xC0
+details: Reads the object's current animation index at r5+0xC; if it is not already 1, it stores 1 there,
+  calls sprite_setAnimation (which uses that slot byte as the animation id), reloads the animation data
+  via sprite_loadAnimationData, and clears the shadow flag via sprite_noShadow. Unconditionally afterwards
+  it calls sprite_getFrameParameters on the current frame and tests the returned attribute byte against
+  0xC0; if any of those bits are set it writes 1 to byte r5+0x0, likely a per-object state/visibility
+  flag consumed by the object's own update logic. The guard on r5+0xC makes the animation switch a one-shot,
+  so this can be called every frame. r5 is a caller-held object pointer, so this is a helper used inside
+  an object's update routine rather than a normal ABI call.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r1,[r5,#0xc] / cmp r0,r1 with r0=1: only re-triggers when current animation != 1; strb
+    r0,[r5,#0xc] then bl sprite_setAnimation: slot byte 0xC is the animation index setAnimation consumes;
+    bl sprite_noShadow right after loadAnimationData: disables shadow for this object''s sprite; tst r0,#0xc0
+    on sprite_getFrameParameters result, then strb r0,[r5]: attribute bits 0xC0 set the flag at object+0;
+    callees sprite_setAnimation/sprite_loadAnimationData/sprite_noShadow/sprite_getFrameParameters all
+    operate on the same object sprite slot'
+  refs:
+  - bn6f/asm/asm32.s:19426
+  - 0x08002DEA sprite_getFrameParameters
+  - 0x080026A4 sprite_loadAnimationData
+  - 0x08002F90 sprite_noShadow
+  reproduce: python3 tools/asmcat.py 0x08117C9C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battles1
+- battles2
+- beastsp
+- menus3
+- story4
+- story6
+- story8
+- story9
+open_questions:
+- Exact meaning of object byte r5+0x0 written with 1 (hide/finish/state flag) depends on the owning object's
+  update loop
+- Semantics of attribute bits 0xC0 in the frame parameter byte (hide vs flip vs blend) not confirmed
+- No caller known, so the object structure and which entity uses animation 1 here are unidentified
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8117C9C -> sprite_playAnim1Once
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8117C9C

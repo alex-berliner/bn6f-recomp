@@ -1,0 +1,51 @@
+name: sprite_setupObjectSprite
+address: '0x080A77C8'
+kind: function
+status: probable
+summary: 'Initializes one step of an object''s sprite: loads the sprite named by the object''s fields,
+  applies animation/palette/priority, hides the shadow, and advances the state machine.'
+interface: (r0/r1/r2 clobbered; object state block in r5) -> void; sets state byte0 = 3 on entry and byte8
+  = 4 on exit
+details: 'The function operates on a state block at r5: it stores 3 into byte 0 (a state/step marker),
+  then calls sprite_load with fixed arguments 0x80 and 0x1C and the sprite id taken from byte 7 of the
+  block. It then programs the sprite from the block''s config fields: animation index from byte 4 (sprite_setAnimation),
+  palette from byte 5 (sprite_setPalette), OAM priority from byte 6 (sprite_setPriority), and disables
+  the shadow (sprite_noShadow). After loading animation data (sprite_loadAnimationData), it writes 4 into
+  byte 8 (likely a next-state or completion marker) and calls sprite_update to refresh the sprite. The
+  layout — byte0 = current state, bytes 4-7 = animation/palette/priority/sprite-id, byte8 = next state
+  — strongly suggests this is one state-handler in a small scripted load sequence for an object.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'strb r0 (#3), [r5] then mov r0,#4; strb r0,[r5,#8]: writes distinct markers into state bytes
+    0 and 8 of the same struct; ldrb r2,[r5,#7] before sprite_load(0x80, 0x1C, r2): sprite resource id
+    comes from object byte 7; ldrb r0,[r5,#4]/[#5]/[#6] feed sprite_setAnimation, sprite_setPalette, sprite_setPriority
+    respectively; sprite_noShadow called unconditionally, matching a scripted one-shot setup rather than
+    a generic loader; ends with sprite_update then pop {pc}, a self-contained setup step returning nothing'
+  refs:
+  - bn6f/asm/asm29.s:4767
+  - 0x080026E4 sprite_load
+  - 0x080026A4 sprite_loadAnimationData
+  - 0x08002F90 sprite_noShadow
+  reproduce: python3 tools/asmcat.py 0x080A77C8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- beastsp
+open_questions:
+- No callers captured, so the meaning of the state bytes (0=3, 8=4) and the identity of the r5 struct
+  (which object system owns it) is inferred from the sprite helpers alone
+- What sprite_load's fixed arguments 0x80 and 0x1C select (sheet/page indices) is not shown here
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80A77C8 -> sprite_setupObjectSprite
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A77C8

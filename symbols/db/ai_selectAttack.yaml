@@ -1,0 +1,57 @@
+name: ai_selectAttack
+address: '0x08115598'
+kind: function
+status: probable
+summary: 'AI decision step for a boss-type battle enemy: either launches a row-targeted attack (id 0xB)
+  on a random object in the player''s row, or sets up a panel-targeted attack (id 0xA) after choosing
+  a target panel.'
+interface: (r4 = battle object/AIData, r5 = battle object, r6 = AI state, r7 = AI attack-vars block, preloaded
+  by caller) -> r0 = 0 or 1 status; writes oAIAttackVars target/param fields, oBattleObject_ExtraVars+4/+8,
+  oBattleObject_CurAnim
+details: Runs with registers r4-r7 already holding the object/AI context, so it is a fragment of a larger
+  AI routine dispatched from a table. It first tests object flag bits 0xA000 via object_getFlag; if clear,
+  it checks whether any actor with nonzero param shares the enemy's PanelY row (mask from FindBattleActorsWithNonzeroParam_ReturnCountAndSum)
+  and, via battle_pickRandomRowObjectFields, picks a random object there, loading per-version attack parameters
+  from byte_8115556/byte_8115550/byte_8115538 indexed by oAIData_Version_16, then object_setAttack0(0xB)
+  and marks ExtraVars+8 = 1<<PanelY. Otherwise it clears oAIAttackVars_HasMoved, optionally clears a halfword
+  at object+0x6C and sets oAIState_ScriptId=4 when flag 0x8000 is also set, then calls sub_81156AC or
+  sub_8115668 to obtain target panel X/Y, stores them in TargetPanelX/Y, sets ExtraVars+4 = PanelY^targetY,
+  fetches alliance-dependent panel params via GetAllianceDependentPanelParamArgs into AiAttackParam/PanelParamFlags2,
+  and calls object_setAttack0(0xA) followed by the tail dispatcher sub_8109804, finally setting CurAnim=1.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: tst r0,#0xA000 after object_getFlag gates the two attack paths (loc_81155EC fallthrough); FindBattleActorsWithNonzeroParam
+    + tst 1<<oBattleObject_PanelY checks player-row occupancy before battle_pickRandomRowObjectFields_810971A;
+    byte_8115556/byte_8115550/byte_8115538 indexed by oAIData_Version_16 fill oAIAttackVars_AttackBoost2/AttackDuration/ScratchVar;
+    object_setAttack0 with 0xB on one path and 0xA on the other, the latter followed by tail-call sub_8109804
+    dispatcher; sub_81156AC/sub_8115668 return target X/Y stored into oAIAttackVars_TargetPanelX/TargetPanelY
+  refs:
+  - bn6f/asm/asm32.s:14595
+  - 0x081096FA GetAllianceDependentPanelParamArgs
+  - 0x0810971A battle_pickRandomRowObjectFields_810971A
+  - 0x0801A166 object_getFlag
+  reproduce: python3 tools/asmcat.py 0x08115598
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- which boss/enemy this AI belongs to (route names battlesweep/beastsp suggest a Beast-form boss but the
+  code doesn't name it)
+- what sub_81156AC and sub_8115668 compute for the target panel
+- meaning of the 0xA000/0x8000 object flags and the halfword at object+0x6C
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8115598 -> ai_selectAttack
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8115598

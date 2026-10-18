@@ -1,0 +1,53 @@
+name: battle_spawnEffectAtFrontPanel
+address: '0x08108E64'
+kind: function
+status: probable
+summary: Spawns one of two effect objects on the panel directly in front of a battle object, choosing
+  the effect id from a small table and mirroring it by facing.
+interface: (r0 = effect index into table dword_8108E94, r5 = battle object ptr from caller) -> r0 = spawned
+  effect object ptr; flags from spawn call
+details: Reads a base effect id (0x39 or 0x3A) from table dword_8108E94 using the r0 index, then adds
+  object_getFlip() shifted left 8, so the final effect id is 0x39/0x3A or 0x139/0x13A depending on horizontal
+  facing. It reads the object's PanelX from oBattleObject_PanelX (r5 set by the caller), adds object_getFrontDirection()
+  (+1/-1) to target the adjacent panel in front, converts that panel column/row to 16.16 fixed-point pixel
+  coordinates via object_getCoordinatesForPanels, and calls spawn_t1_0x0_EffectObject (effect type 0)
+  with r3 = 0x100000. The flip<<8 trick means the effect sprite has mirrored variants 0x100 apart in the
+  effect table.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r4,[r1,r0] with r1=off_8108E90 loads base id {0x39,0x3A} from the index argument; lsl r0,#8
+    after object_getFlip and add r4,r4,r0 gives a flip-mirrored effect id; add r0,r0 (frontDirection),[r5,#oBattleObject_PanelX]
+    targets the panel in front of the object; bl object_getCoordinatesForPanels then spawn_t1_0x0_EffectObject
+    spawns the effect at those pixel coords; three callers (sub_8108602/8108688/810887A) invoke it in
+    the same battle module, consistent with a shared spawn-effect helper
+  refs:
+  - bn6f/asm/asm31.s:170934
+  - 0x08108602 sub_8108602
+  - 0x08108688 sub_8108688
+  - 0x0810887A sub_810887A
+  - 0x0800E276 object_getCoordinatesForPanels
+  - 0x0800E456 object_getFlip
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x08108E64
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- Which specific effect ids 0x39/0x3A render (sprite identity unknown without the effect table)
+- What r5 points to exactly and what the three callers pass as the index — caller disassembly would confirm
+  the triggering action (e.g. step/land effect)
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8108E64 -> battle_spawnEffectAtFrontPanel
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8108E64

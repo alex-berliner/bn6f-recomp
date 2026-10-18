@@ -1,0 +1,52 @@
+name: battle_spawnInitObjectCollision
+address: '0x080D4B88'
+kind: function
+status: probable
+summary: 'Spawn-state handler: gives a newly entering battle object its collision data, then advances
+  it to the update state.'
+interface: (r5 = battle object) -> r0 = next state (CUR_STATE_UPDATE); object freed if collision slot
+  allocation fails
+details: Runs sub_80D4C3A then object_setCoordinatesFromPanels to place the object on its panel. Calls
+  object_createCollisionData; on failure (r0==0) it calls object_freeMemory to despawn the object and
+  returns. On success it calls object_setupCollisionData with collision type 0x36, r2=r3=0, copies oBattleObject_Param1
+  into collision data byte 1, sets the hit effect to 0xFF via object_setCollisionHitEffect, and runs object_presentCollisionData
+  to evaluate collisions this frame. Finally it stores CUR_STATE_UPDATE into oBattleObject_CurStateActionPhaseAndPhaseInitialized
+  so the object switches to its normal update state next tick.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_setCoordinatesFromPanels then object_createCollisionData with failure path calling
+    object_freeMemory — collision allocation for the spawning object; mov r1,#0x36; bl object_setupCollisionData
+    — collision setup with fixed collision type 0x36; ldrb r1,[r5,#oBattleObject_Param1]; strb r1,[r4,#1]
+    — parent object's Param1 copied into the new collision-data block; mov r0,#0xff; bl object_setCollisionHitEffect
+    — default/none hit effect on the collision data; mov r0,#CUR_STATE_UPDATE; str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]
+    — state advances to the update phase after spawn setup
+  refs:
+  - bn6f/asm/asm31.s:61882
+  - 0x08019892 object_createCollisionData
+  - 0x08003458 object_freeMemory
+  - 0x0801A018 object_presentCollisionData
+  reproduce: python3 tools/asmcat.py 0x080D4B88
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- What sub_80D4C3A does (it likely loads panel coordinates/parent data) and what kind of object uses this
+  spawn path
+- What collision type 0x36 denotes and what Param1 means for this object class
+- Which callers route here — none are known; a caller would confirm which state table this handler belongs
+  to
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D4B88 -> battle_spawnInitObjectCollision
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D4B88

@@ -1,0 +1,52 @@
+name: object_initLoadSprite
+address: '0x080D00C4'
+kind: function
+status: probable
+summary: 'One-shot battle object init state: loads a sprite and animation from a Param2-indexed table,
+  then advances the object''s state machine to UPDATE.'
+interface: (r5 = battle object) -> void; sets oBattleObject_CurStateActionPhaseAndPhaseInitialized = CUR_STATE_UPDATE
+details: Runs as an object state handler using r5 as the battle object. It recomputes the object's pixel
+  position from its panel coords, stores 0 to the Z16 field, and loads sprite (0x80, 8, 0xE) with the
+  shadow enabled. It sets bit 1 of oObjectHeader_Flags, then picks an animation index from table word_80D0130
+  indexed by oBattleObject_Param2 and writes it to CurAnim/CurAnimCopy before calling sprite_setAnimation,
+  sprite_loadAnimationData, palette 0, and the flip from object_getFlip. It zeroes Param3, and if Param2
+  == 0 nudges the object's Y and Z down by 1 (a one-pixel offset for that variant). Finally it stores
+  CUR_STATE_UPDATE into the state field, ending the init state; the trailing bl sub_80D01FE / object_freeMemory
+  are unreachable dead code.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'reads/writes r5 battle-object fields (Z16, Flags, Param2/3, Y, Z, CurState...) with no r0 arg
+    setup, typical state-handler style; state store: ''mov r0, #CUR_STATE_UPDATE; str r0, [r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]''
+    before the return; sprite setup chain: sprite_load(0x80,8,0xE) -> sprite_hasShadow -> anim from word_80D0130[Param2]
+    -> sprite_setAnimation/loadAnimationData/palette/flip; Param2==0 branch shifts Y and Z down by 1,
+    a per-variant sprite offset; dead code ''bl sub_80D01FE; bl object_freeMemory'' after b locret is
+    unreachable, so no cleanup here'
+  refs:
+  - bn6f/asm/asm31.s:51824
+  - 0x0800E456 object_getFlip
+  - 0x0800E29C object_setCoordinatesFromPanels
+  - 0x08002E3C sprite_hasShadow
+  reproduce: python3 tools/asmcat.py 0x080D00C4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- which enemy/object uses sprite id 0x80 with these args and what the values in word_80D0130 mean
+- no known caller (state table dispatch not captured), so the exact role of this state in the object's
+  lifecycle is unconfirmed
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D00C4 -> object_initLoadSprite
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D00C4

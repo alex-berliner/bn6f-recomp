@@ -1,0 +1,50 @@
+name: object_activateWithCollision
+address: '0x080DFC58'
+kind: function
+status: probable
+summary: 'Brings a freshly spawned battle object into play: allocates its collision data (freeing the
+  object if none is free), runs the collision setup/update chain, and switches it to the update state.'
+interface: (r5 = battle object header, r0 = header flags read) -> r0 = collision-data slot from object_createCollisionData
+  (or object freed); flags clobbered by calls
+details: 'Works on the object in r5: first clears bit 0x2 of oObjectHeader_Flags, then calls object_createCollisionData;
+  if no collision slot is available it calls object_freeMemory to release the object and returns. Otherwise
+  it calls object_setupCollisionData with (r1=1, r2=2, r3=3), then object_clearCollisionRegion and object_presentCollisionData
+  to initialize/refresh collision state for the frame. Finally it stores CUR_STATE_UPDATE into oBattleObject_CurStateActionPhaseAndPhaseInitialized
+  and calls sub_80DFC8C (unknown, likely the object''s state-entry handler).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bic r0,#2 on oObjectHeader_Flags then strb back — clears a per-object flag before activation;
+    bl object_createCollisionData / bne path vs bl object_freeMemory — object is aborted if no collision
+    slot exists; object_setupCollisionData(r1=1,r2=2,r3=3) + clearCollisionRegion + presentCollisionData
+    — full collision init/update sequence; mov r0,#CUR_STATE_UPDATE; str [r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]
+    — transitions object into its update state; callee summaries (object_freeMemory, object_setupCollisionData)
+    match a battle-object spawn/activation routine
+  refs:
+  - bn6f/asm/asm31.s:85127
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x08019892 object_createCollisionData
+  - 0x08003458 object_freeMemory
+  reproduce: python3 tools/asmcat.py 0x080DFC58
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- What sub_80DFC8C does (likely per-object-type state entry) — knowing it would confirm what kind of object
+  this activates
+- No known callers, so the object type and the meaning of setupCollisionData args (1,2,3) and flag bit
+  0x2 are unconfirmed
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80DFC58 -> object_activateWithCollision
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DFC58

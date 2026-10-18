@@ -1,0 +1,54 @@
+name: ai_dashAttack
+address: '0x080F50E2'
+kind: function
+status: probable
+summary: 'Boss AI attack step: first call arms a charged dash (charge animation + delay), and on later
+  calls executes the dash — dash sound, attack collision setup, self-damage cost, horizontal velocity
+  toward the player scaled by AI difficulty.'
+interface: (r5 = battle object, r7 = AI attack vars) -> r0 = 0; updates object velocity/anim/collision
+details: This is a two-phase state machine keyed on oAIAttackVars_AttackElement. On the first call (element
+  == 0) it stores 4 as a 'charging' state, plays animation 0x12 (charge-up) on the object, and copies
+  oAIAttackVars_AttackBoost2 into oAIAttackVars_StepTimer as the charge delay. On subsequent calls it
+  decrements that timer; when it expires it switches to animation 0x13 (dash), plays sound 0x64, sets
+  up collision data with type args (0x53, 2, 3), writes oAIAttackVars_Damage into the collision record
+  (low half as SelfDamage, high byte into StaminaDamageCounterDisabler), sets OBJECT_FLAGS_CANNOT_SLIDE,
+  then reads the +1/-1 facing via object_getFrontDirection and multiplies it by a per-difficulty speed
+  from byte_80F5158 indexed by oAIAttackVars_AiDifficultyTier (speeds 7/8/9/9), storing it as XVelocity
+  with YVelocity = 0. Finally it zeroes a scratch timer, requests 12 frames of counter time via object_setCounterTime,
+  and sets oAIAttackVars_HitElement = 0xC.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: Element==0 branch only stores state 4, anim 0x12 and the timer, so it is the attack's wind-up
+    phase; Timer-expiry branch plays sound 0x64 and sets anim 0x13 — the dash execution frame; object_getFrontDirection
+    result is multiplied by byte_80F5158[AiDifficultyTier] and stored to oBattleObject_XVelocity, a directional
+    dash speed; object_updateCollisionData with args (0x53,2,3) plus SelfDamage write and OBJECT_FLAGS_CANNOT_SLIDE
+    is contact-damage setup for a moving attack; Called only from the battlesweep AI route with no direct
+    callers seen, consistent with a shared boss attack handler
+  refs:
+  - bn6f/asm/asm31.s:130130
+  - 0x080005CC PlaySoundEffect
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0801A152 object_setFlag1
+  reproduce: python3 tools/asmcat.py 0x080F50E2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- Which boss uses this routine and which element/anim 0x13 corresponds to visually — a caller mapping
+  attack IDs would confirm
+- Exact meaning of collision type 0x53 and HitElement value 0xC
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F50E2 -> ai_dashAttack
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F50E2

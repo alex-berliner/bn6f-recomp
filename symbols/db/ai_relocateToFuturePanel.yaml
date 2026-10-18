@@ -1,0 +1,52 @@
+name: ai_relocateToFuturePanel
+address: '0x08014D08'
+kind: function
+status: probable
+summary: AI attack-state handler that warps a battle object onto its reserved future panel and finishes
+  the move with an emerge-style animation.
+interface: (r5 = battle object, r7 = AI attack vars) -> void; moves object to FuturePanelX/Y, sets CurAnim=0x11,
+  StepTimer=6, HitElement=4
+details: Commits the object's FuturePanelX/Y into PanelX, releases the panel reservation, and recomputes
+  pixel coordinates, collision panels and facing. It clears the post-hit invulnerability and the charged/PwrAtk
+  state, resets the AI script offset via sub_80C4C3A, and nulls RelatedObject1Ptr and AIData TempAttackObjectPtr,
+  i.e. it is the cleanup at the end of an AI-driven move. The object is left playing CurAnim 0x11 with
+  sprite bank 12/sub-sprite 5 decompressed, and RelatedObject2 (likely a hole/ground effect) is flagged
+  with Param3=1 and object flags |=0x14. Finally it writes StepTimer=6 and HitElement=4 into the AI attack-var
+  struct at r7. No caller was captured, so which AI attack uses this (e.g. a burrowing/reappearing enemy
+  move) is inferred, not proven.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'strb FuturePanelX/Y into PanelX + object_removePanelReserve + object_setCoordinatesFromPanels:
+    object physically arrives at the reserved panel; battleObject_clearPwrAtkState_8012EA8 and object_clearInvulnerableTime:
+    end-of-move cleanup of attack/invuln state; str 0 into RelatedObject1Ptr and AIData TempAttackObjectPtr:
+    detaches the attack object, typical attack-state epilogue; strb 0x11 into CurAnim + sprite_decompressTemp(12,5):
+    plays a specific post-move animation/sprite; strh 6 into oAIAttackVars_StepTimer and 4 into oAIAttackVars_HitElement
+    at r7: this runs inside an AI attack state machine'
+  refs:
+  - bn6f/asm/asm00_2.s:14012
+  - 0x08012EA8 battleObject_clearPwrAtkState_8012EA8
+  - 0x0800F2C6 battleObject_refreshSpriteAndArm_800F2C6
+  - 0x0800EB08 object_clearInvulnerableTime
+  reproduce: python3 tools/asmcat.py 0x08014D08
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- beastsp
+open_questions:
+- 'no caller captured: which AI script/state invokes this and for which enemy move'
+- meaning of CurAnim 0x11 and sprite bank 12/5 (emerge?) unconfirmed
+- what RelatedObject2 with Param3=1 and flags 0x14 represents (hole/ground effect?)
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8014D08 -> ai_relocateToFuturePanel
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8014D08

@@ -1,0 +1,55 @@
+name: snakearm_hitUpdate
+address: '0x080D6B28'
+kind: function
+status: probable
+summary: 'SnakeArm projectile''s hit/lifetime state handler: resolves a collision (remove data, spawn
+  hit effect), keeps the hit alive for a short timer, then destroys itself and marks its linked arm-segment
+  objects for destruction.'
+interface: (r5 = battle object) -> void; sets object state to CUR_STATE_DESTROY when done
+details: 'Runs on the battle object in r5. First removes its collision data and spawns the hit-effect
+  at the last collision coordinates (jittered, per object_spawnCollisionEffect). If the battle is not
+  over, it reads the collision-data pointer at oBattleObject_CollisionDataPtr and clears the collision
+  region if the collision flags are nonzero, decrements oBattleObject_Timer, and while the timer is still
+  positive refreshes collision state and highlights the current collision panels. When the battle is over
+  or the timer expires, it clears the collision region, sets oBattleObject_CurStateActionPhaseAndPhaseInitialized
+  to CUR_STATE_DESTROY, and walks four pointers at r5+0x64..0x70 (the SnakeArm''s linked segment objects):
+  each non-null one gets halfword at +0x20 set to 1, apparently a per-object destroy/hit flag.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: caller 0x080D6A44 battleObject_snakeArmSpawn initializes/spawns the SnakeArm projectile and
+    registers this as its handler; bl object_removeCollisionData; bl object_spawnCollisionEffect — standard
+    hit-resolution opening for a projectile (asm lines 2-3); ldrh r0,[r5,#oBattleObject_Timer]; sub r0,#1;
+    ble destroy — lifetime countdown before self-destruct; mov r0,#CUR_STATE_DESTROY; str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]
+    — terminates the object; loop over [r5+0x64..0x70] writing halfword 0x20=1 — flags the four linked
+    arm-segment objects
+  refs:
+  - bn6f/asm/asm31.s:65998
+  - 0x080D6A44 battleObject_snakeArmSpawn_80D6A44
+  - 0x0800A18E battle_isBattleOver
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0801A018 object_presentCollisionData
+  reproduce: python3 tools/asmcat.py 0x080D6B28
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- exact meaning of the halfword at +0x20 written to the four linked objects (destroy flag vs. hit flag)
+  — would need the segment objects' handler to confirm
+- who sets oBattleObject_Timer initially and what value the caller gives it (linger time after a hit)
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D6B28 -> snakearm_hitUpdate
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D6B28

@@ -1,0 +1,63 @@
+name: chip_renderListEntry
+address: '0x0801E95C'
+kind: function
+status: probable
+summary: Builds and queues the display line for one chip entry (name plus numeric code digits) on a chip-list
+  screen.
+interface: (r0 = ?, r1 = packed code word, r3 = chip id, r5 = entry struct) -> r0 = 0 on success / 1 via
+  alternate epilogue; clobbers r0-r3
+details: 'Stores the chip id (r3) into entry+4, splits it into a name-text table via chip_SelectNameTextTable_8027D10,
+  then draws the name with renderTextGfx_8045F8C (after selectPlayerSide_801EA5A) and saves the glyph
+  count at entry+9. If the chip record''s byte +9 has bit 1, it processes the packed code word in r1:
+  bit 0x8000 sets a flag byte at entry+0xC and is cleared, and the low 11 bits are BCD-converted, digit-counted
+  (entry+0xA), padded with 0xaaaa nibbles and handed to sub_801EA34 with a glyph-table pointer from dword_801EA7C+32;
+  the 0x8000 remnant is similarly rendered with a 0xaaab pattern from dword_801EA88, its count stored
+  at entry+0xB. Entry+2 is then adjusted by (15 - nameLen - digitA - digitB)*4 - flag*0x80, a per-entry
+  x/scroll layout offset. Finally a 0x20-byte tile block is queued from dword_86E1C78 to byte_30016B0
+  and a data list at off_801EAB0 is queued via QueueGFXTransfersInList.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'strh r3,[r5,#4] then chip_SelectNameTextTable_8027D10 and getChip8021DA8 on it: r3 is a chip
+    id and the whole routine is per-chip; renderTextGfx_8045F8C result stored at entry+9: chip name text
+    is drawn and its length tracked for layout; memory_bcdConvert + countHexDigits + orr 0xaaaa/0xaaab
+    patterns fed to sub_801EA34: numeric code digits are rendered from glyph tables; entry+2 += (15-totalDigits)*4
+    - flag*128: computes a text layout/centering offset for the entry; QueueEightWordAlignedGFXTransfer(dword_86E1C78
+    -> byte_30016B0, 0x20) and QueueGFXTransfersInList(off_801EAB0): queues the entry''s tile graphics
+    to VRAM'
+  refs:
+  - bn6f/asm/asm00_2.s:32896
+  - 0x0801E8CC sub_801E8CC
+  - 0x0801EB18 sub_801EB18
+  - 0x08000B8E QueueGFXTransfersInList
+  - 0x08027D10 chip_SelectNameTextTable_8027D10
+  - 0x08000C5C countHexDigits_8000C5C
+  reproduce: python3 tools/asmcat.py 0x0801E95C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- beastsp
+- chips
+- menus2
+- menus3
+- story2
+- story9
+open_questions:
+- What sub_801EA34 renders (its table pointers and how the 0xaaaa/0xaaab nibble patterns map to glyphs)
+  would confirm whether these are chip code letters vs. counters
+- Which exact screen the 'chips' route invokes this on (library vs. folder vs. shop) and what r0 at entry
+  means
+- Purpose of the unreachable-looking second epilogue returning 1
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_801E95C -> chip_renderListEntry
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_801E95C

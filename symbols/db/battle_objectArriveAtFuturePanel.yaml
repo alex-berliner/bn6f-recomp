@@ -1,0 +1,54 @@
+name: battle_objectArriveAtFuturePanel
+address: '0x080166D0'
+kind: function
+status: probable
+summary: 'Commits a battle object''s planned panel move: teleports it onto its future panel, re-reserves
+  that panel, and either starts the arrival animation or fully clears the moving state.'
+interface: (r5 = battle object pointer, r0-r2 implicit) -> void; sets/clears ObjectFlags1 bit 0x1000
+details: Operates on the battle object in r5. It sets ObjectFlags1 bit 0x1000, copies FuturePanelXY into
+  PanelXY, then recomputes the object's pixel coordinates and collision-data panels from the new grid
+  position. It releases the panel the object previously reserved (using FuturePanelX/Y as the old location)
+  and resolves the contact offset for the new panel. If PanelShiftCounter is nonzero, it writes the shifted
+  coordinates back into FuturePanelX/Y, reserves the target panel for the object, sets MoveToFuturePanelStepTimer
+  to 4 and AIType to 4 — starting a stepped movement. Otherwise it resets ContactState (storing 5 into
+  AIData.CollisionFreezeTimer if ContactState was 3), clears ContactState, and clears ObjectFlags1 bit
+  0x1000.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: strh of FuturePanelXY into PanelXY plus object_setCoordinatesFromPanels shows the object is
+    moved onto its planned panel; object_removePanelReserve followed by object_reservePanel re-claims
+    the new panel for the object; MoveToFuturePanelStepTimer=4 and AIType=4 in the nonzero-shift branch
+    indicate a stepped move animation begins; clearFlag(0x1000) in the other branch undoes the setFlag(0x1000)
+    at entry, i.e. a transient moving/teleport state flag; contact-state handling (ContactState==3 ->
+    CollisionFreezeTimer=5) ties into collision resolution on arrival
+  refs:
+  - bn6f/asm/asm00_2.s:17257
+  - 0x0800E468 battle_objectResolveContactOffset_800E468
+  - 0x0801A15C object_clearFlag
+  - 0x0801BB46 object_removePanelReserve
+  reproduce: python3 tools/asmcat.py 0x080166D0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- Which flag 0x1000 represents exactly (invisible, invulnerable, moving) — no caller or flag table was
+  shown
+- What AIType 4 does downstream, and which AI states call this to confirm it is teleport-style movement
+  vs normal slide
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80166D0 -> battle_objectArriveAtFuturePanel
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80166D0

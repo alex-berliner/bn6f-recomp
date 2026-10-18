@@ -1,0 +1,54 @@
+name: object_processCollisionHit
+address: '0x080C7FDC'
+kind: function
+status: probable
+summary: 'Per-frame collision processing for a battle object: tears down old collision data, spawns the
+  hit effect, then either runs the per-action collision handler and refreshes collision state, or destroys
+  the object.'
+interface: (object in r5, per battle-object convention) -> void; returns battle-over flag in r0 transiently
+details: Runs on a battle object held in r5. It first tears down the object's collision data (object_removeCollisionData)
+  and spawns the hit-effect object at the object's coordinates (object_spawnCollisionEffect). If the battle
+  is over, it clears the object's collision region and sets its state field to CUR_STATE_DESTROY. Otherwise
+  it reads the collision flags from the object's CollisionDataPtr; if set, it clears the collision region.
+  It then requires RelatedObject1's CurAction to be 0xB; if so and time is not stopped, it dispatches
+  through a table (off_80C8028) indexed by that action — currently a single handler, sub_80C802C — and
+  afterwards calls object_presentCollisionData to refresh the object's collision state for the frame.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: opens with bl object_removeCollisionData then bl object_spawnCollisionEffect — teardown + hit
+    effect of a collision; battle-over branch loc_80C801A does object_clearCollisionRegion and stores
+    CUR_STATE_DESTROY into oBattleObject_CurStateActionPhaseAndPhaseInitialized; reads [r5,#oBattleObject_CollisionDataPtr]
+    -> oCollisionData_FlagsFromCollision and clears the region when non-zero; dispatch table off_80C8028
+    indexed by RelatedObject1->oBattleObject_CurAction contains the single handler sub_80C802C+1; falls
+    through to bl object_presentCollisionData after the handler, matching presentCollisionData's 'while
+    present in a collision' role
+  refs:
+  - bn6f/asm/asm31.s:34564
+  - 0x0800A18E battle_isBattleOver
+  - 0x0800A098 battle_isTimeStop
+  - 0x0801A074 object_clearCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080C7FDC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- meaning of RelatedObject1->CurAction == 0xB (the only action that continues processing instead of destroying
+  the object)
+- what sub_80C802C (the sole table handler) does
+- how this routine is invoked — likely via a battle-object function-pointer table, which callers would
+  confirm
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80C7FDC -> object_processCollisionHit
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C7FDC

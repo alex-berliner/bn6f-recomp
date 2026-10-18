@@ -1,0 +1,52 @@
+name: ai_rushAttackStep
+address: '0x0810F6C4'
+kind: function
+status: probable
+summary: 'Per-frame step of a telegraphed enemy rush/charge attack: pause, slide onto the target panel,
+  then enable the hitbox and flag a hit or miss.'
+interface: (r5 = battle object, r7 = oAIAttackVars) -> void; sets oAIAttackVars_HitElement (8 = hit, 0x14
+  = miss) and restarts the step when done
+details: 'On first entry (AttackElement==0) it resets the target panel to (0,0), recomputes pixel coordinates,
+  and latches AttackElement=1. It then clears the object''s collision region and clears flag bit 1 in
+  oObjectHeader_Flags (making it intangible/invulnerable while charging), decrementing oAIAttackVars_StepTimer
+  each frame. When the timer expires, it asks sub_810F9F6 for a target panel: on success it warps the
+  object there, drops Z by 0x24, records the panel into bytes 0x6c/0x6d, sets the counter time to 0x10
+  (skipped in battle mode 6), plays sound 0xF7, sets collision region 1, restores flag bit 1, and sets
+  CurAnim=2 with HitElement=8 (hit landed). If the target lookup fails, it instead records HitElement=0x14
+  (whiffed) and resets AttackElement so the sequence can restart.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: guard on oAIAttackVars_AttackElement with panel (0,0) reset and object_setCoordinatesFromPanels/object_updateCollisionPanels
+    is the telegraph init; clearCollisionRegion + bic flag 2 before the timer, setCollisionRegion(1) +
+    orr flag 2 after, shows intangibility during the windup; sub_810F9F6 returning 0 vs nonzero decides
+    HitElement 0x14 vs 8, i.e. attack whiffs or connects; GetBattleMode==6 skips object_setCounterTime(0x10),
+    a battle-mode-specific counter window; PlaySoundEffect(0xF7) and CurAnim=2 fire exactly when the hitbox
+    comes back on
+  refs:
+  - bn6f/asm/asm32.s:3384
+  - 0x0802D234 GetBattleMode
+  - 0x080005CC PlaySoundEffect
+  - 0x0801A074 object_clearCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x0810F6C4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- What sub_810F9F6, sub_810FAA0, sub_810FB30 and sub_810FC0C do (target selection / effect spawn / hitbox
+  activation) is unconfirmed
+- Which enemy/attack uses this step — HitElement 8 and sound 0xF7 identity unknown
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810F6C4 -> ai_rushAttackStep
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810F6C4

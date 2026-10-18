@@ -1,0 +1,53 @@
+name: battle_spawnEffectInFrontOfSelf
+address: '0x080F6254'
+kind: function
+status: probable
+summary: Spawns a type-4 effect object on the panel two steps in front of the acting battle object, with
+  a facing-dependent parameter.
+interface: (r5 = battle object 'this') -> r0 = spawned effect object pointer; r4 clobbered inside as argument
+  to spawn wrapper
+details: Takes the caller's battle object in r5 (oBattleObject_PanelX/PanelY fields). It reads the object's
+  effective flip, computes r4 = flip*0x100 + 0x64, and reads frontDirection (±1) times 2 added to PanelX
+  to select the panel two columns ahead in the object's facing. That panel column/row is converted to
+  16.16 fixed-point screen coordinates via object_getCoordinatesForPanels, then spawn_t1_0x0_EffectObject
+  is called with the coordinates and r3 = 0x180000 (24.0 fixed point, likely a y/height offset). The r4
+  value (0x64 plus a flip-scaled component) is presumably forwarded by the thin spawn wrapper as an effect
+  variant/parameter, so the effect differs left vs right.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r1,[r5,#oBattleObject_PanelX]; add r0,r0,r1 with r0 = frontDirection*2 selects the panel
+    2 columns ahead; object_getCoordinatesForPanels call converts the chosen panel to pixel coordinates
+    passed to the spawn wrapper; r4 = object_getFlip()<<8 + 0x64 is computed just before the spawn call,
+    implying it is forwarded as an effect parameter; callee spawn_t1_0x0_EffectObject is a documented
+    thin wrapper spawning a type-4 effect object; sole caller sub_80F5D74 lies on recorded battle routes,
+    consistent with an in-battle visual effect
+  refs:
+  - bn6f/asm/asm31.s:132367
+  - 0x080F5D74 sub_80F5D74
+  - 0x0800E276 object_getCoordinatesForPanels
+  - 0x0800E456 object_getFlip
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x080F6254
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- What effect type 0 with parameter 0x64+flip*0x100 renders (which visual/animation id 100 corresponds
+  to)
+- Meaning of the r3 = 0x180000 argument (height offset vs other field)
+- What sub_80F5D74 is (attack, chip, or object update) to confirm the gameplay context
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F6254 -> battle_spawnEffectInFrontOfSelf
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F6254

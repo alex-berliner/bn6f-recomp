@@ -1,0 +1,54 @@
+name: battle_beastOutMenuStateUpdate
+address: '0x08133788'
+kind: function
+status: probable
+summary: 'Per-frame state handler for the beast-out related submenu/effect: advances state bytes, runs
+  text script 0x17 when a submenu is open, and triggers the beast status effect on the battle object.'
+interface: (r0 unused/ignored; r5 = state struct pointer set up by caller) -> r0 = result of object_resolveTableEntryWrapper;
+  flags from final calls
+details: Reads event-flag bit 0x80 via chatbox_mask_eFlags2009F38 to decide whether to run the setup path.
+  If the submenu (menu window) is open, it stores 0x10 into state byte r5+1, clears r5+2, and runs text
+  script index 0x17 from eTextScript2028A20; otherwise it stores 4 into r5+2 and copies r5+0xd into r5+3.
+  It then clears the submenu background if the menu closed (submenu_clearBgIfClosed), resolves an object-table
+  entry by index, invokes battleObject_runBeastStatusEffect_81345B0 (which drives the beast/transform
+  effect on the active battle object via battleObject_updateShieldOrStatusEffect), and finally resolves
+  a second fixed object-table entry (table 0x182). r5 is an external per-scene/per-object state struct
+  whose other fields (e.g. r5+0xd) are prepared by the unknown caller.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl chatbox_mask_eFlags2009F38 with r0=0x80 followed by bne loc_81337B0: bit 0x80 of the event
+    flag word skips the state-setup path; bl submenu_isOpen_81355D8 then strb 0x10,[r5,#1] / strb 0,[r5,#2]
+    / script 0x17: submenu-open branch stores state and plays a text script; loc_81337A8: mov r0,#4 strb
+    [r5,#2]; ldrb [r5,#0xd] strb [r5,#3]: alternate branch advances state bytes from caller-set values;
+    bl battleObject_runBeastStatusEffect_81345B0 between the two object-table resolutions: ties the handler
+    to the beast/transform status effect on the battle object; bl submenu_clearBgIfClosed_8134594 after
+    the branches: manages the menu-window background, confirming the submenu interaction context'
+  refs:
+  - bn6f/asm/asm36.s:7015
+  - 0x081345B0 battleObject_runBeastStatusEffect_81345B0
+  - 0x08045F3C chatbox_mask_eFlags2009F38
+  - 0x08134190 chatbox_runScript_803FD9C_on_eTextScript2028A20
+  reproduce: python3 tools/asmcat.py 0x08133788
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- beastsp
+open_questions:
+- The caller that sets up r5 is unknown, so the exact meaning of state bytes r5+1..r5+3 and r5+0xd is
+  unconfirmed
+- Which specific object-table entries are resolved (values returned by object_resolveTableEntryByIndex_8134538
+  / the wrapper) and how their results are consumed downstream
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8133788 -> battle_beastOutMenuStateUpdate
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8133788

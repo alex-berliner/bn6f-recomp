@@ -1,0 +1,48 @@
+name: object_timerStateTick
+address: '0x080A9DC0'
+kind: function
+status: probable
+summary: 'Per-frame update for a battle object: counts frames in field 0x24 and on thresholds changes
+  state, animation, shadow and plays an SFX.'
+interface: (r5 = object base, no args) -> void; fields [r5+0x24] counter, [r5+0] state, [r5+4] flag, [r5+9]
+  value written
+details: Increments the halfword counter at object+0x24 each call. When the counter reaches 5 it writes
+  state 3 to byte object+0x00 and returns. When it exceeds 0x1E (30) it resets the counter to 0, calls
+  sprite_setAnimation(1) + sprite_loadAnimationData to switch the object to animation 1, calls sprite_noShadow,
+  then — unless byte object+0x04 is nonzero — plays sound effect 0x123, and finally stores 4 into byte
+  object+0x09. r5 is preset by the caller, so the function is a zero-argument object tick/state handler.
+  No callers are known, so the exact object identity is unconfirmed.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrh r0,[r5,#0x24]; add #1; strh — frame counter at +0x24; cmp r0,#5; beq; mov r0,#3; strb
+    r0,[r5] — state 3 written to +0 at frame 5; cmp r0,#0x1e; blt locret — main action fires at frame
+    30; sprite_setAnimation(1), sprite_loadAnimationData, sprite_noShadow call sequence after counter
+    reset; ldrb r0,[r5,#4]; tst; PlaySoundEffect(0x123) conditional; mov r0,#4; strb r0,[r5,#9]'
+  refs:
+  - bn6f/asm/asm29.s:9702
+  - 0x080005CC PlaySoundEffect
+  - 0x080026A4 sprite_loadAnimationData
+  - 0x08002F90 sprite_noShadow
+  reproduce: python3 tools/asmcat.py 0x080A9DC0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- beastsp
+open_questions:
+- Which battle object uses this handler (no callers found in snapshots)
+- Meaning of state 3 at +0, the flag at +4, and the value 4 stored at +9
+- Identity of SFX 0x123 (0x24+0xFF) in the game's sound table
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80A9DC0 -> object_timerStateTick
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A9DC0

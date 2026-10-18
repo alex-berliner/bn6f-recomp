@@ -1,0 +1,51 @@
+name: battle_endAttack
+address: '0x080F5A1A'
+kind: function
+status: probable
+summary: 'Cleans up a battle object''s attack state: clears its attacking flag, resets collision data,
+  and releases the panel it reserved.'
+interface: (r5 = battle object pointer, preserved across calls) -> void; no meaningful return
+details: 'Uses r5 as a battle object, so this is likely a tail helper called from attack AI routines.
+  It clears ObjectFlags1 bit 0x40 (probably an ''attacking/attack active'' flag), then calls the status-list
+  routine at 0x801DC7C with r0=0, r1=0. It calls object_updateCollisionData with (1,2,3) to refresh the
+  collision record and sets collision region 1. It then copies the object''s 32-bit DamageAndStaminaDamageCounterDisabler
+  word into its collision data: the low halfword goes to oCollisionData_SelfDamage and the high half byte
+  to oCollisionData_StaminaDamageCounterDisabler. Finally it reads the AI attack target panel X/Y at AIData+0xA0/+0xA1
+  and calls object_removePanelReserve, giving back the panel the attack had reserved. Overall this reads
+  as the ''attack finished'' teardown for a scripted/AI attack.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: object_clearFlag(0x40) on the battle object's ObjectFlags1, matching an attack-active style
+    flag; object_removePanelReserve called with TargetPanelX/Y from AIData+0xA0, undoing a panel reservation
+    made by an attack; object_updateCollisionData(1,2,3) and object_setCollisionRegion(1) reset the object's
+    collision state to defaults; damage word from oBattleObject_DamageAndStaminaDamageCounterDisabler
+    is copied into oCollisionData_SelfDamage / StaminaDamageCounterDisabler; callees are all battle-object
+    subsystem helpers (collision, panel reserve, status list), consistent with attack teardown
+  refs:
+  - bn6f/asm/asm31.s:131250
+  - 0x0801A15C object_clearFlag
+  - 0x0801BB46 object_removePanelReserve
+  - 0x0801A07C object_setCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080F5A1A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- No caller is known, so the exact trigger (attack end vs. object despawn) is inferred from callee semantics
+- Meaning of the (0,0) arguments to sub_801DC7C (claims vs. releases a status slot) is unconfirmed
+- Exact meaning of flag 0x40 and of the collision update arguments (1,2,3) is not pinned down
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F5A1A -> battle_endAttack
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F5A1A

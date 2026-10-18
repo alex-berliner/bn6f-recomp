@@ -1,0 +1,47 @@
+name: battle_updateDelayedRegionAttackObject
+address: '0x080E5600'
+kind: function
+status: probable
+summary: Battle-object update handler that counts down ~0x28 frames, shows a warning emote and plays a
+  sound, then spawns a dimming collision-region attack and retires itself.
+interface: (r5 = battle object (oBattleObject) -> void; sets CurAction/phase on completion)
+details: Phase 0 initializes by resetting the eStruct record array, setting phase 4 and a 0x28-frame timer.
+  In phase 4 it ticks the entity updates and sprite pipeline each frame while decrementing the timer.
+  At timer 0x1E it projects the related object's position (+0x34 offset) to the screen and creates an
+  emotion-table entry of type 0x34 there — a visible warning marker. At timer 0x19 it plays sound effect
+  0xCE. When the timer expires it reads bytes 0x12/0x13 of the object's ExtraVars plus its Element and
+  spawns a dimming collision region (arg table byte_805FF01, arg 3), then sets CurAction = 8 and clears
+  phase so the object proceeds to its next action.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'phase 0 branch: battle_resetEStructRecords + timer=0x28, phase=4 (sub_80E5600 prologue); timer==0x1E:
+    projectObjectToScreen_800362C on [RelatedObject1Ptr+0x34] then battle_initEmotionTableEntry with r0=0x34;
+    timer==0x19: PlaySoundEffect(0xCE); timer<=0: ldr ExtraVars bytes 0x12/0x13, Element, then object_spawnDimmingCollisionRegion
+    with table byte_805FF01 and r7=3; after spawn: CurAction=8, phase=0 via strh to CurPhaseAndPhaseInitialized'
+  refs:
+  - bn6f/asm/asm31.s:97494
+  - 0x080005CC PlaySoundEffect
+  - 0x08046670 battle_initEmotionTableEntry_8046670
+  - 0x08046664 battle_resetEStructRecords_8046664
+  reproduce: python3 tools/asmcat.py 0x080E5600
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- which boss/attack uses this object and what the warning emote type 0x34 renders as
+- meaning of ExtraVars bytes 0x12/0x13 passed to the region spawner
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80E5600 -> battle_updateDelayedRegionAttackObject
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E5600

@@ -1,0 +1,51 @@
+name: ai_attackStepToTargetPanel
+address: '0x081076EE'
+kind: function
+status: probable
+summary: AI attack substep that teleports/steps the enemy onto its reserved target panel, then waits ~13
+  frames before exiting the attack state.
+interface: (r0 unused; r7 = AIAttackVars for this enemy, r5 = BattleObject) -> void; sets AttackElement=4,
+  StepTimer=0xD on entry, decrements timer each frame after
+details: On first entry (AttackElement==0) it latches element 4 as an 'in progress' marker, switches the
+  object to animation 3, releases the panel reserved at TargetPanelX/Y, copies FuturePanelX/Y into PanelX/Y,
+  releases that reservation too, and recomputes pixel coords/collision via object_setCoordinatesFromPanels
+  and object_updateCollisionPanels. It clears flag 0x40 and sets the 'currently moving' flag (bit 1 of
+  ObjectFlags1) in the collision data. It then loads StepTimer=0xD and, if AiAttackParam or PanelParamFlags2
+  are nonzero, calls sub_80B8E58 (likely a sound/effect trigger). On subsequent frames it counts StepTimer
+  down and, at zero, calls object_exitAttackState to return to the AI's idle flow.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb [r7,#oAIAttackVars_AttackElement]; tst; bne -> state machine with element 4 as ''in progress''
+    marker; strb #3 -> [r5,#oBattleObject_CurAnim] before panel commit suggests a hop/step animation;
+    bl object_removePanelReserve twice, then object_setCoordinatesFromPanels + object_updateCollisionPanels
+    commit the target panel; object_setFlag1 with bit 1 (OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT) and StepTimer=0xD
+    countdown to object_exitAttackState'
+  refs:
+  - bn6f/asm/asm31.s:167841
+  - 0x0801A15C object_clearFlag
+  - 0x0801BB46 object_removePanelReserve
+  - 0x0800E29C object_setCoordinatesFromPanels
+  reproduce: python3 tools/asmcat.py 0x081076EE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- Which enemy/attack uses this routine (no caller known) and what sub_80B8E58 plays
+- What animation 3 represents and what flag 0x40 means
+- Why the panel is reserved then released at both target and future coords — whether the object is visible
+  while moving
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_81076EE -> ai_attackStepToTargetPanel
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81076EE

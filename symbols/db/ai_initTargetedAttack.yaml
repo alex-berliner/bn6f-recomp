@@ -1,0 +1,50 @@
+name: ai_initTargetedAttack
+address: '0x08113E54'
+kind: function
+status: probable
+summary: AI state handler that locks onto the nearest enemy and initializes a direct attack (duration/damage/step
+  timer from version tables), then clears the AI script state.
+interface: (r4 = AI data ptr, r5 = this BattleObject, r6 = AI state ptr, r7 = AIAttackVars ptr) -> r0
+  = 0; sets target, attack vars, flags
+details: First checks object_canMove; if blocked it skips setup entirely. It flips the object's Alliance
+  bit (alliance^1) to search for the closest enemy BattleObject and stores it as the AI attack target.
+  Four per-version byte tables (indexed by oAIData_Version) fill AttackDuration, Damage, ExtraDamage and
+  StepTimer in the AIAttackVars, and AttackBoost2/AttackElement are zeroed. The object is given OBJECT_FLAGS_CANNOT_SLIDE
+  via object_setFlag1 and attack id 0xA via object_setAttack0, suggesting a non-sliding contact/charge
+  attack. Finally it writes 0 to oAIState_ScriptId, ending this AI script step regardless of the canMove
+  outcome.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl battleObject_findClosestEnemyBattleObject_80103F8 after 'ldrb r0,[r5,#oBattleObject_Alliance];
+    eor r0,#1' targets the nearest opposing object; version-indexed tables byte_8113DB0/8113D8A/8113D98/8113DA8
+    load into oAIAttackVars_AttackDuration/Damage/ExtraDamage/StepTimer; mov r0,#OBJECT_FLAGS_CANNOT_SLIDE;
+    bl object_setFlag1 plus bl object_setAttack0 with 0xA configures the attack; strb r0,[r6,#oAIState_ScriptId]
+    with 0 at loc_8113E96 resets the AI script state on both paths; callees battleObject_findClosestEnemyBattleObject_80103F8/object_canMove/object_setFlag1/object_setAttack0
+    match an AI battle attack setup
+  refs:
+  - bn6f/asm/asm32.s:11874
+  - 0x080103F8 battleObject_findClosestEnemyBattleObject_80103F8
+  - 0x0800E5E2 object_canMove
+  - 0x0801A152 object_setFlag1
+  reproduce: python3 tools/asmcat.py 0x08113E54
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- what attack id 0xA specifically is (melee, charge, dash?) — needs the attack handler or byte table contents
+- who calls this state and from which enemy AI script (no callers recorded)
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8113E54 -> ai_initTargetedAttack
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8113E54

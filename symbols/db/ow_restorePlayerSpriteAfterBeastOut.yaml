@@ -1,0 +1,53 @@
+name: ow_restorePlayerSpriteAfterBeastOut
+address: '0x0809E31A'
+kind: function
+status: probable
+summary: Reloads the player's normal overworld sprite and clears beast-out state (event flags and control
+  lockout).
+interface: () -> void; touches GameState.Unk_09 (set to 0), event flags EVENT_68E (set) / EVENT_68F (cleared),
+  eStruct2000aa0 fields 0x4 and 0x8 (zeroed)
+details: 'Zeros two state bytes in eStruct2000aa0 (offsets 0x4 and 0x8), then loads a sprite (args 0x80,
+  0x18, 0x48) onto the overworld player object from GameState''s player-object pointer, calls sprite_setAnimation
+  with the object''s byte 0x14 (the form/animation selector), loads the animation data, disables the shadow,
+  and runs sprite_update. It then clears GameState''s Unk_09 byte via gameState_setUnk09_8001172, the
+  ''can''t jack out / control message'' flag, and swaps event flags: sets EVENT_68E and clears EVENT_68F.
+  This matches a beast-out (or similar temporary overworld form) ending: special sprite removed, normal
+  form animation restored, control restriction lifted, and the active-form flags flipped back.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: loads player object from oGameState_OverworldPlayerObjectPtr and calls sprite_load/sprite_setAnimation([r5,#0x14])/sprite_loadAnimationData/sprite_noShadow
+    on it; gameState_setUnk09_8001172 with r0=0 clears the known 'can't jack out'-style control flag;
+    SetEventFlagFromImmediate(EVENT_68E) + ClearEventFlagFromImmediate(EVENT_68F) toggles a state pair
+    consistent with a form being deactivated; executed on the recorded 'beastsp' route, matching the timed
+    beast-out overworld transformation; zeroing eStruct2000aa0 bytes 0x4/0x8 looks like resetting a transform-related
+    timer/state struct
+  refs:
+  - bn6f/asm/ow_player.s:2688
+  - 0x08089E28 sub_8089E28
+  - 0x0808A0A6 sub_808A0A6
+  - 0x0802F12C ClearEventFlagFromImmediate
+  - 0x0802F110 SetEventFlagFromImmediate
+  - 0x08001172 gameState_setUnk09_8001172
+  reproduce: python3 tools/asmcat.py 0x0809E31A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- beastsp
+open_questions:
+- callers sub_8089E28 and sub_808A0A6 are undocumented, so the exact trigger (beast-out timeout vs. manual
+  revert) is unconfirmed
+- the meaning of EVENT_68E/68F and eStruct2000aa0 fields 0x4/0x8 is inferred, not verified
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_809E31A -> ow_restorePlayerSpriteAfterBeastOut
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_809E31A

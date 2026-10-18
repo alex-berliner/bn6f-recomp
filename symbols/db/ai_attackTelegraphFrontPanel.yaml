@@ -1,0 +1,53 @@
+name: ai_attackTelegraphFrontPanel
+address: '0x08110A8E'
+kind: function
+status: probable
+summary: 'AI attack substep: while a countdown runs, periodically highlights the panel directly in front
+  of the enemy as an attack telegraph, then transitions to the next attack step.'
+interface: (r0 = unused (clobbered), r5 = battle object ptr, r7 = oAIAttackVars ptr) -> void; updates
+  StepTimer/SubStepIndex/AttackElement/HitElement state
+details: 'Entry latches: if AttackElement == 0 it copies Unk_36 into StepTimer and sets AttackElement
+  = 1, so this is one repeatable state of an AI attack script. Each call decrements StepTimer; while counting,
+  every 4th frame it calls highlightPanelIfSomeCondition_8109660 with x = PanelX + object_getFrontDirection(),
+  y = PanelY, highlight code 0x15 — flashing the adjacent panel in front. When the timer reaches 0 it
+  calls object_setCounterTime(0x10), plays animation 4 on the object, clears ObjectFlags1 bit 1 via object_clearFlag,
+  reloads StepTimer from SubStepIndex, writes 0x10 into HitElement, and resets AttackElement to 0 so the
+  sequence can re-arm.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#AttackElement]; tst/bene — zero-test latch that seeds StepTimer from Unk_36 on
+    first run; sub r0,#1 / bne with tst r0,#4 — per-frame countdown with a highlight every 4th tick; bl
+    object_getFrontDirection then add with oBattleObject_PanelX before highlightPanelIfSomeCondition_8109660
+    — targets the panel one step ahead, dy=0; on timer expiry: object_setCounterTime(0x10), CurAnim=4,
+    object_clearFlag(1), StepTimer=SubStepIndex, HitElement=0x10, AttackElement=0 — state transition/finish
+    block; called only from AI attack-script routes (battlesweep, beastsp) with oAIAttackVars in r7 —
+    fits an AI attack step function'
+  refs:
+  - bn6f/asm/asm32.s:5719
+  - 0x08109660 highlightPanelIfSomeCondition_8109660
+  - 0x0801A15C object_clearFlag
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x08110A8E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- Exact meaning of HitElement = 0x10 and highlight code 0x15 (which visual/element it selects) not confirmed
+- Which caller/state in the AI attack script selects this step, and what Unk_36/SubStepIndex are set to
+  beforehand
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8110A8E -> ai_attackTelegraphFrontPanel
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8110A8E

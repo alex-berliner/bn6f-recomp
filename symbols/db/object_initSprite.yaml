@@ -1,0 +1,51 @@
+name: object_initSprite
+address: '0x080AA078'
+kind: function
+status: probable
+summary: Initializes an overworld object's sprite from its object-record fields (sprite id, animation,
+  priority) and stages its initial state.
+interface: () -> void; operates on the object pointer in r5, sets its state bytes and animation handle
+details: r5 points to an object/record struct being set up. The routine writes 3 to byte 0 (a state/step
+  counter), then calls sprite_load with palette bank 0x80, resource id 0x1C and the sprite id read from
+  byte 5. It then applies byte 6 as the animation index via sprite_setAnimation, loads the animation data,
+  clears the shadow via sprite_removeShadow, sets the OAM priority from byte 7, and forces palette 0.
+  Byte 4 is passed to sub_80AA134 whose result (likely a script/handle/id) is stored at +0x14; +0x24 is
+  zeroed and byte 8 set to 4 before a final call to sub_80AA0B8, so bytes 4/7 and the +0x14 field likely
+  steer follow-up setup.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r2,[r5,#5] then sprite_load(0x80,0x1C,r2): sprite id comes from object byte 5 (sub_80AA078+0xA);
+    sprite_setAnimation with ldrb r0,[r5,#6] and sprite_setPriority with byte 7: per-object sprite fields
+    drive setup; str r0,[r5,#0x14] after sub_80AA134(r5 byte 4): computed value stored into an object
+    field; all callees are sprite_* helpers taking the object as r0, confirming r5 is an object being
+    configured; strb #3 to [r5] and strb #4 to [r5,#8]: state bytes of the same struct are written around
+    the sprite setup'
+  refs:
+  - bn6f/asm/asm29.s:10068
+  - 0x080026E4 sprite_load
+  - 0x080026A4 sprite_loadAnimationData
+  - 0x08002E52 sprite_removeShadow
+  reproduce: python3 tools/asmcat.py 0x080AA078
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- maps
+open_questions:
+- No caller is known, so it is unclear which game entity runs this and where r5 is set (likely a current-object
+  pointer)
+- sub_80AA134 and sub_80AA0B8 are unidentified; they may show what byte 4 selects and what the +0x14 field
+  is used for
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80AA078 -> object_initSprite
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80AA078

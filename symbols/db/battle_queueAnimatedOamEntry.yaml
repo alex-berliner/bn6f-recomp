@@ -1,0 +1,56 @@
+name: battle_queueAnimatedOamEntry
+address: '0x08126570'
+kind: function
+status: probable
+summary: Queues one sprite OAM entry for an animated overlay element, using an animation-state byte in
+  a per-element buffer and advancing its 0xFF-terminated animation table when the frame count expires.
+interface: (r0 = tile/attr word (u16), r1 = tile base offset, r2 = offset of u16 frame selector in state
+  buffer or 0, r3 = offset of anim-state byte, r4 = u16 OAM table ptr, r6 = position/flags word; r5 =
+  state buffer, r7 = animation table) -> r0 = queued; updates state byte at [r5+r3]; flags from callee
+details: Reads a u16 at [r5+r2] (or 0 if r2==0), multiplies it by 16 and folds it into the tile word passed
+  to battleObject_queueOamFromTableRow (r1=2, row = stateByte&0xF, r3 = table ptr, plus the caller's 0x40000000-style
+  flag word). The state byte at [r5+r3] packs low nibble = current table row, high nibble = frame counter;
+  when the high nibble equals 1 it calls battleObject_advanceAnimTableBy0xFF on the r7 table and stores
+  the next entry back into the byte, otherwise it decrements the high nibble and rewrites (low | (high-1)<<4).
+  Wrappers feed it fixed screen rects (e.g. x=90,y=32, 60x12/40x12/30x12) with byte_8124A84/dword_8124A84
+  tables and constant flag 0x40000000, so it drives a small fixed-position animated graphic on screen.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl battleObject_queueOamFromTableRow_811FAF4 with r1=0x2, r2=stateByte&0xF, r3=[sp+0xc] table
+    ptr, r4=[sp+0x10] flags (0x40000000 from wrappers); byte>>4 == 1 test then bl battleObject_advanceAnimTableBy0xFF_8120CC8
+    with r1=r7, result strb to [r5+arg3]; epilogue recomputes byte as (u8&0xF) | (r1<<4), storing decremented/advanced
+    counter back to [r5+arg3]; wrappers sub_812650C/sub_8126554 pass fixed (90,32,w,12), byte_8124A84/dword_8124A84
+    and dword_81265D4=0x40000000; tile word built as r0 | (r1 + 16*ldrh[r5+r2]), showing per-frame 16-tile
+    stride into the OAM row
+  refs:
+  - bn6f/asm/asm33.s:6820
+  - 0x0812650C wrapper_sub8126570_fixedArgs_812650C
+  - 0x081264F4 sub_81264F4
+  - 0x08126524 sub_8126524
+  - 0x08120CC8 battleObject_advanceAnimTableBy0xFF_8120CC8
+  - 0x0811FAF4 battleObject_queueOamFromTableRow_811FAF4
+  reproduce: python3 tools/asmcat.py 0x08126570
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- maps
+- story2
+open_questions:
+- exact field semantics of the u16 read at [r5+r2] (frame-block index vs tile offset) and the full queueOamFromTableRow
+  signature
+- which on-screen element (whose tile tables byte_8124A84/dword_8124A84) this animates; caller context
+  in maps/story2 routes would confirm
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8126570 -> battle_queueAnimatedOamEntry
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8126570

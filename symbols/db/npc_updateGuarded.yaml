@@ -1,0 +1,55 @@
+name: npc_updateGuarded
+address: '0x080A8424'
+kind: function
+status: probable
+summary: Per-frame update for an overworld NPC/actor whose special action only runs when no cutscene,
+  busy state, chatbox lock, or PET menu is active.
+interface: (r4/r5 = object struct pointer set up by caller) -> void; sets NZ via callee calls for internal
+  branches
+details: 'r5 points to an object/NPC struct. If story flag EVENT_9FF is set, it writes 8 to byte +8 and
+  1 to byte +7 (likely a state/animation id) and skips the normal behavior. Otherwise it bails out (only
+  running sub_80A8644 and sprite_update at the tail) if a cutscene script is active, the overworld player
+  is busy, chatbox flag 0x80 of eFlags2009F38 is set, story flag EVENT_9D4 is set, or PET menu flag bit
+  1 is set — classic ''world is interactive'' guards. When allowed, it reads counter byte +9: if 0 it
+  calls sub_80A856C and only proceeds when that returns Z (0); it then latches +9 = 1 so subsequent frames
+  skip the check. Each active frame it calls sub_80A85B4 and sub_80A860C (the actual behavior, likely
+  movement or a scripted reaction), then always sub_80A8644 and sprite_update on the object''s sprite
+  struct.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: TestEventFlagFromImmediate(EVENT_9FF) true -> strb 8,[r5,#8]; strb 1,[r5,#7] and skip behavior
+    (loc_80A8424 block); guard chain IsCutsceneScriptNonNull / owPlayer_isBusyOrCutsceneActive / chatbox_mask_eFlags2009F38(0x80)
+    / EVENT_9D4 / TestPETMenuDataFlag(1) all branch to tail; ldrb r4,[r5,#9]; cmp 0; bgt skip-check; bl
+    sub_80A856C; bne tail — one-shot latch via strb r4+1,[r5,#9]; active path calls sub_80A85B4 then sub_80A860C
+    every frame once latched; tail bl sub_80A8644; bl sprite_update — standard object per-frame sprite
+    update
+  refs:
+  - bn6f/asm/asm29.s:6328
+  - 0x080A83B8 sub_80A83B8
+  - 0x08036F36 IsCutsceneScriptNonNull
+  - 0x0802F164 TestEventFlagFromImmediate
+  - 0x0811EBE0 TestPETMenuDataFlag
+  reproduce: python3 tools/asmcat.py 0x080A8424
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- beastsp
+open_questions:
+- What sub_80A85B4, sub_80A860C and sub_80A8644 actually do (the concrete behavior/animation) is unknown
+- 'Which NPC this is: caller sub_80A83B8 and the meaning of struct bytes +7/+8/+9 are unidentified'
+- What sub_80A856C tests (condition that arms the one-shot latch) and what EVENT_9FF/EVENT_9D4 correspond
+  to in the story
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80A8424 -> npc_updateGuarded
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A8424

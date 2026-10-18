@@ -1,0 +1,53 @@
+name: menu_drawChipDescription
+address: '0x08119EEC'
+kind: function
+status: probable
+summary: 'Chip-info/library screen: draws the selected chip''s name and description text, or blanks the
+  display if the chip entry is unavailable.'
+interface: (r0-r4/r6-r7 unused; caller passes menu-state object in r5) -> r0 = renderTextGfx result; no
+  flags relied on by caller
+details: 'Reads a chip ID from the state object at r5+0xE (with a byte selector at r5+0xC and a table-select
+  byte at r5+0x5). It fetches that chip''s record via getChip8021DA8; if the table-entry checks fail or
+  record+0x24 is zero, it calls sub_8119F88 to zero the sprite tile blocks (blank slot) and returns. Otherwise
+  it makes two renderTextGfx_8045F8C calls: the first uses the RAM text base unk_2028000 with index (chipId-0x140)*5
+  + byte[r5+0xC] and gfx base dword_86B7AE0; the second uses TextScriptChipDescriptions0 (chipId <= 0xFF)
+  or TextScriptChipDesc1 (chipId > 0xFF, index masked to 0xFF) with gfx base dword_86A5D60. Both calls
+  take position/geometry from per-slot pointer tables (off_8119FF0/off_8119FD0/off_8119FE8, indexed by
+  byte r5+0x5 << 2), whose entries supply values shifted left by 5 (tile-row scaled coordinates).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: getChip8021DA8 called with ldrh [r5,#0xE]; ldr [r7,#0x24]; beq -> clear path via sub_8119F88;
+    clear path calls sub_8119F88, which zeroes the object's sprite tile blocks in VRAM; two renderTextGfx_8045F8C
+    calls with dword_86B7AE0 / dword_86A5D60 gfx bases and r5=9 / r5=4 params; script choice TextScriptChipDescriptions0
+    vs TextScriptChipDesc1 selected by cmp chipId,#0xFF; called from stateObj_advanceToState0x10_811A148
+    during the story2 (chip library/info) route
+  refs:
+  - bn6f/asm/asm32.s:24014
+  - 0x0811A148 stateObj_advanceToState0x10_811A148
+  - 0x08021AA4 getChip8021DA8
+  - 0x0811A268 menu_getTableEntryForStateIndex_811A268
+  - 0x08045F8C renderTextGfx_8045F8C
+  reproduce: python3 tools/asmcat.py 0x08119EEC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- story2
+open_questions:
+- Exact meaning of ChipData+0x24 (presence/obtained flag vs something else)
+- Why the first text index is (chipId-0x140)*5 + byte[r5+0xC] — which text (name vs another field) each
+  render call draws and what unk_2028000 contains
+- Whether r5+0xE is a raw chip ID or a library-order index, given getChip's 206-entry database
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8119EEC -> menu_drawChipDescription
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8119EEC

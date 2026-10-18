@@ -1,0 +1,60 @@
+name: navicust_drawBoardTilemap
+address: '0x0813C1C0'
+kind: function
+status: probable
+summary: 'Redraws the Navi Customizer board: for each of the 49 grid cells, resolves the part placed there
+  and writes its tile-map halfword entries into the BG map buffer at unk_30019E0.'
+interface: (r0 = graphic-state variant, 0 or 1) -> r0 = clobbered; writes halfword tile entries to unk_30019E0,
+  no return value
+details: 'r0 selects one of two 14-halfword tile tables (byte_813C2EC/byte_813C308, both 0xe*arg0-indexed),
+  i.e. two visual states of the board (arg0 only ever 0/1 given the 28-byte tables). It loops cells 0..0x30,
+  reading the cell contents from the toolkit''s Unk200414c byte array: 0 means empty (tile index 0), otherwise
+  partID-1 indexes the Unk2004190 array; the entry''s halfword[0] is chased through battleObject_getByIndex
+  to byte[3], a part type 0..13 used to pick a tile halfword. The submenu_getBeastOutGateAnimScriptTablePtr
+  table supplies, per cell, the destination slot in unk_30019E0 (position*2), skipping cells whose slot
+  byte is 0; two special tile values (0x4142, 0x51E4) are swapped for alternate tiles (0x41AA/0x6F15,
+  0x3968/0x5A91) depending on arg0. When the per-cell tile is 0, two consecutive halfwords ([r2] and [r2,#2])
+  are written, the second possibly overridden by the second table''s entry if the part descriptor''s byte[1]
+  is set — covering 2-cell-wide parts.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'loop bound cmp r4, #0x31 matches the 49-cell Navi Customizer board; cell contents read from
+    [oToolkit_Unk200414c_Ptr + r4] with 0 = empty; caller battle_initNaviCustomizerScene_81356F4 boots
+    the Navi Customizer scene, and the five sub_8135* callers are scene handlers calling this on board
+    updates; byte[3] of the battleObject descriptor indexes the tile tables (lsl r0,#1 into byte_813C2EC
+    + 0xe*arg0), i.e. per-part-type tile graphics; strh r1, [unk_30019E0 + table[r4]*2] writes tile-map
+    halfwords at per-cell positions from the per-PET (key-item-checked) table; cmp against 0x4142/0x51E4
+    with alternate tiles 0x41AA/0x3968 vs 0x6F15/0x5A91 keyed on arg0 shows a two-state graphic swap'
+  refs:
+  - bn6f/asm/asm37_0.s:1587
+  - 0x081356F4 battle_initNaviCustomizerScene_81356F4
+  - 0x08135830 sub_8135830
+  - 0x08135968 sub_8135968
+  - 0x0813B780 battleObject_getByIndex_813B780
+  - 0x0813C4A8 battle_getBeastOutAPwrAtkHandlerByItemCheck_813C4A8
+  - 0x0813C4C8 submenu_getBeastOutGateAnimScriptTablePtr_813C4C8
+  reproduce: python3 tools/asmcat.py 0x0813C1C0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- beastsp
+open_questions:
+- exact meaning of the r0 variant (e.g. selected vs unselected board state, or two screens) — needs the
+  sub_8135830/8135968/8135A44/81360xx callers' context
+- what the part-type table values 0x4142/0x51E4 represent graphically and which parts trigger the swap
+- whether submenu_getBeastOutGateAnimScriptTablePtr's table is truly a per-cell tilemap-position table
+  or something reused from the beast-out gate UI
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_813C1C0 -> navicust_drawBoardTilemap
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_813C1C0

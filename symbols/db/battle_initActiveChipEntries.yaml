@@ -1,0 +1,71 @@
+name: battle_initActiveChipEntries
+address: '0x08027F42'
+kind: function
+status: probable
+summary: During chip-select turn initialization, walks the 12 active-chip records and refreshes each non-Mega/Giga
+  entry's selection index, slot chip id, and selected-chip pointer.
+interface: (void) -> void; only calls out, r6/r7 clobbered internally (saved)
+details: 'Counts r6 from 0xB down to 0, i.e. it iterates all 12 active-chip records used by the chip-select
+  screen. For each index it fetches the 12-byte record via getLocOfActiveChips_8027E1C and reads the record''s
+  first byte. If that byte is 0xA or 0xB (Mega/Giga class marker) the record is skipped entirely; otherwise
+  it runs the clear/update chain: battle_clearActiveChipIfMegaGiga_8027F6A (resets the active-chip selection
+  index to 0xFF), battle_updateActiveChipSlotId_8027F84 (re-derives the highlighted slot''s chip id, with
+  the slot 5/9 special case), and sub_8027FDC (recomputes the selected-chip pointer from the id lookup
+  table). Its only caller is battle_initChipSelectTurn_8027E2C, which sets up the chip-select active state
+  at the start of a turn, so this re-initializes per-entry selection state. The exact meaning of the 0xA/0xB
+  test on byte 0 (chip class stored first vs. a per-record state flag) is not provable from this function
+  alone, but the skip-then-refresh shape is clear.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'loc_8027F46: loop with r6 = 0xB down to 0 calling getLocOfActiveChips_8027E1C per index covers
+    the 12 active-chip records; ldrb r0,[r7]; cmp #0xA / #0xB; beq loc_8027F64 skips Mega/Giga-class records
+    from processing; body calls battle_clearActiveChipIfMegaGiga_8027F6A, battle_updateActiveChipSlotId_8027F84,
+    sub_8027FDC in sequence, all entry-index independent (r6 already consumed by getLocOfActiveChips);
+    sole caller battle_initChipSelectTurn_8027E2C runs during chip-select turn init, matching a per-record
+    reset/refresh role'
+  refs:
+  - bn6f/asm/asm03_0.s:3701
+  - 0x08027E2C battle_initChipSelectTurn_8027E2C
+  - 0x08027F6A battle_clearActiveChipIfMegaGiga_8027F6A
+  - 0x08027F84 battle_updateActiveChipSlotId_8027F84
+  - 0x08027E1C getLocOfActiveChips_8027E1C
+  reproduce: python3 tools/asmcat.py 0x08027F42
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- beastsp
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- whether the first byte of each 12-byte record is the chip class or a separate state flag (0xA/0xB skip
+  condition)
+- what condition battle_clearActiveChipIfMegaGiga_8027F6A checks internally, since it runs for non-0xA/0xB
+  entries here
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8027F42 -> battle_initActiveChipEntries
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8027F42

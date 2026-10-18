@@ -1,0 +1,51 @@
+name: submenu_waitCancelButton
+address: '0x08129F88'
+kind: function
+status: probable
+summary: Per-frame state handler for a submenu that waits for the B button, plays the exit sound and stores
+  the previous selection to leave the submenu.
+interface: (no args read; uses r5 = submenu work struct pointer) -> r0 clobbered; updates state bytes
+  at r5+1..3, r5+0x28
+details: 'First it queries sub_803EAE4 (the eStruct200BC30 mode dispatcher); a result of 4 clears the
+  state byte at [r5,#2] to 0, and a result of 2 switches to state 0x10, zeroes [r5,#2] and the halfword
+  at [r5,#0x28], and calls sub_8132398 before returning. Otherwise it polls IsButtonPressed for JOYPAD_B;
+  if B is newly pressed it plays SOUND_EXIT_SUBMENU, writes state 8 to [r5,#1], then restores the selection:
+  if the flag byte [r5,#0xe] is zero it converts the value at [r5,#0x12] through the 10-entry table in
+  sub_81325F4 into [r5,#2], otherwise it takes sub_81325E4''s table lookup directly, and in both cases
+  sets [r5,#3] to 4 to advance. The struct at r5 is clearly a menu/submenu state block with (state, substate,
+  selection, ...) fields in its first bytes.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl IsButtonPressed with JOYPAD_B followed by PlaySoundEffect(SOUND_EXIT_SUBMENU) shows a cancel/back
+    input handler; writes state bytes [r5,#1]=8 and [r5,#3]=4 on B press, typical submenu state-machine
+    transitions; sub_81325F4([r5,#0x12]) and sub_81325E4 restore a table-indexed selection into [r5,#2];
+    dispatch on sub_803EAE4 result 2 branches to state 0x10 with sub_8132398, result 4 just clears [r5,#2];
+    recorded only in menus3 routes, consistent with a menu input-wait handler
+  refs:
+  - bn6f/asm/asm33.s:14199
+  - 0x0811F7EC IsButtonPressed
+  - 0x080005CC PlaySoundEffect
+  - 0x0803EAE4 sub_803EAE4
+  reproduce: python3 tools/asmcat.py 0x08129F88
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- menus3
+open_questions:
+- exact meaning of the state values 8, 0x10 and 4 in the r5 struct's state fields
+- what sub_8132398 does when the mode-2 branch is taken
+- which concrete submenu uses this struct (r5's owner is set by the caller, none known)
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8129F88 -> submenu_waitCancelButton
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8129F88

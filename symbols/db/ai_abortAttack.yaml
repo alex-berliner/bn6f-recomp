@@ -1,0 +1,49 @@
+name: ai_abortAttack
+address: '0x080F76F4'
+kind: function
+status: probable
+summary: 'Tears down an AI object''s prepared attack: clears its attack flag, resets collision/status
+  state, and releases its reserved target panels.'
+interface: (r5 = battle object ptr, implicit; no args used) -> void
+details: Reads the battle object from caller-set r5 (never assigns it itself). Clears bit 0x40 of ObjectFlags1
+  (likely an 'attack charging/prepared' flag). Calls the status-list claim routine at 0x203EB50 with nameID=0,
+  HP=0, effectively blanking the object's status entry. Resets collision via object_updateCollisionData(…,1,2,3)
+  and sets collision region 1. Copies the low 16 bits of oBattleObject_DamageAndStaminaDamageCounterDisabler
+  into oCollisionData_SelfDamage (halfword) and its low byte into oCollisionData_StaminaDamageCounterDisabler;
+  the high half computed into r1 is never stored (dead code). Finally releases the panel reserved at AIAttackVars_TargetPanelX/Y
+  (AIData+0xA0), so the function reverses an attack setup rather than beginning one.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_clearFlag with bit 0x40 clears an object attack/state flag; bl object_removePanelReserve
+    using AIAttackVars_TargetPanelX/Y (AIData+0xA0) releases the AI's reserved target panel; strh/strb
+    of DamageAndStaminaDamageCounterDisabler into oCollisionData_SelfDamage/StaminaDamageCounterDisabler
+    resets pending self-damage; object_updateCollisionData(1,2,3) + object_setCollisionRegion(1) reinitialize
+    the collision record; lsr r1,r1,#0x10 result never stored — unused high half of the damage field
+  refs:
+  - bn6f/asm/asm31.s:134814
+  - 0x0801A15C object_clearFlag
+  - 0x0801BB46 object_removePanelReserve
+  - 0x0801A07C object_setCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080F76F4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- beastsp
+open_questions:
+- No known callers, so whether this is attack-abort vs. a generic per-phase reset is unconfirmed
+- Meaning of ObjectFlags1 bit 0x40 and the exact semantics of sub_801DC7C's (0,0) call
+- Why the high halfword of DamageAndStaminaDamageCounterDisabler is computed but discarded
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F76F4 -> ai_abortAttack
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F76F4

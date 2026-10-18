@@ -1,0 +1,50 @@
+name: ai_attackStepCommitMove
+address: '0x080FB494'
+kind: function
+status: probable
+summary: 'AI attack state step: commits the enemy to its target panel (moving-in attack pose), waits 10
+  frames, then arms the hit element.'
+interface: (r5 = battle object, r7 = oAIAttackVars) -> void; sets AttackElement/HitElement, StepTimer
+  in the AI vars
+details: This is one step of an AI-driven attack routine. On first entry (AttackElement==0) it tags the
+  attack as element 4, sets the object's current animation to 3, copies FuturePanelX/Y into PanelX/Y,
+  releases the reserved panel, recomputes pixel coordinates and collision panels, clears flag 0x40, and
+  sets the ObjectFlags1 'currently moving' bit (bit 1<<1), then loads StepTimer with 10. On subsequent
+  calls it just decrements StepTimer; when it reaches 0 it writes 8 into oAIAttackVars_HitElement, i.e.
+  the attack's hit detection element becomes active after the move-in delay.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb/tst on oAIAttackVars_AttackElement gates one-time init vs. timer wait; copies oBattleObject_FuturePanelX/Y
+    into PanelX/Y then calls object_removePanelReserve, object_setCoordinatesFromPanels, object_updateCollisionPanels;
+    object_clearFlag(0x40) and object_setFlag1(1<<OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT) mark the object
+    as sliding to the panel; StepTimer loaded with 0xa and decremented per frame; expiry writes 8 to oAIAttackVars_HitElement;
+    callees are all battle-object panel/collision helpers, consistent with an AI attack movement step
+  refs:
+  - bn6f/asm/asm31.s:142589
+  - 0x0801A15C object_clearFlag
+  - 0x0801BB46 object_removePanelReserve
+  - 0x0800E29C object_setCoordinatesFromPanels
+  reproduce: python3 tools/asmcat.py 0x080FB494
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+- chips
+open_questions:
+- which attack (element 4) and hit element 8 correspond to in game terms
+- no callers known, so the surrounding AI attack state machine and r7 AIAttackVars layout context are
+  inferred only
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80FB494 -> ai_attackStepCommitMove
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FB494

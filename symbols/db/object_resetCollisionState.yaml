@@ -1,0 +1,55 @@
+name: object_resetCollisionState
+address: '0x080F4964'
+kind: function
+status: probable
+summary: Resets the current battle object's flags, status-list slot, collision data and panel reservation,
+  likely when the object finishes or is recycled.
+interface: (implicit current battle object in r5) -> void; clears ObjectFlags1 bit 0x40, collision region
+  set to 1
+details: 'Operates on the ''current'' battle object (helpers take no object pointer; fields are read via
+  r5). It clears ObjectFlags1 bit 0x40, then calls sub_801DC7C with (0,0), which given its ''claims a
+  status slot'' summary with zeroed args likely clears the object''s entry in the 0x203EB50 status list.
+  object_updateCollisionData is called with fixed values 1/2/3 to refresh the collision record, and the
+  region index is set to 1. The low 16 bits of oBattleObject_DamageAndStaminaDamageCounterDisabler are
+  stored as the collision record''s SelfDamage halfword and also as a byte into oCollisionData_StaminaDamageCounterDisabler
+  (same value written twice — likely the field packs both values, or one store is redundant). Finally
+  it reads the target panel X/Y at AIData+0xA0 and releases that panel reservation. Quirk: no return value;
+  callers unknown so the triggering context is unseen.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: mov r0,#0x40; bl object_clearFlag — clears one ObjectFlags1 bit on the current object; mov r0,#0;
+    mov r1,#0; bl sub_801DC7C — zeroes the object's status-list entry (name/HP cache); mov r1,#1; mov
+    r2,#2; mov r3,#3; bl object_updateCollisionData then object_setCollisionRegion(1) — reinstalls default
+    collision state; ldrb oAIAttackVars_TargetPanelX/Y from AIData+0xA0; bl object_removePanelReserve
+    — frees the panel the object reserved; strh/strb of DamageAndStaminaDamageCounterDisabler low half
+    into oCollisionData_SelfDamage and StaminaDamageCounterDisabler
+  refs:
+  - bn6f/asm/asm31.s:129151
+  - 0x0801A15C object_clearFlag
+  - 0x0801BB46 object_removePanelReserve
+  - 0x0801A07C object_setCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080F4964
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- Which object type(s) call this (no callers known) and at what point in their lifecycle (death, expiry,
+  state reset)
+- Exact meaning of oBattleObject_DamageAndStaminaDamageCounterDisabler and why the same value is stored
+  to both collision fields
+- Whether sub_801DC7C with (0,0) clears the status slot rather than claiming a new one
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F4964 -> object_resetCollisionState
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F4964

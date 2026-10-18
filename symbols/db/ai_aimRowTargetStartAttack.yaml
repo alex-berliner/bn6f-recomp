@@ -1,0 +1,57 @@
+name: ai_aimRowTargetStartAttack
+address: '0x0811072C'
+kind: function
+status: probable
+summary: 'AI attack step: lock the closest enemy standing on this object''s row ahead of it, copy its
+  coords, and switch the AI to attack script 8; otherwise advance to attack step 9.'
+interface: '(r0-r4 = AI attack context: r5 = BattleObject, r6 = AIState, r7 = AIAttackVars) -> r0 = 1
+  if a target was locked, else 0; on success AIState_ScriptId = 8, SubState = 0, target X/Y stored at
+  r5+0x80/0x81, ExtraVars+0xC = 1; on failure AIAttackVars_StepTimer = AttackDuration and setAttack0(9).'
+details: This is one step of a battle AI attack routine. It searches with alliance flipped (r5's Alliance
+  XOR 1) for the closest enemy object, requires it to be alive (field 0x24 != 0) and on the same panel
+  row as r5 (enemy 0x13 == r5.PanelY). It then computes (enemyX - selfX) * frontDirection and aborts unless
+  positive, i.e. the enemy must be in front. The target pointer is saved in AIAttackVars_TargetObjectPtr;
+  if FindBattleActorsWithNonzeroParam(0x6c, 0x67, 0x6c) reports none (path clear of some actor type),
+  it sets a 'target locked' flag at r5.ExtraVars+0xC, calls sub_8110D18 (unknown, likely pre-attack setup),
+  copies the target's panel X/Y into r5+0x80/0x81, and switches the AI state to script 8, substate 0,
+  tearing down the current attack via object_exitAttackState. If any check fails, it reloads the attack
+  duration into the step timer and calls object_setAttack0(9), moving to the next attack step.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#Alliance]; eor r0,#1; bl battleObject_findClosestEnemyBattleObject — searches
+    for the opposing side''s nearest object; ldrb r1,[r0,#0x13]; cmp r1,[r5,#PanelY]; bne — target must
+    share the caller''s panel row; sub r2,r3,r2; mul r1,r2; ble fail with object_getFrontDirection — target
+    must lie ahead of the attacker; str r0,[r7,#oAIAttackVars_TargetObjectPtr] ... strb r1,[r5,#0x80];
+    strb r2,[r5,#0x81]; mov r0,#8; strb r0,[r6,#oAIState_ScriptId] — locks target and jumps to AI script
+    8; loc_8110794: ldrh r0,[r7,#AttackDuration]; strh r0,[r7,#StepTimer]; mov r0,#9; bl object_setAttack0
+    — failure path advances to attack step 9'
+  refs:
+  - bn6f/asm/asm32.s:5285
+  - 0x080103F8 battleObject_findClosestEnemyBattleObject_80103F8
+  - 0x0801171C object_exitAttackState_801171C
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x0811072C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- What sub_8110D18 does (likely pre-attack or panel setup before script 8)
+- Which actor type the FindBattleActorsWithNonzeroParam(0x6c,0x67,0x6c) check clears the path of
+- What AI script 8 performs once entered (the actual attack), and which boss/enemy attack routine calls
+  this step
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_811072C -> ai_aimRowTargetStartAttack
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811072C

@@ -1,0 +1,66 @@
+name: battle_queueEffectRequest
+address: '0x0800BF16'
+kind: function
+status: probable
+summary: Records an id into both request slots of the byte_203CF00 array (plus two work slots), then arms
+  slot r0 as an active battle effect/spawn request with a type byte and parameter word.
+interface: (r0 = slot index (0/1), also recorded as a byte; r1 = type/kind byte; r2 = param word; r5 read
+  as-is from caller) -> r0 = entry pointer, no meaningful return; r1-r3 clobbered
+details: 'The function first stores its r0 byte at offset +3 of entry 0 and entry 1 of the 0x50-byte-per-entry
+  array at 0x203CF00 (via getEntryPtr), and also passes it to writeByteToWorkSlots0And1, which mirrors
+  it into two work slots — so some ''current id'' byte is fanned out to several places. Control then falls
+  into a shared tail (also entered from a twin prologue at loc_800BF30) that fetches entry[r0]: if the
+  word at entry+8 is a non-null pointer, it writes 8 to obj+8 and 4 to obj+0xB (apparently marking/state-setting
+  on the previously attached object) before the pointer is replaced. It then stores r1 at entry+2, r2
+  at entry+8, the caller''s (stale, unsaved) r5 at entry+0xC, and sets entry+1 = 1 as an active/enabled
+  flag. So the entries look like queued request descriptors: +1 active, +2 type, +3 id, +8 attached object/pointer,
+  +0xC param. Callers are all battle chip/AI effect firers, consistent with this being the shared ''queue
+  the effect'' call.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: '0x800BF1C-0x800BF28: getEntryPtr(0) and getEntryPtr(1), strb r4,[r0,#3] each — same id byte
+    written to both slots; 0x800BF36: bl writeByteToWorkSlots0And1_800B8AC with the same r0 byte, matching
+    its ''writes byte to slots 0 and 1'' summary; 0x800BF3E-0x800BF4A: ldr r3,[r0,#8]; sets [r3,#8]=8
+    and [r3,#0xB]=4 on the non-null object pointer already held at entry+8; 0x800BF50-0x800BF5A: strb
+    r1,[r0,#2]; str r2,[r0,#8]; str r5,[r0,#0xC]; mov r1,#1; strb r1,[r0,#1] — arms the slot (type, param,
+    active flag); Callers battle_applyInvisibleClear_80106C0, battle_lowHPTileTrigger_8010660 and AI sub_80EC350
+    all invoke it right after clearing a stats flag and firing a panel/attack effect'
+  refs:
+  - bn6f/asm/object.s:946
+  - 0x080106C0 battle_applyInvisibleClear_80106C0
+  - 0x08010660 battle_lowHPTileTrigger_8010660
+  - 0x080EC350 sub_80EC350
+  - 0x0800BF5C byte_203CF00_getEntryPtr_800BF5C
+  - 0x0800B8AC writeByteToWorkSlots0And1_800B8AC
+  reproduce: python3 tools/asmcat.py 0x0800BF16
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+- beastsp
+- chips
+- menus2
+- menus3
+- story2
+- story9
+open_questions:
+- str r5,[r0,#0xC] stores the caller's unsaved r5 — unknown whether callers deliberately set r5 (e.g.
+  battle-work pointer) or whether this is a quirk/bug
+- Meaning of entry fields +3 and of the two work slots written by writeByteToWorkSlots0And1 (offset used
+  by that callee not shown)
+- Which battle subsystem consumes the armed entries at 0x203CF00 and what the state values 8 and 4 written
+  to the attached object mean
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_800BF16 -> battle_queueEffectRequest
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800BF16

@@ -1,0 +1,52 @@
+name: ai_woodAttackStep
+address: '0x080F5208'
+kind: function
+status: probable
+summary: 'AI attack step for a self-damaging wood-element attack: on first call it sets up the attack
+  and commits the object to its future panel, then counts 15 frames before registering the hit element.'
+interface: (r5 = battle object, r7 = object's oAIAttackVars; no register args) -> r0 clobbered; sets AttackElement=4,
+  CurAnim=7, StepTimer, HitElement
+details: 'If oAIAttackVars_AttackElement is still 0, it initializes the attack: sets AttackElement to
+  4 (wood), plays animation 7, and calls object_updateCollisionData with damage params (1, 2, 3). It then
+  copies the object''s DamageAndStaminaDamageCounterDisabler into its own CollisionData as SelfDamage
+  and the StaminaDamageCounterDisabler byte, making the attack hurt the user as well. It commits the movement
+  by copying FuturePanelX/Y into PanelX/Y, releases the reserved panel via object_removePanelReserve,
+  recomputes pixel coordinates, syncs collision panels, clears ObjectFlags1 bit 0x40 (likely invulnerability/timed
+  flag), and sets StepTimer to 15. On subsequent calls it decrements StepTimer, and when it reaches 0
+  it writes HitElement = 0x14 (20) to trigger the hit phase.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst; bne — two-phase step handler keyed on the attack
+    element being initialized; mov r0,#4; strb r0,[r7,#oAIAttackVars_AttackElement]; mov r0,#7; strb r0,[r5,#oBattleObject_CurAnim]
+    — element 4 (wood) and anim 7; strh r0,[r2,#oCollisionData_SelfDamage] from oBattleObject_DamageAndStaminaDamageCounterDisabler
+    — attack damages its own user; FuturePanelX/Y -> PanelX/Y + object_removePanelReserve + object_setCoordinatesFromPanels
+    — commits the planned panel move; ldrh r0,[r7,#oAIAttackVars_StepTimer]; sub r0,#1 ... mov r0,#0x14;
+    strh r0,[r7,#oAIAttackVars_HitElement] — 15-frame countdown then hit registration
+  refs:
+  - bn6f/asm/asm31.s:130275
+  - 0x0801A15C object_clearFlag
+  - 0x0801BB46 object_removePanelReserve
+  - 0x0800E29C object_setCoordinatesFromPanels
+  reproduce: python3 tools/asmcat.py 0x080F5208
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- Which enemy/boss uses this attack (no known callers), and what hit element 0x14 triggers downstream
+- Whether element value 4 is wood in this game's element enum
+- What ObjectFlags1 bit 0x40 means exactly
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F5208 -> ai_woodAttackStep
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F5208

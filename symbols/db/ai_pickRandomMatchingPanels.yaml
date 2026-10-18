@@ -1,0 +1,58 @@
+name: ai_pickRandomMatchingPanels
+address: '0x080F7238'
+kind: function
+status: probable
+summary: AI battle routine that gathers candidate panels matching a panel-type mask around the target
+  (plus anywhere else on the field), shuffles them, and invokes a per-panel effect on up to r0 of them.
+interface: (r0 = number of panels to affect, r5 = acting battle object) -> r0 = destroyed; uses target
+  object's panel x/y from [r7+oAIAttackVars_TargetObjectPtr]+0x12/0x13
+details: 'The routine reads the target object''s panel coordinates and builds a candidate list on the
+  stack as packed bytes ((x<<4)|y, 4-bit coordinates). It first checks the target''s own panel, then an
+  8-entry signed (dx,dy) offset table (byte_80F7380, a 3x3 neighborhood around the target), testing each
+  with object_checkPanelParameters using required/forbidden attribute masks indexed by oBattleObject_Alliance
+  (byte_80F7398). Matching candidates are reserved via object_reservePanel so duplicates can''t be picked;
+  then object_getPanelsExceptCurrentFiltered collects every other matching panel on the field with a second
+  alliance-indexed mask table (byte_80F73AC), after which all reservations are released via object_removePanelReserve.
+  If more than one candidate exists in either group, each group is shuffled with ShuffleByteList_PrimaryRNG.
+  Finally it walks the combined shuffled list and calls sub_80F73BC once per panel with the packed (x<<4)|y
+  coordinate, stopping after r0 panels. Quirks: the neighbor-check loop runs 8 times but the reserve/remove
+  loops run 9 times (one extra pass over the offset table).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 3x3 signed offset table byte_80F7380 with loops bounded by 8/9 and offsets added to target panel
+    x/y at loc_80F727C; object_checkPanelParameters called with masks from byte_80F7398[alliance*8] at
+    0x80F7254 and 0x80F729E; object_reservePanel/object_removePanelReserve bracket candidate gathering,
+    and object_getPanelsExceptCurrentFiltered fills the remainder at 0x80F72FE; ShuffleByteList_PrimaryRNG
+    called on both candidate groups when their counts exceed 1 (0x80F7332, 0x80F7348); final loop 0x80F735E
+    extracts (x<<4)|y from each shuffled byte and calls sub_80F73BC up to r0 times
+  refs:
+  - bn6f/asm/asm31.s:134324
+  - 0x080F71E0 sub_80F71E0
+  - 0x08000C72 ShuffleByteList_PrimaryRNG
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0800CE64 object_getPanelsExceptCurrentFiltered
+  reproduce: python3 tools/asmcat.py 0x080F7238
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- What effect sub_80F73BC applies to each chosen panel (panel conversion type?), which would pin down
+  the exact AI move
+- What caller sub_80F71E0 passes in r0 (attack parameter count) and how this routine maps to a named AI
+  script command
+- The exact meaning of each panel attribute bit in the two alliance-indexed mask tables
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F7238 -> ai_pickRandomMatchingPanels
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F7238

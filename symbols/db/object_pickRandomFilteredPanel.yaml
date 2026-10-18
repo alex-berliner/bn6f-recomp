@@ -1,0 +1,53 @@
+name: object_pickRandomFilteredPanel
+address: '0x08103808'
+kind: function
+status: probable
+summary: Picks a random battle panel matching attribute filters (excluding the object's own panel) and
+  returns its x/y coordinates, falling back to the object's current position.
+interface: (r5 = object ptr, r2 = required panel-attr bitmask, r3 = forbidden attr bitmask) -> r0 = chosen
+  panel x (low 3 bits), r1 = chosen panel y (byte>>4); flags clobbered
+details: 'First it walks a 4-entry (dx,dy) signed-byte table at byte_810389C — panels around the object
+  at r5+0x12/x, r5+0x13/y — calling object_reservePanel on each, then collects candidate panels via object_getPanelsExceptCurrentFiltered
+  into a 0x18-byte stack buffer (r7), then releases those same 4 reservations via object_removePanelReserve,
+  so the surrounding panels are momentarily marked and excluded from the candidate pool. If the filtered
+  list is empty it retries once; if still empty it returns the object''s own coordinates unchanged. Otherwise
+  it calls GetPositiveSignedRNG and uses BIOS SWI 6 (Div) to take rand % count as an index into the panel
+  list. Each list entry is a packed byte: x = entry & 7, y = entry >> 4. The chosen coordinates are returned
+  in r0 (x) and r1 (y).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'loc_8103812/8103842: loops 4 table pairs from byte_810389C added to r5+0x12/0x13 into object_reservePanel
+    then object_removePanelReserve; bl object_getPanelsExceptCurrentFiltered with r7 = sp+8 buffer and
+    stored r2/r3 masks, result count in r6, retried once if zero; GetPositiveSignedRNG + svc 6 with r1
+    = count, then ldrb [sp+8 + r1] indexes the list by rand % count; lsr r1,r0,#4 / lsl r0,#0x1d+lsr #0x1d
+    unpacks y (high nibble) and x (&7) from the list byte; loc_810388C fallback returns r5+0x12 (x) and
+    r5+0x13 (y) when no candidate panel exists'
+  refs:
+  - bn6f/asm/asm31.s:159721
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x0800CE64 object_getPanelsExceptCurrentFiltered
+  - 0x0801BB46 object_removePanelReserve
+  reproduce: python3 tools/asmcat.py 0x08103808
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- exact meaning of the reservation round-trip (whether filtered matching skips reserved panels) and what
+  panel attributes r2/r3 mask bits correspond to
+- which caller/AI routine invokes this (no caller known) and whether r5 is a documented object-register
+  convention or an argument
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8103808 -> object_pickRandomFilteredPanel
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8103808

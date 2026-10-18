@@ -1,0 +1,55 @@
+name: ai_attackJumpStep
+address: '0x0810C070'
+kind: function
+status: probable
+summary: 'Per-frame update for an AI attack''s jump movement: advances the object''s position by its velocity,
+  applies gravity, drops/restores its collision region while airborne, and lands it when the step timer
+  expires.'
+interface: (r5 = battle object, r7 = AI attack vars; no register args) -> void
+details: Each call it adds XVelocity/YVelocity/ZVelocity to the object's X/Y/Z, then subtracts oAIAttackVars_Unk_40
+  from ZVelocity each frame (gravity, giving a parabolic arc). When Z reaches 0x100000 (16 in fixed point)
+  it clears the object's collision region (airborne, no panel collision), and when it drops back below
+  while region==0 it sets region 1 and commits FuturePanelX/Y into PanelX/Y via object_updateCollisionPanels.
+  It then decrements oAIAttackVars_StepTimer; while >=0 it returns. When the timer runs out it commits
+  FuturePanelX/Y as the landing panel, releases the reserved panel (object_removePanelReserve), recomputes
+  pixel coordinates from the panel (object_setCoordinatesFromPanels), zeroes Z and the step timer, sets
+  the object's current animation to 2 (landing) and oAIAttackVars_HitElement to 0xC.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ZVelocity is decremented by [r7,#oAIAttackVars_Unk_40] every frame, giving projectile/jump gravity;
+    Z >= 0x100000 clears the collision region, Z < threshold with region 0 calls object_setCollisionRegion(1)
+    — air/ground toggling; landing path commits FuturePanelX/Y to PanelX/Y, then object_removePanelReserve
+    and object_setCoordinatesFromPanels; timer expiry sets CurAnim=2 and HitElement=0xC on the AI attack
+    vars, typical of an attack-state landing step; uses oAIAttackVars_StepTimer as the jump duration counter,
+    resetting it to 0 on land
+  refs:
+  - bn6f/asm/asm31.s:176941
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0801BB46 object_removePanelReserve
+  - 0x0801A07C object_setCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x0810C070
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- exact fixed-point scale of Z and the meaning of the 0x100000 threshold
+- what region index 1 means versus the object's original region (restored unconditionally to 1, not saved
+  beforehand)
+- which AI attacks route through this (callers unknown; only recorded routes battlesweep/beastsp touch
+  it)
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810C070 -> ai_attackJumpStep
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810C070

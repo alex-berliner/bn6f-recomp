@@ -1,0 +1,55 @@
+name: ai_protoManInitAttack
+address: '0x080FBEE8'
+kind: function
+status: probable
+summary: 'Initializes one of ProtoMan''s AI attacks: reads difficulty tier, sets up attack timing/panel-choose
+  callback, targets the opposing player, and kicks off attack state 0xC.'
+interface: (r0 = AI attack vars base?, r5 = current BattleObject, r7 = oAIAttackVars struct) -> r0 clobbered;
+  no meaningful return
+details: Stores the AI difficulty tier (from battle_getAiDifficultyTier_800FE36) and clears the InitFlag
+  in the oAIAttackVars struct at r7. Calls sub_80FBF92 with r0=2, installs sub_80FCDBA+1 as the PanelChooseCallback,
+  and stores sub_80FBD68/sub_80FBD7C results as AttackDuration and AttackBoost2. ScratchVar is set to
+  r5+0x64 (object pointer plus 0x64). It looks up the enemy of the current object's alliance via battle_findPlayer(alliance^1)
+  and stores it as TargetObjectPtr, then calls object_setAttack0(0xC) to begin the attack. All four callers
+  are ProtoMan AI steps gated by RNG rolls (tier-scaled thresholds 0xC/0xE), consistent with this being
+  a shared attack-entry routine.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl battle_getAiDifficultyTier_800FE36; strb r0,[r7,#oAIAttackVars_AiDifficultyTier] — initializes
+    per-attack AI state; ldr r0,off_80FC06C; str r0,[r7,#oAIAttackVars_PanelChooseCallback] — sets panel-selection
+    callback for this attack; eor r0,r1; bl battle_findPlayer; str r0,[r7,#oAIAttackVars_TargetObjectPtr]
+    — picks opposing player as target; mov r0,#0xc; bl object_setAttack0 — starts the attack in state
+    0xC; callers 0x80FBA24/0x80FBA9A/0x80FBB34/0x80FBBCA all RNG-gate before reaching this, matching an
+    AI attack trigger
+  refs:
+  - bn6f/asm/asm31.s:143921
+  - 0x080FBA24 sub_80FBA24
+  - 0x080FBA9A sub_80FBA9A
+  - 0x080FBB34 sub_80FBB34
+  - 0x0800FE36 battle_getAiDifficultyTier_800FE36
+  - 0x080103BC battle_findPlayer
+  - 0x08011680 object_setAttack0
+  reproduce: python3 tools/asmcat.py 0x080FBEE8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- Which specific ProtoMan attack this entry corresponds to (sub_80FBF92(2) and callback sub_80FCDBA not
+  analyzed)
+- exact meaning of AttackDuration/AttackBoost2 values from sub_80FBD68/sub_80FBD7C
+- role of ScratchVar = object+0x64
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80FBEE8 -> ai_protoManInitAttack
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FBEE8

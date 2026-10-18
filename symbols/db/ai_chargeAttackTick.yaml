@@ -1,0 +1,53 @@
+name: ai_chargeAttackTick
+address: '0x0810A94C'
+kind: function
+status: probable
+summary: 'Per-frame tick of an AI attack: flashes target panels while charging, then on timeout deals
+  damage, plays a sound, and sets the resulting hit element.'
+interface: (r7 = AI attack vars, r5 = battle object) -> r0 = 0 when the attack fires; destroys/clears
+  the object's collision region on completion
+details: Decrements oAIAttackVars_StepTimer each call; while it is nonzero, every 4th frame it highlights
+  the panel in front of the object (front panel X = PanelX + object_getFrontDirection(), Y = PanelY) via
+  highlightPanelIfSomeCondition_8109660 with r2=6 and r3=Alliance^DirectionFlip, a telegraph flash for
+  the incoming attack. When the timer reaches 0, it calls sub_80BC3B8 with Damage | (ExtraDamage<<16),
+  the object's extra-vars pointer, and the object's own PanelX/PanelY, apparently to apply the attack's
+  damage. It then sets an object counter time of 0x14 frames unless the battle mode is 6, clears the object's
+  collision region byte, plays sound effect 0x20, and stores HitElement=4 and AttackElement=0 into the
+  AI attack vars before returning 0.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrh/sub/strh on oAIAttackVars_StepTimer with bne: per-frame countdown gating the attack; tst
+    r0,#4 + highlightPanelIfSomeCondition_8109660: periodic panel flash using front direction and Alliance^DirectionFlip
+    while charging; sub_80BC3B8 called with Damage|ExtraDamage<<16, extra vars, PanelX/PanelY when the
+    timer expires: damage application; object_setCounterTime(0x14) guarded by GetBattleMode()!=6, then
+    object_clearCollisionRegion and PlaySoundEffect(0x20) on completion; stores HitElement=4 / AttackElement=0
+    and returns 0 from the firing branch'
+  refs:
+  - bn6f/asm/asm31.s:174134
+  - 0x0802D234 GetBattleMode
+  - 0x080005CC PlaySoundEffect
+  - 0x08109660 highlightPanelIfSomeCondition_8109660
+  reproduce: python3 tools/asmcat.py 0x0810A94C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- exact effect of sub_80BC3B8 (damage-at-panel helper?) and the meaning of highlightPanelIfSomeCondition's
+  r2=6 argument
+- what battle mode 6 (bypassing object_setCounterTime) represents
+- which attacker/boss uses this attack and what element 4 is
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810A94C -> ai_chargeAttackTick
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810A94C

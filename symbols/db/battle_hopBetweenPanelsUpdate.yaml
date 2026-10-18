@@ -1,0 +1,58 @@
+name: battle_hopBetweenPanelsUpdate
+address: '0x080C8B80'
+kind: function
+status: probable
+summary: 'State handler for a battle object that periodically hops one panel sideways: sits grounded for
+  Param2 frames, lifts off the field for Param3 frames, then lands on the adjacent panel, dying or bouncing
+  back at the field edge.'
+interface: (r5 = battle object, no args) -> void; mutates oBattleObject_Timer, PanelX, Z16, collision
+  region, sprite flip, CurStateActionPhaseAndPhaseInitialized
+details: 'On phase 0 it initializes Timer = Param2 + Param3 and sets CurPhase = 4, so each cycle is Param2
+  grounded frames followed by Param3 airborne frames. When the countdown reaches Param3 it calls object_clearCollisionRegion
+  and sets Z16 = 0xF0 (lifted off the field). While Timer > 0 it stays airborne; when Timer hits 0 it
+  tries to land at PanelX + signed offset byte 7 (same PanelY). If that panel is invalid: with Param1
+  set it flips the sprite (sprite_setFlip of Alliance^DirectionFlip^1), stores the negated offset in Param4,
+  sets PhaseInitialized, and lands on the current panel instead; otherwise it is destroyed. If the landing
+  panel''s status flags from object_getPanelParameters lack bit 0x10 it is destroyed (clearCollisionRegion
+  + CUR_STATE_DESTROY); if PhaseInitialized is already set, an alliance-indexed word in byte_80C8C3C (word
+  2 = 0x20) is ANDed with the flags and a match also destroys it. A successful landing recomputes pixel
+  coords, updates collision panels, sets collision region 1, zeroes Z16, plays sound 0x106, and reloads
+  Timer = Param2 + Param3 to loop the hop.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'init writes phase 4 and Timer = Param2 + Param3, making Param2 the grounded and Param3 the
+    airborne duration; Timer == Param3 branch calls object_clearCollisionRegion and stores 0xF0 in oBattleObject_Z16
+    (off-field phase); landing target is PanelX + ldrsb byte 7, checked with object_isValidPanel; failure
+    with Param1 == 0 falls to CUR_STATE_DESTROY, otherwise flips sprite and negates the offset into Param4;
+    object_getPanelParameters result must have bit 0x10 (tst r0,#0x10; beq destroy) and alliance word
+    from byte_80C8C3C is tested against it; land path: object_setCoordinatesFromPanels, object_updateCollisionPanels,
+    object_setCollisionRegion(1), Z16 = 0, PlaySoundEffect(0x106), Timer reloaded'
+  refs:
+  - bn6f/asm/asm31.s:36166
+  - 0x080005CC PlaySoundEffect
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0800C8F8 object_getPanelParameters
+  reproduce: python3 tools/asmcat.py 0x080C8B80
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- which enemy/attack object uses this handler and who writes Param1-4 and the signed offset at field 7
+- exact meaning of panel status bits 0x10 (required for landing) and 0x20 (lethal for alliance-2 objects
+  after first landing)
+- whether Z16 = 0xF0 means height 240 or -16 (buried) in the engine's convention
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80C8B80 -> battle_hopBetweenPanelsUpdate
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C8B80

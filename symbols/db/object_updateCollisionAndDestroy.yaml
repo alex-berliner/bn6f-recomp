@@ -1,0 +1,53 @@
+name: object_updateCollisionAndDestroy
+address: '0x080D0454'
+kind: function
+status: probable
+summary: Per-frame update for a battle object that processes its current collision, spawns the hit effect,
+  and then destroys itself once the collision is resolved or the battle is over.
+interface: (r5 = battle object, no register args) -> void; sets object state to CUR_STATE_DESTROY on the
+  destroy path
+details: The routine first tears down the object's collision data and spawns the hit-effect object at
+  the collision point. It then checks whether the battle is over or the collision flags in the object's
+  CollisionDataPtr (oCollisionData_FlagsFromCollision) are nonzero; in either case it clears the object's
+  collision region and writes CUR_STATE_DESTROY into oBattleObject_CurStateActionPhaseAndPhaseInitialized,
+  ending the object. If time is stopped it just refreshes present-collision data instead; otherwise it
+  dispatches through a per-action jump table indexed by oBattleObject_CurAction, whose table (off_80D0494)
+  currently contains a single entry pointing at a stub at 0x80D0498. r5 is the implicit object pointer,
+  consistent with the callees' documented behavior.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_removeCollisionData / object_spawnCollisionEffect at start: teardown plus hit-effect
+    spawn for r5''s last collision; branch on battle_isBattleOver or nonzero [r5,#oBattleObject_CollisionDataPtr]->oCollisionData_FlagsFromCollision
+    leads to loc_80D0484 destroy path; loc_80D0484 calls object_clearCollisionRegion then stores #CUR_STATE_DESTROY
+    into oBattleObject_CurStateActionPhaseAndPhaseInitialized; time-stop check routes to object_presentCollisionData,
+    the standard per-frame collision refresh; jump table off_80D0494 indexed by oBattleObject_CurAction
+    with one entry (sub_80D0498 stub) shows per-action dispatch after collision handling'
+  refs:
+  - bn6f/asm/asm31.s:52318
+  - 0x0800A18E battle_isBattleOver
+  - 0x0800A098 battle_isTimeStop
+  - 0x0801A074 object_clearCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080D0454
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- What sub_80D0498 (the sole action-table entry) does, to confirm the object type and post-collision behavior
+- Which caller(s) install this as an object's update handler, to pin down which in-battle entity uses
+  it
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D0454 -> object_updateCollisionAndDestroy
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D0454

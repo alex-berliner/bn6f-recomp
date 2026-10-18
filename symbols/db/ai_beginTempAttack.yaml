@@ -1,0 +1,49 @@
+name: ai_beginTempAttack
+address: '0x080EE57C'
+kind: function
+status: probable
+summary: 'Enemy AI attack-start step: plays animation 0xA, resets the counter timer, spawns a linked temp
+  attack object, and primes its attack variables.'
+interface: (r0 unused/a1 = battle object in r5 convention) -> void; no meaningful return
+details: Called with the battle object in r5 (thumb calling quirk). It starts animation 0xA on the object,
+  resets its counter timer to the default 0x10 frames, then loads the object's AIDataPtr, offsets it by
+  0x68, and spawns a type-1 subtype-5 temp attack object, storing the spawned pointer at aiData+0x68.
+  It then ORs bit 22 (1<<22) into the object's ObjectFlags1, and writes stepTimer=1 and hitElement=4 into
+  the AI attack-vars struct that begins at aiData+0x68. This reads as the first step of an AI attack routine
+  that runs while a spawned attack object does its work.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_setAnimation with r0=0xA then object_setDefaultCounterTime set the enemy's pose and
+    counter timer (asm lines 3-5); ldr r7,[r5,oBattleObject_AIDataPtr]; add r7,#0x68; bl spawn_t1_0x5_tempAttackObject
+    links the spawned attack to aiData+0x68; bl object_setFlag1 with (1<<22) sets an ObjectFlags1 bit
+    on the battle object; strh 1,[r7,oAIAttackVars_StepTimer] and strh 4,[r7,oAIAttackVars_HitElement]
+    prime the attack-vars struct at the same +0x68 base; Callee spawn_t1_0x5_tempAttackObject_80B8E30
+    'spawns a type-1 attack object ... stores the result pointer' matches the r7 store target
+  refs:
+  - bn6f/asm/asm31.s:116486
+  - 0x0800F2B6 object_setAnimation
+  - 0x0800FDB6 object_setDefaultCounterTime
+  - 0x0801A152 object_setFlag1
+  reproduce: python3 tools/asmcat.py 0x080EE57C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- chips
+open_questions:
+- What enemy/attack this belongs to (animation 0xA and hitElement 4 not mapped to a named element)
+- What flag bit 22 in ObjectFlags1 means
+- Which caller (AI step table) dispatches this function
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80EE57C -> ai_beginTempAttack
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EE57C

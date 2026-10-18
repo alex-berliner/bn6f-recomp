@@ -2196,11 +2196,11 @@ static void active_kind_1(u32 rec, u8 kind) {
     GUEST_CALL(beastout_QueuePaletteGFXAndSheets_80286D4);
 }
 
-/* register form: calls sub_802871C outside this file, which has no typed C interface yet */
+/* register form: calls beastout_loadSelectionScreenChipUseGfx outside this file, which has no typed C interface yet */
 static void active_kind_2(u32 rec, u8 kind) {
     R0 = rec;
     R1 = kind;
-    GUEST_CALL(sub_802871C);
+    GUEST_CALL(beastout_loadSelectionScreenChipUseGfx);
 }
 
 /* register form: calls sub_8028754 outside this file, which has no typed C interface yet */

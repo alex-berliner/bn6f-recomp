@@ -1,0 +1,51 @@
+name: battle_initSpriteFromRelated
+address: '0x080E7AFC'
+kind: function
+status: probable
+summary: Initializes a spawned battle object's visuals by copying the spawner's sprite-slot block, loading
+  the sprite/animation, and switching the object into its update state.
+interface: (r5 = battle object, no args) -> r0 = clobbered; sets object to CUR_STATE_UPDATE, timer = 0x13
+details: Copies 0xC bytes (three words at offset 0x34, the sprite slot block) from the object's RelatedObject1Ptr
+  into its own offset 0x34, so the spawned object inherits the source's sprite resources. Calls sprite_load
+  with (0x80, 0x10, 0x53) and sprite_loadAnimationData, then sprite_noShadow so it renders without a shadow.
+  Sets bit 1 of oObjectHeader_Flags, copies oBattleObject_Param2 into both CurAnim and CurAnimCopy, and
+  passes it to sprite_setAnimation. Sets palette 0 via sprite_setPalette, applies the horizontal flip
+  from object_getFlip via sprite_setFlip. Finally writes timer 0x13 (19 frames) and stores CUR_STATE_UPDATE
+  into oBattleObject_CurStateActionPhaseAndPhaseInitialized to hand control to the object's per-frame
+  update handler.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldmia/stmia pair copies 3 words from RelatedObject1Ptr+0x34 to r5+0x34, the sprite-slot block;
+    call sequence sprite_load/sprite_loadAnimationData/sprite_noShadow/setAnimation/setPalette/setFlip
+    is a full sprite bring-up; strb Param2 -> CurAnim and CurAnimCopy before bl sprite_setAnimation shows
+    animation index comes from Param2; str r0=CUR_STATE_UPDATE into oBattleObject_CurStateActionPhaseAndPhaseInitialized
+    ends the routine as a state-init handler; mov r0,#0x13; strh to oBattleObject_Timer sets a 19-frame
+    timer, typical spawn/delay init
+  refs:
+  - bn6f/asm/asm31.s:102609
+  - 0x0800E456 object_getFlip
+  - 0x080026E4 sprite_load
+  - 0x080026A4 sprite_loadAnimationData
+  reproduce: python3 tools/asmcat.py 0x080E7AFC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- exact meaning of sprite_load's arguments (0x80, 0x10, 0x53) — sprite/resource IDs vs flags
+- which enemy/object uses this init and what Param2 selects among animations
+- what the 0x34 offset block formally is in the battle object structure
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80E7AFC -> battle_initSpriteFromRelated
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E7AFC

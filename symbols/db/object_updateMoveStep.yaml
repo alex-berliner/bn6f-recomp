@@ -1,0 +1,53 @@
+name: object_updateMoveStep
+address: '0x080D1D90'
+kind: function
+status: probable
+summary: Per-frame handler that slides a battle object toward a target panel over Timer2 frames, destroying
+  it if its starting panel becomes invalid
+interface: (r5 = battle object) -> r0 = void; updates object X/Y, PanelX/PanelY, CurPhase, CurState/CurAction
+  on failure
+details: If the object's current panel is not a valid battlefield position, it clears the collision region,
+  sets CurStateActionPhase to CUR_STATE_DESTROY and CurAction to 2, i.e. removes the object. Otherwise
+  on phase 0 it latches the start panel as (PanelX | PanelY<<4) into ExtraVars+0x18, calls sub_80D1EF2
+  (likely computes X/YVelocity from start vs. target panel and Timer2), copies Timer2 into Timer, and
+  derives pixel coordinates from the panels. Each subsequent tick it adds X/YVelocity to X/Y, re-derives
+  panels from coordinates, syncs the collision record/facing via object_updateCollisionPanels, and decrements
+  Timer; when the timer expires CurPhase is reset to 0 so the move can be re-issued. This is the stepped-interpolation
+  tail of a move-to-panel action (slide/push/knockback-style movement).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bne loc_80D1DA8 after object_isCurrentPanelValid leads to clearCollisionRegion + CUR_STATE_DESTROY
+    + CurAction=2; phase-0 block packs ldrb PanelX / lsl PanelY,#4 / orr into ExtraVars+0x18 and copies
+    Timer2 to Timer; per-tick block adds XVelocity/YVelocity to X/Y then calls object_setPanelsFromCoordinates
+    and object_updateCollisionPanels; Timer countdown to 0 resets CurPhase to 0, so the handler is a resumable
+    multi-frame move step; callees object_setCoordinatesFromPanels / object_setPanelsFromCoordinates confirm
+    panel<->pixel coordinate interpolation
+  refs:
+  - bn6f/asm/asm31.s:55669
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0800CC66 object_isCurrentPanelValid
+  - 0x0800E29C object_setCoordinatesFromPanels
+  reproduce: python3 tools/asmcat.py 0x080D1D90
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- sub_80D1EF2 (velocity setup) is unknown, so the exact target-panel field and how velocity is derived
+  is unconfirmed
+- no known callers, so which move action (push, knockback, slide) invokes this step is unclear
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D1D90 -> object_updateMoveStep
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D1D90

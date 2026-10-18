@@ -1,0 +1,54 @@
+name: ai_pickPanelInFrontOfEnemies
+address: '0x08115AD0'
+kind: function
+status: probable
+summary: Battle-AI helper that randomly picks one of the longest-standing state-matching panels directly
+  in front of enemies, excluding the caller's own panel, else falls back to a random relative panel.
+interface: (r5 = battle object (x=+0x12, y=+0x13, +0x16 arg), r7 = enemy object pointer list) -> r0 =
+  packed panel coord (x | y<<4), low 3 bits flags; uses sp scratch
+details: 'Iterates the enemy list returned by object_getEnemyByNameRange (r1=1, r2=0xAE, r3=[r5,#0x16]);
+  for each enemy it reads x [+0x12] plus object_getFrontDirection and y [+0x13], looks up an 8-byte panel-state
+  entry (byte_8115BA0: masks 0x10/0x30 with args 0x0F8800A0/0x0F880080) via GetAllianceDependentPanelParamArgs,
+  and keeps panels passing object_checkPanelParameters. It tracks the minimum of the object''s field +0x24,
+  resetting the candidate list on a strictly smaller value and appending on ties, packing coords as x|(y<<4)
+  into an sp array. The caller''s own packed coord is removed from the list by shift-down, then GetPositiveSignedRNG
+  % count (svc 6) selects one entry; returns x in low 3 bits(?) and y in bits 4+. With zero or exactly-one
+  candidate equal to the caller''s own panel, it delegates to sub_8015C48, the random alliance-aware relative
+  panel picker.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'object_getEnemyByNameRange + loop over [r7] objects: reads [obj,#0x12]+dir and [obj,#0x13]
+    as panel coords, so candidates are panels in front of enemies; GetAllianceDependentPanelParamArgs(off_8115BE8=byte_8115BA0)
+    then object_checkPanelParameters: panels filtered by panel-state masks; cmp [obj,#0x24] vs [sp,#0x10]
+    best, reset on less / append on equal: keeps panels with the smallest 0x24 value (oldest/longest present);
+    loop at loc_8115B5C removes r5''s own packed x|y<<4 coord from the candidate array; GetPositiveSignedRNG
+    + svc 6 (modulo) picks a random survivor; beq loc_8115B94 falls back to sub_8015C48 when no valid
+    panel'
+  refs:
+  - bn6f/asm/asm32.s:15205
+  - 0x081096FA GetAllianceDependentPanelParamArgs
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x0800CC86 object_checkPanelParameters
+  reproduce: python3 tools/asmcat.py 0x08115AD0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- No known caller, so the owning AI/object and gameplay meaning of range 0xAE are unconfirmed
+- Semantics of battle object field +0x24 (timer? spawn counter?) and +0x16 not established
+- Exact panel-state meaning of the byte_8115BA0 masks (0x10/0x30 with 0x0F88xx args) unknown
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8115AD0 -> ai_pickPanelInFrontOfEnemies
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8115AD0

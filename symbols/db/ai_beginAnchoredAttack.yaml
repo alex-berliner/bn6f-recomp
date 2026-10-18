@@ -1,0 +1,51 @@
+name: ai_beginAnchoredAttack
+address: '0x081113DE'
+kind: function
+status: probable
+summary: AI script step that arms a version-scaled attack (duration 24, damage/extra-damage from per-version
+  tables) and, when a condition holds, blocks sliding and launches attack 0x0A.
+interface: (r4 = AI/battle object, r5 = battle object, r6 = AI state, r7 = AI attack vars) -> r0 = 0;
+  r6 AIState_ScriptId cleared to end the script step.
+details: 'Exits early (clearing oAIState_ScriptId, the standard step-end) if the object''s flags disallow
+  acting or if FindBattleActorsWithNonzeroParam(0x60,0x6D,0x72) finds any matching actor, so it won''t
+  retrigger while such actors exist. Otherwise it loads attack variables: AttackDuration=0x18, Damage=byte_8111374[version],
+  ExtraDamage=byte_811137C[version], StepTimer=0xC, where version comes from oAIData_Version_16. It calls
+  sub_81116D2; if true, it stores (version<<4)|result into oAIAttackVars_AttackBoost2, sets oBattleObject_ExtraVars=1,
+  ORs OBJECT_FLAGS_CANNOT_SLIDE into the object''s ObjectFlags1, and issues attack id 0x0A via object_setAttack0.
+  The param filter 0x60/0x6D/0x72 suggests it scans for a specific spawned entity/obstacle tied to this
+  attack.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_canMove ... beq loc_8111428: skip attack setup when the object cannot act; bl FindBattleActorsWithNonzeroParam_ReturnCountAndSum
+    with (0x60,0x6D,0x72); bne exit guards against duplicate/active actors; ldrb r0,[r0,r1] from byte_8111374/byte_811137C
+    indexed by oAIData_Version_16 -> oAIAttackVars_Damage/ExtraDamage: per-boss-version attack power;
+    mov r0,#OBJECT_FLAGS_CANNOT_SLIDE; bl object_setFlag1 plus oBattleObject_ExtraVars=1 after sub_81116D2
+    returns true; mov r0,#0xa; bl object_setAttack0 and strb r0,[r6,#oAIState_ScriptId] closing the step'
+  refs:
+  - bn6f/asm/asm32.s:6808
+  - 0x0800E5E2 object_canMove
+  - 0x0801A152 object_setFlag1
+  - 0x08109630 FindBattleActorsWithNonzeroParam_ReturnCountAndSum
+  reproduce: python3 tools/asmcat.py 0x081113DE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- What sub_81116D2 tests (it gates the CANNOT_SLIDE/ExtraVars path)
+- What entities have params 0x60/0x6D/0x72 that the scan looks for
+- Which boss/attack id 0x0A corresponds to in-game
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_81113DE -> ai_beginAnchoredAttack
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81113DE

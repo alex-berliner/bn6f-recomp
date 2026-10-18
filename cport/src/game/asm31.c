@@ -1616,7 +1616,7 @@ Next sub_80C0EE2(void) {
         u32 extra = LD32(R5 + oBattleObject_ExtraVars);
         if (extra == 2) {
             R0 = related;
-            GUEST_CALL(sub_80E13DC);
+            GUEST_CALL(battle_killObjectWithDependents);
         } else {
             R0 = related;
             GUEST_CALL(sub_80E14AC);
@@ -2850,14 +2850,14 @@ Next sub_80C5590(void) {
     ST32(SP + 4,    R1);
     ST32(SP + 8,    LR);
 
-    /* Seed sub_80C5578 with this object's state and ask it to allocate a new
+    /* Seed battle_spawnType4WithExtraVars with this object's state and ask it to allocate a new
      * battle object (r3 = 0 means "create new"). */
     R3 = 0;
     R4 = LD32(R5 + oBattleObject_Params);
     R6 = LD32(R5 + oBattleObject_DamageAndStaminaDamageCounterDisabler);
     R7 = LD32(R5 + oBattleObject_ExtraVars);
     R2 = LD8(R5 + oBattleObject_Element);
-    GUEST_CALL(sub_80C5578);
+    GUEST_CALL(battle_spawnType4WithExtraVars);
 
     /* Link the new object back to the same RelatedObject1Ptr as this one. */
     R1 = LD32(R5 + oBattleObject_RelatedObject1Ptr);
@@ -3763,7 +3763,7 @@ static void dispatch_phase_handler(u32 phase, u32 handler_addr) {
     R0 = phase;
     R1 = handler_addr;
     if (phase == 0)
-        GUEST_CALL(sub_80C6A50);
+        GUEST_CALL(object_destroySpawnEffectAndDespawn);
     else
         GUEST_CALL(battle_object_destroy_80C6AAC);
 }

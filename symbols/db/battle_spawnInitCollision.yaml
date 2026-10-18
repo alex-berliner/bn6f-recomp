@@ -1,0 +1,52 @@
+name: battle_spawnInitCollision
+address: '0x080D1B68'
+kind: function
+status: probable
+summary: 'Spawn-phase state handler for a battle object: allocates and initializes its collision data,
+  then advances it to the update state.'
+interface: (r5 = battle object ptr, implicit) -> r0 = collision data ptr on success; object state set
+  to CUR_STATE_UPDATE; on allocation failure the object is freed
+details: Allocates a collision slot for the object at r5 with object_createCollisionData; if none is free
+  it destroys the object with object_freeMemory. On success it calls object_setupCollisionData with (r1=0,
+  r2=0x18, r3=0), where 0x18 selects a collision-type flag table entry, zeroes oBattleObject_Element (elementless/neutral),
+  and stores region 2 via object_setCollisionRegion. It then refreshes collision state for the frame with
+  object_presentCollisionData, sets oBattleObject_CurStateActionPhaseAndPhaseInitialized to CUR_STATE_UPDATE
+  so the next frames run the update handler, and tail-calls sub_80D1B9A (likely that update handler).
+  This is a one-shot 'spawn' phase handler, the standard BN6 battle-object state pattern.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_createCollisionData / bne fallback to object_freeMemory — hitbox allocation with destroy-on-failure
+    (lines 2-6); bl object_setupCollisionData with r1=0, r2=0x18, r3=0 — collision-type table index 0x18;
+    strb r1=0,[r5,#oBattleObject_Element] and mov r0,#2 / bl object_setCollisionRegion — neutral element,
+    region 2; mov r0,#CUR_STATE_UPDATE; str into oBattleObject_CurStateActionPhaseAndPhaseInitialized
+    — state transition to update phase; Callees are all object_* collision routines, matching a battle
+    object spawn handler
+  refs:
+  - bn6f/asm/asm31.s:55412
+  - 0x08019892 object_createCollisionData
+  - 0x08003458 object_freeMemory
+  - 0x0801A018 object_presentCollisionData
+  reproduce: python3 tools/asmcat.py 0x080D1B68
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- What object or attack uses this handler — no callers are known; finding the state-handler table entry
+  that points here would confirm
+- What sub_80D1B9A does (presumed update-phase handler) and what behavior the 0x18 collision type corresponds
+  to
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D1B68 -> battle_spawnInitCollision
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D1B68

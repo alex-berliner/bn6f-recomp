@@ -1,0 +1,50 @@
+name: ai_initProtoManPanelAttack
+address: '0x080FBE9C'
+kind: function
+status: probable
+summary: 'Initializes a ProtoMan AI attack: reset vars, roll difficulty-scaled attack parameters, set
+  the opponent as target, and start attack 0xb.'
+interface: (r4 = attacker BattleObject, r5 = attacker BattleObject, r7 = oAIAttackVars of attacker) ->
+  void; no meaningful flags
+details: Clears oBattleObject_ExtraVars and reads the AI difficulty tier into oAIAttackVars_AiDifficultyTier,
+  clearing the InitFlag. Sets the PanelChooseCallback to sub_80FCD92, then queries sub_80FBD2C/sub_80FBD40/sub_80FBD54
+  for AttackDuration, AttackBoost2 and TimerOrCycles. Stores the attacker pointer (r5+0x64) in ScratchVar
+  and r5+0x60 in AiAttackParam, resolves the opposing player via battle_findPlayer(alliance^1) into TargetObjectPtr,
+  and finally calls object_setAttack0(0xb) to launch the attack. The RNG-gated callers (rolls <0xC / <0xE
+  followed by a second roll) are attack-selection branches in the ProtoMan AI step functions.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: strb r0,[r7,#oAIAttackVars_*] stores throughout configure the AI attack-vars block; ldr r0,off_80FC068
+    installs sub_80FCD92 as oAIAttackVars_PanelChooseCallback; bl battle_findPlayer after eor r0,#1 stores
+    the opposing object into oAIAttackVars_TargetObjectPtr; bl object_setAttack0 with r0=0xb ends the
+    routine, launching the attack; callers sub_80FBB34/sub_80FBBCA gate this with GetPositiveSignedRNG&0xF
+    rolls, typical AI attack selection
+  refs:
+  - bn6f/asm/asm31.s:143886
+  - 0x080FBB34 sub_80FBB34
+  - 0x080FBBCA sub_80FBBCA
+  - 0x0800FE36 battle_getAiDifficultyTier_800FE36
+  - 0x080103BC battle_findPlayer
+  - 0x08011680 object_setAttack0
+  reproduce: python3 tools/asmcat.py 0x080FBE9C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- what attack 0xb is concretely (sprite/behavior), and what the panel-choose callback sub_80FCD92 selects
+- meaning of AttackBoost2 and TimerOrCycles fields set by sub_80FBD40/sub_80FBD54
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80FBE9C -> ai_initProtoManPanelAttack
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FBE9C

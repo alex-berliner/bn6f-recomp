@@ -1,0 +1,53 @@
+name: battle_objectPerFrameUpdate
+address: '0x080CD08C'
+kind: function
+status: probable
+summary: 'Per-frame update routine for a battle object: marks the object with flag 0x2, runs the hit-reaction
+  teardown, then dispatches the object''s state machine from a fixed action table and refreshes sprite/collision.'
+interface: (r4 = object pointer? r5 = object header) -> void; sets oObjectHeader_Flags bit 0x2 each frame
+details: Each frame it ORs bit 0x2 into the object header's flags byte (r5 base, per the caller's object
+  layout), then calls sprite_clearFinalPalette and object_finishCollisionHitReaction_801AD12 to wrap up
+  any pending hit reaction, plus sub_800F672 (unknown, likely a type-specific tick). It then passes the
+  action-handler table at off_80CD0B8 to battleObject_dispatchActionHandler_801B394 — the table holds
+  ten state handlers including battle_ResetObjectActionState_80165B8 and battleObject_initAndRunAI_8016B02,
+  i.e. a normal AI-driven state machine. Finally it runs the standard object_updateSprite and object_presentCollisionData
+  per-frame steps. The unconditional flag-0x2 set every frame is the only non-generic part and likely
+  marks the object as continuously active/attacking for other systems.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb/orr/strb on [r5,#oObjectHeader_Flags] with #2 — sets flag 0x2 unconditionally every call;
+    bl sprite_clearFinalPalette + bl object_finishCollisionHitReaction_801AD12 + bl sub_800F672 — standard
+    hit-reaction wrap-up sequence; ldr r0, off_80CD0B4 then bl battleObject_dispatchActionHandler_801B394
+    — dispatches the 10-entry state table at off_80CD0B8; table contains battle_ResetObjectActionState_80165B8
+    and battleObject_initAndRunAI_8016B02 — confirms an AI-driven object state machine; caller battleObject_initFromHPTableByParam1_80CCFFC
+    wires this as the update routine of an HP-table-initialized battle object'
+  refs:
+  - bn6f/asm/asm31.s:45485
+  - 0x080CCFFC battleObject_initFromHPTableByParam1_80CCFFC
+  - 0x0801B394 battleObject_dispatchActionHandler_801B394
+  - 0x0801AD12 object_finishCollisionHitReaction_801AD12
+  - 0x0801A018 object_presentCollisionData
+  reproduce: python3 tools/asmcat.py 0x080CD08C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- chips
+open_questions:
+- what sub_800F672 does (called between hit-reaction teardown and action dispatch)
+- the exact meaning of flag bit 0x2 set every frame
+- which enemy/object type this handler belongs to (the HP table at byte_80CCFD4 indexed by the caller's
+  Param1 would identify it)
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80CD08C -> battle_objectPerFrameUpdate
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CD08C

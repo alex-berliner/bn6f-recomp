@@ -1,0 +1,51 @@
+name: ai_guardAttackStep
+address: '0x080FC3E2'
+kind: function
+status: probable
+summary: AI attack-state step that turns the enemy into a guard object on its panel for a timed duration,
+  then removes it.
+interface: (r7 = AI attack-state struct oAIAttackVars) -> r0 = undefined; calls object_setFlag1/object_clearFlag,
+  PlaySoundEffect(0xA0)
+details: On first invocation (AttackElement==0) sets AttackElement=4, ORs OBJECT_FLAGS_GUARD into the
+  battle object's ObjectFlags1, copies TimerOrCycles into StepTimer, calls sub_80D1BF4(AiAttackParam,
+  TimerOrCycles) to spawn the attack object, plays SFX 0xA0, and stores sub_80E7A88's return (a panel-object
+  handle) into PanelParamFlags2. On later steps it decrements StepTimer; on expiry it clears ObjectFlags1
+  bit 1 (the guard flag), calls object_exitAttackState, and if a panel handle exists cleans it up via
+  sub_80E7AA0. If AiAttackParam's first word is nonzero, it instead sets HitElement=0x10 and cleans up
+  the panel object immediately. The struct fields used are AttackElement, TimerOrCycles, StepTimer, AiAttackParam,
+  HitElement, PanelParamFlags2.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'entry branch: ldrb AttackElement; tst; sets it to 4 and calls object_setFlag1 with OBJECT_FLAGS_GUARD;
+    PlaySoundEffect 0xA0 right after spawning via sub_80D1BF4(AiAttackParam, TimerOrCycles); timer branch:
+    decrements StepTimer, then object_clearFlag(1) + object_exitAttackState — symmetric teardown of the
+    entry setup; PanelParamFlags2 stored from sub_80E7A88 and freed via sub_80E7AA0 — panel-object create/cleanup
+    pair; loc_80FC434 writes HitElement=0x10 and frees the panel object when AiAttackParam[0] != 0'
+  refs:
+  - bn6f/asm/asm31.s:144535
+  - 0x080005CC PlaySoundEffect
+  - 0x0801A15C object_clearFlag
+  - 0x0801A152 object_setFlag1
+  reproduce: python3 tools/asmcat.py 0x080FC3E2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- Which enemy/attack this belongs to (AttackElement=4 identity and SFX 0xA0 not identified)
+- What sub_80E7A88/sub_80E7AA0 create/clean up on the panel
+- Meaning of AiAttackParam[0] != 0 triggering HitElement=0x10
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80FC3E2 -> ai_guardAttackStep
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FC3E2

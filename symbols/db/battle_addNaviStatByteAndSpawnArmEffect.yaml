@@ -1,0 +1,58 @@
+name: battle_addNaviStatByteAndSpawnArmEffect
+address: '0x08010820'
+kind: function
+status: probable
+summary: Adds an amount to a byte in the acting Navi's battle NaviStats (clamped to 9), then spawns an
+  effect object at an arm-slot offset and plays sound 0x119.
+interface: (r0 = amount to add, r5 = battle object ptr) -> r0 = spawned effect object ptr; updates NaviStats
+  byte 1
+details: 'Masks r0 to 0xFF into r4, reads byte offset 1 of the alliance-side NaviStats via GetBattleNaviStatsByte,
+  adds r4 and clamps the result to a maximum of 9, then stores it back with SetBattleNaviStatsByte. It
+  then reads 12 bytes at object+0x34, calls getBattleArmPositionMaybe_8018810 with NameID, slot 0x20,
+  Alliance and DirectionFlip, sign-extends the returned x (lsl #0x10) and adds it to the first saved word
+  and the returned y (r4 = y<<16) to the third. With these adjusted values and r4=0x31 it calls spawn_t1_0x0_EffectObject
+  and finally plays sound effect 0x119. The clamp at 9 and the add suggest a gauge/charge counter being
+  filled by r0.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl GetBattleNaviStatsByte / add r2, r0, r4 / cmp r2, #0xa; blt / mov r2, #9 / bl SetBattleNaviStatsByte:
+    add-and-clamp-to-9 stat byte at offset 1; ldmia r0! {r1-r3} from r5+0x34 then bl getBattleArmPositionMaybe_8018810
+    with r1=0x20 slot: x/y offsets added into spawn args; mov r4, #0x31 / bl spawn_t1_0x0_EffectObject:
+    spawns battle effect with kind 0x31; mov r0, #0x1a / add r0, #0xff / bl PlaySoundEffect: plays sound
+    0x119 after spawning; r5 fields oBattleObject_Alliance/NameID/DirectionFlip used throughout: operates
+    on a battle object''s acting Navi'
+  refs:
+  - bn6f/asm/asm00_2.s:4034
+  - 0x080136CC GetBattleNaviStatsByte
+  - 0x080005CC PlaySoundEffect
+  - 0x080136B0 SetBattleNaviStatsByte
+  reproduce: python3 tools/asmcat.py 0x08010820
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battles1
+- battles2
+- beastsp
+- story2
+- story5
+- story9
+open_questions:
+- No callers captured, so the gameplay meaning of NaviStats byte 1 (charge/gauge?) and of the argument
+  r0 is unconfirmed
+- The exact spawn-argument layout (what r2 and the 12 bytes at object+0x34 mean for spawn_t1_0x0_EffectObject)
+  is unknown
+- What sound 0x119 and effect kind 0x31 correspond to visually/aurally
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8010820 -> battle_addNaviStatByteAndSpawnArmEffect
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8010820

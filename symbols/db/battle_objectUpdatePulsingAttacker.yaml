@@ -1,0 +1,54 @@
+name: battle_objectUpdatePulsingAttacker
+address: '0x080D2B2C'
+kind: function
+status: probable
+summary: Per-frame handler for a battle attack object that pulses its collision region every 12 frames,
+  shakes the camera while colliding, and destroys itself when its timers or owner expire.
+interface: (r5 = battle object ptr) -> void; writes oBattleObject_CollisionDataPtr->FlagsFromCollision,
+  Timer/Timer2, Param3, ExtraVars+8, CurState; may set CUR_STATE_DESTROY
+details: 'Starts by calling object_removeCollisionData then object_spawnCollisionEffect to pop a hit effect
+  at the last collision point (jittered). If oBattleObject_ExtraVars is non-null and its first pointer
+  does not equal the object itself, the object is finalized instead: collision region cleared, ExtraVars+8
+  zeroed, and CUR_STATE_DESTROY stored into CurStateActionPhaseAndPhaseInitialized. Otherwise, when oCollisionData_FlagsFromCollision
+  is nonzero it clears its collision region and calls camera_initShakeEffect(0, 0xC). Timer2 counts down
+  to destroy; Timer counts down and every time it hits 0 it resets to 12 and re-registers the object in
+  collision region 1 via object_setCollisionRegion, unless Param3 == 1 (a variant with no re-registration).
+  Ends with calls to sub_80D2BC0 and object_presentCollisionData to run the shared collision update.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_removeCollisionData / object_spawnCollisionEffect at function start: teardown then
+    hit-effect at collision point; ldr r0,[r5,#oBattleObject_ExtraVars]; cmp r1,r5; bne loc_80D2B78 —
+    extra-vars pointer must be self or null to stay alive; bl object_clearCollisionRegion + camera_initShakeEffect(0,12)
+    guarded by oCollisionData_FlagsFromCollision != 0; Timer reset to 0xC and bl object_setCollisionRegion
+    with r0=1, skipped when Param3==1: pulsing re-collision; mov r0,#CUR_STATE_DESTROY; str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]
+    — self-destruct path'
+  refs:
+  - bn6f/asm/asm31.s:57516
+  - 0x080D2AB4 sub_80D2AB4
+  - 0x080302A8 camera_initShakeEffect_80302a8
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0801A018 object_presentCollisionData
+  reproduce: python3 tools/asmcat.py 0x080D2B2C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- beastsp
+open_questions:
+- Which in-game attack/effect object this handler belongs to (needs the spawn site that creates the object
+  and sets Timer/Timer2/Param3)
+- Meaning of the ExtraVars pointer-chain check (owner link?) and field ExtraVars+8
+- What sub_80D2BC0 contributes to the update
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D2B2C -> battle_objectUpdatePulsingAttacker
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D2B2C

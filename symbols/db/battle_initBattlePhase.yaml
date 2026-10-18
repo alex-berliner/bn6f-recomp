@@ -1,0 +1,52 @@
+name: battle_initBattlePhase
+address: '0x08009CD0'
+kind: function
+status: probable
+summary: 'Battle sub-phase handler: initializes the battle once (spawn enemies, pause, play battle BGM),
+  then waits and transitions to the next battle state.'
+interface: (r0 = battle state ptr in r5-style global) -> r0 = clobbered; sets oBattleState_SubPhaseInitFlag/StatePhase/Index_01
+  on the battle state
+details: 'On first run (SubPhaseInitFlag==0) it reads the battle-effects bitmask: if bit 0x400 is set
+  it increments State4EventCount, otherwise it copies BattleSettings byte 5 into State4EventCount. It
+  then spawns a type-4 object, spawns the enemy objects from the enemy setup array, sets the paused-battle
+  flag, applies the navi stat table entry, and plays BGM — song 0x15 if effects bit 8 is set, otherwise
+  BattleSettings byte 2, skipped entirely if that value is 0x63. It sets SubPhaseInitFlag=4 to mark init
+  done. On later runs it calls sub_8009D58 once, then polls state word 5c bit 2 (via battle_getStateUnk5c
+  >> 2); when set it dispatches (dispatch_801DA48 with 1), sets request bits in eStruct2035280, and stores
+  4 or 0x24 into oBattleState_Index_01 depending on event flag EVENT_1735, then clears StatePhase and
+  the init flag to end the phase.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'callee battle_SpawnEnemyObjects_8007358 spawns the battle''s enemy objects; callee PauseBattle
+    sets the battle-paused flag on the game state; GetBattleEffects result tested against 0x400 and 8
+    selects counter behavior and BGM id 0x15; SubPhaseInitFlag set to 4 gates a one-time init block, classic
+    state-machine sub-phase pattern; transition out: waits on state word 5c bit 2, then writes 4/0x24
+    (EVENT_1735-dependent) to oBattleState_Index_01 and clears phase fields'
+  refs:
+  - bn6f/asm/asm00_1.s:14985
+  - 0x0802D246 GetBattleEffects
+  - 0x0800A028 PauseBattle
+  - 0x080005D4 PlayMusic
+  reproduce: python3 tools/asmcat.py 0x08009CD0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- What sub_8009D58 does (only run once after init) — likely per-frame or fade setup
+- Meaning of State4EventCount and state word 5c bit 2 being polled
+- What Index_01 values 4 vs 0x24 select in the next battle state
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8009CD0 -> battle_initBattlePhase
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8009CD0

@@ -1,0 +1,52 @@
+name: ai_tryUseChipAttack
+address: '0x0800FC30'
+kind: function
+status: probable
+summary: 'AI-side check-and-fire: validates the object''s state and held chip, then triggers the object''s
+  chip attack and reports chip ID/damage/boost, or 0xFFFF if the attack is not allowed.'
+interface: (r5 = battle object ptr) -> r0 = chip ID (or 0xFFFF on refusal); r1/r2 also loaded with Damage/AttackBoost
+  on success; flags from final ldrh
+details: Queries the object's state via getBattleObjectStateInfo_800EDD0(obj, 0); 0xFFFF and states 0x52/0x53
+  abort with 0xFFFF. Otherwise the state value is used as a chip ID into getChip8021DA8, and bit 0 of
+  chip data byte 9 blocks the attack (also returning 0xFFFF). On the allowed path it takes the object's
+  AI struct at AIDataPtr+0xA0, calls useChipRelated_80127C0(0), bails if it returns byte_800FCD5, then
+  calls object_setAttack2 and sets oAIAttackVars_PwrAtkState = 1. It finishes by loading oAIAttackVars_ChipID/Damage/AttackBoost
+  into r0-r2, which look like intended return values (odd, since they are not consumed before pop — possibly
+  tail-shared code with the next function).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl getBattleObjectStateInfo_800EDD0 then cmp with 0xFFFF / 0x52 / 0x53 all route to 'return
+    0xFFFF' at loc_800FC58; bl getChip8021DA8; ldrb r0,[r0,#9]; tst bit0 — a chip-data flag gates whether
+    the attack proceeds; ldr r7,[r5,#oBattleObject_AIDataPtr]; add r7,#0xA0 targets the oAIAttackVars
+    struct, and PwrAtkState is set to 1; success path calls object_setAttack2 and reads oAIAttackVars_ChipID/Damage/AttackBoost,
+    matching an attack-initiation role; recorded route 'beastsp' with callee summaries (battle-object
+    state, chip DB, attack setter) consistent with enemy AI chip usage
+  refs:
+  - bn6f/asm/asm00_2.s:2223
+  - 0x0800EDD0 getBattleObjectStateInfo_800EDD0
+  - 0x08021AA4 getChip8021DA8
+  - 0x08011688 object_setAttack2
+  reproduce: python3 tools/asmcat.py 0x0800FC30
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- beastsp
+open_questions:
+- Meaning of chip data byte 9 bit 0 (AI-usability flag?) and of states 0x52/0x53
+- What useChipRelated_80127C0 returns and why byte_800FCD5 counts as failure
+- Why r0-r2 are loaded with ChipID/Damage/AttackBoost right before pop — need to see the following function
+  to confirm tail-sharing or actual multi-register return
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_800FC30 -> ai_tryUseChipAttack
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800FC30

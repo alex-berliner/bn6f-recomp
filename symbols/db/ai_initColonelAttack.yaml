@@ -1,0 +1,54 @@
+name: ai_initColonelAttack
+address: '0x081016C8'
+kind: function
+status: probable
+summary: 'Initializes Colonel''s AI attack state: resets per-attack vars, picks a panel-choosing attack
+  (id 12) targeting the player.'
+interface: (r7 = AI attack vars struct, r5 = own BattleObject) -> r0 = 0 via object_setAttack0; sets difficulty
+  tier, init flag, duration, boost, target, panel callback in struct
+details: Stores the AI difficulty tier (from battle_getAiDifficultyTier_800FE36) into oAIAttackVars_AiDifficultyTier
+  and clears oAIAttackVars_InitFlag. Calls sub_810176E with 3 (likely selects attack type 3 in the AI
+  state machine), then sub_8101524/sub_8101538 to fill oAIAttackVars_AttackDuration and oAIAttackVars_AttackBoost2,
+  and installs sub_81038FE as oAIAttackVars_PanelChooseCallback, implying the attack needs panel selection.
+  It XORs oBattleObject_Alliance with 1 and calls battle_findPlayer to store the player-side object as
+  oAIAttackVars_TargetObjectPtr, then issues attack id 0xc (12) via object_setAttack0. Called from sub_81013AA
+  under state guards (cmp 2/3/1) with a random 1-or-2 pick, so it is one of Colonel's randomly chosen
+  attack initializations.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: strb r0,[r7,#oAIAttackVars_InitFlag] / strb tier — writes the oAIAttackVars init block (sub_81016C8
+    start); ldr r0,off_810184C(=sub_81038FE+1); str r0,[r7,#oAIAttackVars_PanelChooseCallback] — registers
+    a panel-choose callback; eor alliance,1; bl battle_findPlayer; str r0,[r7,#oAIAttackVars_TargetObjectPtr]
+    — targets the opposing side's player object; mov r0,#0xc; bl object_setAttack0 — kicks off attack
+    id 12; callers at 0x81013AA/0x810141E guard on AI state (cmp 2/3/1) and use GetPositiveSignedRNG&1+1
+    — random attack selection leading here
+  refs:
+  - bn6f/asm/asm31.s:155367
+  - 0x081013AA sub_81013AA
+  - 0x0810141E sub_81013AA
+  - 0x0800FE36 battle_getAiDifficultyTier_800FE36
+  - 0x080103BC battle_findPlayer
+  - 0x08011680 object_setAttack0
+  reproduce: python3 tools/asmcat.py 0x081016C8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- Which of Colonel's attacks id 0xc is (Screen Divide vs other) — needs the attack table or sub_81038FE
+  behavior
+- Meaning of the value 3 passed to sub_810176E and fields set by sub_8101524/sub_8101538
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_81016C8 -> ai_initColonelAttack
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81016C8

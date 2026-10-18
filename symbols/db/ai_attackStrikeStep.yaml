@@ -1,0 +1,51 @@
+name: ai_attackStrikeStep
+address: '0x080FFC18'
+kind: function
+status: probable
+summary: 'AI attack step: commits the enemy onto its targeted panel (with move animation and flags) and,
+  after a 2-frame timer, arms the attack hit as element 8.'
+interface: (r0 = unused/scratch, r5 = battle object, r7 = oAIAttackVars) -> r0 = clobbered; flags from
+  subs
+details: This is one step of an enemy AI attack state machine keyed off oAIAttackVars_AttackElement. On
+  first entry (element 0) it sets element to 4, plays animation 3, copies FuturePanelX/Y into PanelX/Y,
+  releases the panel reserve, recomputes pixel coordinates and collision panels, clears flag 0x40, and
+  sets the 'currently moving' ObjectFlags1 bit, with StepTimer = 2. On later calls it decrements StepTimer
+  and, when it reaches 0, writes HitElement = 8, which presumably triggers the actual hit/effect on the
+  following step. The r5/r7 registers are inherited from the caller's AI attack context rather than passed
+  explicitly.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb [r7,#oAIAttackVars_AttackElement] / bne loc_80FFC50 — state machine keyed on attack element;
+    strb FuturePanelX/Y -> PanelX/Y + object_removePanelReserve + object_setCoordinatesFromPanels — commits
+    the planned move; object_setFlag1 with bit (1<<OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT) — marks the object
+    as moving; strh #2 -> StepTimer then decrement-until-zero branch — short timed delay; strh #8 -> oAIAttackVars_HitElement
+    at timer expiry — final hit setup'
+  refs:
+  - bn6f/asm/asm31.s:151835
+  - 0x0801A15C object_clearFlag
+  - 0x0801BB46 object_removePanelReserve
+  - 0x0800E29C object_setCoordinatesFromPanels
+  reproduce: python3 tools/asmcat.py 0x080FFC18
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- Which enemy/attack uses this handler and what element 4 / hit element 8 correspond to in game terms
+- Who calls it and how the AIAttackVars struct dispatches between step handlers
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80FFC18 -> ai_attackStrikeStep
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FFC18

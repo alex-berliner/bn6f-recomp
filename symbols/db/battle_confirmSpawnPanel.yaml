@@ -1,0 +1,59 @@
+name: battle_confirmSpawnPanel
+address: '0x08133C9C'
+kind: function
+status: probable
+summary: 'Confirms a panel selection for placing a battle object: cancels if the same panel is re-picked,
+  rejects occupied or blocked spots, otherwise spawns the eStruct records there and advances the handler
+  state.'
+interface: (uses global context r5; r0 clobbered immediately with slot id 4) -> no return value; writes
+  handler state to [r5+0x68] (0, 8, or 0xC) and selection data to [r5+0x1C]/[r5+0x4C]
+details: 'Reads work record 4 of the eStructArr2008450 array via getStructFrom2008450; if it exists and
+  the panel sum [r5+0x20]+[r5+0x24] equals the previously stored target [r5+0x1C], it treats it as a cancel:
+  writes 8 to the eStruct''s status byte, clears bit0 of [r5+0x4C], resets [r5+0x1C] to 0xFFFF, plays
+  SOUND_EXIT_SUBMENU and runs text script 0x21, setting state 0xC. Otherwise it scans the 0xFFFF-terminated
+  word list at [r5+0x5C..0x60]: if the target panel is already listed it runs script 0xE and sets state
+  8 (occupied message). Then sub_81349E8 is polled for a bit-0 flag — if set, it plays SOUND_CANT_JACK_IN
+  and either aborts (state 0, byte [r5+3]=4) or runs script 1 (state 8). If the spot is valid, it spawns
+  eStruct records from the table at byte_8133154 (skipped once bit0 of [r5+0x4C] is set), records the
+  new target in [r5+0x1C], runs battleObject_alignRowOffsetCheckSN3_81353DC, sets bit0 of [r5+0x4C], plays
+  SOUND_SELECT_82 and script 0x19, and sets state 0xC.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sub_8133C9C+4: mov r0,#4 / bl getStructFrom2008450 — slot-4 eStruct used as per-selection work
+    state; sub_8133C9C+0x10: cmp [r5+0x20]+[r5+0x24],[r5+0x1C] then SOUND_EXIT_SUBMENU + script 0x21 —
+    re-selecting the same panel cancels; loc_8133CDA: scans 0xFFFF-terminated words at [r5+0x5C..0x60]
+    for the target sum, hit runs script 0xE — occupied-spot rejection; sub_8133CFC: bl sub_81349E8 / tst
+    r0,#1 → SOUND_CANT_JACK_IN — blocked path with abort (state 0) or message (state 8); sub_8133D28:
+    bl battle_spawnEStructRecordsFromTable_80465A0 with byte_8133154, then alignRowOffsetCheckSN3 + SOUND_SELECT_82
+    + script 0x19, state 0xC — valid placement path'
+  refs:
+  - bn6f/asm/asm36.s:7672
+  - 0x081335B8 sub_81335B8
+  - 0x080005CC PlaySoundEffect
+  - 0x081353DC battleObject_alignRowOffsetCheckSN3_81353DC
+  - 0x080465A0 battle_spawnEStructRecordsFromTable_80465A0
+  reproduce: python3 tools/asmcat.py 0x08133C9C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- beastsp
+open_questions:
+- Exact meaning of the byte at eStruct offset 8 and bit0 of [r5+0x4C] (one-shot vs toggle)
+- What sub_81349E8 polls (input or a flag field) and what [r5+3]=4 selects when the poll returns no secondary
+  value
+- Caller sub_81335B8 is unknown; it would confirm which menu/object this panel picker belongs to (route
+  beastsp suggests a Beast Over/cross placement flow)
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8133C9C -> battle_confirmSpawnPanel
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8133C9C

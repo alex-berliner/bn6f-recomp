@@ -1,0 +1,50 @@
+name: object_beastRoarCutsceneTick
+address: '0x080A5304'
+kind: function
+status: probable
+summary: 'Cutscene object ticker: plays roar sound effects at fixed frames of its looping animation, then
+  on the frame flagged 0x80 sets a story event flag and switches the object to state 0x10.'
+interface: (r7 = object/env struct with event-flag id at +2 halfword; r5 = object state struct with state
+  byte at +8 and timer at +0x24) -> r0 = sprite_update result; no meaningful flags
+details: 'Calls sprite_getFrameParameters and tests the returned attribute byte against 0x80. If set,
+  it reads the halfword event-flag id from [r7,#2], calls SetEventFlag with it, stores 0x10 into the state
+  field [r5,#8], and falls through to sprite_update — the object ends its current phase and moves to a
+  new state. Otherwise it increments a frame counter at [r5,#0x24] and fires one-shot sound effects at
+  three thresholds: sound 0x14C at tick 50, 0xE6 at 74, and 0x99 at 93. The counter is not reset, so each
+  sound plays exactly once per activation. sprite_update runs every call, keeping the object''s animation
+  going. The captured route ''beastsp'' places it in the Cybeast-related cutscene, consistent with roar-like
+  sound IDs and the terminal event-flag set.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'tst r0,#0x80 after sprite_getFrameParameters: attribute-bit frame triggers the completion branch;
+    bl SetEventFlag with ldrh r0,[r7,#2] and strb #0x10,[r5,#8]: completion sets event flag and new object
+    state; cmp r1,#0x32/#0x4a/#0x5d with three distinct PlaySoundEffect calls (0x14C, 0xE6, 0x99): timed
+    one-shot sound cues; counter at [r5,#0x24] incremented and never cleared: each sound fires once per
+    activation; tail bl sprite_update every path: standard per-frame object animation update'
+  refs:
+  - bn6f/asm/asm29.s:700
+  - 0x080005CC PlaySoundEffect
+  - 0x0802F114 SetEventFlag
+  - 0x08002DEA sprite_getFrameParameters
+  reproduce: python3 tools/asmcat.py 0x080A5304
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- beastsp
+open_questions:
+- Exact cutscene this object belongs to (beastsp route only narrows it); which object/state struct r5
+  points to; meaning of state 0x10
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80A5304 -> object_beastRoarCutsceneTick
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A5304

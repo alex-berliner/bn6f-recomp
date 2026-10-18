@@ -1,0 +1,58 @@
+name: menu_gridCursorScreenUpdate
+address: '0x08128800'
+kind: function
+status: probable
+summary: 'Per-frame state handler for a cursor-driven menu screen: handles exit confirmation, horizontal
+  cursor movement with a scroll/animation counter, and launching the selected entry''s text script.'
+interface: (r0 = unused; r5 = screen/menu state struct, r10 = toolkit) -> void; r0 dead on return
+details: The struct (r5) holds a cursor index at 0xD with a backup at 0xE, two coordinate/scroll fields
+  at 0x20 and 0x24 backed up to 0x22/0x26, and an animation/page counter at 0x1E. It first snapshots the
+  previous values, then if counter 0x1E is nonzero — or event-flag bit 8 (chatbox/cutscene eFlags2009F38)
+  is set and B/START held — it exits, using submenu_ConfirmExitAndFade_811FB64 except when the flag forces
+  a direct exit. Otherwise it computes a target 2*(field0x24 + field0x20) (or +1 for the inner variant)
+  and moves the cursor horizontally via menu_moveCursorLeftRight using low-sensitivity held input; when
+  the cursor actually changes it stores it and returns. When the cursor is unchanged, it temporarily halves
+  0x1E, runs menu_adjustCursorOrValue_811F7F8, restores 0x1E, and on change recomputes the target (resetting
+  the cursor to 0 if it overshot) and refreshes via sub_8128A44/sub_8128AB0; on no change, pressing A
+  calls checkTextScriptEnd_8128BF0, which advances the entry's text script and fades out when it ends.
+  Every frame it enqueues the affine OBJ (battleObjectAffineEnqueue_8128B4C) and calls sub_8128B98 before
+  returning.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: '0x8128800-0x8128810: copies 0x24→0x26, 0x20→0x22, 0xD→0xE as previous-cursor backups; 0x812881C-0x812882C:
+    eFlags bit 8 + START/B gates direct exit, else submenu_ConfirmExitAndFade_811FB64 (confirm-exit +
+    fade); 0x8128834-0x8128858: builds target from 2*(0x24)+2*(0x20) and passes counter 0x1E plus held-pad
+    to menu_moveCursorLeftRight_811FA0C; 0x8128866-0x812889A: (counter+1)/1 trick, menu_adjustCursorOrValue_811F7F8
+    with restore, then sub_8128A44/sub_8128AB0 refresh on change; 0x81288A4-0x81288B8: A button triggers
+    checkTextScriptEnd_8128BF0; unconditional battleObjectAffineEnqueue_8128B4C + sub_8128B98 each frame'
+  refs:
+  - bn6f/asm/asm33.s:10993
+  - 0x0811F7EC IsButtonPressed
+  - 0x08128B4C battleObjectAffineEnqueue_8128B4C
+  - 0x08045F3C chatbox_mask_eFlags2009F38
+  reproduce: python3 tools/asmcat.py 0x08128800
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- menus3
+open_questions:
+- Exact meaning of fields 0x20/0x24/0x1E (scroll offsets vs. page indices) needs sub_8128A44/sub_8128AB0
+  and the render path
+- Which in-game screen this is (route 'menus3' only) — callers and the sub_8128B98 callee would identify
+  it
+- Argument conventions for menu_moveCursorLeftRight_811FA0C (r1 max index of 2 vs 1) and menu_adjustCursorOrValue_811F7F8
+  (r1=4 mask, r2/r3=0)
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8128800 -> menu_gridCursorScreenUpdate
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8128800

@@ -1,0 +1,54 @@
+name: ai_woodAttackStrikeStep
+address: '0x080F961A'
+kind: function
+status: probable
+summary: 'AI attack state handler for a wood-element (element 4) boss attack: charges with a wind-up anim
+  and per-difficulty sub-step count, then on timeout strikes — sound effect, effect object at the boss''s
+  panel, and sets the hit element.'
+interface: (r5 = battle object, r7 = oAIAttackVars state) -> r0 = 0/1 whether still running; writes oAIAttackVars
+  fields, oBattleObject_CurAnim, spawns an effect object
+details: 'On entry with oAIAttackVars_AttackElement == 0 it ''begins'' the attack: sets AttackElement
+  = 4 (wood), plays anim 0xf (wind-up), copies AttackBoost2 into StepTimer as a delay, derives a sub-step
+  count via SWI Div of 0x18/0x28 << 17 by a word from byte_80F9690 indexed by AiDifficultyTier*4 (giving
+  0x18000/0x20000/0x28000/0x30000 divisors, i.e. easier tiers get more sub-steps), stores it in SubStepIndex,
+  and calls sub_80F9A18 with TimerOrCycles. On later calls (element set) it decrements StepTimer; when
+  it expires it sets counter time 0xc via object_setCounterTime, plays anim 0x10, plays sound effect 0xb8,
+  and spawns a type-1/0 effect object at object_getCoordinatesForPanels(PanelX, PanelY), passing r4 =
+  (object_getFlip() << 8) + 0x41 (x offset 0x41 adjusted for facing) and r3 = 0x20<<16 to the spawn wrapper.
+  Finally sets oAIAttackVars_HitElement = 0xc.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb/strb on oAIAttackVars_AttackElement: bne skip vs mov r0,#4 / strb — first-call attack
+    setup, element 4; ldr r2, off_80F968C + ldr r1,[r2,r1] + svc 6: divides a tier-scaled value by byte_80F9690[AiDifficultyTier]
+    into SubStepIndex; bl object_setCounterTime(0xc) + anim 0x10 + PlaySoundEffect(0xb8): the strike moment
+    after StepTimer hits 0; object_getFlip + object_getCoordinatesForPanels(PanelX,PanelY) + spawn_t1_0x0_EffectObject
+    with r4=flip<<8|0x41: spawns the attack effect on the boss''s own panel, mirrored by facing; mov r0,#0xc;
+    strh r0,[r7,#oAIAttackVars_HitElement]: marks the resulting hit''s element'
+  refs:
+  - bn6f/asm/asm31.s:138795
+  - 0x080005CC PlaySoundEffect
+  - 0x0800E276 object_getCoordinatesForPanels
+  - 0x0800E456 object_getFlip
+  reproduce: python3 tools/asmcat.py 0x080F961A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- Which boss/attack this belongs to (only 'battlesweep' route context known) and what effect type 0 with
+  r4=flip<<8|0x41 renders
+- Exact meaning of TimerOrCycles/SubStepIndex division result in sub_80F9A18 (probably number of panels/sub-strikes)
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F961A -> ai_woodAttackStrikeStep
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F961A

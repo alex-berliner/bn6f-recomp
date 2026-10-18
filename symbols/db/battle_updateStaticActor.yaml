@@ -1,0 +1,56 @@
+name: battle_updateStaticActor
+address: '0x080D774C'
+kind: function
+status: probable
+summary: 'Per-frame update handler for the static-actor battle object: runs its action state machine,
+  keeps HP at a 3001 floor, and drains HP toward MaxHP minus a masked counter when a mode flag is set.'
+interface: (r5 = battle object pointer, globals/flags set by caller) -> r0 = final HP value written to
+  ExtraVars+0xC when drain active; no meaningful return otherwise
+details: 'Runs each frame as the CUR_STATE_UPDATE step after battleObject_initStaticActor_80D761C. It
+  ORs bit 0x2 into oObjectHeader_Flags, then calls object_finishCollisionHitReaction_801AD12, object_spawnCollisionEffect,
+  and sub_800F672 before dispatching the object''s action-state machine via battleObject_runCurActionState_801B878
+  with the handler table at off_80D7798. It clamps oBattleObject_HP: if HP <= 0xBB9 (3001), HP is set
+  to 3001, so this object effectively cannot drop below that value. If oBattleObject_ExtraVars+4 is nonzero,
+  HP is recomputed as MaxHP - (Damage & 0xFFF) — the Damage field is repurposed as a drain amount — and
+  also stored into ExtraVars+0xC. Finally it calls object_updateSprite and object_presentCollisionData.
+  The constants 0x8000/0x7000/0xFA0 nearby belong to the sibling handlers (e.g. sub_80D77D4/sub_80D787C),
+  not this function.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'caller battleObject_initStaticActor_80D761C sets up sprite/HP/position and transitions to the
+    update state that this function implements; first instructions set oObjectHeader_Flags |= 0x2 before
+    the per-frame teardown/present calls; HP floor: cmp HP, 0xBB9 / bgt skip / strh 0xBB9 -> HP refilled
+    to 3001; drain: when ExtraVars+4 != 0, HP = MaxHP - (Damage & 0xFFF), also written to ExtraVars+0xC;
+    jump table off_80D7798 passed to battleObject_runCurActionState_801B878 is object-local, showing this
+    is a per-object state dispatch'
+  refs:
+  - bn6f/asm/asm31.s:67580
+  - 0x080D761C battleObject_initStaticActor_80D761C
+  - 0x0801B878 battleObject_runCurActionState_801B878
+  - 0x0801AD12 object_finishCollisionHitReaction_801AD12
+  - 0x0801A018 object_presentCollisionData
+  reproduce: python3 tools/asmcat.py 0x080D774C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- chips
+open_questions:
+- which boss/actor this static actor is (the 3001 HP floor and drain mechanic suggest a specific boss,
+  but the identity isn't in this code)
+- what bit 0x2 of oObjectHeader_Flags means exactly
+- what sub_80D7A2A and the sibling handlers sub_80D77D4/sub_80D787C do, which would clarify the drain
+  state machine
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D774C -> battle_updateStaticActor
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D774C

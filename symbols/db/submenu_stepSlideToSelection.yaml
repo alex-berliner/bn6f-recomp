@@ -1,0 +1,55 @@
+name: submenu_stepSlideToSelection
+address: '0x08126EC0'
+kind: function
+status: probable
+summary: 'Per-frame update of a 3-choice menu: slides an animated cursor/offset by ±2 toward the selected
+  entry''s target value, and when it lands, performs the chosen action and advances the state machine.'
+interface: '(r5 = menu-state struct: +0x0D signed anim offset, +0x10 selection, +0x11 prev/target selection,
+  +0x02 state) -> r0 = 0; flags from final compares'
+details: Reads the signed byte at r5+0x0D and steps it +2 or -2 depending on whether r5+0x11 is >= or
+  < r5+0x10, i.e. animating a value toward the offset of the currently selected entry. The target comes
+  from a 3-entry word table byte_8126F34 = {0, -0x20, -0x40} indexed by the selection byte r5+0x10, suggesting
+  three entries spaced 32px apart. While the value differs from the target, nothing else happens (except
+  two queued actions via call_sub_3005EBA). On equality it clears event-flag bit 0x40, then either calls
+  chatbox_8040818 (selection == 2) or, if eFlags bit 0x80 is clear, calls petNaviTryGiveElementFolder(0)
+  and passes its result to sub_81278C8. Finally it writes state byte r5+0x02 = 4 and always queues two
+  calls to call_sub_3005EBA with (0,2,2/3,0,0x20,0xD/0xA), which look like queued UI/sound actions for
+  the menu transition.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrsb r1,[r5,#0xD] then add/sub #2 based on cmp of [r5+0x11] vs [r5+0x10] and strb back: per-frame
+    step toward target (8126EC0-8126ED4); ldr r0,[table + r2*4] with table {0,-0x20,-0x40}; cmp r0,r1
+    / bne: animation ends when value matches selected entry''s offset (8126ED8-8126EE8); on completion:
+    chatbox_clear_eFlags2009F38(0x40), branch on [r5+0x10]==2 -> chatbox_8040818, else mask flag 0x80
+    -> petNaviTryGiveElementFolder(0) and sub_81278C8(result) (8126EEA-8126F08); mov r0,#4; strb r0,[r5,#2]
+    after the action: advances the owning menu''s state byte (8126F0A); two call_sub_3005EBA(0,2,2/3,0,0x20,0xD/0xA)
+    at the end, differing only in r2/r5: queued per-selection action pair (8126F0E-8126F2E)'
+  refs:
+  - bn6f/asm/asm33.s:7821
+  - 0x08045F2C chatbox_clear_eFlags2009F38
+  - 0x08045F3C chatbox_mask_eFlags2009F38
+  - 0x08120D10 petNaviTryGiveElementFolder_8120D10
+  reproduce: python3 tools/asmcat.py 0x08126EC0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- menus3
+- story2
+open_questions:
+- what call_sub_3005EBA does (the two queued actions may be sfx or layer updates, affecting naming)
+- what sub_81278C8 does with the folder-grant result and what the menu visually is
+- what struct r5 points to and which caller owns it, to confirm the menu's identity
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8126EC0 -> submenu_stepSlideToSelection
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8126EC0

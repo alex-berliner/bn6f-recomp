@@ -1,0 +1,52 @@
+name: ai_updateStepAttack
+address: '0x081073A8'
+kind: function
+status: probable
+summary: AI attack-state handler that dashes the object onto its reserved target panel and waits out a
+  13-frame step before ending the attack.
+interface: (r0 = object entry? read via r5/r7 AI/battle object structs) -> r0 = destroyed; updates ObjectFlags1,
+  panel coords, animation, StepTimer
+details: 'First call: writes AttackElement=4 into the AI vars (r7), sets CurAnim=3 on the battle object
+  (r5), then calls object_removePanelReserve for the current panel and again after copying FuturePanelX/Y
+  into PanelX/Y — committing the planned lunge destination. It then syncs pixel coords via object_setCoordinatesFromPanels
+  and updates the collision record/facing via object_updateCollisionPanels, clears ObjectFlags bit 0x40,
+  sets the CURRENTLY_MOVING_1 flag, and arms StepTimer=0xD. On later calls it only decrements StepTimer
+  and, at zero, calls object_exitAttackState to return the AI to its idle/decision state. No element is
+  assigned, so the dash deals untyped contact damage if it hits.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb AttackElement/tst+bne: branches to timer-tick path if attack already started, so first
+    entry is the dash setup; future-panel copy into PanelX/Y plus two object_removePanelReserve calls
+    commits the lunge movement; object_setFlag1 with CURRENTLY_MOVING_1_BIT marks the object as in-motion
+    during the step; StepTimer=0xD and decrement-to-zero ending in object_exitAttackState is the standard
+    attack-duration wait pattern; recorded ''battlesweep'' route: only AI-controlled enemy attack steps
+    invoke this'
+  refs:
+  - bn6f/asm/asm31.s:167391
+  - 0x0801A15C object_clearFlag
+  - 0x0801BB46 object_removePanelReserve
+  - 0x0800E29C object_setCoordinatesFromPanels
+  reproduce: python3 tools/asmcat.py 0x081073A8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- exact identity of which enemy/AI attack uses this step (no known caller links it to a specific Navi
+  or virus)
+- meaning of AttackElement=4 and CurAnim=3 constants needs confirmation from anim tables
+- what ObjectFlags bit 0x40 represents
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_81073A8 -> ai_updateStepAttack
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81073A8

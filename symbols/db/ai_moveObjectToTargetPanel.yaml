@@ -1,0 +1,55 @@
+name: ai_moveObjectToTargetPanel
+address: '0x080FB650'
+kind: function
+status: probable
+summary: 'AI/behavior state handler that instantly moves a battle object onto its stored target panel:
+  it commits the target coordinates, updates collision/panel state, flags it as currently moving, waits
+  10 frames, then advances the state machine to state 8.'
+interface: '(r5 = battle object, r7 = behavior/state struct: [r7,#1] phase byte, [r7,#0x10] timer halfword,
+  [r7,#0] next-state halfword) -> void'
+details: On the first entry (phase byte at [r7,#1] == 0) it sets the phase to 4 and writes 3 to [r5,#0x10],
+  then copies the target panel bytes at [r5,#0x14]/[#0x15] into the current panel slots [r5,#0x12]/[#0x13].
+  It calls object_removePanelReserve to free the object's reserved panel, recomputes pixel coordinates
+  from the new panel coords, and syncs the collision record via object_updateCollisionPanels. It clears
+  ObjectFlags1 bit 0x40 (likely an in-progress-move/reserve flag) and sets the 1<<OBJECT_FLAGS_CURRENTLY_MOVING_1
+  bit, then stores a 10-frame timer at [r7,#0x10]. On later entries it decrements the timer and, when
+  it reaches zero, writes 8 into [r7,#0], the next state of the state machine. The copy of target panels
+  into current panels suggests this is a teleport-style or scripted repositioning rather than a step-by-step
+  move.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'loc start: reads [r7,#1] as phase; nonzero path is a countdown that writes next state 8 to
+    [r7,#0]; copies [r5,#0x14]/[#0x15] into [r5,#0x12]/[#0x13] before object_setCoordinatesFromPanels,
+    i.e. current panel := target panel; object_removePanelReserve + object_updateCollisionPanels called
+    with r5 object before flags are changed; clears flag 0x40 then sets 1<<OBJECT_FLAGS_CURRENTLY_MOVING_1
+    via object_setFlag1, and arms a 10-frame timer at [r7,#0x10]'
+  refs:
+  - bn6f/asm/asm31.s:142829
+  - 0x0801A15C object_clearFlag
+  - 0x0801BB46 object_removePanelReserve
+  - 0x0800E29C object_setCoordinatesFromPanels
+  reproduce: python3 tools/asmcat.py 0x080FB650
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+- chips
+open_questions:
+- No callers known, so the exact owner of the r7 state struct (AI script state vs generic behavior block)
+  and what state 8 means downstream is unconfirmed
+- The meaning of the value 3 written to [r5,#0x10] and of ObjectFlags1 bit 0x40 is not shown by these
+  callees
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80FB650 -> ai_moveObjectToTargetPanel
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FB650

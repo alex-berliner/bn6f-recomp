@@ -1,0 +1,50 @@
+name: sprite_initBeastSp
+address: '0x080A92E0'
+kind: function
+status: probable
+summary: 'Initializes the hard-coded BeastSP (Beast Out) sprite state: loads a fixed sprite resource,
+  applies animation/shadow/priority/palette settings, and resets animation counters.'
+interface: (implicit r4 = object/context, r5 = sprite state struct, r6 = object base) -> void; sprite
+  slot byte [r5]=3, animation, priority, palette and counters configured
+details: Writes 3 to byte 0 of the struct at r5 (sprite slot/flags), then calls sprite_load with hard-coded
+  arguments 0x80, 0x1c, 0x6c (sprite resource ids). It then copies the animation index from [r5+4] into
+  sprite_setAnimation, loads the animation data, disables the shadow, sets OAM priority from [r5+5], and
+  takes the palette index from [r6+0x1c] of the object. Finally it zeroes [r5+6], [r5+7] and the word
+  at [r5+0x24] (frame/animation counters and state), stores 4 at [r5+8] (current state/step), and tail-calls
+  sub_80A931C to continue the setup. Everything runs through the shared sprite helpers, which operate
+  on the object via the preserved registers rather than arguments.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sub_80A92E0+6: strb 3,[r5] then sprite_load(0x80,0x1c,0x6c) with fixed resource ids; ldrb r0,[r5,#4]
+    -> sprite_setAnimation and ldrb r0,[r5,#5] -> sprite_setPriority match the known helper semantics;
+    ldrb r0,[r6,#0x1c] -> sprite_setPalette pulls palette from the object struct; zeroing [r5+6],[r5+7],[r5+0x24]
+    and setting [r5+8]=4 is standard animation-state reset before sub_80A931C; recorded route ''beastsp''
+    plus the fixed 0x80 resource points at the Beast Out SP transformation sprite'
+  refs:
+  - bn6f/asm/asm29.s:8350
+  - 0x080026E4 sprite_load
+  - 0x080026A4 sprite_loadAnimationData
+  - 0x08002F90 sprite_noShadow
+  reproduce: python3 tools/asmcat.py 0x080A92E0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- beastsp
+open_questions:
+- What sub_80A931C does (likely per-frame animation/state step for this sprite)
+- Exact meaning of the sprite_load arguments 0x80/0x1c/0x6c (file id vs. animation/palette ids)
+- Which caller fills r4-r7 and how this struct is shared with other beast-out variants
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80A92E0 -> sprite_initBeastSp
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A92E0

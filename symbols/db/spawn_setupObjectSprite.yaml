@@ -1,0 +1,50 @@
+name: spawn_setupObjectSprite
+address: '0x080C8E2C'
+kind: function
+status: probable
+summary: 'One-time setup of a battle object''s sprite: loads sprite 0x1b, strips the shadow, resets animation/palette/flip,
+  then hands the object to its update state.'
+interface: (r5 = battle object header, no register args) -> r0 = garbage; writes oBattleObject_CurStateActionPhaseAndPhaseInitialized
+  = CUR_STATE_UPDATE
+details: Uses the global current-object pointer in r5. First recomputes pixel X/Y from panel coordinates
+  and zeroes oBattleObject_Z16, then calls sprite_load with (0x80, 0x10, 0x1b) and sprite_noShadow. It
+  ORs bit 1 into oObjectHeader_Flags, zeroes CurAnim and CurAnimCopy, and calls sprite_setAnimation(0),
+  sprite_loadAnimationData, sprite_setPalette(0), and finally sprite_setFlip with the object's effective
+  facing from object_getFlip. It terminates by storing CUR_STATE_UPDATE into the state/phase field, so
+  this is a spawn-time initializer, not per-frame logic. The constants 0x80/0x10/0x1b passed to sprite_load
+  are not identified here.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_setCoordinatesFromPanels; strh r0,[r5,#oBattleObject_Z16] — positions a fresh battle
+    object; mov r0,#0x80 / r1,#0x10 / r2,#0x1b; bl sprite_load followed by bl sprite_noShadow — assigns
+    a specific shadowless sprite; ldrb r0,[r5,#oObjectHeader_Flags]; orr #2 — sets a header flag before
+    animation setup; sprite_setAnimation(0), sprite_loadAnimationData, sprite_setPalette(0), sprite_setFlip(object_getFlip())
+    — full default sprite state; str CUR_STATE_UPDATE,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]
+    — transitions the object to its update state'
+  refs:
+  - bn6f/asm/asm31.s:36532
+  - 0x0800E456 object_getFlip
+  - 0x0800E29C object_setCoordinatesFromPanels
+  - 0x080026E4 sprite_load
+  reproduce: python3 tools/asmcat.py 0x080C8E2C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- No callers are known, so which entity spawns this object (and what sprite ID 0x1b depicts) is unknown
+- Meaning of the bit 1 set in oObjectHeader_Flags and the 0x80/0x10 arguments to sprite_load
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80C8E2C -> spawn_setupObjectSprite
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C8E2C

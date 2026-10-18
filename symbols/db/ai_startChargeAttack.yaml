@@ -1,0 +1,53 @@
+name: ai_startChargeAttack
+address: '0x0810AAE6'
+kind: function
+status: probable
+summary: 'AI attack-script step that begins a standing (non-sliding) attack: reserves the enemy''s own
+  panel, locks it in place, and sets up per-version damage/animation for attack 0xA.'
+interface: (r4 = battle object base, r5 = object struct, r6 = AI state struct, r7 = AI attack vars) ->
+  r0 = 0; writes oAIState_ScriptId = 0; flags from object_canMove test
+details: If object_canMove says the object is blocked, the function does nothing but clear oAIState_ScriptId
+  to 0. Otherwise it sets oAIAttackVars_AttackDuration = 0x30 and loads Damage and ExtraDamage from two
+  byte tables (byte_810AA20, byte_810AA28) indexed by oAIData_Version, so damage differs per game version.
+  It zeroes the byte at object+0x68, calls object_reservePanel on the object's own PanelX/PanelY, and
+  picks CurAnim from a word table (byte_810AB38, values 1 or 2) indexed by the halfword at object+0x7C.
+  It then sets oAIAttackVars_StepTimer = 0x14, ExtraVars = 1, ORs OBJECT_FLAGS_CANNOT_SLIDE into the object
+  flags, and registers attack id 0xA via object_setAttack0. Reserving its own panel plus CANNOT_SLIDE
+  suggests a stationary charge/stand-and-fire attack that runs for 0x30 frames with 0x14-frame substeps.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_canMove / beq loc_810AB2E: entire setup is skipped when the object cannot act; ldrb
+    r1,[r4,#oAIData_Version_16] then ldrb from byte_810AA20/byte_810AA28: Damage and ExtraDamage are version-indexed
+    tables; ldrb PanelX/PanelY then bl object_reservePanel with OBJECT_FLAGS_CANNOT_SLIDE via object_setFlag1:
+    claims its own panel and forbids sliding; strh #0x30 into oAIAttackVars_AttackDuration, #0x14 into
+    oAIAttackVars_StepTimer, mov #1 into oBattleObject_ExtraVars: multi-frame attack state; mov r0,#0xa;
+    bl object_setAttack0 then strb #0 to oAIState_ScriptId: registers attack 0xA and ends the AI script
+    step'
+  refs:
+  - bn6f/asm/asm31.s:174313
+  - 0x0800E5E2 object_canMove
+  - 0x0801BB1C object_reservePanel
+  - 0x0801A152 object_setFlag1
+  reproduce: python3 tools/asmcat.py 0x0810AAE6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- No known caller, so which boss/enemy AI script invokes this step and in what attack sequence is unconfirmed
+- What object_setAttack0(r0=0xA) specifically configures (attack id 0xA's behavior) is not visible here
+- What the halfword at object+0x7C (animation index source) and the byte at object+0x68 represent is unknown
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810AAE6 -> ai_startChargeAttack
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810AAE6

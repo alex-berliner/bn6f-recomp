@@ -1,0 +1,51 @@
+name: ai_attackFinishChargeStartDash
+address: '0x0810B270'
+kind: function
+status: probable
+summary: 'Ends an AI attack''s charge-up phase: commits the target panel, then starts the attack dash
+  toward it.'
+interface: (r7 = AI attack vars struct, r5 = battle object) -> r0 = 0x10 stored to HitElement; no return
+  value
+details: Called once per frame during an attack's charge phase; it decrements oAIAttackVars_ChargeCycles
+  and returns early while nonzero. When the counter hits zero it calls sub_810B21C, copies oBattleObject_FuturePanelX/Y
+  into PanelX/Y, releases the panel reservation via object_removePanelReserve, recomputes pixel coordinates
+  and collision/facing via object_setCoordinatesFromPanels and object_updateCollisionPanels, resets the
+  object's current animation to 0, clears ObjectFlags1 bit 0x40, and sets the OBJECT_FLAGS_CURRENTLY_MOVING_1
+  bit. It then loads oAIAttackVars_StepTimer from AttackDuration (so the dash lasts the attack duration)
+  and writes HitElement = 0x10.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrh/strh on oAIAttackVars_ChargeCycles with bne early-exit: runs until the charge count reaches
+    zero (0x810B274-0x810B27A); FuturePanelX/Y copied to PanelX/Y followed by object_removePanelReserve
+    and object_setCoordinatesFromPanels: commits the intended move target (0x810B27E-0x810B290); object_setFlag1
+    with 1<<OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT and StepTimer := AttackDuration: initiates a timed move
+    step (0x810B29A-0x810B2A6); Callee set (object panel/flag helpers) matches a battle-object attack-move
+    transition, routed by the battlesweep AI attack path'
+  refs:
+  - bn6f/asm/asm31.s:175271
+  - 0x0801A15C object_clearFlag
+  - 0x0801BB46 object_removePanelReserve
+  - 0x0800E29C object_setCoordinatesFromPanels
+  reproduce: python3 tools/asmcat.py 0x0810B270
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- What sub_810B21C does (likely selects the dash target / future panel), and which attack or enemy uses
+  this routine
+- Exact meaning of HitElement value 0x10 in oAIAttackVars
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810B270 -> ai_attackFinishChargeStartDash
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810B270

@@ -1,0 +1,50 @@
+name: battle_initSprite
+address: '0x080D58D8'
+kind: function
+status: probable
+summary: Init-phase handler that recomputes a battle object's pixel position from its panels and (re)loads
+  its sprite, animation, palette and facing before entering the UPDATE phase.
+interface: (r5 = battle object) -> void; sets oBattleObject state word to CUR_STATE_UPDATE
+details: Operating on the battle object in r5, it first refreshes pixel X/Y from the panel grid and zeroes
+  the Z (height) field. It then offsets X by frontDirection*0x12 pixels, so the sprite is shifted a fixed
+  distance toward the side the object faces. It loads sprite resource 0x80 with arguments (0x80, 8, 0xa),
+  marks it shadowless, sets the object header flags bit 0x2, selects animation 0x19 (written to both CurAnim
+  and CurAnimCopy), loads the animation data, sets palette 0, and applies the object's flip to the sprite.
+  Finally it advances the object's state word to the update phase, so this is an init/enter handler for
+  a state rather than a per-frame update.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_setCoordinatesFromPanels then strh r0,[r5,#oBattleObject_Z16] zeroes height before
+    positioning; mul r0,r1 with 0x12 and add to oBattleObject_X offsets the sprite by facing direction;
+    bl sprite_load with (0x80,8,0xa) followed by sprite_noShadow, sprite_setAnimation(0x19), sprite_setPalette(0),
+    sprite_setFlip; str CUR_STATE_UPDATE to oBattleObject_CurStateActionPhaseAndPhaseInitialized marks
+    this as a state-init handler
+  refs:
+  - bn6f/asm/asm31.s:63601
+  - 0x0800E456 object_getFlip
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800E29C object_setCoordinatesFromPanels
+  reproduce: python3 tools/asmcat.py 0x080D58D8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+- chips
+open_questions:
+- No known callers, so which object/state (sprite id 0x80, animation 0x19) this belongs to — e.g. a chip
+  effect or boss spawn — is unconfirmed
+- Meaning of sprite_load's second/third arguments (8, 0xa) and of header flags bit 0x2
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D58D8 -> battle_initSprite
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D58D8

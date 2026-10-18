@@ -1,0 +1,52 @@
+name: sprite_reinitObjectDefaults
+address: '0x080E3824'
+kind: function
+status: probable
+summary: Re-initializes a battle object's sprite to its default resources and returns it to normal state-update
+  processing.
+interface: (r5 = battle object pointer, no register args) -> r0 = CUR_STATE_UPDATE constant stored to
+  object state; no return value used
+details: Operating on the object in r5, it recomputes pixel coordinates from panel position, zeroes the
+  Z/height halfword, loads sprite resource (0x80, 0x10, 0x1f) plus its animation data, and clears the
+  shadow flag. It then sets object flag bit 2, resets current animation (and its copy) to 0, re-applies
+  palette 0, and re-applies the object's facing via object_getFlip/sprite_setFlip. Finally it writes the
+  CUR_STATE_UPDATE constant into oBattleObject_CurStateActionPhaseAndPhaseInitialized, handing the object
+  back to the normal per-frame update path. This reads as the 'restore default appearance/state' step,
+  e.g. after a temporary form or transform ends.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: calls sprite_load(0x80,0x10,0x1f) and sprite_loadAnimationData on the r5 object, like a fresh
+    sprite setup; strh r0,#0 -> oBattleObject_Z16 and strb 0 -> CurAnim/CurAnimCopy reset animation and
+    height state; sets oObjectHeader_Flags bit 2 and calls sprite_noShadow, restoring standard visibility
+    flags; object_getFlip + sprite_setPalette(0) + sprite_setFlip re-sync rendering to the object's alliance
+    side; final store of CUR_STATE_UPDATE into the state/phase word resumes normal object updating
+  refs:
+  - bn6f/asm/asm31.s:93253
+  - 0x0800E456 object_getFlip
+  - 0x0800E29C object_setCoordinatesFromPanels
+  - 0x080026E4 sprite_load
+  reproduce: python3 tools/asmcat.py 0x080E3824
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- which callers invoke this (none captured) and whether it specifically reverts a transform/Beast-Out
+  form or is a generic sprite reset
+- meaning of the sprite_load arguments 0x80/0x10/0x1f (resource id vs. header fields)
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80E3824 -> sprite_reinitObjectDefaults
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E3824

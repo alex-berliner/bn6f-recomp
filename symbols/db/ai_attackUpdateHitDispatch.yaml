@@ -1,0 +1,50 @@
+name: ai_attackUpdateHitDispatch
+address: '0x0810B878'
+kind: function
+status: probable
+summary: 'Per-frame AI attack-state update: on hit, plays reaction animation and dispatches to an element-specific
+  handler via jump table.'
+interface: (r0 = battle object, r5 = object, r7 = object's AIAttackVars) -> r0 = 0/1 battle-over flag
+  from battle_isBattleOver; no meaningful return
+details: Runs each frame while an AI object is in its attack state. If the battle is over it returns immediately.
+  If the byte at object+0x7C is set, it clears that byte, clears ObjectFlags1 bit 0x40, and calls object_exitAttackState
+  to end the attack. Otherwise, if ObjectFlags1 has any of bits 0xA000 set (hit markers) and oAIAttackVars_HitElement
+  != 8, it calls sub_80D9284 and sub_810BB64 (likely hit effect/spawn helpers), sets CurAnim=1, stores
+  HitElement=8, clears flag 0x40 and zeroes AttackElement. Finally it dispatches through off_810B8DC indexed
+  by HitElement to one of four handlers, the last of which is genericAI_exitAttackStateAffterDelay_81097B4.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl battle_isBattleOver + tst/bne at top: runs only while battle is active; byte r5+0x7C branch
+    clears 0x40 flag and calls object_exitAttackState: a one-shot abort/finish path; tst r0, 0xA000 against
+    object_getFlag and HitElement!=8 guard the hit-reaction block (sub_80D9284, sub_810BB64, CurAnim=1);
+    off_810B8DC table indexed by oAIAttackVars_HitElement dispatches to 4 handlers, ending in genericAI_exitAttackStateAffterDelay_81097B4;
+    clearing 0x40 and resetting AttackElement right before dispatch keeps hit state from retriggering'
+  refs:
+  - bn6f/asm/asm31.s:175948
+  - 0x0800A18E battle_isBattleOver
+  - 0x0801A15C object_clearFlag
+  - 0x0801A166 object_getFlag
+  reproduce: python3 tools/asmcat.py 0x0810B878
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- No known callers, so the exact attack/state this belongs to (which boss or enemy AI) is unconfirmed
+- What sub_80D9284 and sub_810BB64 do (hit effect vs panel/obj spawn) is unknown
+- Meaning of ObjectFlags1 bits 0xA000 and the HitElement==8 sentinel (8 = 'none' or a specific element?)
+  not verified
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810B878 -> ai_attackUpdateHitDispatch
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810B878

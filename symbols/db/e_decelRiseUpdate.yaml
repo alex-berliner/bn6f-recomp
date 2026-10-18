@@ -1,0 +1,55 @@
+name: e_decelRiseUpdate
+address: '0x080A9E5E'
+kind: function
+status: probable
+summary: Per-frame update that moves an object (likely the Beast-Out/BeastSP sprite) with a decelerating
+  motion for 30 frames, then resets its animation, restores its saved position, plays SFX 0x1AD and sets
+  a state byte.
+interface: (r5 = object/entity struct, no arg registers) -> r0 = void; sets state byte [r5+9] = 0x10 when
+  the 30-frame motion completes
+details: Each call adds the velocity at [r5+0x28] to the position field [r5+0x14] and subtracts an acceleration
+  at [r5+0x2c] from the velocity, i.e. a decelerating (or easing-out) motion, probably along the screen-z/height
+  axis since 0x0c/0x10/0x14 look like an x/y/z triple. A frame counter at [r5+0x24] is incremented each
+  call; while it is <= 0x1e the function returns, so the motion lasts 30 frames. On the final frame it
+  resets the counter, calls sprite_setFlip from byte [r5+5], sprite_setAnimation(5), sprite_loadAnimationData
+  and sprite_noShadow, calls sub_809C940, then copies the saved triple at [r5+0x30/0x34/0x38] back into
+  [r5+0x0c/0x10/0x14], restoring the original coordinates. Unless byte [r5+4] is nonzero (a mute/variant
+  flag), it plays sound effect 0x1AD via PlaySoundEffect. Finally it writes 0x10 into byte [r5+9], seemingly
+  advancing the object's state machine, which would be set up by whatever spawned this sequence.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'pos += vel; vel -= acc on fields 0x14/0x28/0x2c, and counter 0x24 counts to 0x1e then resets
+    (30-frame decelerating motion); after the motion: sprite_setFlip([r5+5]), sprite_setAnimation(5),
+    sprite_loadAnimationData, sprite_noShadow; saved coords [r5+0x30/0x34/0x38] are copied back to [r5+0xc/0x10/0x14],
+    restoring the object''s original position; PlaySoundEffect(0x1AD) is skipped when byte [r5+4] != 0,
+    then [r5+9] = 0x10 advances a state byte; recorded route ''beastsp'' is the only known execution context,
+    consistent with a Beast-Out/BeastSP cinematic object'
+  refs:
+  - bn6f/asm/asm29.s:9794
+  - 0x080005CC PlaySoundEffect
+  - 0x080026A4 sprite_loadAnimationData
+  - 0x08002F90 sprite_noShadow
+  reproduce: python3 tools/asmcat.py 0x080A9E5E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- beastsp
+open_questions:
+- No caller is known, so what spawns this object and sets up fields 0x28/0x2c/0x30-0x38 is unknown
+- Which coordinate 0x14 is (x/y/z) and the exact meaning of state byte 0x10 await the struct layout and
+  sub_809C940's role
+- Whether SFX 0x1AD is a beast-transformation roar could confirm the beastsp connection
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80A9E5E -> e_decelRiseUpdate
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A9E5E

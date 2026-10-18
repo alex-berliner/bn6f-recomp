@@ -1,0 +1,56 @@
+name: ai_attackTryClaimTargetPanel
+address: '0x080F7F1E'
+kind: function
+status: probable
+summary: 'AI attack step: if the object can act and its target panel matches required panel flags, reserves
+  that panel and locks itself in place, otherwise falls through to a timed fallback state.'
+interface: (r7 = AI attack vars struct, r5 = owner battle object) -> r0 = clobbered, no meaningful return;
+  sets oAIAttackVars fields for the next attack step
+details: 'First calls object_canMove and aborts to the fallback path if the object is blocked. It loads
+  the target panel X/Y from oAIAttackVars_TargetPanelX/Y and calls object_checkPanelParameters with masks
+  from off_80F7F70: the panel must have flag 0x10 (dword_80F7F74) and must lack the bits in 0x0F880080
+  (dword_80F7F78). On success it calls object_reservePanel to claim the target panel, copies the object''s
+  current PanelX/Y into FuturePanelX/Y (so the object stays where it is), calls object_reservePanel again
+  (this time for the object''s own panel), and ORs OBJECT_FLAGS_CANNOT_SLIDE into the object''s flags
+  so it can''t be pushed. It then advances the AI state: StepTimer=2, HasMoved=1, and sets oAIAttackVars_HitElement
+  to 8 (likely the next state/step id rather than an element). On any failure it instead sets AttackDuration=30,
+  StepTimer=1, and HitElement=0x1C, a different follow-up state.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_canMove / beq loc_80F7F60: blocked objects take the fallback state immediately; bl
+    object_checkPanelParameters with r2=0x10, r3=0x0F880080 from the literal pool: success depends on
+    target panel flag state; bl object_reservePanel twice, plus strb PanelX/Y -> FuturePanelX/Y: claims
+    target panel while pinning the object to its current panel; mov r0,#OBJECT_FLAGS_CANNOT_SLIDE; bl
+    object_setFlag1: prevents the object from being slid during this attack; Success writes StepTimer=2/HitElement=8,
+    failure writes AttackDuration=0x1E/StepTimer=1/HitElement=0x1C: two distinct AI follow-up states'
+  refs:
+  - bn6f/asm/asm31.s:135894
+  - 0x0800E5E2 object_canMove
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0801BB1C object_reservePanel
+  reproduce: python3 tools/asmcat.py 0x080F7F1E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- Which enemy/attack uses this step (routes battlesweep/beastsp only say it runs in battles) — a caller
+  or the AI state table would identify the attack
+- What panel flag 0x10 and the must-not-have mask 0x0F880080 denote in the panel-flag layout
+- Whether oAIAttackVars_HitElement is really an element or a next-step id, and what states 8 and 0x1C
+  do
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F7F1E -> ai_attackTryClaimTargetPanel
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F7F1E

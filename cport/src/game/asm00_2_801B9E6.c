@@ -3669,7 +3669,7 @@ Next battle_queueScoreAndTiles_801E838(void) {
 
 /* ── sub_801E8CC ── */
 /* sub_801E8CC(r0 = value, r5 = struct pointer):
- * Calls sub_801E95C with r4 = 0 (r0 is saved across the call and restored,
+ * Calls chip_renderListEntry with r4 = 0 (r0 is saved across the call and restored,
  * so the callee's r0 result is discarded). Afterwards, if the original r0
  * was 0x50 and the byte at [r5+0xC] is non-zero, subtracts 0x10 from the
  * byte at [r5+2] and stores it back. On return, r0 and the nz/c/v flags
@@ -3682,7 +3682,7 @@ Next sub_801E8CC(void) {
     u32 savedR4 = R4;
 
     R4 = 0;
-    GUEST_CALL(sub_801E95C);
+    GUEST_CALL(chip_renderListEntry);
 
     if (matchValue != 0x50) {
         R0 = matchValue;

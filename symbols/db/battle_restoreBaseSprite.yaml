@@ -1,0 +1,53 @@
+name: battle_restoreBaseSprite
+address: '0x080E70F8'
+kind: function
+status: probable
+summary: Reloads an object's sprite resources from its related/base object, resets its animation to index
+  8 and flip, then re-enters the state-update phase.
+interface: (r0 = battle object (this, in r5 by convention)) -> r0 = destroyed; sets oBattleObject_CurStateActionPhaseAndPhaseInitialized
+  = CUR_STATE_UPDATE
+details: Copies 12 bytes (three words at offset 0x34) from the object pointed to by oBattleObject_RelatedObject1Ptr
+  into the same offset of r5, transplanting sprite/resource pointers from a base object. It then calls
+  sprite_load with (8, 0xf, 0x80), reloads animation data, disables the shadow, and sets bit 0x2 of oObjectHeader_Flags.
+  It writes animation index 8 into both oBattleObject_CurAnim and oBattleObject_CurAnimCopy, calls sprite_setAnimation(8)
+  and sprite_loadAnimationData again, sets palette 0, and applies the object's effective facing via object_getFlip/sprite_setFlip.
+  Finally it stores CUR_STATE_UPDATE into the state/phase word, so the object's state machine resumes
+  updating next tick. The related-object copy plus hardcoded animation 8 strongly suggests restoring a
+  default/base appearance, e.g. after a transformation (Beast Out) ends.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldmia from RelatedObject1Ptr+0x34 / stmia to r5+0x34 copies sprite resource pointers between
+    objects; sprite_load(8, 0xf, 0x80) and sprite_loadAnimationData reload the sprite from scratch; mov
+    r0,#8; strb to CurAnim and CurAnimCopy plus sprite_setAnimation(8) fixes animation index 8; object_getFlip
+    -> sprite_setFlip reapplies the object's facing to the new sprite; str CUR_STATE_UPDATE to CurStateActionPhaseAndPhaseInitialized
+    resumes the object's normal state processing
+  refs:
+  - bn6f/asm/asm31.s:101218
+  - 0x0800E456 object_getFlip
+  - 0x080026E4 sprite_load
+  - 0x080026A4 sprite_loadAnimationData
+  reproduce: python3 tools/asmcat.py 0x080E70F8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- Which object the RelatedObject1Ptr normally points to (player base form?), and whether animation 8 is
+  a specific shared pose
+- Meaning of sprite_load's constant arguments (8, 0xf, 0x80) and of flag bit 0x2 set on oObjectHeader_Flags
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80E70F8 -> battle_restoreBaseSprite
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E70F8

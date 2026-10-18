@@ -1,0 +1,50 @@
+name: ai_attackChargeStep
+address: '0x081103A0'
+kind: function
+status: probable
+summary: 'AI attack state handler: charges up an attack (effect + sounds), telegraphs the panel in front
+  of the attacker, then advances to the strike sub_8110416 when the timer runs out.'
+interface: (r5 = attacker battle object, r7 = oAIAttackVars) -> r0 = clobbered; flags from timer compare
+details: On first entry (AttackElement==0) it marks the attack as element 1, switches the object to animation
+  1, spawns an effect object of type 1 (0x45, size copied from the object's 0x34 block) and calls sub_80C4038
+  (0x200000, 0x10011104 args) storing the result through the PanelChooseCallback, then plays two sound
+  effects (0x2E and 0x8A, charge-style). While StepTimer <= 0x10 and on alternating ticks (bit 2), it
+  highlights the panel directly in front of the object (front direction applied to PanelX, Alliance^DirectionFlip
+  as side) as an attack warning. It decrements StepTimer each frame; when it reaches zero it sets the
+  object counter time to 0x1E, sets HitElement to 4, and calls sub_8110416 to continue the attack.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: first-entry block sets oAIAttackVars_AttackElement=1, CurAnim=1, spawns effect and plays two
+    PlaySoundEffect calls (charge); mid-phase calls highlightPanelIfSomeCondition_8109660 with object_getFrontDirection
+    added to PanelX, telegraphing the front panel; timer expiry sets oAIAttackVars_HitElement=4, object_setCounterTime(0x1E)
+    and tail-calls sub_8110416 as the next attack step; r7 offsets oAIAttackVars_AttackElement/StepTimer/HitElement/PanelChooseCallback
+    identify it as an AI attack-variable state machine; recorded route is battlesweep (boss AI attack
+    execution)
+  refs:
+  - bn6f/asm/asm32.s:4900
+  - 0x080005CC PlaySoundEffect
+  - 0x08109660 highlightPanelIfSomeCondition_8109660
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x081103A0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- what sub_8110416 does (the strike phase) to confirm which attack this is
+- which attack/element id 4 in HitElement refers to
+- what sub_80C4038 returns and what the PanelChooseCallback field is used for
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_81103A0 -> ai_attackChargeStep
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81103A0

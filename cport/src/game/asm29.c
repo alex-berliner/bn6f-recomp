@@ -428,7 +428,7 @@ Next sub_80A4C5C(void) {
  * r5+8, which indexes the table at off_80A51E0 bytewise (entries are 4 bytes
  * apart, so the selector holds 0x00/0x04/0x08/0x0C/0x10):
  *   +0x00 mapEntry_update_80A51F8   +0x04 mapEntry_onUpdate_80A5268   +0x08 sub_80A52E4
- *   +0x0C sub_80A5304   +0x10 sub_80A5350
+ *   +0x0C object_beastRoarCutsceneTick   +0x10 sub_80A5350
  * The original branches through r0, so the handler is entered with
  * r0 = handler address, r1 = raw selector byte, r7 = selected record. */
 Next npc_stateDispatchStep_80A51C4(void) {
@@ -448,7 +448,7 @@ Next npc_stateDispatchStep_80A51C4(void) {
     case 0x00: GUEST_CALL(mapEntry_update_80A51F8); break;
     case 0x04: GUEST_CALL(mapEntry_onUpdate_80A5268); break;
     case 0x08: GUEST_CALL(sub_80A52E4); break;
-    case 0x0C: GUEST_CALL(sub_80A5304); break;
+    case 0x0C: GUEST_CALL(object_beastRoarCutsceneTick); break;
     case 0x10: GUEST_CALL(sub_80A5350); break;
     /* Selector outside the table: branch to whatever the load yielded. */
     default:   dispatch(target);        break;

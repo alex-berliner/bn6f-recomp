@@ -1,0 +1,52 @@
+name: battle_stateWaitFinishPhase
+address: '0x080097CC'
+kind: function
+status: probable
+summary: 'Battle-state subphase handler: on first entry arms a check (sets Unk11 bit 4, battle flag 1),
+  then polls sub_802A87C until it reports done, branching to phase 0x14 or to state step 0xC.'
+interface: no args (r5 = battle state struct, set by caller) -> void; uses/clears battle-state flags
+details: 'Standard one-shot subphase: on the init pass (SubPhaseInitFlag == 0) it sets bit 4 of the battle
+  state''s Unk_11 flags byte, marks the subphase initialized, calls sub_802A866 (probably starting/arming
+  whatever is being waited on) and ORs battle flag 1 via battle_setFlags. Every frame afterwards it calls
+  sub_802A87C and treats the return as a status: 0 means keep waiting, 2 means jump into phase 0x14 via
+  battle_stateGotoPhase14_800AABC (a battle-state restart into a late phase with setup argument 4). Any
+  other nonzero result means the wait is over in the normal way: it clears Unk_11 bit 4, calls sub_8009704,
+  writes 0xC into oBattleState_Index_01 (the next battle state/step) and zeroes StatePhaseAndInitFlag
+  so the new state starts fresh at phase 0. The exact meaning of statuses 1 vs 2 and of sub_802A866/802A87C
+  is not visible here.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'init branch: ''bl setBattleStateUnk11Flag_800A9CA'' with r0=4, strb 1 to SubPhaseInitFlag,
+    bl sub_802A866, mov r0,#1 / bl battle_setFlags; loop: ''bl sub_802A87C; cmp r0,#0; beq locret'' —
+    returns 0 = still waiting; status 2 path: ''bl battle_stateGotoPhase14_800AABC'' — abnormal exit into
+    phase 0x14; normal exit: clear BattleStateUnk11Flag bit 4, bl sub_8009704, strb 0xC to oBattleState_Index_01,
+    strh 0 to StatePhaseAndInitFlag; callees battle_setFlags / set+clear Unk11 flag helpers confirm it
+    drives the shared battle-state struct'
+  refs:
+  - bn6f/asm/asm00_1.s:14287
+  - 0x0800A2D8 battle_setFlags
+  - 0x0800AABC battle_stateGotoPhase14_800AABC
+  - 0x0800A9D6 clearBattleStateUnk11Flag_800A9D6
+  reproduce: python3 tools/asmcat.py 0x080097CC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- what sub_802A866 and sub_802A87C actually do (arm vs poll of what timer/animation/object)
+- meaning of status value 2 vs other nonzero values
+- which battle state 0xC is, to confirm whether this is the battle-end/results wait
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80097CC -> battle_stateWaitFinishPhase
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80097CC

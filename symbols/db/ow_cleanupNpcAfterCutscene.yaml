@@ -1,0 +1,49 @@
+name: ow_cleanupNpcAfterCutscene
+address: '0x080A8484'
+kind: function
+status: probable
+summary: After a cutscene has advanced past a marker and a per-object countdown hits zero, resets the
+  jack-out lock, clears three event flags and a BBS flag, and frees the overworld object (NPC) itself.
+interface: (r0 = unused/0 at call, r5 = overworld object struct) -> void; flags not meaningfully set
+details: First it calls cutscene_checkOriginalCutsceneScriptPos_8036F70 with byte_808C74C as the expected
+  script position and exits if the cutscene is not at that point. It then decrements the u8 counter at
+  [r5+7] (an overworld-object field) and returns until it reaches zero. Once it fires, it calls gameState_setUnk09_8001172(0)
+  to lift the 'can't jack out'/control-lock state, clears event flags EVENT_9D8, EVENT_9FF and EVENT_9D9,
+  calls reqBBS_clearFlag_8140A0C (removes a board/BBS-related flag), and finally FreeOverworldMapObject
+  to release the object slot and its sprite. Overall it is a delayed self-destruct/rollback for an event
+  NPC once its cutscene has run.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bne locret after bl cutscene_checkOriginalCutsceneScriptPos_8036F70 gates everything on the
+    script position in byte_808C74C; ldrb r0,[r5,#7]; sub r0,#1; strb; bne locret is a per-frame countdown
+    on the object struct before acting; bl gameState_setUnk09_8001172 with r0=0 plus the three ClearEventFlagFromImmediate
+    calls (9D8/9FF/9D9) revert story/control state; bl reqBBS_clearFlag_8140A0C followed by bl FreeOverworldMapObject
+    ends with despawning the object; no callers known; run on recorded beastsp routes, consistent with
+    an event-object update step
+  refs:
+  - bn6f/asm/asm29.s:6370
+  - 0x0802F12C ClearEventFlagFromImmediate
+  - 0x080048B2 FreeOverworldMapObject
+  - 0x08001172 gameState_setUnk09_8001172
+  reproduce: python3 tools/asmcat.py 0x080A8484
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- beastsp
+open_questions:
+- exact meaning of event flags 9D8/9D9/9FF and which BBS flag is cleared
+- what [r5+7] is initialized to and by whom (the caller/script that spawns this object)
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80A8484 -> ow_cleanupNpcAfterCutscene
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A8484

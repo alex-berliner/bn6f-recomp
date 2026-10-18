@@ -1,0 +1,58 @@
+name: object_collisionUpdateTick
+address: '0x080D7100'
+kind: function
+status: probable
+summary: 'Per-frame collision update for a battle object: tears down last frame''s collision, spawns its
+  hit effect, and either dispatches its CurAction handler or destroys it when the battle is over or it
+  was hit by a hostile collision.'
+interface: (r5 = battle object, no register args) -> r0 = clobbered; sets oBattleObject_CurState = CUR_STATE_DESTROY
+  on death paths
+details: 'This is a shared per-frame step for a collidable battle object held in r5. It first removes
+  the previous frame''s collision data and spawns the hit-effect object from the object''s last collision
+  (jittered coordinates). If the battle is over, or if the object''s oCollisionData_FlagsFromCollision
+  ANDs nonzero with a per-alliance mask from byte_80D7154 (alliance*4-indexed words: 0x05000080, 0x0A000080
+  — i.e. hit by certain enemy-side collision flags), it clears the collision region and sets CurState
+  to CUR_STATE_DESTROY. Otherwise, unless time-stop is active (then it only refreshes collision state
+  via object_presentCollisionData), it dispatches through a CurAction-indexed table off_80D7148 with two
+  handlers (sub_80D715C, sub_80D7186), called with lr=pc so the handlers can inspect the return address.
+  This is effectively the common ''alive and colliding'' state body for this object type, with the alliance
+  mask deciding which attackers can destroy it.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_removeCollisionData / object_spawnCollisionEffect at start: clears last collision
+    and spawns hit effect each frame; ldr r2,[r5,#oBattleObject_CollisionDataPtr]; flags & alliance-table
+    mask -> loc_80D7138 destroy path; loc_80D7138: bl object_clearCollisionRegion; mov r0,#CUR_STATE_DESTROY;
+    strb r0,[r5,#oBattleObject_CurState]; ldr r1,[off_80D7144 + CurAction*4]; mov lr,pc; bx r1 — CurAction
+    dispatch to sub_80D715C/sub_80D7186; battle_isTimeStop branch routes to object_presentCollisionData
+    instead of the action handlers; byte_80D7154 masks 0x05000080/0x0A000080 per alliance select which
+    collisions are lethal'
+  refs:
+  - bn6f/asm/asm31.s:66777
+  - 0x0800A18E battle_isBattleOver
+  - 0x0800A098 battle_isTimeStop
+  - 0x0801A074 object_clearCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080D7100
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- What object types use this routine (no caller known) — caller would identify which custom/panel object
+  it drives
+- Exact meaning of the collision flag bits tested (0x80 etc.) and which alliance values index which mask
+  word
+- What the two CurAction handlers sub_80D715C/sub_80D7186 do (likely action 0 vs action 1 behaviors)
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D7100 -> object_collisionUpdateTick
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D7100

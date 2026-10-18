@@ -1,0 +1,50 @@
+name: battle_initObjectCombatState
+address: '0x0810173C'
+kind: function
+status: probable
+summary: 'Initializes/resets a battle object''s combat state: clears a flag, registers it in the status
+  list, and sets up its collision record and self-damage values.'
+interface: (r0 unused, r5 = battle object) -> void; no meaningful return
+details: 'Operating on the object in r5, it first clears ObjectFlags1 bit 0x40 via object_clearFlag, then
+  claims a slot in the battle status list at 0x203EB50 (sub_801DC7C with r0=r1=0). It refreshes the collision
+  record with object_updateCollisionData(r1=1, r2=2, r3=3) and sets collision region 1. Finally it reads
+  the object''s DamageAndStaminaDamageCounterDisabler field: the low 16 bits are stored as oCollisionData_SelfDamage
+  and its low byte is also stored into oCollisionData_StaminaDamageCounterDisabler. This looks like a
+  setup/reset routine for an object that deals fixed self/contact damage.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_clearFlag with r0=0x40 clears a specific ObjectFlags1 bit (asm lines 2-3); bl sub_801DC7C
+    with r0=r1=0 claims a status-list slot caching name ID and HP; bl object_updateCollisionData with
+    (1,2,3) then object_setCollisionRegion(1) configures the collision record; strh r0,[r2,#oCollisionData_SelfDamage]
+    stores the low halfword of the object's damage field into the collision data; both callers sub_810146A/sub_8101472
+    are adjacent, consistent with a per-object init used on a battle route
+  refs:
+  - bn6f/asm/asm31.s:155421
+  - 0x0810146A sub_810146A
+  - 0x08101472 sub_8101472
+  - 0x0801A15C object_clearFlag
+  - 0x0801A07C object_setCollisionRegion
+  - 0x0801A082 object_updateCollisionData
+  reproduce: python3 tools/asmcat.py 0x0810173C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- what kind of object the callers create (the adjacent init functions would show it)
+- why the low byte of SelfDamage is duplicated into StaminaDamageCounterDisabler
+- meaning of the magic arguments (1,2,3) passed to object_updateCollisionData
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810173C -> battle_initObjectCombatState
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810173C

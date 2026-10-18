@@ -1,0 +1,49 @@
+name: e_setField13
+address: '0x0811983C'
+kind: function
+status: probable
+summary: Writes a byte value into field 0x13 of an entity struct from the fixed array at 2008450, only
+  if that entry is active.
+interface: (r0 = byte value to store, r1 = entity index in eStructArr2008450) -> r0 = clobbered; NZ flags
+  from getStructFrom2008450's in-use byte
+details: Swaps the arguments, calls getStructFrom2008450 to resolve index r1 into a pointer to the 0x58-byte
+  entity entry and test its in-use/status byte; if the entry is not in use (EQ), it returns without touching
+  anything. Otherwise it stores the caller's byte (saved on stack) into offset 0x13 of the entity struct.
+  All four callers are sprite/battle-state setup or per-frame menu update routines, so field 0x13 is a
+  per-entity byte those sprite systems configure (exact meaning unknown). The in-use guard means stale
+  indices are silently ignored.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: mov r0, r1; bl getStructFrom2008450 — second arg is an index into eStructArr2008450, first arg
+    is the stored value; beq loc_811984E skips the store when the entry's in-use flag byte is zero; strb
+    r0, [r1,#0x13] — writes the saved stack value to byte 0x13 of the resolved struct; callers sprite_stage2InitBattleState_8124E7C
+    and sub_8124D78 initialise battle sprites and pass a handle index, matching the entity-array access
+  refs:
+  - bn6f/asm/asm32.s:23196
+  - 0x08124E7C sprite_stage2InitBattleState_8124E7C
+  - 0x08124C94 sub_8124C94
+  - 0x08124D78 sub_8124D78
+  - 0x080466C4 getStructFrom2008450
+  reproduce: python3 tools/asmcat.py 0x0811983C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- maps
+- story2
+open_questions:
+- semantic meaning of entity field 0x13 (a flag, timer, or mode byte) would follow from how battle update
+  code reads that offset
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_811983C -> e_setField13
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811983C

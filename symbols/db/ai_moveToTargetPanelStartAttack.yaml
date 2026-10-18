@@ -1,0 +1,56 @@
+name: ai_moveToTargetPanelStartAttack
+address: '0x08113AB8'
+kind: function
+status: probable
+summary: 'AI attack-script step: teleports the enemy object onto its saved target panel, resets its attack/step
+  timers from a per-version table, and arms the attack.'
+interface: (r4 = object/AI struct, r5 = battle object, r7 = AI attack vars) -> r0 = 0; state fields updated,
+  no return value used
+details: Zeroes oBattleObject_ExtraVars and clears ObjectFlags1 bit 0x40, then loads a duration from byte_8113D84
+  indexed by the AI struct's version byte (oAIData_Version_16) into both oAIAttackVars_AttackDuration
+  and oAIAttackVars_StepTimer, starting a fresh attack/step timer. Sets the object's CurAnim to 0 and
+  calls sub_80C00C2 with arg 6 (likely an anim/extra-var reset). It then copies the saved target panel
+  (object+0x64/+0x65) into PanelX/PanelY — overwriting the object's current grid position — recomputes
+  pixel coordinates and collision/facing via object_setCoordinatesFromPanels and object_updateCollisionPanels,
+  calls the pair sub_81141E8 (old panel) / sub_81141BC (new panel) which likely update panel occupancy/trigger
+  data, clears DirectionFlip, refreshes sprite/arm, and finally releases the panel reservation it held.
+  Ends by writing HitElement = 0x24 into the attack vars, arming the attack for the frames counted by
+  the timers.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: strh from byte_8113D84[version] into both oAIAttackVars_AttackDuration and StepTimer — per-version
+    attack length init; copies offsets 0x64/0x65 into oBattleObject_PanelX/PanelY then calls object_setCoordinatesFromPanels
+    + object_updateCollisionPanels — object moved onto stored target panel; bl object_removePanelReserve
+    right after the move — the reserved panel is freed once reached; mov r0,#0x24; strh into oAIAttackVars_HitElement
+    — sets the attack's element/attribute as part of the same routine; clears flag 0x40 via object_clearFlag
+    and resets ExtraVars/CurAnim — matches a state-transition entry point of an AI step script
+  refs:
+  - bn6f/asm/asm32.s:11416
+  - 0x0800F2C6 battleObject_refreshSpriteAndArm_800F2C6
+  - 0x0801A15C object_clearFlag
+  - 0x0801BB46 object_removePanelReserve
+  reproduce: python3 tools/asmcat.py 0x08113AB8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- Purpose of sub_81141E8/sub_81141BC (likely panel occupancy or area-attack tile registration) not confirmed
+- Meaning of HitElement 0x24 and the per-version byte table byte_8113D84 (attack duration vs variant id)
+  unknown
+- No known caller, so which enemy attack script invokes this and when (startup vs follow-through step)
+  is inferred from callees only
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8113AB8 -> ai_moveToTargetPanelStartAttack
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8113AB8

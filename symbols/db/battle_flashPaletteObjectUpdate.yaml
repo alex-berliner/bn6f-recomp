@@ -1,0 +1,49 @@
+name: battle_flashPaletteObjectUpdate
+address: '0x080E10C0'
+kind: function
+status: probable
+summary: Battle-object update handler that flashes software palette slot 9 between white/red and transparent
+  for Param2 frames, then frees the palette entry and the object.
+interface: (r5 = battle object ptr) -> void; palette slot 9 rewritten each frame via sub_8002378
+details: 'r5 is a battle object; Param3 bit 1 (or bit 0) selects the flashing state, otherwise the object
+  only runs while paused or in time-stop, and then fills palette 9 with color 0 (hides the flash during
+  pause/time-stop). On first entry (CurState==0) it copies Param2 into Timer2, clears Timer, and sets
+  CurState=CUR_STATE_UPDATE. Each tick it decrements Timer2 and refills slot 9 (20 colors, table iPalette3001B60):
+  normally with color 0, but on frames where Timer bit 2 is clear with byte_80E113C[Param4*4], i.e. 0x7FFF
+  (white) or 0x001F (red) chosen by Param4. When Timer2 goes negative it terminates ePalette entry 0x14
+  and frees the object via object_freeMemory, so the effect is self-cleaning.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#oBattleObject_Param3] / tst with 2 and 1 gates the flash state vs the pause/timestop
+    path; CurState==0 block stores Param2 into Timer2, 0 into Timer, CUR_STATE_UPDATE into CurState —
+    standard object state init; tst Timer,#4 selects byte_80E113C[Param4<<2] (0x7FFF white / 0x001F red)
+    vs 0 as the fill color every 4 frames; all fill calls pass r2=9, r3=0x14, r4=iPalette3001B60 to sub_8002378
+    (palette 9, 20 colors); exit path calls Terminate_ePalette20097a0_Transform(0x14) then object_freeMemory(r5)
+  refs:
+  - bn6f/asm/asm31.s:87766
+  - 0x0800239A Terminate_ePalette20097a0_Transform
+  - 0x0800A03C battle_isPaused
+  - 0x0800A098 battle_isTimeStop
+  reproduce: python3 tools/asmcat.py 0x080E10C0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- beastsp
+open_questions:
+- Which in-game effect object uses this handler (Param4=0 white vs Param4=1 red variant) — no callers
+  captured, so the spawn site and the meaning of Param3 bits are unknown
+- What the 20-color palette slot 9 is assigned to (which sprites share it)
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80E10C0 -> battle_flashPaletteObjectUpdate
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E10C0

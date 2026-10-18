@@ -1,0 +1,55 @@
+name: battle_enemyStepCollisionTimers
+address: '0x080DC778'
+kind: function
+status: probable
+summary: 'Per-frame update for a battle enemy object: tears down/rebuilds its collision data, manages
+  a collision-based counter and 8-step timer, then dispatches its current action handler and refreshes
+  panel/collision state.'
+interface: (r5 = battle object, set by caller) -> void; r4/r7 preserved, lr used for the long-call dispatch
+details: The function operates on the object in r5 (a callee-saved frame register the caller sub_80DC730
+  sets). It removes the object's collision data, and if the collision flags (oCollisionData_FlagsFromCollision)
+  are nonzero it clears the region, increments ExtraVars+0x10, and loads ExtraVars+0x14 with 8. When CurAction
+  is neither 0 nor 0xC and the collision region is 0, it decrements ExtraVars+0x14 and, once it hits 0,
+  sets collision region 1. It then saves the object's panel XY, long-calls one of four action handlers
+  via off_80DC7EC indexed by CurAction (values 0..3), and if the panel XY changed afterwards it resets
+  ExtraVars+0x10 and — unless CurAction is 0xC — sets region 1 again. Finally it highlights the panel
+  the object stands on and refreshes per-frame collision data via object_presentCollisionData.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_removeCollisionData then tst on oCollisionData_FlagsFromCollision drives the ExtraVars+0x10/0x14
+    counter/timer update (loc_80DC794 path); off_80DC7EC is a 4-entry jump table by oBattleObject_CurAction
+    invoked with the mov lr,pc; bx r1 long-call idiom; Panel XY is saved before the handler and compared
+    after; a change resets ExtraVars+0x10 and re-sets region 1; CurAction values 0 and 0xC are special-cased
+    around the region-1 set, implying idle and a no-region action; Ends with object_highlightPanel (its
+    own panel X/Y) and object_presentCollisionData, the standard end-of-frame object collision refresh
+  refs:
+  - bn6f/asm/asm31.s:78188
+  - 0x080DC730 sub_80DC730
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0800CBD8 object_highlightPanel
+  - 0x0801A018 object_presentCollisionData
+  reproduce: python3 tools/asmcat.py 0x080DC778
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- 'Which enemy/obj this is: the four action handlers sub_80DC7FC/872/92C/964 need reading to identify
+  the behavior and give a specific name'
+- Meaning of ExtraVars+0x10/+0x14 for this object type (looks like a hit-react counter and an 8-frame
+  timer) and what region index 1 denotes
+- Why CurAction 0xC is exempted from the region-1 set and from the moved-panel reset
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80DC778 -> battle_enemyStepCollisionTimers
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DC778

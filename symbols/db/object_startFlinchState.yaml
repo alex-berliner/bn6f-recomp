@@ -1,0 +1,54 @@
+name: object_startFlinchState
+address: '0x08111846'
+kind: function
+status: probable
+summary: 'Puts a battle object into its hit/flinch reaction: cancels its current action, commits its planned
+  panel move, and switches to the flinch animation.'
+interface: (r5 = battle object pointer, r0/r1/r2 unused on entry) -> void; sets byte[0x69]=1 while flinching
+details: Runs only if the object is alive (HP != 0), lacks ObjectFlags1 bit 0x80000000, and its collision
+  data reports incoming collision flags with bits 0xA00 set, gated by byte[0x69] which acts as a re-entry
+  guard. It reads HitModifierFinal & 0x14 to pick r1=0/1 and calls sub_80BCB12 (likely hit-flash or reaction
+  setup), then wipes ExtraVars, clears ObjectFlags2 bit 0xC, zeroes AIType, and copies FuturePanelX/Y
+  into PanelX/Y so a queued step is completed, releasing the reserved panel and recomputing pixel coords
+  and collision panels. It clears ObjectFlags1 bits 0x501040 (invulnerability/invisibility-type flags),
+  tears down the current AI attack via object_exitAttackState, and cancels any PendingStateAction by replacing
+  it with the current state/phase word. Finally it sets CurAnim = 3 (the flinch/hurt animation) and sets
+  the byte[0x69] flag so the state isn't re-entered.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'tst r1, dword_81118D0(0xA00) on oCollisionData_FlagsFromCollision gates entry: reacts only
+    to hit-type collision flags; byte[0x69] checked at top and set to 1 at end — re-entry guard for a
+    transient hit state; FuturePanelX/Y copied to PanelX/Y plus removePanelReserve/setCoordinatesFromPanels:
+    commits a queued move made during the hit; clearFlag 0x501040 and object_exitAttackState_801171C:
+    strips protection flags and cancels the in-progress attack/action; CurAnim = 3 set last — selecting
+    the hurt/flinch animation id'
+  refs:
+  - bn6f/asm/asm32.s:7381
+  - 0x0801A15C object_clearFlag
+  - 0x0801A176 object_clearFlag2
+  - 0x0801171C object_exitAttackState_801171C
+  reproduce: python3 tools/asmcat.py 0x08111846
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+- maps
+open_questions:
+- Purpose and effect of sub_80BCB12 (called with collision-data pointer, 0/1 from HitModifierFinal&0x14,
+  and 0) is unknown
+- Exact meaning of collision flag bits 0x200/0x800 and ObjectFlags1 bits 0x501040/0x80000000 unconfirmed
+- Whether byte[0x69] is cleared elsewhere on flinch-end not shown
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8111846 -> object_startFlinchState
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8111846

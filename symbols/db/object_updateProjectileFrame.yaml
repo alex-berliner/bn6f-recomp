@@ -1,0 +1,54 @@
+name: object_updateProjectileFrame
+address: '0x080D4BC0'
+kind: function
+status: probable
+summary: 'Per-frame update for a battle object that has just collided: spawns its hit effect, then either
+  destroys it or advances it one step (move + collision refresh).'
+interface: '(r5 = battle object) -> r0 = destroyed (side effects: object state field); flags from tst'
+details: 'Runs for the object in r5 (registers are expected set up by the caller). It first tears down
+  the object''s collision data via object_removeCollisionData and spawns the jittered hit-effect object
+  for the last collision via object_spawnCollisionEffect. If the battle is over (battle_isBattleOver)
+  or sub_80D4C6C reports some end condition (likely lifetime expired/off-field, since its result ORs into
+  the destroy path), it clears the collision region byte and stores CUR_STATE_DESTROY into the object''s
+  combined state/phase field. Otherwise it calls sub_80D4C3A (likely advancing the object along its trajectory),
+  recomputes pixel coordinates from panel coords (object_setCoordinatesFromPanels), updates its collision
+  panel set, and refreshes per-frame collision state (object_presentCollisionData). Effectively a ''collided
+  projectile tick'': pop the collision, show the impact, then continue flying or die.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_removeCollisionData / object_spawnCollisionEffect back-to-back at entry = resolve
+    a just-ended collision and show its effect; battle_isBattleOver + tst/bne joins sub_80D4C6C''s result
+    into the destroy branch at loc_80D4BEC; Destroy branch does object_clearCollisionRegion then str CUR_STATE_DESTROY,[r5,oBattleObject_...];
+    Non-destroy path chains sub_80D4C3A -> object_setCoordinatesFromPanels -> object_updateCollisionPanels
+    -> object_presentCollisionData, the standard moving-object per-frame sequence; Recorded route: battlesweep;
+    only battle-object routines (object_*/battle_*) are called'
+  refs:
+  - bn6f/asm/asm31.s:61909
+  - 0x0800A18E battle_isBattleOver
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0801A018 object_presentCollisionData
+  reproduce: python3 tools/asmcat.py 0x080D4BC0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- What sub_80D4C6C checks (lifetime, off-field, tile reached?) — that would pin down the exact object
+  kind
+- 'What sub_80D4C3A does (assumed: advance position along trajectory)'
+- Which callers use this and for which objects (no callers recorded), so the 'projectile' wording is inferred
+  from the move+collision pattern
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D4BC0 -> object_updateProjectileFrame
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D4BC0

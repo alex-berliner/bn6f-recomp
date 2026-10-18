@@ -1,0 +1,52 @@
+name: e_waitChatboxThenFadeOut
+address: '0x08136AA0'
+kind: function
+status: probable
+summary: Cutscene/event step that waits on chatbox flags and state, then closes the textbox, resets the
+  step's fields and fades the screen out.
+interface: '(r5 = event/step object: [r5] step id, [r5+1] state, [r5+2..3] counters) -> r0 = 0 or state
+  byte; no meaningful return'
+details: 'This is a per-frame state handler for an event object whose current step id is at [r5]. If the
+  step id is 0x28 it jumps straight to the finish: sets [r5+1] = 8, clears [r5+2] and [r5+3], calls SetScreenFade(0xc,
+  0x10) to fade the screen, and calls chatbox_8040818 to close/reset the textbox. Otherwise it only proceeds
+  when flag bit 0x80 of eFlags2009F38 is set AND flag bit 0x20 (dword_8136AE4) is also set, then calls
+  sub_813BAA8; if the chatbox state selector (low 3 bits, via chatbox_GetState_8045F4C) is nonzero it
+  calls chatbox_8040818 and sub_8136BDC (likely advancing dialogue/next textbox) and keeps waiting. So
+  the step blocks the cutscene while the 0x80/0x20 event-flag condition isn''t met and while dialogue
+  is still open.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'cmp r0, #0x28 / beq loc_8136ACC: step id 0x28 takes the finish path; two chatbox_mask_eFlags2009F38
+    calls with 0x80 and 0x20 gate entry into the body; chatbox_GetState_8045F4C result decides whether
+    to advance via sub_8136BDC + chatbox_8040818; loc_8136ACC writes state 8 to [r5+1], zeroes [r5+2..3],
+    SetScreenFade(0xc,0x10), chatbox_8040818; called on the beastsp route with no args in registers, state
+    carried in the r5 struct fields'
+  refs:
+  - bn6f/asm/asm36.s:13825
+  - 0x08045F4C chatbox_GetState_8045F4C
+  - 0x08045F3C chatbox_mask_eFlags2009F38
+  - 0x08006270 SetScreenFade
+  reproduce: python3 tools/asmcat.py 0x08136AA0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- beastsp
+open_questions:
+- Purpose of sub_813BAA8 and sub_8136BDC (dialogue advance vs. other cutscene action) is unknown
+- Which cutscene/owning object this step belongs to and the meaning of step id 0x28 and state 8 in that
+  structure
+- What the 0x20/0x80 bits of eFlags2009F38 mean in this scenario
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8136AA0 -> e_waitChatboxThenFadeOut
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8136AA0

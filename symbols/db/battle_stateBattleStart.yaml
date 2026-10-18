@@ -1,0 +1,47 @@
+name: battle_stateBattleStart
+address: '0x080096E0'
+kind: function
+status: probable
+summary: Battle state handler that requests and dispatches battle state 0x404, sets up the scene frame,
+  and zeroes the custom gauge at battle start.
+interface: () -> r0 clobbered; requests+dispatches state 0x404, sets custom gauge to 0
+details: ORs 0x404 into the request dword at eStruct2035280+0x40, then calls dispatch_801DA48 with the
+  same 0x404, which appears to run the handler/transition for that state. It then performs the per-frame
+  battle scene setup and calls sub_801DF0C. Finally SetCustGauge(0) empties the custom gauge, matching
+  battle-start behavior. The request+dispatch of the same constant is the characteristic battle FSM state-handler
+  pattern.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl eStruct2035280_SetRequestBits_801BECC with 0x404 then bl dispatch_801DA48 with 0x404 (request-then-dispatch
+    FSM pattern); bl battle_sceneFrameSetup_801DA24 — known per-frame battle-scene setup, so this runs
+    inside the battle loop; mov r0,#0; bl SetCustGauge — custom gauge reset to empty, consistent with
+    battle start; sole caller sub_8009658 chains this with sibling handlers, implying a state table
+  refs:
+  - bn6f/asm/asm00_1.s:14144
+  - 0x08009658 sub_8009658
+  - 0x0801DA24 battle_sceneFrameSetup_801DA24
+  - 0x0801BECC eStruct2035280_SetRequestBits_801BECC
+  - 0x0801DFA2 SetCustGauge
+  reproduce: python3 tools/asmcat.py 0x080096E0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- What dispatch_801DA48 and sub_801DF0C do exactly (handler table lookup vs. direct state code)
+- Whether 0x404 denotes 'battle start' specifically or a generic turn/state id; caller's state table would
+  confirm
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80096E0 -> battle_stateBattleStart
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80096E0

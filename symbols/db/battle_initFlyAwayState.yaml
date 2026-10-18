@@ -1,0 +1,52 @@
+name: battle_initFlyAwayState
+address: '0x080DC730'
+kind: function
+status: probable
+summary: State-entry handler that launches a battle object up and backward off the field (flying away),
+  removing it from collision and switching to a fly-away update state.
+interface: (r5 = battle object pointer, set by caller; r0/r1 unused on entry) -> r0 = destroyed/cleared;
+  no meaningful return; side effects on the object at r5
+details: Copies oBattleObject_PanelX/Y into the FuturePanelX/Y fields and calls object_setCoordinatesFromPanels
+  to sync pixel coordinates. Then it adds -frontDirection * 0x50 (80 px, 16.16 fixed point) to oBattleObject_X,
+  so the object retreats opposite its facing side, and sets oBattleObject_Z to 0xA0<<16 (160), lifting
+  it high above the field. It initializes sprite resource 0x100d via battleObject_initSpriteAndCollision_8011504
+  (which also sets the shadow flag and collision slot), sets bit 2 of oObjectHeader_Flags, calls object_clearCollisionRegion
+  so the object no longer occupies any panel, and refreshes collision state via object_presentCollisionData.
+  Finally it stores CUR_STATE_UPDATE into oBattleObject_CurStateActionPhaseAndPhaseInitialized and calls
+  sub_80DC778, the per-frame update for this state.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'neg of object_getFrontDirection result times 0x50 added to oBattleObject_X shows backward 80px
+    movement; str 0xA0<<16 to oBattleObject_Z shows the object rising far above the field; bl object_clearCollisionRegion
+    followed by object_presentCollisionData removes it from panel collision; str #CUR_STATE_UPDATE into
+    oBattleObject_CurStateActionPhaseAndPhaseInitialized plus bl sub_80DC778 shows it is a state-entry
+    handler handing off to an update routine; callees battleObject_initSpriteAndCollision_8011504 and
+    object_setCoordinatesFromPanels are all battle-object subsystem functions on the r5 object'
+  refs:
+  - bn6f/asm/asm31.s:78154
+  - 0x08011504 battleObject_initSpriteAndCollision_8011504
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x080DC730
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- Which entity uses this state (sprite resource 0x100d and palette/anim argument 0x4050300 are unidentified)
+- What sub_80DC778 does per-frame during the fly-away (would confirm e.g. continued ascent and despawn)
+- No callers known, so the triggering condition (when the object flies away) is unknown
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80DC730 -> battle_initFlyAwayState
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DC730

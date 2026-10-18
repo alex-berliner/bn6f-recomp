@@ -1,0 +1,49 @@
+name: battle_setupObjectSpriteEnterUpdate
+address: '0x080C0198'
+kind: function
+status: probable
+summary: Sets up a battle object's sprite (load sprite 0x80, no shadow, copy palette from a related object,
+  animation 0xF) and switches its state to the update phase.
+interface: () -> void; operates on the object in r5; no return value used
+details: Clears bit 1 of the object header flags byte at oObjectHeader_Flags, then calls sprite_load with
+  (0x80, 8, 0xA) and reloads animation data for the object in r5. sprite_noShadow clears the shadow flag
+  on the sprite attributes. It reads the related-object pointer at oBattleObject_RelatedObject1Ptr, fetches
+  that object's palette via sprite_getPalette, and applies it to this object with sprite_setPalette. Animation
+  index 0xF is selected via sprite_setAnimation and the animation data is loaded and updated. Finally
+  it writes CUR_STATE_UPDATE into oBattleObject_CurStateActionPhaseAndPhaseInitialized and calls the unknown
+  helper sub_80C01D8 before returning.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb/bic/strb on oObjectHeader_Flags clears flag bit 1 before the sprite calls; sequence sprite_load(0x80,8,0xA)
+    + sprite_loadAnimationData + sprite_noShadow builds the sprite for the r5 object; ldr r0,[r5,#oBattleObject_RelatedObject1Ptr];
+    bl sprite_getPalette; bl sprite_setPalette copies the palette from a linked object; mov r0,#0xf; bl
+    sprite_setAnimation then bl sprite_update selects and refreshes animation 15; str CUR_STATE_UPDATE
+    into oBattleObject_CurStateActionPhaseAndPhaseInitialized switches the object's state machine phase
+  refs:
+  - bn6f/asm/asm31.s:17491
+  - 0x08002D8C sprite_getPalette
+  - 0x080026E4 sprite_load
+  - 0x080026A4 sprite_loadAnimationData
+  reproduce: python3 tools/asmcat.py 0x080C0198
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- Which sprite/resources (0x80, 8, 10) identify — depends on the sprite table
+- What sub_80C01D8 does after the state switch
+- Which battle object/route reaches this (no known callers)
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80C0198 -> battle_setupObjectSpriteEnterUpdate
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C0198

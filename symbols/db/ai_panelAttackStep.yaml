@@ -1,0 +1,54 @@
+name: ai_panelAttackStep
+address: '0x080F7BDE'
+kind: function
+status: probable
+summary: 'Per-frame step of an AI attack state machine: first call winds the object up (charge anim +
+  counters), then when the step timer expires it spawns the attack on the target panel and a visual/sound
+  cue at the attacker.'
+interface: (r5 = battle object, r7 = oAIAttackVars state struct) -> r0 = 0; updates oAIAttackVars fields,
+  object CurAnim/counter, spawns effect object
+details: 'If oAIAttackVars_AttackElement is 0, this is the wind-up pass: it sets AttackElement=4, sets
+  oBattleObject_CurAnim=0x13, calls object_setCounterTime(0xC) and stores StepTimer=0x14, then returns.
+  On later passes it decrements StepTimer each frame; when it reaches 0 it resets CurAnim to 0x14 and
+  calls sub_80C86B0(panelX, panelY, InitFlag, AiDifficultyTier, Damage), which presumably spawns the actual
+  attack at the target panel (r4=r6 are pushed/popped only to survive the call). It then reads object_getFlip,
+  spawns a type-0 effect object with id 0x2A|flip<<8 at the object''s X/Y, plays sound effect 0x12D, and
+  writes HitElement=0x14. The InitFlag/AiDifficultyTier/Damage fields are read straight from the AI state
+  struct, so r7 is the per-attack AI work area and r5 the acting battle object.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'first-pass branch: AttackElement=0 -> store 4, CurAnim=0x13, object_setCounterTime(0xC), StepTimer=0x14
+    (loc_80F7BDE..BFA); timer expiry path decrements StepTimer and only acts when it hits 0 (bgt locret_80F7C38);
+    attack spawn: ldrb PanelX/PanelY/InitFlag/DifficultyTier/Damage from r7 then bl sub_80C86B0; effect:
+    object_getFlip -> lsl 8 -> orr 0x2A, spawn_t1_0x0_EffectObject at oBattleObject_X/Y; audio/state finish:
+    PlaySoundEffect(0x12D) and HitElement=0x14 before return'
+  refs:
+  - bn6f/asm/asm31.s:135444
+  - 0x080005CC PlaySoundEffect
+  - 0x0800E456 object_getFlip
+  - 0x080E05F6 spawn_t1_0x0_EffectObject
+  reproduce: python3 tools/asmcat.py 0x080F7BDE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- what sub_80C86B0 actually spawns on the panel (attack object type, element meaning of 4 and of InitFlag)
+- which AI/boss routine owns this attack state struct and selects it, since no caller was captured
+- exact game meaning of anims 0x13/0x14, effect 0x2A and sound 0x12D
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F7BDE -> ai_panelAttackStep
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F7BDE

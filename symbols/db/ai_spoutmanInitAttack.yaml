@@ -1,0 +1,51 @@
+name: ai_spoutmanInitAttack
+address: '0x080F7830'
+kind: function
+status: probable
+summary: 'Starts SpoutMan''s attack: records AI tier, installs a panel-choice callback, computes the attack
+  duration, targets the opposing player, and switches the object into attack state 9.'
+interface: (r0-r3 unused) -> r0 = destroyed; writes oAIAttackVars fields of the AI struct in r7 and sets
+  attack state via object_setAttack4
+details: Reads the AI difficulty tier (battle_getAiDifficultyTier) and stores it in oAIAttackVars_AiDifficultyTier,
+  then installs sub_80F811A+1 as oAIAttackVars_PanelChooseCallback (likely choosing panels for the spout/attack
+  placement). sub_80F7732 returns a value stored as oAIAttackVars_AttackDuration (duration/countdown).
+  It looks up the player on the opposite alliance via battle_findPlayer(~alliance) into oAIAttackVars_TargetObjectPtr,
+  and finally sets the object's attack state to 9 (attack phase id) with object_setAttack4. Called from
+  the SpoutMan AI step only after the RNG gate passes, so it is the attack-launch path.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: strb r0,[r7,#oAIAttackVars_AiDifficultyTier] after battle_getAiDifficultyTier_800FE36; ldr r0,off_80F79E4
+    (=sub_80F811A+1); str r0,[r7,#oAIAttackVars_PanelChooseCallback]; bl sub_80F7732; strh r0,[r7,#oAIAttackVars_AttackDuration];
+    eor r0,#1; bl battle_findPlayer; str r0,[r7,#oAIAttackVars_TargetObjectPtr] targets the opposing side;
+    mov r0,#9; bl object_setAttack4 transitions the object to attack mode 9; caller sub_80F7690 is the
+    SpoutMan AI step
+  refs:
+  - bn6f/asm/asm31.s:134991
+  - 0x080F7690 sub_80F7690
+  - 0x0800FE36 battle_getAiDifficultyTier_800FE36
+  - 0x080103BC battle_findPlayer
+  - 0x08011690 object_setAttack4
+  reproduce: python3 tools/asmcat.py 0x080F7830
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- Exact meaning of attack state 9 and what sub_80F7732 computes for AttackDuration
+- What the panel-choose callback sub_80F811A selects (spout placement vs. attack panels)
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F7830 -> ai_spoutmanInitAttack
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F7830

@@ -1,0 +1,51 @@
+name: battle_collisionStateUpdate
+address: '0x080C8B3E'
+kind: function
+status: probable
+summary: 'Per-frame handler for a battle object''s in-collision state: spawns the hit effect, refreshes
+  collision processing, and tears the object down when the battle ends or the collision flags clear.'
+interface: (r5 = battle object) -> void; r0 = scratch/return of callees
+details: 'This is a battle object state routine (r5 = object). On entry it removes the object''s collision
+  data (leaving its current collision) and spawns the standard hit-effect object at the object''s last
+  collision coordinates. It then checks battle-over: if the battle is over, or if the collision data''s
+  FlagsFromCollision field is zero (collision ended), it clears the object''s collision region and writes
+  CUR_STATE_DESTROY into the combined CurState/Phase field, i.e. requests destruction. Otherwise, unless
+  time-stop is active, it dispatches through a per-CurAction jump table (which currently has a single
+  handler, sub_80C8B80, called via mov lr,pc; bx r1) and afterwards calls object_presentCollisionData
+  to process this frame''s collision (one-shot hit flags cleared etc.). When time-stop is active it returns
+  without dispatching or refreshing collision.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_removeCollisionData / bl object_spawnCollisionEffect at entry: leaves current collision
+    and spawns the jittered hit effect; tst r0,r0 after battle_isBattleOver, and tst on oCollisionData_FlagsFromCollision,
+    both branching to loc_80C8B6E which sets CUR_STATE_DESTROY; bl battle_isTimeStop; bne locret: collision
+    dispatch/refresh skipped while time is stopped; ldr r1,[r1,r0] from a table indexed by oBattleObject_CurAction
+    with mov lr,pc; bx r1: per-action sub-handler dispatch (single entry sub_80C8B80); bl object_presentCollisionData
+    after dispatch: keeps the object''s collision state up to date each frame'
+  refs:
+  - bn6f/asm/asm31.s:36132
+  - 0x0800A18E battle_isBattleOver
+  - 0x0800A098 battle_isTimeStop
+  - 0x0801A074 object_clearCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080C8B3E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- Which CurState value selects this handler (callers unknown), and what the single dispatch entry sub_80C8B80
+  does, to pin down the exact state name (attack-contact vs. being-hit).
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80C8B3E -> battle_collisionStateUpdate
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C8B3E

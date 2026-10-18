@@ -1,0 +1,50 @@
+name: start_resetProgressAndPetNavi
+address: '0x0809C01C'
+kind: function
+status: probable
+summary: Resets game-progress story flags and reinitializes the selected PET navi, as if preparing a fresh
+  scenario/playthrough state.
+interface: (r5 = toolkit or scenario struct; [r5,#0x34] = config struct) -> r0 = 0; no flags
+details: Reads a struct at [r5,#0x34] and, if the u16 flag at +0x16 is set AND event flag EVENT_120 is
+  NOT set, stores game progress 0 to the progress buffer and writes 0x80 into the GameState's GameProgress
+  byte. It then clears the event-flag bitfield word at +0x18 if nonzero, syncs the current PET navi from
+  byte +0x14 into the toolkit (both game state and the S2001c04 byte +7), reloads the navi's base stats,
+  and fully resets the PET navi setup (heals HP, clears boosts/mood/BeastOut counters and session flags).
+  The EVENT_120 guard means the progress reset only happens once — after that flag is set the progress
+  byte is left alone. Returns 0.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sub_809C01C: TestEventFlag on [r7,#0x16] plus TestEventFlagFromImmediate EVENT_120 gate the
+    progress write; storeGameProgressToGameProgressBuffer_8035364(0) then strb 0x80 to oGameState_GameProgress
+    — a story-progress reset; ClearEventFlag on [r7,#0x18] wipes a scenario event-flag bitfield; SetCurPETNavi([r7,#0x14])
+    + reloadCurNaviBaseStats_8120df0 + resetPetNaviSetup_8033FDC reinitialize the navi from scratch; Called
+    from recorded beastsp route; the resetPetNaviSetup callee''s summary mentions clearing ''active''/session
+    event flags, matching a scenario restart'
+  refs:
+  - bn6f/asm/asm28_0.s:4024
+  - 0x0802F130 ClearEventFlag
+  - 0x080010BE SetCurPETNavi
+  - 0x0802F168 TestEventFlag
+  reproduce: python3 tools/asmcat.py 0x0809C01C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- beastsp
+open_questions:
+- No named caller found, so the exact scenario/new-game context of the call is unknown
+- Meaning of the 0x80 written to oGameState_GameProgress byte and the exact semantics of struct fields
+  +0x14/+0x16/+0x18
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_809C01C -> start_resetProgressAndPetNavi
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_809C01C

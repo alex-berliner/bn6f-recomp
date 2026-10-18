@@ -1,0 +1,54 @@
+name: ai_attackRiseOffField
+address: '0x080F3180'
+kind: function
+status: probable
+summary: AI attack step that reserves the target panel, lifts the attacker off the field for 10 frames,
+  then hands off to the strike phase
+interface: (r7 = AIAttackVars of current object, r5 = battle object, Z in fixed point) -> updates AttackElement/StepTimer/HitElement;
+  r0 = next HitElement state (8 = strike, 0x20 = abort)
+details: On the first call (AttackElement == 0) it validates that the object can move and that the target
+  object's panel (bytes 0x12/0x13 of its struct) is a valid grid panel; it copies the target panel into
+  TargetPanelX/Y, sets the object's FuturePanel to its own current panel, claims the panel via object_reservePanel,
+  and sets the CANNOT_SLIDE flag plus bit 22 (likely 'airborne'), then clears its collision region so
+  it stops occupying the field. Each later call adds 0x100000 to oBattleObject_Z (rising off the ground)
+  and decrements StepTimer from 10; when it hits zero, HitElement is set to 8 to advance the attack. Any
+  failure path (can't move, null target, invalid panel) jumps straight to HitElement = 0x20, aborting
+  the attack.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne splits first call (init) from repeat (rise)
+    phases; bl object_reservePanel + object_setFlag1(CANNOT_SLIDE) + object_clearCollisionRegion prepare
+    the attacker to leave the field; mov r0,#0x10 lsl r0,#0x10; add r0,[r5,#oBattleObject_Z] raises Z
+    by 0x100000 per frame for StepTimer=10 frames; mov r0,#8; strh r0,[r7,#oAIAttackVars_HitElement] signals
+    the strike state once the rise completes; loc_80F31E8 sets HitElement=0x20 when canMove/target/valid-panel
+    checks fail, an abort path
+  refs:
+  - bn6f/asm/asm31.s:126170
+  - 0x0800E5E2 object_canMove
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0800CC72 object_isValidPanel
+  reproduce: python3 tools/asmcat.py 0x080F3180
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- No known caller, so the meaning of HitElement 8 vs 0x20 in the surrounding attack state machine is inferred,
+  not confirmed
+- Exact semantics of OBJECT_FLAGS_UNK_BIT_22 (likely airborne/non-targetable) need a symbol for object_setFlag1
+  flag values
+- What attack follows (the strike phase reached with HitElement=8) is unknown
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F3180 -> ai_attackRiseOffField
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F3180

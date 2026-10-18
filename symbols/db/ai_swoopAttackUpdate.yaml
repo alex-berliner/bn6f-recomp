@@ -1,0 +1,55 @@
+name: ai_swoopAttackUpdate
+address: '0x0810F898'
+kind: function
+status: probable
+summary: 'AI attack state handler: flies the enemy along its Y velocity while highlighting the panel beneath
+  it, then on expiry returns it to its home panel and resets the attack state.'
+interface: (no args; r5 = battle object, r7 = oAIAttackVars) -> void; r0 clobbered
+details: While the timer byte at r5+0x6E is nonzero it is decremented, oBattleObject_Y is advanced by
+  oBattleObject_YVelocity, panels/collision are refreshed, and the panel at (PanelX, PanelY^DirectionFlip)
+  is highlighted, plus calls to sub_810FBD8(0) and sub_810FC30. On the first tick after expiry it sets
+  AttackElement=1 and calls sub_810FC0C with byte r5+0x74, then clears the collision region and ObjectFlags1
+  bit 1 (object inactive). The landing path restores PanelX/PanelY from saved home-panel bytes r5+0x64/0x65
+  (also written to TargetPanelX/Y), recomputes pixel coordinates, zeroes Z, sets collision region 1, restores
+  ObjectFlags1 bit 1, clears flag 0x40, and calls sub_811013C(homeX, homeY, dword_810FCCC=0x200000) —
+  likely spawning a landing effect at the home panel — then object_removePanelReserve on that panel. Finally
+  it resets CurAnim=0, copies oAIAttackVars_AttackDuration into StepTimer, sets HitElement=0x18, AttackElement=0,
+  and clears flag 0x40 again.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: '810F89A: byte r5+0x6E is a countdown; nonzero path applies [r5+oBattleObject_YVelocity] to
+    oBattleObject_Y each frame; 810F8BC: highlightPanelIfSomeCondition_8109660 called with PanelX/PanelY^DirectionFlip
+    marks the panel under the airborne object; 810F8F4-810F938: landing path reads saved bytes 0x64/0x65
+    into PanelX/PanelY and TargetPanelX/Y, then object_setCoordinatesFromPanels and object_setCollisionRegion(1);
+    810F948: sub_811013C(homeX, homeY, dword_810FCCC=0x200000) followed by object_removePanelReserve —
+    frees the panel and spawns an effect there; 810F95A: StepTimer = AttackDuration, HitElement=0x18,
+    AttackElement=0 — standard AI attack-state teardown'
+  refs:
+  - bn6f/asm/asm32.s:3610
+  - 0x08109660 highlightPanelIfSomeCondition_8109660
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0801A15C object_clearFlag
+  reproduce: python3 tools/asmcat.py 0x0810F898
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- Which enemy/attack this belongs to (HitElement 0x18, AttackElement 1) — no caller is known, only that
+  it runs in the 'battlesweep' route
+- What sub_810FBD8, sub_810FC30, sub_810FC0C and sub_811013C (arg 0x200000) do, to confirm the effect
+  spawned on landing
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810F898 -> ai_swoopAttackUpdate
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810F898

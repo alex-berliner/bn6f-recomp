@@ -1,0 +1,54 @@
+name: ai_attackJumpToTargetPanel
+address: '0x08105CEC'
+kind: function
+status: probable
+summary: 'AI attack step: on first run picks a panel relative to the target via the attack''s panel-choose
+  callback, reserves it and plays an approach anim, then after a short timer delivers the hit.'
+interface: () -> void; operates on the current battle object (r5) and its AIAttackVars (r7); sets oAIAttackVars_AttackElement,
+  StepTimer, HitElement, oBattleObject_FuturePanelX/Y, CurAnim and ObjectFlags1
+details: Two-phase attack state machine keyed on oAIAttackVars_AttackElement (0 = not started). First
+  invocation stores element=4, and if object_canMove fails (blocked), plays anim 0x14 and tears the attack
+  down via object_exitAttackState_801171C. Otherwise it indexes byte_8105D4C by Alliance*8 to get dx/dy
+  offsets (0 or 0x20 depending on alliance), long-bl's the oAIAttackVars_PanelChooseCallback with TargetObjectPtr
+  and the offsets; the callback returns the chosen panel in r0/r1, which are stored into FuturePanelX/Y.
+  It then claims the panel with object_reservePanel, sets ObjectFlags1 bit 0x20 (cannot be slid off the
+  reserved panel), plays anim 0x15 and sets StepTimer=4. On later calls it just decrements StepTimer,
+  and on expiry writes HitElement=8, presumably triggering the damage/check-hit phase of this attack.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne splits ''not started'' from countdown phases;
+    strb r0,[r5,#oBattleObject_FuturePanelY]; bl object_reservePanel — chosen panel coords are applied
+    and reserved for this object; mov lr,pc; bx r1 with r1=[r7,#oAIAttackVars_PanelChooseCallback] and
+    r2/r3 from byte_8105D4C[Alliance*8] — per-alliance dx/dy passed to the panel chooser; mov r0,#0x15;
+    strb r0,[r5,#oBattleObject_CurAnim] and StepTimer=4 on success, anim 0x14 + exitAttackState on failure;
+    tail: sub StepTimer; bgt done; mov r0,#8; strh r0,[r7,#oAIAttackVars_HitElement] — timed transition
+    to the hit phase'
+  refs:
+  - bn6f/asm/asm31.s:164386
+  - 0x0800E5E2 object_canMove
+  - 0x0801171C object_exitAttackState_801171C
+  - 0x0801BB1C object_reservePanel
+  reproduce: python3 tools/asmcat.py 0x08105CEC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- Which enemy/attack this handler belongs to (identity of PanelChooseCallback and which attack sets anims
+  0x14/0x15)
+- What HitElement=8 triggers downstream in the attack state machine
+- Whether byte_8105D4C entries are pixel offsets or panel deltas
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8105CEC -> ai_attackJumpToTargetPanel
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8105CEC

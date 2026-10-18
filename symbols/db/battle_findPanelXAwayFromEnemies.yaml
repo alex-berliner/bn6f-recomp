@@ -1,0 +1,63 @@
+name: battle_findPanelXAwayFromEnemies
+address: '0x0800D5BA'
+kind: function
+status: probable
+summary: From a battle object's current panel column, walks backward (away from its facing) to the first
+  column whose neighboring panels hold no enemy-alliance objects, restarting forward from the start column
+  if it falls off the grid.
+interface: (r5 = battle object ptr) -> r0 = panel column (x) found; r4, r6, r7 clobbered; flags from tst
+details: 'Reads oBattleObject_PanelX and oBattleObject_Alliance from the object in r5 and gets the facing
+  multiplier via object_getFrontDirection, then negates it so the walk advances one column per step toward
+  the object''s own back area. Each candidate column is first range-checked with object_isValidPanel (row
+  fixed at 1, i.e. only the column matters), then battle_countAdjacentPanelsOfOtherAlliance(x, alliance)
+  tests whether any adjacent panel holds an opposing-side object: as long as the count is nonzero the
+  walk continues backward, and it returns the first column with a zero count. If the walk reaches an invalid
+  column, x is reset to the original PanelX, the direction is switched to the un-negated front direction,
+  and the same search runs forward toward the enemy side. The caller (battle_scanPanelsInFront_800D58C)
+  belongs to the same battle-panel scan family, so this is likely shared AI/utility logic picking a safe
+  panel, not an effect-specific routine.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: neg r4, r0 right after bl object_getFrontDirection shows the walk runs opposite the facing direction;
+    loop calls battle_countAdjacentPanelsOfOtherAlliance_800D5F0 with (r0=column, r1=alliance from oBattleObject_Alliance)
+    and advances r6 only while the count is nonzero; loc_800D5E4 reloads oBattleObject_PanelX and uses
+    the non-negated front direction after object_isValidPanel fails, i.e. a fallback forward sweep; r5
+    is the object pointer while r0/r1 are argument/scratch, matching the project's r5-object calling quirk
+    for battle helpers; caller battle_scanPanelsInFront_800D58C is a panel-walking battle utility, supporting
+    a generic battle-AI panel-search role
+  refs:
+  - bn6f/asm/object.s:4237
+  - 0x0800D58C battle_scanPanelsInFront_800D58C
+  - 0x0800D5F0 battle_countAdjacentPanelsOfOtherAlliance_800D5F0
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800CC72 object_isValidPanel
+  reproduce: python3 tools/asmcat.py 0x0800D5BA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+- beastsp
+- chips
+- menus2
+- menus3
+- story2
+open_questions:
+- Which game system calls the caller (AI steering, a specific effect like a pull/push) is not shown, so
+  the exact gameplay purpose is inferred
+- battle_countAdjacentPanelsOfOtherAlliance's exact adjacency set (which of the three panels it checks,
+  and at which row) would confirm what 'no enemy neighbors' means
+- why row 1 is hardcoded in the object_isValidPanel check (possibly only the column is validated)
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_800D5BA -> battle_findPanelXAwayFromEnemies
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800D5BA

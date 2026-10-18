@@ -1,0 +1,55 @@
+name: battle_initSpawnState
+address: '0x080D124E'
+kind: function
+status: probable
+summary: 'Spawn-state handler for a battle object: loads its fixed sprite at its panel position and sets
+  up HP/animation, or despawns with a poof effect if the sprite fails to load.'
+interface: (r5 = battle object pointer; no register args read) -> r0 = garbage; advances oBattleObject_CurState
+  to CUR_STATE_UPDATE on success, frees the object on failure
+details: Reads the object from r5 (not saved — caller-dependent). Calls object_setCoordinatesFromPanels,
+  then battleObject_initSpriteAndCollision with hard-coded resource ids 0x1034 and 0xc0d0100. On failure
+  it nulls the related object's header, spawns a t1 effect at object+0x34 with y+0x100 (0x10 << 16) and
+  calls object_freeMemory (despawn poof). On success it sets ObjectHeader flags |= 2, maps Param1 (0/1)
+  into CurAnim = Param1*2+1 (two visual variants), sets hit effect 0xff (no hit effect), copies Param3
+  into HP, MaxHP and ExtraVars+8, resets palette 0, clears and refreshes collision data, sets the related
+  object's header to 2, and stores CUR_STATE_UPDATE in CurState.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_setCoordinatesFromPanels then bl battleObject_initSpriteAndCollision with dword_80D14F8/FC
+    (0x1034, 0xc0d0100) — fixed sprite load at panel position; failure path: str r1=0 into [r0,#oBattleObject_ObjectHeader],
+    spawn_t1_0x0_EffectObject at obj+0x34 with y+0x10, bl object_freeMemory — despawn with effect; success
+    path: CurAnim = Param1*2+1 and HP/MaxHP/ExtraVars+8 all set from Param3 — initial stats and variant
+    animation from params; strb CUR_STATE_UPDATE, [r5,#oBattleObject_CurState] and related object header
+    := 2 — hands off to the update state, i.e. this is the init/spawn state; mov r0,#0xff; bl object_setCollisionHitEffect
+    — suppresses hit effects at spawn'
+  refs:
+  - bn6f/asm/asm31.s:54198
+  - 0x08011504 battleObject_initSpriteAndCollision_8011504
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x08003458 object_freeMemory
+  reproduce: python3 tools/asmcat.py 0x080D124E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- Which object type this belongs to (identity of sprite resource 0x1034 / 0xc0d0100) — would need the
+  state-handler table that dispatches to it
+- Semantics of Param1 (animation variant selector?) and why Param3 is the source of HP (spawn parameter
+  passed by the spawner)
+- What sub_80D149E does (called only after collision refresh)
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D124E -> battle_initSpawnState
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D124E

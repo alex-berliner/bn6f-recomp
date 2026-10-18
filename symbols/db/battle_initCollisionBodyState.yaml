@@ -1,0 +1,53 @@
+name: battle_initCollisionBodyState
+address: '0x080D956C'
+kind: function
+status: probable
+summary: 'Spawn/init phase of a battle object: builds its collision body (kind 0x39) from its panel position,
+  then advances it to the update state.'
+interface: (r5 = battle object) -> r0 = destroyed?; returns early via object_freeMemory if no collision
+  slot; otherwise object state set to CUR_STATE_UPDATE
+details: 'Runs as the object''s initial state handler: it first calls an unknown helper sub_80D9682, recomputes
+  pixel X/Y from the object''s panel coords (object_setCoordinatesFromPanels), then allocates a collision-data
+  slot (object_createCollisionData); if allocation fails the object frees itself. On success it initializes
+  the collision block with kind 0x39 and flag-table args 2/3 (object_setupCollisionData), copies oBattleObject_Param1
+  into collision byte 1, and sets hit effect 0xFF (likely ''no effect''). It then refreshes collision
+  for the frame (object_presentCollisionData), mirrors PanelX/PanelY into object fields 0x6A/0x6B (remembered
+  spawn/current panel), and writes CUR_STATE_UPDATE into the state/phase field so the next run uses the
+  update handler.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_createCollisionData; tst r0,r0; beq-free: object dies if it can''t get a collision
+    slot; mov r1,#0x39 / r2=#2 / r3=#3 before object_setupCollisionData: fixed collision kind and flag-table
+    args; strb r1,[r4,#1] from oBattleObject_Param1: parent param copied into collision data; mov r0,#0xff;
+    bl object_setCollisionHitEffect: hit effect explicitly set to 0xFF; str r0 (=CUR_STATE_UPDATE),[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]:
+    transitions state to update, typical of a spawn/init handler'
+  refs:
+  - bn6f/asm/asm31.s:71520
+  - 0x08019892 object_createCollisionData
+  - 0x08003458 object_freeMemory
+  - 0x0801A018 object_presentCollisionData
+  reproduce: python3 tools/asmcat.py 0x080D956C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- Which battle entity uses this handler (collision kind 0x39) — needs the object template or creation
+  site that registers this state
+- Purpose of the first call sub_80D9682
+- Meaning of flag-table args 2 and 3 in object_setupCollisionData
+- Whether collision byte 1 (from Param1) is HP, strength, or another property
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D956C -> battle_initCollisionBodyState
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D956C

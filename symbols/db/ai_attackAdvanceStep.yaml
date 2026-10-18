@@ -1,0 +1,54 @@
+name: ai_attackAdvanceStep
+address: '0x08100CB8'
+kind: function
+status: probable
+summary: 'Per-frame update for an AI (enemy) attack state: on first entry it commits the object to its
+  target panel and starts the move, then counts down the step timer and signals the attack''s element
+  when done.'
+interface: (r5 = battle object ptr, r7 = AI attack vars struct) -> void; sets oAIAttackVars_AttackElement/StepTimer/HitElement
+  and object panel/anim/flag state
+details: This is a state-machine step for an AI-controlled battle object's attack. If AttackElement is
+  still 0 (attack not yet committed), it stamps AttackElement = 4, switches the object to animation 3,
+  copies FuturePanelX/FuturePanelY into PanelX/PanelY, releases the reserved target panel, recomputes
+  pixel coordinates and collision/facing via object_removePanelReserve/object_setCoordinatesFromPanels/object_updateCollisionPanels,
+  clears ObjectFlags1 bit 0x40, sets the 'currently moving' flag (bit 1<<1), and loads StepTimer = 2.
+  On subsequent frames (AttackElement != 0) it just decrements StepTimer; when it reaches 0 it writes
+  8 into oAIAttackVars_HitElement, presumably marking the attack ready to resolve/deal its hit. r5/r7
+  are the standard battle object and AI-vars registers used by the surrounding AI code.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne branches between ''begin attack'' and ''tick
+    timer'' halves; begin half: copies FuturePanelX/Y to PanelX/Y then calls object_removePanelReserve,
+    object_setCoordinatesFromPanels, object_updateCollisionPanels (a panel-commit move); begin half sets
+    oBattleObject_CurAnim = 3 and ObjectFlags1 currently-moving bit via object_setFlag1(1<<1); timer half:
+    sub r0,#1 on oAIAttackVars_StepTimer; on expiry stores 8 into oAIAttackVars_HitElement; r5/r7 usage
+    and callees match battle-object AI attack routines (object_* helpers only)'
+  refs:
+  - bn6f/asm/asm31.s:154011
+  - 0x0801A15C object_clearFlag
+  - 0x0801BB46 object_removePanelReserve
+  - 0x0800E29C object_setCoordinatesFromPanels
+  reproduce: python3 tools/asmcat.py 0x08100CB8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- Meaning of element values 4 (set) and 8 (stored to HitElement) — need the attack-table or hit-resolution
+  code to name them
+- Which AI attack(s) invoke this step (no callers known), so the exact attack move (e.g. step-forward
+  melee vs dash) is unconfirmed
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8100CB8 -> ai_attackAdvanceStep
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8100CB8

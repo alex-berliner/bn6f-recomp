@@ -2531,7 +2531,7 @@ Next sub_8124C94(void) {
 
     R0 = 0;
     R1 = 1;
-    GUEST_CALL(sub_811983C);
+    GUEST_CALL(e_setField13);
 
     /* Clear the byte at offset 0xD and copy 0x14->0x16 and 0x18->0x1A. */
     ST8(R5 + 0xD, 0);
@@ -2562,7 +2562,7 @@ Next sub_8124C94(void) {
     GUEST_CALL(sprite_setStructHalfwordPairOnThree_8117084);
 
     GUEST_CALL(sub_812674C);
-    GUEST_CALL(sub_81267A8);
+    GUEST_CALL(sprite_queueBattleOamEntry);
 
     RETURN_TO_CALLER();
 }
@@ -2702,11 +2702,11 @@ static inline call_sub_8126818_result call_sub_8126818_sub_8124D78(u32 r0, u32 r
 }
 
 typedef struct { u32 r2, r5, r6; } call_sub_811983C_result;
-/* register form: generated wrapper: sub_811983C has no typed C interface yet */
+/* register form: generated wrapper: e_setField13 has no typed C interface yet */
 static inline call_sub_811983C_result call_sub_811983C(u32 r0, u32 r1) {
     R0 = r0;
     R1 = r1;
-    GUEST_CALL(sub_811983C);
+    GUEST_CALL(e_setField13);
     return (call_sub_811983C_result){ R2, R5, R6 };
 }
 
@@ -2763,10 +2763,10 @@ static inline call_sub_812674C_result call_sub_812674C_sub_8124D78(u32 r5) {
 }
 
 typedef struct { u32 r0, r1, r2, r3, r4, r5, r6, r7; bool z, n, c, v; } call_sub_81267A8_result;
-/* register form: generated wrapper: sub_81267A8 has no typed C interface yet */
+/* register form: generated wrapper: sprite_queueBattleOamEntry has no typed C interface yet */
 static inline call_sub_81267A8_result call_sub_81267A8_sub_8124D78(u32 r5) {
     R5 = r5;
-    GUEST_CALL(sub_81267A8);
+    GUEST_CALL(sprite_queueBattleOamEntry);
     return (call_sub_81267A8_result){ R0, R1, R2, R3, R4, R5, R6, R7, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
 }
 
@@ -2969,9 +2969,9 @@ static void sub_812674C_reg(void) {
     GUEST_CALL(sub_812674C);
 }
 
-/* register form: calls sub_81267A8 outside this file, which has no typed C interface yet */
+/* register form: calls sprite_queueBattleOamEntry outside this file, which has no typed C interface yet */
 static void sub_81267A8_reg(void) {
-    GUEST_CALL(sub_81267A8);
+    GUEST_CALL(sprite_queueBattleOamEntry);
 }
 
 /* register form: calls sub_81267F0 outside this file, which has no typed C interface yet */
@@ -3022,9 +3022,9 @@ static void call_sub_812674C(void) {
     GUEST_CALL(sub_812674C);
 }
 
-/* register form: calls sub_81267A8 outside this file, which has no typed C interface yet */
+/* register form: calls sprite_queueBattleOamEntry outside this file, which has no typed C interface yet */
 static void call_sub_81267A8(void) {
-    GUEST_CALL(sub_81267A8);
+    GUEST_CALL(sprite_queueBattleOamEntry);
 }
 
 /* register form: calls battle_runTransition_8125444 outside this file, which has no typed C interface yet */
@@ -3083,9 +3083,9 @@ static void call_812674C(void) {
     GUEST_CALL(sub_812674C);
 }
 
-/* register form: calls sub_81267A8 outside this file, which has no typed C interface yet */
+/* register form: calls sprite_queueBattleOamEntry outside this file, which has no typed C interface yet */
 static void call_81267A8(void) {
-    GUEST_CALL(sub_81267A8);
+    GUEST_CALL(sprite_queueBattleOamEntry);
 }
 
 /* register form: calls battle_runTransition_8125444 outside this file, which has no typed C interface yet */

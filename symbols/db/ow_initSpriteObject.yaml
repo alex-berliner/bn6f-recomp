@@ -1,0 +1,51 @@
+name: ow_initSpriteObject
+address: '0x080A9D30'
+kind: function
+status: probable
+summary: 'Initializes an overworld object: records its position, attaches sprite resource 0x80/0x1c/0x9e
+  with animation 0 and no shadow, and sets up its render/state fields.'
+interface: () -> void; operates on the global object pointer held in r5 (sprite_* callees are argument-less)
+details: 'Stores 1 at byte 0 of the object, then calls sub_809C890 whose r1-r3 results (likely the object''s
+  position/coords) are saved twice: to fields 0x0c/0x10/0x14 and duplicated to 0x30/0x34/0x38 (current
+  vs. previous position). Loads sprite (0x80, 0x1c, 0x9e) via sprite_load, sets animation 0, loads animation
+  data, disables the shadow, applies the layer-effect/priority logic via applyLayerEffectToOWObject_8035694
+  and sprite_setPriority. Clears halfwords 0x24/0x26, writes constants 0x2aaaa to 0x28 and 0x16c1 to 0x2c
+  (likely timing/counter config), sets byte 8 = 4 and byte 9 = 0 (state/type tags), and finishes by calling
+  sub_80A9D86. This is a spawn/initializer for one specific OW object; which one depends on the sprite
+  resource IDs, not shown by any known caller.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: strb r0,#1,[r5] then sub_809C890 results stored at 0x0c..0x14 and 0x30..0x38 (asm lines 3-10);
+    sprite_load(0x80,0x1c,0x9e) followed by sprite_setAnimation(0), sprite_loadAnimationData, sprite_noShadow;
+    applyLayerEffectToOWObject_8035694(r5+0xc) then sprite_setPriority configure draw layer/priority;
+    constant stores 0x2aaaa->[r5,0x28], 0x16c1->[r5,0x2c] and byte 8=4, byte 9=0 look like per-object
+    config; recorded route 'beastsp' runs it, consistent with an OW object setup routine
+  refs:
+  - bn6f/asm/asm29.s:9631
+  - 0x08035694 applyLayerEffectToOWObject_8035694
+  - 0x080026E4 sprite_load
+  - 0x080026A4 sprite_loadAnimationData
+  reproduce: python3 tools/asmcat.py 0x080A9D30
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- beastsp
+open_questions:
+- 'Which object/entity this spawns: no caller is known, so the meaning of sprite ids 0x80/0x1c/0x9e and
+  the constants 0x2aaaa/0x16c1 is unconfirmed'
+- What sub_80A9D86 and sub_809C890 return/do
+- Field layout of the object struct beyond the offsets touched here
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80A9D30 -> ow_initSpriteObject
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A9D30

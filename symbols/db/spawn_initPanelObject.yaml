@@ -1,0 +1,51 @@
+name: spawn_initPanelObject
+address: '0x080D9178'
+kind: function
+status: probable
+summary: 'Initializer for a spawned battle object: positions it on its panel, loads sprite 0x10 with no
+  shadow, resets its animation/state, plays a sound effect, and switches it to its update state.'
+interface: (r5 = battle object pointer, set by caller) -> r0 = CUR_STATE_UPDATE; no return value, object
+  fields written
+details: Uses r5 (a battle object set up before entry, likely via a prior common spawn path). It recomputes
+  the object's pixel position from its panel coordinates, zeroes the Z/height halfword at oBattleObject_Z16,
+  and loads sprite resource with args (0x80, 0x10, 0x50) via sprite_load, then marks it shadowless. It
+  sets oObjectHeader_Flags bit 2, resets CurAnim and CurAnimCopy to 0, loads the animation data, sets
+  palette 0 and flip from object_getFlip, and zeroes the byte field at offset 0x66 (likely a timer/counter).
+  Finally it plays sound effect 0x10E (0xF + 0xFF) and stores CUR_STATE_UPDATE into oBattleObject_CurStateActionPhaseAndPhaseInitialized
+  so the object's per-frame update handler takes over next tick.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_setCoordinatesFromPanels + strh r0,[r5,#oBattleObject_Z16] places the object on its
+    panel at ground level; bl sprite_load (0x80,0x10,0x50) then sprite_noShadow and flag bit 2 configure
+    the visual for this object type; mov r0,#0 strb to CurAnim/CurAnimCopy, sprite_loadAnimationData,
+    sprite_setPalette(0), sprite_setFlip(object_getFlip()) set up initial rendering state; mov r0,#0x66
+    strb r1,[r5,r0] clears a per-object counter field; bl PlaySoundEffect with r0=0x10E and str CUR_STATE_UPDATE
+    into CurStateActionPhaseAndPhaseInitialized finish the spawn handoff
+  refs:
+  - bn6f/asm/asm31.s:70996
+  - 0x080005CC PlaySoundEffect
+  - 0x0800E456 object_getFlip
+  - 0x0800E29C object_setCoordinatesFromPanels
+  reproduce: python3 tools/asmcat.py 0x080D9178
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- Which enemy/obstacle/boss this exact initializer belongs to (sprite ID 0x10, sound 0x10E) — needs the
+  spawn-table entry that dispatches to this address
+- Meaning of the byte at offset 0x66 and the sprite_load argument meanings (0x80/0x50)
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D9178 -> spawn_initPanelObject
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D9178

@@ -1,0 +1,56 @@
+name: battle_initTypeSpriteObject
+address: '0x080E0B08'
+kind: function
+status: probable
+summary: State-init handler that loads the sprite, animation and palette for a battle object from a per-type
+  table indexed by Param1, plays a spawn sound, and advances to the next state.
+interface: (r0 unused on entry; r5 = object) -> r0 = 0; object sprite/anim/palette fields set, flags |=
+  2, CurStateActionPhaseAndPhaseInitialized = CUR_STATE_UPDATE
+details: 'Reads oBattleObject_Param1 as a type index, multiplies by 0xC to select a 12-byte record in
+  the table at byte_80E0A14, and stores the record pointer in oBattleObject_ExtraVars. The record holds
+  a sprite id (bytes 0-1, passed to sprite_load with 0x80), an initial anim index (byte 2, also copied
+  to CurAnim/CurAnimCopy), a palette (byte 3), and a value at offset 8 fed to sprite_setUnk0x2c. It sets
+  the object flags bit 0x2, calls sprite_noShadow, updates the sprite once, then plays sound 0x89 — overridden
+  to 0x12d when Param1==8. Special case for Param1==9: if the related object''s AIData actor type is 2
+  with AIIndex 0, battle_networkInvert on the object''s alliance decides whether the table''s timer value
+  is replaced by timer_2000000 (a very long duration). Finally it writes CUR_STATE_UPDATE into the state/phase
+  field and tail-calls sub_80E0B8C, the next state handler.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#oBattleObject_Param1]; mul r0,#0xc; ldr r4,off_80E0DD8 (=byte_80E0A14) — per-type
+    table selected by Param1; bl sprite_load with 0x80, then sprite_loadAnimationData, sprite_noShadow,
+    and CurAnim from [r4,#2] — full sprite setup from the record; ldr r0,[r4,#8] vs off_80E0DDC (timer_2000000)
+    gated on related object's oAIData_ActorType==2/AIIndex==0 and battle_networkInvert(alliance); mov
+    r0,#0x89 / cmp r1,#8 -> off_80E0DE0 (0x12d); bl PlaySoundEffect — spawn sound with a type-specific
+    override; mov r0,#CUR_STATE_UPDATE; str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized];
+    bl sub_80E0B8C — advances to the next state handler
+  refs:
+  - bn6f/asm/asm31.s:86923
+  - 0x080005CC PlaySoundEffect
+  - 0x0800A9EC battle_networkInvert
+  - 0x080026E4 sprite_load
+  reproduce: python3 tools/asmcat.py 0x080E0B08
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- What object/kind of effect this spawns depends on the sprite ids in byte_80E0A14 and the sound IDs 0x89/0x12d,
+  which are not identified here
+- What sprite_setUnk0x2c does with the table's offset-8 value (a timer or render parameter)
+- What sub_80E0B8C (the next state) does, and why no callers are recorded despite the route executing
+  it
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80E0B08 -> battle_initTypeSpriteObject
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E0B08

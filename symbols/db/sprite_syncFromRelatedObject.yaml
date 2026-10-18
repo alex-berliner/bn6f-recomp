@@ -1,0 +1,49 @@
+name: sprite_syncFromRelatedObject
+address: '0x080BFE8C'
+kind: function
+status: probable
+summary: Copies an object's full sprite/appearance state (anim, render fields, flags, palette, shader,
+  alpha/scaling) from its RelatedObject1, with anim-index and Y/Z offsets.
+interface: (r5 = battle object) -> void; clobbers r0-r3, preserves r5 state
+details: 'Sets the object''s CurAnim to RelatedObject1''s CurAnim adjusted by Param1(+)/Param2(-), copies
+  the 3 words at +0x34 (animation/render state) from the related object, subtracts Param3 from Y16 and
+  Z16 as a positional offset, and mirrors the related object''s header flag bit 0x02. It then copies every
+  visible sprite attribute from the related object''s sprite: palette, color shader, final palette, the
+  sprite Unk_11 bit-0x10 plus render-info high byte (via loc_8002F02), and the mosaic/scaling parameters
+  via sprite_setAlpha. Effectively makes this object render exactly like its related object (e.g. a transformed
+  or attached copy), differing only by the param offsets.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r4,#oBattleObject_CurAnim] from RelatedObject1Ptr then sub Param2/add Param1 -> own
+    CurAnim (anim sync with offset); ldmia/stmia of {r1-r3} between +0x34 fields of the two objects (render/anim
+    state copy); sub Param3 from both oBattleObject_Y16 and oBattleObject_Z16 (positional offset from
+    related object); flag bit 0x02 of oObjectHeader_Flags copied from related object; get/set pairs for
+    palette, colorShader, finalPalette, flag10+renderHigh, and mosaic/scaling->setAlpha all read from
+    RelatedObject1Ptr
+  refs:
+  - bn6f/asm/asm31.s:17051
+  - 0x08002F3E obj_getSpriteFlag10AndRenderInfoHigh_8002F3E
+  - 0x08002EDC sprite_getColorShader
+  - 0x08002DC8 sprite_getFinalPalette
+  reproduce: python3 tools/asmcat.py 0x080BFE8C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- exact meaning of the 3 words at +0x34
+- which gameplay situations call it (no callers known; route is battlesweep)
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80BFE8C -> sprite_syncFromRelatedObject
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BFE8C

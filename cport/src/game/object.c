@@ -1479,7 +1479,7 @@ Next battle_scanPanelsInFront_800D58C(void) {
     u32 saved_r7 = R7;
 
     /* Start from the panel the object (r5) currently occupies. */
-    GUEST_CALL(sub_800D5BA);
+    GUEST_CALL(battle_findPanelXAwayFromEnemies);
     u32 panel = R0;
     R6 = panel;
 

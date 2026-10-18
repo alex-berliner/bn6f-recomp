@@ -1,0 +1,54 @@
+name: ai_lungeAttackUpdate
+address: '0x08110B70'
+kind: function
+status: probable
+summary: 'AI attack-state step for a lunging enemy: on first tick it records its panel and launch velocity,
+  then charges forward until it hits something or the timer runs out, then snaps back to its starting
+  panel.'
+interface: (r5 = battle object, r7 = AI attack vars) -> void; updates oAIAttackVars_AttackElement, StepTimer,
+  HitElement and the object's panel/coordinates
+details: On entry with oAIAttackVars_AttackElement==0 it stashes the object's PanelX/PanelY (fields 0x78/0x79)
+  into 0x7A/0x7B, calls sub_8110CC6 to set up the charge, copies Unk_32 into StepTimer and sets AttackElement=1.
+  Each tick it decrements the halfword timer at object+0x7E; while the timer is still >=0 and sub_8110D58
+  (hit/collision test) returns 0, it advances oBattleObject_Y by YVelocity and resyncs panels via object_setPanelsFromCoordinates/object_updateCollisionPanels.
+  On timer expiry it restores the saved PanelY, recomputes pixel coordinates, and writes HitElement=0x24.
+  On a hit it clears object flag bit 1, restores the saved start panel from 0x78/0x79, calls sub_81110C8
+  and sub_811109C, releases the reserved panel (object_removePanelReserve), sets collision region 1, and
+  writes HitElement=0x28. In both end paths AttackElement is reset to 0 so the state can be re-entered.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'init block: copies [r5+0x78/0x79] to 0x7A/0x7B, bl sub_8110CC6, sets oAIAttackVars_AttackElement=1;
+    loop: ldrh [r5,#0x7E]; sub #1; tst/blt gates a Y += YVelocity movement with object_setPanelsFromCoordinates;
+    hit path loc_8110BDE: bic flag bit 1, restores PanelX/Y from 0x78/0x79, bl object_removePanelReserve,
+    bl object_setCollisionRegion(1); HitElement written to 0x24 on timeout and 0x28 on hit, with AttackElement
+    cleared to 0 both times; callees object_setCoordinatesFromPanels/object_updateCollisionPanels confirm
+    it manipulates a battle object''s panel/collision state'
+  refs:
+  - bn6f/asm/asm32.s:5851
+  - 0x0801BB46 object_removePanelReserve
+  - 0x0801A07C object_setCollisionRegion
+  - 0x0800E29C object_setCoordinatesFromPanels
+  reproduce: python3 tools/asmcat.py 0x08110B70
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- Exact semantics of sub_8110D58 (hit test vs. wall check), sub_8110CC6, sub_81110C8 and sub_811109C are
+  unknown
+- Meaning of HitElement values 0x24/0x28 for the downstream AI state machine and which enemy uses this
+  attack are not shown
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8110B70 -> ai_lungeAttackUpdate
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8110B70

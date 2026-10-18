@@ -1,0 +1,55 @@
+name: ai_pickFilteredPanelOrRandom
+address: '0x081124F2'
+kind: function
+status: probable
+summary: 'Battle-AI panel selector: finds an alliance-dependent panel behind the opponent''s rows, re-validates
+  it against panel flags, and falls back to a random nearby panel.'
+interface: (r0 = battle object, r5 = context entity with panel/coord bytes at +0x16/+0x17) -> r0 = chosen
+  panel or 0/kept value; uses object's alliance byte at +0x13
+details: r0 (saved in r4) is a battle object whose +0x13 field selects the team-dependent entry of table
+  byte_81125F0; the first lookup's param/args drive object_getClosestPanelMatchingRowFiltered, which scans
+  rows opposite the facing side from six rows back. If no row qualifies (r0 == 0) the function returns
+  immediately. Otherwise a second alliance-dependent lookup (byte_81125E0) feeds object_checkPanelParameters,
+  whose r0-r3 are pushed/popped so the param/args survive for reuse; if the panel still passes the flag
+  masks the function returns with it. Only when that check fails does it call GetRandomRelativePanelFiltered
+  with r6 = [r5+0x16] ^ [r5+0x17] and r4 = 5, picking a random reachable panel as replacement. Overall
+  this looks like target-panel (re)selection for an AI action, with the random pick as fallback when the
+  preferred panel no longer matches.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'two GetAllianceDependentPanelParamArgs calls with tables byte_81125F0/byte_81125E0, indexed
+    by [r4+0x13] (alliance); beq locret_811252A after object_getClosestPanelMatchingRowFiltered: return
+    when no matching row is found; object_checkPanelParameters args saved via push/pop {r0-r3} and reused
+    for the fallback call; bne locret_811252A after object_checkPanelParameters: keep the panel when the
+    flag check passes; fallback bl GetRandomRelativePanelFiltered with r6 = [r5+0x16]^[r5+0x17], r4 =
+    5'
+  refs:
+  - bn6f/asm/asm32.s:8852
+  - 0x081096FA GetAllianceDependentPanelParamArgs
+  - 0x08015E46 GetRandomRelativePanelFiltered
+  - 0x0800CC86 object_checkPanelParameters
+  reproduce: python3 tools/asmcat.py 0x081124F2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- exact meaning of bytes +0x16/+0x17 of the r5 object and why they are XORed
+- meaning of r4 = 5 in GetRandomRelativePanelFiltered (range? list id?)
+- contents of param tables byte_81125E0/byte_81125F0
+- no known callers, so the calling context and which boss/AI uses this are unknown
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_81124F2 -> ai_pickFilteredPanelOrRandom
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81124F2

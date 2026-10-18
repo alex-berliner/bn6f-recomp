@@ -1,0 +1,53 @@
+name: battle_pauseIntroResumeStateStep
+address: '0x08009A68'
+kind: function
+status: probable
+summary: 'Per-frame handler for the battle state entered after the mid-intro pause: refreshes request
+  bits and the battle scene, then posts a null event.'
+interface: (no args) -> r0 = 0 after postEvent call; no meaningful return; sets eStruct2035280 request/flag
+  dword |= 0x404
+details: The function is parameterless and appears to be a BattleState handler invoked each frame while
+  the battle state machine sits in the state that follows the intro pause. It ORs the constant 0x404 (bits
+  0x4 and 0x400) into the request dword at eStruct2035280+0x40 via eStruct2035280_SetRequestBits_801BECC,
+  then passes the same 0x404 to dispatch_801DA48, presumably to run the subsystem handlers matching those
+  request bits. It then calls battle_sceneFrameSetup_801DA24, which queues the battle scene's graphics
+  transfers and refreshes the stored player battle object pointer. Finally it posts event (0,0) through
+  battle_eStruct2035280_postEvent_801E0A0, i.e. an empty/no-op event, likely to signal the state machine
+  that nothing further is requested this frame.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldr r0, =0x404; bl eStruct2035280_SetRequestBits_801BECC — requests bits 0x4|0x400 in eStruct2035280+0x40;
+    ldr r0, =0x404; bl dispatch_801DA48 — dispatches the same mask, mirroring the request pattern; bl
+    battle_sceneFrameSetup_801DA24 — per-frame battle scene graphics/object refresh; mov r0,#0; mov r1,#0;
+    bl battle_eStruct2035280_postEvent_801E0A0 — posts a zeroed (null) event; sole caller battle_advanceIndexFromPauseIntro_80099E0
+    advances BattleState index right before reaching it, matching a state-handler role
+  refs:
+  - bn6f/asm/asm00_1.s:14639
+  - 0x080099E0 battle_advanceIndexFromPauseIntro_80099E0
+  - 0x0801E0A0 battle_eStruct2035280_postEvent_801E0A0
+  - 0x0801DA24 battle_sceneFrameSetup_801DA24
+  - 0x0801BECC eStruct2035280_SetRequestBits_801BECC
+  reproduce: python3 tools/asmcat.py 0x08009A68
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- exact meaning of request bits 0x4 and 0x400 handled by dispatch_801DA48
+- whether postEvent with (0,0) is a no-op heartbeat or a specific state-machine signal
+- which BattleState index value selects this handler, to confirm it is the post-pause-intro wait state
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8009A68 -> battle_pauseIntroResumeStateStep
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8009A68

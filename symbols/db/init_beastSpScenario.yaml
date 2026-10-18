@@ -1,0 +1,54 @@
+name: init_beastSpScenario
+address: '0x0808CA68'
+kind: function
+status: probable
+summary: 'Initializer for the Beast+ special-scenario mode: wipes its work buffer, clears related story
+  flags, restores player control, and starts the scene''s sound.'
+interface: () -> r0 = 0; flags clobbered; zeroes 0x98 bytes at [dword_808CA44], sets state byte 0x3 =
+  0x20, sets GameState Unk_09 = 0
+details: Reads a pointer from dword_808CA44 into r5 and zero-fills 0x98 bytes of the pointed-to work struct
+  via ZeroFillByWord, then writes 0x20 to that struct's byte at offset 0x3 (byte_2000B43 area). Calls
+  sub_808CC84, then clears event flags EVENT_9D8 and EVENT_9D9, and calls gameState_setUnk09(0), which
+  removes the 'can't jack out'/control-lock flag — i.e. normal player control resumes in this mode. If
+  story flag EVENT_9D3 is set it calls sub_808CF50 first, then unconditionally clears EVENT_9D3 (one-time
+  setup for that flag). It then runs sub_8142C94, sub_808CBA0, sub_808CF34, calls sub_808CE70 unless sub_808CF34
+  returned 1, calls sub_808CE28, and plays sound 0x1F with argument 0x100 via sound_8000672 before returning
+  0.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ZeroFillByWord with 0x98 on [dword_808CA44] plus strb 0x20 into byte_2000B43 area = fresh work-area
+    init for a mode; ClearEventFlagFromImmediate on EVENT_9D8/9D9 and conditional use+clear of EVENT_9D3
+    = scenario progress flags being reset; gameState_setUnk09_8001172(0) clears the control-lock/'can't
+    jack out' byte, typical of entering an out-of-battle scene; Final sound_8000672(0x1F, 0x100) = scene-entry
+    sound/BGM trigger; Recorded execution routes beastsp/maps match a Beast+ special scenario initializer
+  refs:
+  - bn6f/asm/asm24.s:1106
+  - 0x0802F12C ClearEventFlagFromImmediate
+  - 0x0802F164 TestEventFlagFromImmediate
+  - 0x080008E0 ZeroFillByWord
+  reproduce: python3 tools/asmcat.py 0x0808CA68
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- beastsp
+- maps
+open_questions:
+- Identity of the 0x98-byte struct at dword_808CA44 and the meaning of its byte 0x3 = 0x20
+- What subs 808CC84, 808CF50, 808CBA0, 808CF34, 808CE70, 808CE28 and 8142C94 do (none documented)
+- Exact meaning of event flags 9D3/9D8/9D9 and whether 0x1F is BGM or an SFX
+- Which caller invokes this and whether the mode is specifically the Beast+ scenario versus another special
+  map mode
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 8c4ba561
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_808CA68 -> init_beastSpScenario
+  where: bn6f 5ee209f3
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_808CA68
