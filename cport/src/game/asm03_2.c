@@ -2379,14 +2379,14 @@ Next sub_80497EE(void) {
 
 /* ── sub_8049808 ── */
 /* sub_8049808(r2, r4, r5, r10, lr): jump-table dispatcher.
- *   Calls sub_803AFC2(0); if it returns nonzero, the result indexes a small Thumb
+ *   Calls submenu_chipSelectCursorMove(0); if it returns nonzero, the result indexes a small Thumb
  *   function-pointer table (dword_804982C: entry 1 = handleExitSubmenu_803AA24, 2 = battleObj_dispatchSubstate_803AA40,
  *   3 = sub_803ABF4, 4 = sub_803AB6C, 5 = sub_803AB94) which is tail-called with
  *   LR = 0x0804981C (the fallthrough into the default cleanup). On zero it skips
  *   the table, runs sub_803A7B8, then sub_803BC7C(0), and returns to the caller. */
 Next sub_8049808(void) {
     R0 = 0;
-    GUEST_CALL(sub_803AFC2);
+    GUEST_CALL(submenu_chipSelectCursorMove);
     if (!ZERO_FLAG()) {
         u32 idx = R0;
         /* `lsl r0, r0, #2` -> table offset. Replicated for flag-setting only;
@@ -2521,7 +2521,7 @@ Next sub_80498E4(void) {
 /* ── sub_80498F8 ── */
 /* sub_80498F8: step the chip-select state machine once.
  *
- * sub_803AFC2 reports the active chip-select state in R0. State 0 means no
+ * submenu_chipSelectCursorMove reports the active chip-select state in R0. State 0 means no
  * submenu is active (its zero flag is set), so only the default processing
  * runs: sub_803A7EC followed by sub_803BC7C(0). Any other state selects a
  * handler from the ROM table at dword_804991C; the handler is entered with
@@ -2529,7 +2529,7 @@ Next sub_80498E4(void) {
  * return the same default processing runs. */
 Next sub_80498F8(void) {
     R0 = 0;
-    GUEST_CALL(sub_803AFC2);
+    GUEST_CALL(submenu_chipSelectCursorMove);
 
     if (!ZERO_FLAG()) {
         u32 state = R0;
@@ -3148,12 +3148,12 @@ Next sub_8049F8A(void) {
 /* ── sub_8049FA4 ── */
 /* sub_8049FA4: dispatch the current menu/battle substate.
  *
- * sub_803AFC2(1) returns a substate id (0 = none).  For a non-zero id
+ * submenu_chipSelectCursorMove(1) returns a substate id (0 = none).  For a non-zero id
  * the matching handler from the jump table is run, then the submenu
  * and the battle-object state are refreshed. */
 Next sub_8049FA4(void) {
     R0 = 1;
-    GUEST_CALL(sub_803AFC2);
+    GUEST_CALL(submenu_chipSelectCursorMove);
 
     if (R0 != 0) {
         switch (R0) {

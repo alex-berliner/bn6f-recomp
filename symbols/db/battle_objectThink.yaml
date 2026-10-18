@@ -1,0 +1,51 @@
+name: battle_objectThink
+address: '0x080D102E'
+kind: function
+status: probable
+summary: 'Per-frame update step for a battle object: process damage/collision, run its current action
+  handler, or begin despawn when the battle ends or the object dies.'
+interface: (r5 = battle object) -> r0 = destroyed (nonzero) via CUR_STATE_DESTROY set; otherwise updates
+  object in place
+details: 'Runs the shared per-frame logic for a battle object pointed to by r5. It first tears down and
+  respawns the object''s collision data, then checks battle-over: if the battle is over, a damage handler
+  (basicHandleBattleObjectDamage_801156A with r0=0) returns <0, or the collision data reports flag bits
+  from the last collision, the object is destroyed — releasing its reserved panel (by PanelX/PanelY),
+  calling sub_80D11FC (likely unlisting/cleanup), clearing its collision region, and setting oBattleObject_CurState
+  to CUR_STATE_DESTROY. Otherwise, unless a time-stop is active (then it only refreshes collision data),
+  it dispatches through a 4-entry jump table indexed by oBattleObject_CurAction to per-action handlers
+  (sub_80D1094..sub_80D1136).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl battle_isBattleOver / tst / bne loc_80D1068 routes battle-over into the destroy path; bl
+    basicHandleBattleObjectDamage_801156A with r0=0; negative result branches to destroy; jump table off_80D1084
+    indexed by oBattleObject_CurAction dispatches to four action handlers; bl battle_isTimeStop gates
+    the action dispatch, calling object_presentCollisionData instead during time-stop; destroy path: object_removePanelReserve(PanelX,PanelY),
+    sub_80D11FC, object_clearCollisionRegion, CurState=CUR_STATE_DESTROY'
+  refs:
+  - bn6f/asm/asm31.s:53904
+  - 0x0800A18E battle_isBattleOver
+  - 0x0800A098 battle_isTimeStop
+  - 0x0801A074 object_clearCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080D102E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- What sub_80D11FC does (likely unlinks the object from a list or queues its removal)
+- What the four per-action handlers (sub_80D1094..sub_80D1136) do, to confirm the action-state semantics
+- Which caller invokes this per frame (none recorded), to confirm it is the standard object think routine
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 62ad2570
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D102E -> battle_objectThink
+  where: bn6f be30f643
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D102E

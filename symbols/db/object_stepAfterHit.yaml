@@ -1,0 +1,50 @@
+name: object_stepAfterHit
+address: '0x080CEF0A'
+kind: function
+status: probable
+summary: 'Shared per-frame tick for a battle object that has just been hit: removes its collision data,
+  spawns the hit effect, applies damage, then dispatches to the object''s action handler or destroys it.'
+interface: (r5 = battle object) -> void; sets object state to destroy (CUR_STATE_DESTROY) when the battle
+  is over or damage application fails
+details: Runs on the object in r5. First tears down its collision data (object_removeCollisionData) and
+  spawns the jittered hit-effect object (object_spawnCollisionEffect). If the battle is over, or object_applyDamage(0)
+  returns negative, it clears the object's collision region and stores CUR_STATE_DESTROY into oBattleObject_CurStateActionPhaseAndPhaseInitialized.
+  Otherwise, unless time-stop is active, it dispatches via a table in off_80CEF4C indexed by oBattleObject_CurAction
+  (4 entries at 0x80CEF5C/0x80CEF90/0x80CEFFC/0x80CF030, called with lr=pc so handlers return here); under
+  time-stop it instead calls object_presentCollisionData to keep collision state refreshed without acting.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_removeCollisionData / object_spawnCollisionEffect at top matches the on-hit teardown+effect
+    pattern; mov r0,#0 + bl object_applyDamage, blt loc_80CEF3C routes to destroy on failure; destroy
+    path: bl object_clearCollisionRegion; mov r0,#CUR_STATE_DESTROY; str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized];
+    ldr r1,[r1,r0] with r0=[r5,#oBattleObject_CurAction] over off_80CEF4C is a 4-entry dispatch on the
+    object''s current action; battle_isTimeStop branch falls into object_presentCollisionData, matching
+    the callee''s time-stop-aware refresh behavior'
+  refs:
+  - bn6f/asm/asm31.s:49507
+  - 0x0800A18E battle_isBattleOver
+  - 0x0800A098 battle_isTimeStop
+  - 0x0801A074 object_clearCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080CEF0A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- exact semantics/return of object_applyDamage (called with 0)
+- what the four action handlers at 0x80CEF5C..0x80CF030 do
+- which kinds of objects use which CurAction indices
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 62ad2570
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80CEF0A -> object_stepAfterHit
+  where: bn6f be30f643
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CEF0A

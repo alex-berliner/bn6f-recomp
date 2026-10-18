@@ -1,0 +1,50 @@
+name: object_landingImpactState
+address: '0x080D5994'
+kind: function
+status: probable
+summary: Per-frame update for a battle object that plays a brief animation, then shakes the camera, plays
+  a sound, and cracks the panel it lands on before destroying itself.
+interface: (r5 = battle object, no register args) -> void; when the timer runs out, writes CUR_STATE_DESTROY
+  into oBattleObject_CurStateActionPhaseAndPhaseInitialized
+details: On first run (PhaseInitialized==0) it sets PhaseInitialized=4, selects animation 0x1A, and loads
+  oBattleObject_Timer with 0x1E. Each later frame decrements the timer; when it reaches 0x19 (5 frames
+  in, the 'landing' moment) it calls sub_80D5A9C, then only if object_isCurrentPanelSolid succeeds it
+  triggers camera shake (magnitude 2, duration 0x14), plays sound effect 0xC0, and cracks the panel at
+  the object's PanelX/PanelY. Once the timer reaches 0 the object is transitioned to CUR_STATE_DESTROY,
+  making this a one-shot crash-and-vanish behavior for something that falls onto a panel.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: init branch stores anim 0x1A and 0x1E-frame timer, typical one-shot object setup; impact branch
+    calls camera_initShakeEffect_80302a8(2, 0x14) and PlaySoundEffect(0xC0) — landing impact feedback;
+    object_crackPanel called with oBattleObject_PanelX/PanelY only when object_isCurrentPanelSolid says
+    the panel is crackable; timer reaching 0 writes CUR_STATE_DESTROY, so the object exists only for this
+    30-frame sequence; callees list (shake, sound, crackPanel, isCurrentPanelSolid) matches a falling-object
+    landing handler
+  refs:
+  - bn6f/asm/asm31.s:63699
+  - 0x080005CC PlaySoundEffect
+  - 0x080302A8 camera_initShakeEffect_80302a8
+  - 0x0800CCA6 object_isCurrentPanelSolid
+  reproduce: python3 tools/asmcat.py 0x080D5994
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+- chips
+open_questions:
+- which in-game object/attack uses this state (no caller known); what sub_80D5A9C does before the impact
+  checks
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 62ad2570
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D5994 -> object_landingImpactState
+  where: bn6f be30f643
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D5994

@@ -1,0 +1,53 @@
+name: object_processCollision
+address: '0x080D6F74'
+kind: function
+status: probable
+summary: 'Per-frame collision update for a battle object: tears down/rebuilds collision data, spawns hit
+  effects, applies damage, and dispatches a per-action collision handler.'
+interface: (r5 = battle object) -> void; r0 = scratch/result, flags used after battle_isBattleOver/isTimeStop/object_applyDamage
+details: 'This is the shared collision step run for a battle object each frame (routes: battlesweep).
+  It first removes stale collision data, then spawns the hit-effect object for the last collision. It
+  aborts (clearing the collision region and setting oBattleObject_CurState = CUR_STATE_DESTROY) if the
+  battle is over or if object_applyDamage(0) returns negative (fatal damage). Otherwise it tests the object''s
+  alliance (indexed *4 into byte_80D6FD4, giving masks 0x05008000 and 0x0A008000) against oCollisionData_FlagsFromCollision
+  and clears its collision region when bits match. When time is stopped it calls object_presentCollisionData
+  directly; otherwise it tail-dispatches through off_80D6FC8 indexed by oBattleObject_CurAction (two handlers,
+  sub_80D6FDC/sub_7008) — presumably custom per-action collision behavior.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_removeCollisionData / object_spawnCollisionEffect at top: clears prior collision
+    state then spawns hit effect for r5''s last collision; battle_isBattleOver + tst/bne loc_80D6FBA:
+    on battle end clears region and sets oBattleObject_CurState = CUR_STATE_DESTROY; bl object_applyDamage
+    with r0=0; tst r0,r0 / blt loc_80D6FBA treats negative return as object death; alliance*4 word table
+    byte_80D6FD4 (0x05008000/0x0A008000) ANDed with oCollisionData_FlagsFromCollision gates object_clearCollisionRegion;
+    battle_isTimeStop branches to object_presentCollisionData, else jumps CurAction-indexed handler table
+    off_80D6FC8'
+  refs:
+  - bn6f/asm/asm31.s:66573
+  - 0x0800A18E battle_isBattleOver
+  - 0x0800A098 battle_isTimeStop
+  - 0x0801A074 object_clearCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080D6F74
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- Exact semantics of the alliance flag masks in byte_80D6FD4 (which collision flag bits trigger removal
+  from the region)
+- What the two CurAction dispatch handlers (sub_80D6FDC, sub_80D7008) do differently from the default
+  presentCollisionData path
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 62ad2570
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D6F74 -> object_processCollision
+  where: bn6f be30f643
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D6F74

@@ -1,0 +1,51 @@
+name: ow_facePlayerSetAnim
+address: '0x080A7454'
+kind: function
+status: probable
+summary: Overworld object turns to face the player, picking a direction animation from a per-direction
+  table and skipping disabled directions.
+interface: (r5 = object pointer, r0-r3 clobbered) -> r0 = chosen animation index; writes object fields
+  0x05 (current anim) and 0x30; no meaningful return value
+details: 'Reads the overworld player''s X/Y via ReadOWPlayerObjectCoords and subtracts the object''s own
+  position (fields +0x0C/+0x10) to get a delta vector, then battle_calcAngleOctant_800118A reduces it
+  to one of four octants (1..4, 0 = zero vector). The octant minus one indexes an 8-byte table (2 bytes
+  per direction) returned by sub_80A7528, whose entries are {animationIndex, parameter}: the parameter
+  is stored to object +0x30, likely a flip/render flag. If an entry''s first byte is 0xFF (direction unusable
+  for this object) the index wraps (mod-8 pairs) and the scan continues to the next entry. When the chosen
+  animation equals the object''s current one at +0x05 nothing happens; otherwise it calls sprite_setAnimation,
+  sprite_loadAnimationData and sprite_noShadow, then records the new state at +0x05.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl ReadOWPlayerObjectCoords then 'sub r0,r0,r2 / sub r1,r1,r3' builds the player-minus-object
+    vector against fields +0x0C/+0x10; bl battle_calcAngleOctant_800118A; 'mov r4,r0; sub r4,#1; lsl r4,r4,#1'
+    makes a 0..3 pair index into the table from sub_80A7528; loop 'ldrb r0,[r7,r4]' with 0xFF check and
+    wrap at r4==7 skips invalid directions circularly; 'str r1,[r5,#0x30]' stores the table's second byte,
+    then sprite_setAnimation/sprite_loadAnimationData/sprite_noShadow and 'strb r4,[r5,#5]' commit the
+    new facing animation
+  refs:
+  - bn6f/asm/asm29.s:4278
+  - 0x0809E1AE ReadOWPlayerObjectCoords
+  - 0x0800118A battle_calcAngleOctant_800118A
+  - 0x080026A4 sprite_loadAnimationData
+  reproduce: python3 tools/asmcat.py 0x080A7454
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- beastsp
+open_questions:
+- What sub_80A7528 keys the table on (object type/sprite set at +0x05 or another field) and the exact
+  meaning of the value stored at +0x30 (horizontal flip vs other render flag)
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 62ad2570
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80A7454 -> ow_facePlayerSetAnim
+  where: bn6f be30f643
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A7454

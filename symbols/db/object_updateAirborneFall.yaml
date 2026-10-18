@@ -1,0 +1,48 @@
+name: object_updateAirborneFall
+address: '0x080CE64C'
+kind: function
+status: probable
+summary: 'Per-frame update for an airborne battle object: moves it via velocities, counts down its air
+  timer, highlights its target panel, and on touchdown resets Z, syncs collision, and switches to action
+  4.'
+interface: (r5 = battle object) -> void; sets CurAction=4 and phase=0 when Timer expires
+details: Reads the object's XVelocity/ZVelocity and integrates them into its X and Z (Z decreases by ZVelocity,
+  i.e. falling/rising in air). The Timer is decremented each frame; while it is still counting, every
+  8th frame (bit 3 of Timer) it calls object_highlightPanel on the object's PanelX/PanelY, drawing a landing-marker
+  on the target panel. When the timer underflows, it forces Z back to 0x40000, recomputes pixel coordinates
+  from panel coords, refreshes the collision record and sets collision region 1, then sets CurAction=4
+  and clears the phase state so the next action step can run.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrh r0,[Timer]; sub r0,#1; bge loc_80CE680 — timer-expiry triggers the landing block; landing
+    block: str 0x40000 to Z, bl object_setCoordinatesFromPanels, object_updateCollisionPanels, region
+    1, CurAction=4; lsr r0,#3; bcc ... bl object_highlightPanel(PanelX,PanelY) — every 8 frames marks
+    the landing panel; ldr XVelocity/X, ZVelocity/Z at top — simple velocity integration each frame'
+  refs:
+  - bn6f/asm/asm31.s:48317
+  - 0x0800CBD8 object_highlightPanel
+  - 0x0801A07C object_setCollisionRegion
+  - 0x0800E29C object_setCoordinatesFromPanels
+  reproduce: python3 tools/asmcat.py 0x080CE64C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- Which entity/action ids use this (route is battlesweep/beastsp, but no direct caller captured); exact
+  meaning of Z=0x40000 ground height and action 4's next handler
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 62ad2570
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80CE64C -> object_updateAirborneFall
+  where: bn6f be30f643
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CE64C

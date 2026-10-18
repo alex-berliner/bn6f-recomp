@@ -1,0 +1,56 @@
+name: submenu_chipSelectCursorMove
+address: '0x0803AFC2'
+kind: function
+status: probable
+summary: Moves the chip-select/folder grid cursor in response to the D-pad and returns which button (B/A/Start/L/R)
+  was pressed for the caller's state dispatcher.
+interface: '(r0 = cursor-table index (0..1, callers pass 0); r5 = menu-state object: cursor slot at +8,
+  previous slot at +9; joypad via toolkit at r10) -> r0 = 0 if no action, else 1=B, 2=A, 3=Start, 4=L,
+  5=R; flags clobbered'
+details: Saves the current cursor slot (byte r5+8) into the previous-slot field (r5+9), then reads the
+  joypad. L/R/A/B and held Start map to action codes 1-5 which the caller (sub_8049808) uses to tail-dispatch
+  into a 5-entry handler table; if a D-pad key was pressed, it picks a direction index (Up=0, Down=1,
+  Left=2, Right=3) and loads the new slot from a per-slot 4-byte neighbor table at byte_803B05C, selected
+  via off_803B054[r0] with r6=r0*4. Slot values run 0x00-0x40, with 0x37,0x37 as no-move edges and 0x3D-0x40
+  as wrap/special targets, matching the chip-select screen's grid plus its special slots. If the slot
+  changed it plays SOUND_MENU_CUR_MOVE, then returns the action code.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'loc_803B02A: new slot = byte table[oldSlot*4 + dirIdx] loaded via off_803B054[r6], stored back
+    to [r5,#8]; loc_803B03A: PlaySoundEffect(SOUND_MENU_CUR_MOVE) only when [r5,#8] != old [r5,#9]; r4
+    set to 1..5 from B(0x2), A(0x1), Start(0x8), L(0x100), R(0x200) key bits, returned in r0; Caller sub_8049808
+    tail-dispatches the nonzero return through a 5-entry Thumb handler table, matching the 5 action codes;
+    Neighbor values (0x37,0x37 edges, 0x3D-0x40 specials, 5-wide stride like 0->0x19/5) match a chip-folder
+    grid cursor table'
+  refs:
+  - bn6f/asm/asm03_1_1.s:4813
+  - 0x08049808 sub_8049808
+  - 0x080498F8 sub_80498F8
+  - 0x08049FA4 sub_8049FA4
+  - 0x080005CC PlaySoundEffect
+  reproduce: python3 tools/asmcat.py 0x0803AFC2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battles2
+- maps
+- menus3
+open_questions:
+- Exact meaning of the two table pointers in off_803B054 (r0=1 variant is unused by seen callers, likely
+  a second grid layout such as the pack screen)
+- which concrete button IDs map to codes 1-5 on this game's key bitmask (A/B vs L/R order inferred from
+  standard KEY bits)
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 62ad2570
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_803AFC2 -> submenu_chipSelectCursorMove
+  where: bn6f be30f643
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803AFC2

@@ -1,0 +1,67 @@
+name: battle_beginTurnResetObject
+address: '0x0801390C'
+kind: function
+status: probable
+summary: 'Per-battle-object start-of-turn reset: refresh navi stat bytes into AI data and clear per-turn
+  combat state (flags, invulnerability, subordinate object).'
+interface: (r0 = battle object ptr, kept in r5) -> r0 = clobbered; tail-branches into sub_801393A to continue
+  the per-object loop
+details: Takes a battle object, reads its Alliance byte and fetches the matching NaviStats table entry
+  via GetBattleNaviStatsAddr, then copies stat bytes [5] and [7] into the object's AI data at oAIData_BPwrAtk
+  and oAIData_BLeftAbility, refreshing attack power / left-slot ability for the turn. It clears ObjectFlags1
+  bit 0x8000000 via object_clearFlag and calls object_clearInvulnerableTime to drop any post-hit invulnerability.
+  If the AI data's SubordinateObjectUnk pointer is non-null, it calls sub_80E5410 (presumably to release/delete
+  that subordinate) and zeroes the pointer. It then branches into sub_801393A, which appears to continue
+  iterating over further battle objects, so this is the body of a per-object pass run from battle_beginTurnOpenProcess.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: caller battle_beginTurnOpenProcess_80144C0 invokes it as part of start-of-turn 'open' processing;
+    ldrb [r6,#5]/[#7] + strb into oAIData_BPwrAtk / oAIData_BLeftAbility copies NaviStats fields into
+    AI data each call; object_clearFlag(0x8000000) then object_clearInvulnerableTime clears per-turn defensive
+    state; non-zero oAIData_SubordinateObjectUnk triggers sub_80E5410 and the pointer is zeroed; b loc_8013956
+    lands inside sub_801393A, implying a continued per-object iteration
+  refs:
+  - bn6f/asm/asm00_2.s:11064
+  - 0x080144C0 battle_beginTurnOpenProcess_80144C0
+  - 0x08013682 GetBattleNaviStatsAddr
+  - 0x0801A15C object_clearFlag
+  - 0x0800EB08 object_clearInvulnerableTime
+  reproduce: python3 tools/asmcat.py 0x0801390C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- beastsp
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- meaning of ObjectFlags1 bit 0x8000000
+- what sub_80E5410 does with the subordinate object pointer (delete vs detach)
+- what sub_801393A does after the tail-branch (loop advance / additional per-object steps)
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 62ad2570
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_801390C -> battle_beginTurnResetObject
+  where: bn6f be30f643
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_801390C

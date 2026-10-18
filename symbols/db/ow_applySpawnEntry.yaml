@@ -1,0 +1,49 @@
+name: ow_applySpawnEntry
+address: '0x08099D44'
+kind: function
+status: probable
+summary: 'Applies a location/spawn entry from a 20-byte-per-entry table: restores a saved word, sets the
+  overworld player''s facing and coordinates, and positions the camera.'
+interface: (r5 = state struct, entry id in [r5+4]) -> r0 = 0; r7 = table entry base
+details: Indexes the table at byte_809929C by [r5,#4]*0x14 (20-byte entries). If the entry's word at +0
+  is nonzero it is copied into [r5,#0x30], and the byte at +4 is stored to [r5,#5]. If the enable byte
+  at +7 is nonzero, it sets the player's facing from entry byte +5, writes the player's x/y/z from signed
+  halfwords at +8/+0xA/+0xC, writes camera byte 0 via camera_writeUnk03_14_80301b2, sets the camera XYZ
+  from halfwords at +0xE/+0x10/+0x12, and clears EVENT_EVENT_CUR_DIR_LOCKED so the new facing sticks.
+  Always returns 0. r5 is used without being set, so the caller must supply it in r5; entry +0 likely
+  restores a prior field and entry +4 a related state byte.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: mul r1,#0x14 / add r7 indexes 20-byte records of byte_809929C by [r5,#4]; bl SetOWPlayerFacingDirection
+    with entry byte +5 sets player facing; ldrsh +8/+0xA/+0xC then bl owPlayer_indirectlySetPlayerCoordsMaybe_809e1a4
+    sets player x/y/z; bl camera_writeUnk03_14_80301b2(0) then SetCameraXYZ from halfwords +0xE/+0x10/+0x12
+    positions the camera; movflag EVENT_EVENT_CUR_DIR_LOCKED + bl ClearEventFlagFromImmediate unlocks
+    facing after repositioning
+  refs:
+  - bn6f/asm/asm28_0.s:775
+  - 0x0802F12C ClearEventFlagFromImmediate
+  - 0x080301DC SetCameraXYZ
+  - 0x0809E2AE SetOWPlayerFacingDirection
+  reproduce: python3 tools/asmcat.py 0x08099D44
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- beastsp
+open_questions:
+- No callers known, so the meaning of the state struct r5 (fields 4, 5, 0x30) and who allocates the entry
+  id is unclear
+- What the word at entry+0 copied to [r5,#0x30] represents (area/music/flag id?) is not shown
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 62ad2570
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8099D44 -> ow_applySpawnEntry
+  where: bn6f be30f643
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8099D44

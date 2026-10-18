@@ -1,0 +1,51 @@
+name: sprite_playAltAnimationOnce
+address: '0x0811E000'
+kind: function
+status: probable
+summary: One-shot switch of an object's sprite to animation 1 (no shadow), guarded by a byte so it only
+  runs the first frame it's reached.
+interface: (r5 = object pointer, set by caller) -> void; no flags relevant
+details: 'Reads the object''s byte at offset 0x9 and returns immediately if it is already nonzero; otherwise
+  it writes 1 there as a ''done'' latch and performs the setup exactly once: stores 1 into sprite field
+  0x2C via sprite_setUnk0x2c, selects animation index 1 with sprite_setAnimation, loads the animation
+  data via sprite_loadAnimationData, and clears the shadow flag via sprite_noShadow. Offset 0x9 is a per-object
+  state/phase byte reused here as a once-only trigger, so the animation change is not re-applied every
+  frame. The caller (Navi roster icon per-frame update, branching on a story flag) calls this when the
+  flag condition holds, i.e. the icon swaps to an alternate pose/appearance once a story condition is
+  met.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r3,[r5,#9]; cmp r3,#0; bgt locret — early-out latch at object+0x9 makes it run once; mov
+    r0,#1; bl sprite_setUnk0x2c and sprite_setAnimation — picks animation 1 and sets sprite field 0x2C
+    to 1; bl sprite_loadAnimationData then sprite_noShadow — loads the new anim and renders without shadow;
+    caller sub_811DF94 is the pre-battle Navi roster icon update branching on a story flag, matching a
+    conditional alternate appearance
+  refs:
+  - bn6f/asm/asm32.s:31968
+  - 0x0811DF94 sub_811DF94
+  - 0x080026A4 sprite_loadAnimationData
+  - 0x08002F90 sprite_noShadow
+  - 0x08002DA4 sprite_setAnimation
+  reproduce: python3 tools/asmcat.py 0x0811E000
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- beastsp
+open_questions:
+- what sprite field 0x2C = 1 means exactly (visibility/layer flag?)
+- which story flag the caller tests and what the alternate animation depicts (e.g. story-version Navi
+  icon variant)
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 62ad2570
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_811E000 -> sprite_playAltAnimationOnce
+  where: bn6f be30f643
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811E000

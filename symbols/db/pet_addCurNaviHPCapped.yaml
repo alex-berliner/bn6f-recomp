@@ -1,0 +1,53 @@
+name: pet_addCurNaviHPCapped
+address: '0x0803CF74'
+kind: function
+status: probable
+summary: Adds an amount to the current PET navi's HP stat (0x40), clamping it at the navi's max (stat
+  0x42).
+interface: (r0 = navi slot index, r1 = amount to add) -> r0 = undefined (destroyed); no meaningful flags.
+details: 'Saves r0 in r4 and r1 in r7, gets the currently selected PET navi, and calls reloadCurNaviStatBoosts_813c3ac
+  first so boosts/max are fresh. It then reads the u16 stat field 0x40 for that navi via GetCurPETNaviStatsHword,
+  adds r7 to it, and writes the sum back with SetCurPETNaviStatsHword. Afterwards it reads stat 0x42 (apparently
+  the cap/max for field 0x40) and, if the new value exceeds it, rewrites stat 0x40 back down to 0x42,
+  leaving stat 0x42 untouched. Stat 0x40 is HP: the callee reloadCurNaviStatBoosts_813c3ac is described
+  as healing/clamping the current navi''s HP to MaxHP. The caller pet_addCurNaviStat0x3ECapped_803CF3C
+  performs the same read/add/cap-1000/write pattern on stat 0x3E and then calls this routine with the
+  same arguments, so 0x3E and 0x40 are updated in tandem (0x3E likely a parallel boost/half value).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: reads stat 0x40 via GetCurPETNaviStatsHword (mov r1,#0x40) and writes sum back via SetCurPETNaviStatsHword;
+    reads stat 0x42 and does cmp r0,r7 / bge, rewriting 0x40 to 0x42 when it exceeds it — classic current/max
+    clamp; calls reloadCurNaviStatBoosts_813c3ac, whose known summary is 'heals/clamps the current PET
+    navi's HP to MaxHP', tying 0x40/0x42 to HP; caller pet_addCurNaviStat0x3ECapped_803CF3C uses the same
+    add-then-cap pattern on 0x3E and tail-calls this with the same (slot, amount) args
+  refs:
+  - bn6f/asm/asm03_1_1.s:8753
+  - 0x0803CF3C pet_addCurNaviStat0x3ECapped_803CF3C
+  - 0x080010B6 GetCurPETNavi
+  - 0x080137FE GetCurPETNaviStatsHword
+  - 0x080137E6 SetCurPETNaviStatsHword
+  reproduce: python3 tools/asmcat.py 0x0803CF74
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- beastsp
+- maps
+- story2
+- story5
+open_questions:
+- exact meaning of stat 0x3E in the caller and how it relates to HP 0x40 (boost vs stored half of HP)
+- whether the initial r0 argument is a navi slot index that GetCurPETNavi ignores or overrides
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 62ad2570
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_803CF74 -> pet_addCurNaviHPCapped
+  where: bn6f be30f643
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803CF74

@@ -1,0 +1,49 @@
+name: object_hitCountdownTick
+address: '0x080D69B8'
+kind: function
+status: probable
+summary: 'Per-frame update for a hit battle object: spawns its hit effect, counts down its timer, and
+  destroys it (state DESTROY) when the timer runs out or collision flags demand it.'
+interface: (r5 = battle object) -> r0 = 0 or ...; sets object state to CUR_STATE_DESTROY on expiry
+details: 'This is the ''dying/hit'' state handler for a battle object kept in r5. It first tears down
+  the object''s collision data (object_removeCollisionData) and spawns the jittered hit-effect object
+  at its position (object_spawnCollisionEffect). It then reads oCollisionData_FlagsFromCollision from
+  the object''s collision data: if any flag is set it jumps straight to destruction. Otherwise it decrements
+  oBattleObject_Timer; while still positive it refreshes the object''s per-frame collision state via object_presentCollisionData
+  and returns. When the timer expires (or flags were set), it clears the object''s collision region and
+  writes CUR_STATE_DESTROY into oBattleObject_CurStateActionPhaseAndPhaseInitialized, removing the object
+  from the battle.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_removeCollisionData / object_spawnCollisionEffect at entry: hit teardown + effect
+    spawn; ldrh r0,[r5,#oBattleObject_Timer]; sub r0,#1; ble loc_80D69D8: countdown until destruction;
+    tst r0,r0 on oCollisionData_FlagsFromCollision forces immediate destruction branch; mov r0,#CUR_STATE_DESTROY;
+    str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]: terminal state write; object_presentCollisionData
+    called each surviving frame to keep collision bookkeeping updated'
+  refs:
+  - bn6f/asm/asm31.s:65818
+  - 0x080D6952 sub_80D6952
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0801A018 object_presentCollisionData
+  - 0x0801A00E object_removeCollisionData
+  reproduce: python3 tools/asmcat.py 0x080D69B8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- Which states/callers dispatch here (only one caller seen) and what the collision flag bit means exactly
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 62ad2570
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D69B8 -> object_hitCountdownTick
+  where: bn6f be30f643
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D69B8

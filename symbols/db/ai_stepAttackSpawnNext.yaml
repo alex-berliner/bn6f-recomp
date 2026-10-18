@@ -1,0 +1,52 @@
+name: ai_stepAttackSpawnNext
+address: '0x080FE2A8'
+kind: function
+status: probable
+summary: AI attack step handler that, after a wind-up delay, spawns a successor attack object next to
+  the target (with sound) and repeats a set number of times before handing control back.
+interface: (r7 = attacker's oAIAttackVars, r5 = attacker battle object) -> r0 = 0/void; updates StepTimer,
+  AttackElement, AttackBoost2, HitElement in oAIAttackVars
+details: 'State machine driven by oAIAttackVars_StepTimer. On first entry (AttackElement==0) it arms the
+  attack: sets AttackElement=4, plays object anim 6 (CurAnimCopy=0xFF so it takes), sets counter time
+  0x12 via object_setCounterTime, and loads StepTimer=0x1A. While the timer counts down, at 0x10 remaining
+  it calls nav_pickAdjacentPanel_80FE5EE with the target object''s panel coords to choose a neighboring
+  tile, then calls battle_spawnAndConfigureNextObject_80CB080 (type-0x38 ''next'' object) with InitFlag,
+  AiDifficultyTier and Damage, and plays sound effect 0xAE. When the timer expires it decrements AttackBoost2
+  (repeat count); if repetitions remain it clears AttackElement to re-run the cycle, otherwise it writes
+  HitElement=0xC to signal the attack sequence is finished.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb/tst on oAIAttackVars_AttackElement gates the one-time setup: anim 6, counter time 0x12,
+    StepTimer=0x1A; countdown at loc_80FE2C8 with special case r0==0x10 that calls nav_pickAdjacentPanel_80FE5EE
+    on TargetPanelX/Y/TargetObjectPtr; bl battle_spawnAndConfigureNextObject_80CB080 with InitFlag, AiDifficultyTier,
+    Damage, then PlaySoundEffect(0xAE); timer==0 path decrements oAIAttackVars_AttackBoost2 and either
+    resets AttackElement=0 to loop or sets HitElement=0xC to end'
+  refs:
+  - bn6f/asm/asm31.s:148582
+  - 0x080005CC PlaySoundEffect
+  - 0x080CB080 battle_spawnAndConfigureNextObject_80CB080
+  - 0x080FE5EE nav_pickAdjacentPanel_80FE5EE
+  reproduce: python3 tools/asmcat.py 0x080FE2A8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battle
+- battlesweep
+- chips
+open_questions:
+- exact battle object type-0x38 behavior (what the spawned 'next' object does in-game) and which AI enemy
+  uses this attack
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 62ad2570
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80FE2A8 -> ai_stepAttackSpawnNext
+  where: bn6f be30f643
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FE2A8

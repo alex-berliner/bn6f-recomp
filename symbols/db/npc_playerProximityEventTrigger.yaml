@@ -1,0 +1,53 @@
+name: npc_playerProximityEventTrigger
+address: '0x080A860C'
+kind: function
+status: probable
+summary: 'NPC-side trigger: once story flag 1717 is set, sets event flag 9D9 and switches the object''s
+  state when the player walks within 8 units of it.'
+interface: (r5 = object, fields +0xc/+0x10 = its X/Y) -> void; sets EVENT_9D9 and rewrites object state
+  bytes on trigger
+details: Early-outs unless EVENT_1717_PLAYER_ADVANCE_FORWARD is set, so this only arms after that story
+  point. It then loads the object's own X/Y from [r5,#0xc]/[r5,#0x10] and calls overworldObject_withinBoxCheck_signed_80011D6
+  against the player's position with half-extent r4 = 0x80000 (8 << 16, fixed-point), i.e. an 8-tile-radius
+  proximity test. On a hit it sets EVENT_9D9 via SetEventFlagFromImmediate, stores 8 into byte [r5,#8]
+  and 0x50 into byte [r5,#7] — likely the object's AI/script state and a display or mode byte. r5 is the
+  overworld object itself; r0/r1 from ReadOWPlayerObjectCoords are the player's coords, moved to r2/r3
+  as the box center arguments. Re-runs harmlessly while the player stands nearby since the flag set is
+  idempotent.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bne after TestEventFlagFromImmediate(1717) gates everything on the ''player advance forward''
+    story flag; ldr r0,[r5,#0xc]/[r5,#0x10] supplies the object''s own coords as the box center to withinBoxCheck
+    with r4=8<<16; call to ReadOWPlayerObjectCoords provides the player position used as the comparison
+    point; on hit: SetEventFlagFromImmediate(EVENT_9D9) then strb #8,[r5,#8] and strb #0x50,[r5,#7] mutate
+    object state; sole caller sub_80A8424 passes this object in r5, consistent with a per-frame NPC update
+    hook'
+  refs:
+  - bn6f/asm/asm29.s:6586
+  - 0x080A8424 sub_80A8424
+  - 0x0809E1AE ReadOWPlayerObjectCoords
+  - 0x0802F110 SetEventFlagFromImmediate
+  - 0x0802F164 TestEventFlagFromImmediate
+  reproduce: python3 tools/asmcat.py 0x080A860C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- beastsp
+open_questions:
+- exact meaning of state bytes [r5,#7]=0x50 and [r5,#8]=8 (script id vs AI mode)
+- what EVENT_9D9 gates downstream
+- which NPC/map this object belongs to (caller sub_80A8424's owner unknown)
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 62ad2570
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80A860C -> npc_playerProximityEventTrigger
+  where: bn6f be30f643
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A860C

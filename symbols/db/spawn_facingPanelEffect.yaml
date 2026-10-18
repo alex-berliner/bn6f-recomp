@@ -1,0 +1,50 @@
+name: spawn_facingPanelEffect
+address: '0x080CB248'
+kind: function
+status: probable
+summary: Spawns a small effect object on the panel offset from a battle object in its facing direction.
+interface: (r0 = signed panel-column offset, r5 = battle object ptr) -> r0 = spawned effect object ptr
+  or unchanged if panel invalid; r4,clobbered
+details: 'Multiplies r0 by object_getEnemyDirection(obj) (+1 player side, -1 enemy side) and adds it to
+  oBattleObject_PanelX to get a target column, with PanelY as the row. If object_isValidPanel rejects
+  the 6x3 cell, it returns without spawning. Otherwise it builds param r4 = 0x2b | (object_getFlip() <<
+  8), converts the panel to fixed-point screen coordinates via object_getCoordinatesForPanels, and calls
+  spawn_t1_0x0_EffectObject (type-4 object, effect type 0) at that position. The 0x2b constant is likely
+  the effect''s sprite/animation id, flipped to mirror on the enemy side. Quirk: r5 is never loaded inside
+  the function — it inherits the object pointer from the caller''s r5.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'mul r0, r6 after object_getEnemyDirection then add with oBattleObject_PanelX = column offset
+    applied in facing direction; bl object_isValidPanel / beq locret: no spawn when target cell is off-grid;
+    mov r4, #0x2b; orr r4, r0 (flip<<8): effect id 0x2b mirrored by facing; bl object_getCoordinatesForPanels
+    then bl spawn_t1_0x0_EffectObject: effect placed at the panel''s screen position; r5 is used (ldrb
+    [r5,#oBattleObject_PanelX]) but never set — caller sub_80CB184 supplies the object'
+  refs:
+  - bn6f/asm/asm31.s:41475
+  - 0x080CB184 sub_80CB184
+  - 0x0800E276 object_getCoordinatesForPanels
+  - 0x0800E2C0 object_getEnemyDirection
+  - 0x0800E456 object_getFlip
+  reproduce: python3 tools/asmcat.py 0x080CB248
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- what effect id 0x2b renders (reticle, dust, warning marker?) — needs the effect object's sprite table
+- which caller context picks the r0 offset (e.g. 1 panel ahead vs further)
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 62ad2570
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80CB248 -> spawn_facingPanelEffect
+  where: bn6f be30f643
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CB248

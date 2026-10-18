@@ -1,0 +1,52 @@
+name: battle_stepLoseSequence
+address: '0x08008F7C'
+kind: function
+status: probable
+summary: 'Per-frame handler for the defeat branch of the battle-end state machine: marks the losing side,
+  plays the loss jingle, kicks off the lose effect, and after a countdown hands control back to the game
+  state.'
+interface: (r0 = battle-end state struct, fields at +3 step, +8 timer, +4 next step) -> r0 = garbage/struct
+  ptr from last callee; sets oGameState_BattleEndSubState = 2 when done
+details: r5 is a state struct driven once per frame; byte +3 is a step counter, halfword +8 a frame timer.
+  On entry (step 0) it clears flags 0x4C43 in the eStruct2035280 word, writes (oBattleState_PlayerSide
+  ^ 1) into oBattleState_LoserSide of the current battle state, plays SONG_LOSER when the battle-effects
+  bitmask has bit 8, waits 0x41 or 0x66 frames depending on effects bit 2 (probably skipping a delay for
+  some effect variant), dispatches battle sub-effect kind 0x18 (the lose/player-deletion animation), and
+  advances to step 4. From then on it decrements the +8 timer; once it reaches 0 (or when a cross-net
+  linked battle is ready via comm_checkCrossNetBattleReady), it sets +4 to 2, writes 2 into oGameState_BattleEndSubState,
+  and marks byte 2 of the fixed overworld player struct at 0x200A008, ending the lose sequence.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl GetBattleEffects; tst bit 8 -> mov r0,#SONG_LOSER; bl PlayMusic (defeat jingle); ldrb r1,[r0,#oBattleState_PlayerSide];
+    eor r1,#1; strb r1,[r0,#oBattleState_LoserSide] marks the loser; mov r0,#0x18; bl battle_dispatchKindEffect_801E792
+    launches the lose effect animation; countdown on [r5,#8] then strb r0,[r1,#oGameState_BattleEndSubState]
+    with r0=2 exits to post-battle handling; eStruct200A008_setUnk02(1) and flag clear of 0x4C43 tie it
+    to battle cleanup, consistent with 'battlesweep' route
+  refs:
+  - bn6f/asm/asm00_1.s:13062
+  - 0x0802D246 GetBattleEffects
+  - 0x080005D4 PlayMusic
+  - 0x0801E792 battle_dispatchKindEffect_801E792
+  reproduce: python3 tools/asmcat.py 0x08008F7C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- exact meaning of effects bit 2 vs bit 8 (why 0x41 vs 0x66 delay)
+- whether oBattleState_PlayerSide actually holds the winner side since the XOR-1 result is stored as LoserSide
+- which battle-state struct r5 points to (offsets 3/4/8 unnamed)
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 62ad2570
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8008F7C -> battle_stepLoseSequence
+  where: bn6f be30f643
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8008F7C

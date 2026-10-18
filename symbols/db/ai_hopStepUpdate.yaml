@@ -1,0 +1,50 @@
+name: ai_hopStepUpdate
+address: '0x08115398'
+kind: function
+status: probable
+summary: 'Per-frame update for an AI attack''s hop/leap: integrates X/Z velocity along an arc, then lands
+  the object on its reserved future panel.'
+interface: (r5 = battle object, r7 = oAIAttackVars) -> void; sets object anim, flags, and state timer
+details: 'Each frame it adds XVelocity to X and ZVelocity to Z, then subtracts 0xA000 from ZVelocity (dword_81154E4
+  = 0xFFFF6000), producing a parabolic hop arc. When oAIAttackVars_StepTimer equals 8 it switches the
+  object''s animation to 5 (presumably the descent pose), then decrements the timer. When the timer goes
+  negative, the object lands: FuturePanelX/Y are copied into PanelX/Y, the panel reserve is released,
+  Z is zeroed, pixel coordinates and collision panels are recomputed, collision region 1 is set, flag
+  0x40 is cleared and the CURRENTLY_MOVING flag set, and sub_8115446 is called (likely queuing the next
+  attack phase). It then reloads the timer with 0x18 and oAIAttackVars_HitElement with 0x14.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sub_8115398 start: X += XVelocity, Z += ZVelocity, then ZVelocity += 0xFFFF6000 gives hop arc;
+    timer==8 sets oBattleObject_CurAnim = 5, mid-air pose change; timer<0 block copies FuturePanelX/Y
+    into PanelX/Y and calls object_removePanelReserve before landing; landing path: Z=0, object_setCoordinatesFromPanels,
+    object_setCollisionRegion(1), clear 0x40, set CURRENTLY_MOVING flag; ends by setting StepTimer=0x18
+    and HitElement=0x14 in oAIAttackVars, chaining to sub_8115446'
+  refs:
+  - bn6f/asm/asm32.s:14352
+  - 0x08115340 sub_8115340
+  - 0x0801A15C object_clearFlag
+  - 0x0801BB46 object_removePanelReserve
+  - 0x0801A07C object_setCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x08115398
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- what sub_8115446 does (likely selects the next attack step/state)
+- exact meaning of HitElement=0x14 and timer 0x18 in the follow-up phase
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 62ad2570
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8115398 -> ai_hopStepUpdate
+  where: bn6f be30f643
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8115398

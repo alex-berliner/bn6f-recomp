@@ -1,0 +1,56 @@
+name: pet_getStatusIconIndex
+address: '0x08119C08'
+kind: function
+status: probable
+summary: Computes the graphics/palette index used for the PET status icon sprite, based on whether a Navi
+  is present, event flag 200AD04, and the Navi's stats byte 0x10.
+interface: () -> r0 = index into the PET status icon sprite resource table (0, 4, table[byte], or byte*5+0x12,
+  +4 when no Navi)
+details: 'If GetCurPETNavi says a Navi is selected, the result is just pet_GetNaviStatsBaseOrEmpty(0)
+  (0, or 4 if the PET holds no Navi, stats byte 0xE == 0xFF). Otherwise it checks event byte 200AD04:
+  if set, the same base 0/4 result is returned. If clear, it reads NaviStats byte 0x10; if that byte is
+  zero the index is taken from lookup table byte_80203EA[byte], otherwise the index is computed as byte*5+0x12
+  (5-byte stride, base 18). The final value is passed through pet_GetNaviStatsBaseOrEmpty, which adds
+  4 when no Navi is equipped, and returned. Callers use the result to pick the sprite form (buildPetStatusIconSprite)
+  and the palette for the PET status icon.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'loc_8119C3C/loc_8119C44: result comes from pet_GetNaviStatsBaseOrEmpty_8119C58, i.e. value
+    or value+4 depending on Navi presence (stats byte 0xE == 0xFF); lsl/ add sequence computes byte*5+0x12
+    from GetCurPETNaviStatsByte(0,0x10), a 5-byte-stride table offset; ldr r1, off_8119C54 (byte_80203EA)
+    with ldrb r0,[r1,r0] gives a table lookup when stats byte 0x10 is zero; notZero_eByte200AD04 branch
+    forces index 0 (still +4-adjusted) when the event byte is nonzero; caller buildPetStatusIconSprite_8119AEC
+    builds the PET status icon sprite choosing the form from a table, consistent with this returning the
+    icon''s resource index'
+  refs:
+  - bn6f/asm/asm32.s:23689
+  - 0x08119AEC buildPetStatusIconSprite_8119AEC
+  - 0x08119BD0 sprite_applyComputedPaletteAndUpdate_8119BD0
+  - 0x080010B6 GetCurPETNavi
+  - 0x080137B6 GetCurPETNaviStatsByte
+  - 0x0803F524 notZero_eByte200AD04
+  reproduce: python3 tools/asmcat.py 0x08119C08
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- beastsp
+- menus3
+- story2
+open_questions:
+- exact meaning of NaviStats byte 0x10 (element/cross/BeastOut selector?) and the contents of byte_80203EA
+- whether the returned value indexes OAM/tile data or a palette slot for the icon sprite
+- what event byte 200AD04 represents and why it forces index 0
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 62ad2570
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8119C08 -> pet_getStatusIconIndex
+  where: bn6f be30f643
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8119C08

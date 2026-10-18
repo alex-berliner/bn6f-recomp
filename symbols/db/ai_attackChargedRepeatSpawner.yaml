@@ -1,0 +1,59 @@
+name: ai_attackChargedRepeatSpawner
+address: '0x080EBF6E'
+kind: function
+status: probable
+summary: Boss AI attack step that charges up and then repeatedly spawns a damage-dealing object on a random
+  panel in front of the enemy.
+interface: (r0 unused entry; r5 = battle object, r7 = oAIAttackVars) -> r0 clobbered by BL calls; updates
+  oAIAttackVars fields and ends with HitElement = 8
+details: On first entry (AttackElement == 0) it looks up a per-difficulty charge count from dword_80EBFEC
+  (values 3,4,5,10 by AiDifficultyTier), stores it in ChargeCycles, increments a counter in the temp attack
+  object, plays animation 0xD via object_setAnimation, clears StepTimer and sets AttackElement = 4. It
+  then counts down StepTimer from 10; on expiry it re-arms to 10, rolls GetPositiveSignedRNG & 3 to pick
+  an offset from dword_80EBFF0 (8/16/24/32), computes a spawn panel from the object's PanelX/Y plus object_getFrontDirection,
+  and calls spawn_t3_0x12_80C6ADA with Damage + AttackBoost and the InitFlag, playing sound effect 0xB9.
+  Each spawn consumes one ChargeCycle; when the last one fires it sets HitElement = 8 so the AI state
+  machine moves on.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r1,[r2,r1] from dword_80EBFEC = 0xA050403 indexed by AiDifficultyTier stores ChargeCycles;
+    bl object_setAnimation with r0=0xD and StepTimer/AttackElement=4 setup marks the attack-start state;
+    bl GetPositiveSignedRNG; and r0,#3; ldrb r3,[r1,r0] from dword_80EBFF0 = 0x20181008 picks random spawn
+    offset; ldrb r0,[r5,#oBattleObject_PanelX]; add r0,r0,r1 after object_getFrontDirection computes target
+    panel, then bl spawn_t3_0x12_80C6ADA; ChargeCycles decrement with bgt loop and final mov r0,#8; strh
+    [r7,#HitElement] ends the attack
+  refs:
+  - bn6f/asm/asm31.s:111272
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x080005CC PlaySoundEffect
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x080EBF6E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battles1
+- battles2
+- battlesweep
+- beastsp
+- chips
+- story2
+- story6
+- story7
+open_questions:
+- What battle object type 0x12 (spawn_t3_0x12) actually spawns visually — a projectile, column or area
+  attack — is not shown here
+- Which boss(s) invoke this AI script (routes battles1/beastsp etc. only say it runs in battles)
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 62ad2570
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80EBF6E -> ai_attackChargedRepeatSpawner
+  where: bn6f be30f643
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EBF6E

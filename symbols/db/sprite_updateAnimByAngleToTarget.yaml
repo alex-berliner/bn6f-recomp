@@ -1,0 +1,50 @@
+name: sprite_updateAnimByAngleToTarget
+address: '0x080A5E08'
+kind: function
+status: probable
+summary: Picks an object's animation from the octant of the angle toward a target position, reapplying
+  sprite state only when the chosen animation changes.
+interface: (r0 = target x, r1 = target y; r5 = object pointer) -> r0 = clobbered; updates object sprite
+  animation, shadow flag, and cached anim index at r5+0x34
+details: Subtracts the object's position fields at r5+0xc (x) and r5+0x10 (y) from r0/r1 and calls battle_calcAngleOctant_800118A,
+  returning early for octant 0 (zero vector). The octant 1..4 indexes byte_80A5E3C, a LUT {_,2,2,0,6,...}
+  mapping directions to animation indices. The mapped value is compared with the last-chosen index cached
+  at r5+0x34; if unchanged the routine does nothing more. Otherwise it calls sprite_setAnimation (writes
+  the index into the sprite slot), sprite_loadAnimationData, and sprite_noShadow, then stores the new
+  index at r5+0x34. All three callees operate on the object held in r5. The early-out makes it an idempotent
+  per-frame direction/animation refresh.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: sub r0,r0 / sub r1,r1 vs [r5,#0xc],[r5,#0x10] then bl battle_calcAngleOctant_800118A — angle
+    toward target relative to object position; ldrb r0,[r0,r4] off byte_80A5E3C (values 2,2,0,6) — octant-to-animation
+    lookup; ldr r1,[r5,#0x34]; cmp; beq locret — skip when animation index already cached; bl sprite_setAnimation
+    / sprite_loadAnimationData / sprite_noShadow; str r4,[r5,#0x34] — applies anim and caches it
+  refs:
+  - bn6f/asm/asm29.s:2178
+  - 0x080A5CE4 sub_80A5CE4
+  - 0x0800118A battle_calcAngleOctant_800118A
+  - 0x080026A4 sprite_loadAnimationData
+  - 0x08002F90 sprite_noShadow
+  reproduce: python3 tools/asmcat.py 0x080A5E08
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- beastsp
+open_questions:
+- Which object type and animation set the LUT indices (2,2,0,6) correspond to; only caller sub_80A5CE4
+  is undocumented, so the gameplay context (e.g. Beast Out form facing update) is inferred from the beastsp
+  route
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 62ad2570
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80A5E08 -> sprite_updateAnimByAngleToTarget
+  where: bn6f be30f643
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A5E08

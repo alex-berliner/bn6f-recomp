@@ -697,10 +697,10 @@ static bool test_event_flag_163(void) {
     return !ZERO_FLAG();
 }
 
-/* register form: calls sub_8119C08 outside this file, which has no typed C interface yet.
+/* register form: calls pet_getStatusIconIndex outside this file, which has no typed C interface yet.
  * Returns the R0 the callee leaves behind (passed straight to sprite_setPalette). */
 static u32 setup_companion_sprites(void) {
-    GUEST_CALL(sub_8119C08);
+    GUEST_CALL(pet_getStatusIconIndex);
     return R0;
 }
 
@@ -806,7 +806,7 @@ static void build_pet_status_icon(u32 obj) {
     sprite_set_anim_sub_8119AEC(0);
     sprite_load_anim_data_sub_8119AEC();
     sprite_no_shadow_sub_8119AEC();
-    /* sub_8119C08 returns an R0 that the original passes unchanged to
+    /* pet_getStatusIconIndex returns an R0 that the original passes unchanged to
      * sprite_setPalette. */
     u32 palette = setup_companion_sprites();
     sprite_set_palette_sub_8119AEC((s32)palette);
@@ -825,11 +825,11 @@ Next buildPetStatusIconSprite_8119AEC(void) {
 
 /* ── sprite_applyComputedPaletteAndUpdate_8119BD0 ── */
 /* sprite_applyComputedPaletteAndUpdate_8119BD0: refresh one sprite's palette and push the update through.
- * Calls sub_8119C08 (which computes the palette index into r0), applies it
+ * Calls pet_getStatusIconIndex (which computes the palette index into r0), applies it
  * with sprite_setPalette, then runs sprite_update. */
 Next sprite_applyComputedPaletteAndUpdate_8119BD0(void) {
-    GUEST_CALL(sub_8119C08);
-    /* sub_8119C08 leaves the palette index in r0 for sprite_setPalette */
+    GUEST_CALL(pet_getStatusIconIndex);
+    /* pet_getStatusIconIndex leaves the palette index in r0 for sprite_setPalette */
     GUEST_CALL(sprite_setPalette);
     GUEST_CALL(sprite_update);
     RETURN_TO_CALLER();

@@ -1,0 +1,48 @@
+name: snakearm_initObject
+address: '0x080E1540'
+kind: function
+status: probable
+summary: 'One-time setup for the SnakeArm extra battle object: loads its sprite (resource 0x80, variant
+  0xC, animation 9), hides its shadow, sets the update state, and runs the first tick.'
+interface: (r0 = object pointer in r5 context, unused in prologue) -> r0 = clobbered; no meaningful return
+details: The routine loads sprite entry 0x80 with arguments 0xC and 9 via sprite_load, then loads the
+  animation data and disables the shadow. It ORs bit 0x2 into oObjectHeader_Flags and writes CUR_STATE_UPDATE
+  into oBattleObject_CurStateActionPhaseAndPhaseInitialized, switching the object into its per-tick update
+  state. Finally it calls the SnakeArm tick handler once, which per its known summary copies partner-Navi
+  coordinates, toggles the pause flag, and frees the object when the battle ends or targets are gone.
+  This is the spawn/init entry that transitions the object from creation to steady-state update.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: sprite_load called with constants r0=0x80, r1=0xC, r2=9 — fixed sprite/variant/animation ids
+    for this object; sprite_noShadow immediately after loading matches the setup pattern for battle objects;
+    str CUR_STATE_UPDATE, [r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized] switches object state
+    to update; tail call to battleObject_snakeArmTick_80E1566 runs the first per-tick update right after
+    init
+  refs:
+  - bn6f/asm/asm31.s:88372
+  - 0x080E1566 battleObject_snakeArmTick_80E1566
+  - 0x080026E4 sprite_load
+  - 0x080026A4 sprite_loadAnimationData
+  reproduce: python3 tools/asmcat.py 0x080E1540
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- beastsp
+open_questions:
+- Which caller (spawn table or spawn function) passes the object pointer, to confirm the r5 context source
+- Exact meaning of the 0xC/9 sprite arguments (variant/subindex vs animation ids)
+- What the 0x2 bit in oObjectHeader_Flags denotes in the project's object-flag enum
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 62ad2570
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80E1540 -> snakearm_initObject
+  where: bn6f be30f643
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E1540

@@ -1,0 +1,52 @@
+name: battle_initSweepObstacle
+address: '0x080E2280'
+kind: function
+status: probable
+summary: 'Initializes one of four sweep-field object variants: places it on a preset panel with a random
+  offset, gives it a random fixed-point velocity, and loads its sprite/animation before handing it to
+  the update state.'
+interface: (r5 = battle object, r5->Param1 = variant 0-3) -> r0 = 0; object fully spawned, CurStateActionPhase
+  = CUR_STATE_UPDATE
+details: 'Param1 selects a variant. PanelX/PanelY come from byte_80E233C pairs ((7,1),(0,1),(1,4),(1,0))
+  and pixel coords are recomputed; Z is fixed at 0x28. A GetPositiveSignedRNG roll with SVC 6 division
+  jitters the spawn: variants 0-1 offset Y by ±0x48, variants 2-3 offset X by ±0xF0, then panels are recomputed
+  from coordinates. Velocity is a per-variant signed unit vector from byte_80E2348 ((-1,0),(1,0),(0,-1),(0,1))
+  multiplied by 0x40000 + (RNG & 0x3FFFF), i.e. fixed-point speed with random low bits. Timer is set to
+  0x46 frames (0x1E for variants ≥2), sprite resource 0x80 (args 8/0xC) is loaded with animation 0xF (0x10
+  for variants ≥2), palette 0, no-shadow flag, flip taken from the byte table at 0x80E2354, and the object''s
+  state is set to CUR_STATE_UPDATE.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb Param1, doubled, indexed into byte_80E233C -> PanelX/PanelY, then object_setCoordinatesFromPanels;
+    branch on Param1>=2 chooses Y-offset 0x48 vs X-offset 0xF0 randomization via SVC 6 divide; velocity
+    = sign-magnitude table byte_80E2348 * (0x40000 + RNG&0x3FFFF) stored to XVelocity/YVelocity; sprite_load(0x80,8,0xC)+sprite_loadAnimationData+sprite_noShadow,
+    anim 0xF/0x10 by Param1, flip from dword_80E2354 byte table; final 'mov r0,#CUR_STATE_UPDATE; str
+    r0,[CurStateActionPhaseAndPhaseInitialized]' hands off to the per-frame update handler
+  refs:
+  - bn6f/asm/asm31.s:90406
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x0800E29C object_setCoordinatesFromPanels
+  - 0x0800E2AC object_setPanelsFromCoordinates
+  reproduce: python3 tools/asmcat.py 0x080E2280
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- which sprite 0x80 depicts (identity of the obstacle/enemy) and what the CUR_STATE_UPDATE handler for
+  this object does each frame
+- no known caller, so the meaning of Param1 variant selection (who picks 0-3) is unconfirmed
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 62ad2570
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80E2280 -> battle_initSweepObstacle
+  where: bn6f be30f643
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E2280

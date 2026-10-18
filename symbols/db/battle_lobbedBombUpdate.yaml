@@ -1,0 +1,53 @@
+name: battle_lobbedBombUpdate
+address: '0x080D5DF4'
+kind: function
+status: probable
+summary: 'State handler for a lobbed bomb battle object: arcs toward a target panel under gravity, marks
+  the landing panel, and explodes there.'
+interface: (r5 = battle object pointer) -> r0 = 0 or CUR_STATE_DESTROY stored to oBattleObject_CurStateActionPhaseAndPhaseInitialized;
+  uses Timer/Timer2
+details: On phase 0 it switches to phase 4, converts the object's FuturePanelX/Y to screen coordinates
+  and calls math_getThrowSpeeds (with r4=0x2D and gravity constant 0xFFFFC000) to fill X/Y/ZVelocity,
+  then sets Timer=0x2D frames of flight. During flight it applies the velocities each frame, adds -0x400
+  to ZVelocity (gravity), calls object_setPanelsFromCoordinates to keep PanelX/Y in sync, and blinks object_highlightPanel
+  on the target panel every 8 Timer2 frames (Timer>>3 bit0). When Timer runs out it reads the landing
+  panel's status flags via object_getPanelParameters and tests them against a per-alliance word mask from
+  byte_80D5EA0 (0x15800010 / 0x2A800010 — panels the bomb can detonate on). If the mask matches it plays
+  SOUND_HIT_BOMB_1, copies the velocity triple as effect params into spawn_t1_0x0_EffectObject, calls
+  sub_80D5EDE, and always transitions to CUR_STATE_DESTROY.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#oBattleObject_CurPhase]; phase 0 branch computes throw via math_getThrowSpeeds
+    into oBattleObject_X/Y/ZVelocity; flight branch: adds X/YVelocity to position, ZVelocity += 0xffffc000,
+    then object_setPanelsFromCoordinates; Timer expiry path: object_getPanelParameters + alliance<<2 mask
+    table byte_80D5EA0, then PlaySoundEffect(SOUND_HIT_BOMB_1); spawn_t1_0x0_EffectObject called with
+    {r1-r3} loaded from r5+0x34 (the velocity fields) as effect parameters; both exit paths write CUR_STATE_DESTROY
+    to oBattleObject_CurStateActionPhaseAndPhaseInitialized'
+  refs:
+  - bn6f/asm/asm31.s:64286
+  - 0x080005CC PlaySoundEffect
+  - 0x0800E276 object_getCoordinatesForPanels
+  - 0x0800C8F8 object_getPanelParameters
+  reproduce: python3 tools/asmcat.py 0x080D5DF4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- What sub_80D5EDE does (likely applies area damage or marks the blast); not shown
+- Exact meaning of the per-alliance panel flag masks in byte_80D5EA0 (which panel states block/allow the
+  explosion)
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 62ad2570
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D5DF4 -> battle_lobbedBombUpdate
+  where: bn6f be30f643
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D5DF4

@@ -1,0 +1,55 @@
+name: battle_spawnArmAttackObject
+address: '0x080E4A6E'
+kind: function
+status: probable
+summary: 'Spawns a battle object on a Navi''s arm: loads its sprite/animation, marks it active, renders
+  one frame with facing, and enters its per-frame update state.'
+interface: (uses r4 = battle object header; r0/r1/r2 = sprite resource args 0x80/0xC/0x20 for sprite_load)
+  -> r0 = result of battleObject_updateAttachedArmCoords; object state set to CUR_STATE_UPDATE
+details: 'The routine initializes an existing object record (pointed to by r4 through the shared sprite/object
+  helpers): it loads sprite resource 0x80 with params (12, 32), skips forward to the attached animation
+  data and loads it, and flags the sprite as shadowless. It sets a bit (0x2) in the object header flags,
+  writes animation index 2 into both oBattleObject_CurAnim and its copy, commits it via sprite_setAnimation,
+  reloads animation data, and calls sprite_update. It then applies the object''s effective facing (alliance
+  XOR flip override) to the sprite, stores CUR_STATE_UPDATE into oBattleObject_CurStateActionPhaseAndPhaseInitialized
+  to switch the object into its update state, and finally syncs the object''s X/Y/Z and panel coords to
+  its RelatedObject1Ptr''s arm offset via battleObject_updateAttachedArmCoords — confirming this is an
+  arm-attached object (a chip-attack/part object) being spawned into play.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sprite_load(0x80, 0xC, 0x20) + sprite_loadAnimationData + sprite_noShadow: sets up the object''s
+    visual (asm lines 2-8); orr r0,#2 on oObjectHeader_Flags and CurAnim=2 in both anim slots: marks loaded/active
+    with animation 2; object_getFlip -> sprite_setFlip: orients sprite per alliance/facing, typical of
+    battle projectiles/parts; str CUR_STATE_UPDATE into oBattleObject_CurStateActionPhaseAndPhaseInitialized:
+    hands the object to its per-frame update handler; battleObject_updateAttachedArmCoords_80E4AAE as
+    final call: object position is derived from RelatedObject1Ptr''s arm offset, i.e. an arm-attached
+    spawn'
+  refs:
+  - bn6f/asm/asm31.s:95867
+  - 0x080E4AAE battleObject_updateAttachedArmCoords_80E4AAE
+  - 0x0800E456 object_getFlip
+  - 0x080026E4 sprite_load
+  reproduce: python3 tools/asmcat.py 0x080E4A6E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- Which chip/attack uses sprite resource 0x80 and animation 2 (callers unknown, so exact identity of the
+  spawned object is unconfirmed)
+- Whether r0=0x80 is a sprite index or something else in sprite_load's arg convention
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 62ad2570
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80E4A6E -> battle_spawnArmAttackObject
+  where: bn6f be30f643
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E4A6E

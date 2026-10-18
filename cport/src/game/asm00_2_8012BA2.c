@@ -1466,7 +1466,7 @@ Next battle_beginTurnOpenProcess_80144C0(void) {
 
     /* shared-tail flag: this entry takes the full path */
     R7 = 0;
-    GUEST_CALL(sub_801390C);
+    GUEST_CALL(battle_beginTurnResetObject);
 
     /* wipe this object's chip hand: 0xC halfwords just past the hand header */
     R0 = LD8(R5 + oBattleObject_Alliance);

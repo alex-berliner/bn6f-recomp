@@ -1,0 +1,49 @@
+name: object_runCollisionHandler
+address: '0x080CCDFC'
+kind: function
+status: probable
+summary: 'Per-frame battle-object collision handler: spawns the hit effect, clears the collision region
+  if flagged, and dispatches to the current action''s collision routine.'
+interface: (r5 = battle object) -> void; r0 clobbered by callees
+details: First tears down the object's previous collision data and spawns a hit-effect object at the object's
+  position (jittered via RNG). If the battle is over it clears the collision region and sets CurState
+  to CUR_STATE_DESTROY. Otherwise it loads the collision flags left by the last collision (oCollisionData_FlagsFromCollision)
+  and tests them against a per-alliance mask word from byte_80CCE5C (alliance*4 index); on match it clears
+  the collision region. If time-stop is active it instead just refreshes present-collision state; otherwise
+  it dispatches via a 4-entry jump table indexed by oBattleObject_CurAction to action-specific collision
+  handlers (sub_80CCE64/80CCEAC/80CCED0/80CCF88).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_removeCollisionData/object_spawnCollisionEffect at entry: cleanup of prior collision
+    + hit effect spawn; ldr r2,[r2,#oCollisionData_FlagsFromCollision] and tst against byte_80CCE5C[alliance*4]:
+    reacts to flags from the last collision; battle_isBattleOver branch sets CurState = CUR_STATE_DESTROY
+    and clears the collision region; battle_isTimeStop branch calls object_presentCollisionData instead
+    of the action dispatch; off_80CCE48 jump table indexed by [r5,#oBattleObject_CurAction] with mov lr,pc;
+    bx r1: per-action collision handlers'
+  refs:
+  - bn6f/asm/asm31.s:45148
+  - 0x0800A18E battle_isBattleOver
+  - 0x0800A098 battle_isTimeStop
+  - 0x0801A074 object_clearCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080CCDFC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- What the four per-action handlers (sub_80CCE64 etc.) do per CurAction value; the exact semantics of
+  the per-alliance flag mask table
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 62ad2570
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80CCDFC -> object_runCollisionHandler
+  where: bn6f be30f643
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CCDFC

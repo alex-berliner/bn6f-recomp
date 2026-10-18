@@ -177,7 +177,7 @@ static void call_ai_attack_handler(u32 vars_ptr) {
     if (attack_type == 0)
         GUEST_CALL(aiAttack_genericSpawnAndCountdown_80EBF30);
     else if (attack_type == 4)
-        GUEST_CALL(sub_80EBF6E);
+        GUEST_CALL(ai_attackChargedRepeatSpawner);
     else
         GUEST_CALL(battle_aiWindRackAttackStep_80EBFF4);
 }
@@ -3012,10 +3012,10 @@ static void call_attack_phase1(u32 state, u32 entry, u32 vars) {
     R7 = vars;
 }
 
-/* register form: calls sub_80FE2A8, AI attack phase 2 handler */
+/* register form: calls ai_stepAttackSpawnNext, AI attack phase 2 handler */
 static void call_attack_phase2(u32 state, u32 entry, u32 vars) {
     R0 = state; R1 = entry; R7 = vars;
-    GUEST_CALL(sub_80FE2A8);
+    GUEST_CALL(ai_stepAttackSpawnNext);
     R7 = vars;
 }
 

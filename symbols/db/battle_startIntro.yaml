@@ -1,0 +1,52 @@
+name: battle_startIntro
+address: '0x08008D9C'
+kind: function
+status: probable
+summary: 'Per-frame battle-start state handler: polls both players'' virtual joypads, on first entry zeroes
+  the custom gauge and kicks off the battle-intro effect, then holds the state until the link partner
+  is ready.'
+interface: '(r5 = battle state struct: +0 word state, +3 byte substate, +4 byte flag, +8 halfword timer)
+  -> r0 = clobbered; may set state word to 4'
+details: 'Runs each frame of the battlesweep route, first updating the virtual-joypad edge state for both
+  the player navi (r0=0) and the partner navi (r0=1), which matters for linked/double battles. If the
+  substate byte at r5+3 is still 0, it initializes: clears the byte at +4, loads a 30-frame timer into
+  the halfword at +8, sets +3 to 4, calls sub_801DF0C, resets the custom gauge to 0 via SetCustGauge (typical
+  at battle start), and dispatches kind-0 effect 0 through battle_dispatchKindEffect — almost certainly
+  the battle-intro animation. Every frame it then calls comm_checkCrossNetBattleReady; while the cross-net
+  partner has not reached the expected mode (returns 0), it writes state 4 into the word at r5+0, effectively
+  waiting for the linked session before proceeding.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl battle_updateNaviAIJoypad_8012DFC called twice with r0=0 then r0=1 — polls both navis''
+    joypad state; substate-0 branch: strh 0x1E at [r5,#8], SetCustGauge(0), battle_dispatchKindEffect(0,0)
+    — one-time battle-start setup with a 30-frame timer; comm_checkCrossNetBattleReady_801E754 returns
+    0/1/2 per linked-partner readiness; return 0 makes it set [r5] = 4, a wait/hold state; SetCustGauge(0)
+    resetting the gauge is consistent with battle initialization, not mid-battle logic'
+  refs:
+  - bn6f/asm/asm00_1.s:12814
+  - 0x0801E792 battle_dispatchKindEffect_801E792
+  - 0x08012DFC battle_updateNaviAIJoypad_8012DFC
+  - 0x0801E754 comm_checkCrossNetBattleReady_801E754
+  reproduce: python3 tools/asmcat.py 0x08008D9C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- what sub_801DF0C does (no summary available)
+- what effect kind 0 / id 0 renders
+- exact layout and other fields of the r5 battle-state struct
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 62ad2570
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8008D9C -> battle_startIntro
+  where: bn6f be30f643
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8008D9C

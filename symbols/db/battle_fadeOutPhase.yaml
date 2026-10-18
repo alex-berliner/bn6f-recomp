@@ -1,0 +1,45 @@
+name: battle_fadeOutPhase
+address: '0x08009F5E'
+kind: function
+status: probable
+summary: Battle sub-phase that fades the screen out, then stops music, clears objects, and advances the
+  battle state
+interface: (r0-r4 unused, r5 = battleState struct) -> void; sets oBattleState_Index_00 = 8 when fade completes
+details: A per-frame battle sub-phase handler using the battleState struct pointed to by r5. On first
+  run (oBattleState_SubPhaseInitFlag == 0) it calls SetScreenFade(0xC, 0x10) and sets the init flag to
+  4. On later frames it polls IsScreenFadeActive; once the fade is no longer active it calls musicGameState_8000784
+  to stop BGM, frees all objects of type 0x1A via FreeAllObjectsOfSpecifiedTypes, and writes 8 to oBattleState_Index_00
+  to move to the next battle state.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: SetScreenFade(0xC,0x10) guarded by oBattleState_SubPhaseInitFlag — one-shot fade setup on phase
+    entry; IsScreenFadeActive loop before the transition — waits for the fade to finish; musicGameState_8000784
+    before freeing objects — music is silenced as part of the transition; FreeAllObjectsOfSpecifiedTypes(0x1A)
+    then battleState index := 8 — cleanup then advance to next phase
+  refs:
+  - bn6f/asm/asm00_1.s:15351
+  - 0x08000784 musicGameState_8000784
+  - 0x080035A2 FreeAllObjectsOfSpecifiedTypes
+  - 0x080062F8 IsScreenFadeActive
+  reproduce: python3 tools/asmcat.py 0x08009F5E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- Which battle states 0x1A-objects and state 8 correspond to (i.e., which transition this leads into,
+  e.g., battle end vs. scene change)
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 62ad2570
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8009F5E -> battle_fadeOutPhase
+  where: bn6f be30f643
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8009F5E

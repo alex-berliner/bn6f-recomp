@@ -1,0 +1,50 @@
+name: object_applyXVelocityAndExpire
+address: '0x080D5BCC'
+kind: function
+status: probable
+summary: 'Per-frame movement step for a battle object: slides it along X by its X velocity, and when its
+  timer runs out clears its collision region and destroys it.'
+interface: (r5 = battle object) -> void; destroys object (state=CUR_STATE_DESTROY) when Timer hits 0
+details: Adds oBattleObject_XVelocity to oBattleObject_X each call, then recomputes PanelX/PanelY via
+  object_setPanelsFromCoordinates and syncs collision panels/facing via object_updateCollisionPanels.
+  It then decrements oBattleObject_Timer. While the timer is still positive, if the object's PanelX changed
+  since entry it writes collision region 1 via object_setCollisionRegion (marking the new panel column
+  as occupied). Once the timer reaches 0 it clears the collision region and sets the state word to CUR_STATE_DESTROY.
+  This matches a projectile or sliding attack that travels across panels for a fixed duration.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'add r0,XVelocity,X; str to oBattleObject_X then bl object_setPanelsFromCoordinates — moves
+    object each frame; ldrh r0,[Timer]; sub #1; ble loc_80D5BF6 — lifetime countdown; cmp PanelX,r4; beq
+    skip; mov r0,#1; bl object_setCollisionRegion — claims region 1 only after crossing a panel boundary;
+    loc_80D5BF6: bl object_clearCollisionRegion; mov r0,#CUR_STATE_DESTROY — expires and destroys on timer
+    0'
+  refs:
+  - bn6f/asm/asm31.s:63990
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0801A07C object_setCollisionRegion
+  - 0x0800E2AC object_setPanelsFromCoordinates
+  reproduce: python3 tools/asmcat.py 0x080D5BCC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+- chips
+open_questions:
+- No caller known, so which entity/attack uses this behavior (e.g. a specific chip or enemy projectile)
+  is unidentified
+- Meaning of collision region value 1 vs other region indices is inferred only from object_setCollisionRegion's
+  known behavior
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 62ad2570
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D5BCC -> object_applyXVelocityAndExpire
+  where: bn6f be30f643
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D5BCC

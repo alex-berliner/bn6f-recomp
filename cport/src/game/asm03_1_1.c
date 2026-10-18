@@ -1482,7 +1482,7 @@ Next petnavi_setStat42ToStat3EPlusCounter_803CED4(void) {
 /* pet_addCurNaviStat0x3ECapped_803CF3C(r1 = navi slot index; expects r4 == 0x70):
  * Adjusts one PET navi stat word: reads stat 0x3E of navi slot 0, adds
  * r1 * 20 (the per-slot stride), clamps the result to 1000, stores it back,
- * and calls sub_803CF74 to apply the same value/offset pair elsewhere.
+ * and calls pet_addCurNaviHPCapped to apply the same value/offset pair elsewhere.
  * All registers r4-r12 are preserved. */
 Next pet_addCurNaviStat0x3ECapped_803CF3C(void) {
     u32 r4_in = R4, r5_in = R5, r6_in = R6, r7_in = R7;
@@ -1520,7 +1520,7 @@ Next pet_addCurNaviStat0x3ECapped_803CF3C(void) {
     R5 = r5_in;
     R6 = value;
     R7 = slot_offset;
-    GUEST_CALL(sub_803CF74);
+    GUEST_CALL(pet_addCurNaviHPCapped);
 
     R4 = r4_in;
     R5 = r5_in;

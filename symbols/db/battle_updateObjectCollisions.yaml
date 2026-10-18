@@ -1,0 +1,55 @@
+name: battle_updateObjectCollisions
+address: '0x080C7CC0'
+kind: function
+status: probable
+summary: 'Per-frame collision update for the battle object in r5: resolves its last collision (removes
+  data, spawns hit effect), clears its collision region if flagged, and dispatches to the current action''s
+  collision handler or destroys the object when the battle is over.'
+interface: (r5 = battle object, implicit) -> void; no meaningful r0 return
+details: Operates on the battle object in r5 without taking parameters. It first tears down the object's
+  collision data (object_removeCollisionData) and spawns a hit-effect object from its last collision (object_spawnCollisionEffect,
+  jittered by RNG). If the battle is not over, it loads the object's CollisionDataPtr and tests oCollisionData_FlagsFromCollision;
+  nonzero flags make it call object_clearCollisionRegion so the hit registers only once. If battle time-stop
+  is active it refreshes the collision state via object_presentCollisionData; otherwise it dispatches
+  through the table at off_80C7D04 indexed by oBattleObject_CurAction using the mov lr,pc/bx idiom, with
+  the first entry pointing to sub_80C7D08. If the battle IS over, it clears the collision region and writes
+  CUR_STATE_DESTROY into oBattleObject_CurStateActionPhaseAndPhaseInitialized, marking the object for
+  destruction.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: opens with bl object_removeCollisionData / object_spawnCollisionEffect acting on r5's last collision;
+    reads [r5,#oBattleObject_CollisionDataPtr] flags and calls object_clearCollisionRegion when set, clearing
+    the region it currently occupies; bl battle_isBattleOver true path sets CurState to CUR_STATE_DESTROY
+    and clears the collision region; time-stop branch (bl battle_isTimeStop) calls object_presentCollisionData
+    instead of the action dispatch; ldr r1,[r1,r0] with CurAction index through off_80C7D04 dispatches
+    a per-action handler (mov lr,pc / bx r1)
+  refs:
+  - bn6f/asm/asm31.s:34167
+  - 0x0800A18E battle_isBattleOver
+  - 0x0800A098 battle_isTimeStop
+  - 0x0801A074 object_clearCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080C7CC0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- No caller is known; a caller would confirm which object types use this handler and how it sits in the
+  state machine
+- Only the first entry of the dispatch table at off_80C7D04 is shown; other CurAction entries and what
+  sub_80C7D08 does per-action remain unknown
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 62ad2570
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80C7CC0 -> battle_updateObjectCollisions
+  where: bn6f be30f643
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C7CC0

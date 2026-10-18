@@ -1,0 +1,53 @@
+name: battle_updateRelatedObjectSprite
+address: '0x080C114E'
+kind: function
+status: probable
+summary: Conditionally advances the sprite of the object linked from r5's battle object, honoring pause/timestop
+  and gating conditions, returning whether it updated.
+interface: (r5 = battle object whose oBattleObject_RelatedObject1Ptr is used) -> r0 = 1 if the related
+  object's sprite was updated this frame, else 0; flags clobbered by calls
+details: Gets the current battle mode; if it is not 6, it bails out when the battle is paused. It then
+  loads the object referenced by the caller's object's RelatedObject1Ptr and only proceeds if that object's
+  HP is nonzero and its collision ObjectFlags1 has none of the bits in mask 0x80110C00 set, and no time-stop
+  is active. If all checks pass it calls UpdateBattleObjectSprite on that related object and sets the
+  return value to 1, otherwise it returns 0. The battle-mode-6 exemption means the update runs even while
+  paused in that mode.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl GetBattleMode; cmp r0,#6; beq skips the battle_isPaused check, so mode 6 updates while paused;
+    ldr r3,[r5,#oBattleObject_RelatedObject1Ptr]; ldrh r0,[r3,#oBattleObject_HP]; beq bail gates on the
+    linked object's HP; tst r0,r1 with dword_80C11A4=0x80110C00 against oCollisionData_ObjectFlags1 blocks
+    update when those flags are set; bl battle_isTimeStop; bne bail and bl UpdateBattleObjectSprite; mov
+    r4,#1 show a guarded single sprite update; Callers sub_80C1094 (twice) and sub_80C10AC invoke it in
+    a battlesweep route, consistent with per-frame sprite upkeep of attached objects
+  refs:
+  - bn6f/asm/asm31.s:19830
+  - 0x080C1094 sub_80C1094
+  - 0x080C10AA sub_80C1094
+  - 0x080C10AC sub_80C10AC
+  - 0x0802D234 GetBattleMode
+  - 0x0801BC64 UpdateBattleObjectSprite
+  - 0x0800A03C battle_isPaused
+  reproduce: python3 tools/asmcat.py 0x080C114E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607'
+coverage:
+- battlesweep
+open_questions:
+- Which battle mode 6 is and why it bypasses the pause check
+- What the 0x80110C00 ObjectFlags1 bits mean specifically
+- What kind of object RelatedObject1Ptr points to in the callers (r5 setup lives in sub_80C1094/sub_80C10AC)
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 62ad2570
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80C114E -> battle_updateRelatedObjectSprite
+  where: bn6f be30f643
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C114E
