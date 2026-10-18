@@ -1,0 +1,59 @@
+name: eBattleNaviStats203F4AC
+address: '0x0203F4AC'
+kind: ram
+previous_names: []
+status: probable
+summary: 'Bytes 8.. of the received (loopback) battle link packet: at a battle''s start the Navi stats copied into
+  the four battle Navi slots; after it, the battle result record''s reward (u16 item, u16 code) that goes on to
+  the result screen.'
+details: 'It follows byte_203F4A4 (the packet payload''s first 8 bytes) in the received packet buffer. At the start
+  of a battle battle_copyStructsIncludingBattleStats_800b2d8 copies oNaviStats_Size bytes from here into eBattleNaviStats0,
+  eBattleNaviStats203CB10, eBattleNaviStats2034A60 and eBattleNaviStats203C9E4. When a battle ends the packet carries
+  the 12-byte result record instead (byte_203F4A4 + 0..11), and sub_800B444 copies it to unk_2035260: its word at
+  +8, this address, is the reward (low half the item, high half its code), which lands at dword_2035268 and the
+  result screen shows.
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-17'
+  detail: Four CopyWords from here (size oNaviStats_Size) in battle_copyStructsIncludingBattleStats_800b2d8; sub_800B444
+    copies 0xC bytes from byte_203F4A4 (this label is its +8) to unk_2035260.
+  refs:
+  - bn6f/asm/asm00_1.s:18597-18613
+  - bn6f/asm/asm00_1.s:18785-18797
+  - bn6f/ewram.s:3285-3288
+  - byte_203F4A4
+  reproduce: 'sed -n ''18597,18613p;18785,18797p'' bn6f/asm/asm00_1.s
+
+    sed -n ''3285,3288p'' bn6f/ewram.s'
+  result: 'ldr r0, =eBattleNaviStats203F4AC; mov r2, #oNaviStats_Size; bl CopyWords (x4); sub_800B444: byte_203F4A4
+    -> unk_2035260, 0xC bytes'
+- method: runtime
+  date: '2026-10-17'
+  detail: vidsync's reward handler (check_reward) writes the video's reward here (and to dword_2035268 a frame later)
+    3 frames before the result screen; the screen then shows the video's reward and the sync follows the video.
+    The BeastSP route (tools/traces/beastsp.poke, vidsync's kept fixes) has 12 such writes.
+  refs:
+  - tools/vidsync/autosync.py
+  - tools/vidsync/syms.py
+  - tools/traces/beastsp.poke
+  reproduce: 'grep -n ''REWARD_NAVI_STATS'' tools/vidsync/syms.py tools/vidsync/autosync.py
+
+    grep -n ''0x203f4ac='' tools/traces/beastsp.poke | head -3'
+  result: 'e.g. route line 7: 13394:13395 0x203f4ac=0x0083/2,0x203f4ae=0x0000/2'
+related:
+- byte_203F4A4
+- dword_2035268
+- battle_copyStructsIncludingBattleStats_800b2d8
+- sub_800B444
+open_questions:
+- 'suggested name: eBattleLinkPacketBody (it is the packet, read as Navi stats at the start of a battle and as the
+  result record after it); the label is the disassembler''s.'
+sources:
+- Claude session_01DywpM9x1GYhwUsv45iVPi1 (run8o's learn step listed it unnamed)
+changes:
+- date: '2026-10-17'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 13c58aec
+  tool: tools/symdoc.py
