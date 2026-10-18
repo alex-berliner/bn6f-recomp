@@ -1509,8 +1509,10 @@ def repair(D):
     ev = events(D); EVENTS[:] = ev
     last = max([p[0] for p in b.pokes] + [0])      # encounters before the last write held to there already
     for f, p in reversed(TRIGGERS):
-        # (a trigger within 2 frames after the last write is that write: a formation fix's own pointer)
-        if f <= last + 2 or (ONLY is not None and 'formations' not in ONLY): continue
+        # (a trigger within 2 frames after a write of the battle pointer is that write: a formation fix's own
+        # pointer; a trigger right after another fix (an encounter's, run8q 782213) gets its formation tried)
+        own = any(f - 2 <= pg <= f and f'{BATTLE_PTR:#x}=' in ps for pg, ps in b.pokes)
+        if own or f < last or (ONLY is not None and 'formations' not in ONLY): continue
         r = try_formations(f, p, D)
         if r: return r
     r = None if ONLY is not None and 'reward' not in ONLY else check_reward(max(ring[0][0], D - 900), D)   # a reward given just before the loss (its screen differs)
