@@ -1,0 +1,47 @@
+name: oS2001c04_OptCurBattleDataPtr
+address: '0x2c'
+kind: struct-field
+previous_names: []
+status: confirmed
+summary: 'LocEnemy''s chosen battle (BattleSettings *): taken by a passing encounter roll while oS2001c04_EncounterGateFlag
+  counts down.'
+details: 'Filled from +0x1C (the last battle''s settings) when LocEnemy is used; any ROM BattleSettings entry works
+  (vidsync writes the video''s battle there).
+
+  '
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'submenu_subchip_812427C (the LocEnemy subchip chosen) sets EVENT_170B, +0x28 = 0x1770 and +0x2C = +0x1C
+    (the last battle''s settings). battle_tryEncounter_80AA4C0: once the encounter roll passes, if +0x28 is nonzero
+    and a GetPositiveSignedRNG draw is even and +0x2C is a ROM pointer, +0x2C becomes GameState.CurBattleDataPtr
+    and the routine returns it at once (no entry pick, no power check). Map changes clear +0x1C/+0x28/+0x2C (asm00_0.s:1920-1927).'
+  refs:
+  - bn6f/asm/asm33.s:2333-2342
+  - bn6f/asm/asm29.s:10694-10712
+  - bn6f/asm/asm00_0.s:1920-1927
+  reproduce: 'sed -n ''2333,2342p'' bn6f/asm/asm33.s
+
+    sed -n ''10694,10712p'' bn6f/asm/asm29.s'
+  result: str 0x1770 -> [S2001c04,#0x28]; [#0x1c] -> [#0x2c]; the encounter routine branch as described
+- method: runtime
+  date: '2026-10-18'
+  detail: 'Probe at vidsync run8o''s game 773223 (Seaside Area 1, an encounter check due at 773225): with +0x28
+    = 8 and +0x2C = 0x080B5B6C (the map''s DiveMan entry), 9 of 81 primary-RNG moves start that battle the next
+    frame (subsystem 8) although the map''s own picks are all dropped by the power check; +0x28 reads 4 eight frames
+    later (it counts down every other frame). vidsync''s try_pick makes this write; the battle''s white flash then
+    matches the speedrun video''s (frame cost 0.6).'
+  refs:
+  - battle_tryEncounter_80AA4C0
+  - submenu_subchip_812427C
+  - tools/vidsync/autosync.py
+  reproduce: 'grep -n ''def try_pick'' -A12 tools/vidsync/autosync.py
+
+    grep -n ''ENC_GATE\|ENC_PRESET'' tools/vidsync/syms.py'
+  result: 'run8q fix: 0x20013f0=0x6e316ce3/4,...,0x2001c2c=0x8/4,0x2001c30=0x80b5b6c/4 at game 773223 (the 773227
+    loss''s test: to 773527, mean cost 0.992)'
+related:
+- oS2001c04_EncounterGateFlag
+- battle_tryEncounter_80AA4C0
+sources:
+- Claude session_01DywpM9x1GYhwUsv45iVPi1 (vidsync run8o loss 773227)

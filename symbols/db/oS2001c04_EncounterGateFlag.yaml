@@ -1,10 +1,46 @@
 name: oS2001c04_EncounterGateFlag
 address: '0x28'
 kind: struct-field
-status: hypothesis
-summary: '"Encounter gate flag (u32)."'
-details: ''
+previous_names:
+- oS2001c04_Unk_28
+status: confirmed
+summary: 'LocEnemy''s countdown (u32): while nonzero, a passing encounter roll takes oS2001c04_OptCurBattleDataPtr''s
+  battle on an even RNG draw, without the entry pick or the power check.'
+details: 'Set to 0x1770 when the LocEnemy subchip is used (submenu_subchip_812427C); counts down (every other frame
+  in the probe); cleared with the preset on a map change and when the Navi is reset (asm03_1_0.s:1192-1195).
+
+  '
 evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'submenu_subchip_812427C (the LocEnemy subchip chosen) sets EVENT_170B, +0x28 = 0x1770 and +0x2C = +0x1C
+    (the last battle''s settings). battle_tryEncounter_80AA4C0: once the encounter roll passes, if +0x28 is nonzero
+    and a GetPositiveSignedRNG draw is even and +0x2C is a ROM pointer, +0x2C becomes GameState.CurBattleDataPtr
+    and the routine returns it at once (no entry pick, no power check). Map changes clear +0x1C/+0x28/+0x2C (asm00_0.s:1920-1927).'
+  refs:
+  - bn6f/asm/asm33.s:2333-2342
+  - bn6f/asm/asm29.s:10694-10712
+  - bn6f/asm/asm00_0.s:1920-1927
+  reproduce: 'sed -n ''2333,2342p'' bn6f/asm/asm33.s
+
+    sed -n ''10694,10712p'' bn6f/asm/asm29.s'
+  result: str 0x1770 -> [S2001c04,#0x28]; [#0x1c] -> [#0x2c]; the encounter routine branch as described
+- method: runtime
+  date: '2026-10-18'
+  detail: 'Probe at vidsync run8o''s game 773223 (Seaside Area 1, an encounter check due at 773225): with +0x28
+    = 8 and +0x2C = 0x080B5B6C (the map''s DiveMan entry), 9 of 81 primary-RNG moves start that battle the next
+    frame (subsystem 8) although the map''s own picks are all dropped by the power check; +0x28 reads 4 eight frames
+    later (it counts down every other frame). vidsync''s try_pick makes this write; the battle''s white flash then
+    matches the speedrun video''s (frame cost 0.6).'
+  refs:
+  - battle_tryEncounter_80AA4C0
+  - submenu_subchip_812427C
+  - tools/vidsync/autosync.py
+  reproduce: 'grep -n ''def try_pick'' -A12 tools/vidsync/autosync.py
+
+    grep -n ''ENC_GATE\|ENC_PRESET'' tools/vidsync/syms.py'
+  result: 'run8q fix: 0x20013f0=0x6e316ce3/4,...,0x2001c2c=0x8/4,0x2001c30=0x80b5b6c/4 at game 773223 (the 773227
+    loss''s test: to 773527, mean cost 0.992)'
 - method: assembly-reading
   date: '2026-10-15'
   detail: Word-sized load immediately followed by `tst r1, r1` / `beq loc_80AA54E`, branching into a weighted-RNG
@@ -13,5 +49,9 @@ evidence:
   - bn6f/asm/asm29.s:10684
   reproduce: grep -n 'oS2001c04_EncounterGateFlag' bn6f/asm/asm29.s | head
   result: '"ldr r1, [r6,#oS2001c04_EncounterGateFlag]"'
-previous_names:
-- oS2001c04_Unk_28
+related:
+- oS2001c04_OptCurBattleDataPtr
+- battle_tryEncounter_80AA4C0
+- submenu_subchip_812427C
+sources:
+- Claude session_01DywpM9x1GYhwUsv45iVPi1 (vidsync run8o loss 773227)
