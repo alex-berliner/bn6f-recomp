@@ -1422,13 +1422,13 @@ def try_skipahead(D):
     w = state_at(D)
     if w is None: return None
     b.e.load(w[1])
-    if b.e.read(syms.GS_SUBSYSTEM, 1)[0] != 0x0C: return None
+    if b.e.read(syms.GS_SUBSYSTEM, 1)[0] != 0x0C: log(f'  skip ahead: not in a battle at {D}'); return None
     vD = w[5].v if w[5] is not None else b.vbase(w[2])
     set_emu_pokes(); node = w[5]; G = None
     for g in range(D, D + 1500):
         vg = vD + int(round((g - D) * bm.RATE)); k = b.key(vg); b.e.step(k); node = bm.Node(k, vg, node)
         if b.e.read(syms.GS_SUBSYSTEM, 1)[0] == 4: G = g + 1; break
-    if G is None: return None
+    if G is None: log(f'  skip ahead: ours still in the battle 1500 frames after {D}'); return None
     # (a frame of the map itself, not the fade: a black frame matches any other, run9r 1049728 -> 0.1)
     J = G
     while True:
