@@ -265,6 +265,22 @@ def battle_table(p):
             out.append(q); q += d
     return sorted(out)
 
+def map_battle_lists():
+    """Every random-encounter list of the current map (each encounter root: viruses, navis), as battle_table
+    walks them: a pick need not be from the list of the last battle's pointer (run9t 1050533: that was another
+    area's, and the video's CircusMan was not among the entries tried)."""
+    grp, mp = b.e.read(syms.GS_MAP, 2)
+    rom = lambda a: 0x08000000 <= a < 0x0A000000
+    out = []
+    for r in ENC_ROOTS:
+        t = b.e.u32(r + 4 * (grp >= 0x80))
+        if not rom(t): continue
+        t = b.e.u32(t + 4 * (grp & 0x7F))
+        if not rom(t): continue
+        q = b.e.u32(t + 4 * mp); n = 0
+        while rom(q) and b.e.read(q, 1)[0] != 0xFF and n < 64: out.append(q); q += 0x10; n += 1
+    return list(dict.fromkeys(out))
+
 def try_formations(f, p, D):
     """An encounter triggered at f with battle settings p: the formation is iCurrFrame % (eligible entries),
     which a different walk or a slightly different trigger frame changes. Write each entry of the area's table
@@ -930,7 +946,7 @@ def try_pick(D):
         wf = state_at(W)
         if wf is None: continue
         b.e.load(wf[1]); P0 = b.e.u32(rf.PRIMARY)
-        ents = battle_table(b.e.u32(BATTLE_PTR))
+        ents = map_battle_lists() or battle_table(b.e.u32(BATTLE_PTR))
         wf = state_at(W - 1)
         if wf is None: continue
         # the search writes as the fix will (a poke at W, from the frame before): a poke lands at another point of
