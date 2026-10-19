@@ -45,7 +45,8 @@ def status(run: str) -> dict[str, object]:
         for line in log:
             if "replaying a path" in line:
                 continue
-            for m in GAME.finditer(line):
+            # (a run that loses before its first "game N video" line is at least where it resumed: run9i)
+            for m in [*GAME.finditer(line), *re.finditer(r"resumed at game (\d+)", line)]:
                 if furthest is None or int(m[1]) > furthest:
                     furthest, furthest_at = int(m[1]), line[:8]
             if re.match(r"^.{9}fix \d", line):
