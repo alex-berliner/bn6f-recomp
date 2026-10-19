@@ -1,0 +1,45 @@
+name: ai_startAttackAtTargetPanel
+address: '0x0810515A'
+kind: function
+status: probable
+summary: launches an AI attack from the object's panel toward the AI attack's target panel, passing damage
+  and difficulty
+interface: (r0 = target panel X, r1 = target panel Y) -> r0 = sub_80DA710 result; reads oBattleObject_PanelX/PanelY,
+  oAIAttackVars_{AiDifficultyTier,InitFlag,Damage}
+details: Packs r4 = AiDifficultyTier | (r0<<8) | (r1<<16), i.e. difficulty tier in the low byte with the
+  caller-supplied target panel X and Y above it. Then calls sub_80DA710 with r0 = this object's PanelX,
+  r1 = PanelY, r2 = oAIAttackVars_InitFlag, r3 = oAIAttackVars_Damage, r4 = the packed word. It is a parameter-marshalling
+  wrapper around sub_80DA710; all actual attack behaviour lives in that callee. The InitFlag and Damage
+  fields and the packed target coordinates suggest sub_80DA710 is the generic AI-attack executor shared
+  by many attack routines.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: caller 0x08104B88 loads TargetPanelX/Y into r0/r1 immediately before the bl sub_810515A; asm
+    packs r4 = [r7,#oAIAttackVars_AiDifficultyTier] | (r0<<8) | (r1<<16) as an argument to sub_80DA710;
+    asm passes own PanelX/PanelY (r0/r1), InitFlag (r2) and Damage (r3) to sub_80DA710; caller plays sound
+    0xAE and spawns an effect object around the call, consistent with an attack firing; oAIAttackVars
+    field names (TargetPanelX/Y, Damage, InitFlag) identify the caller as an AI attack routine
+  refs:
+  - bn6f/asm/asm31.s:167641
+  - 0x08104B68 sub_8104B68
+  - 0x080DA710 sub_80DA710
+  reproduce: python3 tools/asmcat.py 0x0810515A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- what sub_80DA710 does with the packed tier|X|Y word and whether it is a shared AI-attack dispatcher
+- which attack(s) use sound 0xAE and effect 0x4B, to pin the exact attack family
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_810515A -> ai_startAttackAtTargetPanel
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810515A

@@ -1,0 +1,42 @@
+name: battle_objectTickWaitTimer
+address: '0x080C330E'
+kind: function
+status: probable
+summary: Counts down a battle object's Timer each frame; when it expires, advances the object to CurAction
+  4 and resets its phase.
+interface: (r0 = unused entry, r5 = battle object pointer) -> r0 = clobbered; flags from the bne (Z set
+  when timer reached 0)
+details: Decrements the halfword at oBattleObject_Timer of the object in r5 and stores it back. If the
+  timer has not reached zero it returns immediately. When the countdown hits 0, it writes 4 into oBattleObject_CurAction
+  (byte) and clears oBattleObject_CurPhaseAndPhaseInitialized to 0, so the object's next update starts
+  action 4 from phase 0. Uses r5 as the object base register rather than an argument, so the caller must
+  have r5 pointing at the battle object. This is the standard 'wait N frames, then move to the next scripted
+  action' step used by battle object state machines.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrh/strh on oBattleObject_Timer with sub #1 is a per-frame countdown (asm lines 3-5); bne
+    locret means the action/phase writes only happen when the timer expires (asm line 6); strb #4 to oBattleObject_CurAction
+    plus clearing oBattleObject_CurPhaseAndPhaseInitialized transitions the state machine (lines 7-10)'
+  refs:
+  - bn6f/asm/asm31.s:24960
+  reproduce: python3 tools/asmcat.py 0x080C330E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- No known callers, so which object/state machine uses this wait step and what CurAction 4 means for it
+  is unconfirmed
+- Why the object pointer is taken from r5 instead of a register argument
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C330E -> battle_objectTickWaitTimer
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C330E

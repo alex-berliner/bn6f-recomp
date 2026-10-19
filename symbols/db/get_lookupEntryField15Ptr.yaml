@@ -1,0 +1,50 @@
+name: get_lookupEntryField15Ptr
+address: '0x081466C4'
+kind: function
+status: probable
+summary: Returns the address of the 8-byte field (offset 0x15) of the 0x20-byte list record selected via
+  the unk_2010330 index table, used as a copy destination by list-building callers.
+interface: (r0 = record index (byte)) -> r0 = dword_2010CC0 + 0x14 + unk_2010330[index]*0x20 + 0x15; no
+  flags set meaningfully
+details: 'Pure address computation: clamps r0 to a byte, reads a selector byte from unk_2010330[index],
+  scales it by the 0x20 record stride, and adds it to dword_2010CC0 plus 0x14 (entries appear to start
+  at base+0x14) plus 0x15 (field offset within the entry). Both callers use the result as the destination
+  of an 8-byte sub_81469F0 copy, right after a 13-byte copy to the entry base returned by sub_81466F4
+  — consistent with entries laid out as [13-byte field][...][8-byte field][...][pad] in 0x20-byte records.
+  byte_2010288 supplies the number of entries to process. No writes, no flags; a thin offset-of-field
+  accessor.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_81466C4: ldrb from unk_2010330+index, lsl #5 (×0x20), add dword_2010CC0, +0x14 then +0x15,
+    bx lr — pointer math only; caller 0x08146764/0x081467CC: bl sub_81466C4 then mov r1,r6 / mov r2,#8
+    / bl sub_81469F0 — result is the dest of an 8-byte copy; both callers first bl sub_81466F4 with the
+    same index and copy 13 bytes, then this with 8 bytes; r7+=0x10, r6+=8 per row; loop bound byte_2010288
+    (ldrb/cmp r4,r0/bcs) is the count of records processed in both callers; fields at entry+0 (13 bytes)
+    and entry+0x15 (8 bytes) fit within a 0x20-byte stride only with the fixed +0x14 header offset'
+  refs:
+  - bn6f/asm/libs.s:5373
+  - 0x0814673C sub_814673C
+  - 0x081467A0 sub_81467A0
+  reproduce: python3 tools/asmcat.py 0x081466C4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- what list/table dword_2010CC0 belongs to (chip folder, e-mail, customizer, etc.) — no caller context
+  identifies the subsystem
+- contents/meaning of the 13-byte and 8-byte fields (name + what?) and of the selector bytes in unk_2010330
+- actual signature/behavior of sub_81469F0 (assumed memcpy-style) and sub_81466F4 (assumed entry-base
+  sibling accessor)
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81466C4 -> get_lookupEntryField15Ptr
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81466C4

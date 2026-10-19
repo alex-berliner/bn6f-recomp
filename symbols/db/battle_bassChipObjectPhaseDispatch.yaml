@@ -1,0 +1,41 @@
+name: battle_bassChipObjectPhaseDispatch
+address: '0x080C3A78'
+kind: function
+status: probable
+summary: dispatches the Bass-chip battle object's phase handler based on its CurPhase field
+interface: (r5 = battle object, r5+CurPhase selects) -> calls phase handler; r0-r3 clobbered
+details: Reads oBattleObject_CurPhase from the object in r5 and indexes off_80C3A8C, a 3-entry jump table
+  of thumb handlers, then calls the selected one via bl-style bx lr. The table entries are battle_bassChipEvAnimEndCheck
+  (phase 0), bassChipObject_80C3ACA (phase 1), and sub_80C3B06 (phase 2), so this acts as the state-machine
+  step function for the Bass-related object. No other fields are touched here; per-handler behavior (e.g.
+  periodic buster-rake spawns) lives in the callees.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r5,#oBattleObject_CurPhase]; ldr r1,[r1,r0]; bx r1 — phase-indexed jump table dispatch
+    (asm lines 3-6); jump table off_80C3A8C targets battle_bassChipEvAnimEndCheck, bassChipObject_80C3ACA,
+    sub_80C3B06; mov lr,pc; bx r1 is the standard thumb long-call idiom, so entries are functions not
+    data; referenced data names (bassChipObject_*, battle_bassChipEv...) identify the owning object as
+    the Bass chip object
+  refs:
+  - bn6f/asm/asm31.s:26039
+  reproduce: python3 tools/asmcat.py 0x080C3A78
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- no callers known, so when in the battle loop this runs is unconfirmed
+- which of the 3 phases maps to which behavior beyond the callee names
+- whether r5 is always the same object type the table assumes
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C3A78 -> battle_bassChipObjectPhaseDispatch
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C3A78

@@ -1,0 +1,41 @@
+name: ai_scriptResetTimerTick
+address: '0x08115654'
+kind: function
+status: probable
+summary: Counts up a frame counter and, after 60 frames, resets an AI state's script ID to 0.
+interface: (r5 = object/struct holding u16 timer at +0x6C, r6 = AI state struct) -> void; flags from cmp
+  r1,#0x3C
+details: Increments the halfword counter at [r5+0x6C] each call (presumably once per frame). When the
+  count reaches 0x3C (60, i.e. one second), it stores 0 into the byte at [r6+oAIState_ScriptId], restarting
+  the AI's script. The counter itself is never cleared here, so it keeps incrementing past 60 unless reset
+  elsewhere; r5 and r6 are not set inside the function, so they must be prepared by the caller or be fixed
+  registers across calls. No branches or other fields are touched.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrh/strh at [r5,#0x6C] with add #1: plain incrementing u16 timer; cmp r1, #0x3C / blt: fires
+    after 60 ticks (one second at 60fps); strb r0(=0), [r6,#oAIState_ScriptId]: writes to the named AI-state
+    scriptId field; no callers known, so argument setup cannot be confirmed'
+  refs:
+  - bn6f/asm/asm32.s:15257
+  reproduce: python3 tools/asmcat.py 0x08115654
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- 'No callers are known: what r5 and r6 actually point to (which object/AI struct) and when this runs
+  is unverified'
+- Whether the timer at +0x6C should also be cleared at the 60-frame point, or is reset by another routine
+- Which AI script/scriptId semantics make resetting to 0 the intended behavior
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8115654 -> ai_scriptResetTimerTick
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8115654

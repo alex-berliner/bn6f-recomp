@@ -1,0 +1,45 @@
+name: rfu_getSlotPlayerCount
+address: '0x08146918'
+kind: function
+status: probable
+summary: Returns a u16 per-slot count (likely connected-player count) from the RFU work struct, used by
+  the caller to decide whether the wireless connection is complete.
+interface: (r0 = slot index (byte)) -> r0 = halfword at eStruct200FE00 + 0x34 + index*2; flags clobbered
+  by shift/compare not preserved
+details: 'Normalizes r0 to a byte and multiplies by 2 via lsl/lsr, indexing a table of halfwords at eStruct200FE00+0x34.
+  The caller reads the current index from byte_200AF84+4, fetches this slot''s count, and compares it
+  against the result of the adjacent getter sub_814690C (which takes no arguments); when the count is
+  >= that value it calls rfu_setStateEnded and returns 2, otherwise it returns 0 and presumably waits.
+  This is connection-setup polling logic: each call checks one slot''s reported participant count against
+  the expected total.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_8146918: ldr r1, off_8146928 (=eStruct200FE00); add r1,#0x34; ldrh r0,[r0+r1] — table of
+    u16 at +0x34 indexed by r0*2; caller 0x0803C982: ldrb r0,[byte_200AF84+4]; bl sub_8146918; bl sub_814690C;
+    cmp r4,r0; blt — compares slot value against a no-arg getter; caller calls rfu_setStateEnded when
+    count >= expected and returns 2, else returns 0 — connection-setup polling, so the value is a player/connection
+    count'
+  refs:
+  - bn6f/asm/libs.s:5749
+  - 0x0803C97C sub_803C97C
+  reproduce: python3 tools/asmcat.py 0x08146918
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- exact meaning of the halfword at +0x34 (player count vs. some per-slot status code) not provable from
+  this call site alone
+- layout of eStruct200FE00 and the semantics of sub_814690C's return value
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8146918 -> rfu_getSlotPlayerCount
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8146918

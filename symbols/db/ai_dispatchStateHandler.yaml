@@ -1,0 +1,41 @@
+name: ai_dispatchStateHandler
+address: '0x08109B9C'
+kind: function
+status: probable
+summary: Dispatches one of two AI state handlers for the object in r6, selected by its oAIState_ScriptId
+  field.
+interface: (r6 = AI object; r0 unused on entry) -> calls handlerTable[object->oAIState_ScriptId] with
+  lr set so control returns to the pop {r4,r6,pc} epilogue; r0/r1 clobbered by callee
+details: 'Loads the AI state field [r6, #oAIState_ScriptId], uses it to index a table at off_8109BB0 whose
+  two entries are thumb pointers (sub_8109BB8+1, sub_8109BC0+1), then performs a computed call via ''mov
+  lr, pc; bx r1'' so the handler returns into this function''s epilogue. r6 is never set inside, so the
+  caller supplies the object pointer in r6 (not r0), consistent with battle AI object routines. The table
+  has only two slots, so the state id is effectively a 0/1 selector; out-of-range ids would read garbage.
+  No result is post-processed; r0 passes straight through from whichever handler runs.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0, [r6,#oAIState_ScriptId]; ldr r1,[r1,r0] — handler chosen by the object's AI state id;
+    mov lr, pc; bx r1 — computed call into the table entry, returning to the shared pop {r4,r6,pc}; off_8109BB0
+    holds exactly two thumb pointers (sub_8109BB8+1, sub_8109BC0+1), a 2-state dispatch table
+  refs:
+  - bn6f/asm/asm31.s:177387
+  reproduce: python3 tools/asmcat.py 0x08109B9C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- No known callers, so which AI objects use this and what states 0/1 mean in game terms is unknown; the
+  two handler bodies (sub_8109BB8, sub_8109BC0) would confirm the state semantics
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8109B9C -> ai_dispatchStateHandler
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8109B9C

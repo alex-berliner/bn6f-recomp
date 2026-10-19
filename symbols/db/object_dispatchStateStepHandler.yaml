@@ -1,0 +1,44 @@
+name: object_dispatchStateStepHandler
+address: '0x080D2FC2'
+kind: function
+status: probable
+summary: Dispatches an object's per-state step behavior via a jump table indexed by the object's state
+  byte
+interface: (r5 = object ptr; r0 = state index read from [r5,#0xA]) -> tail-calls handler table[state]
+  with r0 = state, r5 preserved; returns to this function's caller
+details: 'Reads byte at [r5,#0xA] as a state/index, loads a function pointer from a 3-entry table (off_80D2FD4:
+  sub_80D2FE0, sub_80D2FEC, object_stepMoveToTargetPanelThenDim), and performs a computed tail call using
+  the mov lr,pc/bx r1 idiom so the callee''s return goes to this function''s caller. The state index is
+  left in r0 and the object pointer in r5 as implicit arguments to the handler. This is a state-machine
+  step dispatcher for objects; one handler is the known movement routine object_stepMoveToTargetPanelThenDim,
+  suggesting states advance an object toward a target panel then dim. Only three states exist in the table
+  (0-2); a state value >=3 would read past the table.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r5,#0xa]; ldr r1,[r1,r0] indexes table by object state byte (asm lines 3-5); mov lr,pc;
+    bx r1; pop {pc} tail-calls the selected handler back to this function's caller; table entry 2 is object_stepMoveToTargetPanelThenDim,
+    a known object movement step routine; r0 (state index) and r5 (object ptr) are the only values passed
+    to the handler, implying handler signature (state, object)
+  refs:
+  - bn6f/asm/asm31.s:59686
+  reproduce: python3 tools/asmcat.py 0x080D2FC2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- no known callers, so which object type/state machine uses this dispatcher is unknown
+- the semantics of sub_80D2FE0 and sub_80D2FEC (states 0 and 1) are unknown
+- what structure r5 points to beyond the state byte at offset 0xA is unconfirmed
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D2FC2 -> object_dispatchStateStepHandler
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D2FC2

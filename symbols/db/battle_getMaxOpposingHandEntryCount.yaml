@@ -1,0 +1,46 @@
+name: battle_getMaxOpposingHandEntryCount
+address: '0x080E4532'
+kind: function
+status: probable
+summary: Returns the largest hand-entry count among the four battle actors of the opposite alliance, used
+  to decide whether to wait for the enemy's hand/custom-screen data.
+interface: (r5 = battle object, reads oBattleObject_Alliance) -> r0 = maximum battle_countHandEntryData
+  value over the 4 actors of alliance (Alliance^1); no flags of interest
+details: 'Reads the object''s Alliance byte, XORs it with 1 to select the opposing alliance, and indexes
+  oBattleState_AliveBattleActors by that alliance times 0x10. It then loops over the 4 pointer slots (stride
+  4); for each non-null actor pointer it calls battle_countHandEntryData and keeps the maximum seen. The
+  caller stores the result in oBattleObject_ExtraVars: a nonzero max makes the object set Timer=1 and
+  advance to phase 4 (wait state), a zero result advances directly to phase 8. Quirk: uses r10-relative
+  toolkit access and r5 as the implicit object pointer, so it is not a pure r0-argument function.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_80E4532: ldrb r0,[r5,#oBattleObject_Alliance]; eor r0,#1; mul r0,#0x10 selects the opposing
+    alliance''s block of oBattleState_AliveBattleActors; loop at loc_80E454A calls battle_countHandEntryData
+    on each of 4 non-null actor pointers and keeps the max (cmp r0,r4; blt skip; mov r4,r0); callee battle_countHandEntryData
+    ''Returns a count derived from a battle hand slot'', so the max is over hand-entry counts; caller
+    sub_80E4470 at 0x080E4482 stores r0 to oBattleObject_ExtraVars and branches: nonzero -> Timer=1, phase
+    4; zero -> phase 8'
+  refs:
+  - bn6f/asm/asm31.s:97755
+  - 0x080E4470 sub_80E4470
+  - 0x080E4566 battle_countHandEntryData
+  reproduce: python3 tools/asmcat.py 0x080E4532
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- what the phase-4 wait state does with the stored count (custom-screen/card-hand animation timing?)
+- exact meaning of the hand entry data counted by battle_countHandEntryData for mode-2 selections
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E4532 -> battle_getMaxOpposingHandEntryCount
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E4532

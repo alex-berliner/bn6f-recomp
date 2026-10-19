@@ -1,0 +1,43 @@
+name: object_dispatchModeHandler
+address: '0x0811E418'
+kind: function
+status: probable
+summary: Calls one of three handler routines selected by the mode byte at [r5,#8], passing that mode as
+  r1.
+interface: (r5 = object whose +8 byte selects handler) -> tail-call to handler(r1 = mode, r5 preserved);
+  r0 = whatever the handler returns
+details: 'Loads a byte from offset +8 of the struct pointed to by r5 and uses it directly (0..2) as an
+  index into the word table at off_811E42C. The table holds three thumb pointers: object_initSpriteObjA1,
+  sub_811E490 and sub_811E510. It invokes the selected handler with mov lr,pc / bx r0 (classic thumb call),
+  leaving r5 intact so handlers can access the same object. r1 carries the mode value itself, so handlers
+  likely switch on it again or use it as a sub-argument. This is a small state/mode dispatcher for an
+  object with exactly three modes.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r1,[r5,#8]; ldr r0,[r0,r1] indexes off_811E42C by the object''s mode byte; table entries:
+    object_initSpriteObjA1+1, sub_811E490+1, sub_811E510+1 — three mode handlers; mov lr,pc; bx r0 is
+    the standard thumb call, so this is a dispatcher not a jump; r5 is untouched, indicating handlers
+    operate on the same caller-held object struct'
+  refs:
+  - bn6f/asm/asm32.s:33537
+  reproduce: python3 tools/asmcat.py 0x0811E418
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- No callers known, so which object type owns this struct and what the three modes mean in game terms
+  is unknown
+- What sub_811E490 and sub_811E510 do would confirm the semantics of each mode
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_811E418 -> object_dispatchModeHandler
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811E418

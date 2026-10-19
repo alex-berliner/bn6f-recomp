@@ -1,0 +1,40 @@
+name: ai_dispatchDelayedAttackStrikeByHitElement
+address: '0x080ED090'
+kind: function
+status: probable
+summary: Dispatches the delayed-attack strike AI step to the handler selected by the attack's hit element
+interface: (r7 = AI attack vars struct) -> r0 = HitElement passed through; tail-calls table[HitElement]
+  handler
+details: Reads oAIAttackVars_HitElement from the attack-vars struct in r7, indexes off_80ED0A4 (a 2-word
+  function-pointer table) with it, and tail-jumps to the selected routine with lr set to the return address.
+  r0 still holds the raw HitElement byte when the callee runs. The two handlers are ai_stepDelayedAttackStrike
+  and sub_80ED118, so the delayed strike behaves differently depending on the recorded hit element. Element
+  values beyond 1 would index past the table, so this is presumably only called when HitElement is 0 or
+  1.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_HitElement] then ldr r1,[r1,r0]: element indexes the handler table;
+    off_80ED0A4 holds exactly two entries: ai_stepDelayedAttackStrike+1 and sub_80ED118+1; mov lr,pc;
+    bx r1 is a tail-call, so this is a dispatcher, not a wrapper computing a value'
+  refs:
+  - bn6f/asm/asm31.s:116752
+  reproduce: python3 tools/asmcat.py 0x080ED090
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- what sub_80ED118 does (the second strike variant) and which elements map to entry 0 vs 1
+- no known callers, so when the AI attack path invokes this dispatcher is unknown
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80ED090 -> ai_dispatchDelayedAttackStrikeByHitElement
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80ED090

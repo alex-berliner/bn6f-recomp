@@ -1,0 +1,45 @@
+name: battle_sinkObjectByParam2
+address: '0x080DB0BC'
+kind: function
+status: probable
+summary: Lowers a battle object's Y and Z position by Param2+1, e.g. starting it below the floor before
+  an emerge animation.
+interface: (r0 = unused; r5 = battle object) -> void; reads oBattleObject_Param2, decrements oBattleObject_Y16
+  and oBattleObject_Z16 by Param2+1
+details: The callee reads oBattleObject_Param2 from the r5 battle object, adds 1, and subtracts that amount
+  from both oBattleObject_Z16 and oBattleObject_Y16 (16-bit coordinate fields on the battle object). The
+  caller zeroes the object's Z16 first, so after the call Z16 = -(Param2+1), i.e. the object is pushed
+  below its reference position. Immediately afterwards the caller loads a sprite, disables the shadow,
+  sets a flag bit, and resets CurAnim/CurAnimCopy to 0, which fits a spawn/buried-appear setup where the
+  object starts sunk into the panel and later rises.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'callee: ldrb r0,[r5,#oBattleObject_Param2]; add r0,#1 then sub from Y16 and Z16 (sub_80DB0BC);
+    caller 0x080DAEC4 zeroes oBattleObject_Z16 then calls it, before sprite_load/sprite_noShadow and flag
+    |= 2; caller then sets CurAnim/CurAnimCopy to 0, consistent with initializing an object for an entrance/emerge
+    state; no other callers known; effect is purely a coordinate offset on the r5 object'
+  refs:
+  - bn6f/asm/asm31.s:77260
+  - 0x080DAEC4 sub_80DAEC4
+  reproduce: python3 tools/asmcat.py 0x080DB0BC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- what Param2 represents (panel row, pixels, tile offset) — need the code that sets Param2 before calling
+  this
+- whether more callers use it outside emerge-style spawn sequences, which would confirm or refute the
+  'sink below floor' reading
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DB0BC -> battle_sinkObjectByParam2
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DB0BC

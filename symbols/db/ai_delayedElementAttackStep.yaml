@@ -1,0 +1,44 @@
+name: ai_delayedElementAttackStep
+address: '0x081083E8'
+kind: function
+status: probable
+summary: 'AI attack step: on first invocation sets the attack element to 4 and a delay timer, then after
+  the timer expires marks the hit with that element.'
+interface: (r7 = pointer to oAIAttackVars struct, no args) -> r0 = element value 4 or remaining timer;
+  sets HitElement when timer expires
+details: State-machine tick for one enemy AI attack. If oAIAttackVars_AttackElement is zero, it initializes
+  it to 4 and copies oAIAttackVars_AttackBoost2 into oAIAttackVars_StepTimer as a countdown (arm phase).
+  Otherwise it decrements StepTimer each call; when it reaches 0 it writes element 4 into oAIAttackVars_HitElement,
+  presumably causing the attack's hit to use that element. No other state is touched and no callees are
+  invoked; the element value 4 likely corresponds to the Wood element in the project's element enum.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/beq: element unset triggers init path at 81083E8-81083F6;
+    strb #4 to AttackElement plus strh AttackBoost2 to StepTimer: element and countdown are set together
+    (arm phase); StepTimer decrement with bgt loop, then strh #4 to oAIAttackVars_HitElement at 81083FA-8108402:
+    hit element applied on timer expiry; Only r7 struct fields are touched, no calls: pure per-frame state
+    step of an AI attack handler'
+  refs:
+  - bn6f/asm/asm31.s:174361
+  reproduce: python3 tools/asmcat.py 0x081083E8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- Which enemy/attack this AI attack belongs to — no callers are known, so the owning AI table and preceding
+  attack state are unidentified
+- What element value 4 means in oAIAttackVars_AttackElement/HitElement (assumed Wood from the element
+  enum) and what AttackBoost2 holds (delay length source)
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81083E8 -> ai_delayedElementAttackStep
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81083E8

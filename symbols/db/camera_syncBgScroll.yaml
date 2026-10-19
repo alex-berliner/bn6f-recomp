@@ -1,0 +1,43 @@
+name: camera_syncBgScroll
+address: '0x0803035E'
+kind: function
+status: probable
+summary: copies the camera's scroll position into the render info's BG scroll offsets, wrapping both to
+  the 512-pixel background period
+interface: () -> void; reads r10 toolkit, writes oRenderInfo_BGScrollXOffset and oRenderInfo_BGScrollY
+details: 'Loads the toolkit''s camera pointer via r10 (the toolkit frame pointer), reads oCamera_ScrollX
+  and oCamera_CameraYInt, and writes them into the render info struct: X masked with 0x1FF into oRenderInfo_BGScrollXOffset,
+  and Y-8 masked with 0x1FF into oRenderInfo_BGScrollY. The 0x1FF mask is the wrap for a 512-pixel scrolling
+  background, and the Y-8 shift aligns the camera Y with the BG''s origin. It writes nothing else and
+  only touches these two render-info fields, so it is a per-frame scroll sync rather than a draw routine.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldr r5, [r7,#oToolkit_CameraPtr] then ldrh r1/r2 of oCamera_ScrollX/oCamera_CameraYInt show
+    the source is camera scroll; mask r4 = 0xFF<<1+1 = 0x1FF applied to both before store: 512-pixel BG
+    wrap; strh to oRenderInfo_BGScrollXOffset and oRenderInfo_BGScrollY show the destination is render-info
+    BG scroll state; sub r2, #8 before masking Y: one-pixel-row (8px) offset between camera Y and BG scroll
+    Y; no other writes and no calls: a pure two-field copy, consistent with a scroll update helper'
+  refs:
+  - bn6f/asm/asm03_0.s:22258
+  reproduce: python3 tools/asmcat.py 0x0803035E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- no known callers, so it is unclear when in the frame this runs or whether the Y-8 offset has a specific
+  BG-map reason
+- the exact consumers of oRenderInfo_BGScrollXOffset/BGScrollY (BG scroll register write vs. draw loop)
+  are not shown
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803035E -> camera_syncBgScroll
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803035E

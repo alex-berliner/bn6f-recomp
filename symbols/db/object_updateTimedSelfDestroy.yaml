@@ -1,0 +1,40 @@
+name: object_updateTimedSelfDestroy
+address: '0x080BF9FE'
+kind: function
+status: probable
+summary: battle-object update that counts down a 30-frame timer, then queues the object for destruction
+interface: (r5 = battle object) -> none; sets oBattleObject_Timer=30 and PhaseInitialized=4 on first run,
+  decrements Timer each call, writes CUR_STATE_DESTROY to CurStateAction when it reaches 0
+details: Standard object state-update stub using r5 as the object pointer. On the first invocation (PhaseInitialized
+  == 0) it seeds oBattleObject_Timer with 0x1E frames and stores 4 into oBattleObject_PhaseInitialized
+  to mark init done. Every call decrements oBattleObject_Timer and branches out while it is still > 0;
+  when the counter expires it stores CUR_STATE_DESTROY into oBattleObject_CurStateActionPhaseAndPhaseInitialized,
+  handing the object to the destroy phase. No other fields are touched and it calls nothing.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb/tst on oBattleObject_PhaseInitialized gates one-time timer init of 0x1E and phase 4 (asm
+    lines 2-7); timer decrement with 'bgt' skips the destroy write until the counter hits zero (lines
+    9-12); final store of CUR_STATE_DESTROY into oBattleObject_CurStateActionPhaseAndPhaseInitialized
+    is the only action taken (lines 13-14)
+  refs:
+  - bn6f/asm/asm31.s:16827
+  reproduce: python3 tools/asmcat.py 0x080BF9FE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- no callers known, so which objects use this 30-frame delay and for what gameplay effect (e.g. temporary
+  panel/entity despawn) is unknown
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BF9FE -> object_updateTimedSelfDestroy
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BF9FE

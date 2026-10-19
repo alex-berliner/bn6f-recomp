@@ -1,0 +1,40 @@
+name: object_moveByVelocity
+address: '0x0811D6CC'
+kind: function
+status: probable
+summary: adds an object's velocity (8.8 fixed point) to its x/y position fields
+interface: (r5 = object struct from getStructFrom2008450) -> void; r0-r2 clobbered
+details: Loads the signed 16-bit velocity at struct+0x14 (x) and +0x16 (y), shifts each left by 8 (converting
+  8.8 fixed point to the position's fixed-point scale), and adds them into the 32-bit position fields
+  at +0x18 (x) and +0x1C (y), storing the results back. Uses ldrsh so negative velocities wrap correctly.
+  The caller then calls object_syncSpritePosition, confirming +0x18/+0x1C are the sprite-driving coordinates.
+  r5 is set up by the caller from getStructFrom2008450, so the struct is the standard object at 0x2008450.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_811D6CC: ldrsh r1,[r5,#0x14]; lsl r1,#8; add to [r5,#0x18] — velocity.x added to position.x;
+    same pattern with +0x16 into [r5,#0x1C] — velocity.y added to position.y; caller at 0x0811D646 calls
+    it right after getStructFrom2008450, then object_syncSpritePosition — position update feeds sprite
+    draw; ldrsh + lsl #8 shows signed 8.8 fixed-point velocity added to higher-precision position'
+  refs:
+  - bn6f/asm/asm32.s:31963
+  - 0x0811D634 sub_811D634
+  reproduce: python3 tools/asmcat.py 0x0811D6CC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- exact fixed-point format of the +0x18/+0x1C position fields
+- whether callers elsewhere use it for non-movement purposes
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_811D6CC -> object_moveByVelocity
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811D6CC

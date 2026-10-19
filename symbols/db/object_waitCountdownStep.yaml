@@ -1,0 +1,46 @@
+name: object_waitCountdownStep
+address: '0x0802ADFC'
+kind: function
+status: probable
+summary: 'Per-frame tick for an object''s wait state: counts down a timer and, when it expires, switches
+  the object to state 12 with substate/param 4 and runs the next-state handler.'
+interface: (no args; r5 = object/state struct) -> r0 = callee result of sub_802AF0E when timer expires;
+  flags from the decrement
+details: Reads the 32-bit counter at [r5+0x3C], decrements it, and stores it back, so this runs once per
+  frame while the object waits. The bne keeps the routine a no-op until the counter reaches zero. On expiry
+  it writes 0xC to the byte at [r5+0x1] (looks like a state/step field) and 4 to the halfword at [r5+0x2]
+  (likely a substate, timer preset, or animation id), then calls sub_802AF0E to handle the transition.
+  The callee is only invoked on the frame the counter hits zero.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldr/str r0,[r5,#0x3c] with sub #1 and bne locret: a per-frame countdown on field 0x3C of the
+    struct at r5; strb #0xC,[r5,#1] and strh #4,[r5,#2] only on the expiring frame: state fields set as
+    a transition; bl sub_802AF0E is reached only when the counter reaches zero, so it belongs to the post-wait
+    branch; no register arguments and r5 as base pointer match the game''s object-update convention (this/struct
+    in a register, not r0)'
+  refs:
+  - bn6f/asm/asm03_0.s:10408
+  - 0x0802AF0E sub_802AF0E
+  reproduce: python3 tools/asmcat.py 0x0802ADFC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- No callers known, so which object/state machine uses r5, and what state 0xC means in that machine, is
+  unknown
+- What sub_802AF0E does (and what fields [r5+1]/[r5+2] mean in that struct) would confirm whether 4 is
+  an animation id, next timer, or mode
+- Whether [r5+0x3C] is initialized by the previous state's handler (would show the intended wait length)
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_802ADFC -> object_waitCountdownStep
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802ADFC

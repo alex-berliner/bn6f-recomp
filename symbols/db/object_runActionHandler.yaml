@@ -1,0 +1,43 @@
+name: object_runActionHandler
+address: '0x080E7D6A'
+kind: function
+status: probable
+summary: Dispatches a battle object's per-action state handler via a jump table indexed by the object's
+  CurAction field
+interface: (r5 = battle object pointer) -> tail-calls handler from off_80E7D7C[CurAction]; returns to
+  caller of this function when the handler returns
+details: Loads the object's current action state (oBattleObject_CurAction at r5+0x??), uses it to index
+  a pointer table at off_80E7D7C whose base is loaded from off_80E7D78, and calls that handler with the
+  ARM/Thumb interwork trick (mov lr, pc; bx r1). The handler receives r5 (the object) unchanged and r0/r1
+  clobbered; on return, pop {pc} returns straight to this function's caller, making it a transparent state-machine
+  step. The table dump shows only its first entry (sub_80E7D80+1, Thumb), implying one handler per action
+  state, with the rest of the table beyond the shown data. This is the standard per-frame action-state
+  update pattern for battle objects.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0, [r5,#oBattleObject_CurAction] indexes the object's current action state; ldr r1, [r1,r0]
+    then mov lr, pc; bx r1 calls handler at off_80E7D7C[action] and returns to this fn's caller via pop
+    {pc}; table entry .word sub_80E7D80+1 shows Thumb handler pointers, one per action index; r5 is not
+    set up inside, so the caller supplies the battle object pointer as context
+  refs:
+  - bn6f/asm/asm31.s:105788
+  reproduce: python3 tools/asmcat.py 0x080E7D6A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- full contents of the jump table off_80E7D7C and which object type/state list it belongs to
+- callers unknown, so which battle object passes itself in r5 and when per-frame this runs is unconfirmed
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E7D6A -> object_runActionHandler
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E7D6A

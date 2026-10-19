@@ -1,0 +1,51 @@
+name: battle_updateSpawnLinkedType14
+address: '0x080E7208'
+kind: function
+status: probable
+summary: 'Battle object update handler: one-time spawn of a linked type-0x14 object at the owner''s panel,
+  then ends the action once Param2 reaches 0.'
+interface: (r5 = battle object ptr) -> void; on first call spawns linked type 0x14 object and sets PhaseInitialized=4;
+  when Param2==0 sets CurAction=0xC and clears phase
+details: 'Runs with the battle object in r5. Gated on oBattleObject_PhaseInitialized: on the first invocation
+  it reads PanelX, PanelY, Element, computes r6 = DamageAndStaminaDamageCounterDisabler + Z16Save, passes
+  r3 = Z16Save and r7 = object+5, and calls battle_spawnLinkedType14, which copies panel position, element,
+  alliance and name ID from this object into a new type 0x14 object linked via RelatedObject1Ptr. It then
+  stores 4 into PhaseInitialized so the spawn happens only once. On subsequent calls, if oBattleObject_Param2
+  is nonzero it returns without doing anything; when it hits 0 it writes 0xC to oBattleObject_CurAction
+  and 0 to oBattleObject_CurPhaseAndPhaseInitialized, the usual way an object finishes its current action
+  and returns control to its idle/next phase. The meaning of Param2 and of the +5 offset passed in r7
+  is not visible from this function alone.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#oBattleObject_PhaseInitialized]; bne loc_80E722E — one-time-setup gate, then stores
+    4 back (strb r0,#4) after the spawn call; args to battle_spawnLinkedType14 come from the object itself:
+    PanelX/PanelY/Element in r0-r2, r3 = Z16Save, matching the callee''s documented ''copy panel position,
+    element, alliance, name ID'' behavior; r6 = DamageAndStaminaDamageCounterDisabler + Z16Save and r7
+    = r5+5 are set up only for the spawn call, showing the routine exists to configure that spawn; after
+    the gate: Param2==0 -> CurAction=0xC, CurPhaseAndPhaseInitialized=0 — standard battle-object ''finish
+    action / return to phase 0'' epilogue'
+  refs:
+  - bn6f/asm/asm31.s:104188
+  - 0x080BB49C battle_spawnLinkedType14
+  reproduce: python3 tools/asmcat.py 0x080E7208
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- what battle object uses this handler (no callers/tables known) and what gameplay role the spawned type-0x14
+  object plays
+- what sets oBattleObject_Param2 and what it counts down (a timer set by another routine?)
+- meaning of the r7 = object+5 argument to battle_spawnLinkedType14 and what CurAction 0xC represents
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E7208 -> battle_updateSpawnLinkedType14
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E7208

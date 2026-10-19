@@ -1,0 +1,44 @@
+name: sprite_setAnimTargetFromObject
+address: '0x080A5DE8'
+kind: function
+status: probable
+summary: Copies a 3-word target triple from the object struct (r6+0x7C..0x84) into the sprite animator's
+  target fields (r5+0x28..0x30) before interpolation toward it.
+interface: (r5 = sprite/animator struct, r6 = object struct) -> stores [r6+0x7C,0x80,0x84] into [r5+0x28,0x2C,0x30];
+  no return value, flags clobbered
+details: 'The function is a simple 3-word copy: it loads three consecutive words at r6+0x7C/0x80/0x84
+  and stores them to r5+0x28/0x2C/0x30. Its only caller (sub_80A5D80) invokes it first, then immediately
+  calls sprite_updateAnimTowardTarget and compares r5+0x28 (the freshly written target) against r5+0xC
+  (the current value), stepping the current value by 0x10000 (1.0 fixed-point) toward it — so the triple
+  is an interpolation target for the animator, and r5+0xC is a mirrored current-value field. r6+0x7C..0x84
+  are the object-side source of that target (position/scale or similar), and the copy is re-done every
+  call so the animator keeps chasing the object''s live values.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'asm: loads r6+0x7C/0x80/0x84 and stores them to r5+0x28/0x2C/0x30 — a plain struct-to-struct
+    3-word copy; caller 0x080A5D80: calls it then sprite_updateAnimTowardTarget, and uses [r5,#0x28] as
+    the target compared against [r5,#0xC]; caller steps [r5,#0xC] by 0x10000 toward [r5,#0x28], confirming
+    0x28..0x30 are fixed-point interpolation targets'
+  refs:
+  - bn6f/asm/asm29.s:2177
+  - 0x080A5D80 sub_80A5D80
+  reproduce: python3 tools/asmcat.py 0x080A5DE8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- What the three values mean (position vs. scale vs. pose parameters) and what fields r6+0x7C..0x84 hold
+  in the object struct
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80A5DE8 -> sprite_setAnimTargetFromObject
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A5DE8

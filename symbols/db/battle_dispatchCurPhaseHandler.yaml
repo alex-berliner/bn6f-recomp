@@ -1,0 +1,41 @@
+name: battle_dispatchCurPhaseHandler
+address: '0x080D2C28'
+kind: function
+status: probable
+summary: Calls the current phase's handler for the battle object in r5, using its CurPhase as an index
+  into a jump table.
+interface: (r5 = battle object pointer) -> calls handler from phase table; returns whatever the handler
+  returns in r0
+details: Reads oBattleObject_CurPhase from the object in r5, loads a function pointer from off_80D2C3C[phase],
+  and tail-calls it with the mov lr,pc / bx r1 long-call idiom so it returns through pop {pc} to the original
+  caller. The table entry shown points to sub_80D2C40+1 (Thumb); the visible table holds one entry but
+  likely continues beyond the excerpt. The dispatcher passes r5 through unchanged, so the handler also
+  receives the object pointer.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0, [r5,#oBattleObject_CurPhase] indexes the table by the object''s phase field; ldr r1,
+    [r1,r0]; mov lr,pc; bx r1 dispatches to table[phase] as a function; off_80D2C3C: .word sub_80D2C40+1
+    shows the table entries are Thumb handler pointers; no arguments are set up beyond r5, indicating
+    an object-member dispatch rather than a parameterized call'
+  refs:
+  - bn6f/asm/asm31.s:59179
+  reproduce: python3 tools/asmcat.py 0x080D2C28
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- full extent of the jump table and the identities/behavior of its handlers
+- which callers invoke this and for which battle object types (could refine the prefix)
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D2C28 -> battle_dispatchCurPhaseHandler
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D2C28

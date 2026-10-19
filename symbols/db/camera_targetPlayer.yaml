@@ -1,0 +1,43 @@
+name: camera_targetPlayer
+address: '0x080301BC'
+kind: function
+status: probable
+summary: Makes the overworld camera track the player object by storing a pointer into its position data
+  and setting the camera's mode byte.
+interface: () -> void; no return value, r0-r3 clobbered
+details: Reads the camera struct from the toolkit (oToolkit_CameraPtr), sets its byte at +3 to 1 (likely
+  a follow/target-mode flag), then loads the overworld player object pointer from the game state and stores
+  playerObject+0x1C into camera field +0x14 — presumably the pointer to the position/coords the camera
+  tracks. Takes no arguments and returns nothing. Caller sub_8089234 calls it and then doPETEffect_8033fc0(1),
+  then returns 0, suggesting it is part of entering the overworld/PET flow where the camera snaps to the
+  player.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: mov r2,r10; ldr [r2,#oToolkit_CameraPtr] fetches the camera struct (asm lines 1-2); strb r0(=1),[r2,#3]
+    sets a camera mode/state byte (asm line 4); ldr r1,[GameState+oGameState_OverworldPlayerObjectPtr];
+    add r1,#0x1c; str r1,[r2,#0x14] stores player+0x1C as camera target (asm lines 6-9); caller sub_8089234
+    calls it then doPETEffect_8033fc0(1) and returns 0
+  refs:
+  - bn6f/asm/asm03_0.s:21993
+  - 0x08089234 sub_8089234
+  reproduce: python3 tools/asmcat.py 0x080301BC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- exact meaning of the byte at camera+3 (mode vs. flag)
+- what playerObject+0x1C points to (position struct vs. other field)
+- context of sub_8089234 and doPETEffect_8033fc0(1)
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80301BC -> camera_targetPlayer
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80301BC

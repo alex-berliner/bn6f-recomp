@@ -1,0 +1,47 @@
+name: t3_decrementRenderInfo14
+address: '0x08039198'
+kind: function
+status: probable
+summary: 'Per-frame tick for the t3 scene: subtracts 9 from the u16 at RenderInfo+0x14 each frame it runs.'
+interface: () -> void; no args, no return value used
+details: Reads the toolkit's RenderInfo pointer from r10+oToolkit_RenderInfoPtr, loads the halfword at
+  offset 0x14, subtracts 9, and stores it back — nothing else. It takes no arguments and its result is
+  not consumed; callers simply invoke it unconditionally every frame alongside their other per-frame work.
+  Its effect is purely the RenderInfo+0x14 decrement, so whatever scene logic reads that field (scroll,
+  fade counter, or timer) is driven indirectly by this call. The odd step of 9 suggests a pixel-rate (e.g.
+  9 px/frame) rather than a plain countdown.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_8039198 body: ldr r3,[r10,#oToolkit_RenderInfoPtr]; ldrh r0,[r3,#0x14]; sub r0,#9; strh
+    r0,[r3,#0x14]; t3_waitForAnyKeyStartFade calls it after t3_loadBackgroundTiles every frame while waiting
+    for keypress (0x08038EFE-0x08038F02); sub_8038F0C calls it each frame, then when IsScreenFadeActive
+    ends turns off LCD (SetRenderInfoLCDControl 0x40), placing it in the per-frame scene update; sub_8038EAC
+    calls it each frame after loading comm-error GFX anims (LoadGFXAnim byte_8038A6C/byte_8038A84); No
+    other reads/writes, no branches: the entire behavior is the single RenderInfo+0x14 decrement'
+  refs:
+  - bn6f/asm/asm03_1_1.s:1199
+  - 0x08038EDC t3_waitForAnyKeyStartFade
+  - 0x08038EAC sub_8038EAC
+  - 0x08038F0C sub_8038F0C
+  reproduce: python3 tools/asmcat.py 0x08039198
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- What RenderInfo+0x14 means in game terms (scroll offset, fade/brightness counter, or timer) — needs
+  the code that reads that field
+- Why the step is exactly 9 and whether callers elsewhere rely on it wrapping or reaching a threshold
+- What scene/subsystem 't3' is, to give the field a proper name
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8039198 -> t3_decrementRenderInfo14
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8039198

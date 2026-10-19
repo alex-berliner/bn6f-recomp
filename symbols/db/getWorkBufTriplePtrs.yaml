@@ -1,0 +1,44 @@
+name: getWorkBufTriplePtrs
+address: '0x08049D82'
+kind: function
+status: probable
+summary: Returns three pointers into the IWRAM work buffer at 0x2001800 (base+0, base+8, base+0x28) for
+  the caller to use as a parallel set of state/counter slots.
+interface: () -> r0 = word_2001800+0x8, r1 = word_2001800+0x28, r2 = word_2001800+0; no flags meaningfully
+  set
+details: The function loads the base address word_2001800 into r3 and simply returns base+8, base+0x28
+  and base+0 in r0, r1, r2; it touches no memory itself. The sole caller (sub_813281C) stores the three
+  returned pointers on its stack and then loops over them in parallel with a static pointer table (off_81328B8),
+  writing the halfword 2 through the table pointers (strh r2,[r1]; add r1,#2), so the triple acts as a
+  per-slot state/scratch set indexed together with static data. Nothing in the visible code reveals what
+  the three structures at +0/+8/+0x28 represent.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_8049D82: ldr r3,=word_2001800; returns r3+8, r3+0x28, r3+0 in r0/r1/r2 with no other work;
+    caller 0x08132824: bl sub_8049D82 then str r0/r1/r2 to sp+0/4/8, keeping all three results; caller
+    loop 0x813282E: indexes [sp,r6] against static table off_81328B8 and strh #2 through table pointers,
+    showing the triple is used as parallel per-slot state'
+  refs:
+  - bn6f/asm/asm03_2.s:6611
+  - 0x0813281C sub_813281C
+  reproduce: python3 tools/asmcat.py 0x08049D82
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- What the structures at word_2001800+0, +8 and +0x28 are (size/fields) and what writing halfword 2 through
+  the paired table pointers means
+- Whether other callers or writers of word_2001800 exist to identify the subsystem owning this buffer
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8049D82 -> getWorkBufTriplePtrs
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8049D82

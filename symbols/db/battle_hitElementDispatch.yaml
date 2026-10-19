@@ -1,0 +1,41 @@
+name: battle_hitElementDispatch
+address: '0x080ECD28'
+kind: function
+status: probable
+summary: Dispatches to an element-specific handler based on the AI attack's HitElement (0/1).
+interface: (r7 = AI attack vars struct; r0 = element index read from [r7,#oAIAttackVars_HitElement]) ->
+  jumps to handler; returns whatever handler returns
+details: Loads a byte from the AI attack vars struct at offset oAIAttackVars_HitElement and uses it to
+  index off_80ECD3C, a two-entry thumb pointer table (sub_80ECD44 for index 0, sub_80ECDD6 for index 1).
+  It performs a long-call by setting lr = pc and doing 'bx r1', so the handler returns directly to this
+  function's caller via 'pop {pc}'. Only two element values are supported; any other index would read
+  garbage from beyond the table. Nothing else is known because no callers and no handler summaries are
+  available.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0, [r7,#oAIAttackVars_HitElement] feeds the table index (asm line 3); off_80ECD3C holds
+    exactly two thumb targets: sub_80ECD44+1 and sub_80ECDD6+1; mov lr, pc / bx r1 is the standard thumb
+    long-call, so handlers return past ''pop {pc}''; no callers are known, so the game context of the
+    dispatch is unverified'
+  refs:
+  - bn6f/asm/asm31.s:116270
+  reproduce: python3 tools/asmcat.py 0x080ECD28
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- what sub_80ECD44 and sub_80ECDD6 do (they would reveal what aspect of the hit is element-dependent)
+- which callers set oAIAttackVars_HitElement and what values it can take
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80ECD28 -> battle_hitElementDispatch
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80ECD28

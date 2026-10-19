@@ -1,0 +1,44 @@
+name: battle_timerWaitThenSetAnim2PhaseC
+address: '0x080C383E'
+kind: function
+status: probable
+summary: 'Battle-object step: counts down the object Timer; when it hits zero, switches the object to
+  anim 2 and advances it to phase 0xC.'
+interface: (r5 = battle object pointer; r0 clobbered) -> r0 = 0 if timer expired else new timer value;
+  flags set by SUBS/branch on decrement
+details: Loads the halfword at oBattleObject_Timer of the battle object in r5, decrements it, and stores
+  it back. If the result is nonzero it just returns; on expiry it writes 2 into the byte oBattleObject_CurAnim
+  and 0xC into the halfword oBattleObject_CurPhaseAndPhaseInitialized, which is the standard 'set next
+  phase' pattern in battle object handlers. The low byte of that halfword field holds the phase number,
+  so this moves the object to phase 12. This is clearly a fragment/leaf of a larger per-object step routine
+  (uses caller's r5 and no arg registers), likely tail-shared code for a timed animation delay before
+  the next phase.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrh/strh on r5+oBattleObject_Timer with ''sub r0,#1'' and ''bne'' implements a one-shot countdown
+    (asm lines 3-6); on expiry: ''mov r0,#2; strb r0,[r5,#oBattleObject_CurAnim]'' selects anim 2 (asm
+    lines 7-9); ''mov r0,#0xc; strh r0,[r5,#oBattleObject_CurPhaseAndPhaseInitialized]'' matches the standard
+    phase-switch write seen in other battle object steps (asm lines 10-12); no callee/argument use; r5
+    comes from the caller, so this is shared tail code of a battle object phase handler'
+  refs:
+  - bn6f/asm/asm31.s:25710
+  reproduce: python3 tools/asmcat.py 0x080C383E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- No callers known, so which object/phase uses this delay and what phase 0xC does afterwards is unknown
+- Whether anim 2 is a specific named animation of the object in question
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C383E -> battle_timerWaitThenSetAnim2PhaseC
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C383E

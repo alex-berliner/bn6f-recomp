@@ -1,0 +1,43 @@
+name: battle_objectWait30Frames
+address: '0x080BD1B8'
+kind: function
+status: probable
+summary: Battle-object update step that waits 30 frames, then advances the object to CurAction 0xC with
+  a fresh phase
+interface: (r5 = battle object) -> void; clobbers r0, no flags of use
+details: Per-frame handler for a battle object in r5. On first entry (oBattleObject_PhaseInitialized ==
+  0) it seeds oBattleObject_Timer with 0x1E (30 frames) and stores 4 into PhaseInitialized so the init
+  only happens once. Each frame it decrements the timer; while it is still >= 0 it returns, keeping the
+  object in this wait state. When the timer runs out it writes 0xC into oBattleObject_CurAction and clears
+  oBattleObject_CurPhaseAndPhaseInitialized to 0, handing the object back to its action dispatcher for
+  the next step. It is a plain timed-delay phase in some object's action script; which object uses it
+  is unknown since no callers are mapped.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_80BD1B8: ldrb PhaseInitialized / bne skips the init, showing the 0x1E timer store runs
+    only on first frame; sub_80BD1B8: ldrh Timer; sub r0,#1; bge locret — stays in this phase until the
+    30-frame countdown reaches -1; sub_80BD1B8: strb #0xC into CurAction and strh #0 into CurPhaseAndPhaseInitialized
+    after the timer expires, i.e. the wait ends by switching action; field names oBattleObject_PhaseInitialized/Timer/CurAction
+    show this follows the standard battle-object phase-state pattern'
+  refs:
+  - bn6f/asm/asm31.s:11192
+  reproduce: python3 tools/asmcat.py 0x080BD1B8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- which battle object's action script contains this wait step (no callers mapped)
+- what action 0xC means for that object, needed to say what the 30-frame delay leads into
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BD1B8 -> battle_objectWait30Frames
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BD1B8

@@ -1,0 +1,45 @@
+name: battle_waitThenSetAction4
+address: '0x080DC000'
+kind: function
+status: probable
+summary: 'Battle-object wait state: ticks the object''s Timer down, and when it expires reloads it to
+  16 and queues action 4 with a fresh phase.'
+interface: (r5 = battle object, no register args) -> r0 clobbered; no meaningful return; flags set by
+  the timer decrement/subtract
+details: 'Operates entirely through r5 on a battle object struct: decrements oBattleObject_Timer each
+  call and returns early (via the bne) while it is nonzero. When the timer reaches 0, it reloads Timer
+  with 0x10 (16 frames), stores 4 into oBattleObject_CurAction, and zeroes oBattleObject_CurPhaseAndPhaseInitialized
+  so the new action starts from its first phase. This is a classic per-frame state-machine step: the object
+  idles for the remaining timer, then on expiry transitions to CurAction 4 and restarts that action''s
+  countdown. No register arguments are passed; the object pointer comes from the caller''s r5. The BNE-based
+  early exit means callers presumably run this every frame while the object is in this wait state.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrh/sub/strh on oBattleObject_Timer with bne locret: per-frame countdown, early return while
+    still counting (sub_80DC000 lines 2-4); strh #0x10 into Timer on expiry: fixed 16-frame reload for
+    the next wait cycle; mov #4 / strb into oBattleObject_CurAction: the expiry transitions the object
+    to action 4; strh #0 into oBattleObject_CurPhaseAndPhaseInitialized: resets phase so the new action
+    starts from phase 0; no register args and pop {pc} without result use: state step driven via r5, no
+    return value consumed'
+  refs:
+  - bn6f/asm/asm31.s:79313
+  reproduce: python3 tools/asmcat.py 0x080DC000
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- No callers known, so which object type uses this and what CurAction 4 means for it is unconfirmed; a
+  call site showing the object and the surrounding state switch would confirm the state's role
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DC000 -> battle_waitThenSetAction4
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DC000

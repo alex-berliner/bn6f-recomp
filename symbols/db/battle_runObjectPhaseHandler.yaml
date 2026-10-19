@@ -1,0 +1,43 @@
+name: battle_runObjectPhaseHandler
+address: '0x080D8EC6'
+kind: function
+status: probable
+summary: Dispatches the current-phase handler of the battle object in r5 via a 3-entry jump table
+interface: (r5 = battle object ptr, oBattleObject_CurPhase selects handler) -> r0 = handler return; calls
+  table[curPhase](implicit r5 context)
+details: 'Reads oBattleObject_CurPhase from the battle object in r5, loads a function pointer from off_80D8ED8[curPhase]
+  (entries: battle_scanAttackPanels, sub_80D8F20, nullsub_11), and does the classic ''mov lr, pc; bx r1''
+  long-call trampoline so the handler returns back into this function. The handler itself presumably operates
+  on r5 (THUMB caller-saved register convention used by this object code). Phase 2 is a nullsub, so the
+  object idles in that phase. The caller sub_80D8EB0 runs this each frame, decrements oBattleObject_Timer,
+  and sets CUR_STATE_DESTROY when the timer hits zero, so this function is the object''s update/phase-step
+  routine.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#oBattleObject_CurPhase]; ldr r1,[r1,r0]; bx r1 — table dispatch on the object''s
+    phase field; table entries battle_scanAttackPanels+1 / sub_80D8F20+1 / nullsub_11+1 — one handler
+    per phase, phase 2 is a no-op; caller 0x080D8EB2: bl sub_80D8EC6 then decrements oBattleObject_Timer
+    and sets CUR_STATE_DESTROY — used as the per-frame update of a timed battle object'
+  refs:
+  - bn6f/asm/asm31.s:72523
+  - 0x080D8EB0 sub_80D8EB0
+  reproduce: python3 tools/asmcat.py 0x080D8EC6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- what sub_80D8F20 (phase 1 handler) does
+- which object uses this routine and what the timer length/behavior is
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D8EC6 -> battle_runObjectPhaseHandler
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D8EC6

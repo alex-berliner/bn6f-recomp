@@ -1,0 +1,41 @@
+name: ai_dispatchAttackByElement
+address: '0x08102660'
+kind: function
+status: probable
+summary: 'Battle AI attack dispatcher: calls the attack routine matching the selected AI attack''s element
+  type.'
+interface: (r7 = AI object with oAIAttackVars_HitElement) -> r0 = handler's return; uses lr/return-through-handler
+details: 'Reads the byte oAIAttackVars_HitElement from the AI object at r7, uses it as an index into the
+  jump table off_8102674 (entries are Thumb pointers), and tail-calls the selected handler with mov lr,pc;
+  bx r1 so the handler returns straight back to this function''s caller. Table has 3 entries: battle_swordAreaHighlightStep
+  (element 0, melee/sword-style attack), ai_attackFrontPanelStrike (element 1, ranged/panel-hit attack),
+  and sub_8102772 (element 2, unknown third attack type). No bounds check on the element index; no other
+  registers set up before the call.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_HitElement]; ldr r1,[r1,r0] indexes off_8102674 by attack element;
+    Table entries are code addresses+1: battle_swordAreaHighlightStep, ai_attackFrontPanelStrike, sub_8102772;
+    mov lr,pc; bx r1 is a BL-equivalent tail dispatch, so this is a switch/dispatch helper'
+  refs:
+  - bn6f/asm/asm31.s:161777
+  reproduce: python3 tools/asmcat.py 0x08102660
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- What sub_8102772 (third element's attack) does
+- Which attacks in the game set oAIAttackVars_HitElement to each value, and what the callers do with the
+  handler's return value
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8102660 -> ai_dispatchAttackByElement
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8102660

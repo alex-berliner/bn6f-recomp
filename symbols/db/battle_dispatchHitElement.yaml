@@ -1,0 +1,43 @@
+name: battle_dispatchHitElement
+address: '0x080F0FB4'
+kind: function
+status: probable
+summary: Dispatches to one of three handlers based on the current AI attack's hit element, passing the
+  element as the argument.
+interface: (r7 = battle AI attack vars struct) -> calls handler for [r7+oAIAttackVars_HitElement] with
+  r0 = hit element byte; returns handler's result in r0
+details: Loads the hit-element byte from the AI attack vars struct at r7, uses it to index a 3-entry jump
+  table at off_80F0FC8 (elements 0-2), and performs a Thumb long-call (mov lr, pc / bx r1) to the selected
+  handler with the element value still in r0. The three targets (sub_80F0FD4, sub_80F0FF8, sub_80F1032)
+  are undocumented, so their individual behavior is unknown. Only {r7,lr} is saved; r0-r6 pass through
+  to the callee. The trampoline-style call suggests the handlers may be in a different region (e.g. overlay
+  or EWRAM code).
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0, [r7,#oAIAttackVars_HitElement] reads the element field from the attack-vars struct;
+    ldr r1, [r1,r0] with off_80F0FC8 indexes a 3-entry table of code pointers (+1 Thumb addresses); mov
+    lr, pc; bx r1 is the standard Thumb long-call to the selected handler, keeping r0 as its first argument;
+    field name oAIAttackVars_HitElement places this in the battle/AI attack processing path
+  refs:
+  - bn6f/asm/asm31.s:125349
+  reproduce: python3 tools/asmcat.py 0x080F0FB4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- what sub_80F0FD4, sub_80F0FF8, and sub_80F1032 each do for the three elements
+- which caller invokes this and at what point of the battle/AI flow (no callers known)
+- whether handlers expect more context than the element byte (other registers/struct state)
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F0FB4 -> battle_dispatchHitElement
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F0FB4

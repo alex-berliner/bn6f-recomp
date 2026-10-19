@@ -1,0 +1,42 @@
+name: ai_judgeManAttackHitElementDispatch
+address: '0x080FFF08'
+kind: function
+status: probable
+summary: Dispatches a JudgeMan AI attack handler selected by the element of the hit stored in the attack-vars
+  struct
+interface: (r7 = ptr to AI attack vars struct) -> tail-calls off_80FFF1C[oAIAttackVars_HitElement] with
+  return going to this function's caller
+details: Reads oAIAttackVars_HitElement from the AI attack-vars struct in r7 and uses it as an index into
+  the two-entry table off_80FFF1C. Sets lr = pc so the selected handler (entry 0 = ai_judgeManChargeAttack,
+  entry 1 = sub_80FFF84) returns directly to sub_80FFF08's caller, i.e. this is a small dispatch thunk.
+  Only elements 0 and 1 are valid; any other index reads past the table. The two handlers presumably implement
+  the attack's differing on-hit/on-element behavior (e.g. normal vs. wood/fire reaction for JudgeMan's
+  attack).
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0, [r7,#oAIAttackVars_HitElement] loads the element index from the attack-vars struct;
+    ldr r1, [r1,r0] with r1 = off_80FFF1C selects one of exactly two handlers; table contents: ai_judgeManChargeAttack+1
+    and sub_80FFF84+1 (thumb pointers) bound it to the JudgeMan attack code; mov lr, pc; bx r1 makes it
+    a tail-call dispatch, not a normal call'
+  refs:
+  - bn6f/asm/asm31.s:156531
+  reproduce: python3 tools/asmcat.py 0x080FFF08
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- Who calls this and with what struct in r7 (needs the caller context around JudgeMan's AI attack setup)
+- What sub_80FFF84 does and what elements 0 and 1 mean here (HitElement enum values)
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80FFF08 -> ai_judgeManAttackHitElementDispatch
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FFF08

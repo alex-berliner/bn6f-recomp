@@ -1,0 +1,45 @@
+name: text_accumDigit
+address: '0x08004C90'
+kind: function
+status: probable
+summary: Accumulates one ASCII digit from a string into a running decimal number kept in r8 (r8 = r8*10
+  + digit).
+interface: (r0 = pointer to current ASCII digit char) -> r0 = same pointer; r8 = r8*10 + (*r0 - '0');
+  r3/r4 clobbered
+details: 'The routine first runs a 10-iteration loop that adds r8 into r3, effectively computing r3 =
+  r8*10, then loads the byte at r0, subtracts 0x30 to convert the ASCII digit to a value, adds it to r3,
+  and stores the result back into r8. It is therefore the per-call step of a multi-digit decimal parser:
+  each call consumes one character and shifts the accumulated value left one decimal place. r8 (a high
+  register) is not saved here, so the caller is expected to preserve it across calls and must also have
+  set it to 0 before the first digit. The odd prologue (r2 = [sp,#0x1c]; r2 -= 4; back to [sp,#0x1c])
+  adjusts a saved stack value by -4 and looks like an obfuscation/decoy or a shared-frame trick; it does
+  not affect the r8 computation. No callers are known, so the source of the string (chat/text engine,
+  code entry, save data) is unidentified.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: loop adds r8 to r3 exactly 10 times (loc_8004C9A, cmp r4,#0xa) = multiply-by-10; ldrb r4,[r0];
+    sub r4,#0x30 converts the ASCII char at r0 to its numeric digit; add r3,r3,r4; mov r8,r3 stores r8*10+digit
+    back into the accumulator r8; the [sp,#0x1c] -= 4 prologue touches only a stack slot, not the accumulator
+  refs:
+  - bn6f/asm/asm00_1.s:3883
+  reproduce: python3 tools/asmcat.py 0x08004C90
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- who calls it and what string it parses (text box input, password/code entry, save data?)
+- why the saved [sp,#0x1c] value is decremented by 4 — obfuscation or real frame adjustment
+- how the caller initializes and finally reads out r8
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8004C90 -> text_accumDigit
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8004C90

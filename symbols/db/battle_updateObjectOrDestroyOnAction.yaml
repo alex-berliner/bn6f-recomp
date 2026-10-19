@@ -1,0 +1,42 @@
+name: battle_updateObjectOrDestroyOnAction
+address: '0x080EA288'
+kind: function
+status: probable
+summary: 'Per-frame battle object handler: runs the object''s update when CurAction is 0, otherwise destroys
+  the object clearing invisible children.'
+interface: (r5 = battle object pointer) -> r0 = result of the dispatched callee; no flag guarantees
+details: Loads the object's CurAction byte at [r5,#oBattleObject_CurAction] and uses it to index off_80EA29C,
+  a two-entry thumb function table. Entry 0 (CurAction == 0) calls sub_80EA2A4, presumably the object's
+  normal update; any nonzero CurAction calls battle_destroyObjectClearingInvisChildren, removing the object
+  and recursively clearing its invisible children. Uses r5 for the object rather than r0, so callers must
+  set r5 before calling. The tail-call via 'mov lr, pc; bx r1' then 'pop {pc}' means the table entry returns
+  directly to this function's caller.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#oBattleObject_CurAction] then ldr r1,[r1,r0] selects the handler by the object''s
+    action state (asm lines 3-5); Table entry 0 is sub_80EA2A4+1: action 0 keeps the object alive and
+    runs its update; Table entry 1 is battle_destroyObjectClearingInvisChildren+1: any other action value
+    destroys the object and its invisible children'
+  refs:
+  - bn6f/asm/asm31.s:111117
+  reproduce: python3 tools/asmcat.py 0x080EA288
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- Purpose of sub_80EA2A4 (the action-0 handler) is unknown, so the object type and the meaning of nonzero
+  CurAction (despawn flag vs action id) are unconfirmed
+- No known callers, so which object types run this dispatch loop and how r5 is set is unknown
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80EA288 -> battle_updateObjectOrDestroyOnAction
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EA288

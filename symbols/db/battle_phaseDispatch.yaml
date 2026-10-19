@@ -1,0 +1,44 @@
+name: battle_phaseDispatch
+address: '0x080BD114'
+kind: function
+status: probable
+summary: 'Battle-object phase-state dispatcher: reads the object''s CurPhase and calls that phase''s handler
+  from a jump table.'
+interface: (r5 = battle object) -> calls off_80BD128[CurPhase](r0 = phase value, r5 = object); returns
+  to caller after handler returns
+details: Loads the battle object pointer from r5 (callee-saved, so set up by the caller) and reads its
+  CurPhase byte, then indexes a three-entry function-pointer table at off_80BD128 with it and calls the
+  selected handler via mov lr,pc / bx r1, so control returns through pop {pc} when the handler finishes.
+  The handler is passed the phase index in r0 while r5 still holds the object. The table has exactly three
+  handlers (sub_80BD134, battle_phaseStrikeRandomEnemyPanels, sub_80BD1B8), so this object runs a three-phase
+  behavior loop, one of which strikes random enemy panels. It is a generic dispatch trampoline, not a
+  behavior itself.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r5,#oBattleObject_CurPhase]; ldr r1,[r1,r0] indexes handler table by phase (asm lines
+    2-4); mov lr,pc; bx r1 calls the selected handler, pop {pc} returns to the original caller (lines
+    5-6); table off_80BD128 holds three Thumb pointers including battle_phaseStrikeRandomEnemyPanels+1;
+    known callee battle_phaseStrikeRandomEnemyPanels shows the dispatched handlers are battle phase behaviors
+  refs:
+  - bn6f/asm/asm31.s:11095
+  reproduce: python3 tools/asmcat.py 0x080BD114
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- which battle object uses this dispatcher (no callers known; the r5 setup at the call site would identify
+  it)
+- what sub_80BD134 and sub_80BD1B8 do (the other two phase handlers)
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BD114 -> battle_phaseDispatch
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BD114

@@ -1,0 +1,45 @@
+name: battle_idIsStandard
+address: '0x0800F486'
+kind: function
+status: probable
+summary: Returns 1 unless the given battle object ID is one of four special IDs (0xD3, 0xDA, 0xE9, 0xEA),
+  which callers treat as excluded.
+interface: (r0 = object ID, likely the battle object field at +0x28) -> r0 = 1 if ID not in {0xD3, 0xDA,
+  0xE9, 0xEA}, else 0; no flags used by callers
+details: 'Pure lookup: compares r0 against four hardcoded IDs and returns 0 on a match, 1 otherwise. Caller
+  sub_80BC100 walks a table of pointers, reads each entry''s halfword at +0x28, and only collects entries
+  (storing the pointer and calling sub_800F884) when this check passes. Caller sub_80DC3B2 scans battle
+  objects whose +0x28 ID lies in 0xCD–0xFF and, if this check passes, stores the object as oBattleObject_RelatedObject2Ptr
+  and returns success. So the four excluded IDs mark special-cased objects that both routines must skip.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_800F486: four cmp/beq pairs on IDs 0xD3/0xDA/0xE9/0xEA return 0, everything else returns
+    1; sub_80BC100 @0x80BC122: passes ldrh [r0,#0x28]; on nonzero result stores pointer in output array
+    and calls sub_800F884; sub_80DC3B2 @0x80DC3DA: range check 0xCD..0xFF on [r1,#0x28] first, then this
+    check gates storing the object into oBattleObject_RelatedObject2Ptr; Both callers use ''tst r0,r0
+    / beq skip'', i.e. the function is a boolean filter over the +0x28 ID'
+  refs:
+  - bn6f/asm/asm00_2.s:1164
+  - 0x080BC100 sub_80BC100
+  - 0x080DC3B2 sub_80DC3B2
+  reproduce: python3 tools/asmcat.py 0x0800F486
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- what field +0x28 of the battle object/table entries means semantically (animation ID? sprite kind?)
+- what the four excluded IDs 0xD3/0xDA/0xE9/0xEA correspond to in game terms
+- what sub_800F884 does with the collected entries
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_800F486 -> battle_idIsStandard
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800F486

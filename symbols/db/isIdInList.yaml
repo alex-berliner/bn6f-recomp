@@ -1,0 +1,44 @@
+name: isIdInList
+address: '0x08048F68'
+kind: function
+status: probable
+summary: Scans a null-terminated halfword list at word_8048BE0 for a given ID and returns nonzero if it
+  is present, which the caller uses to pick an alternate chatbox script.
+interface: (r0 = id to search for) -> r0 = 1 if found in list, 0 if not; flags set by tst/cmp (result
+  uses eq only)
+details: Walks the halfword array word_8048BE0 (pointer loaded via off_8048F84), comparing each entry
+  to r0; a 0 entry terminates the walk and returns 0, a match returns 1. It preserves nothing but the
+  result, and only r0-r2/lr are clobbered-safe via push/pop. The caller sub_8047A96 passes r4 (an ID carried
+  through its loop over flag 0x2420) and on success bumps the script index from 0x19/0x1b to 0x1a before
+  chatbox_runScript, so the list marks IDs that get special dialogue. The function itself is a generic
+  membership test; only the table at word_8048BE0 gives it game meaning.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_8048F68: ldrh r2,[r1]; cmp r0,r2 / beq loop over halfwords, return 1 on match, 0 after
+    0 terminator; off_8048F84 = word_8048BE0: the searched array is a fixed data table; caller 0x8047B30:
+    bl sub_8048F68; beq — nonzero result switches strb r7 value 0x18->0x1a (different chatbox script);
+    caller 0x8047B54: same pattern, r0=r4, result changes script idx 0x1c->0x1d vs 0x19 path; surrounding
+    call site loops TestEventFlag (0x2420+) with r4, so r4 is an ID/flag-like value being membership-tested'
+  refs:
+  - bn6f/asm/asm03_2.s:4763
+  - 0x08047A96 sub_8047A96
+  reproduce: python3 tools/asmcat.py 0x08048F68
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- what the IDs in word_8048BE0 refer to (chip/world/flag IDs?) is not shown
+- whether other callers exist that would confirm the list's meaning
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8048F68 -> isIdInList
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8048F68

@@ -1,0 +1,42 @@
+name: rfu_endConnection
+address: '0x0813D98C'
+kind: function
+status: probable
+summary: Ends the current RFU wireless session and marks the wireless work struct with a post-end state.
+interface: () -> r0 = 4 (clobbered); touches eStruct200BC30 field 0xE
+details: Calls rfu_setStateEnded, which records RFU state 9 in the wireless work struct and runs the lower
+  RFU state routine with 0, cleanly ending the link. It then stores the constant 4 into byte 0x0E of eStruct200BC30,
+  apparently a follow-up connection-state/substate flag consumed elsewhere. Takes no arguments and returns
+  nothing meaningful. Callers gate the call on a bit-0x80 flag and on byte_200AF85 equaling 1, i.e. only
+  when a wireless session is actually active.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'asm: bl rfu_setStateEnded — wraps the RFU helper that sets wireless state 9 (ended); asm: mov
+    r0,#4; strb r0,[r1,#0xe] — writes state 4 into eStruct200BC30+0xE right after ending; caller 0x081477D0:
+    checks bit 0x80 of r1 and byte_200AF85==1 before calling, i.e. only during an active session'
+  refs:
+  - bn6f/asm/asm37_0.s:4569
+  - 0x081475D4 sub_81475D4
+  - 0x08147748 sub_81475D4
+  - 0x0814775C sub_81475D4
+  - 0x0813D978 rfu_setStateEnded
+  reproduce: python3 tools/asmcat.py 0x0813D98C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- meaning of the 4 written to eStruct200BC30+0xE
+- exact semantics of bit 0x80 in the caller's r1 and of byte_200AF85
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_813D98C -> rfu_endConnection
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_813D98C

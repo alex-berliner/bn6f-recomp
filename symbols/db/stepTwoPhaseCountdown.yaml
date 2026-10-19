@@ -1,0 +1,48 @@
+name: stepTwoPhaseCountdown
+address: '0x0804AD98'
+kind: function
+status: probable
+summary: 'Ticks a two-stage frame countdown in a struct: decrements field +0x2A, rolling over to field
+  +0x2E once it is exhausted'
+interface: (r5 = struct pointer, set by caller) -> r0 destroyed; decrements [r5+0x2A] then [r5+0x2E],
+  each only while positive; no return value
+details: 'Reads halfword [r5+0x2A] and subtracts 1; if the result is negative (field was 0) it instead
+  decrements [r5+0x2E], again only if positive, otherwise does nothing. r5 is never loaded inside the
+  function, so it works on whatever struct the caller holds in r5. The sole caller first decrements a
+  master counter [r5+0x28] and calls this only once that counter equals [r5+0x2A]+[r5+0x2E]; from then
+  on master and the two phase timers decrement together every frame. The three small functions called
+  immediately after (0x0804ADE0/ADB0/ADD0) likely act on the current phase. Quirk: uses signed blt on
+  unsigned halfword loads to detect the 0-1 underflow.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_804AD98: ldrh r0,[r5,#0x2A]; sub r0,#1; strh back only when not negative — decrement phase-1
+    timer; loc_804ADA4: on underflow it decrements [r5,#0x2E] instead — roll-over into a second timer;
+    call site 0x0804AC4E: calls it only when [r5+0x28]-1 == [r5+0x2A]+[r5+0x2E], so timers tick in lockstep
+    with the master countdown; call site follows with bl 0x0804ADE0/0x0804ADB0/0x0804ADD0 — other per-frame
+    steps of the same timed sequence; r5 is never set in sub_804AD98 — it mutates a caller-owned struct,
+    not its own state'
+  refs:
+  - bn6f/asm/asm03_2.s:8792
+  - 0x0804AB6C sub_804AB6C
+  reproduce: python3 tools/asmcat.py 0x0804AD98
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- Which game system owns the struct (r5) — fade, screen shake, script timer? More callers or the struct's
+  other fields would tell
+- What the sibling functions 0x0804ADE0/ADB0/ADD0 do per phase
+- Why the caller waits until [r5+0x28] equals the sum of the two timers before starting them
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_804AD98 -> stepTwoPhaseCountdown
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_804AD98

@@ -1,0 +1,42 @@
+name: battle_bombBreakPanelExecPhase
+address: '0x080C667C'
+kind: function
+status: probable
+summary: 'phase-state dispatcher for the bomb-break-panel battle object: jumps to the handler matching
+  the object''s current phase'
+interface: (r5 = battle object, phase in [r5,#oBattleObject_CurPhase]) -> calls handler for that phase
+  via jump table off_80C6690; r0 passed through to handler (phase byte read)
+details: Loads the battle object's current phase byte at [r5,#oBattleObject_CurPhase], uses it to index
+  a two-entry jump table at off_80C6690, and tail-dispatches to that handler with `mov lr, pc; bx r1`
+  (ARM/Thumb interworking call). Phase 0 resolves to battle_bombBreakPanelPhase and phase 1 to sub_80C66E4,
+  so the object's state machine has at least two steps; a phase value above 1 would index out of the table.
+  r5 is not set up here, so it is expected to already hold the object pointer from the caller (typical
+  battle object update context). The pattern is the standard per-object phase runner used by battle objects.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#oBattleObject_CurPhase] then ldr r1,[r1,r0]: dispatch is indexed by the object''s
+    current phase field; mov lr, pc; bx r1: tail-call into the selected handler, keeping r5 and r0 as
+    arguments; off_80C6690 entry 0 = battle_bombBreakPanelPhase: phase 0 handler belongs to the bomb-break-panel
+    object; off_80C6690 entry 1 = sub_80C66E4: a second, still-unnamed phase handler for the same object'
+  refs:
+  - bn6f/asm/asm31.s:31939
+  reproduce: python3 tools/asmcat.py 0x080C667C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- no callers known, so r5's exact producer and the game context that runs this object are unconfirmed
+- what sub_80C66E4 (phase 1) does and whether the table should have more entries
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C667C -> battle_bombBreakPanelExecPhase
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C667C

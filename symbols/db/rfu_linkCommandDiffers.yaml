@@ -1,0 +1,40 @@
+name: rfu_linkCommandDiffers
+address: '0x0813D94C'
+kind: function
+status: probable
+summary: Returns 1 if the stored current link command (eS200BC50) differs from r0, so callers only resend
+  via rfu_setLinkCommand when it changed.
+interface: (r0 = link command value) -> r0 = 1 if stored command != r0, else 0; flags clobbered
+details: Reads the single byte at eS200BC50, which acts as the last-issued link command for the wireless
+  (rfu) link state, compares it with r0, and returns 1 on mismatch, 0 on match. It writes nothing; the
+  caller is responsible for updating the stored byte (presumably inside rfu_setLinkCommand). Pure comparison
+  helper, 10 instructions, no other state touched.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_813D94C: ldrb from eS200BC50, cmp with r0, sets r2=1 on mismatch and returns r2; caller
+    0x08147550: mov r0,#0x15; bl sub_813D94C; only calls rfu_setLinkCommand(0x15) when result != 0; eS200BC50
+    is also written directly at loc_8147544 area, showing it is persistent link-state, not a temp'
+  refs:
+  - bn6f/asm/asm37_0.s:4514
+  - 0x081473EC sub_81473EC
+  reproduce: python3 tools/asmcat.py 0x0813D94C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- whether rfu_setLinkCommand updates eS200BC50 itself (not shown), which would confirm the 'avoid redundant
+  resend' reading
+- what command value 0x15 means in the link protocol
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_813D94C -> rfu_linkCommandDiffers
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_813D94C

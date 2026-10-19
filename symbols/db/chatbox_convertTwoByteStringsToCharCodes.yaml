@@ -1,0 +1,45 @@
+name: chatbox_convertTwoByteStringsToCharCodes
+address: '0x08049DC4'
+kind: function
+status: probable
+summary: Converts two 0-terminated byte-index strings into character-code text buffers for chatbox display.
+interface: (r0 = src string 1, r1 = dest buffer 1, r2 = src string 2, r3 = dest buffer 2) -> void; clobbers
+  r0-r3
+details: Saves the incoming r2/r3 pair on the stack, then calls convertByteStringToCharCodes on (r0,r1)
+  with max length 8 and buffer size 0x20; it then pops the saved r2/r3 into r0/r1 and calls the same converter
+  on the second pair with max length 0xA, again with 0x20 buffer size. Both destinations (unk_201FD60,
+  unk_201FD80) are fixed 0x20-byte work buffers, so the function is a convenience wrapper converting two
+  number/string fields at once. The caller (sub_812A2EC) feeds it two strings obtained via sub_81468C8/sub_81468E0
+  and afterwards queries the second string's struct (length halfword -> word_2023BB0, byte -> byte_2023BC8)
+  before running chatbox script 0x2E, i.e. the converted text is shown in a dialog.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_8049DC4: push {r2,r3}; mov r2,#8; mov r3,#0x20; bl convertByteStringToCharCodes then pop
+    {r0,r1}; mov r2,#0xa; r3,#0x20; bl again — two pairs, widths 8 and 10; caller 0x0812A314: r0/r2 from
+    sub_81468C8/sub_81468E0, r1=unk_201FD60, r3=unk_201FD80 — two (src,dest) pairs; caller then runs chatbox_runScript_803FD9C_on_eTextScript201BA20
+    with script 0x2E, so output is displayed text; callee convertByteStringToCharCodes (known): expands
+    0-terminated byte-index string into halfword char codes with 0xE6 terminator'
+  refs:
+  - bn6f/asm/asm03_2.s:6657
+  - 0x0812A2EC sub_812A2EC
+  - 0x0803C168 convertByteStringToCharCodes
+  reproduce: python3 tools/asmcat.py 0x08049DC4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- what the two strings contain (likely numeric values formatted by sub_81468C8/sub_81468E0) and what script
+  0x2E displays
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8049DC4 -> chatbox_convertTwoByteStringsToCharCodes
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8049DC4

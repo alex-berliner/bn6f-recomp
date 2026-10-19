@@ -1,0 +1,42 @@
+name: ai_callChipSelectByHitElement
+address: '0x080EF7E2'
+kind: function
+status: probable
+summary: Dispatches to an element-specific AI chip-selection handler based on the attack's hit element
+interface: (r0 = element?) -> tail-call table[hitElement] with r0 = hitElement; no return value of its
+  own
+details: Reads oAIAttackVars_HitElement (byte) from the struct at r7 and uses it directly as an index
+  into the table off_80EF7F4, which holds only two Thumb pointers (sub_80EF7FC and ai_selectNaviChip).
+  The chosen handler is invoked via a manual lr/pc swap (mov lr, pc; bx r1) with r0 still containing the
+  element byte, so the handlers receive the element as their first argument. Elements beyond index 1 would
+  read out-of-bounds pointers, so only values 0–1 are valid. r7 is untouched and not restored, implying
+  the caller keeps the struct pointer in r7 across the call.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r7,#oAIAttackVars_HitElement]; ldr r1,[r1,r0]; bx r1 — dispatch indexed by hit element;
+    off_80EF7F4 holds sub_80EF7FC+1 and ai_selectNaviChip+1 — the two possible handlers, one of them a
+    known AI chip-selection routine; r0 is not reloaded before bx, so the element byte is passed as the
+    handler's argument
+  refs:
+  - bn6f/asm/asm31.s:122187
+  reproduce: python3 tools/asmcat.py 0x080EF7E2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- No callers known, so the r7 struct and the element values that reach this code are unconfirmed
+- sub_80EF7FC is unknown — it may show what element 0 means
+- Whether this runs during the AI's chip-selection step or attack execution
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80EF7E2 -> ai_callChipSelectByHitElement
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EF7E2

@@ -1,0 +1,49 @@
+name: battle_applyCollectedPanelEntry
+address: '0x080BAE60'
+kind: function
+status: probable
+summary: 'Per-panel worker of the collected-panels phase: decodes one packed panel byte from the battle
+  object''s panel list and forwards it to the panel-change helper sub_80D6D18.'
+interface: (r0 = index into byte array at battleObj+0x64; r5 = battle object, r6 = oBattleObject_DamageAndStaminaDamageCounterDisabler)
+  -> tail-sets up and calls sub_80D6D18(r0 = byte & 7, r1 = byte >> 4, r2 = 1, r4 = 1); no direct return
+  use.
+details: 'Reads the byte at battleObj+0x64+index (the list filled by the collection step of battle_stepProcessCollectedPanels),
+  splits it: high nibble -> r1, low 3 bits -> r0. Sets r2 = 1 and r4 = 1 as fixed flags, copies oBattleObject_DamageAndStaminaDamageCounterDisabler
+  into r6, and calls sub_80D6D18. The caller (battle_stepProcessCollectedPanels) invokes it once per 12
+  frames with Param3 as index, incrementing Param3 until it reaches Param2, then sets CurAction = 0x14
+  to end the phase. The packed byte likely encodes panel coordinates/parameters for the per-panel effect;
+  the exact meaning of each field depends on sub_80D6D18.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'asm: add r0, #0x64; ldrb r0, [r5,r0] — indexes the battle object''s panel byte list by the
+    caller''s counter; asm: lsr r1, r0, #4 / lsl r0, r0, #0x1d; lsr r0, #0x1d — unpacks byte into high
+    nibble and low 3 bits; asm: mov r2, #1; mov r4, #1; ldr r6, [r5,#oBattleObject_DamageAndStaminaDamageCounterDisabler];
+    bl sub_80D6D18 — forwards decoded fields plus fixed flags to the helper; caller 0x080BACDC: calls
+    it with Param3, then increments Param3 and compares against Param2, repeating every 12 frames — one
+    call per collected panel entry; caller 0x080BACFC: after all entries processed sets oBattleObject_CurAction
+    = 0x14, confirming this is the per-entry processing step of the phase'
+  refs:
+  - bn6f/asm/asm31.s:6255
+  - 0x080BACBC battle_stepProcessCollectedPanels
+  - 0x080D6D18 sub_80D6D18
+  reproduce: python3 tools/asmcat.py 0x080BAE60
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- what sub_80D6D18 does with (low3bits, highNibble, 1, 1, disabler) — that determines what the per-panel
+  effect is and what the packed byte fields mean
+- the exact layout of the byte array at battleObj+0x64 and how the collection step packs it
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BAE60 -> battle_applyCollectedPanelEntry
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BAE60

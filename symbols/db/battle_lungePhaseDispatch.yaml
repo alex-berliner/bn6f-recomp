@@ -1,0 +1,41 @@
+name: battle_lungePhaseDispatch
+address: '0x080BFA1C'
+kind: function
+status: probable
+summary: runs the current-phase handler for a lunge-type battle object
+interface: (r5 = battle object; uses oBattleObject_CurPhase) -> dispatches to phase handler via bx; returns
+  via pop {pc}
+details: 'Reads the byte at oBattleObject_CurPhase from the object in r5 and uses it as an index into
+  a table at off_80BFA30, then performs a computed thumb call with mov lr, pc / bx r1 to the selected
+  handler and returns with pop {pc}. The table has two entries: battle_lungeUpdate and sub_80BFAAE, so
+  the object has two phases whose per-frame update logic lives in those routines. This is the standard
+  battle-object pattern of a main update wrapper dispatching per-phase behavior. No result value is meaningful;
+  the call is effectively a tail-dispatch with lr set for the callee to return here.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0, [r5,#oBattleObject_CurPhase] indexes the phase before ldr r1, [r1,r0] (asm lines 3-5);
+    table off_80BFA30 contains battle_lungeUpdate+1 and sub_80BFAAE+1, the two phase handlers; mov lr,
+    pc / bx r1 is a computed call to the selected phase handler, pop {pc} returns to the object-update
+    caller
+  refs:
+  - bn6f/asm/asm31.s:16848
+  reproduce: python3 tools/asmcat.py 0x080BFA1C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- what sub_80BFAAE (the second phase handler) does
+- which object uses this dispatcher and which phases 0/1 correspond to (e.g. wind-up vs. lunge)
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BFA1C -> battle_lungePhaseDispatch
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BFA1C

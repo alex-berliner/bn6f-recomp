@@ -1,0 +1,42 @@
+name: ai_attackBoostedTargetPanel
+address: '0x081009E8'
+kind: function
+status: probable
+summary: Runs an AI attack with animation 7, consuming one charge of the attack-boost counter and picking
+  the hit element (4 while boosted charges remain, 12 on the last/normal hit).
+interface: (r0-r3 = arguments passed straight to ai_attackTargetPanel, r5 = battle object, r7 = AI attack-vars
+  struct) -> r0 clobbered by callee; flags from the boost comparison.
+details: Stores animation 7 into oBattleObject_CurAnim of the object in r5, then tail-calls ai_attackTargetPanel
+  to dispatch the attack using the AI attack-vars struct (panel X/Y, flag, damage). After returning, it
+  decrements oAIAttackVars_AttackBoost2; if the counter is still positive it writes 4 to oAIAttackVars_HitElement,
+  otherwise 0xC (12). This suggests a multi-use boosted attack whose hit element differs between boosted
+  repeats and the final hit. The function is a leaf wrapper around the attack dispatcher plus element/boost
+  bookkeeping.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: strb r0,#7,[r5,#oBattleObject_CurAnim] sets anim 7 before attacking; bl ai_attackTargetPanel
+    dispatches the panel attack from the attack-vars struct; ldrb/sub/strb on oAIAttackVars_AttackBoost2
+    decrements a boost charge counter; cmp r0,#0 / ble selects oAIAttackVars_HitElement = 4 (charges left)
+    vs 0xC (none)
+  refs:
+  - bn6f/asm/asm31.s:157951
+  - 0x0810108E ai_attackTargetPanel
+  reproduce: python3 tools/asmcat.py 0x081009E8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- which AI object/attack uses this (no callers known), and what hit elements 4 and 12 map to in game terms
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81009E8 -> ai_attackBoostedTargetPanel
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81009E8

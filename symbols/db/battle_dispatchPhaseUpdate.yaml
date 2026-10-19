@@ -1,0 +1,42 @@
+name: battle_dispatchPhaseUpdate
+address: '0x080EA03C'
+kind: function
+status: probable
+summary: Calls the current battle phase's update handler from the off_80EA050 jump table, dispatched by
+  the object's CurPhase.
+interface: (r5 = battle object) -> r0 = phase handler's return value; returns to caller
+details: Loads the battle object's current phase byte (oBattleObject_CurPhase), uses it to index the jump
+  table off_80EA050, and tail-jumps to the selected handler (sub_80EA05C, battle_phaseTargetedAttackSetup,
+  sub_80EA0EC) via mov lr, pc / bx r1 so the handler returns directly to this function's caller. No arguments
+  are passed beyond the object in r5; the handlers are the per-phase 'update' step. Its only caller, battle_setStateUpdatePhase,
+  first sets the object's state to CUR_STATE_UPDATE, so this runs the update action of the phase already
+  in progress.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0, [r5,#oBattleObject_CurPhase] then ldr r1, [r1,r0] — dispatch keyed on the object's
+    current phase; mov lr, pc / bx r1 with table off_80EA050 = {sub_80EA05C, battle_phaseTargetedAttackSetup,
+    sub_80EA0EC} — jump-table of per-phase handlers; caller battle_setStateUpdatePhase stores CUR_STATE_UPDATE
+    into oBattleObject_CurStateActionPhaseAndPhaseInitialized immediately before calling this
+  refs:
+  - bn6f/asm/asm31.s:110779
+  - 0x080EA030 battle_setStateUpdatePhase
+  reproduce: python3 tools/asmcat.py 0x080EA03C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- what sub_80EA05C and sub_80EA0EC do (which phases they serve) to confirm the update semantics for every
+  phase
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80EA03C -> battle_dispatchPhaseUpdate
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EA03C

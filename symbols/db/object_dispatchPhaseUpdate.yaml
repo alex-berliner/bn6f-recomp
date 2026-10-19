@@ -1,0 +1,41 @@
+name: object_dispatchPhaseUpdate
+address: '0x080CE8D8'
+kind: function
+status: probable
+summary: 'Per-frame update dispatcher for a battle object: reads the object''s current phase and tail-calls
+  that phase''s handler from a two-entry jump table.'
+interface: (r5 = battle object) -> tail-calls phase handler (r5 preserved); phase 0 -> sub_80CE8F4, phase
+  1 -> object_panelSlideMovementStep; phases >=2 fall through/crash (table has no bounds check)
+details: 'Loads the object''s oBattleObject_CurPhase byte from r5 and indexes a jump table at off_80CE8EC,
+  then performs a Thumb call (mov lr, pc; bx r1) so the handler can return normally. The table holds exactly
+  two entries: phase 0 goes to sub_80CE8F4 and phase 1 to object_panelSlideMovementStep (a panel slide
+  movement step, matching the panelSlide naming). This is the standard BN6 battle-object phase dispatch
+  pattern, used as an object''s update function.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#oBattleObject_CurPhase] + ldr r1,[r1,r0] reads handler by phase; mov lr, pc; bx
+    r1 is the Thumb dispatch call to the selected handler; off_80CE8EC contains exactly 2 entries: sub_80CE8F4+1
+    and object_panelSlideMovementStep+1; object_panelSlideMovementStep as phase-1 handler ties this to
+    an object whose phases animate a panel slide'
+  refs:
+  - bn6f/asm/asm31.s:49896
+  reproduce: python3 tools/asmcat.py 0x080CE8D8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- No caller found, so which battle object uses this and what sub_80CE8F4 (phase 0) does remain unknown;
+  phase range beyond 1 unverified
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CE8D8 -> object_dispatchPhaseUpdate
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CE8D8

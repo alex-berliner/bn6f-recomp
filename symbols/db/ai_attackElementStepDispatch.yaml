@@ -1,0 +1,41 @@
+name: ai_attackElementStepDispatch
+address: '0x080EC1F0'
+kind: function
+status: probable
+summary: Dispatches an AI attack's per-frame update to a handler selected by the attack's hit element
+interface: (r7 = AI attack vars struct, r0 unused/ignored) -> r0 = result of the chosen element handler;
+  LR used as return trampoline
+details: Reads oAIAttackVars_HitElement (byte) from the attack state at r7 and uses it as an index into
+  off_80EC204, a 3-entry table of Thumb function pointers (sub_80EC210, ai_attackAccelXStep, sub_80EC2EA).
+  It uses the mov lr, pc; bx r1 idiom so the callee's return lands on pop {pc}, meaning the handler executes
+  in place of this function and its r0 return is returned directly. The three entries correspond to the
+  three hit-element values an AI attack can hold. ai_attackAccelXStep being one of the handlers shows
+  these are per-step attack behavior routines.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r7,#oAIAttackVars_HitElement]; ldr r1,[r1,r0] — table index is the attack's hit element
+    (sub_80EC1F0); off_80EC204 holds exactly three handler pointers, matching the element enum range;
+    mov lr,pc; bx r1 ... pop {pc} — tail-shared frame so the handler's return value passes through; handler
+    ai_attackAccelXStep is a known per-step attack movement routine, implying the others are element variants
+  refs:
+  - bn6f/asm/asm31.s:114704
+  reproduce: python3 tools/asmcat.py 0x080EC1F0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- Which hit-element values map to sub_80EC210 vs sub_80EC2EA (table order vs element enum)
+- No known callers, so when in the AI attack update this dispatch runs is unconfirmed
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80EC1F0 -> ai_attackElementStepDispatch
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EC1F0

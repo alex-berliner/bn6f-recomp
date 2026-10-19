@@ -1,0 +1,44 @@
+name: object_dispatchScreenDimAction
+address: '0x080E68BC'
+kind: function
+status: probable
+summary: Dispatches to a battle object's screen-dim/undim action handler based on its CurAction field
+interface: (r5 = battle object pointer, r0 unused on entry) -> tail-dispatches to handler in r0 (CurAction
+  result); return via lr/pop
+details: 'Loads the object''s oBattleObject_CurAction byte from the struct in r5 and uses it to index
+  a 3-entry jump table at off_80E68D0, then tail-calls the selected Thumb handler with mov lr,pc/bx so
+  the handler can return directly. The table maps action 0 to object_dimScreen, action 1 to sub_80E68DC,
+  and action 2 to object_undimScreen. This is a per-state dispatcher: the object''s current action selects
+  whether the screen should be dimmed, something else (sub_80E68DC, undocumented), or un-dimmed. It takes
+  no arguments itself; the object pointer comes from r5, suggesting it runs inside a context where r5
+  already holds the active battle object. Quirk: r0 is loaded with the CurAction byte but is then reused
+  as the branch target register, so it is not passed to the handlers as data.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r5,#oBattleObject_CurAction] then ldr r1,[r1,r0] indexes off_80E68D0 by the action
+    value (asm lines 3-5); table entries are object_dimScreen+1, sub_80E68DC+1, object_undimScreen+1,
+    i.e. dim/other/undim screen handlers; mov lr,pc + bx r1 makes the selected handler return straight
+    to the pop {pc}, a state-handler dispatch pattern
+  refs:
+  - bn6f/asm/asm31.s:102909
+  reproduce: python3 tools/asmcat.py 0x080E68BC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- what sub_80E68DC (middle action 1) does
+- which callers invoke this and with which object types / action values
+- the layout of the object struct field oBattleObject_CurAction beyond this use
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E68BC -> object_dispatchScreenDimAction
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E68BC

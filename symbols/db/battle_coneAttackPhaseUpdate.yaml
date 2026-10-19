@@ -1,0 +1,46 @@
+name: battle_coneAttackPhaseUpdate
+address: '0x080B91B0'
+kind: function
+status: probable
+summary: 'Per-frame handler for a timed battle-object attack phase: plays a charge animation while marking
+  the cone panels in front of the object, then switches animation and ends the action.'
+interface: (r5 = battle object) -> void; r0-r3 clobbered
+details: Runs on r5 as the battle object, a phase-based state machine handler. On phase 0 it stores phase
+  4, sets CurAnim = 0x15, calls battle_forEachConePanel (with r0 still 0x15, so the callback/argument
+  convention is unclear), and loads Timer with 0x3C (60 frames). While the timer counts down, at 0x34
+  (52) it switches CurAnim to 0x10, presumably the release/firing animation. When the timer goes below
+  zero it sets CurAction = 0x10 and clears CurPhaseAndPhaseInitialized to 0, returning control to the
+  object's action dispatcher. The cone-panel enumeration suggests the attack targets a 1-3-5 cone of panels
+  in front of the object, likely to spawn effects or set panel states there.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#oBattleObject_CurPhase] / strb #4 -> phase-0 entry sets phase 4 and anim 0x15,
+    bl battle_forEachConePanel; mov r0,#0x3C; strh [r5,#oBattleObject_Timer] gives a 60-frame timed phase;
+    cmp r0,#0x34; beq -> at frame 52 CurAnim is switched to 0x10 (charge -> release animation); timer
+    < 0 -> strb #0x10,[r5,#oBattleObject_CurAction] and clears CurPhaseAndPhaseInitialized, ending the
+    action; sole callee battle_forEachConePanel enumerates an expanding 1-3-5 cone in front of the object'
+  refs:
+  - bn6f/asm/asm31.s:2136
+  - 0x080B9240 battle_forEachConePanel
+  reproduce: python3 tools/asmcat.py 0x080B91B0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- No callers known, so which enemy/action selects this phase (CurAction/phase table) is unknown
+- The argument convention of battle_forEachConePanel here (r0 = 0x15 with r5 as object) is unclear — what
+  the per-panel callback does with the cone panels
+- What animations 0x15 and 0x10 depict for this object, to name the specific attack
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80B91B0 -> battle_coneAttackPhaseUpdate
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80B91B0

@@ -1,0 +1,43 @@
+name: object_callCurActionHandler
+address: '0x080D2C10'
+kind: function
+status: probable
+summary: dispatches to the battle object's current-action handler via a per-action jump table (bl-style
+  long call), used as the UPDATE-state step
+interface: (r5 = battle object, r0 clobbered) -> calls handler from table indexed by oBattleObject_CurAction;
+  returns handler result in r0
+details: Reads r5's oBattleObject_CurAction byte, indexes off_80D2C24 (a table of handler pointers reached
+  via off_80D2C20), and performs a Thumb long call (mov lr, pc; bx r1) into the handler, then returns
+  with pop {pc}. The caller sub_80D2C00 first sets coordinates from panels and sets the object's state
+  field to CUR_STATE_UPDATE, then calls this, so this is the per-action update dispatch for the object's
+  UPDATE state. The table currently has a single entry (sub_80D2C28+1); entries are Thumb pointers, hence
+  +1. It is effectively a switch on CurAction done with a function-pointer table rather than code.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r5,#oBattleObject_CurAction]; ldr r1,[r1,r0] loads a handler from off_80D2C24 indexed
+    by current action; mov lr, pc; bx r1 is a long-call so the callee's return lands on pop {pc}; caller
+    sets oBattleObject state to CUR_STATE_UPDATE (mov r0,#CUR_STATE_UPDATE; str [r5,...]) right before
+    the bl; table's sole entry is sub_80D2C28+1, a Thumb function pointer, confirming a dispatch table
+  refs:
+  - bn6f/asm/asm31.s:59163
+  - 0x080D2C00 sub_80D2C00
+  reproduce: python3 tools/asmcat.py 0x080D2C10
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- contents of sub_80D2C28 unknown, so what the action handler actually updates is not visible
+- whether other objects reuse this table format or if the table grows with more actions
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D2C10 -> object_callCurActionHandler
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D2C10

@@ -1,0 +1,46 @@
+name: battle_hazardPanelExtendTimer
+address: '0x080D0CE0'
+kind: function
+status: probable
+summary: Every 30 frames, if the panel element flags at [ExtraVars+8]+0x24 showed one of the four elemental
+  bits at least 3 times, extends the hazard panel object's lifetime by 20 frames.
+interface: (r5 = battle object) -> no return value; clobbers r0/r1, resets oBattleObject_Timer2 and ExtraVars+4
+  each 30-frame cycle
+details: Reads a pointer from ExtraVars+8, follows +0x58, and tests the halfword at +0x24 for bits 0x10/0x20/0x40/0x80
+  (element/status flags of the panel or of the just-spawned hitbox). Each frame where any of those bits
+  is set it increments a counter at ExtraVars+4. It also increments Timer2; when Timer2 reaches 0x1E (30
+  frames), if the counter reached 3 and oBattleObject_Timer still exceeds 0x14, it subtracts 0x14 from
+  Timer, i.e. keeps the timed hazard panel alive longer. It then clears Timer2 and the element counter,
+  so each 30-frame window is judged independently.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'caller 0x080D0BD4 spawns an elemental collision region each frame while its Timer counts down,
+    then calls this right after battle_spawnObjectCollisionRegion (bl sub_80D0CE0 at 0x080D0BF0); asm
+    tests four bit flags (0x40/0x80/0x20/0x10) of ldrh r0,[r0,#0x24] via ExtraVars+8 -> +0x58 chain, counting
+    hits in [r5,#oBattleObject_ExtraVars+4]; Timer2 compared to #0x1e and counter to #3 before `sub r0,#0x14;
+    strh r0,[Timer]`, i.e. Timer > 0x14 grants a 20-frame extension; both counters are zeroed at loc_80D0D20
+    on every 30-frame boundary regardless of the check outcome'
+  refs:
+  - bn6f/asm/asm31.s:54863
+  - 0x080D0BD4 battle_timedHazardPanelUpdate
+  reproduce: python3 tools/asmcat.py 0x080D0CE0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- what structure ExtraVars+8 points to (panel/terrain data vs the spawned hitbox object) and what the
+  bits 0x10-0x80 of the +0x24 halfword mean exactly
+- which in-game hazard panel this object is (fire/poison/etc.) — sub_80D0CB4 and sub_80D0D28 might clarify
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D0CE0 -> battle_hazardPanelExtendTimer
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D0CE0

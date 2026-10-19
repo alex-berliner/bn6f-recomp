@@ -1,0 +1,41 @@
+name: battle_whiteFlashExecPhase
+address: '0x080E2E78'
+kind: function
+status: probable
+summary: Runs the current phase handler of the white-flash battle object via its phase table.
+interface: (r5 = battle object, reads oBattleObject_CurPhase) -> r0 = handler's return value; calls handler
+  with lr trick, returns its result
+details: 'Reads the battle object''s CurPhase byte at [r5,#oBattleObject_CurPhase], indexes the two-entry
+  table off_80E2E8C, and dispatches to that thumb handler using the classic ''mov lr, pc; bx r1'' long-call
+  trick so the handler''s return lands back here and the function pops pc. Phase 0 points to battle_whiteFlashWaitPhase+1
+  and phase 1 to sub_80E2EBC+1, so this is the phase state-machine driver for the battle white-flash effect:
+  wait phase then a follow-up phase. r1 is overwritten with the table pointer and the handler presumably
+  takes r5 unchanged as its object pointer.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r5,#oBattleObject_CurPhase] then ldr r1,[r1,r0] indexes a per-phase handler table;
+    mov lr,pc; bx r1 is the standard thumb far-call to the phase handler, whose result is returned; off_80E2E8C
+    entry 0 = battle_whiteFlashWaitPhase+1 ties this dispatcher to the white-flash effect; off_80E2E8C
+    entry 1 = sub_80E2EBC+1 is the next phase handler in the same state machine
+  refs:
+  - bn6f/asm/asm31.s:94423
+  reproduce: python3 tools/asmcat.py 0x080E2E78
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- No callers known, so the exact object type in r5 and when this is ticked is unconfirmed
+- sub_80E2EBC's behavior unknown; it may end the flash or advance/clear the phase
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E2E78 -> battle_whiteFlashExecPhase
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E2E78

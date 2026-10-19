@@ -1,0 +1,41 @@
+name: battle_countdownObjectTimer
+address: '0x080DEF1C'
+kind: function
+status: probable
+summary: Decrements an object's halfword timer at +0x64 and, when it reaches zero, marks the object finished
+  (sets flag bit 1, CurAction 4, CurPhase 0).
+interface: (r5 = battle object header) -> r0 = 0/4 scratch; updates timer, flags, CurAction, CurPhase;
+  flags not meaningfully set
+details: Every call, the halfword counter at [r5,#0x64] is decremented and stored back. While the counter
+  is nonzero the routine returns immediately. When it reaches zero, oObjectHeader_Flags gets bit 0x2 ORed
+  in, the object's CurAction byte is set to 4 and CurPhase cleared to 0 — the standard way a battle object
+  is told to terminate. r5 is the object pointer, so the function takes no register arguments and relies
+  on the caller having r5 set up.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrh r1,[r5,#0x64]; sub/strh: decrements the halfword timer and only acts when it hits zero
+    (cmp r1,#0; bne); on expiry: orr 0x2 into [r5,#oObjectHeader_Flags] — sets the object''s finished/despawn
+    flag; sets oBattleObject_CurAction=4 and oBattleObject_CurPhase=0, the usual end-of-life action/phase
+    pair'
+  refs:
+  - bn6f/asm/asm31.s:85709
+  reproduce: python3 tools/asmcat.py 0x080DEF1C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- 'no callers known: unknown which object types use this timer at +0x64 or what CurAction=4 means downstream'
+- exact meaning of flags bit 0x2 (finished vs. delete-requested) not confirmed from this code alone
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DEF1C -> battle_countdownObjectTimer
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DEF1C

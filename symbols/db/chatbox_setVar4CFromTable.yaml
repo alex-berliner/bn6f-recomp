@@ -1,0 +1,45 @@
+name: chatbox_setVar4CFromTable
+address: '0x0809A868'
+kind: function
+status: probable
+summary: Maps the chatbox variable at +0x4C through a byte lookup table and clears +0x50, as setup before
+  running the chip-trader result text script.
+interface: (none; reads r5 (task obj) and r10 (toolkit)) -> writes chatbox->0x4C = table[old value saved
+  at [r5,#0x88]], chatbox->0x50 = 0
+details: Loads the toolkit's chatbox pointer, then reads dword_809A890 (a pointer to a byte table) and
+  indexes it with [r5,#0x88] — which the caller had just filled with the chatbox's current +0x4C value.
+  The resulting byte is written back into chatbox+0x4C, and chatbox+0x50 is zeroed. The only caller does
+  this right before chatbox_runScript(TextScriptChipTrader86C580C, 0x35), suggesting +0x4C is a chatbox
+  variable the text script consumes (e.g. the chip/value to name in the 'you got a chip' message), remapped
+  via the table. Chatbox+0x50 is a second script-visible variable reset to 0.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_809A868: ldr r0, off_809A88C (dword_809A890); ldrb r0,[r0,r1] with r1=[r5,#0x88]; str r0,[r4,#0x4c]
+    — table-indexed write into chatbox 0x4C; caller 0x809A488: reads chatbox->[0x4c], saves to [r5,#0x88],
+    then bl sub_809A868 — index comes from the field being overwritten; caller then does chatbox_runScript(TextScriptChipTrader86C580C,
+    0x35) — the modified variable is consumed by the chip-trader message script; sub_809A868 also zeroes
+    chatbox+0x50 (str r0,[r4,#0x50] with r0=0), a second chatbox field reset alongside 0x4C'
+  refs:
+  - bn6f/asm/asm28_0.s:2088
+  - 0x0809A44C sub_809A44C
+  reproduce: python3 tools/asmcat.py 0x0809A868
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- what chatbox+0x4C/+0x50 mean to the text script engine (displayed value vs. state)
+- contents of the table at dword_809A890 and what the pre-lookup 0x4C value represents (raw chip id, trader
+  slot, ...)
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_809A868 -> chatbox_setVar4CFromTable
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_809A868

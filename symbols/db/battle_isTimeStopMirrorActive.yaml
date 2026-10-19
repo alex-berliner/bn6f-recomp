@@ -1,0 +1,40 @@
+name: battle_isTimeStopMirrorActive
+address: '0x080BB89C'
+kind: function
+status: probable
+summary: returns whether the related battle object's AI data marks the TimeStop mirror as held
+interface: (r0 = unused/0) -> r0 = 1 if TimeStopMirrorHeld bit0 set else 0
+details: Loads r5's related-object pointer (oBattleObject_RelatedObject1Ptr), reads that object's oBattleObject_AIDataPtr,
+  tests bit 0 of oAIData_TimeStopMirrorHeld, and returns 1/0 accordingly. Pure predicate, no state changes;
+  caller at 0x080BB73A uses the result to skip a timer countdown and jump straight to action 0xC / phase
+  0 instead of waiting.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'asm 0x080BB8A0-0x080BB8AC: loads RelatedObject1Ptr -> AIDataPtr, tests tst r1,#1 of oAIData_TimeStopMirrorHeld,
+    returns 1/0; caller 0x080BB73A: bl sub_80BB89C; tst r0,r0; bne skips timer decrement and sets CurAction=0xC,
+    phase=0; caller otherwise falls through to Timer countdown loop, so nonzero result short-circuits
+    the wait'
+  refs:
+  - bn6f/asm/asm31.s:7720
+  - 0x080BB710 sub_80BB710
+  reproduce: python3 tools/asmcat.py 0x080BB89C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- which object/attack this wait belongs to (the caller's identity would confirm the in-game role of the
+  mirror-hold check)
+- whether other callers use it differently
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BB89C -> battle_isTimeStopMirrorActive
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BB89C

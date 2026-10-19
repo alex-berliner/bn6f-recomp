@@ -1,0 +1,55 @@
+name: submenu_drawNumbersAndCursor
+address: '0x080397BC'
+kind: function
+status: probable
+summary: 'Per-frame draw routine for a small menu: renders two 3-digit numbers and a cursor/icon positioned
+  by the selection index in the work struct.'
+interface: (r5 = pointer to menu state struct, implicit) -> void; reads struct fields at +4 (selection
+  index) and +6 (last drawn index)
+details: 'Each frame it calls sprite_drawTwoBcdNumbers3Digit to draw two 3-digit decimal numbers on one
+  row, then calls sub_803C2F0, then queues a single sprite/graphic via sub_803BC02 with r0=0x38, r2=1,
+  r3=0, r4=0 and r1 = 0x1c + 0x10 * state[4]. Since each menu entry is 0x10 pixels tall starting at y=0x1c,
+  state[4] is a vertical row index and the drawn 0x38 graphic is the cursor/highlight for the selected
+  row. Callers treat r5 as a shared state struct: they store 0xc/0x10 into [r5] and 0 into [r5,#1] as
+  state-machine step values, compare [r5,#4] against [r5,#6] (previous vs current selection) before calling
+  sub_803BB2C, and run this only after screen fades complete (IsScreenFadeActive gates the state writes
+  in sub_80397DC and sub_80397F6). The function is the common ''redraw the menu display'' step invoked
+  by every state of the surrounding menu state machine.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_80397BC: bl sprite_drawTwoBcdNumbers3Digit then bl sub_803C2F0, then one sprite queued
+    via bl sub_803BC02; sub_80397BC: mov r1, #0x10; mul r1, r2; add r1, #0x1c — r1 = 0x1c + 0x10*ldrb[r5,#4],
+    a y-position indexed by the selection field; sub_8039734 @0x80397A8: ldrb [r5,#4] vs [r5,#6] comparison
+    guards sub_803BB2C — +4 is the changing selection index, +6 a shadow of it; sub_80397DC/80397F6: only
+    call it (and reset state) once IsScreenFadeActive reports no fade, i.e. it is the steady-state per-frame
+    redraw; sub_8039734 @0x8039794: PlaySoundEffect(UNSELECT) and SetScreenFade(0xc,0x10) before writing
+    state — confirms an interactive menu state machine around this routine'
+  refs:
+  - bn6f/asm/asm03_1_1.s:1604
+  - 0x08039734 sub_8039734
+  - 0x080397DC sub_80397DC
+  - 0x080397F6 sub_80397F6
+  - 0x0803B880 sprite_drawTwoBcdNumbers3Digit
+  - 0x0803BC02 sub_803BC02
+  - 0x0803C2F0 sub_803C2F0
+  reproduce: python3 tools/asmcat.py 0x080397BC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- What sub_803C2F0 draws (the numbers' row may be its work) and which game screen this menu belongs to
+- Exact meaning of args to sub_803BC02 (r0=0x38 likely an OAM/tile id, r2=1 priority)
+- Which struct r5 points to and how it is allocated by an earlier init function
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80397BC -> submenu_drawNumbersAndCursor
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80397BC

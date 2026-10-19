@@ -1,0 +1,43 @@
+name: ai_chargeHitDispatchByElement
+address: '0x080F1334'
+kind: function
+status: probable
+summary: Dispatches charged-attack hit handling to an element-specific handler via a two-entry jump table
+  indexed by oAIAttackVars_HitElement.
+interface: (r7 = attack/AI vars struct, reads oAIAttackVars_HitElement) -> tail-dispatches to table[HitElement]
+  handler (Thumb, LR set via mov lr,pc), no direct return value
+details: 'Reads the HitElement byte from the struct in r7, indexes the table at off_80F1348 with it, and
+  performs a long Thumb call (mov lr, pc; bx r1) to the selected handler, returning straight to the caller''s
+  caller on the handler''s return. The table has two entries so far in the dump: ai_chargeAttackState+1
+  for index 0 and sub_80F1390+1 for index 1. This is a standard branch-table dispatch pattern; the function
+  itself holds no game logic beyond selecting and calling the handler.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r7,#oAIAttackVars_HitElement]; ldr r1,[r1,r0] — table lookup indexed by hit element;
+    mov lr, pc; bx r1 — long-call dispatch into the selected Thumb handler; off_80F1348 entries ai_chargeAttackState+1
+    / sub_80F1390+1 tie it to the AI charge-attack subsystem; no callers known, so the surrounding use
+    cannot be confirmed
+  refs:
+  - bn6f/asm/asm31.s:125848
+  reproduce: python3 tools/asmcat.py 0x080F1334
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- No callers are known, so it is unclear when this runs (presumably when an AI's charged attack connects).
+- Whether the table at off_80F1348 has more entries beyond the two labeled (i.e. more hit-element values).
+- What ai_chargeAttackState and sub_80F1390 actually do, which would pin down the exact game purpose.
+- What r7 points to beyond containing oAIAttackVars (full struct layout).
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F1334 -> ai_chargeHitDispatchByElement
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F1334

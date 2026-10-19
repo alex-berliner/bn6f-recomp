@@ -1,0 +1,47 @@
+name: ai_getAttackDurationByTier
+address: '0x08107F80'
+kind: function
+status: probable
+summary: returns the AI attack duration for the current difficulty tier, selected from a per-tier byte
+  table
+interface: () -> r0 = attack duration for the current AI difficulty tier (0x10 or 0x18); flags clobbered
+  by callee
+details: Passes the address of dword_8107F90 (bytes 10 10 18 18, one entry per AI difficulty tier) to
+  sub_800FE28, which presumably reads the global difficulty tier set by battle_getAiDifficultyTier_800FE36
+  and returns the indexed byte; the caller stores it as oAIAttackVars_AttackDuration. Together with the
+  adjacent sub_8107F94 (whose two return bytes go into AttackBoost2/TimerOrCycles) it forms a family of
+  difficulty-indexed AI attack parameter lookups used when an AI object initializes attack state 0xD.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'caller 0x081080C4: strh r0,[r7,#oAIAttackVars_AttackDuration] right after the call, having
+    just stored the difficulty tier; asm: ldr r0,off_8107F8C (=dword_8107F90 = 0x10101818) then bl sub_800FE28
+    — a byte table handed to a lookup helper; table bytes 10 10 18 18 match per-tier values, consistent
+    with battle_getAiDifficultyTier_800FE36 called just before; sibling sub_8107F94 called the same way,
+    result split into AttackBoost2/TimerOrCycles, confirming a parameter-lookup family; call site ends
+    with object_setAttack0(0xD), i.e. these values configure an AI attack'
+  refs:
+  - bn6f/asm/asm31.s:173765
+  - 0x081080A6 sub_81080A6
+  - 0x0800FE28 sub_800FE28
+  reproduce: python3 tools/asmcat.py 0x08107F80
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- sub_800FE28's body is not shown, so whether it indexes by battle_getAiDifficultyTier_800FE36's global
+  tier (vs. something else) is inferred, not verified
+- exact frame meaning of the returned 0x10/0x18 (interval vs total duration) depends on how oAIAttackVars_AttackDuration
+  is decremented elsewhere
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8107F80 -> ai_getAttackDurationByTier
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8107F80

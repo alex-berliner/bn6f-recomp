@@ -1,0 +1,45 @@
+name: sprite_dispatchAnimStateHandler
+address: '0x080A9A0C'
+kind: function
+status: probable
+summary: Dispatches a sprite/animation object's state-machine step, calling the handler selected by the
+  object's state field and returning its result.
+interface: (r5 = sprite/animation object; r0, r1 passed through) -> r0 = handler's return value; flags
+  from handler
+details: Loads the byte at [r5,#8] (state/step selector), indexes off_80A9A20 with it as a byte offset
+  to fetch one of three Thumb handler pointers (sub_80A9A2C, sprite_animateCheckAttributeFlag, sub_80A9A96),
+  sets lr = pc and bx to the handler. Because the entry only pushed lr, the handler returns directly into
+  sub_80A9A0C's caller, making this a trampoline whose return value and flags are the handler's. On entry
+  to the handler, r0 still holds the handler's own Thumb pointer and r1 holds the state byte, so callees
+  likely ignore or reuse r1. The state field appears pre-scaled (0/4/8) since it is used unshifted as
+  a word-table offset. r5 is the same struct layout family as other sprite routines.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r1,[r5,#8]; ldr r0,[r0,r1]; bx r0 — state-indexed jump table dispatch (0x080A9A10-0x080A9A16);
+    table entry sprite_animateCheckAttributeFlag+1 ties the dispatcher to sprite animation handling; push
+    {lr} ... pop {pc} with mov lr,pc makes the callee return to this function's caller (tail-call trampoline);
+    three-entry table off_80A9A20 implies a small 3-state animation/update machine
+  refs:
+  - bn6f/asm/asm29.s:9489
+  reproduce: python3 tools/asmcat.py 0x080A9A0C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- no callers known, so the exact struct at r5 and when this runs are unconfirmed
+- whether [r5,#8] holds 0/4/8 directly or 0..2 (which would misalign the table) needs a caller or the
+  other two handlers' code
+- arguments the handlers expect (beyond r0/r1) unknown
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80A9A0C -> sprite_dispatchAnimStateHandler
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A9A0C

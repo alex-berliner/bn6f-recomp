@@ -1,0 +1,41 @@
+name: ai_attackDispatchOnHitElement
+address: '0x080EE044'
+kind: function
+status: probable
+summary: Dispatches an AI attack routine based on the hit element stored in the AI attack vars struct
+interface: (r7 = oAIAttackVars struct) -> tail-calls sub_80EE060 or sub_80ED998 by HitElement; r0 = HitElement
+  unchanged into handler
+details: 'Reads oAIAttackVars_HitElement from the struct at r7, uses it as a direct index into the two-entry
+  table off_80EE058, and performs a Thumb long call (mov lr,pc; bx r1) to the selected handler: sub_80EE060
+  for element 0, sub_80ED998 otherwise. The lr trick preserves the caller''s return address through pop
+  {pc}, so this is a plain call wrapper, not a tail jump. The table has only two entries, so the element
+  byte is effectively treated as a boolean here. Purpose of each branch is unknown without sub_80EE060/sub_80ED998
+  knowledge.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_HitElement]; ldr r1,[r1,r0] — element byte indexes the jump table;
+    off_80EE058: .word sub_80EE060+1; .word sub_80ED998+1 — exactly two handlers, one per element value;
+    mov lr,pc; bx r1 ... pop {pc} — Thumb long-call wrapper returning to the original caller'
+  refs:
+  - bn6f/asm/asm31.s:118975
+  reproduce: python3 tools/asmcat.py 0x080EE044
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- what sub_80EE060 (element 0) vs sub_80ED998 (element != 0) each do
+- which battle routine sets oAIAttackVars_HitElement before this dispatch and what r7's full struct layout
+  is
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80EE044 -> ai_attackDispatchOnHitElement
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EE044

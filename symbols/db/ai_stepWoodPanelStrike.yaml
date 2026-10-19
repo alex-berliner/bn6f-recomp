@@ -1,0 +1,47 @@
+name: ai_stepWoodPanelStrike
+address: '0x080F0968'
+kind: function
+status: probable
+summary: AI attack step that initiates a wood-element strike of all matching field panels, then waits
+  20 frames before marking hits as wood.
+interface: (no args; r5 = battle object, r7 = oAIAttackVars) -> void; sets oAIAttackVars_AttackElement,
+  StepTimer, HitElement and object CurAnim
+details: On entry with AttackElement == 0 it writes element 4 (wood), sets the object's current animation
+  to 0x12, calls ai_strikeMatchingPanels (which hits every panel matching the alliance-dependent attribute
+  mask with the object's queued attack damage), and stores 0x14 into StepTimer. On subsequent frames it
+  decrements StepTimer each call until it reaches zero, then writes element 4 into oAIAttackVars_HitElement
+  so later damage/contacts use wood. State persists across calls via the oAIAttackVars fields, so the
+  function is a step/state handler rather than a one-shot init.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst; bne loc_80F0982 — first-call vs. repeat-frame
+    state machine; strb r0,[r5,#oBattleObject_CurAnim] with r0=0x12 — plays the attack animation on the
+    battle object; bl ai_strikeMatchingPanels — delegates the panel-wide strike to the known panel-strike
+    helper; strh r0,[r7,#oAIAttackVars_StepTimer] with 0x14, then sub r0,#1 / bgt — 20-frame delay before
+    completing; strb r0,[r7,#oAIAttackVars_HitElement] with 4 — finished state marks hits as element 4
+    (wood)
+  refs:
+  - bn6f/asm/asm31.s:124471
+  - 0x080F0B32 ai_strikeMatchingPanels
+  reproduce: python3 tools/asmcat.py 0x080F0968
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- No callers known; a caller would confirm which enemy/AI state invokes this and how HitElement=4 is consumed
+  afterward
+- Whether element 4 is specifically 'wood' versus another attribute id in this game's element table could
+  be confirmed from the element enum/data
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F0968 -> ai_stepWoodPanelStrike
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F0968

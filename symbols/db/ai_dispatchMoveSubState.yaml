@@ -1,0 +1,43 @@
+name: ai_dispatchMoveSubState
+address: '0x08017E26'
+kind: function
+status: probable
+summary: Dispatches a battle object's move-sub-state handler by jumping through a table indexed by oBattleObject_MoveSubState
+interface: (r5 = battle object) -> tail-calls handler from off_8017E38[substate]; returns to sub_8017E26's
+  caller via handler
+details: Reads the byte at [r5,#oBattleObject_MoveSubState] and uses it to index the pointer table off_8017E38,
+  then performs a thumb tail-call (mov lr, pc; bx r1) to the selected handler, so the handler's return
+  goes straight back to this function's caller. The three entries are ai_beginPanelSlideMove (substate
+  0), sub_8017F38 (substate 1), and object_decrementPhaseCountdown (substate 2); r5 must already point
+  to the object before entry. Any substate value >= 3 indexes past the table and would call garbage, so
+  the field is expected to be clamped elsewhere. The lr trick implements a tail call while keeping the
+  return address of this function's caller.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0, [r5,#oBattleObject_MoveSubState]; ldr r1,[r1,r0]; bx r1 — table dispatch on the move-sub-state
+    field; off_8017E38 holds ai_beginPanelSlideMove+1, sub_8017F38+1, object_decrementPhaseCountdown+1
+    — the three move sub-state handlers; mov lr,pc; bx r1 makes the jump a tail call returning to this
+    function's caller; callee names (panel slide move, decrement phase countdown) match a battle-object
+    movement state machine
+  refs:
+  - bn6f/asm/asm00_2.s:20637
+  reproduce: python3 tools/asmcat.py 0x08017E26
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- 'No known callers: which object type uses this dispatcher and when in the battle loop it runs is unconfirmed'
+- What sub_8017F38 (the substate-1 handler) does and whether substate values are bounded to 0-2
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8017E26 -> ai_dispatchMoveSubState
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8017E26

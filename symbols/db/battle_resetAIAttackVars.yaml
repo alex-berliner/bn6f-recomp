@@ -1,0 +1,41 @@
+name: battle_resetAIAttackVars
+address: '0x08011EF0'
+kind: function
+status: probable
+summary: resets an AI attack-variables block (r7) to default values and returns a fixed status code
+interface: (r7 = pointer to oAIAttackVars struct) -> r0 = 0x42; r7 fields overwritten with defaults
+details: Zeroes oAIAttackVars_ChargeReadyFlag and oAIAttackVars_AttackBoost, sets ChipUseDelay to 0x14
+  and ExtraDamage to 0x14, sets InitFlag to 3, Damage to 0x64 (100), and stores constant 0x3c1000 into
+  oAIAttackVars_AttackBoost2. It then returns the constant 0x42, which looks like a status/next-state
+  token for the caller's state machine rather than a computed result. The struct pointer comes in via
+  r7, so this is a leaf helper inside a battle-AI routine that keeps its context in the high register.
+  No callers are known, so the surrounding state machine semantics (what 0x42 and InitFlag=3 mean downstream)
+  remain unconfirmed.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: stores 0 into ChargeReadyFlag/AttackBoost and constants (0x14, 3, 0x64) into the other oAIAttackVars
+    fields — a fixed default init; ldr r0, dword_8011F40 =0x3c1000 stored to AttackBoost2, an immediate
+    constant reset; returns constant mov r0,#0x42 with no computation, suggesting a state-machine status
+    token
+  refs:
+  - bn6f/asm/asm00_2.s:7159
+  reproduce: python3 tools/asmcat.py 0x08011EF0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- no known callers, so the meaning of the 0x42 return value and of InitFlag=3 is unconfirmed
+- which actor owns the r7 oAIAttackVars block (which AI entity) is unknown
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8011EF0 -> battle_resetAIAttackVars
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8011EF0

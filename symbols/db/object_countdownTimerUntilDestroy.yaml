@@ -1,0 +1,45 @@
+name: object_countdownTimerUntilDestroy
+address: '0x080D8EB0'
+kind: function
+status: probable
+summary: 'per-frame update for a timed battle object: runs its update step, decrements its lifetime timer,
+  and marks it destroyed when the timer runs out'
+interface: (r5 = battle object) -> void; sets oBattleObject_CurStateActionPhaseAndPhaseInitialized to
+  CUR_STATE_DESTROY when the timer expires
+details: Calls sub_80D8EC6 first (unknown, likely the object's movement/animation step), then reads oBattleObject_Timer,
+  subtracts 1, and writes it back. If the decremented timer is <= 0 (ble), the object's state field is
+  set to CUR_STATE_DESTROY so the object is removed next state pass; otherwise it stays in its current
+  state. The caller had just set the state to CUR_STATE_UPDATE and moved the object by a direction-indexed
+  offset table (values 0x3C/0x46) added to oBattleObject_X, so this looks like a short-lived moving object
+  (e.g. a projectile or effect) with a fixed frame lifetime stored in Timer.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrh r0,[r5,#oBattleObject_Timer]; sub r0,#1; strh — decrements a per-object countdown each
+    call; ble loc_80D8EC0 leading to mov r0,#CUR_STATE_DESTROY; str [r5,#CurStateActionPhaseAndPhaseInitialized]
+    — destroys object when timer expires; caller 0x80D8E90: sets state to CUR_STATE_UPDATE then bl sub_80D8EB0
+    — this is the UPDATE-state handler for the object; caller adds off_80D8EA4[frontDir] (0x3C/0x46) to
+    oBattleObject_X before the call — object is moving, consistent with a timed projectile/effect'
+  refs:
+  - bn6f/asm/asm31.s:72508
+  - 0x080D8E34 sub_80D8E34
+  - 0x080D8EC6 sub_80D8EC6
+  reproduce: python3 tools/asmcat.py 0x080D8EB0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- what sub_80D8EC6 does (likely the object's movement or animation step)
+- which object type uses this handler (the timer's initial value is set elsewhere)
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D8EB0 -> object_countdownTimerUntilDestroy
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D8EB0

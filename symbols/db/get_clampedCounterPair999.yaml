@@ -1,0 +1,45 @@
+name: get_clampedCounterPair999
+address: '0x0803C398'
+kind: function
+status: probable
+summary: Reads two halfword counters at word_2006770+4/+6, clamps each to at most 999, and returns them
+  for 3-digit sprite display
+interface: () -> r0 = counter A (word_2006774, clamped <=999), r1 = counter B (word_2006776, clamped <=999);
+  no flags relevant
+details: Loads both halfwords from the word_2006770 IWRAM block, clamps each to 0x3E7 (999) by writing
+  the clamped value back in place, then reloads and returns them in r0/r1. The single caller passes each
+  result through memory_bcdConvert and draws the three BCD nibbles as digit sprites (x=0x68/0x70/0x78
+  and 0x94/... on y=0x50), suppressing leading zeros. This is effectively a read-and-sanitize step ensuring
+  the stored values never exceed the 3-digit display capacity. No arguments are taken; the function operates
+  entirely on the fixed counter block.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'asm clamps both halfwords: cmp r2,r1(=0x3e7)/ble + strh back to [r3,#4] and [r3,#6]; caller
+    at 0x0803B886/0x0803B8BE calls it then memory_bcdConvert and draws 3 BCD digits via sprite_queueOamEntryHflipPal12;
+    caller discards r0 of first call and uses r1 (mov r0,r1 before second bcdConvert), so r0/r1 hold the
+    two separate counters; fixed digit positions 0x68-0x78 and 0x94+ at y=0x50 match two side-by-side
+    3-digit numbers; leading-zero suppression (r7 accumulating high nibbles, beq skips draw) confirms
+    0-999 decimal display'
+  refs:
+  - bn6f/asm/asm03_1_1.s:7101
+  - 0x0803B880 sprite_drawTwoBcdNumbers3Digit
+  reproduce: python3 tools/asmcat.py 0x0803C398
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- what the two counters count (word_2006770 block's owner/writers not shown)
+- why the clamp writes back to memory rather than just clamping the return values
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803C398 -> get_clampedCounterPair999
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803C398

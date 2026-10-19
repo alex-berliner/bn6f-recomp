@@ -1,0 +1,45 @@
+name: battle_getSideFlagBits
+address: '0x0800A856'
+kind: function
+status: probable
+summary: Builds a 2-bit mask from battle-state bytes 0x12/0x13 (bit set when the byte is 0), which the
+  caller remaps into a battle-result code stored in a table entry.
+interface: '() -> r0 = 2-bit mask: bit0 = (battleState[0x12]==0), bit1 = (battleState[0x13]==0); no flags
+  set meaningfully'
+details: Loads the current battle state from oToolkit_BattleStatePtr (r10-relative) and tests two byte
+  fields at +0x12 and +0x13, treating zero as the 'set' condition for bits 0 and 1 respectively, returning
+  0-3. The sole caller passes this value through a swap-style mapping (0->0, 1->2, 2->1, 3->0) and stores
+  it at offset 0x11 of a record obtained from getTableEntryPtr32_802D064, suggesting the fields are per-side
+  end-of-battle markers and the stored byte is an outcome code. Both r0=0 and r0=3 map to 0, implying
+  one of those cases (likely both-flags-clear, i.e. battle still running) is not expected at call time.
+  The function itself is a pure read of the two state bytes; it does not modify anything.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'asm: ldr r3,[r10+BATTLESTATE]; ldrb r1,[r3,#0x12]; tst/bne/add #1 — bit0 set when byte 0x12
+    is zero; asm: ldrb r1,[r3,#0x13]; tst/bne/add #2 — bit1 set when byte 0x13 is zero; caller 0x0802D118:
+    remaps result 0/2/1/3->0/1/2/0 and strb r1,[r7,#0x11] into the getTableEntryPtr32 record; caller fetches
+    the record first via bl getTableEntryPtr32_802D064, so the stored byte belongs to that table entry'
+  refs:
+  - bn6f/asm/asm00_1.s:17171
+  - 0x0802D118 sub_802D118
+  reproduce: python3 tools/asmcat.py 0x0800A856
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- what battle-state bytes 0x12/0x13 represent (per-side defeated/done flags?)
+- what table getTableEntryPtr32_802D064 returns and the meaning of its byte +0x11 (win/loss/draw code?)
+- why both mask values 0 and 3 map to the same stored code 0
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_800A856 -> battle_getSideFlagBits
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800A856

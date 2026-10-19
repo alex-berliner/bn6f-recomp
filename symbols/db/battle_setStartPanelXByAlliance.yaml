@@ -1,0 +1,45 @@
+name: battle_setStartPanelXByAlliance
+address: '0x080E9480'
+kind: function
+status: probable
+summary: State handler that snaps a battle object to its side's starting panel column (1 if allied, otherwise
+  6), resets its timer, and re-enters the update state.
+interface: (r5 = battle object) -> writes oBattleObject_PanelX (1 or 6), oBattleObject_Timer = 0, oBattleObject_CurStateActionPhaseAndPhaseInitialized
+  = CUR_STATE_UPDATE; no return value; r0/r1 clobbered
+details: Reads the object's Alliance byte; a nonzero alliance yields PanelX = 1 (player side column),
+  zero yields PanelX = 6 (enemy side column). It then zeroes the 16-bit Timer field and sets the object's
+  state word to CUR_STATE_UPDATE, the standard way handlers chain to the generic update phase. The pattern
+  (write a state constant into CurStateActionPhaseAndPhaseInitialized, pop {pc}) marks this as a battle-object
+  state/action handler taking the object in r5 rather than an ordinary r0-arg function. The choice of
+  column 1 vs 6 suggests repositioning something to the far edge of its owner's field area.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r1,[r5,#oBattleObject_Alliance]; tst/beq pick 6 or 1, then strb r0,[r5,#oBattleObject_PanelX]
+    — column chosen by alliance side; mov r0,#0; strh r0,[r5,#oBattleObject_Timer] — timer reset alongside
+    the reposition; mov r0,#CUR_STATE_UPDATE; str r0,[...CurStateActionPhaseAndPhaseInitialized]; pop
+    {pc} — terminal state transition, typical state-handler epilogue; No callers/callees known, so behavior
+    is inferred purely from the object-field writes
+  refs:
+  - bn6f/asm/asm31.s:109175
+  reproduce: python3 tools/asmcat.py 0x080E9480
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- No call sites are known, so which object/entity uses this and when (spawn placement? retreat? a specific
+  obstacle's handler) is unknown
+- Whether PanelX here is a column or a full panel identifier, and why the two candidate columns are 1
+  and 6 specifically, would be clarified by a caller or the enclosing state table
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E9480 -> battle_setStartPanelXByAlliance
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E9480

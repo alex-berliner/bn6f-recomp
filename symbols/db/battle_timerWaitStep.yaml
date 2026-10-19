@@ -1,0 +1,45 @@
+name: battle_timerWaitStep
+address: '0x080C3DC8'
+kind: function
+status: probable
+summary: Counts down a battle object's Timer each frame; once it expires, advances the object to CurAction
+  4 with a fresh phase.
+interface: (r5 = battle object pointer, no args) -> r0 = destroyed; updates oBattleObject_Timer, oBattleObject_CurAction,
+  oBattleObject_CurPhaseAndPhaseInitialized
+details: Reads the halfword Timer field at offset oBattleObject_Timer of the battle object in r5, decrements
+  it, and stores it back. The bge after the subtraction means the wait continues only while the new value
+  is >= 0; once the timer underflows below zero, it writes 4 to the byte CurAction and zeroes the halfword
+  CurPhaseAndPhaseInitialized, forcing the object's action/phase state machine to restart at action 4
+  on the next update. No arguments or return value; the object is reached only via r5, so callers must
+  set it up before jumping here. The exact meaning of action 4 depends on the per-object action table,
+  which is not shown.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrh/strh on r5,#oBattleObject_Timer with sub #1 implements a per-frame countdown (asm lines
+    2-4); bge locret keeps the routine waiting until the decremented timer goes negative (line 5); on
+    expiry, mov r0,#4; strb into oBattleObject_CurAction selects the next action state (lines 6-8); strh
+    #0 into oBattleObject_CurPhaseAndPhaseInitialized resets the phase machine alongside the action change
+    (lines 9-10)'
+  refs:
+  - bn6f/asm/asm31.s:26553
+  reproduce: python3 tools/asmcat.py 0x080C3DC8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- what action id 4 means in the caller's action table (no callers known)
+- whether this step is shared by many battle object kinds or specific to one
+- how Timer gets set before this step runs
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C3DC8 -> battle_timerWaitStep
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C3DC8

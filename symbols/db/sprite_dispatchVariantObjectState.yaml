@@ -1,0 +1,43 @@
+name: sprite_dispatchVariantObjectState
+address: '0x08117404'
+kind: function
+status: probable
+summary: Runs a variant-object's per-state handler, dispatching on the object's state byte to its init,
+  update, or teardown routine.
+interface: (r5 = object struct, r1 = [r5,#8] state index used internally) -> r0 = handler's return; calls
+  handler as Thumb via mov lr,pc / bx
+details: 'Reads the byte at [r5,#8] of the object struct in r5 and uses it as an index into the three-entry
+  table off_8117418, then long-calls the selected Thumb handler with no other arguments set up. Entry
+  0 is sprite_initVariantObject, entry 1 is sprite_updateVariantObject, entry 2 is the unknown sub_81174B8
+  (likely a delete/cleanup step, given the init/update/deinit pattern). This is a classic BN6 object state-machine
+  dispatcher: state 0 = first-time init, state 1 = normal update, state 2 = another lifecycle phase. r5
+  is left as-is, so the callee presumably also receives the object pointer in r5. State byte is not validated,
+  so an out-of-range value would jump to garbage.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r1,[r5,#8] / ldr r0,[off_8117414 table,r1]: state byte selects the handler — asm lines
+    2-4; table entries are sprite_initVariantObject+1 and sprite_updateVariantObject+1: init-then-update
+    state pattern; mov lr,pc / bx r0: standard GBA long-call to Thumb routine with no extra args set up;
+    third entry sub_81174B8 fits deinit/destroy role completing the lifecycle triple'
+  refs:
+  - bn6f/asm/asm32.s:18893
+  reproduce: python3 tools/asmcat.py 0x08117404
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- no known callers, so r5's exact object struct and where the state byte is set to 0/1/2 are unconfirmed
+- what sub_81174B8 does (destroy? special state?) is unknown
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8117404 -> sprite_dispatchVariantObjectState
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8117404

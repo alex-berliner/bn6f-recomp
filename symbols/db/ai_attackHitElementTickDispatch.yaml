@@ -1,0 +1,42 @@
+name: ai_attackHitElementTickDispatch
+address: '0x080F1F18'
+kind: function
+status: probable
+summary: Dispatches an AI attack-state tick handler based on the attack's hit element (two-way jump table)
+interface: (r7 = AI attack vars struct base) -> tail-dispatch to handler(r0 = HitElement); no return value
+  of its own
+details: Loads the HitElement byte from the oAIAttackVars struct pointed at by r7 and uses it as an index
+  into a two-entry function-pointer table (off_80F1F2C), then performs a Thumb dispatch (mov lr, pc; bx
+  r1) so the handler's return pops straight into the epilogue — i.e. this is a computed tail-call, not
+  an ordinary call. Element 0 routes to a local routine sub_80F1F34, element 1 to ai_attackRecoveryTick.
+  So the hit element selects which per-element update/recovery behavior runs for the AI attack. Only two
+  elements are handled; any value other than 0/1 would load a pointer from past the table.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r7,#oAIAttackVars_HitElement]; ldr r1,[r1,r0] indexes the table by hit element; table
+    off_80F1F2C contains sub_80F1F34+1 and ai_attackRecoveryTick+1, both Thumb handlers; mov lr,pc; bx
+    r1 is a Thumb tail-dispatch idiom, so the callee returns directly to this function's caller
+  refs:
+  - bn6f/asm/asm31.s:127581
+  reproduce: python3 tools/asmcat.py 0x080F1F18
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- No callers known, so the purpose of sub_80F1F34 (the element-0 handler) and why only two hit elements
+  are distinguished is unknown
+- What sets oAIAttackVars_HitElement and what the two branches correspond to in battle terms (e.g. normal
+  vs special element) needs a caller or handler analysis
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F1F18 -> ai_attackHitElementTickDispatch
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F1F18

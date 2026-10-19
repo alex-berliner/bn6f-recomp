@@ -1,0 +1,43 @@
+name: e_decrementCountdown
+address: '0x08143F7C'
+kind: function
+status: probable
+summary: Ticks down a countdown counter in eStruct2001010 while a fade is active in a specific subsystem,
+  unless a flag byte blocks it.
+interface: () -> r0 = undefined; no flags relied on; reads caller's r5 as a structure pointer
+details: Takes no arguments; it tests byte [r5+9] of the caller's r5 (a structure the callee never sets
+  up), and returns immediately if it is nonzero. Otherwise it loads dword at eStruct2001010+0xC (0x200101C),
+  decrements it, and stores it back — but only if the decremented value is >= 0 (the blt skips the store),
+  so the counter floors at 0. The call site only runs it while IsScreenFadeActive returns true and GameState->SubsystemIndex
+  == 4, suggesting the counter gates something during a fade in that subsystem.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_8143F7C: tst [r5,#9] early-out, then ldr/str of [eStruct2001010,#0xC] with sub #1 and blt
+    guarding the store (floor at 0); caller 0x081440A2: only calls it after IsScreenFadeActive is true
+    (beq skips the call); caller 0x0814409A: ldrb GameState_SubsystemIndex; cmp #4; bne skips the call;
+    the function''s only known data touch is eStruct2001010, offset 0xC (dword_200101C), and its result
+    is unused by the caller'
+  refs:
+  - bn6f/asm/asm37_1.s:4342
+  - 0x08144048 sub_8144048
+  reproduce: python3 tools/asmcat.py 0x08143F7C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- what structure r5 points to and what the [r5+9] enable/flag byte means
+- what the countdown at 0x200101C drives (who reads/consumes it when it reaches 0)
+- what subsystem index 4 is and why the tick only runs during a screen fade
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8143F7C -> e_decrementCountdown
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8143F7C

@@ -1,0 +1,41 @@
+name: ai_dispatchTimedAttackByHitElement
+address: '0x080F0C48'
+kind: function
+status: probable
+summary: Runs the AI's timed-attack handler selected by the current attack's hit element (one special
+  element gets its own handler, others fall through to the generic one).
+interface: '(r0 = argument passed through to the handler, r7 = AI attack vars struct) -> tail-calls handler
+  selected by [r7, #oAIAttackVars_HitElement]; flags clobbered by callee'
+details: Reads the HitElement byte of the AI attack vars struct pointed to by r7, indexes the two-word
+  jump table at off_80F0C5C with it, and performs a long call (mov lr, pc; bx r1) so the callee returns
+  straight to this function's caller. Table entry 0 is sub_80F0C64 (unknown) and any other element value
+  dispatches to ai_runTimedAttackState. r0 is forwarded unmodified as the callee's first argument. Effectively
+  a two-way element-based branch on top of ai_runTimedAttackState.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0, [r7,#oAIAttackVars_HitElement]; ldr r1,[r1,r0] indexes the table with the hit-element
+    byte (sub_80F0C48); table has exactly two entries: sub_80F0C64+1 and ai_runTimedAttackState+1 (off_80F0C5C);
+    mov lr, pc; bx r1 makes it a tail-call dispatcher, not a state machine itself; target ai_runTimedAttackState
+    indicates the dispatch is within the AI timed-attack code path'
+  refs:
+  - bn6f/asm/asm31.s:124873
+  reproduce: python3 tools/asmcat.py 0x080F0C48
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- What sub_80F0C64 does and which hit-element values occur in oAIAttackVars_HitElement — callers setting
+  HitElement would show which element gets special treatment
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F0C48 -> ai_dispatchTimedAttackByHitElement
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F0C48

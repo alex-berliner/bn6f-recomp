@@ -1,0 +1,42 @@
+name: ai_attackDispatchByElement
+address: '0x080F0778'
+kind: function
+status: probable
+summary: Dispatches an AI attack step to an element-specific handler chosen from a table indexed by the
+  attack's hit element.
+interface: (r7 = AI attack object) -> tail-calls handler from off_80F078C[table[r0]] where r0 = r7->oAIAttackVars_HitElement;
+  returns to this function's caller via popped r7/pc
+details: 'Loads the byte at oAIAttackVars_HitElement from the AI attack struct in r7, uses it to index
+  off_80F078C, and performs a Thumb tail-call (mov lr,pc; bx r1) to the selected handler. The table has
+  three entries: ai_objectThrowStep, battle_attackAdjacentPanels, and object_commitPanelMove, so different
+  hit elements route to different attack behaviors (throw-object, adjacent-panel attack, panel-move commit).
+  Because lr is set to the next instruction, the handler''s return lands on pop {r7,pc}, making this a
+  transparent trampoline to the caller. No range check on the element byte, so HitElement must already
+  be within 0-2 when called.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r7,#oAIAttackVars_HitElement] then ldr r1,[r1,r0] indexes the handler table by element;
+    off_80F078C holds ai_objectThrowStep+1, battle_attackAdjacentPanels+1, object_commitPanelMove+1; mov
+    lr,pc; bx r1 is a Thumb tail-call whose return address is the following pop {r7,pc}
+  refs:
+  - bn6f/asm/asm31.s:124202
+  reproduce: python3 tools/asmcat.py 0x080F0778
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- No callers known, so which attack routine invokes this and how HitElement is set beforehand is unknown
+- The mapping of which element values (0-2) select which of the three handlers is not established
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F0778 -> ai_attackDispatchByElement
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F0778

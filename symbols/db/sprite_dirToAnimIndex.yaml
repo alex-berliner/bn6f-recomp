@@ -1,0 +1,47 @@
+name: sprite_dirToAnimIndex
+address: '0x080A8C7C'
+kind: function
+status: probable
+summary: Converts an overworld object's facing-direction field into a sprite animation index (0-3) used
+  with sprite_setAnimation/sprite_changeAnimation.
+interface: (r7 = object struct ptr; reads halfword [r7,#4]) -> r0 = animation index 0-3 from table {2,3,0,1};
+  no flags used
+details: Takes bits 8-15 of the halfword at [r7,#4] (a direction/angle value), adds 0x20 (rounds when
+  shifting by 6), shifts right 6, masks with 3, and indexes dword_80A8C94 (0x1000302 = bytes 02,03,00,01),
+  returning a permutation of the 2-bit direction quadrant. Callers all immediately pass the result to
+  sprite_setAnimation or sprite_changeAnimation after loading sprite (0x80,0x1C,0x66) with sprite_load,
+  so it is a direction-to-animation-frame mapper. The +0x20 before >>6 means the direction is rounded
+  to the nearest 1/4 turn rather than truncated. The table reorders raw quadrant values (0->2, 1->3, 2->0,
+  3->1) to match the order of animation rows in that sprite's animation bank.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_80A8C7C: ldrh [r7,#4]; lsr #8; add #0x20; lsr #6; and #3; ldrb from 0x1000302 table ->
+    returns 0-3; sub_80A8AF4 @0x80A8B04: result stored then passed to sprite_setAnimation right after
+    sprite_load(0x80,0x1C,0x66); sub_80A8B4C @0x80A8B9C and sub_80A8BBC @0x80A8BF0: result feeds sprite_changeAnimation
+    between ow_refreshObjectSpritePriority and sub_80A8D7C; callers are overworld object scripts (ReadOWPlayerObjectCoords,
+    ow_refreshObjectSpritePriority), so the direction field is a map-object facing value'
+  refs:
+  - bn6f/asm/asm29.s:7594
+  - 0x080A8AF4 sub_80A8AF4
+  - 0x080A8B4C sub_80A8B4C
+  - 0x080A8BBC sub_80A8BBC
+  reproduce: python3 tools/asmcat.py 0x080A8C7C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- exact semantics/units of bits 8-15 of the [r7,#4] field (presumably a 0-255 facing direction)
+- which overworld sprite/object this animation mapping belongs to beyond resource id 0x80,0x1C,0x66
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80A8C7C -> sprite_dirToAnimIndex
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A8C7C

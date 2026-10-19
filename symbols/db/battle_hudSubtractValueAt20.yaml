@@ -1,0 +1,42 @@
+name: battle_hudSubtractValueAt20
+address: '0x0801DFD0'
+kind: function
+status: probable
+summary: Subtracts r0 from the halfword at +0x20 of the battle HUD struct, clamping at zero (probable
+  shown-HP damage display).
+interface: (r0 = amount to subtract) -> r0 = destroyed; writes halfword at eStruct2035280+0x20
+details: Loads the halfword at +0x20 of the HUD struct eStruct2035280, computes field - r0, and if the
+  result would go negative stores 0 instead, then writes the result back with strh. The saturating-at-zero
+  decrement is the classic pattern for draining a displayed counter, e.g. the HP box's shown HP dropping
+  on damage. However symdb records the HP box's shown HP at +0x24, not +0x20, so +0x20 may instead be
+  another HUD counter (timer/position) that is decremented in bounded steps. No callers are known, so
+  the meaning of r0 (damage amount vs. per-frame decrement) is unconfirmed.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldr r2, off_801E0D8 loads eStruct2035280, the battle HUD state struct; ldrh r1,[r2,#0x20]; sub
+    r1,r1,r0; strh r1,[r2,#0x20] — read-modify-write of the +0x20 halfword by r0; bge loc_801DFDC / mov
+    r1,#0 — result is saturated at zero, typical of HP/counter drain; symdb ties eStruct2035280 to the
+    HP box's shown HP, redraw and request bits
+  refs:
+  - bn6f/asm/asm00_2.s:31853
+  reproduce: python3 tools/asmcat.py 0x0801DFD0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- 'No callers known: need a call site to see what r0 is (damage amount vs. timer decrement).'
+- 'Field at +0x20 vs symdb''s shown-HP at +0x24: need a writer of +0x24 (e.g. the hit/heal updater) to
+  tell whether +0x20 is the shown HP copy or an unrelated HUD timer.'
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_801DFD0 -> battle_hudSubtractValueAt20
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_801DFD0

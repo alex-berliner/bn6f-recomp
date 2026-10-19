@@ -1,0 +1,45 @@
+name: sound_m4aMPlayContinue
+address: '0x0814E85C'
+kind: function
+status: probable
+summary: Resumes a stopped music player by clearing its stop flag (bit 31 of the MPlayInfo status word).
+interface: (r0 = *MPlayInfo) -> r0 = new status (callers ignore it); flags clobbered by the cmp.
+details: 'This is the M4A sdk routine m4aMPlayContinue: it first validates the struct by checking that
+  offset 0x34 holds the ident magic 0x68736D53 ("Smsh"), and returns without touching anything if it doesn''t
+  match. It then loads the status word at +4, ANDs it with 0x7FFFFFFF to clear bit 31 (the stop/halt flag
+  set by m4aMPlayStop), and stores it back. MPlayMain then resumes playback of the track already loaded
+  in that player. sub_814EA84 is a bare wrapper that forwards its argument.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_814E85C: cmp of [r0,#0x34] against dword_814E874 = 0x68736D53 is the MPlayInfo ident check
+    from the M4A sound sdk; sub_814E85C: ldr r1,=0x7fffffff / and r0,r1 / str r0,[r2,#4] clears bit 31
+    of the status word at +4; caller sound_playMusicId 0x814E9E2: when [r1,#4] is negative (bit 31 = stopped)
+    it calls this instead of restarting via sound_814F104, i.e. resumes the current song; caller sub_814EA24:
+    compares the requested track against the player''s current entry and calls this only when they match
+    — resume rather than restart; identical magic+mask pattern in M4A''s m4aMPlayContinue in other GBA
+    sound sdk builds'
+  refs:
+  - bn6f/asm/libs.s:22876
+  - 0x0814E99C sound_playMusicId
+  - 0x0814EA24 sub_814EA24
+  - 0x0814EA84 sub_814EA84
+  reproduce: python3 tools/asmcat.py 0x0814E85C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- 'exact M4A source-name confirmation: whether callers elsewhere rely on any other side effect beyond
+  clearing the stop bit'
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_814E85C -> sound_m4aMPlayContinue
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_814E85C

@@ -1,0 +1,42 @@
+name: ai_attackElementDispatch
+address: '0x080ECACA'
+kind: function
+status: probable
+summary: Dispatcher that calls one of three AI attack handlers chosen by the attack's hit element
+interface: (r7 = AI attack vars struct) -> tail-calls handler in r0; no direct return value of its own
+details: 'Reads oAIAttackVars_HitElement (byte at [r7, offset]) from the AI attack-vars struct and uses
+  it as an index into the 3-entry table off_80ECADC, loading a function pointer and calling it with the
+  mov lr,pc / bx r1 Thumb call trick, then returns to the caller via pop {pc}. Entry 0 calls sub_80ECAE8,
+  entry 1 calls sub_80ECB28, and entry 2 calls the known ai_attackReleaseWait. So this routes post-attack
+  behavior per element class: two elements get dedicated handlers while the remaining one just runs the
+  generic attack release wait. The exact semantics of sub_80ECAE8/sub_80ECB28 would pin down which element
+  values map to which behavior.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_HitElement] indexes ldr r1,[r1,r0] over off_80ECADC (3 words: sub_80ECAE8,
+    sub_80ECB28, ai_attackReleaseWait+1); mov lr,pc; bx r1 followed by pop {pc} is a call-and-return wrapper
+    around the selected handler; ai_attackReleaseWait is the third target, tying the dispatcher to the
+    AI attack subsystem; the r7 base is the AI attack-vars struct, as the oAIAttackVars_ field offset
+    is used directly'
+  refs:
+  - bn6f/asm/asm31.s:115938
+  reproduce: python3 tools/asmcat.py 0x080ECACA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- which element values map to sub_80ECAE8 vs sub_80ECB28 (their code is unknown), and whether values >2
+  occur (they would read past the table)
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80ECACA -> ai_attackElementDispatch
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80ECACA

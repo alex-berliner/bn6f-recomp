@@ -1,0 +1,50 @@
+name: rfu_getLinkSlotMask
+address: '0x0803DFAC'
+kind: function
+status: probable
+summary: Condenses the connection-bitmap bits of the RFU link status word at eLinkState+0x48 into an 8-bit
+  mask of connected link slots
+interface: '(r0 = 32-bit RFU status word, e.g. [eLinkState+0x48]) -> r0 = bitmask: bits 24..30 of input
+  -> bits 0..6, input bit 8 -> bit 7; flags preserved-ish, r4-r7 clobbered'
+details: 'The function tests eight fixed bits of the input word and rebuilds a mask in r6: input bits
+  0x01000000-0x40000000 are copied straight down to output bits 0x01-0x40 (i.e. (in >> 24) & 0x7F), and
+  input bit 0x100 is moved to output bit 0x80. Callers read this word from eLinkState+0x48, the RFU communication
+  status, and mask the result with 0x7F and 0x80: rfu_isLinkBusy treats a nonzero 0x7F part as ''remote
+  slots present'' (then requires eLinkState+0xC >= 8) and a zero 0x7F part as ''no remotes'' (requiring
+  +0xC == 0), while sub_803E018 tests 0x7F and 0x80 separately to pick error/state values 4 vs 8. So bits
+  0-6 look like a per-slot/peer bitmap and bit 7 a distinct flag (likely own slot/parent). Pure bit-mapping,
+  no memory access.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'asm: each block does ''ldr r1,=bit; and r1,r4; beq skip; orr r6,bitout'' — a pure bit remap,
+    outputs 1..0x80 from inputs 0x100 and 0x01000000..0x40000000; rfu_isLinkBusy 0x803DE38: ldr r0,[r7,#0x48];
+    bl sub_803DFAC; mov r1,#0x7f; and r1,r0 — masks the low 7 bits as a ''peers present'' test; sub_803E018
+    0x803E022: tests (r0 & 0x7F) and (r0 & 0x80) independently, so bit 7 is a flag outside the 0-6 mask;
+    both 0x803DE24 and 0x803DDEC gate on eLinkState+0xC (>=8 vs ==0) keyed to whether the 0x7F mask is
+    empty — consistent with a connected-slot bitmap'
+  refs:
+  - bn6f/asm/asm03_1_1.s:10263
+  - 0x0803DE24 rfu_isLinkBusy
+  - 0x0803DDEC sub_803DDEC
+  - 0x0803E018 sub_803E018
+  reproduce: python3 tools/asmcat.py 0x0803DFAC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- exact meaning of each mask bit (which slot/player index each of input bits 24-30 corresponds to)
+- full layout of the status word at eLinkState+0x48 and what input bit 8 (output 0x80) denotes
+- whether sub_803E018's 4/8 outcomes are error codes or state transitions
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803DFAC -> rfu_getLinkSlotMask
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803DFAC

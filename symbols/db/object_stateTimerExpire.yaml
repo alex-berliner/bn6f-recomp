@@ -1,0 +1,41 @@
+name: object_stateTimerExpire
+address: '0x08038D7C'
+kind: function
+status: probable
+summary: 'Per-frame countdown for an object: when its timer hits zero it switches the object to state
+  0x14, reloads the timer with 0x2E, and calls a follow-up routine.'
+interface: (r5 = object/state struct) -> r0 = result of sub_8039024; flags from that call only on timer
+  expiry
+details: Reads the halfword timer at [r5+4] and decrements it each call. When it reaches zero, the byte
+  state/mode field at [r5+2] is set to 0x14 and the timer is reloaded with 0x2E (46 frames), then sub_8039024
+  is invoked — consistent with the common BN6 object pattern of a mode byte plus a frame-countdown halfword.
+  On all other ticks it just returns. Nothing else in the function touches r5 or globals.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrh r0,[r5,#4]; sub r0,#1; strh — classic per-frame timer decrement field; bne skip: strb
+    0x14,[r5,#2] sets a state/mode byte only on expiry; mov r0,#0x2e; strh [r5,#4] reloads the same timer
+    field for the next phase; bl sub_8039024 only fires on the tick the timer expires'
+  refs:
+  - bn6f/asm/asm03_1_1.s:633
+  - 0x08039024 sub_8039024
+  reproduce: python3 tools/asmcat.py 0x08038D7C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- No callers known, so which entity owns the r5 struct and when this runs is unknown
+- sub_8039024 is undocumented; seeing it would reveal what the 0x14 state triggers
+- Whether 0x14 is a state ID or an animation/mode index for this object type
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8038D7C -> object_stateTimerExpire
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8038D7C

@@ -1,0 +1,47 @@
+name: copy_storeHalfwordRecord
+address: '0x0803F618'
+kind: function
+status: probable
+summary: Writes one halfword into an 8-byte (4-halfword) record of a table, letting callers fill one record
+  a halfword at a time.
+interface: (r0 = halfword value, r1 = halfword index 0..3 within record, r2 = record index) -> r0 = value
+  stored at tableBase[r2*8 + r1*2]; no return value, flags clobbered by pop
+details: 'The function computes offset = r2*8 + r1*2 (mul by 4 then lsl #1 gives r2*8; lsl r1,#1 gives
+  r1*2) and does strh r0,[r4,r1] where r4 is a base pointer loaded from the literal pool at byte_803F774+4
+  (annotated as 0x40, likely a mis-annotated pointer such as 0x02xxxx40 IWRAM buffer). It is a minimal
+  indexed store: base[r2*8 + r1*2] = r0 (halfword). It touches no other fields and preserves all registers
+  via push/pop {r0-r7,lr}. The caller builds 4 halfwords on the stack from two words of an SIO multiplayer
+  data struct and stores them into record byte_200F489, i.e. it copies one 8-byte player/slot entry into
+  the table.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_803F618: mul r2,r3(=8); lsl r1,#1; strh r0,[r4,r1] — base[r2*8 + r1*2] = r0 halfword; caller
+    0x08144942: ldrh from [sp+r4*2] with r1=r4 (0..3) and r2=[byte_200F489] — fills 4 halfwords of one
+    record; caller preamble: ldr r1,[r0,#4]; ldr r0,[r0]; str to sp — the 8 bytes stored come from a struct
+    pointed by r0 (SIOData2_2ndChild__Multi_PlayerMode_); loop bound cmp r4,#3 bls — exactly 4 halfwords
+    per record, matching the *8 record stride'
+  refs:
+  - bn6f/asm/asm03_1_1.s:13758
+  - 0x08144920 sub_8144920
+  reproduce: python3 tools/asmcat.py 0x0803F618
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- what structure the destination table is (the pool word at byte_803F774+4 is annotated as plain 0x40,
+  so the real base address/label is unknown)
+- what the 8-byte records represent in game terms (player status words? timer/config per player?) and
+  what byte_200F489 indexes (local player slot vs received-packet slot)
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803F618 -> copy_storeHalfwordRecord
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803F618

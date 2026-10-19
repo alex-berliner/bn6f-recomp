@@ -1,0 +1,43 @@
+name: battle_updateObjByCurAction
+address: '0x080C4A52'
+kind: function
+status: probable
+summary: Per-frame update for a battle object that dispatches on oBattleObject_CurAction, killing its
+  related object when the action is 1
+interface: (r5 = battle object) -> none; dispatches to handler off table off_80C4A64[curAction]
+details: Reads the object's oBattleObject_CurAction byte at [r5+offset], uses it as an index into the
+  two-entry jump table off_80C4A64, and tail-calls the selected handler via bx with a manual lr set (mov
+  lr, pc). Entry 0 points at unknown sub_80C4A6C; entry 1 points at battle_delayedKillRelatedObject, so
+  action 1 appears to be a teardown/finished state that removes the related object. With only two entries
+  the object has a two-state action lifecycle. No other fields are touched and no result is returned to
+  a caller.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r5,#oBattleObject_CurAction] then ldr r1,[r1,r0] — handler selected purely by the object's
+    current action; off_80C4A64 entry 1 = battle_delayedKillRelatedObject — action 1 ends the object by
+    killing its related object; off_80C4A64 entry 0 = sub_80C4A6C — action 0 runs an unknown per-object
+    handler; mov lr, pc; bx r1; pop {pc} — plain dispatched call, no extra setup, so the routine is only
+    a dispatcher
+  refs:
+  - bn6f/asm/asm31.s:28250
+  reproduce: python3 tools/asmcat.py 0x080C4A52
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- No known callers, so the object type and the offset of oBattleObject_CurAction within r5's struct are
+  unconfirmed
+- sub_80C4A6C (action-0 handler) is unknown; it would show what the object does in its normal state
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C4A52 -> battle_updateObjByCurAction
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C4A52

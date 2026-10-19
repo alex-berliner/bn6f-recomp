@@ -1,0 +1,42 @@
+name: object_updateTimedSelfDestruct
+address: '0x080EA0EC'
+kind: function
+status: probable
+summary: battle-object phase handler that waits 10 frames on first run, then sets the object's state to
+  CUR_STATE_DESTROY
+interface: (r5 = battle object ptr, no args) -> r0 = destroyed state written to oBattleObject_CurStateActionPhaseAndPhaseInitialized;
+  updates oBattleObject_Timer and oBattleObject_PhaseInitialized
+details: On the object's first invocation (oBattleObject_PhaseInitialized == 0) it stores 10 into the
+  halfword Timer and writes 4 to the PhaseInitialized byte so init runs only once. Every subsequent call
+  decrements Timer; while it is still > 0 the routine returns without doing anything. Once the countdown
+  reaches 0 (or below), it writes CUR_STATE_DESTROY into the object's CurStateActionPhaseAndPhaseInitialized
+  word, so the object is torn down roughly 10 frames after spawning. No other fields are touched.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#oBattleObject_PhaseInitialized] / bne skips the init block, which stores #0xa
+    to Timer and #4 to PhaseInitialized (first-run guard); Timer halfword is decremented each call; ''bgt
+    locret'' keeps the object alive while Timer > 0; on timer expiry, ''mov r0,#CUR_STATE_DESTROY; str
+    r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]'' requests destruction'
+  refs:
+  - bn6f/asm/asm31.s:110885
+  reproduce: python3 tools/asmcat.py 0x080EA0EC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- which battle object(s) use this phase (no callers known); name may be too generic once the owner object
+  is identified
+- whether PhaseInitialized value 4 has meaning shared with other phase handlers
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80EA0EC -> object_updateTimedSelfDestruct
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EA0EC

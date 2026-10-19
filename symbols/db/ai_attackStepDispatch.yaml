@@ -1,0 +1,42 @@
+name: ai_attackStepDispatch
+address: '0x080EF4B4'
+kind: function
+status: probable
+summary: Jumps to the attack-step handler for the current AI attack, chosen by the attack's element/type
+  field.
+interface: (r7 = pointer to AI attack vars) -> tail-call to handler selected by oAIAttackVars_HitElement;
+  returns to caller of this function
+details: 'Reads oAIAttackVars_HitElement (a byte in the AI attack vars struct at r7), uses it to index
+  off_80EF4C8, a two-entry table of Thumb handler addresses, and performs a long call (mov lr, pc; bx
+  r1) to the selected handler: index 0 -> ai_attackStepShoot, index 1 -> aiAttack_tickTimerAndExitWhenDone.
+  The HitElement field here evidently encodes the attack''s behavior/step type rather than a battle element.
+  Only two handler kinds are known; further attack types would extend the table.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r7,#oAIAttackVars_HitElement] + ldr r1,[r1,r0] indexes off_80EF4C8 by the attack's
+    type field; off_80EF4C8 contains ai_attackStepShoot+1 and aiAttack_tickTimerAndExitWhenDone+1 as the
+    two targets; mov lr,pc; bx r1 performs a long thumb call, so the handler returns here and pop {pc}
+    returns to the original caller
+  refs:
+  - bn6f/asm/asm31.s:121787
+  reproduce: python3 tools/asmcat.py 0x080EF4B4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- No callers known, so what sets oAIAttackVars_HitElement and when this dispatch runs in the attack state
+  machine is unconfirmed
+- Whether HitElement doubles as a real element value elsewhere in the struct is unclear
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80EF4B4 -> ai_attackStepDispatch
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EF4B4

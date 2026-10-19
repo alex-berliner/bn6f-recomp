@@ -1,0 +1,45 @@
+name: battle_anyPhaseWaitFlagSet
+address: '0x080E6438'
+kind: function
+status: probable
+summary: returns 1 if any byte of the battle object's array at +0x60 is still set, letting the caller's
+  phase wait until they all clear
+interface: (r0 = unused) -> r0 = 1 if any of the first [ExtraVars+8] bytes at r5+0x60 is nonzero, else
+  0; flags clobbered
+details: 'r5 is a battle object; the loop reads a byte count from [r5+oBattleObject_ExtraVars+8] and scans
+  the byte array at r5+0x60, returning early with 1 on the first nonzero byte and 0 only after checking
+  all count bytes. The caller (a battle object phase handler) calls an init once, then polls this each
+  frame and sets CurPhase to 4 once it returns 0, so the array likely holds per-entry busy/done flags
+  for something spawned during the phase. Note the count is compared signed (bge), and the array base
+  is a fixed +0x60 offset from the object. Quirk: if the count is 0 or negative it immediately returns
+  0.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'asm 80E6438-80E6454: loop over count in [r5+ExtraVars+8] bytes at r5+0x60, return 1 on first
+    nonzero byte else 0; caller 80E62B4: phase-init guard then bl sub_80E6438; tst r0,r0; bne keep waiting,
+    else strh #4 to CurPhase — waits until the array is all zero; caller stores #4 into PhaseInitialized
+    on entry, indicating a once-initialized polling phase pattern'
+  refs:
+  - bn6f/asm/asm31.s:102258
+  - 0x080E62B4 sub_80E62B4
+  reproduce: python3 tools/asmcat.py 0x080E6438
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- what the bytes at r5+0x60 represent (spawned objects? task slots? hit flags?) and who writes them
+- why the count lives at oBattleObject_ExtraVars+8 and how it is set
+- whether other callers exist that use the return value differently
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E6438 -> battle_anyPhaseWaitFlagSet
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E6438

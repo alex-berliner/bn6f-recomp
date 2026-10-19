@@ -1,0 +1,43 @@
+name: battle_objectAdvanceTimer
+address: '0x080BB1C4'
+kind: function
+status: probable
+summary: Advances a battle object's timer by r6 and clears its PhaseInitialized flag once the timer reaches
+  the stored limit.
+interface: (r5 = battle object, r6 = amount to add) -> r0 = 0 on threshold reached else nonzero (leftover
+  from cmp); flags set by comparison
+details: Adds r6 to the value at oBattleObject_ExtraVars+0x14 (the running counter), storing the sum back.
+  It then loads the limit at ExtraVars+0xc and compares it to the new counter value. If they differ the
+  function just returns; if equal, it writes 0 to oBattleObject_PhaseInitialized, signaling whatever phase-wait
+  logic relies on that flag to proceed. No flags are deliberately computed; r0 ends up as the comparison
+  result.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: add r1, r1, r6 / str r1, [r5,#ExtraVars+0x14] — r6 is an increment applied to a persistent counter
+    field; ldr r0, [r5,#ExtraVars+0xc]; cmp r0, r1 — the counter is checked against another ExtraVars
+    field acting as a limit; strb r0, [r5,#oBattleObject_PhaseInitialized] with r0=0 — reaching the limit
+    resets the phase-initialized flag; bne locret — the flag clear only happens exactly at equality, so
+    this is a count-up-to-target step
+  refs:
+  - bn6f/asm/asm31.s:6739
+  reproduce: python3 tools/asmcat.py 0x080BB1C4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- No known callers, so which phases/objects use this and what r6 typically is (frame delta vs fixed step)
+  is unknown
+- Whether ExtraVars+0xc is initialized elsewhere as a target time or step count
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BB1C4 -> battle_objectAdvanceTimer
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BB1C4

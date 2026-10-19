@@ -1,0 +1,44 @@
+name: battle_appearPhaseDispatch
+address: '0x080E6AD0'
+kind: function
+status: probable
+summary: 'Dispatches a battle object''s phase state machine: calls one of three handlers (spawn appear
+  effect, white wait, next phase) based on the object''s CurPhase.'
+interface: (r5 = battle object, r0 ignored) -> tail-calls handler for oBattleObject_CurPhase (0..2); returns
+  handler's result
+details: 'Loads the jump table base from off_80E6AE0 into r1, reads the object''s current phase byte from
+  [r5 + oBattleObject_CurPhase], indexes the table to get a Thumb handler pointer, then performs a BL-style
+  tail call via ''mov lr, pc; bx r1''. The table at off_80E6AE4 has exactly three entries: battle_spawnAppearEffect+1
+  (phase 0), battle_whiteWaitPhaseUpdate+1 (phase 1), and sub_80E6B64+1 (phase 2). This is the standard
+  BN6 per-object phase dispatcher pattern; r5 is not otherwise touched, so the handlers use it as their
+  object pointer. The .word 0,0 padding after ''pop {pc}'' aligns the literal pool.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0, [r5,#oBattleObject_CurPhase] + ldr r1, [r1,r0] indexes the table by the object's phase;
+    off_80E6AE4 holds battle_spawnAppearEffect+1, battle_whiteWaitPhaseUpdate+1, sub_80E6B64+1 — three
+    phase handlers; mov lr, pc / bx r1 is the Thumb BL tail-call pattern, so the function is a pure dispatcher;
+    callee names spawnAppearEffect/whiteWaitPhaseUpdate indicate an appear sequence (phase 0 spawn effect,
+    phase 1 white-flash wait)
+  refs:
+  - bn6f/asm/asm31.s:103202
+  reproduce: python3 tools/asmcat.py 0x080E6AD0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- No known callers, so it is unclear which battle object/entity uses this dispatcher
+- sub_80E6B64 (phase 2 handler) is unknown, so the full sequence after the white-wait phase is unidentified
+- Whether r5 is the only context the handlers rely on (vs. other registers) is unverified
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E6AD0 -> battle_appearPhaseDispatch
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E6AD0

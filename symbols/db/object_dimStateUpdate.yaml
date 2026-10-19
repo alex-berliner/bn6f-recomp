@@ -1,0 +1,44 @@
+name: object_dimStateUpdate
+address: '0x080E6BFC'
+kind: function
+status: probable
+summary: Per-frame state handler for a battle object, dispatching on its current action to dim the screen,
+  run a middle state, or undim the screen
+interface: (r5 = battle object) -> calls handler from jump table with r0 = CurAction value; flags from
+  callee
+details: 'Reads oBattleObject_CurAction (byte at r5) and indexes off_80E6C10, a table of three Thumb handlers,
+  then calls the selected one via a manually-set LR (mov lr, pc; bx r1) and returns with its result/flags.
+  Handlers: action 0 = object_dimScreen, action 1 = sub_80E6C1C (unknown), action 2 = object_undimScreen.
+  Note the table pointer is loaded via a double indirection (off_80E6C0C points at off_80E6C10), a common
+  pattern for relocated tables. The object is passed in r5 rather than r0, so the caller keeps the object
+  pointer in a register across the call. The middle state''s behavior is unknown and could change the
+  summary.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r5,#oBattleObject_CurAction] then ldr r1,[r1,r0] selects handler by action index; jump
+    table off_80E6C10 holds object_dimScreen+1, sub_80E6C1C+1, object_undimScreen+1; mov lr, pc; bx r1
+    is the standard thumb long-call idiom, so this is a dispatch trampoline returning to the caller; dim/undim
+    callees imply the object's states toggle a screen-dimming effect during battle
+  refs:
+  - bn6f/asm/asm31.s:103388
+  reproduce: python3 tools/asmcat.py 0x080E6BFC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- no callers known, so which battle object uses this update and when (boss intro, dark aura, etc.) is
+  unconfirmed
+- sub_80E6C1C (middle action handler) is unknown; it may not relate to dimming at all
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E6BFC -> object_dimStateUpdate
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E6BFC

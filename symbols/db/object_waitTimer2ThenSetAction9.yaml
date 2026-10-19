@@ -1,0 +1,43 @@
+name: object_waitTimer2ThenSetAction9
+address: '0x080D41E8'
+kind: function
+status: probable
+summary: Counts down a battle object's Timer2 each frame; when it expires, switches the object to CurAction
+  9 and resets its phase state.
+interface: (r5 = battle object, implicit) -> r0 clobbered; sets Z from the decremented Timer2
+details: Reads the halfword at oBattleObject_Timer2 of the battle object in r5, decrements it, and writes
+  it back. If the result is nonzero it returns immediately; when the timer reaches 0 it stores 9 into
+  oBattleObject_CurAction and zeroes oBattleObject_CurPhaseAndPhaseInitialized, so the object's actor
+  loop will dispatch into action 9 starting from phase 0. The bne after the store reuses the stored value's
+  flags, so the expiry branch is taken exactly once. It is a per-frame 'wait N frames, then move to next
+  action' step, typical of battle object state machines. r5 is assumed set up by the caller's object-iteration
+  convention.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrh/strh on oBattleObject_Timer2 with sub #1 implements a per-frame countdown; bne locret
+    keeps the object in the same action until the timer hits zero; strb #9 to oBattleObject_CurAction
+    and strh #0 to oBattleObject_CurPhaseAndPhaseInitialized on expiry switch the object to a new action
+    from its first phase'
+  refs:
+  - bn6f/asm/asm31.s:62167
+  reproduce: python3 tools/asmcat.py 0x080D41E8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- No callers are known, so what action 9 means for the owning object (finish, idle, despawn...) and what
+  Timer2 was loaded with is unknown; callers showing the Timer2 setup and the surrounding action switch
+  would pin down the game-level purpose
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D41E8 -> object_waitTimer2ThenSetAction9
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D41E8

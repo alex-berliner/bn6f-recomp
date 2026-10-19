@@ -1,0 +1,44 @@
+name: object_trySetState2
+address: '0x080F8E90'
+kind: function
+status: probable
+summary: Attempts to switch an object's AI state to 2 when it is idle, returning success
+interface: (r0 = pointer to a handle whose [r0] points to an object) -> r0 = 1 if state 2 was set, 0 if
+  object missing or busy; flags clobbered
+details: Dereferences the pointer at [r0]; if NULL it returns 0. If the object's byte at offset +9 is
+  zero (interpreted as 'not busy/idle'), it stores 2 into the object's byte at +7 (its AI state/action
+  selector) and returns 1; otherwise it returns 0 without changing anything. The caller passes a scratch-stored
+  object pointer from AI attack vars and, on success, starts a 0x10-frame step timer and moves its own
+  attack state to 4, i.e. it waits for this call to succeed before advancing, retrying each frame while
+  the target object is busy.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_80F8E90: ldr r2,[r0]; tst/beq returns 0 for null object pointer; sub_80F8E90: ldrb r0,[r2,#9];
+    cmp/bne skips the write, gating on the +9 flag; sub_80F8E90: mov r0,#2; strb r0,[r2,#7]; mov r1,#1
+    — writes state 2 and returns success; caller 0x080F8C2C: bl sub_80F8E90; tst/beq retries, on success
+    sets StepTimer=0x10 and AttackElement=4; ScratchVar passed as r0 is a pointer (function does ldr r2,[r0]),
+    consistent with an object/handle reference'
+  refs:
+  - bn6f/asm/asm31.s:141821
+  - 0x080F8C22 sub_80F8C22
+  reproduce: python3 tools/asmcat.py 0x080F8E90
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- Exact meaning of object fields +7 (state/action id) and +9 (busy/anim flag) — needs the object structure
+  or other writers of byte +7
+- Which kind of object the caller's ScratchVar points to (own player object vs a spawned entity)
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F8E90 -> object_trySetState2
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F8E90

@@ -1,0 +1,45 @@
+name: ow_bg2WipeTransitionStep
+address: '0x0802ABD0'
+kind: function
+status: probable
+summary: Overworld state-machine step that advances the BG2 wipe transition and, once it finishes, loads
+  the next state and a table parameter.
+interface: (r5 = overworld state struct) -> r0 = clobbered; returns with callee's flags (EQ = wipe finished);
+  writes r5+1=0x0C, r5+2=r5+3=0, r5+7=table byte
+details: Calls ow_wipeBg2Columns and returns immediately unless it comes back with EQ (wipe complete).
+  On completion it stores 0x0C into struct byte +1 (next state id), zeroes bytes +2 and +3, then reads
+  a halfword from the table at unk_2031000 indexed by byte r5+0x10 doubled (r5[0x10]*2) and stores its
+  low byte into r5+7. r5 is not set up inside the function, so callers must place the struct pointer in
+  r5. The table lookup suggests a per-entry parameter (e.g. scroll target, speed, or destination id) chosen
+  by field 0x10.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl ow_wipeBg2Columns; bne locret: only proceeds to completion code when the wipe callee reports
+    done (asm lines 2-3); mov r0,#0xC; strb r0,[r5,#1] plus zeroing r5+2/+3: sets a next-state field,
+    typical state-machine pattern; ldrb r0,[r5,#0x10]; lsl r0,#1; ldrh from unk_2031000; strb [r5,#7]:
+    indexes a halfword table by field 0x10 and copies low byte to field 7; callee summary: ow_wipeBg2Columns
+    blanks BG2 columns while scrolling until 120px, i.e. a transition effect this step drives'
+  refs:
+  - bn6f/asm/asm03_0.s:10116
+  - 0x0802AFD4 ow_wipeBg2Columns
+  reproduce: python3 tools/asmcat.py 0x0802ABD0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- No callers known, so the meaning of the r5 struct fields (+1, +2, +3, +7, +0x10) and which state id
+  0x0C leads to is unconfirmed
+- Contents of halfword table unk_2031000 are unknown; the stored byte's purpose (parameter vs id) is unclear
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_802ABD0 -> ow_bg2WipeTransitionStep
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802ABD0

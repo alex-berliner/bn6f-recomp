@@ -1,0 +1,40 @@
+name: object_wait60ThenDestroy
+address: '0x080BF67E'
+kind: function
+status: probable
+summary: 'battle object phase: idle for 60 frames, then destroy the object'
+interface: (r5 = battle object, not passed in r0) -> r0 = scratch; sets oBattleObject_Timer, oBattleObject_PhaseInitialized,
+  oBattleObject_CurStateActionPhaseAndPhaseInitialized
+details: On first run of the phase (oBattleObject_PhaseInitialized == 0) it stores 0x3C (60) into oBattleObject_Timer
+  and writes 4 to oBattleObject_PhaseInitialized. Every subsequent run decrements oBattleObject_Timer;
+  while the result is > 0 it does nothing. When the timer reaches 0 it stores CUR_STATE_DESTROY into oBattleObject_CurStateActionPhaseAndPhaseInitialized,
+  telling the object framework to delete the object. The unused r0 result and use of r5 match the standard
+  battle-object phase-update calling convention.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#oBattleObject_PhaseInitialized] / bne: init-once guard typical of phase handlers;
+    mov r0,#0x3c; strh r0,[r5,#oBattleObject_Timer]: 60-frame delay set on entry; sub r0,#1; strh r0,[r5,#oBattleObject_Timer];
+    bgt locret: countdown each call; mov r0,#CUR_STATE_DESTROY; str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]:
+    self-destructs when timer expires'
+  refs:
+  - bn6f/asm/asm31.s:16307
+  reproduce: python3 tools/asmcat.py 0x080BF67E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- which battle objects/phases route here (no callers known), and what the object does visually during
+  the 60-frame wait
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BF67E -> object_wait60ThenDestroy
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BF67E

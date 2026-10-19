@@ -1,0 +1,40 @@
+name: battle_objectLingerThenDestroy
+address: '0x080D142C'
+kind: function
+status: probable
+summary: Battle-object update handler that clears the object's flag bit 1, counts down its Timer, and
+  destroys the object when it hits zero
+interface: (r0 = battle object ptr in r5 convention, no args) -> r0 = 0/destroy-state written; sets object
+  state to CUR_STATE_DESTROY when Timer expires
+details: Reads oObjectHeader_Flags from r5, clears bit 0x2, and stores it back. Then decrements the halfword
+  oBattleObject_Timer; if the result is nonzero the call returns, otherwise it stores CUR_STATE_DESTROY
+  into oBattleObject_CurStateActionPhaseAndPhaseInitialized, signaling the object scheduler to destroy
+  the entity. r5 is the object pointer per the standard battle-object update calling convention. Effectively
+  a fixed-delay self-destruct phase for an object.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bic r0,#2 / strb to oObjectHeader_Flags clears a per-object flag (asm lines 1-4); decrement
+    of oBattleObject_Timer with bne skip shows a frame countdown (asm lines 5-8); locd stores CUR_STATE_DESTROY
+    into oBattleObject_CurStateActionPhaseAndPhaseInitialized only when timer reaches 0 (asm lines 9-11)
+  refs:
+  - bn6f/asm/asm31.s:55859
+  reproduce: python3 tools/asmcat.py 0x080D142C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- which objects or states install this as their handler, and what flag bit 0x2 means, would need caller/state-table
+  evidence
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D142C -> battle_objectLingerThenDestroy
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D142C

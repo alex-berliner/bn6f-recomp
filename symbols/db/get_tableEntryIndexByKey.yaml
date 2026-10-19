@@ -1,0 +1,46 @@
+name: get_tableEntryIndexByKey
+address: '0x0803C018'
+kind: function
+status: probable
+summary: Searches a table of 8-byte records for the record whose halfword field at +2 equals the given
+  key and returns its index (0xFF if the 0xE6-terminated list ends without a match).
+interface: (r0 = pointer to first 8-byte record, r1 = 16-bit key) -> r0 = matching record index, or 0xFF
+  if none; no flag use visible
+details: 'Iterates records of stride 8 starting at r0: if the low byte at +2 is 0xE6 the list is exhausted
+  and 0xFF is returned; otherwise the halfword at +2 is compared to r1 and the running record counter
+  r3 is returned on equality, else r0 += 8 and r3++. Records are thus at least 4 bytes with the key at
+  offset 2 and a 0xE6 low-byte sentinel ending the chain. The caller (sub_803BFE8) picks the table base
+  from off_803C208 indexed by a script byte, keys it with the halfword at [r6], and on failure retries
+  the search against the next table selected by the following byte pair, calling sub_803C034 with the
+  found index otherwise.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'asm: ldrb r2,[r0,#2]/cmp #0xE6 returns 0xFF, ldrh r2,[r0,#2]/cmp r1 returns r3, stride add
+    r0,#8 — keyed search over 8-byte records; caller 0x803BFFA: r1 = ldrh [r6] and r0 = [r4,byte[r7]]
+    from table off_803C208 — key and per-byte-selected table base; caller loc_803C00E: 0xFF result leads
+    to add r7,#2 and a retry with a new table selector, i.e. chained table lookup; caller on match: bl
+    sub_803C034 with r0 = second-table base [r4,byte[r7,#1]], r1 = byte[r7,#1], r2 = r6 — match index
+    handed to a handler'
+  refs:
+  - bn6f/asm/asm03_1_1.s:6526
+  - 0x0803BFE8 sub_803BFE8
+  reproduce: python3 tools/asmcat.py 0x0803C018
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- What the 8-byte records and the off_803C208 table list actually contain (text/font data, script opcodes,
+  etc.) — needs the data at off_803C208 and a known summary of sub_803C034 to name this in game terms
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803C018 -> get_tableEntryIndexByKey
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803C018

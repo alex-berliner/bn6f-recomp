@@ -1,0 +1,46 @@
+name: battle_objectCountdownPhaseAdvance
+address: '0x080BB1A6'
+kind: function
+status: probable
+summary: Decrements a battle-object countdown by r6 and switches the object to phase 8 once the counter
+  reaches the target value.
+interface: (r5 = battle object, r6 = amount to subtract) -> r0 = clobbered; no return value; writes oBattleObject_ExtraVars+0x14
+  and possibly oBattleObject_PhaseInitialized
+details: Loads the counter at oBattleObject_ExtraVars+0x14 from the battle object in r5, subtracts r6
+  (typically 1 per frame from a caller loop), and stores it back. It then compares the stored field at
+  ExtraVars+0x10 with the new counter value; when they match it writes 8 to oBattleObject_PhaseInitialized,
+  moving the object's phase state machine to phase 8. If the values differ, nothing else happens and the
+  routine returns. So ExtraVars+0x14 acts as a decrementing timer and ExtraVars+0x10 as the stop/trigger
+  value (probably 0 or a frame target set by an earlier phase). Only the fields of the battle object are
+  touched; no callees.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_80BB1A6: ''ldr r1,[r5,#oBattleObject_ExtraVars+0x14]; sub r1,r1,r6; str'' — subtracts r6
+    from the counter each call; cmp of ExtraVars+0x10 against the new counter with ''bne locret'' — fires
+    only when the countdown reaches the stored target; ''mov r0,#8; strb r0,[r5,#oBattleObject_PhaseInitialized]''
+    — the only side effect is advancing the phase state to 8; no known callers or callees, so the timer/target
+    semantics rest entirely on this routine''s own code'
+  refs:
+  - bn6f/asm/asm31.s:6715
+  reproduce: python3 tools/asmcat.py 0x080BB1A6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- No callers are known, so what sets ExtraVars+0x10/0x14, what r6 normally is, and which AI/object uses
+  this countdown are unknown
+- What battle phase 8 means in this object's state machine (attack windup, cooldown, despawn?) is not
+  visible here
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BB1A6 -> battle_objectCountdownPhaseAdvance
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BB1A6

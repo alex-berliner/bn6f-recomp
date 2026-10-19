@@ -1,0 +1,45 @@
+name: sprite_dispatchAnimHandler
+address: '0x03006E7C'
+kind: function
+status: probable
+summary: Dispatches an animation-related handler selected by a byte in the argument struct, currently
+  routing both cases to sprite_queueAnimData.
+interface: (r0 = pointer to struct whose byte at +1 is the selector) -> calls table handler with r0 unchanged;
+  r0 result is that of the callee
+details: 'Reads a byte at [r0,#1], multiplies it by 4 to index a word table at off_3006E90, and performs
+  an ARM-mode ''mov lr,pc; bx r1'' call into the Thumb handler loaded from that table. The table has only
+  two entries, both pointing to sprite_queueAnimData+1, so every selector value other than 0 or 1 would
+  read garbage (no bounds check). It acts as a small dispatcher: r0 is passed through unchanged as the
+  handler''s argument, and the popped {r3,r7,pc} returns to the ARM caller via lr. The shared target suggests
+  this is a call-site shim for what will become multiple animation/queue commands, or a vestigial branch
+  where both opcodes do the same thing.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r3,[r0,#1]; lsl r3,r3,#2; ldr r1,[r1,r3] — selector byte indexes a 4-byte-stride table
+    (asm lines 3-5); off_3006E90 holds two words, both sprite_queueAnimData+1, i.e. Thumb handler pointers;
+    mov lr,pc; bx r1 — indirect call retaining the ARM return address, r0 passed through untouched; no
+    bounds check on the selector: values >1 would load past the 2-entry table'
+  refs:
+  - bn6f/asm/asm38.s:2813
+  reproduce: python3 tools/asmcat.py 0x03006E7C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- What structure r0 points to and what the byte at +1 means (anim command id?) — no callers are known,
+  so the argument setup at call sites is unseen
+- Whether the two table entries were meant to diverge into different handlers, or sprite_queueAnimData
+  is the only behavior
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_3006E7C -> sprite_dispatchAnimHandler
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_3006E7C

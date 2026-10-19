@@ -1,0 +1,46 @@
+name: battle_spawnTypeCCObjectPattern
+address: '0x080DED80'
+kind: function
+status: probable
+summary: Spawns a fixed pattern of related type-CC battle objects around the object, using per-variant
+  kinds and packed dx/dy offsets.
+interface: (r5 = battle object, r5+0x62 = variant index) -> r0 = void; spawns up to 7 objects via battle_spawnRelatedTypeCCObject
+details: 'Loops i = 0..6 over the terminator list byte_80DEDD8 ({0,0,0,0x10,1,0xFF,...}); stops at a 0xFF
+  entry. For each valid entry it reads kind = byte_80DEA58[variant*7 + i], where variant is the object''s
+  byte at offset 0x62, and packs the entry''s nibbles into the kind word: r2 = variant | ((entry>>4)<<14)
+  | ((entry&0xF)<<28), i.e. 4-bit dx/dy offset fields alongside the kind. It then calls battle_spawnRelatedTypeCCObject
+  with the parent object''s PanelX/PanelY (r0/r1) and r3 = 0, so each spawned CC object is placed at a
+  panel offset from the parent. byte_80DEA58 holds one 7-byte row of kinds per variant of the parent object.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'loop sub_80DED8A..loc_80DED8A: iterates 7 times, breaks when byte_80DEDD8[i] == 0xFF (pattern
+    terminator); mov r3,#7; mul r3,r7; ldrb r2,[byte_80DEA58 + r3 + i] selects the spawn kind from a 7-wide
+    per-variant table indexed by field 0x62; lsl/lsr/orr sequence packs the entry''s high nibble to bits
+    14-17 and low nibble to bits 28-31 of r2 with the variant (offset encoding); ldrb r0,[r5,#oBattleObject_PanelX];
+    ldrb r1,[r5,#oBattleObject_PanelY]; bl battle_spawnRelatedTypeCCObject passes parent panel coords
+    to the known spawn callee; caller sub_80DECBC sets anim/state fields then calls this as the final
+    step of the object''s action'
+  refs:
+  - bn6f/asm/asm31.s:85504
+  - 0x080DECBC sub_80DECBC
+  - 0x080DEFD6 battle_spawnRelatedTypeCCObject
+  reproduce: python3 tools/asmcat.py 0x080DED80
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- exact meaning of the two 4-bit packed fields (dx/dy in panels vs pixels) inside the kind word
+- what kinds byte_80DEA58 contains for other variants of field 0x62
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DED80 -> battle_spawnTypeCCObjectPattern
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DED80

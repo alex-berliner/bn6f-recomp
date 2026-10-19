@@ -1,0 +1,47 @@
+name: ai_attackDelayedElementDispatch
+address: '0x081027A4'
+kind: function
+status: probable
+summary: Dispatcher that jumps to the per-state handler for a delayed-element AI attack, indexed by the
+  attack's hit element/state field.
+interface: (r7 = attack/object struct, r0 clobbered = element index read from oAIAttackVars_HitElement)
+  -> jumps to one of three handlers with r0 = element value, r7 preserved; returns via handler to caller's
+  lr
+details: 'Reads the byte oAIAttackVars_HitElement at [r7, #offset], uses it to index the three-entry table
+  off_81027B8, and calls the selected handler via `mov lr, pc; bx r1` so the handler returns to this function''s
+  caller. The three targets are ai_attackDelayedElementInit, sub_81027F4, and ai_attackWaitForObjectTimer,
+  suggesting a small state machine (init / interim state / wait-for-object-timer) for an elemental attack
+  that spawns an object after a delay. r0 is overwritten with the element index before the call, so handlers
+  receive the element as an argument; r7 serves as the context pointer throughout. Since lr is set to
+  the current pc (thumb, so bit 0 set via +1 entries), handlers are thumb and tail-return to the original
+  caller.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_HitElement] + ldr r1,[r1,r0]: table indexed by the hit-element/state
+    field; off_81027B8 lists exactly the three ai_attack* handlers, matching a per-state dispatch; mov
+    lr, pc; bx r1: tail-call so the selected handler effectively replaces this function; r7 used unchanged
+    as context pointer, consistent with battle object/AI attack vars struct; callees named ai_attackDelayedElementInit
+    / ai_attackWaitForObjectTimer place this in the delayed-element AI attack flow'
+  refs:
+  - bn6f/asm/asm31.s:161954
+  reproduce: python3 tools/asmcat.py 0x081027A4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- role of the middle entry sub_81027F4 (undocumented) and whether the index field is a phase counter rather
+  than a literal element type
+- which callers set oAIAttackVars_HitElement before entering this dispatcher
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81027A4 -> ai_attackDelayedElementDispatch
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81027A4

@@ -1,0 +1,45 @@
+name: e_popScenarioEffectEntry
+address: '0x08142224'
+kind: function
+status: probable
+summary: Pops the most recent entry off the scenario-effect state's LIFO stack (0-based count at +0x28,
+  entries at +0x2C), returning it, or 0 if the stack is empty.
+interface: () -> r0 = popped entry (0 if empty); flags from tst on r0 (Z set when empty)
+details: Reads the stack count at eScenarioEffectState+0x28 and decrements it; if it goes below 0 nothing
+  is popped (count not stored back, r0 = 0). Otherwise the decremented count is stored back and used as
+  an index into the 4-byte-per-entry array at +0x2C, whose top element is returned. The caller in the
+  battle update uses a nonzero result as a value passed into ow_dealDamageToCurrentNavi, so entries appear
+  to be pending damage/effect payloads; on empty it instead sets ai data unk18 to 0x1E, stores 0x54 at
+  [r5], and clears a scenario-effect flag, i.e. waits/retries on a timer.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_8142224: ldr r4,[r5,#0x28]; sub r4,#1; blt loc_8142238 - count at +0x28 acts as stack depth,
+    empty means return 0; sub_8142224: lsl r4,r4,#2; add r4,#0x2c; ldr r6,[r5,r4] - element read from
+    array at +0x2C indexed by decremented count (top of stack); caller 0x0808999C: bl sub_8142224; tst
+    r0,r0; beq ... - result tested as entry/nonempty flag; caller 0x0808999C: nonzero path does bl ow_dealDamageToCurrentNavi
+    - popped entry is used as a damage payload; caller empty path: bl e_clearScenarioEffectStateFlag and
+    sets 0x1E/0x54 timers - empty stack means no pending effect to apply'
+  refs:
+  - bn6f/asm/asm37_1.s:1043
+  - 0x0808999C sub_808999C
+  reproduce: python3 tools/asmcat.py 0x08142224
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- What pushes entries onto this stack (the writer of +0x28/+0x2C) is not shown, so the exact meaning of
+  each entry field is unknown
+- Whether the returned 4-byte entry is a raw damage value or a packed effect ID is unconfirmed
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8142224 -> e_popScenarioEffectEntry
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8142224

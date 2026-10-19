@@ -1,0 +1,44 @@
+name: battle_timerCountdownStateUpdate
+address: '0x080C33AE'
+kind: function
+status: probable
+summary: Battle-object update step that counts down Timer and, on expiry, sets the finish flag and moves
+  the object to anim 2 / phase 12.
+interface: (r0 = unused, r5 = battle object pointer) -> void; no return value, flags clobbered
+details: Reads oBattleObject_Timer from the object at r5, subtracts 1, and stores it back, returning immediately
+  if the result is nonzero. When the timer hits zero, it ORs bit 1 into oObjectHeader_Flags (the object-completion/despawn
+  bit), writes animation id 2 to oBattleObject_CurAnim, and sets oBattleObject_CurPhaseAndPhaseInitialized
+  to 0xC to advance the object's state machine. All access is via the object pointer in r5, so this is
+  a leaf update handler meant to be called from an object's dispatch table. Nothing else is touched and
+  no callees are made.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrh/strh on [r5,#oBattleObject_Timer] with ''sub r0,#1'' and ''bne locret'' is a per-frame
+    countdown; on expiry: ''orr r0,r1'' with r1=2 into oObjectHeader_Flags sets the standard object-finished
+    bit; ''mov r0,#2; strb'' to oBattleObject_CurAnim and ''mov r0,#0xc; strh'' to CurPhaseAndPhaseInitialized
+    transition the object''s state; no calls and r5-only access show it is a leaf object update, not a
+    general utility'
+  refs:
+  - bn6f/asm/asm31.s:25059
+  reproduce: python3 tools/asmcat.py 0x080C33AE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- No callers are known, so which object type or battle state uses this handler (and what animation 2 /
+  phase 12 mean for it) is unknown
+- Whether flag bit 1 means despawn-request or another semantic needs confirmation from the object loop
+  that tests it
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C33AE -> battle_timerCountdownStateUpdate
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C33AE

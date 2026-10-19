@@ -1,0 +1,42 @@
+name: e_anyPaletteFlagSet
+address: '0x080023C6'
+kind: function
+status: probable
+summary: Scans the palette buffer at 020097A0 and returns the first nonzero flag byte found, or 0 if every
+  entry's flag is clear.
+interface: () -> r0 = flag byte of first palette entry with a nonzero first byte, else 0; flags clobbered
+details: Iterates over fixed-size palette structs starting at ePalette20097a0 (0x020097A0), stepping by
+  oPalette20097a0_Size and stopping when the pointer reaches 0x108 (used as an end offset/pointer). For
+  each entry it loads the first byte and treats it as a status flag; the first nonzero byte is returned
+  immediately, so the function answers 'is any palette entry flagged'. If the whole range is scanned with
+  all flag bytes zero, it returns 0. It reads nothing else and writes nothing; the struct size comes from
+  the assembler constant oPalette20097a0_Size.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r2]; tst r0,r0; bne locret — first byte of each entry is a flag returned as-is when
+    set; add r2,#oPalette20097a0_Size; cmp r2,r3 (=0x108); blt — linear walk over the palette table until
+    the 0x108 end marker; mov r0,#0 before locret_80023D8 — falling off the end of the table yields 0
+    (no entry flagged)
+  refs:
+  - bn6f/asm/asm00_0.s:5213
+  reproduce: python3 tools/asmcat.py 0x080023C6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- no callers known, so why the game polls this flag (e.g. waiting for palette DMA/upload to finish) is
+  unconfirmed
+- exact oPalette20097a0_Size value and the meaning of the first flag byte of each palette entry
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80023C6 -> e_anyPaletteFlagSet
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80023C6

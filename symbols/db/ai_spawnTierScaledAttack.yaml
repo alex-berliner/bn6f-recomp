@@ -1,0 +1,49 @@
+name: ai_spawnTierScaledAttack
+address: '0x080F74A8'
+kind: function
+status: probable
+summary: Spawns an AI attack at a panel position with parameters read from a difficulty-tier table, used
+  by ai_spawnAttackPanelPair to place attacks on two mirrored panels.
+interface: (r0 = panel x, r1 = panel y, r2 = attack/param index, r3 = packed param) -> r0/r1 forwarded
+  to sub_80D63FC with packed descriptor tier | r2<<8 | r3<<16 and InitFlag
+details: Builds one packed word from the AI attack struct's difficulty tier (oAIAttackVars_AiDifficultyTier
+  at r7), arg2<<8, and arg3<<16, keeping r0/r1 untouched so they pass through as coordinates. It then
+  loads a word from byte_80F74D0 at byte offset tier*4 + arg2*16, i.e. word index arg2*4+tier; the 12-word
+  table holds the pattern (0x1E,0xA),(0x32,0xA),(0x64,0xA),(0x64,0xA) three times, so the selected value
+  grows 30/50/100/100 with tier — plausibly damage with a 10 secondary field. It calls sub_80D63FC(r0,r1,r2=packed
+  tier|args, r3=table value, r4=oAIAttackVars_InitFlag) and returns. Its only caller loops it twice over
+  per-attack panel pairs, shifting x by -3*object_getFrontDirection to mirror the attack toward the enemy
+  side.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'caller loc_80F7452: r0 -= 3*object_getFrontDirection() then bl sub_80F74A8 with loop counter
+    r4 and r6, twice (cmp r4,#2); asm: r4 = tier | (r2<<8) | (r3<<16) packs difficulty and args into one
+    descriptor word; asm: ldr r6,[r6,r3] with r3 = tier*4 + r2*16 indexes byte_80F74D0, whose words are
+    30/50/100/100 paired with 0xA; asm: r0, r1 untouched and passed with packed word and oAIAttackVars_InitFlag
+    to sub_80D63FC; caller header: ''AI attack helper that spawns an attack (via sub_80F74A8) on two panels
+    taken from a per-attack table'''
+  refs:
+  - bn6f/asm/asm31.s:138439
+  - 0x080F742E ai_spawnAttackPanelPair
+  - 0x080D63FC sub_80D63FC
+  reproduce: python3 tools/asmcat.py 0x080F74A8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112'
+open_questions:
+- what sub_80D63FC does with the packed descriptor, table word, and InitFlag (spawn vs queue, entity type)
+- meaning of the 0xA low halfword in each table entry
+- semantic meaning of arg2 (attack id vs group index) and arg3 packed at bits 16-23
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f f9e4c3a5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F74A8 -> ai_spawnTierScaledAttack
+  where: bn6f 50b06456
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F74A8
