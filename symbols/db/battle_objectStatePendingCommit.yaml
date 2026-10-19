@@ -1,0 +1,53 @@
+name: battle_objectStatePendingCommit
+address: '0x08016B36'
+kind: function
+status: probable
+summary: 'Battle-object state handler: initializes a phase once (sound 0x18, reset collision), then waits
+  for object flag 0x10000 to clear before committing the pending state action.'
+interface: (r4/r5 = battle object ptr, no args) -> void; no meaningful return value
+details: On first invocation (oBattleObject_PhaseInitialized == 0) it clears ObjectFlags bit 0x100000
+  via object_clearFlag, calls sub_800F3B0, resets the object's collision state, zeroes oBattleObject_RelatedObject1Ptr,
+  plays sound effect 0x18 (0x19-1), and stores 4 into oBattleObject_PhaseInitialized. On every call afterwards
+  it reads the object's flags via object_getFlag and, while bit 0x10000 (r1 = 1<<16) is set, returns without
+  doing anything. Once that bit is clear, it copies oBattleObject_PendingStateAction into oBattleObject_CurStateActionPhaseAndPhaseInitialized
+  and zeroes the pending field, i.e. it commits a queued state/phase transition. r5 is the battle object
+  base pointer throughout; the function relies on the caller having pre-filled PendingStateAction.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb [r5,#oBattleObject_PhaseInitialized] + bne guards the one-time init block (lines 2-4);
+    init block: object_clearFlag(0x100000), battle_resetCollisionState, RelatedObject1Ptr=0, PlaySoundEffect(0x18),
+    PhaseInitialized=4; object_getFlag then tst with 1<<16 and bne locret = busy-wait while flag 0x10000
+    is set; PendingStateAction is copied into CurStateActionPhaseAndPhaseInitialized and cleared only
+    after the flag check passes; five callers in the 0x08109xx-0x08113xxx battle-object code region all
+    reuse it as a state handler'
+  refs:
+  - bn6f/asm/asm00_2.s:17919
+  - 0x08109F8A sub_8109F8A
+  - 0x0810BC10 sub_810BC10
+  - 0x0810D5CE sub_810D5CE
+  - 0x080005CC PlaySoundEffect
+  - 0x080101C4 battle_resetCollisionState_80101C4
+  - 0x0801A15C object_clearFlag
+  reproduce: python3 tools/asmcat.py 0x08016B36
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+open_questions:
+- Exact meaning of object flag 0x10000 (probably an animation/flash-in-progress bit) and what sub_800F3B0
+  does
+- Which state/action IDs callers store into PendingStateAction before invoking this, to give it a more
+  specific game-terms name
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8016B36 -> battle_objectStatePendingCommit
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8016B36

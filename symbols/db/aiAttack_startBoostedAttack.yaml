@@ -1,0 +1,48 @@
+name: aiAttack_startBoostedAttack
+address: '0x080116D8'
+kind: function
+status: probable
+summary: Initializes and kicks off the player-object AI attack state machine with a given attack boost
+  and duration.
+interface: (r0 = attack boost value, r1 = attack duration) -> r0 = result of first aiAttack state-machine
+  step; r5 = battle object
+details: The function reaches the battle object's AI data via r5's AIDataPtr, points at the aiAttack variable
+  block at +0xA0, and stores r0 into AttackBoost2 and r1 into AttackDuration. It forces AiDifficultyTier
+  to 1 and clears TargetObjectPtr (no explicit target), then calls object_setAttack4 with 0x10 to put
+  the object into attack state 0x10 and immediately runs one step of the aiAttack state machine, so the
+  attack begins processing on the same call.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: strb r0,[r7,#oAIAttackVars_AttackBoost2] / strh r1,[r7,#oAIAttackVars_AttackDuration] show the
+    two parameters configure the attack; AiDifficultyTier is unconditionally set to 1 and TargetObjectPtr
+    to 0, a fresh initialization of the AI attack block; mov r0,#0x10; bl object_setAttack4 selects attack
+    state 0x10 on the battle object; bl aiAttack_stepStateMachine_80EB04C runs the dispatcher whose known
+    summary matches these oAIAttackVars fields; only caller playerAI_sub_80F0354 fits a battle-player
+    AI hook invoking this when the AI decides to attack
+  refs:
+  - bn6f/asm/asm00_2.s:6009
+  - 0x080F0354 playerAI_sub_80F0354
+  - 0x080EB04C aiAttack_stepStateMachine_80EB04C
+  - 0x08011690 object_setAttack4
+  reproduce: python3 tools/asmcat.py 0x080116D8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+open_questions:
+- exact meaning of AttackBoost2 vs a first AttackBoost field and what state 0x10 represents would need
+  the caller's context in playerAI_sub_80F0354
+- whether AiDifficultyTier=1 is a fixed mode or a placeholder for a difficulty parameter
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80116D8 -> aiAttack_startBoostedAttack
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80116D8

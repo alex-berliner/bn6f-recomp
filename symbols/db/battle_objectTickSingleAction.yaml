@@ -1,0 +1,46 @@
+name: battle_objectTickSingleAction
+address: '0x080D6C56'
+kind: function
+status: probable
+summary: 'Per-frame battle object update: ends/destroys the object when the battle is over, skips time-stop
+  unless Param1==1, then dispatches the current action''s handler.'
+interface: (r5 = battle object) -> void; sets object state to CUR_STATE_DESTROY if the battle is over
+details: Standard battle-object tick wrapper. First calls battle_isBattleOver; if true it writes CUR_STATE_DESTROY
+  into the object's combined CurState/ActionPhase field at oBattleObject_CurStateActionPhaseAndPhaseInitialized,
+  marking the object for teardown. Otherwise, if oBattleObject_Param1 is not 1, it calls battle_isTimeStop
+  and returns early while a time-stop freeze is active — so Param1==1 marks the object as exempt from
+  time stop. When allowed to run, it loads a handler pointer from a jump table at off_80D6C84 indexed
+  by oBattleObject_CurAction and tail-calls it via blx-style bx with lr=pc (Thumb). The visible table
+  has a single entry pointing to sub_80D6C88, so this object only has action 0.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl battle_isBattleOver + mov r0,#CUR_STATE_DESTROY; str [r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]
+    on battle end; ldrb r0,[r5,#oBattleObject_Param1]; cmp #1; beq bypasses the battle_isTimeStop check
+    (time-stop exemption flag); ldr r1,[r1,r0] with r0=oBattleObject_CurAction dispatches to table off_80D6C84,
+    whose sole entry is sub_80D6C88+1; Callees battle_isBattleOver / battle_isTimeStop match the standard
+    battle-object update guard pattern'
+  refs:
+  - bn6f/asm/asm31.s:67056
+  - 0x0800A18E battle_isBattleOver
+  - 0x0800A098 battle_isTimeStop
+  reproduce: python3 tools/asmcat.py 0x080D6C56
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+open_questions:
+- What sub_80D6C88 (the sole action-0 handler) actually does, to identify which object uses this tick
+- Which caller sets r5 and what Param1==1 means for that object
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D6C56 -> battle_objectTickSingleAction
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D6C56

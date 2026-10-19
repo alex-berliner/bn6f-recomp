@@ -2213,7 +2213,7 @@ static void call_subsystem_handler(u32 index, u32 game_state) {
     case 0x18: GUEST_CALL(pet_menuUpdateAndHandleExit_8005462); break;
     case 0x1C: GUEST_CALL(sub_800555A); break;
     case 0x20: GUEST_CALL(scenario_finalizeFrameOrRestart_8005642); break;
-    case 0x24: GUEST_CALL(sub_80056B8); break;
+    case 0x24: GUEST_CALL(gameState_tickFrameAndHandleFadeTransition); break;
     case 0x28: GUEST_CALL(sub_800572C); break;
     case 0x2C: GUEST_CALL(pet_tickSceneAndReloadOnFade); break;
     case 0x30: GUEST_CALL(gamestate_runOverworldSceneStep_80055CE); break;
@@ -3511,7 +3511,7 @@ Next mainState_runFrame_8005814(void) {
  *   0x18 start_cutsceneWithFlagSwap                            underground warp
  *   0x1C sub_8005A28                            like 0x00, but with a delay +
  *                                               plays a hardcoded sound
- *   0x20 sub_8005A50                            same as above, different delay
+ *   0x20 gameState_fadeToOverworldAfterEvent                            same as above, different delay
  * ------------------------------------------------------------------------- */
 
 /* oGameState_SubsystemIndex value while the map update gamestate is running. */

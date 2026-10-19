@@ -1,0 +1,48 @@
+name: t4_mapEnterSetupObjectsAndFlags
+address: '0x080893F4'
+kind: function
+status: probable
+summary: 'Per-map entry routine: clears and respawns map objects, picks one of two setup variants via
+  story flags, then sets story flag 7/0x40 and applies the SoulWeapons overworld state.'
+interface: (void) -> r0 = 0; no flags meaningfully returned
+details: 'Runs on entering a specific map: first frees all objects of type 0x20 and respawns the map''s
+  objects via mapObject_spawnMapObjectsForMap. It then reads the map/area identifier (halfword at +4 of
+  the state struct at r10+0x3c) and a byte at +6; when they equal 0x290 and 0x23 it branches on story
+  flags: if flag 6/0x16 is clear it calls sub_8035450(0), else if flag 6/0x1a is clear it calls sub_8035450(1).
+  Unconditionally afterwards it sets event flag 7/0x40 and calls soulWeapons_apply_8142510, which manages
+  Beast Out/Soul Unleash map objects and BBS state. Always returns 0.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl FreeAllObjectsOfSpecifiedTypes with r0=0x20 followed by bl mapObject_spawnMapObjectsForMap
+    is a map-load teardown/setup pattern; cmp r0, #0x290 / ldrb r0,[r3,#6] / cmp r0,#0x23 gates the flag
+    logic to one specific map+area; TestEventFlagFromImmediate(6,0x16) and (6,0x1a) select sub_8035450(0)
+    vs sub_8035450(1), a story-state-dependent variant; SetEventFlagFromImmediate(7,0x40) unconditionally
+    advances a story flag on entry; tail call soulWeapons_apply_8142510 ties the routine to the Beast
+    Out/Soul Unleash scenario overworld state'
+  refs:
+  - bn6f/asm/asm23.s:675
+  - 0x0802F110 SetEventFlagFromImmediate
+  - 0x0802F164 TestEventFlagFromImmediate
+  - 0x08142510 soulWeapons_apply_8142510
+  reproduce: python3 tools/asmcat.py 0x080893F4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+open_questions:
+- which map 0x290 / area byte 0x23 corresponds to, to name it specifically
+- what sub_8035450(0/1) does (likely spawning a conditional NPC or cutscene object)
+- what event flag 7/0x40 records in the story progression
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80893F4 -> t4_mapEnterSetupObjectsAndFlags
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80893F4

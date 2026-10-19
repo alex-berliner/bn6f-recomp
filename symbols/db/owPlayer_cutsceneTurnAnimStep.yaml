@@ -1,0 +1,48 @@
+name: owPlayer_cutsceneTurnAnimStep
+address: '0x0808991C'
+kind: function
+status: probable
+summary: Cutscene/object step that, after a short delay, makes the overworld player turn toward a fixed
+  direction and play a fixed animation while a cutscene camera script runs.
+interface: (r5 = object/AIData struct) -> r0 = 1 (step continues/finished); no meaningful flags
+details: If event-flag bit 0x80 of eFlags2009F38 is set the step does nothing and returns 1. Otherwise
+  it waits on a frame timer (the AIData+0x18 ChipLockoutTimer decremented by battle_tickChipLockout) and,
+  once expired, calls sub_8142B58, force-sets the OW player's facing direction, re-reads it, and uses
+  it to index byte_8089958 (directions 1,2,4,5 map to animation ids 0x2E,0x2F,0x30,0x31; 0 and 3 map to
+  0xFF) to select a fixed player animation. It then starts a cutscene camera script on the object, reloads
+  the wait timer with 0x1E (30 frames), and writes 0x48 into byte [r5], likely the next step/state id.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl chatbox_mask_eFlags2009F38 with r0=0x80: step gated on a cutscene/chatbox event flag; bl
+    battle_tickChipLockout + beq skip: the step only proceeds once its AIData+0x18 frame timer expires;
+    SetOWPlayerFacingDirection then GetOWPlayerFacingDirection then table byte_8089958 -> owPlayer_setS200ace0_fixedAnimationSelect:
+    player is turned and given animation 0x2E-0x31 per facing; bl camera_startCutsceneScript: the object
+    is flagged as camera-active with a fixed camera script; ai_setAIDataUnk18(0x1E) + strb 0x48,[r5]:
+    sets a 30-frame timer and a 0x48 step/state byte on r5'
+  refs:
+  - bn6f/asm/asm23.s:1271
+  - 0x0809E2B8 GetOWPlayerFacingDirection
+  - 0x0809E2AE SetOWPlayerFacingDirection
+  - 0x08089CB0 ai_setAIDataUnk18_8089CB0
+  reproduce: python3 tools/asmcat.py 0x0808991C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+open_questions:
+- Purpose of sub_8142B58 (called right before the facing is set)
+- Exact meaning of the 0x48 byte written to [r5] and the layout of r5's struct
+- Which cutscene in the game invokes this step (no callers known)
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_808991C -> owPlayer_cutsceneTurnAnimStep
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_808991C

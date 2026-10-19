@@ -1,0 +1,51 @@
+name: ai_attackStepRiseUp
+address: '0x08014FA8'
+kind: function
+status: probable
+summary: 'One step of an enemy AI attack routine: on first run it plays a charge sound, spawns a ground
+  effect, lifts the enemy upward and sets the attack element; when the step timer expires it sets the
+  hit element to finish the attack.'
+interface: (r5 = battle object, r7 = its oAIAttackVars) -> void; triggers via AttackElement state (0 =
+  start attack, 4 = windup until HitElement set to 8)
+details: This is a two-phase AI attack step driven by oAIAttackVars (r7). While AttackElement is 0 and
+  StepTimer counts down past zero, it sets AIData+0x48 flag 0x80000, plays sound 0xF7, spawns an effect
+  object (effect param 0x2E00 | Alliance<<8) with Timer=0x36 and flag 0x4, raises the object's Y by 0xC00000
+  (upward), writes byte 1 to the alliance-indexed table at byte_203EAE0, plays sound 0x1CC or 0x1CD depending
+  on the actor's type (>= 0x12 via battle_ai_getActorInfo), calls sub_80302B6(2, 0x3C), then sets StepTimer=0x36
+  and AttackElement=4. In phase 2 it merely counts StepTimer down and, once it goes negative, writes HitElement=8,
+  which presumably lets the shared AI attack code deal the actual hit. r4 is also loaded with 0x2E00 |
+  Alliance but never used after, a leftover from the effect spawn.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne splits a first-run setup phase from a timer-only
+    phase; bl spawn_t1_0x0_EffectObject then oBattleObject_Y += 0xC00000 shows the enemy being lifted
+    while an effect plays; bl battle_ai_getActorInfo_801595E with cmp r0,#0x12 selects sound 0x1CC vs
+    0x1CD by actor type; strb #4 into AttackElement and later HitElement=8 matches the AI attack-state
+    pattern (element chosen, then hit element); SetAIDataUnk0x48Flag(0x80000) marks the object''s AI data
+    as in this special attack state'
+  refs:
+  - bn6f/asm/asm00_2.s:14414
+  - 0x080005CC PlaySoundEffect
+  - 0x08010312 SetAIDataUnk0x48Flag
+  - 0x0801595E battle_ai_getActorInfo_801595E
+  reproduce: python3 tools/asmcat.py 0x08014FA8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+open_questions:
+- No known caller, so which enemy/boss uses this attack and what HitElement=8 does downstream is unconfirmed;
+  sub_80302B6(2,0x3C) is also unidentified
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8014FA8 -> ai_attackStepRiseUp
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8014FA8

@@ -1,0 +1,48 @@
+name: battle_objectSetStateActionPhase8
+address: '0x080C44C8'
+kind: function
+status: probable
+summary: If the given battle object exists, force its current state-action phase field to 8 (a fixed phase
+  value, presumably despawn/remove), clearing the phase-initialized bit.
+interface: (r0 = battle object pointer, may be NULL) -> void; no return value, flags clobbered
+details: 'A guard-setter: tst r0, r0 skips NULL objects, otherwise it stores the immediate 8 into the
+  packed oBattleObject_CurStateActionPhaseAndPhaseInitialized field. Because the packed field also carries
+  the phase-initialized flag, writing 8 resets that flag so the object''s phase-8 state action runs fresh.
+  It is only ever invoked from the battle-object detachment family (detachRelatedObject2 and its neighboring
+  thunks), consistent with using phase 8 as the teardown/despawn phase for related objects. No other structures
+  or fields are touched.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'tst r0,r0 / beq: NULL-safe, operates only on a valid battle object pointer; str r1,#8 to [r0,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]:
+    sets packed phase field to 8, clearing the initialized bit; All six callers (0x80111B8..0x8011224)
+    sit inside battle_object_detachRelatedObject2_80111B8''s detachment cluster; No callees: pure field
+    write, no side effects beyond the one store'
+  refs:
+  - bn6f/asm/asm31.s:26808
+  - 0x080111B8 battle_object_detachRelatedObject2_80111B8
+  - 0x080111CA sub_80111CA
+  - 0x080111EE sub_80111EE
+  reproduce: python3 tools/asmcat.py 0x080C44C8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+coverage:
+- beastsp
+open_questions:
+- Whether phase value 8 specifically means 'remove/despawn' — would need a state-action phase dispatcher
+  to confirm the meaning of phase 8
+- Why only detachment paths use it; other phase-8 writers may exist outside recorded routes (beastsp)
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C44C8 -> battle_objectSetStateActionPhase8
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C44C8

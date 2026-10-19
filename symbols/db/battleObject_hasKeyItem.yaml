@@ -1,0 +1,53 @@
+name: battleObject_hasKeyItem
+address: '0x08136364'
+kind: function
+status: probable
+summary: Resolves a battle object from an r5-struct-driven index and returns whether the player owns the
+  key item linked to that object (id = obj byte3 + 0x4F).
+interface: (no r0 args; reads struct at r5 fields 0x38/0x3A) -> r0 = nonzero if CheckKeyItem(objId + 0x4F)
+  is set; flags from tst
+details: Computes r0 = [r5+0x3A] + [r5+0x38] (both halfwords, likely indices/counts) and calls sub_8136290
+  with the sum, which returns a pointer whose halfword is loaded — an id/entry lookup. It subtracts 0x90
+  from that halfword and passes the result to battleObject_getByIndex_813B780, fetching the 0x10-byte
+  battle-object descriptor from StructArr_813944C. It reads byte 3 of that descriptor, adds 0x4F to form
+  a key-item id, and calls CheckKeyItem, returning its result directly (tst then pop, so r0 is the boolean).
+  No state is written; it is a pure ownership test. The 0x90 bias and +0x4F id offset suggest byte 3 of
+  the descriptor is an object-kind code that maps to a fixed key-item range.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrh r0,[r5,#0x3a]; ldrh r1,[r5,#0x38]; add + bl sub_8136290: halfword lookup yielding the
+    id (ldrh r0,[r0]); sub r0,#0x90; bl battleObject_getByIndex_813B780: id-minus-0x90 indexes the battle-object
+    descriptor array; ldrb r0,[r0,#3]; add r0,#0x4f; bl CheckKeyItem: descriptor byte 3 + 0x4F is the
+    key-item id tested; tst r0,r0; pop {pc}: returns CheckKeyItem''s boolean unchanged, no writes to r5
+    struct; Only caller sub_813612C and beastsp-route execution fit a scripted beast-related key-item
+    check'
+  refs:
+  - bn6f/asm/asm36.s:12910
+  - 0x0813612C sub_813612C
+  - 0x0813B780 battleObject_getByIndex_813B780
+  - 0x0803CE28 CheckKeyItem
+  - 0x08136290 sub_8136290
+  reproduce: python3 tools/asmcat.py 0x08136364
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+coverage:
+- beastsp
+open_questions:
+- What sub_8136290's table (indexed by [r5+0x38]+[r5+0x3A]) contains and what the halfword id means
+- Which battle-object byte 3 values map to which key items, and what caller sub_813612C branches on the
+  result for
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8136364 -> battleObject_hasKeyItem
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8136364

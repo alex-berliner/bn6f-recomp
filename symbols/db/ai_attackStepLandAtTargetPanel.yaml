@@ -1,0 +1,50 @@
+name: ai_attackStepLandAtTargetPanel
+address: '0x08014F40'
+kind: function
+status: probable
+summary: AI attack step that lands the attacking object on its reserved future panel, finalizing position
+  and starting the next AI-attack substep
+interface: (r5 = battle object, r7 = oAIAttackVars) -> void
+details: 'Commits oBattleObject_FuturePanelX/Y into PanelX, releases the panel reserve, and recomputes
+  coordinates and collision panels. It clears the object''s post-hit invulnerability, stores battle_checkEmergeDirectionFlip''s
+  result into oBattleObject_DirectionFlip, and refreshes the sprite/arm. It then clears PwrAtk state,
+  resets the object via object_resetAnimFrame (which writes state id 8, the landing-warp state), nulls
+  RelatedObject1Ptr and oAIData_TempAttackObjectPtr, and sets CurAnim to 0x11. If RelatedObject2Ptr is
+  set, it writes Param3=1 and ORs flag 0x14 into that object''s flags (marking it as the spawn/associated
+  entity). Finally it advances the AI attack state machine: StepTimer=6 (next substep), decompresses temp
+  sprite (r0=0xC, r1=5), and writes HitElement=4.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb/strb FuturePanelX/Y -> PanelX before object_removePanelReserve commits the move (8014F40
+    prologue); bl battle_checkEmergeDirectionFlip; strb r0,[r5,#oBattleObject_DirectionFlip] uses the
+    panel-landing emerge flip helper; bl object_resetAnimFrame which ''resets state for its landing-warp:
+    writes state id 8 into obj+0x08''; strh #6,[r7,#oAIAttackVars_StepTimer] and strh #4,[r7,#oAIAttackVars_HitElement]
+    drive the AI attack substep machine; writes to RelatedObject2Ptr''s Param3/flags mirror spawning a
+    companion object tied to the attack'
+  refs:
+  - bn6f/asm/asm00_2.s:14363
+  - 0x08012EA8 battleObject_clearPwrAtkState_8012EA8
+  - 0x0800F2C6 battleObject_refreshSpriteAndArm_800F2C6
+  - 0x0800F46C battle_checkEmergeDirectionFlip
+  reproduce: python3 tools/asmcat.py 0x08014F40
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+open_questions:
+- Which AI attack uses this step (the .word 0x80111C40 tail suggests a jump table/dispatcher entry not
+  shown)
+- Exact meaning of CurAnim 0x11 and HitElement value 4 (element/animation id) not confirmed from callers
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8014F40 -> ai_attackStepLandAtTargetPanel
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8014F40

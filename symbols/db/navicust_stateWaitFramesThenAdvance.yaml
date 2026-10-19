@@ -1,0 +1,50 @@
+name: navicust_stateWaitFramesThenAdvance
+address: '0x08136A74'
+kind: function
+status: probable
+summary: 'Navi Customizer screen state handler: counts ~32 frames, optionally runs a text script once,
+  then moves to state 0x2C and redraws the board.'
+interface: (r0 = unused/overwritten, r5 = navi-cust screen state struct) -> r0 = 0; updates [r5+0x03]
+  state id, [r5+0x12] timer, [r5+0x13] flag
+details: 'r5 points to the navi-cust screen state/task struct (state id at +0, phase at +3, frame counter
+  at +0x12, per-frame flag at +0x13). Each call increments the timer at +0x12; once it reaches 0x20 (32
+  frames), the wait is over: unless the mode byte [r5] equals 0x28, it runs text script 1 via chatbox_runScript,
+  then sets phase +3 to 0x2C, calls navicust_drawBoardTilemap(0) to refresh the grid, and clears the timer.
+  The +0x13 byte is reset to 0 every call, likely a one-shot/subflag consumed elsewhere. With script 1
+  skipped only in mode 0x28, this reads as a timed delay state that (re)displays a message before handing
+  control to the next state.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb/strb on [r5,#0x12] with cmp #0x20 blt: frame timer gating the state transition; bl chatbox_runScript_803FD9C_on_eTextScript201D280
+    guarded by cmp [r5], #0x28 / beq: runs game text script 1 unless mode is 0x28; strb #0x2C,[r5,#3]
+    then bl navicust_drawBoardTilemap(0): advances state id and redraws the customizer board; strb #0,[r5,#0x13]
+    unconditionally before pop: clears a per-frame flag in the same struct; callee navicust_drawBoardTilemap
+    known to rewrite the 49-cell grid buffer ties r5 to the Navi Customizer screen'
+  refs:
+  - bn6f/asm/asm36.s:13843
+  - 0x0813C1C0 navicust_drawBoardTilemap
+  - 0x08135F88 chatbox_runScript_803FD9C_on_eTextScript201D280
+  reproduce: python3 tools/asmcat.py 0x08136A74
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+coverage:
+- beastsp
+open_questions:
+- No callers captured, so the dispatch table linking state ids (0x2C, 0x28) to handlers is unseen
+- Which text script id 1 actually displays in-game, and what mode 0x28 represents (skip-script case)
+- Meaning of the +0x13 flag cleared here
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8136A74 -> navicust_stateWaitFramesThenAdvance
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8136A74

@@ -1,0 +1,45 @@
+name: battleObject_chipSelectStateTick
+address: '0x08027044'
+kind: function
+status: probable
+summary: 'Per-frame update for the battle chip-select object: dispatches a state handler selected by the
+  state byte at +2, then runs the chip-slot pulse animation and graphics-queue steps.'
+interface: '(r0 = self: * S20364C0) -> r0 = ?; flags from dispatched handler'
+details: Reads the object's state byte at [self+2] and indexes the 7-entry table at off_8027060, dispatching
+  to one of sub_802707C..sub_80271C2 via blx-style indirect call (mov lr, pc; bx r1). After the state
+  handler returns, it unconditionally calls battleObject_chipSelectAnimTick_8029C08 (OAM affine pulse
+  push + phase walk) and sub_802899C (queues the object's 0x200-byte gfx block for VRAM 0x6016CC0 plus
+  a cartridge FIFO record). The state byte is not validated, so states beyond 6 read past the table. Acts
+  as the top-level tick/state machine for the chip-select battle object S20364C0.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r5,#2]; ldr r1,[r1,r0]; mov lr,pc; bx r1 — state-indexed dispatch through off_8027060
+    table; table holds 7 handler pointers (sub_802707C..sub_80271C2) immediately after the code; callees
+    battleObject_chipSelectAnimTick_8029C08 and sub_802899C are per-frame render/anim steps of the same
+    chip-select object; comment marks self as * S20364C0, matching the object context of the chipSelect
+    callee names
+  refs:
+  - bn6f/asm/asm03_0.s:1668
+  - 0x08029C08 battleObject_chipSelectAnimTick_8029C08
+  - 0x0802899C sub_802899C
+  reproduce: python3 tools/asmcat.py 0x08027044
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+open_questions:
+- what the 7 state handlers sub_802707C..sub_80271C2 each do (states 0-6)
+- whether any caller limits the state byte's range, since the dispatch is unchecked
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8027044 -> battleObject_chipSelectStateTick
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8027044

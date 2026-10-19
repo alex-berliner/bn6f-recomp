@@ -1,0 +1,47 @@
+name: shopBuyMenu_handleDialogChoice
+address: '0x08047066'
+kind: function
+status: probable
+summary: 'Shop buy-menu per-frame step: after the buy menu updates, if the active chatbox dialog finished,
+  records the player''s choice into a 0x2420-base event flag and chains the next script.'
+interface: (r0 = unused, r5 = shop menu state struct from caller) -> r0 = 0; sets event flag 0x2420 +
+  dialog result
+details: Per-frame shop-menu callback sharing r5 (shop state struct) with the caller. It first runs the
+  buy-menu frame update. It then tests bit 8 of the chatbox/cutscene flag word (chatbox_mask_eFlags2009F38);
+  if clear it just returns 0. When the dialog is done, chatbox_8045EEC(0) fetches the dialog result, and
+  SetEventFlag(0x2420 + result) records the choice. State byte [r5,#0xd] is set to 0xFF, byte [r5,#1]
+  is copied to [r5] (state/step handoff), and chatbox_runScript runs the script at index [r5,#6] from
+  the archive pointer [r5,#0x24].
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl shopBuyMenu_updateFrame_8047134 first: per-frame shop buy-menu driver; chatbox_mask_eFlags2009F38
+    with r0=8 gates everything on a chatbox dialog-finished bit; SetEventFlag(0x2420 + chatbox_8045EEC(0)
+    result): player''s dialog choice becomes an event flag; strb 0xFF,[r5,#0xd] and copy [r5,#1]->[r5]:
+    shop-state field updates before chaining; chatbox_runScript([r5,#0x24], [r5,#6]): launches the follow-up
+    script from the shop''s archive'
+  refs:
+  - bn6f/asm/asm03_2.s:2072
+  - 0x0802F114 SetEventFlag
+  - 0x08045F3C chatbox_mask_eFlags2009F38
+  - 0x08040384 chatbox_runScript
+  reproduce: python3 tools/asmcat.py 0x08047066
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+open_questions:
+- Exact layout of the r5 shop-state struct (fields 0x0, 0x1, 0x6, 0xd, 0x24) is inferred only from usage
+- Which dialog in the shop flow triggers the flag (buy confirmation vs. sold-out etc.) is not shown
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8047066 -> shopBuyMenu_handleDialogChoice
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8047066

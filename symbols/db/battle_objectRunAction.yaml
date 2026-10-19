@@ -1,0 +1,50 @@
+name: battle_objectRunAction
+address: '0x080DE1B8'
+kind: function
+status: probable
+summary: 'Per-frame action dispatcher for a battle object: runs its CurAction handler unless the battle
+  is over or time-stopped.'
+interface: (r5 = battle object) -> r0 = handler dispatch/handlers side effects; sets oBattleObject_CurStateActionPhaseAndPhaseInitialized
+  to CUR_STATE_DESTROY when battle is over; flags from battle_isTimeStop
+details: Reads the object's oBattleObject_CurAction byte from the object at r5 (standard MMBN r5-object
+  convention, no args in r0-r3). If battle_isBattleOver returns nonzero, it force-writes CUR_STATE_DESTROY
+  into the combined state/action-phase field so the object is torn down. Otherwise, if battle_isTimeStop
+  says the battle is frozen, it returns without running anything. Otherwise it indexes off_80DE1E0, a
+  table of four Thumb handler pointers, by CurAction and tail-calls the selected handler via 'mov lr,
+  pc; bx r1'. The table's fifth entry 0xFF800000 acts as a sentinel/terminator, implying valid actions
+  are 0-3.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#oBattleObject_CurAction]; ldr r1,[r1,r0]; mov lr,pc; bx r1 — dispatches to a per-action
+    handler table; bne loc_80DE1D4 after battle_isBattleOver: writes CUR_STATE_DESTROY to oBattleObject_CurStateActionPhaseAndPhaseInitialized;
+    bne locret_80DE1D2 after battle_isTimeStop — actions are skipped while time-stop is active; off_80DE1E0
+    holds 4 handler words plus 0xFF800000 sentinel, indexed by CurAction; known callees battle_isBattleOver/battle_isTimeStop
+    place this squarely in the battle main loop''s object update path'
+  refs:
+  - bn6f/asm/asm31.s:82810
+  - 0x080DE168 sub_80DE168
+  - 0x0800A18E battle_isBattleOver
+  - 0x0800A098 battle_isTimeStop
+  reproduce: python3 tools/asmcat.py 0x080DE1B8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+open_questions:
+- What the four handlers at sub_80DE1F4/sub_80DE21A/sub_80DE266/sub_80DE2B0 do (which CurAction values
+  0-3 mean) is unknown
+- Which object type(s) use this dispatcher — the caller sub_80DE168 is undocumented, so the r5 object's
+  exact structure context is unconfirmed
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DE1B8 -> battle_objectRunAction
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DE1B8

@@ -1,0 +1,66 @@
+name: logoScreen_setupFadeWait
+address: '0x0803D24C'
+kind: function
+status: probable
+summary: 'Logo-screen state handler: enables the display, starts the screen fade (skipping it if a skip
+  flag is set), and arms a 180-frame wait before the next logo-screen state.'
+interface: (r0 = *mut LogoScreenState in r5, caller-set) -> r0 = clobbered; writes LCD control, sets fade
+  (mode 8 or 0), stores timer 0xB4 at +4 and state 8 at +0
+details: Writes DISPCNT-style value 0x1F40 (layers enabled) to the frame's render info via SetRenderInfoLCDControl.
+  Checks LogoScreenState+5; if nonzero (a skip/finish flag) it uses fade mode 0 instead of 8, then calls
+  SetScreenFade(mode, 8). Stores 0xB4 (180 frames = 3 s) into +4 as the hold duration, then writes state
+  8 into the state-index byte at +0, which dispatches to tickLogoScreenFade_803D274 on the next tick.
+  Part of the logo-screen state machine (e.g. the Capcom/logo splash before menus).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldr r0, =0x1F40; bl SetRenderInfoLCDControl — enables the display for the logo screen; ldrb
+    r1,[r5,#5]; tst; r0 = 8 or 0 — skips fade when the flag at +5 is set; strb r0(=0xB4),[r5,#4] — 180-frame
+    timer for the fade/wait state; strb #8,[r5,state] with comment routing to tickLogoScreenFade_803D274
+    — advances the logo state machine; Runs on nearly every recorded route (menus, story, battle) — consistent
+    with the boot logo state'
+  refs:
+  - bn6f/asm/asm03_1_1.s:9250
+  - 0x08001778 SetRenderInfoLCDControl
+  - 0x08006270 SetScreenFade
+  reproduce: python3 tools/asmcat.py 0x0803D24C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+coverage:
+- battle
+- battles1
+- battles2
+- beastsp
+- chips
+- fuzz
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- Exact meaning of the byte at +5 (skip vs. already-faded flag) and whether fade mode 8 is fade-in or
+  fade-out
+- Why no static callers were found — likely dispatched through the logo-screen state table rather than
+  a direct call
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803D24C -> logoScreen_setupFadeWait
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803D24C

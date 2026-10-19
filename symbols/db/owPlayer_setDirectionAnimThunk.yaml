@@ -1,0 +1,49 @@
+name: owPlayer_setDirectionAnimThunk
+address: '0x080A596C'
+kind: function
+status: probable
+summary: Wrapper that loads two fields off an r5-based struct and tail-calls the OW player facing-animation
+  setter.
+interface: (r5 = struct base, args unused) -> r0 = [r5+0x24], r1 = [r5+0x28] passed to owPlayer_setDirectionAnimFromOffset;
+  returns its result
+details: 'Pure thunk: pushes r4/lr only to preserve ABI, reads r0 and r1 from offsets 0x24 and 0x28 of
+  the structure in r5, then branches directly into owPlayer_setDirectionAnimFromOffset_80A5974, which
+  performs the facing-aware animation swap of the overworld navi sprite from a vector. Given that callee''s
+  signature, the pair is either two object pointers (animated entity and target player) or a packed vector/offset
+  pair. r5 being the data source suggests the real caller (sub_80A58E0) keeps the owning object in r5
+  across this call. No flags or return value of its own are produced.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldr r0, [r5,#0x24] / ldr r1, [r5,#0x28] — both arguments come from the r5 struct; b loc_80A597A
+    — tail branch into owPlayer_setDirectionAnimFromOffset_80A5974, no local work beyond the loads; callee
+    summary: facing-aware animation swap for the OW player''s navi sprite based on a vector; sole caller
+    sub_80A58E0 captured on the beastsp route, consistent with OW player movement handling'
+  refs:
+  - bn6f/asm/asm29.s:1572
+  - 0x080A58E0 sub_80A58E0
+  - 0x080A597A owPlayer_setDirectionAnimFromOffset_80A5974
+  reproduce: python3 tools/asmcat.py 0x080A596C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+coverage:
+- beastsp
+open_questions:
+- 'Semantics of fields +0x24 and +0x28: two object pointers vs. a dx/dy vector — needs the struct layout
+  or sub_80A58E0''s body'
+- Why r5 rather than a normal argument register — whether the caller is a switch-handler using r5 as a
+  this-pointer
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80A596C -> owPlayer_setDirectionAnimThunk
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A596C

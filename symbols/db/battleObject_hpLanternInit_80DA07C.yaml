@@ -4,45 +4,42 @@ kind: function
 previous_names:
 - sub_80DA07C
 status: probable
-summary: 'Initializes a battle object as an HP-recovering lantern: sets ACTIVE+VISIBLE flags, loads sprite
-  0x80/0x04 layer 5, animation 0x0A, anchors position at the object''s current panel, seeds HP/MaxHP from
-  Param2, sets a 0x2D0 timer, copies a panel-Y table entry into Param3, then allocates/sets up collision
-  data. On collision-slot exhaustion, frees the object and returns without advancing state.'
+summary: 'Initializes a battle object as an HP-recovering lantern: sets ACTIVE+VISIBLE flags, loads sprite 0x80/0x04
+  layer 5, animation 0x0A, anchors position at the object''s current panel, seeds HP/MaxHP from Param2, sets a 0x2D0
+  timer, copies a panel-Y table entry into Param3, then allocates/sets up collision data. On collision-slot exhaustion,
+  frees the object and returns without advancing state.'
 interface: '(r5 = obj, r10 = toolkit) -> void ; side effects: writes obj header flags/sprite/anim, HP/MaxHP/Timer/NameID/Z/PanelXY/Param3,
   creates a collision slot, sets CurState = CUR_STATE_UPDATE, branches to r5-relative sub_80DA108'
 details: "Starts at sub_80DA07C; first sets r0 from [r5,#oObjectHeader_Flags] and ORs in 0x02 (OBJECT_FLAG_VISIBLE)\
-  \ alongside the implicit ACTIVE bit that's expected to already be set by the caller, then stores it\
-  \ back (`strb r0,[r5,#oObjectHeader_Flags]`).\n  Loads sprite (r0=0x80, r1=4, r2=5) via sprite_load,\
-  \ enables the shadow via sprite_hasShadow, sets cur anim to 0x0A (`mov r0,#0xa; strh r0,[r5,#oBattleObject_CurAnimAndCurAnimCopy]`),\
-  \ tail-calls sprite_setAnimation/sprite_loadAnimationData/sprite_update.\n  Mirrors the sprite to the\
-  \ object's alliance facing via object_getFlip+sprite_setFlip, then snaps pixel coords to the panel via\
-  \ object_setCoordinatesFromPanels; zeroes oBattleObject_Z and copies PanelXY into FuturePanelXY; sets\
-  \ NameID=0xE4.\n  HP and MaxHP are both loaded from oBattleObject_Param2 (the same u8 stored into both\
-  \ u16 fields — that's why `ldrb r0,[r5,#oBattleObject_Param2]; strh r0,[r5,#oBattleObject_HP]; strh\
-  \ r0,[r5,#oBattleObject_MaxHP]`).\n  Timer is seeded with the literal low-half of 0x2D0...2D0 (from\
-  \ off_80DA45C, value 0x2d0; only the u16 is written), palette index = Param1, and Param3 comes from\
-  \ the 4-entry byte table at dword_80DA104 indexed by PanelY (typical \"HP pot tier per row\" lookup\
-  \ used by regen tiles).\n  ExtraVars+0x18 is cleared. object_createCollisionData is called; on NULL\
-  \ the object is freed via object_freeMemory and the function returns via `pop {pc}`. On success, object_setupCollisionData(r1=0x13,\
-  \ r2=0x14, r3=3) (the standard self/target collision-type ids) and object_presentCollisionData finish\
-  \ the collision wiring.\n  Finally CurState is set to CUR_STATE_UPDATE (4), and sub_80DA108 (the per-state\
-  \ controller) is invoked, with this function returning via `pop {pc}`.\n  The HP-from-Param2 + 0x2D0\
-  \ timer + dark sprite (id 0x80) + 0xE4 NameID pattern matches the post-battle HP-recovery lantern setup\
-  \ in BN6.\n"
+  \ alongside the implicit ACTIVE bit that's expected to already be set by the caller, then stores it back (`strb\
+  \ r0,[r5,#oObjectHeader_Flags]`).\n  Loads sprite (r0=0x80, r1=4, r2=5) via sprite_load, enables the shadow via\
+  \ sprite_hasShadow, sets cur anim to 0x0A (`mov r0,#0xa; strh r0,[r5,#oBattleObject_CurAnimAndCurAnimCopy]`),\
+  \ tail-calls sprite_setAnimation/sprite_loadAnimationData/sprite_update.\n  Mirrors the sprite to the object's\
+  \ alliance facing via object_getFlip+sprite_setFlip, then snaps pixel coords to the panel via object_setCoordinatesFromPanels;\
+  \ zeroes oBattleObject_Z and copies PanelXY into FuturePanelXY; sets NameID=0xE4.\n  HP and MaxHP are both loaded\
+  \ from oBattleObject_Param2 (the same u8 stored into both u16 fields — that's why `ldrb r0,[r5,#oBattleObject_Param2];\
+  \ strh r0,[r5,#oBattleObject_HP]; strh r0,[r5,#oBattleObject_MaxHP]`).\n  Timer is seeded with the literal low-half\
+  \ of 0x2D0...2D0 (from off_80DA45C, value 0x2d0; only the u16 is written), palette index = Param1, and Param3\
+  \ comes from the 4-entry byte table at dword_80DA104 indexed by PanelY (typical \"HP pot tier per row\" lookup\
+  \ used by regen tiles).\n  ExtraVars+0x18 is cleared. object_createCollisionData is called; on NULL the object\
+  \ is freed via object_freeMemory and the function returns via `pop {pc}`. On success, object_setupCollisionData(r1=0x13,\
+  \ r2=0x14, r3=3) (the standard self/target collision-type ids) and object_presentCollisionData finish the collision\
+  \ wiring.\n  Finally CurState is set to CUR_STATE_UPDATE (4), and sub_80DA108 (the per-state controller) is invoked,\
+  \ with this function returning via `pop {pc}`.\n  The HP-from-Param2 + 0x2D0 timer + dark sprite (id 0x80) + 0xE4\
+  \ NameID pattern matches the post-battle HP-recovery lantern setup in BN6.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- Function prologue only pushes {lr} (no callee-save frame), confirming r5/r8-r12 are expected
-    live from caller (the dispatch table). - `ldrb r0,[r5,#oObjectHeader_Flags]; mov r1,#2; orr r0,r1;
-    strb r0,[r5,#oObjectHeader_Flags]` sets the VISIBLE flag. - `mov r0,#0x80; mov r1,#4; mov r2,#5; bl
-    sprite_load` is the same sprite-id/pal/layer the recovery tiles use. - `ldrb r0,[r5,#oBattleObject_Param2];
-    strh r0,[r5,#oBattleObject_HP]; strh r0,[r5,#oBattleObject_MaxHP]` mirrors Param2 into both HP fields
-    (confirmed visible at offsets 0x24 and 0x26). - `ldr r0,off_80DA45C // =0x2d0; strh r0,[r5,#oBattleObject_Timer]`
-    seeds timer 0x2d0 (≈720 frames, 12 s at 60 fps). - `off_80DA100 -> dword_80DA104 -> 0x10200` is the
-    PanelY->tier table (4 entries) referenced by `ldrb r0,[r5,#oBattleObject_PanelY]; ldr r1,off_80DA100;
+  detail: '- Function prologue only pushes {lr} (no callee-save frame), confirming r5/r8-r12 are expected live from
+    caller (the dispatch table). - `ldrb r0,[r5,#oObjectHeader_Flags]; mov r1,#2; orr r0,r1; strb r0,[r5,#oObjectHeader_Flags]`
+    sets the VISIBLE flag. - `mov r0,#0x80; mov r1,#4; mov r2,#5; bl sprite_load` is the same sprite-id/pal/layer
+    the recovery tiles use. - `ldrb r0,[r5,#oBattleObject_Param2]; strh r0,[r5,#oBattleObject_HP]; strh r0,[r5,#oBattleObject_MaxHP]`
+    mirrors Param2 into both HP fields (confirmed visible at offsets 0x24 and 0x26). - `ldr r0,off_80DA45C // =0x2d0;
+    strh r0,[r5,#oBattleObject_Timer]` seeds timer 0x2d0 (≈720 frames, 12 s at 60 fps). - `off_80DA100 -> dword_80DA104
+    -> 0x10200` is the PanelY->tier table (4 entries) referenced by `ldrb r0,[r5,#oBattleObject_PanelY]; ldr r1,off_80DA100;
     ldrb r0,[r1,r0]; strb r0,[r5,#oBattleObject_Param3]`. - `mov r0,#CUR_STATE_UPDATE; strb r0,[r5,#oBattleObject_CurState];
-    bl sub_80DA108` advances into the state-update handler. - Failure path (`tst r0,r0; bne loc_80DA0E6`)
-    calls `object_freeMemory` and returns via `pop {pc}` without setting CurState.'
+    bl sub_80DA108` advances into the state-update handler. - Failure path (`tst r0,r0; bne loc_80DA0E6`) calls
+    `object_freeMemory` and returns via `pop {pc}` without setting CurState.'
   refs:
   - bn6f/asm/asm31.s
   reproduce: 'python3 tools/asmcat.py 0x080DA07C
@@ -53,10 +50,10 @@ evidence:
 
     '
 open_questions:
-- The exact role of 0xE4 as NameID (an enemy-name index? an HP-counter sprite id?) and the meaning of
-  Param3 after the table lookup (heal amount tier?) are not pinned down.
-- Whether the object's Parameter block before the call already had ACTIVE (0x01) set, or whether this
-  function relies on the caller to do it, is not provable from this assembly alone.
+- The exact role of 0xE4 as NameID (an enemy-name index? an HP-counter sprite id?) and the meaning of Param3 after
+  the table lookup (heal amount tier?) are not pinned down.
+- Whether the object's Parameter block before the call already had ACTIVE (0x01) set, or whether this function relies
+  on the caller to do it, is not provable from this assembly alone.
 sources:
 - discovery session 2026-10-14 batch 39 (outside model minimax/MiniMax-M3)
 changes:
@@ -68,3 +65,7 @@ changes:
   what: rename sub_80DA07C -> battleObject_hpLanternInit_80DA07C
   where: bn6f 0d61d225
   tool: tools/rename_symbol.py
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py

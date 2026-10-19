@@ -1,0 +1,56 @@
+name: battle_spawnType8ACopyOwnerAttrs
+address: '0x080E9D0C'
+kind: function
+status: probable
+summary: Spawns battle object type 0x8A for an AI attack and copies the attacker's element, owner link,
+  damage/counter fields, and alliance into it.
+interface: (r0 = element/attr byte, r1-r2 = spawn params, r3 = extra spawn param, r5 = source battle object,
+  r6 = damage field value, r7 = extra vars value) -> r0 = spawned object pointer (or unchanged r5 if r5
+  was NULL); flags Z from the r5 null check
+details: 'The function calls object_spawnType4 with type 0x8A, passing the caller''s r1-r3 through as
+  the spawn parameters. After the spawn returns, a push/pop register shuffle remaps the saved caller registers
+  so the original r0 ends up in r3, and it writes into the new object: oBattleObject_Element (byte from
+  caller r0), oBattleObject_RelatedObject1Ptr (the caller''s r5 object, i.e. the attacker/owner), oBattleObject_DamageAndStaminaDamageCounterDisabler
+  (caller r6), and oBattleObject_ExtraVars (caller r7). It also copies the oBattleObject_AllianceAndDirectionFlip
+  halfword from the r5 object to the new object so the spawned attack shares the owner''s team and sprite
+  flip. The ''mov r0, r5 / beq'' sequence is a null check on the owner object: if r5 is NULL the field-copy
+  block is skipped and the function just returns whatever spawn produced. This is the standard pattern
+  of a battle ''spawn attack/effect object then clone owner attributes'' helper.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl object_spawnType4 with mov r0,#0x8A immediately before: the spawned object type is hard-coded
+    to 0x8A (asm lines 3-4); strb r3,[r0,#oBattleObject_Element] after spawn: caller''s original r0 is
+    written as the new object''s element (asm line 8); str r5,[r0,#oBattleObject_RelatedObject1Ptr] plus
+    ldrh/strh of oBattleObject_AllianceAndDirectionFlip from [r5]: new object is linked to and aligned
+    with the owner object (asm lines 9, 12-13); push {r0-r2,r5} / pop {r1-r3,r5} remaps caller r0 into
+    r3 for the element store, a register-shuffle idiom around the spawn call (asm lines 2, 6); caller
+    0x08104290 ai_attackStateShakeAndSpawnUpdate ''spawns an effect/attack object at the target'' during
+    an attack step with anim 0x42 and camera shake, matching an attack-object spawn helper'
+  refs:
+  - bn6f/asm/asm31.s:108800
+  - 0x08104290 ai_attackStateShakeAndSpawnUpdate
+  - 0x08104D5E sub_8104D5E
+  - 0x080033AC object_spawnType4
+  reproduce: python3 tools/asmcat.py 0x080E9D0C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+open_questions:
+- What gameplay object type 0x8A actually is (which boss/attack visual or hitbox it corresponds to) is
+  not shown in this function
+- Exact meaning of the DamageAndStaminaDamageCounterDisabler and ExtraVars values passed in r6/r7 depends
+  on the callers, and caller sub_8104D5E is still undocumented
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E9D0C -> battle_spawnType8ACopyOwnerAttrs
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E9D0C

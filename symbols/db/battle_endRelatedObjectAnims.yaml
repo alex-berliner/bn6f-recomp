@@ -1,0 +1,48 @@
+name: battle_endRelatedObjectAnims
+address: '0x080FF668'
+kind: function
+status: probable
+summary: Stops the current animations of a battle object's two associated objects (related object and
+  extra-vars object), no-op when either is NULL.
+interface: (r5 = battle object ptr; r0 unused) -> r0 = last callee result; no flags used by caller
+details: 'Reads oBattleObject_RelatedObject2Ptr from the battle object at r5 and, if non-NULL, calls battle_EndObjectCurrentAnim_80C44D2
+  to mark that object''s animation finished (0xFF) and refresh its anim state. Then it reads oBattleObject_ExtraVars
+  and performs the same end-anim call on it if non-NULL. It is a cleanup/teardown helper: both pointers
+  are optional, and NULL pointers are skipped. The use of two different fields suggests it clears animations
+  on a secondary/attached entity pair owned by the object. No other state is touched.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldr r0,[r5,#oBattleObject_RelatedObject2Ptr]; tst/beq then bl battle_EndObjectCurrentAnim_80C44D2
+    — first associated object's anim ended; ldr r0,[r5,#oBattleObject_ExtraVars]; tst/beq then bl battle_EndObjectCurrentAnim_80C44D2
+    — second associated object's anim ended; function is 12 instructions, only calls the known anim-end
+    helper, touches only the two pointer fields
+  refs:
+  - bn6f/asm/asm31.s:151952
+  - 0x080FE950 sub_80FE950
+  - 0x080FF1A2 sub_80FF1A2
+  - 0x080C44D2 battle_EndObjectCurrentAnim_80C44D2
+  reproduce: python3 tools/asmcat.py 0x080FF668
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- what gameplay entity the RelatedObject2Ptr / ExtraVars objects represent (callers sub_80FE950 and sub_80FF1A2
+  would show it)
+- whether callers also NULL out these fields after this cleanup
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80FF668 -> battle_endRelatedObjectAnims
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FF668

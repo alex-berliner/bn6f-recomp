@@ -1,0 +1,46 @@
+name: battleObject_beastOutDispatch
+address: '0x08118E84'
+kind: function
+status: probable
+summary: State-machine dispatcher for a battle object's beast-out handling, tail-calling one of three
+  handlers chosen by the object's state byte and handing them the sSubmenu work area.
+interface: (r5 = battle object struct, dispatch index at [r5,#8]) -> tail-calls handler off_8118E98[index]
+  with r6 = &sSubmenu; no direct return value
+details: Loads the pointer to sSubmenu into r6 (a register convention so callees get the shared work area),
+  reads the byte at [r5,#8] as a selector, and indexes the three-entry table at off_8118E98 to jump to
+  the handler. The thumb 'mov lr, pc; bx r0' performs a tail-call, so the selected handler's return value
+  becomes this function's. Entry 0 is battleObject_initBeastOutSprite_8118EA8, showing the state machine
+  manages beast-out (Falzar/Gregal) transformation sprites. Without the callees' bodies, which states
+  the other two entries (sub_8118F14, sub_8118F1C) cover is unknown.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r1, [r5,#8]; ldr r0, [r0,r1] — byte-indexed dispatch table at off_8118E98; ldr r6, off_8118EA4
+    // =sSubmenu — work-area pointer passed to callees in r6; mov lr, pc; bx r0 — thumb tail-call to selected
+    handler; table entry 0 = battleObject_initBeastOutSprite_8118EA8+1 — battle beast-out sprite context;
+    no known callers; route only 'beastsp' executes it
+  refs:
+  - bn6f/asm/asm32.s:22520
+  reproduce: python3 tools/asmcat.py 0x08118E84
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+coverage:
+- beastsp
+open_questions:
+- what sub_8118F14 and sub_8118F1C do (the other two states of the machine)
+- what the struct at r5 is and the meaning of the [r5,#8] state values
+- how sSubmenu is used by the handlers — whether it is really the submenu struct or a battle scratch area
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8118E84 -> battleObject_beastOutDispatch
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8118E84

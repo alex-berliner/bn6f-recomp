@@ -1,0 +1,46 @@
+name: battleObject_actionFlinchSetAnim
+address: '0x08103DFA'
+kind: function
+status: probable
+summary: Flinch action handler that runs the standard flinch logic and then forces the object's current
+  animation to 0x41.
+interface: (r5 = battle object pointer, r0-r3 = action-handler args) -> r0 = 0; no meaningful flags
+details: 'A tiny action-jumptable entry: it first calls the shared flinch action handler, which dispatches
+  the AI, commits the pushed-back FuturePanel position and plays flinch animation frames. It then stores
+  0x41 into the battle object''s CurAnim field at [r5+oBattleObject_CurAnim], overriding/continuing with
+  a specific animation after the flinch. r5 is not set up inside this function, so it is supplied by the
+  jumptable dispatcher as the current battle object. The exact owner (which character/object uses anim
+  0x41 here) cannot be determined without finding the jumptable that references this address.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl battleObject_actionFlinch_80174FE — delegates to the known shared flinch action (CurAction
+    3) handler; mov r0,#0x41 ; strb r0,[r5,#oBattleObject_CurAnim] — immediately overrides CurAnim with
+    animation 0x41; r5 used without being set in the function — argument passed in by the enclosing action
+    jumptable dispatcher; no other calls or stores — pure wrapper: flinch behavior plus one animation
+    field write'
+  refs:
+  - bn6f/asm/asm31.s:163707
+  - 0x080174FE battleObject_actionFlinch_80174FE
+  reproduce: python3 tools/asmcat.py 0x08103DFA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+open_questions:
+- Which object/character's action jumptable points here, to know what anim 0x41 depicts (e.g. a custom
+  flinch/hit pose)
+- Whether the CurAnim write happens before or interleaves with the frames advanced inside the flinch callee,
+  and why the override is needed
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8103DFA -> battleObject_actionFlinchSetAnim
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8103DFA

@@ -1578,9 +1578,9 @@ static void compute_advance_frame(u32 *state, u32 *frame) {
     *frame = R1;
 }
 
-/* register form: calls sub_801E69C outside this file, which has no typed C interface yet */
+/* register form: calls battleObject_resolveEmotionPaletteAltEntry outside this file, which has no typed C interface yet */
 static void compute_hold_frame(u32 *state, u32 *frame) {
-    GUEST_CALL(sub_801E69C);
+    GUEST_CALL(battleObject_resolveEmotionPaletteAltEntry);
     *state = R0;
     *frame = R1;
 }

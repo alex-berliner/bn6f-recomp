@@ -1,0 +1,47 @@
+name: battle_lobbedProjectileUpdate
+address: '0x080B86D4'
+kind: function
+status: probable
+summary: 'Per-frame update for a lobbed-projectile battle object: steps its sprite, then dispatches the
+  phase handler for the object''s current phase.'
+interface: (r0 = battle object pointer, r5 = same object) -> r0 = phase handler's return; calls phase
+  handler via long bl (lr=pc, bx).
+details: First calls battleObject_stepSpriteIfAliveAndUnfrozen_80B881E on the object; if that returns
+  0 (sprite not stepped), it returns immediately. Otherwise it loads oBattleObject_CurPhase from the object
+  and indexes a two-entry dispatch table at off_80B86F0, calling that handler with a manual long bl (mov
+  lr,pc; bx). Phase 0 is battle_lobbedProjectileLandPhase; every other phase falls through to nullsub_8
+  (table index beyond entries would read adjacent data, so phase must be 0 or 1 in practice). This is
+  a standard battle-object 'step + phase dispatch' routine specialized to the lobbed projectile object.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl battleObject_stepSpriteIfAliveAndUnfrozen_80B881E then beq locret — sprite step gates the
+    phase dispatch; ldrb r0,[r5,#oBattleObject_CurPhase]; ldr r1,[r1,r0]; bx r1 — dispatch on object phase
+    field; table off_80B86F0: battle_lobbedProjectileLandPhase+1, nullsub_8+1 — phase 0 lands the projectile,
+    other phases do nothing; mov lr,pc; bx r1 — Thumb long-call into phase handler, standard bn6 battle
+    pattern'
+  refs:
+  - bn6f/asm/asm31.s:678
+  - 0x080B881E battleObject_stepSpriteIfAliveAndUnfrozen_80B881E
+  reproduce: python3 tools/asmcat.py 0x080B86D4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+coverage:
+- battlesweep
+open_questions:
+- No known caller, so it is unclear which projectile/spawner registers this as the object's update routine
+- Exact meaning of phases >1 if they ever occur (table only defines two)
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80B86D4 -> battle_lobbedProjectileUpdate
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80B86D4

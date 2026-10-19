@@ -1,0 +1,53 @@
+name: gameState_fadeToOverworldAfterEvent
+address: '0x08005A50'
+kind: function
+status: probable
+summary: 'One-shot game state handler: sets two story event flags, starts a screen fade, delays 160 frames,
+  then hands control to the overworld subsystem.'
+interface: (r5 = * GameState, self) -> void; no return value, writes SubsystemIndex = 0x10 to schedule
+  overworld_owMap_renderAndTickSubsystems_800536E via cbGameState_80050EC
+details: Runs as a GameState callback (r5 = state struct). It first sets event flags EVENT_1703 and EVENT_1738
+  via SetEventFlagFromImmediate, then calls SetScreenFade(0xc, 0x10) — presumably a fade-in of the overworld
+  after an event/cutscene. It ticks the 32-entry countdown-timer table, then stores 0xa0 (160) into GameState.FrameCountdown,
+  a delay before the next transition, and finally writes 0x10 into GameState.SubsystemIndex to switch
+  to the overworld subsystem. The word table right after the body points at CutsceneScripts for map warp
+  / jack-in / enter-after-jack-out, suggesting this state is part of the map-warp/jack-out flow and the
+  table is consumed by the state dispatcher or a neighbor function.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: two movflag + bl SetEventFlagFromImmediate pairs set EVENT_1703 and EVENT_1738 at entry; bl
+    SetScreenFade with r0=0xc, r1=0x10 starts the screen transition; str 0xa0 -> [r5,#oGameState_FrameCountdown]
+    sets a 160-frame delay; strb 0x10 -> [r5,#oGameState_SubsystemIndex] with comment 'trigger overworld_owMap_renderAndTickSubsystems_800536E
+    via cbGameState_80050EC' shows the exit into the overworld; off_8005A78 table of CutsceneScriptOnMapWarp/OnInMapWarp/OnMapEnterAfterJackOut
+    ties it to the map-warp cutscene flow
+  refs:
+  - bn6f/asm/asm00_1.s:5516
+  - 0x0802F110 SetEventFlagFromImmediate
+  - 0x08035738 timer_tickCountdownTable_8035738
+  - 0x08006270 SetScreenFade
+  reproduce: python3 tools/asmcat.py 0x08005A50
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+coverage:
+- beastsp
+open_questions:
+- which cutscene or route actually dispatches into this state (no caller recorded beyond the 'beastsp'
+  route snapshot)
+- the exact meaning of event flags 0x1703 and 0x1738
+- whether the CutsceneScript word table belongs to this function or is shared with the following handler
+- semantics of SetScreenFade(0xc, 0x10) parameters (speed vs. color/palette)
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8005A50 -> gameState_fadeToOverworldAfterEvent
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8005A50

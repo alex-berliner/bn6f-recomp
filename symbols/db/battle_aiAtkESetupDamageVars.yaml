@@ -1,0 +1,47 @@
+name: battle_aiAtkESetupDamageVars
+address: '0x08012210'
+kind: function
+status: probable
+summary: 'Sets up one AI attack''s damage numbers: damage from the beast-power table entry 0xE scaled
+  by the attacker''s alliance, plus fixed extra damage 0x8A.'
+interface: (r0 = table index 0xE hardcoded; r5 = battle object read for Alliance byte, r7 = AI attack
+  vars struct) -> r0 = 9 (next AI step/state); no flags used
+details: The function loads the Alliance byte from the battle object at r5, calls battle_beastPwrAtk_addScaledBaseFromIndex_8010D04
+  with r0=0xE to get an attack power scaled from the beast power-Atk table (byte_80212D4 entry 14), and
+  stores the result into oAIAttackVars_Damage at r7. It then writes a fixed 0x8A into oAIAttackVars_ExtraDamage
+  and clears oAIAttackVars_InitFlag. It always returns 9, which callers of this attack-handler family
+  presumably use as the next AI step. The hardcoded 0xE index means it serves one specific attack; the
+  pattern matches sibling attack-setup handlers that differ only in index and constants.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mov r0,#0xe + ldrb r1,[r5,#oBattleObject_Alliance] + bl addScaledBaseFromIndex: power = table
+    entry 14 scaled by alliance; strh r0,[r7,#oAIAttackVars_Damage]: result is stored as the attack''s
+    damage; mov r0,#0x8a; strh [r7,#oAIAttackVars_ExtraDamage]: fixed secondary damage constant for this
+    attack; strb r0(=0),[r7,#oAIAttackVars_InitFlag] and mov r0,#9; pop {pc}: resets init flag and returns
+    9 as next state; calleee battle_beastPwrAtk_addScaledBaseFromIndex_8010D04 confirms the beast power-Atk
+    table lookup pattern'
+  refs:
+  - bn6f/asm/asm00_2.s:7594
+  - 0x08010D04 battle_beastPwrAtk_addScaledBaseFromIndex_8010D04
+  reproduce: python3 tools/asmcat.py 0x08012210
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+open_questions:
+- no caller known, so which boss/AI state dispatches this handler and what step 9 means is unconfirmed
+- which attack index 0xE and constant 0x8A correspond to in game terms (which Beast-Out attack) is not
+  shown here
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8012210 -> battle_aiAtkESetupDamageVars
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8012210

@@ -1,0 +1,72 @@
+name: custMenu_matchChipComboPattern
+address: '0x08029520'
+kind: function
+status: probable
+summary: Scans the just-built selected-chip command queue for predefined chip-combination (e.g. Program
+  Advance) patterns and, on a hit, runs the corresponding handler.
+interface: (r0 = 0xFFFF-terminated array of up to 5 packed halfword chip-command words, r1 = context passed
+  to sub_8029652) -> r0 = result of sub_802963C (nonzero) if a pattern matched/started, else 0; clobbered
+  r4-r7, sp buffer.
+details: 'Copies up to 5 packed halfwords from [r0] onto the stack, deinterleaving each into low 9 bits
+  (opcode/field) at sp+0..9 and bits 9-15 at sp+0xA..13, stopping at a 0xFFFF terminator. If fewer than
+  3 entries were read it returns 0 immediately. Otherwise it walks a pattern table (off_802BCB0; an alternate
+  table off_802BC60 is selected by a stack flag at sp+0x1C that is always 0 here), each entry being {byte
+  len, byte handlerIndex}: entries whose len exceeds the remaining count are skipped. The chosen handler
+  from off_80295C0 — battle_scanChipSeq_80295C8 or matchHalfwordPatternEntry_802961A — is long-called
+  (mov lr,pc / bx) with the entry pointer; if it matches, sub_8029652 is called with the saved r1, and
+  on further success sub_802963C fires the combo and its result is returned. The caller custMenu_confirmAndProcessSelectedChips_8029110
+  builds the chip-use command queue at dword_2033000 right before calling this, matching the 5-chip selection
+  limit of the Custom Screen.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'loc_802952A-802954C: copies max 5 halfwords (r5<0xA) split into low9 (>>9 split) with 0xFFFF
+    sentinel — the selected-chip slot words; loc_8029556: walks off_802BCB0 pointer table, entry {len
+    byte, handler byte}, skips if r5 < len — pattern/length matching; off_80295C0 dispatches to battle_scanChipSeq_80295C8
+    and matchHalfwordPatternEntry_802961A via mov lr,pc/bx — sequence-pattern matchers; on handler success
+    calls sub_8029652(r1=saved arg) then sub_802963C to act on the match; sole caller custMenu_confirmAndProcessSelectedChips_8029110
+    builds the dword_2033000 chip command queue and is in the recorded battle/menu routes'
+  refs:
+  - bn6f/asm/asm03_0.s:6945
+  - 0x08029110 custMenu_confirmAndProcessSelectedChips_8029110
+  - 0x0802963C sub_802963C
+  - 0x08029652 sub_8029652
+  reproduce: python3 tools/asmcat.py 0x08029520
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- beastsp
+- chips
+- fuzz
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- exact meaning of the r1 argument forwarded to sub_8029652
+- contents/semantics of pattern tables off_802BCB0 vs off_802BC60 and when the sp+0x1C flag would ever
+  be nonzero
+- what sub_802963C returns and what its return value means to the caller
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8029520 -> custMenu_matchChipComboPattern
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8029520

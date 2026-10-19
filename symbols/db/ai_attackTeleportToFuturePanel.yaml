@@ -1,0 +1,50 @@
+name: ai_attackTeleportToFuturePanel
+address: '0x080EFDB2'
+kind: function
+status: probable
+summary: AI attack action that relocates the battle object to its reserved FuturePanel tile with a flash/effect,
+  waits ~30 frames, then re-enables collision and releases the reserve.
+interface: (r5 = battle object) -> r0 = 0/1; r6 = 1 (palette flag), no other visible outputs
+details: 'Two-phase AI attack handler keyed on AIAttackVars.AttackElement (AIData+0xa0). Phase 0: plays
+  sound 0x8e, disables the collision region, copies FuturePanelX/Y into PanelX, reserves those panels,
+  recomputes coordinates/collision, sets DirectionFlip via battle_checkEmergeDirectionFlip, refreshes
+  sprite/arm, spawns an effect object flagged with bit 2, clears flag masks 0x80011C40/0x10 and AIData+0x48
+  mask 0x200000, forces the sprite palette white (r6=1), sets StepTimer=0x1e and AttackElement=4. Phase
+  1: after the timer expires it re-enables the collision region, frees the reserved panels, clears AIData+0x44
+  mask 0x1001003D, clears invulnerable time, bumps NaviStats byte 0x18 by 4 (saturating at 7) for the
+  object''s alliance, and exits the attack state.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r7,#oAIAttackVars_AttackElement]; bne loc_80EFE2C splits first entry vs timer ticks;
+    FuturePanelX/Y copied to PanelX then object_reservePanel/object_setCoordinatesFromPanels/object_updateCollisionPanels;
+    spawn_t1_0x0_EffectObject with oObjectHeader_Flags |= 4 and sprite_forceWhitePalette mark the arrival
+    flash; StepTimer set to 0x1e then decremented with bgt back to locret, so ~30 frames of collision-off
+    wait; Final phase calls object_removePanelReserve, ClearAIData_Unk_44_Flag(0x1001003D) and object_exitAttackState
+  refs:
+  - bn6f/asm/asm31.s:120711
+  - 0x0800FFEE ClearAIData_Unk_44_Flag
+  - 0x08013774 GetBattleNaviStatsByte_AllianceFromBattleObject
+  - 0x080005CC PlaySoundEffect
+  reproduce: python3 tools/asmcat.py 0x080EFDB2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+open_questions:
+- Which attack/AI state selects this handler (no caller known); callers would confirm which navi/enemy
+  uses it
+- What AttackElement=4 denotes in the AI attack enum
+- Meaning of NaviStats byte 0x18 that is incremented by 4 and saturated to 7
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80EFDB2 -> ai_attackTeleportToFuturePanel
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EFDB2

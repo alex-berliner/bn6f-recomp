@@ -654,8 +654,8 @@ static u32 call_shop_handler(u32 handler_addr, u32 state_offset) {
     case 24: GUEST_CALL(chatbox_confirmShopPurchase_8046ED2); break;
     case 28: GUEST_CALL(chatbox_stepContextScript_8047028); break;
     case 32: GUEST_CALL(shop_stateStepWaitText); break;
-    case 36: GUEST_CALL(sub_8047066); break;
-    case 40: GUEST_CALL(sub_804709C); break;
+    case 36: GUEST_CALL(shopBuyMenu_handleDialogChoice); break;
+    case 40: GUEST_CALL(shopBuyMenu_confirmPurchase); break;
     default: break;
     }
 

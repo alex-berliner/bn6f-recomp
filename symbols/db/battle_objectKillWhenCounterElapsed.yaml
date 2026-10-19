@@ -1,0 +1,48 @@
+name: battle_objectKillWhenCounterElapsed
+address: '0x081165A4'
+kind: function
+status: probable
+summary: Zeroes a battle object's HP (deleting it) once its halfword field at +0x62 has counted down to
+  or below the value in the field at +0x60.
+interface: (r5 = battle object pointer, preserved across call) -> writes 0 to oBattleObject_HP when [r5+0x62]
+  <= [r5+0x60]; flags from the cmp are clobbered, r0/r1 clobbered
+details: 'Loads the halfwords at object+0x60 and object+0x62, compares them, and returns without touching
+  the object if the +0x62 value is strictly greater; otherwise it stores 0 into oBattleObject_HP, which
+  is the standard way battle objects are flagged for deletion. The pattern reads like a timed self-destruct:
+  +0x62 behaves as an active counter/timer and +0x60 as the threshold or reference value it must fall
+  to (or below). Both fields are unsigned halfword comparisons (cmp/bgt). The function is a tail of a
+  larger routine (152 instructions per the route record, only the tail shown here), so the earlier body
+  likely updates the counter and this is its expiry check.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrh r0,[r5,#0x60] / ldrh r1,[r5,#0x62]: both inputs are halfword fields of the object at r5;
+    cmp r1,r0 / bgt locret: store only happens when [0x62] <= [0x60]; mov r0,#0 / strh r0,[r5,#oBattleObject_HP]:
+    the sole effect is zeroing the known HP field, the standard kill flag; mov pc,lr with no other state
+    touched: pure conditional side-effect on the object, no return value'
+  refs:
+  - bn6f/asm/asm32.s:16868
+  reproduce: python3 tools/asmcat.py 0x081165A4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+coverage:
+- battlesweep
+open_questions:
+- Exact meaning of the +0x60 and +0x62 fields (timer vs. HP vs. phase counters) — a caller or the object-struct
+  layout is needed to confirm
+- The rest of the 152-instruction routine before this tail, which presumably decrements +0x62 and would
+  reveal whether this is a timed deletion or a phase/HP cross-check
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81165A4 -> battle_objectKillWhenCounterElapsed
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81165A4

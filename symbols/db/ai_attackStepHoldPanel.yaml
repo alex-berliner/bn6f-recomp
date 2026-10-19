@@ -1,0 +1,48 @@
+name: ai_attackStepHoldPanel
+address: '0x081047C0'
+kind: function
+status: probable
+summary: 'One step of an enemy AI attack routine: the object plants itself on its current panel, plays
+  a pose, waits 3 frames, then stamps its attack''s hit element.'
+interface: (r5 = battle object, r7 = AI attack vars; no args) -> r0 = don't-care; no flags
+details: 'Two-phase state machine keyed on oAIAttackVars_AttackElement: on entry (0) it stores 4 there,
+  and if object_canMove passes it copies PanelX/Y into FuturePanelX/Y (stay in place), ORs OBJECT_FLAGS_CANNOT_SLIDE
+  and the bit-22 flag into ObjectFlags1, sets CurAnim to 0x43 and StepTimer to 3. On later calls it just
+  decrements StepTimer and, once it hits 0, writes 4 into oAIAttackVars_HitElement. If the object cannot
+  move, it sets oAIAttackVars_HasMoved = 0 and aborts via object_exitAttackState_801171C. AttackElement
+  doubles as a ''started'' marker (4), not an element here; the 4 in HitElement is presumably the element/state
+  the surrounding attack routine consumes.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'tst AttackElement / mov #4 strb — two-phase entry vs countdown (loc_81047F2); PanelX/Y copied
+    to FuturePanelX/Y plus OBJECT_FLAGS_CANNOT_SLIDE — object locks to its panel; CurAnim = 0x43 and StepTimer
+    = 3 — short hold/pose of 3 frames; StepTimer countdown then HitElement = 4 — result handed to the
+    attack''s hit logic; canMove failure path: HasMoved = 0 then object_exitAttackState_801171C — attack
+    aborted when blocked'
+  refs:
+  - bn6f/asm/asm31.s:164099
+  - 0x0800E5E2 object_canMove
+  - 0x0801171C object_exitAttackState_801171C
+  - 0x0801A152 object_setFlag1
+  reproduce: python3 tools/asmcat.py 0x081047C0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+open_questions:
+- Which AI attack (enemy/behavior) this step belongs to — the caller table and what element id 4 means
+  in HitElement would pin it down
+- Exact meaning of the bit-22 ObjectFlags1 flag set here
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81047C0 -> ai_attackStepHoldPanel
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81047C0

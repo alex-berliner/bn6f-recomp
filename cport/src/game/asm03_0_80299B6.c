@@ -219,21 +219,21 @@ static u32 step0_script_index(void) {
     return R0;
 }
 
-/* register form: calls sub_8029BAC outside this file, which has no typed C interface yet */
+/* register form: calls battleTutorial_firstCheckStepFlag outside this file, which has no typed C interface yet */
 static u32 step1_script_index(void) {
-    GUEST_CALL(sub_8029BAC);
+    GUEST_CALL(battleTutorial_firstCheckStepFlag);
     return R0;
 }
 
-/* register form: calls sub_8029BD6 outside this file, which has no typed C interface yet */
+/* register form: calls battleTutorial_firstGetStepScriptId outside this file, which has no typed C interface yet */
 static u32 step3_4_script_index(void) {
-    GUEST_CALL(sub_8029BD6);
+    GUEST_CALL(battleTutorial_firstGetStepScriptId);
     return R0;
 }
 
-/* register form: calls sub_8029BE6 outside this file, which has no typed C interface yet */
+/* register form: calls battleTutorial_firstCheckTextTrigger outside this file, which has no typed C interface yet */
 static u32 step6_script_index(void) {
-    GUEST_CALL(sub_8029BE6);
+    GUEST_CALL(battleTutorial_firstCheckTextTrigger);
     return R0;
 }
 

@@ -1,0 +1,50 @@
+name: battle_subEffectFadeOutDispatch
+address: '0x0802B7A0'
+kind: function
+status: probable
+summary: Battle sub-effect step that fades the screen out (SetScreenFade 0x14,8), waits for the fade to
+  finish, then dispatches a follow-up effect kind (0x24, or 0x34 if a flag byte is set) and advances its
+  state machine.
+interface: '(r5 = effect work struct: +1 state byte, +2 init byte/halfword counter, +7 variant byte, +0x10
+  word) -> void'
+details: This is a per-kind battle sub-effect handler (invoked via the handler table of battle_dispatchKindEffect,
+  hence no direct callers). On the first invocation it sets the init byte at r5+2, calls sub_802B9FE(0),
+  and starts a screen fade with SetScreenFade(0x14, 8). On subsequent steps it polls IsScreenFadeActive;
+  once the fade completes it dispatches effect kind 0x24, or 0x34 when the byte at r5+7 is non-zero, so
+  +7 selects a variant of the follow-up effect. It then writes state 4 into r5+1, clears the halfword
+  at r5+2 and the word at r5+0x10, handing control back to the effect state machine.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'first-call path: strb 1,[r5,#2]; bl sub_802B9FE(0); bl SetScreenFade(0x14,8) then returns;
+    wait path: bl IsScreenFadeActive; bne exit until fade done; bl battle_dispatchKindEffect_801E792 with
+    r0=0x24, or 0x34 when ldrb r1,[r5,#7] is nonzero; state advance: mov r0,#4; strb r0,[r5,#1]; clears
+    halfword [r5,#2] and word [r5,#0x10]; no direct callers and a kind-byte dispatch callee mark it as
+    a per-kind sub-effect handler'
+  refs:
+  - bn6f/asm/asm03_0.s:11482
+  - 0x0801E792 battle_dispatchKindEffect_801E792
+  - 0x080062F8 IsScreenFadeActive
+  - 0x08006270 SetScreenFade
+  reproduce: python3 tools/asmcat.py 0x0802B7A0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+open_questions:
+- which battle effect kind owns this handler (the dispatch table entry linking a kind byte to 0x0802B7A0)
+  to name it more specifically
+- what sub_802B9FE(0) initializes
+- what effects 0x24 and 0x34 actually are in game terms
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_802B7A0 -> battle_subEffectFadeOutDispatch
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802B7A0

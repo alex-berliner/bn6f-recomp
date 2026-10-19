@@ -1,0 +1,50 @@
+name: ai_attackSpawnTimedTempObject
+address: '0x080ED41C'
+kind: function
+status: probable
+summary: AI attack step that once spawns a temp attack object, waits 10 frames, then removes it and ends
+  the attack.
+interface: () -> void; reads r5 = battle object, r7 = AI attack vars (oAIAttackVars)
+details: On entry, if oAIAttackVars_AttackElement is 0 it calls sub_80B8E70 with the object's AIData TempAttackObjectPtr
+  and 0 (likely spawning/initializing the temp attack object), sets StepTimer = 10 and writes AttackElement
+  = 4 as a 'spawned' phase marker. Each call then decrements StepTimer; while it is still positive it
+  returns. When the timer runs out it clears ObjectFlags1 bit 1<<22 via object_clearFlag, nulls oBattleObject_RelatedObject1Ptr
+  and oAIData_TempAttackObjectPtr (detaching the temp object), and calls object_exitAttackState to leave
+  the attack state. So the spawned object persists for about 10 frames attached to the user before being
+  cleaned up.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'tst r0,r0 / bne skips spawn block: AttackElement doubles as a ''already spawned'' phase flag
+    (asm lines 2-4); bl sub_80B8E70 with [oAIData_TempAttackObjectPtr],#0 then StepTimer=0xa, AttackElement=4:
+    one-shot spawn + 10-frame timer; bgt locret: pure frame countdown while timer > 0; mov r0,#1; lsl
+    r0,#0x16; bl object_clearFlag: clears flag 0x400000 on cleanup; str r0 to RelatedObject1Ptr and TempAttackObjectPtr
+    then bl object_exitAttackState: detaches temp object and ends attack'
+  refs:
+  - bn6f/asm/asm31.s:114552
+  - 0x0801A15C object_clearFlag
+  - 0x08011714 object_exitAttackState
+  - 0x080B8E70 sub_80B8E70
+  reproduce: python3 tools/asmcat.py 0x080ED41C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+coverage:
+- beastsp
+open_questions:
+- what sub_80B8E70 spawns (object id/behavior) — it is undocumented and has no known callers besides this
+- which boss/AI uses this attack (route is beastsp) and what element value 4 corresponds to
+- meaning of ObjectFlags1 bit 0x400000 that is cleared on cleanup
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80ED41C -> ai_attackSpawnTimedTempObject
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80ED41C

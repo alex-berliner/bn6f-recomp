@@ -1,0 +1,64 @@
+name: battleObject_endHitStateAndClearParent
+address: '0x030074BA'
+kind: function
+status: probable
+summary: Checks whether an object's hit state should end; if so, clears the parent object's hit/flinch
+  flags and returns true.
+interface: (r6 = object's collision-data struct, r7 = related object/struct) -> r0 = 1 if hit state ended
+  (and parent's hit flags cleared), else 0; flags clobbered by callee
+details: Reads ObjectFlags1 from the collision-data struct at r6 and tests bit 0x10000 (the hit flag).
+  If set, it checks whether FlagsFromCollision has bit 2 (value 2) OR whether the byte at r7+0x19 equals
+  0x10; either condition ends the hit. When ending, it loads oCollisionData_ParentObjectPtr and long-calls
+  battleObject_clearHitFlags_801A29A with r6 set to that parent pointer, clearing 0x10000 in both flag
+  words and resetting the collision halfword on the parent. Returns 1 when the hit state was ended, 0
+  otherwise. The r7+0x19==0x10 test is an alternate end condition whose meaning (likely an object type/state
+  byte) is not confirmed.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'tst r0, r1 with dword_300750C=0x10000 tests the hit flag in ObjectFlags1; tst FlagsFromCollision,
+    #2 and ldrb [r7,#0x19]; cmp #0x10 are the two alternate end conditions; ldr r5, [r6,#oCollisionData_ParentObjectPtr]
+    then long-call (mov lr,pc; bx) to battleObject_clearHitFlags_801A29A clears the parent''s hit flags;
+    mov r4,#1 / mov r0,r4 / pop shows a boolean return of whether the hit ended; Caller sub_3007218 runs
+    in battle routes, consistent with battle hit-state handling'
+  refs:
+  - bn6f/asm/asm38.s:3656
+  - 0x03007218 sub_3007218
+  - 0x0801A29A battleObject_clearHitFlags_801A29A
+  reproduce: python3 tools/asmcat.py 0x030074BA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- beastsp
+- chips
+- fuzz
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What struct r7 points to and what the byte at +0x19 (compared to 0x10) means
+- Which caller sub_3007218 context invokes this (which object types rely on the parent-clearing behavior)
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_30074BA -> battleObject_endHitStateAndClearParent
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_30074BA

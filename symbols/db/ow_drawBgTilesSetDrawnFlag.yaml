@@ -1,0 +1,46 @@
+name: ow_drawBgTilesSetDrawnFlag
+address: '0x0801E376'
+kind: function
+status: probable
+summary: Copies an 8x2 block of background tiles to position (j=0xB, i=0) in tile block 3 from the table
+  at byte_801EE78, then marks that section as drawn in eStruct2035280's flag word.
+interface: () -> void; sets bit 11 of the flag word at eStruct2035280+0x44 (returned in r2 by the callee)
+details: Takes no arguments; it hardcodes a CopyBackgroundTiles call with j=0xB, i=0, tile block 3, a
+  tile-id list at byte_801EE78, and dimensions 8x2 (r4=8, r5=2). After the copy it calls flagSetBits_eStruct2035280_801BEB8
+  with 1<<11, so bit 11 of the +0x44 flag word records that this background piece was drawn. The r4/r5
+  registers are dead after the bl, consistent with them being size parameters only. The pattern of 'copy
+  tiles then set a drawn flag' suggests a one-time background decoration drawn conditionally by an unseen
+  caller that checks the same bit. With no known caller, the exact which screen/scenario context is unknown.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: mov r0,#0xb / mov r1,#0 / mov r2,#3 / ldr r3,=byte_801EE78 / mov r4,#8 / mov r5,#2 then bl CopyBackgroundTiles
+    — a fixed tile copy at (0xB,0), block 3, 8x2; mov r0,#1; lsl r0,r0,#0xb; bl flagSetBits_eStruct2035280_801BEB8
+    — sets bit 11 in the eStruct2035280+0x44 flag word right after the tile copy; tile ids come from the
+    static table byte_801EE78 (off_801E394), so this draws a specific predefined background piece; no
+    callers known, so the conditional 'draw once' logic lives in an unidentified caller
+  refs:
+  - bn6f/asm/asm00_2.s:32172
+  - 0x0801BEB8 flagSetBits_eStruct2035280_801BEB8
+  - 0x080018C2 CopyBackgroundTiles
+  reproduce: python3 tools/asmcat.py 0x0801E376
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+open_questions:
+- which caller guards this and tests bit 11 of eStruct2035280+0x44 (would confirm the draw-once behavior)
+- which game screen or area tile block 3 at (0xB,0) belongs to
+- what the tile ids at byte_801EE78 depict
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_801E376 -> ow_drawBgTilesSetDrawnFlag
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_801E376

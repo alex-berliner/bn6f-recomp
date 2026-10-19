@@ -1,0 +1,49 @@
+name: battleObject_resolveEmotionPaletteAltEntry
+address: '0x0801E69C'
+kind: function
+status: probable
+summary: 'Alternate entry of the emotion-palette resolver: pre-processes the object''s emotion byte, then
+  resolves its emotion palette/effect index.'
+interface: (r5 = battle object; reads [r5+0x48]+0x16 = emotion byte) -> r0 = emotion palette/effect index
+  (from shared resolver body); no meaningful flags
+details: Loads the pointer at r5+0x48 (object sub-struct), reads the byte at +0x16, and calls sub_8015B5C
+  with it as r0; the result is then fed straight into the shared body of battleObject_resolveEmotionPalette_801E6A8
+  via a branch to 0x801E6B2. Because the normal entry at 0x801E6A8 is only a few instructions earlier,
+  this function is best understood as a second entry point that skips the normal emotion-byte load and
+  instead obtains the value through sub_8015B5C (likely a transform/adjust, e.g. accounting for BeastOut/transform
+  states the resolver special-cases). r5 is not set up here, so it relies on the caller's register state,
+  as in battle_updateObjectAnim_801CB38.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r0,#0x16] after ldr r0,[r5,#0x48] reads the object's emotion byte from its sub-struct;
+    bl sub_8015B5C transforms that byte before the palette lookup; b loc_801E6B2 tail-jumps into the body
+    of battleObject_resolveEmotionPalette_801E6A8, sharing its code; sole caller battle_updateObjectAnim_801CB38
+    keeps the object in r5 and advances animation/GFX state, consistent with palette resolution
+  refs:
+  - bn6f/asm/asm00_2.s:32638
+  - 0x0801CB38 battle_updateObjectAnim_801CB38
+  - 0x0801E6B2 battleObject_resolveEmotionPalette_801E6A8
+  - 0x08015B5C sub_8015B5C
+  reproduce: python3 tools/asmcat.py 0x0801E69C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+open_questions:
+- what sub_8015B5C does to the emotion byte (clamp, form adjustment, lookup?) — its other callers or a
+  known summary would pin down the semantics
+- what the skipped prologue at 0x801E6A8–0x801E6B0 loads, to confirm the two entries differ only in the
+  emotion source
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_801E69C -> battleObject_resolveEmotionPaletteAltEntry
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_801E69C

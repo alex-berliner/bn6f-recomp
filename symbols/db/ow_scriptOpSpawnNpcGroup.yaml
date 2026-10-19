@@ -1,0 +1,48 @@
+name: ow_scriptOpSpawnNpcGroup
+address: '0x08138624'
+kind: function
+status: probable
+summary: 'Overworld script opcode: frees all current NPCs and spawns the NPC group selected by the opcode
+  byte, loading its sprite resources and fading the screen.'
+interface: (r3 = script pc, r5 = script context) -> r0 = 0 (continue); stores pc+2 to [r5,#0x1c]
+details: 'Reads a one-byte parameter at [r3,#1]. If it is 0x80, the opcode only performs SetScreenFade(0x80,
+  8) — a fade-only variant. Otherwise the byte, multiplied by 4, indexes three parallel 8-entry tables:
+  a sprite data list passed to initUncompSpriteState_80028d4 (which uses the shared 0x50-byte work block
+  unk_202A000) followed by uncompSprite_8002906, and an NPC spawn list passed to npc_freeAllObjectsThenSpawnObjectsFromList,
+  which frees every existing overworld NPC and spawns one object per list entry until the 0xFF terminator.
+  Afterwards it issues SetScreenFade(0x7C, 8). Finally it advances the script pc by 2, saves it to [r5,#0x1c],
+  and returns 0.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r4,[r3,#1]; cmp r4,#0x80 — one-byte opcode parameter with a fade-only 0x80 special case;
+    lsl r4,r4,#4/2 then indexed ldr off_8138694 + uncompSprite_8002906 — per-value sprite resource list
+    load into unk_202A000; ldr r0,[r0,r4]; bl npc_freeAllObjectsThenSpawnObjectsFromList — per-value NPC
+    spawn list replaces all overworld NPCs; add r3,#2; str r3,[r5,#0x1c]; mov r0,#0; pop {r4,pc} — script
+    interpreter pc advance and continue return; bl SetScreenFade with 0x7C,8 after spawning (0x80,8 in
+    the special case)
+  refs:
+  - bn6f/asm/asm36.s:17606
+  - 0x080028D4 initUncompSpriteState_80028d4
+  - 0x08030A60 npc_freeAllObjectsThenSpawnObjectsFromList
+  - 0x08006270 SetScreenFade
+  reproduce: python3 tools/asmcat.py 0x08138624
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-230610; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+open_questions:
+- No caller is known, so the r3 = script pc / r5 = script context convention is inferred from the pc-advance
+  store rather than confirmed; what the 0x80 fade variant is used for (which scripts emit it) is unknown.
+sources:
+- wf investigate investigate-20261018-230610
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8138624 -> ow_scriptOpSpawnNpcGroup
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8138624

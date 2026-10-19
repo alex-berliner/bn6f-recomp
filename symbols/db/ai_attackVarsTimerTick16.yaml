@@ -1,0 +1,47 @@
+name: ai_attackVarsTimerTick16
+address: '0x08115432'
+kind: function
+status: probable
+summary: '16-frame periodic tick for an AI attack state: counts down a timer and calls a helper each time
+  it elapses.'
+interface: (r7 = AI attack-state struct) -> void; timer field [r7+TimerOrCycles] decremented and reloaded
+details: Reads the byte at oAIAttackVars_TimerOrCycles, decrements it, stores it back, and returns unless
+  it hit zero. On zero it reloads the timer with 0x10 (0x11 frames per cycle counting the zero pass) and
+  tail-calls sub_8115446, so that helper runs once every 16 frames. It preserves all registers except
+  r0 and lr; r7 is the shared AI attack-vars context used by the move-step and throw-object handlers.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb/strb on [r7,#oAIAttackVars_TimerOrCycles] with sub #1: classic frame-countdown timer;
+    mov r0,#0x10; strb reload only on the bne fallthrough: fixed 16-frame period; bl sub_8115446 executes
+    solely on timer expiry, so it is the periodic action; callers 0x8115272 (AI panel-move step) and 0x8115340
+    (throw step) are both AI attack-state handlers sharing the r7 struct'
+  refs:
+  - bn6f/asm/asm32.s:14522
+  - 0x08115272 ai_attackVars_runMoveStep_8115272
+  - 0x08115340 ai_throwObjectStep
+  - 0x0811523C sub_811523C
+  - 0x08115446 sub_8115446
+  reproduce: python3 tools/asmcat.py 0x08115432
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- what sub_8115446 actually does (spawn/sound/state advance) — no callees or data for it were provided
+- whether other AI attack states reuse this tick with different reload values
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8115432 -> ai_attackVarsTimerTick16
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8115432

@@ -1,0 +1,49 @@
+name: chatbox_stepRunScript12IfFlag80Clear
+address: '0x08133740'
+kind: function
+status: probable
+summary: Cutscene/chatbox step that, unless event-flag bit 0x80 is set, performs sub_8134FE0, sets a state
+  field to 0xC in the context struct, and runs text script 0x12.
+interface: (r5 = cutscene/chatbox context struct) -> r0 = script result; flags from flag test are consumed
+  internally
+details: This is a step-style routine (push {lr}/pop {pc}, no args in r0-r3) that tests bit 0x80 of the
+  shared chatbox/event flag word eFlags2009F38 via chatbox_mask_eFlags2009F38. If that bit is set, it
+  returns immediately without side effects. Otherwise it calls sub_8134FE0 (purpose unknown), stores 0xC
+  at offset 0x68 of the r5 context struct (likely a next-state/step index or delay counter), and kicks
+  off text script index 0x12 (18) from the eTextScript2028A20 archive through chatbox_runScript_803FD9C_on_eTextScript2028A20.
+  The [r5+0x68] write suggests the surrounding dispatcher reads that field to pick the following step.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: mov r0,#0x80; bl chatbox_mask_eFlags2009F38; bne locret — gate on event-flag bit 0x80, early-out
+    when set; bl sub_8134FE0 — side effect performed only when the flag bit is clear; mov r0,#0xC; str
+    r0,[r5,#0x68] — writes a small state/timer value into the caller's context struct; mov r0,#0x12; bl
+    chatbox_runScript_803FD9C_on_eTextScript2028A20 — launches text script index 18; push {lr} ... pop
+    {pc} with no r0 input used — tail-called step routine, consistent with a chatbox step table entry
+  refs:
+  - bn6f/asm/asm36.s:7025
+  - 0x08045F3C chatbox_mask_eFlags2009F38
+  - 0x08134190 chatbox_runScript_803FD9C_on_eTextScript2028A20
+  - 0x08134FE0 sub_8134FE0
+  reproduce: python3 tools/asmcat.py 0x08133740
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+open_questions:
+- Purpose of sub_8134FE0 (likely sets up or advances the cutscene) — decompiling it would clarify the
+  step
+- What struct r5 points to and the meaning of field +0x68 (next step id vs. counter)
+- Which cutscene this step belongs to and what event flag bit 0x80 represents
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8133740 -> chatbox_stepRunScript12IfFlag80Clear
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8133740

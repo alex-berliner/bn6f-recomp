@@ -1,0 +1,47 @@
+name: reqBBS_addMissingMessagesForFlagRange
+address: '0x08000FE6'
+kind: function
+status: probable
+summary: For a consecutive range of event-flag IDs, posts a BBS message for each flag that is not yet
+  set, unlocking any board posts the player hasn't received.
+interface: (r0 = first event flag id, r1 = number of flags) -> r0 = clobbered; loops from flag r0 while
+  count r1 > 0, decrementing after each
+details: Iterates over flag IDs starting at r0 for r1 iterations. Each pass calls TestEventFlag on the
+  current ID; if the flag is clear (Z set), it calls reqBBS_addBBSMessage_813e5dc, which sets that flag,
+  sets a mirror flag, and appends the message number to the board's circular message table. Flags already
+  set are skipped, so the BBS system can back-fill several consecutive messages (e.g. on load or after
+  a story jump) without duplicating entries. The two loop counters live in r6/r4; no other state is touched.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'loc_8000FEC: bl TestEventFlag; bne loc_8000FFA skips flags already set; fallthrough calls reqBBS_addBBSMessage_813e5dc,
+    whose known summary is ''records a BBS message: sets its event flag ... appends message number to
+    board table''; add r6, #1 / sub r4, #1 / bgt loc_8000FEC shows a simple sequential range loop over
+    flag ids; sole caller sub_8001002 is undocumented, but the callee''s semantics fully determine this
+    wrapper''s behavior'
+  refs:
+  - bn6f/asm/asm00_0.s:1936
+  - 0x08001002 sub_8001002
+  - 0x0802F168 TestEventFlag
+  - 0x0813E5DC reqBBS_addBBSMessage_813e5dc
+  reproduce: python3 tools/asmcat.py 0x08000FE6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+open_questions:
+- what sub_8001002 passes (which flag range / when it runs) — that would confirm whether this is a save-load
+  or story-progress backfill
+- exact per-flag BBS board and message-number mapping is inside the callee, not here
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8000FE6 -> reqBBS_addMissingMessagesForFlagRange
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8000FE6

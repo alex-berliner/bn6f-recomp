@@ -1,0 +1,49 @@
+name: battleObject_animateAndQueueOam
+address: '0x08127F90'
+kind: function
+status: probable
+summary: Renders the current animation frame of a battle object (queues one OAM entry) and advances to
+  the next animation-table entry when the frame timer expires.
+interface: (r0 = object ptr in r5, no args in r0-r3) -> queues one OAM entry; updates obj->0x0F (frame
+  row), obj->0x10 (frame timer)
+details: r5 is a battle object struct. The function builds a tile base 0x420000 + ([r5,#0x2A] << 4) +
+  0x18 and calls battleObject_queueOamFromTableRow_811FAF4 with r2 = current frame row [r5,#0x0F], r3
+  = OAM tile table byte_8127978, and 0x40000000 as an attribute/flags word. It then decrements the frame-duration
+  counter at [r5,#0x10]; when it reaches 0, it calls battleObject_advanceAnimTableBy0xFF_8120CC8 with
+  the animation table dword_8127980 to get the next frame row (stored to [r5,#0x0F]) and its duration
+  (stored to [r5,#0x10]). So fields 0x0F/0x10 act as the object's animation state (current row, frames
+  remaining), 0x2A selects the tile base, and the 0xFF sentinel in the animation table restarts it.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldr r0,=0x420000; ldrh r1,[r5,#0x2A]*0x10+0x18; orr r0,r1 — tile base built from object field
+    0x2A; ldrb r2,[r5,#0xF] passed as row index to battleObject_queueOamFromTableRow_811FAF4, which queues
+    one OAM entry; sub r1,#1 / strb [r5,#0x10] / bne — frame counter decremented, advance only on zero;
+    bl battleObject_advanceAnimTableBy0xFF_8120CC8 with table dword_8127980; results stored back to [r5,#0xF]
+    and [r5,#0x10]; sole caller sub_8127BE4 (unknown) is consistent with a per-frame object sprite update
+  refs:
+  - bn6f/asm/asm33.s:10055
+  - 0x08127BE4 sub_8127BE4
+  - 0x08120CC8 battleObject_advanceAnimTableBy0xFF_8120CC8
+  - 0x0811FAF4 battleObject_queueOamFromTableRow_811FAF4
+  reproduce: python3 tools/asmcat.py 0x08127F90
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+open_questions:
+- exact meaning of [r5,#0x2A] (tile/sheet bank selector) and the 0x420000 base's bit layout
+- contents/role of byte_8127978 and dword_8127980 (per-object OAM table vs shared animation table)
+- what sub_8127BE4 is and which object type(s) use this routine
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8127F90 -> battleObject_animateAndQueueOam
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8127F90

@@ -1,0 +1,55 @@
+name: battleObject_fadeScreenWaitDestroy
+address: '0x0800BCC0'
+kind: function
+status: probable
+summary: 'Battle-object state handler: on first run it may start a screen fade (only when the opposite
+  alliance''s counterpart object has kind 0 or 5), then keeps the object alive until the fade completes,
+  and finally destroys it.'
+interface: (r5 = battle object this; no args) -> void; sets [this+CurStateActionPhaseAndPhaseInitialized]
+  to CUR_STATE_DESTROY or 4 in the PhaseInitialized byte
+details: 'If the object''s PhaseInitialized byte is still 0, it computes the opposite alliance (Alliance
+  XOR 1) and looks up that slot''s kind byte via battleObject_getIndex_800B892; if the kind is neither
+  5 nor 0 the object is immediately put into CUR_STATE_DESTROY. Otherwise it calls SetScreenFade(0x74,
+  0x80) and stores 4 into PhaseInitialized so the one-shot init never repeats. On every subsequent run
+  it polls IsScreenFadeActive: while the fade is running the object stays alive (returns with Z set taken
+  branch), and once the fade ends it writes CUR_STATE_DESTROY into the state word, ending the object''s
+  lifecycle.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#oBattleObject_PhaseInitialized]; tst/bne skips one-time init (sub_800BCC0 head);
+    eor with 1 on oBattleObject_Alliance feeding battleObject_getIndex_800B892 selects the opposing side''s
+    object; cmp r0,#5 / cmp r0,#0 with fallthrough to CUR_STATE_DESTROY gates the fade on kind 5 or 0;
+    SetScreenFade #0x74,#0x80 plus strb #4 to PhaseInitialized marks the one-shot effect; IsScreenFadeActive
+    loop with fallthrough to mov r0,#CUR_STATE_DESTROY; str into CurStateActionPhaseAndPhaseInitialized
+    waits out the fade then kills the object'
+  refs:
+  - bn6f/asm/object.s:615
+  - 0x080E566C sub_80E566C
+  - 0x0800B892 battleObject_getIndex_800B892
+  - 0x080062F8 IsScreenFadeActive
+  - 0x08006270 SetScreenFade
+  reproduce: python3 tools/asmcat.py 0x0800BCC0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+coverage:
+- battlesweep
+open_questions:
+- What game object has kind/index 0 or 5 in the opposite alliance slot table (determines which battle
+  effect triggers the fade)
+- Meaning of SetScreenFade's arguments 0x74 and 0x80 (fade type/color vs duration)
+- Which battle event spawns this object (only caller sub_80E566C is itself unnamed)
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_800BCC0 -> battleObject_fadeScreenWaitDestroy
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800BCC0

@@ -1,0 +1,49 @@
+name: ow_selectHandlerGuarded
+address: '0x08005B6E'
+kind: function
+status: probable
+summary: Per-frame overworld gate that runs the Select-button handler only when no cutscene, fade, busy
+  state, or blocking flag is active.
+interface: () -> r0 = undefined; flags from last test; falls through to pop when any guard fails
+details: 'Reads GameState via the toolkit and returns immediately unless SubsystemIndex == 4 (overworld).
+  It then checks a chain of blockers: event flag EVENT_1717, owPlayer_isBusyOrCutsceneActive, warp struct
+  byte 0x10, PET menu flag bit, screen-fade state, active cutscene script, eFlags2009F38 bit 0x80, and
+  event flag EVENT_1739 — any of which aborts. Only when all guards pass does it read the joypad struct
+  (held at +0, newly pressed at +2) and test bit 2 (Select) of the pressed word, calling sub_8005E86 if
+  pressed. All guards tail-exit via a shared pop {r5,pc}.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#oGameState_SubsystemIndex]; cmp r0,#4; bne return — only active in subsystem 4
+    (overworld); chained bne locret guards: TestEventFlagFromImmediate, owPlayer_isBusyOrCutsceneActive_809E462,
+    warp_LoadCurrentAndReadUnk10_8005F28, TestPETMenuDataFlag; bl IsScreenFadeActive / bl IsCutsceneScriptNonNull
+    / chatbox_mask_eFlags2009F38(0x80) — more ''do not interrupt'' guards before input is read; ldr joypad;
+    ldrh r0,[r0,#2]; tst r0,#4; beq return — reads newly-pressed keys and tests Select (bit 2); bl sub_8005E86
+    — sole action on a passing Select press'
+  refs:
+  - bn6f/asm/asm00_1.s:5699
+  - 0x08036F36 IsCutsceneScriptNonNull
+  - 0x0802F164 TestEventFlagFromImmediate
+  - 0x0811EBE0 TestPETMenuDataFlag
+  reproduce: python3 tools/asmcat.py 0x08005B6E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+open_questions:
+- What sub_8005E86 does (the actual Select action) is unknown — that callee would confirm whether this
+  opens a menu, triggers a check, etc.
+- Which event flags EVENT_1717 and EVENT_1739 represent story-wise
+- Whether the fade guard tests 'fade active' or 'fade inactive' given the IsScreenFadeActive flag convention
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8005B6E -> ow_selectHandlerGuarded
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8005B6E

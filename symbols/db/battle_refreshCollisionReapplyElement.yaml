@@ -1,0 +1,49 @@
+name: battle_refreshCollisionReapplyElement
+address: '0x080C6726'
+kind: function
+status: probable
+summary: Refreshes the battle object's collision record with fixed hit parameters, then re-writes the
+  object's stored element into the collision data.
+interface: (r0 = BattleObject ptr, r5 = same BattleObject ptr) -> r0 = result of setElement call; no meaningful
+  flags
+details: Calls object_updateCollisionData with r1=4, r2=5, r3=1 — presumably hit modifier 4, pending damage
+  5, and flag bit 1 (marking bit 16 while time stopped per the callee's known behavior). It then loads
+  BattleObject.Element (oBattleObject_Element from r5) and passes it to battleObject_setElement_8019F8C,
+  which re-splits the packed nibbles into Element and CollisionData.Primary/SecondaryElement. The second
+  call exists because object_updateCollisionData's refresh resets the collision record's element fields,
+  so this wrapper re-applies the object's own element afterward. The hardcoded 4/5/1 values match the
+  caller's bomb attack (bomb break-panel phase), so this is a per-hit collision tick for that attack,
+  not a generic helper — the constants are baked in.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_updateCollisionData with r1=4, r2=5, r3=1 hardcoded before the call; ldrb r0,[r5,#oBattleObject_Element]
+    then bl battleObject_setElement_8019F8C re-applies the object's stored element; only known caller
+    battle_bombBreakPanelPhase (bomb break-panel attack phase) fits the damage=5, hit=4 constants
+  refs:
+  - bn6f/asm/asm31.s:31513
+  - 0x080C6698 battle_bombBreakPanelPhase
+  - 0x08019F8C battleObject_setElement_8019F8C
+  - 0x0801A082 object_updateCollisionData
+  reproduce: python3 tools/asmcat.py 0x080C6726
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+open_questions:
+- exact meaning of object_updateCollisionData's r1/r2/r3 arguments (hit modifier, pending damage, flag
+  word) needs confirmation from that callee's body
+- whether other callers exist that would make the 4/5/1 constants caller-specific rather than defining
+  this as a bomb-only helper
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C6726 -> battle_refreshCollisionReapplyElement
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C6726

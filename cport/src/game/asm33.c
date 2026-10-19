@@ -218,11 +218,11 @@ static void folder_menu_state3(u32 state) {
     GUEST_CALL(chipFolder_init_812349C);
 }
 
-/* register form: calls sub_81234DC outside this file, which has no typed C interface yet */
+/* register form: calls chipFolder_onEnter outside this file, which has no typed C interface yet */
 static void folder_menu_state4(u32 state) {
-    R0 = 0x081234DD; /* sub_81234DC+1 */
+    R0 = 0x081234DD; /* chipFolder_onEnter+1 */
     R1 = state;
-    GUEST_CALL(sub_81234DC);
+    GUEST_CALL(chipFolder_onEnter);
 }
 
 /* The chip-folder menu is a five-state machine: the state byte of the work
@@ -259,7 +259,7 @@ Next HandleChipFolderMenu8123434(void) {
  * Everything here is calls into other modules (screen state, graphics,
  * text engine, sprite/window registration), so the whole body is a
  * register-form call chain. The final state of r0-r7, lr and the flags
- * is whatever the last callee (sub_8123D24) leaves behind; r5/r6 and
+ * is whatever the last callee (chipFolder_initEntryList) leaves behind; r5/r6 and
  * everything else not set up here is preserved by the callees.
  */
 
@@ -315,9 +315,9 @@ static void call_sub_8135314(u32 dst, u32 src, u32 x, u32 y, u32 table) {
     GUEST_CALL(battle_setupPETNavis_8135314);
 }
 
-/* register form: calls sub_8123D24 outside this file, which has no typed C interface yet */
+/* register form: calls chipFolder_initEntryList outside this file, which has no typed C interface yet */
 static void call_sub_8123D24(void) {
-    GUEST_CALL(sub_8123D24);
+    GUEST_CALL(chipFolder_initEntryList);
 }
 
 /* Bring up the chip folder screen: reset the screen state, load the folder
@@ -335,7 +335,7 @@ static void chip_folder_screen_init(void) {
     call_sub_8123D24();                                     /* screen-specific setup */
 }
 
-/* chipFolder_screenInit_812345C() -> r0-r7, lr, nz/c/v all as left by sub_8123D24 */
+/* chipFolder_screenInit_812345C() -> r0-r7, lr, nz/c/v all as left by chipFolder_initEntryList */
 Next chipFolder_screenInit_812345C(void) {
     chip_folder_screen_init();
     RETURN_TO_CALLER();
@@ -386,9 +386,9 @@ static void call_sub_8135314_sub_812349C(u32 a1, u32 a2, u32 a3, u32 a4, u32 a5)
     GUEST_CALL(battle_setupPETNavis_8135314);
 }
 
-/* register form: calls sub_8123D24 outside this file, which has no typed C interface yet */
+/* register form: calls chipFolder_initEntryList outside this file, which has no typed C interface yet */
 static void call_sub_8123D24_sub_812349C(void) {
-    GUEST_CALL(sub_8123D24);
+    GUEST_CALL(chipFolder_initEntryList);
 }
 
 /* Initialize the chip folder graphics: zero a flag, build the GFX, the chip

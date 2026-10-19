@@ -1,0 +1,48 @@
+name: battle_phaseWait10framesThenSetPhase8
+address: '0x080097A8'
+kind: function
+status: probable
+summary: 'Battle-state step handler: on first entry sets a 10-frame countdown, then when it expires switches
+  the battle phase to 8.'
+interface: (r0 = battle state ptr unused here; r5 = battle state object) -> r0 = clobbered status value;
+  flags from tst/sub
+details: 'Uses r5 as the battle state object, not r0. On the first run (SubPhaseInitFlag clear) it stores
+  10 into the halfword CountdownTimer, sets SubPhaseInitFlag to 4, and returns. On later runs it decrements
+  CountdownTimer and returns while it is still >= 0; when it goes negative it stores 8 into Index_01 and
+  clears the StatePhaseAndInitFlag halfword to 0, ending this phase and pointing the state machine at
+  the next one. It is a generic timed-wait phase: the 4 stored in the init flag is presumably this phase''s
+  id.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb [r5,#oBattleState_SubPhaseInitFlag] + tst gates a one-time init storing 10 into oBattleState_CountdownTimer;
+    locret path decrements CountdownTimer and returns while bge holds, so it waits 11 frames total; on
+    expiry stores 8 into oBattleState_Index_01 and clears oBattleState_StatePhaseAndInitFlag, handing
+    control back to the phase dispatcher; recorded route 'battlesweep' runs it mid-battle, matching a
+    per-phase state handler
+  refs:
+  - bn6f/asm/asm00_1.s:14319
+  reproduce: python3 tools/asmcat.py 0x080097A8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+coverage:
+- battlesweep
+open_questions:
+- no caller/dispatcher is known, so what phase 8 is (e.g. which battle sub-state) and which phase id 4
+  corresponds to are unconfirmed
+- exact meaning of StatePhaseAndInitFlag packing (phase index vs combined field) is inferred from its
+  name only
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80097A8 -> battle_phaseWait10framesThenSetPhase8
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80097A8

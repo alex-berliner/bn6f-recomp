@@ -1,0 +1,54 @@
+name: battle_beastPwrAtkHitEnemies
+address: '0x08012CB2'
+kind: function
+status: probable
+summary: 'Beast-Out power-attack helper: finds opposing-side enemies matching two ID ranges, applies a
+  30-base damage hit scaled by the Beast-Out multiplier to each, then shakes the camera.'
+interface: (r0 = battle object, in r5) -> r0 = destroyed; touches enemy list and camera struct, no return
+  value used
+details: 'Reads the caller''s battle object alliance from r5, XORs it with 1 to target the opposite side,
+  then calls object_getEnemyByNameRange twice into local buffers on the stack: once with range (0, 0xba)
+  and once with (0x100, 0x1c3), summing the returned counts in r4. If no enemy matched it returns immediately.
+  Otherwise sub_8012D24 processes the second buffer at sp+0x10, and a 3-iteration loop walks one byte
+  per entry: low 3 bits go in r0, high nibble in r1, with r2=0x10 and r3=0. Each iteration computes damage
+  via battle_beastPwrAtk_addScaledBase(0x1e, 0x14) — 30 base damage times the Beast-Out multiplier — and
+  hands 0x8a0000|damage in r6 plus the packed byte fields to sub_80C7F20 (which also receives r6/r7 as
+  nonstandard extra arguments). After the loop it triggers a camera shake (magnitude 2, duration 0x14).
+  The split ID ranges and the fixed damage/multiplier call strongly tie this to the Cybeast Beast-Out
+  attack routine family.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'eor r3, r2 on [r5,#oBattleObject_Alliance] before both object_getEnemyByNameRange calls: targets
+    the opposing alliance; two calls with ranges (0,0xba) and (0x100,0x1c3), counts summed in r4, early-out
+    at beq loc_8012D20 when zero; bl battle_beastPwrAtk_addScaledBase_8012642 with base 0x1e and arg 0x14,
+    result orr''d into 0x8a<<16; loop of exactly 3 iterations unpacking each entry byte into low-3-bit
+    and high-nibble fields for sub_80C7F20; camera_initShakeEffect_80302a8(2, 0x14) after all hits are
+    queued'
+  refs:
+  - bn6f/asm/asm00_2.s:9239
+  - 0x08012642 battle_beastPwrAtk_addScaledBase_8012642
+  - 0x080302A8 camera_initShakeEffect_80302a8
+  - 0x0800EBD4 object_getEnemyByNameRange
+  reproduce: python3 tools/asmcat.py 0x08012CB2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+open_questions:
+- what sub_80C7F20 does with r0-r3 plus the r6=0x8a0000|damage and r7=0 side arguments
+- which enemy IDs ranges 0..0xba and 0x100..0x1c3 cover, and why the search is split in two
+- meaning of the 3-bit and 4-bit fields packed in each entry byte produced by sub_8012D24
+- no caller is known, so the identity of the r5 battle object and when this runs in a turn is unconfirmed
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8012CB2 -> battle_beastPwrAtkHitEnemies
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8012CB2

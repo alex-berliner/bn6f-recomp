@@ -1,0 +1,47 @@
+name: battleObject_rollingCannonPhaseDispatch
+address: '0x080CC23E'
+kind: function
+status: probable
+summary: Runs the current-phase handler of the rolling-cannon battle object by indexing a phase jump table
+  with oBattleObject_CurPhase.
+interface: (r5 = battle object) -> calls handler table[CurPhase] (r1) via lr=pc trick, returns to caller;
+  r0 outcome depends on handler
+details: 'Reads the object''s current phase byte at oBattleObject_CurPhase, loads a thumb handler pointer
+  from table off_80CC250 indexed by that phase, and calls it (mov lr,pc / bx r1) so control returns to
+  the pop {pc}. The table has four entries: phase 0 = sub_80CC260, phase 1 = battleObject_rollingCannonPhase_Init_80CC29E,
+  phase 2 = loc_80CC320, phase 3 = sub_80CC36C. Since one entry is already named battleObject_rollingCannonPhase_Init,
+  this routine is that object''s per-frame phase dispatcher. It uses r5 as the object pointer, so callers
+  must set r5 before calling. No flags or other registers are touched besides r0/r1/lr.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#oBattleObject_CurPhase]; ldr r1,[r1,r0] indexes table by phase byte; table off_80CC250
+    entry 1 is battleObject_rollingCannonPhase_Init_80CC29E, naming the owning object; mov lr,pc / bx
+    r1 / pop {pc} makes it a call-through dispatcher that returns to its own caller; recorded on battlesweep/beastsp/chips
+    routes, consistent with a battle object updated during fights
+  refs:
+  - bn6f/asm/asm31.s:43861
+  reproduce: python3 tools/asmcat.py 0x080CC23E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- exact behavior of phase handlers sub_80CC260, loc_80CC320, sub_80CC36C
+- which caller sets r5 and schedules this object (no caller captured)
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CC23E -> battleObject_rollingCannonPhaseDispatch
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CC23E

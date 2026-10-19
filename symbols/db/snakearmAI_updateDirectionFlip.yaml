@@ -1,0 +1,47 @@
+name: snakearmAI_updateDirectionFlip
+address: '0x08114D74'
+kind: function
+status: probable
+summary: Flips the snakearm battle object's sprite direction so it faces the panel X stored at offset
+  0x62.
+interface: (r0 = battle object ptr) -> r0 = undefined; writes oBattleObject_DirectionFlip (0 or 1)
+details: Calls object_getFrontDirection to get the +1/-1 facing multiplier implied by the object's alliance
+  and current DirectionFlip. It then reads oBattleObject_PanelX and the byte at offset 0x62 (a stored
+  target/anchor panel X), and computes field62 - PanelX. If that delta equals the current front direction,
+  DirectionFlip is written as 0 (already facing the target); otherwise it is set to 1 so the sprite turns
+  around. Only r5 (the object pointer) and the direction fields are touched; no other state changes. Presumably
+  r0-r7 are set up by the caller before the bl, since only r5 is used here.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_getFrontDirection gives the +1/-1 facing multiplier (asm line 2); ldrb r1,[r5,#oBattleObject_PanelX]
+    and ldrb r2,[r5,#0x62] load own X and a stored target X (lines 4-7); sub r1,r2,r1 then cmp r0,r1 compares
+    facing direction against signed delta to target (lines 8-9); strb r3,[r5,#oBattleObject_DirectionFlip]
+    writes 0 when facing matches, 1 otherwise (lines 10-13); sole caller snakearmAI_81149E0 places it
+    inside the snakearm enemy AI
+  refs:
+  - bn6f/asm/asm32.s:13717
+  - 0x081149E0 snakearmAI_81149E0
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x08114D74
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+coverage:
+- battlesweep
+open_questions:
+- exact meaning of the byte at offset 0x62 (stored target panel X vs. some other reference X) — its writers
+  in snakearmAI_81149E0 would confirm
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8114D74 -> snakearmAI_updateDirectionFlip
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8114D74

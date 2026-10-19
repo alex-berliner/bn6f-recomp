@@ -1,0 +1,49 @@
+name: battle_chipLockoutExpiredSetState
+address: '0x08089826'
+kind: function
+status: probable
+summary: 'Per-frame battle tick: when the chip-use lockout timer runs out, calls an unknown handler and
+  writes state 0x2C to the battle work byte at r5.'
+interface: () -> r0 = 1 always; r5 must already point to the battle-state struct; reads/writes ChipLockoutTimer
+  (AIData+0x18) via callee
+details: Calls battle_tickChipLockout_8089CB4, which decrements AIData+0x18 and flags when it reaches
+  zero. If the timer has NOT expired this frame, the body is skipped and the function just returns 1.
+  When the lockout does expire, it calls sub_8142BB6 (unknown) and then stores byte 0x2C at [r5], likely
+  advancing a battle-state/mode field. r4-r7 are pushed but unused, suggesting compiler leftovers. The
+  unconditional return of 1 suggests the caller only uses this as a 'keep running' return for a task/state
+  callback. The exact meaning of state 0x2C and what sub_8142BB6 does are unknown.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl battle_tickChipLockout_8089CB4 followed by beq skips the body when the timer has not hit
+    zero (asm lines 2-3); expiring path: bl sub_8142BB6 then mov r0,#0x2c; strb r0,[r5] — a state byte
+    written once the lockout ends; mov r0,#1 before pop: return value is constant 1 regardless of branch
+    taken; callee summary confirms r5-related field is ChipLockoutTimer at AIData+0x18; no known callers
+    and an unknown callee (sub_8142BB6) limit confirmation to the tick/expire structure itself'
+  refs:
+  - bn6f/asm/asm23.s:1118
+  - 0x08089CB4 battle_tickChipLockout_8089CB4
+  - 0x08142BB6 sub_8142BB6
+  reproduce: python3 tools/asmcat.py 0x08089826
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+coverage:
+- beastsp
+open_questions:
+- what sub_8142BB6 does
+- what structure r5 points to and what state value 0x2C selects
+- which caller registers r5 and invokes this as a callback
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8089826 -> battle_chipLockoutExpiredSetState
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8089826

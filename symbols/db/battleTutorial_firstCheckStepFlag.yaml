@@ -1,0 +1,48 @@
+name: battleTutorial_firstCheckStepFlag
+address: '0x08029BAC'
+kind: function
+status: probable
+summary: Checks the first-battle tutorial's per-step flag and returns a nonzero code (0xB/0xC) when the
+  current step is in its expected state, else 0.
+interface: (r5 = first-battle tutorial task state; no args used) -> r0 = 0xB if step 1 flag==0, 0xC if
+  step 0/2 flag==1, else 0; flags not meaningful
+details: 'Reads the tutorial task''s current step from [r5+8] and only proceeds for steps 0-2 (anything
+  else returns 0). For each valid step it reads a per-step flag byte at r5+0x47+step — a small 3-byte
+  progress array right after the task''s other state. Step 1 is special: it requires the flag to be 0
+  and returns 0xB, while steps 0 and 2 require the flag to be 1 and return 0xC. The returned values are
+  almost certainly IDs handed back to the caller (battleTutorial_first_checkTextStep) to decide which
+  chatbox script to trigger, with 0 meaning ''nothing to play for this step''. The asymmetry suggests
+  step 1''s flag means ''not yet acknowledged'' whereas steps 0/2 flags mean ''condition met''.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#8] / cmp r0,#2 bgt — only tutorial steps 0-2 are handled, rest return 0; add r3,#0x47;
+    ldrb r3,[r5,r3] — per-step flag byte indexed by step within the tutorial state struct; step==1 branch
+    tests flag==0 -> r0=0xB; steps 0/2 test flag==1 -> r0=0xC; only caller 0x8029B1C battleTutorial_first_checkTextStep
+    'asks a per-step checker if a chatbox script should play' — matches returning 0 vs a script id
+  refs:
+  - bn6f/asm/asm03_0.s:7980
+  - 0x08029B1C battleTutorial_first_checkTextStep_8029B1C
+  reproduce: python3 tools/asmcat.py 0x08029BAC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+coverage:
+- battlesweep
+open_questions:
+- what 0xB and 0xC actually select (chatbox script ids vs post-text state codes) — need the caller's use
+  of the return value
+- exact meaning of the flag bytes at r5+0x47..0x49 (written by which handler)
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8029BAC -> battleTutorial_firstCheckStepFlag
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8029BAC

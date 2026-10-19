@@ -1,0 +1,51 @@
+name: playerAI_stepTryAttackChipOnTarget
+address: '0x0802D358'
+kind: function
+status: probable
+summary: 'Player-AI state step: if the target panel is clear of protected actors, fire the attack chip
+  currently in hand and advance the AI state on success.'
+interface: '(r0-r6 context: r5 = own battle object, r6 = AI/state struct with u16 state at +0 and +4)
+  -> r0 = 1 if an attack was executed, else 0; state fields updated'
+details: While the state field at [r6,#4] is <= 3 it fetches the target object's panel coordinates (ai_getTargetObjectPos)
+  and looks for an actor standing on that panel whose panel has the requested flag bit, passing the own
+  object's alliance in r2. If such an actor is found and its CollisionData ObjectFlags1 has bit 0x200
+  set (untargetable/protected), it bails to the failure path. Otherwise it reads the current chip in the
+  battle hand; if not 0xFFFF it sets AI-data flag 4 (SetAIData_Unk_44_Flag), calls playerAI_tryExecuteAttackChip,
+  and if a chip actually went off (non-0xFFFF result) resets [r6,#4] to 0, writes 8 to [r6,#0], and returns
+  1. On any failure path it writes 4 to [r6,#0] and returns 0, so the caller's state machine advances
+  differently.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: calls ai_getTargetObjectPos then ifPanelFlagSetFindBattleActorWithCollisionOnPanelXY_80E7486
+    with [r5,#oBattleObject_Alliance] to find the actor on the target's panel; tests oCollisionData_ObjectFlags1
+    bit 0x200 on the found actor and skips the attack when set; calls getCurChipInBattleHand_8010004,
+    compares against 0xFFFF (empty hand) before attacking; calls playerAI_tryExecuteAttackChip_800FB54
+    after SetAIData_Unk_44_Flag(4), and returns 1 only when its result is non-0xFFFF; writes 0 to [r6,#4]
+    and 8 to [r6,#0] on success, 4 to [r6,#0] on failure — caller state-machine handoff
+  refs:
+  - bn6f/asm/asm03_0.s:15397
+  - 0x080E164A ai_getTargetObjectPos
+  - 0x080E7486 ifPanelFlagSetFindBattleActorWithCollisionOnPanelXY_80E7486
+  - 0x0800FB54 playerAI_tryExecuteAttackChip_800FB54
+  reproduce: python3 tools/asmcat.py 0x0802D358
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+open_questions:
+- exact meaning of ObjectFlags1 bit 0x200 (protected vs. untargetable)
+- which panel flag bit is requested by the find-actor helper (passed internally)
+- the semantics of [r6,#0] values 4 and 8 in the owning state machine
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_802D358 -> playerAI_stepTryAttackChipOnTarget
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802D358

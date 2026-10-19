@@ -1,0 +1,62 @@
+name: chipFolder_initEntryList
+address: '0x08123D24'
+kind: function
+status: probable
+summary: Fills the entry list for the chip folder screen, creating one list entry per count byte in the
+  screen state and flagging the currently selected one.
+interface: (r5 = state struct whose +0xC holds the selected/current entry index; count read from [S2001c04+5])
+  -> fills entries in the 0x58-byte array at 0x02008450; r0 result not used
+details: 'Reads an entry count from byte 5 of the toolkit''s S2001c04 structure and loops that many times.
+  For each index i it builds a flags word: bit 16 always set, bit 0 set only when i equals the byte at
+  [r5+0xC] (the currently highlighted entry). It calls battle_initEmotionTableEntry_8046670 with r0=0x15
+  (entry type), r1=7+i (entry id/parameter) and that flags word, so each slot gets type 0x15, the fixed
+  0x09 tag, and the flags. Note the input arrives in r5, a callee-saved register set up by the caller
+  rather than r0 — a quirk of the call convention here. The shared 0x02008450 array is evidently reused
+  as a generic list-entry table, not just emotion data.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: loop bound is ldrb r4,[S2001c04_ptr+5] (entry count), iterated r6=0..r4-1; ldrb r0,[r5,#0xc];
+    cmp r0,r6 sets flags bit 0 — marks the selected/current entry; flags word always ORs 0x10000 (bit
+    16) before the callee call; bl battle_initEmotionTableEntry_8046670 with r0=0x15, r1=7+r6, r2=flags;
+    both callers (chipFolder_init_812349C, chipFolder_screenInit_812345C) are chip-folder screen initialization
+    routines
+  refs:
+  - bn6f/asm/asm33.s:1562
+  - 0x0812349C chipFolder_init_812349C
+  - 0x0812345C chipFolder_screenInit_812345C
+  - 0x08046670 battle_initEmotionTableEntry_8046670
+  reproduce: python3 tools/asmcat.py 0x08123D24
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+coverage:
+- battles1
+- battles2
+- battlesweep
+- beastsp
+- fuzz
+- maps
+- menus3
+- story4
+- story6
+- story8
+- story9
+open_questions:
+- exact meaning of entry type 0x15 and the 7+i id parameter
+- what field of the entry structure the callee writes each argument into
+- what byte 5 of S2001c04 counts on this screen (folder entries vs. folder list rows)
+- why the input pointer is passed in r5 instead of r0
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8123D24 -> chipFolder_initEntryList
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8123D24

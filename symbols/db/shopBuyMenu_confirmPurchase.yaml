@@ -1,0 +1,52 @@
+name: shopBuyMenu_confirmPurchase
+address: '0x0804709C'
+kind: function
+status: probable
+summary: 'Performs the actual purchase in the chip shop: grants the selected chip to the pack (or reports
+  failure), records it, shrinks the shop list, and plays the result message/sound.'
+interface: (r5 = shop buy menu state, plus r0=8 flag test and scrambled-counter check) -> r0 = 0; touches
+  state at r5+0x00/0x04/0x0D/0x12/0x1C/0x20/0x24/0x28/0x2C
+details: Runs once the shop buy menu's frame update signals readiness (flag 8 of eFlags2009F38) and the
+  scrambled anti-cheat counter at r5+0x2C still matches; otherwise it does nothing. It reads the selected
+  item's chip id (r5+0x20+2, u16) and code (+4) and calls GiveChips(id, code, 1). If the check helper
+  sub_8047384 says the chip can't be taken (e.g. already owned/pack invalid), it runs chatbox script 1
+  and moves to state 8. If the pack is full (GiveChips != 0), it restores the previous counter token from
+  r5+0x28, re-obfuscates it, runs the fail script and plays an error sound, entering state 0x1C. On success
+  it stores the new token, calls sub_8048DAE to register the purchase (using shop data at r5+0x1C), recomputes
+  the remaining list count via sub_8047B88 into r5+0x12, re-clamps the list scroll, runs success script
+  7, sets r5+0x0D = 0xFF, and plays a jingle, all also entering state 0x1C.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl GiveChips with r0=chip id (ldr [r7,#2]), r1=code ([r7,#4]), r2=1; r0==0 branch treated as
+    success; success path calls storeObfuscatedRandomToken_804733C after writing [r5,#0x2c] <-> [r5,#0x28]
+    counter swap; chatbox_runScript with [r5,#0x24] archive and scripts 1 (fail) / 7 (success), plus PlaySoundEffect(SOUND_UNK_73
+    / SOUND_CANT_JACK_IN); sub_8047B88 result stored at r5+0x12 then menu_clampListScrollAfterCountChange_8047CB6,
+    which shrinks a list count — consistent with removing a purchased shop entry; caller-known callee
+    shopBuyMenu_updateFrame_8047134 is called first, tying this to the shop buy menu state machine
+  refs:
+  - bn6f/asm/asm03_2.s:2101
+  - 0x08021AEE GiveChips
+  - 0x080005CC PlaySoundEffect
+  - 0x08045F3C chatbox_mask_eFlags2009F38
+  reproduce: python3 tools/asmcat.py 0x0804709C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+open_questions:
+- exact meaning of sub_8047384's check (already-owned vs invalid selection) and of sub_8048DAE (records
+  purchase vs marks chip in library)
+- which chatbox archive r5+0x24 points to and what scripts 1/7 say
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_804709C -> shopBuyMenu_confirmPurchase
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_804709C

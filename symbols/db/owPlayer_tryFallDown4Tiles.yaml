@@ -1,0 +1,51 @@
+name: owPlayer_tryFallDown4Tiles
+address: '0x0808FB68'
+kind: function
+status: probable
+summary: Attempts to move the overworld player down 4 tiles (into a pit/hole); if that would leave the
+  area it instead plays a fall sound, locks input and resets related state, returning 0, otherwise returns
+  1 after the move.
+interface: () -> r0 = 1 if the player was moved down by 4, 0 if the fall-out sequence ran; no flags
+details: Reads the overworld player object's coordinates via ReadOWPlayerObjectCoords and subtracts 4
+  (in 20.12 fixed point, hence the <<16) from the coordinate in r2. If the result is still > 0 it simply
+  relocates the player to the adjusted coordinates (backing the old position into the Next fields) and
+  returns 1. If the adjusted coordinate is <= 0 it instead writes the player to that position, sets the
+  player's InteractionLocked flag, clears the reqBBS flag at 0x8140A0C, zeroes the state struct at 0x2000AA0,
+  plays sound effect 0x1AE and returns 0 — i.e. the player has fallen off/down and control is handed to
+  a cutscene-style handler.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sub r2,r2,r3 with r3=4<<16 then cmp r2,#0 / bgt: tests whether the player can move 4 more tiles
+    in that axis; the >0 branch only calls owPlayer_copyCoordsToNextCoordsWritePlayerCoordsThenIndirectlySetPlayerCoordsMaybe_809e188
+    and returns 1; the <=0 branch chains setInteractionLocked, reqBBS_clearFlag, resetStruct2000aa0State
+    and PlaySoundEffect(0x1AE) then returns 0; the coordinate source is ReadOWPlayerObjectCoords, so the
+    structure touched is the overworld player object''s X/Y/Z fields'
+  refs:
+  - bn6f/asm/asm25.s:434
+  - 0x080005CC PlaySoundEffect
+  - 0x0809E1AE ReadOWPlayerObjectCoords
+  - 0x0809E188 owPlayer_copyCoordsToNextCoordsWritePlayerCoordsThenIndirectlySetPlayerCoordsMaybe_809e188
+  reproduce: python3 tools/asmcat.py 0x0808FB68
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+open_questions:
+- which coordinate axis (X vs Y vs Z) r2 holds and which direction the 4-tile step represents — needs
+  the layout of ReadOWPlayerObjectCoords' return registers
+- what sound 0x1AE is and what gameplay context (falling into a hole vs leaving an area edge) triggers
+  this
+- what the reqBBS flag and the 0x2000AA0 struct track, and which caller uses the 0/1 return value
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_808FB68 -> owPlayer_tryFallDown4Tiles
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_808FB68

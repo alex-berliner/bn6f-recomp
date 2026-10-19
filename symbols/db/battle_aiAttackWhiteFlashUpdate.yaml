@@ -1,0 +1,53 @@
+name: battle_aiAttackWhiteFlashUpdate
+address: '0x0801544C'
+kind: function
+status: probable
+summary: 'Per-frame update for one enemy AI attack phase: after a delay it spawns/places something at
+  the object''s panel, makes the object (and a related object) flash white, then ends the phase by setting
+  the attack''s hit element.'
+interface: (r5 = battle object, r7 = oAIAttackVars of that object) -> void; updates oAIAttackVars fields,
+  no return value
+details: State machine keyed on oAIAttackVars_AttackElement. In the initial state (AttackElement==0) it
+  counts down StepTimer, then reads the actor's info via battle_ai_getActorInfo_801595E using oBattleObject_Alliance,
+  subtracts 0xC from the actor type, and calls sub_80BC844 with r0=oBattleObject_PanelX, r1=oBattleObject_PanelY,
+  r3=0x14 (r4 = adjusted type); it then sets StepTimer=0x30, ScratchVar=0 and AttackElement=4. In the
+  flashing state it increments ScratchVar each frame and calls sprite_forceWhitePalette on the object
+  and, if present, oBattleObject_RelatedObject2Ptr; when ScratchVar reaches 7 it calls sprite_clearFinalPalette
+  on the related object to restore its palette. Finally it refills StepTimer with 6, sets oAIAttackVars_HitElement=8
+  (activating the attack's hit element) and resets ScratchVar=0.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]/bne splits the idle-delay phase from the flash phase
+    (asm start); bl battle_ai_getActorInfo_801595E with r5''s Alliance, then sub r0,#0xc before bl sub_80BC844(PanelX,
+    PanelY, r3=0x14); loop calls sprite_forceWhitePalette on r5 and on [r5,#oBattleObject_RelatedObject2Ptr]
+    for ScratchVar 1..6; at ScratchVar==7 calls sprite_clearFinalPalette on RelatedObject2Ptr and sets
+    oAIAttackVars_HitElement=8 with StepTimer=6; callee summaries: battle_ai_getActorInfo_801595E returns
+    ActorType/AIIndex/Unk_03; sprite_forceWhitePalette/clearFinalPalette toggle the sprite final-palette
+    byte'
+  refs:
+  - bn6f/asm/asm00_2.s:14969
+  - 0x0801595E battle_ai_getActorInfo_801595E
+  - 0x08002DD8 sprite_clearFinalPalette
+  - 0x08002DB0 sprite_forceWhitePalette
+  reproduce: python3 tools/asmcat.py 0x0801544C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+open_questions:
+- What sub_80BC844 spawns/places at the panel (and how r4 = ActorType-0xC selects it), which would identify
+  the specific enemy attack
+- Which enemy/state calls this routine, and the exact meaning of HitElement=8 in the attack state machine
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_801544C -> battle_aiAttackWhiteFlashUpdate
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_801544C

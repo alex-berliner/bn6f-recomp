@@ -1,0 +1,64 @@
+name: owPlayer_triggerNpcChat
+address: '0x0809D7A8'
+kind: function
+status: probable
+summary: 'Overworld player chat/inspect action: if no cutscene is running, face the NPC''s direction and
+  mark the interacted NPC as chat-triggered, entering chat substate 4.'
+interface: (r5 = OW player object) -> r0 = undefined; sets NPC ChatTriggered and player ActionSubState,
+  or falls into clear-state path when a cutscene script is active
+details: First calls IsCutsceneScriptNonNull; if a cutscene script is active it branches to owPlayerObject_clearStateUnk10_809D7D8
+  (the event-flag 0x80 state-clearing path). Otherwise it copies the player's FacingDirection into AnimationSelect
+  so the player sprite animates toward the NPC it is facing. It then loads the interacted NPC object from
+  oOWPlayerObject_interactedNPCObject_58 and checks its InteractionLocked byte; if locked, it does nothing
+  further. Otherwise it writes TRUE to oOverworldNPCObject_ChatTriggered and sets the player's ActionSubState
+  to 4, presumably handing control to the chat state machine. The route capture comment 'chat triggered'
+  matches the ChatTriggered field write.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl IsCutsceneScriptNonNull / bne loc_809D7E2: cutscene-active case routes into the known clear-state
+    callee; ldrb r0,[r5,#FacingDirection]; strb r0,[r5,#AnimationSelect]: player turns toward interacted
+    target; ldr r7,[r5,#oOWPlayerObject_interactedNPCObject_58]: operates on the NPC the player is facing;
+    tst r0 / bne locret: NPC InteractionLocked byte gates the interaction; strb TRUE,[r7,#oOverworldNPCObject_ChatTriggered];
+    strb #4,[r5,#ActionSubState]: starts the chat substate'
+  refs:
+  - bn6f/asm/ow_player.s:837
+  - 0x08036F36 IsCutsceneScriptNonNull
+  - 0x0809D7E2 owPlayerObject_clearStateUnk10_809D7D8
+  reproduce: python3 tools/asmcat.py 0x0809D7A8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+coverage:
+- battles1
+- battles2
+- beastsp
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story8
+- story9
+open_questions:
+- No direct caller is known; whether ActionSubState 4 specifically means 'chatting' (vs another overworld
+  action) would be confirmed by the substate handler
+- Exact behavior of the clear-state branch (event-flag 0x80 path) relative to normal chat start
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_809D7A8 -> owPlayer_triggerNpcChat
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_809D7A8

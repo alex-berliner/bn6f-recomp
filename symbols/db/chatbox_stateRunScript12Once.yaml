@@ -1,0 +1,47 @@
+name: chatbox_stateRunScript12Once
+address: '0x081336A0'
+kind: function
+status: probable
+summary: 'Cutscene/event step: if event flag bit 0x80 is clear, run text script 12 (once, guarded by a
+  0xFFFF sentinel) and advance the event state to 12.'
+interface: () -> void; reads global event struct in r5, branches on chatbox flag-mask result
+details: First masks event flag word eFlags2009F38 with 0x80; if that bit is set the function returns
+  immediately without doing anything. Otherwise it loads field +0x5C of the r5 event/task struct and compares
+  it to 0xFFFF; if the field is not the sentinel it runs text script index 0xC from eTextScript2028A20
+  via the chatbox script runner. Finally it stores 12 into field +0x68, which is presumably the next state/step
+  of the same event struct. The 0xFFFF check suggests +0x5C marks whether the script for this step has
+  already been queued, making the script trigger one-shot. The flag bit 0x80 acts as an abort/skip condition
+  for this whole step.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: mov r0,#0x80; bl chatbox_mask_eFlags2009F38; bne locret — step skipped entirely when flag bit
+    0x80 is set; ldr r0,[r5,#0x5c]; cmp r0,0xFFFF; beq skip — one-shot guard on the script trigger; mov
+    r0,#0xc; bl chatbox_runScript_803FD9C_on_eTextScript2028A20 — runs text script index 12; mov r0,#0xc;
+    str r0,[r5,#0x68] — writes state 12 to the event struct's next-state field; callees are both chatbox-subsystem
+    (flag word eFlags2009F38 and script archive eTextScript2028A20)
+  refs:
+  - bn6f/asm/asm36.s:6941
+  - 0x08045F3C chatbox_mask_eFlags2009F38
+  - 0x08134190 chatbox_runScript_803FD9C_on_eTextScript2028A20
+  reproduce: python3 tools/asmcat.py 0x081336A0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+open_questions:
+- No callers known, so the identity of the r5 struct (event/cutscene context) and the meaning of fields
+  +0x5C and +0x68 are inferred, not confirmed
+- Whether flag bit 0x80 means 'step already done' or 'skip cutscene' needs a caller or the flag's writer
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81336A0 -> chatbox_stateRunScript12Once
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81336A0

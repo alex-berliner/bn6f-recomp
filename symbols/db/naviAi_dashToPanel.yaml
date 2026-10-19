@@ -1,0 +1,55 @@
+name: naviAi_dashToPanel
+address: '0x080EB2DC'
+kind: function
+status: probable
+summary: 'Navi-AI attack routine: dashes the Navi object toward a pre-set target panel with a decelerating
+  velocity, then on arrival changes the panel under it with a landing camera shake and SFX.'
+interface: (no args; r5 = battle object struct, r7 = AI state struct) -> void; advances AI script via
+  [r7]=8
+details: 'A three-state handler keyed on byte [r7,#1]: setup stores velocity 0x88000 into r5+0x48, a 0x23-frame
+  timer into [r7,#0x10], and enters state 1. State 1 adds the velocity fields (r5+0x48/0x40/0x44) into
+  position fields (r5+0x3C/0x34/0x38), decreasing velocity by 0x8000 per frame, refreshing panels via
+  object_setPanelsFromCoordinates/object_updateCollisionPanels; while the displacement hasn''t reached
+  0 and the current panel (r5+0x12/0x13) doesn''t match the stored target (r7+0x16/0x17) it clears the
+  collision region and sets flag 0x20, and near the end (timer==5) spawns a wide collision region (0x600FF01).
+  When the timer expires it commits arrival: calls naviAi_changePanel (stat-probability panel alteration
+  under the Navi), copies r5+0x14/0x15 into the current-panel fields, releases the reserved panel, re-establishes
+  the collision region, clears flag 0x20, shakes the camera (2, 0xF), plays SFX 0xC0, sets animation 3,
+  and moves to state 2. State 2 just counts down its timer, then clears flag 0x40, sets the CURRENTLY_MOVING_1
+  flag, and writes 8 to [r7] to run the next AI command.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: state machine on [r7,#1] with 0x23-frame timer in [r7,#0x10] and next-opcode byte [r7]=8 at
+    the end; per-frame position update r5+0x3C/0x34/0x38 += velocity fields, velocity 0x88000 decaying
+    by 0xFFFF8000 per frame; arrival block calls naviAi_changePanel_8013CC4, object_removePanelReserve,
+    object_setCollisionRegion, copies [r5,#0x14/0x15] to [r5,#0x12/0x13]; arrival effects camera_initShakeEffect_80302a8(2,0xF),
+    PlaySoundEffect(0xC0), object_setAnimation(3); callees are all battle-object/AI primitives (object_setFlag1
+    0x20, object_clearFlag 0x40, CURRENTLY_MOVING flag)
+  refs:
+  - bn6f/asm/asm31.s:110609
+  - 0x080005CC PlaySoundEffect
+  - 0x080302A8 camera_initShakeEffect_80302a8
+  - 0x08013CC4 naviAi_changePanel_8013CC4
+  reproduce: python3 tools/asmcat.py 0x080EB2DC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+open_questions:
+- No known caller, so which Navi/AI script opcode invokes this is unknown
+- How r5+0x3C/0x34/0x38 and the velocity fields are initialized before state setup (presumably by the
+  preceding AI command) is not visible here
+- Exact meaning of the 0x600FF01 spawnCollisionRegion argument (hitbox shape/palette fields)
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80EB2DC -> naviAi_dashToPanel
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EB2DC

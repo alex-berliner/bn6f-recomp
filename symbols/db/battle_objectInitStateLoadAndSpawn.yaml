@@ -1,0 +1,53 @@
+name: battle_objectInitStateLoadAndSpawn
+address: '0x080C3D32'
+kind: function
+status: probable
+summary: 'State-entry handler for a battle object: loads its sprite, animation and palette, positions
+  it, spawns a companion object, plays a sound, sets a 50-frame timer and switches to the update state.'
+interface: (r5 = battle object header, implicit) -> r0 = sub_80C3D9C result; sets object fields and current
+  state phase to CUR_STATE_UPDATE
+details: 'Uses r5 as an object pointer throughout: it decompresses temp sprite data (8, 0x13), loads sprite
+  8/anim 0x13 via sprite_load, enables the shadow, and clears oBattleObject_CurAnim/CurAnimCopy before
+  sprite_setAnimation(0) and sprite_loadAnimationData. It then sets palette 0, applies object_getFlip
+  via sprite_setFlip, recomputes pixel coordinates from panel coords, zeroes oBattleObject_Z, and sets
+  oObjectHeader_Flags bit 0x02. It spawns a generic t1 object from the template/data at 0x14011308 (args
+  all 0) and stores it in oBattleObject_RelatedObject1Ptr, plays sound effect 0x94, sets oBattleObject_Timer
+  to 50 (0x32), writes CUR_STATE_UPDATE to oBattleObject_CurStateActionPhaseAndPhaseInitialized, and tail-calls
+  sub_80C3D9C before returning. The shape is that of an init/enter-state routine of a specific battle
+  entity.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl sprite_load / sprite_hasShadow / sprite_setAnimation / sprite_setPalette sequence initializes
+    the object's visual state; bl spawn_t1_0x47_probablyGeneric_80C468C with dword_80C3D98=0x14011308
+    stored to [r5,#oBattleObject_RelatedObject1Ptr]; mov r0,#0x94; bl PlaySoundEffect — plays a fixed
+    sound effect during setup; mov r0,#0x32; strh r0,[r5,#oBattleObject_Timer] — 50-frame timer typical
+    of a state-entry delay; mov r0,#CUR_STATE_UPDATE; str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]
+    — transitions the state machine to the update phase
+  refs:
+  - bn6f/asm/asm31.s:25916
+  - 0x080005CC PlaySoundEffect
+  - 0x0800E456 object_getFlip
+  - 0x0800E29C object_setCoordinatesFromPanels
+  reproduce: python3 tools/asmcat.py 0x080C3D32
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+open_questions:
+- Which battle entity this belongs to (identity of sprite 8/anim 0x13 and sound 0x94) — needs the caller
+  or surrounding state table
+- What object the 0x14011308 spawn data creates (companion/effect object type)
+- What sub_80C3D9C does and why its return value is passed through
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C3D32 -> battle_objectInitStateLoadAndSpawn
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C3D32

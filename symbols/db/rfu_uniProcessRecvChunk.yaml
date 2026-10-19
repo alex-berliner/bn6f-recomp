@@ -1,0 +1,53 @@
+name: rfu_uniProcessRecvChunk
+address: '0x08149150'
+kind: function
+status: probable
+summary: 'Per-wireless-packet receive bookkeeping: counts an incoming UNI data chunk and, once the expected
+  chunk count is reached, flushes the assembled buffer and queues a 12-byte completion packet for sending.'
+interface: (r0 = ? ignored) -> r0 = 1 if a chunk was processed / transfer completed, 0 if state is 0x8F
+  or nothing to do; flags clobbered by calls
+details: Reads a state byte at byte_20101B4 and bails with 0 if it equals 0x8F. If the UNI slot selected
+  via byte_20103E0 into table off_2010CA0 has its +0x12 flag set, it clears the new-data flag (rfu_UNI_clearRecvNewDataFlag)
+  and proceeds. It increments a received-chunk counter byte_2010220 and compares it against the expected
+  total stored at unk_20103A0+0x3C; when the count matches, it calls sub_803F334 with the 0x40-byte buffer
+  unk_20103A0 (flush/finalize), sets the state byte to 1, and pushes a 12-byte packet from byte_2010390
+  via rfu_queuePushEntry (state 0x83 if the queue is full), bumping the sent-counter byte_201039C on success.
+  On completion the counter is reset to the total and word_2010420 cleared; otherwise per-packet statistics
+  at word_2010400/word_2010420/word_2010428 are incremented depending on whether the current chunk is
+  the last one.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'state gate: cmp r0,#0x8f at 8149158 returns 0, so byte_20101B4 is an RFU task state; rfu_UNI_clearRecvNewDataFlag
+    called with the UNI slot index from byte_20103E0/off_2010CA0 after checking [+0x12]; counter byte_2010220
+    compared against expected total byte at unk_20103A0+0x3C to detect end of a multi-chunk transfer;
+    on completion: sub_803F334(unk_20103A0, 0x40) then rfu_queuePushEntry(byte_2010390, 0xC) queues an
+    outgoing packet, state set to 0x83 when queue full; counters word_2010400/word_2010420/word_2010428
+    incremented per chunk depending on last-chunk check at 81491F0'
+  refs:
+  - bn6f/asm/libs.s:10836
+  - 0x0814912C sub_814912C
+  - 0x0803F030 rfu_queuePushEntry
+  - 0x0814B094 rfu_UNI_clearRecvNewDataFlag
+  - 0x0803F05C sub_803F05C
+  reproduce: python3 tools/asmcat.py 0x08149150
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+open_questions:
+- exact meaning of the 12-byte packet at byte_2010390 (likely an ack/handshake, unconfirmed)
+- what sub_803F334 and sub_803F05C do exactly (flush vs. checksum)
+- which game feature drives this transfer (trade/wonderful trade/unknown wireless mode)
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8149150 -> rfu_uniProcessRecvChunk
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8149150

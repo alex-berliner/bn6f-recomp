@@ -1,0 +1,49 @@
+name: ai_attackStepApproachTarget
+address: '0x081088CA'
+kind: function
+status: probable
+summary: 'AI attack-state step: reserves the panel 3 tiles short of the target and starts the attacker''s
+  lunge move, or signals failure'
+interface: (r5 = attacker object ptr, r7 = AI attack vars struct) -> r0 = clobbered; writes oAIAttackVars
+  fields and object flags
+details: First releases the previous panel reservation at the stored target panel coords, and aborts (HitElement=0x28)
+  if the object can't move. It computes the desired approach panel as targetX minus 3*frontDirection (with
+  targetY) and, unless the attacker's future panel already equals it, validates that panel against the
+  static mask table (0x10000 required, 0xF880080 forbidden) via object_checkPanelParameters, failing out
+  the same way. On success it stores the chosen coords, reserves the panel for the attacker via object_reservePanel,
+  ORs OBJECT_FLAGS_CANNOT_SLIDE into the object's flags, sets CurAnim=4, StepTimer=3, HasMoved=1 and HitElement=0x18
+  (success code). The negative-direction ×3 offset suggests a long-reaching dash/lunge attack approach
+  rather than an adjacent step.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#TargetPanelX]/bl object_removePanelReserve: frees the previously reserved target
+    panel before re-deciding; bl object_getFrontDirection; neg r0; mul by 3; add targetObj.x: aims 3 panels
+    behind the target''s facing side; ldr r3,off_8108930 + bl object_checkPanelParameters: validates candidate
+    panel against fixed mask dwords 0x10000/0xF880080; bl object_reservePanel + object_setFlag1(OBJECT_FLAGS_CANNOT_SLIDE):
+    claims the panel and locks sliding for the move; strb #4,[r5,#CurAnim]; strh #3,[StepTimer]; strb
+    #1,[HasMoved]; strh #0x18/[0x28],[HitElement]: sets move anim/state and pass/fail element code'
+  refs:
+  - bn6f/asm/asm31.s:172135
+  - 0x0800E5E2 object_canMove
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x081088CA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+open_questions:
+- which enemy/AI attack uses this step (no callers known), and the exact meaning of HitElement codes 0x18/0x28
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81088CA -> ai_attackStepApproachTarget
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81088CA

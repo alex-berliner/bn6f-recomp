@@ -1,0 +1,54 @@
+name: battleObject_queueAnimFrame
+address: '0x0804AE68'
+kind: function
+status: probable
+summary: Queues one OAM sprite for a battle object's current animation frame and advances the object's
+  animation timer/frame every ~16 ticks.
+interface: '(r5 = battle object: [r5+0x34] = sprite variant id, [r5+0x15] = anim state byte (low nibble
+  = frame row, high nibble = frame delay timer)) -> r0 = new anim state byte; clobbers r1-r4'
+details: 'Builds a tile base 0xA40000 + variant*0x10 + 0x20 from the object''s variant field and calls
+  battleObject_queueOamFromTableRow with the 16-entry u16 tile/attr table byte_804A29C, row index = [r5+0x15]&0xF,
+  and extra attr word 0x40000000 (attr1 hflip bit shifted). The callee returns row/2+1 (= frame+1). The
+  state byte at r5+0x15 is a packed frame+timer: each call decrements the high-nibble timer; when it counts
+  down to 1, the function calls battleObject_advanceAnimTableBy0xFF on the animation table pointer stored
+  at dword_804A2AC to fetch the next frame index (0xFF wraps to entry 0) and stores it. The writeback
+  keeps the frame in the low nibble and writes the decremented (or reset) timer into the high nibble,
+  so each frame of the 16-frame strip is held for roughly 16 ticks. r5 is never set here, so it relies
+  on the surrounding routine sub_804A514 having the object in r5.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'r0 = 0xA40000 + [r5+0x34]*0x10 + 0x20, r2 = [r5+0x15]&0xF, r3 = byte_804A29C, r4 = 0x40000000
+    all feed battleObject_queueOamFromTableRow_811FAF4; r1 = ([r5+0x15]>>4)-1; bne skips the advance call,
+    so only timer==1 fetches the next frame via battleObject_advanceAnimTableBy0xFF_8120CC8 with dword_804A2AC;
+    final strb writes ([r5+0x15]&0xF) | (r1<<4): frame nibble preserved, timer nibble updated; queueOamFromTableRow''s
+    documented return (row/2+1) is what is passed as the index to advanceAnimTableBy0FF, chaining frame
+    lookup and advance; both callees and the sole caller context are battleObject_* sprite/OAM routines'
+  refs:
+  - bn6f/asm/asm03_2.s:8871
+  - 0x0804A514 sub_804A514
+  - 0x08120CC8 battleObject_advanceAnimTableBy0xFF_8120CC8
+  - 0x0811FAF4 battleObject_queueOamFromTableRow_811FAF4
+  reproduce: python3 tools/asmcat.py 0x0804AE68
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+open_questions:
+- exact encoding of the 0xA40000 tile base and the r1=2 argument to queueOamFromTableRow
+- whether r5+0x34 is a sprite-sheet/variant selector and where it is set
+- advanceAnimTableBy0xFF's effect on r1 (the writeback ORs r1<<4 into the state byte, which only makes
+  sense if the callee zeroes/returns it)
+- what animation the dword_804A2AC table belongs to (which object/routine installs it)
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_804AE68 -> battleObject_queueAnimFrame
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_804AE68

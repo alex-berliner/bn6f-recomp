@@ -1,0 +1,43 @@
+name: sprite_projectAndCullLongcall
+address: '0x08002D06'
+kind: function
+status: probable
+summary: Long-call trampoline that forwards to sprite_projectAndCull unchanged.
+interface: (r0-r3 = args passed through to sprite_projectAndCull) -> r0 = whatever sprite_projectAndCull
+  returns; flags preserved from callee (pop does not clobber)
+details: 'A 7-instruction wrapper: pushes {r5,lr}, loads the address of sprite_projectAndCull+1 from off_8002D10,
+  sets LR = PC and branches via BX to perform an interworking (ARM-> Thumb state via +1) far call, then
+  pops {r5,pc} to return. It performs no argument marshaling, so r0-r3 reach the callee as-is. The r5
+  push/pop is dead boilerplate typical of the project''s generated long-call thunks. Behavior is exactly
+  that of the callee: project an object''s world position through the camera and mark on-screen frame
+  pieces.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldr r3, off_8002D10 / mov lr, pc / bx r3 — classic thumb far-call trampoline pattern (0x08002D08-0x08002D0C);
+    off_8002D10: .word sprite_projectAndCull+1 — sole target is the known projection/cull routine; callee
+    summary at 0x030061E8 matches the projection/cull semantics the thunk forwards to; no register writes
+    between push and bx — arguments and flags pass through unmodified'
+  refs:
+  - bn6f/asm/sprite.s:1102
+  - 0x030061E8 sprite_projectAndCull
+  reproduce: python3 tools/asmcat.py 0x08002D06
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+open_questions:
+- No known callers, so it is unclear which object/frame code path reaches this thunk or whether it duplicates
+  another trampoline for the same target
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8002D06 -> sprite_projectAndCullLongcall
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8002D06

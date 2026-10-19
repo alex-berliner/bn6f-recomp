@@ -1,0 +1,51 @@
+name: soulWeapons_getFormDataOffset
+address: '0x081427A4'
+kind: function
+status: probable
+summary: 'Computes an offset into a per-Beast-Out/Soul form data table: looks up the form''s base offset
+  and adds the given index to it.'
+interface: (r0 = form/entry id, also passed to GetSoulWeaponsMapIndex) -> r0 = baseOffset[GetSoulWeaponsMapIndex(id)]
+  + id; flags not meaningful
+details: 'Saves the input in r4, calls GetSoulWeaponsMapIndex to reduce it to a form index (0-7), then
+  reads a halfword from the table at byte_81427BC (8 entries spaced 0x14 apart: 0x750, 0x764, 0x778, ...
+  0x7DC, followed by 0x000 as an out-of-range/none entry) and adds the original input back. The table
+  entries look like byte offsets into a larger shared data array, with each Beast Out / Soul form owning
+  a 20-byte block, so the result is the byte offset of a record inside that form''s block. The zero terminator
+  means unknown forms yield a zero offset. Called by soulWeapons_apply_8142510 (which sets up Beast Out
+  map state) and sub_80A7F26.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl GetSoulWeaponsMapIndex then lsl r0,#1 / ldrh r0,[r1,r0] reads a halfword base from the 8-entry
+    table off_81427B8; add r0, r0, r4 adds the original argument to the base, i.e. the return is an offset,
+    not a pointer or flag; table byte_81427BC holds 0x750+0x14*n for 8 forms then 0x000, matching one
+    base per Beast Out/Soul form plus a none entry; caller soulWeapons_apply_8142510 applies Beast Out/Soul
+    Unleash map state, consistent with per-form data lookup
+  refs:
+  - bn6f/asm/asm37_1.s:1505
+  - 0x08142510 soulWeapons_apply_8142510
+  - 0x080A7F26 sub_80A7F26
+  - 0x081426CE GetSoulWeaponsMapIndex
+  reproduce: python3 tools/asmcat.py 0x081427A4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+coverage:
+- beastsp
+open_questions:
+- What array/table these 0x750..0x7DC offsets point into (the caller's use of the returned offset would
+  show it)
+- What the added r0 argument selects within a form's 20-byte block (record index? chip/sub-id?)
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81427A4 -> soulWeapons_getFormDataOffset
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81427A4

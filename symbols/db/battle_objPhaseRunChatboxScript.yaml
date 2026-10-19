@@ -1,0 +1,48 @@
+name: battle_objPhaseRunChatboxScript
+address: '0x080E68F8'
+kind: function
+status: probable
+summary: Battle-object phase step that displays a text script once (keyed by Param2+0x1E) and waits until
+  the chatbox closes before ending the phase.
+interface: (r0 = battle object? passed in r5 slot usage; object ptr expected in r5) -> r0 = flag-test
+  result; updates oBattleObject_PhaseInitialized / CurPhase
+details: 'Standard per-frame phase handler for a battle object. On first invocation (PhaseInitialized
+  == 0) it sets PhaseInitialized to 4, then calls chatbox_runScript with the TextScript archive at 8736D74
+  and script index = oBattleObject_Param2 + 0x1E, so the object''s Param2 selects which dialogue in that
+  archive plays. On subsequent calls it polls eFlags2009F38 bit 0x80 (chatbox closed/finished) via chatbox_mask_eFlags2009F38;
+  when the bit reads zero it stores phase 4 into CurPhaseAndPhaseInitialized to advance the object''s
+  state machine. Note the odd register convention: it reads its object pointer from r5 rather than r0,
+  implying it is called as part of a table/jump dispatch where r5 holds the object.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r5,#oBattleObject_PhaseInitialized]; tst; bne — one-shot guard typical of phase steps;
+    ldrb r1,[r5,#oBattleObject_Param2]; add r1,#0x1E; bl chatbox_runScript — dialogue index derived from
+    object param; mov r0,#4; strb [r5,#oBattleObject_PhaseInitialized] — marks phase as initialized with
+    value 4; bl chatbox_mask_eFlags2009F38 with r0=0x80; tst; bne exit — waits for chatbox-finished flag;
+    mov r0,#4; strh [r5,#oBattleObject_CurPhaseAndPhaseInitialized] — advances to phase 4 after script
+    ends
+  refs:
+  - bn6f/asm/asm31.s:101579
+  - 0x08045F3C chatbox_mask_eFlags2009F38
+  - 0x08040384 chatbox_runScript
+  reproduce: python3 tools/asmcat.py 0x080E68F8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+open_questions:
+- Which battle object type dispatches to this handler and how r5 is set (caller never identified)
+- What the TextScript8736D74 archive contains and which in-game situation uses it
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E68F8 -> battle_objPhaseRunChatboxScript
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E68F8

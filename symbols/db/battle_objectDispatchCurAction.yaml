@@ -1,0 +1,49 @@
+name: battle_objectDispatchCurAction
+address: '0x080BFE6E'
+kind: function
+status: probable
+summary: Runs the battle object's current action by calling the CurAction-indexed handler from its action
+  table.
+interface: (r5 = battle object) -> dispatches to table[CurAction] via long call; on normal return control
+  reaches the epilogue; a fallback path writes 8 to oBattleObject+8
+details: Loads off_80BFE84 (pointer to the action-handler table off_80BFE88), reads the object's CurAction
+  byte at oBattleObject_CurAction, and long-calls table[CurAction] using mov lr,pc/bx r1 so the thumb
+  handler returns to the pop {pc} epilogue. The known table entry is sprite_syncFromRelatedObject+1, i.e.
+  action handlers are full thumb functions. The mov r0,#8/strb r0,[r5,#8] after the bx is skipped on a
+  normal lr return, so it is only reachable if a handler returns to that address — likely a fallback that
+  sets field +8 (state/substate) to 8. r5 is preserved as the object pointer since the function only reads
+  r5-based fields.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#oBattleObject_CurAction]; ldr r1,[r1,r0] indexes the handler table by the object's
+    current action; mov lr,pc; bx r1 is the standard thumb long-call dispatch into table handler sprite_syncFromRelatedObject+1;
+    strb r0,[r5,#8] after the call writes a state value into the object but is bypassed by the lr return
+    target (b locret_80BFE80); caller sub_80BFE24 at 0x080BFE24 wraps this as the object's updater, consistent
+    with battlesweep route execution
+  refs:
+  - bn6f/asm/asm31.s:17049
+  - 0x080BFE24 sub_80BFE24
+  reproduce: python3 tools/asmcat.py 0x080BFE6E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+coverage:
+- battlesweep
+open_questions:
+- full contents of the handler table off_80BFE88 (how many actions, which handlers besides sprite_syncFromRelatedObject)
+- which handler can return to the mov r0,#8/strb path and what field +8 = 8 means
+- what battle object type r5 points to (which struct this CurAction layout belongs to)
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BFE6E -> battle_objectDispatchCurAction
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BFE6E

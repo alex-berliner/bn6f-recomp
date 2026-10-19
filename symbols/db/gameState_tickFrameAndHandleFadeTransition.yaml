@@ -1,0 +1,51 @@
+name: gameState_tickFrameAndHandleFadeTransition
+address: '0x080056B8'
+kind: function
+status: probable
+summary: 'Per-frame tick of the main game-state loop: runs scene dispatch, renders all sprites, and when
+  a screen fade is active, tears everything down and jumps the main jumptable to scene 0x34.'
+interface: (void) -> void; sets *(oToolkit_MainJumptableIndexPtr) = 0x34 when IsScreenFadeActive is true
+details: 'Runs one frame of the active game state: dispatches the PET-menu sub-handler (dispatch_80339CC),
+  the scenario effect-state jumptable, and per-type object logic; then flushes/queues all sprite rendering
+  (setRenderFlushState, palette reset, map-object draw, NPC draw, OAM finalize, owMapObject_queueSprites)
+  and runs the armed event callback. If IsScreenFadeActive is false it returns immediately; otherwise
+  it performs a scene reload: kills chatbox, frees all objects of selected types (0x21), clears NPC state
+  words, resets all graphics state, clears the work area, reinits fade/battle gfx and scenario effect
+  state, zeroes scratch, randomizes extra toolkit pointers, and reloads current Navi stat boosts. Finally
+  it reads the GameState pointer from the toolkit (self comment is misleading; r5 is loaded from oToolkit_GameStatePtr),
+  then writes byte 0x34 to the main jumptable index, switching the engine to the next scene handler.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: long unconditional chain of per-frame dispatch/draw calls (bl dispatch_80339CC ... bl owMapObject_queueSprites_8004934)
+    shows a frame tick; bl IsScreenFadeActive; beq locret_800572A gates the entire teardown block on fade
+    state; teardown block calls FreeAllObjectsOfSpecifiedTypes(0x21), resetAllGraphicsState_8005F40, runSetupStepAndClearWorkArea_8005F6C
+    — a scene reload; ldr r0,[r7,#oToolkit_MainJumptableIndexPtr]; mov r1,#0x34; strb r1,[r0] selects
+    the next main-loop scene handler; self is only referenced via oToolkit_GameStatePtr at the end, matching
+    a global per-frame step rather than an instance method
+  refs:
+  - bn6f/asm/asm00_1.s:5078
+  - 0x08006C22 RandomizeExtraToolkitPointers
+  - 0x080339CC dispatch_80339CC
+  - 0x080024AE event_runArmedCallback_80024AE
+  reproduce: python3 tools/asmcat.py 0x080056B8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+open_questions:
+- what scene/state jumptable index 0x34 corresponds to (which handler receives control after the transition)
+- which object types the 0x21 argument to FreeAllObjectsOfSpecifiedTypes selects
+- why the GameState pointer is loaded but apparently unused (may be for a later optimization or side effect)
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80056B8 -> gameState_tickFrameAndHandleFadeTransition
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80056B8

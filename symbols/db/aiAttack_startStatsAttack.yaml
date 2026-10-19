@@ -1,0 +1,55 @@
+name: aiAttack_startStatsAttack
+address: '0x0802E0D4'
+kind: function
+status: probable
+summary: 'AI attack launcher: stashes three incoming attack parameters into the battle object''s AI sub-struct,
+  reads a NaviStats byte for the object''s side, then starts attack 0x10 and steps the AI attack state
+  machine once.'
+interface: (r0,r1,r2 = three attack parameter bytes/values, r5 = battle object) -> void; r0-r2 preserved
+  across the stats call and stored at [obj+0xF8+0x16/0x17/0x18], AI state byte at +0xF8+0x3 set to 2
+details: r5 is a battle object; [r5+0x58]+0xA0 is its per-player AI work area. The three incoming register
+  values are saved around the GetBattleNaviStatsByte_AllianceFromBattleObject(r0=object, r1=0x29) call
+  (whose returned byte lands in r3 and is never used — likely a side-effecting stat refresh or dead leftover)
+  and written to +0x16/+0x17/+0x18, a small attack-parameter record. Field +0x3 is set to 2 (an AI mode/phase
+  marker), then object_setAttack4 is called with 0x10 to arm attack slot/type 0x10, and aiAttack_stepStateMachine
+  advances the AI attack state machine one step. A second, unreached-by-callers block repeats the same
+  stores but arms 0x3F and calls sub_80EB234 instead, suggesting an alternate attack variant or a tail-merged
+  sibling entry.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldr r7,[r5,#0x58]; add r7,#0xA0 — addresses the battle object''s AI work struct; push/pop {r0-r2}
+    around GetBattleNaviStatsByte_AllianceFromBattleObject(0x29) preserves the three values that are then
+    stored at +0x16..+0x18; strb #2,[r7,#0x3] sets an AI phase/state byte before starting the attack;
+    mov r0,#0x10; bl object_setAttack4 then bl aiAttack_stepStateMachine — selects the attack and runs
+    its first AI step; duplicate block with setAttack4(0x3F) + sub_80EB234 shows a variant path of the
+    same setup'
+  refs:
+  - bn6f/asm/asm03_0.s:17109
+  - 0x08013774 GetBattleNaviStatsByte_AllianceFromBattleObject
+  - 0x080EB04C aiAttack_stepStateMachine_80EB04C
+  - 0x08011690 object_setAttack4
+  reproduce: python3 tools/asmcat.py 0x0802E0D4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+open_questions:
+- Why the NaviStats byte 0x29 is read at all — its result (r3) is dead; a caller or the callee's side
+  effects would clarify (stat cache refresh? unlock check?)
+- Meaning of the three stored parameter bytes at +0x16..+0x18 (likely damage/element/target, needs the
+  attack-runner to confirm)
+- What attack id 0x10 (and the alternate 0x3F) maps to, and how the second block is reached
+- No known callers — entry conditions and the meaning of the +0x3=2 mode are unconfirmed
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_802E0D4 -> aiAttack_startStatsAttack
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802E0D4

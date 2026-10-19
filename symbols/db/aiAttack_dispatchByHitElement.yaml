@@ -1,0 +1,45 @@
+name: aiAttack_dispatchByHitElement
+address: '0x080ED748'
+kind: function
+status: probable
+summary: 'Dispatches an enemy attack behavior based on the attack''s hit element: normal element runs
+  one routine, any elemental hit runs walk-forward-then-attack.'
+interface: (r7 = AI attack vars struct) -> r0 = HitElement selects handler via table at off_80ED75C; tail-calls
+  handler (lr set to return into pop {pc})
+details: 'Loads oAIAttackVars_HitElement from the AI attack vars at r7 and uses it to index a two-entry
+  table at off_80ED75C. Entry 0 (no/normal element) goes to sub_80ED764, entry 1 goes to aiAttack_walkForwardThenAttack_80ED7A2.
+  The mov lr, pc / bx r1 pattern makes it a thunk: the handler returns straight to sub_80ED748''s pop
+  {pc}, i.e. it tail-dispatches to the caller''s continuation. So this is a per-element branch point in
+  the beastsp AI attack routine, splitting ''plain hit'' handling from ''elemental hit: step forward then
+  attack''.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_HitElement]; ldr r1,[r1,r0] indexes table off_80ED75C by element;
+    table has exactly two targets: sub_80ED764+1 and aiAttack_walkForwardThenAttack_80ED7A2+1; mov lr,
+    pc / bx r1 makes the callee return into pop {pc}, a dispatch-thunk pattern; recorded execution on
+    the beastsp route places it in the AI attack path'
+  refs:
+  - bn6f/asm/asm31.s:115137
+  reproduce: python3 tools/asmcat.py 0x080ED748
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+coverage:
+- beastsp
+open_questions:
+- what sub_80ED764 (the normal-element branch) does
+- whether HitElement is strictly 0/1 or the table would be read out of bounds for other element values
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80ED748 -> aiAttack_dispatchByHitElement
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80ED748

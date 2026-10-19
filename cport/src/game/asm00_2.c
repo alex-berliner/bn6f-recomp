@@ -1441,10 +1441,10 @@ Next battle_getObjectNameID_8011020(void) {
 /* ── battle_object_detachRelatedObject2_80111B8 ── */
 /* battle_object_detachRelatedObject2_80111B8(r5 = battle object):
  * If the object has a "related object 2" attached, run that object's
- * removal routine (sub_80C44C8, called with the pointer in r0) and then
+ * removal routine (battle_objectSetStateActionPhase8, called with the pointer in r0) and then
  * detach it by clearing the pointer field.
  * Returns: r0 = the pointer that was read (0 when nothing was attached),
- * r1 = whatever sub_80C44C8 left there (untouched when not attached),
+ * r1 = whatever battle_objectSetStateActionPhase8 left there (untouched when not attached),
  * flags as the original's last flag-setting instruction leaves them:
  * from the TST of the pointer on the empty path, from MOV r0,#0 otherwise. */
 Next battle_object_detachRelatedObject2_80111B8(void) {
@@ -1455,7 +1455,7 @@ Next battle_object_detachRelatedObject2_80111B8(void) {
         SET_FLAGS_NZ(R0);
     } else {
         R0 = related;
-        GUEST_CALL(sub_80C44C8);
+        GUEST_CALL(battle_objectSetStateActionPhase8);
         R0 = 0;
         ST32(R5 + oBattleObject_RelatedObject2Ptr, 0);
         SET_FLAGS_NZ(R0);
@@ -1540,7 +1540,7 @@ Next sub_8011450(void) {
         break;
 
     case 14:
-        GUEST_CALL(sub_80FF668);
+        GUEST_CALL(battle_endRelatedObjectAnims);
         break;
 
     case 24:

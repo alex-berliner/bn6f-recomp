@@ -1,0 +1,51 @@
+name: ai_attackStepTimedElement
+address: '0x08104758'
+kind: function
+status: probable
+summary: AI attack-state step handler that on entry sets a timed attack (element 4, anim 0x40, hitbox
+  region 2, optional extra setup) and counts it down until the attack ends.
+interface: (r5 = battle object, r7 = oAIAttackVars of that object) -> r0 = callee return; sets oAIAttackVars_AttackElement/StepTimer,
+  oBattleObject_CurAnim, collision region
+details: 'Runs once per frame while the AI attack is active. On the first frame (AttackElement == 0) it
+  commits the attack: writes element 4 into oAIAttackVars_AttackElement, switches the object to animation
+  0x40, copies oAIAttackVars_AttackDuration into oAIAttackVars_StepTimer as the countdown, and selects
+  collision region 2 via object_setCollisionRegion. If oAIAttackVars_ScratchVar is nonzero at entry it
+  also calls sub_80E8A46 (unknown, likely spawns/queues the attack''s projectile or effect using that
+  var). On subsequent frames it decrements StepTimer each tick; when it reaches zero it calls object_exitAttackState_801171C
+  to tear the attack down (clearing scratch, chip lockout, power-atk state). The AttackElement-also-a-flags
+  trick (0 means ''not started'') makes the setup branch run exactly once.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst; bne -> setup runs only when element is unset;
+    strb #4,[r7,#oAIAttackVars_AttackElement] and strb #0x40,[r5,#oBattleObject_CurAnim] set the attack''s
+    element and animation; ldrh/strh AttackDuration -> StepTimer, then StepTimer-- / bgt loop counts frames
+    until expiry; bl object_setCollisionRegion with r0=2 activates a hitbox region for the attack; StepTimer==0
+    branch calls object_exitAttackState_801171C, the known attack teardown'
+  refs:
+  - bn6f/asm/asm31.s:164293
+  - 0x0801171C object_exitAttackState_801171C
+  - 0x0801A07C object_setCollisionRegion
+  - 0x080E8A46 sub_80E8A46
+  reproduce: python3 tools/asmcat.py 0x08104758
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+open_questions:
+- What sub_80E8A46 does when ScratchVar is set (likely spawns the attack's projectile/effect)
+- Which attack/element value 4 corresponds to and which enemy AI dispatches to this handler (no known
+  caller)
+- Whether ScratchVar selects between two attack variants or is a pointer/flag for the spawned object
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8104758 -> ai_attackStepTimedElement
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8104758

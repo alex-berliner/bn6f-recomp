@@ -1781,7 +1781,7 @@ Next logoScreen_dispatch_803D1CA(void) {
         GUEST_CALL(logoScreen_init_803D1FC);
         break;
     case 0x04:
-        GUEST_CALL(sub_803D24C);
+        GUEST_CALL(logoScreen_setupFadeWait);
         break;
     case 0x08:
         GUEST_CALL(tickLogoScreenFade_803D274);

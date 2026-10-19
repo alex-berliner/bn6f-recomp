@@ -1,0 +1,49 @@
+name: reqBBS_processCompletedRewards
+address: '0x081430F4'
+kind: function
+status: probable
+summary: 'Processes a table of BBS request completions: stores each entry''s word into the per-request
+  status array and sets the request''s completion event flag.'
+interface: (no args used) -> r0 = 0; calls SetEventFlag and reqBBS_setFlag; clobbers r0-r4
+details: 'First calls reqBBS_setFlag_e17b0f7_8140A00 (which sets event flag 0x7 in event byte 0x17) and
+  sub_8143088, whose return value (r0) indexes a table at off_8143168 by *4 to pick a list head. It then
+  walks an 8-byte-per-entry list: byte 0 is a nonzero request ID used as a terminator when 0, word at
+  +4 is a value. For each entry it writes the word to unk_2011EA0 + id*4 (a per-request status/result
+  array) and sets event flag 0x16f1 + (id-1), i.e. one completion flag per request ID in a contiguous
+  block. Returns 0. The pattern — table select, per-ID status write, batched SetEventFlag — matches awarding/acknowledging
+  completed BBS requests after the reqBBS flag handler ran.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl reqBBS_setFlag_e17b0f7_8140A00 at top: BBS request handler runs first; lsl r0,r0,#2 + ldr
+    r4,[r4,r0]: sub_8143088''s result selects the list from off_8143168; str r0,[r1] with r1=unk_2011EA0+id*4:
+    writes entry value to per-request slot; ldr r0,=0x16f1; sub r1,#1; bl SetEventFlag: sets flag 0x16f0+id
+    per entry; ldrb r0,[r4]; beq exit; add r4,#8: 0-terminated 8-byte entry list'
+  refs:
+  - bn6f/asm/asm37_1.s:2752
+  - 0x08142ECC sub_8142ECC
+  - 0x0802F114 SetEventFlag
+  - 0x08140A00 reqBBS_setFlag_e17b0f7_8140A00
+  - 0x08143088 sub_8143088
+  reproduce: python3 tools/asmcat.py 0x081430F4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+open_questions:
+- Exact meaning of the word written to unk_2011EA0 (clear state vs reward value) needs the array's other
+  readers
+- What sub_8143088 returns / how the table at off_8143168 is organized
+- Caller sub_8142ECC's context to confirm this is the post-completion award step
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81430F4 -> reqBBS_processCompletedRewards
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81430F4

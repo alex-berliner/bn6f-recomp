@@ -1,0 +1,49 @@
+name: battleTutorial_firstCheckTextTrigger
+address: '0x08029BE6'
+kind: function
+status: probable
+summary: Per-step checker for the first-battle tutorial that decides whether a tutorial text script should
+  fire, returning 5 (run tutorial text entry) or 0 (don't).
+interface: (r0 = unused, r5 = battle-tutorial task struct) -> r0 = 0 if no text should play, 5 = trigger/entry
+  for TextScriptFirstBattleTutorials; flags not meaningful
+details: 'The function is a predicate called with the tutorial task in r5 (r0 is never read). It returns
+  0 when any of: field +8 is nonzero (likely a text/wait state already active), field +0x19 is zero (trigger
+  condition not met), or field +1 equals 0x54 (current step is one that must not be interrupted). Only
+  when +8 is clear, +0x19 is set, and the step is not 0x54 does it return 5, which the caller (battleTutorial_first_checkTextStep_8029B1C)
+  uses to pick and run an entry from TextScriptFirstBattleTutorials and move the task to its post-text
+  wait state. The .word after the routine pointing at TextScriptFirstBattleTutorials confirms it belongs
+  to that text-dispatch table.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#8]; bne -> return 0: text suppressed while another state is active (0x08029BE8-0x08029BEA);
+    ldrb r0,[r5,#0x19]; tst/beq -> return 0: requires a trigger flag to be set; ldrb r0,[r5,#1]; cmp #0x54/beq
+    -> return 0: step 0x54 is exempt from triggering text; mov r0,#5 fallback return: nonzero result selects
+    a text entry, matching caller''s documented ''asks a per-step checker if a chatbox script should play'';
+    off_8029C04: .word TextScriptFirstBattleTutorials ties this checker to the first-battle tutorial text
+    table'
+  refs:
+  - bn6f/asm/asm03_0.s:8022
+  - 0x08029B1C battleTutorial_first_checkTextStep_8029B1C
+  reproduce: python3 tools/asmcat.py 0x08029BE6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+coverage:
+- battlesweep
+open_questions:
+- exact meaning of fields +8, +1 and +0x19 in the tutorial task struct (step counter vs. state flags)
+- whether the return value 5 is a text-script index or a next-state code for the caller
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f ccfbf27f
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8029BE6 -> battleTutorial_firstCheckTextTrigger
+  where: bn6f 014443cc
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8029BE6
