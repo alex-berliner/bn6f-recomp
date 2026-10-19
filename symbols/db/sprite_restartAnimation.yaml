@@ -1,0 +1,45 @@
+name: sprite_restartAnimation
+address: '0x080A800A'
+kind: function
+status: probable
+summary: 'Restarts an object''s sprite animation: re-selects the animation index stored in the object,
+  reloads its animation frame data, and clears the animation state counters.'
+interface: (r7 = ptr to object/sprite state struct, r5 = ptr to related object struct) -> r0 = 0 discarded;
+  no flags guaranteed
+details: Reads the byte at [r7,#3] (the object's stored/current animation index) and passes it to sprite_setAnimation,
+  writing it into the sprite slot's first byte. Then calls sprite_loadAnimationData to skip from the object
+  header to the attached sprite data block and reload the animation's frame list, effectively rewinding
+  the animation to its start. Finally zeroes the bytes at [r7,#6] and [r5,#9], which given the reload
+  are most plausibly per-animation state such as the current frame counter and a timer/sub-frame counter
+  in two adjacent structs (r7 likely the sprite slot, r5 the owning object). Both pointers are expected
+  from the caller since the function never computes them.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r7,#3]; bl sprite_setAnimation — re-applies the animation index held in the struct,
+    not a caller-supplied one; bl sprite_loadAnimationData immediately after — re-fetches the frame data
+    for that animation; strb r0(=0),[r7,#6] and strb r0,[r5,#9] — clearing frame/timer state after the
+    reload; both sprite callees are animation-system routines, so the cleared fields are animation bookkeeping
+  refs:
+  - bn6f/asm/asm29.s:6035
+  - 0x080026A4 sprite_loadAnimationData
+  - 0x08002DA4 sprite_setAnimation
+  reproduce: python3 tools/asmcat.py 0x080A800A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- no callers are known, so the exact identity of the r5/r7 structs and the meaning of the two cleared
+  bytes (frame index vs timer vs finished-flag) is unconfirmed
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80A800A -> sprite_restartAnimation
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A800A

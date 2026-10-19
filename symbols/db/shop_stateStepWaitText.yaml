@@ -1,0 +1,45 @@
+name: shop_stateStepWaitText
+address: '0x08047050'
+kind: function
+status: probable
+summary: 'Per-frame step for a shop-scene state: runs the buy-menu frame update and, once the chatbox
+  finishes its text (flag 8), stores 12 into the state byte to advance to the next state.'
+interface: (r5 = state struct with state byte at offset 0) -> r0 = 0; flags from chatbox flag test used
+  internally
+details: Calls the shop buy menu's per-frame update (redraws item list, cursor, etc.), then tests bit
+  8 of the chatbox/event flag word eFlags2009F38 — the usual 'chatbox text finished/advanced' bit. If
+  that bit is clear, nothing else happens; if set, it writes 0xC (the next scene/task state id) to the
+  byte at [r5], which the surrounding task dispatcher reads to switch states. It always returns 0 in r0,
+  the typical 'keep running' result of a state-step handler. r5 is set by the caller as the task/scene
+  state pointer; only offset 0 is touched here. The 0xC target state is presumably another shop phase
+  handled by a sibling step function.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl shopBuyMenu_updateFrame_8047134 first — this is the buy-menu screen's frame handler; chatbox_mask_eFlags2009F38
+    with r0=8 tests the chatbox text-done bit, standard pattern for gating on dialog close; strb r0,#0xc,[r5]
+    writes a small state id to the caller-provided struct byte, a state-machine transition; mov r0,#0
+    before pop {pc} — returns 0 like other per-frame task step functions
+  refs:
+  - bn6f/asm/asm03_2.s:2058
+  - 0x08045F3C chatbox_mask_eFlags2009F38
+  - 0x08047134 shopBuyMenu_updateFrame_8047134
+  reproduce: python3 tools/asmcat.py 0x08047050
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- Which task dispatches this and what state id 12 corresponds to (needs the caller/state table)
+- Whether offset 0 of the r5 struct is the current state or a next-state field
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8047050 -> shop_stateStepWaitText
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8047050

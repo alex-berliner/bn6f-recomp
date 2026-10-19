@@ -1599,9 +1599,9 @@ Next battle_checkHPDigit4State_801A6E8(void) {
 /* ── battle_buffTwoStatsPlus2OnEventF6_801A720 ── */
 /* battle_buffTwoStatsPlus2OnEventF6_801A720(r5 = battle object):
  * If the object's collision slot 0xA4 holds event 0xF6, raise the navi stats
- * at offsets 0x18 and 0x19 by 2 (capped at 7) and then run sub_801A77A.
+ * at offsets 0x18 and 0x19 by 2 (capped at 7) and then run battle_applyPanelEventF6Status.
  * Flags c/v are left over from the collision comparison on the early-exit
- * path, and from sub_801A77A on the normal path. */
+ * path, and from battle_applyPanelEventF6Status on the normal path. */
 static u32 stat_plus2_capped(u32 value)
 {
     u32 raised = value + 2;
@@ -1634,8 +1634,8 @@ Next battle_buffTwoStatsPlus2OnEventF6_801A720(void) {
     R1 = 0x19;
     GUEST_CALL(SetBattleNaviStatsByte_AllianceFromBattleObject);
 
-    /* sub_801A77A may clobber r2/r4; r2 is part of our output, r4 is restored */
-    GUEST_CALL(sub_801A77A);
+    /* battle_applyPanelEventF6Status may clobber r2/r4; r2 is part of our output, r4 is restored */
+    GUEST_CALL(battle_applyPanelEventF6Status);
     R4 = savedR4;
     RETURN_TO_CALLER();
 }
@@ -1644,9 +1644,9 @@ Next battle_buffTwoStatsPlus2OnEventF6_801A720(void) {
 /* battle_aiAimTwoColumnsAheadOnSpecialPanel_801A75A(r2 = column index, r4 = caller value (preserved), r5 = battle object):
  * When the object's collision data says it is standing on a specific kind of panel
  * (byte at +0xA4 equal to 0xF6), aim the AI's Unk_12 marker two columns ahead,
- * saturating at 7, and run sub_801A77A with the AI data / collision data / object
+ * saturating at 7, and run battle_applyPanelEventF6Status with the AI data / collision data / object
  * pointers. Otherwise just fall through, leaving the compare flags behind for the
- * caller. r2 (and c/v when the callee runs) come back from sub_801A77A. */
+ * caller. r2 (and c/v when the callee runs) come back from battle_applyPanelEventF6Status. */
 Next battle_aiAimTwoColumnsAheadOnSpecialPanel_801A75A(void) {
     u32 saved_r4 = R4;
     u32 collisionData = LD32(R5 + oBattleObject_CollisionDataPtr);
@@ -1661,8 +1661,8 @@ Next battle_aiAimTwoColumnsAheadOnSpecialPanel_801A75A(void) {
         if ((s32)target > 7)
             target = 7;
         ST8(R3 + oAIData_CounterHitChain, target);
-        R4 = collisionData;      /* sub_801A77A expects the collision data pointer in r4 */
-        GUEST_CALL(sub_801A77A);
+        R4 = collisionData;      /* battle_applyPanelEventF6Status expects the collision data pointer in r4 */
+        GUEST_CALL(battle_applyPanelEventF6Status);
         R4 = saved_r4;           /* restore the caller's r4, as the original's pop does */
     } else {
         SET_FLAGS_CMP(collisionByte, 0xF6);

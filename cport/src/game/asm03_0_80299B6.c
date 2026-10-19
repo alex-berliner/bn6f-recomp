@@ -2621,7 +2621,7 @@ Next getTable2036720EntryFields_802CE78(void) {
 /* ── runPendingHandlerForEntryPair_802CEC8 ── */
 /* runPendingHandlerForEntryPair_802CEC8: for each of the two entries in the table at unk_2036720
  * (stride 0x10, entry pointer at +0x8), if the entry exists and its
- * halfword flag at +0x24 is clear, call sub_802CEA6 with the byte value
+ * halfword flag at +0x24 is clear, call battle_clearImpactSlot with the byte value
  * at +0x16 of that entry. r4 is left pointing at the second entry. */
 Next runPendingHandlerForEntryPair_802CEC8(void) {
     u32 table = A_unk_2036720;
@@ -2631,7 +2631,7 @@ Next runPendingHandlerForEntryPair_802CEC8(void) {
 
         if (entry != 0 && LD16(entry + 0x24) == 0) {
             R0 = LD8(entry + 0x16);
-            GUEST_CALL(sub_802CEA6);
+            GUEST_CALL(battle_clearImpactSlot);
         }
     }
 
@@ -2829,11 +2829,11 @@ static u32 get_table_entry_fields(u8 alliance) {
     return R0;
 }
 
-/* register form: calls sub_802CEA6 outside this file, which has no typed C
+/* register form: calls battle_clearImpactSlot outside this file, which has no typed C
  * interface yet */
 static void apply_impact_to_table(u8 alliance) {
     R0 = alliance;
-    GUEST_CALL(sub_802CEA6);
+    GUEST_CALL(battle_clearImpactSlot);
 }
 
 /* register form: calls PlaySoundEffect outside this file, which has no typed
@@ -3412,10 +3412,10 @@ static void clear_ai_data_flags(u32 mask) {
     GUEST_CALL(ClearAIData_Unk_44_Flag);
 }
 
-/* register form: calls sub_802E1EC outside this file, which has no typed C interface yet */
+/* register form: calls ai_clearAllianceState outside this file, which has no typed C interface yet */
 static void post_entry_write_update(void) {
     /* the original runs this right after each entry-field write below */
-    GUEST_CALL(sub_802E1EC);
+    GUEST_CALL(ai_clearAllianceState);
 }
 
 /* register form: calls object_setInvulnerableTime outside this file, which has no typed C interface yet */

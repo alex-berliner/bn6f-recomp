@@ -1,0 +1,49 @@
+name: battle_lungeForwardState
+address: '0x080DCD74'
+kind: function
+status: probable
+summary: Battle-object state handler that dashes the object forward off its side of the field for 6 frames
+  while highlighting the panels it passes, then destroys itself.
+interface: (r0 implicit = object ptr in r5, reads oBattleObject_CurPhase) -> updates X/Z position, velocities,
+  timers; sets state to CUR_STATE_DESTROY when done
+details: 'On phase 0 it plays sound effect 0x7F, sets CurPhase=4, computes the facing multiplier via object_getFrontDirection,
+  stores XVelocity = dir*0x80000 and ZVelocity = dir (a fast forward dash of half a panel per frame in
+  X plus one row step in Z), and sets Timer=6. Each later phase it applies X += XVelocity and Z -= ZVelocity,
+  decrementing Timer; when it reaches 0 it calls sub_80DCDFA and sub_80DCE18 (likely end-of-dash/collision
+  effects) and queues the object for destruction. Every 8 frames of Timer2 it calls object_highlightPanel
+  on the object''s current PanelX/PanelY, marking the tiles it travels over as highlighted (attack-area)
+  panels. Uses standard oBattleObject fields: CurPhase, CurStateActionPhaseAndPhaseInitialized, X, Z,
+  XVelocity, ZVelocity, Timer, Timer2, PanelX, PanelY.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'phase 0 branch: PlaySoundEffect(0x7F), CurPhase=4, XVelocity=dir*0x80000, ZVelocity=dir, Timer=6
+    (asm lines 3-15); movement phase: X+=XVelocity, Z-=ZVelocity, Timer countdown then CUR_STATE_DESTROY
+    after two helper calls (loc_80DCD9A block); every 8th Timer2 frame calls object_highlightPanel with
+    PanelX/PanelY (loc_80DCDC0 block); callees object_getFrontDirection and object_highlightPanel summaries
+    match facing-relative movement and panel marking'
+  refs:
+  - bn6f/asm/asm31.s:80001
+  - 0x080005CC PlaySoundEffect
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800CBD8 object_highlightPanel
+  reproduce: python3 tools/asmcat.py 0x080DCD74
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- what sub_80DCDFA and sub_80DCE18 do (probably spawn hit/collision or restore panel state on dash end)
+- which battle object or enemy attack uses this state, and what the highlighted panels are used for by
+  the damage routine
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DCD74 -> battle_lungeForwardState
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DCD74

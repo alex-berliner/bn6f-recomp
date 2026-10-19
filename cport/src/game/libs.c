@@ -196,14 +196,14 @@ Next timer_IsEnabled_8144CE0(void) {
 
 /* ── rfu_handleVBlank_81453D4 ── */
 /* rfu_handleVBlank_81453D4: Sync VBlank; if rfu_syncVBlank returned non-zero,
- * call sub_81461B0 with r0=0xF1, r1=0, then sub_81464B4. */
+ * call rfu_fireConnCallbackAndClearState with r0=0xF1, r1=0, then rfu_reqEndConnection. */
 Next rfu_handleVBlank_81453D4(void) {
     GUEST_CALL(rfu_syncVBlank);
     if ((s32)R0 != 0) {
         R0 = 0xF1;
         R1 = 0;
-        GUEST_CALL(sub_81461B0);
-        GUEST_CALL(sub_81464B4);
+        GUEST_CALL(rfu_fireConnCallbackAndClearState);
+        GUEST_CALL(rfu_reqEndConnection);
     }
     RETURN_TO_CALLER();
 }

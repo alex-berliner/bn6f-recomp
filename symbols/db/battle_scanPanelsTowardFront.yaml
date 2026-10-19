@@ -1,0 +1,45 @@
+name: battle_scanPanelsTowardFront
+address: '0x0800F436'
+kind: function
+status: probable
+summary: Ray-casts along the battle object's facing direction until a panel whose status flags match a
+  mask is found, or it walks off the field.
+interface: (r0 = starting column, r1 = row, r2 = panel-status mask) -> r0 = 1 if a matching panel was
+  hit, 0 if the scan left the 6x3 grid; sets flags via tst/cmp
+details: Fetches the caller's +1/-1 front direction via object_getFrontDirection, then repeatedly advances
+  the column by that step while keeping the row fixed. Each iteration validates the (column,row) with
+  object_isValidPanel; if off the grid it returns 0. Otherwise it reads the panel's status flags via object_getPanelParameters
+  and tst's them against the mask stored on the stack; any matching bit stops the loop and returns 1.
+  The mask is kept in stack slot [sp] because r2 must be preserved across calls. Effectively a line-of-sight/panel-property
+  probe in front of an object (e.g. searching for hole/broken/occupied panels ahead).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_getFrontDirection at 0x800F442 supplies the step direction added to r6 each loop;
+    loc_800F446 loop: add r6, r6, r4 then bl object_isValidPanel, beq -> return 0 (left the field); bl
+    object_getPanelParameters with tst r0, r1 against the stacked r2 mask decides the 1 return; str r2,[sp]
+    at entry shows r2 is a caller-supplied bitmask preserved across the three calls'
+  refs:
+  - bn6f/asm/asm00_2.s:1107
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800C8F8 object_getPanelParameters
+  - 0x0800CC72 object_isValidPanel
+  reproduce: python3 tools/asmcat.py 0x0800F436
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- No known caller, so which panel-status flag bits the mask is used with (hole, broken, object, etc.)
+  and typical call sites are unconfirmed
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_800F436 -> battle_scanPanelsTowardFront
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800F436

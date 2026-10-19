@@ -1,0 +1,47 @@
+name: submenu_toggleMode
+address: '0x0803AAF6'
+kind: function
+status: probable
+summary: Plays the cursor-move sound, flips a mode flag in a menu state struct, and reconfigures one of
+  two groups of menu slots depending on the new state.
+interface: (r5 = menu/UI state struct; r0 unused on entry) -> r0 = new state (0/1) after toggle via PlaySoundEffect
+  call; flags clobbered by calls
+details: Toggles the byte at [r5,#0x12] (0<->1) and plays sound effect 0x80 (cursor move). If the new
+  state is 0, it calls sub_803A752 (which runs sub_803B674 for indices 4..14) then sub_803A764 (sub_803B674
+  for indices 0x1D..0x20), i.e. an 11-entry group plus a 4-entry group. If the new state is 1, it calls
+  sub_803A776 and sub_803A788 instead, presumably the reciprocal setup for the other mode. r5 is used
+  but never set inside the function, so callers must point it at the owning menu/scene struct. The flag
+  at +0x12 thus records which of the two display modes the menu is currently in.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'PlaySoundEffect with #0x80 (cursor-move sound) at start indicates UI interaction, not game
+    logic; ldrb r0,[r5,#0x12]; eor r0,#1; strb — plain boolean toggle of a state byte; cmp/beq splits
+    on the toggled value into two mutually exclusive call pairs; sub_803A752/sub_803A764 drive sub_803B674
+    over index ranges 4..14 and 0x1D..0x20, typical per-slot setup/teardown; r5 never loaded in the function,
+    so it operates on a caller-provided state struct'
+  refs:
+  - bn6f/asm/asm03_1_1.s:4130
+  - 0x080005CC PlaySoundEffect
+  - 0x0803A752 sub_803A752
+  - 0x0803A764 sub_803A764
+  reproduce: python3 tools/asmcat.py 0x0803AAF6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- which menu/scene owns the struct at r5 (no callers known)
+- what sub_803B674 does per slot (show/hide vs. init/teardown) and what the slot indices enumerate
+- what sub_803A776/sub_803A788 configure for the opposite mode
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803AAF6 -> submenu_toggleMode
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803AAF6

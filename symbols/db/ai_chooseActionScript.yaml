@@ -1,0 +1,52 @@
+name: ai_chooseActionScript
+address: '0x08101CC0'
+kind: function
+status: probable
+summary: 'Enemy battle AI decision routine: picks a movement/action script (ScriptId) based on proximity
+  to the player, step/turn counters and RNG, or queues an attack.'
+interface: (r4 = enemy BattleObject, r5 = BattleObject ptr, r6 = oAIState state block) -> r0 = ?; sets
+  oAIState_ScriptId/oAIState_SubState, may flip oAIState_Unk_0c/0d
+details: Runs some pre-check (sub_8103038), then searches for the closest BattleObject of the opposite
+  alliance; if found and a pattern table (byte_8101DD7/byte_8101DE6) matches via sub_810222C, it toggles
+  oAIState_Unk_0c bit 2 and jumps to script 0x14/0x18 setup. Otherwise it increments oAIState_AttackCounter
+  (up to 4, with a 1/8 RNG chance to increment twice) and, once counters reach thresholds, tests movement
+  pattern tables (pairs like 1,1 / 1,2 / 2,3 terminated by 0x7F) via sub_810222C to choose ScriptId 4,
+  8, 0xC, or 0x10 with SubState 0, toggling oAIState_Unk_0d between attempts. In the attack branch it
+  calls ai_setupAttack9PanelChoose with callback sub_8102C38+1 to start attack 9 at a chosen panel. Overall
+  this is the per-turn 'decide move vs attack and which script to run' dispatcher for an AI-controlled
+  enemy.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl battleObject_findClosestEnemyBattleObject_80103F8 after eor of oBattleObject_Alliance with
+    1 — enemy seeks the player-side object; repeated ''strb ScriptId / strh SubState=0'' exits (0x4,8,0xC,0x10,0x14,0x18)
+    — selects a behavior script for the AI state machine; pattern tables byte_8101DBC/DC3/DD0/DD7/DE6
+    (move pairs ending in 0x7F) passed to sub_810222C via off_8101E10..E1C; bl GetPositiveSignedRNG; lsr
+    #5; bcc — random double-increment of oAIState_AttackCounter, typical AI attack-timing jitter; bl ai_setupAttack9PanelChoose
+    with off_8101E20 = sub_8102C38+1 — the attack branch queues attack 9 on a chosen panel'
+  refs:
+  - bn6f/asm/asm31.s:158295
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x08101F08 ai_setupAttack9PanelChoose
+  - 0x080103F8 battleObject_findClosestEnemyBattleObject_80103F8
+  reproduce: python3 tools/asmcat.py 0x08101CC0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- No known callers, so the identity of r4/r5/r6 (which AI state struct this belongs to) and which enemy
+  uses it is unconfirmed
+- Exact semantics of sub_810222C (pattern-table matcher?) and sub_8103038 (turn/phase gate?) unknown
+- Meaning of oAIState_Unk_0c/0d toggles and the specific behaviors behind ScriptIds 4/8/0xC/0x10/0x14/0x18
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8101CC0 -> ai_chooseActionScript
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8101CC0

@@ -1,0 +1,50 @@
+name: sprite_setCoordinatesIfActive
+address: '0x0811AE5C'
+kind: function
+status: probable
+summary: Sets a sprite's x/y coordinates only if the struct-array entry selected by an index is currently
+  in use.
+interface: (r0 = sprite/object for sprite_setCoordinates, r1 = its second arg, r2 = index into eStructArr2008450)
+  -> r0 = from sprite_setCoordinates; flags from getStructFrom2008450's byte
+details: Saves r0/r1 on the stack, then calls getStructFrom2008450 with r2 to read the in-use/status byte
+  of the indexed 0x58-byte entry. If that byte is zero the function returns immediately; otherwise it
+  keeps the returned struct pointer in r5 (unused afterward) and tail-calls sprite_setCoordinates with
+  the original r0/r1 to write the object's x/y in the sprite sub-entry chosen by the resource's byte-2
+  high nibble. Essentially a guarded wrapper around sprite_setCoordinates keyed on slot activity. The
+  saved r5 value and the caller context (gui_initSpriteWithPosition) suggest coordinates are set for an
+  active GUI sprite slot only.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl getStructFrom2008450 with r2 = index; beq loc_811AE76 skips when the entry''s status byte
+    is zero; on nonzero entry: ldr r0/[sp], ldr r1/[sp] then bl sprite_setCoordinates, so r0/r1 are forwarded
+    untouched; sole non-trivial callees are the slot-status getter and the coordinate setter, defining
+    the whole behavior; caller gui_initSpriteWithPosition places GUI sprite 0x68 at a table-chosen x,y,
+    matching a guarded position set'
+  refs:
+  - bn6f/asm/asm32.s:26892
+  - 0x0811AD58 gui_initSpriteWithPosition
+  - 0x081327B0 sub_81327B0
+  - 0x081327E8 sub_81327E8
+  - 0x080466C4 getStructFrom2008450
+  - 0x0800307C sprite_setCoordinates
+  reproduce: python3 tools/asmcat.py 0x0811AE5C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- exact meaning of r0/r1 forwarded to sprite_setCoordinates (object pointer vs coordinate values)
+- what the 0x58-byte entries at 0x2008450 represent beyond their first status byte
+- roles of the other two callers (sub_81327B0, sub_81327E8)
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_811AE5C -> sprite_setCoordinatesIfActive
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811AE5C

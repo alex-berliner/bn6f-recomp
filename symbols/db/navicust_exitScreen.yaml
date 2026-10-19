@@ -1,0 +1,47 @@
+name: navicust_exitScreen
+address: '0x081360B4'
+kind: function
+status: probable
+summary: Handler that closes the Navi Customizer screen, restoring the board display and returning to
+  the submenu with the exit sound.
+interface: () -> void; uses r5 = navi-cust screen state struct (global)
+details: Sets the byte at [r5,#2] (a state/phase field of the Navi Cust screen state struct) to 0xC, then
+  runs two teardown/transition helpers (sub_81362B8, sub_81362F8). It calls navicust_getCellProgramId
+  once more (likely flushing the cursor cell's last update), calls sub_813660C with argument 0, and redraws
+  the full 49-cell customizer board via navicust_drawBoardTilemap so the board BG is left in a clean state.
+  Finally it plays SOUND_EXIT_SUBMENU and returns, matching the pattern of a UI exit handler that hands
+  control back to the pet submenu.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'strb r0(=0xC), [r5,#2] — writes a new state/phase into the screen state struct before teardown
+    calls; bl navicust_getCellProgramId then bl navicust_drawBoardTilemap(0) — refreshes the customizer
+    board before leaving; mov r0, #SOUND_EXIT_SUBMENU; bl PlaySoundEffect — exit-submenu sound marks this
+    as a close/leave action; called from sub_8135FDC, part of the navi cust screen''s handler cluster
+    alongside navicust_getCellProgramId; sequence teardown-helpers then board redraw then exit sound matches
+    other submenu-exit handlers'
+  refs:
+  - bn6f/asm/asm36.s:12616
+  - 0x08135FDC sub_8135FDC
+  - 0x080005CC PlaySoundEffect
+  - 0x0813C1C0 navicust_drawBoardTilemap
+  - 0x08135F18 navicust_getCellProgramId
+  reproduce: python3 tools/asmcat.py 0x081360B4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- what sub_81362B8, sub_81362F8 and sub_813660C(0) do (fade-out, input unhook, state transition?)
+- meaning of the state value 0xC stored at [r5,#2] and the full layout of the r5 struct
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81360B4 -> navicust_exitScreen
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81360B4

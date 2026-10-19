@@ -1,0 +1,50 @@
+name: battle_stepBattleStartOverlay
+address: '0x08033ADC'
+kind: function
+status: probable
+summary: 'Per-frame update for the battle-start overlay: queues its OAM sprite entry, draws/refreshes
+  the overlay tilemap, and runs an associated follow-up routine.'
+interface: '(r0 = self: * S2011E30, passed via r5 as an object/sprite task) -> r0 = clobbered; no meaningful
+  return'
+details: 'Takes the caller''s object pointer (S2011E30) implicitly in r5 and calls three helpers in sequence:
+  first sprite_queueOamByFrameIndex with r0=1, which picks a tile offset from a 0x18-entry periodic table
+  indexed by the frame counter at [r5+5], so the overlay''s OAM entry animates over time; then battle_drawBattleStartOverlay
+  with r0=0, which conditionally DMA-loads the battle-start overlay tilemap/sprite frame and queues its
+  OAM entry depending on a game-state flag (the 0 argument likely selects a mode/visibility for the draw);
+  finally sub_8033CF0, an undocumented follow-up, possibly the overlay''s state/counter tick. The fixed
+  arguments 1 and 0 look like mode selectors rather than data. It reads only the self object and game-state
+  flags; no other structures are touched directly.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: sub_8033ADC passes r0=1 to sprite_queueOamByFrameIndex_8033B80, whose known summary queues OAM
+    per call using the frame counter at [r5+5]; second call is battle_drawBattleStartOverlay_8033F80 with
+    r0=0, which per its summary DMA-loads the battle-start overlay and queues an OAM entry from a game-state
+    flag; tail call to sub_8033CF0 follows the two draw calls, suggesting a per-frame step/tick after
+    rendering; the callees' shared subject (battle-start overlay, OAM queuing) and the S2011E30 self pointer
+    frame this as a per-frame overlay update
+  refs:
+  - bn6f/asm/asm03_1_0.s:429
+  - 0x08033F80 battle_drawBattleStartOverlay_8033F80
+  - 0x08033B80 sprite_queueOamByFrameIndex_8033B80
+  - 0x08033CF0 sub_8033CF0
+  reproduce: python3 tools/asmcat.py 0x08033ADC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- what sub_8033CF0 does (likely advances the overlay's animation state or frame counter)
+- the exact meaning of the constant arguments 1 (to the OAM queue call) and 0 (to the overlay draw call)
+- which caller task invokes this, to confirm the S2011E30 object layout fields used
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8033ADC -> battle_stepBattleStartOverlay
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8033ADC

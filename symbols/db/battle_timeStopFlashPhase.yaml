@@ -1,0 +1,51 @@
+name: battle_timeStopFlashPhase
+address: '0x080BABAC'
+kind: function
+status: probable
+summary: Battle-object phase handler that cycles the object's sprite palette (a flashing effect) with
+  a sound each cycle while time stop is active, ending the action after a random palette selection or
+  when the mirror is released.
+interface: (r5 = battle object) -> r0 = 0; sets oBattleObject_CurAction = 0xC and clears CurPhaseAndPhaseInitialized
+  when the effect ends
+details: On first entry (PhaseInitialized==0) it marks phase init as 4, clears ExtraVars, loads a palette
+  index from a 4-byte table at dword_80BAC4C (bytes 02 04 08 06) via sprite_setPalette, plays SFX 0x34,
+  and sets Timer=Param1 and Timer2=Param1*20. Each cycle it decrements Timer, stepping through the palette
+  table (ExtraVars&3) and replaying SFX 0x34 every Param1 frames; when Timer2 expires it picks a random
+  index with GetPositiveSignedRNG&3, sets that palette, sets CurAction=0xC and clears the phase field.
+  If the related object's AI data flag oAIData_TimeStopMirrorHeld is set, it instead plays SFX 0x82 and
+  immediately ends the action the same way. The 4-entry palette list is embedded right after the code
+  (word 0x06080402 = bytes 2,4,8,6).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: off_80BAC48/dword_80BAC4C holds palette indices 2,4,8,6 fed to sprite_setPalette in a rotating
+    ExtraVars&3 pattern; PlaySoundEffect(0x34) at each palette change and (0x82) on the mirror-held early
+    exit path; Timer2 = oBattleObject_Param1 * 0x14 governs total duration; on expiry GetPositiveSignedRNG&3
+    picks the final palette; Branch on oAIData_TimeStopMirrorHeld of the related object's AI data jumps
+    to the action-ending path; Terminates by writing CurAction=0xC and clearing CurPhaseAndPhaseInitialized,
+    i.e. handing control to the next action
+  refs:
+  - bn6f/asm/asm31.s:5736
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x080005CC PlaySoundEffect
+  - 0x08002D80 sprite_setPalette
+  reproduce: python3 tools/asmcat.py 0x080BABAC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- Exact gameplay context of oAIData_TimeStopMirrorHeld (which object sets it, whether 'mirror' refers
+  to the BN6 time-stop mirror trap) — no callers known
+- What action/state 0xC represents and which object script dispatches to this phase
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BABAC -> battle_timeStopFlashPhase
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BABAC

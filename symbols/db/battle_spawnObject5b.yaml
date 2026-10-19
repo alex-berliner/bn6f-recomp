@@ -1,0 +1,52 @@
+name: battle_spawnObject5b
+address: '0x080CFDF2'
+kind: function
+status: probable
+summary: 'Spawn wrapper: creates battle object kind 0x5B via object_spawnType3 and, on success, runs the
+  base battle-object initializer on the caller''s arguments.'
+interface: (r0-r2 = init args, r1-r4 passed through to the spawner, r5 = target/context) -> r0 = result
+  of the init call; flags from object_spawnType3 (beq skips init on failure)
+details: It saves r0-r2 and r5, loads 0x5B into r0 and calls object_spawnType3, letting the caller's r1-r4
+  flow through as the remaining spawn arguments. The push {r0-r2,r5} / pop {r1-r3,r5} pair shifts the
+  three original arguments one register up (old r0->r1, r1->r2, r2->r3) so the post-spawn call can use
+  r0 for something else. After the spawn, beq exits without doing anything if it failed; otherwise it
+  calls BasicBattleObjectInitialize with r0 = the saved r5 and r1-r3 = the original r0-r2. So the flow
+  is 'spawn kind-0x5B type-3 battle object, then fill the base object fields (position, element, related
+  object, flags) from the caller-supplied data'. The one oddity is that the spawned object's returned
+  pointer is not visibly forwarded; r5 must already hold the pointer/handle the initializer fills (or
+  the spawn result is tracked elsewhere). It is one of the small per-object-kind spawn thunks around 0x080CFDF2.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'mov r0, #0x5b; bl object_spawnType3 — spawns battle object kind 0x5B, passing caller''s r1-r4
+    through unchanged; push {r0-r2,r5} ... pop {r1-r3,r5} — shifts the original r0-r2 into r1-r3 to rebuild
+    the argument list for the init call; beq locret_80CFE06 — skips the initializer when object_spawnType3
+    reported failure; bl BasicBattleObjectInitialize with r0 = saved r5 — runs the base battle-object
+    field setup right after the spawn; sole caller sub_80CFE5C is itself a spawn-side wrapper, consistent
+    with a family of per-kind spawn thunks'
+  refs:
+  - bn6f/asm/asm31.s:51981
+  - 0x080CFE5C sub_80CFE5C
+  - 0x0801155A BasicBattleObjectInitialize
+  - 0x08003358 object_spawnType3
+  reproduce: python3 tools/asmcat.py 0x080CFDF2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- what battle object kind 0x5B actually is in game terms (needs the kind table or more callers)
+- what the caller keeps in r5 — whether it is the object the initializer fills or a battle-context pointer
+- whether object_spawnType3 records the new object somewhere that BasicBattleObjectInitialize reads, since
+  the returned pointer is not forwarded here
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CFDF2 -> battle_spawnObject5b
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CFDF2

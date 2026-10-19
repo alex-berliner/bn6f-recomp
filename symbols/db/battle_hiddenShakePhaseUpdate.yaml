@@ -1,0 +1,48 @@
+name: battle_hiddenShakePhaseUpdate
+address: '0x080DF66A'
+kind: function
+status: probable
+summary: 'Battle-object phase handler: hides the object (anim 2), spawns an effect at its panel, jitters
+  its coordinates randomly each frame, then restores its position when the timer runs out.'
+interface: (r5 = battle object) -> void; updates PhaseInitialized/Timer/coords in the object struct
+details: First entry (PhaseInitialized==0) sets PhaseInitialized=4 and CurAnim=2, saves X16 into ChipID
+  and Z16 into Z16Save (scratch reuse), converts PanelX/PanelY to pixel coords and spawns an effect object
+  with arg 0x18<<16, then sets Timer=0x28. Each later frame it calls AddRandomVarianceToTwoCoords with
+  mode 3 on X (ChipID<<16), Y, and Z (Z16Save<<16) and stores the three results at object+0x34..0x3F,
+  decrementing Timer. When Timer reaches 0, the saved X16/Z16 are written back, CurAction and the phase/initialized
+  fields are cleared, ending the state.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#oBattleObject_PhaseInitialized] / bne loc_80DF69E — two-phase state machine keyed
+    on PhaseInitialized; bl object_getCoordinatesForPanels then bl spawn_t1_0x0_EffectObject with r3=0x18<<16
+    — spawns an effect at the object's panel position; bl AddRandomVarianceToTwoCoords (r0=3) on saved
+    X/Y/Z then stmia at r5+0x34 — per-frame random jitter of display coordinates; Timer 0x28 counts down;
+    on expiry ChipID->X16, Z16Save->Z16 and CurPhaseAndPhaseInitialized=0 — restore position and end state;
+    ChipID and Z16Save are overwritten with X16/Z16 and read back unchanged — fields reused as position
+    scratch
+  refs:
+  - bn6f/asm/asm31.s:85402
+  - 0x0801BDDE AddRandomVarianceToTwoCoords
+  - 0x0800E276 object_getCoordinatesForPanels
+  - 0x080E05F6 spawn_t1_0x0_EffectObject
+  reproduce: python3 tools/asmcat.py 0x080DF66A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- What the spawned effect type (arg 0x18) looks like and which enemies/use this phase — callers unknown,
+  so exact gameplay meaning (vanish, burrow, stealth) is inferred from the shake-and-restore pattern
+- What consumes the jittered triple at object+0x34 (presumably the sprite/render code)
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DF66A -> battle_hiddenShakePhaseUpdate
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DF66A

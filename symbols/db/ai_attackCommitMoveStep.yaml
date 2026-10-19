@@ -1,0 +1,45 @@
+name: ai_attackCommitMoveStep
+address: '0x080F8890'
+kind: function
+status: probable
+summary: 'Per-frame tick of an AI attack: when the step timer expires, commits the object''s move to its
+  future panel, plays the move animation, and rearms timer and hit element.'
+interface: (r5 = battle object, r7 = oAIAttackVars state) -> void; no return value
+details: Called each frame as part of an AI attack sequence. It decrements oAIAttackVars_StepTimer at
+  [r7]; while it's still positive it returns immediately. On reaching zero it sets CurAnim = 3 (move/step
+  animation), copies FuturePanelX/Y into PanelX/Y on the battle object, releases the previous panel reservation
+  (object_removePanelReserve), recomputes pixel coordinates from the new panel (object_setCoordinatesFromPanels),
+  and updates the collision record and facing direction (object_updateCollisionPanels). It then rearms
+  StepTimer to 3 and sets oAIAttackVars_HitElement to 8, presumably the element applied on the attack's
+  hit after this move step. No caller is known, so the owning attack state machine is unidentified.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrh r0,[r7,#oAIAttackVars_StepTimer]; sub #1; bgt locret: early-out until timer expires; strb
+    #3,[r5,#oBattleObject_CurAnim] and FuturePanelX/Y -> PanelX/Y copy: commits planned move; bl object_removePanelReserve
+    / object_setCoordinatesFromPanels / object_updateCollisionPanels: panel bookkeeping for the move;
+    strh #3 into StepTimer and #8 into HitElement at the end: rearms the step and sets hit element'
+  refs:
+  - bn6f/asm/asm31.s:138912
+  - 0x0801BB46 object_removePanelReserve
+  - 0x0800E29C object_setCoordinatesFromPanels
+  - 0x0801A04C object_updateCollisionPanels
+  reproduce: python3 tools/asmcat.py 0x080F8890
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- Which AI attack/state machine calls this (no callers known), and what element value 8 corresponds to
+- Whether the '3' anim index is specifically the step/move animation
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F8890 -> ai_attackCommitMoveStep
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F8890

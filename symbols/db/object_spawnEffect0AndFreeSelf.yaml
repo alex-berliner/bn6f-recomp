@@ -1,0 +1,47 @@
+name: object_spawnEffect0AndFreeSelf
+address: '0x080E4790'
+kind: function
+status: probable
+summary: Spawns effect type 0 at the current battle object's position fields, then frees the object's
+  slot.
+interface: (r5 = battle object pointer, r4 = 1 flag passed to effect spawner) -> r0 = result of object_freeMemory;
+  object slot released
+details: 'Reads three consecutive words at r5+0x34 (almost certainly the object''s position/coordinates)
+  into r1-r3 and passes them to spawn_t1_0x0_EffectObject, which spawns a type-4 battle object with effect
+  type 0 at that location. r4=1 is set as an extra input to the spawn call, likely a team/side or effect
+  parameter. It then calls object_freeMemory on the calling object, clearing its flags, freeing its bitmap
+  slot, and unlinking it from the active-object list. Effectively a self-destruct-with-effect routine
+  for battle objects: the effect appears where the object was, then the object is removed.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldmia r0!,{r1-r3} from r5+0x34 loads the object's coordinate fields to pass to the spawner;
+    bl spawn_t1_0x0_EffectObject spawns a type-4 effect object (effect type 0) using those fields; bl
+    object_freeMemory immediately releases the calling object's slot, confirming this is a despawn path;
+    mov r4,#1 sets a nonzero flag/argument for the spawned effect before the call; r5 as object base matches
+    the battle-object calling convention used by object_freeMemory
+  refs:
+  - bn6f/asm/asm31.s:96681
+  - 0x080E475C sub_80E475C
+  - 0x08003458 object_freeMemory
+  - 0x080E05F6 spawn_t1_0x0_EffectObject
+  reproduce: python3 tools/asmcat.py 0x080E4790
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- exact meaning of the fields at r5+0x34 (x/y/z vs other params)
+- what visual effect type 0 is and what r4=1 selects
+- which game events make objects call this (hit-removal, timer expiry, etc.)
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E4790 -> object_spawnEffect0AndFreeSelf
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E4790

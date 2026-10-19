@@ -1,0 +1,48 @@
+name: object_cycleAnimationTimer
+address: '0x0811CE88'
+kind: function
+status: probable
+summary: Every 10 ticks an object restarts its animation cycle, replaying a table-mapped animation without
+  a shadow unless flagged otherwise.
+interface: () -> void; uses object at r5
+details: 'This is a per-frame tick for an object: it decrements the byte at r5+0xC, and while it is non-zero
+  it does nothing. When the counter hits zero it writes 0x14 into r5+0x9 (some state/timer byte) and reloads
+  the counter with 10, so the cycle repeats every 10 frames. If the flag byte at r5+0x7 is non-zero it
+  stops there; otherwise it reads the object''s variant/id byte at r5+0x5, subtracts 5, and indexes byte_811CEBC
+  to pick an animation index (0x11/0x17/0x13/0x15/0x19 for ids 5..9). It then calls sprite_setAnimation
+  with that index, sprite_loadAnimationData to (re)load the frames, and sprite_noShadow so the sprite
+  draws without a shadow. The 0x14 stored at +0x9 suggests a follow-up timer/count used elsewhere on the
+  object.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#0xc]; sub r0,#1; strb; bne locret — frame counter gate at offset 0xC; strb #0x14,[r5,#9]
+    and strb #0xa,[r5,#0xc] — sets state and resets the 10-frame cycle; tst r0,r0 on [r5,#7] gates the
+    whole animation restart on a flag; ldrb r0,[r5,#5]; sub r0,#5; ldrb r0,[r1,r0] — table byte_811CEBC
+    maps object id 5..9 to anim indices 0x11,0x17,0x13,0x15,0x19; callees sprite_setAnimation/sprite_loadAnimationData/sprite_noShadow
+    — restarts an animation with no shadow'
+  refs:
+  - bn6f/asm/asm32.s:30691
+  - 0x080026A4 sprite_loadAnimationData
+  - 0x08002F90 sprite_noShadow
+  - 0x08002DA4 sprite_setAnimation
+  reproduce: python3 tools/asmcat.py 0x0811CE88
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- No callers are known, so which in-game object(s) run this and what fields +0x5/+0x7/+0x9 mean in their
+  structure is unconfirmed
+- What the value 0x14 stored at r5+0x9 is used for by other handlers of the same object
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_811CE88 -> object_cycleAnimationTimer
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811CE88

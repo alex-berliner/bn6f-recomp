@@ -1,0 +1,50 @@
+name: battle_statePeriodicElementDamage
+address: '0x080E82D4'
+kind: function
+status: probable
+summary: Battle-object state that repeatedly deals element-based damage (with sound 0xB7) every 20 frames
+  until the effect ends, then destroys the object.
+interface: (r5 = battle object) -> void; sets oBattleObject_Timer=0x14 between ticks, on exit clears list
+  entry and sets CurState=CUR_STATE_DESTROY
+details: Runs while the battle is active (battle_isBattleOver) and while the object's HP field is nonzero;
+  decrements Timer each frame, and only when Timer reaches 0 decrements Timer2. When Timer2 hits 0 it
+  calls sub_80E8326 and aborts if the result is 0xFF, otherwise builds an argument pair on the stack and
+  calls sub_80D006E with r2=oBattleObject_Element, r6=oBattleObject_DamageAndStaminaDamageCounterDisabler,
+  r4=1 — applying a damage hit scaled by the element. It then plays sound effect 0xB7 and reloads Timer
+  with 0x14 (20 frames) for the next tick. Any battle-over, zero HP, exhausted Timer2, or 0xFF return
+  leads to clearEntryOfBattleStateBattleObjectList_800F656 and state DESTROY.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl battle_isBattleOver / tst r0,r0 bne -> jumps to the teardown path (asm); Timer/Timer2 countdown
+    chain with Timer reset to #0x14 after each hit (asm); ldrb r2,[r5,#oBattleObject_Element] and ldr
+    r6,[r5,#oBattleObject_DamageAndStaminaDamageCounterDisabler] before bl sub_80D006E (asm); mov r0,#0xb7;
+    bl PlaySoundEffect right after the damage call (asm); teardown: clearEntryOfBattleStateBattleObjectList_800F656
+    + CUR_STATE_DESTROY, matching sibling states (asm)'
+  refs:
+  - bn6f/asm/asm31.s:105035
+  - 0x080E82C0 sub_80E82C0
+  - 0x080005CC PlaySoundEffect
+  - 0x0800A18E battle_isBattleOver
+  - 0x0800F656 clearEntryOfBattleStateBattleObjectList_800F656
+  reproduce: python3 tools/asmcat.py 0x080E82D4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- Exact effect identity (which panel/hazard uses this) — sound 0xB7 and the caller's object setup would
+  confirm
+- Meaning of sub_80E8326's return value; 0xFF is treated as 'stop' but the source is unread
+- Exact semantics of sub_80D006E's pushed r0,r1 stack arguments
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E82D4 -> battle_statePeriodicElementDamage
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E82D4

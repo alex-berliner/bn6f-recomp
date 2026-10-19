@@ -1,0 +1,48 @@
+name: rfu_clearConnectionInfo
+address: '0x08144E44'
+kind: function
+status: probable
+summary: Zero-fills the 128-byte wireless connection struct at 200FE00 and marks its state byte (+6) as
+  0xFF (no connection).
+interface: () -> void; touches eStruct200FE00 only
+details: Stores a zero halfword on the stack, then calls CpuSet in fill mode (0x1000020 = fixed source,
+  32-bit, 32 words) to blast that value over the 128-byte rfu connection struct at 200FE00. Afterwards
+  it writes 0xFF to byte 200FE06, which within the cleared struct acts as a 'no connection / invalid'
+  sentinel rather than a plain zero. The fill source word's upper half is leftover stack data, but only
+  the low halfword was set — a mild quirk inherited from the SDK pattern. Called from six places in rfu_handleConnectionEvent,
+  all of which are paths that tear down or reset the search-and-connect state, consistent with reinitializing
+  the connection record before setting fresh fields.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sub_8144E44: CpuSet(src=sp, dest=eStruct200FE00, 0x1000020) = fill 32 words of 0 over the struct;
+    sub_8144E44: strb #0xFF, [r4,#6] sets 200FE06 to the not-connected sentinel after the wipe; all six
+    call sites in rfu_handleConnectionEvent (8145658-81457A0) are state-clearing branches of the link
+    event dispatcher; only callee is SWI_CpuSet; no other state is touched, so the function is purely
+    a struct reset'
+  refs:
+  - bn6f/asm/libs.s:1939
+  - 0x08145658 rfu_handleConnectionEvent
+  - 0x08145750 rfu_handleConnectionEvent
+  - 0x08145768 rfu_handleConnectionEvent
+  - 0x0814D8B8 SWI_CpuSet
+  reproduce: python3 tools/asmcat.py 0x08144E44
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- exact meaning of the 0xFF sentinel in field +6 (likely 'slot free'/'no peer', matching RFU SDK slot-state
+  conventions)
+- whether the upper halfword of the fill word matters in practice
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8144E44 -> rfu_clearConnectionInfo
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8144E44

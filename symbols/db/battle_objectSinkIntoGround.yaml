@@ -1,0 +1,46 @@
+name: battle_objectSinkIntoGround
+address: '0x080C0680'
+kind: function
+status: probable
+summary: Battle-object state handler that blanks the object's sprite (removing its shadow), syncs fields
+  from a related object, nudges it down, and resumes the update state.
+interface: (r5 = battle object) -> void; sets oBattleObject state to CUR_STATE_UPDATE
+details: Loads a packed sprite word 0x1000000 into battle_setupObjectSpriteAnim, which appears to blank/reset
+  the object's sprite, then calls sprite_removeShadow and sets bit 1 (0x2) of oObjectHeader_Flags, consistent
+  with hiding the body. Sets palette 1 via sprite_setPalette. Copies 3 words from RelatedObject1Ptr+0x34
+  into this object at +0x34 (likely syncing HP/counters with the linked object). Increments oBattleObject_Y16
+  and oBattleObject_Z16 by 2, nudging the object downward, then sets CurStateActionPhase to CUR_STATE_UPDATE
+  and calls sub_80C06BC.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldr r0, =0x1000000; bl battle_setupObjectSpriteAnim — re-initializes sprite from a packed word
+    (blank/reset); bl sprite_removeShadow + orr 0x2 into oObjectHeader_Flags — hides shadow and body;
+    ldmia from [RelatedObject1Ptr+0x34] stored to [r5+0x34] — syncs three fields with the linked object;
+    Y16 and Z16 both += 2 — small downward/sinking position shift; str CUR_STATE_UPDATE into oBattleObject_CurStateActionPhaseAndPhaseInitialized
+    — state-machine handler pattern
+  refs:
+  - bn6f/asm/asm31.s:18312
+  - 0x0801BE2A battle_setupObjectSpriteAnim
+  - 0x08002E52 sprite_removeShadow
+  - 0x08002D80 sprite_setPalette
+  reproduce: python3 tools/asmcat.py 0x080C0680
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- What sub_80C06BC does and which callers/state table invoke this handler would confirm the exact behavior
+  (e.g., sinking underground vs. generic hide state)
+- Meaning of the bit 0x2 in oObjectHeader_Flags and the fields at offset 0x34 of the related object
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C0680 -> battle_objectSinkIntoGround
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C0680

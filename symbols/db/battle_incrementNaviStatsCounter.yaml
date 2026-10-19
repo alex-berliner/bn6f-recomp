@@ -1,0 +1,46 @@
+name: battle_incrementNaviStatsCounter
+address: '0x08013F96'
+kind: function
+status: probable
+summary: Increments a counter byte (offset 0x18) in the NaviStats record of the navi a battle object represents,
+  saturating at 7.
+interface: (r0 = battle object pointer) -> r0 = new counter value (unchanged if already >7); flags set
+  by cmp r0,#7
+details: Reads the NaviStats byte at index 0x18 for the battle object's side via GetBattleNaviStatsByte_AllianceFromBattleObject,
+  adds 1, and if the result is not above 7 writes it back through SetBattleNaviStatsByte_AllianceFromBattleObject.
+  Values above 7 are left untouched, so the counter saturates at 7 and the write is skipped once it is
+  maxed. The same index 0x18 is used for both read and write, confirming it is a single counter field,
+  not a lookup table. The alliance-based accessor means the counter belongs to whichever navi (real or
+  ghost copy) the object represents.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'mov r1,#0x18 then bl GetBattleNaviStatsByte_AllianceFromBattleObject loads the field to increment
+    (asm lines 2-3); add r0,#1; cmp r0,#7; bgt skip: only values <=7 are stored, saturating the counter;
+    mov r2,r0; mov r1,#0x18; bl SetBattleNaviStatsByte_AllianceFromBattleObject writes the incremented
+    value back to the same index; both callees are known accessors for NaviStats byte indexed by r1, side
+    selected by the battle object''s alliance flag'
+  refs:
+  - bn6f/asm/asm00_2.s:12074
+  - 0x08013774 GetBattleNaviStatsByte_AllianceFromBattleObject
+  - 0x08013754 SetBattleNaviStatsByte_AllianceFromBattleObject
+  reproduce: python3 tools/asmcat.py 0x08013F96
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- what game meaning NaviStats byte 0x18 has (a caller context showing when this runs, e.g. per-turn or
+  on event, would reveal whether it counts HP boosts, custom-bar fills, or similar)
+- what the callees return in r0, affecting the function's own return value
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8013F96 -> battle_incrementNaviStatsCounter
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8013F96

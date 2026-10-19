@@ -1,0 +1,48 @@
+name: ai_attackStageTargetPanel
+address: '0x080F6E20'
+kind: function
+status: probable
+summary: 'AI attack-state step: runs the object''s panel-choose callback once to pick a target panel,
+  plays a short charge animation, then applies the hit element, or exits the attack if it cannot act.'
+interface: (r0 = battle object (also r5/r7 point to its object/AI-vars)) -> r0 = unspecified; uses object
+  flags and AI attack vars
+details: On the first call (AttackElement == 0) it latches AttackElement = 4, checks object_canMove, and
+  invokes the stored PanelChooseCallback; the callback returns target panel X in r0 and Y in r1 (r0 is
+  preloaded from AttackBoost2 as input), which are written to TargetPanelX/Y. On success it sets OBJECT_FLAGS_CANNOT_SLIDE
+  plus bit-22 flag via object_setFlag1, marks HasMoved = 1, switches CurAnim to 4, and sets StepTimer
+  = 3 as a charge delay. On later frames (AttackElement != 0) it decrements StepTimer and, when it expires,
+  sets HitElement = 8, triggering the actual hit. If the object cannot move or the callback fails (returns
+  r1 == 0), it clears HasMoved and calls object_exitAttackState. The element values (4 start, 8 hit) and
+  the callback-driven panel targeting suggest a specific enemy's attack routine stored per-object.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'tst r0,r0 / bne loc_80F6E5E gates the one-shot panel-selection phase on AttackElement == 0;
+    ldr r1,[r7,#oAIAttackVars_PanelChooseCallback]; bx r1 picks TargetPanelX/Y from returned r0/r1; bl
+    object_setFlag1 with OBJECT_FLAGS_CANNOT_SLIDE and bit-22 flags locks the object during the charge;
+    StepTimer = 3 then counted down and finally writes HitElement = 8 (loc_80F6E5E); failure path: beq
+    loc_80F6E6C -> HasMoved = 0 and bl object_exitAttackState'
+  refs:
+  - bn6f/asm/asm31.s:135557
+  - 0x0800E5E2 object_canMove
+  - 0x0801A152 object_setFlag1
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x080F6E20
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- Which enemy/attack uses this (HitElement 8, AttackElement 4) is unknown without callers
+- What the PanelChooseCallback implementations are and what AttackBoost2 contributes to r0
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F6E20 -> ai_attackStageTargetPanel
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F6E20

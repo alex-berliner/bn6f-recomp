@@ -1,0 +1,50 @@
+name: t4_refreshChipPackBuffer
+address: '0x081304BC'
+kind: function
+status: probable
+summary: Rebuilds (or clears) the 30-slot battle chip-pack buffer used by the t4 overlay scene, driven
+  by a flag byte in the scene state.
+interface: (r0 = passed through to sub_8130404) -> r0 = state pointer from sub_8130404; returns after
+  clearing or refilling unk_2023FB0; flags clobbered
+details: Calls sub_8130404 to obtain a state/scene record (r7) and inspects byte [r7+0xC]. If that byte
+  is zero, it zero-fills the 0x3C0-byte buffer at unk_2023FB0 via battle_ClearBuffer_811FE34 (0x3C0 =
+  30 entries x 0x20 bytes). If nonzero, it decrements the byte and calls battle_buildChipPackFromFolderEntries
+  with r0 = byte-1, r1 = unk_2023FB0 (the pack buffer), r2 = 1, and r3 = unk_2024370, refilling the pack
+  from folder data and hit counters. word_2023FA0 in the literal pool appears to be dead/adjacent data,
+  not read by the code. This keeps the scene's copy of the chip pack in sync with the current folder state.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r7,#0xc]; tst/bne selects between clear and rebuild branches (asm +0x0A..0x16); clear
+    branch passes unk_2023FB0 to battle_ClearBuffer_811FE34, which zero-fills 0x3C0 bytes; rebuild branch
+    loads r1=unk_2023FB0, r2=1, r3=unk_2024370 before battle_buildChipPackFromFolderEntries_811FCB8; callee
+    summary says battle_buildChipPackFromFolderEntries_811FCB8 fills a 30-slot chip-pack buffer from folder
+    entries; caller t4_sceneInit invokes this during full scene initialization
+  refs:
+  - bn6f/asm/asm36.s:610
+  - 0x08130084 t4_sceneInit
+  - 0x0812F920 sub_812F920
+  - 0x08130370 sub_8130370
+  - 0x0811FE34 battle_ClearBuffer_811FE34
+  - 0x0811FCB8 battle_buildChipPackFromFolderEntries_811FCB8
+  - 0x08130404 sub_8130404
+  reproduce: python3 tools/asmcat.py 0x081304BC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- meaning of the counter in [r7+0xC] (count of chips to draw vs. an index/seed) and the exact roles of
+  r0 and unk_2024370 in buildChipPackFromFolderEntries
+- what sub_8130404's returned record is (scene state layout beyond +0xC)
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81304BC -> t4_refreshChipPackBuffer
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81304BC

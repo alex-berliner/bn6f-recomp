@@ -1,0 +1,49 @@
+name: object_countPanelsUntilFlag
+address: '0x080E8486'
+kind: function
+status: probable
+summary: Steps along the battle grid in a horizontal direction and counts panels until it hits one whose
+  status flags match a per-type mask.
+interface: (r0 = start column, r1 = start row, r2 = type/facing selector, r3 = facing flag) -> r0 = panel
+  count reached before flagged panel, or 0xFF if the edge of the grid is reached first; flags clobbered
+details: r2 indexes word table byte_80E84C8 (r2*4) to pick a flag mask (0x05000080 or 0x0A000080), and
+  is also fed with r3 to object_getFlipDirection, whose ±1 result becomes the X step. Starting at (r0,r1),
+  each loop iteration checks object_isValidPanel and, if valid, tests object_getPanelParameters's status
+  word against the mask with tst; the coordinate result is discarded and the original (r0,r1) restored
+  via push/pop. On a flag match it returns the loop counter r6; if the walk leaves the 6x3 grid it returns
+  0xFF. So it measures, in panels, how far away the nearest panel with a given status (e.g. hole/broken-type
+  flags) is along the row. The mask table may extend past the two visible words for other r2 values.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldr r7, [r7,r4] with r4 = r2*2<<1 loads the flag mask from byte_80E84C8 (words 0x05000080, 0x0A000080);
+    bl object_getFlipDirection then add r0, r0, r4 makes the ±1 X step used each iteration; bl object_getPanelParameters;
+    tst r0, r7; bne exit — loop ends on a panel whose status word matches the mask; beq loc_80E84C0 after
+    object_isValidPanel returns 0xFF when the walk runs off the grid; Sole caller sub_80E84D0 sits immediately
+    after, consistent with a helper for a grid scan
+  refs:
+  - bn6f/asm/asm31.s:105280
+  - 0x080E84D0 sub_80E84D0
+  - 0x0800E2CE object_getFlipDirection
+  - 0x0800C8F8 object_getPanelParameters
+  - 0x0800CC72 object_isValidPanel
+  reproduce: python3 tools/asmcat.py 0x080E8486
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- Which panel status bits the masks 0x05000080 / 0x0A000080 correspond to (hole, cracked, poison, etc.)
+- Whether r2 is a facing enum reused as a table index or the table has more entries beyond the two shown
+- What the sole caller sub_80E84D0 does with the returned distance
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E8486 -> object_countPanelsUntilFlag
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E8486

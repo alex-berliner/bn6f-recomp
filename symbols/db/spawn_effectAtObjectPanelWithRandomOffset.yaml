@@ -1,0 +1,46 @@
+name: spawn_effectAtObjectPanelWithRandomOffset
+address: '0x080BA6B6'
+kind: function
+status: probable
+summary: Spawns battle effect object 0x21 at a random position around the calling object's panel.
+interface: (r5 = battle object) -> r0 = spawned effect object pointer; clobbers r1-r3, calls RNG twice
+details: 'Reads PanelX/PanelY from the battle object in r5 (note: passed via r5, not a stack argument)
+  and converts them to 16.16 screen coordinates. It then draws two random numbers: the first is masked
+  to 0-31 and sign-extended via the rotate carry, giving an x offset of -31..+31 pixels; the second is
+  masked to 0-15 with the same carry sign, and is biased by +0x14 before being sign-applied, giving a
+  y offset of about 5..35 pixels plus a fixed +0x100000 (16 px) added to both axes. It pushes the offset
+  coordinates on the stack and calls the effect spawner with r4 = 0x21 as the effect type. The result
+  is an effect that appears at a jittered position on/near the object''s panel, typical of a recurring
+  visual (e.g. bubbles, steam, debris) tied to a panel or standing object.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#oBattleObject_PanelX]/PanelY + object_getCoordinatesForPanels: position comes
+    from the object''s panel; two GetPositiveSignedRNG calls with 0x1F/0x0F masks and neg-on-carry: random
+    signed x and y offsets; add r2/r3, 0x100000: fixed +16 px bias in 16.16 fixed point on both axes;
+    mov r4,#0x21 then spawn_t1_0x0_EffectObject: effect id 0x21 chosen by caller'
+  refs:
+  - bn6f/asm/asm31.s:5043
+  - 0x080BA56C sub_80BA56C
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x0800E276 object_getCoordinatesForPanels
+  - 0x080E05F6 spawn_t1_0x0_EffectObject
+  reproduce: python3 tools/asmcat.py 0x080BA6B6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- what effect type 0x21 looks like in game (which attack/trigger invokes it)
+- why the object is passed in r5 instead of r0 — caller sub_80BA56C presumably sets r5 before the call
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BA6B6 -> spawn_effectAtObjectPanelWithRandomOffset
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BA6B6

@@ -1,0 +1,49 @@
+name: battle_isChipEligibleForCrossBoost
+address: '0x08012BE8'
+kind: function
+status: probable
+summary: Returns 1 if the given chip qualifies for a form-based (CrossBeast-range, element-0xa) chip boost/permission
+  during battle, else 0.
+interface: (r0 = chip ID, r1 = skip-state-check flag; r5 = battle context) -> r0 = 1 if chip qualifies,
+  else 0
+details: Checks battle mode != 1 first, then reads NaviStats byte 0x2c for the player's side and requires
+  it to be in 0xb..0x16 (12 consecutive form indices, plausibly CrossBeast forms). It fetches the chip's
+  44-byte ChipData record via getChip8021DA8 and requires flag byte [record+9] to have bit1 set and bit0
+  clear, and byte [record+6] to equal 0xa (one specific element, plausibly wind, fitting the Falzar version).
+  If r1 (second arg) is nonzero the check passes immediately; otherwise it also requires byte 0x1d of
+  the object at [r5+0x58] to equal 2. r5 is not set inside the function, so the caller must supply it;
+  the result is returned in r0.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl GetBattleNaviStatsByte_AllianceFromBattleObject with r1=#0x2c, then cmp 0xb/0x16 guards
+    a form-index range; bl getChip8021DA8 then tst [r0,#9],#2 / beq and tst #1 / bne gate on two chip-record
+    flag bits; ldrb r1,[r0,#6]; cmp r1,#0xa requires one fixed chip element byte; cmp r4,#0 / ldr r0,[r5,#0x58];
+    ldrb r0,[r0,#0x1d]; cmp #0x2 is the extra state condition only when r4==0; return value is only ever
+    mov r7,#1 / mov r0,r7, a boolean'
+  refs:
+  - bn6f/asm/asm00_2.s:9104
+  - 0x0802D234 GetBattleMode
+  - 0x08013774 GetBattleNaviStatsByte_AllianceFromBattleObject
+  - 0x08021AA4 getChip8021DA8
+  reproduce: python3 tools/asmcat.py 0x08012BE8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- Exact meaning of NaviStats byte 0x2c and why the 0xb–0x16 range (CrossBeast forms?) — needs a caller
+  or the form table
+- Meaning of ChipData flag byte +9 (bit1 set/bit0 clear) and byte +6 == 0xa (element id?)
+- What structure [r5+0x58] is and what state 0x1d==2 represents, and what r1's bypass flag means
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8012BE8 -> battle_isChipEligibleForCrossBoost
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8012BE8

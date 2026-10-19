@@ -1,0 +1,47 @@
+name: object_timedPanelTypeTick
+address: '0x080D6E70'
+kind: function
+status: probable
+summary: Battle-object tick handler that turns the object's panel into panel type 7 for Param2 frames,
+  dropping it from collision (hole-like) and destroying itself when time runs out.
+interface: (r0 = unused/phase scratch, r5 = battle object ptr) -> void; sets object phase, collision region,
+  panel type, timer; destroys object at end
+details: On phase 0 it sets CurPhase to 4, puts the object in collision region 1, calls object_setPanelType
+  with r2=7 at the object's PanelX/PanelY, and loads Timer from Param2. While running (phase 4) it reads
+  CollisionDataPtr's flags; if the object has been collided with it calls object_clearCollisionRegion.
+  It decrements Timer each frame; when it hits zero it clears the collision region again and writes CUR_STATE_DESTROY
+  into CurStateActionPhaseAndPhaseInitialized, despawning the object. The pattern (temporary panel override
+  + object removed from its region) matches a panel-removal/hole style effect where things standing on
+  it stop being collidable.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'phase 0 path: strb #4 to oBattleObject_CurPhase then bl object_setCollisionRegion with r0=1;
+    bl object_setPanelType with r2=7 using oBattleObject_PanelX/oBattleObject_PanelY; ldrb Param2 -> strh
+    to oBattleObject_Timer, then sub r0,#1 / bgt loop each tick; timer expiry: bl object_clearCollisionRegion
+    then mov r0,#CUR_STATE_DESTROY into CurStateActionPhaseAndPhaseInitialized; callees object_setPanelType/object_setCollisionRegion/object_clearCollisionRegion
+    confirm panel + collision-region semantics'
+  refs:
+  - bn6f/asm/asm31.s:67255
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0801A07C object_setCollisionRegion
+  - 0x0800CC0A object_setPanelType
+  reproduce: python3 tools/asmcat.py 0x080D6E70
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- no callers known, so what spawns this object (which chip/attack creates the panel effect) is unknown
+- the in-game meaning of panel type 7 (hole/broken/other) and collision region 1 is not shown here
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D6E70 -> object_timedPanelTypeTick
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D6E70

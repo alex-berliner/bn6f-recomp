@@ -1,0 +1,49 @@
+name: battle_hudDrawTextScript
+address: '0x0801E408'
+kind: function
+status: probable
+summary: Draws a fixed text script (TextScript86F0374) into the battle HUD's text tile area via the text
+  renderer, then flags the HUD for redraw and dispatches that request.
+interface: () -> void; sets HUD request bit 0x100000 in eStruct2035280+0x40 and dispatches it
+details: 'First it stores 0x32 into the HUD state halfword at eStruct2035280+0x32, an unknown field near
+  the HP-box tile data. It then calls renderTextGfx_8045F8C with TextScript86F0374 as the text source,
+  byte_203C4E0 as working state, 0x60098E0 as the VRAM destination (a tile block in the HUD''s tile map
+  area), index 0xA, flag 1, and glyph table dword_86B7AE0. After rendering, it ORs bit 0x100000 into the
+  HUD''s request dword at +0x40 (eStruct2035280_SetRequestBits_801BECC) and hands the same bit to dispatch_801DA48,
+  so the HUD redraw request is both queued and acted on. The whole thing is a parameterless one-shot:
+  no register arguments are used, everything is hardcoded, so it is a fixed HUD text update rather than
+  a general renderer.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: strh 0x32 into eStruct2035280+0x32 before any other work (sub_801E408 first ldr/strh pair);
+    bl renderTextGfx_8045F8C with TextScript86F0374 and VRAM dest 0x60098E0, the standard text-into-HUD-tiles
+    call; bl eStruct2035280_SetRequestBits_801BECC with 0x100000, setting a HUD redraw request bit; bl
+    dispatch_801DA48 with the same 0x100000 bit immediately after; callees touch eStruct2035280, which
+    symdb identifies as the battle-screen HUD (HP box, redraw request bits)
+  refs:
+  - bn6f/asm/asm00_2.s:32239
+  - 0x0802E790 sub_802E790
+  - 0x0801BECC eStruct2035280_SetRequestBits_801BECC
+  - 0x08045F8C renderTextGfx_8045F8C
+  - 0x0801DA48 dispatch_801DA48
+  reproduce: python3 tools/asmcat.py 0x0801E408
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- what text TextScript86F0374 contains and which on-screen element it belongs to
+- the meaning of the value 0x32 written to eStruct2035280+0x32
+- why the caller at 0x0802E790 reaches this routine — that would pin down the in-game trigger
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_801E408 -> battle_hudDrawTextScript
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_801E408

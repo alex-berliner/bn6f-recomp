@@ -1,0 +1,51 @@
+name: rfu_forceDisconnect
+address: '0x081461D8'
+kind: function
+status: probable
+summary: Forces an rfu disconnect request while temporarily flagging the link struct busy, used by the
+  connection state machine to tear down a link.
+interface: (r0 = connection id/cid, passed through to rfu_REQ_disconnect) -> r0 = rfu_waitREQComplete
+  result; flags from callee
+details: Saves the byte flag at eStruct200FE00+0xE, writes 1 into it, calls rfu_REQ_disconnect with the
+  low-byte-masked r0, then rfu_waitREQComplete, and finally restores the original flag byte before returning.
+  The save/set/restore of the 0xE flag around the REQ suggests it is a busy or callback-enabled marker
+  that must read as 'busy' so the connection event handler at 200FE00 doesn't act on events during the
+  forced shutdown. Only the flag byte and the REQ queue are touched; no other struct fields are modified.
+  Callers are all branches of rfu_handleConnectionEvent, i.e. states that need to drop the link immediately
+  (search timeout, link error, teardown).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r5,[r4,#0xe] / strb 1 / ... / strb r5,[r4,#0xe] — flag at 200FE0E forced to 1 around the
+    disconnect (asm lines 4-10); bl rfu_REQ_disconnect + bl rfu_waitREQComplete — issues and waits for
+    a disconnect REQ (asm lines 8-9); ldr r4, off_81461F8 =eStruct200FE00 — operates on the rfu connection
+    struct the dispatcher owns; all 6 callers are sites inside rfu_handleConnectionEvent, whose summary
+    is advancing/clearing connection states; r0 is only lsl/lsr #0x18-masked and untouched otherwise,
+    so it is forwarded as the disconnect argument (likely cid)'
+  refs:
+  - bn6f/asm/libs.s:4568
+  - 0x08145658 rfu_handleConnectionEvent
+  - 0x08145750 rfu_handleConnectionEvent
+  - 0x08145768 rfu_handleConnectionEvent
+  - 0x0814A4CC rfu_REQ_disconnect
+  - 0x08149568 rfu_waitREQComplete
+  reproduce: python3 tools/asmcat.py 0x081461D8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- exact meaning of the 0xE flag byte in eStruct200FE00 (busy vs. callback-gate) — reading rfu_handleConnectionEvent's
+  checks of that byte would confirm
+- whether r0 is a cid or a slot/bitmap value passed to rfu_REQ_disconnect
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81461D8 -> rfu_forceDisconnect
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81461D8

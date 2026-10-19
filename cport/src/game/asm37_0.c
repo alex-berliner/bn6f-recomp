@@ -765,7 +765,7 @@ Next sub_813C678(void) {
  * registered handler from a computed function-pointer table.
  *
  * First clears the "processed" event flag (page 0x17, bit 0x20 = EVENT_1720).
- * If stat 0x1F == 1 (a special flag), delegates entirely to sub_813C020 and returns.
+ * If stat 0x1F == 1 (a special flag), delegates entirely to pet_zeroStatSlotBuffer and returns.
  * Otherwise, walks slots 1 through 0xF:
  *   1. Looks up a capped stat-type byte (0..3) via getUnk...813BF0C.
  *   2. Computes table index = statType*4 + slot*16.
@@ -793,7 +793,7 @@ Next sub_813CBCC(void) {
     /* Special path: if PETNavi stat 0x1F == 1, delegate and skip all slots. */
     GUEST_CALL(checkCurPETNaviStats1FIsOne_813C490);
     if ((s32)R0 == 1) {
-        GUEST_CALL(sub_813C020);
+        GUEST_CALL(pet_zeroStatSlotBuffer);
         R4 = savedR4; R5 = savedR5; R6 = savedR6; R7 = savedR7;
         RETURN_TO_CALLER();
     }

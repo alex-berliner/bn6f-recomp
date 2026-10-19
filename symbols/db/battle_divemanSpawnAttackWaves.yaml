@@ -1,0 +1,50 @@
+name: battle_divemanSpawnAttackWaves
+address: '0x080B9B94'
+kind: function
+status: probable
+summary: 'DiveMan''s attack routine: for columns 1-3, finds the enemy-side row closest to him whose panel
+  passes the checks and spawns a Diveman wave object there.'
+interface: (r5 = battle object whose alliance/element/damage fields are read) -> r0 = destroyed; spawns
+  wave objects as side effect
+details: r5 is a battle object. It loops a counter from 1 to 3 (a column index) and, using parameter tables
+  indexed by the object's alliance (byte_80B9BF0 for the row search, byte_80B9C04 for the final check),
+  calls object_getClosestPanelMatchingRowFiltered to find the first valid row on the side opposite the
+  object's facing. It then calls object_checkPanelParameters on the found panel (mask 0x10 set, 0x803
+  clear) and, on success, calls spawnDivemanWaveObject_80CB1E2 passing the object's oBattleObject_Element
+  and its damage field from oBattleObject_DamageAndStaminaDamageCounterDisabler. The cmp r0,r2 mid-loop
+  (target row 1 for alliance 0, 6 otherwise) sets flags that are never used, so it is dead code. One wave
+  per qualifying column, up to three per invocation.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: loop r4 = 1..3 with ldrb r0,[r5,#oBattleObject_Alliance]; ldr r1,r4 before object_getClosestPanelMatchingRowFiltered
+    (loc_80B9B98); parameter tables byte_80B9BF0/byte_80B9C04 indexed by alliance<<3 for the two panel
+    checks; ldrb r2,[r5,#oBattleObject_Element] and ldr r6,[r5,#oBattleObject_Damage...] feed spawnDivemanWaveObject_80CB1E2;
+    callee spawnDivemanWaveObject_80CB1E2 named for Diveman's wave attack; cmp r0,r2 at 80B9BBA is followed
+    only by flag-clobbering loads, so the row==1/6 guard is inert
+  refs:
+  - bn6f/asm/asm31.s:3513
+  - 0x080B9AEA sub_80B9AEA
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0800D086 object_getClosestPanelMatchingRowFiltered
+  - 0x080CB1E2 spawnDivemanWaveObject_80CB1E2
+  reproduce: python3 tools/asmcat.py 0x080B9B94
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- exact meaning of the panel parameter masks 0x20 and 0x10/0x803 (which panel states they select)
+- what the caller sub_80B9AEA is (presumably DiveMan's AI attack step) and whether wave spacing/count
+  matches the real boss attack
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80B9B94 -> battle_divemanSpawnAttackWaves
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80B9B94

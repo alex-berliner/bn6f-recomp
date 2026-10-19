@@ -1,0 +1,43 @@
+name: object_destroyOnFrameFlag
+address: '0x080DD370'
+kind: function
+status: probable
+summary: Destroys the calling battle object if its current animation frame has the delete flag (0x80)
+  set in its attribute byte.
+interface: (no args) -> r0 = destroyed or not; flags clobbered by calls
+details: Calls sprite_getFrameParameters with the caller's object context to fetch the current animation
+  frame's attribute byte, then tests bit 0x80 (tst r0,#0x80). If the bit is set, it calls object_genericDestroy,
+  which releases panel tile reserves, collision data, and the object's memory; otherwise it returns immediately
+  with the object intact. This implements the standard BN pattern where an animation frame marked 0x80
+  signals one-shot objects to remove themselves. Note the return value of object_genericDestroy is left
+  in r0, and no flags or registers beyond lr are preserved.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl sprite_getFrameParameters then mov r1,#0x80 / tst r0,r1 / beq — tests attribute byte bit
+    0x80 of current frame; tst set path falls into bl object_genericDestroy — object is freed when flag
+    is set; callees'' known summaries match exactly: frame attribute read + generic destructor releasing
+    panel tiles, collision, memory; pop {pc} on either path — no other side effects, no arguments used'
+  refs:
+  - bn6f/asm/asm31.s:80818
+  - 0x08016C8A object_genericDestroy
+  - 0x08002DEA sprite_getFrameParameters
+  reproduce: python3 tools/asmcat.py 0x080DD370
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- 'No known callers: which object types use this (one-shot effects vs reusable enemies) is unconfirmed'
+- Whether r0 after return is meaningful to callers or just leftover from object_genericDestroy
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DD370 -> object_destroyOnFrameFlag
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DD370

@@ -1,0 +1,51 @@
+name: battle_findPanelColumnForward
+address: '0x080B845C'
+kind: function
+status: probable
+summary: Scans forward from the battle object's facing panel until it finds a full 3-panel column matching
+  a panel type from the alliance-dependent table, returning the base panel and 2.
+interface: (r5 = battle object) -> r0 = base panel offset of the matched column, r1 = 2; no flags used
+details: Uses object_getFrontDirection (+1/-1 by alliance side) as the step, starting at PanelX + direction.
+  It loads param/args from the alliance-dependent panel parameter table byte_80B8494 (entry param 0x20,
+  null args) into r2/r3, then repeatedly calls object_getPanelsInColumnFiltered (base panel in r0) using
+  the push/pop of {r0,r2,r3} to preserve base and filter args across the call. The loop advances the base
+  panel by the facing step until the filtered count is 3, i.e. the entire column passes object_checkPanelParameters
+  against type 0x20. It then returns the found base panel offset in r0 and the constant 2 in r1. There
+  is no bound check, so it relies on the field geometry guaranteeing such a column ahead. The trailing
+  .word padding and byte_80B8494 table sit in the function's literal/data area.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_getFrontDirection; add r0,r0,PanelX sets the search start one panel in the facing
+    direction; ldr r3,=byte_80B8494 before GetAllianceDependentPanelParamArgs supplies the filter table
+    (entry param 0x20, args null); loc_80B8472 loop: push/pop {r0,r2,r3} around object_getPanelsInColumnFiltered
+    preserves base panel and filter args across the call; cmp r0,#3 / bge done / add r0,r0,r4 retries
+    one panel further until all 3 column panels pass the filter; returns mov r1,#2 with r0 = final base
+    panel offset'
+  refs:
+  - bn6f/asm/asm31.s:356
+  - 0x080B8512 sub_80B8512
+  - 0x081096FA GetAllianceDependentPanelParamArgs
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800CFDC object_getPanelsInColumnFiltered
+  reproduce: python3 tools/asmcat.py 0x080B845C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- What panel type 0x20 is in game terms (hole, grass, etc.) and what the caller sub_80B8512 does with
+  the returned base panel and the constant 2
+- Exactly which register the caller-supplied panel-ID buffer of object_getPanelsInColumnFiltered lives
+  in
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80B845C -> battle_findPanelColumnForward
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80B845C

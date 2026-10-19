@@ -1,0 +1,53 @@
+name: chipTraderGatherUnownedChips
+address: '0x0804BE1C'
+kind: function
+status: probable
+summary: Filters a candidate chip list down to chips the player has not yet obtained, writing each unowned
+  chip plus its element into a scratch buffer and tallying counts per element.
+interface: (r0 = *entries (6-byte records, u16 chipId at +0, stops at id==0), r1 = *out struct, r3 = starting
+  entry index (quirk), r5 = *caller struct) -> r0 = word count of built list, also stored to [r5+0x48];
+  out struct bytes indexed by element incremented; flags clobbered
+details: 'Zero-fills the 0x1000-byte scratch buffer dword_2035800 and zeroes 8 bytes at r1. It then walks
+  the caller''s array of 6-byte entries: each nonzero u16 chip ID is checked with TestEventFlag(id + 0x1E20),
+  the chip-library ownership flag range; chips whose flag is set are skipped, so only unowned chips pass.
+  For each passing chip it appends a 4-byte record to the scratch buffer {u16 chipId, byte r3 (entry index),
+  byte element} where element comes from ChipData+5 via getChip8021DA8, and increments out[element] as
+  a per-element tally. r3 is incremented once per source entry, implying the caller passes the starting
+  index in r3 (a non-standard calling convention quirk). Finally the list length in words ((end - start)
+  >> 2) is returned and saved at [r5,#0x48].'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'TestEventFlag(chip + 0x1E20) with bne skip: only chips failing the library-ownership flag are
+    recorded; strh r0,[r7] / strb r3,[r7,#2] / strb r2,[r7,#3]; add r7,#4: builds 4-byte {id, index, element}
+    records in dword_2035800; ldrb r2,[r0,#5] after getChip8021DA8(chip): reads the element byte from
+    the chip database record and uses it as the tally index in the r1 struct; sub r0,r7,r6; lsr r0,#2;
+    str r0,[r5,#0x48]: returns/stores the record count for the caller chipTraderRollReward; ZeroFillByWord(dword_2035800,
+    0x1000) each call: fresh 4KB list buffer sized for the full 206-chip library'
+  refs:
+  - bn6f/asm/asm03_2.s:9562
+  - 0x0804BD00 chipTraderRollReward
+  - 0x0802F168 TestEventFlag
+  - 0x080008E0 ZeroFillByWord
+  - 0x08021AA4 getChip8021DA8
+  reproduce: python3 tools/asmcat.py 0x0804BE1C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- Exact meaning of the byte at entry offset +2 vs. the r3 index byte stored at record +2 — r3's initial
+  value comes from the caller and the entry's remaining 4 bytes are never read
+- Whether ChipData+5 is truly the element field (consistent with per-element tally, but the struct at
+  r1 is otherwise uninterpreted)
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_804BE1C -> chipTraderGatherUnownedChips
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_804BE1C

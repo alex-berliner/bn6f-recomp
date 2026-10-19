@@ -1,0 +1,54 @@
+name: battle_scanForwardForFlaggedPanel
+address: '0x08016218'
+kind: function
+status: probable
+summary: Walks column-by-column forward from a battle object, probing rows in a per-row priority order,
+  and returns the coordinates of the first panel whose status flags contain the object's alliance-specific
+  mask.
+interface: (r0..? = battle object in r5) -> r0 = x of first matching panel (0 if none/off-field), r1 =
+  y from priority table, r2 = side sign ((PanelX-x)>=0 ^ Alliance); flags clobbered
+details: 'Reads the object''s facing via object_getFrontDirection and starts at column PanelX+dir. Per
+  column it iterates three candidate y values taken from byte_8016298[(PanelY-1)*3 + i] — tables {1,2,3}/{2,1,3}/{3,1,2}
+  mean the object''s own row is tested first, then the other two in a fixed order — passing each as the
+  row argument to object_getPanelParameters (r1 still holds the table byte at the call). A panel matches
+  when (flags & byte_8016290[Alliance*4]) != 0, where the mask is 4 for alliance 3 and 8 for alliance
+  7 (others get 0, which can never match since tst with 0 is always clear). On a match it returns the
+  column x, the y byte, and a direction sign (PanelX-x >= 0 ? 1 : 0) XOR Alliance in r2; if a column''s
+  three rows all fail it advances x by dir and repeats, and it returns r0=0 once the column leaves the
+  6x3 grid (object_isValidPanel). Note r4 is needlessly pushed/popped, and the r2 ''side'' value is only
+  useful if the caller reads it.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: object_getFrontDirection result added to PanelX sets the starting scan column (start of func);
+    byte_8016298[(PanelY-1)*3+i] supplies the y probed each iteration; r1 survives into the object_getPanelParameters
+    call; tst r0, r1 with r1 = byte_8016290[Alliance*4] (0x4 / 0x8) is the per-alliance panel-flag match
+    test; object_isValidPanel failure path returns r0 = 0, ending the forward scan off-grid; success path
+    at loc_8016270 returns x, table y, and (PanelX-x sign) ^ Alliance
+  refs:
+  - bn6f/asm/asm00_2.s:16736
+  - 0x080EE996 sub_80EE996
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800C8F8 object_getPanelParameters
+  - 0x0800CC72 object_isValidPanel
+  reproduce: python3 tools/asmcat.py 0x08016218
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- Which panel status bits 0x4 and 0x8 represent (hole/broken/enemy-only?), and why only alliance values
+  3 and 7 get a mask
+- What caller sub_80EE996 does with the returned x/y and the r2 side value, which would pin down the gameplay
+  purpose (spawn point selection, targeting, etc.)
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8016218 -> battle_scanForwardForFlaggedPanel
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8016218

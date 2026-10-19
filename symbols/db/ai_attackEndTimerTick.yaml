@@ -1,0 +1,41 @@
+name: ai_attackEndTimerTick
+address: '0x080EFD5E'
+kind: function
+status: probable
+summary: Counts down an AI attack timer; when it expires, clears flag 0x40 and ends the object's attack
+  state.
+interface: (r7 = battle object) -> void; decrements oAIAttackVars_StepTimer each call
+details: Each invocation decrements the object's oAIAttackVars_StepTimer (halfword at [r7,#oAIAttackVars_StepTimer]);
+  while it is still >0 the function does nothing further. When the counter reaches 0 (bgt falls through),
+  it calls object_clearFlag with bit 0x40 (ObjectFlags1 in the object's collision data) and then object_exitAttackState
+  to leave the attack state. It is presumably called every frame while the AI attack is active, acting
+  as the attack's duration timer.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrh/sub/strh on [r7,#oAIAttackVars_StepTimer] plus 'bgt locret' = per-frame countdown; bl object_clearFlag
+    with r0=0x40 clears an ObjectFlags1 bit when the timer expires; bl object_exitAttackState immediately
+    after shows the timer guards the end of an attack
+  refs:
+  - bn6f/asm/asm31.s:121103
+  - 0x0801A15C object_clearFlag
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x080EFD5E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- No callers known, so which attack routines set up oAIAttackVars_StepTimer and what flag 0x40 means specifically
+  are unconfirmed
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80EFD5E -> ai_attackEndTimerTick
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EFD5E

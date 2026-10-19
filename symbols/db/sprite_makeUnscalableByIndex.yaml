@@ -1,0 +1,52 @@
+name: sprite_makeUnscalableByIndex
+address: '0x0811A968'
+kind: function
+status: probable
+summary: Looks up an object/sprite entry by index in the 0x58-byte struct array at 0x2008450 and resets
+  its scale counter, rebuilding it as unscalable.
+interface: (r0 = index into eStructArr2008450) -> entry fetched via getStructFrom2008450 (status byte
+  in r0, entry pointer in r1, kept in r5); then sprite_clearScaleCounterAndMakeUnscalable_804668A clears
+  the scale/cycle counter byte; flags from the callee
+details: 'The function is a two-call wrapper: it passes an index to getStructFrom2008450, which reads
+  the first (in-use/status) byte of the corresponding 0x58-byte entry of eStructArr2008450 and returns
+  with the entry pointer in r1. r1 is copied to r5, then sprite_clearScaleCounterAndMakeUnscalable_804668A
+  is invoked, which zeroes the sprite''s scale/cycle counter byte and rebuilds the sprite so it can no
+  longer be scaled. The function adds nothing else, so its purpose is exactly ''reset this entry''s sprite
+  scaling''. The three callers at 0x812CC44/0x812E440/0x812FAE4 presumably invoke it per entry when an
+  effect ends. The mov r5, r1 is odd since r5 is never used afterwards; it may exist to satisfy a calling
+  convention of the callee or be a compiler artifact.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'body is only bl getStructFrom2008450; mov r5,r1; bl sprite_clearScaleCounterAndMakeUnscalable_804668A
+    (asm lines 1-5); getStructFrom2008450 known summary: returns status byte of entry `index` of eStructArr2008450
+    with NZ flags; sprite_clearScaleCounterAndMakeUnscalable_804668A known summary: zeros scale/cycle
+    counter and rebuilds sprite unscalable; three callers in the 0x812xxxx region, consistent with per-object
+    sprite handling code'
+  refs:
+  - bn6f/asm/asm32.s:26253
+  - 0x0812CC44 sub_812CC44
+  - 0x0812E440 sub_812E440
+  - 0x0812FAE4 sub_812FAE4
+  - 0x080466C4 getStructFrom2008450
+  - 0x0804668A sprite_clearScaleCounterAndMakeUnscalable_804668A
+  reproduce: python3 tools/asmcat.py 0x0811A968
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- which argument slot sprite_clearScaleCounterAndMakeUnscalable_804668A actually consumes (r0 byte vs
+  r1 pointer) is not visible here
+- what the three callers pass as the index and in what gameplay situation the reset fires
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_811A968 -> sprite_makeUnscalableByIndex
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811A968

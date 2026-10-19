@@ -1,0 +1,44 @@
+name: object_applyXVelocity
+address: '0x080DDB98'
+kind: function
+status: probable
+summary: Moves a battle object horizontally by its XVelocity and resyncs its panel/collision position
+interface: (r5 = battle object; r0, r1 = scratch) -> r0 = object pointer passed to callees; no meaningful
+  return
+details: Loads oBattleObject_XVelocity from the object at r5, adds it to oBattleObject_X, and stores the
+  sum back into oBattleObject_X. It then calls object_setPanelsFromCoordinates to recompute the object's
+  PanelX/PanelY from the new world X/Y/Z, and object_updateCollisionPanels to copy the new panel position
+  into its collision record and recompute facing for the move. No bounds or collision checks are done
+  here; only the X axis is advanced, so Y/Z movement must be handled by sibling routines. r5 rather than
+  r0 carries the object pointer, implying the caller sets r5 before this step in an update sequence.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldr r0,[r5,#oBattleObject_XVelocity]; add r0,r0,r1 where r1=[r5,#oBattleObject_X]; str r0 back
+    to oBattleObject_X — velocity integrated into X; bl object_setPanelsFromCoordinates immediately after
+    the store — panel coords derived from new position; bl object_updateCollisionPanels — collision record
+    and facing synced for the move; no other fields touched in the 10-instruction body — purely an X-axis
+    position step
+  refs:
+  - bn6f/asm/asm31.s:81870
+  - 0x0800E2AC object_setPanelsFromCoordinates
+  - 0x0801A04C object_updateCollisionPanels
+  reproduce: python3 tools/asmcat.py 0x080DDB98
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- callers unknown, so the convention of passing the object in r5 and any sibling Y/Z velocity routines
+  are unconfirmed
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DDB98 -> object_applyXVelocity
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DDB98

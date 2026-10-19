@@ -1,0 +1,46 @@
+name: sprite_initFromObject
+address: '0x080A5D48'
+kind: function
+status: probable
+summary: Initializes a sprite work struct from an object's sprite fields and starts its animation (no
+  shadow), returning 1 if a precondition check fails.
+interface: (r5 = sprite work struct, r6 = source object, r0 = arg to sub_80A5D80) -> r0 = 0 on success,
+  1 if sub_80A5D80 returned nonzero; flags clobbered
+details: Calls sub_80A5D80 first; a nonzero result aborts setup with return 1. On success it copies three
+  words from object+0x88/0x8C/0x90 into work+0xC/0x10/0x14 (likely gfx/palette/frame pointers), copies
+  object+8 into work+6 (bank or sprite id), and stores the animation index from work+5 into work+0x34.
+  It then sets that animation via sprite_setAnimation, loads the animation data with sprite_loadAnimationData,
+  and disables the shadow via sprite_noShadow, returning 0. The three-word copy and slot field layout
+  match the sprite slot structures used by the sprite_* helpers.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl sub_80A5D80 / cmp r1,#0 / bne locret: nonzero abort returns 1 before any setup; ldr r0,[r6,#0x88]...str
+    r0,[r5,#0xc] (x3): copies three sprite resource words from object to work struct; ldrb r0,[r5,#5]
+    / str r0,[r5,#0x34] then bl sprite_setAnimation: work+5 is the animation index; bl sprite_loadAnimationData
+    + bl sprite_noShadow: finishes sprite slot setup without a shadow; mov r0,#0 after setup: success
+    return value 0 vs 1 on the failed check'
+  refs:
+  - bn6f/asm/asm29.s:2077
+  - 0x080026A4 sprite_loadAnimationData
+  - 0x08002F90 sprite_noShadow
+  - 0x08002DA4 sprite_setAnimation
+  reproduce: python3 tools/asmcat.py 0x080A5D48
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- What sub_80A5D80 checks to gate the initialization (no callers known to confirm context)
+- Exact meaning of the three words copied from object+0x88..0x90 and of work+6 (bank vs. id)
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80A5D48 -> sprite_initFromObject
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A5D48

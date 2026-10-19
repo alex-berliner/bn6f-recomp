@@ -1,0 +1,47 @@
+name: rfu_handleDisconnectPacket
+address: '0x081460B0'
+kind: function
+status: probable
+summary: 'Handles a received disconnect (command 0x26) during wireless connection state 0xF: tears down
+  the link slot and clears connection state.'
+interface: (void) -> void; only acts when state byte 200FE04 == 0xF and incoming packet ID == 0x26
+details: 'Checks the rfu connection struct at 200FE00: if state byte +0x04 is 0xF, it looks up the current
+  slot index at +0x10 in the packet table dword_2010CB0 and reads the packet''s halfword ID; if it is
+  0x26 (a disconnect/end command), it zeroes the state bytes +0x04 and +0x05, frees the RFU slot via rfu_clearSlot(4,
+  slot), clears bit (1<<slot) in the connected-slots bitmask at +0x24, zeroes the per-slot halfword at
+  +0x28+slot*2, and finally calls sub_81461B0(0x24, 0) to clear data starting at struct offset 0x24. Effectively
+  the ''peer disconnected / link ended'' branch of the connection state machine.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#0x4]; cmp #0xF gates everything on connection state 0xF (asm lines 3-5); packet
+    table dword_2010CB0[slot] halfword compared to 0x26 before any teardown (lines 7-11); state bytes
+    200FE04/05 zeroed and rfu_clearSlot(4, slot) called only on match (lines 12-17); bic of (1<<slot)
+    into byte 200FE24 clears the slot''s connection bit (lines 20-24); all six call sites are inside rfu_handleConnectionEvent,
+    the link-event dispatcher'
+  refs:
+  - bn6f/asm/libs.s:4397
+  - 0x08145658 rfu_handleConnectionEvent
+  - 0x08145750 rfu_handleConnectionEvent
+  - 0x08145768 rfu_handleConnectionEvent
+  - 0x0814A934 rfu_clearSlot
+  - 0x081461B0 sub_81461B0
+  reproduce: python3 tools/asmcat.py 0x081460B0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- exact meaning of command ID 0x26 (assumed disconnect; would need the peer-side sender to confirm)
+- what sub_81461B0(0x24, 0) clears exactly (offset-0x24 buffer length semantics)
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81460B0 -> rfu_handleDisconnectPacket
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81460B0

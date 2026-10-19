@@ -1,0 +1,47 @@
+name: battle_spawnObject54OnCountdownEnd
+address: '0x08112CF4'
+kind: function
+status: probable
+summary: Counts down a timer on a battle object; when it reaches zero, spawns tethered object 0x54, programs
+  its lifetime from the owner's byte field, and switches the owner to state 8.
+interface: (no meaningful args — r0..r3 zeroed for the spawn call; owner state in r7, mode byte in r5)
+  -> r0 = spawned object pointer (also stored at [r7,#0x30]); sets owner halfword [r7] = 8
+details: 'Decrementing counter at [r7,#0x10]: while it stays above 0 the function just returns (bgt).
+  On expiry it writes 2 to [r5,#0x10] (state/phase byte), calls battle_spawnOwnedObject54 with all four
+  parameters zero and 0x2810 from the literal pool, stores the new child at [r7,#0x30], and flags its
+  ExtraVars bit 14. It then reads [r7,#0xe], multiplies by 10, and stores that halfword into the child
+  at +0x20 (its counter field), gives the child a 0x1E counter via object_setCounterTime, and finally
+  sets the owner''s halfword [r7] to 8, a state transition.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrh r0,[r7,#0x10]; sub #1; strh; bgt locret — a plain countdown gate for the whole body; bl
+    battle_spawnOwnedObject54 with r0..r3=0 and r4=0x2810, result stored at [r7,#0x30] — child pointer
+    kept on the owner; bl battle_SetObjectExtraFlag14 on the returned child pointer; ldrb r1,[r7,#0xe];
+    mov r2,#0xa; mul; strh r1,[r0,#0x20] — child''s counter = owner byte * 10; mov r0,#8; strh r0,[r7]
+    — final owner state change after spawning'
+  refs:
+  - bn6f/asm/asm32.s:10118
+  - 0x080C4086 battle_SetObjectExtraFlag14_80C4086
+  - 0x080C4038 battle_spawnOwnedObject54
+  - 0x0800E9DC object_setCounterTime
+  reproduce: python3 tools/asmcat.py 0x08112CF4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- What object id 0x54 / value 0x2810 actually is (no known caller to identify the enemy or attack context)
+- Exact roles of r5 vs r7 (r5's +0x10 state byte vs r7's object fields)
+- Which register carries the owner pointer into battle_spawnOwnedObject54
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8112CF4 -> battle_spawnObject54OnCountdownEnd
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8112CF4

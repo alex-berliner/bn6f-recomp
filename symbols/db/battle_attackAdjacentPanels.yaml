@@ -1,0 +1,51 @@
+name: battle_attackAdjacentPanels
+address: '0x080F0832'
+kind: function
+status: probable
+summary: 'Battle AI attack step: charges up (60 frames) then spawns a 3x3 collision region centered on
+  the attacker''s panel, damaging the target and its four adjacent panels.'
+interface: (r5 = battle object, r7 = oAIAttackVars struct; no r0-r3 args) -> r0 = spawned collision region
+  pointer or 0; advances the attack-vars state machine
+details: On the first invocation (AttackElement == 0) it sets AttackElement = 4, adds AttackBoost to Damage,
+  calls battle_scanAdjacentPanels with handler-arg 0x3C00 and the current Damage (the handler runs for
+  each adjacent panel whose status has bit 0x10), then spawns a collision region at the attacker's own
+  panel (X/Y from the battle object) with flags 0x4050101, size 3, element 3, and damage in r6; if a region
+  was created it sets its Timer to 60 (1 second) and plays sound effect 0xC0, then stores StepTimer =
+  60 as a wind-up delay. On subsequent invocations it counts StepTimer down; when it reaches 0 it writes
+  8 into HitElement, ending this attack step. r4/r6 and the pushed/reloaded r7 (0x3) are argument registers
+  consumed by battle_scanAdjacentPanels and object_spawnCollisionRegion; r5 is set by those helpers to
+  the battle object being processed.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne branches between first-run setup and countdown
+    path (asm start); ldr r6,[r7,#oAIAttackVars_Damage]; bl battle_scanAdjacentPanels with 0x3C00 in r3/r4
+    marks flagged adjacent panels; push {r7}; ldr r7,=0x3; bl object_spawnCollisionRegion with r4=0x4050101
+    and object panel X/Y spawns the hit region; strh r1,[r0,#oBattleObject_Timer] (=60) + PlaySoundEffect(0xC0)
+    after successful spawn; countdown loop writes HitElement = 8 when StepTimer hits 0, i.e. a timed two-phase
+    attack step
+  refs:
+  - bn6f/asm/asm31.s:122488
+  - 0x080005CC PlaySoundEffect
+  - 0x080F37D8 battle_scanAdjacentPanels
+  - 0x080C536A object_spawnCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080F0832
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- What attack/element ID 4 and region element 3 correspond to (which enemy/chip uses this), and what the
+  0x3C00 handler argument to battle_scanAdjacentPanels selects
+- Which caller drives the oAIAttackVars step state machine, to confirm the wind-up semantics
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F0832 -> battle_attackAdjacentPanels
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F0832

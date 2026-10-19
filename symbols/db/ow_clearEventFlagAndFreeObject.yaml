@@ -1,0 +1,45 @@
+name: ow_clearEventFlagAndFreeObject
+address: '0x080A8860'
+kind: function
+status: probable
+summary: 'Termination routine for an overworld map object: clears story flag EVENT_5E0, then releases
+  the object''s slot.'
+interface: (r0 = overworld map object pointer, passed through to FreeOverworldMapObject) -> r0 = unchanged
+  (FreeOverworldMapObject result); no meaningful flags
+details: The function first loads the immediate event flag ID 0x5E0 and clears it via ClearEventFlagFromImmediate,
+  marking that piece of story progress as undone, then tail-calls FreeOverworldMapObject with r0 untouched,
+  so the caller's object pointer is the object being freed. FreeOverworldMapObject clears the object's
+  active bit in the global allocation bitfield and detaches it from the sprite system. This looks like
+  the kill/despawn handler of a specific overworld object whose presence is gated on event flag 5E0 (e.g.
+  an NPC or obstacle that disappears once the flag is reset, or whose despawn condition is tied to it).
+  With no known callers, the exact object identity and why the flag is cleared on despawn cannot be confirmed.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: movflag EVENT_5E0 + bl ClearEventFlagFromImmediate clears one fixed story flag before any teardown;
+    r0 is not modified between entry and bl FreeOverworldMapObject, so the sole argument is the object
+    to release; the body is exactly flag-clear + free, matching an object despawn/kill callback pattern;
+    no other memory or struct access occurs, so no other state is touched
+  refs:
+  - bn6f/asm/asm29.s:7020
+  - 0x0802F12C ClearEventFlagFromImmediate
+  - 0x080048B2 FreeOverworldMapObject
+  reproduce: python3 tools/asmcat.py 0x080A8860
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- which overworld object uses this as its despawn handler (no callers known)
+- why event flag 5E0 is cleared on despawn — need the object's spawn/flag logic or the flag's meaning
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80A8860 -> ow_clearEventFlagAndFreeObject
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A8860

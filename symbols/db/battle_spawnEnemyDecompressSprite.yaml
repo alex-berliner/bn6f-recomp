@@ -1,0 +1,48 @@
+name: battle_spawnEnemyDecompressSprite
+address: '0x0802AEEA'
+kind: function
+status: probable
+summary: Given an enemy index, decompresses that enemy's sprite data and spawns its battle object at panel
+  (2,2) with alliance 0, returning the decompressed sprite pointer.
+interface: (r0 = enemy index) -> r0 = pointer to decompressed sprite data; enemy struct fields 0/1 used
+  as sprite_decompress args
+details: Takes an enemy index, resolves it via enemy_getStruct1 to the per-enemy struct, and reads bytes
+  at offsets 0 and 1 (likely sprite/graphic id and palette or animation ids) to call sprite_decompress.
+  It then calls battle_spawnEnemyObject with r0 = the original enemy index argument, fixed position r1=2,
+  r2=2 (panel x/y), r3=0 (alliance/player side) and r5=0, and returns the decompressed sprite pointer
+  in r0 (not the spawned object). The fixed (2,2) position suggests a scripted, non-random spawn such
+  as a boss or midboss entrance rather than normal virus placement.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r1,[r0,#1]; ldrb r0,[r0]; bl sprite_decompress — sprite ids come straight from the per-enemy
+    struct; bl battle_spawnEnemyObject with r1=2,r2=2,r3=0,r5=0 — fixed spawn panel and alliance, only
+    r0 passed through from caller; mov r7,r0 after sprite_decompress and mov r1,r7 before pop — the decompressed
+    sprite pointer, not the object, is returned; only caller sub_802AC10 passes into enemy_getStruct1,
+    confirming r0 is an enemy index
+  refs:
+  - bn6f/asm/asm03_0.s:10471
+  - 0x0802AC10 sub_802AC10
+  - 0x080076A0 battle_spawnEnemyObject
+  - 0x0800F214 enemy_getStruct1
+  - 0x08002A64 sprite_decompress
+  reproduce: python3 tools/asmcat.py 0x0802AEEA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- exact meaning of enemy struct bytes 0 and 1 (graphic id vs palette) not confirmed
+- why the spawned object pointer is discarded and what sub_802AC10 does with the returned sprite pointer
+- whether r1/r2 to battle_spawnEnemyObject are really panel coordinates or other spawn parameters
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_802AEEA -> battle_spawnEnemyDecompressSprite
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802AEEA

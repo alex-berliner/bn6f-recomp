@@ -1,0 +1,50 @@
+name: battle_panelHasTargetableObject
+address: '0x080DC9F0'
+kind: function
+status: probable
+summary: Returns 1 only if a panel of one of two specific status types at (x,y) carries an object of the
+  opposite panel-side key whose collision flags lack bits 1-2.
+interface: (r0 = tile x, r1 = tile y) -> r0 = 1 if qualifying object present on qualifying panel, else
+  0; r5 clobbers panel struct from callee
+details: 'object_getPanelParameters returns the panel''s status flags in r0 and (apparently) the panel
+  struct in r5. The byte at panel+0x16 (0 or 1) indexes the word table byte_80DCA30 as a required-flag
+  mask (0x05800000 or 0x0A800000); if panel flags don''t intersect it the function returns 0. It then
+  XORs that byte with 1 and calls sub_800AE54 with (x, y, flippedByte, 1), i.e. it searches an object
+  pointer list for an entry whose key bytes 0x12/0x13 match the coords with the opposite side/plane byte.
+  If no object is found it returns 0; if object_getFlag on it yields any of bits 1 or 2 it returns 0;
+  otherwise it returns 1. So the ''positive'' case is: special panel type + present object of the complementary
+  key that is not flagged with bits 1|2.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r1,[r5,#0x16]; ldr r1,[table,r1*4]; tst r0,r1 / beq fail — panel flags must match mask
+    chosen by panel+0x16; eor r2,#1; bl sub_800AE54 with r3=1 — object lookup keyed by coords plus inverted
+    byte; bl object_getFlag; tst r0,#6; bne fail — object must not have flag bits 1|2; all failure paths
+    and success return 0/1 via loc_80DCA26 / mov r0,#1; callees object_getPanelParameters and object_getFlag
+    confirm battle panel/object domain
+  refs:
+  - bn6f/asm/asm31.s:79537
+  - 0x0801A166 object_getFlag
+  - 0x0800C8F8 object_getPanelParameters
+  - 0x0800AE54 sub_800AE54
+  reproduce: python3 tools/asmcat.py 0x080DC9F0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- no callers known, so the gameplay use (targeting? trap? panel effect?) is unconfirmed
+- meaning of panel+0x16 (side? plane? panel class) and what panel status bits 23,24,26 / 23,25,27 denote
+- meaning of object flag bits 1 and 2 (likely some intangible/ignore-collision state)
+- which object list r3=1 selects in sub_800AE54
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DC9F0 -> battle_panelHasTargetableObject
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DC9F0

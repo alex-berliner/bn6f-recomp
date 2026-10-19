@@ -1,0 +1,45 @@
+name: object_destroy
+address: '0x080CD78E'
+kind: function
+status: probable
+summary: 'Tears down the battle object in r5: runs its cleanup hook, frees its collision data, and releases
+  its object slot.'
+interface: (r5 = battle object pointer) -> r0 = object_freeMemory result; no flags used
+details: Standard object destructor. It first calls sub_80CD7D0 (likely a per-type or vtable cleanup/despawn
+  hook for the object at r5, since it takes no arguments), then loads the object's CollisionDataPtr field
+  (oBattleObject_CollisionDataPtr) from r5 and passes it to object_freeCollisionData, and finally calls
+  object_freeMemory on r5 to release the slot, flags, bitmap, and list linkage. It operates on the object
+  via r5 rather than r0, so it is meant to be called from code with the object in the reserved register
+  (typical object 'self' destructor pattern). No caller is known, but the callee sequence is the canonical
+  destroy path.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl sub_80CD7D0 with no arguments before freeing, matching an object-specific pre-destroy hook;
+    ldr r0,[r5,#oBattleObject_CollisionDataPtr]; bl object_freeCollisionData frees the object's own collision
+    slot; bl object_freeMemory immediately after releases the battle object slot entirely
+  refs:
+  - bn6f/asm/asm31.s:46864
+  - 0x080198CE object_freeCollisionData
+  - 0x08003458 object_freeMemory
+  - 0x080CD7D0 sub_80CD7D0
+  reproduce: python3 tools/asmcat.py 0x080CD78E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- Purpose of sub_80CD7D0 (the pre-destroy hook) is unknown
+- No caller seen, so whether this is a generic destructor or a specific object type's death routine is
+  unconfirmed
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CD78E -> object_destroy
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CD78E

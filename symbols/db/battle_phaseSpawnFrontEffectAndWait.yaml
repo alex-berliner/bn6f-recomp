@@ -1,0 +1,49 @@
+name: battle_phaseSpawnFrontEffectAndWait
+address: '0x080D3C6C'
+kind: function
+status: probable
+summary: 'Battle-object phase handler: once, spawns an effect 16px in front of the object, plays sound
+  0xA5, sets animation 0x1C and a 30-frame timer, then waits before advancing to phase 4.'
+interface: (r0 = unused/clobbered; object pointer in r5) -> void; sets oBattleObject_PhaseInitialized=4,
+  CurAnim=0x1C, Timer=0x1E, then CurPhaseAndPhaseInitialized=4 when timer expires
+details: 'On first invocation (PhaseInitialized == 0) it marks the phase initialized, gets the object''s
+  front-direction multiplier via object_getFrontDirection, and computes an X position of object X plus
+  (facing * 0x10) — i.e. 16 pixels ahead. It calls spawn_t1_0x0_EffectObject with that X, Y+0x20, r3=0x20
+  and r4=0x1E as effect parameters, then plays sound effect 0xA5 and sets the object''s animation to 0x1C
+  with a 30-frame timer. On subsequent frames it simply decrements Timer; when it hits zero it writes
+  phase 4 into CurPhaseAndPhaseInitialized. The r4=0x1E argument also conveniently keeps r4 saved/restored
+  for the caller. This reads like an enemy/NPC attack windup or impact beat: effect + sound + anim, then
+  a timed pause before the next phase.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#oBattleObject_PhaseInitialized]; tst/bne — one-shot setup guarded by the phase-initialized
+    flag; bl object_getFrontDirection; mul r0,#0x10; add to oBattleObject_X — effect offset 16px in facing
+    direction; bl spawn_t1_0x0_EffectObject with r2=Y+0x20, r3=0x20, r4=0x1e — spawns effect object type
+    0; mov r0,#0xa5; bl PlaySoundEffect — dedicated one-shot sound for the moment; strh #0x1e Timer; sub/bgt
+    loop; then str #4 into CurPhaseAndPhaseInitialized — fixed 30-frame wait then next phase'
+  refs:
+  - bn6f/asm/asm31.s:60539
+  - 0x080005CC PlaySoundEffect
+  - 0x0800E2CA object_getFrontDirection
+  - 0x080E05F6 spawn_t1_0x0_EffectObject
+  reproduce: python3 tools/asmcat.py 0x080D3C6C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- No known caller, so which enemy/NPC or attack this phase belongs to is unknown
+- Meaning of spawn_t1_0x0_EffectObject's r3=0x20 / r4=0x1E parameters (effect variant/size?) not confirmed
+- Which visual effect effect-type 0 and sound 0xA5 correspond to in game terms
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D3C6C -> battle_phaseSpawnFrontEffectAndWait
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D3C6C

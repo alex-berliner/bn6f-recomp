@@ -1,0 +1,48 @@
+name: navicust_handlePlacementCancelInput
+address: '0x0813640C'
+kind: function
+status: probable
+summary: 'B-button handler for the Navi Cust part-placement screen: if a part is being held it puts it
+  back, otherwise it cancels/exits the placement screen.'
+interface: (r0 = scratch; r5 = placement-screen state struct) -> r0 = sound ID passed to PlaySoundEffect;
+  updates state byte at +0x02 and position fields
+details: Reads the 'part held' flag at state+0x10. If held, it copies the held part's coordinates from
+  +0x3c/+0x3e into the current-cursor slot fields +0x28/+0x2c, sets the state byte +0x02 to 0x18 (drop/return
+  part), and plays SOUND_MENU_SELECT. If nothing is held, it sets state +0x02 to 0xC (exit), clears the
+  selected-part bytes at +0x0E and +0x14, calls sub_813B920, resets something via sub_813660C(0), redraws
+  the whole board with navicust_drawBoardTilemap(0), calls sub_81362F8, and plays SOUND_EXIT_SUBMENU.
+  This matches being invoked from navicust_handlePlacementCursorInput as the cancel branch.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: tst/beq on [r5,#0x10] picks between returning a held part and leaving the screen; held branch
+    copies +0x3c/+0x3e to +0x28/+0x2c and sets state 0x18 with SOUND_MENU_SELECT; exit branch sets state
+    0xC, clears +0x0E/+0x14, and plays SOUND_EXIT_SUBMENU; exit branch calls navicust_drawBoardTilemap
+    to restore the board view; sole caller navicust_handlePlacementCursorInput is the placement screen
+    input handler with confirm/cancel duties
+  refs:
+  - bn6f/asm/asm36.s:13070
+  - 0x0813612C navicust_handlePlacementCursorInput
+  - 0x080005CC PlaySoundEffect
+  - 0x0813C1C0 navicust_drawBoardTilemap
+  - 0x081362F8 sub_81362F8
+  reproduce: python3 tools/asmcat.py 0x0813640C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- exact meaning of state 0x18 vs 0x18's handler (does it re-place the part into its original board slot?)
+- what sub_813B920, sub_813660C(0) and sub_81362F8 reset
+- layout of the r5 state struct beyond the fields touched here
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_813640C -> navicust_handlePlacementCancelInput
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_813640C

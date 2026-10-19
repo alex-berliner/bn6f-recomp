@@ -1,0 +1,44 @@
+name: battle_resetAIAttackState
+address: '0x0802E4A0'
+kind: function
+status: probable
+summary: 'Resets a battle object''s AI attack-related state: clears a sub-state byte, wipes the charged-attack
+  (PwrAtk) state, and clears AI flag 0x40000.'
+interface: (r5 = battle object, set by caller) -> r0 = clobbered; no meaningful return
+details: Reads a pointer at [r5,#0x58] (an AI/sub-object structure) and zeroes the byte at +0x1e, likely
+  a phase/counter used by an ongoing AI routine. It then calls battleObject_clearPwrAtkState_8012EA8 to
+  zero the AIData charge bytes and clear the 0x60000 flag, and finally ClearAIData_Unk_44_Flag with mask
+  0x40000 to release another AI condition flag in the same object. Together this looks like a cleanup/reset
+  routine that cancels whatever attack state the object was in. It uses r5 without setting it up, so it
+  is presumably invoked from a table-driven handler where r5 already holds the battle object.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: strb r0,[r1,#0x1e] with r1=[r5,#0x58] clears a byte in the object's sub-structure (asm at 0x0802E4A6-0x0802E4AA);
+    bl battleObject_clearPwrAtkState_8012EA8 wipes charge bytes and 0x60000 AI flag (callee summary);
+    ldr r0,dword_802E4B4 (=0x40000) then bl ClearAIData_Unk_44_Flag clears the 0x40000 AI flag; only r5
+    is used as input, indicating a caller/table supplies the battle object rather than arguments
+  refs:
+  - bn6f/asm/asm03_0.s:17616
+  - 0x0800FFEE ClearAIData_Unk_44_Flag
+  - 0x08012EA8 battleObject_clearPwrAtkState_8012EA8
+  reproduce: python3 tools/asmcat.py 0x0802E4A0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- No callers are known, so the trigger condition (which AI state or event invokes this) is unknown
+- Meaning of the byte at [r5+0x58]+0x1e and of the 0x40000 flag in Unk_44 is not confirmed
+- Whether it targets enemies only or any battle object depends on unseen callers
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_802E4A0 -> battle_resetAIAttackState
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802E4A0

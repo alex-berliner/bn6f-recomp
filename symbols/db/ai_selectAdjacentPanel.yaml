@@ -1,0 +1,49 @@
+name: ai_selectAdjacentPanel
+address: '0x081156AC'
+kind: function
+status: probable
+summary: AI helper that randomly picks the panel directly in front of or behind a boss enemy's current
+  panel, filtered by alliance-dependent panel flags, as the target for a panel attack.
+interface: (r0 = ? overwritten, r5 = battle object) -> r0 = chosen relative panel entry from panelFlagCheck_8015D80
+  (or none if all filtered)
+details: 'Loads oBattleObject_PanelX and oBattleObject_PanelY from the object in r5 and passes them with
+  the allianceDependentPanelFlags_81156D0 table (two 8-byte entries, indexed by alliance: flags 0x10 param
+  0x0F8800A0, flags 0x30 param 0x0F880080) to GetAllianceDependentPanelParamArgs. It then calls panelFlagCheck_8015D80
+  with byte_81156C4, a relative-offset candidate list containing only (0,-1) and (0,1) before the 0x7F
+  terminator — i.e. only the two panels along the object''s facing axis. panelFlagCheck_8015D80 transforms
+  each offset by the object''s facing (object_getEnemyDirection), filters candidates by the panel flags,
+  and returns a random survivor. The result is consumed by ai_selectAttack to set up its panel-targeted
+  attack (id 0xA).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#oBattleObject_PanelX] / ldrb r1,[r5,#oBattleObject_PanelY]: input is the object''s
+    own panel position; byte_81156C4 = 0,0xFF, 0,1, 0x7F: candidate list is exactly the two panels ahead/behind,
+    transformed by facing; bl GetAllianceDependentPanelParamArgs with allianceDependentPanelFlags_81156D0:
+    panel-flag filter depends on the object''s alliance; bl panelFlagCheck_8015D80: filtered random relative
+    panel picker performs the actual selection; caller ai_selectAttack uses the result to set up a panel-targeted
+    attack (id 0xA)'
+  refs:
+  - bn6f/asm/asm32.s:15258
+  - 0x08115598 ai_selectAttack
+  - 0x081096FA GetAllianceDependentPanelParamArgs
+  - 0x08015D80 panelFlagCheck_8015D80
+  reproduce: python3 tools/asmcat.py 0x081156AC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- exact meaning of the two flag/param entries in allianceDependentPanelFlags_81156D0 (0x0F8800A0 vs 0x0F880080)
+- how the return value's fields (panel coords vs entry pointer) are consumed by ai_selectAttack
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81156AC -> ai_selectAdjacentPanel
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81156AC

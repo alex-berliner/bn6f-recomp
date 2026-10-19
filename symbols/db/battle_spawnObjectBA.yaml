@@ -1,0 +1,50 @@
+name: battle_spawnObjectBA
+address: '0x080DC6BC'
+kind: function
+status: probable
+summary: 'Spawn helper: spawns battle object 0xBA via object_spawnType3 and, if it spawned, runs BasicBattleObjectInitialize
+  on it with the caller''s arguments.'
+interface: (r0-r3 = spawn/init args, r4 = extra spawn arg) -> r0 = success flag from spawn (0 = nothing
+  spawned); on success the new object is base-initialized.
+details: Preserves the caller's arguments by pushing r0-r2 (and r5), then invokes object_spawnType3 with
+  r0 = 0xBA (the object ID/type selector) and the remaining args untouched. If the spawner returns success
+  (r0 != 0, tested by beq), it calls BasicBattleObjectInitialize with the newly spawned object (left in
+  r5 by the spawner) in r0 and the original caller arguments restored into r1-r3 by the pop, so the entity's
+  base fields (position, element, etc.) are filled from the caller's data. On spawn failure it returns
+  immediately without initializing. It is effectively a one-object convenience wrapper around the generic
+  type-3 spawn path.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'mov r0, #0xba immediately before bl object_spawnType3 selects the object being spawned; beq
+    locret_80DC6D0 skips initialization when the spawner reports failure; bl BasicBattleObjectInitialize
+    runs the standard base-object initializer only on success; pop {r1-r3,r5} restores the caller''s original
+    r0-r2 into r1-r3 as the initializer''s arguments; callee summaries: object_spawnType3 spawns a type-3
+    object; BasicBattleObjectInitialize fills base battle-object fields'
+  refs:
+  - bn6f/asm/asm31.s:79095
+  - 0x08102BFC sub_8102BFC
+  - 0x0801155A BasicBattleObjectInitialize
+  - 0x08003358 object_spawnType3
+  reproduce: python3 tools/asmcat.py 0x080DC6BC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- What game entity object ID 0xBA actually is (needs a lookup of other spawns of 0xBA or its initializer's
+  behavior)
+- Whether object_spawnType3 really returns the new object pointer in r5 (ABI-violating) or the mov r0,
+  r5 reflects a decoding quirk
+- What sub_8102BFC passes as arguments, which would pin down the object's spawn parameters and semantics
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DC6BC -> battle_spawnObjectBA
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DC6BC

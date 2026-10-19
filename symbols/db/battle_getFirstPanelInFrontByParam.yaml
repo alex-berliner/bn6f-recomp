@@ -1,0 +1,49 @@
+name: battle_getFirstPanelInFrontByParam
+address: '0x080E3264'
+kind: function
+status: probable
+summary: Finds the first panel in the battle object's facing direction whose panel state matches an alliance-dependent
+  panel parameter entry.
+interface: (r5 = battle object) -> r0 = first matching panel or NULL; flags clobbered
+details: 'Reads the object''s PanelX/PanelY and calls object_getFrontDirection to get the +1/-1 facing
+  multiplier. It then fetches an entry from the panel-effect parameter table via GetAllianceDependentPanelParamArgs
+  using a fixed table pointer (off_80E3280, entry code 0x30), which yields a param word and an args pointer
+  keyed by the object''s alliance. Those results plus the direction are forwarded to object_getFirstPanelInDirectionFiltered,
+  which scans panels from the object''s position outward in that direction applying the param/args as
+  the match filter, and its result is returned directly. The function is a thin wrapper: it supplies the
+  direction and the filter criteria but holds no state of its own.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_getFrontDirection then use of r0 as first arg to the filtered search shows direction
+    comes from the object's facing; ldrb r0/r1 from oBattleObject_PanelX/PanelY are passed as the starting
+    panel coordinates; ldr r3, =off_80E3280 passed to GetAllianceDependentPanelParamArgs supplies a fixed
+    parameter-table entry (code 0x30); result of GetAllianceDependentPanelParamArgs is chained straight
+    into object_getFirstPanelInDirectionFiltered whose result is returned; only caller sub_80E3290 is
+    itself undocumented, so behavior is confirmed only by the callee chain
+  refs:
+  - bn6f/asm/asm31.s:93639
+  - 0x080E3290 sub_80E3290
+  - 0x081096FA GetAllianceDependentPanelParamArgs
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800D0BC object_getFirstPanelInDirectionFiltered
+  reproduce: python3 tools/asmcat.py 0x080E3264
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- exact meaning of param entry 0x30 in the panel-effect table (which panel states match the filter)
+- what object_getFirstPanelInDirectionFiltered returns on failure (NULL vs 0) and its argument order
+- which battle context calls sub_80E3290 and what it does with the found panel
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E3264 -> battle_getFirstPanelInFrontByParam
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E3264

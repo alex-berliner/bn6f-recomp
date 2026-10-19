@@ -1,0 +1,50 @@
+name: sprite_queueGfxBatchAndDispatch
+address: '0x0801DD88'
+kind: function
+status: probable
+summary: Queues a fixed batch of four graphics transfer requests (two VRAM tiles blocks, one palette/buffer
+  block, one small block), sets request bit 8 in the eStruct2035280 request dword, and dispatches pending
+  transfers.
+interface: () -> void; r0 clobbered as scratch for the bit mask and dispatch id
+details: 'The function passes a pointer to a static, null-terminated 12-byte-per-entry transfer list (off_801DDA4)
+  to QueueGFXTransfersInList. The list has four entries: dword_86BA0A0 -> 0x600C940 (0x40 bytes, VRAM),
+  dword_86F2E00 -> 0x3001670 (0x20 bytes, an IWRAM destination, so the queue helper copies to arbitrary
+  addresses, not just VRAM), byte_86F2D00 -> 0x6016D00 (0x80 bytes) and byte_86F2D80 -> 0x6016D80 (0x80
+  bytes). After queueing, it ORs bit 3 (mask 8) into eStruct2035280+0x40 via eStruct2035280_SetRequestBits_801BECC,
+  then calls dispatch_801DA48 with r0=8, which presumably processes the request flagged by that same bit.
+  The whole routine is parameterless and self-contained, typical of a one-shot ''load this screen''s graphics''
+  helper.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl QueueGFXTransfersInList with r0=off_801DDA0 loads the hardcoded list at off_801DDA4; list
+    entries pair ROM data pointers (dword_86BA0A0, dword_86F2E00, byte_86F2D00/D80) with VRAM/IWRAM destinations
+    and sizes, terminated by 0; mov r0,#8; bl eStruct2035280_SetRequestBits_801BECC sets bit 8 in the
+    request dword at +0x40; mov r0,#8; bl dispatch_801DA48 mirrors the same id, tying the dispatch to
+    the request bit just set; no arguments are read and lr is the only stacked register: a parameterless
+    init/load routine'
+  refs:
+  - bn6f/asm/asm00_2.s:31220
+  - 0x08000B8E QueueGFXTransfersInList
+  - 0x0801BECC eStruct2035280_SetRequestBits_801BECC
+  - 0x0801DA48 dispatch_801DA48
+  reproduce: python3 tools/asmcat.py 0x0801DD88
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- No callers known, so the game context (which menu/screen these gfx belong to) is unidentified
+- What dispatch_801DA48's id 8 actually triggers (DMA flush vs. queue drain) is unconfirmed
+- Whether dword_86BA0A0 is packed (LZ77) graphics or raw depends on data not shown here
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_801DD88 -> sprite_queueGfxBatchAndDispatch
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_801DD88

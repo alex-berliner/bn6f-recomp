@@ -1,0 +1,54 @@
+name: chipAnimFolderCycle
+address: '0x0802B80C'
+kind: function
+status: probable
+summary: 'Per-frame step of the chip-folder cycling animation: every 8 frames it renders the next row''s
+  chip name into the name-glyph buffers, updates the BG tilemap row, plays a scroll blip, and ends the
+  animation when all rows are shown.'
+interface: (r5 = animation state struct) -> r0 = clobbered; state struct updated, SFX may play
+details: 'Uses a state struct at r5: +0x10 frame counter, +0x06 count of entries in the first (highlighted)
+  band, +0x07 count in the second band, +0x08 total rows, +0x14 an array of halfword chip IDs. Every call
+  increments the counter and only acts when counter&7==0, i.e. one row per 8 frames. The chip ID at r5+0x14+(counter>>2)*2
+  is split via chip_SelectNameTextTable_8027D10 and its name is rendered by renderTextGfx_8045F8C twice:
+  once to buffer byte_203C4E0 into VRAM 0x6009560+slot*0x48 with parameter 9, and again to byte_203C6E0
+  into 0x6009760+slot*0x48 with parameter 1 (skipped if the returned width exceeds 0x160) — two style/palette
+  variants of the same name. It then picks tilemap base 0xa0ab for rows inside the first band or 0xd0ab
+  for the second band, plays SFX 0x91, and calls sub_802B8B0 with a 0x12 (18-tile) row stride to stamp
+  the name tiles into the BG map. When row+1 reaches the count at r5+8 it stores state 0xC into r5+1 and
+  zeroes the counter, handing control to the next animation state; the 0xC state byte implies this is
+  one step of a scripted state machine (likely the folder-open chip shuffle).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'tst r0,#7 / bne: acts only every 8th frame of counter at r5+0x10; ldrh r0,[r5,r0] with r0=(counter>>2)+0x14:
+    reads chip ID from halfword array, fed to chip_SelectNameTextTable_8027D10; two renderTextGfx_8045F8C
+    calls write 0x6009560/0x6009760 + slot*0x48 with byte_203C4E0/byte_203C6E0 and differing r4 (9 vs
+    1); 0xa0ab vs 0xd0ab chosen by comparing counter>>3 against r5+6/r5+7, plus SFX 0x91, passed with
+    0x12 stride to sub_802B8B0 (tilemap row write); counter>>3+1 >= [r5+8] terminates: state byte r5+1
+    = 0xC and counter reset'
+  refs:
+  - bn6f/asm/asm03_0.s:11545
+  - 0x080005CC PlaySoundEffect
+  - 0x08027D10 chip_SelectNameTextTable_8027D10
+  - 0x08045F8C renderTextGfx_8045F8C
+  reproduce: python3 tools/asmcat.py 0x0802B80C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- No caller is known, so the exact screen/state that drives this (folder-open shuffle vs chip-order display)
+  and how state 0xC is dispatched are unconfirmed
+- The exact meaning of the two render variants (r4=9 vs r4=1) and the fields at r5+6/r5+7 (regular vs
+  tag/extra chips?) would need the surrounding state machine or sub_802B8B0's writer to confirm
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_802B80C -> chipAnimFolderCycle
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802B80C

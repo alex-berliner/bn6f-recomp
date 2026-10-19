@@ -1,0 +1,45 @@
+name: battle_objectGroundShakeUpdate
+address: '0x080BF8DA'
+kind: function
+status: probable
+summary: Phase-update handler for a battle object that shakes the camera, loops a rumble sound effect,
+  and periodically calls a helper for ~0x6A frames before advancing the phase.
+interface: (r5 = battle object, no args in r0) -> void; on completion writes phase 8 into oBattleObject_CurPhaseAndPhaseInitialized
+details: On first entry it resets Timer/Timer2, plays the object's animation index 2 via battle_setObjectAnim,
+  triggers a camera shake (magnitude 2, duration 0x6A) via camera_initShakeEffect_80302a8, and sets PhaseInitialized=4.
+  While active it plays sound effect 0x12B every time Timer2 wraps (every 16 frames), and at Timer==0/8/16
+  calls sub_80BFD02 with r0=0/1/2 and r1=0x5A — three evenly spaced events, likely spawning debris or
+  impact effects. After Timer exceeds 0x6A (matching the camera shake duration) the object's phase is
+  advanced to 8. r5 holds the battle object pointer per the engine's update-handler convention.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldr [r5,#oBattleObject_ExtraVars] + battle_setObjectAnim(anim=2) runs an object animation once
+    on entry; camera_initShakeEffect_80302a8(2, 0x6A) matches the phase's total frame count (0x5A+0x10=0x6A);
+    PlaySoundEffect(0x2C+0xFF=0x12B) whenever Timer2==0, and Timer2 wraps every 0x10 frames, giving a
+    repeating rumble; sub_80BFD02(0/1/2, 0x5A) called at Timer==0, 8, 16 — three periodic spawns/effects;
+    Timer>0x6A writes 8 to oBattleObject_CurPhaseAndPhaseInitialized, advancing to the next phase
+  refs:
+  - bn6f/asm/asm31.s:16331
+  - 0x080005CC PlaySoundEffect
+  - 0x080B8E70 battle_setObjectAnim
+  - 0x080302A8 camera_initShakeEffect_80302a8
+  reproduce: python3 tools/asmcat.py 0x080BF8DA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- what sub_80BFD02(r0=0..2, r1=0x5A) spawns or does (would confirm debris vs. other effect)
+- which battle object / attack uses this phase (no callers known)
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BF8DA -> battle_objectGroundShakeUpdate
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BF8DA

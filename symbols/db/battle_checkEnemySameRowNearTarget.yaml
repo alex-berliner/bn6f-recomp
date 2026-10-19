@@ -1,0 +1,51 @@
+name: battle_checkEnemySameRowNearTarget
+address: '0x0810AC38'
+kind: function
+status: probable
+summary: 'Battle-side condition check: finds the closest enemy battle object, and if no blockers exist,
+  the enemy is on the same row and within half a panel of this object''s x-position, stores it as a target
+  and returns 1.'
+interface: (r5 = source battle object, r7 = caller work struct) -> r0 = 1 if a target was found and stored
+  at [r7,#0x2c], else 0
+details: 'First it tests the latch [r5,#0x6c]: if set it just clears the latch and returns 0, so the check
+  only fires once per latch set. It then reads the object''s flag word via object_getFlag and bails out
+  (return 0) if any of the bits in 0xa000 are set, and also bails if FindBattleActorsWithNonzeroParam_ReturnCountAndSum(0x60,
+  0xd, 0x12) reports any matching actors. Otherwise it calls battleObject_findClosestEnemyBattleObject
+  with the panel coordinate [r5,#0x16] XOR 1, compares the found object''s [#+0x13] (row/panel-y) with
+  the source''s, and requires |found[#0x38] - src[#0x38]| <= 0x8000 (i.e. x-positions within half of 0x10000).
+  On success the found object pointer is written to [r7,#0x2c] and 1 is returned; all failures return
+  0 without writing.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldr r0,[r5,#0x6c]; tst/bne loc_810AC82 clears the latch and returns 0 — one-shot gate; tst r0,
+    dword_810AE2C(0xa000) after object_getFlag — early-out on specific object flag bits; bl FindBattleActorsWithNonzeroParam_ReturnCountAndSum
+    with (0x60,0xd,0x12); bne return 0; eor r0,#1 on [r5,#0x16] then bl battleObject_findClosestEnemyBattleObject_80103F8;
+    cmp [r0,#0x13] vs [r5,#0x13] — same-row check; ldr r2,0x8000; cmp |[r0,#0x38]-[r5,#0x38]|; str r0,[r7,#0x2c];
+    mov r0,#1 — proximity test then target store and success return
+  refs:
+  - bn6f/asm/asm31.s:177172
+  - 0x080103F8 battleObject_findClosestEnemyBattleObject_80103F8
+  - 0x0801A166 object_getFlag
+  - 0x08109630 FindBattleActorsWithNonzeroParam_ReturnCountAndSum
+  reproduce: python3 tools/asmcat.py 0x0810AC38
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- Exact meaning of the 0xa000 flag bits and the (0x60,0xd,0x12) arguments to the actor-count callee
+- What field [r5,#0x16] is (panel x? facing?) and why it is XORed with 1 before the closest-enemy search
+- What structure r7 points to and who consumes [r7,#0x2c] — no callers are known, so the AI/behavior context
+  is unconfirmed
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_810AC38 -> battle_checkEnemySameRowNearTarget
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810AC38

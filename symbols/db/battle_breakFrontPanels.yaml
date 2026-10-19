@@ -1,0 +1,50 @@
+name: battle_breakFrontPanels
+address: '0x080BAE7A'
+kind: function
+status: probable
+summary: A battle-object attack step that marks the two panels in the column directly in front of the
+  object as panel type 7 (likely cracked/broken) and spawns a panel effect on them.
+interface: (r0/r5 = battle object) -> void; r0 clobbered
+details: 'Loops twice over a counter r7 running -1 then 0, so it processes the tiles at (panelX + frontDir,
+  panelY - 1) and (panelX + frontDir, panelY): the front column, upper and lower tile. For each tile it
+  calls sub_80D6EB0 with the coords (also pushed on the stack), r2=2 and a word-sized constant 0x1_1E00
+  built in r4/r3, apparently to spawn a panel-change effect or set appearance data. It then calls object_isPanelSolid
+  on the same coords and, if the panel is solid, calls object_setPanelType(x, y, 7), converting it to
+  panel type 7 (cracked/broken/holes-style state). r5 is the battle object pointer, using oBattleObject_PanelX/PanelY
+  and the DamageAndStaminaDamageCounterDisabler field which it reads into r6 but never uses afterwards
+  (likely a preserved-context quirk of the surrounding script).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: loop bounds 'mov r7,#0 / sub r7,#1 ... add r7,#1 / cmp r7,#1 / ble' give exactly the two y-offsets
+    -1 and 0; 'bl object_getFrontDirection; ldrb r1,[r5,#oBattleObject_PanelX]; add r0,r0,r1' computes
+    the facing column's x; conditional 'bl object_isPanelSolid ... beq skip; mov r2,#7; bl object_setPanelType'
+    only rewrites solid panels to type 7; callee object_setPanelType and object_isPanelSolid are known
+    panel-parameter routines, matching a panel-modifying attack; sub_80D6EB0 is called with the same tile
+    coords plus r2=2 and constant 0x1_1E00, consistent with a tile-effect/appearance setter
+  refs:
+  - bn6f/asm/asm31.s:6144
+  - 0x080BAD06 sub_80BAD06
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800CCB2 object_isPanelSolid
+  - 0x0800CC0A object_setPanelType
+  reproduce: python3 tools/asmcat.py 0x080BAE7A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- exact meaning of panel type 7 (cracked vs broken vs hole) and of the r2=2 / 0x1_1E00 arguments to sub_80D6EB0
+- which attack or object script (caller sub_80BAD06) triggers this, and why the object's damage-counter
+  field is loaded but unused
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BAE7A -> battle_breakFrontPanels
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BAE7A

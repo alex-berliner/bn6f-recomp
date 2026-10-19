@@ -1,0 +1,52 @@
+name: object_panelSlideMovementStep
+address: '0x080CE932'
+kind: function
+status: probable
+summary: 'Per-frame update for a battle object sliding horizontally panel-by-panel: it advances X until
+  it crosses into the next panel, then re-syncs grid/collision, and once the configured panel count is
+  exhausted it hands control to the next action.'
+interface: (r5 = battle object ptr, implied) -> updates oBattleObject fields in place; r0 clobbered
+details: Runs as an object state-machine step. Each frame it adds oBattleObject_XVelocity to oBattleObject_X
+  and, via convertXYToPanelXY, checks whether the object has entered a new column; on crossing it updates
+  PanelX in both the object and its CollisionDataPtr and re-registers collision region 1. A countdown
+  Timer (reset to 8 frames) gates the panel snap via object_setCoordinatesFromPanels, and a counter in
+  oBattleObject_ExtraVars counts remaining panels to travel (ExtraVars+8 acts as an optional wait/hold
+  flag checked when Param2 != 0). When the travel counter runs out it sets ExtraVars+0x10 = 1 (an arrival
+  flag); then if Param2 != 1 it computes Param3 - remaining as a new value stored at ExtraVars+0xc, sets
+  CurAction = 4 and phase = 0 to transition to the next behavior, whereas Param2 == 1 instead calls sub_80E8612
+  on the related object with (Param3 - remaining, remaining).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldr r1,[XVelocity]; add X,X,r1; bl convertXYToPanelXY; strb r0,[PanelX] — per-frame horizontal
+    motion with panel-crossing detection; strb r0,[r7,#oCollisionData_PanelX]; mov r0,#1; bl object_setCollisionRegion
+    — collision column is re-registered on each panel change; sub Timer; bne path A; bl object_setCoordinatesFromPanels;
+    sub ExtraVars,#1; ble loc_80CE97A — countdown snaps to panel grid and decrements a panels-remaining
+    counter; mov r0,#1; str r0,[ExtraVars+0x10] ... mov r0,#4; strb r0,[CurAction]; strh r0,[CurPhase]
+    — sets an 'arrived' flag and transitions to next action when movement finishes; callees object_setCoordinatesFromPanels
+    / object_setCollisionRegion summaries confirm grid-sync and collision update semantics
+  refs:
+  - bn6f/asm/asm31.s:49221
+  - 0x0800E258 convertXYToPanelXY_800E258
+  - 0x0801A07C object_setCollisionRegion
+  - 0x0800E29C object_setCoordinatesFromPanels
+  reproduce: python3 tools/asmcat.py 0x080CE932
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- Meaning of Param2/Param3 and the sub_80E8612 call in the Param2==1 branch (likely notifies a related
+  object with remaining-travel data)
+- Which spawn/enemy setups configure Timer=8, XVelocity and the ExtraVars counter to reach this state
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CE932 -> object_panelSlideMovementStep
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CE932

@@ -1,0 +1,51 @@
+name: battle_spawnBlockerIfPanelAheadSolid
+address: '0x080F7520'
+kind: function
+status: probable
+summary: If the panel one step in front of a battle object is solid, spawns a collision region on it so
+  movement into that panel is blocked.
+interface: (r0 = battle object, r5 also points to the object) -> r0 = spawn result/0; no meaningful flags
+details: Reads the object's facing step from object_getEnemyDirection (player side +1, enemy side -1)
+  and adds it to oBattleObject_PanelX, keeping oBattleObject_PanelY as the row. It then tests object_isPanelSolid
+  (solid-panel flag 0x10 of the panel parameters) for that adjacent panel. If the panel is solid, it calls
+  object_spawnCollisionRegion with the panel coordinates (r0,r1 popped back after the tst), r2=0, r3=0,
+  packed region params 0x4050601 (bytes 01 06 05 04, likely offsets/extent and flags), and r7=3 (region
+  kind/team). If the panel is not solid, it does nothing and returns. r4/r6/r7 are callee-saved and reused
+  for the spawn arguments, so the caller's r5 object pointer is the only real input.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_getEnemyDirection then add r0, r0, r1 with oBattleObject_PanelX: computes adjacent
+    panel in facing direction; bl object_isPanelSolid with tst/beq locret: only acts when that panel is
+    solid; ldr r4, dword_80F7548 =0x4050601 and mov r7,#3 before bl object_spawnCollisionRegion: spawns
+    a blocker region with fixed geometry; Callers sub_80F67B6/80F6C96/80F6EA6 sit among battle enemy-object
+    handlers sharing the dispatch table off_80F763C; Callee object_spawnCollisionRegion is the known collision-region
+    spawner, confirming the effect is a field blocker'
+  refs:
+  - bn6f/asm/asm31.s:136466
+  - 0x080F67B6 sub_80F67B6
+  - 0x080F6C96 sub_80F6C96
+  - 0x080F6EA6 sub_80F6EA6
+  - 0x0800E2C0 object_getEnemyDirection
+  - 0x0800CCB2 object_isPanelSolid
+  - 0x080C536A object_spawnCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080F7520
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- Exact meaning of the packed argument 0x4050601 and r7=3 in object_spawnCollisionRegion (region size
+  vs. flags vs. team)
+- Which specific enemy behaviors call this — the three callers' own purposes are still unnamed
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F7520 -> battle_spawnBlockerIfPanelAheadSolid
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F7520

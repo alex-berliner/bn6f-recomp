@@ -1,0 +1,46 @@
+name: pet_recalcCurrentNaviHp
+address: '0x0803CF10'
+kind: function
+status: probable
+summary: Recomputes the selected PET navi's 16-bit stat 0x42 as stat 0x3E plus a global modifier, clamped
+  to at least 1.
+interface: () -> void; no return value, no flags used
+details: Gets the currently selected navi via GetCurPETNavi, then reads its u16 stat field 0x3E from the
+  navi-stats table. It loads a halfword from the toolkit through the pointer at Unk2004334, adds it to
+  that stat, clamps the sum to a minimum of 1, and writes the result back into stat field 0x42 of the
+  same navi via SetCurPETNaviStatsHword. The clamp to >=1 strongly suggests this is HP (or an HP-like
+  counter) that must never reach zero. The Unk2004334 halfword acts as an additive adjustment (possibly
+  negative, since the clamp is needed) held outside the navi-stats table, e.g. a temporary debuff or mode
+  modifier.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sub_803CF10+4: bl GetCurPETNavi then GetCurPETNaviStatsHword(navi, 0x3e) reads the base value;
+    sub_803CF10+0xC: ldrh from toolkit->Unk2004334_Ptr->[0] supplies the additive modifier; sub_803CF10+0x12:
+    cmp r7,#1 / bge / mov r7,#1 clamps the result to a minimum of 1; sub_803CF10+0x1A: bl SetCurPETNaviStatsHword(navi,
+    0x42, r7) stores the result into stat 0x42'
+  refs:
+  - bn6f/asm/asm03_1_1.s:8710
+  - 0x080010B6 GetCurPETNavi
+  - 0x080137FE GetCurPETNaviStatsHword
+  - 0x080137E6 SetCurPETNaviStatsHword
+  reproduce: python3 tools/asmcat.py 0x0803CF10
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- What stat fields 0x3E and 0x42 of the NaviStats table actually are (HP assumed from the >=1 clamp)
+- What the value behind toolkit Unk2004334_Ptr represents and who writes it (no callers of this function
+  are known)
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803CF10 -> pet_recalcCurrentNaviHp
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803CF10

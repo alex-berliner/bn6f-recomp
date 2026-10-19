@@ -1,0 +1,50 @@
+name: e_packScreenNaviId
+address: '0x08132670'
+kind: function
+status: probable
+summary: Looks up the current eLink/communication screen in a small table and packs its index together
+  with the PET's selected navi (gated by an event flag) into one returned ID.
+interface: '() -> r0 = (screenIndex << 4) | (EVENT_163 ? currentPETNavi : 0); flags clobbered'
+details: 'Reads the halfword at eLinkState+0xA (a screen/state id) and scans the 11-entry halfword table
+  at byte_81326B0 (0,1,0x10,0x11,0x20,0x21,0x100,0x110,0x200,0x210,0x220) for a match; if no entry matches,
+  r4 stays at 0x16 and lsr/lsl #4 maps it to index 11 (0xB0). The match index is shifted left by 4 into
+  the high bits. It then calls GetCurPETNavi for the navi selected on the PET, but forces that to 0 (HeatElec?)
+  unless story flag EVENT_163 is set, and ORs the navi into the low nibble. The returned value is thus
+  a combined (screen, navi) selector, presumably consumed by link/communication handling. The .word sSubmenu
+  in the literal pool is not referenced by this function''s code, and byte_81326C8 right after looks like
+  the start of a separate 0xFF-terminated table.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: loc_813267E loop compares eLinkState+0xA (ldrh [r2,#0xa]) against the halfword table at byte_81326B0,
+    11 entries (cmp r4,#0x16); lsr/lsl r4,#4 converts the match index into the high nibble of the result;
+    bl GetCurPETNavi supplies the low nibble, cleared to 0 when 'movflag EVENT_163' / TestEventFlagFromImmediate
+    fails (bne loc_81326A0); Callee sub_803E8F8 returns the eLinkState global, tying this to link/communication
+    state; Caller sub_8132664 sits immediately before, suggesting a thin wrapper around this routine
+  refs:
+  - bn6f/asm/asm36.s:4903
+  - 0x0812A168 sub_812A168
+  - 0x08132664 sub_8132664
+  - 0x080010B6 GetCurPETNavi
+  - 0x0802F164 TestEventFlagFromImmediate
+  - 0x0803E8F8 sub_803E8F8
+  reproduce: python3 tools/asmcat.py 0x08132670
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- What eLinkState+0xA actually enumerates (its writers would confirm the 11 mapped screens)
+- Who consumes the returned packed ID and for what link feature
+- What EVENT_163 unlocks that gates the navi field
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8132670 -> e_packScreenNaviId
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8132670

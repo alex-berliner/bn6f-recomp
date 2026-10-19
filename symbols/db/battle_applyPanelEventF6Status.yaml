@@ -1,0 +1,50 @@
+name: battle_applyPanelEventF6Status
+address: '0x0801A77A'
+kind: function
+status: probable
+summary: 'Per-frame panel-event handler: when a battle object stands on the 0xF6 panel type, starts a
+  150-frame status via flag 0x8, blinds it (flag 0x20, 1200-frame blind timer) unless its object ID is
+  in a specific 12-entry range, then consumes the event.'
+interface: (r0 = battle object, r5 assumed = same object base) -> r0 = 0 from object_setFlag2 / event
+  consumed; no meaningful return
+details: 'Reads the panel/collision event byte at oBattleObject_CollisionDataPtr+0xA4 and bails if it
+  is not 0xF6. On match it sets flags2 bit 0x8 and stores 0x96 (150) into oCollisionData_StatusEffectTimer1.
+  It then computes NameID - 0x173: if the object ID is NOT in 0x173..0x17E (signed/upper bound via bmi/ble),
+  it sets flags2 bit 0x20 and writes 0x4B0 (1200) into oCollisionData_BlindTimer, i.e. the blind/status
+  exclusion only applies to that ID range. Finally it zeroes byte 0xA4 so the panel event fires only once.
+  The trailing words (off_80209EC, 0x1000, 0x106, 0x4B0) look like neighboring table data, not operands
+  of this routine.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'cmp r1,#0xF6 after ldrb from collisionData+0xA4 gates the entire body; strh #0x96,[r4,#oCollisionData_StatusEffectTimer1]
+    plus object_setFlag2(0x8) starts the primary status; NameID minus 0x173 with cmp #0xB gates the blind
+    branch: flag2 0x20 and BlindTimer 0x4B0; strb r0=0 to [r4,#0xA4] clears the panel event so it does
+    not retrigger; both callers are documented 0xF6 collision hooks that run follow-up handlers, consistent
+    with an event-processing tail'
+  refs:
+  - bn6f/asm/asm00_2.s:23795
+  - 0x0801A75A battle_aiAimTwoColumnsAheadOnSpecialPanel_801A75A
+  - 0x0801A720 battle_buffTwoStatsPlus2OnEventF6_801A720
+  - 0x0801A16C object_setFlag2
+  reproduce: python3 tools/asmcat.py 0x0801A77A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- which panel type 0xF6 actually is (grass/poison/dark etc.) and what the 0x8-flag status with timer 0x96
+  does in-game
+- what objects 0x173-0x17E are and why they are immune to the blind effect
+- semantics of flags2 bits 0x8 and 0x20 and oCollisionData_BlindTimer elsewhere in the codebase
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_801A77A -> battle_applyPanelEventF6Status
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_801A77A

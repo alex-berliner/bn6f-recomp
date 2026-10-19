@@ -1,0 +1,49 @@
+name: ai_clearAllianceState
+address: '0x0802E1EC'
+kind: function
+status: probable
+summary: 'Resets one alliance''s AI state record: zeroes two state bytes in its 0x1D0-byte entry and clears
+  the state-flag bits in the battle object''s AIData Unk_44.'
+interface: (r0 = unused/mask source is internal; r5 = battle object) -> r0 = 0 from flag clear; no flag
+  returns
+details: Reads the battle object's Alliance byte (r5+oBattleObject_Alliance) and uses it as the index
+  into the fixed 0x1D0-stride record array at unk_2036120 via getEntryPtr_2036120_1D0_802E070. It zeroes
+  bytes 0x40 and 0x41 of that alliance's record (likely a state id and a counter/timer pair). It then
+  calls ClearAIData_Unk_44_Flag with mask 0x1F00000, i.e. bits 20-24 of the object's AI-data flags word
+  Unk_44, releasing the corresponding AI state/condition bits. The immediate caller is the AI tick handler
+  that reacts to bubble/kick timer flags, so this runs when such a per-alliance state expires or is dropped.
+  The caller already handles the flag set/clear side (kick+bubble set, invulnerability on bubble expiry),
+  which matches this being the state teardown half.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#oBattleObject_Alliance]; bl getEntryPtr_2036120_1D0_802E070 — indexes the 0x1D0
+    array by the object's alliance; strb r1 (0) to [r0,#0x40] and [r0,#0x41] — clears two byte fields
+    of the alliance record; ldr r0,=0x1F00000; bl ClearAIData_Unk_44_Flag — clears bits 20-24 of the object's
+    AIData Unk_44 flags; caller battleObject_tickAITimerFlags_802E4E4 polls Unk_44 timer flags for kick/bubble
+    states, fitting a state-reset helper
+  refs:
+  - bn6f/asm/asm03_0.s:17258
+  - 0x0802E4E4 battleObject_tickAITimerFlags_802E4E4
+  - 0x0800FFEE ClearAIData_Unk_44_Flag
+  - 0x0802E070 getEntryPtr_2036120_1D0_802E070
+  reproduce: python3 tools/asmcat.py 0x0802E1EC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- Exact meaning of record bytes 0x40/0x41 (state id vs. counters) needs the record's writer to confirm
+- Which gameplay state bits 20-24 of Unk_44 encode — likely bubble/kick-related, but a full Unk_44 bit
+  map is unknown
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_802E1EC -> ai_clearAllianceState
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802E1EC

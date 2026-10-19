@@ -1,0 +1,47 @@
+name: object_moveToPlayerPanel
+address: '0x080C3460'
+kind: function
+status: probable
+summary: Places a battle object on the player's current panel (if that panel passes a type check) or on
+  a default panel of the object's own side, then recomputes its pixel position.
+interface: (r5 = battle object, r4 = entry index into table byte_80C34A8) -> r0 = 0; sets oBattleObject_PanelX/PanelY/Z
+details: Looks up the allied player via battle_findPlayer(object's Alliance) and reads the player's PanelX/PanelY.
+  With r4*8 selecting an 8-byte entry of byte_80C34A8 (two word pairs used as all-set/none-set panel flag
+  masks), it calls object_checkPanelParameters on the player's panel; if the check fails, it falls back
+  to PanelX = Alliance*5+1 (column 1 for player side, 6 for enemy side) and PanelY = 2. It stores the
+  chosen coordinates into the object, calls object_setCoordinatesFromPanels to refresh pixel X/Y, and
+  zeroes oBattleObject_Z (ground level). Only two table entries exist, so r4 acts as a variant selector.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl battle_findPlayer then ldrb PanelX/PanelY from the returned player object; lsl r4,r4,#3
+    + ldr r2/[r6,r4]/ldr r3/[r6,r4+4] index 8-byte mask pairs of byte_80C34A8 for object_checkPanelParameters;
+    fallback mov r1,#5 / mul / add #1 / mov r1,#2 computes (Alliance*5+1, 2) as default panel; strb r0/r1
+    to PanelX/PanelY then bl object_setCoordinatesFromPanels and str 0 to oBattleObject_Z'
+  refs:
+  - bn6f/asm/asm31.s:24705
+  - 0x080C323C sub_80C323C
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0800E29C object_setCoordinatesFromPanels
+  - 0x080103BC battle_findPlayer
+  reproduce: python3 tools/asmcat.py 0x080C3460
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- What panel-flag masks 0x10000/0x20 and 0x10020/0 represent (which panel states are rejected), i.e. what
+  the two r4 variants distinguish
+- Which object uses this — caller sub_80C323C is unknown, so the game context (trap, summon, moving object?)
+  is unconfirmed
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C3460 -> object_moveToPlayerPanel
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C3460

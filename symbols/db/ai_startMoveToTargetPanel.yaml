@@ -1,0 +1,51 @@
+name: ai_startMoveToTargetPanel
+address: '0x080F6748'
+kind: function
+status: probable
+summary: 'AI attack-state step: pick a target panel via callback and set the object up to dash/charge
+  onto it, or bail out of the attack.'
+interface: '(uses per-object AI vars in r7: TargetObjectPtr, PanelChooseCallback) -> HasMoved byte = 1
+  on success / 0 on failure; sets object flags, anim, timers'
+details: 'First the object''s movement is gated by object_canMove; if blocked (or the panel-choose callback
+  returns y=0), it clears HasMoved and calls object_exitAttackState, aborting this attack step. On success
+  it calls the PanelChooseCallback function pointer with lr=pc, which returns the target panel in r0=x,
+  r1=y (tst r1,r1 validates), stores them into TargetPanelX/Y. It then sets the object''s flags CANNOT_SLIDE
+  plus bit 22 (likely the ''traveling/invulnerable during dash'' flag) via object_setFlag1, switches the
+  battle object to animation 4, and initializes the AI attack vars: ScratchVar=0, HasMoved=1, StepTimer=3,
+  HitElement=4. This reads as the setup half of a generic AI ''dash to chosen panel'' attack used by many
+  enemies, with the rest of the movement handled by the shared AI attack loop that reads these vars.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: beq after bl object_canMove routes to failure path that clears HasMoved and calls object_exitAttackState
+    (loc_80F6784); mov lr, pc; bx r1 with r1=[r7,#oAIAttackVars_PanelChooseCallback] — indirect call returning
+    x/y stored to TargetPanelX/Y bytes; two bl object_setFlag1 calls set CANNOT_SLIDE and bit 22 on the
+    object's flags before the move starts; strb anim 4 to [r5,#oBattleObject_CurAnim] and StepTimer=3
+    / HitElement=4 written to the r7 AI-attack struct; callees object_canMove/object_setFlag1/object_exitAttackState
+    are all battle-object helpers, matching an AI attack-movement state
+  refs:
+  - bn6f/asm/asm31.s:134686
+  - 0x0800E5E2 object_canMove
+  - 0x0801A152 object_setFlag1
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x080F6748
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- exact meaning of OBJECT_FLAGS_UNK_BIT_22 and animation 4
+- which PanelChooseCallback implementations are installed (callers unknown), so the panel-choice strategy
+  (e.g. target's panel vs random) is unconfirmed
+- whether HitElement=4 means 'none' or a specific element for the dash's hitbox
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F6748 -> ai_startMoveToTargetPanel
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F6748

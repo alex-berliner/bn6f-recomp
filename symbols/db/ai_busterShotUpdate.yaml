@@ -1,0 +1,49 @@
+name: ai_busterShotUpdate
+address: '0x080EC556'
+kind: function
+status: probable
+summary: 'Per-frame update for a held-button buster-style AI attack: repeats the attack step while the
+  fire button is held, otherwise tears down and exits the attack state.'
+interface: (r5 = battle object, r7 = AI attack vars block) -> r0 = destroyed; no meaningful return
+details: On entry it clears oBattleObject_RelatedObject1Ptr and clears the AIData TempAttackObjectPtr
+  via sub_80B8E58, detaching any spawned attack object. It then decrements oAIAttackVars_TimerOrCycles;
+  the attack only proceeds once the timer reaches zero. On timeout it checks NaviStats byte 0x2C != 0x17
+  (0x17 forces exit), an AIData flag at 0x44 masked with 0x10000 (set forces exit), that oAIData_ActorType
+  == 2 (player-side actor), and that the joypad-held word has bit 1 (0x2) set. If all pass, it sets oAIAttackVars_ScratchVar
+  = 4, clears oAIAttackVars_HitElement, and calls sub_80EC490 to run the next attack step (likely firing
+  a shot and reloading the timer); otherwise it calls object_exitAttackState. The dword_80EC5B0/B4 constant
+  tables are likely shared with sibling attack handlers via off_80EC5A8/5AC, not used by this body itself.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r7,#oAIAttackVars_TimerOrCycles] + decrement loop gates the attack on a frame countdown;
+    ldrh r0,[r0,#oAIData_JoypadHeld]; tst r0,#2 requires the (player) button to stay held to continue;
+    cmp r0,#0x17 / tst with 0x10000 act as abort conditions before calling the attack step; mov r0,#4;
+    str [r7,#oAIAttackVars_ScratchVar]; bl sub_80EC490 advances to the attack's next phase; fallthrough
+    bl object_exitAttackState ends the attack when any hold/abort condition fails
+  refs:
+  - bn6f/asm/asm31.s:113436
+  - 0x0800FFFE GetAIData_Unk_44_Flag
+  - 0x08013774 GetBattleNaviStatsByte_AllianceFromBattleObject
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x080EC556
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- What sub_80EC490 actually fires (buster shot vs. other projectile) is not shown
+- Meaning of NaviStats byte 0x2C == 0x17 (0x17 = 23) — likely a transform/BeastOut state id that disables
+  this attack
+- Purpose of sub_80B8E58 (assumed TempAttackObjectPtr cleanup) and the 0x20181008/0x606 table entries
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80EC556 -> ai_busterShotUpdate
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EC556

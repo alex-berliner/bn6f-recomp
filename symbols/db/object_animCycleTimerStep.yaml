@@ -1,0 +1,46 @@
+name: object_animCycleTimerStep
+address: '0x0811D058'
+kind: function
+status: probable
+summary: Per-object countdown that, on expiry, plays sprite animation 4+slot and restarts the 15-frame
+  cycle.
+interface: (r0 unused; r5 = object entity) -> void; sets entity+0xC=15, entity+0x9=0x10 when timer fires
+details: 'r5 points to an object entity structure. The halfword at +0xC is a frame countdown: it is decremented
+  and, unless it reached 0, the routine just returns. On expiry it sets the sprite animation index to
+  4 plus the byte at +0x10 (sprite_setAnimation writes it into the sprite slot''s first byte), loads the
+  animation data, and flags the sprite to render without a shadow. It then reloads the countdown with
+  15 and stores 0x10 into the byte at +0x9, likely a per-state/subtimer field. Because the animation base
+  is fixed at 4 and the byte at +0x10 is only read, the caller elsewhere presumably advances that byte
+  to select which of animations 4..x plays each cycle.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrh r0,[r5,#0xc]; sub r0,#1; strh; bne locret — classic frame-countdown gate on entity+0xC;
+    add r0,#4 + ldrb r1,[r5,#0x10] then bl sprite_setAnimation — plays animation 4+byte at +0x10; bl sprite_loadAnimationData
+    and bl sprite_noShadow immediately after — commits the new animation to the renderer; mov r0,#0xf;
+    strh r0,[r5,#0xc] — countdown reloaded to 15, so the trigger repeats every 15 frames; callees sprite_setAnimation/sprite_loadAnimationData/sprite_noShadow
+    all take the object from r5, confirming r5 is an entity
+  refs:
+  - bn6f/asm/asm32.s:30941
+  - 0x080026A4 sprite_loadAnimationData
+  - 0x08002F90 sprite_noShadow
+  - 0x08002DA4 sprite_setAnimation
+  reproduce: python3 tools/asmcat.py 0x0811D058
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- No callers known, so the meaning of entity+0x10 (animation selector) and +0x9 (0x10 store) is unconfirmed;
+  a caller would show whether it increments +0x10 to step through animations each cycle
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_811D058 -> object_animCycleTimerStep
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811D058

@@ -1,0 +1,48 @@
+name: battle_crackPanelAttackPhase
+address: '0x080D2904'
+kind: function
+status: probable
+summary: Phase handler for an attack object that highlights a target panel and cracks it after a timed
+  windup.
+interface: (r0 = unused/discarded, r5 = battle object ptr) -> r0 = object_crackPanel result at end; sets
+  oBattleObject_Param2=1 when phase finishes
+details: On the first run (PhaseInitialized==0) it stores 4 into PhaseInitialized, sets CurAnim=0x12,
+  copies ExtraVars[0x12]/[0x13] (target panel column/row) into Param3/Param4, sets Timer=60 and Timer2=0.
+  Each frame it increments Timer2 and every 8 frames calls object_highlightPanelRegion(col,row,4,AllianceAndDirectionFlip)
+  to pulse a highlight over the target area. When Timer hits 30 it validates the panel with object_isValidPanel,
+  calls sub_80D2A14 (probably fetches the panel/object state) and sub_80E4FCA with args (col,row,0x10,0x100),
+  likely spawning a crack effect object. When Timer hits 20 it calls object_crackPanel(col,row), converting
+  the panel to cracked. When Timer reaches 0 it writes 1 to Param2, the phase-complete flag.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ExtraVars[0x12]/[0x13] copied to Param3/Param4 then passed as (col,row) to object_isValidPanel,
+    object_highlightPanelRegion, object_crackPanel; Timer counts 0x3C down with scripted events at 0x1E
+    and 0x14, then Param2=1 at expiry (standard phase-complete pattern); object_crackPanel called exactly
+    once at Timer==0x14, after the highlight pulses (Timer2 bit3 every 8 frames); CurAnim=0x12 and PhaseInitialized=4
+    set on first entry, typical attack-object phase init
+  refs:
+  - bn6f/asm/asm31.s:57907
+  - 0x0800CC72 object_isValidPanel
+  - 0x0800C938 object_crackPanel
+  - 0x0800CCD4 object_highlightPanelRegion
+  reproduce: python3 tools/asmcat.py 0x080D2904
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- Exact meaning of sub_80E4FCA's args (0x10, 0x100) — likely an effect/object spawn type and flags
+- Which attack or boss spawns this object (no callers known), i.e. whose panel-cracking move this is
+- What sub_80D2A14 returns and why it is only used as a discard here
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D2904 -> battle_crackPanelAttackPhase
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D2904

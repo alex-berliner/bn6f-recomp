@@ -1,0 +1,49 @@
+name: object_randomizeLaneSpawnPos
+address: '0x0811E51C'
+kind: function
+status: probable
+summary: Spawns sprite object 0xA1 at a fixed off-screen-right x with a y randomly chosen inside the 32px
+  lane given by its byte 3.
+interface: (r0/r5 = object ptr; reads byte [obj+3] as lane index) -> sets [obj+0xe]=0x15E, [obj+0x12]=lane*0x20+rand32+0x10,
+  [obj+0x14]=0x180000; calls sprite_setCoordinates(0x15E, y); clobbers r0-r2
+details: 'Calls GetRNG and masks the result with 0x1F, so the y jitter is uniform over one 0x20-pixel
+  cell: y = [r5,#3]*0x20 + rand&0x1F + 0x10. The constant halfword 0x15E (350px, right of the visible
+  area) is written both to [r5,#0xe] and passed as the x argument to sprite_setCoordinates, while the
+  computed y goes to [r5,#0x12] and as the y argument. The word 0x180000 stored at [r5,#0x14] is likely
+  a per-frame movement step or timer set once at spawn. Together with caller object_initSpriteObjA1 (sprite
+  0xA1, anim 1, palette 0, priority 2), this initializes a lane-based scrolling object''s spawn position.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl GetRNG then ''and r0,#0x1f'' and ''mul r1,r2'' with r1=0x20: y = lane*32 + rand(0..31) +
+    0x10; ldr r0,=0x15E; strh r0,[r5,#0xe] then bl sprite_setCoordinates with r0=0x15E, r1=y: fixed x,
+    computed y; str r0,=0x180000,[r5,#0x14]: one-time init of a movement/state word; only caller object_initSpriteObjA1
+    sets sprite 0xA1 and kind/state bytes, so this is that object''s spawn-position setup'
+  refs:
+  - bn6f/asm/asm32.s:33411
+  - 0x0811E438 object_initSpriteObjA1
+  - 0x0811E490 sub_811E490
+  - 0x0800151C GetRNG
+  - 0x0800307C sprite_setCoordinates
+  reproduce: python3 tools/asmcat.py 0x0811E51C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- what object sprite 0xA1 is in-game (hazard, pickup, scenery?) — needs the update/tick function or a
+  spawn site
+- meaning of the 0x180000 word at [obj+0x14] (velocity vs. timer)
+- exact argument convention of sprite_setCoordinates (x,y vs. packed field) to confirm the 0x15E constant
+  is x
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_811E51C -> object_randomizeLaneSpawnPos
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811E51C

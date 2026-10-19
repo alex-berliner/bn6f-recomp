@@ -1,0 +1,49 @@
+name: battle_objectPhaseSnapToTarget
+address: '0x080BD788'
+kind: function
+status: probable
+summary: One-shot battle-object phase that snaps the object to a stored target position (playing anim
+  7 flipped or anim 3), then waits 3 frames before advancing to phase 8.
+interface: (r5 = battle object) -> void; writes CurAnim, position fields at +0x34, Z, Timer, PhaseInitialized,
+  and finally CurPhaseAndPhaseInitialized = 8
+details: 'Standard phase-update handler using the PhaseInitialized guard: on first entry, if Param3 is
+  nonzero it sets CurAnim=7 and calls object_getFlip, XORs the result with 1, and passes it to sprite_setFlip
+  (mirrored variant); otherwise it sets CurAnim=3. It then copies 12 bytes from offset +0x40 into +0x34
+  — i.e. loading a target X/Y/Z triple into the object''s current position — calls object_setPanelsFromCoordinates
+  to recompute PanelX/PanelY from the new world coordinates, zeroes Z, and sets Timer=3 with PhaseInitialized=8.
+  On subsequent frames it just decrements Timer and, when it expires, writes phase 8 into CurPhaseAndPhaseInitialized.
+  The 3-frame pause suggests a short landing/settle delay after repositioning.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb [r5,PhaseInitialized]/tst guard plus final 'str 8 into CurPhaseAndPhaseInitialized' is
+    the standard phase-handler pattern; ldmia from r5+0x40 / stmia to r5+0x34 copies a 3-longword position
+    triple, followed by object_setPanelsFromCoordinates; object_getFlip + eor r0,#1 + sprite_setFlip mirrors
+    the sprite for the anim-7 branch; str 3 into oBattleObject_Timer with a decrement-and-bgt loop is
+    a fixed 3-frame wait before phase 8; Param3 chooses between CurAnim=7 (with flip) and CurAnim=3
+  refs:
+  - bn6f/asm/asm31.s:11743
+  - 0x0800E456 object_getFlip
+  - 0x0800E2AC object_setPanelsFromCoordinates
+  - 0x08002F5C sprite_setFlip
+  reproduce: python3 tools/asmcat.py 0x080BD788
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- No callers known, so which object uses this phase and what Param3 means (which of the two animations
+  is which) is unknown
+- The exact meaning of the +0x40 triple (target/home position vs saved previous position) needs confirmation
+  from the writer of that field
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BD788 -> battle_objectPhaseSnapToTarget
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BD788

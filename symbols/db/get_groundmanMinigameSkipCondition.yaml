@@ -1,0 +1,47 @@
+name: get_groundmanMinigameSkipCondition
+address: '0x081440AE'
+kind: function
+status: probable
+summary: 'Boolean gate for the Groundman minigame: returns 1 (skip/do nothing) once a PET-menu flag or
+  event flag is set or the player isn''t on a minigame map, else 0.'
+interface: () -> r0 = 1 if any completion/skip condition holds (PET menu flag set, map index 0xFF, event
+  flag set), else r0 = 0
+details: First tests a bit in the PET menu flags byte via TestPETMenuDataFlag; if set it returns 1 immediately.
+  Otherwise it calls GetGroundmanMinigameMapIndex and returns 1 if the index is 0xFF (player not on one
+  of the minigame maps). It then calls sub_8143C18 (purpose unknown, takes no visible args) and tests
+  an event flag whose id likely comes from that call; a set flag also yields 1. Only when all three checks
+  fail does it return 0, so the caller treats 0 as 'the minigame interaction should still happen'. The
+  .word eStruct2001010 after the function is just the next data pool entry, not read by this code.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl TestPETMenuDataFlag / bne loc_81440D0: PET menu flag set forces the early 1 return; bl GetGroundmanMinigameMapIndex;
+    cmp r0,#0xFF; beq: being off the minigame maps also returns 1; bl sub_8143C18; bl TestEventFlag; bne:
+    an event flag (id supplied by the callee) is the third skip condition; both exits return r0=0 or 1
+    with no other side effects: a pure predicate, not a state changer; sole caller sub_8144048 plus the
+    Groundman map-index callee tie it to the Groundman minigame scene'
+  refs:
+  - bn6f/asm/asm37_1.s:4447
+  - 0x08144048 sub_8144048
+  - 0x0802F168 TestEventFlag
+  - 0x0811EBE0 TestPETMenuDataFlag
+  - 0x08143B30 GetGroundmanMinigameMapIndex
+  reproduce: python3 tools/asmcat.py 0x081440AE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- What sub_8143C18 returns (presumably an event flag id) and what caller sub_8144048 does with the boolean
+  would confirm whether this gates minigame dialogue, a cutscene, or the reward handout
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81440AE -> get_groundmanMinigameSkipCondition
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81440AE

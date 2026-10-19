@@ -1,0 +1,51 @@
+name: sound_playFadeSoundStep
+address: '0x0802A362'
+kind: function
+status: probable
+summary: Plays the next pair of sounds in a screen-fade sound sequence, advancing the sequence and clearing
+  a state byte once the fade is over.
+interface: (r5 = fade state struct S20364C0) -> void; advances FadeSeqIndex by 2, zeroes field JumpOffset12
+  when no fade is active
+details: Reads the fade sequence index from S20364C0+FadeSeqIndex and indexes two parallel halfword tables
+  (byte_802A400, byte_802A3F4) to fetch per-step parameters. It issues two sound requests through sound_dispatchSoundRequest_8000642
+  with fixed handler ids 0x1F and 0x16, each passing the looked-up table value and 0xFFFF, i.e. one sound
+  per table per step. It then adds 2 to the index (byte-sized, so it wraps naturally through the table
+  length) and stores it back. Finally it checks IsScreenFadeActive; only when no fade is running does
+  it clear the byte at S20364C0+JumpOffset12, presumably resetting whatever drives this sequence. No caller
+  is known, so whether the struct is the fade controller itself or a sound sub-struct is inferred from
+  the existing field names.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r4,[r5,#oS20364C0_FadeSeqIndex] then two ldrh lookups into byte_802A400/byte_802A3F4 give
+    the per-step sound parameters; two sound_dispatchSoundRequest_8000642 calls with r0=0x1F and r0=0x16,
+    r1=0xFFFF, r2=table value play two fixed sounds per step; add r4,#2; strb r4,[r5,#oS20364C0_FadeSeqIndex]
+    advances the sequence index by one halfword-table entry; bl IsScreenFadeActive / isScreenFadeActive_80062FC;
+    strb r0(=0) to S20364C0+JumpOffset12 only when fade is inactive; callees are exclusively the sound
+    dispatcher lookup and the fade-active query, matching a fade-linked sound stepper
+  refs:
+  - bn6f/asm/asm03_0.s:9018
+  - 0x08000642 sound_dispatchSoundRequest_8000642
+  - 0x080062F8 IsScreenFadeActive
+  - 0x080062FC isScreenFadeActive_80062FC
+  reproduce: python3 tools/asmcat.py 0x0802A362
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- no caller is known, so it is unconfirmed which system (fade controller, text, menu) owns S20364C0 and
+  what JumpOffset12 means
+- the semantics of dispatchSoundRequest's r1=0xFFFF and r2 arguments, and what sounds 0x1F/0x16 actually
+  are, are not shown here
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_802A362 -> sound_playFadeSoundStep
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802A362

@@ -1,0 +1,49 @@
+name: battle_aiHoldTargetStep
+address: '0x080F6908'
+kind: function
+status: probable
+summary: 'AI attack step: pick a target panel via a chooser callback, then bind the object standing there
+  (no-slide + lock flags), play anim 4, and set hit element/timer for the attack.'
+interface: (r7 = AI attack vars struct, r5 = battle object) -> void; sets oAIAttackVars_HasMoved/StepTimer/HitElement
+  and target flags
+details: First checks object_canMove; if blocked it clears HasMoved and calls object_exitAttackState.
+  Otherwise it invokes the callback stored at oAIAttackVars_PanelChooseCallback with r0 = TargetObjectPtr,
+  r2 = 0x10, r3 = 0xF880080 (from dword_80F6954/58, likely chooser params); the callback returns target
+  panel X in r0 and Y in r1, with Y==0 meaning no target. On a valid target it stores TargetPanelX/Y,
+  sets OBJECT_FLAGS_CANNOT_SLIDE and bit (1<<22) on the target via object_setFlag1, sets oBattleObject_CurAnim
+  = 4, HasMoved = 1, StepTimer = 3, and HitElement = 8. The 1<<22 flag likely makes the target unable
+  to act, i.e. the attack grabs or binds it.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_canMove + beq loc_80F6946 gates the whole attack on the actor being free; ldr r1,[r7,#oAIAttackVars_PanelChooseCallback];
+    mov lr,pc; bx r1 — calls chooser with r2=0x10, r3=0xF880080 from off_80F6950 table; strb r0/r1 to
+    oAIAttackVars_TargetPanelX/Y after tst r1,r1 — stores the chosen panel, Y==0 = no target; mov r0,#OBJECT_FLAGS_CANNOT_SLIDE
+    + bl object_setFlag1 twice (also bit 1<<22) — locks the target object; strb 4 to oBattleObject_CurAnim,
+    strh 3 to StepTimer, strh 8 to HitElement, strb 1 to HasMoved — attack setup on success
+  refs:
+  - bn6f/asm/asm31.s:134903
+  - 0x0800E5E2 object_canMove
+  - 0x0801A152 object_setFlag1
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x080F6908
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- Which enemy/attack uses this step (no callers known), so the exact in-game attack (grab/hold type) is
+  unconfirmed
+- Meaning of the chooser args 0x10 and 0xF880080 and which chooser function fills PanelChooseCallback
+- Exact meaning of the 1<<22 object flag and HitElement value 8
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F6908 -> battle_aiHoldTargetStep
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F6908

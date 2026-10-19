@@ -1,0 +1,47 @@
+name: battle_trackSelectedChipHold
+address: '0x080DB1E0'
+kind: function
+status: probable
+summary: Every 5 frames, counts how long a battle actor's hand cursor stays on the same selected chip
+  (if the chip has flag 0x02), recording per-slot hold counters in the hand struct.
+interface: (r5 = battle object) -> void; no return value
+details: One-shot init sets oBattleObject_CurAnim=1, Timer2=0 and PhaseInitialized=4, then Timer2 gates
+  the body to run every 5 frames. It fetches the object's selected chip via battle_getSelectedChipForUse
+  and looks it up in the chip database; only if ChipData byte 9 has bit 0x02 does it proceed. It snapshots
+  hand[0] (cursor/selected slot index) and hand[0x3E+slot] into ExtraVars[0..1]; if either changed from
+  the previous tick it resets the ExtraVars[8] hold counter. While unchanged and below 0x32 (50 ticks
+  = 250 frames), it increments a 16-bit per-slot counter at hand+0x1A+2*slot and ExtraVars[8]. The counters
+  live inside the shared 0x50-byte hand structure at 0x20349C0, so this data is presumably read elsewhere.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'asm init block: stores 1 to CurAnim, 0 to Timer2, 4 to PhaseInitialized before loc_80DB1F4;
+    Timer2 counts down from 5 each pass, reloading to 5 after firing (strh r0,#5 at 80DB1FC); ldrb r1,[r0,#9];
+    tst r1,#2 gates all work on a ChipData flag; cmp r0,r1 / cmp r2,r3 on saved hand byte 0 and hand[0x3E+idx]
+    resets ExtraVars+8 when the cursor moves; cap: ldr r1,[ExtraVars+8]; cmp r1,#0x32 blt -> skip before
+    incrementing hand+0x1A+2*idx'
+  refs:
+  - bn6f/asm/asm31.s:76298
+  - 0x0800ED90 battle_getSelectedChipForUse_800ED90
+  - 0x08010018 getBattleHandAddr_8010018
+  - 0x08021AA4 getChip8021DA8
+  reproduce: python3 tools/asmcat.py 0x080DB1E0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- Which actor/caller invokes this and what consumes the counters at hand+0x1A (hover-select UI? auto-use?)
+- Meaning of ChipData offset 9 bit 0x02 that gates the behavior
+- Exact semantics of hand byte 0 and byte 0x3E+slot (cursor index vs stored chip id)
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DB1E0 -> battle_trackSelectedChipHold
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DB1E0

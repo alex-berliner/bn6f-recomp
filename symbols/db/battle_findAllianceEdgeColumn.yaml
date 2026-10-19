@@ -1,0 +1,55 @@
+name: battle_findAllianceEdgeColumn
+address: '0x0800D53C'
+kind: function
+status: probable
+summary: Scans one row of the battle grid from an edge and returns the column of the first panel whose
+  alliance differs from the given one (the alliance boundary / front line column).
+interface: (r0 = row, r1 = alliance id, r2 = direction/flip flag) -> r0 = column of first panel with alliance
+  != r1 along that row (0 if the scan leaves the grid or the row is invalid); flags clobbered.
+details: 'The start column is computed as 6 - 5*(r1^r2): 6 when r1 equals r2, otherwise 1, and the step
+  is -getFlipDirection(r1, r2), i.e. -1 when they match (scan from column 6 downward) and +1 when they
+  differ (scan from column 1 upward). Each iteration validates the (column, row) pair with object_isValidPanel,
+  then reads oPanelData_Alliance of that panel via object_getPanelDataOffset and compares it to r1; while
+  they match the column advances by the step and the loop repeats. When a panel with a different alliance
+  is found, the loop exits and the current column is returned, so the result is the first panel past the
+  given alliance''s run of panels — effectively the front line of that side''s area in that row. If the
+  starting panel is invalid or the entire row holds the given alliance, the function stores 0 and returns
+  0. r2 acts as the side/direction selector, so callers pass their own alliance (or a field-flip flag)
+  alongside the alliance being scanned for.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'eor r2, r1; mov r1,#5; mul; neg; add #6 -> start column 6 if r1==r2 else 1 (asm lines 9-15);
+    loop calls object_isValidPanel(sp, arg0) then object_getPanelDataOffset with the same args, so arg0
+    is the fixed row and sp the running column; ldrb r0,[r0,#oPanelData_Alliance]; cmp r0, arg1; bne exit
+    — loop advances only while panel alliance equals r1; bl object_getFlipDirection; neg r0 -> step is
+    -1 when r1/r2 match, +1 when they differ (sp,#0x10); loc_800D582 stores 0 when object_isValidPanel
+    fails, so 0 is returned when no boundary panel exists'
+  refs:
+  - bn6f/asm/object.s:4177
+  - 0x0800D4D0 sub_800D4D0
+  - 0x0800E2CE object_getFlipDirection
+  - 0x0800C90A object_getPanelDataOffset
+  - 0x0800CC72 object_isValidPanel
+  reproduce: python3 tools/asmcat.py 0x0800D53C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- exact meaning of r2 (scanning side's alliance vs. a field-flip boolean) — the caller sub_800D4D0 is
+  itself undocumented
+- whether callers treat the returned column as the panel just in front of the alliance's area or the boundary
+  itself
+- panel index layout assumed (column-major 1-based) should be confirmed from object_getPanelDataOffset
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_800D53C -> battle_findAllianceEdgeColumn
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800D53C

@@ -1,0 +1,45 @@
+name: battle_getChipClassFromBattleObject
+address: '0x0800FCE4'
+kind: function
+status: probable
+summary: Reads two stats bytes from a battle object and returns the chip's class via the two-table chip
+  class lookup.
+interface: (r0 = battle object / battle entity) -> r0 = chip class byte (from chip_class_lookup_800FC9E),
+  r1 = flag saying which class table was used
+details: 'The wrapper takes a battle object and queries it twice through GetBattleNaviStatsByte_AllianceFromBattleObject:
+  first byte at offset 0x2C, then byte at offset 0x29. The 0x2C byte is saved on the stack, the 0x29 byte
+  ends up in r0, and the saved 0x2C byte is popped into r1, so chip_class_lookup_800FC9E is called with
+  (r0 = obj[0x29], r1 = obj[0x2C]). It returns the lookup''s result unchanged: the class byte plus the
+  which-table flag. Offset 0x2C is presumably the chip ID (or a related index) held in the battle object,
+  and 0x29 a secondary value the class lookup needs.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: first call GetBattleNaviStatsByte_AllianceFromBattleObject with r1=0x2C, result pushed (sub_800FCE4
+    lines 2-4); second call with r1=0x29 leaves its result in r0 (lines 5-7); pop {r1} swaps the saved
+    0x2C byte into r1 right before the lookup call (line 8); tail-calls chip_class_lookup_800FC9E, whose
+    known summary is a chip class lookup over two ROM tables returning a table flag (line 9)
+  refs:
+  - bn6f/asm/asm00_2.s:2339
+  - 0x08013774 GetBattleNaviStatsByte_AllianceFromBattleObject
+  - 0x0800FC9E chip_class_lookup_800FC9E
+  reproduce: python3 tools/asmcat.py 0x0800FCE4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- exact meaning of the 0x29 and 0x2C battle-object bytes (which is the chip ID)
+- which side/alliance the object encodes and why the caller list is empty
+- semantics of the returned table flag for callers
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_800FCE4 -> battle_getChipClassFromBattleObject
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800FCE4

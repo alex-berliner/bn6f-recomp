@@ -1,0 +1,53 @@
+name: sprite_applyStateSpriteTransform
+address: '0x0811B914'
+kind: function
+status: probable
+summary: Per-frame update that applies a state-byte-driven transform (position offset or scale-in) to
+  an object's sprite, then stores the next step delay.
+interface: () -> void; reads state byte at unk_2037780+0xC, writes sprite fields 0x10/0x12/0x14/0x16 and
+  delay byte at sprite+0xA
+details: 'Calls sub_811B984 to obtain an object/sprite record (r3, with r5 the sprite struct) and reads
+  the stage byte at unk_2037780+0xC (byte_203778C). At stage 0 it does nothing but store delay 0; at stage
+  0x10 it copies the halfword at [r3,0xE] to sprite+0x14 and sets delay 0x14. All other stages first write
+  0xB0 to [r3,0xC] and copy the signed halfword [r3,0xE] to sprite+0x10 and +0x14; stage 0xC instead makes
+  the sprite scalable and calls sprite_setScaleParameters(0,64,64) and sprite_setUnk0x2c(-4) for a scale-in
+  effect, delay 0xC; otherwise sprite+0x16 gets [r3,0xE] plus a per-stage offset from byte_811B974 (index
+  4 = +0x12, indices 8-11 = -18), delay 4. The delay byte at sprite+0xA acts as the per-state frame wait.
+  Quirk: r5 is not set in this routine, so sub_811B984 must also deliver the sprite struct pointer in
+  r5.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r4,[r0,#0xC] on unk_2037780 with cmp/beq chain is a stage switch; stage 0xC path: bl sprite_makeScalable
+    then sprite_setScaleParameters(0,0x40,0x40) and sprite_setUnk0x2c(0xFFFFFFFC); other stages: strh
+    [r3,0xE] to [r5,0x10]/[r5,0x14] and ldr r1,[table+r4] added into [r5,0x16] (per-state offset); final
+    strb r7,[r5,0xA] stores a state-dependent delay (0/4/0xC/0x14); only callees are sprite_* helpers
+    plus sub_811B984, and it is called from two neighboring subs 811B594/811B5F4'
+  refs:
+  - bn6f/asm/asm32.s:28249
+  - 0x0811B594 sub_811B594
+  - 0x0811B5F4 sub_811B5F4
+  - 0x08002D14 sprite_makeScalable
+  - 0x08002FA6 sprite_setUnk0x2c
+  - 0x08002C24 sprite_setScaleParameters
+  reproduce: python3 tools/asmcat.py 0x0811B914
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- what unk_2037780 is (its owner, likely a cutscene/transform animation work area) and what states 0x0-0x10
+  mean
+- what sub_811B984 returns/sets in r5 and r3
+- which sprite struct fields 0x10/0x14/0x16 are (x/y/extra) and what the offset table's values position
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_811B914 -> sprite_applyStateSpriteTransform
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811B914

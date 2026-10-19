@@ -1,0 +1,49 @@
+name: battle_destroyActor
+address: '0x0811648C'
+kind: function
+status: probable
+summary: 'Battle-object cleanup: marks the battle-over/actor-leaving bookkeeping, removes the actor from
+  the alive-actor list, and sets its state to DESTROY.'
+interface: (r0 = argument forwarded to the battle-over/actor-leaving routine; r5 = battle actor object
+  pointer) -> r0 = ...; actor's state field set to CUR_STATE_DESTROY
+details: The routine first calls relatedToIsBattleOver_800A11C with r0 unchanged from entry (that callee
+  decrements the actor's alliance member count and clears its slots in the alive-actor turn list when
+  an actor leaves). It then moves the actor pointer from r5 into r0 and calls RemoveGivenAliveBattleActorFromList,
+  which clears every entry of the 8-entry alive player actor list that points to this actor. Finally it
+  stores CUR_STATE_DESTROY into the actor's combined current-state/action-phase field at offset oBattleObject_CurStateActionPhaseAndPhaseInitialized,
+  which is the standard way a battle object signals it should be deleted next frame. This looks like the
+  shared 'kill/despawn this battle actor' epilogue used by many battle object death handlers; r5 must
+  be set up by the caller before tail-style use.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl relatedToIsBattleOver_800A11C with entry r0 — callee documented as actor-leaves bookkeeping
+    (alliance count + turn list); mov r0, r5; bl RemoveGivenAliveBattleActorFromList — callee clears alive-actor
+    list slots pointing at r5''s actor; mov r0, #CUR_STATE_DESTROY; str r0, [r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]
+    — sets the object''s state to DESTROY; Only 9 instructions and no locals — a generic shared cleanup
+    tail, not a specific behavior'
+  refs:
+  - bn6f/asm/asm32.s:16793
+  - 0x080077B4 RemoveGivenAliveBattleActorFromList
+  - 0x0800A11C relatedToIsBattleOver_800A11C
+  reproduce: python3 tools/asmcat.py 0x0811648C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- No callers known, so the meaning of the r0 argument passed to relatedToIsBattleOver_800A11C (event/cause
+  id vs. actor pointer) is unconfirmed
+- Which entity sets r5 before jumping here — whether all battle object types or only specific ones use
+  this as their death handler
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_811648C -> battle_destroyActor
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811648C

@@ -1,0 +1,52 @@
+name: battle_launchObjectAtPanel
+address: '0x0800F768'
+kind: function
+status: probable
+summary: 'Aims a battle object at a target panel and gives it lob-style velocities: horizontal speed 8
+  toward the panel plus an inverse-distance Z velocity for the arc.'
+interface: (r0 = target panel column, r1 = target panel row; object in r5) -> r0 = written ZVelocity value
+  (8 if target is closer than ~8px); sets oBattleObject_DirectionAngle/XVelocity/YVelocity/ZVelocity
+details: 'Converts the r0/r1 panel column/row to 16.16 screen coordinates via object_getCoordinatesForPanels,
+  then forms the vector from the r5 object''s oBattleObject_X16/Y16 to that point. The vector''s angle
+  (calcAngle_800117C) is stored in oBattleObject_DirectionAngle, and math_getPolarVector(angle, 8<<16)
+  supplies an XVelocity/YVelocity of magnitude 8 pointing at the target. It then computes dx*dx+dy*dy,
+  takes the BIOS Sqrt (svc 8) of it to get the distance, divides by the magnitude 8<<16 to get the flight
+  time in frames, and sets ZVelocity = 0x40<<16 / frames — so the accumulated vertical travel over the
+  flight is a constant 64px regardless of distance. If the target is at/near the object (quotient 0),
+  it instead zeroes X/YVelocity, sets ZVelocity to 8<<16 and returns 8. Quirk: the object pointer is expected
+  in r5, not passed as an argument, and r4 is clobbered.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_getCoordinatesForPanels with r0/r1 untouched from entry shows the args are panel
+    column/row; sub r2,r0,objX16 / sub r0,r1,objY16 then bl calcAngle_800117C, strb r0,[r5,oBattleObject_DirectionAngle]
+    stores the aim angle; mov r1,#8 lsl #16 before bl math_getPolarVector, results stored to oBattleObject_XVelocity/YVelocity:
+    fixed speed-8 heading; square-sum, svc 8 (BIOS Sqrt), lsl #8, svc 6 (BIOS Div) by the popped 8<<16,
+    then ZVelocity = 0x40<<16 / quotient = 64px/(dist/8 frames); beq loc_800F7C4 (zero quotient) zeroes
+    X/YVelocity and writes 8<<16 to ZVelocity, returning 8'
+  refs:
+  - bn6f/asm/asm00_2.s:1585
+  - 0x080180A8 sub_80180A8
+  - 0x0800117C calcAngle_800117C
+  - 0x080011A0 math_getPolarVector
+  - 0x0800E276 object_getCoordinatesForPanels
+  reproduce: python3 tools/asmcat.py 0x0800F768
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- Caller sub_80180A8 is undocumented, so the object type and why r5 must hold it are unconfirmed
+- Exact Z physics (how ZVelocity is consumed per frame) not verified, so the 'constant 64px arc' reading
+  of the inverse-distance division is inferred, not proven
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_800F768 -> battle_launchObjectAtPanel
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800F768

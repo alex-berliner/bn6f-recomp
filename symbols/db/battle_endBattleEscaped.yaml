@@ -1,0 +1,44 @@
+name: battle_endBattleEscaped
+address: '0x0800AAD6'
+kind: function
+status: probable
+summary: Ends the battle by jumping the state machine to phase 0x14 and recording result code 2 (escape/draw)
+  in the battle state.
+interface: () -> r0 = clobbered; no return value; sets up battle end phase and result byte
+details: The function first advances the battle state machine into phase 0x14 via the shared goto-phase
+  helper (which also runs its struct-setup step with argument 4), then loads the current BattleState pointer
+  from the toolkit and calls the battle-result setter with r0 = 2. setTwoStructs_800A840 stores that byte
+  as the battle result and runs the shared battle-result update routine. Result code 2 plausibly denotes
+  escaping/withdrawing from a battle rather than win (0) or lose (1). The function takes no arguments
+  and returns nothing; r10-relative oToolkit_BattleStatePtr is used to reach the state struct.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl battle_stateGotoPhase14_800AABC — first action is entering battle phase 0x14 (battle end);
+    ldr r5, [r5,#oToolkit_BattleStatePtr] — reads the current battle state via toolkit; mov r0,#2 / bl
+    setTwoStructs_800A840 — stores result byte 2 and runs the battle-result update; no arguments read
+    before the calls — pure 'finish battle with result 2' trigger
+  refs:
+  - bn6f/asm/asm00_1.s:17538
+  - 0x0800AABC battle_stateGotoPhase14_800AABC
+  - 0x0800A840 setTwoStructs_800A840
+  reproduce: python3 tools/asmcat.py 0x0800AAD6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- exact meaning of result byte 2 (escape vs draw vs other) — needs the battle-result consumer or the caller
+  context
+- what argument 4 in the phase-0x14 setup helper selects
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_800AAD6 -> battle_endBattleEscaped
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800AAD6

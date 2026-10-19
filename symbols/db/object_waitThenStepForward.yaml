@@ -1,0 +1,51 @@
+name: object_waitThenStepForward
+address: '0x080C2804'
+kind: function
+status: probable
+summary: 'Battle-object update: waits 30 frames on its panel, destroys itself if the panel became invalid,
+  otherwise starts action 4 stepping one panel forward.'
+interface: (r0 = battle object (r5 preserved by caller convention), unused on entry) -> r0 = clobbered
+  by calls; updates Timer, PhaseInitialized, CurStateActionPhaseAndPhaseInitialized, FuturePanelX/Y, ExtraVars,
+  CurAction
+details: On first run (PhaseInitialized==0) it initializes a 30-frame timer (0x1E) and marks phase 4 as
+  initialized, then returns. Once the timer counts down to zero, it reads the object's PanelX/PanelY and
+  calls object_checkPanelParameters with required-mask 0x10 and clear-mask 0; if the panel no longer satisfies
+  that flag (e.g. became a hole/broken panel), the object's state is set to CUR_STATE_DESTROY. Otherwise
+  it takes object_getFrontDirection (+1/-1), stores PanelX+dir into FuturePanelX, writes 1 into the FuturePanelY
+  field, sets ExtraVars+8 = 1 and ExtraVars+0xC = object_getFlip (facing/alliance XOR override), and finally
+  sets CurAction = 4 with CurPhaseAndPhaseInitialized = 0 to begin the next action phase.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'init branch: mov r0,#0x1e; strh [Timer]; mov r0,#4; strb [PhaseInitialized] — one-time 30-frame
+    delay; bl object_checkPanelParameters (mask 0x10) followed by mov r0,#CUR_STATE_DESTROY — self-destruct
+    when panel flag lost; bl object_getFrontDirection; add r0,PanelX; strb [FuturePanelX] — forward panel
+    target computed from facing; bl object_getFlip; str [ExtraVars+0xc] — facing flip recorded for the
+    following action; mov r0,#4; strb [CurAction]; mov r0,#0; strh [CurPhaseAndPhaseInitialized] — hands
+    off to action 4'
+  refs:
+  - bn6f/asm/asm31.s:23002
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0800E456 object_getFlip
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x080C2804
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- Which specific battle object/entity uses this update (no caller known) — identity of the 0x10 panel
+  flag (hole vs occupied vs broken) depends on object_checkPanelParameters' flag table
+- Why 1 is stored into oBattleObject_FuturePanelY (constant row 1, or the offset may actually be a different
+  flag field); caller context or the action-4 handler would confirm
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C2804 -> object_waitThenStepForward
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C2804

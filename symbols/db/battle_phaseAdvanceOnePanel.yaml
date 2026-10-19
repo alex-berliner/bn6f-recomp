@@ -1,0 +1,47 @@
+name: battle_phaseAdvanceOnePanel
+address: '0x080BE2B8'
+kind: function
+status: probable
+summary: 'One phase of a battle object''s state machine: hop one panel in its travel direction, destroy
+  the object if the target panel is invalid, else pause a few frames before the next phase.'
+interface: (r5 = battle object) -> void; destroys object (CurState = DESTROY) or advances its phase
+details: 'First execution (PhaseInitialized clear): sets CurAnim=1, computes the destination panel as
+  FuturePanelX offset by the negated front-direction multiplier and FuturePanelY, and tests it via object_checkPanelParameters
+  with flag bit 0x10 against mask 0x0F800000 (panel-type validity, e.g. not a hole). If the check passes,
+  the object commits the target to PanelX/PanelY, recomputes pixel coordinates, sets Param4=1, Timer=3,
+  and marks the phase initialized; if it fails, it clears object flag 0x2 and destroys itself. On later
+  executions it decrements Timer and, once it hits zero, moves to phase 0xC. r5 is the battle-object structure;
+  the routine never touches r0''s original argument.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'neg r0 after object_getFrontDirection + add FuturePanelX/Y builds the destination panel before
+    object_checkPanelParameters(r0=x,r1=y,r2=0x10,r3=0x0F800000); on success strb to PanelX/PanelY then
+    object_setCoordinatesFromPanels updates the object''s pixel position; on failure bic flag 0x2 and
+    mov r0,#CUR_STATE_DESTROY stored to CurStateActionPhaseAndPhaseInitialized; tail: Timer counts down
+    from 3 and then writes phase 0xC to CurPhaseAndPhaseInitialized, showing it is a phase handler'
+  refs:
+  - bn6f/asm/asm31.s:13299
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800E29C object_setCoordinatesFromPanels
+  reproduce: python3 tools/asmcat.py 0x080BE2B8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- which object/attack uses this phase (no callers known), so the semantic meaning of mask 0x0F800000 and
+  of Param4=1 is unconfirmed
+- whether the negated front direction means the object moves toward or away from the enemy side
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BE2B8 -> battle_phaseAdvanceOnePanel
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BE2B8

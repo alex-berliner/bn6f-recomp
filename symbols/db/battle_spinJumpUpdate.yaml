@@ -1,0 +1,50 @@
+name: battle_spinJumpUpdate
+address: '0x080DEF3C'
+kind: function
+status: probable
+summary: 'Per-frame update for a battle object performing a spinning jump: advances X, computes jump height
+  Z from a sine table, picks the mid-air animation, and ends the action when the timer expires.'
+interface: (r5 = battle object) -> r0 = undefined; writes oBattleObject_X, Z, CurAnim, CurAction, CurPhase,
+  plus local fields 0x63, 0x64, 0x66, 0x68, 0x6a, 0x6e
+details: 'The routine adds XVelocity (field at oBattleObject_XVelocity) to X, then sets Z = sin(field_0x6a
+  >> 9) * 0x160 using math_sinTable, so the object rises and falls along an arc while field_0x6a accumulates
+  by field_0x68 each frame (a spin/rotation counter). It computes an animation index by dividing frame
+  counter field_0x64 by duration field_0x66 (via the 0x8114F52 helper), adds a per-direction offset from
+  byte_80DEFC4 indexed by byte 0x6e, and stores it into CurAnim and field_0x63 only if it differs. Field_0x64
+  counts up each frame; when it reaches field_0x66 the jump ends: CurAnim = 0, Z = 0, CurAction = 8, CurPhase
+  = 0. It finishes by refreshing the object''s panel coordinates and collision record. The two-entry table
+  {0x9, 0x5} suggests only two facing variants are supported.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sub_80DEF3C start: X += XVelocity, then Z = sinTable[(field_0x6a>>8)<<1] * 0x160 — sine-driven
+    jump height; field_0x68 is added into field_0x6a each frame, feeding the sine lookup — rotation/spin
+    accumulator; frame counter field_0x64 incremented and compared to field_0x66 via the divide helper
+    before offsetting the animation id; on counter == duration: CurAnim=0, Z=0, CurAction=8, CurPhase=0
+    — end-of-jump cleanup; tail calls object_setPanelsFromCoordinates and object_updateCollisionPanels,
+    confirming it is a battle object movement state handler'
+  refs:
+  - bn6f/asm/asm31.s:84459
+  - 0x0800E2AC object_setPanelsFromCoordinates
+  - 0x0801A04C object_updateCollisionPanels
+  - 0x08114F52 snakearmRelated_divideR0By4_StoreIntoR1_SetR0To3If4_8114F52
+  reproduce: python3 tools/asmcat.py 0x080DEF3C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- No callers known, so which enemy/object uses this state and how CurAction=8 is interpreted is unconfirmed
+- Exact meaning of fields 0x63/0x64/0x66/0x68/0x6a/0x6e in the battle object struct (names for the spin
+  accumulator, frame counter, duration, per-frame angle step, facing byte)
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DEF3C -> battle_spinJumpUpdate
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DEF3C

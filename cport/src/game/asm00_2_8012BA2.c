@@ -1000,7 +1000,7 @@ enum {
     DAMAGE_HANDLER_NULL    = 0,  /* nullsub_46  */
     DAMAGE_HANDLER_F82     = 1,  /* sub_8013F82  */
     DAMAGE_HANDLER_F8C     = 2,  /* sub_8013F8C  */
-    DAMAGE_HANDLER_F96     = 3,  /* sub_8013F96  */
+    DAMAGE_HANDLER_F96     = 3,  /* battle_incrementNaviStatsCounter  */
 };
 
 /* register form: calls object_getFlag2 outside this file, which has no typed C interface yet */
@@ -1023,8 +1023,8 @@ static u32 get_navi_stats_byte_alliance_g(u32 obj, u32 index) {
 static void call_sub_8013F82(void)  { GUEST_CALL(sub_8013F82); }
 /* register form: calls sub_8013F8C outside this file, which has no typed C interface yet */
 static void call_sub_8013F8C(void)  { GUEST_CALL(sub_8013F8C); }
-/* register form: calls sub_8013F96 outside this file, which has no typed C interface yet */
-static void call_sub_8013F96(void)  { GUEST_CALL(sub_8013F96); }
+/* register form: calls battle_incrementNaviStatsCounter outside this file, which has no typed C interface yet */
+static void call_sub_8013F96(void)  { GUEST_CALL(battle_incrementNaviStatsCounter); }
 
 /* Run the per-team damage handler selected by the alliance byte of the attacker. */
 static void dispatch_damage_handler(u32 handler_index) {

@@ -1,0 +1,48 @@
+name: battle_snapToRelatedObjectPanel
+address: '0x080C2678'
+kind: function
+status: probable
+summary: Copies the related object's panel coordinates into this battle object, drops it to ground level,
+  and offsets its pixel X by 10 px opposite its facing side.
+interface: (r5 = battle object, uses r5->RelatedObject1Ptr) -> r0 = new X coordinate; clobbers r0-r3,
+  lr
+details: Reads PanelX/PanelY from the object pointed to by r5->RelatedObject1Ptr and stores them into
+  r5's own PanelX/PanelY, then calls object_setCoordinatesFromPanels to recompute pixel X/Y from those
+  grid coordinates. Z is zeroed (no elevation). It then calls object_getFrontDirection to get the +1/-1
+  side multiplier, negates it, scales by 0xA0000 (10 << 16, fixed-point pixels) and adds that to oBattleObject_X,
+  shifting the object 10 pixels to the side opposite its facing — i.e. parked just behind the related
+  object. The object's own panel state thus mirrors its related object's, keeping it on the same tile.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r1,#oBattleObject_PanelX]/ldrb r1,[r1,#oBattleObject_PanelY] then strb into r5 copies
+    panels from RelatedObject1Ptr; bl object_setCoordinatesFromPanels syncs pixel position to the copied
+    panel coords; neg r0,r0; mov r1,#0xa; lsl r1,#16; mul combines -facing with 10 fixed-point pixels
+    for the X offset; called by battle_initR5ObjectSpriteAndState and battle_slideToPanelAction, both
+    battle-object setup/movement handlers
+  refs:
+  - bn6f/asm/asm31.s:22796
+  - 0x080C215C battle_initR5ObjectSpriteAndState
+  - 0x080C2324 battle_slideToPanelAction
+  - 0x080C23F0 sub_80C23F0
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800E29C object_setCoordinatesFromPanels
+  reproduce: python3 tools/asmcat.py 0x080C2678
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- exact gameplay meaning of the 10px offset (rider/attachment vs. shadow) depends on which objects use
+  RelatedObject1Ptr; sub_80C23F0 caller not shown
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C2678 -> battle_snapToRelatedObjectPanel
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C2678

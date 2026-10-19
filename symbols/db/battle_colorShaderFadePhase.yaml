@@ -1,0 +1,47 @@
+name: battle_colorShaderFadePhase
+address: '0x080BEA78'
+kind: function
+status: probable
+summary: Battle-object phase handler that fades the object's palette via color shader for ~30 frames (playing
+  sound 0x94 unless Param4 >= 3), then clears the shader and advances to phase 4.
+interface: (r0 = unused, r5 = battle object pointer) -> r0 = 4 (next phase) on completion; sets oObjectHeader_Flags
+  bit 1 and writes phase 4 to CurPhaseAndPhaseInitialized
+details: On first entry (PhaseInitialized clear) it sets Timer = 0x1E, and if Param4 < 3 plays sound effect
+  0x94 and sets object flag bit 0x2; it always sets Timer2 = 0x1F and marks phase 4 as initialized. Each
+  frame it decrements Timer; when it expires it calls sprite_zeroColorShader to reset the palette effect
+  and stores phase 4. Meanwhile Timer2 counts down 31..0 and is clamped at 0, and the value Timer2*1057
+  (Timer2<<5 +Timer2, <<5, +Timer2) is passed to sprite_setColorShader as the shader id, so the palette
+  effect index steps down over the fade. The shader id stride of 1057 suggests a table of 32-entry palette-transform
+  blocks, giving a smooth fade/flash across 32 steps. Param4 likely selects a variant (skip the sound,
+  or a different visual).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: first-entry block sets Timer=0x1E, plays sound 0x94 and sets flag 0x2 only when Param4 < 3;
+    Timer expiry path calls sprite_zeroColorShader and stores phase 4 into CurPhaseAndPhaseInitialized;
+    loc_80BEABE computes Timer2*1057 and passes it to sprite_setColorShader, i.e. a stepped palette-shader
+    id; Timer2 is clamped to 0 after counting down from 0x1F, matching a one-shot ~31-frame fade
+  refs:
+  - bn6f/asm/asm31.s:14304
+  - 0x080005CC PlaySoundEffect
+  - 0x08002ED0 sprite_setColorShader
+  - 0x08002EE8 sprite_zeroColorShader
+  reproduce: python3 tools/asmcat.py 0x080BEA78
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- which object/boss uses this phase (no callers known), the meaning of Param4 variants, and what visual
+  the shader ids 0/1057..32767 produce
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BEA78 -> battle_colorShaderFadePhase
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BEA78

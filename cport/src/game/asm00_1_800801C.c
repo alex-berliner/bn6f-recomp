@@ -291,7 +291,7 @@ static void run_state_phase_handler(u32 table_offset)
     case 0x18: GUEST_CALL(battle_tutFullSynchroTextStep); break;
     case 0x1C: GUEST_CALL(sub_8009552); break;
     case 0x20: GUEST_CALL(sub_8009594); break;
-    case 0x24: GUEST_CALL(sub_80095C8); break;
+    case 0x24: GUEST_CALL(battle_stateNaviCommErrorMsg); break;
     default: break; /* out of range: never happens, the index is always 0..9 * 4 */
     }
 }
@@ -2974,7 +2974,7 @@ Next sub_800B79A(void) {
 
     switch (index) {
     case 0: GUEST_CALL(sub_800B7D0); break;
-    case 1: GUEST_CALL(sub_800B7E8); break;
+    case 1: GUEST_CALL(battle_incrementNaviStatsByte18Saturating); break;
     case 2: GUEST_CALL(sub_800B800); break;
     case 3: GUEST_CALL(nullsub_2);   break;
     case 4: GUEST_CALL(sub_800B80E); break;

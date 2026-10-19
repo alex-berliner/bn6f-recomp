@@ -1,0 +1,46 @@
+name: battle_stepMoveXTimer
+address: '0x080D7578'
+kind: function
+status: probable
+summary: Per-frame step that moves a battle object along X by its velocity, then after a countdown switches
+  it to CurAction 4 and removes it from its collision region.
+interface: (r5 = battle object) -> void; no return value
+details: Takes the object in r5 (battle object struct, uses oBattleObject_* offsets). Each call it adds
+  XVelocity to X, then calls object_setPanelsFromCoordinates and object_updateCollisionPanels so the object's
+  panel position and collision record track the new coordinates. It decrements the object's Timer; while
+  nonzero it just returns. When the timer reaches zero it reloads it with 30 (0x1E), calls object_clearCollisionRegion
+  (dropping the object from its collision region, e.g. going untouchable/hidden), sets CurAction to 4,
+  and clears CurPhaseAndPhaseInitialized to restart the new action's state machine at phase 0. The 30-frame
+  reload implies a repeating hidden/retreat cycle.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'adds oBattleObject_XVelocity into oBattleObject_X then calls object_setPanelsFromCoordinates
+    and object_updateCollisionPanels (first instructions); decrements oBattleObject_Timer and reloads
+    it with 0x1E on expiry (ldrh/sub #1 ... mov r0,#0x1e); on expiry calls object_clearCollisionRegion,
+    matching a hidden/removed state; sets oBattleObject_CurAction to 4 and zeroes CurPhaseAndPhaseInitialized
+    to enter a new action phase'
+  refs:
+  - bn6f/asm/asm31.s:68189
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0800E2AC object_setPanelsFromCoordinates
+  - 0x0801A04C object_updateCollisionPanels
+  reproduce: python3 tools/asmcat.py 0x080D7578
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- no caller is known, so which enemy/state uses this step and what action 4 means are unconfirmed
+- the identity of the timer period and whether velocity is set elsewhere (e.g. by a phase setup) is unknown
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D7578 -> battle_stepMoveXTimer
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D7578

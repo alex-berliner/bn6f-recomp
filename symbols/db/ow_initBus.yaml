@@ -1,0 +1,45 @@
+name: ow_initBus
+address: '0x0808FE34'
+kind: function
+status: probable
+summary: Initializes the bus map object and its 0x60-byte work buffer when entering the area, preserving
+  the buffer once EVENT_BFB is set.
+interface: () -> r0 = 0; no flags meaningful
+details: Loads the pointer at off_808FDB8 to a work structure (dword_2000330 is offset 0x20 within it).
+  If story flag EVENT_BFB is clear, zero-fills 0x60 bytes of the structure via ZeroFillByWord, so state
+  persists across calls once the flag is set. Writes 0xFF to the word at +0x20, likely an 'invalid/unused'
+  sentinel. Then calls ow_spawnMapObject1b to create the type-0x1B bus entity and two further helpers
+  (sub_809003C, sub_809032C) that presumably set up its state/behavior. Always returns 0; no caller known,
+  so it is likely invoked from map-init or script dispatch tables.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl TestEventFlagFromImmediate (EVENT_BFB); bne skip -> conditional re-init tied to story progress;
+    ZeroFillByWord(r5=struct, 0x60) only when flag clear -> persistent work buffer; str 0xFF,[r5,#0x20]
+    -> sentinel/init write into the same struct; bl ow_spawnMapObject1b -> spawns map object 0x1B, identified
+    as the bus; returns mov r0,#0 with no flag use -> plain setup routine
+  refs:
+  - bn6f/asm/asm25.s:807
+  - 0x0802F164 TestEventFlagFromImmediate
+  - 0x080008E0 ZeroFillByWord
+  - 0x0808FF9C ow_spawnMapObject1b
+  reproduce: python3 tools/asmcat.py 0x0808FE34
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- What sub_809003C and sub_809032C do (likely bus state/behavior setup) would confirm the purpose
+- Which map/entry point calls this function
+- Meaning of the word at struct+0x20 and whether 0xFF is a sentinel
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_808FE34 -> ow_initBus
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_808FE34

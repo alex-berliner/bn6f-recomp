@@ -1,0 +1,47 @@
+name: rfu_initREQ
+address: '0x08144DF0'
+kind: function
+status: probable
+summary: Initializes the wireless adapter's REQ request-management state, filling its work struct and
+  installing the MSC/REQ callbacks.
+interface: (r0 = nonzero param, likely retry/count; r1 = second param) -> r0 = 0 on success, 4 if r0 ==
+  0; flags clobbered
+details: Validates r0 and returns 4 immediately if it is 0. Otherwise it fills the first 0x24 words of
+  the RFU work struct eStruct200FE00 with zero via SWI_CpuSet in fixed-source mode (0x1000024), sets byte
+  200FE06 to 0xFF, and stores the two arguments at offsets 0x40 and 0x44. It then registers sub_8145D54
+  as the MSC callback and rfu_handleConnectionEvent as the REQ callback via rfu_setMSCCallback/rfu_setREQCallback,
+  and returns 0. This matches librfu's REQ-subsystem initializer, which must set both callbacks before
+  any REQ can be issued.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'cmp r5,#0 / beq loc_8144E38 returns 4 on null first argument; SWI_CpuSet with mode 0x1000024
+    zero-fills 0x24 words of eStruct200FE00; strb #0xFF,[r4,#6] and str r5/r6 to +0x40/+0x44 set up REQ
+    state fields; calls rfu_setMSCCallback(sub_8145D54) and rfu_setREQCallback(rfu_handleConnectionEvent);
+    returns 0 (mov r0,#0) after successful setup'
+  refs:
+  - bn6f/asm/libs.s:1894
+  - 0x08147350 sub_8147350
+  - 0x08147F98 sub_8147F98
+  - 0x0814D8B8 SWI_CpuSet
+  - 0x08149464 rfu_setMSCCallback
+  - 0x08149470 rfu_setREQCallback
+  reproduce: python3 tools/asmcat.py 0x08144DF0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- exact meaning of the two arguments stored at +0x40/+0x44 (retry count / timeout vs buffer pointers)
+  — caller sub_8147350/sub_8147F98 argument values would confirm
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8144DF0 -> rfu_initREQ
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8144DF0

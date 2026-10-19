@@ -1,0 +1,52 @@
+name: battle_chargeShotSetup
+address: '0x0802ECFE'
+kind: function
+status: probable
+summary: 'Sets up the Navi''s charge shot attack: rolls a special charge-shot pick, otherwise initializes
+  default charge-shot state and fires attack 0x11.'
+interface: (r0 = battle object, r6 = attack state struct) -> r0 = 0; calls sub_802ED68 on the special-pick
+  path, else object_setAttack0(0x11)
+details: First calls the stat-gated weighted pick (sub_8013D5E, reading NaviStats bytes 0x14/0x15); if
+  it returns nonzero this delegates to sub_802ED68 (a special/alternate charge shot) and returns. On the
+  default path it zeroes the state struct at r6 (bytes 2-5, halfwords 6 and 0xA, word 0xC), then reads
+  NaviStats byte 0x29 for the object's side and uses it to index byte_802ED5C, storing the value (3) as
+  a halfword at r6+8 (likely charge-shot power/time). It reads byte 0x29 again and indexes byte_802ED50
+  (2), passing that to sub_802EEA2 (likely spawning/configuring the projectile), then triggers attack
+  id 0x11 via object_setAttack0 and returns 0. Both lookup tables are uniform (all 2s and all 3s) across
+  the 12 entries, so byte 0x29 currently only needs to be in range 0-11.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl sub_8013D5E / beq path: nonzero pick routes to bl sub_802ED68, matching its known ''charge
+    shot weighted pick'' summary; Default path zeroes r6+2..0xC before rebuilding the state, typical attack-init
+    pattern; Two GetBattleNaviStatsByte_AllianceFromBattleObject(0x29) calls index byte_802ED5C and byte_802ED50,
+    giving constants 3 and 2; strh r0,[r6,#8] stores the first table value; bl sub_802EEA2 takes the second
+    (2) as argument; mov r0,#0x11; bl object_setAttack0 fires the charge-shot attack id before returning
+    0'
+  refs:
+  - bn6f/asm/asm03_0.s:18657
+  - 0x0802EBD0 sub_802EBD0
+  - 0x0802EBE4 sub_802EBE4
+  - 0x08013774 GetBattleNaviStatsByte_AllianceFromBattleObject
+  - 0x08013D5E sub_8013D5E
+  - 0x08011680 object_setAttack0
+  reproduce: python3 tools/asmcat.py 0x0802ECFE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- Exact meaning of NaviStats byte 0x29 and the table values 2/3 (charge time vs element vs power) — needs
+  sub_802EEA2 and sub_802ED68 analyzed
+- Layout of the r6 state struct (which caller sub_802EBD0/sub_802EBE4 allocates it) is unconfirmed
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_802ECFE -> battle_chargeShotSetup
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802ECFE

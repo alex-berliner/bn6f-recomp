@@ -1,0 +1,45 @@
+name: battle_stateNaviCommErrorMsg
+address: '0x080095C8'
+kind: function
+status: probable
+summary: Battle state handler that displays a communication-error chatbox script naming the current navi,
+  then advances the battle state once the message finishes.
+interface: (r5 = *BattleState) -> r0 = void; sets NZ from tst/tst of init flag / eFlags2009F38 bit 0x80
+  for internal branches
+details: On first call (oBattleState_SubPhaseInitFlag == 0) it reads the selected navi via GetCurPETNavi,
+  computes script index 0x73 + naviId, and runs it from TextScriptCommError87370C0 through chatbox_runScript,
+  then stores 4 into oBattleState_SubPhaseInitFlag to latch. On later calls it polls eFlags2009F38 bit
+  0x80 via chatbox_mask_eFlags2009F38 (the chatbox message-done flag); when set, it stores 4 into oBattleState_Index_01,
+  zeroes the halfword at oBattleState_StatePhaseAndInitFlag, and returns, moving the battle state machine
+  on. The +naviId offset implies the script archive holds per-navi variants of the comm-error text. No
+  return value.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb/tst of oBattleState_SubPhaseInitFlag gates a one-shot init path that calls chatbox_runScript
+    with TextScriptCommError87370C0 and idx 0x73+GetCurPETNavi(); after init it polls chatbox_mask_eFlags2009F38(0x80)
+    and only on completion stores 4 into oBattleState_Index_01 and clears oBattleState_StatePhaseAndInitFlag
+  refs:
+  - bn6f/asm/asm00_1.s:14102
+  - 0x080010B6 GetCurPETNavi
+  - 0x08045F3C chatbox_mask_eFlags2009F38
+  - 0x08040384 chatbox_runScript
+  reproduce: python3 tools/asmcat.py 0x080095C8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- exact wording of the per-navi comm-error scripts (archive contents not shown)
+- which battle state value 4 corresponds to and whether this is a link/multiplayer comm-error path
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80095C8 -> battle_stateNaviCommErrorMsg
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80095C8

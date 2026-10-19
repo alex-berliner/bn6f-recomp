@@ -1,0 +1,56 @@
+name: battle_drawPlayerSideSpriteSet
+address: '0x0801D47A'
+kind: function
+status: probable
+summary: Uploads a two-frame 2-tile graphic to OBJ VRAM and queues three OAM sprites (one 16x16, two 32x32
+  with one h-flipped) anchored horizontally to the player-side battle entity.
+interface: (r5 = battle object ptr, field +0x36 halfword = state; r10 = toolkit) -> void; queues GFX +
+  OAM, no return value
+details: 'Reads halfword [r5+0x36]: bit0 picks one of two 0x40-byte frames from dword_86E98CC, which are
+  queued to OBJ VRAM 0x6017900 via QueueEightWordAlignedGFXTransfer (64 bytes = 2 4bpp tiles, likely only
+  the changing tiles of an animation). It then indexes the player-side battle entity (fixed-stride 0x1D0
+  array at unk_2036120, index from battleState+oBattleState_PlayerSide) and reads halfword +0x3E, scaling
+  it by 0x50 and shifting left 16 so it offsets all three queued OAM entries identically (shared horizontal
+  anchor). The low byte of dword_801D510 table {0x00,0x30,0x10} is indexed by [r5+0x36] clamped with (v>=3
+  ? v-3 : v), giving a per-state X offset. It calls sprite_queueOamEntry three times with packed attrs:
+  tile/palette word 0xC3C0 (tile 0x3C0, priority 3, palette 12) for the first sprite, 0xC3C8 for the other
+  two; the third call ORs 0x10000000 (attr1 horizontal-flip bit) and adds 0x48 to the position, so two
+  mirrored 32x32 sprites (y from 0x8090) flank/offset the smaller 0x4080-based sprite. Net effect: a small
+  animated, entity-tracking multi-sprite graphic in the lower screen area (y ~0x80-0x90).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'QueueEightWordAlignedGFXTransfer(dword_86E98CC + ([r5+0x36]&1)*0x40, 0x6017900, 0x40) uploads
+    a bit-selected 2-tile frame; getEntryPtr_2036120_1D0(battleState->PlayerSide) then ldrh [r0,#0x3E];
+    *0x50; lsl #0x10 feeds the same r4 offset into all three queueOamEntry calls; three sprite_queueOamEntryThunk
+    calls share r2=3, r3=0 and tile words 0xC3C0/0xC3C8 (pal 12, prio 3); third call adds 0x10000000 =
+    OBJ hflip and +0x48 to position; ldrb from dword_801D510 (bytes 00/30/10) indexed by [r5+0x36] wrapped
+    mod 3 gives the per-state X offset; OAM bases 0x80044080 (16x16, y=0x80) and 0x8090 (32x32, y=0x90)
+    place all sprites in the bottom battle-screen band'
+  refs:
+  - bn6f/asm/asm00_2.s:30043
+  - 0x0802E070 getEntryPtr_2036120_1D0_802E070
+  - 0x0802FE28 sprite_queueOamEntryThunk_802FE28
+  - 0x08000AC8 QueueEightWordAlignedGFXTransfer
+  reproduce: python3 tools/asmcat.py 0x0801D47A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- What dword_86E98CC depicts (a real crosshair/HP marker/effect?) — needs a caller for sub_801D47A and
+  the graphic data
+- Exact meaning of entity field +0x3E (screen X? subpixel Y?) and of r2=3/r3=0 arguments to sprite_queueOamEntry
+- Identity of the object at r5 (battle controller? effect object?) whose +0x36 state selects frame and
+  position
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_801D47A -> battle_drawPlayerSideSpriteSet
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_801D47A

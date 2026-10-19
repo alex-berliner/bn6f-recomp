@@ -1,0 +1,50 @@
+name: battle_initLungeToFrontPanel
+address: '0x080DF016'
+kind: function
+status: probable
+summary: Sets up a battle object to dash toward the panel directly in front of it, computing velocity
+  and animation.
+interface: (r5 = battle object) -> r0 = chosen animation id; sets velocities, target panel, and timer
+  fields on the object
+details: Forces oBattleObject_DirectionFlip=1 so object_getFrontDirection returns the facing from alliance
+  side alone, then writes PanelX+dir and PanelY into fields 0x60/0x61 as the target panel. Loads a halfword
+  from byte_80DEA50 indexed by 2*field0x62 (likely a per-type travel duration or speed) into field 0x6C.
+  Converts the target panel to pixel coordinates via object_getCoordinatesForPanels and calls battleCoordCalc_8114F6A
+  (target x/y/z=0, r4=duration value) to produce XVelocity/YVelocity/ZVelocity. Clears fields 0x68 and
+  0x6A, copies the duration into 0x66 as a countdown, and sets CurAnim (and field 0x63) from dword_80DF098
+  indexed by field 0x6E.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: mov r0,#1; strb r0,[r5,#oBattleObject_DirectionFlip]; bl object_getFrontDirection — facing forced
+    to alliance side; ldrb r1,[r5,#oBattleObject_PanelX]; add r1,r1,r0; strb r1,[r5,#0x60] — target panel
+    is the one in front; ldrh r0,[byte_80DEA50 + 0x62*2]; strh r0,[r5,#0x6c]; later strh r0,[r5,#0x66]
+    — duration/speed table drives a countdown; bl object_getCoordinatesForPanels; bl battleCoordCalc_8114F6A;
+    str r0,[r5,#oBattleObject_XVelocity]... — velocity toward target pixel coords; ldrb r0,[r5,#0x6e];
+    ldrb r0,[dword_80DF098,r0]; strb r0,[r5,#oBattleObject_CurAnim] — animation selected from table
+  refs:
+  - bn6f/asm/asm31.s:84577
+  - 0x080DEE8C sub_80DEE8C
+  - 0x0800E276 object_getCoordinatesForPanels
+  - 0x0800E2CA object_getFrontDirection
+  - 0x08114F6A battleCoordCalc_8114F6A
+  reproduce: python3 tools/asmcat.py 0x080DF016
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- Exact meaning of byte_80DEA50 entries (duration vs speed) needs battleCoordCalc_8114F6A analysis
+- What fields 0x62 and 0x6E index (object type/state?) depends on caller sub_80DEE8C and the object structure
+- Whether field 0x60/0x61 is a target-panel pair or something else needs more callers
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DF016 -> battle_initLungeToFrontPanel
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DF016

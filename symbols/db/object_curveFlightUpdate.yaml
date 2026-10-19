@@ -1,0 +1,52 @@
+name: object_curveFlightUpdate
+address: '0x080DD87C'
+kind: function
+status: probable
+summary: 'Battle-object state handler that moves an object along a parameterized 3D path for 15 frames,
+  then lands: sets animation, collision region, plays sound 0x97, and switches to action 8 with a 30-frame
+  timer.'
+interface: (r0-r3 = scratch/args unused at entry; r5 = battle object pointer, set by caller) -> r0 = Y
+  position (last value); object fields PanelX/Y, Timer, CurAnim, CurAction, X/Y/Z, ExtraVars updated
+details: 'r5 is the battle object (oBattleObject_* offsets), so this is likely an AI/action step handler
+  entered with the object in r5. First it highlights the object''s current panel and increments oBattleObject_Timer.
+  While Timer <= 15 it calls sub_801164C twice with a 3-word parameter block from ExtraVars (+0, +8, +0xc
+  for X/Z and +4, +8, +0x10 for Y), the timer in r6 and 15 in r7 — evidently an interpolation/curve evaluator
+  — and stores the results into X, Z and Y respectively, i.e. it flies/floats along a scripted path (Y
+  computed separately suggests an arc). Once Timer exceeds 15, it ends the move: CurAnim=1, collision
+  region 1 via object_setCollisionRegion, sound effect 0x97 (touchdown/impact?), CurAction=8, and Timer
+  reset to 30 for the next state. ExtraVars+8 is shared between both curve evaluations, so it likely holds
+  a common scale or interpolation constant.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb [r5,#oBattleObject_PanelX/Y] + bl object_highlightPanel: operates on a battle object''s
+    panel; two calls to sub_801164C with r6=Timer, r7=0xf store results into X/Z then Y: parameterized
+    movement over 15 frames; cmp r0,#0xf / ble: transition to finish branch — anim=1, object_setCollisionRegion(1),
+    PlaySoundEffect(0x97); CurAction=8 and Timer=0x1e after finish: hands control to a following action
+    state with a 30-frame duration'
+  refs:
+  - bn6f/asm/asm31.s:81466
+  - 0x080005CC PlaySoundEffect
+  - 0x0800CBD8 object_highlightPanel
+  - 0x0801A07C object_setCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080DD87C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- What sub_801164C computes (its curve/interpolation math) to name the movement precisely (arc vs. hover
+  vs. glide)
+- Which enemy/object action state 8 and sound 0x97 correspond to — callers are unknown, so the triggering
+  context (attack name, launch vs. landing) is unconfirmed
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DD87C -> object_curveFlightUpdate
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DD87C

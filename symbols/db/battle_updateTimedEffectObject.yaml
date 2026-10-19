@@ -1,0 +1,51 @@
+name: battle_updateTimedEffectObject
+address: '0x080DE924'
+kind: function
+status: probable
+summary: 'Per-frame update for a short-lived battle effect object: advances an animation counter (4 or
+  6 frames), destroys itself when a helper reports done, and keeps its panel position in sync.'
+interface: (r5 = battle object) -> void; destroys via oBattleObject_CurStateActionPhaseAndPhaseInitialized
+  = CUR_STATE_DESTROY
+details: 'Runs on the object in r5 (BN6 battle-object convention: no register args). It increments the
+  counter at oBattleObject_ExtraVars+8, wrapping at 4 if oBattleObject_Param2 is 0, else at 6 — so Param2
+  selects one of two animation lengths. After stepping the counter it calls sub_80DE984; a zero return
+  means the object''s life/animation is over, so it writes CUR_STATE_DESTROY into oBattleObject_CurStateActionPhaseAndPhaseInitialized
+  and calls object_clearCollisionRegion to drop it out of collision. If ExtraVars+8 was 1 on entry it
+  first calls sub_80DE9E4, likely a one-shot setup on the second frame. Finally it always refreshes PanelX/PanelY
+  from world position (object_setPanelsFromCoordinates) and syncs collision panels/facing (object_updateCollisionPanels),
+  typical of a moving or drifting effect entity.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: cmp r0,#1 / bl sub_80DE9E4 — one-shot call when counter reaches its first frame; mov r1,#4 /
+    mov r1,#6 chosen by oBattleObject_Param2 — two animation lengths; cmp r0,#0 after bl sub_80DE984 ->
+    writes CUR_STATE_DESTROY and calls object_clearCollisionRegion — self-destruct path; always calls
+    object_setPanelsFromCoordinates then object_updateCollisionPanels — keeps a live object's panel/collision
+    state current each frame; callee summaries (object_clearCollisionRegion, object_updateCollisionPanels)
+    match per-frame battle-object upkeep
+  refs:
+  - bn6f/asm/asm31.s:83678
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0800E2AC object_setPanelsFromCoordinates
+  - 0x0801A04C object_updateCollisionPanels
+  reproduce: python3 tools/asmcat.py 0x080DE924
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- sub_80DE984's check is unknown — likely remaining lifetime or a parent/attack still active; reading
+  it would confirm why the object self-destructs
+- sub_80DE9E4's one-shot setup is unknown (sprite frame, sound, spawn?)
+- which in-game effect uses this (Param2=0 vs Param2=1 variants, 4- vs 6-frame loop) — no caller known
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DE924 -> battle_updateTimedEffectObject
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DE924

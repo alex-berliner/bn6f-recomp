@@ -1,0 +1,44 @@
+name: battle_clearSelfRefPointer
+address: '0x080D3F32'
+kind: function
+status: probable
+summary: Nulls an external pointer slot if it currently references this battle object (self-reference
+  cleanup on init/teardown).
+interface: (r5 = battle object) -> r0 clobbered; no return value
+details: Reads a pointer p from [r5+oBattleObject_ExtraVars+4], dereferences it, and if *p == r5 stores
+  0 into *p, severing a link some other structure holds to this object; if the slot holds any other object
+  it is left untouched. r5 is the battle engine's 'this' convention, so the caller passes nothing in r0-r4.
+  Called both from battle_initRankedEnemy (fresh spawn) and object_processCollisionDamage (after collision/damage
+  teardown), suggesting the field is a back-reference such as a damage source, owner, or linked object
+  that must not dangle. No flags or return value are used.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'asm: ldr r1,[r5,#oBattleObject_ExtraVars+4]; ldr r0,[r1]; cmp r0,r5; bne skip; str 0 -> conditional
+    self-nulling; caller 0x080D3A7C object_processCollisionDamage: teardown path clears back-references
+    after damage processing; caller 0x080D3E0 battle_initRankedEnemy: also cleared at spawn, so field
+    persists between objects'
+  refs:
+  - bn6f/asm/asm31.s:60919
+  - 0x080D39E0 battle_initRankedEnemy
+  - 0x080D3A7C object_processCollisionDamage
+  - 0x080D3D90 sub_80D3D90
+  reproduce: python3 tools/asmcat.py 0x080D3F32
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- which structure the pointer at oBattleObject_ExtraVars+4 targets (attacker slot, owner link, target
+  list?) and what semantic link it represents
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D3F32 -> battle_clearSelfRefPointer
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D3F32

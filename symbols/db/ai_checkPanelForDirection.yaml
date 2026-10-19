@@ -1,0 +1,50 @@
+name: ai_checkPanelForDirection
+address: '0x0800F55C'
+kind: function
+status: probable
+summary: Tests whether the panel at (col,row) satisfies the panel-flag requirements tied to the current
+  battle object's facing direction, returning 1 if OK.
+interface: (r0 = column, r1 = row) -> r0 = 1 if the panel passes the direction's required/forbidden flag
+  masks, 0 if coords invalid; flags from callee
+details: 'First validates (r0,r1) with object_isValidPanel (1-based 6x3 grid) and returns 0 if out of
+  range. It then reads the current battle object''s oBattleObject_DirectionAngle from the global object
+  pointer in r5 (not passed in — a quirk), subtracts 1, multiplies by 8, and indexes byte_800F588, a table
+  of per-direction 8-byte entries. Each entry is a (requiredMask, forbiddenMask) word pair (e.g. dir1:
+  0x30 / 0x03080000, dir2: 0x10 / 0x03080020) which it passes as r2/r3 to object_checkPanelParameters
+  along with the coordinates. So the panel must have all bits of the direction''s required mask and none
+  of the forbidden mask. ai_beginPanelSlideMove uses this to decide whether the panel it is sliding onto
+  in the chosen direction is acceptable before starting the move.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_isValidPanel / beq return 0: coordinates are the (col,row) arguments; ldrb r0,[r5,#oBattleObject_DirectionAngle];
+    sub #1; lsl #3: 8-byte-per-direction table indexed by current object''s direction; ldr r2/r3 from
+    table then bl object_checkPanelParameters: entries are (required, forbidden) flag masks; caller ai_beginPanelSlideMove:
+    gates the slide onto the queued next panel on this check; r5 read without being an argument: relies
+    on the ambient current-object pointer, like other AI-context helpers'
+  refs:
+  - bn6f/asm/asm00_2.s:1297
+  - 0x08017E44 ai_beginPanelSlideMove
+  - 0x08017F38 sub_8017F38
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0800CC72 object_isValidPanel
+  reproduce: python3 tools/asmcat.py 0x0800F55C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- exact meaning of each panel-flag bit in the masks (e.g. what 0x30 and 0x03080020 denote on the panel
+  state)
+- whether other callers besides ai_beginPanelSlideMove/sub_8017F38 use it with different directions
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_800F55C -> ai_checkPanelForDirection
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800F55C

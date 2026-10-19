@@ -1,0 +1,49 @@
+name: battle_timedCollisionPulseUpdate
+address: '0x080CA0B0'
+kind: function
+status: probable
+summary: Per-frame timer for a battle object that re-registers it in collision region 1 on a repeating
+  cycle and destroys it when its lifetime expires.
+interface: (r5 = battle object) -> r0 = 1 when re-registered; sets oObjectHeader_Flags bit 1 clear and
+  state CUR_STATE_DESTROY at end of life
+details: 'Each call decrements oBattleObject_Timer; when it reaches 0 the object''s collision region is
+  cleared (object_clearCollisionRegion), flag bit 1 is cleared in oObjectHeader_Flags, and the state field
+  oBattleObject_CurStateActionPhaseAndPhaseInitialized is set to CUR_STATE_DESTROY, ending the object.
+  Before that, oBattleObject_Timer2 counts down by the value at [ExtraVars+0] each frame; when it would
+  go negative it is reset to [ExtraVars+4] (the cycle period) and object_setCollisionRegion(1) is called,
+  so the object pulses into collision region 1 on a schedule tuned by ExtraVars. Quirk: r1 is left holding
+  the ExtraVars pointer from the countdown when object_setCollisionRegion is called, so that pointer is
+  passed as the callee''s second argument.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'loc_80CA0D0: bl object_clearCollisionRegion, clears flag bit 1, then str CUR_STATE_DESTROY
+    into oBattleObject_CurStateActionPhaseAndPhaseInitialized; ldrh r0,[r5,#oBattleObject_Timer2]; sub
+    r0,r1 with r1=[ExtraVars]; reset to [ExtraVars+4] then bl object_setCollisionRegion with r0=1; Caller
+    object_perFrameUpdate runs this as the object''s per-frame state handler; Callee summaries confirm
+    object_set/object_clearCollisionRegion manage the collision region byte'
+  refs:
+  - bn6f/asm/asm31.s:39487
+  - 0x080CA074 object_perFrameUpdate
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0801A07C object_setCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080CA0B0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- What object uses this handler and what ExtraVars encode (initial speed/period values) — a spawn site
+  would confirm whether this is a pulsing trap/hazard
+- Whether the always-region-1 re-registration is a toggle in effect because the region was cleared elsewhere
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CA0B0 -> battle_timedCollisionPulseUpdate
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CA0B0

@@ -1,0 +1,56 @@
+name: rfu_pollLinkWatchdog
+address: '0x08145210'
+kind: function
+status: probable
+summary: 'Periodic wireless-link watchdog: polls the RFU link status, updates the connected-player bitmask
+  and per-player disconnect timers in the connection struct at 200FE00, and runs disconnect processing
+  when a peer drops or times out.'
+interface: (r0 = 16-bit argument passed to rfu_REQBN_watchLink) -> r0 = nonzero flag if any player disconnect
+  was processed this call; no meaningful flags
+details: 'Calls rfu_REQBN_watchLink, which fills three stack bytes (local status at sp, two remote statuses).
+  It records those statuses into word_200FE14/word_200FE16 of eStruct200FE00. The struct''s byte at +0x09
+  selects the path: when set it sets byte_200FE0A to 1 (or 4 if byte_200FE06 and the second status byte
+  are both 0), then for each of the 4 low bits of the status byte that are newly set, it ORs the bit into
+  the connected bitmask at +0x30 and stores the word at +0x32 into the per-slot counter array at +0x34,
+  then notifies via sub_81461B0 (msg 0x31/0x33) after calling sub_81461D8. When +0x09 is clear (or via
+  the dword_2010CC0 path when its byte equals 1), it instead takes the local status byte, clears matching
+  bits from +0x30 and zeroes those slots'' counters at +0x34 (notifying with msg 0x32), then decrements
+  each remaining slot''s counter and, whenever one reaches zero, clears that bit, calls sub_81461D8 with
+  the cleared bitmask, and notifies with msg 0x33. byte_200FE0A is reset to 0 once the +0x30 bitmask drains.
+  Returns nonzero (r8) whenever sub_81461D8 was invoked.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl rfu_REQBN_watchLink with three stack-byte out-params shows a link status poll (asm: r1,r2,r3
+    = sp,sp+1,sp+2); statuses stored to eStruct200FE00 +0x14/+0x16 and per-bit loop ORs status bits into
+    +0x30 with counter words at +0x34; counter decrement loop with ''sub r0,#1 ... beq clear-bit'' implements
+    per-player timeout detection; all callers are cases of rfu_handleConnectionEvent, fitting periodic
+    link-state maintenance in the connection state machine; sub_81461D8 + sub_81461B0 with codes 0x30-0x33
+    fire connection/disonnection notifications; byte_200FE0A tracks watchdog state'
+  refs:
+  - bn6f/asm/libs.s:2471
+  - 0x08145658 rfu_handleConnectionEvent
+  - 0x08145750 rfu_handleConnectionEvent
+  - 0x08145768 rfu_handleConnectionEvent
+  - 0x0814A060 rfu_REQBN_watchLink
+  - 0x081461B0 sub_81461B0
+  - 0x081461D8 sub_81461D8
+  reproduce: python3 tools/asmcat.py 0x08145210
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- exact meaning of the r0 argument and the message codes 0x30-0x33 passed to sub_81461B0
+- whether byte_200FE09/0x0A distinguish parent/child or host/guest roles, and the precise role of dword_2010CC0
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8145210 -> rfu_pollLinkWatchdog
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8145210

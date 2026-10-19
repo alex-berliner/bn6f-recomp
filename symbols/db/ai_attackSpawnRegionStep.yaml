@@ -1,0 +1,50 @@
+name: ai_attackSpawnRegionStep
+address: '0x080F44E4'
+kind: function
+status: probable
+summary: AI attack state machine step for a boss/enemy that spawns a ground collision-region attack on
+  the panel in front of it, then waits for it to finish.
+interface: (r5 = battle object, r7 = AI attack vars struct) -> void; sets oAIAttackVars_StepTimer/AttackElement/HitElement
+details: 'Runs as a three-state script keyed by oAIAttackVars_AttackElement: state 0 initializes it to
+  1 with a 10-frame StepTimer delay. State 1, once the timer expires, sets the object''s anim to 0x11,
+  computes the target panel as PanelX + object_getEnemyDirection(alliance-based facing) and PanelY, and
+  calls object_spawnCollisionRegion with args r2 = oAIAttackVars_InitFlag, r4 = 0x705FF04 (region descriptor),
+  r6 = oAIAttackVars_Damage, r7(overwritten) = 3, then plays sound 0xB0, calls sub_80F4778, and re-arms
+  the timer to 14 + oAIAttackVars_AttackDuration before moving to state 2. State 2 counts the timer down
+  and, at zero, writes HitElement = 0x18, presumably marking the attack''s element for the spawned region''s
+  hit resolution. If oAIAttackVars_PanelParamFlags2 points at a structure, it also stores 0x10 at offset
+  0x10.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'state machine: ldrb r0,[r7,#oAIAttackVars_AttackElement] with cmp 1/2 branches setting StepTimer
+    10, 14+AttackDuration, then AttackElement=2 (asm head and tail); loc_80F44FA: bl object_getEnemyDirection;
+    add with oBattleObject_PanelX; ldrb PanelY; bl object_spawnCollisionRegion with dword_80F4554=0x705FF04
+    and oAIAttackVars_Damage; mov r0,#0xb0; bl PlaySoundEffect after spawning the region — an attack-activation
+    cue; state 2 at loc_80F4544: on timer expiry stores 0x18 into oAIAttackVars_HitElement; callees object_getEnemyDirection
+    (panel offset by alliance) and object_spawnCollisionRegion match an enemy ground-attack hitbox'
+  refs:
+  - bn6f/asm/asm31.s:130271
+  - 0x080005CC PlaySoundEffect
+  - 0x0800E2C0 object_getEnemyDirection
+  - 0x080C536A object_spawnCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080F44E4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- exact attack identity (which boss/enemy) and meaning of the 0x705FF04 region descriptor
+- what sub_80F4778 does between the sound and the timer re-arm
+- what struct oAIAttackVars_PanelParamFlags2 points to and why field 0x10 gets 0x10
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F44E4 -> ai_attackSpawnRegionStep
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F44E4

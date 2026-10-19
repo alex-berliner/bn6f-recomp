@@ -1,0 +1,49 @@
+name: object_decideFacingFlip
+address: '0x080C9F18'
+kind: function
+status: probable
+summary: Decides whether the battle object should flip its facing this tick, stores it in DirectionFlip,
+  and returns the resulting facing side.
+interface: (r5 = battle object) -> r0 = new facing direction (result XOR alliance); writes oBattleObject_DirectionFlip
+details: 'Calls object_getFrontDirection, then reads the object''s PanelX/PanelY and fetches alliance-dependent
+  panel parameters from table off_80C9F64. sub_800D120 (args from that lookup) returning nonzero forces
+  result 0 (no flip). Otherwise battle_pickRandomRowObjectFields_810971A picks a random object in the
+  row at PanelY: any pick (or PanelX equal to (Alliance^1)*5+1, the column adjacent to the enemy-side
+  front) sets result 1 (flip). The result is stored to oBattleObject_DirectionFlip and returned XORed
+  with Alliance, so the caller receives the final facing multiplier. The alliance-parameter table at off_80C9F64
+  holds two entries whose words (0x4000000/0x8000000) look like pointers or IDs whose meaning is unclear.
+  object_getFrontDirection''s result is kept in r4 but apparently unused, a quirk of the original code.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ends with strb r0,[r5,#oBattleObject_DirectionFlip]; eor r0,r1(Alliance) — writes flip flag,
+    returns facing side; opens with bl object_getFrontDirection, result in r4; bl GetAllianceDependentPanelParamArgs
+    with PanelX/PanelY and table off_80C9F64; bl battle_pickRandomRowObjectFields_810971A on PanelY; nonzero
+    pick branches to result=1; cmp r1(=(Alliance^1)*5+1),PanelX equal also forces result=1
+  refs:
+  - bn6f/asm/asm31.s:39296
+  - 0x080C9D24 sub_80C9D24
+  - 0x081096FA GetAllianceDependentPanelParamArgs
+  - 0x0810971A battle_pickRandomRowObjectFields_810971A
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x080C9F18
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- what sub_800D120 checks with the panel-parameter args (it gates the flip off)
+- what the random row-object pick at PanelY means for the behavior (a target? an obstacle?)
+- what the table entries 0x4000000/0x8000000/0x348000 point to or encode
+- why object_getFrontDirection's result is unused
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C9F18 -> object_decideFacingFlip
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C9F18

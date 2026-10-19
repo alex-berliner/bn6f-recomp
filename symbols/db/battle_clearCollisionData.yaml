@@ -1,0 +1,48 @@
+name: battle_clearCollisionData
+address: '0x0800EA0E'
+kind: function
+status: probable
+summary: 'Resets a battle object''s collision state: clears all collision ObjectFlags2 bits and zeroes
+  its collision-hit record area.'
+interface: (r5 = battle object) -> void; r0-r3, lr clobbered
+details: Takes the battle object in r5 and first clears a fixed mask 0x301FE of ObjectFlags2 via object_clearFlag2,
+  wiping the per-frame collision flag bits. It then loads the object's CollisionDataPtr (oBattleObject_CollisionDataPtr)
+  and zero-fills 14 halfwords (28 bytes) at offset 0x80 within the collision data structure, which appears
+  to be the record of hit/collision entries for the frame. The function is called from three sibling routines
+  (0x0802D7A0, 0x0802D9B0, 0x0802DB80), likely the per-object passes of the collision-processing phase,
+  each resetting an object's collision state before or after evaluating hits. The mask 0x301FE is hardcoded,
+  so only the collision-related bits of ObjectFlags2 are touched, not the whole field.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldr r0, =0x301fe; bl object_clearFlag2 clears only the collision bits of ObjectFlags2; ldr r0,[r5,#oBattleObject_CollisionDataPtr];
+    add r0,#0x80 targets the collision-data struct's record area; mov r1,#0xe; bl ZeroFillByHalfword zeroes
+    14 halfwords, matching an array of collision entries; three callers 0x0802D7A0/D9B0/DB80 are adjacent
+    routines, consistent with collision-phase passes resetting state each frame
+  refs:
+  - bn6f/asm/object.s:5989
+  - 0x0802D7A0 sub_802D7A0
+  - 0x0802D9B0 sub_802D9B0
+  - 0x0802DB80 sub_802DB80
+  - 0x0801A176 object_clearFlag2
+  - 0x080008C0 ZeroFillByHalfword
+  reproduce: python3 tools/asmcat.py 0x0800EA0E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- exact meaning of the 0x80 field layout in the collision data (entry size/count per slot)
+- which specific ObjectFlags2 bits the 0x301FE mask covers
+- whether the three callers differ in which collision pass invokes this
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_800EA0E -> battle_clearCollisionData
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800EA0E

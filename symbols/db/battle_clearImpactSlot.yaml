@@ -1,0 +1,46 @@
+name: battle_clearImpactSlot
+address: '0x0802CEA6'
+kind: function
+status: probable
+summary: Resets one 16-byte slot in the impact-effect table at 0x2036720, marking any object linked to
+  it for destruction.
+interface: (r0 = slot index) -> r0 = undefined; clears fields of slot r0*0x10 in table 0x2036720
+details: Computes slot r0*0x10 into the table at 0x2036720 and zeroes the halfwords at +0x00, +0x02, +0x04
+  and the word at +0x08, i.e. wipes the slot's parameters/flags. It then reads the pointer at +0x0C; if
+  non-null, it sets byte +5 of the pointed-to structure (a battle object) to 1 — the same free/delete
+  flag object_updateOrDestroy checks on Param2 — and clears the pointer. It returns without touching other
+  slots. This is a teardown/clear routine for queued impact entries, complementary to the handler that
+  walks the same table.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'mov r1,#0x10; mul r1,r0 with base off_802D030=unk_2036720: indexed 16-byte slot access; strh/str
+    of 0 to +0x00,+0x02,+0x04,+0x08: wipes the slot''s fields; ldr r1,[r0,#0xc]; strb r2=1,[r1,#5]: sets
+    destroy flag on linked object before unlinking; str r1=0,[r0,#0xc]: clears the object pointer, so
+    the write happens only once; caller battleObject_handleImpact_802CFF8 uses the same 0x2036720 table
+    for impact/shockwave effects'
+  refs:
+  - bn6f/asm/asm03_0.s:14598
+  - 0x0802CFF8 battleObject_handleImpact_802CFF8
+  - 0x080CDFEE object_updateOrDestroy
+  - 0x0802CEC8 runPendingHandlerForEntryPair_802CEC8
+  reproduce: python3 tools/asmcat.py 0x0802CEA6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- Exact meaning of each cleared halfword field (sizes/flags of the slot struct) needs confirmation from
+  the writer side
+- Whether the byte+5=1 write targets the standard battle-object free flag or a type-specific struct
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_802CEA6 -> battle_clearImpactSlot
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802CEA6

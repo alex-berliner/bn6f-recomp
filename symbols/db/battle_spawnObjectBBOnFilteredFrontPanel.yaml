@@ -1,0 +1,50 @@
+name: battle_spawnObjectBBOnFilteredFrontPanel
+address: '0x080DC99C'
+kind: function
+status: probable
+summary: 'Looks up the first panel in front of the battle object matching a type filter, and if found
+  spawns battle object #0xBB there with forwarded arguments.'
+interface: (r0, r1, r2 forwarded to spawner; r4, r6 forwarded too; r5 = battle object) -> r0 = spawned
+  object or 0; r4, r6 clobbered/restored from stack for the call
+details: The function first calls object_getFrontDirection to get the +1/-1 facing multiplier for the
+  object in r5, then reads the object's byte at +0x16, multiplies by 8 to index a table of two-word entries
+  at byte_80DC9DC (entry0 = {0x20,0}, entry1 = {0,0x20}). Those two words are passed as r2/r3 filter parameters
+  to object_getFirstPanelInDirectionFiltered along with r0/r1 from the caller. If a matching panel is
+  found, it calls battle_spawnObjectBBAndInit with the caller's original r0/r1/r2 plus r4 and r6 forwarded
+  as extra spawner arguments. The 0x16 field thus acts as a selector between at least two filter configurations,
+  likely a panel-type or attack-form selector.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_getFrontDirection then tst r0,r0 / beq skip shows the spawn is gated on finding a
+    panel in the facing direction; ldrb r3,[r5,#0x16]; lsl r3,#3; ldr r2,[r3]... loads a two-word table
+    entry keyed by an object field; bl object_getFirstPanelInDirectionFiltered receives the table words
+    in r2/r3 as filter arguments; conditional bl battle_spawnObjectBBAndInit with r0/r1/r2 plus restored
+    r4/r6 forwarded arguments; table byte_80DC9DC holds 0x20 at different slots of entries 0 and 1, suggesting
+    paired filter values
+  refs:
+  - bn6f/asm/asm31.s:79494
+  - 0x080DC986 battle_spawnObjectBBAndInit
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800D0BC object_getFirstPanelInDirectionFiltered
+  reproduce: python3 tools/asmcat.py 0x080DC99C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- 'what object #0xBB actually is (needs its initializer or in-game use)'
+- meaning of the 0x20 filter values and the full table beyond the 16 bytes shown
+- what object field +0x16 represents and what the forwarded r0/r1/r2/r4/r6 arguments are
+- no known caller yet, so the trigger context (which attack/spawn path uses this) is unknown
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DC99C -> battle_spawnObjectBBOnFilteredFrontPanel
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DC99C

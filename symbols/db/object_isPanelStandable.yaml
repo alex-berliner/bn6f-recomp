@@ -1,0 +1,50 @@
+name: object_isPanelStandable
+address: '0x0800F534'
+kind: function
+status: probable
+summary: Validates battle-grid coordinates, then reports whether that panel carries flag 0x10 while lacking
+  flags 0x3800000 — used by battle-object AI before stepping onto a panel.
+interface: (r0 = column (1-based), r1 = row (1-based)) -> r0 = 1 if panel is valid and passes the flag
+  test, else 0; flags clobbered by callees
+details: 'Thin wrapper over the panel-flag test: it first calls object_isValidPanel and returns 0 immediately
+  if (col,row) is outside the 6x3 grid. Otherwise it calls object_checkPanelParameters with the same coordinates,
+  a must-be-set mask of 0x10 and a must-be-clear mask of 0x3800000, returning that result verbatim. So
+  the panel must have attribute bit 0x10 and none of the bits in 0x3800000 (bits 23-25 of the panel status
+  word) for the function to return 1. Given the caller ai_beginPanelSlideMove (object snapping onto its
+  queued next panel and picking a slide direction), this is most plausibly a ''is this panel a solid/standable
+  tile'' gate, with 0x3800000 covering states like hole/broken/occupied. The exact meaning of the flag
+  bits is not established from the shown code.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_isValidPanel then beq loc_800F54E: out-of-grid (col,row) short-circuits to return
+    0; ldr r2, =0x10 / ldr r3, =0x3800000 before bl object_checkPanelParameters: fixed required-set and
+    required-clear masks; both branches just pop {r6,r7,pc} after forwarding r0/r1 results: pure boolean
+    wrapper, no state written; caller ai_beginPanelSlideMove snaps the object onto its queued next panel
+    and starts a slide — consistent with a pre-move panel-standability check'
+  refs:
+  - bn6f/asm/asm00_2.s:1274
+  - 0x08017E44 ai_beginPanelSlideMove
+  - 0x08017F38 sub_8017F38
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0800CC72 object_isValidPanel
+  reproduce: python3 tools/asmcat.py 0x0800F534
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- Which panel-status bits 0x10 and 0x3800000 represent (normal ground vs hole/broken/occupied) — needs
+  the panel-status field definitions or object_checkPanelParameters' internals
+- What sub_8017F38 (the other caller) uses the result for, to confirm the standability interpretation
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_800F534 -> object_isPanelStandable
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800F534

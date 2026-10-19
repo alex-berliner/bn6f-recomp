@@ -1,0 +1,51 @@
+name: rfu_fireConnCallbackAndClearState
+address: '0x081461B0'
+kind: function
+status: probable
+summary: Invokes the RFU connection callback registered in eStruct200FE00+0x40 (if any) with the two byte
+  arguments, then zeroes the connection-state halfwords at +0x14 and +0x16.
+interface: (r0 = byte arg A, r1 = byte arg B) -> r0 = 0; calls [eStruct200FE00+0x40](argA, argB) if non-NULL;
+  no flags meaningful
+details: Both arguments are masked to bytes and passed through unchanged. It loads the link-connection
+  struct at 200FE00; if the dword at +0x40 is non-zero it is treated as a function pointer and tail-called
+  via the r2-dispatch trampoline with r0/r1 forwarded as parameters. Afterwards it stores 0 to halfwords
+  at +0x14 and +0x16 of the same struct, resetting the tracked connection-state fields. The caller (rfu_handleConnectionEvent)
+  invokes it from six different branches of the link-event state machine, consistent with a shared 'report
+  event via callback, then reset state' step. The return value written (mov r0,#0 after the call) is the
+  cleared state, not the callback's result. Fields +0x14/+0x16 look like state/phase or result trackers
+  of the search-and-connect state machine.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'asm: ldr r2,[r4,#0x40]; cmp r2,#0; bl rfu_callFuncByPtr_814DA68 — field 0x40 is a dispatchable
+    function pointer, args passed through; asm: strh r0,[r4,#0x14] / [r4,#0x16] with r0=0 — clears two
+    state halfwords of eStruct200FE00; caller: all six call sites are inside rfu_handleConnectionEvent,
+    the 200FE00 link-event state machine; callee summary: rfu_callFuncByPtr_814DA68 tail-calls the pointer
+    in r2 — confirms callback invocation'
+  refs:
+  - bn6f/asm/libs.s:4544
+  - 0x08145658 rfu_handleConnectionEvent
+  - 0x08145750 rfu_handleConnectionEvent
+  - 0x08145768 rfu_handleConnectionEvent
+  - 0x0814DA68 rfu_callFuncByPtr_814DA68
+  reproduce: python3 tools/asmcat.py 0x081461B0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- Semantics of the two byte arguments and of fields +0x14/+0x16 (state vs. result codes) would need the
+  connection struct layout and the callback's own body
+- Which connection events route to this path (disconnect vs. completion) is not visible without reading
+  rfu_handleConnectionEvent's branch conditions
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81461B0 -> rfu_fireConnCallbackAndClearState
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81461B0

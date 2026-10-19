@@ -1,0 +1,47 @@
+name: submenu_handleEntryScreenInput
+address: '0x08125704'
+kind: function
+status: probable
+summary: 'Per-frame input handler for a submenu screen: B/START exit with fade, Left/Right switch a mode
+  byte, Up/Down move a 7-row list cursor.'
+interface: (r0 = state ptr in r8, r5 = state ptr) -> void; writes state fields, plays SFX, may start fade
+details: Reads pressed keys via toolkit->joypad. START|B calls menu_confirmExitAndFade(0x40) to leave
+  the screen. Pressed Left stores 0x28 into [r5,#2], pressed Right stores 0x20 into [r5,#2]; both play
+  SFX 0x7A, so these toggle between two display/mode values rather than scroll. If [r5,#0x64] is nonzero,
+  it temporarily copies it into [r5,#0x30], calls submenu_moveListCursor(rows=7, r2=0) driven by held
+  Up/Down and Left/Right (0x300 mask on pressed/held), stores the joypad ptr into [r5,#0x70], then restores
+  the original [r5,#0x30] value — the cursor actually moved is for the list identified by [r5,#0x64].
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: tst with JOYPAD_START|JOYPAD_B then menu_confirmExitAndFade_812580C(0x40) — standard submenu
+    exit path; Left/Right write 0x28/0x20 to byte [r5,#2] and each plays playSoundEffect_7A_81258E8, matching
+    a mode/page toggle; submenu_moveListCursor(7,0) called with the 0x300 dpad mask from pressed/held
+    joypad; value at [r5,#0x64] is swapped into the cursor field [r5,#0x30] around the cursor call and
+    restored after; Sole caller sub_8124F8C and the meaning of field +2 are unverified
+  refs:
+  - bn6f/asm/asm33.s:4787
+  - 0x08124F8C sub_8124F8C
+  - 0x0812580C menu_confirmExitAndFade_812580C
+  - 0x081258E8 playSoundEffect_7A_81258E8
+  - 0x08125820 submenu_moveListCursor
+  reproduce: python3 tools/asmcat.py 0x08125704
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- What structure r5 is (which submenu state block) and what the byte at +2 selects (0x28 vs 0x20)
+- Why the cursor is moved via the value at +0x64 instead of the normal +0x30 field — likely a secondary
+  list, needs caller sub_8124F8C to confirm
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8125704 -> submenu_handleEntryScreenInput
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8125704

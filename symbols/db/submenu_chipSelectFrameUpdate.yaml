@@ -1,0 +1,51 @@
+name: submenu_chipSelectFrameUpdate
+address: '0x0803A9E6'
+kind: function
+status: probable
+summary: 'Per-frame update for the in-battle chip-select menu: poll the folder cursor and dispatch any
+  button press to a handler, then advance the battle scene and draw the overlay frame.'
+interface: (r0 = 0) -> r0 = clobbered; returns to caller after running the selected handler and the scene/draw
+  updates
+details: Calls submenu_chipSelectCursorMove with r0=0 to advance the chip-select grid cursor; its return
+  value is a button code (B/A/Start/L/R). If 0 (no button), it skips dispatch; otherwise it indexes dword_803AA0C
+  with button*4 and calls the handler thumb-wise via mov lr,pc / bx r0, so handlers return back into this
+  frame (index 1 = B -> handleExitSubmenu, 2 = A -> battleObj_dispatchSubstate). After the dispatch (or
+  immediately if no button), it calls sub_803A7B8 to update/boot the battle scene behind the menu and
+  sub_803BC7C to draw the overlay's half-tile frame, advancing its column counter. r4-r7 are preserved
+  but unused, suggesting register-alignment with sibling state handlers. Table slot 0 is a null placeholder,
+  never taken because 0 is handled by beq.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'beq loc_803A9FA after bl submenu_chipSelectCursorMove: return 0 means no button, skip dispatch;
+    lsl r0,r0,#2 / ldr r0,[r1,r0] / mov lr,pc / bx r0: thumb dispatch table indexed by button code; dword_803AA0C:
+    slot1=handleExitSubmenu (B exits), slot2=battleObj_dispatchSubstate (A confirms), slots 3-5 Start/L/R;
+    unconditional bl sub_803A7B8 + bl sub_803BC7C at loc_803A9FA: scene update and frame draw run every
+    frame, even after a handler returns; callee summaries: chipSelectCursorMove returns a button code;
+    sub_803BC7C draws the overlay frame and wraps at 0x18 columns'
+  refs:
+  - bn6f/asm/asm03_1_1.s:3984
+  - 0x0803AFC2 submenu_chipSelectCursorMove
+  - 0x0803A7B8 sub_803A7B8
+  - 0x0803BC7C sub_803BC7C
+  reproduce: python3 tools/asmcat.py 0x0803A9E6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- exact button-to-index mapping (which of Start/L/R maps to slots 3-5) depends on submenu_chipSelectCursorMove's
+  return encoding
+- whether sub_803A7B8 is a per-frame scene update or a one-time bootstrap is unclear from its summary
+- the caller (state machine that invokes this substate each frame) is unknown
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803A9E6 -> submenu_chipSelectFrameUpdate
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803A9E6

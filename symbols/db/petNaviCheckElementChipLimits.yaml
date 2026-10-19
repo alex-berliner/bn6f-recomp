@@ -1,0 +1,49 @@
+name: petNaviCheckElementChipLimits
+address: '0x08120DAC'
+kind: function
+status: probable
+summary: Checks whether a navi's regular/tag chip counts for a given element would exceed the NaviStats
+  limits stored at stat bytes 0xB and 0xC.
+interface: (r0 = element ID) -> r0 = 1 if either count exceeds its stat byte (0xB via selector 1, 0xC
+  via selector 2), else 0; called after GetCurPETNavi snapshot
+details: Reads the currently selected PET navi (GetCurPETNavi, kept on the stack), then calls sub_8120B28
+  with selector 1 and r0=element and compares the result to NaviStats byte 0xB (GetCurPETNaviStatsByte(?,
+  0xB)); if not greater, repeats with selector 2 against byte 0xC. sub_8120B28 evidently counts chips
+  matching the element in one of two chip-slot categories (likely regular and tag slots). If the first
+  count already exceeds the 0xB limit it skips the second check (early return path loc_8120DE6 with r7=1).
+  Returns 1 only when an overflow would occur; 0 means both counts fit within the limits.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: str r0,[sp] after GetCurPETNavi keeps the navi id for stat-byte reads (0x08120DB6-DBE); GetCurPETNaviStatsByte
+    field 0xB compared against sub_8120B28(1, element) (0x8120DC2-DD6); GetCurPETNaviStatsByte field 0xC
+    compared against sub_8120B28(2, element), success clears r7 (0x8120DDA-DE4); caller petNaviTryGiveElementFolder_8120D10
+    gates granting the element-0x22 folder on chip-count-vs-stat thresholds; returns r7 (1 = limit exceeded,
+    0 = ok) via tst/pop at 0x8120DE8-DEC
+  refs:
+  - bn6f/asm/asm32.s:38957
+  - 0x08120D10 petNaviTryGiveElementFolder_8120D10
+  - 0x0812FAE4 sub_812FAE4
+  - 0x081307BC sub_81307BC
+  - 0x080010B6 GetCurPETNavi
+  - 0x080137B6 GetCurPETNaviStatsByte
+  - 0x08120B28 sub_8120B28
+  reproduce: python3 tools/asmcat.py 0x08120DAC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- exact meaning of sub_8120B28's selector 1 vs 2 (regular vs tag chips?) not confirmed
+- exact semantics of NaviStats bytes 0xB and 0xC (capacity vs stored count)
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8120DAC -> petNaviCheckElementChipLimits
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8120DAC

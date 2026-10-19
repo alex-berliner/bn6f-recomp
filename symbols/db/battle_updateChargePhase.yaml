@@ -1,0 +1,47 @@
+name: battle_updateChargePhase
+address: '0x080D282C'
+kind: function
+status: probable
+summary: 'Per-frame update for an enemy object''s charge-up phase: spawns a marker object in front, plays
+  a looping sound, then signals ready after 60 frames.'
+interface: (r5 = battle object pointer, called as method) -> void; no return value
+details: Runs as a battle-object phase handler (r5 = this object). On first run it sets PhaseInitialized=4,
+  switches animation to 0x10, sets ExtraVars+8 = 1, calls sub_80D2A14 (unknown helper), and spawns a type-4
+  child object at PanelX + frontDirection (PanelY unchanged) passing its own ExtraVars pointer so the
+  child shares that block; the packed r4 args (0x0140013C) look like sprite/coords for the spawned effect.
+  It then sets Timer=0x3C (60 frames) and Timer2=0. Each frame it decrements Timer2, and every 16 frames
+  plays sound effect 0x2C (a repeating charge/pulse sound). When Timer reaches 0 it clears ExtraVars+8
+  and sets Param2=1, the flag the rest of the object's AI presumably waits on before launching the attack.
+  No caller known; identity of the specific enemy is unknown.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: spawn of type-4 child at PanelX + object_getFrontDirection with shared ExtraVars pointer, asm
+    via battle_spawnType4WithExtraVars; Timer=0x3C then Timer-- and Param2=1 on expiry, loc_80D288C block;
+    PlaySoundEffect(0x2C) fired every 16 frames (Timer2 reset to 0x10); one-shot init guarded by PhaseInitialized
+    with anim 0x10 and ExtraVars+8 = 1
+  refs:
+  - bn6f/asm/asm31.s:57793
+  - 0x080005CC PlaySoundEffect
+  - 0x080C5578 battle_spawnType4WithExtraVars
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x080D282C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- which enemy/attack this phase belongs to (no known caller)
+- what sub_80D2A14 computes (position/offset for the spawned marker?)
+- what the spawned type-4 child renders with the shared ExtraVars
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D282C -> battle_updateChargePhase
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D282C

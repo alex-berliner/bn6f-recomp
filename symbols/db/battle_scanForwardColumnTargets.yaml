@@ -1,0 +1,51 @@
+name: battle_scanForwardColumnTargets
+address: '0x080E42AA'
+kind: function
+status: probable
+summary: Walks battle columns from the caller's side toward the enemy until reaching a column next to
+  enemy panels, then records the panels of rows 1-3 in that column that do not belong to the caller's
+  alliance.
+interface: (r0 = u8 out buffer, r1 = alliance side, r2 = direction-flip flag) -> r0 = number of packed
+  panel entries written (col | row<<4); flags clobbered
+details: Computes the starting column as (r1^r2)*-5+6, giving column 6 for one side (enters from the right
+  edge) or column 1 for the other, and the step as the negated facing multiplier from object_getFrontDirection.
+  It loops calling battle_countAdjacentPanelsOfOtherAlliance_800D5F0(column, alliance); while the count
+  is 0 it steps one column in the travel direction, keeping within columns 0-5. Once a column adjacent
+  to other-alliance panels is found, it iterates rows 1..3, calls object_getPanelDataOffset(column,row),
+  and for each panel whose oPanelData_Alliance byte differs from r1 stores the packed byte (offset | row<<4)
+  into the caller's buffer at r0, incrementing the returned count. The inner row loop repeats for further
+  columns only while at least one enemy panel was found in the previous column; otherwise it stops. The
+  caller supplies the output buffer; nothing else in the snippet shows its size or who reads the entries.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: eor r1,r2 then *(-5)+6 sets start column 6 or 1 depending on side/flip (loc_80E42C6); loop calls
+    battle_countAdjacentPanelsOfOtherAlliance_800D5F0(col, alliance) and steps by -object_getFrontDirection
+    until nonzero (loc_80E42D2-80E42EE); row loop 1..3 reads oPanelData_Alliance via object_getPanelDataOffset
+    and stores offset|row<<4 for mismatching alliance (loc_80E42F2-80E4312); return value is the stored-entry
+    counter r6 (loc_80E432C)
+  refs:
+  - bn6f/asm/asm31.s:95988
+  - 0x080E41F0 sub_80E41F0
+  - 0x0800D5F0 battle_countAdjacentPanelsOfOtherAlliance_800D5F0
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800C90A object_getPanelDataOffset
+  reproduce: python3 tools/asmcat.py 0x080E42AA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- what sub_80E41F0 is (attack/chip/boss move) and the buffer capacity, to confirm this is an attack targeting
+  panels in the first obstructed column ahead
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E42AA -> battle_scanForwardColumnTargets
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E42AA

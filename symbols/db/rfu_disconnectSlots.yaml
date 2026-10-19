@@ -1,0 +1,50 @@
+name: rfu_disconnectSlots
+address: '0x081461FC'
+kind: function
+status: probable
+summary: 'Tears down one or more wireless link slots: removes them as send targets, stops NI receive,
+  and clears their entries in the link tables.'
+interface: (r0 = bitmask of link slots (0-3) to disconnect) -> r0 = clobbered (never meaningful to callers);
+  calls rfu_changeSendTarget(0x20, slot) and rfu_NI_stopReceivingData(slot)
+details: Takes a bitmask r0 of link slots. First, if the control struct at dword_2010CC0 has byte[4] set,
+  it scans the 4 pointers at dword_2010CB0; for each with word[0]&0x8000 set, if byte[0x1A] contains the
+  slot bit it clears that bit and calls rfu_changeSendTarget(0x20, slotIndex) to drop it as a send target.
+  Second, if byte[5] is set, it scans the same table via word[0x34]&0x8000 and byte[0x4E], clearing the
+  slot's NI receive via rfu_NI_stopReceivingData(slot). Third, if byte[6] is set it clears the slot bits
+  from that byte and from byte[3] of every entry in off_2010CA0 whose word[0] equals 0x8024. This is the
+  per-slot disconnect/cleanup counterpart of connection setup, invoked from rfu_handleConnectionEvent
+  when slots drop.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: calls rfu_changeSendTarget(0x20, i) after clearing the slot bit in conn entry byte[0x1A] (loc_8146232
+    area); calls rfu_NI_stopReceivingData(i) for slots whose byte[0x4E] holds the mask bit (loc_8146270
+    area); clears the mask from control byte[6] and from byte[3] of off_2010CA0 entries tagged 0x8024
+    (loc_8146282-loc_81462B6); all six call sites are inside rfu_handleConnectionEvent's disconnect/state-clear
+    branches
+  refs:
+  - bn6f/asm/libs.s:4588
+  - 0x08145658 rfu_handleConnectionEvent
+  - 0x08145750 rfu_handleConnectionEvent
+  - 0x08145768 rfu_handleConnectionEvent
+  - 0x0814AF5C rfu_NI_stopReceivingData
+  - 0x0814ADF4 rfu_changeSendTarget
+  reproduce: python3 tools/asmcat.py 0x081461FC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- exact meaning of the 0x20 argument to rfu_changeSendTarget
+- what structure type the dword_2010CB0 and off_2010CA0 tables hold (likely link/NI connection records)
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81461FC -> rfu_disconnectSlots
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81461FC

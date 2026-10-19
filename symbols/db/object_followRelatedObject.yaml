@@ -1,0 +1,46 @@
+name: object_followRelatedObject
+address: '0x080E5DAA'
+kind: function
+status: probable
+summary: Per-frame update for an attached battle object that mirrors fields from its related object and
+  deletes itself when that object is gone.
+interface: (r5 = this battle object; reads r5->RelatedObject1Ptr) -> r0 = destroyed?; no meaningful return
+  value
+details: 'Copies three consecutive words at offset 0x34 from this object''s RelatedObject1 (fields 0x34-0x3F,
+  likely position-style fields) into its own struct at the same offsets, so it stays in sync with its
+  parent object every frame. If the battle is over it frees itself immediately. Otherwise, when time-stop
+  is not active, it checks the related object''s CurState and CurAction: if either equals 8 the object
+  frees its own slot via object_freeMemory and returns. While time-stop is active the state/action checks
+  are skipped, so the object keeps following its parent through the freeze. The 0x34 fields'' exact meaning
+  and what object kinds use this handler are not shown here.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldmia/stmia at +6..+13 copies {r1-r3} from related+0x34 into this+0x34; bl battle_isBattleOver;
+    tst; bne loc_80E5DD6 -> object_freeMemory on battle end; bl battle_isTimeStop; bne skips the state
+    checks while frozen; ldrb checks RelatedObject1->CurState==8 / CurAction==8 before falling into object_freeMemory;
+    callees battle_isBattleOver/battle_isTimeStop/object_freeMemory are all battle-object subsystem helpers
+  refs:
+  - bn6f/asm/asm31.s:99871
+  - 0x0800A18E battle_isBattleOver
+  - 0x0800A098 battle_isTimeStop
+  - 0x08003458 object_freeMemory
+  reproduce: python3 tools/asmcat.py 0x080E5DAA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- Which object types use this as their update handler and what the three words at offset 0x34 are
+- Whether object_freeMemory acts on r5's own object or the related object pointer
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E5DAA -> object_followRelatedObject
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E5DAA

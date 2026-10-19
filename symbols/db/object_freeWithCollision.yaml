@@ -1,0 +1,40 @@
+name: object_freeWithCollision
+address: '0x080CF324'
+kind: function
+status: probable
+summary: Destructor that releases a battle object's collision slot and then frees the object itself.
+interface: (r5 = battle object pointer) -> r0 = destroyed; clobbers lr/flags via calls
+details: Takes the object from r5 ( Thumb convention for this engine's object routines), loads its collision-data
+  pointer from offset 0x54, and calls object_freeCollisionData to disable that collision slot and clear
+  its active bit. Then it unconditionally calls object_freeMemory, which clears the object's flags, frees
+  its type's bitmap slot, unlinks it from the active-object list, and resets sprite scaling. It is essentially
+  a two-step teardown used where an object owns collision data at 0x54.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldr r0, [r5,#0x54]; bl object_freeCollisionData — frees the collision entry referenced by object+0x54;
+    bl object_freeMemory — immediately releases the object slot itself; no conditional code or return
+    value handling — pure cleanup sequence
+  refs:
+  - bn6f/asm/asm31.s:50561
+  - 0x080198CE object_freeCollisionData
+  - 0x08003458 object_freeMemory
+  reproduce: python3 tools/asmcat.py 0x080CF324
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- no caller is known, so whether this is a generic object destructor or specific to one object type with
+  collision data at 0x54 is unconfirmed
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CF324 -> object_freeWithCollision
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CF324

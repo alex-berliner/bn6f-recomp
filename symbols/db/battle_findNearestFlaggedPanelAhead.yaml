@@ -1,0 +1,51 @@
+name: battle_findNearestFlaggedPanelAhead
+address: '0x080D2D40'
+kind: function
+status: probable
+summary: Scans the panels straight ahead of a battle object for panels whose status flags match an alliance-specific
+  mask, returning the one closest to a given reference (column,row).
+interface: (r0 = ref column, r1 = ref row, r5 = battle object) -> r2 = column or 0xFF if none, r3 = row;
+  flags clobbered
+details: Using object_getFrontDirection, it walks columns outward from the object's front panel (sp+0x28
+  starts at refColumn+dir and advances by dir) while an inner loop covers rows 1-3, until object_isValidPanel
+  fails. For each on-grid panel, object_getPanelParameters' status word is ANDed with a mask from byte_80D2E28
+  selected by the object's Alliance field (alliance*8; 0x05800000 for side 0, 0x0A800000 for side 1);
+  matching panels are packed into a stack buffer as (row<<4)|column. It then scans the collected list,
+  keeping the panel minimizing |row-refRow| first, then |col-refCol|, preferring the lower row on full
+  ties. The second table word per alliance is loaded but never used. If no panel matched, r2 = 0xFF.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'front-direction walk: ldr r1,[sp]; add r1,r1,r0 after object_getFrontDirection, then isValidPanel/getPanelParameters
+    loops at 80D2D6A; alliance mask: ldrb r0,[r5,#oBattleObject_Alliance]; lsl #3; off_80D2E24 -> byte_80D2E28
+    words 0x05800000/0x0A800000; match test: tst r0,r2 against mask before storing (row<<4)|col into the
+    sp+0x10 buffer; nearest selection: abs |row-arg1| then |col-arg0| comparisons with bgt-skip tie-breaking
+    at 80D2DB2-80D2E04; return: r2=[sp,#0x38]=best column, r3=[sp,#0x3c]=best row, or 0xFF when r6==0
+    at 80D2E1E'
+  refs:
+  - bn6f/asm/asm31.s:58499
+  - 0x080D2CBE sub_80D2CBE
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800C8F8 object_getPanelParameters
+  - 0x0800CC72 object_isValidPanel
+  reproduce: python3 tools/asmcat.py 0x080D2D40
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- Which panel-status bits 0x05800000/0x0A800000 represent (hole, obstacle, occupied, etc.) — needs the
+  panel-flag definitions
+- What the single caller sub_80D2CBE uses the result for (attack targeting vs AI)
+- Why the second mask word per alliance is loaded but unused
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D2D40 -> battle_findNearestFlaggedPanelAhead
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D2D40

@@ -1,0 +1,47 @@
+name: rfu_stepShowNaviCommError
+address: '0x08009C56'
+kind: function
+status: probable
+summary: State-machine step that shows the per-navi 'communication error' chatbox message, then waits
+  for the chatbox to close before advancing the enclosing state.
+interface: '(r5 = task/state struct ptr, implicit) -> r0 = 0; updates state: [r5+3]=4 after queuing the
+  message, later [r5+1]=4 and [r5+2]=0 once the chatbox flag clears'
+details: 'First pass: if the state byte at [r5+3] is still 0, it fetches the currently selected PET navi
+  via GetCurPETNavi and runs chatbox_runScript on TextScriptCommError87370C0 with index 0x73+navi (so
+  each navi gets its own error text at scripts 0x73..0x78), then stores 4 into [r5+3] to mark the message
+  as displayed. On subsequent calls it tests bit 0x80 of the chatbox/event flag word eFlags2009F38; while
+  the flag is clear it does nothing, and once set it writes 4 to [r5+1] and zeroes the halfword at [r5+2],
+  moving the surrounding state machine on. Note it never sets up r5 itself, so it is a step function that
+  shares the caller''s r5 state pointer; the off_8009C84/dword_8009C88 literals are unused by this routine.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#3] / strb r0=4,[r5,#3] — one-shot guard around showing the message (sub_8009C56);
+    bl GetCurPETNavi; add r1,r1,#0x73 before chatbox_runScript — message index is per selected navi; off_8009C90
+    = TextScriptCommError87370C0 passed as the chatbox archive; bl chatbox_mask_eFlags2009F38 with 0x80,
+    bne — polls the chatbox until the message is dismissed; strb 4,[r5+1]; strh 0,[r5+2] on completion
+    — hands control back to an outer state machine
+  refs:
+  - bn6f/asm/asm00_1.s:15025
+  - 0x080010B6 GetCurPETNavi
+  - 0x08045F3C chatbox_mask_eFlags2009F38
+  - 0x08040384 chatbox_runScript
+  reproduce: python3 tools/asmcat.py 0x08009C56
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- No caller is known, so the meaning of the state fields at [r5+1]/[r5+2]/[r5+3] and which subsystem state
+  machine (wireless trade? error dialog task?) owns r5 is inferred only from the script archive name
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8009C56 -> rfu_stepShowNaviCommError
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8009C56

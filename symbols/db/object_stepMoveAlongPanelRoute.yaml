@@ -1,0 +1,49 @@
+name: object_stepMoveAlongPanelRoute
+address: '0x080CDE68'
+kind: function
+status: probable
+summary: Battle-object AI step that teleports the object along a scripted list of panels on a timer, then
+  restores its normal state when the route finishes.
+interface: (r5 = battle object) -> void; moves object to next route panel and plays SFX 0x113, or ends
+  the route by setting CurAction=8
+details: 'Run as an object behavior script with the object in r5. Param3 acts as a speed divider: it is
+  decremented each call and returns early unless it hits 0, at which point it is reset to 2 and Timer2
+  is decremented. While Timer2 has not expired, the counter at ExtraVars+0x18 indexes a byte array at
+  object+0x60 (bounded by the word at ExtraVars+0x14, wrapping to 0 at the end); each byte packs a panel
+  coordinate (low 3 bits = X, upper bits = Y), which is written to PanelX/PanelY and the collision data,
+  then object_setCoordinatesFromPanels recomputes pixel position and sound 0x113 plays. When Timer2 reaches
+  0 the route ends: collision region is set to 1, bit 1 of the object flags is cleared, CurAction is set
+  to 8 and CurPhase reset to 0. Reads/writes oBattleObject_Param3, Timer2, ExtraVars+0x14/+0x18, PanelX/Y,
+  CollisionDataPtr fields and oObjectHeader_Flags.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb/sub/strb on Param3 with reset to #2 is a frame-divider gating the per-tick logic; ldrb
+    r0,[r7,r0] with r7=r5+0x60 and index from ExtraVars+0x18 unpacks nibble-packed panel X/Y into PanelX/PanelY;
+    object_setCoordinatesFromPanels call right after storing PanelX/PanelY converts grid to pixel coords;
+    Timer2==0 branch calls object_setCollisionRegion(1), clears flag bit 1 and sets CurAction=8, phase
+    0 (route end); PlaySoundEffect(0x113) on each step indicates an audible teleport/move effect per hop'
+  refs:
+  - bn6f/asm/asm31.s:47725
+  - 0x080005CC PlaySoundEffect
+  - 0x0801A07C object_setCollisionRegion
+  - 0x0800E29C object_setCoordinatesFromPanels
+  reproduce: python3 tools/asmcat.py 0x080CDE68
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- which enemy/object uses this route (no known caller), and what flag bit 1 means exactly
+- whether ExtraVars+0x14 is a route length or an end pointer
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CDE68 -> object_stepMoveAlongPanelRoute
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CDE68

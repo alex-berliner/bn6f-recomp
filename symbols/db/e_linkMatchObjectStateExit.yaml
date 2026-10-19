@@ -1,0 +1,46 @@
+name: e_linkMatchObjectStateExit
+address: '0x08131768'
+kind: function
+status: probable
+summary: 'State handler for the link-match NPC object that ends the interaction: plays the exit-submenu
+  sound, runs text script 0x68, and sets the object''s state flag.'
+interface: (r0 = object? clobbers r5-relative fields; r5 = object struct) -> void
+details: Clears the halfword at [r5,#0x26] to 0 and stores 0xFEDC into [r5,#0x2a] (likely a counter/coordinate
+  reset for the object), plays sound effect SOUND_EXIT_SUBMENU via PlaySoundEffect, then kicks off chatbox
+  script 0x68 from eTextScript201BA20 via chatbox_runScript_803FD9C_on_eTextScript201BA20. Finally it
+  ORs bit 0x20 into the byte at [r5,#0x1b], presumably marking that the object has finished/left its dialogue
+  state so the state machine in e_linkMatchObjectUpdate can move on. The 0xFEDC value is suspiciously
+  specific and could also be an animation or timer constant.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: strh r1 (0) [r5,#0x26] and strh 0xFEDC [r5,#0x2a] reset/initialize two object fields; bl PlaySoundEffect
+    with SOUND_EXIT_SUBMENU indicates ending a menu/dialogue interaction; mov r0,#0x68; bl chatbox_runScript_803FD9C_on_eTextScript201BA20
+    runs text script 0x68; ldrb/orr 0x20/strb on [r5,#0x1b] sets a state/done flag read by the caller's
+    state machine; sole caller e_linkMatchObjectUpdate is a per-frame state machine over eLinkState, so
+    this is one of its state handlers
+  refs:
+  - bn6f/asm/asm36.s:3046
+  - 0x08130A04 e_linkMatchObjectUpdate
+  - 0x080005CC PlaySoundEffect
+  - 0x08132280 chatbox_runScript_803FD9C_on_eTextScript201BA20
+  reproduce: python3 tools/asmcat.py 0x08131768
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- exact meaning of fields [r5,#0x26], [r5,#0x2a] (0xFEDC) and the 0x20 bit of [r5,#0x1b] in the object
+  struct
+- contents of text script 0x68 in eTextScript201BA20 to confirm what the NPC says on exit
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8131768 -> e_linkMatchObjectStateExit
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8131768

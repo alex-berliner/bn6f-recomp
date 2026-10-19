@@ -1,0 +1,48 @@
+name: battle_updateTossedBouncingObject
+address: '0x080E57BC'
+kind: function
+status: probable
+summary: Per-frame update for a tossed battle object that flies in an arc, bounces on the ground a set
+  number of times, and flags the panel it lands on.
+interface: (r5 = battle object) -> r0 = undefined; sets object X/Y, panel coords, CurAction on landing
+details: 'Uses the object''s ExtraVars block: +0 must hold a nonzero pointer or the object is destroyed
+  (state = CUR_STATE_DESTROY, *(ExtraVars+4)=2). On first run it sets Timer=0x10 and PhaseInitialized=4.
+  Every 0x16-frame tick (Timer wrap) it decrements Timer2, adds ExtraVars+0xc to XVelocity, negates ZVelocity
+  (vertical bounce), and bumps the fixed-point height at ExtraVars+0x18/+0x14 by 0x17F. Each frame it
+  integrates ExtraVars+0x14 with ZVelocity, calls sub_80E58D2 (args 0x78, height>>16 & 0xFF, x-accumulator,
+  ExtraVars+0x10) to get world X/Y, then object_setPanelsFromCoordinates and object_getPanelParameters;
+  if the panel''s status word matches the mask at ExtraVars+8, it writes 1/PanelX/PanelY to *(ExtraVars+4),
+  sets CurAction=4 and phase=0. When Timer2 runs out the object destroys itself.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: neg r0, ZVelocity after each bounce tick is classic vertical bounce physics (loc after timer
+    wrap); Timer2 counts down once per 0x10-frame cycle and reaching 0 leads to the destroy path; object_getPanelParameters
+    result ANDed with ExtraVars+8 mask gates the landing-panel write at ExtraVars+4/5/6; sub_80E58D2(0x78,
+    height>>16&0xFF, xAcc, ExtraVars+0x10) -> X,Y feeds object_setPanelsFromCoordinates; extra pointer
+    at ExtraVars+0 must be nonzero or the object is set to CUR_STATE_DESTROY
+  refs:
+  - bn6f/asm/asm31.s:99000
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800C8F8 object_getPanelParameters
+  - 0x0800E2AC object_setPanelsFromCoordinates
+  reproduce: python3 tools/asmcat.py 0x080E57BC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- what sub_80E58F4 checks (return gates the whole update, likely a 'still active/held' test)
+- exact meaning of sub_80E58D2's arguments (world->field projection?)
+- which gameplay entity uses this (no callers known) and the layout/owner of the ExtraVars block
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E57BC -> battle_updateTossedBouncingObject
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E57BC

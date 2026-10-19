@@ -1,0 +1,52 @@
+name: battle_panelMarkerEffect
+address: '0x080E60EC'
+kind: function
+status: probable
+summary: Battle-object effect that queues its tile/palette GFX once, then for 60 frames draws a marker
+  on each of a list of grid panels before ending its phase.
+interface: (r0..r3 = args, r5 = battle object) -> void; sets object fields, returns 0-flagged phase when
+  no markers
+details: On first entry (PhaseInitialized==0) it calls sub_80E61F4, which returns a count stored in oBattleObject_Param3;
+  a zero count aborts by setting CurAction=0xC and clearing the phase halfword. Otherwise it queues two
+  GFX blocks — 0x100 bytes to OBJ VRAM 0x6017940 and 0x20 bytes to IWRAM 0x30016F0 (a 16-color palette
+  slot) — sets the timer to 0x3C (60 frames) and marks the phase initialized. Each subsequent frame it
+  loops Param3 times over bytes at r5+0x60, decoding each byte as panel column (high nibble) and row (low
+  3 bits), converts that to fixed-point coordinates via object_getCoordinatesForPanels, projects it to
+  screen space with projectObjectToScreen_800362C, and calls sub_800AE90 to draw/queue the marker OAM.
+  When the 60-frame timer expires it stores 4 into the CurPhaseAndPhaseInitialized halfword, ending the
+  phase with PhaseInitialized cleared for the next phase.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#oBattleObject_PhaseInitialized] / bl sub_80E61F4 / strb r0,[r5,#oBattleObject_Param3]:
+    one-time init returns the marker count; two QueueEightWordAlignedGFXTransfer calls with (dword_86E55FC,0x6017940,0x100)
+    and (byte_86E56FC,0x30016F0,0x20): character GFX + palette upload; loop body lsr r1,r0,#4 / lsl r0,#0x1d
+    then bl object_getCoordinatesForPanels: byte at r5+0x60 is panel col/row pair, one marker per byte;
+    bl projectObjectToScreen_800362C then bl sub_800AE90 each iteration: draws each marker at its projected
+    screen position; mov r0,#0x3c; strh -> oBattleObject_Timer, decrement per frame, then strh #4 -> CurPhaseAndPhaseInitialized:
+    fixed 60-frame lifetime ending the phase'
+  refs:
+  - bn6f/asm/asm31.s:100303
+  - 0x0800E276 object_getCoordinatesForPanels
+  - 0x0800362C projectObjectToScreen_800362C
+  - 0x08000AC8 QueueEightWordAlignedGFXTransfer
+  reproduce: python3 tools/asmcat.py 0x080E60EC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- What sub_80E61F4 does (fills the panel-coordinate list at r5+0x60?) and which in-game event spawns this
+  object
+- What sub_800AE90 draws (likely OAM queuing) and what the 0x100-byte GFX at dword_86E55FC depicts
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E60EC -> battle_panelMarkerEffect
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E60EC

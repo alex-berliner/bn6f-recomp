@@ -1,0 +1,48 @@
+name: battle_phaseStrikeRandomEnemyPanels
+address: '0x080BD156'
+kind: function
+status: probable
+summary: Battle-object phase handler that plays a sound, spawns a temp attack object linked to the owner,
+  then spawns effects on random enemy panels for a set duration before advancing to phase 8.
+interface: (r5 = battle object, r0 = phase-init flag byte read from it) -> mutates battle object fields;
+  sets CurPhaseAndPhaseInitialized=8 when done
+details: On first entry (PhaseInitialized==0) it sets the object's animation to 5 (CurAnimCopy=0xFF so
+  it sticks), reads ExtraVars+4 into r0 for sub_80B8E58, loads r4=0x10B03 and r7=r5+0x64, spawns a type-1
+  subtype-5 temp attack object tied to this object, plays sound effect 0xB0, sets Timer=15, and spawns
+  an effect on a random enemy-occupied panel via battle_spawnEffectOnRandomEnemyPanel, then marks the
+  phase initialized (flag=4). While active it spawns another random-panel effect when Timer hits 10 and
+  again when it hits 5, decrementing Timer each frame. When Timer expires it decrements Timer2; when Timer2
+  also expires it moves the object to phase 8, otherwise it clears PhaseInitialized so the phase re-runs
+  its init.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sets oBattleObject_CurAnim=5 and plays sound 0xB0 on phase entry (sub_80BD156 prologue); calls
+    spawn_t1_0x5_tempAttackObject_80B8E30 with r7=r5+0x64 as result storage; three calls to battle_spawnEffectOnRandomEnemyPanel:
+    once at init and again when Timer==10 and Timer==5; decrements Timer then Timer2, writing CurPhaseAndPhaseInitialized=8
+    when both lapse, else clearing PhaseInitialized to loop the phase'
+  refs:
+  - bn6f/asm/asm31.s:10899
+  - 0x080005CC PlaySoundEffect
+  - 0x080BD2D8 battle_spawnEffectOnRandomEnemyPanel
+  - 0x080B8E30 spawn_t1_0x5_tempAttackObject_80B8E30
+  reproduce: python3 tools/asmcat.py 0x080BD156
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- which enemy/attack this phase belongs to (no caller known), and what effect ID/type battle_spawnEffectOnRandomEnemyPanel
+  spawns with the default arguments
+- meaning of the constant 0x10B03 passed in r4 to the spawn callee
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BD156 -> battle_phaseStrikeRandomEnemyPanels
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BD156

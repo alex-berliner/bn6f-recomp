@@ -1809,7 +1809,7 @@ Next sprite_setPositionByFlags_811A5BC(void) {
  *
  * Looks at the currently open submenu (sSubmenu):
  *  - if the pressed direction (sSubmenu.jo_01) is 0x1C, runs the d-pad
- *    "up" helper sub_811A704;
+ *    "up" helper submenu_showChapterBlurbEntry;
  *  - otherwise reads the handler address selected by sSubmenu.unk_02
  *    from the table at dword_811A66C and calls it (entry 0 = no action).
  *
@@ -1837,7 +1837,7 @@ Next sub_811A640(void) {
         R0 = joyDir;
         R1 = LD8(R5 + 6);
         R7 = submenu;
-        GUEST_CALL(sub_811A704);
+        GUEST_CALL(submenu_showChapterBlurbEntry);
     } else {
         u32 selection = LD8(submenu + 2); /* sSubmenu.unk_02 */
         u32 handler = LD32(A_dword_811A66C + selection);

@@ -1,0 +1,50 @@
+name: ai_protoCheckOpponentOnMarkedPanels
+address: '0x080FBDF4'
+kind: function
+status: probable
+summary: 'ProtoMan AI helper: returns whether the opposing battle object currently stands on one of three
+  hardcoded panels assigned to the caller''s alliance.'
+interface: (no args; r5 = caller's BattleObject) -> r0 = 1 if opposing player's PanelX/PanelY matches
+  a table entry, else 0; flags clobbered
+details: 'It calls battle_findPlayer with alliance XOR 1 to get the enemy-side player, then saves that
+  object''s oBattleObject_PanelX and oBattleObject_PanelY on the stack. It then loops r4 = 0..2 over three
+  (X,Y) pairs taken from byte_80FBE40 + alliance*6, comparing each pair against the player''s coordinates;
+  any match returns 1, otherwise 0 after the loop. The table holds two 6-byte sets: alliance 0 checks
+  (3,2),(4,2),(5,2) and alliance 1 checks (4,2),(3,2),(2,2), i.e. a mirrored three-panel strip (one specific
+  row, opposing side of the field). The caller-side RNG gate (& 0xF < 0xE in both ProtoMan AI steps) means
+  this check is used inside a probabilistic attack/move decision. Quirk: the function reads its object
+  from r5, not r0, so it follows the AI module''s r5-based object convention rather than a normal argument.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'eor r0,#1 + bl battle_findPlayer: it looks up the opposite-alliance player object; ldrb r1,[r0,#oBattleObject_PanelX]/ldrb
+    r2,[r0,#oBattleObject_PanelY]: the compared values are the player''s panel coords; ldr r1,off_80FBE3C
+    with mul by 6: per-alliance 3-entry (x,y) table at byte_80FBE40; loop cmp r0,r2 / cmp r1,r3 with early
+    mov r0,#1: boolean ''coords in table'' test over exactly 3 entries; both callers (0x080FBA9A, 0x080FBBCA)
+    are ProtoMan AI steps gated by GetPositiveSignedRNG & 0xF < 0xE before this check'
+  refs:
+  - bn6f/asm/asm31.s:145775
+  - 0x080FBA9A sub_80FBA9A
+  - 0x080FBBCA sub_80FBBCA
+  - 0x080103BC battle_findPlayer
+  reproduce: python3 tools/asmcat.py 0x080FBDF4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- Which attack/behavior the two ProtoMan AI steps trigger when this returns true (callers' bodies beyond
+  the RNG gate not shown)
+- Exact meaning of the panel coordinates in the table (which field row/columns these are, and why the
+  two alliance sets are not perfectly mirrored)
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80FBDF4 -> ai_protoCheckOpponentOnMarkedPanels
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FBDF4

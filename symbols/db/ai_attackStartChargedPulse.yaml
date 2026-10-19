@@ -1,0 +1,48 @@
+name: ai_attackStartChargedPulse
+address: '0x08104E36'
+kind: function
+status: probable
+summary: Battle-object AI attack routine that sets element 4, plays a charge-up animation with periodic
+  camera shakes and a repeating sound, then exits the attack state after ~150 frames.
+interface: (r0 = unused/scratch, r5 = battle object ptr, r7 = AI attack-vars ptr) -> r0 = clobbered; sets
+  AttackElement, CurAnim, timers.
+details: On first entry (AttackElement == 0) it marks the attack as element 4, switches the object to
+  animation 0x40, sets a 0x96-frame step timer, triggers camera shake (magnitude 2, duration 0xA) and
+  sound 0xE4, and initializes ChargeCycles to 0x20 as a repeat interval. On subsequent frames it counts
+  SubStepIndex down, re-triggering the camera shake every 0xA frames, and re-plays sound 0xE4 every 0x20
+  frames via ChargeCycles — a continuous rumbling/pulsing charge effect. When the main StepTimer reaches
+  0, it calls object_exitAttackState_801171C to tear down the attack. No callers are known, so which enemy/boss
+  uses this attack is unknown.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r7,#oAIAttackVars_AttackElement]; mov r0,#4; strb — arms the attack only once (first-entry
+    branch); strb r0,[r5,#oBattleObject_CurAnim] with 0x40 — starts a charging-style animation on the
+    object; bl camera_initShakeEffect_80302a8 with (2,0xA) re-armed via SubStepIndex — periodic screen
+    shake during the attack; bl PlaySoundEffect with 0xE4 re-armed every 0x20 frames via ChargeCycles
+    — repeating charge sound; ldrh r0,[r7,#oAIAttackVars_StepTimer]... bl object_exitAttackState_801171C
+    — ends the attack after the 0x96-frame timer
+  refs:
+  - bn6f/asm/asm31.s:164980
+  - 0x080005CC PlaySoundEffect
+  - 0x080302A8 camera_initShakeEffect_80302a8
+  - 0x0801171C object_exitAttackState_801171C
+  reproduce: python3 tools/asmcat.py 0x08104E36
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- Which enemy/boss or chip behavior invokes this routine (no callers known), and which element value 4
+  and sound 0xE4 correspond to in game terms
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8104E36 -> ai_attackStartChargedPulse
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8104E36

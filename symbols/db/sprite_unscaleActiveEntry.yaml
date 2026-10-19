@@ -1,0 +1,46 @@
+name: sprite_unscaleActiveEntry
+address: '0x0811D2E8'
+kind: function
+status: probable
+summary: For a slot index in the 0x58-byte struct array at 2008450, clears the slot's sprite scale state
+  (making it unscalable) if the slot is active.
+interface: (r0 = index into eStructArr2008450) -> r0 = result of sprite_clearScaleCounterAndMakeUnscalable
+  on the entry pointer; flags Z set iff the entry's in-use byte was 0 (early return).
+details: getStructFrom2008450 returns the entry's first byte (in-use/status flag) in r0 with NZ flags,
+  and evidently the entry pointer in r1; if the flag is nonzero, r5 (unused aside from preservation) is
+  loaded with r1 and the callee zeroes the sprite's scale/cycle counter byte and rebuilds the sprite as
+  unscalable. If the flag is zero, the function returns immediately without touching the sprite. The r5
+  save/restore and mov are vestigial — r5 is never used. No callers are known, so the meaning of the index
+  and which game entity owns these slots is inferred only from the callee's known semantics.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl getStructFrom2008450; beq locret — skips the work when the entry''s status byte (r0) is
+    zero; mov r5, r1 then bl sprite_clearScaleCounterAndMakeUnscalable_804668A — passes the returned entry
+    pointer to the scale-reset routine; callee summary: zeroes scale/cycle counter and rebuilds sprite
+    as unscalable; 8-instruction body: test flag, call reset, return — nothing else is done'
+  refs:
+  - bn6f/asm/asm32.s:31307
+  - 0x080466C4 getStructFrom2008450
+  - 0x0804668A sprite_clearScaleCounterAndMakeUnscalable_804668A
+  reproduce: python3 tools/asmcat.py 0x0811D2E8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- No callers known, so which game system passes the index and when this reset runs (e.g. on object despawn)
+  is unconfirmed
+- The exact layout of the 0x58-byte entry beyond its first status byte and where the sprite pointer lives
+  inside it
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_811D2E8 -> sprite_unscaleActiveEntry
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811D2E8

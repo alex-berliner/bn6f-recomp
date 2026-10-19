@@ -1,0 +1,43 @@
+name: battle_incrementNaviStatsByte18Saturating
+address: '0x0800B7E8'
+kind: function
+status: probable
+summary: Increments the battle navi's NaviStats byte 0x18 by one, clamped to a maximum of 7.
+interface: (r0 = battle object pointer) -> r0 = new byte value; flags from the cmp/set
+details: Reads byte 0x18 of the NaviStats record for the navi the battle object represents, via GetBattleNaviStatsByte_AllianceFromBattleObject
+  (r1 = 0x18 selects the field, alliance flag picks the real record vs its ghost copy). It adds 1 to the
+  value and caps it at 7 (cmp r2,#7; ble; mov r2,#7), then writes the result back with SetBattleNaviStatsByte_AllianceFromBattleObject
+  using the same field selector. The returned r0 is the clamped new value. No callers are known, so which
+  gameplay counter lives at byte 0x18 (e.g. a turn/charge counter capped at 7) is not determinable from
+  this function alone.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: mov r1,#0x18; bl GetBattleNaviStatsByte_AllianceFromBattleObject — field 0x18 of the object's
+    navi stats is read; add r2,r0,#1; cmp r2,#7; ble loc_800B7F8; mov r2,#7 — increment saturated at 7;
+    mov r1,#0x18; bl SetBattleNaviStatsByte_AllianceFromBattleObject — same byte written back, honoring
+    the alliance-selected record; no caller references — purpose in the battle flow (which counter byte
+    0x18 is) is unconfirmed
+  refs:
+  - bn6f/asm/asm00_1.s:19536
+  - 0x08013774 GetBattleNaviStatsByte_AllianceFromBattleObject
+  - 0x08013754 SetBattleNaviStatsByte_AllianceFromBattleObject
+  reproduce: python3 tools/asmcat.py 0x0800B7E8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- What gameplay value NaviStats byte 0x18 holds (needs a caller or another accessor of field 0x18)
+- Why no callers are known — finding them would show when this increment fires
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_800B7E8 -> battle_incrementNaviStatsByte18Saturating
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800B7E8

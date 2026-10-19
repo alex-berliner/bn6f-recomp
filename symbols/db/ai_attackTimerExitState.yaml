@@ -1,0 +1,44 @@
+name: ai_attackTimerExitState
+address: '0x080EDEF6'
+kind: function
+status: probable
+summary: 'AI attack step handler: counts down a step timer, and once it expires clears a flag and ends
+  the attack state.'
+interface: (r7 = battle object) -> void; sets flags from the decrement
+details: Reads the AI attack variable StepTimer from the object at r7, decrements it, and stores it back.
+  While the timer is still >= 0 it does nothing (bge). Once the counter goes negative, it clears flag
+  0x40 in the object's collision flags via object_clearFlag and calls object_exitAttackState to leave
+  the attack state. This looks like one entry of an AI attack routine table (r7-based oAIAttackVars layout),
+  executed each frame while the AI holds its attack pose; r0 from the decrement is overwritten before
+  the calls.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrh r0, [r7,#oAIAttackVars_StepTimer]; sub/strh decrements a per-object step timer; bge locret_80EDF0A
+    keeps the routine passive until the timer runs out; mov r0,#0x40; bl object_clearFlag clears a fixed
+    collision/ObjectFlags1 bit; bl object_exitAttackState returns the object from its attack state; r7
+    + oAIAttackVars fields indicate use as an AI attack step routine
+  refs:
+  - bn6f/asm/asm31.s:117041
+  - 0x0801A15C object_clearFlag
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x080EDEF6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- which AI states/attacks dispatch this routine (no caller found)
+- what flag 0x40 in the collision bitfield represents
+- meaning of the StepTimer value set by the caller before entering this step
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80EDEF6 -> ai_attackTimerExitState
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EDEF6

@@ -1,0 +1,49 @@
+name: submenu_loadSelectedEntryGfx
+address: '0x08089244'
+kind: function
+status: probable
+summary: 'Menu cursor-move handler: copies the selected entry''s 0x80-byte record into a work buffer,
+  decompresses its display graphics into VRAM, and plays the cursor-move sound effect.'
+interface: (r0 = selected entry index into table byte_87DE44C, stride 0x80) -> r0 destroyed; loads 0x20
+  words to byte_30016F0, LZ77 asset to VRAM 0x6014800, plays SOUND_MENU_CUR_MOVE
+details: r0 is an index that is multiplied by 0x20 (giving a 0x80-byte stride) and offset against the
+  table at byte_87DE44C; 32 words from that record are CopyWords'd into the work buffer at byte_30016F0.
+  It then calls decompAndCopyData with a hardcoded init-ref entry pointing at unk_87DDD4C with destination
+  0x6014800 (VRAM) and size/mode word 0x700, so a shared compressed graphic is reloaded into VRAM regardless
+  of selection. It finishes by playing SOUND_MENU_CUR_MOVE, the standard menu cursor-move blip. The record
+  copied to 30016F0 likely holds per-entry display/text parameters consumed elsewhere. r4-r7 are pushed
+  but unused — likely a compiled with-prologue artifact.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'lsl r0,#5 + add from byte_87DE44C then CopyWords of 0x20 words to byte_30016F0: per-selection
+    record load; decompAndCopyData with fixed entry (unk_87DDD4C, 0x6014800, 0x700): graphics decompressed
+    into VRAM; PlaySoundEffect with SOUND_MENU_CUR_MOVE: cursor-move menu feedback sound; byte_30016F0
+    as fixed destination buffer: shared per-selection work record'
+  refs:
+  - bn6f/asm/asm23.s:557
+  - 0x08089160 sub_8089160
+  - 0x0808C948 sub_808C948
+  - 0x0800093C CopyWords
+  - 0x080005CC PlaySoundEffect
+  - 0x08000B30 decompAndCopyData
+  reproduce: python3 tools/asmcat.py 0x08089244
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- What menu/submenu this belongs to — callers sub_8089160 and sub_808C948 have no known summaries
+- Contents/meaning of the 0x80-byte records at byte_87DE44C and which subsystem consumes byte_30016F0
+- Whether the 0x700 word is a LZ77 size or a mode flag in the decompAndCopyData entry format
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8089244 -> submenu_loadSelectedEntryGfx
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8089244

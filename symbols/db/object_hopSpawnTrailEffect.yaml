@@ -1,0 +1,47 @@
+name: object_hopSpawnTrailEffect
+address: '0x080C9B64'
+kind: function
+status: probable
+summary: Every 4 frames while the hopper is in state Param1==3, spawns a facing-dependent illusion/effect
+  object at the hopper's position.
+interface: (r5 = battle object) -> r0 = spawned handle/result from spawnIllusionObject_80E33FA; no flags
+  of note
+details: 'This is a per-frame state handler: it only acts when oBattleObject_Param1 equals 3, otherwise
+  it returns immediately. It increments oBattleObject_Timer2 each call, and once every 4 frames (Timer2
+  & 3 == 3) it fires. On fire it reads the object''s effective facing via object_getFlip, packs it as
+  flip<<24 OR''d with id 0x610, loads three consecutive words from the object at offset 0x34 (likely x,
+  y and one more spawn argument), and calls spawnIllusionObject_80E33FA with r0 = packed id/flip, r1-r3
+  = those fields, r6 = 0x8318 and r7 = 8 as fixed extra arguments. The 0x610 base id with a flip in the
+  high byte suggests a directional effect/afterimage tied to the hop movement.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#oBattleObject_Param1]; cmp r0,#3; bne locret — handler only active for Param1==3;
+    Timer2 increment with 'and r0,#3; cmp r0,#3' — fires on every 4th frame; bl object_getFlip; lsl r4,#0x18;
+    add r4,r4,0x610 — facing packed into the high byte of the spawn id; ldmia r0!,{r1-r3} from r5+0x34
+    — position/arguments taken from the hopping object's own fields; Caller object_hopAcrossPanels (a
+    hop-across-panels state machine) is the only caller, matching a movement trail/effect
+  refs:
+  - bn6f/asm/asm31.s:38794
+  - 0x080C9964 object_hopAcrossPanels
+  - 0x0800E456 object_getFlip
+  - 0x080E33FA spawnIllusionObject_80E33FA
+  reproduce: python3 tools/asmcat.py 0x080C9B64
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- Exact meaning of the three fields at object+0x34 passed to spawnIllusionObject_80E33FA
+- What effect/graphic id 0x610 renders and what arguments 0x8318/8 select in spawnIllusionObject_80E33FA
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C9B64 -> object_hopSpawnTrailEffect
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C9B64

@@ -1,0 +1,46 @@
+name: battle_pickRandomRelPanelByAlliance
+address: '0x0810DB72'
+kind: function
+status: probable
+summary: Picks a random reachable panel relative to the battle object's own panel, using the team(alliance)-dependent
+  panel-parameter entry 10.
+interface: (r5 = battle object) -> r0 = chosen panel id; clobbers r4, r6
+details: 'Reads the battle object''s PanelX/PanelY and Alliance fields and calls GetAllianceDependentPanelParamArgs
+  with r4=0xA to fetch the param word and args pointer for parameter slot 10, whose table entry varies
+  with the object''s team. It then passes that result to GetRandomRelativePanelFiltered, which returns
+  a random panel reachable from the object''s panel via the PanelOffsetListsPointerTable. The result panel
+  id is returned in r0; r5 (the object) is not modified. Quirk: the parameter index 0xA is hard-coded,
+  so this wrapper is specific to one effect/behavior using slot 10.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#oBattleObject_PanelX] / ldrb r1,[r5,#oBattleObject_PanelY] feeds the object's current
+    panel to the callee; mov r4,#0xa selects panel-param table entry 10 before GetAllianceDependentPanelParamArgs;
+    ldrb r6,[r5,#oBattleObject_Alliance] makes the parameter team-dependent; bl GetRandomRelativePanelFiltered
+    returns the final random panel id in r0; single caller sub_810DAAA calls it with r5 already holding
+    a battle object
+  refs:
+  - bn6f/asm/asm32.s:325
+  - 0x0810DAAA sub_810DAAA
+  - 0x081096FA GetAllianceDependentPanelParamArgs
+  - 0x08015E46 GetRandomRelativePanelFiltered
+  reproduce: python3 tools/asmcat.py 0x0810DB72
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- what effect/behavior sub_810DAAA implements (which panel-param slot 10 is used for, e.g. a specific
+  enemy action)
+- exact meaning of the param word vs args pointer returned from the table entry
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_810DB72 -> battle_pickRandomRelPanelByAlliance
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810DB72

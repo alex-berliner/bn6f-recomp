@@ -1,0 +1,53 @@
+name: object_spawnDimmingRegionUpToBlockedPanel
+address: '0x080C20B4'
+kind: function
+status: probable
+summary: Scans the battle-object's panels forward one tile at a time until a panel flagged for the object's
+  alliance (e.g. hole/broken/enemy-side) is found, then spawns a dimming collision-region object there.
+interface: (r0 = battle object in r5 (Alliance/PanelX/PanelY/Element/ExtraVars read)) -> r0 = result of
+  object_spawnDimmingCollisionRegion; destroys r4-r7, flags clobbered by calls
+details: Reads the object's Alliance to index byte_80C2108 (player mask 0x05080000, enemy mask 0x0A08000A-style
+  panel-status bitmask), then loops with r4=1,2,3... computing target x = object_getFrontDirection()*r4
+  + PanelX; exits early if x leaves 1..6. Each step calls object_getPanelParameters(x,y) and tst-tests
+  the status word against the alliance mask; on a match (or after running off the field, where nothing
+  is spawned) it falls through. On a match it calls object_spawnDimmingCollisionRegion with r0/r2 = the
+  object's Element, r1 = PanelY, r3 = 0x00100000, a 0x4050501 parameter word, size/count 5 + ExtraVars,
+  and the constant 3, i.e. the region is placed at the last valid panel before the blocked one. Note r4
+  (the reached distance) is overwritten by 0x4050501 before the call, so the distance is not directly
+  forwarded.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'loc_80C20C0 loop: bl object_getFrontDirection; mul r0,r4; add r0,PanelX with bounds cmp #1/#6
+    — forward panel scan per iteration r4; byte_80C2108 indexed by Alliance<<2 gives two different tst
+    masks (0x05080000 vs 0x0A080000) for player/enemy sides; bl object_getPanelParameters; tst r6,r0;
+    bne loc_80C20E4 — loop ends when panel status flags intersect the mask; loc_80C20E4 loads Element
+    and calls object_spawnDimmingCollisionRegion with r6=5+ExtraVars, r7=3, r3=0x100000; only caller sub_80C1CC4
+    is itself undocumented, so purpose must come from this body alone'
+  refs:
+  - bn6f/asm/asm31.s:22034
+  - 0x080C1CC4 sub_80C1CC4
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800C8F8 object_getPanelParameters
+  - 0x080C53A6 object_spawnDimmingCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080C20B4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- what object/attack uses this (caller sub_80C1CC4 unknown)
+- exact meaning of the 0x4050501 / 0x00100000 / 3 arguments to object_spawnDimmingCollisionRegion
+- which panel-status flag bits the 0x05080000 vs 0x0A080000 masks select (hole, broken, side-ownership?)
+- role of ExtraVars+5 in the spawned region
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C20B4 -> object_spawnDimmingRegionUpToBlockedPanel
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C20B4

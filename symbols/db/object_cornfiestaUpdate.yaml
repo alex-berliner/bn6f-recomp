@@ -1,0 +1,46 @@
+name: object_cornfiestaUpdate
+address: '0x080DAB22'
+kind: function
+status: probable
+summary: 'Per-frame update for the Cornfiesta chip-attack object: periodically drops the attack on a random
+  panel and shakes the camera.'
+interface: (r5 = battle object) -> void; r0 clobbered
+details: 'Runs on the battle object''s frame update: increments oBattleObject_Timer, and every 8 frames
+  increments oBattleObject_Timer2. When Timer2 reaches 0x10, or battle_isBattleOver returns true, or chooseCornfiestaPanelXY
+  fails to pick a panel, the object sets its state to CUR_STATE_DESTROY. Otherwise it calls sub_80C67D8
+  with the panel x/y from RNG, oBattleObject_Element, 0xff and oBattleObject_DamageAndStaminaDamageCounterDisabler,
+  apparently spawning the attack/damage object, then sets its oObjectHeader_Flags bit 0x10. It stores
+  a result byte into a small 3-entry ring buffer at oBattleObject_ExtraVars+0xC indexed by ExtraVars+0x10
+  (which cycles 0..2), then triggers a camera shake of magnitude 1 for 0x14 frames.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'Timer/Timer2 bookkeeping with destroy on Timer2==0x10 or battle over (first ~10 instructions,
+    loc_80DAB84); bl chooseCornfiestaPanelXY_80DABC4 followed by bl sub_80C67D8 passing oBattleObject_Element
+    and damage fields; strb to [r5, ExtraVars+0xC + index] with index cycled mod 3 (ExtraVars+0x10 compare
+    #3); bl camera_initShakeEffect_80302a8 with r0=1, r1=0x14 after each hit; callee chooseCornfiestaPanelXY
+    is documented as a Cornfiesta chip-attack panel chooser using GetRNG&0xF'
+  refs:
+  - bn6f/asm/asm31.s:75372
+  - 0x0800A18E battle_isBattleOver
+  - 0x080302A8 camera_initShakeEffect_80302a8
+  - 0x080DABC4 chooseCornfiestaPanelXY_80DABC4
+  reproduce: python3 tools/asmcat.py 0x080DAB22
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- exact semantics of sub_80C67D8 and the byte/field stored into the 3-entry ring buffer at ExtraVars+0xC
+- meaning of the 0x10 flag set on the spawned object header
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DAB22 -> object_cornfiestaUpdate
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DAB22

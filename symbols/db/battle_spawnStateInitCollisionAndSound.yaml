@@ -1,0 +1,47 @@
+name: battle_spawnStateInitCollisionAndSound
+address: '0x080CC064'
+kind: function
+status: probable
+summary: 'Initial ''spawn'' state handler of a battle object: places it on its panel, spawns its collision
+  region, plays sound 0xFC, and switches to the UPDATE state.'
+interface: (r5 = battle object, no r0-r3 args) -> void; sets oBattleObject_CurStateActionPhaseAndPhaseInitialized
+  = CUR_STATE_UPDATE
+details: This is an object state handler reached (presumably) via a state table, so no direct caller is
+  seen. It first calls object_setCoordinatesFromPanels to derive the object's pixel X/Y from oBattleObject_PanelX/PanelY,
+  zeroes oBattleObject_Z, then calls object_spawnCollisionRegion with the panel coordinates in r0/r1,
+  zero offsets in r2/r3, packed collision params 0x3205ff01 in r4 (and 0x0/0x4200 in r6/r7) — likely defining
+  a multi-panel hitbox. It plays sound effect 0xFC, then stores CUR_STATE_UPDATE into the state/phase
+  field so the object's next ticks run the update handler at sub_80CC090. The exact object identity and
+  the meaning of the 0x3205ff01/0x4200 collision-region fields are not visible from this function alone.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_setCoordinatesFromPanels + str of 0 to oBattleObject_Z repositions object from panel
+    coords; ldrb PanelX/PanelY into r0/r1 followed by bl object_spawnCollisionRegion with dword_80CC0C8=0x3205ff01
+    params; mov r0,#0xfc; bl PlaySoundEffect plays fixed SFX 0xFC on entry; mov r0,#CUR_STATE_UPDATE;
+    str to oBattleObject_CurStateActionPhaseAndPhaseInitialized transitions to update state; bl sub_80CC090
+    immediately after the state store: classic init-then-run-first-update pattern of state handlers'
+  refs:
+  - bn6f/asm/asm31.s:43751
+  - 0x080005CC PlaySoundEffect
+  - 0x0800E29C object_setCoordinatesFromPanels
+  - 0x080C536A object_spawnCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080CC064
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- Which battle object uses this handler (no caller/table reference seen) and what SFX 0xFC is
+- Exact field layout/meaning of the object_spawnCollisionRegion arguments 0x3205ff01 and 0x4200
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CC064 -> battle_spawnStateInitCollisionAndSound
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CC064

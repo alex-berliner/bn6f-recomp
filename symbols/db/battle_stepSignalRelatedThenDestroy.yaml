@@ -1,0 +1,48 @@
+name: battle_stepSignalRelatedThenDestroy
+address: '0x080D34EC'
+kind: function
+status: probable
+summary: Battle-object step handler that pokes its linked object, resets a timer on an extra/child object,
+  then destroys itself.
+interface: (r5 = battle object this) -> r0 = destroyed; no meaningful return
+details: 'Loads oBattleObject_RelatedObject1Ptr from the object at r5 and passes it to sub_80B8A0A (purpose
+  unknown, likely a notification/trigger on the linked object). It then reads oBattleObject_ExtraVars+0xc,
+  which must hold a pointer to another object, and uses the null-safe helper battle_ResetObjectTimerTo8
+  to set that object''s +8 counter to 8, presumably arming a short delay (e.g. respawn/cooldown) on it.
+  Finally it calls object_genericDestroy, releasing panel tile reserves, collision data and the object''s
+  own memory. The whole routine looks like a terminal state of an object state machine: fire the link,
+  set the linked timer, self-destruct. Without knowing sub_80B8A0A the exact game role (what kind of object
+  and what the signal means) cannot be pinned down.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldr r0,[r5,#oBattleObject_RelatedObject1Ptr]; bl sub_80B8A0A — acts on the linked object before
+    teardown; ldr r0,[r5,#oBattleObject_ExtraVars+0xc]; bl battle_ResetObjectTimerTo8_80C4072 — sets field
+    +8 to 8 on a second linked object; bl object_genericDestroy — releases panel/collision/memory and
+    frees the object; no caller known; structure (r5 this + destroy at end) matches an object step/state
+    handler
+  refs:
+  - bn6f/asm/asm31.s:59566
+  - 0x080C4072 battle_ResetObjectTimerTo8_80C4072
+  - 0x08016C8A object_genericDestroy
+  - 0x080B8A0A sub_80B8A0A
+  reproduce: python3 tools/asmcat.py 0x080D34EC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- purpose of sub_80B8A0A (what it does to RelatedObject1Ptr)
+- what object type uses this state and what ExtraVars+0xc points to (spawner? paired entity?)
+- no known callers, so the state-machine context is unverified
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D34EC -> battle_stepSignalRelatedThenDestroy
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D34EC

@@ -1,0 +1,47 @@
+name: sprite_resetToCenter
+address: '0x0811E72C'
+kind: function
+status: probable
+summary: Moves the current object's sprite to (120, 120) and refreshes it, a place-at-center-and-update
+  helper.
+interface: () -> void; no arguments, acts on the engine's current object; no meaningful return
+details: 'The function takes no arguments of its own: it loads r0=0x78 and r1=0x78 and calls sprite_setCoordinates,
+  which writes x/y into the 0x10-byte sprite sub-entry selected by the high nibble of the object resource''s
+  byte 2. It then calls sprite_update to run the object''s sprite update routine on that same sub-entry.
+  0x78 = 120, i.e. the horizontal center of the 240px GBA screen, so this looks like an initialization
+  or re-entry step that snaps the object to a default centered position. Since both callees operate on
+  the implicit ''current object'', this is meant to be invoked in a per-object context (e.g. from an object
+  script/handler in sub_811E6E4).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: mov r0,#0x78 / mov r1,#0x78 followed by bl sprite_setCoordinates — hardcodes the target position;
+    bl sprite_update immediately after — position change is applied/refreshed right away; no other code
+    present — the whole body is 'set position, update sprite'; sole caller sub_811E6E4 invokes it as part
+    of a larger object routine
+  refs:
+  - bn6f/asm/asm32.s:33693
+  - 0x0811E6E4 sub_811E6E4
+  - 0x0800307C sprite_setCoordinates
+  - 0x080026C4 sprite_update
+  reproduce: python3 tools/asmcat.py 0x0811E72C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- exact meaning of (0x78,0x78) — screen-center default vs. offscreen/hold position — needs caller context
+  from sub_811E6E4
+- which object/resource type this runs for, and whether the caller sets up the 'current object' pointer
+  before the call
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_811E72C -> sprite_resetToCenter
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811E72C

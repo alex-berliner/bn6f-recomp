@@ -1,0 +1,49 @@
+name: battle_leapForwardPhaseHandler
+address: '0x080BA4BA'
+kind: function
+status: probable
+summary: Action-phase handler that makes a battle object leap 3 panels forward through the air, then on
+  landing branches to a follow-up action depending on the landing panel's status flags.
+interface: (r5 = battle object, no args) -> void; sets oBattleObject fields PanelX, Z16, CurAnim, Timer,
+  CurAction, CurPhase
+details: 'Phase 0 starts the leap: sets phase 4, adds object_getFrontDirection()*3 to PanelX (moves 3
+  panels toward the player/enemy side), recomputes pixel coordinates, raises Z16 to 0x1E (airborne), plays
+  anim 0xE, and sets a 5-frame timer. Phase 4 descends 6 units per frame until the timer runs out, then
+  reads the landing panel''s status via object_getPanelParameters and tests it against a per-alliance
+  bit mask (alliance 0 -> 0x4000000, alliance 1 -> 0x8000000 from off_80BA520). If the landing panel has
+  the bit, CurAction is set to 0x10, otherwise to 0x1C, and CurPhase is reset to 0; the caller''s action
+  dispatcher presumably handles those next actions. The two-mask table keyed by Alliance suggests the
+  flagged panel type matters only on the opposing side''s field, or the two bits mean different things
+  per side.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#oBattleObject_CurPhase]; tst/bne splits the two-phase state machine; bl object_getFrontDirection;
+    mov r1,#3; mul; add into oBattleObject_PanelX = 3-panel forward move; Z16=0x1E then ldrh/sub #6 loop
+    = airborne arc descending per frame with 5-frame timer; bl object_getPanelParameters; tst against
+    off_80BA520[Alliance*4] selects CurAction 0x10 vs 0x1C; callees are all object_* battle-field helpers,
+    confirming a battle object action step'
+  refs:
+  - bn6f/asm/asm31.s:4742
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800C8F8 object_getPanelParameters
+  - 0x0800E29C object_setCoordinatesFromPanels
+  reproduce: python3 tools/asmcat.py 0x080BA4BA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- which object/attack uses this (no callers known), so the flavour of actions 0x10 and 0x1C is unconfirmed
+- exact meaning of panel bits 0x4000000/0x8000000 returned by object_getPanelParameters
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BA4BA -> battle_leapForwardPhaseHandler
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BA4BA

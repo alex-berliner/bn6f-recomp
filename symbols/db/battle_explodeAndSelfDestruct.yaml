@@ -1,0 +1,49 @@
+name: battle_explodeAndSelfDestruct
+address: '0x080D99A4'
+kind: function
+status: probable
+summary: Spawns a pair of jittered explosion effects plus one more effect on the object's position, plays
+  a blast sound, and puts the battle object into its destroyed state.
+interface: (object pointer in r5; r0 unused on entry) -> r0 = spawn result; object flagged and moved to
+  CUR_STATE_DESTROY
+details: Reads three words at r5+0x34 (the object's x/y/z fixed-point coordinates) and pushes them as
+  arguments for two AddRandomVarianceToTwoCoords calls with mask 0xF, interleaved with calls to sub_80E47A4
+  — i.e. two effects spawned at randomly jittered copies of the object's position. It then re-reads the
+  coordinates, bumps the third by 0x10 in the high half (16 px), and spawns effect object type 0 with
+  parameter 2 via spawn_t1_0x0_EffectObject. It plays sound effect 0xD9 (an explosion/defeat sound), clears
+  bit 0x2 of oObjectHeader_Flags, and stores CUR_STATE_DESTROY into oBattleObject_CurStateActionPhaseAndPhaseInitialized
+  so the battle loop deletes the object. The object pointer living in r5 rather than r0 suggests this
+  is dispatched from a state/phase table where the caller has already loaded the object into r5.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldmia r0!,{r1-r3} at r5+0x34 twice: coordinates fetched to seed both effect spawns; two AddRandomVarianceToTwoCoords(0xF)
+    calls around sub_80E47A4: two jittered explosion spawns; spawn_t1_0x0_EffectObject with coords+16px
+    and param 2, followed by PlaySoundEffect(0xD9): blast effect + sound; bic flag bit 0x2 in oObjectHeader_Flags
+    and str CUR_STATE_DESTROY: object marks itself for destruction; pattern (effects + sound + destroy)
+    matches a death/explosion handler for a battle entity'
+  refs:
+  - bn6f/asm/asm31.s:73012
+  - 0x080D98E8 sub_80D98E8
+  - 0x0801BDDE AddRandomVarianceToTwoCoords
+  - 0x080005CC PlaySoundEffect
+  - 0x080E05F6 spawn_t1_0x0_EffectObject
+  reproduce: python3 tools/asmcat.py 0x080D99A4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- What sub_80E47A4 spawns (likely an explosion effect from stack-passed coords) is unconfirmed
+- Which entity types route to this handler and what flag bit 0x2 means are unknown without more callers
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D99A4 -> battle_explodeAndSelfDestruct
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D99A4

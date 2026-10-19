@@ -1,0 +1,49 @@
+name: battle_slideToOwnPanelPhase
+address: '0x080BBCD8'
+kind: function
+status: probable
+summary: Battle-object phase handler that slides the object sideways each frame until it reaches a panel
+  of its own alliance, then counts down and moves to the next action.
+interface: (r0 = unused/scratch, r5 = battle object) -> updates object phase/action fields; no return
+  value
+details: 'On phase 0 it sets phase 4, plays animation 0x12, plays sound 0xC0 (0xC1-1 computed in-register),
+  and stashes sub_80E7896''s result in ExtraVars. On phase 4 it advances X by XVelocity, recomputes PanelX/PanelY
+  via object_setPanelsFromCoordinates, and calls sub_80BBE3A whenever PanelX changed. It then looks up
+  a per-alliance pair of panel-mask words from byte_80BBD50 (alliance 0: require 0x10 / owner value 5;
+  alliance 1: require 0x10 / owner value 0xA) and calls object_checkPanelParameters with the object''s
+  PanelX/PanelY/Alliance. If the panel matches, it decrements Timer and, on expiry, sets CurAction=0xC
+  with phase reset to 0; if the panel doesn''t match, it jumps straight to CurAction=0x10 with phase 0.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'phase 0 branch: strb #4 CurPhase, mov #0x12 CurAnim, bl PlaySoundEffect (0xC1+0xFF) — startup
+    of a timed move; phase 4: loads XVelocity into X then bl object_setPanelsFromCoordinates — continuous
+    horizontal slide; off_80BBD4C indexes byte_80BBD50 by Alliance<<3 into two mask words passed to object_checkPanelParameters
+    — per-side panel ownership check; timer countdown then CurAction=0xC on success vs CurAction=0x10
+    on check failure — branch to next behavior based on panel validity'
+  refs:
+  - bn6f/asm/asm31.s:8130
+  - 0x080005CC PlaySoundEffect
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0800E2AC object_setPanelsFromCoordinates
+  reproduce: python3 tools/asmcat.py 0x080BBCD8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- Which battle object uses this action/anim 0x12 (no callers known), so a more specific game-term name
+  isn't possible
+- Exact meaning of sub_80E7896's return value stored in ExtraVars and of sub_80BBE3A (panel-change side
+  effect)
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BBCD8 -> battle_slideToOwnPanelPhase
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BBCD8

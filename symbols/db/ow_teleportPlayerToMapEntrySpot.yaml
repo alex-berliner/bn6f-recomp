@@ -1,0 +1,50 @@
+name: ow_teleportPlayerToMapEntrySpot
+address: '0x0808C644'
+kind: function
+status: probable
+summary: Teleports the overworld player to a fixed per-map position, facing direction, and animation from
+  a lookup table.
+interface: () -> r0 = 0; repositions player object and shared overworld-player state, sets animation id
+  in eStruct200ace0 and EVENT_1719
+details: 'Reads the game state''s map group; if it equals 0x85 it uses the constant 3, otherwise it reads
+  the byte at gameState+5 (the current map id). Multiplies the id by 16 and indexes a table at byte_808C684
+  whose entries are 8 bytes: X halfword, Y halfword, facing direction halfword, animation id halfword.
+  X and Y are shifted left 16 to sign-extend them and passed with r2=0 to owPlayer_copyCoordsToNextCoords...,
+  which relocates the player object while backing up the old coords into its Next fields; then the table''s
+  direction is fed to SetOWPlayerFacingDirection and the animation id to owPlayer_setS200ace0_fixedAnimationSelect
+  (which also raises EVENT_1719). Always returns 0. This looks like a ''place the player at the scripted
+  entry point for this map'' routine, e.g. for cutscene starts.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r3,[r4,#oGameState_MapGroup]; cmp #0x85 / mov r4,#3 / ldrb r4,[r4,#5] picks the table
+    index from game state; lsl r4,r4,#4 indexes byte_808C684 in 8-byte strides; ldrh r0/r1 <<16 sign-extends
+    X and Y coords; bl owPlayer_copyCoordsToNextCoordsWritePlayerCoordsThenIndirectlySetPlayerCoordsMaybe_809e188
+    with r2=0 relocates the player to (X,Y); bl SetOWPlayerFacingDirection then bl owPlayer_setS200ace0_fixedAnimationSelect_809e13c
+    consume the 3rd and 4th halfwords of each table entry; Table data byte_808C684: e.g. (0xFE30,0x005E,dir
+    3,anim 3), (0xFDCA,0x0046,dir 1,anim 1) — negative coords, plausible map positions'
+  refs:
+  - bn6f/asm/asm24.s:683
+  - 0x0809E2AE SetOWPlayerFacingDirection
+  - 0x0809E188 owPlayer_copyCoordsToNextCoordsWritePlayerCoordsThenIndirectlySetPlayerCoordsMaybe_809e188
+  - 0x0809E13C owPlayer_setS200ace0_fixedAnimationSelect_809e13c
+  reproduce: python3 tools/asmcat.py 0x0808C644
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- No caller is known, so when this runs (which cutscene or map-load path) and why map group 0x85 overrides
+  the index with 3 are unconfirmed
+- Exact meaning of gameState+5 (map id vs area id) and the coordinate units of the table entries
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_808C644 -> ow_teleportPlayerToMapEntrySpot
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_808C644

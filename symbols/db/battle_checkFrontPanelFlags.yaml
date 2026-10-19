@@ -1,0 +1,52 @@
+name: battle_checkFrontPanelFlags
+address: '0x08102F98'
+kind: function
+status: probable
+summary: AI helper that returns 1 only if the panel a variant-dependent distance in front of the object
+  has the panel flags required by a per-variant table.
+interface: (r0 = caller object? via r5->0x16 variant field, r4 = -facing direction) -> r0 = 1 if panel
+  matches mask table entry, else 0
+details: Reads field 0x16 of the object at r5 (a 0-3 variant/pattern index). It computes 6 - 5*index and
+  pushes it, then calls object_getFrontDirection and negates the result into r4 (direction passed to the
+  callee in r4). It then indexes byte_8102FDC with index*8 to load two words used as the set-mask/clear-mask
+  pair, restores the pushed value into r0, and calls object_getFirstPanelInDirectionFiltered with r1=2.
+  If a panel is found, object_checkPanelParameters tests it against the masks (with r1=2, likely a panel-parameter
+  selector) and the function returns 1 only if the check passes; any failure (no panel found or flags
+  mismatch) returns 0. The table entries are {0,0}, {0x20,0}, {0x20,0}, {0,0}, so variants 1-2 specifically
+  require flag bit 0x20 on the target panel.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'neg r4, r0 after bl object_getFrontDirection supplies the search direction to the filtered
+    panel search; byte_8102FDC indexed by [r5,#0x16]*8 supplies the r2/r3 mask pair handed to object_checkPanelParameters;
+    r0 = 6 - 5*[r5,#0x16] (pushed then popped into r0) is the distance/offset argument to object_getFirstPanelInDirectionFiltered;
+    beq loc_8102FD6 after both callee calls makes the function a pure boolean: 1 only when panel found
+    AND checkPanelParameters passes; mask word 0xF880080 is unused directly, suggesting dword_8102FF0
+    is a neighboring constant or leftover'
+  refs:
+  - bn6f/asm/asm31.s:160912
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800D0BC object_getFirstPanelInDirectionFiltered
+  reproduce: python3 tools/asmcat.py 0x08102F98
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- exact meaning of r1=2 in object_getFirstPanelInDirectionFiltered and object_checkPanelParameters (panel
+  parameter type?)
+- which structure r5 points to and what field 0x16 semantically is (variant id vs row/area index)
+- what flag bit 0x20 denotes on a panel (e.g. hole/broken/grass)
+- which boss or enemy AI uses this, since no callers are known
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8102F98 -> battle_checkFrontPanelFlags
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8102F98

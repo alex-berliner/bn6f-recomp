@@ -1,0 +1,48 @@
+name: object_waitTimerUpdate
+address: '0x080AA2A8'
+kind: function
+status: probable
+summary: Per-frame object update that counts down a delay timer, then on expiry resets the object's state,
+  restarts its animation, and restores saved values before updating the sprite.
+interface: (object in r5, no register args) -> void; decrements word at +0x24, on zero writes state byte
+  [r5]=3, anim slot byte +8=4
+details: This is a per-frame update routine for an object whose pointer lives in r5. Each call decrements
+  the word timer at +0x24; while it is still positive it just falls through to sprite_update. When the
+  timer reaches zero it sets the state byte at +0x00 to 3, calls sprite_setAnimation with index 0 followed
+  by sprite_loadAnimationData to restart the sprite from animation 0, copies three consecutive words from
+  +0x28/+0x2C/+0x30 into +0xC/+0x10/+0x14 (likely restoring position/velocity or other working fields
+  snapshot before the wait), and sets byte +0x08 to 4, presumably a substate/flag consumed by other handlers.
+  It always ends with sprite_update for the current frame.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldr r0,[r5,#0x24]; sub r0,#1; str r0,[r5,#0x24]; bgt loc_80AA2D0 — frame-countdown gate; mov
+    r0,#3; strb r0,[r5] — writes the object's state/state-machine byte on timer expiry; bl sprite_setAnimation
+    (r0=0) + bl sprite_loadAnimationData — restarts the sprite's animation from index 0; ldr r0..r2,[r5,#0x28/0x2c/0x30];
+    str to [r5,#0xc/0x10/0x14] — restores three saved words into working fields; mov r0,#4; strb r0,[r5,#8]
+    then bl sprite_update — sets substate byte and always advances the sprite
+  refs:
+  - bn6f/asm/asm29.s:10531
+  - 0x080026A4 sprite_loadAnimationData
+  - 0x08002DA4 sprite_setAnimation
+  - 0x080026C4 sprite_update
+  reproduce: python3 tools/asmcat.py 0x080AA2A8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- No caller is known, so the object layout (r5 struct) and meaning of the words at +0x28..0x30 and byte
+  +8 are inferred only; a caller or struct definition would confirm whether this is a respawn/reposition
+  wait state
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80AA2A8 -> object_waitTimerUpdate
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80AA2A8

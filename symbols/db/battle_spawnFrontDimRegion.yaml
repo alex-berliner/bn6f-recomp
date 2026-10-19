@@ -1,0 +1,54 @@
+name: battle_spawnFrontDimRegion
+address: '0x080C2600'
+kind: function
+status: probable
+summary: Spawns a dimming collision-region object covering panels 1–2 tiles in front of the battle object,
+  sized/duration chosen by a variant index.
+interface: (r0 = variant index 0..2, r5 = battle object) -> r0 = spawned region object from callee; r7
+  forced to 3 (timestop keep-updating flag).
+details: 'Takes a small variant index in r0 (not the object pointer: r0 is re-used as the index into the
+  offset/duration tables and also passed as the index argument to object_getFrontDirection, which reads
+  the battle object from r5). Gets the +1/-1 facing multiplier, multiplies it by a per-variant X offset
+  from dword_80C2664 (bytes 1,1,2), and adds the object''s oBattleObject_PanelX to get the region''s origin
+  panel; oBattleObject_PanelY is passed unchanged. oBattleObject_Element is OR''d with a byte-table entry
+  (all zeros here, so the element passes through). Duration/width words are read from byte_80C2640 (words
+  0x04050601/02/04) and the r6 value has oBattleObject_ExtraVars added, then object_spawnDimmingCollisionRegion
+  is called with the timestop flag 3 (dword_80C264C).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'mul r0,r1 with dword_80C2664 bytes 1,1,2 then add oBattleObject_PanelX: X offset in front scales
+    with facing direction; ldr r3,[r2,r3] from all-zero byte_80C266C OR''d into oBattleObject_Element:
+    element passthrough indexed by variant; ldr r4/r6 from byte_80C2640 (0x04050601/02/04) and r6 += oBattleObject_ExtraVars:
+    per-variant duration adjusted by object state; mov r7,#3 passed to object_spawnDimmingCollisionRegion,
+    whose summary says it marks the region to keep updating during timestop; callers battle_phaseChargeSpawnAttack
+    and battle_slideToPanelAction both reserve/claim panel space before calling this'
+  refs:
+  - bn6f/asm/asm31.s:22746
+  - 0x080C2256 battle_phaseChargeSpawnAttack
+  - 0x080C2324 battle_slideToPanelAction
+  - 0x080C23F0 sub_80C23F0
+  - 0x0800E2CA object_getFrontDirection
+  - 0x080C53A6 object_spawnDimmingCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080C2600
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- Exact meaning of the r4/r6 words loaded from byte_80C2640 (lifetime vs. width vs. other region fields)
+  depends on object_spawnDimmingCollisionRegion's parameter layout
+- What the ExtraVars offset represents (charge time? slide timer?) and why slide/charge callers use different
+  variant indices
+- Whether non-zero element-OR table values are used elsewhere for elemental dim regions
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C2600 -> battle_spawnFrontDimRegion
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C2600

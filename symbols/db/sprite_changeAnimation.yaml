@@ -1,0 +1,45 @@
+name: sprite_changeAnimation
+address: '0x080A8CB8'
+kind: function
+status: probable
+summary: Changes an object's sprite animation to a new index, reloading animation data only when the index
+  actually differs from the current one.
+interface: (r0 = new animation index; r5 = sprite slot pointer) -> r0 = undefined; no flags
+details: Reads the slot's current animation index from byte 7 and, if it equals r0, does nothing (keeps
+  the slot's cached state in sync with the sprite system's slot+0). Otherwise writes r0 into slot+7, calls
+  sprite_setAnimation to store the index in the slot's first byte, and calls sprite_loadAnimationData
+  to (re)load the animation's frame data. Byte 7 thus acts as a shadow copy of the active animation used
+  to skip redundant reloads.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r1,[r5,#7]; cmp r0,r1; beq skip — early-out when index unchanged (sub_80A8CB8:2-4); strb
+    r0,[r5,#7] before sprite_setAnimation — byte 7 mirrors the animation index written to slot+0; sprite_loadAnimationData
+    is only called on the changed path, consistent with reloading frame data for a new animation; callers
+    sub_80A8B4C and sub_80A8BBC sit alongside this sprite-slot code, consistent with animation selection
+    for objects
+  refs:
+  - bn6f/asm/asm29.s:7574
+  - 0x080A8B4C sub_80A8B4C
+  - 0x080A8BBC sub_80A8BBC
+  - 0x080026A4 sprite_loadAnimationData
+  - 0x08002DA4 sprite_setAnimation
+  reproduce: python3 tools/asmcat.py 0x080A8CB8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- exact struct layout of the sprite slot beyond bytes 0 and 7
+- whether any caller relies on the byte-7 shadow for anything besides this guard
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80A8CB8 -> sprite_changeAnimation
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A8CB8

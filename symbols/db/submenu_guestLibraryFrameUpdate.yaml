@@ -1,0 +1,49 @@
+name: submenu_guestLibraryFrameUpdate
+address: '0x0803ACC6'
+kind: function
+status: probable
+summary: 'Per-frame update for the guest-library chip-select screen: polls the folder cursor for button
+  input, dispatches to a button handler via jump table, and otherwise runs the screen''s init and overlay-tile
+  draw steps.'
+interface: (r0 = 0 passed to cursor-move poll) -> r0 = handler/button result discarded; no meaningful
+  return; calls into state handlers via blx
+details: Calls submenu_chipSelectCursorMove to process D-pad movement and get the pressed button; if a
+  button was pressed (nonzero), indexes dword_803ACEC with button<<2 and jumps to the matching handler
+  (B/A/Start/L/R/etc entries, including chipSelect_dispatchState_803AD20) using the lr=pc trick for a
+  Thumb dispatch. If no button was pressed (cursor move returned 0), it instead calls sub_803A7EC (guest-library
+  setup configuring sprite entries 0xA/0x26 and 0xB/0x27) and sub_803BC7C (drawing overlay half-tiles,
+  wrapping at column 0x18), i.e. the ambient rendering path. The jump table is stored directly inside
+  the function body (dword_803ACEC), which is unusual. Given the callee summaries, this is the frame driver
+  of the guest library / folder-reading submenu screen.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl submenu_chipSelectCursorMove then beq: only when no button is pressed does it fall through
+    to init/draw calls; lsl r0,r0,#2; ldr r0,[r1,r0]; bx r0 over dword_803ACEC: jump table indexed by
+    the returned button code; table entry chipSelect_dispatchState_803AD20+1 ties dispatch to the chip-select
+    state machine; bl sub_803A7EC (guest-library sprite setup) and bl sub_803BC7C (overlay tile draw)
+    form the no-input idle path'
+  refs:
+  - bn6f/asm/asm03_1_1.s:4404
+  - 0x0803AFC2 submenu_chipSelectCursorMove
+  - 0x0803A7EC sub_803A7EC
+  - 0x0803BC7C sub_803BC7C
+  reproduce: python3 tools/asmcat.py 0x0803ACC6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- exact which screen (guest library vs folder view) depends on confirming sub_803A7EC's sprite entries
+- meaning of each button-handler entry beyond the second slot is unverified
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803ACC6 -> submenu_guestLibraryFrameUpdate
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803ACC6

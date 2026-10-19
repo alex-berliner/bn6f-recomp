@@ -174,10 +174,10 @@ static void call_battle_resetState_8033AC4(u32 self) {
     GUEST_CALL(battle_resetState_8033AC4);
 }
 
-/* register form: calls sub_8033ADC outside this file, which has no typed C interface yet */
+/* register form: calls battle_stepBattleStartOverlay outside this file, which has no typed C interface yet */
 static void call_sub_8033ADC(u32 self) {
     R5 = self;
-    GUEST_CALL(sub_8033ADC);
+    GUEST_CALL(battle_stepBattleStartOverlay);
 }
 
 /* register form: calls battle_queueBattleIntroOam outside this file, which has no typed C interface yet */

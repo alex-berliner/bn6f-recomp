@@ -1,0 +1,47 @@
+name: object_scaleGrowStep
+address: '0x0811B648'
+kind: function
+status: probable
+summary: 'Grow phase of an object''s scale animation: ticks a timer toward 0xFF each frame and switches
+  the state byte to 0x10 when fully grown.'
+interface: (r0 = object (r5 used after entry), r1 = ?) -> void; writes obj+0x12 timer, obj+0xA state
+details: Per-frame update for the expanding half of a grow/shrink sprite animation. It adds 0x30 to the
+  byte at object+0x12, clamping at 0xFF, and every frame calls sprite_setScaleParameters(0, 0x40) to hold
+  the scaled-up sprite parameters. Once the timer reaches 0xFF it stores 0x10 into object+0xA, the state
+  byte, advancing the state machine; the companion function right after (loc_811B66C) is the shrink phase
+  that decrements the same timer to 0x40 and then cleans up (sprite_makeUnscalable, sprite_setUnk0x2c(0),
+  clears unk_203778C, state=0). Object+0xA holds the current animation state and +0x12 the scale timer.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r2,[r5,#0x12]; add r2,#0x30; strb back — increments a per-frame timer, clamped to 0xFF;
+    bl sprite_setScaleParameters with r0=0, r1=0x40 each call — keeps scale params applied; cmp r0,#0xff;
+    mov r0,#0x10; strb r0,[r5,#0xa] — on saturation advances state byte to 0x10; adjacent loc_811B66C
+    mirrors it with sub #0x30 down to 0x40 then sprite_makeUnscalable — the paired shrink phase; callees
+    sprite_makeUnscalable/sprite_setUnk0x2c/sprite_setScaleParameters all operate on the object''s sprite
+    struct'
+  refs:
+  - bn6f/asm/asm32.s:27916
+  - 0x08002D52 sprite_makeUnscalable
+  - 0x08002FA6 sprite_setUnk0x2c
+  - 0x08002C24 sprite_setScaleParameters
+  reproduce: python3 tools/asmcat.py 0x0811B648
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- no caller found, so which object/enemy uses this grow-shrink cycle is unknown
+- exact meaning of sprite_setScaleParameters(0,0x40) arguments and of the flag byte unk_203778C cleared
+  in the shrink phase
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_811B648 -> object_scaleGrowStep
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811B648

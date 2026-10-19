@@ -1,0 +1,49 @@
+name: ai_initPanelAttackTurn
+address: '0x080F9F76'
+kind: function
+status: probable
+summary: 'Initializes one enemy-AI attack turn: reads the difficulty tier, selects attack pattern 1, fetches
+  its duration and boost, sets a panel-choose callback, and arms attack id 0xB.'
+interface: (r5 = enemy object, r7 = AI attack vars struct) -> r0 = undefined; writes oAIAttackVars fields
+details: Runs inside the AI attack state machine (called from ai_attackCycleTick). It maps the enemy's
+  AI-data difficulty byte to a tier and stores it in oAIAttackVars_AiDifficultyTier, then clears oAIAttackVars_InitFlag.
+  It calls sub_80F9FEC with r0=1 to pick an attack pattern, then queries sub_80F9EA4 and sub_80F9E90 to
+  fill oAIAttackVars_AttackDuration (halfword) and oAIAttackVars_AttackBoost2. It installs sub_80FAAAC
+  as oAIAttackVars_PanelChooseCallback and stores r5+0x60 (likely a pointer into the enemy object's AI
+  data) into oAIAttackVars_ScratchVar. Finally it invokes object_setAttack0 with attack id 0xB to actually
+  start the attack.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl battle_getAiDifficultyTier_800FE36 then strb into oAIAttackVars_AiDifficultyTier — reads
+    AI difficulty for this attack; mov r0,#1; bl sub_80F9FEC — selects attack pattern/choice 1 before
+    the attack starts; ldr r0,off_80FA0A8 (=sub_80FAAAC); str into oAIAttackVars_PanelChooseCallback —
+    registers a panel-selection routine; mov r0,#0xb; bl object_setAttack0 — arms the enemy's attack slot
+    0 with id 0xB; Caller 0x080F9D94 ai_attackCycleTick cycles setup/attack turns, so this is a per-attack-turn
+    initializer
+  refs:
+  - bn6f/asm/asm31.s:141837
+  - 0x080F9D94 ai_attackCycleTick
+  - 0x0800FE36 battle_getAiDifficultyTier_800FE36
+  - 0x08011680 object_setAttack0
+  - 0x080F9E90 sub_80F9E90
+  reproduce: python3 tools/asmcat.py 0x080F9F76
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- Exact purpose of sub_80F9FEC(pattern=1), sub_80F9EA4 and sub_80F9E90 (duration/boost lookups)
+- What the r5+0x60 pointer is in the enemy object layout
+- What attack id 0xB and the callback sub_80FAAAC do
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F9F76 -> ai_initPanelAttackTurn
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F9F76

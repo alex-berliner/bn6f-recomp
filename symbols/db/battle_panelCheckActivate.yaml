@@ -1,0 +1,50 @@
+name: battle_panelCheckActivate
+address: '0x080D4D88'
+kind: function
+status: probable
+summary: Per-frame battle-object handler that waits on Timer2, then either activates (collision region
+  + action change + sound) if the object's panel matches a required panel state, or takes a fallback path.
+interface: (r5 = battle object) -> r0 = 1 from object_setCollisionRegion on taken path; flags from callees;
+  no return value used by caller pattern (void per-frame update)
+details: Decrements oBattleObject_Timer2 each frame and returns until it reaches 0. On expiry it reads
+  oBattleObject_PanelX/Y and calls object_checkPanelParameters with required-mask 0x10 and forbidden-mask
+  0xF880080, i.e. it fires only if the panel has the 0x10 state (e.g. a specific panel type like broken/holy)
+  and none of the 0xF880080 bits. If the check passes it stores collision region 1 via object_setCollisionRegion
+  (making the object collide/occupy the panel), plays sound effect 0x94, sets oBattleObject_CurAction
+  = 8 and zeroes oBattleObject_CurPhaseAndPhaseInitialized to start that action from phase 0. If the check
+  fails it instead calls sub_80D4EFC, likely the same expiry logic for the opposite panel state. This
+  is a typical state-machine tick function run once per frame for a battle object.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrh r0,[r5,#oBattleObject_Timer2]; sub r0,#1; bne locret — per-frame countdown gate; ldr r2,=0x10
+    / r3,=0xF880080 then bl object_checkPanelParameters with PanelX/Y — panel-state condition; mov r0,#1;
+    bl object_setCollisionRegion; mov r0,#0x94; bl PlaySoundEffect — activation on success; mov r0,#8;
+    strb r0,[r5,#oBattleObject_CurAction]; phase cleared to 0 — transitions into action 8; bne branch
+    to bl sub_80D4EFC — alternate behavior when panel state doesn't match
+  refs:
+  - bn6f/asm/asm31.s:62868
+  - 0x080005CC PlaySoundEffect
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0801A07C object_setCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080D4D88
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-235109'
+open_questions:
+- 'What object uses this (no known callers): the meaning of panel mask 0x10 and sound 0x94 would identify
+  it'
+- What sub_80D4EFC does differently (likely the mirror case) is unknown
+- Which action CurAction=8 represents for this object type
+sources:
+- wf investigate investigate-20261018-235109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f cea3523a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D4D88 -> battle_panelCheckActivate
+  where: bn6f dae34366
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D4D88
