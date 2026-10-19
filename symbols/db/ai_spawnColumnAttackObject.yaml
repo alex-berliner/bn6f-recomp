@@ -1,0 +1,47 @@
+name: ai_spawnColumnAttackObject
+address: '0x080DDFB6'
+kind: function
+status: probable
+summary: Spawns the AI attack's type-0xC6 battle object at a given panel, linking it to the acting object
+  and copying its panel/element/alliance fields.
+interface: (r0 = panel X, r1 = panel Y, r2 = element, r5 = acting battle object, r6 = damage/stamina-damage
+  counter value) -> r0 = spawned object ptr or 0; no meaningful flags
+details: 'Wraps object_spawnType3 with object type 0xC6. On success it copies the caller''s arguments
+  into the new object: PanelX (orig r0), PanelY (orig r1) and Element (orig r2), stores the acting object
+  (r5) in RelatedObject1Ptr and r6 in the DamageAndStaminaDamageCounterDisabler field, and copies the
+  parent''s AllianceAndDirectionFlip halfword so the spawn shares the parent''s side/direction. It then
+  sets bit 0x10 of oObjectHeader_Flags on the new object (likely marking it as a spawned/attack-linked
+  object). Failure of the spawn (r0 == 0) makes it return immediately.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mov r0, #0xc6 followed by bl object_spawnType3 spawns battle object type 0xC6; pop {r1-r3,r5}
+    then strb r1/r2/r3 to oBattleObject_PanelX/PanelY/Element maps caller args r0-r2 onto the spawn; str
+    r5, [r0,#oBattleObject_RelatedObject1Ptr] and the ldrh/strh of AllianceAndDirectionFlip from r5 tie
+    the spawn to the acting object; orr r2, r1 with r1=#0x10 sets flag 0x10 in oObjectHeader_Flags of
+    the new object; sole caller 0x080F1E08 is ai_attackFrontColumn, which sets up the front-column attack
+    this spawns the object for'
+  refs:
+  - bn6f/asm/asm31.s:83085
+  - 0x080F1E08 ai_attackFrontColumn
+  - 0x08003358 object_spawnType3
+  reproduce: python3 tools/asmcat.py 0x080DDFB6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-022109'
+open_questions:
+- exact gameplay role of object type 0xC6 (visual vs. hitbox sub-object) needs the type-3 initializer
+  at its 0xC6 entry
+- meaning of flag 0x10 in oObjectHeader_Flags
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e583d99d
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DDFB6 -> ai_spawnColumnAttackObject
+  where: bn6f 138f60e2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DDFB6

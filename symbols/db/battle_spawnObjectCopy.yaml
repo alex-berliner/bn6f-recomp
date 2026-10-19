@@ -1,0 +1,48 @@
+name: battle_spawnObjectCopy
+address: '0x080D19D4'
+kind: function
+status: probable
+summary: Spawns battle object 0x69 (type 3) and copies the source object's state into it, marking the
+  clone with header flag 0x10.
+interface: (r0-r3 = values copied into the new object's ExtraVars[0]/[4]/Element, r5 = source battle object,
+  r6 = source damage field) -> r0 = new object pointer, or branch-out on spawn failure
+details: 'The function saves its incoming arguments, calls object_spawnType3 with object id 0x69, and
+  aborts if the spawn failed. On success it copies a block of state from the source object into the new
+  one: ExtraVars+0 and +4, Element (byte), DamageAndStaminaDamageCounterDisabler, the AllianceAndDirectionFlip
+  halfword, and RelatedObject1Ptr set to the source object itself. The source''s CurAction is stored into
+  the new object''s ExtraVars+8, so the clone remembers what the original was doing. Finally it sets bit
+  0x10 in the new object''s oObjectHeader_Flags, likely marking it as a spawned clone/decoy.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl object_spawnType3 with r0 = 0x69 spawns the object and returns success flag tested by the
+    following beq; str r1/r2 to oBattleObject_ExtraVars and strb r3 to oBattleObject_Element copy saved
+    caller args into the new object; str r6 to oBattleObject_DamageAndStaminaDamageCounterDisabler and
+    ldrh/strh of r5''s AllianceAndDirectionFlip clone combat state from the source object; str r5 to oBattleObject_RelatedObject1Ptr
+    links the clone back to its source object; ldrb oObjectHeader_Flags / orr #0x10 / strb sets the clone
+    marker flag on the new object'
+  refs:
+  - bn6f/asm/asm31.s:56248
+  - 0x080F0D08 sub_80F0D08
+  - 0x08003358 object_spawnType3
+  reproduce: python3 tools/asmcat.py 0x080D19D4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-022109'
+open_questions:
+- Caller sub_80F0D08 is undocumented, so which enemy/attack uses this clone and what object id 0x69 represents
+  in-game is unknown
+- The exact meaning of header flag 0x10 (clone vs. other marker) needs confirmation from other users of
+  that flag
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e583d99d
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D19D4 -> battle_spawnObjectCopy
+  where: bn6f 138f60e2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D19D4

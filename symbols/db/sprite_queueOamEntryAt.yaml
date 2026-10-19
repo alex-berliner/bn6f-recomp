@@ -1,0 +1,50 @@
+name: sprite_queueOamEntryAt
+address: '0x0803BA00'
+kind: function
+status: probable
+summary: Queues a single OAM entry with a fixed tile (0x41E) and fixed attribute bits (0x5000) at a position
+  computed by sub_803B9C0, offset 12 px in X.
+interface: '() -> void; r0/r1 from sub_803B9C0 are consumed: a1 = ((x - 12) << 16) | (y | 0x5000), a2
+  = 0x41E, a4 = 7'
+details: Calls sub_803B9C0 to obtain a pair of values (presumably X/Y coordinates from some sprite/object
+  state), then decrements the first by 0xC (12 pixels) and packs it into the high halfword of a1 with
+  the second value OR'd with 0x5000 in the low halfword — the 0x5000 constant appearing to be fixed attribute
+  bits (e.g. size/flip flags) merged into the coordinate halfword. It then tail-calls sprite_queueOamEntry
+  via the thunk with a2 = 0x41E (fixed tile index) and constant arguments 2 and 7, queueing exactly one
+  sprite. The hardcoded tile and attribute constants suggest a specific recurring graphic (marker, shadow,
+  or similar) rather than a generic draw.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub r0, #0xc / lsl r0, #16 / orr r0, r1 / orr r0, 0x5000 builds the packed position+attr first
+    argument (asm lines 6-11); ldr r1, =0x41e passed as second arg to sprite_queueOamEntryThunk_802FE28,
+    a fixed tile index (asm line 12); only one sprite_queueOamEntry call with no loops — queues exactly
+    one OAM entry (asm line 15); sub_803B9C0 called with saved/restored r0,r1, so its two return values
+    are the raw inputs to the packed argument (asm lines 3-6); caller sub_803A4D0 is itself undocumented,
+    giving no extra context for the graphic''s identity'
+  refs:
+  - bn6f/asm/asm03_1_1.s:5774
+  - 0x0803A4D0 sub_803A4D0
+  - 0x0802FE28 sprite_queueOamEntryThunk_802FE28
+  - 0x0803B9C0 sub_803B9C0
+  reproduce: python3 tools/asmcat.py 0x0803BA00
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-022109'
+open_questions:
+- what sub_803B9C0 returns (presumably X/Y from a sprite object, but its structure is unknown)
+- what tile 0x41E depicts and what game element this draws
+- meaning of the constant args 2 and 7 to sprite_queueOamEntry
+- what the caller sub_803A4D0 does, which would pin down the usage context
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e583d99d
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803BA00 -> sprite_queueOamEntryAt
+  where: bn6f 138f60e2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803BA00

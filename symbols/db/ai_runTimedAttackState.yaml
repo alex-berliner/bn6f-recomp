@@ -1,0 +1,45 @@
+name: ai_runTimedAttackState
+address: '0x080F0C8C'
+kind: function
+status: probable
+summary: 'AI-controlled object''s attack step: on first call arms the attack (element 4, 30-frame timer),
+  then counts down and returns the object to its idle animation once it expires.'
+interface: (r0 unused on entry; r5 = battle object ptr, r7 = oAIAttackVars base) -> r0 = 0/exit code;
+  no flags of interest
+details: Reads oAIAttackVars_AttackElement; if zero (not yet started) it writes element=4, sets oAIAttackVars_StepTimer=0x1E
+  (30 frames) and returns. Otherwise it decrements StepTimer each call, and when it reaches zero it sets
+  oBattleObject_CurAnim to 0 (idle/neutral anim via r5) and calls object_exitAttackState to leave the
+  attack state. This is a self-contained timed AI attack behavior whose actual effect is presumably driven
+  elsewhere by AttackElement=4; r5/r7 are callee-saved globals set up by the AI dispatcher.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst + bne splits init pass vs. countdown pass; strb
+    #4,[r7,#oAIAttackVars_AttackElement]; strh #0x1E,[r7,#oAIAttackVars_StepTimer] arms a 30-frame attack
+    on first call; ldrh/sub/strh on StepTimer with bgt implements the frame countdown; mov r0,#0; strb
+    r0,[r5,#oBattleObject_CurAnim] resets the object''s current animation when the timer expires; bl object_exitAttackState
+    ends the AI attack state only after the countdown finishes'
+  refs:
+  - bn6f/asm/asm31.s:124041
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x080F0C8C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-022109'
+open_questions:
+- Which boss/AI uses this (no callers known), so AttackElement=4's meaning (its actual attack effect)
+  is unverified
+- Whether oAIAttackVars_AttackElement=4 selects a specific attack table entry or a generic charge/hold
+  state
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e583d99d
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F0C8C -> ai_runTimedAttackState
+  where: bn6f 138f60e2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F0C8C

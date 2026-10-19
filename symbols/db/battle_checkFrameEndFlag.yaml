@@ -1,0 +1,46 @@
+name: battle_checkFrameEndFlag
+address: '0x080C38BA'
+kind: function
+status: probable
+summary: Tests the current animation frame's attribute for the 0x80 'end/cue' flag and, if set, resets
+  the object's animation, timer, Z position, and phase for the next state.
+interface: (r0 = battle object ptr passed through to sprite_getFrameParameters; r5 = same object) -> r0
+  = frame params attribute when flag clear; no meaningful return when flag set
+details: Calls sprite_getFrameParameters on the object and tests bit 0x80 of the returned attribute byte,
+  which appears to mark a special 'animation finished / trigger' frame. If the bit is clear the routine
+  does nothing. If set, it resets oBattleObject_CurAnim to 0, sets oBattleObject_Timer to 10, writes 0x10<<16
+  (0x100000) to oBattleObject_Z, and advances oBattleObject_CurPhaseAndPhaseInitialized to 0x18 — i.e.
+  a state-machine transition out of the current animation. Because r5 is not set up in this thunk-like
+  routine, callers must have the object pointer already in r5, suggesting it is inlined-called or reached
+  with r5 preloaded by a wrapper.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl sprite_getFrameParameters; tst r0, #0x80; beq locret — only acts when the frame attribute''s
+    high bit is set; strb r0,[r5,#oBattleObject_CurAnim] with r0=0 restarts the animation from frame 0;
+    strh 0xa into oBattleObject_Timer and phase 0x18 into CurPhaseAndPhaseInitialized set up the next
+    object state; str 0x10<<16 into oBattleObject_Z restores/sets an Z coordinate, consistent with returning
+    to a default vertical position after an animation'
+  refs:
+  - bn6f/asm/asm31.s:25524
+  - 0x08002DEA sprite_getFrameParameters
+  reproduce: python3 tools/asmcat.py 0x080C38BA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-022109'
+open_questions:
+- 'No callers known: unclear which object states (phase 0x18) and animations feed into this, so the exact
+  gameplay meaning of the 0x80 frame flag (anim end vs. action cue) is inferred'
+- Why the object pointer lives in r5 rather than r0 at entry
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e583d99d
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C38BA -> battle_checkFrameEndFlag
+  where: bn6f 138f60e2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C38BA

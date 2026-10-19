@@ -1,0 +1,44 @@
+name: ai_attackNullTick
+address: '0x080F60A0'
+kind: function
+status: probable
+summary: 'AI attack-state tick for a dummy/no-element attack: on entry sets element 4, anim 0 and a 30-frame
+  timer, then just counts it down before leaving the attack state.'
+interface: (r0/r5/r7 = battle object, fields oBattleObject/oAIAttackVars) -> r0 clobbered; flags from
+  timer decrement
+details: Called each frame while this AI attack state is active. On the first tick (oAIAttackVars_AttackElement
+  == 0) it writes element 4 into oAIAttackVars_AttackElement, clears oBattleObject_CurAnim to 0, and loads
+  oAIAttackVars_StepTimer with 0x1E (30 frames). On later ticks it decrements StepTimer and returns while
+  it's still positive. Once the timer reaches zero it calls object_exitAttackState, ending the attack
+  without performing any offensive action. Element 4 appears to act as a placeholder element for this
+  do-nothing attack.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb/tst on oAIAttackVars_AttackElement gates one-time initialization vs. the countdown path;
+    stores 4 to oAIAttackVars_AttackElement and 0 to oBattleObject_CurAnim on first tick; strh 0x1E to
+    oAIAttackVars_StepTimer then per-frame sub/strh implements a 30-frame delay; only action at timer
+    expiry is bl object_exitAttackState, no attack or projectile code present; uses oAIAttackVars_* layout
+    from the AI attack state struct (r7 = object's AI vars, r5 = object base)
+  refs:
+  - bn6f/asm/asm31.s:134884
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x080F60A0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-022109'
+open_questions:
+- no callers known, so which AI script/state selects this handler and why element 4 is used is unconfirmed
+- exact meaning of element value 4 and whether anim 0 is a standing/idle pose needs the AI attack table
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e583d99d
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F60A0 -> ai_attackNullTick
+  where: bn6f 138f60e2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F60A0

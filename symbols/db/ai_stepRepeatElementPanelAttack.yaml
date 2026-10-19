@@ -1,0 +1,45 @@
+name: ai_stepRepeatElementPanelAttack
+address: '0x080F1D30'
+kind: function
+status: probable
+summary: AI attack step that repeatedly attacks a random panel with element 4 (with camera shake) for
+  a counted number of repeats, then sets the hit element to finish the move.
+interface: (r7 = object AI struct, fields oAIAttackVars_*) -> r0 = 0; updates AttackElement, StepTimer,
+  AttackBoost2, HitElement
+details: If AttackElement is still 0, it sets it to 4, picks a random panel for that element via ai_attackRandomPanel,
+  triggers a camera shake (magnitude 1, duration 20), and sets StepTimer to 20 frames. On later calls
+  it counts the StepTimer down; when it hits zero it decrements AttackBoost2, which acts as a repeat counter
+  — if repeats remain, AttackElement is cleared to 0 so the next call starts another random-panel attack.
+  Once AttackBoost2 is exhausted, it writes 0xC into HitElement, presumably signalling the next AI state.
+  The struct pointer arrives in r7, so the caller must have it loaded there.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sets AttackElement=4 then bl ai_attackRandomPanel: element-filtered random panel attack; bl
+    camera_initShakeEffect_80302a8 with r0=1,r1=0x14: screenshake on each attack hit; StepTimer 20-frame
+    delay between repeats, gated on AttackElement!=0 after first call; AttackBoost2 decrement-and-branch:
+    repeat counter for the attack sequence; final strh 0xC to HitElement when repeats exhausted: hands
+    off to next phase'
+  refs:
+  - bn6f/asm/asm31.s:126384
+  - 0x080F1E98 ai_attackRandomPanel
+  - 0x080302A8 camera_initShakeEffect_80302a8
+  reproduce: python3 tools/asmcat.py 0x080F1D30
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-022109'
+open_questions:
+- which boss/move this belongs to (element 4 and HitElement 0xC meaning)
+- how the caller sets AttackBoost2 (number of repeats) and passes r7
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e583d99d
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F1D30 -> ai_stepRepeatElementPanelAttack
+  where: bn6f 138f60e2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F1D30

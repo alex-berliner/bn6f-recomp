@@ -1,0 +1,45 @@
+name: sprite_advanceGroupStepClamped
+address: '0x0804A5B4'
+kind: function
+status: probable
+summary: Advances an object's sprite-id step by 0x10 up to 0x28, flags state 8 when capped, and moves
+  the 3-sprite group to (0x58, 0).
+interface: (r0 = unused on entry, r5 = object struct) -> r0 = final step id passed to callee; stores step
+  to [r5+0x18], state 8 to [r5+1] when clamped
+details: Reads the halfword step counter at r5+0x18 and adds 0x10. If the result exceeds 0x28, it stores
+  8 into the state byte at r5+1 and clamps the value to 0x28, so the sequence ends after a bounded number
+  of steps. The clamped value is written back to r5+0x18 and passed as firstId to sprite_setPositionForIdRange3_8119854,
+  which repositions sprite ids firstId..firstId+2 at x=0x58, y=0. r5 is therefore a struct with at least
+  a byte state field at +1 and a halfword sprite-id field at +0x18. Since step increments of 0x10 yield
+  ids like 0x10/0x20/0x28, each call shows a different 3-sprite group at the same spot, like a paged or
+  stepped display. With no callers known, the owning scene/object and the meaning of state 8 are unidentified.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrsh r0,[r5,#0x18]; add r0,#0x10; cmp r0,#0x28; ble — step field incremented and clamped at
+    0x28; mov r0,#8; strb r0,[r5,#1] — state byte at +1 set to 8 only when the cap is hit; strh r0,[r5,#0x18]
+    — new step id written back into the struct; mov r1,#0x58; mov r2,#0; bl sprite_setPositionForIdRange3_8119854
+    — resulting id used as firstId, group placed at fixed (0x58,0)
+  refs:
+  - bn6f/asm/asm03_2.s:7698
+  - 0x08119854 sprite_setPositionForIdRange3_8119854
+  reproduce: python3 tools/asmcat.py 0x0804A5B4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-022109'
+open_questions:
+- 'No callers known: which object/scene owns the r5 struct and what the stepped sprite groups depict'
+- Meaning of state byte 8 at r5+1 and what reads it afterwards
+- Whether the 0x10 stride and 0x28 cap encode a fixed 2-3 step animation or a data-driven count
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e583d99d
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_804A5B4 -> sprite_advanceGroupStepClamped
+  where: bn6f 138f60e2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_804A5B4

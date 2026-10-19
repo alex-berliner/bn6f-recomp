@@ -1,0 +1,53 @@
+name: battle_spawnType6Object
+address: '0x080B9014'
+kind: function
+status: probable
+summary: Spawns a battle object of index 6 via object_spawnType1 and fills in its panel position, element,
+  alliance (copied from a related object), damage-counter word, and collision data.
+interface: (r0 = panel X, r1 = panel Y, r2 = element, r3/r4 = passed through to spawnType1 as z/params,
+  r5 = related object ptr, r6 = damage/stamina word, r7 = collision data ptr) -> r0 = new BattleObject
+  or null; flags from callee's null-check
+details: Saves r0-r2/r5, calls object_spawnType1 with fixed object index 6 and the caller's r1-r4 as x/y/z/params;
+  the callee returns the new object pointer in r5, which is moved to r0 for a null check (flags set by
+  the callee survive the pop). On success the saved caller arguments are restored shifted (old r0->r1,
+  old r1->r2, old r2->r3, old r5->r5) and stored into oBattleObject_PanelX, PanelY, Element, and RelatedObject1Ptr.
+  The related object's AllianceAndDirectionFlip halfword is read and copied into the new object, so the
+  spawn inherits the owner's side/facing. r6 (not saved) is written to DamageAndStaminaDamageCounterDisabler
+  and r7 (not saved) to CollisionDataPtr; the first byte of the collision data is then set to 1, evidently
+  enabling/arming collision. The heavily register-based calling convention (values in r5-r7 that are not
+  stack args) suggests it is called from hand-written assembly rather than compiled C, and no callers
+  are known.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mov r0,#6 + bl object_spawnType1: spawns a type-1 battle object with hardcoded index 6, result
+    returned in r5; mov r0,r5 then beq locret_80B9038: null-check on the spawned object using flags left
+    by the callee; pop {r1-r3,r5} followed by strb to PanelX/PanelY/Element and str r5 to RelatedObject1Ptr:
+    caller args become the object''s initial fields; ldrh r1,[r5,#oBattleObject_AllianceAndDirectionFlip]
+    / strh back into the new object: alliance and flip copied from the related object; str r6/r7 into
+    DamageAndStaminaDamageCounterDisabler and CollisionDataPtr, then mov r1,#1; strb r1,[r7]: installs
+    caller-supplied damage word and collision data with byte 0 enabled'
+  refs:
+  - bn6f/asm/asm31.s:1889
+  - 0x08003320 object_spawnType1
+  reproduce: python3 tools/asmcat.py 0x080B9014
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-022109'
+open_questions:
+- No callers known, so the meanings of the r1-r4 arguments passed to spawnType1 (x/y/z/params) and why
+  old r0 becomes PanelX while r1 becomes both PanelY and spawn x are unconfirmed
+- What object index 6 actually is (its type-specific initialiser) and which game entity uses this spawner
+- Exact meaning of the DamageAndStaminaDamageCounterDisabler word and of collision-data byte 0 = 1
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e583d99d
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80B9014 -> battle_spawnType6Object
+  where: bn6f 138f60e2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80B9014

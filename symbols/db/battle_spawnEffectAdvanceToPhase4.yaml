@@ -1,0 +1,44 @@
+name: battle_spawnEffectAdvanceToPhase4
+address: '0x080C3348'
+kind: function
+status: probable
+summary: 'Battle-object phase step: clears a header flag bit, spawns an effect object using parameters
+  stored in the object, then advances the object to phase 4 with a 3-frame timer.'
+interface: (r5 = battle object header pointer; r4 = 0x14 passed through to callee) -> r0 = spawned object
+  pointer from callee; updates r5 object fields
+details: Clears bit 1 of oObjectHeader_Flags (likely a phase-initialized or one-shot marker). Copies three
+  words from offset 0x34 of the object (r1-r3) and calls spawn_t1_0x0_EffectObject, which spawns a type-4
+  battle effect object, leaving r0 pointing at r5+0x40 after the ldmia. Then sets oBattleObject_Timer
+  = 3 and oBattleObject_CurPhaseAndPhaseInitialized = 4, i.e. queues the next phase to run after 3 frames.
+  r4 = 0x14 is set just before the call, suggesting the callee or the object spawn path reads it (possibly
+  an object-size or team/param field). Typical shape of a multi-phase object script handler in the battle
+  engine.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bic r0, #2 / strb to oObjectHeader_Flags clears one flag bit before acting; ldmia r0!, {r1-r3}
+    at r5+0x34 passes three object fields as spawn parameters to the effect spawner; callee spawn_t1_0x0_EffectObject
+    is documented as spawning a type-4 effect battle object; strh #3 to oBattleObject_Timer and strh #4
+    to oBattleObject_CurPhaseAndPhaseInitialized schedule the next phase'
+  refs:
+  - bn6f/asm/asm31.s:24747
+  - 0x080E05F6 spawn_t1_0x0_EffectObject
+  reproduce: python3 tools/asmcat.py 0x080C3348
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-022109'
+open_questions:
+- No caller is known, so which object/attack uses this phase sequence is unidentified
+- Meaning of the three words at offset 0x34 and of r4 = 0x14 passed to the spawner is unconfirmed
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e583d99d
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C3348 -> battle_spawnEffectAdvanceToPhase4
+  where: bn6f 138f60e2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C3348

@@ -1,0 +1,49 @@
+name: battle_spawnObjectCfAtPanel
+address: '0x080DF4D4'
+kind: function
+status: probable
+summary: Spawns battle object type 0xCF and initializes it as a panel-anchored effect with a given panel
+  position, element, damage and the source object's alliance.
+interface: (r0 = panelX, r1 = panelY, r2 = element; r5 = source battle object, r6 = damage value) -> r0
+  = new object pointer (or caller's r5 if the spawn failed); flags from object_spawnType3's null check
+details: 'Pushes r0-r2 and r5 so they double as stack arguments to object_spawnType3, called with type
+  0xCF; the callee leaves the new object pointer in r5, which is copied to r0 before the pop reshuffles
+  the saved args into r1-r3 and restores the caller''s source-object r5. It then stores arg0->PanelX,
+  arg1->PanelY, arg2->Element, caller''s r6 -> DamageAndStaminaDamageCounterDisabler, and copies AllianceAndDirectionFlip
+  (and hence alliance and direction flip) from the source object at r5. Finally it ORs flag 0x10 into
+  oObjectHeader_Flags of the new object. Quirk: on spawn failure the beq skips initialization but r0 still
+  holds the source object pointer, not NULL.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl object_spawnType3 with r0=#0xCF and the pushed r0-r2/r5 words as stack args; mov r0, r5 between
+    bl and pop picks up the spawned pointer the callee leaves in r5; beq skips stores when it is null;
+    strb r1/r2/r3 to oBattleObject_PanelX/PanelY/Element right after pop {r1-r3,r5} restores the pushed
+    args; ldrh r3,[r5,#AllianceAndDirectionFlip]/strh copies the caller's source object alliance field,
+    str r6 stores caller's r6 damage; mov r1,#0x10; orr into oObjectHeader_Flags sets flag 0x10 on the
+    new object
+  refs:
+  - bn6f/asm/asm31.s:85882
+  - 0x080E94F8 battle_findNearestPanelColumn
+  - 0x08003358 object_spawnType3
+  reproduce: python3 tools/asmcat.py 0x080DF4D4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-022109'
+open_questions:
+- what battle object type 0xCF actually is in-game
+- what flag 0x10 in oObjectHeader_Flags means
+- whether object_spawnType3 intentionally returns the pointer in r5 or that is a quirk of its implementation
+- what sets r6 in battle_findNearestPanelColumn (the exact damage/HP value passed)
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e583d99d
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DF4D4 -> battle_spawnObjectCfAtPanel
+  where: bn6f 138f60e2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DF4D4

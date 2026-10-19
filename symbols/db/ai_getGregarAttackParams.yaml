@@ -1,0 +1,48 @@
+name: ai_getGregarAttackParams
+address: '0x08103F30'
+kind: function
+status: probable
+summary: Returns a pair of constants from a hard-coded table (0x12 and 0xc) used by Gregar's attack-initialization
+  AI state.
+interface: () -> r0 = first value (from byte_8103F4C+0), r1 = second value (from byte_8103F4C+4); via
+  two sub_800FE28 calls
+details: 'The function is a tiny getter: it calls sub_800FE28 with pointer byte_8103F4C, saves the result,
+  calls sub_800FE28 again with the same pointer +4, and returns the two results in r0/r1 (the push {r0}/pop
+  {r0} pair exists only to preserve the first return value across the second call; the final pop {pc}
+  returns). The table holds 0x12,0x12,0xc,0xc,0xc,0xc,6,6, suggesting paired min/max or per-entry data
+  at stride 2 or 4, with only the entries at +0 and +4 consumed here. Its sole caller is ai_initGregarAttack,
+  which per the known summary records a difficulty tier, fetches per-difficulty attack values, and locks
+  on to the player, so these two values are likely attack parameters (e.g. a target offset or range pair)
+  for one of Gregar''s attacks. The exact semantics depend on sub_800FE28, which is not shown.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: both calls pass pointers into byte_8103F4C (+0 and +4) and results are returned as a pair in
+    r0/r1 (push/pop {r0} around second call); table bytes 0x12,0x12,0xc,0xc,0xc,0xc,6,6 look like paired
+    constants at fixed stride; sole caller ai_initGregarAttack 'fetches per-difficulty attack boost/timer
+    values ... switches into attack state', matching an attack-parameter getter
+  refs:
+  - bn6f/asm/asm31.s:164139
+  - 0x08104050 ai_initGregarAttack
+  - 0x0800FE28 sub_800FE28
+  reproduce: python3 tools/asmcat.py 0x08103F30
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-022109'
+open_questions:
+- semantics of sub_800FE28 (random-in-range, difficulty-indexed lookup, or plain load?) — its body would
+  settle what the returned pair means
+- whether the returned values are coordinates, offsets, or timers for Gregar's attack
+- why the table has 8 bytes when only offsets 0 and 4 are read here (other entry points or unused variants?)
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e583d99d
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8103F30 -> ai_getGregarAttackParams
+  where: bn6f 138f60e2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8103F30

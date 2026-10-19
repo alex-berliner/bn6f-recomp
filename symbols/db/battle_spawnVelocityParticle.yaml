@@ -1,0 +1,53 @@
+name: battle_spawnVelocityParticle
+address: '0x080E1084'
+kind: function
+status: probable
+summary: Spawns a type-4 battle object (kind 9, particle/debris) and initializes its direction angle and
+  X/Z velocity for effects like random particle bursts.
+interface: (r0 = direction angle byte saved across the call; caller pre-sets r6 = X velocity, r7 = Z velocity,
+  plus args for spawnType4) -> r0 = status/possibly new object pointer; writes oBattleObject_DirectionAngle/XVelocity/YVelocity/ZVelocity
+  on the spawned object
+details: 'The helper saves r0/r5 with a second push (8 bytes of stack, likely also feeding spawnType4''s
+  5th stack argument), calls object_spawnType4 with r0 = 9 to spawn a type-4 battle object, and only if
+  the spawn succeeded (beq skips the writes) fills the new object''s motion fields: DirectionAngle from
+  the saved r0 byte, XVelocity from caller-set r6, YVelocity forced to 0, and ZVelocity from caller-set
+  r7. This register-based parameter passing (r5-r7 set by the caller before the call) is a hand-written
+  thunk convention rather than the standard AAPCS. Its only identified caller, battle_spawnRandomParticleBurstAtObject,
+  invokes it to produce the individual particles of a burst and then plays SFX 0xD9, so kind 9 is almost
+  certainly a flying particle/debris effect. The listed disassembly has suspicious ordering (pop {r0,r5}
+  clobbering the callee''s return before beq/strb), so the field-write target is almost certainly the
+  freshly spawned object pointer (r2), restored from the stack slot.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mov r0,#9 + bl object_spawnType4: spawns a battle object of type 4 with kind 9; strb r0,[r2,#oBattleObject_DirectionAngle]
+    / str r6 and r7 to XVelocity/ZVelocity, 0 to YVelocity: initializes the new object''s motion; beq
+    loc_80E109E: field writes are skipped when the spawn reports failure; caller battle_spawnRandomParticleBurstAtObject
+    calls this (twice) while spawning 1-4 particles and playing SFX 0xD9, matching a per-particle spawn
+    helper'
+  refs:
+  - bn6f/asm/asm31.s:89565
+  - 0x080C7EC8 battle_spawnRandomParticleBurstAtObject
+  - 0x080D5516 sub_80D5516
+  - 0x080033AC object_spawnType4
+  reproduce: python3 tools/asmcat.py 0x080E1084
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-022109'
+open_questions:
+- 'Exact register/stack interface: whether the popped r0 slot is the 5th spawnType4 argument or the saved
+  angle byte, and what original r5 holds'
+- What battle-object kind 9 actually renders as in game (particle sprite identity)
+- Meaning of the returned r0 (status vs. pointer to the new object)
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e583d99d
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E1084 -> battle_spawnVelocityParticle
+  where: bn6f 138f60e2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E1084

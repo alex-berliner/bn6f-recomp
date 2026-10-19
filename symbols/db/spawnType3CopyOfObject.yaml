@@ -1,0 +1,48 @@
+name: spawnType3CopyOfObject
+address: '0x080D8222'
+kind: function
+status: probable
+summary: Spawns a battle object of type 0x96 that mirrors a source object's panel position, element, and
+  alliance, and links back to the source object.
+interface: (r0 = panelX, r1 = panelY, r2 = element, r5 = source battle object ptr, damage value in r6)
+  -> r0 = new object ptr or 0 if spawn failed
+details: 'The wrapper saves r0-r2 and r5, calls object_spawnType3 with type 0x96, then restores the saved
+  args shifted into r1-r3 and copies fields into the new object: panelX and panelY from the caller''s
+  args, element from r2, and the DamageAndStaminaDamageCounterDisabler from whatever is in r6 (the caller''s
+  responsibility, since r6 is not saved). It then reads oBattleObject_AllianceAndDirectionFlip from the
+  source object at r5 and writes it to the new object, and stores the source object pointer in oBattleObject_RelatedObject1Ptr,
+  tying the new entity to its origin object. If the spawn failed (r0 == 0), it returns immediately without
+  writing anything. The register gymnastics (push {r0-r2,r5} / pop {r1-r3,r5}) suggest hand-written or
+  compiler-quirked code that shifts the argument registers during the restore.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl object_spawnType3 with mov r0,#0x96 selects the spawned object type; strb r1/r2/r3 to oBattleObject_PanelX/PanelY/Element
+    fill position and element from caller args; ldrh r1,[r5,#oBattleObject_AllianceAndDirectionFlip] copies
+    alliance from the source object; str r5,[r0,#oBattleObject_RelatedObject1Ptr] links the new object
+    back to the source; beq locret after the spawn call skips all field writes when allocation failed
+  refs:
+  - bn6f/asm/asm31.s:70272
+  - 0x080D8242 sub_80D8242
+  - 0x080EE406 sub_80EE406
+  - 0x08003358 object_spawnType3
+  reproduce: python3 tools/asmcat.py 0x080D8222
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-022109'
+open_questions:
+- What object type 0x96 actually is (needs its initializer or a named user)
+- Why the damage value arrives in r6 rather than a normal argument register — check both callers
+- Whether sub_80D8242 immediately after is a thin wrapper fixing up r6 for a specific use
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e583d99d
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D8222 -> spawnType3CopyOfObject
+  where: bn6f 138f60e2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D8222

@@ -1,0 +1,43 @@
+name: ai_freeExtraSlot
+address: '0x080D842E'
+kind: function
+status: probable
+summary: Marks one auxiliary extra-slot of a battle object as free (type 8) and clears its halfword field,
+  if not already free.
+interface: (r0 = pointer to extra-slot struct) -> r0 = destroyed; no meaningful return, flags clobbered
+details: Reads the slot's type/state byte at +0x9 and returns immediately if it already equals 8, otherwise
+  writes 8 there — 8 acting as the 'free/unused' sentinel for these extra-slot entries. It also zeroes
+  the halfword at +0xA, presumably a handle, ID, or linked value belonging to the slot. Called from ai_freeBattleObjectExtraSlots,
+  which frees up to four such auxiliary slots attached to a battle object's extra-vars block, so this
+  is the per-slot release routine. The guard makes repeated frees harmless. Nothing is deallocated here;
+  it is purely a state/tag reset on the slot record.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r5,#9]; cmp r0,#8; beq locret — skip if slot already marked 8; mov r0,#8; strb r0,[r5,#9]
+    — writes sentinel value 8 into the slot's type byte; mov r0,#0; strh r0,[r5,#0xa] — clears the slot's
+    halfword field; sole caller ai_freeBattleObjectExtraSlots 'releases up to four auxiliary objects/buffers
+    ... zeroing each slot' matches per-slot free semantics
+  refs:
+  - bn6f/asm/asm31.s:70575
+  - 0x0810E0D4 ai_freeBattleObjectExtraSlots
+  reproduce: python3 tools/asmcat.py 0x080D842E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-022109'
+open_questions:
+- exact meaning of the halfword at +0xA (handle vs count)
+- what slot type values other than 8 mean, and whether any code allocates slots by resetting byte 9 from
+  8 to another value
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e583d99d
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D842E -> ai_freeExtraSlot
+  where: bn6f 138f60e2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D842E

@@ -1,0 +1,45 @@
+name: ai_attackWaitTimerEnd
+address: '0x0810293C'
+kind: function
+status: probable
+summary: AI attack-state step that waits out a per-attack delay timer, then clears the attack object pointers
+  and leaves the attack state
+interface: (r5 = battle object ptr, r7 = AI attack vars ptr) -> r0 = object_exitAttackState result; flags
+  from timer countdown
+details: 'On entry, if oAIAttackVars_AttackElement is 0 it initializes the step: copies oAIAttackVars_AiAttackParam
+  (a delay/count) into the 16-bit StepTimer and sets AttackElement to 4 so the init runs only once. Each
+  call then decrements StepTimer until it goes negative. When the timer expires it nulls oBattleObject_RelatedObject1Ptr
+  in r5 and the oAIData_TempAttackObjectPtr in the object''s AIData, then calls object_exitAttackState
+  to leave the attack. AttackElement 4 appears to be a generic ''wait/no element'' attack step used to
+  insert a delay between AI actions.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bene: init-once guard, then strh AiAttackParam
+    to StepTimer and mov r0,#4 to AttackElement (init block); ldrh StepTimer; sub r0,#1; strh; bge locret:
+    per-frame countdown, nothing happens until it underflows; mov r0,#0; str r0,[r5,#oBattleObject_RelatedObject1Ptr]
+    and [r1,#oAIData_TempAttackObjectPtr]: clears object references on completion; bl object_exitAttackState
+    at end: formally leaves the attack state after the wait; r5/r7 are the standard battle-object / oAIAttackVars
+    bases used by other AI attack steps'
+  refs:
+  - bn6f/asm/asm31.s:161154
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x0810293C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-022109'
+open_questions:
+- no caller identified, so where in the AI step table this handler is dispatched from is unknown
+- exact meaning of AiAttackParam (frame count vs. action id) and of AttackElement value 4 not confirmed
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e583d99d
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_810293C -> ai_attackWaitTimerEnd
+  where: bn6f 138f60e2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810293C

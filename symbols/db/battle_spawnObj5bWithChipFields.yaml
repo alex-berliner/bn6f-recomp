@@ -1,0 +1,49 @@
+name: battle_spawnObj5bWithChipFields
+address: '0x080E723E'
+kind: function
+status: probable
+summary: Spawns battle object kind 0x5b and initializes it as a chip-driven panel attack tied to a related
+  object.
+interface: (r0 = panel X, r1 = panel Y, r2 = element; r5 = related object ptr, r6 = damage/disabler word,
+  r7 = chip ID) -> r0 = new battle object ptr (or fails via flags)
+details: The wrapper invokes object_spawnType4 with kind 0x5b, then uses a push {r0-r2,r5} / pop {r1-r3,r5}
+  trick to shift its three saved arguments down into r1-r3 so the spawn result stays in r0. It writes
+  r1/r2/r3 into the new object's PanelX, PanelY and Element. The caller's r5 is stored as RelatedObject1Ptr
+  and its Alliance field is read and copied into the new object's Alliance, so the spawned entity inherits
+  the owner's side. Caller r6 and r7 are stored to DamageAndStaminaDamageCounterDisabler and ChipID. If
+  the spawn returns null (beq after the call), all field initialization is skipped. The combination of
+  ChipID + damage fields + panel position strongly suggests a chip-effect attack entity placed on a panel.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: mov r0,#0x5b; bl object_spawnType4 — spawns battle object of kind 0x5b via the type-4 spawn
+    wrapper; push {r0-r2,r5}/pop {r1-r3,r5} register-shift keeps the spawn result in r0 while moving caller
+    args to r1-r3; strb r1/r2/r3 to oBattleObject_PanelX/PanelY/Element — caller's r0-r2 become the object's
+    panel position and element; ldrb r1,[r5,#oBattleObject_Alliance]; strb r1,[r0,#oBattleObject_Alliance]
+    — alliance copied from the related object in caller r5; beq locret after spawn — field writes skipped
+    when the spawn failed
+  refs:
+  - bn6f/asm/asm31.s:103505
+  - 0x080033AC object_spawnType4
+  reproduce: python3 tools/asmcat.py 0x080E723E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-022109'
+open_questions:
+- No known callers, so the exact meaning of the r5/r6/r7 inputs and what object kind 0x5b is used for
+  in-game is unconfirmed
+- Whether object_spawnType4 really returns the pointer in r5 (mov r0,r5 before the pop) or in r0 needs
+  checking in that callee
+- What sets the flags tested by beq (presumably the spawn callee comparing its result to 0)
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e583d99d
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E723E -> battle_spawnObj5bWithChipFields
+  where: bn6f 138f60e2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E723E

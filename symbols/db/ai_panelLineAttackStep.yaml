@@ -1,0 +1,45 @@
+name: ai_panelLineAttackStep
+address: '0x080F5FF4'
+kind: function
+status: probable
+summary: AI attack step handler that triggers a line-of-panels attack (sound, animation, spawn), then
+  on timer expiry queues the hit element per step.
+interface: (r7 = AI attack vars struct, r5 = battle object) -> void; flags set by timer decrement compare
+details: 'If oAIAttackVars_AttackElement is 0, this is the attack''s initiation: it sets AttackElement
+  to 4, switches the object to animation 0x12, loads StepTimer with 60 frames, plays sound effect 0xBA,
+  and calls ai_attackSpawnPanelLine to place attack effects on up to five panels ahead. On subsequent
+  calls it decrements StepTimer until it reaches zero. At expiry it writes the hit element into oAIAttackVars_HitElement:
+  0x28 normally, 0x30 when AttackStepIndex equals 2, so the third step of the attack deals a different
+  element/type. The r7/r5 base registers match other ai_* attack-step handlers, implying a shared AI attack-state
+  context.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'start branch: ldrb AttackElement; tst; sets element 4, anim 0x12 on r5, timer 0x3C, then PlaySoundEffect(0xBA);
+    calls ai_attackSpawnPanelLine immediately after starting, matching a multi-panel line attack; otherwise
+    decrements oAIAttackVars_StepTimer and returns until it hits zero (bgt locret); at expiry writes 0x28
+    to oAIAttackVars_HitElement, or 0x30 if oAIAttackVars_AttackStepIndex == 2; register usage (r7 AI
+    vars, r5 object) matches the other named ai_ attack step routines'
+  refs:
+  - bn6f/asm/asm31.s:134784
+  - 0x080005CC PlaySoundEffect
+  - 0x080F6310 ai_attackSpawnPanelLine
+  reproduce: python3 tools/asmcat.py 0x080F5FF4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-022109'
+open_questions:
+- which boss/attack uses this handler (no callers known), so the attack's in-game identity is unconfirmed
+- what element values 4/0x28/0x30 map to in the element enum
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e583d99d
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F5FF4 -> ai_panelLineAttackStep
+  where: bn6f 138f60e2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F5FF4

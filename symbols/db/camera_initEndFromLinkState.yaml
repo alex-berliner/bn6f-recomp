@@ -1,0 +1,46 @@
+name: camera_initEndFromLinkState
+address: '0x0812C11C'
+kind: function
+status: probable
+summary: Refreshes the camera's end-state from eLinkState and writes a fixed end-camera pair (0x30 or
+  0x48, then 0x4321) plus clears two fields of the caller's struct.
+interface: (no args read; r5 = caller-provided struct with flag byte at +0x12, word at +0x40, halfword
+  at +0x2E) -> r0 = eCamera end-struct base (from callee), clobbered; flags not meaningful
+details: 'It first calls camera_copyLinkStateToEnd, which copies eLinkState+0x1C/+0x0A into the eCamera
+  end struct at eCamera.unk_84+4/+2 and returns its base in r0. It then tests the byte at r5+0x12: nonzero
+  picks constant 0x30, zero picks 0x48, and the value is stored as a halfword at end+0x8; constant 0x4321
+  is stored at end+0xA. Finally it zeroes the word at r5+0x40 and the halfword at r5+0x2E. The pattern
+  suggests programming the camera''s transition target (end position/mode) after a link-state change and
+  clearing some pending-state fields, but the identity of r5''s struct and the meaning of 0x30/0x48 vs
+  0x4321 are not shown by the code. With no known callers, the surrounding context cannot confirm this
+  reading.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl camera_copyLinkStateToEnd; mov r7,r0 — r7 is the eCamera end struct base; ldrb r1,[r5,#0x12];
+    tst; selects off_812C184 (0x30) vs off_812C180 (0x48) stored to [r7,#8]; ldr r1, =0x4321; strh r1,[r7,#0xA]
+    — fixed magic value into end+0xA; str r0,[r5,#0x40] and strh r0,[r5,#0x2E] with r0=0 — clears two
+    fields of the r5 struct; no known callers and no other known reads of end+8/end+0xA to confirm semantics
+  refs:
+  - bn6f/asm/asm33.s:18790
+  - 0x081325CC camera_copyLinkStateToEnd
+  reproduce: python3 tools/asmcat.py 0x0812C11C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-022109'
+open_questions:
+- who calls this and what r5 points to (fields 0x12, 0x2E, 0x40 unknown)
+- meaning of end-struct fields +8 and +0xA and why 0x4321 / 0x30-vs-0x48 are chosen
+- what game state (link/union-room transition?) triggers this
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e583d99d
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_812C11C -> camera_initEndFromLinkState
+  where: bn6f 138f60e2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_812C11C

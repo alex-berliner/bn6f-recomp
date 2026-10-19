@@ -1,0 +1,47 @@
+name: ai_dummyAttackUpdate
+address: '0x080F1310'
+kind: function
+status: probable
+summary: 'AI attack-state tick for an elementless/dummy attack: on first entry marks the attack element
+  and starts a 30-frame wait, then exits the attack when the timer runs out.'
+interface: (r0 = garbage on entry, overwritten; r5 = battle object ptr, r7 = AI attack vars ptr) -> r0
+  = object_exitAttackState return; no flags meaningful
+details: The routine reads oAIAttackVars_AttackElement from the r7 AI attack-vars struct; if it is still
+  0 it initializes the attack by storing element 4, clearing the object's oBattleObject_CurAnim (via r5)
+  to 0, and loading oAIAttackVars_StepTimer with 0x1e (30 frames). On subsequent ticks it simply decrements
+  StepTimer each frame and, once it reaches 0, calls object_exitAttackState to hand control back to the
+  normal AI state. The attack itself performs no action — no hitbox, sound, or animation is ever queued
+  — so it acts as a timed do-nothing attack phase, likely a placeholder or pre/post-attack pause for an
+  elementless case.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne splits first-run init from ticking; mov r0,#4
+    / strb [r7,#oAIAttackVars_AttackElement] sets a sentinel element value on init; mov r0,#0x1e / strh
+    [r7,#oAIAttackVars_StepTimer] arms a 30-frame countdown; ldrh/sub/strh/bgt on StepTimer implements
+    the per-frame decrement loop; bl object_exitAttackState only after the countdown expires, terminating
+    the attack state
+  refs:
+  - bn6f/asm/asm31.s:124932
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x080F1310
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-022109'
+open_questions:
+- Which enemy/AI table routes to this handler (no callers known), and whether element value 4 is a shared
+  'none' sentinel or attack-type specific
+- Whether the 30-frame wait is meant as a placeholder for an unimplemented attack or a deliberate idle/taunt
+  phase
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e583d99d
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F1310 -> ai_dummyAttackUpdate
+  where: bn6f 138f60e2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F1310

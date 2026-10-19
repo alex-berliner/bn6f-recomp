@@ -1,0 +1,47 @@
+name: battle_checkFacingTileMatch
+address: '0x080266BA'
+kind: function
+status: probable
+summary: Runs the facing-offset tile checker on an object using one of two special-case offset tables,
+  chosen by comparing a computed alliance/facing value against r6.
+interface: (r4 = battle object, r6 = value to match) -> r0 = nonzero if the checker hit on a listed relative
+  tile; flags from callee
+details: Reads the object's Alliance and DirectionFlip bytes at r5, XORs them together with 1, multiplies
+  by 5 and adds 1, yielding 1 or 6 depending on whether alliance and flip agree. If that computed value
+  equals r6, the table base byte_80267A6 is advanced by 2 (second table), otherwise the table at offset
+  0 is used. The chosen 0x7F-terminated table of signed tile offsets is then handed to battle_checkFacingOffsets,
+  which mirrors each offset by facing and runs the per-tile checker, returning as soon as one succeeds.
+  r5 (object pointer) and r6 (match value) are caller-provided; no caller is known, so the meaning of
+  the 1-vs-6 comparison and the table contents are unconfirmed.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#oBattleObject_Alliance] / ldrb r1,[r5,#oBattleObject_DirectionFlip] with eor/mul/add
+    #1 computes a 1-or-6 selector; cmp r0, r6 / bne loc_80266D4 / mov r2,#2 selects table byte_80267A6+2
+    when the value matches r6; ldr r0, off_802680 (byte_80267A6) + add r0,r0,r2 picks between two offset
+    tables; bl battle_checkFacingOffsets delegates the actual per-tile check and its return value; no
+    callers known, so r6''s semantic and the table bytes at byte_80267A6 are unverifiable from this site'
+  refs:
+  - bn6f/asm/asm03_0.s:360
+  - 0x080265D0 battle_checkFacingOffsets
+  reproduce: python3 tools/asmcat.py 0x080266BA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-022109'
+open_questions:
+- Contents of the two tables at byte_80267A6 (offsets and terminators) are not shown
+- Meaning of r6 and why the alliance^flip^1*5+1 value is compared to 1 or 6
+- Which caller supplies r4/r6 and what the underlying tile checker (inside battle_checkFacingOffsets)
+  tests for
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e583d99d
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80266BA -> battle_checkFacingTileMatch
+  where: bn6f 138f60e2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80266BA

@@ -1,0 +1,42 @@
+name: ai_attackRecoveryTick
+address: '0x080F1F7C'
+kind: function
+status: probable
+summary: AI attack-state routine that starts a 30-frame recovery pause (setting element 4 and animation
+  0) and then returns the object to its normal state.
+interface: (r7 = battle object AI vars, r5 = battle object) -> r0 = clobbered; no meaningful return
+details: On entry it reads oAIAttackVars_AttackElement; if it is still 0 (unset), it stores element 4,
+  resets oBattleObject_CurAnim to 0, and loads oAIAttackVars_StepTimer with 30 (0x1e), acting as one-shot
+  initialization of a recovery/wind-down phase. On subsequent calls it decrements StepTimer each frame
+  and, once it reaches zero, calls object_exitAttackState to leave the attack state. The r7/r5 base registers
+  suggest this is dispatched from the object's AI state table rather than called directly.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne guards a one-time init storing element 4
+    and timer 0x1e; strb r0,[r5,#oBattleObject_CurAnim] resets the object's current animation to 0 during
+    the pause; ldrh/sub/strh on oAIAttackVars_StepTimer with bgt implements a frame countdown; bl object_exitAttackState
+    when the timer expires shows it terminates an AI attack phase; no callers known, so r7/r5 imply dispatch
+    via an AI attack-state handler table
+  refs:
+  - bn6f/asm/asm31.s:126717
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x080F1F7C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-022109'
+open_questions:
+- which AI attack leads into this state (no callers found), and what element value 4 denotes
+- whether the 30-frame wait is a recovery after firing or a pre-attack charge
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e583d99d
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F1F7C -> ai_attackRecoveryTick
+  where: bn6f 138f60e2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F1F7C

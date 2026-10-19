@@ -1,0 +1,52 @@
+name: object_spawnAttackObject
+address: '0x080D54F0'
+kind: function
+status: probable
+summary: 'Spawns a kind-0x80 battle object and fills it in as an attack: panel position, element, damage
+  word, and the parent''s alliance/direction.'
+interface: 'custom regs: r0 = panel X, r1 = panel Y, r2 = element, r5 = parent battle object, r6 = damage/stamina-disable
+  word -> no return value; Z flag from object_spawnType3 gates the init (beq skips on spawn failure)'
+details: The wrapper shuffles its arguments with push {r0-r2,r5} / pop {r1-r2,r5} so the original r0,r1,r2
+  land in r1,r2,r3, then calls object_spawnType3 with r0=0x80 (object kind) and the parent pointer as
+  the extra stack/register argument. On success it captures the spawned object pointer (left in r5 by
+  the callee, grabbed with mov r0,r5 before the pop restores the caller's r5) and writes oBattleObject_PanelX/PanelY/Element
+  from its first three arguments, the full damage word from r6, and copies oBattleObject_AllianceAndDirectionFlip
+  from the parent object in r5. It then sets bit 0x10 in the new object's oObjectHeader_Flags. r5/r6 are
+  used as argument registers without a normal ABI, so this is one of the battle engine's custom-convention
+  spawn thunks; the old r5 must be preserved because it doubles as the parent-object source.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mov r0,#0x80 + bl object_spawnType3: spawns object kind 0x80 and beq skips everything when
+    it fails; pop {r1-r2,r5} reroutes original r0,r1,r2 into r1,r2,r3, which are stored to oBattleObject_PanelX/PanelY/Element;
+    str r6,[r0,#oBattleObject_DamageAndStaminaDamageCounterDisabler] copies the caller''s damage word
+    into the new object; ldrh/strh of oBattleObject_AllianceAndDirectionFlip from r5 to r0 copies the
+    parent''s alliance to the spawn; caller ai_attackRandomPanel ''launches an attack on it using the
+    object''s damage value'', matching this parameter set'
+  refs:
+  - bn6f/asm/asm31.s:64367
+  - 0x080F1E98 ai_attackRandomPanel
+  - 0x080BBE58 sub_80BBE58
+  - 0x080E9D2A sub_80E9D2A
+  - 0x08003358 object_spawnType3
+  reproduce: python3 tools/asmcat.py 0x080D54F0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-022109'
+open_questions:
+- confirm that object_spawnType3 really returns the spawned pointer in r5 (custom convention) rather than
+  r0, since the mov r0,r5 trick depends on it
+- what flag bit 0x10 in oObjectHeader_Flags means for battle objects
+- what kind/behavior id 0x80 selects inside object_spawnType3
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e583d99d
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D54F0 -> object_spawnAttackObject
+  where: bn6f 138f60e2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D54F0

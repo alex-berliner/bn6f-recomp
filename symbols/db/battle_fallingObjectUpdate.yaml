@@ -1,0 +1,45 @@
+name: battle_fallingObjectUpdate
+address: '0x080CCCBC'
+kind: function
+status: probable
+summary: 'Per-frame update for a battle object: dispatches a handler from a 3-entry table indexed by the
+  object''s current action, then advances its sprite.'
+interface: (r5 = battle object ptr) -> r0 = object_updateSprite result/flags; uses lr as a plain register
+  (mov lr, pc) for the dispatched call
+details: 'Reads oBattleObject_CurAction from the object at r5, indexes the table at off_80CCCD4 with it,
+  and tail-jumps to one of three handlers (entry 0 = battle_fallingObjectLandSpawnRegion, entries 1–2
+  = sub_80CCD24/sub_80CCD30). The `mov lr, pc; bx r1` pattern calls the handler in ARM state, expecting
+  it to return; afterwards it unconditionally calls object_updateSprite to advance the object''s animation.
+  The table reference to battle_fallingObjectLandSpawnRegion identifies this as the falling-object battle
+  object''s state machine. Quirk: the dispatched handlers are ARM/Thumb interwork calls via bx, and r0
+  is left holding the action index used for the lookup.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r5,#oBattleObject_CurAction]; ldr r1,[r1,r0]; bx r1 — action-indexed dispatch through
+    off_80CCCD4; table entry 0 = battle_fallingObjectLandSpawnRegion+1 ties the object to the falling-object
+    subsystem; bl object_updateSprite after the dispatched handler — standard per-frame sprite advance;
+    only caller sub_80CCC68 presumably registers this as the object's update callback
+  refs:
+  - bn6f/asm/asm31.s:45756
+  - 0x080CCC68 sub_80CCC68
+  - 0x0801BBAC object_updateSprite
+  reproduce: python3 tools/asmcat.py 0x080CCCBC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-022109'
+open_questions:
+- what sub_80CCD24 and sub_80CCD30 do (the other two action states, e.g. falling/despawn)
+- what sub_80CCC68 does — whether it spawns this object and with which actions 1–2
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e583d99d
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CCCBC -> battle_fallingObjectUpdate
+  where: bn6f 138f60e2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CCCBC

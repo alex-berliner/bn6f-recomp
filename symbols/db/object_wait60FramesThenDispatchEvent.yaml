@@ -1,0 +1,45 @@
+name: object_wait60FramesThenDispatchEvent
+address: '0x08008364'
+kind: function
+status: probable
+summary: Per-frame object update that initializes a 60-frame timer on first run, then dispatches object
+  event 0x800 and sets state 4 when the timer expires.
+interface: (r0 unused on entry; r5 = object/actor struct) -> void; updates r5 fields at +2 (halfword),
+  +3 (byte), +8 (halfword)
+details: On first invocation (byte at r5+3 == 0) it zeroes the halfword counter at r5+8 and writes 4 to
+  the byte at r5+3, marking the object as started/active. Each call then increments the r5+8 counter;
+  once it reaches 0x3C (60 frames, one second), it calls dispatch_801DACC with event flags 0x800 and writes
+  4 as a halfword to r5+2, likely the object's current state/command field. The counter is not reset,
+  so the dispatch fires exactly once and the state write ends this behavior. r5 is accessed directly (not
+  via r0), so the caller sets up r5 before invoking, typical of an object state-machine step table.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#3]/tst/bne + str 4 to [r5,#3]: one-time init of an active/state byte; ldrh/add/strh
+    on [r5,#8] with cmp #0x3c: frame counter that expires after 60 frames; ldr r0,off_80084E4 (=0x800);
+    bl dispatch_801DACC: fires object event flags 0x800 once the timer ends; mov r0,#4; strh r0,[r5,#2]
+    immediately after dispatch: transitions the object''s state field; no return value and pop {pc}: plain
+    per-frame object step function'
+  refs:
+  - bn6f/asm/asm00_1.s:11456
+  - 0x0801DACC dispatch_801DACC
+  reproduce: python3 tools/asmcat.py 0x08008364
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-022109'
+open_questions:
+- exact meaning of event flags 0x800 in dispatch_801DACC (despawn, message, or other)
+- which object struct r5 points to and the semantics of fields +2/+3/+8
+- no callers known, so the trigger context and which entity uses this 60-frame delay are unconfirmed
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e583d99d
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8008364 -> object_wait60FramesThenDispatchEvent
+  where: bn6f 138f60e2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8008364

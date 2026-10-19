@@ -1,0 +1,44 @@
+name: battle_phaseIntroDelay
+address: '0x080BF4A4'
+kind: function
+status: probable
+summary: 'Battle-object phase handler: plays an intro state (anim 1, palette 4) for 30 frames, then hands
+  the object to action 0x10.'
+interface: (r5 = battle object) -> void; sets oBattleObject_Timer/CurAnim/PhaseInitialized, then CurAction/CurPhase
+details: 'Uses r5 as the current battle object rather than a passed argument, and checks oBattleObject_PhaseInitialized:
+  on the first call it initializes the phase by loading 0x1E (30) into oBattleObject_Timer, selecting
+  animation 1, calling sprite_setPalette(4), and marking the phase initialized (4). On every call it then
+  decrements oBattleObject_Timer; while the timer is still positive it returns. When the countdown reaches
+  zero it writes 0x10 into oBattleObject_CurAction and clears oBattleObject_CurPhaseAndPhaseInitialized
+  to 0, so the object''s main loop dispatches to the next action/phase. This is a typical timed ''wait
+  during intro'' phase in the battle object state machine.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r5,#oBattleObject_PhaseInitialized]; bne loc_80BF4BE — one-time phase init guarded
+    by the initialized byte; mov r0,#0x1e; strh r0,[r5,#oBattleObject_Timer] plus strb 1 to CurAnim and
+    sprite_setPalette(4) — intro animation/palette setup; ldrh r0,[r5,#oBattleObject_Timer]; sub r0,#1;
+    strh; bgt locret — plain frame countdown while waiting; mov r0,#0x10; strb r0,[r5,#oBattleObject_CurAction];
+    strh 0 to CurPhaseAndPhaseInitialized — transition to action 0x10 when timer expires
+  refs:
+  - bn6f/asm/asm31.s:15877
+  - 0x08002D80 sprite_setPalette
+  reproduce: python3 tools/asmcat.py 0x080BF4A4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-022109'
+open_questions:
+- No caller known, so the object identity and what action 0x10 does next (which enemy/object uses this
+  intro) are unidentified
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e583d99d
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BF4A4 -> battle_phaseIntroDelay
+  where: bn6f 138f60e2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BF4A4

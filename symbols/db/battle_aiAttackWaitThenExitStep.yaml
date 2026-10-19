@@ -1,0 +1,48 @@
+name: battle_aiAttackWaitThenExitStep
+address: '0x080EDABA'
+kind: function
+status: probable
+summary: AI attack-script step that waits 4 frames on first entry, then clears the attack's object links
+  and exits the attack state.
+interface: (r7 = battle object AI attack vars, r5 = battle object) -> r0 = undefined (locret); flags from
+  object_exitAttackState not meaningful to caller
+details: 'Runs as one step of a battle object''s AI attack sequence. On first entry (AttackElement ==
+  0) it initializes itself: StepTimer = 4 and AttackElement = 4, so the same slot doubles as this step''s
+  marker/state. Every frame it decrements StepTimer; while the (signed) result is >= 0 it just returns,
+  keeping the object in its attack state for 4 frames. Once the counter runs out it zeroes oBattleObject_RelatedObject1Ptr
+  and the TempAttackObjectPtr field of the object''s oAIData (detaching any attack object/spawned entity
+  this attack used), then calls object_exitAttackState to leave the attack routine. No callers recorded,
+  so which enemy/attack uses this step is unknown; the value 4''s meaning in AttackElement is unconfirmed.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne loc_80EDACA: init runs only once, reusing
+    AttackElement as this step''s state marker; mov r0,#4; strh StepTimer / strb AttackElement: 4-frame
+    delay, element value 4 marks the step; ldrh/sub/strh/bge locret: decrement and early return keeps
+    state while timer >= 0; str r0,[r5,#oBattleObject_RelatedObject1Ptr] and str r0,[r1,#oAIData_TempAttackObjectPtr]:
+    clears attack object references on expiry; bl object_exitAttackState: teardown ends the attack state
+    after the delay'
+  refs:
+  - bn6f/asm/asm31.s:117355
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x080EDABA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-022109'
+open_questions:
+- Which AI attack script references this step (no callers known), and what attack/element the constant
+  4 in AttackElement denotes
+- Whether the 4-frame delay represents a custom attack hit window or a post-attack cooldown, and what
+  RelatedObject1Ptr pointed at during the attack
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e583d99d
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80EDABA -> battle_aiAttackWaitThenExitStep
+  where: bn6f 138f60e2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EDABA

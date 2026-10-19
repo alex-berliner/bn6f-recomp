@@ -1,0 +1,46 @@
+name: battle_setPanelTypeShape
+address: '0x080CE424'
+kind: function
+status: probable
+summary: Sets a given panel type over a pattern of panels, offset from a base tile, selected by shape
+  id
+interface: (r0 = base panel x, r1 = base panel y, r2 = panel type, r3 = shape/variant id into PanelOffsetListsPointerTable)
+  -> r0 = result of last object_setPanelType call
+details: Reads a pointer table (PanelOffsetListsPointerTable) with r3*4 as index and iterates over a list
+  of signed-byte coordinate offsets. Each entry is a pair (dx, dy); the loop terminates when dx == 0x7F.
+  For each entry it calls object_setPanelType(baseX+dx, baseY+dy, r2), so one call paints a whole multi-tile
+  shape (e.g. an object's footprint) with a panel type. r4-r7 are saved/restored; r5/r6/r7 hold panel
+  type and base coords across the loop. The 0x7F sentinel rather than a count means the shape lists are
+  variable length in ROM.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldr r4, off_80CE524 / ldr r4,[r4,r3,lsl#2] — shape id selects an offset list from PanelOffsetListsPointerTable;
+    ldrsb pairs from [r4] and [r4,1] with cmp r0,#0x7F beq — list of (dx,dy) s8 pairs terminated by 0x7F;
+    add r0,r0,r6 / add r1,r1,r7 / bl object_setPanelType — applies panel type r2 at each offset position;
+    caller battle_objDestroyWithPanelEffect: 3-variant object destroy spawns timed panel effects and plays
+    a per-variant sound — this call stamps the matching panel-type shape'
+  refs:
+  - bn6f/asm/asm31.s:48904
+  - 0x080CE3C4 battle_objDestroyWithPanelEffect
+  - 0x0800CC0A object_setPanelType
+  reproduce: python3 tools/asmcat.py 0x080CE424
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-022109'
+open_questions:
+- exact contents/meaning of each of the three shape offset lists in ROM (which footprint shapes they correspond
+  to)
+- which panel type values the caller passes for each of the three variants
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e583d99d
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CE424 -> battle_setPanelTypeShape
+  where: bn6f 138f60e2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CE424

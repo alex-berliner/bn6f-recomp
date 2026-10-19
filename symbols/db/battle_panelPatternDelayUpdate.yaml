@@ -1,0 +1,48 @@
+name: battle_panelPatternDelayUpdate
+address: '0x080E6C34'
+kind: function
+status: probable
+summary: Phase step for a battle object that waits ~2 seconds, then stamps its panel-type pattern onto
+  the field at the halfway point and finishes, playing a per-variant sound effect.
+interface: (r5 = battle object self) -> void; sets oBattleObject_PhaseInitialized=4 and Timer=0x78 on
+  entry, decrements Timer, applies panel pattern + sound at 0x3C, sets CurAction=8 and clears phase at
+  0
+details: Called with the object in r5. On first run it marks phase initialized (4) and loads a 120-frame
+  timer. Each frame it decrements the timer; when it hits 0x3C it calls battle_applyPanelPattern (which
+  stamps a 3x6 panel pattern from a table keyed by Param1 and Alliance) and plays a sound from a 4-entry
+  table indexed by Param1>>1 (0x97, 0x11C, 0x118, 0x11B — two Param1 values share sfx 0x97). When the
+  timer expires it sets CurAction=8 (some finish/return action) and zeroes CurPhaseAndPhaseInitialized
+  so the phase machine restarts. The whole thing is a delayed, one-shot panel-area transformation object
+  with sound at mid-delay.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb/strb PhaseInitialized==0 path stores 4 and Timer=0x78 — one-shot setup on first entry;
+    Timer==0x3C branch calls battle_applyPanelPattern then plays sfx from byte_80E6C78 table indexed by
+    (Param1>>1)*4; Timer<=0 path sets CurAction=8 and clears CurPhaseAndPhaseInitialized, ending the wait;
+    Callee battle_applyPanelPattern summary matches stamping a per-attack panel pattern by Param1/Alliance
+  refs:
+  - bn6f/asm/asm31.s:102717
+  - 0x080005CC PlaySoundEffect
+  - 0x080E6CAA battle_applyPanelPattern
+  reproduce: python3 tools/asmcat.py 0x080E6C34
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-022109'
+open_questions:
+- Which chip/attack spawns this object (no callers known), i.e. whether it is Holy Panel, a stage-change
+  effect, etc.
+- Exact meaning of sound IDs 0x97/0x11C/0x118/0x11B
+- Whether CurAction=8 is 'despawn' or a follow-up phase
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e583d99d
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E6C34 -> battle_panelPatternDelayUpdate
+  where: bn6f 138f60e2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E6C34

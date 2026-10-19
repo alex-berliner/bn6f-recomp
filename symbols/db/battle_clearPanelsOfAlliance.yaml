@@ -1,0 +1,50 @@
+name: battle_clearPanelsOfAlliance
+address: '0x080CE0A4'
+kind: function
+status: probable
+summary: On object destruction, finds all battle panels marked with the object's alliance-specific panel
+  flag and resets each of them.
+interface: (r0 = oBattleObject*, r5 implicit? reads [r5+oBattleObject_Alliance]) -> r0 destroyed; uses
+  object_getPanelsFiltered(alliance*8, filter entry, r2/r3 = mask words, sp = output buffer) -> count,
+  then sub_800ABC6(x, y) per panel; no return value used
+details: 'Reads the object''s Alliance byte, scales it by 8 to index byte_80CE0DC, whose two 8-byte entries
+  hold mask words 0x20 (alliance 0) and 0x40 (alliance 1). Calls object_getPanelsFiltered with that mask
+  and a 0x28-byte stack buffer to collect matching panel indices, returning a count in r0. Iterates the
+  buffer backwards: each byte encodes a panel position with column = byte>>4 and row = byte & 7 (lsl 0x1d/lsr
+  0x1d keeps 3 bits). For each panel it calls sub_800ABC6(column, row), presumably restoring/clearing
+  that panel''s state. Called only from battle_destroyObjectWithEffect, so this undoes panel changes (flags
+  0x20/0x40 look like per-alliance modified-panel attributes) left behind by the destroyed object. The
+  pre-call r0 = alliance*8 looks like a leftover rather than an argument.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#oBattleObject_Alliance]; lsl #3 selects one of two filter entries in byte_80CE0DC
+    (0x20 vs 0x40 mask words); bl object_getPanelsFiltered with r7 = sp buffer, result r6 used as loop
+    count; lsr r1,#4 / lsl 0x1d lsr 0x1d decode column/row nibbles from each returned index byte; bl sub_800ABC6
+    per panel, then loops until all matched panels are processed; sole caller 0x080CE05E battle_destroyObjectWithEffect
+    fits a teardown/cleanup role'
+  refs:
+  - bn6f/asm/asm31.s:48406
+  - 0x080CE05E battle_destroyObjectWithEffect
+  - 0x0800CEA0 object_getPanelsFiltered
+  - 0x0800ABC6 sub_800ABC6
+  reproduce: python3 tools/asmcat.py 0x080CE0A4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-022109'
+open_questions:
+- what sub_800ABC6 does with (x, y) — likely panel state reset, but unconfirmed
+- exact meaning of panel mask bits 0x20 and 0x40 in the panel attribute table used by object_getPanelsFiltered
+- whether the r0 = alliance*8 passed into object_getPanelsFiltered is a real argument or leftover
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e583d99d
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CE0A4 -> battle_clearPanelsOfAlliance
+  where: bn6f 138f60e2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CE0A4

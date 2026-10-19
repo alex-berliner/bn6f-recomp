@@ -1,0 +1,44 @@
+name: ai_attackSetElement4AndWait60
+address: '0x080F6704'
+kind: function
+status: probable
+summary: AI attack script step that assigns attack element 4, waits 60 frames, then exits the attack state
+interface: (r0-r3 unused; r7 = object with oAIAttackVars) -> r0 clobbered by call; sets AttackElement/StepTimer,
+  decrements StepTimer
+details: The function operates on the object's oAIAttackVars fields reached through r7. If oAIAttackVars_AttackElement
+  is 0 (step not yet initialized), it stores 4 into AttackElement and 0x3C (60 frames) into the halfword
+  StepTimer and returns, leaving the state active. On every later invocation it decrements StepTimer;
+  when the value goes negative it calls object_exitAttackState to terminate the attack. It performs no
+  hitbox, sprite, or damage work itself, so element 4 with a plain 1-second delay looks like a placeholder/wait
+  attack step or one whose effect is driven elsewhere by the element value. Element 4's game meaning (e.g.
+  a specific boss attack slot) is not shown here.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst; writes #4 and #0x3c only when element==0 (first-run
+    init); decrements StepTimer each frame and falls through to bl object_exitAttackState when it underflows;
+    only callee is object_exitAttackState, matching a terminal attack-script step; fields touched are
+    the project-known oAIAttackVars_AttackElement / StepTimer of the battle object AI attack state'
+  refs:
+  - bn6f/asm/asm31.s:135669
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x080F6704
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-022109'
+open_questions:
+- no callers known, so unclear which AI/boss scripts invoke this step
+- what gameplay effect (if any) element value 4 triggers outside this function
+- whether 0x3C is a per-script constant or shared with sibling attack steps
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e583d99d
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F6704 -> ai_attackSetElement4AndWait60
+  where: bn6f 138f60e2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F6704

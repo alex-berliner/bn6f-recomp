@@ -1,0 +1,48 @@
+name: battle_countPanelsForAllianceSide
+address: '0x080C1ECE'
+kind: function
+status: probable
+summary: Counts field panels whose attribute matches this battle object's alliance side (own side vs.
+  enemy side, excluding its own panel) and stores the count in the object's Param2.
+interface: (r0 = unused/scratch, r5 = battle object) -> r0 = panel count; also stored to object+oBattleObject_Param2;
+  no flags meaningful
+details: Reads oBattleObject_Alliance from the battle object at r5, multiplies by 4, and indexes a two-entry
+  table at 0x080C1EEC holding bitmasks 0x4000000 (alliance 0) and 0x8000000 (alliance 1) — panel attribute
+  flags distinguishing the two field sides. It clears r3 (forbidden-mask/flags = none), builds r7 = object
+  + 0x6C as the caller-supplied result list inside the object, and calls object_getPanelsExceptCurrentFiltered,
+  which scans all panels, keeps those matching the required bitmask (and not the object's own panel),
+  and returns the count. The returned byte count is written to oBattleObject_Param2, and the list itself
+  is left at object+0x6C for the caller to use. The object's alliance thus selects which side's panels
+  get counted.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r5,#oBattleObject_Alliance]; lsl r0,#2; ldr r2,[r1,r0] picks bitmask 0x4000000/0x8000000
+    from off_80C1EEC per alliance; add r7,r7,r5 with r7=0x6C points the output list at object+0x6C; bl
+    object_getPanelsExceptCurrentFiltered with r2=bitmask, r3=0 matches the callee's required/forbidden-mask
+    interface; strb r0,[r5,#oBattleObject_Param2] stores the returned entry count into the object; table
+    off_80C1EEC = {0x4000000, 0x8000000} is exactly two side-selecting attribute masks
+  refs:
+  - bn6f/asm/asm31.s:21985
+  - 0x080C1AEE sub_80C1AEE
+  - 0x0800CE64 object_getPanelsExceptCurrentFiltered
+  reproduce: python3 tools/asmcat.py 0x080C1ECE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-022109'
+open_questions:
+- Exact meaning of the 0x4000000/0x8000000 panel attribute bits (side ownership vs. some panel state such
+  as holes) — needs the panel-attribute setter or object_getPanelsExceptCurrentFiltered internals
+- What caller sub_80C1AEE does with the count in Param2 and the panel list at object+0x6C
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e583d99d
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C1ECE -> battle_countPanelsForAllianceSide
+  where: bn6f 138f60e2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C1ECE

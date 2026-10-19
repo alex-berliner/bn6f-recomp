@@ -1,0 +1,43 @@
+name: object_aiAttackWindupTick
+address: '0x080FA9E0'
+kind: function
+status: probable
+summary: 'Per-frame handler for the AI''s pre-attack windup state: arms the attack (element 4) on entry,
+  then counts the attack timer down before leaving the attack state.'
+interface: (r7 = battle object AI attack vars, r5 = battle object) -> void; sets oAIAttackVars_AttackElement=4,
+  oBattleObject_CurAnim=0, oAIAttackVars_StepTimer=AttackDuration on first call
+details: 'This is a state-machine tick for an enemy''s attack sequence. On the first invocation the element
+  field (oAIAttackVars_AttackElement) is still 0, so it initializes the attack: writes element 4, resets
+  the object''s current animation (CurAnim = 0), and loads StepTimer with the attack''s configured AttackDuration.
+  On subsequent frames it decrements StepTimer and, once it reaches zero, calls object_exitAttackState
+  to leave the attack state. The windup gives the player time to see the enemy commit before the actual
+  attack element takes effect.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb/tst on oAIAttackVars_AttackElement with bne makes the zero case an one-time init path
+    (sub_80FA9E0 start); init path writes element #4, strb #0 to oBattleObject_CurAnim, copies AttackDuration
+    into StepTimer; main path decrements oAIAttackVars_StepTimer and bl object_exitAttackState when it
+    hits zero; callee object_exitAttackState confirms this is one state within the AI attack state machine'
+  refs:
+  - bn6f/asm/asm31.s:144264
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x080FA9E0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-022109'
+open_questions:
+- No caller found, so which enemy/state slot dispatches to this handler is unknown
+- What attack element value 4 maps to (which enemy attack uses this windup) is not shown here
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e583d99d
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80FA9E0 -> object_aiAttackWindupTick
+  where: bn6f 138f60e2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FA9E0

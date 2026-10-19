@@ -1,0 +1,48 @@
+name: object_spawnChipObject
+address: '0x080E2D76'
+kind: function
+status: probable
+summary: Spawns battle object type 0x22 and initializes it with a panel position, element, parent object,
+  alliance, damage field and chip ID supplied by the caller.
+interface: (r0 = panel X, r1 = panel Y, r2 = element, r3 = unused/ignored, r5 = parent battle object ptr,
+  r6 = DamageAndStaminaDamageCounterDisabler value, r7 = ChipID) -> r0 = spawned battle object ptr (or
+  early-out if spawn fails); flags used by beq after spawn
+details: 'Calls object_spawnType4 with type 0x22, then stores the caller''s arguments into the new battle
+  object: PanelX, PanelY, Element, RelatedObject1Ptr, DamageAndStaminaDamageCounterDisabler and ChipID.
+  It reads Alliance from the parent object ([r5+oBattleObject_Alliance]) and copies it into the new object,
+  so the spawned entity inherits its parent''s team. The odd register shuffling (push {r0-r2,r5} then
+  pop into r1-r3,r5) is just preserving/reloading the caller''s args around the spawn call. r3 is never
+  consumed, suggesting the underlying type-4 spawner needs five args but this wrapper only uses four meaningful
+  ones plus r5-r7. Returns the spawned object pointer; a beq right after the spawn suggests a null check
+  path that skips all field stores.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl object_spawnType4 with mov r0,#0x22 requests object type 0x22; strb r1/r2/r3 -> oBattleObject_PanelX/PanelY/Element
+    maps caller args r0-r2 onto spawn fields; ldr Alliance from [r5] and strb to new object copies the
+    parent's team; str r6/r7 -> DamageAndStaminaDamageCounterDisabler/ChipID carry damage and chip identity
+    into the object; beq over all stores after spawn implies a null-spawn early-out
+  refs:
+  - bn6f/asm/asm31.s:93653
+  - 0x080033AC object_spawnType4
+  reproduce: python3 tools/asmcat.py 0x080E2D76
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-022109'
+open_questions:
+- No callers are known, so which chip/attack triggers this type-0x22 spawn is unknown
+- What r3 originally carries (fourth spawn parameter) and whether it is truly unused
+- The exact semantic of DamageAndStaminaDamageCounterDisabler value passed in r6 (raw damage vs. flag
+  bits)
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e583d99d
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E2D76 -> object_spawnChipObject
+  where: bn6f 138f60e2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E2D76

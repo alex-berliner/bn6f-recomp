@@ -1,0 +1,45 @@
+name: object_delayedAppearPhaseStep
+address: '0x080BE0CE'
+kind: function
+status: probable
+summary: Battle-object phase step that hides the object on its related object's panel for 3 frames, then
+  moves the state machine on to phase 0x18.
+interface: (r5 = battle object) -> void; sets oBattleObject_CurPhaseAndPhaseInitialized to 0x18 when the
+  timer expires
+details: Runs once per frame for some battle object. On the first pass (PhaseInitialized clear) it sets
+  CurAnim = 3, copies the PanelXY halfword from oBattleObject_RelatedObject1Ptr into its own PanelXY,
+  calls object_setCoordinatesFromPanels to recompute pixel X/Y, loads Timer = 3, and sets PhaseInitialized
+  = 4. On subsequent passes it decrements Timer; when it reaches 0 it writes 0x18 into CurPhaseAndPhaseInitialized,
+  which both selects the next phase (24) and re-clears the initialized flag for that phase. So this is
+  a short timed 'hold in anim 3 at the related object's position' step before a later phase.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#oBattleObject_PhaseInitialized] / bne loc_80BE0EC: standard one-time phase-init
+    guard; ldr r0,[r5,#oBattleObject_RelatedObject1Ptr]; ldrh/strh oBattleObject_PanelXY: mirrors another
+    object''s panel coords; bl object_setCoordinatesFromPanels: pixel coords recomputed from the copied
+    panel position; mov r0,#3; strh r0,[r5,#oBattleObject_Timer] then sub/bgt: 3-frame wait loop; mov
+    r0,#0x18; strh r0,[r5,#oBattleObject_CurPhaseAndPhaseInitialized]: transitions to phase 24 when timer
+    expires'
+  refs:
+  - bn6f/asm/asm31.s:13143
+  - 0x0800E29C object_setCoordinatesFromPanels
+  reproduce: python3 tools/asmcat.py 0x080BE0CE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-022109'
+open_questions:
+- Which object/attack uses this phase chain and what phase 0x18 does — no callers or phase table are known,
+  so the in-game identity of the object (and what anim 3 looks like) is unknown
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e583d99d
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BE0CE -> object_delayedAppearPhaseStep
+  where: bn6f 138f60e2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BE0CE

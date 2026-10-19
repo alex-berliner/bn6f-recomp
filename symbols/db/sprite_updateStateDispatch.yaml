@@ -1,0 +1,46 @@
+name: sprite_updateStateDispatch
+address: '0x0811B570'
+kind: function
+status: probable
+summary: 'Per-frame update for a sprite object: dispatches to one of two state handlers selected by the
+  object''s state byte, then runs shared post-update logic and sprite_update.'
+interface: (r5 = object/sprite struct; state = [r5+9]) -> r0 destroyed; updates object state via handler,
+  refreshes sprite
+details: Loads the byte at r5+9 (the object's state/mode field) and indexes a two-entry jump table at
+  jt_811B58C, calling sub_811B594 for state 0 and sub_811B5C0 for state 1 via the classic mov lr,pc/bx
+  trick. After the handler returns, it unconditionally calls sub_811B8C8 (unknown shared logic) and then
+  sprite_update, which advances the object's sprite animation. This is the standard per-frame tick structure
+  for an OAM-based object whose behavior is a small state machine.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r1,[r5,#9] + ldr r0,[jt_811B58C,r1] + bx r0: state-machine dispatch on object state byte
+    9; jt_811B58C has exactly two entries (sub_811B594, sub_811B5C0): only two states are handled; tail
+    bl sub_811B8C8 then bl sprite_update runs after every handler return; callee sprite_update is documented
+    as running the object''s sprite struct update'
+  refs:
+  - bn6f/asm/asm32.s:27915
+  - 0x0811B4CC sub_811B4CC
+  - 0x080026C4 sprite_update
+  - 0x0811B8C8 sub_811B8C8
+  reproduce: python3 tools/asmcat.py 0x0811B570
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-022109'
+open_questions:
+- sub_811B8C8 and the two state handlers (sub_811B594, sub_811B5C0) are unexamined, so the object's concrete
+  behavior is unknown
+- caller sub_811B4CC unexamined; it would show which object/actor struct r5 points to and what fields
+  besides +9 matter
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e583d99d
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_811B570 -> sprite_updateStateDispatch
+  where: bn6f 138f60e2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811B570
