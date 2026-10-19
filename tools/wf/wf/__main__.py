@@ -18,6 +18,11 @@ launcher at the root) is `python -m wf ARGS` with this folder's venv.
                        [--candidate FILE | --farm-model P/M [--prompt old]] [--defer-record] [--battle-code] FUNCTION...
   (--prompt old: the farm's old-prompt candidates, filed as P/M+old; a convert run installing them queues
    them for retype, tools/abi/retype_queue.tsv)
+  python -m wf runtime-evidence [--count N] [--only NAME]... [--states K=8] [--jobs J] [--model P/M]
+                       # runtime evidence for the names `wf investigate` produced: replay in mGBA,
+                       # summarise memory/I/O, judge against the current name. Output to
+                       # build/runtime/RUN_ID (per-function NAME.yaml + report.tsv + contradictions.tsv).
+                       # Nothing under symbols/db is touched; `wf record` applies the evidence after review.
   python -m wf record  [--symbol NAME]... [--rename OLD NEW]... [--pending] --message-file FILE
   python -m wf vidsync-run [--start CHECKPOINT|RUN] [--run NAME] [--no-deploy] [--replay PATH] [--watch-hours H]
                        [--stall-minutes 30] [--pathcheck-minutes 60] [--no-repair]   # docs/vidsync/README.md
@@ -59,6 +64,11 @@ from wf.graphs.queue import QueueState, ledger_summary, queue_graph, request_sto
 from wf.graphs.record import RecordState, record_graph
 from wf.graphs.verify import VerifyReport, VerifyState, all_readable, run_verify, what_it_checks
 from wf.graphs.investigate import InvestigateState, run_investigate
+from wf.graphs.runtime_evidence import RuntimeEvidenceState, run_runtime_evidence
+from wf.tools.runtime_evidence import DEFAULT_COUNT as DEFAULT_RE_COUNT
+from wf.tools.runtime_evidence import DEFAULT_MODEL as DEFAULT_RE_MODEL
+from wf.tools.runtime_evidence import DEFAULT_STATES as DEFAULT_RE_STATES
+from wf.tools.runtime_evidence import DEFAULT_JOBS as DEFAULT_RE_JOBS
 from wf.graphs.vidsync_ready import VidsyncReadyState, vidsync_ready_graph
 from wf.graphs.vidsync_repair import VidsyncRepairState, vidsync_repair_graph
 from wf.graphs.vidsync_run import VidsyncRunState, vidsync_run_graph
@@ -137,6 +147,15 @@ class InvestigateCommand(BaseModel):
     model: ModelSpec
     checker: ModelSpec
     jobs: int
+
+
+class RuntimeEvidenceCommand(BaseModel):
+    command: Literal["runtime-evidence"]
+    count: int
+    only: tuple[FunctionName, ...] = Field(alias="only")
+    states: int
+    jobs: int
+    model: ModelSpec
 
 
 class ConvertCommand(BaseModel):
@@ -244,6 +263,7 @@ class DocsCommand(BaseModel):
 
 
 Command = (VerifyCommand | CaptureCommand | FarmCommand | QueueCommand | DraftsCommand | InvestigateCommand
+           | RuntimeEvidenceCommand
            | ConvertCommand | RecordCommand
            | VidsyncRunCommand | VidsyncRepairCommand | VidsyncReadyCommand | VidsyncTickCommand | VidsyncStatusCommand | WaitingCommand | AnswerCommand | RetryCommand | StatusCommand | FreezeCommand | ThawCommand
            | ArchiveCommand | DocsCommand)
@@ -264,6 +284,8 @@ def main() -> None:
             start_drafts(command)
         case InvestigateCommand():
             start_investigate(command)
+        case RuntimeEvidenceCommand():
+            start_runtime_evidence(command)
         case ConvertCommand():
             start_convert(command)
         case RecordCommand():
@@ -379,6 +401,24 @@ def start_investigate(command: InvestigateCommand) -> None:
         spent = before - after
         per = f", {spent / report.selected:.2f} per function" if report.selected else ""
         print(f"hyper units spent: {spent:.2f} ({before:.2f} -> {after:.2f}){per}")
+
+
+def start_runtime_evidence(command: RuntimeEvidenceCommand) -> None:
+    """Gather runtime evidence for the names `wf investigate` proposed (build/runtime/RUN_ID)."""
+    run_id, run_dir = new_run("runtime-evidence")
+    (run_dir).mkdir(parents=True, exist_ok=True)
+    start = RuntimeEvidenceState(run_dir=run_dir, count=command.count, only=command.only,
+                                 states=command.states, jobs=command.jobs, model=command.model)
+    print(f"selected {command.count} function(s) (states={command.states}, jobs={command.jobs}, "
+          f"model={command.model})")
+    report = run_runtime_evidence(start, run_id)
+    print_json(report)
+    contradictions = run_dir / "contradictions.tsv"
+    print(f"\ncontradictions: {run_dir / 'contradictions.tsv'}"
+          + (f" (count: {len(contradictions.read_text().splitlines()) - 1})"
+             if contradictions.exists() else ""))
+    print(f"per-function yaml: {run_dir}/NAME.yaml  (one per selected function)")
+    print(f"report: {run_dir / 'report.tsv'}")
 
 
 def start_convert(command: ConvertCommand) -> None:
@@ -603,6 +643,20 @@ def parse_command() -> Command:
     look.add_argument("--checker", default=DEFAULT_INVESTIGATE_CHECKER,
                       help="who cross-checks (default hyper/qwen3.8-flash)")
     look.add_argument("--jobs", type=int, default=16)
+
+    runtime = commands.add_parser("runtime-evidence",
+                                  help="gather runtime evidence for the names `wf investigate` proposed "
+                                       "(build/runtime/RUN_ID; nothing under symbols/db is touched)")
+    runtime.add_argument("--count", type=int, default=DEFAULT_RE_COUNT,
+                         help=f"how many functions to take (default {DEFAULT_RE_COUNT})")
+    runtime.add_argument("--only", action="append", default=[],
+                         help="runtime-evidence these functions, whatever else (re-judges cached facts)")
+    runtime.add_argument("--states", type=int, default=DEFAULT_RE_STATES,
+                         help=f"entry states per function (default {DEFAULT_RE_STATES})")
+    runtime.add_argument("--jobs", type=int, default=DEFAULT_RE_JOBS,
+                         help=f"mgba_run calls in flight (default {DEFAULT_RE_JOBS})")
+    runtime.add_argument("--model", default=DEFAULT_RE_MODEL,
+                         help=f"the judge model (default {DEFAULT_RE_MODEL})")
 
     convert = commands.add_parser("convert", help="a strong model converts a subsystem; stops for review")
     convert.add_argument("functions", nargs="+")
