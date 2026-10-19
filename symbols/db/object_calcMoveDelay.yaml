@@ -1,0 +1,44 @@
+name: object_calcMoveDelay
+address: '0x080DE3B0'
+kind: function
+status: probable
+summary: 'Computes a movement step delay for a battle object: a constant selected by its direction/side
+  value is divided by the absolute speed, and the result is stored as a byte timer on the object.'
+interface: (r5 = battle object ptr) -> r0 = delay byte written to obj+0x60; uses obj+0x62 (direction index)
+  and obj+0x44 (signed speed), destroys r0-r1
+details: Reads the byte at obj+0x62 and doubles... (uses it *4) as a word index into byte_80DE3D0, whose
+  entries are 0, 0x40, 0, 0x10. Loads the signed 32-bit field obj+0x44 and negates it if negative, then
+  calls SWI 6 (Div) with the table word as dividend and |speed| as divisor, storing the quotient as a
+  byte at obj+0x60. The caller object_moveStepTick advances movement and switches state based on a direction/side
+  check, so this looks like a per-direction duration/interval recomputed from the current speed. Note
+  the object pointer arrives in r5 rather than r0, matching the caller's register convention.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r5,#0x62]; lsl r0,r0,#2; ldr r0,[table,r0] — direction-indexed word table 0/0x40/0/0x10;
+    ldr r1,[r5,#0x44]; neg if negative; svc 6 — SWI 6 is Div, dividend=table word, divisor=abs(speed);
+    strb r0,[r5,#0x60] — result stored back as a byte field on the same object; only caller is object_moveStepTick,
+    a per-frame movement step that switches state on a direction/side check
+  refs:
+  - bn6f/asm/asm31.s:83780
+  - 0x080DE21A object_moveStepTick
+  reproduce: python3 tools/asmcat.py 0x080DE3B0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- exact meaning of fields 0x44, 0x60 and 0x62 in the battle object struct
+- what the quotient counts (frames until a state change vs. a step interval) — would need to see where
+  obj+0x60 is read
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DE3B0 -> object_calcMoveDelay
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DE3B0

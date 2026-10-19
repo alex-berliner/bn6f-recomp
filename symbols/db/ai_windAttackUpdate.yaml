@@ -1,0 +1,47 @@
+name: ai_windAttackUpdate
+address: '0x080F8CCA'
+kind: function
+status: probable
+summary: 'Per-frame update for an enemy AI attack: on first run it arms the attack (element 4, anim 7,
+  timer from attack duration), then counts the timer down and exits the attack state when it expires.'
+interface: (r7 = battle object AI attack vars, r5 = battle object) -> r0 = clobbered; sets AttackElement/anim/StepTimer,
+  may write param+9, may call object_exitAttackState
+details: 'If oAIAttackVars_AttackElement is still 0, the attack is initialized: AttackElement is set to
+  4, the object''s CurAnim is set to 7, and oAIAttackVars_StepTimer is seeded with oAIAttackVars_AttackDuration.
+  If the AiAttackParam pointer is non-null, byte +9 of that structure is set to 2 (likely a state/phase
+  flag for the spawned attack object). On later frames the StepTimer is decremented; once it reaches 0
+  the routine calls object_exitAttackState to return the enemy to its normal state. This is a ''run once
+  to set up, then wait N frames'' attack pattern; element 4 in this build''s attack-element enum is not
+  confirmed from this snippet alone.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb/tst on oAIAttackVars_AttackElement with bne skips setup, so the zero case is the initialization
+    pass; mov #4 strb into AttackElement and mov #7 strb into oBattleObject_CurAnim show it arms an attack
+    with a specific element and animation; ldrh AttackDuration -> strh StepTimer seeds the countdown from
+    the configured attack length; strb #2 to [AiAttackParam,#9] tags the attack parameter struct with
+    a phase value; decrement of StepTimer with bgt keep-waiting and bl object_exitAttackState at zero
+    shows a timed attack teardown'
+  refs:
+  - bn6f/asm/asm31.s:140766
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x080F8CCA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- What attack/element value 4 maps to in this build's enum (wind?) and what animation 7 depicts
+- What field +9 of the AiAttackParam structure means
+- No caller is known, so which enemy/AI routine dispatches to this state is unconfirmed
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F8CCA -> ai_windAttackUpdate
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F8CCA

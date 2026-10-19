@@ -1,0 +1,45 @@
+name: rfu_handleDisconnectMsg
+address: '0x08146C9C'
+kind: function
+status: probable
+summary: 'Step of the wireless (RFU) state machine: when the peer slot reports a disconnect-related message
+  (0x26/0x27), frees the RFU slot and advances the state.'
+interface: (r0 = state-machine struct ptr) -> r0 = undefined; writes state byte to [r0] and [r0+2], calls
+  rfu_clearSlot(4, slotIndex)
+details: Reads the active slot index from byte_20103E0, looks up the per-slot structure in the dword_2010CB0
+  table, and inspects the halfword at offset 0 of that structure (an RFU message/request ID). If it is
+  0x26, it calls rfu_clearSlot(4, slotIndex), stores state 3 into [r4] and 0 into [r4+2]. If it is 0x27,
+  it also clears slot 4 but stores state 4 into [r4]. Otherwise it falls through without changing state.
+  The struct at r4 is a small state context whose first byte is the next state and offset 2 a sub-state/counter
+  byte.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrh r0,[r0]; cmp r0,#0x26 / #0x27: two message IDs trigger disconnect handling; bl rfu_clearSlot
+    with r0=4, r1=slot index from byte_20103E0 in both branches; state 3 + zeroed [r4+2] on 0x26 vs state
+    4 on 0x27: distinct follow-up states per message; slot pointer fetched from dword_2010CB0[slotIndex<<2],
+    halfword at [slot] is the message field'
+  refs:
+  - bn6f/asm/libs.s:6202
+  - 0x08146C20 sub_8146C20
+  - 0x0814A934 rfu_clearSlot
+  reproduce: python3 tools/asmcat.py 0x08146C9C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- exact meaning of message IDs 0x26/0x27 (disconnect request vs. completion?) needs the RFU protocol table
+- meaning of rfu_clearSlot's first argument 4 (slot type/flag mask)
+- who owns the state struct and what states 3/4 do in the caller sub_8146C20
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8146C9C -> rfu_handleDisconnectMsg
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8146C9C

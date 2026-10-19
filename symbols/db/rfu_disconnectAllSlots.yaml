@@ -1,0 +1,47 @@
+name: rfu_disconnectAllSlots
+address: '0x0814EEC0'
+kind: function
+status: probable
+summary: 'Tears down wireless connection state: marks each child slot for disconnect via the RFU dispatch
+  pointer and clears per-slot status bytes, guarded against re-entry by a magic word.'
+interface: () -> void; no arguments, no return value (r0 clobbered)
+details: Reads a manager pointer from byte_3007FF0 and only acts when [r6] equals the magic 0x68736D53
+  ('Smsh'); it immediately stores magic+1 so any re-entrant call (e.g. from an interrupt during the indirect
+  call) is skipped, restoring the magic at the end. It then zeroes 12 single bytes spaced 0x40 apart starting
+  at struct+0x50 (one flag per 0x40-byte slot record). If [r6+0x1c] is a non-null array pointer, it invokes
+  the function pointer at struct+0x2c through the RFU indirect-call stub with the slot number (1..4, i.e.
+  child slots) in r0, and zeroes the corresponding byte in that array (stride 0x40). The pattern of one
+  flag byte per fixed-size slot record plus per-slot calls strongly suggests clearing wireless link/disconnect
+  state for all child slots.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: cmp r1, r0 against 0x68736D53 with +1 store then restore at loc_814EF02 is a re-entry guard
+    around the whole teardown; loop at loc_814EEDA clears bytes at r6+0x50+0x40*i for i=0..11, one flag
+    per 0x40-sized slot; loop at loc_814EEEE calls [r6,#0x2c] via rfufunc_tailCallStub_814DA64 with r0
+    = slot 1..4, then strb r7 to [r4+0x40*i]; the only callee is the RFU library indirect-call trampoline,
+    placing the struct in the wireless subsystem; byte_3007FF0 is a well-known single pointer that the
+    game swaps in for the active manager state
+  refs:
+  - bn6f/asm/libs.s:23803
+  - 0x0814DA64 rfufunc_tailCallStub_814DA64
+  reproduce: python3 tools/asmcat.py 0x0814EEC0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- identity of the function at struct+0x2c (disconnect request vs. reset) would confirm the exact semantics
+- which game system owns byte_3007FF0 and when it runs (e.g. leaving wireless arena/union room) is not
+  shown by any known caller
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_814EEC0 -> rfu_disconnectAllSlots
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_814EEC0

@@ -1,0 +1,44 @@
+name: battle_phaseWait30ThenAdvanceAction
+address: '0x080E90CE'
+kind: function
+status: probable
+summary: 'Battle-object phase handler: optionally clears a related object, waits 30 frames, then advances
+  to action 0xC.'
+interface: (r5 = battle object ptr, implicit) -> void; updates object fields only
+details: 'Runs as a per-object state/phase step for a battle object held in r5. On first entry (PhaseInitialized
+  == 0): unless Param1 == 2, it calls sub_80E1332(RelatedObject1Ptr, 0), which tail-calls sub_80C0F52
+  — likely a clear/remove/inactivate of the linked object, though that callee is undocumented. It then
+  sets Timer = 30 and writes PhaseInitialized = 4 so the wait only starts once. Each subsequent call decrements
+  Timer; while it is still >= 0 it returns. When the timer runs out it sets CurAction = 0xC and clears
+  CurPhaseAndPhaseInitialized = 0, letting the object''s dispatcher pick the next phase.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#oBattleObject_PhaseInitialized]; tst/bne — one-shot setup guarded on first entry;
+    ldr r0,[r5,#oBattleObject_RelatedObject1Ptr]; mov r1,#0; bl sub_80E1332 — acts on the linked object,
+    skipped when Param1==2; mov r0,#0x1e; strh [r5,#oBattleObject_Timer] — wait length is 30 frames; ldrh/sub
+    #1/strh/bge — per-frame countdown of Timer; mov r0,#0xc; strb [r5,#oBattleObject_CurAction]; strh
+    #0 CurPhaseAndPhaseInitialized — transitions to action 12 when timer expires'
+  refs:
+  - bn6f/asm/asm31.s:108008
+  - 0x080E1332 sub_80E1332
+  reproduce: python3 tools/asmcat.py 0x080E90CE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- What sub_80C0F52 does to RelatedObject1Ptr (despawn, hide, reset?) — a summary of it would confirm the
+  setup step
+- Which battle object/state machine uses this handler and what action 0xC means there
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E90CE -> battle_phaseWait30ThenAdvanceAction
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E90CE

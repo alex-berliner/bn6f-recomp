@@ -1,0 +1,46 @@
+name: sprite_fadeColorStep
+address: '0x0811CF64'
+kind: function
+status: probable
+summary: 'Advances a per-object color fade: brightens the sprite''s gray color-shader by 2 levels per
+  call while counting down a duration, resetting when it expires.'
+interface: (r5 = object/sprite block, r0-r3 scratch) -> updates [r5+0x8], [r5+0xc], [r5+0xe]; calls sprite_setColorShader
+  with r0 = packed RGB
+details: Reads the intensity byte at +0xe, adds 2, clamps it to 31 (5-bit per channel) and stores it back.
+  Decrements the frame counter at +0xc; when it would go below 1 it sets the byte at +0x8 to 8 (likely
+  the next effect/state id) and clears the counter to 0. It then packs the intensity as r|r<<5|r<<10 —
+  an equal R=G=B gray value — and passes it to sprite_setColorShader, which applies it to the sprite block
+  selected by the object's high-nibble sprite index. This is the classic white-flash/brighten-over-frames
+  effect used on battle objects. No caller is known, so what triggers the fade and what state 8 means
+  remain unconfirmed.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#0xe]; add r0,#2; cmp r0,#0x1f; mov r0,#0x1f — clamped intensity increment; ldrb
+    r0,[r5,#0xc]; sub r0,#1; bgt; mov r0,#8; strb r0,[r5,#8] — countdown with state switch to 8; orr r0
+    with r3<<5 and r3<<10 then bl sprite_setColorShader — builds an RGB555 gray and applies it; callee
+    sprite_setColorShader: ''stores a color-shader id into the sprite block selected by an object''s high-nibble
+    sprite index'''
+  refs:
+  - bn6f/asm/asm32.s:30978
+  - 0x08002ED0 sprite_setColorShader
+  reproduce: python3 tools/asmcat.py 0x0811CF64
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- no caller is known, so the trigger context (e.g. hit-flash) and the meaning of state 8 at field +0x8
+  are unverified
+- exact sprite_setColorShader signature (r1's role) not visible from this call site
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_811CF64 -> sprite_fadeColorStep
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811CF64

@@ -1,0 +1,46 @@
+name: object_timerSfxTick
+address: '0x0811CDF4'
+kind: function
+status: probable
+summary: Every-16-frame countdown tick that plays two sound effects and updates the object's state fields
+  when the timer expires.
+interface: (r0 unused on entry; r5 = object/state struct) -> void; modifies [r5+0x0] bit1, [r5+0x5], [r5+0x9],
+  [r5+0xC]
+details: Decrements the byte counter at [r5+0xC]; while it is nonzero it returns immediately, so the body
+  runs once every 16 frames. On expiry it resets the counter to 0xF and writes 8 to [r5+0x9], then plays
+  sound effect 0x1CD and 0xF7. If the byte at [r5+0x4] equals 1 it instead calls sub_811D5F8 for the expiry
+  behavior; otherwise it clears bit 1 of the flags byte at [r5+0x0] and adds 5 to the counter at [r5+0x5].
+  The +5 increment suggests a cumulative accumulator (e.g. steps or units gained per tick). Two SFX per
+  expiry plus a state reset look like a repeating alarm/period signal driven by an object update.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#0xc]; sub r0,#1; strb; bne return — a 16-frame repeating countdown gated at 0xC;
+    ldr r0,=0x1CD and mov r0,#0xF7 both feed PlaySoundEffect on expiry; mov r0,#0xF; strb r0,[r5,#0xc]
+    reloads the tick period after each fire; cmp byte [r5+4],1 / beq bl sub_811D5F8 selects an alternate
+    expiry path; bic bit1 of [r5] and add #5 to [r5+5] mutate object flags and an accumulator on the normal
+    path'
+  refs:
+  - bn6f/asm/asm32.s:30781
+  - 0x080005CC PlaySoundEffect
+  - 0x0811D5F8 sub_811D5F8
+  reproduce: python3 tools/asmcat.py 0x0811CDF4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- No known callers, so the owning subsystem and what object/state r5 points to are unidentified
+- sub_811D5F8 is unanalyzed, so the [r5+4]==1 expiry path is unknown
+- Meaning of sound IDs 0x1CD and 0xF7 and the significance of writing 8 to [r5+9] are unresolved
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_811CDF4 -> object_timerSfxTick
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811CDF4

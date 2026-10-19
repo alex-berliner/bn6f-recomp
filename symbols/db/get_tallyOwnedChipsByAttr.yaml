@@ -1,0 +1,47 @@
+name: get_tallyOwnedChipsByAttr
+address: '0x080AAD70'
+kind: function
+status: probable
+summary: Counts owned/registered chips by the byte value at chip-data offset 5 into a caller-provided
+  halfword counter array.
+interface: (r0 = u16 counter array (>=6 halfwords), r1 unused) -> r0 = array filled with per-value counts;
+  flags clobbered
+details: Zeroes the first 12 bytes of the buffer at r0 (six u16 counters), then scans a table at dword_203300C
+  with 0xC-byte stride for chip IDs 1..0x13F, skipping entries whose first dword is zero (i.e. chip not
+  present/registered). For each present chip it fetches the 44-byte ChipData record via getChip8021DA8,
+  reads the byte at offset 5, treats 0xFF as invalid, and increments the halfword counter at buffer[attr*2].
+  The 12-byte clear implies offset 5 is expected to hold small values (0-5, e.g. an element or class field).
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'push block zeroes [r0],[r0,#4],[r0,#8] then indexes it as halfwords — output is a count array,
+    not a list; loop: ldr r0,[r6] tst/beq + add r6,#0xC over ids r4=1..0x140 — per-chip presence test
+    on the 0xC-stride table at dword_203300C; bl getChip8021DA8 with r4, then ldrb r1,[r0,#5]; cmp #0xFF;
+    beq skip — chip-data byte 5, 0xFF marked invalid; add r1,r1 then ldrh/strh at [r7,r1] — counters are
+    halfwords indexed by 2*attrByte'
+  refs:
+  - bn6f/asm/asm29.s:12268
+  - 0x080AAC8C sub_80AAC8C
+  - 0x08021AA4 getChip8021DA8
+  reproduce: python3 tools/asmcat.py 0x080AAD70
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- What the records at dword_203300C actually are (presence flags vs. owned-counts) — caller sub_80AAC8C
+  would confirm
+- Whether ChipData byte 5 is element or class; only 6 counters are cleared so values above 5 would write
+  uncleared memory
+- What UI/system uses the counts (library stats vs. order-system requirements)
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80AAD70 -> get_tallyOwnedChipsByAttr
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80AAD70

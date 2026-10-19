@@ -1,0 +1,45 @@
+name: ai_attackWaitTempObject
+address: '0x080ED61C'
+kind: function
+status: probable
+summary: AI attack-state handler that waits while a spawned temporary attack object runs, then detaches
+  it and ends the attack.
+interface: (r5 = battle object, r7 = oAIAttackVars) -> void; sets oAIAttackVars state fields
+details: First invocation (AttackElement == 0) loads the temp attack object from AIData+TempAttackObjectPtr,
+  decrements its byte 0x10, sets StepTimer to 0x14 and marks AttackElement = 4 as a 'waiting' state. On
+  subsequent frames it counts StepTimer down; when it goes negative it clears BattleObject.RelatedObject1Ptr
+  and AIData.TempAttackObjectPtr to 0 and calls object_exitAttackState to finish the attack. The 0x14-frame
+  delay after the object's 0x10 counter hits zero looks like a short grace period before the AI returns
+  to its normal state.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne: only initializes on first entry, then sets
+    state 4 and timer 0x14; ldr r0,[r0,#oAIData_TempAttackObjectPtr]; ldrb/sub/strb on +0x10: touches
+    the spawned temp object''s counter once; str r0,[r5,#oBattleObject_RelatedObject1Ptr] and str to oAIData_TempAttackObjectPtr
+    with 0: detaches the object when the timer expires; bl object_exitAttackState: only callee, confirming
+    this is one state of the AI attack state machine; no callers known; r5/r7 register convention matches
+    AI attack state dispatch functions'
+  refs:
+  - bn6f/asm/asm31.s:116869
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x080ED61C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- which AI attacks route into this state (no callers known), and what byte 0x10 of the temp attack object
+  counts (lifetime vs animation)
+- whether AttackElement value 4 is a distinct phase read by sibling state handlers
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80ED61C -> ai_attackWaitTempObject
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80ED61C

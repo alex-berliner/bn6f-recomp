@@ -1,0 +1,55 @@
+name: submenu_renderSelectedWindow
+address: '0x0812EF20'
+kind: function
+status: probable
+summary: 'Draws the text window for the currently selected entry of an on-screen menu: looks the entry''s
+  window id up in a table, blits it to BG, and stores a value back into the menu state.'
+interface: (args passed through to sub_812ED2C) -> r0 = value stored to [r5,#0x30]; clobbers r4-r7
+details: 'Calls sub_812ED2C which returns a state struct in r0 (kept in r7). It reads two halfword fields
+  at +0x20 and +0x24 (likely cursor/column and scroll or row), adds them and scales by 4 to index the
+  halfword table at word_2023FA0, yielding an entry id kept in r4. The id minus 0x90, divided by 4, is
+  passed (in both r0 and r1) with r2=0x90 to renderTextWindowToBg, which draws that window''s glyphs and
+  tile map into background block 3 — so table entries are window ids starting at 0x90, spaced 4 apart.
+  It then calls sub_812EC2C(id, 9, 0), passes its result with r1=0 to sub_812EDFC, and stores the returned
+  halfword at [r5,#0x30] of the struct before finishing with sub_812EE20. Quirk: r5 is never set inside
+  this function, so it must be established by a callee (likely sub_812ED2C or sub_812EC2C) or is caller
+  context.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrh r0,[r7,#0x20]; ldrh r1,[r7,#0x24]; add/lsl #2 indexes halfword table word_2023FA0 like
+    a cursor-driven selection; sub r1,#0x90; lsr r1,#2; mov r2,#0x90; bl renderTextWindowToBg — selected
+    table value minus base 0x90 becomes the window index rendered to BG; callee renderTextWindowToBg is
+    documented as rendering a text window''s glyphs and tile map to background block 3; strh r0,[r5,#0x30]
+    writes a result halfword back into a state struct field; all four callers (0x812DFAC/0x812E280/0x812E9AC/0x812ECAC)
+    sit in the same 0x812D-0x812E cluster, consistent with one menu''s draw/update paths'
+  refs:
+  - bn6f/asm/asm35.s:634
+  - 0x0812DFAC sub_812DFAC
+  - 0x0812E280 sub_812E280
+  - 0x0812E9AC sub_812E9AC
+  - 0x0812EF60 renderTextWindowToBg
+  - 0x0812EC2C sub_812EC2C
+  - 0x0812ED2C sub_812ED2C
+  reproduce: python3 tools/asmcat.py 0x0812EF20
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- what struct sub_812ED2C returns and what fields +0x20/+0x24/+0x30 mean (cursor, scroll, saved id?)
+- what the halfword entries of word_2023FA0 index exactly (window resource ids with base 0x90, stride
+  4?)
+- which callee establishes r5, and what sub_812EC2C/812EDFC/812EE20 do with the id and the constants 9
+  and 0
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_812EF20 -> submenu_renderSelectedWindow
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_812EF20

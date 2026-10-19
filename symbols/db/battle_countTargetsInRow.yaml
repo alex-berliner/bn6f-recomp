@@ -1,0 +1,47 @@
+name: battle_countTargetsInRow
+address: '0x080E636A'
+kind: function
+status: probable
+summary: Scans the battle-grid row at the object's PanelY from the far side toward the object, counting
+  panels that pass a sub_80E6458 check into oBattleObject_ExtraVars+8.
+interface: (r5 = battle object; r0/r1 scratch) -> count stored in [r5+oBattleObject_ExtraVars+8]; r0 =
+  final count
+details: 'Reads oBattleObject_Alliance, doubles it to index dword_80E63CC (0x101FF06): alliance 0 starts
+  at column 6 stepping -1, alliance 1 starts at column 1 stepping +1, i.e. each side sweeps its own row
+  toward the other. Each iteration validates (col, oBattleObject_PanelY) with object_isValidPanel and
+  stops when off-grid; sub_80E6458(col, row) gates which panels count. For each passing panel it increments
+  the counter at ExtraVars+8 and bumps scratch offsets in r4 (0x28+4 each) and r7 (r5+0x60+1 each), though
+  no stores use them, suggesting inlined dead address math. Element and DamageAndStamina fields plus Z16Save
+  are loaded but also unused, hinting the original logic was trimmed to just a count.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r5,#oBattleObject_Alliance]; lsl; ldr r1,=dword_80E63CC picks per-side start col/step
+    (bytes 06,FF / 01,01); loop calls object_isValidPanel(col, oBattleObject_PanelY) and beq exits when
+    off the 6x3 grid; sub_80E6458(col,row) result gates the counter increment in ExtraVars+8; step update
+    adds signed [sp,#4] to [sp], giving -1 or +1 column scan direction; r2=Element, r6=Damage+Z16Save,
+    r4/r7 increments are computed but never stored — vestigial from larger logic
+  refs:
+  - bn6f/asm/asm31.s:101603
+  - 0x0800CC72 object_isValidPanel
+  - 0x080E6458 sub_80E6458
+  reproduce: python3 tools/asmcat.py 0x080E636A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- What sub_80E6458 tests (occupied panel? hole? specific panel type?) is unknown
+- No known callers, so how the count in ExtraVars+8 is consumed (e.g. a row-sweeping attack or panel search)
+  is unconfirmed
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E636A -> battle_countTargetsInRow
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E636A

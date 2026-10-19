@@ -1,0 +1,49 @@
+name: rfu_pollSlotDisconnect
+address: '0x08147A84'
+kind: function
+status: probable
+summary: Checks one wireless link slot for a disconnect state (0x26/0x27), releases the RFU slot and updates
+  the connection/error flags.
+interface: () -> void; reads slot id byte_2010328, global flag byte_201028C (bit1 = link active), link
+  array dword_2010CB0; writes byte_201028C, error byte_2010340, eS200BC50+8
+details: 'Early-exits unless bit1 of byte_201028C (wireless session active) is set. Loads the pointer
+  dword_2010CB0[slot] (per-slot connection record) and tests the halfword at +0: 0x26 or 0x27 both mark
+  a broken/closed link. In both cases it XORs the record''s bytes at +0x1A and +0x2C (a mismatch flag/checksum
+  pair) and calls rfu_clearSlot(4, slot) to free the slot. For 0x26 it clears bit1 of the global flag
+  (and forces bit7 on if bit6 was set); for 0x27 it clears the whole flag byte and, if the state word
+  at eS200BC50+8 is 0x22, resets it to 3 (session state machine step-down). Any nonzero XOR result is
+  ORed into byte_2010340, accumulating error reasons for later display.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: beq on bit1 of byte_201028C gates the whole routine (wireless-active flag); dword_2010CB0 +
+    byte_2010328*4 is a per-slot pointer; halfword [r2]==0x26/0x27 selects the two disconnect branches;
+    bl rfu_clearSlot with r0=4, r1=slot in both branches releases the connection slot; eor r4, r1 of bytes
+    +0x1A/+0x2C is ORed into byte_2010340 (error accumulation); single caller sub_81475D4 invokes it from
+    6 sites, consistent with polling each slot in turn
+  refs:
+  - bn6f/asm/libs.s:8011
+  - 0x081475D4 sub_81475D4
+  - 0x08147748 sub_81475D4
+  - 0x0814775C sub_81475D4
+  - 0x0814A934 rfu_clearSlot
+  reproduce: python3 tools/asmcat.py 0x08147A84
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- exact meaning of record fields +0x1A/+0x2C and state codes 0x26/0x27 (rfu library internals)
+- meaning of eS200BC50 state values 0x22 and 3 and of the bit6/bit7 flag logic in byte_201028C
+- what the caller's loop over byte_2010328 values covers (max slot count)
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8147A84 -> rfu_pollSlotDisconnect
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8147A84

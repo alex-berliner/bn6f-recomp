@@ -1,0 +1,46 @@
+name: battle_scrollLayersTick
+address: '0x08038CF4'
+kind: function
+status: probable
+summary: 'Per-frame tick of the battle-exit transition: scrolls all three BG layers until the wipe finishes,
+  then resets the battle scene records and advances the state machine.'
+interface: '(r5 = state struct: +2 state byte, +4 timer halfword, +6 cycle counter byte, +8 scroll offset
+  word) -> void; no return value'
+details: Each call decrements the scroll offset at [r5,#8] by 0xC0 while it is > 0, otherwise zeroes it
+  and calls sub_811DBF0 for layers 0,1,2. The resulting offset (r4) is passed with layer ids 0,1,2 to
+  sub_811D69C (offset,layer), and then sub_811D634 is called once per layer (r2 = 0/1/2), so it drives
+  all three backgrounds together. A countdown at [r5,#4] gates per-step progress; when it reaches 0 the
+  cycle counter [r5,#6] is incremented. On the 5th cycle it calls battle_resetEStructRecords_8046664 (clearing
+  the eStructArr2008450 battle scene records), sets state 0x10 with timer 0x14; otherwise it rewinds to
+  state 0 with timer 0xA. The reset-records call ties this to leaving the battle overlay scene.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: '[r5,#8] decremented by 0xC0 each frame and passed as r4 to sub_811D69C with r1 = 0,1,2 (layer
+    ids); sub_811DBF0 called with 0,1,2 only when the offset reaches 0, mirroring the layer loop; battle_resetEStructRecords_8046664
+    (''re-runs the record-array init after battle …'') is called exactly when [r5,#6] reaches 5; state
+    byte [r5,#2] is rewritten to 0x10 (timer 0x14) or 0 (timer 0xA), a scene state-machine pattern'
+  refs:
+  - bn6f/asm/asm03_1_1.s:564
+  - 0x08046664 battle_resetEStructRecords_8046664
+  - 0x0811D634 sub_811D634
+  - 0x0811D69C sub_811D69C
+  reproduce: python3 tools/asmcat.py 0x08038CF4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- what sub_811D69C/sub_811D634/sub_811DBF0 actually write (BG scroll vs. another per-layer hardware effect)
+- which caller sets up r5 and what the next state 0x10 does
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8038CF4 -> battle_scrollLayersTick
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8038CF4

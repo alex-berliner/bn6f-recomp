@@ -1,0 +1,46 @@
+name: battle_countdownPhaseHandler
+address: '0x080D08CC'
+kind: function
+status: probable
+summary: Battle-object phase state that runs a 20- or 40-frame countdown with a sound cue, fires a helper
+  10 frames before expiry, then ends the action.
+interface: (r5 = battle object) -> void; sets oBattleObject_CurAction = 4 and resets phase when timer
+  expires
+details: On phase 0 it sets CurPhase to 4, calls sub_80D0A5C, plays sound effect 0xB7, then loads a duration
+  from byte_80D0914 indexed by oBattleObject_Param1 (0x14 or 0x28, i.e. 20 or 40 frames) into both Timer
+  and Timer2. On subsequent frames it decrements Timer; when Timer equals Timer2-10 it calls sub_80D0A5C
+  once more (a mid-countdown event, likely a visual/audio change since Timer2 itself is never modified).
+  When Timer reaches 0 it sets CurAction to 4 and zeroes CurPhaseAndPhaseInitialized, returning control
+  to the object state machine.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#oBattleObject_CurPhase] / strb #4 selects and sets the phase-4 branch of an object
+    state machine; ldrb r0,[r1,r0] with off_80D0910=byte_80D0914 {0x14,0x28} indexed by Param1 gives the
+    two countdown lengths; PlaySoundEffect(0xB7) at phase entry marks an audible start cue; cmp Timer,(Timer2-10)
+    then bl sub_80D0A5C fires a single event 10 frames before expiry; Timer<=0 sets CurAction=4 and clears
+    CurPhaseAndPhaseInitialized, ending the action'
+  refs:
+  - bn6f/asm/asm31.s:53975
+  - 0x080005CC PlaySoundEffect
+  - 0x080D0A5C sub_80D0A5C
+  reproduce: python3 tools/asmcat.py 0x080D08CC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- what object/action this belongs to (no callers known) — the meaning of sound 0xB7 and what sub_80D0A5C
+  toggles would identify it
+- what Param1=0 vs 1 represents (the 20- vs 40-frame variant)
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D08CC -> battle_countdownPhaseHandler
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D08CC

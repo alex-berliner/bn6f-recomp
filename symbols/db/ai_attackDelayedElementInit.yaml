@@ -1,0 +1,47 @@
+name: ai_attackDelayedElementInit
+address: '0x081027C4'
+kind: function
+status: probable
+summary: 'AI attack step: on first invocation spawns a temp attack object and starts a timer, then counts
+  down until the attack''s hit element is set.'
+interface: (r5 = battle object, r7 = oAIAttackVars base; no args) -> no return; touches AttackElement,
+  ScratchVar, StepTimer, HitElement, CurAnim
+details: Runs per-frame as part of an AI attack script. While oAIAttackVars_AttackElement is 0 (not yet
+  started), it copies ScratchVar into StepTimer as the duration, sets the object's CurAnim to 0x12, spawns
+  a subtype-5 temp attack object passing r4=0x16 (attack/element id for the spawn helper), links it to
+  the object, and stores 4 into AttackElement as an 'in progress' marker. Every frame after that it decrements
+  StepTimer; once it underflows (subtracts 1 from 0 gives 0xFFFF, so bge fails), it stores 4 into oAIAttackVars_HitElement,
+  i.e. the element takes effect after the delay. No registers are returned to a caller; r7 is callee-saved
+  and restored around the spawn call.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst; bne loc_81027E6 — gate makes this a one-shot
+    init guarded by the element field; strh r0,[r7,#oAIAttackVars_StepTimer] from ScratchVar, mov r0,#0x12;
+    strb [r5,#oBattleObject_CurAnim] — sets duration and wind-up animation; mov r4,#0x16; bl spawn_t1_0x5_tempAttackObject_80B8E30
+    — spawns the attack object with id/param 0x16; strb r0,#4 to AttackElement after spawn — marks the
+    attack as started; ldrh StepTimer; sub #1; strh; bge skip; strh 4 to HitElement — delayed assignment
+    of the hit element when the timer expires'
+  refs:
+  - bn6f/asm/asm31.s:161128
+  - 0x080B8E30 spawn_t1_0x5_tempAttackObject_80B8E30
+  reproduce: python3 tools/asmcat.py 0x081027C4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- No known caller, so the attack/enemy this belongs to and the meaning of element value 4 and spawn param
+  0x16 are unconfirmed
+- Exact layout of oAIAttackVars fields (ScratchVar semantics as duration) is inferred, not documented
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81027C4 -> ai_attackDelayedElementInit
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81027C4

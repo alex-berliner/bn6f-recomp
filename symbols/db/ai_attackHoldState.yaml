@@ -1,0 +1,48 @@
+name: ai_attackHoldState
+address: '0x080FB3CA'
+kind: function
+status: probable
+summary: 'AI attack-state handler: on first tick stamps element 4 and loads the attack duration into the
+  step timer, then counts the timer down until the attack ends, resetting the animation and leaving attack
+  state.'
+interface: (r5 = battle object, r7 = oAIAttackVars block) -> r0 = 0 from object_exitAttackState possibly;
+  flags from tst/sub/bl
+details: 'Two-phase behavior keyed on oAIAttackVars_AttackElement: if it is zero, the function writes
+  4 into AttackElement (making the attack elementless/neutral) and copies AttackDuration into StepTimer
+  to arm the countdown. On later calls it decrements StepTimer each tick and returns while it is still
+  positive. When the timer expires it sets oBattleObject_CurAnim to 0, calls object_exitAttackState to
+  leave the attack, and if oAIAttackVars_ScratchPointerOrPanel is non-null passes it to sub_80E8788 as
+  cleanup/teardown. No known callers, so the exact attack this belongs to is unidentified.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r7,#oAIAttackVars_AttackElement] / mov r0,#4; strb -> sets a neutral element and arms
+    the timer on the first pass; ldrh r0,[r7,#oAIAttackVars_AttackDuration]; strh [r7,#oAIAttackVars_StepTimer]
+    -> duration copied into a countdown timer; sub r0,#1; strh; bgt locret -> per-frame decrement of StepTimer
+    while the attack is active; mov r0,#0; strb r0,[r5,#oBattleObject_CurAnim]; bl object_exitAttackState
+    -> anim reset and attack-state exit when timer hits zero; ldr r0,[r7,#oAIAttackVars_ScratchPointerOrPanel];
+    bl sub_80E8788 -> optional cleanup call with the stored scratch pointer
+  refs:
+  - bn6f/asm/asm31.s:145687
+  - 0x08011714 object_exitAttackState
+  - 0x080E8788 sub_80E8788
+  reproduce: python3 tools/asmcat.py 0x080FB3CA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- purpose of element value 4 and what sub_80E8788 cleans up
+- which AI attack entity uses this handler; no callers known, and the meaning of oAIAttackVars_ScratchPointerOrPanel
+  in this context
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80FB3CA -> ai_attackHoldState
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FB3CA

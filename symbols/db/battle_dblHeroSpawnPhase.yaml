@@ -1,0 +1,44 @@
+name: battle_dblHeroSpawnPhase
+address: '0x080E8020'
+kind: function
+status: probable
+summary: 'One-shot phase of a battle object: spawns the ''dbl hero'' child object at the owner''s panel,
+  then ends the action unless Param2 says otherwise.'
+interface: (r4/r5 = battle object ptr, r5 clobbered to RelatedObject1Ptr) -> r0 = 0/1; no flags used
+details: 'On first run (oBattleObject_PhaseInitialized == 0) it gathers the object''s PanelX, PanelY,
+  Element and DamageAndStaminaDamageCounterDisabler (+Z16Save) and its RelatedObject1Ptr, calls spawnDblHeroObject_80BD20A
+  to spawn a paired ''double hero'' object at that position, then writes 4 to PhaseInitialized so this
+  spawn happens only once. Afterwards it checks oBattleObject_Param2: when it is 0, it sets CurAction
+  = 0xC and CurPhaseAndPhaseInitialized = 0, i.e. the action terminates immediately after the spawn. When
+  Param2 is nonzero the phase returns without changing state, leaving the action active. The odd r7 =
+  r5+5 and the damage+Z16 combination are quirks of this call''s argument packing.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: tst r0,r0 / bne loc_80E8048 on oBattleObject_PhaseInitialized guards a one-time spawn block;
+    loads PanelX/PanelY/Element/Damage and calls spawnDblHeroObject_80BD20A, then stores 4 to PhaseInitialized;
+    Param2==0 check sets CurAction=0xC and CurPhaseAndPhaseInitialized=0, the standard 'end action' transition;
+    no callers known, so identity rests on the callee's already-known spawnDblHeroObject name
+  refs:
+  - bn6f/asm/asm31.s:105616
+  - 0x080BD20A spawnDblHeroObject_80BD20A
+  reproduce: python3 tools/asmcat.py 0x080E8020
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- which battle object/action uses this phase (no callers found)
+- what Param2 selects when nonzero (kept active instead of ending)
+- exact meaning of the r6 = Damage + Z16Save argument to spawnDblHeroObject
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E8020 -> battle_dblHeroSpawnPhase
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E8020

@@ -1,0 +1,47 @@
+name: rfu_setConnState
+address: '0x08146438'
+kind: function
+status: probable
+summary: Writes a requested RFU connection-state halfword, or if a connection is active, forces state
+  6 and fires the connection callback with reason 0xF3.
+interface: (r0 = new state halfword) -> r0 = 0 if stored, 6 if connection was active; flags clobbered
+  by call
+details: Takes a halfword argument (lsl/lsr to 16 bits). It reads the pointer at dword_2010CC0 and ORs
+  bytes at +4 and +5; when both are zero (no active connection), it stores the argument halfword into
+  eStruct200FE00+0x18 (word_200FE18) and returns 0. Otherwise it writes state value 6 into the state halfword
+  at eStruct200FE00+0x14, then calls rfu_fireConnCallbackAndClearState with callback reason 0xF3 and argument
+  1, which invokes the registered callback and clears the state halfwords at +0x14/+0x16, returning 6
+  to the caller. The struct pointed to by dword_2010CC0 has per-byte flags at +4/+5 gating which path
+  is taken.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r1,[r0,#4]; ldrb r0,[r0,#5]; orr r0,r1; cmp r0,#0; bne — branches on combined flag bytes
+    of dword_2010CC0 struct; strh r2,[eStruct200FE00,#0x18]; mov r0,#0 — idle path stores the requested
+    halfword and returns 0; mov r0,#6; strh r0,[r1,#0x14] — active path writes state 6 into the state
+    halfword the callee later clears; mov r0,#0xF3; mov r1,#1; bl rfu_fireConnCallbackAndClearState —
+    fires the registered connection callback with reason 0xF3, arg 1; callee summary says it clears state
+    halfwords at +0x14/+0x16 after the callback, matching the state field written here
+  refs:
+  - bn6f/asm/libs.s:4965
+  - 0x081461B0 rfu_fireConnCallbackAndClearState
+  reproduce: python3 tools/asmcat.py 0x08146438
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- No callers known, so the meaning of the requested halfword (state/phase ID?) and of struct+dword_2010CC0
+  bytes +4/+5 is unconfirmed; a caller would show what value is passed and when
+- Exact semantics of callback reason 0xF3
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8146438 -> rfu_setConnState
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8146438

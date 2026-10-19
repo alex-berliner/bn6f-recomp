@@ -1,0 +1,47 @@
+name: object_wait30ThenCheckPanelSolid
+address: '0x080BD0DA'
+kind: function
+status: probable
+summary: Battle-object phase handler that waits 30 frames, then picks the next action depending on whether
+  the object's panel is solid.
+interface: (r0 = unused scratch, r5 = battle object) -> r0 = clobbered by calls; sets oBattleObject_CurAction
+  (0xC if panel not solid, 4 if solid) and resets PhaseInitialized/phase to 0
+details: On first run (PhaseInitialized == 0) it sets oBattleObject_Timer to 0x1E (30 frames) and stores
+  phase 4 into PhaseInitialized, then returns. On subsequent runs it decrements the Timer and returns
+  until it hits zero. It then reads the object's PanelX/PanelY and calls object_isCurrentPanelSolid; if
+  the panel is solid it sets CurAction = 4, otherwise CurAction = 0xC, and in both cases zeroes CurPhaseAndPhaseInitialized
+  so the object's state machine re-enters from the start of the new action. This is a generic 'wait then
+  branch on terrain' phase used by some battle object whose action IDs 4 and 0xC are defined by its action
+  table.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#oBattleObject_PhaseInitialized]; mov r0,#0x1e; strh r0,[r5,#oBattleObject_Timer]
+    — one-time setup of a 30-frame delay (asm start); bl object_isCurrentPanelSolid after loading PanelX/PanelY
+    — the sole branch condition for the next action; strb #0xc vs strb #4 into oBattleObject_CurAction
+    — two mutually exclusive outcomes keyed on panel solidity; mov r0,#0; strh r0,[r5,#oBattleObject_CurPhaseAndPhaseInitialized]
+    — both outcomes reset the phase state machine; no callers known; structure fields all match the shared
+    battle-object layout used by object_* helpers'
+  refs:
+  - bn6f/asm/asm31.s:10934
+  - 0x0800CCA6 object_isCurrentPanelSolid
+  reproduce: python3 tools/asmcat.py 0x080BD0DA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- which object(s) use this phase handler — no callers known, so the meaning of CurAction 4 vs 0xC for
+  that object's action table is unconfirmed
+- what the 30-frame delay represents for this object (spawn delay, despawn grace period, etc.)
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BD0DA -> object_wait30ThenCheckPanelSolid
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BD0DA

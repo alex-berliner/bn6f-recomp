@@ -1,0 +1,41 @@
+name: sprite_isWithinScreenBounds
+address: '0x0811C754'
+kind: function
+status: probable
+summary: Returns whether a sprite's position lies inside the screen area padded by 32 px on every side.
+interface: (r0 = sprite/object pointer) -> r0 = 1 if x in [-32,272] and y in [-32,192], else 0; r0-r3
+  clobbered, flags clobbered
+details: Calls sprite_getCoordinates, which returns the sprite's x in r0 and y in r1. Each coordinate
+  is compared (signed) against the constants 0xFFFFFFE0 (-32), 0x110 (272) for x and 0xC0 (192) for y;
+  any coordinate outside its range branches to return 0. The range corresponds to the 240x160 screen with
+  a 32-pixel margin on all sides, so sprites slightly off-screen still count as visible. Likely used by
+  callers to skip rendering or AI processing for off-screen entities. The margin constants are stored
+  as literals right after the function.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl sprite_getCoordinates loads x/y from the sprite (asm line 3); cmp against dword_811C778 =
+    0xFFFFFFE0 (-32) checks lower bounds; cmp against 0x110 (x) and 0xC0 (y) checks upper bounds — screen
+    240x160 + 32 margin; returns 1 only if all four comparisons pass, else 0
+  refs:
+  - bn6f/asm/asm32.s:30088
+  - 0x0811C654 sub_811C654
+  - 0x080030A8 sprite_getCoordinates
+  reproduce: python3 tools/asmcat.py 0x0811C754
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- Which caller sub_811C654 serves and what it does with the result (e.g. rendering skip vs. AI tick skip)
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_811C754 -> sprite_isWithinScreenBounds
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811C754

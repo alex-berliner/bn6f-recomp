@@ -1,0 +1,51 @@
+name: sprite_queueAnimData
+address: '0x03006E98'
+kind: function
+status: probable
+summary: Copies a 0x40-byte sprite data block, chosen from one of ten tables by fields of the caller's
+  descriptor, into the next free slot of a queued buffer and records the pointers in the sprite work state.
+interface: '(r0 = descriptor struct: byte +1 = variant flag, byte +2 = table index, +3 = sub-pointer)
+  -> r0 = pointer to the queued 0x40-byte block in the queue buffer; updates state at byte_200A220 (+0x28,
+  +0x2c, +0x30, +0x34)'
+details: First it increments a global counter at byte_200A220+0x30. It reads byte [r0+2] as a table index,
+  adding 2 if byte [r0+1] is nonzero, then multiplies by 4 to pick one of ten pointers in the table at
+  off_3006EEC (unk_2001186 ... byte_2001AC0). The destination is byte_200AFA0 + (halfword at byte_200A220+0x34
+  << 6), i.e. a queue of 0x40-byte slots. It copies 0x40 bytes from the selected table entry via CopyBytes,
+  then increments the byte slot counter at +0x34, stores the destination pointer at state+0x28 and r0+3
+  at state+0x2c, and returns the destination. No caller is known, so the identity of the descriptor struct
+  and of the ten source tables is inferred only from the addressing.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r2,[r0,#2] / tst r1,r1 / add r2,#2 / lsl r2,r2,#2 / ldr r6,[r6,r2]: table index comes
+    from the descriptor''s bytes +1/+2; ldr r1,off_3006F14; add r1,r1,r2 (halfword at +0x34 << 6): destination
+    is slot count * 0x40 in byte_200AFA0; mov r2,#0x40; ... bl CopyBytes: fixed 64-byte copy from the
+    selected table entry into the slot; ldrb r1,[r7]; add r1,#1; strb r1,[r7] with r7 = byte_200A220+0x34:
+    slot counter incremented after the copy; str r6,[r3,#0x28]; add r0,#3; str r0,[r3,#0x2c]; mov r0,r6:
+    returns the queued block and records dest pointer and descriptor+3 in the work state'
+  refs:
+  - bn6f/asm/asm38.s:2830
+  - 0x08000920 CopyBytes
+  reproduce: python3 tools/asmcat.py 0x03006E98
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- No callers are known, so it is unclear which system owns the byte_200A220 state and the ten EWRAM source
+  tables
+- Whether each 0x40-byte block is animation frame data, draw/OAM data, or something else needs the contents
+  of unk_2001186..byte_2001AC0
+- The meaning of the descriptor's byte +1 (variant flag) and the pointer stored at +0x2c (r0+3) is not
+  shown by this function alone
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_3006E98 -> sprite_queueAnimData
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_3006E98

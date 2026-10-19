@@ -1,0 +1,48 @@
+name: battle_damageObjectColumn
+address: '0x080B903A'
+kind: function
+status: probable
+summary: Hits every valid panel in the battle object's own column (rows y-1..y+1) with a fixed 4-damage
+  element attack, alliance-dependent.
+interface: (r5 = battle object) -> r0 = clobbered; no meaningful return
+details: 'Treats r5 as a battle object and loops r7 = 0..2, forming coordinates (oBattleObject_PanelX,
+  oBattleObject_PanelY - 1 + r7), i.e. the three rows of the object''s own column. Each coordinate is
+  validated with object_isValidPanel; valid panels are passed to sub_80C8514 as r0=x, r1=y. The call also
+  passes r2 = oBattleObject_Element, r3 = 4, r6 = oBattleObject_DamageAndStaminaDamageCounterDisabler,
+  and r4 = alliance-dependent constant: alliance 0 gives r0=0 / r4=0x104, any other alliance gives r0=7
+  / r4=0x4 (0x100 bit set only for alliance 0). The 3 seems to be the damage/flag payload, with 0x100
+  likely a flag distinguishing the two alliances'' attack (e.g. heal-vs-damage or target-side selection).
+  The effect resembles a column-sweeping attack (hits its whole lane), such as an enemy''s signature move.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'loop bound cmp r7,#3 and add r1,r1,r7 after sub r1,#1 -> rows y-1..y+1 of PanelX; bl object_isValidPanel
+    guards each panel, per callee summary ''1-based (column,row) inside 6x3 grid''; mov r3,#4 plus ldrb
+    r2,[r5,#oBattleObject_Element] passed to sub_80C8514 -> element attack of strength 4; alliance branch:
+    tst oBattleObject_Alliance picks r0=0/r4=0x104 vs r0=7/r4=0x4; r6 = oBattleObject_DamageAndStaminaDamageCounterDisabler
+    forwarded unchanged to the damage helper'
+  refs:
+  - bn6f/asm/asm31.s:1912
+  - 0x080B8FB6 sub_80B8FB6
+  - 0x0800CC72 object_isValidPanel
+  - 0x080C8514 sub_80C8514
+  reproduce: python3 tools/asmcat.py 0x080B903A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- 'sub_80C8514 is undocumented: its exact semantics (damage vs panel terrain change, meaning of r0=0/7
+  and the 0x100 flag in r4) are unknown'
+- caller sub_80B8FB6 is unknown, so which in-game move or object invokes this column sweep is unconfirmed
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80B903A -> battle_damageObjectColumn
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80B903A

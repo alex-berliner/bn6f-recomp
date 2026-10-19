@@ -1,0 +1,45 @@
+name: battle_objectArcFallUpdate
+address: '0x080E48C0'
+kind: function
+status: probable
+summary: 'Per-frame update for a battle object moving in an arc: advances X/Z by their velocities, applies
+  constant downward Z-acceleration, and destroys the object when its timer expires.'
+interface: (r5 = battle object struct) -> void; object's CurState set to CUR_STATE_DESTROY when Timer
+  reaches 0
+details: 'Runs the object''s sprite update via sprite_update, then integrates motion: X += XVelocity and
+  Z += ZVelocity, both read/written through the oBattleObject struct fields. It then adds the constant
+  0x3C00 (a fixed-point acceleration, likely gravity pulling toward the ground in Z) to ZVelocity, giving
+  rising-then-falling or accelerating-descending motion. It decrements oBattleObject_Timer; when it hits
+  zero the object''s state word is set to CUR_STATE_DESTROY, ending it. Uses r5 as the object pointer
+  rather than r0, so it is a state-action handler for an object rather than a normal r0-argument helper.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl sprite_update keeps the object''s animation running each frame; X += XVelocity and Z +=
+    ZVelocity pairs of ldr/add/str on oBattleObject fields integrate position; add r1, r1, dword_80E48EC(=0x3C00)
+    then str to oBattleObject_ZVelocity applies constant acceleration; ldrh Timer / sub #1 / bne with
+    mov #CUR_STATE_DESTROY into CurStateActionPhaseAndPhaseInitialized destroys the object when the timer
+    lapses; only caller sub_80E4868 presumably registers this as the object''s update/state handler'
+  refs:
+  - bn6f/asm/asm31.s:97751
+  - 0x080E4868 sub_80E4868
+  - 0x080026C4 sprite_update
+  reproduce: python3 tools/asmcat.py 0x080E48C0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- What object uses this handler (caller sub_80E4868 is unknown), and what units/sign convention Z uses
+  — needed to confirm 0x3C00 is gravity and the motion is an arc/fall
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E48C0 -> battle_objectArcFallUpdate
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E48C0

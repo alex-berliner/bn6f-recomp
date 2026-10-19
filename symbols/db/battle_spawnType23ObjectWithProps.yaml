@@ -1,0 +1,53 @@
+name: battle_spawnType23ObjectWithProps
+address: '0x080BF160'
+kind: function
+status: probable
+summary: Spawns a type-0x23 battle object and fills in its panel position, element, damage-related fields
+  and alliance from the caller's arguments.
+interface: (r0 = spawn param/panelX byte, r1 = panelY, r2 = element, r3 = spawn z, r5 = related object/params,
+  r6 = damage+disabler value, r7 = extraVars ptr) -> r0 = new BattleObject or 0
+details: 'The helper saves r0-r2 and r5, then calls object_spawnType1 with type 0x23, reusing r1-r3 as
+  spawn coordinates and the saved r0 as the stack params argument. On success (returned pointer kept in
+  r0) it writes the saved values into the new object: PanelX, PanelY, Element, the DamageAndStaminaDamageCounterDisabler
+  field from r6, RelatedObject1Ptr and ExtraVars from r5/r7. If r7 is non-null it stores byte 1 at [r7],
+  marking that external structure as active/allocated. It copies AllianceAndDirectionFlip from the related
+  object in r5 to the new object, so the spawned object inherits the creator''s side/direction, and sets
+  bit 0x10 in the new object''s header flags. On spawn failure it returns 0 immediately.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: mov r0,#0x23; bl object_spawnType1 — spawns battle object type 0x23 using saved r0-r3/r5 as
+    the remaining arguments; strb r1,[r0,#oBattleObject_PanelX] / strb r2,...PanelY / strb r3,...Element
+    — saved caller args initialize position and element; str r5,...RelatedObject1Ptr then ldrh r1,[r5,#AllianceAndDirectionFlip];
+    strh — new object links to and copies the alliance of the related object; tst r7,r7; strb r1(=1),[r7]
+    — sets a flag byte in a caller-provided structure when given; ldrb flags; orr 0x10; strb — sets bit
+    0x10 of oObjectHeader_Flags on the new object
+  refs:
+  - bn6f/asm/asm31.s:15415
+  - 0x080BE8AE sub_80BE8AE
+  - 0x080BE97A sub_80BE97A
+  - 0x08003320 object_spawnType1
+  reproduce: python3 tools/asmcat.py 0x080BF160
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- What kind of entity object type 0x23 is (attack, obstacle, summon?) — needs the type-0x23 initialiser
+  or a known caller
+- Exact meaning of oObjectHeader_Flags bit 0x10
+- Why the saved r0 doubles as both the spawn params word and PanelX — whether params encode the panel
+  coordinate
+- What r6 (DamageAndStaminaDamageCounterDisabler value) and the r7 structure represent, and what the two
+  callers sub_80BE8AE/sub_80BE97A pass
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BF160 -> battle_spawnType23ObjectWithProps
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BF160

@@ -1,0 +1,44 @@
+name: ai_scanTargetsAndBeginChargePhase
+address: '0x080E41F0'
+kind: function
+status: probable
+summary: 'AI phase step: scans forward for enemy panels to attack; if found, starts a charge/timer phase,
+  otherwise switches to a fallback action.'
+interface: (r0 unused on entry, r5 = battle object) -> r0 = 0 if targets found, nonzero?; writes object
+  fields; preserves nothing else
+details: Called with r5 pointing at a battle object; it builds r0 = r5+0x60 (a scan context/buffer inside
+  the object) and passes the object's Alliance and DirectionFlip to battle_scanForwardColumnTargets, which
+  walks columns toward the enemy and records target panels. The returned pointer/count is kept in oBattleObject_ExtraVars+0x14.
+  If targets were found it sets Timer=2, Timer2=30 (0x1E), zeroes ExtraVars+0x18, and enters phase 4 —
+  presumably a wind-up before an attack using the stored targets. If nothing was found it sets CurAction=0xC
+  and phase 0, i.e. aborts to another behavior. The +0x60 buffer and the meaning of action 0xC depend
+  on callers not seen here.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl battle_scanForwardColumnTargets with r0=r5+0x60, r1=Alliance, r2=DirectionFlip (sub_80E41F0);
+    result stored in oBattleObject_ExtraVars+0x14 and tst r0,r0 branches on it; hit path sets Timer=2,
+    Timer2=0x1E and phase 4 (charge/wind-up); miss path sets CurAction=0xC and phase 0 (fallback action)
+  refs:
+  - bn6f/asm/asm31.s:96762
+  - 0x080E42AA battle_scanForwardColumnTargets
+  reproduce: python3 tools/asmcat.py 0x080E41F0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- callers unknown, so the object type and when this phase runs (which boss/enemy AI) are unidentified
+- structure at r5+0x60 passed to battle_scanForwardColumnTargets is undocumented
+- meaning of CurAction 0xC and phase 4 in the object's state machine
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E41F0 -> ai_scanTargetsAndBeginChargePhase
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E41F0

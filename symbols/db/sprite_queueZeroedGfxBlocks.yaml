@@ -1,0 +1,45 @@
+name: sprite_queueZeroedGfxBlocks
+address: '0x0801D3F8'
+kind: function
+status: probable
+summary: Queues repeated 0x40-byte transfers of zeros from a static buffer, clearing consecutive blocks
+  of palette/GFX memory.
+interface: (r0 = unused on entry, r1 = destination address, r3 = block count) -> r0/r1 clobbered; queues
+  count x 64-byte zero fills, dest advanced 0x40 per block
+details: Loads r0 with the address of byte_801D410, a 64-byte all-zero scratch buffer, and copies r3 into
+  r4 as the loop counter. Each iteration calls QueueEightWordAlignedGFXTransfer with size 0x40 and the
+  current r1, then advances r1 by 0x40, so it zeroes r3 consecutive 64-byte regions of graphics memory.
+  The 0x40 size equals 32 palette halfwords (e.g. two 16-color banks) or an 8x8-tile row block. r0 is
+  reloaded only once, so the callee must preserve the source pointer. push {r0-r4,lr}/pop {r0-r4,pc} is
+  used purely as scratch stack space, not to preserve arguments.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: off_801D40C loads byte_801D410, a 64-byte zero-filled buffer, as the transfer source; loop at
+    loc_801D400 calls QueueEightWordAlignedGFXTransfer with fixed r2=0x40 and adds 0x40 to r1 each pass;
+    sub r4,#1 / bne loops exactly r3 times, giving one queued transfer per 64-byte block; sole callee
+    QueueEightWordAlignedGFXTransfer is the known queued-GFX helper, confirming this only enqueues fills
+  refs:
+  - bn6f/asm/asm00_2.s:30209
+  - 0x0801D344 sub_801D344
+  - 0x08000AC8 QueueEightWordAlignedGFXTransfer
+  reproduce: python3 tools/asmcat.py 0x0801D3F8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- caller sub_801D344 is unknown, so it is not confirmed whether the destination r1 is palette RAM (0x05000000)
+  or OBJ/BG tile memory
+- why the caller passes an ignored r0 (possibly ABI alignment of a 4-arg call)
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_801D3F8 -> sprite_queueZeroedGfxBlocks
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_801D3F8

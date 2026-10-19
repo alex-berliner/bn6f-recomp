@@ -1,0 +1,45 @@
+name: sprite_queueSheetGfxUpload
+address: '0x081384AC'
+kind: function
+status: probable
+summary: Queues a 0x600-byte tile/graphics chunk upload from the decomp buffer into VRAM at a per-object
+  slot's offset.
+interface: (r0 = unused by this routine; r5 = caller-set object struct whose byte at +0xD is the VRAM
+  slot index) -> r0 = clobbered; no meaningful return
+details: Computes a VRAM address as 0x6000000 + 0x600 * byte[r5+0xD], then calls QueueEightWordAlignedGFXTransfer
+  to copy 0x600 bytes from eDecompBuffer2014A00 into that VRAM offset. The 0x600-byte chunk size and the
+  decomp-buffer source suggest one decompressed sprite/graphics sheet bank per slot index. The function
+  itself sets only r1/r2 from r5; r0 is loaded with the source pointer but the transfer routine takes
+  its arguments in r0-r2 as set up here. Other literals in the pool (eDecompBuffer2013A00, unk_2014000,
+  byte_2017A00) belong to sibling code around the caller, not this routine.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: mul r2, r1 with 0x600 and add to 0x6000000 builds a per-slot VRAM destination from byte [r5,#0xd];
+    ldr r0, off_81384CC loads eDecompBuffer2014A00 as the transfer source; bl QueueEightWordAlignedGFXTransfer
+    with size 0x600 queues the DMA-style VRAM write; caller sub_8138478 shares the same literal pool (byte_2017A00,
+    unk_2014000), indicating a sprite/graphics management cluster
+  refs:
+  - bn6f/asm/asm36.s:17542
+  - 0x08138478 sub_8138478
+  - 0x08000AC8 QueueEightWordAlignedGFXTransfer
+  reproduce: python3 tools/asmcat.py 0x081384AC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- what eDecompBuffer2014A00 holds exactly (which sheet/animation was decompressed there) requires tracing
+  sub_8138478's flow
+- meaning of the byte at r5+0xD (sheet slot vs animation frame id) needs the caller's struct definition
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81384AC -> sprite_queueSheetGfxUpload
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81384AC

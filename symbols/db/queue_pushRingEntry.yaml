@@ -1,0 +1,47 @@
+name: queue_pushRingEntry
+address: '0x0803F0E8'
+kind: function
+status: probable
+summary: Enqueues a 24-byte entry (two 12-byte blocks) into an 8-slot 0x40-byte ring buffer at byte_200BC70,
+  overwriting the oldest slot.
+interface: (r0 = src of first 12 bytes, r1 = src of second 12 bytes) -> r0 = CopyWords result/entry pointer;
+  no meaningful flags
+details: 'Reads an 8-bit ring index from byte_200AC23, scales it by 0x40, and indexes into the 0x200-byte
+  buffer byte_200BC70. Copies 12 bytes from r0 to slot+0x00 and 12 bytes from r1 to slot+0x0C via BIOS
+  CpuSet (through CopyWords); the remaining 0x28 bytes of each slot are untouched. Wraps the index with
+  and #7 and stores it back to byte_200AC23, so the buffer is a circular queue of 8 entries where the
+  newest entry evicts the oldest. The structure at byte_200AC20 holds the queue state (index at offset
+  3); what owns it and what consumes the entries is not shown.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r4,[r5,#0x3] + mul r6,#0x40 + add r6,byte_200BC70: slot = index*0x40 into an 8-entry buffer;
+    two CopyWords calls of 0xC bytes each, dest slot+0 and slot+0xC, srcs r0 and r7(=r1): writes 24 bytes
+    per entry; add r4,#1; and r4,#7; strb [r5,#3]: index wraps modulo 8, a ring buffer; sole caller sub_803F26C
+    is itself unnamed, giving no higher-level purpose'
+  refs:
+  - bn6f/asm/asm03_1_1.s:12846
+  - 0x0803F26C sub_803F26C
+  - 0x0800093C CopyWords
+  reproduce: python3 tools/asmcat.py 0x0803F0E8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- what the 24 bytes copied from r0/r1 represent (12+12 bytes each)
+- what reads/consumes the slots in byte_200BC70 and what the leftover 0x28 bytes per slot hold
+- what structure byte_200AC20 belongs to and whether the index at offset 3 is shared with other queue
+  functions
+- what sub_803F26C does before/after calling this
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803F0E8 -> queue_pushRingEntry
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803F0E8

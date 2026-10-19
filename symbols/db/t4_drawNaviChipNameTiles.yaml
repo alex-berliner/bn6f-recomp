@@ -1,0 +1,48 @@
+name: t4_drawNaviChipNameTiles
+address: '0x08137D50'
+kind: function
+status: probable
+summary: Renders up to 7 navi-chip name strings (via text-script lookup) into two tile-index buffers,
+  8 tiles per name.
+interface: (r0 = base index multiplier, r1 = array base, r2/r3 = u16 tile-out buffers, r3<<12|0x200 on
+  stack = param for callee) -> void; r0-r5 clobbered
+details: r5 = r0*2 + r1 points into an array of byte entries walked with stride 2 for 7 iterations. Each
+  nonzero byte is doubled and used as a u16 index into TextScriptNaviChipNames, yielding a pointer to
+  that name's text-script string. sub_81202B4 expands the string into pairs of font tile indices written
+  to r2/r3, with a stack argument 0x200|(origR3<<12) passed as a 5th parameter. r2 and r3 each advance
+  by 0x10 (8 u16 slots) per entry, so each name gets an 8-tile-wide output slot; a zero byte skips that
+  slot entirely. The 7 entries plus the NaviChipNames script table strongly suggest a fixed list of navi
+  names (e.g. cross/navi selection labels) being tiled for display.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'loop count 7 with stride 2: ''lsl r0,#1; add r5,r0,r1'', ''add r5,#2'', ''cmp r4,#7''; name
+    lookup: ''ldrh r1,[r0,r1]; add r0,r0,r1'' indexes TextScriptNaviChipNames by the byte entry; callee
+    sub_81202B4 is documented as expanding a text string into font tile index pairs in two u16 arrays;
+    outputs advance one slot per entry: ''add r2,#0x10; add r3,#0x10''; zero entry skipped: ''tst r1,r1;
+    beq loc_8137D82'' before the call'
+  refs:
+  - bn6f/asm/asm36.s:16525
+  - 0x08137D20 sub_8137D20
+  - 0x081202B4 sub_81202B4
+  reproduce: python3 tools/asmcat.py 0x08137D50
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- exact meaning of the stack argument 0x200|(arg3<<12) passed to sub_81202B4
+- what structure r0/r1 point into (the byte-entry array) and which screen/menu the caller sub_8137D20
+  feeds this from
+- why exactly 7 slots (which navi list this is)
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8137D50 -> t4_drawNaviChipNameTiles
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8137D50

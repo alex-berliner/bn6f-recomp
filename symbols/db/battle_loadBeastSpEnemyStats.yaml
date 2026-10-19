@@ -1,0 +1,45 @@
+name: battle_loadBeastSpEnemyStats
+address: '0x080A7208'
+kind: function
+status: probable
+summary: Copies a per-index Beast Out SP enemy stat entry from table byte_2000EC0 into fields of the battle
+  object pointed to by r5.
+interface: (r5 = battle object struct, uses object's index byte at r5+4) -> fills r5+0x05, r5+0x06, r5+0x0C,
+  r5+0x10, r5+0x34; no return value, clobbered flags/registers only
+details: 'The function uses r5 as a target struct pointer passed via register (not the standard r0-r3
+  convention, so callers must set it up specially). It first copies the fixed byte at byte_2000EC0+0x16
+  into struct+0x05, then uses the byte at struct+0x04 as an index into the table: byte at 0x17+idx goes
+  to struct+0x06, byte at 0x26+idx to struct+0x34, and words at 0x2C+4*idx and 0x44+4*idx go to struct+0x0C
+  and struct+0x10 (the latter two using the index scaled by 4, so those are word-array entries). Given
+  the caller battleObject_initBeastSpEnemy_80A6EBC, the table appears to hold Beast Out SP enemy parameters
+  (e.g. HP/attack/other per-enemy values). Nothing is validated; the index byte is used raw.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldr r7, off_80A7268 = byte_2000EC0 base of a stat table; strb [r7,#0x16] -> [r5,#5]: fixed
+    byte copied for all entries; ldrb [r5,#4] used as index for byte loads at 0x17+idx and 0x26+idx; lsl
+    r3,#2 then word loads at 0x2C+4*idx and 0x44+4*idx -> [r5,#0xC] and [r5,#0x10]; caller battleObject_initBeastSpEnemy_80A6EBC
+    invokes this to finish Beast SP enemy setup'
+  refs:
+  - bn6f/asm/asm29.s:4024
+  - 0x080A6EBC battleObject_initBeastSpEnemy_80A6EBC
+  reproduce: python3 tools/asmcat.py 0x080A7208
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- Meaning of struct fields 0x05/0x06/0x0C/0x10/0x34 (HP, coords, palette, etc.) not visible here
+- Contents/layout of byte_2000EC0 table (one entry per Beast SP enemy?)
+- Which caller event 0x5E5 condition triggers this and how r5 is prepared before the call
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80A7208 -> battle_loadBeastSpEnemyStats
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A7208

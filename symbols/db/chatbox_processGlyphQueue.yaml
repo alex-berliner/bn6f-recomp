@@ -1,0 +1,48 @@
+name: chatbox_processGlyphQueue
+address: '0x08127788'
+kind: function
+status: probable
+summary: Drains pending glyph entries from the chatbox text queue, rendering each glyph chunk into VRAM
+  and caching special entries' data in the chat context.
+interface: (r5 = chatbox text state, queue read ptr at +0x24 / write ptr at +0x26; r10 = chat context)
+  -> r0 clobbered; consumes up to 4 8-byte entries from queue at byte_201D74C
+details: Loops while the read pointer [r5+0x24] differs from [r5+0x26], popping 8-byte entries (two words)
+  from the array at byte_201D74C. The first word is a glyph/command id, the second its data; if the id
+  is 0x40-0x42, the data word is cached at [r10+0x38] + (id-0x40)*4 + 8, i.e. one of three slots in the
+  chat context. Every entry is then passed to chatbox_renderGlyph_8127580 with r1 = r6, a destination
+  offset that steps by 0x200 bytes through four 16-tile rows (0..0x600) into VRAM at 0x600A000, alongside
+  TextScript873EA50 and byte_2019A00. So each call renders at most 4 queued glyph chunks, one per 0x200-byte
+  slot, presumably a per-frame budget.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrh r7,[r5,#0x24] / ldrh r0,[r5,#0x26] / cmp r7,r0: classic ring-buffer read vs write pointer
+    loop; ldr r0,[r3,r7]; add r7,#4; ldr r1,[r3,r7]: pops word pairs (8-byte entries) from byte_201D74C;
+    sub r2,r0,#0x40; cmp/bgt plus str r1,[r3,r2]: ids 0x40-0x42 cache word1 at [r10+0x38]+(id-0x40)*4+8;
+    add r6,r6,#0x200 ... cmp r6,#0x600 ble loop: four successive 0x200-byte render slots, base 0x600A000
+    VRAM; callee chatbox_renderGlyph_8127580 is documented as rendering a glyph chunk into the text tile
+    area'
+  refs:
+  - bn6f/asm/asm33.s:9063
+  - 0x08127580 chatbox_renderGlyph_8127580
+  reproduce: python3 tools/asmcat.py 0x08127788
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- exact meaning of ids 0x40-0x42 and what the cached words at [r10+0x38] are used for (likely glyph/tile
+  indices consumed elsewhere)
+- which higher-level system enqueues entries into byte_201D74C and why the queue is capped at 4 renders
+  per call (per-frame VBlank budget presumed)
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8127788 -> chatbox_processGlyphQueue
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8127788

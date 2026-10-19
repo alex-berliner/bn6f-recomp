@@ -1,0 +1,47 @@
+name: battle_objectListPushFront
+address: '0x08003440'
+kind: function
+status: probable
+summary: Inserts a battle object at the front of the global battle-objects linked list (right after the
+  list head).
+interface: (r5 = address of the object's oBattleObject_LinkedList field) -> r0 = pointer to the start
+  of that object; no flags meaningful
+details: 'Computes the node''s object base as r5 - oBattleObject_LinkedList_Size, then performs an intrusive
+  doubly-linked-list push-front against eBattleObjectsLinkedListStart: node->next = head->next, head->next
+  = node, node->prev = head, and old first node''s prev = node. r0 ends holding the object base pointer,
+  so callers get the new object''s start address back. It touches only the three LinkedList fields (Next/Prev
+  at head and node). The ''unused'' comment appears stale since spawnBattleObjectTypeFour at 0x080033E4
+  calls it, matching spawn flow that must register the new object in the list.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub r0, r5, r0 with mov r0, #oBattleObject_LinkedList_Size converts a field pointer to the
+    object base; ldr/str around eBattleObjectsLinkedListStart_Next show the node is linked directly after
+    the list head; str r2, [r0,#oBattleObject_LinkedList_Next] and str r0, [r2,#oBattleObject_LinkedList_Prev]
+    relink the former first node — classic push-front; caller 0x080033E4 spawnBattleObjectTypeFour spawns
+    battle objects, which must be inserted into the global object list'
+  refs:
+  - bn6f/asm/asm00_1.s:586
+  - 0x080033E4 spawnBattleObjectTypeFour
+  - 0x08003390 sub_8003390
+  reproduce: python3 tools/asmcat.py 0x08003440
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- Whether callers also set other oBattleObject fields before/after insertion (initializer likely handles
+  that)
+- Exact tail semantics if the list is empty — code assumes head's Next always points back to head (circular
+  list), unverified here
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8003440 -> battle_objectListPushFront
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8003440

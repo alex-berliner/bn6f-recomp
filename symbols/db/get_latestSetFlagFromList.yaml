@@ -1,0 +1,46 @@
+name: get_latestSetFlagFromList
+address: '0x0812835C'
+kind: function
+status: probable
+summary: Scans a stored list of event-flag IDs from the end backwards for the highest one that is set,
+  and writes the found index split into two fields of the caller's struct.
+interface: '(r0 = unused, r5 = result struct: u16 count at +0x1e, results to +0x20/+0x24) -> r0 = clobbered;
+  ZF from last TestEventFlag'
+details: 'Reads count from [r5,#0x1e], then walks the byte array at byte_2006530 (pointer hardcoded) from
+  index count-1 down to 0, testing event flag 0x1D20 + entry via TestEventFlag. On the first (highest-index)
+  set flag it stores the split index: entries 0-4 go to [r5,#0x20] with [r5,#0x24]=0, entries above 4
+  are stored as [r5,#0x20]=4 and [r5,#0x24]=index-4, i.e. a page/page-position split capped at 5 per page.
+  If no flag in the list is set, both fields are cleared to 0. r0 is never used as input despite being
+  passed. This looks like determining the most-advanced unlocked item out of an ordered set of story/progress
+  flags.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrh r4,[r5,#0x1e]; sub r4,#1 then loop ldrb r0,[r6,r4] walks byte_2006530 backwards from count-1;
+    add r0,r0,r1 (r1=0x1D20) before bl TestEventFlag shows entries are flag IDs relative to base 0x1D20;
+    bne skips to store path when flag set; fallthrough decrements and loops until r4<=0; cmp r4,#4 / bgt
+    split stores [r5,#0x20]=4 and [r5,#0x24]=r4-4 for indices above 4, else index/0; no-set path stores
+    0 to both [r5,#0x20] and [r5,#0x24]
+  refs:
+  - bn6f/asm/asm33.s:10649
+  - 0x0802F168 TestEventFlag
+  reproduce: python3 tools/asmcat.py 0x0812835C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- No callers known, so the identity of struct r5 and the game meaning of fields +0x20/+0x24 (page/item?
+  selection index?) is unknown
+- What feature owns byte_2006530 and why its flags sit at 0x1D20+offset is not shown
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_812835C -> get_latestSetFlagFromList
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_812835C

@@ -1,0 +1,50 @@
+name: battle_phaseSpawnFrontPanelEffect
+address: '0x080D8706'
+kind: function
+status: probable
+summary: Object phase handler that, once per action, spawns an effect/attack on the panel directly in
+  front of the object and waits 150 frames before ending the action.
+interface: (r5 = battle object) -> void; sets oBattleObject_PhaseInitialized, Timer, CurAnim, and on expiry
+  CurAction=0xC / phase=0
+details: On the first invocation of the phase (PhaseInitialized == 0) it loads Timer with 0x96 (150 frames),
+  gets the object's facing multiplier from object_getFrontDirection, and computes the adjacent front panel
+  coordinates (PanelX + dir, PanelY). It then calls sub_80D88B8 with the target panel x/y in r0/r1, the
+  object's Element in r2, 0x1C0000 in r3, Param1 in r4, the DamageAndStaminaDamageCounterDisabler word
+  in r6, and 0 in r7 — clearly argument packing for a spawn/attack helper since r4/r6/r7 are not live
+  locally. It then sets CurAnim = 2 and marks the phase initialized. On later ticks it decrements Timer;
+  when it reaches -1 it sets CurAction = 0xC (action end) and clears CurPhaseAndPhaseInitialized, i.e.
+  the object plays animation 2 while the spawned thing runs its 150-frame life.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#oBattleObject_PhaseInitialized]; bne loc_80D8734 — one-time spawn guard typical
+    of phase handlers; mov r0,#0x96; strh r0,[r5,#oBattleObject_Timer] — 150-frame duration for the action;
+    bl object_getFrontDirection; add r0,r0,PanelX — target panel is one tile in front of the object; r2=Element,
+    r4=Param1, r6=DamageAndStaminaDamageCounterDisabler, r3=0x1C0000 passed to sub_80D88B8 — spawn/attack
+    argument packing; tail: Timer decrement, then CurAction=0xC and phase cleared — standard end-of-action
+    phase pattern'
+  refs:
+  - bn6f/asm/asm31.s:71073
+  - 0x0800E2CA object_getFrontDirection
+  - 0x080D88B8 sub_80D88B8
+  reproduce: python3 tools/asmcat.py 0x080D8706
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- What exactly sub_80D88B8 spawns (projectile, panel effect, custom object) — its body would confirm the
+  semantics
+- Meaning of the packed r3 = 0x1C0000 argument and whether r4/r6 are read by the callee or caller conventions
+- Which enemy/object uses this phase, since no callers are known
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D8706 -> battle_phaseSpawnFrontPanelEffect
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D8706

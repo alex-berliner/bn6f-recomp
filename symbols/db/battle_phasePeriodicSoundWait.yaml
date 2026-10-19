@@ -1,0 +1,50 @@
+name: battle_phasePeriodicSoundWait
+address: '0x080BB3F6'
+kind: function
+status: probable
+summary: Battle-object phase handler that ticks a countdown, plays a sound effect every 12 frames, and
+  exits to phase 8 when the countdown ends or once a related object's AI flag is set
+interface: (r5 = battle object) -> void; sets oBattleObject_CurPhaseAndPhaseInitialized = 8 and stores
+  the old PhaseInitialized byte into ExtraVars+0x1c when finished
+details: 'This is one state of a battle object''s phase machine (it reads/writes oBattleObject_CurPhaseAndPhaseInitialized).
+  Each call it decrements Timer2; when that reaches 0 it immediately finishes the phase, saving the PhaseInitialized
+  byte to ExtraVars+0x1c and switching to phase 8. Otherwise it decrements Timer; when Timer hits 0 it
+  reloads Timer with 12, calls sub_80BB4CE (unknown per-tick work), and plays sound effect 0x10E (0xF
+  + 0xFF). It then checks the AI data of the object in RelatedObject1Ptr: while bit 0 of oAIData_TimeStopMirrorHeld
+  is clear it simply returns and keeps waiting; if that flag is set, the phase ends the same way (jumps
+  into the finish block). So the phase lasts at most Timer2 frames, with a repeating sound/tick every
+  12 frames unless the mirror-held condition ends it early.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrh/strh on oBattleObject_Timer2 with beq loc_80BB424: Timer2==0 goes straight to the phase-8
+    transition; Timer reload to 0xC plus bl sub_80BB4CE and PlaySoundEffect(0x10E): periodic 12-frame
+    tick with sound; ldr [r5,#oBattleObject_RelatedObject1Ptr] then tst oAIData_TimeStopMirrorHeld,#1:
+    waits while that AI flag is clear; str r0,[r5,#oBattleObject_ExtraVars+0x1c] and mov r0,#8; strh to
+    CurPhaseAndPhaseInitialized: saves substate and advances to phase 8; Only caller sub_80BB398 and structure
+    offsets confirm it is a battle-object phase/state handler'
+  refs:
+  - bn6f/asm/asm31.s:6935
+  - 0x080BB398 sub_80BB398
+  - 0x080005CC PlaySoundEffect
+  - 0x080BB4CE sub_80BB4CE
+  reproduce: python3 tools/asmcat.py 0x080BB3F6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- What sub_80BB4CE does each 12-frame tick (animation, tile, or message update?)
+- What sound effect 0x10E is in game terms, and what object uses this phase
+- Exact meaning of oAIData_TimeStopMirrorHeld and which object sits in RelatedObject1Ptr
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BB3F6 -> battle_phasePeriodicSoundWait
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BB3F6

@@ -1,0 +1,45 @@
+name: ow_removeQueuedEvent
+address: '0x0802F270'
+kind: function
+status: probable
+summary: Removes an event id from the active-event list and clears its event flag pair (id and id+0x80).
+interface: (r0 = event flag id (>= 0x1CA0), relative id = r0-0x1CA0) -> r0 = preserved id; no meaningful
+  flags
+details: 'Searches the array at byte_2006530 (a list of active event ids terminated by the 0x80 sentinel)
+  for an entry equal to r0-0x1CA0; if not found, returns without doing anything. When found, shifts every
+  following entry down by one, writes the 0x80 sentinel at the end, and decrements the count stored at
+  dword_2001140. It then calls ClearEventFlag twice: once with the original id and once with id+0x80,
+  clearing both halves of the event''s flag pair (e.g. the trigger flag and its completion/''seen'' counterpart).
+  This looks like cancelling/deactivating a pending overworld event that had been queued.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: sub r7, r0, r1 with r1=0x1CA0 computes relative event id; loop compares it against byte_2006530
+    entries; loc_802F28E shifts array entries down and stores 0x80 sentinel, decrementing dword_2001140
+    count; two bl ClearEventFlag calls use r7 (original id) and r7+0x80, matching the paired story-flag
+    convention; callees list names 0x0802F130 as ClearEventFlag (clear one story-progress flag), confirming
+    flag semantics
+  refs:
+  - bn6f/asm/asm03_0.s:19905
+  - 0x0802F130 ClearEventFlag
+  reproduce: python3 tools/asmcat.py 0x0802F270
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- no known caller, so the exact gameplay context (which system queues these events and when removal happens)
+  is unconfirmed
+- meaning of the 0x80 offset between the two cleared flags could be verified by checking how ids are added
+  to the list
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_802F270 -> ow_removeQueuedEvent
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802F270

@@ -1,0 +1,47 @@
+name: battle_aiGetVersionedParamPair
+address: '0x080FD444'
+kind: function
+status: probable
+summary: Looks up two AI-version-dependent halfword parameters from hard-coded tables and returns them
+  packed into one word.
+interface: (r0 = index selecting one of three per-version 8-byte tables) -> r0 = halfword from first table
+  set | (halfword from second table set << 16); flags clobbered by calls
+details: 'Saves the input index, then for each of two table groups computes tableBase + index*8 and calls
+  battle_aiGetVersionedTableEntry_800FE12, which reads the halfword for the battle object''s AI version.
+  The first group (byte_80FD478/480/488) holds varying values (10/50/90/140, 10/50/90/140, 20/80/150/270
+  per version); the second group (byte_80FD49C/4A4/4AC) is 10 for every entry and version. The two results
+  are combined with lsl #16 + orr so the caller receives both values in one register. Three table sets
+  exist, matching three AI versions; the second value being constant 10 suggests a step, interval, or
+  delta paired with the first value.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mul r0, r2 (#8) + add with byte_80FD478 / byte_80FD49C bases selects a per-version 8-byte table
+    before each callee call; two calls to battle_aiGetVersionedTableEntry_800FE12 with different table-group
+    bases, then lsl r0,#16 / orr r0,r6 packs both halfwords; table contents: group 1 = {10,50,90,140},{10,50,90,140},{20,80,150,270};
+    group 2 = all 10s; only callee is the known battle AI versioned-table reader, and no sprite/object
+    routines appear, so this is battle-AI parameter lookup'
+  refs:
+  - bn6f/asm/asm31.s:149964
+  - 0x0800FE12 battle_aiGetVersionedTableEntry_800FE12
+  reproduce: python3 tools/asmcat.py 0x080FD444
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- No callers are known, so which battle object or AI component consumes the packed pair is unknown
+- The game meaning of the two halfwords (e.g., delay vs. interval, count vs. step) is not shown by the
+  code
+- Whether the input index is an AI version, a difficulty, or a table-set selector needs a caller to confirm
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80FD444 -> battle_aiGetVersionedParamPair
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FD444

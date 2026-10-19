@@ -1,0 +1,45 @@
+name: battle_phaseTimerDispatch
+address: '0x080BAC50'
+kind: function
+status: probable
+summary: 'Battle-object phase handler: starts anim 5 with a 35-frame timer (playing a sound when ExtraVars==3),
+  swaps to anim 7 at frame 16, then exits to phase ExtraVars*4 with CurAction 0x10.'
+interface: (r5 = battle object pointer, r0 unused) -> void; sets oBattleObject_PhaseInitialized=4 on first
+  run, decrements Timer each frame
+details: On first invocation (PhaseInitialized==0) it marks the phase handled (4), selects animation 5
+  and sets a 0x23-frame timer. If the object's ExtraVars equals 3 it calls sub_80BAF06 and plays sound
+  effect 0x1B (0x1C + 0xFF wraps the low byte), otherwise it stays silent. While the timer runs it counts
+  down; when it hits 0x10 it switches to animation 7, and at 0 it sets CurAction=0x10 and writes ExtraVars<<2
+  into CurPhaseAndPhaseInitialized, handing control to a per-variant phase. ExtraVars thus acts as a variant
+  selector choosing both the optional sound/call and the next phase.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: First-run block sets PhaseInitialized=4, CurAnim=5, Timer=0x23 (asm lines 3-9); ExtraVars==3
+    branch calls sub_80BAF06 and PlaySoundEffect with r0=0x1C+0xFF (->0x1B); Timer==0x10 branch sets CurAnim=7
+    (loc_80BAC92); Timer<=0 branch sets CurAction=0x10 and CurPhaseAndPhaseInitialized=ExtraVars<<2; Field
+    offsets named oBattleObject_* show this operates on a battle object in r5
+  refs:
+  - bn6f/asm/asm31.s:5869
+  - 0x080005CC PlaySoundEffect
+  - 0x080BAF06 sub_80BAF06
+  reproduce: python3 tools/asmcat.py 0x080BAC50
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- No caller is known, so the game-side meaning of this phase (which battle state enters it) is unclear
+- sub_80BAF06 is unknown; it may clarify why only variant 3 gets sound and an extra call
+- Meaning of ExtraVars values 0-3 and the phase table indexed by ExtraVars*4 is not visible from here
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BAC50 -> battle_phaseTimerDispatch
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BAC50

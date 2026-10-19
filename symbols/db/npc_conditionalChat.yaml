@@ -1,0 +1,47 @@
+name: npc_conditionalChat
+address: '0x0812471C'
+kind: function
+status: probable
+summary: Runs one of two chatbox text scripts (7 with an argument, or 8) depending on the result of a
+  check, and updates the caller task's state bytes accordingly.
+interface: (r0 = byte argument, saved to [r5,#0x10]) -> none; r5 = task/object with state bytes at +2/+3,
+  r10 = toolkit
+details: Saves the byte argument at [r5,#0x10], calls sub_809F9BE whose boolean-style result arrives in
+  r7. If nonzero, it sets state byte [r5,#2]=0x0C and [r5,#3]=0x14, fetches the chatbox pointer from the
+  toolkit (oToolkit_ChatboxPtr), copies the argument into chatbox+0x4C (a script-variable slot consumed
+  by the text), and runs text script 7 from the eTextScript201C100 archive. If the check fails, it sets
+  [r5,#2]=0x08 instead and runs script 8 with no argument. So the function is a branch point that picks
+  which of two canned messages to display and stores the numeric parameter used inside message 7.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: strb r0,[r5,#0x10] then ldrb r0,[r5,#0x10]; str r0,[r4,#0x4c] right before bl chatbox_runScript201C100_812474C
+    — argument is staged into chatbox field 0x4C; tst r7,r7 / beq loc_8124740 — two-way branch on callee
+    result selects script 7 (+state 0x0C/0x14) vs script 8 (+state 0x08); ldr r4,[r10,#oToolkit_ChatboxPtr]
+    — writes target the live chatbox structure; both paths end in chatbox_runScript201C100_812474C with
+    fixed indices 7 or 8 — the only externally visible effect is text display
+  refs:
+  - bn6f/asm/asm33.s:2988
+  - 0x0812474C chatbox_runScript201C100_812474C
+  - 0x0809F9BE sub_809F9BE
+  reproduce: python3 tools/asmcat.py 0x0812471C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- what r5's structure is (only state bytes +2/+3/+0x10 are touched) and which scene/task owns it
+- what sub_809F9BE actually checks (its result is returned in r7, not r0)
+- what text scripts 7 and 8 of archive 201C100 say, to confirm the branch meaning and the meaning of the
+  value at chatbox+0x4C
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_812471C -> npc_conditionalChat
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_812471C

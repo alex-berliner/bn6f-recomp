@@ -1,0 +1,44 @@
+name: sio_timer3EnableUpdate
+address: '0x08144BF0'
+kind: function
+status: probable
+summary: 'Part of the SIO link state machine: enables Timer 3 (the multiplayer clock timer) while the
+  comm session requests it, and disables/clears that request once a state counter reaches 8.'
+interface: () -> void; no arguments, operates on the comm struct eTimerEnable200F460 and Timer3Control;
+  no return value
+details: 'Reads the struct at eTimerEnable200F460: if the byte at +0x29 equals 8, it terminates by zeroing
+  the byte at +0x28 (the enable flag) and the counter at +0x29. Otherwise, if the enable flag at +0 is
+  nonzero, it sets bit 0x80 of Timer3Control — the GBA timer-enable bit — keeping Timer 3 running for
+  the SIO link. The counter/flag pair suggests the link state machine arms the timer for a fixed phase
+  and this routine re-asserts enable each frame until that phase ends. No return value; only the Z-flag
+  path differs, nothing else is touched.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sole caller 0x081446AC sio_linkStateUpdate is the per-frame SIO/link state machine, fitting
+    a comm clock timer; ldr r1, off_8144C08 / .word eTimerEnable200F460: struct with enable flag at +0,
+    phase flag +0x28, counter +0x29; cmp r0, #8 / bne ... strb #0 to +0x28 and +0x29: clears the enable
+    request when the counter hits 8; ldr r0, =Timer3Control; orr r1, #0x80; strh: sets the hardware timer-enable
+    bit (bit 7) for Timer 3'
+  refs:
+  - bn6f/asm/libs.s:1589
+  - 0x081446AC sio_linkStateUpdate
+  reproduce: python3 tools/asmcat.py 0x08144BF0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- exact meaning of counter value 8 and who writes the enable flag at +0 (other sio struct writers not
+  shown)
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8144BF0 -> sio_timer3EnableUpdate
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8144BF0

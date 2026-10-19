@@ -1,0 +1,49 @@
+name: battle_objMoveToPanelPhase
+address: '0x080BA0FC'
+kind: function
+status: probable
+summary: Battle-object phase handler that picks a destination panel, waits ~16 frames, teleports the object
+  onto it, then advances to the next action.
+interface: (r0 = unused/trashed, r5 = battle object pointer) -> r0 = clobbered by calls; no meaningful
+  return
+details: This is one phase step of an object's action state machine. On phase 0 it stores phase 4, calls
+  sub_80BA294 to obtain a destination panel (r0=x, r1=y); if a panel is returned it saves it into FuturePanelX/Y,
+  sets CurAnim=4 (movement anim), Timer=0x10 and enters the wait phase; if no panel is available it switches
+  to CurAction=0x1c instead. In phase 4 it decrements Timer; when the timer reaches 0xd (3 frames in)
+  it copies FuturePanelX/Y into PanelX/Y, calls object_setCoordinatesFromPanels to snap the sprite to
+  the new panel, and switches CurAnim=3; when the timer reaches 0 it sets CurAction=0x18 and clears CurPhaseAndPhaseInitialized
+  to end the action. The mid-countdown coordinate commit makes the object appear to jump/teleport to the
+  target panel.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb [r5,#oBattleObject_CurPhase] / tst branches the two phase behaviors; bl sub_80BA294 result
+    stored to oBattleObject_FuturePanelX/Y, else CurAction=0x1c fallback; timer==0xd copies FuturePanelX/Y
+    to PanelX/Y then bl object_setCoordinatesFromPanels; timer==0 sets CurAction=0x18 and clears CurPhaseAndPhaseInitialized,
+    ending the action; CurAnim 4 while waiting and 3 after the move are typical move/idle animation ids
+    in battle objects
+  refs:
+  - bn6f/asm/asm31.s:4256
+  - 0x0800E29C object_setCoordinatesFromPanels
+  - 0x080BA294 sub_80BA294
+  reproduce: python3 tools/asmcat.py 0x080BA0FC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- sub_80BA294 is unknown, so how the destination panel is chosen (random? toward player? own row?) is
+  not visible
+- no known caller, so which enemy or generic mover uses this handler is unclear
+- exact meaning of CurAction values 0x18 and 0x1c and anim ids 3/4 in this object's action table
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BA0FC -> battle_objMoveToPanelPhase
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BA0FC

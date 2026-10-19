@@ -1,0 +1,48 @@
+name: battle_getTargetPanelByMode
+address: '0x080EB402'
+kind: function
+status: probable
+summary: Resolves the panel to target for a battle object according to a selector mode (ahead, at own
+  coords, at other object's coords, special).
+interface: (r0 = panel/offset arg, r1 = mode 0-3, r5 = current battle object, r7 = other object) -> r0
+  = panel ptr or coords (r0/r1), 0 on invalid mode
+details: 'Dispatches on r1: mode 0 returns battleObject_tryGetNextPanelInFacingDirection_800F964(r5) i.e.
+  the panel ahead of the object; mode 1 reads the object''s panel coords from r5+0x12/0x13 and calls sub_800F998
+  with r2 = r0 (probably an offset or secondary selector) returning a result in r0; mode 2 returns the
+  raw coords bytes at r7+0x16/0x17 in r0/r1; mode 3 calls sub_800FA20; any other mode returns 0. r5+0x12/0x13
+  and r7+0x16/0x17 look like x/y panel coordinates in the battle object struct. Return type differs per
+  mode (panel pointer vs coord pair), so callers must know the mode.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mode 0 branch: bl battleObject_tryGetNextPanelInFacingDirection_800F964 with r5 as current
+    object; mode 1 branch: ldrb r0,[r5,#0x12]/ldrb r1,[r5,#0x13] then bl sub_800F998 with r2 = original
+    r0; mode 2 branch: returns ldrb r0,[r7,#0x16]/ldrb r1,[r7,#0x17] coord pair; default path: mov r0,#0
+    for modes >3; single caller sub_80EB254, no other context known'
+  refs:
+  - bn6f/asm/asm31.s:112209
+  - 0x080EB254 sub_80EB254
+  - 0x0800F964 battleObject_tryGetNextPanelInFacingDirection_800F964
+  - 0x0800F998 sub_800F998
+  - 0x0800FA20 sub_800FA20
+  reproduce: python3 tools/asmcat.py 0x080EB402
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- what sub_800F998 and sub_800FA20 do (panel lookup by coords? special targeting?)
+- what sub_80EB254 is and which mode values it passes
+- exact meaning of r0/r2 in mode 1 and whether return is a panel pointer or coord pair per mode
+- which fields 0x12/0x13 and 0x16/0x17 are in the battle object struct
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80EB402 -> battle_getTargetPanelByMode
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EB402

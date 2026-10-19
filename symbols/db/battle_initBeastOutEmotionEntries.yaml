@@ -1,0 +1,47 @@
+name: battle_initBeastOutEmotionEntries
+address: '0x08039084'
+kind: function
+status: probable
+summary: Registers two EmotionData slots (indices 4 and 5, type 0x3A) in the global emotion array, using
+  per-index flag words from two data tables.
+interface: (r0 = entry index 0..4) -> r0 = clobbered; writes two entries into the 0x58-byte EWRAM EmotionData
+  array at 0x02008450
+details: Saves r0, then calls battle_initEmotionTableEntry_8046670 twice. Each call passes r0 = 0x3A (the
+  emotion type byte), r1 = 4 on the first call and 5 on the second, and r2 = a word fetched from one of
+  two 5-word tables (byte_80390AC and byte_80390C4) at word offset index*4. The callee then stores the
+  entry with a fixed 0x09 tag and the supplied flags. The tables' low bytes are constant per table (0x01
+  for the first, 0x03 for the second) with the index 0..4 in the second byte, so the two slots differ
+  only in that flag byte. The pairing of a 0x01-valued and a 0x03-valued entry under one type suggests
+  two states/forms of the same emotion for each index.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_8039084: lsl r0,r0,#2 + ldr r1,off_80390A8 + ldr r2,[r1,r0] selects word ''index'' from
+    first table; first bl passes r0=0x3A, r1=4; second bl passes r0=0x3A, r1=5 with table off_80390C0;
+    byte_80390AC words are 0x00000001,0x00010001,...,0x00040001; byte_80390C4 words are 0x00000003,...;
+    callee summary: battle_initEmotionTableEntry_8046670 initialises one EmotionData slot at 0x02008450
+    from (type, tag/flags); single caller sub_8038C78 invokes it during emotion-table setup'
+  refs:
+  - bn6f/asm/asm03_1_1.s:1053
+  - 0x08038C78 sub_8038C78
+  - 0x08046670 battle_initEmotionTableEntry_8046670
+  reproduce: python3 tools/asmcat.py 0x08039084
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- what emotion type 0x3A represents in the battle emotion window (Beast Out variant vs something else)
+- what the second byte of each table word (0..4) means — likely sub-index, matching the r0 argument range
+- what caller sub_8038C78 does and how many indices it iterates
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8039084 -> battle_initBeastOutEmotionEntries
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8039084

@@ -1,0 +1,55 @@
+name: battle_phaseFollowScriptedPanelPath
+address: '0x080BE8AE'
+kind: function
+status: probable
+summary: Battle-object phase handler that advances the object along a hardcoded sequence of panel waypoints
+  (mirror tables for each alliance side), setting its future panel and facing, until the path ends (phase
+  8).
+interface: (r5 = battle object) -> r0 = 0/next state; writes object FuturePanelX/Y, DirectionAngle, Timer2,
+  CurPhase
+details: r5 is a battle object; Timer2 (oBattleObject_Timer2) is used as the current step index into a
+  5-byte-per-step path table. Byte 0x20 of the object's NaviStats (alliance/side) selects between two
+  tables at byte_80BE91C (target X 5,1,2,3,4) and byte_80BE936 (target X 10,6,7,8,9), i.e. mirrored paths
+  for the two field halves. Each entry is [targetX, targetY, param, facingDir, extra]; the entry's target
+  panel and facing are applied via sub_80BF160/sub_80BF192 (r0 packed as Timer2<<24|[2]<<16|[1]<<8|[0],
+  r2 = &object[0x6C+Timer2], r3=0, r6 = object DamageAndStamina... field), storing FuturePanelX, FuturePanelY
+  and DirectionAngle = dir eor 1 (flipped facing). Timer2 is then incremented to advance to the next waypoint;
+  when the table's 0xFF terminator is reached the object's CurPhase is set to 8 and the routine returns.
+  Likely a scripted crossing/patrol movement for an enemy or field object.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldr r7, off_80BEA40/44: alliance byte (GetBattleNaviStatsByte offset 0x20) selects one of two
+    path tables; r2 = 5*Timer2 indexes the table in 5-byte entries whose first byte is 1-4 / 6-10 (target
+    panel X per step); r0 packed as Timer2<<24|e2<<16|e1<<8|e0 passed to sub_80BF160; result stores FuturePanelX/Y
+    and DirectionAngle = entry[3] eor 1; 0xFF entry terminator -> strh #8 into oBattleObject_CurPhaseAndPhaseInitialized,
+    ending the movement phase; Timer2 incremented each step, doubling as waypoint index and as offset
+    into object+0x6C buffer passed as r2'
+  refs:
+  - bn6f/asm/asm31.s:14229
+  - 0x08013774 GetBattleNaviStatsByte_AllianceFromBattleObject
+  - 0x080BE824 sub_80BE7BC
+  - 0x080BF160 sub_80BF160
+  reproduce: python3 tools/asmcat.py 0x080BE8AE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- What sub_80BF160 does with the packed (Timer2, entry[0..2]) argument and the object+0x6C+index pointer
+  (movement tween setup vs data copy) is unknown
+- Meaning of entry bytes [2] and [4] (frames/delay vs animation id) and whether byte 0x20 is truly alliance
+  or another side flag
+- No caller known, so which battle object/phase script uses this path (and whether phase 8 is 'done')
+  is unconfirmed
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BE8AE -> battle_phaseFollowScriptedPanelPath
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BE8AE

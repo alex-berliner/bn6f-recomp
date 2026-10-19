@@ -1,0 +1,48 @@
+name: battle_animEndSelectNextAnim
+address: '0x0810E262'
+kind: function
+status: probable
+summary: When the current animation reaches its end-flagged frame, switches the object's animation based
+  on two state flags and resets its AI script id.
+interface: (r0 = battle object? also in r5, r6 = AI/script state struct) -> r0 = clobbered; writes object
+  fields 0x64/0x65/0x66, oBattleObject_CurAnim, and r6 oAIState_ScriptId
+details: 'Calls sprite_getFrameParameters and tests bit 0x80 of the returned attribute byte; if clear,
+  the function returns without doing anything, suggesting that bit marks the animation''s final frame.
+  On the end frame it inspects object byte 0x64 first, then byte 0x65: if 0x64 is nonzero it sets oBattleObject_CurAnim
+  = 2 and byte 0x66 = 2, else if 0x65 is nonzero it sets CurAnim = 0 and byte 0x66 = 0, otherwise nothing
+  happens. In both taken branches it clears bytes 0x64 and 0x65 back to 0, so they act as one-shot ''change
+  animation'' request flags consumed here. Finally it zeroes r6''s oAIState_ScriptId, implying r6 is the
+  object''s AI/script state and the animation change also cancels any running script. Without known callers
+  or names for bytes 0x64/0x65/0x66, the semantic meaning of the two animations (2 and 0) is unconfirmed.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl sprite_getFrameParameters then tst r0,#0x80 / beq locret: only acts when the frame''s attribute
+    has bit 0x80 set (end-of-animation marker); ldrb from [r5,#0x64]/[r5,#0x65] with priority to 0x64
+    decides anim 2 vs anim 0 written to oBattleObject_CurAnim and byte 0x66; strb #0 to [r5,#0x64] and
+    [r5,#0x65] after branching clears the request flags (one-shot behavior); strb #0 to [r6,#oAIState_ScriptId]
+    ties the anim switch to resetting the object''s AI script state; callee summary of sprite_getFrameParameters
+    confirms r0 is tile/flip/attribute data of the current frame'
+  refs:
+  - bn6f/asm/asm32.s:1133
+  - 0x08002DEA sprite_getFrameParameters
+  reproduce: python3 tools/asmcat.py 0x0810E262
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- which entities install this as an animation-end handler (no known callers)
+- meaning of object bytes 0x64, 0x65 and 0x66
+- whether sprite attribute bit 0x80 specifically means 'animation finished' rather than another flag
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_810E262 -> battle_animEndSelectNextAnim
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810E262

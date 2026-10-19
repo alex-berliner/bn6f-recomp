@@ -1,0 +1,45 @@
+name: battle_objectPlayAnimAndWaitAction10
+address: '0x080B8FB6'
+kind: function
+status: probable
+summary: 'Battle-object action step: switch to phase 4, play anim 0xB with sound 0x7F, wait 60 frames,
+  then set CurAction 0x10'
+interface: (r5 = battle object) -> none; writes oBattleObject_CurPhase, CurAnim, Timer, CurAction, CurPhaseAndPhaseInitialized
+details: Phase 0 branch sets CurPhase to 4, CurAnim to 0xB, calls sub_80B903A (likely animation start),
+  plays sound effect 0x7F (0x80 + -1), and stores timer 0x3C (60 frames) in oBattleObject_Timer. Subsequent
+  calls decrement the timer until it goes negative, then set CurAction to 0x10 and clear CurPhaseAndPhaseInitialized
+  to 0 so the action state machine restarts at phase 0 of the next action. r5 is a battle object struct
+  using the standard oBattleObject_ layout. The unconditional phase-4 set plus fixed anim suggests a one-shot
+  scripted pose (e.g. boss transformation/telegraph) rather than reusable logic.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#oBattleObject_CurPhase]; tst/bne splits phase-0 setup from timer countdown; mov
+    r0,#0xb; strb r0,[r5,#oBattleObject_CurAnim] followed by bl sub_80B903A picks and starts an animation;
+    mov r0,#0x80; add r0,#-1; bl PlaySoundEffect plays sound 0x7F; strh #0x3c into oBattleObject_Timer,
+    then ldrh/sub #1/strh/bge implements a 60-frame delay; timer expiry writes #0x10 to oBattleObject_CurAction
+    and zeroes CurPhaseAndPhaseInitialized'
+  refs:
+  - bn6f/asm/asm31.s:1832
+  - 0x080005CC PlaySoundEffect
+  - 0x080B903A sub_80B903A
+  reproduce: python3 tools/asmcat.py 0x080B8FB6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- No caller is known, so which object/ai action uses this (and what CurAction 0x10 does next) is unclear
+- sub_80B903A is unexamined; confirming it starts the object's current animation would raise confidence
+- Which in-game entity plays sound 0x7F here
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80B8FB6 -> battle_objectPlayAnimAndWaitAction10
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80B8FB6

@@ -1,0 +1,47 @@
+name: battle_objectPhaseUpdate
+address: '0x080BB00C'
+kind: function
+status: probable
+summary: 'Per-tick update dispatcher for a battle object: makes it visible unless the opposing alliance
+  is blinded, then jumps to a handler selected by the object''s current phase.'
+interface: (r0 = scratch, r5 = battle object header pointer) -> r0 = handler-dependent; flags preserved
+details: 'First sets bit 2 of oObjectHeader_Flags (likely a ''visible/enabled'' flag) on the object in
+  r5, then calls battle_findPlayerByAlliance with the object''s alliance (flipped to the opposing side);
+  if that returns 0 (an opposing player IS blinded) the flag bit is cleared again, hiding the object from
+  blinded opponents. It then reads oBattleObject_CurPhase as an index into the jump table at off_80BB038
+  and tail-calls that handler via ''mov lr,pc; bx r1''. The four phases are: sub_80BB048, battle_mirrorTimerStateUpdate,
+  sub_80BB0D2, and battle_spawnEnemyFromRelatedAfterTimer, so the object counts down / transitions through
+  phases and eventually spawns something from a related object. Uses r5 for the object rather than r0,
+  so callers must set r5; r4 is saved only as a formality.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb/strb around oObjectHeader_Flags sets and conditionally clears bit 2 based on the blind
+    check; bl battle_findPlayerByAlliance_800EB6C with oBattleObject_Alliance; tst/bne skips the flag
+    clear when the enemy is NOT blinded; ldr r1,[r1,r0] with r0=oBattleObject_CurPhase and bx through
+    off_80BB038 dispatches one of four phase handlers; table entries battle_mirrorTimerStateUpdate and
+    battle_spawnEnemyFromRelatedAfterTimer show this is a timed multi-phase battle object; single caller
+    sub_80BAF74 invokes it as an object update hook
+  refs:
+  - bn6f/asm/asm31.s:6402
+  - 0x080BAF74 sub_80BAF74
+  - 0x0800EB6C battle_findPlayerByAlliance_800EB6C
+  reproduce: python3 tools/asmcat.py 0x080BB00C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- exact meaning of flag bit 2 on oObjectHeader_Flags (visible vs 'affects enemies')
+- what sub_80BB048 and sub_80BB0D2 do in phases 0 and 2, to pin down which trap/object this is
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BB00C -> battle_objectPhaseUpdate
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BB00C

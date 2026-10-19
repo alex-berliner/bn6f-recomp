@@ -1,0 +1,50 @@
+name: ai_getDifficultySpeed
+address: '0x080F710A'
+kind: function
+status: probable
+summary: Computes a difficulty-scaled movement/attack speed (16.16 fixed-point) for an AI battle object,
+  signed by facing side, and returns the matching 360-unit travel duration in r1.
+interface: (r7 = battle object AI vars struct) -> r0 = frontDirection * speedByDifficulty (16.16 fixed,
+  +3.0/+3.5/+4.0/+4.5), r1 = (360 << 16) / speed (frames to cross 360 units); flags from division
+details: Calls object_getFrontDirection to get +1/-1 based on the object's alliance and DirectionFlip.
+  Reads the AI difficulty tier from [r7, oAIAttackVars_AiDifficultyTier] and indexes a word table at 0x80F7130
+  whose entries are 0x30000, 0x38000, 0x40000, 0x48000 — i.e. 3.0/3.5/4.0/4.5 in 16.16 fixed point, higher
+  tier = faster. It computes 9 * (0x28 << 16) = 360 << 16 and uses SWI 6 (Div) to get r1 = (360 << 16)
+  / speed, i.e. the time to traverse 360 units at that speed; the tier-1 (3.5) division truncates to 102.
+  The function then swaps the results so r0 = frontDirection * speed (a signed per-frame velocity) and
+  r1 = duration. The caller at 0x80F6EA6 presumably uses both to launch a timed attack whose projectile
+  speed varies with difficulty tier.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl object_getFrontDirection then mul r4, r1 sign-flips the speed by the object''s facing/alliance
+    (asm lines 2-8); ldrb from [r7, oAIAttackVars_AiDifficultyTier] << 2 indexes table 0x80F7130: entries
+    0x00030000/0x00038000/0x00040000/0x00048000 = 3.0-4.5 in 16.16 fixed; mov r0,#9; r2=0x28<<16; mul;
+    svc 6 implements (360<<16)/speed, so r1 is a travel-duration and r0 the signed speed; return sequence
+    mov r1, r0; mov r0, r4 swaps quotient and product, returning speed in r0 and duration in r1'
+  refs:
+  - bn6f/asm/asm31.s:137189
+  - 0x080F6EA6 sub_80F6EA6
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x080F710A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- What the caller at 0x80F6EA6 does with r0/r1 — whether 360 units is a screen-relative distance for a
+  projectile or a moving-object attack
+- Exact meaning of fields in the r7 AI vars struct besides AiDifficultyTier
+- Whether the table values are speeds of a specific attack (e.g. a boss dash or shot) and why tier 1 uses
+  a non-integer duration
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F710A -> ai_getDifficultySpeed
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F710A

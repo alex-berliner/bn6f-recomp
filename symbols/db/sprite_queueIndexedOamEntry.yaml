@@ -1,0 +1,45 @@
+name: sprite_queueIndexedOamEntry
+address: '0x08089370'
+kind: function
+status: probable
+summary: Queues one hard-coded OAM entry (a fixed screen sprite/overlay) selected by index from a table.
+interface: (r0 = entry index) -> r0 = clobbered; no meaningful return
+details: The index in r0 is scaled by 8 to walk an 8-byte-per-entry table at byte_808938C, whose entries
+  are pairs of words that look exactly like OAM attributes (attr0/attr1 word, attr2 word, e.g. 0x40DC0004/0x0000D250).
+  It loads the two words and calls sprite_queueOamEntry(word0, (u16)word1, 0, 1) via the Thumb thunk,
+  submitting that fixed sprite to the OAM queue for the frame. Several table rows use y >= 0xE0 (attr0
+  low bits 0xE0/0xE1), which the GBA treats as off-screen, so entries double as 'hide this overlay' variants;
+  others place sprites near the bottom of the screen. The function is stateless besides the table lookup,
+  so callers pick which overlay sprite to show by index.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'lsl r0, r0, #3; add r1, r1, r0 — r0 is an index into 8-byte records at byte_808938C; ldr r0,[r1];
+    ldr r1,[r1,#4]; bl sprite_queueOamEntryThunk_802FE28 — table words are passed as the OAM attribute
+    pair; byte_808938C rows like 04 00 DC 40 | 50 D2 00 00 decode as attr0=0x0004, attr1=0x40DC, attr2=0xD250;
+    rows with attr0 y=0xE0/0xE1 (e.g. 00 00 E0 40) are off-screen/hide entries, typical of overlay toggles'
+  refs:
+  - bn6f/asm/asm23.s:636
+  - 0x0808917C sub_808917C
+  - 0x0808C948 sub_808C948
+  - 0x0802FE28 sprite_queueOamEntryThunk_802FE28
+  reproduce: python3 tools/asmcat.py 0x08089370
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- Which exact on-screen sprite this draws (callers sub_808917C and sub_808C948 not shown) and what each
+  index means
+- Meaning of sprite_queueOamEntry's third/fourth arguments (0, 1) — likely layer/priority but unconfirmed
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8089370 -> sprite_queueIndexedOamEntry
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8089370

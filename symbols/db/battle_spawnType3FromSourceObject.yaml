@@ -1,0 +1,48 @@
+name: battle_spawnType3FromSourceObject
+address: '0x080D52C4'
+kind: function
+status: probable
+summary: Spawns a type-3 battle object with id 0x7F and copies panel position, element, related-object
+  pointer, damage/extra vars, alliance/direction-flip and an extra var from the source object, then sets
+  header flag 0x10 on the new object.
+interface: (r0 = source battle object ptr (also passed through as spawn arg after mov r5,r0), r1 = PanelX,
+  r2 = PanelY, r3 = Element) -> r0 = new object ptr, or 0 if spawn failed; Z from spawn result
+details: 'The routine saves its arguments, calls object_spawnType3 with object id 0x7F (mov r0,#0x7f),
+  and on success fills the new object''s fields from the caller-supplied source: PanelX, PanelY, Element
+  byte fields, RelatedObject1Ptr, DamageAndStaminaDamageCounterDisabler, ExtraVars, and copies the AllianceAndDirectionFlip
+  halfword. It writes the source pointer (r5) into [newObject+ExtraVars] and stores one popped word at
+  ExtraVars+4, so the source object is linked back from the spawned one. It then ORs 0x10 into oObjectHeader_Flags
+  of the new object — likely a state/behavior flag for this spawn kind. On spawn failure it just restores
+  and returns 0/keeps flags clear. Essentially a tailored wrapper around object_spawnType3 that clones
+  combat context from an existing object into the new one.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mov r0,#0x7f; bl object_spawnType3 — spawns fixed battle object id 0x7F of type 3; strb r1/[r0,#oBattleObject_PanelX],
+    r2->PanelY, r3->Element — caller args become panel pos and element; str r5,[r0,#RelatedObject1Ptr];
+    str r0,[r7] — source object pointer stored as related object; ldrh/strh oBattleObject_AllianceAndDirectionFlip
+    copied from source object; ldrb oObjectHeader_Flags; orr #0x10; strb — sets flag 0x10 on the new object
+    only on spawn success'
+  refs:
+  - bn6f/asm/asm31.s:64143
+  - 0x080FAB48 sub_80FAB48
+  - 0x08003358 object_spawnType3
+  reproduce: python3 tools/asmcat.py 0x080D52C4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- Which caller sub_80FAB48 invokes it (attack/effect context) to know what object id 0x7F represents in-game
+- Meaning of oObjectHeader_Flags bit 0x10 and of the value stored at ExtraVars+4
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D52C4 -> battle_spawnType3FromSourceObject
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D52C4

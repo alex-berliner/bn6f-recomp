@@ -1,0 +1,46 @@
+name: battle_applyParam4ColorShader
+address: '0x080BD9D4'
+kind: function
+status: probable
+summary: Thin wrapper that applies a color/palette shader to a battle object's sprite, using the object's
+  Param4 field to derive the argument for sprite_setColorShader.
+interface: (r5 = battle object) -> r0 = result of sprite_setColorShader; reads oBattleObject_Param4
+details: Loads the byte at r5+oBattleObject_Param4 into r1, computes r0 = ((Param4*32+1)*32+1) = Param4*1057,
+  then tail-calls sprite_setColorShader with r0 and r1. Given the callee's known behavior (writes a color-shader
+  id into the sprite block picked by the object's high-nibble sprite index), this is a one-purpose helper
+  to tint/recolor an object's sprite during battle. Param4 likely selects the effect (e.g. hit-flash,
+  attribute tint). The odd ×1057 term suggests r0 may be an offset or encoded value rather than a plain
+  pointer, or that the callee treats r0 as an index/offset it resolves against a fixed table or current
+  object.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'asm: ldrb r1,[r5,#oBattleObject_Param4] is the only input read; no other fields touched; asm:
+    lsl/add/lsl/add chain yields r0 = Param4*1057 before the bl; asm: sole callee is sprite_setColorShader
+    (known: stores a color-shader id into the object''s selected sprite block); function body is 8 instructions
+    with no other logic, i.e. purely a parameter-preparation wrapper; only caller sub_80BD4BC is undocumented,
+    giving no extra context'
+  refs:
+  - bn6f/asm/asm31.s:12207
+  - 0x080BD4BC sub_80BD4BC
+  - 0x08002ED0 sprite_setColorShader
+  reproduce: python3 tools/asmcat.py 0x080BD9D4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- exact meaning of the Param4*1057 value (offset into a shader/palette table, encoded id, or pointer?)
+- what Param4 holds (shader id, effect kind, timer?) and which game effect drives it
+- what the sole caller sub_80BD4BC does and when in battle it fires
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BD9D4 -> battle_applyParam4ColorShader
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BD9D4

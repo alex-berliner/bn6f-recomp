@@ -1,0 +1,50 @@
+name: battle_scanFieldPanelsEffect
+address: '0x080E2DE0'
+kind: function
+status: probable
+summary: Sweeps all 18 battlefield panels for a per-alliance panel-flag condition and applies an element/damage
+  effect via sub_80CCD4A, returning how many panels matched.
+interface: (r0 = battle object ptr in r5 on entry, args in r0-r4 pushed/popped) -> r0 = number of panels
+  that matched; flags not meaningful
+details: 'Loads an 8-byte entry from byte_80E2E24 indexed by the object''s Alliance field (<<3), giving
+  two words (alliance 0: {0,0x20}, alliance 1: {0,0x40}) used as flag masks. It then iterates the full
+  6x3 panel grid: outer r0 counts columns 6..1, inner r1 counts rows 3..1, passing the loop counters as
+  the panel x/y to object_checkPanelParameters along with the table masks. For each panel matching the
+  condition it calls sub_80CCD4A with the same x/y plus the object''s Element, Z16Save, and DamageAndStaminaDamageCounterDisabler+Z16Save
+  in r6, and increments a match counter. All call-clobbered registers are preserved via push/pop {r0-r4}
+  around each call. The returned count is the number of panels the effect was applied on.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r1,[r5,#oBattleObject_Alliance]; lsl r1,#3; ldr r7,off_80E2E20 selects the per-alliance
+    table entry in byte_80E2E24; mov r0,#6 / mov r1,#3 nested loops decrementing after each call cover
+    the whole 6x3 field, counters passed as coordinates to object_checkPanelParameters; push/pop {r0-r4}
+    around object_checkPanelParameters and the ldrb Element/ldr DamageAndStamina/ldrh Z16Save block before
+    bl sub_80CCD4A show the effect call reuses x/y and adds element/damage data; r4 counts iterations
+    where check returned nonzero, and 'mov r0,r4' returns that tally; only caller sub_80E2D30 and table
+    values 0x20/0x40 per alliance support a side-specific panel-flag condition
+  refs:
+  - bn6f/asm/asm31.s:93856
+  - 0x080E2D30 sub_80E2D30
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x080CCD4A sub_80CCD4A
+  reproduce: python3 tools/asmcat.py 0x080E2DE0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- What sub_80CCD4A actually does with element/Z16Save/damage (damage application vs status effect) is
+  unknown
+- Which panel states the 0x20/0x40 flag bits represent, and what sub_80E2D30 triggers this sweep for
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E2DE0 -> battle_scanFieldPanelsEffect
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E2DE0

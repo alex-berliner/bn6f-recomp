@@ -1,0 +1,45 @@
+name: battle_checkAnyAdjacentTile
+address: '0x08026726'
+kind: function
+status: probable
+summary: Runs a tile checker on all eight tiles adjacent to a battle object and reports whether any of
+  them passes.
+interface: (r0 = battle object pointer, passed through to checker) -> r0 = nonzero if the checker succeeded
+  on at least one adjacent tile, else 0
+details: 'Loads the offset table byte_80267D5 and tail-delegates to battle_checkFacingOffsets, which walks
+  the 0x7F-terminated list of signed (x, y) tile offsets, mirrors each offset by the object''s facing
+  direction, and calls a checker on each resulting relative tile, returning early on the first success.
+  The table enumerates every neighbor: (-1,0), (-1,-1), (-1,1), (0,-1), (0,1), (1,-1), (1,1), (1,0). So
+  the function is simply ''does any tile adjacent to this object pass the check''. The many other tables
+  and the pointer table off_80267E8 belong to sibling wrappers, each selecting a different neighbor set
+  (e.g. straight lines, diagonals, long runs up to 5 tiles).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldr r0, off_802683C then bl battle_checkFacingOffsets: pure wrapper passing one offset table;
+    byte_80267D5 = FF,0 FF,FF FF,1 0,FF 0,1 1,FF 1,1 1,0, 7F: exactly the eight neighbors of (0,0); Callee
+    summary: walks 0x7F-terminated tile offsets mirrored by facing and returns nonzero on first successful
+    checker; Pointer table off_80267E8-off_802683C holds 22 sibling tables, indicating a family of neighbor-set
+    variants of which this is one'
+  refs:
+  - bn6f/asm/asm03_0.s:434
+  - 0x080265D0 battle_checkFacingOffsets
+  reproduce: python3 tools/asmcat.py 0x08026726
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- No callers known, so the battle context (which checker battle_checkFacingOffsets invokes, and what 'success'
+  means here — e.g. occupied tile, panel type) is unconfirmed
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8026726 -> battle_checkAnyAdjacentTile
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8026726

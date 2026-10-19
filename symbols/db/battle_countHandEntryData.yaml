@@ -1,0 +1,47 @@
+name: battle_countHandEntryData
+address: '0x080E4566'
+kind: function
+status: probable
+summary: 'Returns a count derived from a battle hand slot: for a mode-2 selection it scans halfwords in
+  the hand entry until the 0xFFFF terminator, otherwise returns a cached byte from the object.'
+interface: (r0 = battle object; [r0+0x58] = pointer to a state struct whose byte 0 is a mode, [r0+0x16]
+  = hand slot index, [r0+0x1a] = cached count) -> r0 = count of halfwords before 0xFFFF (or cached byte);
+  flags clobbered
+details: If the pointer at +0x58 is null it returns 0. When the mode byte at [ptr] equals 2, it takes
+  the hand slot address (via getBattleHandAddr on the index at +0x16, array at 0x20349C0, 0x50-byte stride),
+  reads the byte at offset 0 of that slot, and seeks to offset 2 + 2*byte within the 0x50-byte entry.
+  From there it counts halfwords until it hits 0xFFFF (0x80E4630) and returns that count. If the mode
+  byte is anything other than 2, it simply returns the byte at object+0x1a, which is presumably a cached/stale
+  version of the same count. The 0x50-byte hand entry thus contains a byte header followed by a 0xFFFF-terminated
+  halfword list whose meaning (codes, tags, sub-data) is not shown here.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r2,[r1]; cmp r2,#2; bne loc_80E4594 — mode byte selects scan vs cached byte at [r0,#0x1a];
+    bl getBattleHandAddr_8010018 with ldrb r0,[r0,#0x16] — hand slot index from object+0x16; ldrb r1,[r0];
+    add r1,r1,r1; add r1,#2; add r1,r1,r0 — entry offset 2 + 2*first byte of the slot; ldr r2,dword_80E4630
+    =0xffff; loop cmp r3,r2; beq — counts halfwords until terminator, returns in r0
+  refs:
+  - bn6f/asm/asm31.s:97272
+  - 0x080E4532 sub_80E4532
+  - 0x08010018 getBattleHandAddr_8010018
+  reproduce: python3 tools/asmcat.py 0x080E4566
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- What the 0xFFFF-terminated halfword list inside the 0x50-byte hand entry represents (codes, links, sub-chips?)
+- What the mode byte at [ptr] distinguishes (other modes/values of the struct at +0x58)
+- Whether the cached byte at +0x1a is written by the caller sub_80E4532 to mirror the scanned count
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E4566 -> battle_countHandEntryData
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E4566

@@ -1,0 +1,49 @@
+name: battle_spawnLinkedType14
+address: '0x080BB49C'
+kind: function
+status: probable
+summary: Spawns battle object type 0x14 linked to an existing object, copying its panel position, element,
+  alliance and name ID.
+interface: (r0 = panelX, r1 = panelY, r2 = element, r5 = source BattleObject ptr, r6 = damage/counter-disabler
+  value, r7 = extraVars ptr) -> r0 = new BattleObject or 0; sets Z from spawn result
+details: Calls object_spawnType1 with object index 0x14; on success it fills the new object's PanelX/PanelY/Element
+  from r0-r2 (which the prologue pushes and the epilogue pops into r1-r3 for the stores), stores r6 into
+  DamageAndStaminaDamageCounterDisabler, r5 into RelatedObject1Ptr and r7 into ExtraVars, then writes
+  byte 1 to [ExtraVars]. It copies AllianceAndDirectionFlip and NameID halfwords from the source object
+  at r5 to the new object, and ORs flag 0x10 into the new object's oObjectHeader_Flags. This makes the
+  spawned type-0x14 object a linked companion/clone of the source object rather than an independent spawn.
+  Failure path returns early without touching anything. The exact gameplay role of type 0x14 depends on
+  its type-specific initialiser inside object_spawnType1, which is not shown.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: mov r0,#0x14; bl object_spawnType1 — spawns object type 0x14; strb r1/r2/r3 to oBattleObject_PanelX/PanelY/Element
+    — caller args become the new object's panel position and element; str r5,[r0,#oBattleObject_RelatedObject1Ptr]
+    plus ldrh copies of AllianceAndDirectionFlip/NameID from r5 — new object is linked to and mirrors
+    the source object; mov r1,#1; strb r1,[r7] and orr with 0x10 into oObjectHeader_Flags — extraVars
+    byte 0 set and special flag applied; beq locret after the spawn call — null result short-circuits
+    all field setup
+  refs:
+  - bn6f/asm/asm31.s:7030
+  - 0x080E7208 sub_80E7208
+  - 0x08003320 object_spawnType1
+  reproduce: python3 tools/asmcat.py 0x080BB49C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- What gameplay object type 0x14 is (its initialiser inside object_spawnType1)
+- Who calls this and with what source object (sub_80E7208 is undocumented), which would reveal the in-game
+  meaning (clone, shadow, trap, etc.)
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BB49C -> battle_spawnLinkedType14
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BB49C

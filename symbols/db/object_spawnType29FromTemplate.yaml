@@ -1,0 +1,48 @@
+name: object_spawnType29FromTemplate
+address: '0x080C0448'
+kind: function
+status: probable
+summary: Spawns battle object id 0x29 via object_spawnType1 and initialises it from fields of a caller-provided
+  template struct, returning the new object.
+interface: (r0 = object id 0x29, r1-r3/stack = spawn args, r5 = source struct ptr, r6/r7 = extra values)
+  -> r0 = new BattleObject or 0; flags from spawn result (Z for null check)
+details: 'Wrapper around object_spawnType1 with the fixed object index 0x29 (mov r0,#0x29 before the bl).
+  The callee returns the new BattleObject in r5, which is moved to r0 before the caller''s saved r5 is
+  popped back, so r5 then serves as the source/template struct. On failure (r0 == 0) it returns immediately
+  without touching anything. On success it copies template fields into the new object: word r5 -> +0x4c
+  (likely back-pointer/owner), halfword +0x16 -> +0x16, word r6 -> +0x60, halfword +0x12 -> +0x12, word
+  [r7+0x10] -> +0x20, and words +0x40/+0x44 -> +0x40/+0x44. Finally it clears bit 0x10 of the object''s
+  flag byte at +0x00 (bic r1,#0x10), probably an ''inactive/hidden'' bit, so the object starts active.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: mov r0,#0x29; bl object_spawnType1 — fixed object index passed to the spawner; mov r0,r5 / pop
+    {r5} — callee returns the object in r5, which then frees r5 to be the template pointer; str r5,[r0,#0x4c];
+    ldrh/str +0x16, +0x12; str r6,[r0,#0x60]; ldr [r7,#0x10]->+0x20; +0x40/+0x44 copied — bulk field init
+    from the template; beq locret_80C0478 right after the call — early-out when the spawner returned null;
+    ldrb r1,[r0]; mov r2,#0x10; bic r1,r2; strb — clears bit 0x10 of the object's first-byte flags
+  refs:
+  - bn6f/asm/asm31.s:18163
+  - 0x080C047A sub_80C047A
+  - 0x08003320 object_spawnType1
+  reproduce: python3 tools/asmcat.py 0x080C0448
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- What object id 0x29 actually is in-game (needs the object-type table or a caller with known context)
+- Exact meaning of the copied fields +0x12/+0x16/+0x40/+0x44 and of [r7+0x10] -> +0x20
+- Whether r5 is also passed as a spawn stack argument or only used as the post-spawn template
+- Semantics of the bit 0x10 cleared at +0x00
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C0448 -> object_spawnType29FromTemplate
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C0448

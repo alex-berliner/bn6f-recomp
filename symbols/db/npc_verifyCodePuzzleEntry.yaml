@@ -1,0 +1,49 @@
+name: npc_verifyCodePuzzleEntry
+address: '0x08130728'
+kind: function
+status: probable
+summary: Records each pick of a two-part code-entry NPC puzzle and, once the sequence is full, checksums
+  both halves to decide success or a fail dialog.
+interface: (r0 = struct with the two picked values at +8/+0x18; r5 = puzzle state, count at +0x3C, limit
+  at +0x34) -> r0 = destroyed by call; no meaningful return
+details: 'Each call stores the halfword at r0+8 into unk_20270EC and the one at r0+0x18 into unk_202714C,
+  both indexed by the running count kept in r5+0x3C, then increments that count by 2. When the count reaches
+  r5+0x34 it stops appending and validates: it sums the halfwords from offset 0x20 through 0x5A of each
+  buffer and compares each sum to the halfword stored at that buffer''s 0x5C, which acts as a checksum.
+  If both halves pass, sub_8130020 runs (the accept path); any mismatch calls npc_startDialogScript so
+  the NPC responds to a wrong code. Each buffer holds up to 30 entry slots (0x20..0x5A) plus one checksum
+  slot. The two parallel buffers suggest two rows/rounds of input that must both be correct.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_8130728: strh r1,[r4,r2] / strh r1,[r7,r2] with r2 = [r5,#0x3c] then add r2,#2 — appends
+    entries to two parallel buffers using the shared counter; loops from #0x20 while <#0x5c then ldrh
+    r1,[r4,r0]; cmp r1,r2 — 0x5C slot of each buffer is compared to the sum of slots 0x20..0x5A, i.e.
+    a checksum; bne loc_813076C -> bl npc_startDialogScript vs both-checksums-pass -> bl sub_8130020 —
+    mismatch triggers an NPC dialog, match a separate success routine; callee npc_startDialogScript is
+    documented as putting an NPC into talking state, confirming this runs inside an NPC interaction'
+  refs:
+  - bn6f/asm/asm36.s:980
+  - 0x0812F858 sub_812F858
+  - 0x08130424 npc_startDialogScript
+  - 0x08130020 sub_8130020
+  reproduce: python3 tools/asmcat.py 0x08130728
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- What sub_8130020 does on success (reward/advance) and what sub_812F858 feeds into r0/r5 — i.e. which
+  NPC and puzzle this is, and what the fields of the state struct at +0x34/+0x3C and the 0x20..0x5C buffer
+  layout are filled with
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8130728 -> npc_verifyCodePuzzleEntry
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8130728

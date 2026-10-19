@@ -1,0 +1,47 @@
+name: battle_armAttachmentSpawnFlankEffects
+address: '0x080D7E98'
+kind: function
+status: probable
+summary: Periodic update for a timed battle object that spawns two effects on the panels directly above
+  and below its own panel, then restarts its cycle.
+interface: (r5 = battle object) -> void; destroys nothing, sets oBattleObject_CurPhase and oBattleObject_Timer2
+details: 'Runs as a per-frame object update. On phase 0 it initializes: sets CurPhase=1 and Timer2=0xF.
+  While Timer2 counts down, at the tick where it equals 0xB it calls sub_80D7EF6 twice with the object''s
+  own PanelX and PanelY-1 with r2=0xE1, and PanelX/PanelY+1 with r2=0xD1 — i.e. it plants something on
+  the two vertically adjacent panels, with the two r2 values likely distinguishing object/effect kinds
+  for the two sides. When Timer2 reaches 0 it clears CurPhase back to 0, so the next frame re-initializes
+  and the spawn cycle repeats every 15 frames. The function never destroys the object; its lifetime is
+  handled by the caller''s own timer logic.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'caller 0x080D7E7A battle_updateArmAttachmentObject ''Per-frame update for a timed battle object:
+    counts its Timer down'' matches this being an object update handler; push/ldrb [r5,#oBattleObject_CurPhase]/cmp
+    0: phase-0 branch sets CurPhase=1 and Timer2=0xF (init); cmp r0,#0xB branch calls sub_80D7EF6 twice
+    with PanelY-1/r2=0xE1 and PanelY+1/r2=0xD1; Timer2 decrement with bgt, then ''strb 0,[r5,#oBattleObject_CurPhase]''
+    at 0, making the cycle loop'
+  refs:
+  - bn6f/asm/asm31.s:70040
+  - 0x080D7E7A battle_updateArmAttachmentObject
+  - 0x080D7EF6 sub_80D7EF6
+  reproduce: python3 tools/asmcat.py 0x080D7E98
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- 'sub_80D7EF6 is unknown: whether it spawns an attack hitbox, a visual effect, or a tile-state change
+  on the target panel is not shown'
+- what r2=0xE1 vs 0xD1 select in sub_80D7EF6 (kind/behavior ID vs palette/param)
+- which in-game object uses this handler and why only the two vertical neighbor panels are affected
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D7E98 -> battle_armAttachmentSpawnFlankEffects
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D7E98

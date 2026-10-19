@@ -1,0 +1,48 @@
+name: ai_chargeAttackState
+address: '0x080F1350'
+kind: function
+status: probable
+summary: 'AI attack-state step for a charged enemy attack: on first entry boosts the attack''s damage/element
+  and starts a ~30-frame charge, plays a sound near the end, and sets the hit element when the charge
+  finishes.'
+interface: (r5 = battle object, r7 = oAIAttackVars of the attack) -> r0 = void; no flags used
+details: 'If oAIAttackVars_AttackElement is still 0, this is the attack''s first frame: element is set
+  to 4 (wood), Damage is increased by AttackBoost (the charge bonus), the object''s animation is set to
+  6, and StepTimer counts 0x1E frames. On subsequent frames StepTimer is decremented; at the 0xB tick
+  it calls sub_80F13B4 (unexamined, likely a charge effect/spawn) and plays sound 0x146 via PlaySoundEffect(0x47+0xFF).
+  When the timer reaches 0 it writes element 4 into oAIAttackVars_HitElement, making the pending attack
+  deal that element. The state machine convention (element 0 = not yet initialized, timer counting down
+  to fire) matches other oAIAttackVars step handlers.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne splits first-frame init from countdown ticks;
+    add r0 = Damage + AttackBoost; strh back into oAIAttackVars_Damage on entry; StepTimer = 0x1E, decremented
+    each tick, at 0 bl sub_80F13B4 + PlaySoundEffect(0x146); when StepTimer <= 0, HitElement = 4, matching
+    the element stored in AttackElement; oBattleObject_CurAnim = 6 on entry, so the object plays a charge/pose
+    animation
+  refs:
+  - bn6f/asm/asm31.s:125153
+  - 0x080005CC PlaySoundEffect
+  - 0x080F13B4 sub_80F13B4
+  reproduce: python3 tools/asmcat.py 0x080F1350
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- Which boss/enemy uses this state (no known caller), so element 4's identity as a deliberate wood attack
+  vs. a generic constant is unconfirmed
+- What sub_80F13B4 does (likely spawns the charge visual/effect)
+- How AttackBoost is populated and whether anim 6 is a specific charge animation
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F1350 -> ai_chargeAttackState
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F1350

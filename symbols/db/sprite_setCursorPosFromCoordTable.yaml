@@ -1,0 +1,44 @@
+name: sprite_setCursorPosFromCoordTable
+address: '0x0811DE74'
+kind: function
+status: probable
+summary: Sets a sprite's position to a fixed base (176,64) plus an (x,y) pair looked up from a static
+  table by index — a cursor/highlight position for a vertical list.
+interface: (r0 = entry index into table at 0x811DE94) -> r0 = result of sprite_setCoordinates; sets sprite
+  x = 0xB0 + table[index*2], y = 0x40 + table[index*2+1]
+details: Loads two signed halfwords from byte_811DE94 at r0*4 and r0*4+2 (a table of ~19 (x,y) halfword
+  pairs), adds the constants 0xB0 and 0x40 to them, and calls sprite_setCoordinates to write them into
+  the target object's sprite coordinates. All table x entries are 0 while y varies (0, 4, 6, 8, 0xC, 0x10),
+  consistent with vertical list rows of differing heights (small-font text lines); base (176,64) is a
+  screen-space anchor. The sign-extension (ldrsh) allows negative offsets, though none appear in this
+  table. The exact UI (which menu owns the cursor and sprite) is not visible from this function alone.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrsh r0/r1 from byte_811DE94 at r0*4 and +2: table of coordinate pairs indexed by the argument;
+    add r0,#0xb0 / add r1,#0x40 before bl sprite_setCoordinates: fixed base offset added to table values;
+    callee sprite_setCoordinates writes x/y into the sprite sub-entry, confirming these are sprite coordinates;
+    table y values 4/6/8/0xC/0x10 with x always 0 match row spacing of a text list rather than a grid'
+  refs:
+  - bn6f/asm/asm32.s:32693
+  - 0x0811DC88 sub_811DC88
+  - 0x0800307C sprite_setCoordinates
+  reproduce: python3 tools/asmcat.py 0x0811DE74
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- which UI screen owns the sprite (caller sub_811DC88 is undocumented)
+- what the indices correspond to (rows of which list)
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_811DE74 -> sprite_setCursorPosFromCoordTable
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811DE74

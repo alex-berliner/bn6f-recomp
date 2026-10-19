@@ -1,0 +1,51 @@
+name: ai_attackChargeShot
+address: '0x08105F66'
+kind: function
+status: probable
+summary: 'AI enemy attack handler: charges up a shot (with charge sound), then repeatedly fires it on
+  a timer until the burst count runs out.'
+interface: (r7 = enemy AI attack vars, r5 = battle object; uses only globals/struct fields, no args) ->
+  void
+details: 'Runs as a per-frame AI attack step. On entry, if AttackElement is 0 it initializes the attack:
+  sets AttackElement = 4, plays animation 0x1A on the battle object, calls sub_81066C0 (likely charge/start
+  pose setup), plays sound effect 0x2B, copies AttackBoost2 into StepTimer, and loads ChargeCycles = 0x10.
+  While charging, it decrements ChargeCycles each frame and replays sound 0x2B, resetting ChargeCycles
+  to 0x10 when it expires. Once charging finishes, StepTimer counts down and sub_81066EA is called on
+  each expiry (likely spawning/firing a projectile), reloading StepTimer from AttackBoost2; TimerOrCycles
+  counts the shots fired, and when it reaches 0 the handler writes 0x10 to HitElement, which presumably
+  signals the attack script/state machine that this attack phase is complete.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb/strb on oAIAttackVars_AttackElement with 'tst; bne' picks init vs ongoing path; init writes
+    4 and plays SFX 0x2B; mov r0,#0x1a; strb r5,CurAnim; bl sub_81066C0 sets the object's charge/startup
+    animation; ChargeCycles decremented and reloaded to 0x10 with sound 0x2B both at init and charge-expiry
+    (charge loop); StepTimer expiry calls sub_81066EA then reloads from AttackBoost2 and counts TimerOrCycles
+    down (repeated firing); TimerOrCycles == 0 writes 0x10 to oAIAttackVars_HitElement, ending the attack
+    phase
+  refs:
+  - bn6f/asm/asm31.s:168557
+  - 0x080005CC PlaySoundEffect
+  - 0x081066C0 sub_81066C0
+  - 0x081066EA sub_81066EA
+  reproduce: python3 tools/asmcat.py 0x08105F66
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- What element value 4 and HitElement 0x10 mean in the attack-script state machine (no consumers of these
+  fields were shown)
+- What sub_81066C0 and sub_81066EA do exactly (charge-start setup vs projectile spawn)
+- No callers known, so the trigger (which AI attack script selects this handler) is unconfirmed
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8105F66 -> ai_attackChargeShot
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8105F66

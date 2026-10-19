@@ -1,0 +1,46 @@
+name: battle_spawnType13LinkedCopy
+address: '0x080BB13E'
+kind: function
+status: probable
+summary: Spawns a type-0x13 battle object that copies its creator's panel position, element, alliance,
+  name and extra vars, and links back to the creator.
+interface: '(r0..r2 saved by caller: panelX, panelY, element; r4 = obj_idx-arg context, r5 = parent BattleObject,
+  r6 = damage counter value, r7 = extra vars ptr) -> r0 = new BattleObject or 0 on failure'
+details: Calls object_spawnType1 with type 0x13; on success the returned object gets PanelX/PanelY/Element
+  from the caller's saved arguments, DamageAndStaminaDamageCounterDisabler from r6, and ExtraVars from
+  r7, whose first byte is set to 1. The new object inherits AllianceAndDirectionFlip and NameID from the
+  parent object in r5 and stores r5 (the parent) as RelatedObject1Ptr. ObjectHeader_Flags bit 0x10 is
+  set on the new object, likely marking it as a linked/attached entity. Failure of the spawn (r0=0) short-circuits
+  to return.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl object_spawnType1 with mov r0,#0x13 selects the spawned object type; strb r1/r2/r3 to oBattleObject_PanelX/PanelY/Element
+    come from the caller's arguments pushed at entry; str r5,[r0,#oBattleObject_RelatedObject1Ptr] with
+    r5 being the pre-call parent object links child to creator; ldrh r1,[r5,#oBattleObject_AllianceAndDirectionFlip]/NameID
+    copied from parent shows inheritance of team and identity; orr r2,#0x10 into oObjectHeader_Flags marks
+    the new object with a special flag
+  refs:
+  - bn6f/asm/asm31.s:6570
+  - 0x080E7070 sub_80E7070
+  - 0x08003320 object_spawnType1
+  reproduce: python3 tools/asmcat.py 0x080BB13E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- What the caller 0x080E7070 is and which gameplay entity uses type 0x13 (e.g. which chip/enemy effect
+  spawns it)
+- Meaning of ObjectHeader_Flags bit 0x10 and of ExtraVars byte 0 = 1 for this object type
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BB13E -> battle_spawnType13LinkedCopy
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BB13E

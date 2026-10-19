@@ -1,0 +1,49 @@
+name: battle_aiGetVersionedChanceParams
+address: '0x080FFB26'
+kind: function
+status: probable
+summary: Looks up a pair of AI tuning values (a percent-like value and a constant 10) from version-indexed
+  tables and returns them packed into one word.
+interface: (r0 = AI version index 0..3) -> r0 = halfword from table byte_80FFB54 (0x1E/0x32/0x50/0x64)
+  | (halfword from byte_80FFB6C, always 0xA, << 16)
+details: The input index is multiplied by 8 and used to read a halfword from two 8-byte tables (four halfword
+  entries each) via battle_aiGetVersionedTableEntry_800FE12, which handles AI version 4 with a scaled
+  entry. The first table yields 30/50/80/100 depending on version, the second always yields 10; the two
+  halfwords are combined as low|high<<16 and returned. The 30/50/80/100 progression strongly suggests
+  per-version probabilities or thresholds (percent or per-mille) for some AI behavior, with 10 likely
+  a fixed count, interval, or second percentage. Two alternate table pointers (byte_80FFB5C, byte_80FFB74)
+  sit in the literal pool but are never loaded by this function, hinting at sibling variants nearby. Without
+  callers or a named consumer of the returned pair, the exact gameplay meaning (e.g., chance to counter
+  vs. duration) is unresolved.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mul r0,#8 / add + bl battle_aiGetVersionedTableEntry_800FE12 twice: two halfword lookups by
+    the same index; byte_80FFB54 = 1E 00 32 00 50 00 64 00 (30,50,80,100) — percent-like per-version values;
+    byte_80FFB6C = 0A x4 — second component constant 10; lsl r0,#0x10 / orr r6 packs the two halfwords
+    into the returned word; callee summary: halfword from an AI parameter table indexed by AI version,
+    special scaled entry for version 4'
+  refs:
+  - bn6f/asm/asm31.s:155148
+  - 0x0800FE12 battle_aiGetVersionedTableEntry_800FE12
+  reproduce: python3 tools/asmcat.py 0x080FFB26
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- No known callers, so the meaning of the packed pair (probability + what the 10 counts) is inferred from
+  the values alone
+- Which AI behavior consumes this pair, and whether the unused literal-pool tables belong to adjacent
+  variants
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80FFB26 -> battle_aiGetVersionedChanceParams
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FFB26

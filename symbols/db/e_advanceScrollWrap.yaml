@@ -1,0 +1,50 @@
+name: e_advanceScrollWrap
+address: '0x081455E8'
+kind: function
+status: probable
+summary: Advances a small state machine in the eStruct200FE00 object, computing wrapped halfword counters
+  via mod 140 and moving through states 5/6 → 1 → 2/3 → 4.
+interface: (r0 = integer operand for the mod-140 wrap calculation) -> r0 = 0 (clobbered); writes state
+  byte +0x7, config bytes +0x6/+0x4 and counter halfwords +0x1A/+0x1C of eStruct200FE00
+details: The function ignores its argument except in state 1, where it computes r0 % 140 (0x8C), stores
+  the remainder at +0x1A and 140-remainder at +0x1C, then sets state 2 if the remainder is nonzero else
+  3. In state 5 (entered only when state == 5) it copies +0x1C to +0x1A, writes 1 to +0x6 and 5 to +0x4,
+  then goes to state 6 if +0x1C is nonzero else state 1. State 3 clears +0x6, sets +0x1A to 40, +0x4 to
+  9, and advances to state 4. The bytes at +0x6 and +0x4 look like mode/sub-controller selectors and the
+  halfwords at +0x1A/+0x1C like paired scroll/phase counters that wrap over a 140-pixel period, so this
+  reads as a periodic wrap/reposition step for whatever background or animated element owns struct 0x200FE00.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl __umodsi3 with r1=0x8C: remainder stored at +0x1A and 140-remainder at +0x1C (wrap pair);
+    state byte +0x7 compared against 5, 1, 3 in sequence, each branch writing different +0x6/+0x4 selector
+    values (1/5, 0/9); state 3 branch hardcodes +0x1A = 0x28 (40) before moving to state 4; single caller
+    sub_81453F0 invokes it from six sites with differing r0 values, fitting a parameterized wrap computation;
+    all accesses target eStruct200FE00 fields at fixed offsets, no other memory touched'
+  refs:
+  - bn6f/asm/libs.s:2994
+  - 0x081453F0 sub_81453F0
+  - 0x081454A4 sub_81453F0
+  - 0x081454C8 sub_81453F0
+  - 0x0814DB34 __umodsi3
+  reproduce: python3 tools/asmcat.py 0x081455E8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- What game element owns eStruct200FE00 and what the +0x6/+0x4 selector values (1/5, 0/9) mean
+- What units the r0 argument and the 140 wrap period are in (pixels of a scroll? frames of an animation?)
+- What sub_81453F0 does between its six call sites, which would pin down the caller-side state inputs
+- Whether states 2, 4 and 6 are handled elsewhere (this function only transitions into them)
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81455E8 -> e_advanceScrollWrap
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81455E8

@@ -1,0 +1,48 @@
+name: sound_applyBiasWithSpriteFade
+address: '0x0811E8E0'
+kind: function
+status: probable
+summary: Sets the BIOS sound bias from a state getter's upper half and stores a matching fade/brightness
+  step from a lookup table into the current object's sprite field 0x2c.
+interface: () -> r0 = value stored to sprite field 0x2c via sprite_setUnk0x2c; calls SWI 6 SoundBias(r0>>16,
+  r1=8)
+details: Calls sub_8143F90, shifts its result right by 16, and passes that value with r1=8 to SWI 6 (SoundBias),
+  suggesting an audio volume/bias ramp. The same shifted value, multiplied by 4, indexes byte_811E8FC,
+  a table of six words whose significant bytes decrease 0xF0, 0xE0, 0xC0, 0x80, then 0, 0 — like fade
+  or brightness steps. The selected word is passed to sprite_setUnk0x2c, which writes it to field 0x2c
+  of the current object's sprite struct. r4-r7 are pushed but unused, suggesting cut-down code. The exact
+  relationship between the sound bias level and the sprite field is not visible without sub_8143F90 and
+  the caller.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: lsr r0,#16 + svc 6 with r1=8 matches BIOS SoundBias(value, ramp); lsl r0,#2 then ldr r0,[r7,r0]
+    indexes byte_811E8FC as a word table of 6 decreasing entries; bl sprite_setUnk0x2c stores the table
+    word into the current object's sprite field 0x2c; only caller is sub_811E8C4, itself unknown; sub_8143F90
+    is unknown too
+  refs:
+  - bn6f/asm/asm32.s:34122
+  - 0x0811E8C4 sub_811E8C4
+  - 0x08002FA6 sprite_setUnk0x2c
+  - 0x08143F90 sub_8143F90
+  reproduce: python3 tools/asmcat.py 0x0811E8E0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- what sub_8143F90 returns (its high half drives both SoundBias and the table index)
+- what the caller sub_811E8C4 runs in (scene transition? volume change? flash effect?)
+- the meaning of sprite field 0x2c and how the 0xF0/0xE0/0xC0/0x80 table values are interpreted downstream
+- the valid index range — table only safely covers values 0..5
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_811E8E0 -> sound_applyBiasWithSpriteFade
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811E8E0

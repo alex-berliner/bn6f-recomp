@@ -1,0 +1,48 @@
+name: t3_loadTextWindowTiles
+address: '0x0804C3C4'
+kind: function
+status: probable
+summary: Draws a fixed 12x6 tile window (tile data at byte_86A13F0) into background tile block 3 and sets
+  a render-info flag, presumably making the text window visible.
+interface: () -> r0 = destroyed; sets bit 0x800 of toolkit->RenderInfo->field0 (halfword)
+details: Reads the toolkit's RenderInfo pointer, ORs 0x800 into its halfword field at offset 0, and stores
+  it back — likely a 'text window shown' or layer-visible flag. Then calls CopyBackgroundTiles(j=0xC,
+  i=0, tile_block=3, tile_ids=byte_86A13F0, j_size=0xC, i_size=6), copying a 12x6-tile rectangle of prebuilt
+  tile IDs from ROM into tile block 3 starting at column 12, row 0 — the geometry of an on-screen window
+  box. The trailing data (byte_804C3F0 with bytes like 0x4A,0xFF / 0x46,0xFF / 0xE0,0xFF and word 0x106060)
+  looks like a sibling function's palette or tile data, not used here. No arguments are read, so the function
+  is fully self-contained.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrh/strh with orr 0x800 on [r4] where r4 = toolkit->RenderInfoPtr sets a visibility/flag halfword;
+    bl CopyBackgroundTiles with r0=0xC, r1=0, r2=3, r3=byte_86A13F0, r4=6, r5=0xC writes a 12x6 tile region
+    to block 3; tile_ids pointer byte_86A13F0 is ROM tile-index data for the drawn window; called from
+    sub_804C348 and twice from sub_804C3BC (also at 0x804C3C2, i.e. a tail-call/adjacent path), suggesting
+    a show-window helper used by multiple text routines
+  refs:
+  - bn6f/asm/asm03_2.s:10482
+  - 0x0804C348 sub_804C348
+  - 0x0804C3BC sub_804C3BC
+  - 0x0804C3C2 sub_804C3BC
+  - 0x080018C2 CopyBackgroundTiles
+  reproduce: python3 tools/asmcat.py 0x0804C3C4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- exact meaning of the 0x800 RenderInfo flag (visibility vs. redraw request)
+- what sub_804C348/sub_804C3BC do (show vs. redraw text window)
+- whether block 3 is the text-window tile map and what byte_804C3F0's data belongs to
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_804C3C4 -> t3_loadTextWindowTiles
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_804C3C4

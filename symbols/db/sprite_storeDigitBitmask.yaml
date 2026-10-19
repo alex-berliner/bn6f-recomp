@@ -1,0 +1,50 @@
+name: sprite_storeDigitBitmask
+address: '0x0811EA28'
+kind: function
+status: probable
+summary: Computes a bitmask from the decimal digits of two values and writes it into a sprite struct's
+  field 0x2c.
+interface: (uses r0/r1 returned by sub_8143D4C, no own args seen) -> r0 = mask passed to sprite_setUnk0x2c;
+  clobbers r0-r3, r7
+details: Starts from mask 0x1FFFFFFF and calls sub_8143D4C, keeping both its return values (r0 and r1).
+  Each value is divided by 10 with SWI 6 (Div), splitting it into tens and ones digits. For value A it
+  clears bits (0x10000000 >> A/10) and (0x800000 >> A%10); for value B it clears bits (0x2000 >> B/10)
+  and (0x100 >> B%10). The resulting mask (r7) is stored into field 0x2c of the object's sprite struct
+  via sprite_setUnk0x2c. The bit positions (28..19, 23..14, 13..4, 8..) look like per-digit slots, i.e.
+  a decimal-digit selection mask, but the exact meaning of field 0x2c is unknown. Nearby data is gfx_anim/palette-transform
+  tables, so this sits inside a sprite resource blob.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'svc 6 with r1=10 twice: Div calls split each sub_8143D4C return value into quotient and remainder
+    (decimal digits); bic r7 clears 1<<28>>q, 1<<23>>r (value A) and 1<<13>>q, 1<<8>>r (value B) from
+    seed 0x1FFFFFFF; mov r0,r7; bl sprite_setUnk0x2c — final mask is written to sprite struct field 0x2c;
+    surrounding byte_811EA68.. byte_811EBDA are gfx_anim_data / manual pal transform entries, placing
+    this in a sprite resource area'
+  refs:
+  - bn6f/asm/asm32.s:34282
+  - 0x0811EA0C sub_811EA0C
+  - 0x08002FA6 sprite_setUnk0x2c
+  - 0x08143D4C sub_8143D4C
+  reproduce: python3 tools/asmcat.py 0x0811EA28
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- what sub_8143D4C computes and returns in r0/r1 (likely coordinates or a counter)
+- what the bitmask in sprite field 0x2c selects (enabled/disabled digit or frame slots?)
+- why the digit encoding allows bit collisions for values like 50/61/72/83/94 — suggests the inputs are
+  constrained to a small range
+- how the target object pointer reaches sprite_setUnk0x2c since r0-r3 are clobbered by the Div calls
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_811EA28 -> sprite_storeDigitBitmask
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811EA28

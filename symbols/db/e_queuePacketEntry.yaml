@@ -1,0 +1,48 @@
+name: e_queuePacketEntry
+address: '0x0804C6C4'
+kind: function
+status: probable
+summary: Emits one 4-byte packet (0x48,0x37 + two data bytes) into the toolkit scratch struct, stepping
+  through 64 two-byte records of the selected table before resetting and zero-filling.
+interface: '(r0 = array of pointers to 2-byte record tables; uses r5 struct: +0xC table selector byte,
+  +0x18 record counter, +0xD state byte) -> r0 = void'
+details: Picks a record table from r0 indexed by the byte at r5+0xC, then reads the 2-byte record at offset
+  (r5->0x18>>3)*2 (counter scaled, suggesting sub-record addressing). It writes a fixed header 0x48,0x37
+  into the 8-byte toolkit scratch struct at Unk2009740, then copies the record's two bytes to scratch+2
+  and +3. The counter at r5+0x18 is incremented; when it reaches 0x40 (64) it wraps to 0, the state byte
+  at r5+0xD is cleared, and zeroFill_e2009740 wipes the scratch struct for the next run. Four nearby functions
+  call it, apparently one call per emitted packet.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldr r2,[r2,r3] with r3=ldrb[r5,#0xC] selects a record table pointer, then r2 += (r5->0x18>>3)*2
+    indexes a 2-byte record; strb #0x48/[r1] and strb #0x37/[r1,#1] write a fixed 2-byte header into Unk2009740
+    before the record bytes at +2/+3; counter at r5+0x18 increments and wraps at cmp r0,#0x40, also clearing
+    r5+0xD; bl zeroFill_e2009740 resets the 8-byte scratch struct once the 64-record cycle completes'
+  refs:
+  - bn6f/asm/asm03_2.s:10866
+  - 0x0804C66C sub_804C66C
+  - 0x0804C694 sub_804C694
+  - 0x0804C7C8 sub_804C7C8
+  - 0x08001820 zeroFill_e2009740
+  reproduce: python3 tools/asmcat.py 0x0804C6C4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- What the 0x48 0x37 header means (eReader/card transfer command? sound/SIO packet?) is not shown in this
+  function
+- Callers sub_804C66C/sub_804C694/sub_804C7C8/sub_804C7EC have no known summaries, so the purpose of the
+  64-record table and r5+0xC selector is unconfirmed
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_804C6C4 -> e_queuePacketEntry
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_804C6C4

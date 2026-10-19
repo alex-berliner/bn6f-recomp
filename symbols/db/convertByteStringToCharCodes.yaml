@@ -1,0 +1,48 @@
+name: convertByteStringToCharCodes
+address: '0x0803C168'
+kind: function
+status: probable
+summary: Expands a 0-terminated byte-index string into halfword character codes via table unk_2026A00,
+  pre-filling with 0xE5E5 and appending a 0xE6 terminator.
+interface: (r0 = byte-index string (0-terminated), r1 = dest buffer, r2 = max halfword count, r3 = fill
+  halfword value) -> r0 = preserved; no flags of interest
+details: 'Saves r0-r2, calls HalfwordFill to fill the destination with r3 (callers pass 0xE5E5), then
+  stores 0xE6 at dest[2*r2] as an end marker. It then iterates: each source byte b (0 = stop) indexes
+  an 8-byte entry in unk_2026A00 (using the halfword at offset +2, i.e. unk_2026A00+2+8*b) and copies
+  that halfword into the destination, advancing source by 1 and dest by 2 until the count runs out. The
+  0xE5 fill and 0xE6 terminator look like reserved character codes, and the IWRAM-resident 8-byte-stride
+  table suggests a loaded font/glyph-code map, i.e. this prepares a renderable text/code buffer. The fill
+  value comes from the caller''s r3, not hard-coded. Source byte 0 halts early, leaving the rest of the
+  buffer as 0xE5 padding.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'orr of 0xE5 with 0xE5<<8 builds fill value 0xE5E5 passed to HalfwordFill (sub_803C168 prologue);
+    strb #0xE6 at [r1, r2*2] writes a halfword-position terminator after the count; ldrh r3, [r7, 8*b]
+    with r7 = unk_2026A00+2 is a table lookup by source byte; loop copies halfwords to r1 advancing 2
+    bytes per source byte until count r2 exhausts or a 0 byte is hit'
+  refs:
+  - bn6f/asm/asm03_1_1.s:6722
+  - 0x0803C150 sub_803C150
+  - 0x08049DC4 sub_8049DC4
+  - 0x0800096C HalfwordFill
+  reproduce: python3 tools/asmcat.py 0x0803C168
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- Contents and origin of unk_2026A00 (which font/charcode table it holds) are unknown
+- Callers sub_803C150 and sub_8049DC4 are undocumented, so the exact subsystem (chatbox text vs sprite
+  text) and meaning of codes 0xE5/0xE6 are unconfirmed
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803C168 -> convertByteStringToCharCodes
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803C168

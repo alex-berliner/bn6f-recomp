@@ -1,0 +1,46 @@
+name: battle_spawnEnemyAndDestroy
+address: '0x080BE0FA'
+kind: function
+status: probable
+summary: Battle-object phase that waits ~10 frames, spawns an enemy actor from the object's NameID, then
+  destroys itself.
+interface: (r5 = battle object) -> sets object state to CUR_STATE_DESTROY; r0 clobbered
+details: On first entry (PhaseInitialized clear) it loads the object timer with 10 and sets PhaseInitialized=4,
+  so it acts as a one-frame-delay/counter setup. Each frame it decrements oBattleObject_Timer and returns
+  until it hits 0. When the timer expires it calls unpackVerActorTyAndAIIdx_800F29C with the object's
+  oBattleObject_NameID to get {version, actor type, AI index}, then calls sub_8011044 with those values
+  plus r2=1, evidently spawning the enemy actor. It then clears bit 1 of oObjectHeader_Flags and writes
+  CUR_STATE_DESTROY into the combined state/phase field, ending the object. This is the phase body of
+  a one-shot enemy-spawner object in the battle engine.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb/tst on oBattleObject_PhaseInitialized with timer=0xa, PhaseInitialized=4 is standard first-run
+    init (sub_80BE0FA lines 2-8); timer decrement with 'bgt locret' gates the whole spawn block until
+    the 10-frame delay elapses; ldrh r0,[r5,#oBattleObject_NameID]; bl unpackVerActorTyAndAIIdx_800F29C
+    feeds spawn parameters from the object's ID; bl sub_8011044 with r2=1 right after unpacking is the
+    spawn call; mov r0,#CUR_STATE_DESTROY; str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]
+    marks the object for destruction after spawning
+  refs:
+  - bn6f/asm/asm31.s:13178
+  - 0x0800F29C unpackVerActorTyAndAIIdx_800F29C
+  - 0x08011044 sub_8011044
+  reproduce: python3 tools/asmcat.py 0x080BE0FA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- exact meaning of r2=1 in sub_8011044 (spawn count? flag? slot?)
+- which encounter/custom encounter table creates this spawner object and what NameID values it receives
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BE0FA -> battle_spawnEnemyAndDestroy
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BE0FA

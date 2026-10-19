@@ -1,0 +1,43 @@
+name: battle_objLiftOffPhase
+address: '0x080B9D36'
+kind: function
+status: probable
+summary: 'Battle-object state handler: brief countdown, then the object lifts off (Z raised, shadow removed)
+  and switches to action 0xC.'
+interface: (r0 = phase byte read, r5 = battle object) -> void; sets CurPhase/CurAnim/Timer, Z16, CurAction
+details: Runs once per frame for some battle object. On entry phase 0 it latches phase 4, anim 4 and a
+  23-frame timer. While the timer runs it decrements; when it hits 20 it stores 0xFF into the object's
+  16-bit Z (height) and calls sprite_noShadow so the sprite stops drawing a shadow — i.e. the object rises
+  into the air. When the timer reaches 0 it sets CurAction = 0xC and resets CurPhaseAndPhaseInitialized,
+  handing control to the next action handler.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb [r5,#oBattleObject_CurPhase]; branch on 0 sets CurPhase=4, CurAnim=4, Timer=0x17 (asm
+    2-9); Timer decrement path: sub r0,#1; cmp #0x14 triggers the Z/noShadow block (asm 11-21); mov r0,#0xff;
+    strh [r5,#oBattleObject_Z16] then bl sprite_noShadow — object rises and loses its shadow (asm 20-22);
+    Timer<=0 path: CurAction=0xC and CurPhaseAndPhaseInitialized=0, standard phase-to-action handoff (asm
+    23-26); Callee sprite_noShadow ''sets sprite flags so the sprite renders without a shadow'', consistent
+    with a takeoff/fly state'
+  refs:
+  - bn6f/asm/asm31.s:3739
+  - 0x08002F90 sprite_noShadow
+  reproduce: python3 tools/asmcat.py 0x080B9D36
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- Which object/enemy uses this action and what action 0xC does next is unknown (no callers found); knowing
+  the object would give a more specific name
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80B9D36 -> battle_objLiftOffPhase
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80B9D36

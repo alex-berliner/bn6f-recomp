@@ -1,0 +1,47 @@
+name: ai_strikeMatchingPanels
+address: '0x080F0B32'
+kind: function
+status: probable
+summary: AI attack step that hits every field panel matching an alliance-dependent attribute mask with
+  the object's queued attack damage.
+interface: (r0 = ?, r5 = battle object) -> r0 = panel count from filter; calls sub_80D0F0C per matched
+  panel
+details: Reads the object's alliance, indexes off_80F0B78 to pick an attribute mask (0x4000000 for one
+  side, 0x8000000 for the other), and calls object_getPanelsExceptCurrentFiltered with that mask (r3=0)
+  to fill a stack list of matching panels. Each panel entry byte is unpacked as x = high nibble, y = low
+  3 bits. For each panel it calls sub_80D0F0C(x, y, oAIAttackVars_InitFlag, ...) using the AI attack vars
+  stored at r7 (InitFlag byte and Damage word in r6). Note r5 (object) and r7 (attack vars) are inherited
+  from the caller, not set here; the list is iterated downward from count-1.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r5,#oBattleObject_Alliance]; ldr r1,off_80F0B74; ldr r2,[r1,r0] picks mask 0x4000000/0x8000000
+    by alliance; bl object_getPanelsExceptCurrentFiltered with sp buffer returns match count in r4; lsr
+    r1,r0,#4 / lsl r0,#0x1d; lsr r0,#0x1d unpacks panel byte into x and y; ldrb r2,[r7,#oAIAttackVars_InitFlag];
+    ldr r6,[r7,#oAIAttackVars_Damage] feeds per-panel strike call sub_80D0F0C
+  refs:
+  - bn6f/asm/asm31.s:124033
+  - 0x080F0968 sub_80F0968
+  - 0x0800CE64 object_getPanelsExceptCurrentFiltered
+  - 0x080D0F0C sub_80D0F0C
+  reproduce: python3 tools/asmcat.py 0x080F0B32
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- what sub_80D0F0C does with (x, y, InitFlag, ?) — likely spawns the attack/damage effect at that panel
+- exact meaning of the two attribute masks 0x4000000/0x8000000 (which panel attribute each alliance targets)
+- whether r6 (Damage) is actually passed to sub_80D0F0C via a register convention or read from r7 inside
+  the callee
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F0B32 -> ai_strikeMatchingPanels
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F0B32

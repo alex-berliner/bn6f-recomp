@@ -1,0 +1,45 @@
+name: battle_getBackgroundDataByte
+address: '0x0808137C'
+kind: function
+status: probable
+summary: Reads a byte property from a background data table selected by a background id (>=0x80), returning
+  7 if the id has no table.
+interface: (r0 = byte/property index into the selected data array, r1 = background id) -> r0 = data byte,
+  or 7 if id < 0x80 or the table entry is null; flags clobbered by tst/cmp
+details: If r1 >= 0x80 the id is normalized (r1 -= 0x80, then *4) and used to index the pointer table
+  at pt_808139C, which holds 25 entries pointing at small byte/word data blobs (byte_80813F8, byte_8081408,
+  byte_8081410, ...). If the fetched pointer is non-null, the function returns the byte at [ptr + r0];
+  otherwise, or if the id was below 0x80, it returns the constant 7. The data blobs are only a few bytes
+  each, so r0 is a small attribute index within one background's record. It is called from battle_setupBackgroundAssets,
+  which sets up the battle background, so the byte read is presumably a per-background property (e.g.
+  a display/anim attribute) with 7 as a default value.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'cmp r1, #0x80 / sub r1, #0x80 / lsl r1, #2 / ldr r2,[r2,r1] — id selects a pointer from a 25-entry
+    table at off_8081398; ldrb r0,[r2,r0] — returns a byte at index r0 within the selected data blob;
+    mov r0, #7 fallback at loc_8081392 for id < 0x80 or null table entry; sole caller 0x08080DEA in battle_setupBackgroundAssets,
+    the battle background loader'
+  refs:
+  - bn6f/asm/asm21.s:548
+  - 0x08080DEA battle_setupBackgroundAssets
+  reproduce: python3 tools/asmcat.py 0x0808137C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- exact meaning of the returned byte and of index r0 — need the read sites inside battle_setupBackgroundAssets
+  and the layout of the byte_80813Fx tables
+- whether ids < 0x80 or the value 7 are meaningful elsewhere
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_808137C -> battle_getBackgroundDataByte
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_808137C

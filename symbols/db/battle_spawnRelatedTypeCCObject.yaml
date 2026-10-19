@@ -1,0 +1,49 @@
+name: battle_spawnRelatedTypeCCObject
+address: '0x080DEFD6'
+kind: function
+status: probable
+summary: Spawns a type-3 battle object of kind 0xCC linked to a given object, copying its position, panel
+  coords and alliance, with Y lowered by 1 pixel.
+interface: (r5 = source battle object ptr, r0 = panelX, r1 = panelY, r2 = value for offset 0x64) -> r0
+  = new object ptr or 0; flags Z from spawn result
+details: Calls object_spawnType3 with kind 0xCC; if the spawn fails it returns immediately with r0 = 0.
+  On success it stores the source object pointer (kept in r5 by the caller) into the new object's RelatedObject1Ptr,
+  writes the caller's r0/r1 into PanelX/PanelY and r2 as a halfword at 0x64. It then copies the source's
+  Param2/Param3 into bytes 0x6E/0x6F, Param1 into byte 0x62, and copies AllianceAndDirectionFlip, X, Z
+  verbatim; Y is copied minus 1. The RelatedObject1Ptr link plus the Y-1 offset suggests a dependent secondary
+  object rendered just behind/above the source, but the kind 0xCC's game role is unknown without seeing
+  the spawned object's initializer or the caller.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mov r0,#0xCC; bl object_spawnType3 — creates the battle object and yields its ptr in r0, checked
+    by the following beq; str r5,[r0,#oBattleObject_RelatedObject1Ptr] — new object is linked back to
+    the caller-supplied source object; strb r1/r2 [r0,#PanelX/#PanelY] and strh r3,[r0,#0x64] — caller
+    args r0,r1,r2 (popped into r1-r3) are stored as panel coords and a halfword field; ldrh r3,[r5,#AllianceAndDirectionFlip];
+    strh ... ; ldr r1,[r5,#X]/[Y](sub #1)/[Z] — position and team are cloned from the source object, Y
+    decremented; Sole caller sub_80DED80 and the spawned object''s initializer are not shown, so the 0xCC
+    kind''s in-game meaning is unconfirmed'
+  refs:
+  - bn6f/asm/asm31.s:85364
+  - 0x080DED80 sub_80DED80
+  - 0x08003358 object_spawnType3
+  reproduce: python3 tools/asmcat.py 0x080DEFD6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- 'What object kind 0xCC is in-game: need the type-3 initializer dispatch or behavior of the spawned object'
+- What sub_80DED80 passes for r0/r1/r2 and why — would confirm whether the spawned object is a shadow,
+  afterimage or projectile marker
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DEFD6 -> battle_spawnRelatedTypeCCObject
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DEFD6

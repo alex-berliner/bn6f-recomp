@@ -1,0 +1,46 @@
+name: battle_objectPlayAnimDelayPhaseHandler
+address: '0x080BB79A'
+kind: function
+status: probable
+summary: Battle-object phase handler that starts an animation and sound, waits 60 frames, then advances
+  the object to its next action.
+interface: (r0 = unused on entry) r5 = battle object pointer; sets oBattleObject_CurPhase/CurAnim/Timer,
+  ends with CurAction = 0x14 and phase cleared
+details: This is one dispatch arm of a battle object's action/phase state machine. On first entry (CurPhase
+  == 0) it latches phase 4, sets CurAnim to 0x12, calls sub_80BB8B0 (likely to start/reset the animation
+  on the object's sprite), plays sound effect 0xBA, and loads the 60-frame timer. On later entries it
+  just decrements Timer until it hits zero, then sets CurAction to 0x14 and zeroes CurPhaseAndPhaseInitialized
+  so the dispatcher starts the next action from phase 0. It returns without touching r0-r3 beyond scratch,
+  so it is purely a state-machine step.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#oBattleObject_CurPhase]; tst/be = run-once vs repeat branch, typical phase pattern;
+    strb #0x12,[r5,#oBattleObject_CurAnim] + bl sub_80BB8B0 = animation setup for this phase; PlaySoundEffect(0xba)
+    timed with the phase start; Timer counts down from 0x3c (60 frames) before transitioning; strb #0x14,[r5,#oBattleObject_CurAction]
+    + clearing phase = hand-off to next action handler'
+  refs:
+  - bn6f/asm/asm31.s:7460
+  - 0x080005CC PlaySoundEffect
+  - 0x080BB8B0 sub_80BB8B0
+  reproduce: python3 tools/asmcat.py 0x080BB79A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- Which battle object/actor uses this handler and what actions 0x14 (and anim 0x12, sound 0xBA) mean in
+  its script — needs the object's action table or a caller to identify
+- What sub_80BB8B0 does (probably animation restart)
+- Why phase value 4 is stored while polling is done via CurPhase == 0 on the next dispatch
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BB79A -> battle_objectPlayAnimDelayPhaseHandler
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BB79A

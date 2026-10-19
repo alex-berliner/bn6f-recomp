@@ -1,0 +1,45 @@
+name: navicust_loadSelectedCellParams
+address: '0x08135FA4'
+kind: function
+status: probable
+summary: Loads a two-byte parameter pair for the selected NaviCust board cell from a 3-type x 4-state
+  lookup table into the cell state struct.
+interface: (r5 = selected-cell state struct) -> r0 = second byte; writes halfwords [r5+0x28] and [r5+0x2c]
+  from table entry byte_8135FC4[[r5+0xf]*8 + [r5+0x20]*2]
+details: Indexes byte_8135FC4 with type byte at [r5+0xf] scaled by 8 plus halfword state at [r5+0x20]
+  scaled by 2, i.e. 3 cell types of 4 states, 2 bytes per entry. The two table bytes are stored as separate
+  halfwords at offsets 0x28 and 0x2c of the struct. Type 0 rows all start with byte 4, types 1 and 2 with
+  byte 5; the second byte ranges 1-3 and grows with state for some types. Called from navicust_handleBoardInput
+  when refreshing the selected cell, so the pair is per-(type,state) data consumed elsewhere. The meaning
+  of the pair (e.g. sound IDs, graphics indices) is not evident from this function alone.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#0xf]; lsl #3 + ldrh [r5,#0x20]; lsl #2 + add r1: index = type*8 + state*2 into
+    byte_8135FC4; ldrb [r1]/[r1,#1] then strh to [r5,#0x28]/[r5,#0x2c]: two table bytes stored as two
+    fields; table layout 24 bytes with values 4/5 leading and 1-3 trailing matches 3 types x 4 states
+    x 2 bytes; caller 0x08135830 navicust_handleBoardInput ''updates the selected-cell state'' calls this
+    after input handling'
+  refs:
+  - bn6f/asm/asm36.s:12577
+  - 0x08135830 navicust_handleBoardInput
+  reproduce: python3 tools/asmcat.py 0x08135FA4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- What fields 0x28/0x2c are consumed as (sound effect IDs? tile/palette indices?), needs the consumers
+  of those offsets in the board screen renderer or sound code
+- What the byte at [r5+0xf] (program/cell type) and halfword at [r5+0x20] (state 0-3) exactly enumerate
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8135FA4 -> navicust_loadSelectedCellParams
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8135FA4

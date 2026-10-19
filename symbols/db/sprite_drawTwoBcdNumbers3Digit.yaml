@@ -1,0 +1,52 @@
+name: sprite_drawTwoBcdNumbers3Digit
+address: '0x0803B880'
+kind: function
+status: probable
+summary: Draws two 3-digit decimal numbers (from sub_803C398's two results) as digit sprites at fixed
+  positions on one row, suppressing leading zeros.
+interface: () -> void; internally r0/r1 = two values from sub_803C398, each converted to packed BCD; no
+  meaningful return
+details: Calls sub_803C398, which returns two values (r0 and r1), and renders each as a 3-digit decimal
+  number via memory_bcdConvert. For each number it extracts nibbles (hundreds, tens, ones) with 0xF masks
+  and calls sub_803B8F8(x, 0x50) per digit; sub_803B8F8 presumably draws one digit sprite/tile at that
+  position. First number's digits at x=0x68/0x70/0x78, second at x=0x94/0x9C/0xA4, all at y=0x50. Hundreds
+  and tens digits are skipped while the running significant-digit flag r7 is zero, so leading zeros are
+  blanked but the ones digit always prints (including '0' for value 0). r7 is reset between the two numbers
+  so each is handled independently. The exact meaning of the two values depends on sub_803C398, which
+  is undocumented.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'twice: bl sub_803C398 then mov r0/r1 and bl memory_bcdConvert — renders two values as packed
+    BCD; lsr #8 / lsr #4 / and 0xF with beq skips before sub_803B8F8 calls — per-nibble digit extraction
+    with leading-zero suppression via r7; sub_803B8F8 called with x=0x68,0x70,0x78 then 0x94,0x9C,0xA4
+    and constant y=0x50 — three digit positions per number, 8px apart; both callers at 0x0803970C/0x080397BC
+    are the only entry points, consistent with a HUD/status display routine'
+  refs:
+  - bn6f/asm/asm03_1_1.s:5635
+  - 0x0803970C sub_803970C
+  - 0x080397BC sub_80397BC
+  - 0x08000C00 memory_bcdConvert
+  - 0x0803B8F8 sub_803B8F8
+  - 0x0803C398 sub_803C398
+  reproduce: python3 tools/asmcat.py 0x0803B880
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- What values sub_803C398 returns (game stat, counter, etc.) — its callers/fields would identify what
+  is being displayed
+- What sub_803B8F8 draws exactly (digit tile ID source, OAM vs BG) to confirm it is a digit renderer
+- Which screen/state the callers run in (menu, HUD, result screen) to name it more precisely
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803B880 -> sprite_drawTwoBcdNumbers3Digit
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803B880

@@ -1,0 +1,46 @@
+name: battle_requestStateTransition
+address: '0x08007FD2'
+kind: function
+status: probable
+summary: Requests the battle engine to switch to battle state 8 (resetting the phase counter), unless
+  a global flag in the 0x200BC50 IWRAM struct is set.
+interface: (r5 = *BattleState) -> void; no meaningful return value
+details: Calls the test helper for IWRAM struct 0x200BC50 flag byte offset 5; if the flag bit is set the
+  function returns without touching the battle state (early exit). Otherwise it writes 8 to BattleState
+  field oBattleState_Index_00 (the pending/next state id consumed by battle_main_8007800 -> sub_8007B80),
+  writes 4 to oBattleState_Index_01 (tick selector read by battle_state_tick_8007CA0), and clears the
+  oBattleState_StatePhaseAndInitFlag halfword so the new state starts at phase 0/init. It is a pure state-transition
+  request with no other side effects. The data words after it (bit masks, off_8008008 pointing at eStruct203F7D8)
+  belong to neighboring functions, not this one.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl test0x200bc50_0x5_813D60C + tst/bne locret_8007FE8: whole body is gated on that IWRAM flag
+    bit; strb r0,#8,[r5,#oBattleState_Index_00] annotated ''trigger sub_8007B80 via battle_main_8007800'':
+    sets next battle state id; strb r0,#4,[r5,#oBattleState_Index_00...Index_01] annotated ''trigger battle_state_tick_8007CA0
+    via sub_8007B80'': sets the tick branch; strh r0(0),[r5,#oBattleState_StatePhaseAndInitFlag]: phase/init
+    word reset to 0 for the new state; the 0x200BC50 flag being set causes a no-op, so callers use it
+    to conditionally force the state change'
+  refs:
+  - bn6f/asm/asm00_1.s:10980
+  - 0x0813D60C test0x200bc50_0x5_813D60C
+  reproduce: python3 tools/asmcat.py 0x08007FD2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- what battle state 8 is (no named caller or state enum is known here)
+- what flag bit 5 of the 0x200BC50 struct means (likely a suspend/comm-error condition) — a caller or
+  the flag's other writers would confirm
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8007FD2 -> battle_requestStateTransition
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8007FD2

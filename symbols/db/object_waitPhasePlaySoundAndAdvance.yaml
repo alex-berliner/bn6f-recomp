@@ -1,0 +1,45 @@
+name: object_waitPhasePlaySoundAndAdvance
+address: '0x080BE144'
+kind: function
+status: probable
+summary: 'Battle-object phase handler: plays SFX 0x94 and runs animation 1 for 60 frames, then advances
+  the object to its next action.'
+interface: (r5 = battle object ptr) -> mutates oBattleObject_Timer, oBattleObject_CurAnim, oBattleObject_PhaseInitialized;
+  on timer expiry advances oBattleObject_CurAction by 4 and clears CurPhaseAndPhaseInitialized; no return
+  value
+details: On first entry (oBattleObject_PhaseInitialized == 0) it plays sound effect 0x94 via PlaySoundEffect,
+  stores 0x3C (60 frames) into oBattleObject_Timer, sets oBattleObject_CurAnim to 1, and writes 4 to oBattleObject_PhaseInitialized
+  to mark the phase as started. On subsequent calls it decrements oBattleObject_Timer and returns while
+  it is still positive. When the timer reaches zero it adds 4 to oBattleObject_CurAction and clears oBattleObject_CurPhaseAndPhaseInitialized
+  (both phase and initialized byte), handing control back to the object's action state machine. It is
+  a self-contained 'delay then move to next action' step; the +4 action stride suggests actions are 4-byte/4-step
+  records in the object's script.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'first-entry branch stores SFX 0x94, timer 0x3C, CurAnim 1, PhaseInitialized 4 (sub_80BE144
+    start); wait loop decrements oBattleObject_Timer and returns while bgt (loc_80BE160); on expiry: CurAction
+    += 4 and CurPhaseAndPhaseInitialized = 0 before pop {pc} (loc_80BE160..locret_80BE172); callees: only
+    PlaySoundEffect (0x080005CC), confirming the one-shot SFX at phase start'
+  refs:
+  - bn6f/asm/asm31.s:13220
+  - 0x080005CC PlaySoundEffect
+  reproduce: python3 tools/asmcat.py 0x080BE144
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- which battle object(s) use this handler and what action +4 leads to (no callers known)
+- what sound effect 0x94 is in game terms (would identify the object, e.g. an enemy cry or charge-up)
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BE144 -> object_waitPhasePlaySoundAndAdvance
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BE144

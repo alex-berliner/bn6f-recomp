@@ -1,0 +1,52 @@
+name: battle_drawPanelAreaMarkers
+address: '0x080BB59A'
+kind: function
+status: probable
+summary: Converts a battle object's panel position to screen coords and queues three effect draws forming
+  a 3-panel-wide (or 3-tall) marker strip around it.
+interface: (r0, r1 = unused args saved to r4/r7; r5 = battle object) -> void; reads panel col/row from
+  oBattleObject_ExtraVars+0x14/+0x18
+details: 'Shared tail fragment: with r5 = battle object, loads ExtraVars+0x14/+0x18 as panel column/row
+  and passes them to object_getCoordinatesForPanels, getting 16.16 fixed-point screen x/y. It then calls
+  sub_80BB5DC three times with r3=0: once centered, then offset. If oBattleObject_PhaseInitialized is
+  0 it offsets the y coordinate by −24 px then +24 px (−0x180000, then +0x300000); otherwise it offsets
+  the x coordinate by −40 px then +40 px (−0x280000, then +0x500000). This produces three evenly spaced
+  draws spanning roughly three panel widths or heights around the object''s panel, consistent with an
+  area/width-3 attack visualization. The r0/r1 arguments are stored to r4/r7 and never read; the meaning
+  of sub_80BB5DC''s r0 argument (left holding the x return on the first call, then the offset constants)
+  is unclear.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldr r0,[r5,#ExtraVars+0x14]/[r5,#+0x18] then bl object_getCoordinatesForPanels: fields are
+    panel col/row; three bl sub_80BB5DC calls with constants 0x180000/0x300000 or 0x280000/0x500000: symmetric
+    ±spacing offsets in 16.16 fixed point; branch on ldrb [r5,#oBattleObject_PhaseInitialized] selects
+    horizontal vs vertical offset axis; reached only from sub_80BB398 and sub_80BB4CE, implying a shared
+    tail with r5 = battle object'
+  refs:
+  - bn6f/asm/asm31.s:7178
+  - 0x080BB398 sub_80BB398
+  - 0x080BB4CE sub_80BB4CE
+  - 0x0800E276 object_getCoordinatesForPanels
+  - 0x080BB5DC sub_80BB5DC
+  reproduce: python3 tools/asmcat.py 0x080BB59A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- what sub_80BB5DC does (queue a sprite, draw a tile highlight, spawn an object?) and what its r0 argument
+  means
+- which battle object/attack uses this (identifying sub_80BB398/sub_80BB4CE would tell)
+- semantic meaning of ExtraVars+0x14/+0x18 and PhaseInitialized for this object
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BB59A -> battle_drawPanelAreaMarkers
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BB59A

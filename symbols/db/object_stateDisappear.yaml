@@ -1,0 +1,45 @@
+name: object_stateDisappear
+address: '0x080C2498'
+kind: function
+status: probable
+summary: Battle-object state handler that frees the object's reserved panel, plays a short disappearance
+  animation, then destroys the object.
+interface: (r5 = battle object) -> void; r0/r1 clobbered
+details: 'On first entry (PhaseInitialized clear) it marks initialization with 4, calls object_removePanelReserve
+  with the object''s FuturePanelX/FuturePanelY so the panel it occupied/reserved is released, sets CurAnim
+  to 4 and Timer to 3. On following frames it decrements Timer; once it expires it calls sub_8011044(2,
+  0x24) — apparently spawning an effect/deletion puff with those parameters — writes 0 to oCollisionData_Enabled
+  via CollisionDataPtr to drop its hitbox, and sets CurStateActionPhaseAndPhaseInitialized to CUR_STATE_DESTROY
+  so the object is removed. This is a terminal ''vanishing obstacle'' state: occupied panel freed immediately,
+  hitbox lingers ~3 frames while the break animation plays.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: first-entry branch stores init flag 4 and calls object_removePanelReserve with FuturePanelX/Y
+    (asm lines 2-11); CurAnim=4 plus Timer=3 set only on the init pass (asm lines 12-17); timer countdown
+    then bl sub_8011044 with (2, 0x24) looks like a spawn-effect call at timer expiry; collision enabled
+    flag in CollisionDataPtr cleared to 0 before forcing state CUR_STATE_DESTROY (asm lines 24-28)
+  refs:
+  - bn6f/asm/asm31.s:22766
+  - 0x0801BB46 object_removePanelReserve
+  - 0x08011044 sub_8011044
+  reproduce: python3 tools/asmcat.py 0x080C2498
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- exact meaning of sub_8011044's (2, 0x24) arguments (effect id vs sound id)
+- which object(s) use this state — no callers known, so which entity (obstacle, boulder, etc.) reaches
+  it is unconfirmed
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C2498 -> object_stateDisappear
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C2498

@@ -1,0 +1,47 @@
+name: battle_initVariantJumpMotion
+address: '0x080DE30E'
+kind: function
+status: probable
+summary: Initializes a battle object's jump/motion velocities from a Param1-selected table entry and derives
+  two motion counters by BIOS division.
+interface: (r5 = battle object) -> void; sets oBattleObject_XVelocity/YVelocity and bytes at +0x61..0x64
+details: Reads oBattleObject_Param1 and indexes byte_80DE3DC as a table of 4-byte entries; the entry becomes
+  oBattleObject_YVelocity verbatim. object_getFrontDirection() returns +1/-1 by alliance/DirectionFlip,
+  and YVelocity*direction is stored to oBattleObject_XVelocity, so the horizontal travel flips with facing
+  side. It then performs SWI 6 (BIOS Div) of 0x280000 by YVelocity, storing the quotient byte at object+0x63;
+  if nonzero, a second Div of 0x80 by that quotient is stored at +0x64 — likely frames-per-step style
+  timers derived from the arc speed. Bytes at +0x61 and +0x62 are cleared to 0, resetting associated motion
+  counters. Param1 thus selects the movement variant; the table contents are not dumped.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r1,[r5,#Param1]; ldr r0,off_80DE348; ldr r0,[r0,r1<<2]; str r0,[r5,#YVelocity] — Param1
+    picks the vertical speed from byte_80DE3DC; bl object_getFrontDirection; mul r0,r2; str r0,[r5,#XVelocity]
+    — horizontal speed is the table value signed by facing; ldr r0,=0x280000; svc 6; strb r0,[r5,#0x63]
+    — BIOS Div of 0x280000 by YVelocity stored as a counter byte; cmp r0,#0; beq; mov r0,#0x80; svc 6;
+    strb r0,[r5,#0x64] — second derived counter only when the first is nonzero; strb 0 to [r5,#0x62] and
+    [r5,#0x61] — clears two motion counters at entry
+  refs:
+  - bn6f/asm/asm31.s:83687
+  - 0x080DE168 sub_80DE168
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x080DE30E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- contents of table byte_80DE3DC (per-variant velocities) and what attack/behavior Param1 enumerates
+- meaning of object bytes 0x61-0x64 in the battle object struct
+- what caller sub_80DE168 is (which object/attack uses this motion)
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DE30E -> battle_initVariantJumpMotion
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DE30E

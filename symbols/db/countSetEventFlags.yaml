@@ -1,0 +1,48 @@
+name: countSetEventFlags
+address: '0x08143D4C'
+kind: function
+status: probable
+summary: Counts how many event flags in a dynamic list are currently set, returning the set count (r0)
+  and total list size (r1).
+interface: () -> r0 = number of set flags, r1 = total number of flags in the list; Z set if count is 0
+details: 'Calls sub_8143F60 twice (before and after the loop) to obtain the current size of some flag
+  list, then loops i = 0..count-1. Each iteration calls sub_8143B5E(i), which appears to map a list index
+  to an event-flag id, and tests it with TestEventFlag, incrementing r6 when the flag is set. The final
+  call to sub_8143F60 refreshes the list size into r1 before returning, so the caller receives both how
+  many flags are set and how many exist. The tst r0,r0 before the pop leaves the Z flag reflecting whether
+  any flags were set. Quirk: the list size is re-read after the loop, so if the list changed mid-loop
+  r1 may not match the iteration count.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: sub_8143F60 result in r7 used as loop bound (cmp r4, r7), so it returns a count; sub_8143B5E(r4)
+    result fed straight into TestEventFlag, so it yields a flag id per index; add r6,#1 only when TestEventFlag
+    says set — r6 accumulates the set count; second bl sub_8143F60 with result moved to r1 returns the
+    total alongside the count; tst r0,r0 just before pop sets flags from the returned count
+  refs:
+  - bn6f/asm/asm37_1.s:3979
+  - 0x0811EA28 sub_811EA28
+  - 0x08143A54 sub_8143A54
+  - 0x0802F168 TestEventFlag
+  - 0x08143B5E sub_8143B5E
+  - 0x08143F60 sub_8143F60
+  reproduce: python3 tools/asmcat.py 0x08143D4C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- what list sub_8143F60 exposes and what flag range sub_8143B5E maps indices to (would pin down the game
+  meaning, e.g. library/album/trades)
+- whether callers use r1 or only r0
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8143D4C -> countSetEventFlags
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8143D4C

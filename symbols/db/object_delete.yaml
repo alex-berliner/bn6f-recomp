@@ -1,0 +1,42 @@
+name: object_delete
+address: '0x080E7BF0'
+kind: function
+status: probable
+summary: Marks an object for deletion by writing the 'deleted/free' state (8) into its state field, skipping
+  null pointers.
+interface: (r0 = object pointer, may be null) -> r0 unchanged; no flags of interest
+details: Takes an object pointer, returns immediately if null, otherwise stores the constant 8 into the
+  object's field at offset +8. Given the sole caller is object_deleteIfNotNull ('deletes/frees the given
+  object if non-null'), this is the actual delete routine, and offset +8 is the object's state/mode field
+  with value 8 being the deleted (or free-pending) state that the object engine acts on. The null check
+  here makes the wrapper's 'if not null' behavior; a bare call still needs a valid object to have any
+  effect.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'tst r0,r0 / beq: null object is safely ignored, matching object_deleteIfNotNull''s wrapper
+    semantics; mov r1,#8; str r1,[r0,#8]: sole effect is writing constant 8 to object+8, the kill/deleted
+    state; caller object_deleteIfNotNull is documented as ''deletes/frees the given object if the pointer
+    is non-null'' and calls this'
+  refs:
+  - bn6f/asm/asm31.s:105006
+  - 0x080F7514 object_deleteIfNotNull
+  reproduce: python3 tools/asmcat.py 0x080E7BF0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- exact meaning of state value 8 in the object structure (immediate free vs. flagged-for-update-loop deletion)
+  needs the object update loop
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E7BF0 -> object_delete
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E7BF0

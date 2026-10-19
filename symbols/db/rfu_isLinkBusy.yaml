@@ -1,0 +1,47 @@
+name: rfu_isLinkBusy
+address: '0x0803DE24'
+kind: function
+status: probable
+summary: Returns 1 while a link/RFU communication is still in progress, 0 once it has finished, gating
+  the battle state machine's advance to state 4.
+interface: () -> r0 = 1 if link traffic is active (or timed out), 0 if idle; flags clobbered
+details: 'Checks eLinkState+1 == 0xC and eLinkState+0 == 0x10 (a specific link mode/state combination);
+  if either fails it returns 1 (busy) without further checks. Otherwise it calls sub_803DFAC on the pointer
+  at eLinkState+0x48 and masks the result with 0x7F (per-channel/packet status bits). It then reads the
+  halfword counter at eLinkState+0xC: it reports done (0) only when the status mask is nonzero and the
+  counter is < 8, or when the status mask is 0 and the counter is 0; any other combination reports busy
+  (1). The counter >= 8 case with nonzero status likely represents a stall/timeout, reported as busy.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r7,#1]; cmp #0xC / ldrb r0,[r7]; cmp #0x10 — only reports in one specific link state
+    pair, else returns 1; ldr r0,[r7,#0x48]; bl sub_803DFAC; mov r1,#0x7F; and — queries a status word
+    from a link connection object and masks 7 status bits; ldrh r0,[r7,#0xC]; cmp #8 / tst — combines
+    a packet counter with the status bits to decide done vs busy; caller battle_stepSubstateToState4_8007C14
+    runs one substate step and only advances the battle to state 4 once this reports idle/finished'
+  refs:
+  - bn6f/asm/asm03_1_1.s:9924
+  - 0x08007C14 battle_stepSubstateToState4_8007C14
+  - 0x0812AC1A sub_812AC1A
+  - 0x0812AC2A sub_812AC1A
+  - 0x0803DFAC sub_803DFAC
+  reproduce: python3 tools/asmcat.py 0x0803DE24
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- exact meaning of the status bits returned by sub_803DFAC and the semantics of the counter at +0xC (packet
+  count vs timeout timer)
+- what link mode values 0xC/0x10 denote in eLinkState
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803DE24 -> rfu_isLinkBusy
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803DE24

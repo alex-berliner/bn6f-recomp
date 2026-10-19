@@ -1,0 +1,48 @@
+name: battle_stepAdvanceColumn
+address: '0x080BA090'
+kind: function
+status: probable
+summary: Battle-object action step handler that every 15 frames advances Param2 one column and calls sub_80BA238
+  on it, ending the action when it reaches the object's own PanelX or leaves columns 1-6.
+interface: (r5 = battle object, r0 = scratch) -> no return; sets oBattleObject_CurPhase/Timer/Param2/CurAction,
+  flags from timer/compares
+details: 'This is a per-frame state-machine step for a battle object. On first run (CurPhase == 0) it
+  latches CurPhase to 4 and zeroes Timer, so the body only runs every time Timer counts down. When Timer
+  expires it calls sub_80BA238 with Param2 (likely spawning/acting at that column), then adds -object_getFrontDirection()
+  to Param2, i.e. moves Param2 one column in the direction opposite the object''s facing. If the new Param2
+  equals the object''s own PanelX, or falls outside 1..6, it finishes: CurAction = 0x10 and CurPhaseAndPhaseInitialized
+  cleared; otherwise it reloads Timer = 15 to repeat the step. Param2 is a working column counter (byte),
+  Timer a 16-bit frame counter.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb/strb oBattleObject_CurPhase with ''mov r1,#4'' on phase==0: one-time state latch; sub
+    r0,#1 / strh Timer / bgt: waits 15 frames between steps (strh r0,#0xf at 80BA0C6); bl sub_80BA238
+    with Param2 then ''neg r0,object_getFrontDirection(); add r0,Param2'': column shifted against facing
+    each step; cmp r0,PanelX and range checks 1..6 gating the end state CurAction=0x10, phase cleared'
+  refs:
+  - bn6f/asm/asm31.s:4191
+  - 0x0800E2CA object_getFrontDirection
+  - 0x080BA238 sub_80BA238
+  reproduce: python3 tools/asmcat.py 0x080BA090
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- What sub_80BA238 does with the column (spawn attack, check panel, move?) would pin down the game meaning
+  and a better name
+- Which enemy/action uses this handler (no callers known) and what CurAction 0x10 means in that context
+- Whether Param2 is initialized elsewhere to a player-side column — its starting value is set by another
+  function
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BA090 -> battle_stepAdvanceColumn
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BA090

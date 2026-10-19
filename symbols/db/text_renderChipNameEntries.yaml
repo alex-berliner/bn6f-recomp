@@ -1,0 +1,51 @@
+name: text_renderChipNameEntries
+address: '0x08126334'
+kind: function
+status: probable
+summary: Renders up to 5 chip-name strings from a list of chip-code entries into tilemap buffers, zero-filling
+  empty slots.
+interface: (r0:r1 = array of 4-byte entries {halfword char code, halfword param}; r2 = dest tilemap buffer;
+  r3, r4 = decoder words (r3|0x200<<... and r4<<12|0x200 pushed as stack args); r5 = zero-fill flag) ->
+  r0 = decode result of last entry
+details: Builds an entry pointer as r1 + r0*4 and loops 5 times over entries {u16 code, u16 extra}. Each
+  code's high byte selects a string table from TextScriptChipNamesPtrs (two tables, TextScriptChipNames0/1),
+  the low byte shifted <<1 indexes into that table to get a string offset, and text_decodeCharTiles8 expands
+  it into 8 tilemap halfwords (16 bytes) at r2, advancing r2 and r3 (a second buffer) by 0x10 per entry.
+  When the entry's +2 byte is >1, the second stack word (r4<<12|0x200) is substituted for the first (r3<<12|0x200)
+  before the decode call. If a code is 0 and the r5 flag is set, both 16-byte buffers are zero-filled
+  instead (clearing that slot); if r5 is clear, the fallback pointer off_81263C4/unk_201CC20 is used as
+  the table. The 0x200 OR'd into the shifted words are passed through the stack to the tile decoder, likely
+  base tile/palette or VRAM-ish parameters.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'Loop count: ''cmp r4, #5 / blt loc_8126356'' processes exactly 5 entries, each 4 bytes (r0<<2
+    + r1); String source: ''ldr r0, TextScriptChipNamesPtrs_p'' with hi byte of code selecting TextScriptChipNames0/1
+    — chip-name string tables; Decoder call: ''bl text_decodeCharTiles8_801263D0_81263D0'' with dest r2,
+    advancing r2/r3 by 0x10 (8 tilemap halfwords) per entry; Zero-fill path at loc_812638A stores 0 to
+    r2/r3 +0x00..0x0c when code==0 and r5!=0, i.e. clearing unused name slots; 0x200 flag: ''ldr r6, off_81263CC
+    // =0x200; orr r3/r4'' — the shifted r3/r4 words with 0x200 are the stack args handed to the tile
+    decoder'
+  refs:
+  - bn6f/asm/asm33.s:6482
+  - 0x081263D0 text_decodeCharTiles8_801263D0_81263D0
+  reproduce: python3 tools/asmcat.py 0x08126334
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- No caller found, so which screen (folder/hand/chip trader) draws these 5 chip names and the meaning
+  of the r3<<12|0x200 and r4<<12|0x200 words passed to the decoder remain unconfirmed
+- Exact meaning of the entry's +2 halfword (only the >1 test changing to the second decoder word is observable)
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8126334 -> text_renderChipNameEntries
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8126334

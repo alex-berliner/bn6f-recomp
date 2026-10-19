@@ -1,0 +1,45 @@
+name: battle_checkAllianceSlotReady
+address: '0x0800BEDA'
+kind: function
+status: probable
+summary: 'Boolean battle check: true only if this object''s alliance slot is unused (or owned by it) in
+  state 0/3 while the opposite alliance slot is in state 2 with a zero counter.'
+interface: (r0 = ? ignored; r5 = battle object, reads oBattleObject_Alliance) -> r0 = 1 if condition met
+  else 0; flags clobbered
+details: 'Reads the object''s alliance byte (offset oBattleObject_Alliance) and indexes the 0x50-byte-per-slot
+  array at 0x203CF00 via the known getEntryPtr helper (two slots, alliance 0/1). First it validates its
+  own slot: field +0xC (an owner object pointer) must be NULL or equal to r5 itself, and the state byte
+  at +1 must be 0 or 3. Then it XORs the alliance with 1 and checks the opposite slot: +2 must be zero
+  and the state byte +1 must be exactly 2. Only then does it return 1; every other path returns 0. The
+  +0xC pointer comparison against r5 suggests slots are claimed by a specific battle object and this object
+  may re-claim its own.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#oBattleObject_Alliance] then bl getEntryPtr_800BF5C — the table is keyed by alliance
+    (0/1); ldr r2,[r0,#0xc]; cmp r2,r5 — slot field +0xC holds the owning battle object pointer; ldrb
+    r2,[r0,#1]; cmp r2,#0 / #3 — own-slot state must be 0 or 3; eor r0,#1; bl getEntryPtr — second lookup
+    inspects the opposite alliance slot; ldrb r2,[r0,#1]; cmp r2,#2 plus +2==0 test before mov r0,#1 —
+    opposite slot must be state 2 with a zero counter'
+  refs:
+  - bn6f/asm/object.s:915
+  - 0x0800BF5C byte_203CF00_getEntryPtr_800BF5C
+  reproduce: python3 tools/asmcat.py 0x0800BEDA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- No callers known, so the gameplay meaning (e.g. beast-out/transformation gating) is unconfirmed
+- Semantics of slot state values 0/2/3 and the +2 counter field in the 0x203CF00 entries are unknown
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_800BEDA -> battle_checkAllianceSlotReady
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800BEDA

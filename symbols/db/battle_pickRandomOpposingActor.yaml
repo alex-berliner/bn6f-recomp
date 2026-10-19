@@ -1,0 +1,45 @@
+name: battle_pickRandomOpposingActor
+address: '0x080E5A8A'
+kind: function
+status: probable
+summary: Picks a random surviving actor on the opposite alliance from the battle state's alive-actor lists.
+interface: (r5 = battle object) -> r0 = pointer to a random enemy-side battle object, or 0 if none qualify;
+  no flags guaranteed
+details: Reads the caller object's oBattleObject_Alliance, XORs it with 1 to get the opposing alliance,
+  and scales it by 0x10 (4 entries x 4 bytes) to index into the oBattleState_AliveBattleActors array from
+  the toolkit's battle state. It then scans that side's 4 slots, collecting up to 4 non-null entries whose
+  halfword at +0x24 is nonzero into a stack array. If any were collected, it calls GetPositiveSignedRNG
+  and uses SWI 6 divide to take the random value modulo the count, returning stack[random % count]; otherwise
+  it returns 0. This is a random-target selection among live opponents that still have a nonzero field
+  at 0x24.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: eor with 1 and *0x10 offsets the AliveBattleActors list of the opposite alliance from the toolkit
+    battle state; loop filters list entries for non-null and halfword [entry+0x24] != 0 into a stack array,
+    counting them; GetPositiveSignedRNG followed by svc 6 (divide) computes random % count for the return
+    index; returns a list entry pointer, or 0 when the count is zero (beq to epilogue)
+  refs:
+  - bn6f/asm/asm31.s:100325
+  - 0x080E5A08 sub_80E5A08
+  - 0x080E5A22 sub_80E5A22
+  - 0x08001532 GetPositiveSignedRNG
+  reproduce: python3 tools/asmcat.py 0x080E5A8A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- exact meaning of the +0x24 halfword filter on the actor objects (HP, panel, or target-valid flag)
+- which callers use this result — presumably random-targeting battle logic
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E5A8A -> battle_pickRandomOpposingActor
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E5A8A

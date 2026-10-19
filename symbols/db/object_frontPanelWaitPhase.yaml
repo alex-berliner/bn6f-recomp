@@ -1,0 +1,46 @@
+name: object_frontPanelWaitPhase
+address: '0x080E4130'
+kind: function
+status: probable
+summary: 'Battle object AI phase: acts once on the panel in front of the object, then waits 120 frames
+  (2 seconds) before ending the action.'
+interface: (r5 = battle object) -> void; sets oBattleObject_Timer=0x78, PhaseInitialized=4, then CurAction=0xC
+  and CurPhase=0 when the timer expires
+details: On first run (PhaseInitialized == 0) it gets the +1/-1 facing multiplier via object_getFrontDirection,
+  adds it to oBattleObject_PanelX to target the tile directly in front, and calls sub_80CF374 with r0
+  = front panel X, r1 = PanelY, r2 = oBattleObject_Params, r3 = oBattleObject_DamageAndStaminaDamageCounterDisabler
+  — likely an attack/effect applied to that panel. It then sets Timer to 0x78 (120 frames) and stores
+  phase 4 into PhaseInitialized so the setup only runs once. On every later call it decrements Timer;
+  once it reaches 0 it writes CurAction = 0xC (the idle/finished action) and CurPhaseAndPhaseInitialized
+  = 0, handing control back to the object's normal state machine.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#oBattleObject_PhaseInitialized]; tst/bne guards one-time setup, then strb #4 stores
+    the phase id; bl object_getFrontDirection then add r0,r0,PanelX with PanelY builds the adjacent front
+    panel coordinate; bl sub_80CF374 with r4=[Params], r6=[DamageAndStamina...] loaded just before the
+    call; strh #0x78,[Timer] then sub #1/bgt loop counts a 120-frame delay; on expiry: mov r0,#0xC; strb
+    [CurAction]; mov r0,#0; strh [CurPhaseAndPhaseInitialized] ends the phase'
+  refs:
+  - bn6f/asm/asm31.s:96654
+  - 0x0800E2CA object_getFrontDirection
+  - 0x080CF374 sub_80CF374
+  reproduce: python3 tools/asmcat.py 0x080E4130
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- What sub_80CF374 does with the front panel (attack, spawn, or field effect) — its body is unknown
+- Which enemy/object uses this handler and what action 0xC corresponds to in its action table
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E4130 -> object_frontPanelWaitPhase
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E4130

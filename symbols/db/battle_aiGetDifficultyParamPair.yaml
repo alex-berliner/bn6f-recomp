@@ -1,0 +1,51 @@
+name: battle_aiGetDifficultyParamPair
+address: '0x08108152'
+kind: function
+status: probable
+summary: Packs two per-difficulty AI parameter values (from two hard-coded 6-entry tables) into one word
+  for a given AI difficulty index.
+interface: (r0 = AI difficulty index 0-5) -> r0 = (param2 << 16) | param1, where each param is read from
+  its table via the battle object's AI version; flags clobbered
+details: The argument is multiplied by 8 and used to select one of six 8-byte sub-tables (byte_8108190..81081B8
+  for table A, byte_81081D8..8108200 for table B). Each sub-table is then passed to battle_aiGetVersionedTableEntry_800FE12,
+  which reads an entry (halfword) using the battle object's own AI version, including a special multiplier-scaled
+  entry for AI version 4. Table A's values vary with difficulty (0x14, 0x28, 0x28, 0x14, 3, 0x78 — plausibly
+  a frame delay or interval), while table B is a constant 10 (0xA) for every entry. The two results are
+  packed as (B << 16) | A and returned. The words at 8108208-8108218 (object_findRandomFreeNearbyPanel,
+  battle_checkPanelBehindObject) belong to the neighbouring caller sub_81080A6, hinting this pair feeds
+  an AI movement/attack-scheduling routine.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: mul r0,#8 + pointer tables off_8108178/off_81081C0 select one of six 8-byte difficulty sub-tables
+    per call; both halves go through battle_aiGetVersionedTableEntry_800FE12, whose summary says it reads
+    an AI parameter table by the object's AI version; lsl r0,#0x10 / orr r0,r6 packs the two halfword
+    results into one return value; table A values 0x14/0x28/0x14/3/0x78 vary per difficulty while table
+    B is uniformly 0xA; caller sub_81080A6 references object_findRandomFreeNearbyPanel and battle_checkPanelBehindObject,
+    consistent with AI behaviour tuning
+  refs:
+  - bn6f/asm/asm31.s:173133
+  - 0x081080A6 sub_81080A6
+  - 0x0800FE12 battle_aiGetVersionedTableEntry_800FE12
+  reproduce: python3 tools/asmcat.py 0x08108152
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- Exact meaning of the two values (delay vs. chance vs. count) — need sub_81080A6's use of the returned
+  packed word
+- What r0 indexes exactly (AI difficulty/grade id vs. enemy type) — no caller analysis available beyond
+  the single unknown caller
+- Which structure field holds the AI version consumed by battle_aiGetVersionedTableEntry_800FE12
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8108152 -> battle_aiGetDifficultyParamPair
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8108152

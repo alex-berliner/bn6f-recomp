@@ -1,0 +1,50 @@
+name: battle_removeHandCardEntry
+address: '0x0800B762'
+kind: function
+status: probable
+summary: Deletes one entry from a battle hand slot by shifting the slot's data left by 2 bytes until the
+  0xFFFF end marker is reached.
+interface: (r0 = battle hand slot index (for getBattleHandAddr), r1 = halfword entry index within the
+  slot) -> void; no return value, flags clobbered.
+details: Computes r4 = r1*2 and gets the hand slot address (array at 0x20349C0, 0x50-byte strides via
+  getBattleHandAddr_8010018). Destination pointer = slot + r1*2, source = destination + 2, so the routine
+  closes a 2-byte gap at entry r1. Each iteration copies the halfwords at +0x02, +0x0E, +0x1A, +0x26,
+  +0x32 and the bytes at +0x3E and +0x44 from source to destination, then advances both pointers by 2;
+  together these cover the even offsets of the slot, so it is an unrolled shift of the whole remaining
+  slot content. The loop ends once the halfword read at +2 (the just-shifted field) equals 0xFFFF (loaded
+  from dword_800B82C), meaning the terminator entry has been moved up too. This matches removing a used/discarded
+  card from the battle hand and compacting the list; the scattered fixed offsets (+0x0E/+0x1A/... spaced
+  0xC, plus bytes at +0x3E/+0x44) suggest per-card or per-slot metadata stored at fixed positions that
+  gets shifted along with the IDs.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl getBattleHandAddr_8010018 ties r0/r1 to the battle hand array at 0x20349C0 with 0x50-byte
+    slots; lsl r4, r1, #1 / add r0, r0, r4: destination is slot base + entryIndex*2; copy loop moves [p+2],[p+0xE],[p+0x1A],[p+0x26],[p+0x32]
+    (halfwords) and [p+0x3E],[p+0x44] (bytes) to p, then p += 2 on both sides (shift left by 2); ldr r6,
+    dword_800B82C (=0xFFFF) and cmp r2, r6 / bne loop: terminates after the 0xFFFF end marker is copied'
+  refs:
+  - bn6f/asm/asm00_1.s:19572
+  - 0x08010018 getBattleHandAddr_8010018
+  reproduce: python3 tools/asmcat.py 0x0800B762
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- No callers known, so the exact r0/r1 semantics (slot index vs. raw pointer, entry index vs. byte offset)
+  are inferred from getBattleHandAddr alone
+- What the halfwords at +0x0E..+0x32 and bytes at +0x3E/+0x44 mean in the 0x50-byte hand slot structure
+  (card IDs, selected flags, animation/timer data?) is not shown here
+- Whether the loop can read past the 0x50-byte slot if 0xFFFF is never found within it
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_800B762 -> battle_removeHandCardEntry
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800B762

@@ -1,0 +1,48 @@
+name: battle_setStraightShotMotion
+address: '0x080DD062'
+kind: function
+status: probable
+summary: Gives a battle object a forward X velocity (speed picked by Param1) and sets its Timer to the
+  number of frames until it flies off the far edge of the field.
+interface: (r5 = battle object) -> r0 = object's oBattleObject_Timer value; writes oBattleObject_XVelocity
+  and oBattleObject_Timer
+details: 'Reads the facing multiplier via object_getFrontDirection and multiplies it by a speed word from
+  the 4-entry table byte_80DD098 indexed by (Param1<<2) (all entries 0x00038000, i.e. 3.5 px/frame in
+  16.16), storing the signed result in oBattleObject_XVelocity. It then computes the remaining travel
+  distance: for alliance 0 the target edge is panel 7, otherwise panel 0, taking |target - PanelX| and
+  scaling by 0x28<<16 (40 px per battle panel, 16.16). SWI 6 (Div, r0/r1) divides that distance by the
+  speed to get the frame count, which is stored (halfword) to oBattleObject_Timer, presumably expiring
+  the shot when it counts down. Quirk: the object pointer is passed in r5, not r0, and r1 still holds
+  the speed word when the division happens.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl object_getFrontDirection + mul r0,r1 + str [XVelocity]: velocity = facing * table speed
+    (asm near start); ldrb r1,[Param1]; lsl #2; ldr r1,[table,r1]: Param1 selects one of 4 speed entries
+    at byte_80DD098; tst Alliance / mov r0,#7 vs #0 then sub PanelX: distance measured to panel 7 for
+    player side, panel 0 for enemy; mov r2,#0x28; lsl 16; mul; svc 6: distance*40px divided by speed gives
+    frame count; strh r0,[Timer]: result used as the object''s lifetime timer'
+  refs:
+  - bn6f/asm/asm31.s:81153
+  - 0x080DCFF4 sub_80DCFF4
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x080DD062
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- Which attack/object uses this (caller sub_80DCFF4 is undocumented) — needed to confirm it is a straight-flying
+  projectile handler
+- Whether Param1 ever differs (all 4 table entries are currently identical 0x00038000)
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DD062 -> battle_setStraightShotMotion
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DD062

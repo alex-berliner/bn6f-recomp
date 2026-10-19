@@ -1,0 +1,49 @@
+name: ow_wipeBg2Columns
+address: '0x0802AFD4'
+kind: function
+status: probable
+summary: 'Advances a horizontal BG2 wipe transition: blanks background columns one by one while scrolling
+  BG2, until the scroll reaches 120px.'
+interface: (r0 unused/r5 = effect state struct) -> r0 = new BG2 scroll X; Z set iff scroll == 0x78 (wipe
+  finished)
+details: 'Uses a per-effect struct: byte +2 is an init/state flag (set to 4 on first call), +0x38 is the
+  scroll offset (advances 0xC per call, pushed/popped across the loop and stored back), +0x3c is the column
+  index into the 32x32 tile block. Each iteration calls CopyBackgroundTiles(col, 0, tileBlock=3, tileIds=byte_802B024
+  (60 zero tiles), jSize=1, iSize=0x14), writing blank tiles as a full 20-tile-tall column. The number
+  of columns per call alternates 1/2 based on bit 2 of the incremented scroll value. The new scroll value
+  is written to toolkit->RenderInfo->BG2ScrollX and returned so callers can test for the 0x78 endpoint.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#2]/bne + str 0 to +0x3c,+0x38, mov #4 to +2: one-time init of a stateful effect
+    struct; loop calls CopyBackgroundTiles(j=[+0x3c]++, 0, 3, byte_802B024 (all zeros), 1, 0x14): blanks
+    one 20-tile column of tile block 3 per iteration; str r0,[r5,#0x38] then strh r0,[r1+oRenderInfo_BG2ScrollX]:
+    scroll value drives BG2 X scroll, +0xC per call; cmp r0,#0x78 before pop pc: exposes a completion
+    condition to the caller via flags; both callers (0x802ABD0, 0x802AED8) sit in the same transition-effect
+    cluster, consistent with a wipe step'
+  refs:
+  - bn6f/asm/asm03_0.s:10671
+  - 0x0802ABD0 sub_802ABD0
+  - 0x0802AED8 sub_802AED8
+  - 0x080018C2 CopyBackgroundTiles
+  reproduce: python3 tools/asmcat.py 0x0802AFD4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- callers' code not shown, so the exact transition context (area warp vs cutscene) and how they test the
+  0x78 condition are unconfirmed
+- meaning of state value 4 in byte +2 and who resets it is unknown
+- why the column-per-call count alternates 1/2 from bit 2 of the scroll value (possibly easing) is unverified
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_802AFD4 -> ow_wipeBg2Columns
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802AFD4

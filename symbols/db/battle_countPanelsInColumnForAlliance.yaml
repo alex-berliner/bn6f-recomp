@@ -1,0 +1,48 @@
+name: battle_countPanelsInColumnForAlliance
+address: '0x080F0F78'
+kind: function
+status: probable
+summary: Returns how many panels in a battle object's column match an alliance-specific panel filter.
+interface: '(r0 = battle object ptr in r5 context: reads oBattleObject_PanelX and oBattleObject_Alliance)
+  -> r0 = count of matching panels in that column; buffer written to stack is discarded'
+details: 'Loads the object''s panel X and alliance, and indexes a two-entry table (off_80F0F98: 0x4000000
+  for alliance 0, 0x8000000 for alliance 1) to pick the filter value passed to object_getPanelsInColumnFiltered
+  alongside r3=0. The callee enumerates the three panels of that column, tests each with object_checkPanelParameters,
+  and writes passing panel IDs into a caller-supplied buffer. Here the buffer is a 0x18-byte stack frame
+  captured in r7, which is discarded on return, so only the returned count is meaningful. The literals
+  off_80F0FA4 (unk_2010308, 3) and byte_80F0FAC belong to adjacent pool data, likely for a neighboring
+  function. The alliance-indexed filter strongly suggests it distinguishes own vs. enemy panels (e.g.
+  broken/holy panel flags).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r5,#oBattleObject_PanelX] / ldrb r1,[r5,#oBattleObject_Alliance] show it operates per
+    battle object column and side; ldr r2,[r2,r1] with off_80F0F98 = {0x4000000, 0x8000000} selects an
+    alliance-dependent filter value; bl object_getPanelsInColumnFiltered whose known summary is exactly
+    a filtered column-panel enumeration returning a count; add r7,sp,#0 as buffer but pop {r7,pc} right
+    after means the ID list is thrown away, leaving only the count in r0
+  refs:
+  - bn6f/asm/asm31.s:124615
+  - 0x080F0EC0 sub_80F0EC0
+  - 0x0800CFDC object_getPanelsInColumnFiltered
+  reproduce: python3 tools/asmcat.py 0x080F0F78
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- Why the panel-ID buffer is written to stack and discarded — caller sub_80F0EC0 (unknown) may show whether
+  only the count is used or the callee has side effects
+- What panel parameters 0x4000000/0x8000000 mean inside object_checkPanelParameters
+- Whether unk_2010308 at off_80F0FA4 belongs to this function or an adjacent one
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F0F78 -> battle_countPanelsInColumnForAlliance
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F0F78

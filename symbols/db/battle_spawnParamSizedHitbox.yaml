@@ -1,0 +1,45 @@
+name: battle_spawnParamSizedHitbox
+address: '0x080D0C7C'
+kind: function
+status: probable
+summary: Spawns a battle collision-region hitbox whose size is selected by the object's Param1 (0/16/32/48),
+  at the object's panel with its element.
+interface: (r5 = battle object ptr) -> spawns collision region; r0-r3,r7 clobbered, no return value used
+details: 'Reads oBattleObject_Param1, multiplies by 4 to index a table of four words at byte_80D0CA4 whose
+  low byte is 3 and whose second byte is 0x00,0x10,0x20,0x30 — a size/extent in pixels selected by Param1
+  — and passes that word as r7 to object_spawnCollisionRegion. The hitbox is placed at the object''s PanelX/PanelY,
+  carries the object''s Element, r3=0, packed word 0x3105FF01 (flags/dimensions for the region), and r6
+  = StaminaDamageCounterDisabler << 16 (likely a reused field holding a lifetime/counter value). So the
+  routine is a parameterized hitbox spawner: one function serving four attack shapes differing only in
+  size.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r5,#oBattleObject_Param1]; lsl r0,r0,#2 indexes off_80D0CA0 table of sizes 0x00/0x10/0x20/0x30;
+    ldrb PanelX/PanelY/Element from the battle object are forwarded as r0-r2 to object_spawnCollisionRegion;
+    r4 constant 0x3105FF01 and r6 = StaminaDamageCounterDisabler<<16 are fixed spawn parameters for the
+    region; callee object_spawnCollisionRegion is the known battle hitbox-spawn helper
+  refs:
+  - bn6f/asm/asm31.s:54497
+  - 0x080D0BD4 sub_80D0BD4
+  - 0x080C536A object_spawnCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080D0C7C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- exact meaning of r4=0x3105FF01 bitfields and the r6 field inside the collision-region structure
+- which entity/attack invokes this (sole caller sub_80D0BD4 is undocumented), i.e. what attack has four
+  size variants
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D0C7C -> battle_spawnParamSizedHitbox
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D0C7C

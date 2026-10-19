@@ -1,0 +1,47 @@
+name: battle_checkKeyComboBuffer
+address: '0x08012956'
+kind: function
+status: probable
+summary: Sliding 3-frame key-history buffer that reports when two specific buttons (mask 0x22) have both
+  been pressed within the window, used by the charge-attack step.
+interface: '(r0 = state struct: +0 done flag, +1 slot idx, +2 frame timer, +4/+6/+8 key history halfwords;
+  r1 = current key input) -> r0 = 1 if both keys seen within 3 frames, else 0'
+details: Each frame while the done flag (+0) is clear, it stores r1 (raw key input) into a rotating slot
+  at +4 + 2*index (index cycles 0-2 via +1) and increments the frame counter at +2; after 12 frames it
+  sets the done flag and returns 0. It then ORs the three history halfwords and ANDs with 0x22 — if both
+  bits (B and Left on GBA key mapping) appear in any of the last 3 frames, it sets the done flag and returns
+  1. This detects a quick two-button input combo (e.g. both keys tapped within ~3 frames) rather than
+  an exact sequence. The timeout path also latches the flag, so the caller presumably reinitializes or
+  abandons the struct afterwards.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'strh r1,[r0,r2] with r2 = 2*idx+4 stores input into one of three halfword history slots (loc_801296C);
+    ldrh from +4/+6/+8, orr all, and with 0x22, cmp #0x22 — match sets flag and returns 1; counter at
+    +2 capped at 0xC sets flag but returns 0 (timeout path at 8012974); index at +1 wraps modulo 3 (cmp
+    #3, blt), confirming a 3-entry circular buffer; sole caller battle_chargeAttackStep passes per-frame
+    input, consistent with detecting a button combo during charge'
+  refs:
+  - bn6f/asm/asm00_2.s:8824
+  - 0x080EFF28 battle_chargeAttackStep
+  reproduce: python3 tools/asmcat.py 0x08012956
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- exact meaning of mask 0x22 in the game's key mapping (B+Left vs custom remap) and what the charge-attack
+  step does when this returns 1
+- who initializes/clears the 9-byte state struct and whether the done flag distinguishes match from timeout
+  for the caller
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8012956 -> battle_checkKeyComboBuffer
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8012956

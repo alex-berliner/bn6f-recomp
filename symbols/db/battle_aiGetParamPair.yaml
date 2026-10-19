@@ -1,0 +1,46 @@
+name: battle_aiGetParamPair
+address: '0x080F2E54'
+kind: function
+status: probable
+summary: Packs two halfword AI parameter-table entries, selected by index and the battle object's AI version,
+  into one return word.
+interface: (r0 = parameter index) -> r0 = (second-table halfword << 16) | first-table halfword; flags
+  from the orr
+details: 'Multiplies r0 by 8 and calls battle_aiGetVersionedTableEntry_800FE12 twice: first with table-pointer
+  list off_80F2E7C (byte_80F2E88/90/98), then with off_80F2EA0 (byte_80F2EAC/B4/BC), passing stride 8
+  in r2. The callee picks one of three 8-byte (4-halfword) tables by the battle object''s AI version and
+  reads the halfword at index*8. First table group yields 20/60/110/10, or 40/120/220/10 for a doubled
+  variant; second group is always 10. Result is combined as (hi<<16)|lo, so the low halfword is the varying
+  value and the high halfword is constant 10.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: mul r0,#8 then bl battle_aiGetVersionedTableEntry_800FE12 twice with off_80F2E7C and off_80F2EA0
+    (sub_80F2E54); lsl r0,#0x10 / orr r0,r6 packs the two halfword results into one word; off_80F2E7C
+    lists three table bases byte_80F2E88/90/98, matching the AI-version table selection of the callee;
+    surrounding words off_80F2EC4/C8/CC point to object_checkTargetColumnPanels, sub_80F36A2, object_pickFilteredPanel,
+    indicating a battle AI panel-targeting context
+  refs:
+  - bn6f/asm/asm31.s:128448
+  - 0x0800FE12 battle_aiGetVersionedTableEntry_800FE12
+  reproduce: python3 tools/asmcat.py 0x080F2E54
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- No caller is known, so the meaning of the index and of the packed pair (e.g. panel row/column, delay
+  frames vs. count) is unconfirmed
+- Which AI version maps to the doubled table byte_80F2E98, and what game quantity the constant 10 in the
+  second table represents
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F2E54 -> battle_aiGetParamPair
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F2E54

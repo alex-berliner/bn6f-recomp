@@ -1,0 +1,48 @@
+name: battle_aiWoodChargeAttack
+address: '0x080F1FC0'
+kind: function
+status: probable
+summary: 'Battle attack step: charges an enemy attack to wood element, boosting its damage and playing
+  a charge sound, then after a 30-frame delay lands the hit.'
+interface: (uses r5 = battle object, r7 = oAIAttackVars struct; no args) -> r0 = return of sub_80F20A0;
+  no flags relied on by caller seen
+details: 'Runs per-frame as part of an enemy AI attack state (tail-call sub_80F20A0 continues it). On
+  first entry (AttackElement == 0) it initializes the attack: sets AttackElement = 4 (wood), adds AttackBoost
+  onto Damage, switches the object''s animation to 0x12, calls sub_80E887C and stores its result into
+  ScratchVar (likely target/randomness), plays sound effect 0xAD, and sets StepTimer = 30. While the timer
+  runs it decrements StepTimer each frame; on expiry it writes HitElement = 4 so the pending hit resolves
+  as wood element. Fields touched: oAIAttackVars_AttackElement, _Damage, _AttackBoost, _StepTimer, _HitElement,
+  _ScratchVar, and oBattleObject_CurAnim.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne — only initializes on first pass; strb #4
+    AttackElement + add AttackBoost to Damage then strh Damage — charge-up damage/element setup; strb
+    #0x12 [r5,#oBattleObject_CurAnim] and PlaySoundEffect(0xad) — charge animation and SFX; StepTimer=30,
+    decrement loop, then strh #4 HitElement — 30-frame windup before the wood hit applies; tail bl sub_80F20A0
+    before pop — hands off to the next attack-state routine every frame'
+  refs:
+  - bn6f/asm/asm31.s:126939
+  - 0x080005CC PlaySoundEffect
+  - 0x080E887C sub_80E887C
+  - 0x080F20A0 sub_80F20A0
+  reproduce: python3 tools/asmcat.py 0x080F1FC0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- What sub_80E887C returns (target selection/random?) and why it is stored in ScratchVar
+- What sub_80F20A0 does with HitElement afterwards
+- Which enemy/attack this state belongs to (no known callers)
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F1FC0 -> battle_aiWoodChargeAttack
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F1FC0

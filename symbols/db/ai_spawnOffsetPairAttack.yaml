@@ -1,0 +1,47 @@
+name: ai_spawnOffsetPairAttack
+address: '0x081051EC'
+kind: function
+status: probable
+summary: AI attack helper that queues the same AI-spawned attack twice at two tile offsets chosen by index,
+  alliance, and facing direction
+interface: (r0 = attack index, r5 = battle object, r7 = oAIAttackVars) -> r0 = result of second sub_80DAE48
+  call; r4/r6 clobbered
+details: 'Builds a packed argument r4 = oAIAttackVars.AiDifficultyTier | (r0<<8) | (variant<<16) with
+  variant 0 for the first spawn and 1 for the second. Reads a 2-byte tile-offset pair from byte_810524C
+  at alliance*4 + index*2 (alliance 0: (3,4),(4,0); alliance 1: (4,4),(3,0)). First call to sub_80DAE48
+  uses the raw offset; second call adds object_getFrontDirection() (+1/-1) to the x byte, mirroring the
+  spawn across the field. Both calls pass oAIAttackVars.InitFlag in r2 and oAIAttackVars.Damage in r6,
+  so the same damage/init parameters apply to both spawns.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'r4 packing uses ldrb [r7,#oAIAttackVars_AiDifficultyTier] then orr with r0<<8 and 0/1<<16 (asm
+    lines 4-9, 25-30); table lookup: r0 = index*2 + alliance*4, ldrb pair from byte_810524C (lines 10-16);
+    second spawn adds object_getFrontDirection() result to the x byte before the second sub_80DAE48 call
+    (lines 20-24); both calls pass oAIAttackVars_InitFlag in r2 and oAIAttackVars_Damage in r6 (lines
+    17-18, 31-32)'
+  refs:
+  - bn6f/asm/asm31.s:166857
+  - 0x0810486A sub_810486A
+  - 0x0800E2CA object_getFrontDirection
+  - 0x080DAE48 sub_80DAE48
+  reproduce: python3 tools/asmcat.py 0x081051EC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- what sub_80DAE48 spawns (object vs projectile) and its exact argument semantics
+- what the packed r4 fields mean to the spawner (variant 0 vs 1)
+- which enemy/AI script calls the caller sub_810486A to identify the attack
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81051EC -> ai_spawnOffsetPairAttack
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81051EC

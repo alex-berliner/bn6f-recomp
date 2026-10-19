@@ -1,0 +1,51 @@
+name: battle_startQuakeEffect
+address: '0x080CBFAE'
+kind: function
+status: probable
+summary: 'Battle earthquake routine: plays a rumble and shakes the camera; a second entry point (0x80CBFC4)
+  additionally spawns effect object 0x22 on a shuffled selection of field panels.'
+interface: (r0 = count limit for panel debris at alt entry; unused at 0x80CBFAE) -> r0 = ?; no meaningful
+  flags
+details: 'The primary entry calls sub_80E2FE8 with (0x81, 2, 0, 1) — likely playing a quake rumble sound
+  or arming an effect — then calls camera_initShakeEffect(1, 0x1E), i.e. shake magnitude 1 for 30 frames,
+  and returns. The code after the unconditional branch is reachable only from a second entry at ~0x80CBFC4:
+  it takes r0 as a max count into r4, calls object_getPanelsExceptCurrentFiltered to get a filtered list
+  of field panels (excluding the current one), ShuffleByteList_PrimaryRNG to randomize the byte list at
+  sp, clamps the loop start to min(count, r4)-1, and for each panel decodes packed coordinates (high nibble
+  = row, low 3 bits = column via lsr/lsl-lsr) with object_getCoordinatesForPanels and spawns effect object
+  0x22 (r3=0) at that tile. This matches an earthquake/debris attack or scripted battle event: screen
+  rumble plus falling effects on random panels.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'calls camera_initShakeEffect_80302a8(1, 0x1E) — camera struct shake magnitude/duration per
+    its known summary; object_getPanelsExceptCurrentFiltered + ShuffleByteList_PrimaryRNG: random subset
+    of battle field panels is selected; lsr/lsl 0x1d decoding of each list byte feeds object_getCoordinatesForPanels
+    (x,y packed in one byte); spawn_t1_0x0_EffectObject called with id r4=0x22 per panel coordinate; unconditional
+    b loc_80CC002 right after the shake call means the panel loop is a distinct entry (~0x80CBFC4), not
+    reachable from 0x80CBFAE'
+  refs:
+  - bn6f/asm/asm31.s:44029
+  - 0x080302A8 camera_initShakeEffect_80302a8
+  - 0x080E2FE8 sub_80E2FE8
+  reproduce: python3 tools/asmcat.py 0x080CBFAE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- what sub_80E2FE8(0x81, 2, 0, 1) does — likely a sound/effect trigger but unconfirmed
+- what battle effect object 0x22 is (debris/rocks?) and which attack or cutscene invokes either entry
+- whether 0x80CBFC4 should be listed as a separate symbol
+- meaning of the count limit r0 at the second entry and the filter used by object_getPanelsExceptCurrentFiltered
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CBFAE -> battle_startQuakeEffect
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CBFAE

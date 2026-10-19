@@ -1,0 +1,45 @@
+name: object_stateDespawn
+address: '0x080C1E7A'
+kind: function
+status: probable
+summary: 'Battle-object state handler: plays a short exit animation, then disables the hitbox and moves
+  the object to the DESTROY state.'
+interface: (r5 = battle object) -> r0 = none; sets oBattleObject_CurState to CUR_STATE_DESTROY when done
+details: On the first invocation (oBattleObject_PhaseInitialized == 0) it marks the phase initialized,
+  releases the panel this object had reserved by calling object_removePanelReserve with FuturePanelX/FuturePanelY,
+  sets oBattleObject_CurAnim to 4 and a 3-frame oBattleObject_Timer — apparently a short vanish/flicker
+  animation. On later invocations it counts the timer down; when it expires it clears the enabled flag
+  of the object's oCollisionData (via oBattleObject_CollisionDataPtr) so the object stops registering
+  hits, and writes CUR_STATE_DESTROY into oBattleObject_CurStateActionPhaseAndPhaseInitialized, which
+  both switches the state machine to the destroy handler and resets its phase-initialized byte. It is
+  clearly a per-state callback dispatched with the object in r5, not a normal r0/r1 function.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'tst r0,r0 / bne on oBattleObject_PhaseInitialized followed by ''mov r0,#4; strb [r5,#PhaseInitialized]''
+    is the standard one-shot state-entry pattern; ldrb FuturePanelX/Y + bl object_removePanelReserve frees
+    the object''s reserved battle panel on exit; strb #4 to oBattleObject_CurAnim and strh #3 to oBattleObject_Timer
+    implement a 3-frame exit animation; clearing oCollisionData_Enabled via oBattleObject_CollisionDataPtr
+    right before writing CUR_STATE_DESTROY shows the object is being taken out of play'
+  refs:
+  - bn6f/asm/asm31.s:21960
+  - 0x0801BB46 object_removePanelReserve
+  reproduce: python3 tools/asmcat.py 0x080C1E7A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- which specific object/attack uses this state (no callers known), and what animation 4 looks like, to
+  confirm it is a vanish rather than some other 3-frame wrap-up
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C1E7A -> object_stateDespawn
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C1E7A

@@ -1,0 +1,48 @@
+name: text_loadWindowGlyphs
+address: '0x0811BCD8'
+kind: function
+status: probable
+summary: Selects one of the text engine's three glyph buffers by a window-id byte and has the text-gfx
+  renderer copy that window's glyphs into its VRAM tile slot, then marks the window loaded.
+interface: (r5 = text-window struct, [r5+5] = window id) -> r0 = 0; writes [r5+8] = 8; flags clobbered
+details: 'Reads an id byte at [r5+5] (struct pointer survives in r5 across the call, saved/restored by
+  push/pop r5) and uses it to index three parallel tables: a byte table at dword_811BD30 (0x3A,0x33,0x34),
+  a pointer table off_811BD10 choosing among gfx buffers unk_201AA00 / byte_201AE00 / byte_201B200, and
+  a table of VRAM destinations byte_811BD20 = {0x06012A00, 0x06013200, 0x06013A00}, spaced 0x800 apart
+  like per-window tile slots. It calls renderTextGfx_8045F8C with r0 = eTextScript201BF20 (text-engine
+  state), r1 = table byte, r2 = selected gfx buffer, r3 = selected VRAM address, r4 = 9, r5 = 1, r6 =
+  dword_86A5D60, r7 = 0. Afterwards it stores 8 into the struct''s state byte at [r5+8], matching a task/state-machine
+  pattern where 8 likely means ''glyphs loaded''.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r7,[r5,#5] with ldrb r1,[r4,r7] over dword_811BD30 = {0x3A,0x33,0x34}: dispatch on a small
+    window/style id; off_811BD10 selects unk_201AA00 / byte_201AE00 / byte_201B200 by id*4 — three parallel
+    glyph source buffers; byte_811BD20 holds 0x06012A00/0x06013200/0x06013A00 — VRAM tile destinations
+    0x800 apart, one per selection; callee renderTextGfx_8045F8C is documented as publishing a gfx pointer
+    into text-renderer state and handing a glyph chunk to sub_3006B94; mov r0,#8; strb r0,[r5,#8] after
+    the call sets a ''done/loading'' state byte on the window struct'
+  refs:
+  - bn6f/asm/asm32.s:28928
+  - 0x08045F8C renderTextGfx_8045F8C
+  reproduce: python3 tools/asmcat.py 0x0811BCD8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- No caller is known, so the meaning of [r5+5] (window id vs. text style) and [r5+8] state 8 is inferred
+  from the struct layout alone
+- What dword_86A5D60 and the fixed r4=9/r5=1/r7=0 arguments mean inside renderTextGfx_8045F8C
+- Whether the three gfx buffers are font variants or the three dialog windows' pending glyph data
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_811BCD8 -> text_loadWindowGlyphs
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811BCD8

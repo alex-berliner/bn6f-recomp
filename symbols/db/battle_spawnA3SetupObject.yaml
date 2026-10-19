@@ -1,0 +1,56 @@
+name: battle_spawnA3SetupObject
+address: '0x080D99EC'
+kind: function
+status: probable
+summary: 'Spawns a type-0xA3 battle object and, if the spawn succeeded, reconfigures the caller''s battle
+  object (r5): panel position, element 2, damage word, alliance, and header flag 0x10.'
+interface: (r0 = value stored to oBattleObject_PanelX (also pushed as a stack arg to the spawn), r1 =
+  PanelY, r2 = Alliance, r3 = extra spawn arg, r5 = battle object to configure, r6 = oBattleObject_DamageAndStaminaDamageCounterDisabler
+  value) -> r0 = r5 (unchanged input); flags reflect object_spawnType3's success (beq skips setup)
+details: The routine saves the caller's r0-r2/r5 with push {r0-r2,r5} — this also leaves the original
+  r0 on the stack as an extra argument slot for object_spawnType3, which is called with r0 = 0xA3 (object
+  type 163). The pop {r1-r3,r5} shifts the saved arguments down one (r1 = old r0, r2 = old r1, r3 = old
+  r2), so after the beq on the spawn's success flag the code writes old-r0/r1 to oBattleObject_PanelX/PanelY
+  of the object in r0 = caller's r5, hard-codes oBattleObject_Element = 2, stores caller's r6 into oBattleObject_DamageAndStaminaDamageCounterDisabler,
+  copies old r2 into oBattleObject_Alliance, and ORs 0x10 into oObjectHeader_Flags. If the spawn fails,
+  nothing is written and r0 still equals the caller's r5. Note the literal listing does 'mov r0, r5' before
+  the pop, so all field writes target the caller's r5 object, not the newly spawned one; the spawned object's
+  pointer is never kept. Two data blobs follow the function (byte_80D9A14 starting with bytes 00 00 80
+  0C, and byte_80D9A20, a table of small byte pairs/triples) whose role is unclear from this site alone.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mov r0, #0xa3 immediately before bl object_spawnType3 selects battle object type 0xA3; pop
+    {r1-r3,r5} after the call remaps saved r0/r1/r2 into r1/r2/r3, which then feed PanelX/PanelY/Alliance
+    writes; strb r1, [r0,#oBattleObject_PanelX] / strb r2, [r0,#oBattleObject_PanelY] with r0 = mov r0,
+    r5 shows the setup is applied to the caller''s r5 object; mov r1,#2; strb r1,[r0,#oBattleObject_Element]
+    and orr flags with 0x10 are hard-coded configuration of that object; beq locret_80D9A12 right after
+    the call makes the whole setup conditional on object_spawnType3 succeeding'
+  refs:
+  - bn6f/asm/asm31.s:73691
+  - 0x08018186 sub_8018186
+  - 0x08003358 object_spawnType3
+  reproduce: python3 tools/asmcat.py 0x080D99EC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- What caller sub_8018186 puts in r5 and r6 (is r5 really the object to reconfigure, and r6 a damage/HP
+  value?)
+- Whether the field writes are meant for the newly spawned type-0xA3 object and 'mov r0, r5' reflects
+  a listing/ordering subtlety
+- Meaning of oObjectHeader_Flags bit 0x10 and of element id 2 in the battle element enum
+- Purpose of the trailing data at byte_80D9A14/byte_80D9A20 (the 0x0C800000-looking word is not a plausible
+  GBA address as parsed)
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D99EC -> battle_spawnA3SetupObject
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D99EC

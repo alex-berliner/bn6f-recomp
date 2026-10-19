@@ -1,0 +1,45 @@
+name: rfu_setStateEnded
+address: '0x0813D978'
+kind: function
+status: probable
+summary: RFU helper that records state value 9 in the wireless work struct and invokes the lower RFU state
+  routine with 0.
+interface: () -> r0 = return of sub_813D934(0); no other side effects visible
+details: Writes halfword 9 to offset +0x8 of the struct at 0x200BC50 (word_200BC58) and tail-delegates
+  to sub_813D934 with r0=0, returning its result. The struct is the RFU/wireless work area shared with
+  the other callers. Given rfu_resetSlotsAndReportOffline (which tears down slots and reports offline)
+  calls this, 9 plausibly encodes a link-ended/reset state, but the enum meaning is not shown. The callee
+  likely drives the state machine or sends the corresponding request.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_813D978: strh r1(=9), [r0(=eS200BC50),#0x8] — stores state 9 into the RFU work struct;
+    sub_813D978: bl sub_813D934 with r0=0 — hands control to the lower RFU routine; caller rfu_resetSlotsAndReportOffline
+    (0x0803C6D8) — teardown/offline path invokes this, fitting a link-ended state; all callers (0x803A5xx–0x803C6xx)
+    sit in the wireless/link manager block, consistent with an RFU-layer state setter'
+  refs:
+  - bn6f/asm/asm37_0.s:4536
+  - 0x0803C6D8 rfu_resetSlotsAndReportOffline
+  - 0x0803A524 sub_803A524
+  - 0x0803A558 sub_803A558
+  - 0x0813D934 sub_813D934
+  reproduce: python3 tools/asmcat.py 0x0813D978
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- meaning of the value 9 stored at word_200BC58 (state enum or STWI request type?)
+- what sub_813D934 does — whether it dispatches a request or only runs the state machine
+- the layout of the 0x200BC50 work struct beyond offset 0x8
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_813D978 -> rfu_setStateEnded
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_813D978

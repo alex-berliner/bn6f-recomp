@@ -1,0 +1,46 @@
+name: sprite_queueTileGrid
+address: '0x08046038'
+kind: function
+status: probable
+summary: Draws a W×H grid of 16x16-px sprite metatiles, one OAM entry per tile, using tile descriptors
+  from a static table.
+interface: (r0 = tile descriptor index, r2 = columns, r3 = rows, r4 = start x, r5 = start y — non-ABI
+  use of r4/r5) -> r0 = destroyed; queues OAM entries
+details: 'Indexes a static descriptor table (byte_80460BC, 8 bytes/entry) via r0*8. Each entry holds a
+  packed attr2 word (tile index, palette, flags) at +0, a byte at +4 and +6 passed as extra args, and
+  a byte at +5 shifted <<10 (priority bits) merged into attr2. Loops rows (r9/r3) x columns (r8/r2): each
+  iteration packs attr0 base 0x40000000 | r4<<16 | r5 (x/y pixel coords) and calls sprite_queueOamEntry,
+  advancing x by 0x10 per column and y by 0x10 per row — i.e. 16x16-pixel cells. Quirk: r4/r5 are read
+  as inputs but not pushed/saved per the calling convention, so callers must set them; the 7-entry default
+  table holds tile numbers like 0xE2B8 with priority/palette bytes.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mul r0,r1(=8) + ldr r6,off_80460B8: descriptor table lookup, 8 bytes per tile id; loc_8046062:
+    orr r0,r4<<16/r5 + bl sprite_queueOamEntryThunk_802FE28 queues one OAM entry per tile; inner r7 +=
+    0x10 / outer r5 += 0x10: 16-px step in x and y, so a metatile grid; ldrb r2,[r6,#5]; lsl r2,#0xa;
+    orr r1: byte 5 becomes OAM priority bits of attr2; nested loops over r8->0 and r9->0 with counts from
+    r2/r3 give the W×H tiling'
+  refs:
+  - bn6f/asm/asm03_2.s:121
+  - 0x0802FE28 sprite_queueOamEntryThunk_802FE28
+  reproduce: python3 tools/asmcat.py 0x08046038
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- no caller known, so the exact game context and who sets r4/r5 is unknown
+- meaning of descriptor bytes +4 and +6 passed to sprite_queueOamEntry as r2/r3
+- whether the table is indexed by a tile/animation id from a larger structure
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8046038 -> sprite_queueTileGrid
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8046038

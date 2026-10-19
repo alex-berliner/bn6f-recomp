@@ -1,0 +1,46 @@
+name: object_findExtremeMatchingRow
+address: '0x0800D190'
+kind: function
+status: probable
+summary: Scans three successive rows with the filtered panel-row search and returns the smallest (or,
+  in practice, largest) matching row index.
+interface: (r0 = object/handle passed to the row scan, r2/r3 = filter params passed through) -> r0 = extreme
+  matching row (0 if no row matched); flags clobbered
+details: 'Iterates a counter from 1 to 3 inclusive, each iteration calling object_getClosestPanelMatchingRowFiltered
+  with the saved r0/r2/r3; every nonzero row result is stored into a small stack array. If no row matched,
+  returns 0. Otherwise it folds the array into an extreme: when the saved r0 is zero it keeps the minimum,
+  otherwise the maximum (cmp/blt vs cmp/bgt around ldrb [r3,r1]). Quirk: since the same saved r0 is also
+  the pointer handed to the callee, it is presumably always nonzero, making the min branch effectively
+  dead and the function return the largest (farthest) matching row among depths 1-3.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'loop loc_800D1A0: counter [sp,#0x10] runs 1..3 (cmp r0,#3; ble) calling object_getClosestPanelMatchingRowFiltered
+    each pass; beq skip + strb r0,[sp,r4] stores only nonzero scan results into a stack array counted
+    by r4; tst r4,r4; beq loc_800D1EA returns 0 when nothing matched; min/max fold: tst [sp,#0xc] picks
+    cmp/blt (min) vs cmp/bgt (max) over the collected rows; callee summary: scans rows opposite the object''s
+    facing side from six rows back with a filter, matching the passed-through r2/r3 arguments'
+  refs:
+  - bn6f/asm/object.s:3656
+  - 0x0800D086 object_getClosestPanelMatchingRowFiltered
+  reproduce: python3 tools/asmcat.py 0x0800D190
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- no callers known, so the meaning of r0 (object pointer vs direction flag) and why a min path exists
+  is unconfirmed
+- what filter predicate r2/r3 selects and what gameplay feature scans exactly rows 1-3 (attack targeting?
+  AI movement?) is unknown without a caller
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_800D190 -> object_findExtremeMatchingRow
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800D190

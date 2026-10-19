@@ -1,0 +1,46 @@
+name: battle_wait60ThenEndPhase
+address: '0x080E3504'
+kind: function
+status: probable
+summary: 'Battle-object phase handler: on first tick frees the object''s impact slot, runs a one-time
+  setup call, waits 60 frames, then switches the object to action 0xC (phase 0).'
+interface: (r5 = battle object ptr; r0,r1,r2,r3 clobbered) -> r0 = N/A; no meaningful flags
+details: Runs per-frame with the battle object in r5. If PhaseInitialized is 0, it sets Timer = 0x3C (60
+  frames), clears the impact-effect slot indexed by oBattleObject_Alliance via battle_clearImpactSlot,
+  calls sub_80E3560, and then calls sub_802CE8A with (RelatedObject1Ptr, ChipID, DamageAndStaminaDamageCounterDisabler,
+  Z16Save) — likely registering the object's effect/hit against its related object — before setting PhaseInitialized
+  = 4. On every tick it decrements Timer; while it stays >= 0 the handler returns. When the countdown
+  underflows, it sets CurAction = 0xC and CurPhase/PhaseInitialized = 0, handing the object to the next
+  action state (probably its teardown/remove action).
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb PhaseInitialized / mov r0,#0x3C; strh Timer: one-time 60-frame timer setup; bl battle_clearImpactSlot
+    with r0 = oBattleObject_Alliance: frees the alliance''s impact slot during init; bl sub_802CE8A with
+    (RelatedObject1Ptr, ChipID, DamageCounterDisabler, Z16Save): one-time effect/hit registration; mov
+    r0,#4; strb PhaseInitialized: marks the init branch as done; sub Timer,#1; bge ... else CurAction=0xC,
+    CurPhase=0: ends the wait and transitions action after 60 frames'
+  refs:
+  - bn6f/asm/asm31.s:94904
+  - 0x0802CEA6 battle_clearImpactSlot
+  - 0x0802CE8A sub_802CE8A
+  - 0x080E3560 sub_80E3560
+  reproduce: python3 tools/asmcat.py 0x080E3504
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- What sub_802CE8A and sub_80E3560 do (would confirm whether this is a hit/effect registration)
+- What CurAction 0xC means (deletion vs another state) — needs the object's action table or a caller
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E3504 -> battle_wait60ThenEndPhase
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E3504

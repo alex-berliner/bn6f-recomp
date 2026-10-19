@@ -1,0 +1,44 @@
+name: initNaviStatsFromNaviId
+address: '0x08013BDA'
+kind: function
+status: probable
+summary: Initializes a 0x64-byte Navi stats structure for a given Navi ID, resetting it to defaults and
+  copying that Navi's per-Navi base values from lookup tables.
+interface: (r0 = stats struct (0x64 bytes), r1 = navi ID) -> r0 = void (clobbered); no meaningful flags
+details: First calls the 0x8013438 initializer to fill the struct at r0 with default values. It stores
+  the Navi ID (r1) at offset 0x29, then indexes the table at byte_80210DD with naviId*16 and copies that
+  Navi's 16-byte record field-by-field into scattered struct offsets (0x00, 0x04-0x07, 0x0B, 0x0C, 0x1B-0x1D,
+  0x23, 0x39 as bytes; 0x46, 0x48, 0x4A as halfwords read from single record bytes). It also reads a halfword
+  from the dword_802F0A8 table at offset naviId*2 and writes it to struct offsets 0x3E, 0x40 and 0x42
+  — almost certainly HP-related fields (current/max/base HP).
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl initNaviStats_WithDefaultStatsMaybe_8013438 resets the struct before per-Navi data is applied;
+    mov r0,#0x10; mul r0,r4; add r6,r6,r0 selects a 16-byte-per-Navi record in byte_80210DD; strb r4,[r7,r1]
+    with r1=0x29 stores the Navi ID itself into the struct; ldrh r0,[r0,r1] from dword_802F0A8 indexed
+    by 2*naviID, stored to 0x3E/0x40/0x42, matches an HP triple; the long store chain (record offsets
+    1..0xF to fixed struct offsets) is a per-Navi stat-copy layout
+  refs:
+  - bn6f/asm/asm00_2.s:11655
+  - 0x08013438 initNaviStats_WithDefaultStatsMaybe_8013438
+  reproduce: python3 tools/asmcat.py 0x08013BDA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- No known caller, so the exact struct type (battle Navi struct vs. status/save struct) is unconfirmed
+- The semantic meaning of each copied record byte (attack, speed, charge, etc.) is not yet mapped
+- Whether offset 0x3E/0x40/0x42 are current/max/other HP variants needs caller or runtime confirmation
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8013BDA -> initNaviStatsFromNaviId
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8013BDA

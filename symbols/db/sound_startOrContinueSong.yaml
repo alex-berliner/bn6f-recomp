@@ -1,0 +1,46 @@
+name: sound_startOrContinueSong
+address: '0x0814E950'
+kind: function
+status: probable
+summary: Starts playing the given song ID unless it is already playing, in which case it leaves the current
+  playback alone.
+interface: (r0 = song ID (u16, low halfword used)) -> r0 = clobbered; no meaningful return value
+details: 'r0 is scaled by 8 and indexed into sound_MusicTable, whose entries are 8 bytes: a SongHeader
+  pointer at +0 and a player index halfword at +4. The player index is multiplied by 12 to index gMPlayTable,
+  whose entry''s first word is the MusicPlayerInfo for that track slot. It compares the player''s current
+  song header ([player+0]) with the requested song''s header: if they differ, it calls sound_814F104(player,
+  requestedHeader) to start the song. If they match, it reads the player''s status field at +4 and only
+  restarts via sound_814F104 when the status halfword is 0 or the full word is negative (player idle/finished);
+  otherwise the song keeps playing. This is the standard m4a ''songNumStartOrContinue'' idiom adapted
+  to the game''s tables.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'lsl/lsr by 16/13 scales r0 by 8 and indexes sound_MusicTable; word at +0 and halfword at +4
+    read (asm: ldr r2,[r0]; ldrh r2,[r0,#4]); halfword from musicTable+4 is x12 (lsl 1, add, lsl 2) to
+    index gMPlayTable entries, first word taken as a pointer; cmp r3,r2 compares [playerInfo] (current
+    song header) with the musicTable''s song header before deciding; branch logic at loc_814E984 skips
+    sound_814F104 only when status halfword != 0 and signed word >= 0, i.e. still playing; both call sites
+    pass (playerInfo, songHeader) to sound_814F104, consistent with a start-song helper'
+  refs:
+  - bn6f/asm/libs.s:22994
+  - 0x0814F104 sound_814F104
+  reproduce: python3 tools/asmcat.py 0x0814E950
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- Exact semantics of sound_814F104 (start vs restart vs resume) not confirmed; a caller of sub_814E950
+  showing song IDs in context would confirm the 'don't restart BGM' use
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_814E950 -> sound_startOrContinueSong
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_814E950

@@ -1,0 +1,48 @@
+name: battle_drawSideCounters
+address: '0x0801C368'
+kind: function
+status: probable
+summary: Renders two right-aligned 3-digit counters (one per slot 0/1) for the current battle side into
+  VRAM tile buffers and records them in work-RAM digit buffers.
+interface: () -> void; reads oToolkit_BattleStatePtr and battleState+oBattleState_PlayerSide, no return
+  value used
+details: Loads the battle state and reads its PlayerSide byte, calls sub_802D1B4 to obtain a numeric value,
+  draws it as a right-aligned 3-digit number of 8x16 tiles at VRAM 0x600c980, then calls sub_801C3EE with
+  that value, buffer byte_3001670 and slot index 0. It repeats the exact sequence with sub_802D1BE, VRAM
+  0x600ca40, buffer word_3001684 and slot index 1. The parallel structure suggests two related counters
+  for the selected side (e.g. two combatants' HP or a value plus a gauge). sub_801C3EE likely converts/stores
+  the drawn digits into per-slot entries at the RAM buffers, which some later routine turns into sprites;
+  its exact effect is unknown.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: twice loads ldrb r0,[r0,#oBattleState_PlayerSide] from oToolkit_BattleStatePtr and passes it
+    to sub_802D1B4/sub_802D1BE (lines 4-8, 17-21); callee sprite_drawRightAligned3DigitNumber is called
+    with r0=value, r1=VRAM dest (0x600c980, 0x600ca40 via dword_801C444/448); sub_801C3EE is called with
+    r0=the same value, r1=byte_3001670/word_3001684, r2=0 then 1 (slot index); identical two-pass structure
+    with different tile bases 0x600c980 vs 0x600ca40 shows two parallel counters
+  refs:
+  - bn6f/asm/asm00_2.s:27862
+  - 0x0801C3A4 sprite_drawRightAligned3DigitNumber
+  - 0x0801C3EE sub_801C3EE
+  - 0x0802D1B4 sub_802D1B4
+  reproduce: python3 tools/asmcat.py 0x0801C368
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- what sub_802D1B4/sub_802D1BE return (HP, gauge percent, score?) and what oBattleState_PlayerSide selects
+- what sub_801C3EE does with the value/buffer/slot index — likely queues digit sprite entries at byte_3001670/word_3001684
+- who calls this (no caller known) to confirm which battle UI element these digits belong to
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_801C368 -> battle_drawSideCounters
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_801C368

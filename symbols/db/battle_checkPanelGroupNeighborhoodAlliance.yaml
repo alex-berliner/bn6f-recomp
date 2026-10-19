@@ -1,0 +1,46 @@
+name: battle_checkPanelGroupNeighborhoodAlliance
+address: '0x0800D636'
+kind: function
+status: probable
+summary: Checks that a battlefield panel-group and its two adjacent groups (index-1 and index+1) are all
+  still of the given alliance, returning 0 if intact and 1 if any is not.
+interface: (r0 = panel-group index, r1 = alliance value) -> r0 = 0 if all three groups match, 1 otherwise;
+  flags clobbered by BL
+details: 'The function indexes unk_2034010 (8-byte records per panel group) and first compares byte 0
+  of group r0''s record with r1; if it differs it returns 1 immediately. If it matches, it calls battle_checkPanelGroupAlliance
+  on group r0-1 and then r0+1 with the same value; if either reports a mismatch it returns 1, otherwise
+  0. So it verifies a run of three consecutive panel groups (the target group plus its neighbors) still
+  belong to alliance r1. Quirk: the center group is validated only against its record''s alliance byte,
+  while the neighbors are fully panel-checked; the callee''s result convention (nonzero = mismatch) is
+  inverted here to 0 = success.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r2,[r3] after r3 = unk_2034010 + 8*r0, then cmp r2,r1 / bne -> return 1: center group''s
+    record byte must equal r1; bl battle_checkPanelGroupAlliance with r0 = r4-1 and r4+1: neighbor groups
+    -1 and +1 are panel-verified with the same r1; two tst/bne branches and final mov r0,#0 vs mov r0,#1:
+    nonzero callee result (mismatch) maps to return 1, all-pass maps to 0; callee summary (all three panels
+    of a group still carry the recorded alliance) confirms the per-group alliance check semantics'
+  refs:
+  - bn6f/asm/object.s:4349
+  - 0x0800D6CC battle_checkPanelGroupAlliance
+  reproduce: python3 tools/asmcat.py 0x0800D636
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- No callers known, so the gameplay purpose (e.g. area attack needing a 3-group stretch, or panel-break
+  undo check) is inferred only from the callee; what r0/r1 mean at call sites and when group indices are
+  out of range at the edges is unconfirmed
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_800D636 -> battle_checkPanelGroupNeighborhoodAlliance
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800D636

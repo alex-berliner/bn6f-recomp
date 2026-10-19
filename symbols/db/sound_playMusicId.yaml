@@ -1,0 +1,45 @@
+name: sound_playMusicId
+address: '0x0814E99C'
+kind: function
+status: probable
+summary: 'Plays the BGM with the given music id: restarts it if a different song is loaded, resumes/restarts
+  it if stopped, or runs a special path when its status is negative.'
+interface: (r0 = music id) -> r0 = void; clobbers r1-r3, lr
+details: Computes musicId*8 into sound_MusicTable; entry+0 holds the song header pointer and entry+4 a
+  player index. Index*12 selects a gMPlayTable entry whose first word is the m4a MPlayStruct pointer.
+  If the player's ident field != the table's song header, the song isn't loaded, so sound_814F104(player,
+  songHeader) starts it. If the player is loaded but its status (halfword at +4) is 0, sound_814F104 is
+  called again to restart/resume; if the full word at +4 is negative, sub_814E85C(player) is called instead
+  (likely stop/fade-out). Returns nothing via pop {r0}; bx r0.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'id lookup: lsl r0,#0x10 / lsr r0,#0xd then add sound_MusicTable, entry is 8 bytes (asm lines
+    3-6); player selection: halfword [r0,#4] * 12 indexes gMPlayTable entries; song-identity check: ldr
+    r3,[r1] vs ldr r2,[r0], branching to sound_814F104(player, header) on mismatch; status==0 path calls
+    sound_814F104 with the already-loaded player and header; negative status word calls sub_814E85C(player),
+    a second player-control callee'
+  refs:
+  - bn6f/asm/libs.s:23037
+  - 0x0814F104 sound_814F104
+  - 0x0814E85C sub_814E85C
+  reproduce: python3 tools/asmcat.py 0x0814E99C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- exact semantics of the negative-status branch (fade-out vs stop) — need sub_814E85C's body or a caller
+- exact field layout of the music/MPlayTable structs and whether sound_814F104 is MPlayStart or a BN6
+  wrapper
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_814E99C -> sound_playMusicId
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_814E99C

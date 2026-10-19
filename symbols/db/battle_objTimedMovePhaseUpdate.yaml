@@ -1,0 +1,48 @@
+name: battle_objTimedMovePhaseUpdate
+address: '0x080D3B08'
+kind: function
+status: probable
+summary: 'Battle-object phase handler: waits 30 frames, then ends the move by settling into action 8 when
+  velocity is zero or restarting action 4 (clearing flip) when still moving.'
+interface: (r5 = battle object pointer, r0 = phase arg unused on entry) -> r0 = sprite_setFlip/sub_80D3DFA
+  argument; updates PhaseInitialized, Timer, CurAction, CurPhaseAndPhaseInitialized
+details: 'On first entry it marks the phase initialized with value 4, loads Timer with 0x1E and returns,
+  so the phase runs for 30 frames. Each frame it decrements Timer and returns until it goes below zero;
+  then it calls sub_80D3DFA with r0=1. It then tests XVelocity and YVelocity: if both are zero it sets
+  CurAction=8, otherwise it calls sprite_setFlip(0), sets CurAction=4, and in both cases stores 0 to the
+  16-bit CurPhaseAndPhaseInitialized field, restarting phase handling from scratch. The velocity test
+  plus flip clear suggests this is the tail of a slide/knockback-style movement whose action constants
+  (4 vs 8) and sub_80D3DFA''s role are not yet identified.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r5,#oBattleObject_PhaseInitialized]; mov r1,#4; mov r0,#0x1e; strh r0,[r5,#oBattleObject_Timer]
+    — standard init-then-timer phase prologue; ldrh r0,[r5,#oBattleObject_Timer]; sub r0,#1; bge locret
+    — returns every frame until the 30-frame timer expires; ldr r0,[r5,#oBattleObject_XVelocity] / YVelocity
+    tst pairs — end condition is 'object has stopped moving'; bl sprite_setFlip with r0=0 before setting
+    CurAction=4 in the still-moving branch; strh r0,[r5,#oBattleObject_CurPhaseAndPhaseInitialized] with
+    0 — combined phase+initialized field reset re-enters the phase fresh
+  refs:
+  - bn6f/asm/asm31.s:60866
+  - 0x08002F5C sprite_setFlip
+  - 0x080D3DFA sub_80D3DFA
+  reproduce: python3 tools/asmcat.py 0x080D3B08
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- What sub_80D3DFA(1) does (likely animation or sound trigger for the phase end)
+- Which battle actions constants 4 and 8 correspond to, and which caller assigns this phase, to confirm
+  it is knockback/slide movement
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D3B08 -> battle_objTimedMovePhaseUpdate
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D3B08

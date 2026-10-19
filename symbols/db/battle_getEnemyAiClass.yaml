@@ -1,0 +1,46 @@
+name: battle_getEnemyAiClass
+address: '0x080E9C06'
+kind: function
+status: probable
+summary: Returns a small per-enemy class byte (0–2) looked up from the enemy index's actor-type/AI-index
+  record, probably an AI behavior/difficulty tier.
+interface: (r5 = battle object) -> r0 = u8 class (0–2); no flags defined
+details: Reads the battle object's enemy name/index field (oBattleObject_NameID) via its RelatedObject1Ptr,
+  then calls the version/actor-type/AI-index lookup for that enemy index. The result's byte 1 (actor_type)
+  selects one of three pointer table entries at off_80E9C24 (index actor_type*4), and byte 2 (ai_index)
+  indexes that byte table, returning the resulting byte. The byte tables (byte_80E9C30, byte_80E9C4E)
+  only contain values 0, 1, and 2, with the first table mostly 0 and the second mostly 1/2, so the return
+  is a small enumerated class per enemy variant, most plausibly an AI behavior/difficulty tier.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl GetVerActorTyAndAIIdx_80182B4 after loading oBattleObject_NameID: input is the enemy index;
+    ldrb r1,[r0,#2] / ldrb r0,[r0,#1]: splits the record into actor_type (table selector) and ai_index
+    (element index); ldr r2,[r2,r0] with off_80E9C24 and ldrb r0,[r2,r1]: two-level table lookup returning
+    one byte; table contents are only 0x0/0x1/0x2: a small enum, not an id or pointer; sole caller sub_80E9B14
+    sits immediately before it, consistent with a battle-side per-enemy query'
+  refs:
+  - bn6f/asm/asm31.s:109573
+  - 0x080E9B14 sub_80E9B14
+  - 0x080182B4 GetVerActorTyAndAIIdx_80182B4
+  reproduce: python3 tools/asmcat.py 0x080E9C06
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- What the 0/1/2 value means (AI difficulty vs. behavior pattern vs. rank) — the caller sub_80E9B14 and
+  how it consumes the return would settle it
+- 'Exact meaning of the actor_type split: whether table 0 vs tables 1/2 correspond to normal/enemy-EX/boss
+  classes'
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E9C06 -> battle_getEnemyAiClass
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E9C06

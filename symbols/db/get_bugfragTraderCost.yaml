@@ -1,0 +1,47 @@
+name: get_bugfragTraderCost
+address: '0x0809A880'
+kind: function
+status: probable
+summary: Returns the Bug Frag cost (10/20/30/50 frags) for the currently selected trade option in the
+  Bug Frag trader menu.
+interface: (r0 = ignored, r5 = trader menu context struct) -> r0 = frag cost byte for option [r5+0x88];
+  clobbers r0-r1, lr
+details: 'Loads an index from offset 0x88 of the caller''s context struct (r5) and uses it to index a
+  4-byte inline table at 0x809A890, whose bytes are 0x0A, 0x14, 0x1E, 0x32 — i.e. 10, 20, 30, 50 Bug Frags,
+  the BN6 trader tier costs. The function is a pure table lookup returning that byte in r0; r0 as an argument
+  is unused (overwritten by the literal load). It is referenced from the trader cutscene script (byte_809A8A8)
+  region, but the caller sub_809A520 is the one that uses the value: it compares the result against the
+  player''s frag count (the cmp 0 / 2 / 0xFF paths) before running the tier roll (sub_813D48C) and its
+  svc-6 division. The byte_809A898 table nearby (0x16,x,x,5 triplets ending 0xFF) is the parallel per-tier
+  menu option data, matching the four tiers.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'cost table bytes at dword_809A890 = 0x321E140A → 10/20/30/50, the Bug Frag trader tier prices;
+    ldrb r0,[r0,r1] with r1 = [r5,0x88]: selection index picks one of the four cost bytes; caller sub_809A520
+    is the frag trader menu step with cost-check paths and the roll in sub_813D48C; nearby byte_809A898
+    lists four 0x16,x,x,5 entries + 0xFF, matching the same four-tier selection'
+  refs:
+  - bn6f/asm/asm28_0.s:2101
+  - 0x0809A520 sub_809A520
+  reproduce: python3 tools/asmcat.py 0x0809A880
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- exact meaning of the field at [r5+0x88] (selected menu index vs. something else) not confirmed from
+  the caller snippet
+- whether the index is range-checked elsewhere, since an index >3 reads past the 4-byte table into byte_809A894's
+  word
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_809A880 -> get_bugfragTraderCost
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_809A880

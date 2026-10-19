@@ -1,0 +1,47 @@
+name: object_updatePanelHighlightWait
+address: '0x080D0E64'
+kind: function
+status: probable
+summary: Battle object update that waits 20 frames while periodically highlighting the panel it stands
+  on, then ends with CurAction = 4.
+interface: (r5 = battle object) -> updates object's CurPhase/Timer/Timer2/CurAction fields; r0 clobbered
+details: 'This is a per-frame update handler for a battle object whose pointer lives in r5. On phase 0
+  it initializes: sets CurPhase to 4, Timer to 0x14 (20 frames) and Timer2 to 0. Afterwards it increments
+  Timer2 each frame and, every 8th frame (Timer2 bit 3 clear check via lsr #3), calls object_highlightPanel
+  with the object''s PanelX/PanelY, so the panel the object occupies keeps getting marked as highlighted.
+  When the 20-frame Timer counts down to 0, it stores 4 into CurAction and resets CurPhaseAndPhaseInitialized,
+  handing control back to the object''s action dispatcher. The structure is the standard oBattleObject
+  layout (CurPhase, Timer, Timer2, PanelX/PanelY, CurAction). The 20-frame wait plus repeated panel highlighting
+  suggests an effect object that claims its panel briefly (e.g. a trap or panel-state visual), but the
+  exact gameplay identity is not visible from this handler alone.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'loc init: strb #4,[r5,#oBattleObject_CurPhase]; strh #0x14,[r5,#oBattleObject_Timer] sets 20-frame
+    wait; lsr r0,#3 / bcs skip means object_highlightPanel is called every 8 frames while Timer2 counts;
+    object_highlightPanel(PanelX, PanelY) marks the object''s own panel as highlighted; on Timer expiry:
+    strb #4,[r5,#oBattleObject_CurAction]; strh #0,[r5,#oBattleObject_CurPhaseAndPhaseInitialized]; no
+    known callers; only callee is object_highlightPanel, confirming it is an object update step'
+  refs:
+  - bn6f/asm/asm31.s:54750
+  - 0x0800CBD8 object_highlightPanel
+  reproduce: python3 tools/asmcat.py 0x080D0E64
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- Which battle object or action uses this handler (needs the caller/dispatch table entry that assigns
+  CurAction/phase 4 to it)
+- What CurAction = 4 means for this object type, and what the panel highlight flag is used for downstream
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D0E64 -> object_updatePanelHighlightWait
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D0E64

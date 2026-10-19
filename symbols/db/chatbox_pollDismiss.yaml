@@ -1,0 +1,49 @@
+name: chatbox_pollDismiss
+address: '0x0803CB44'
+kind: function
+status: probable
+summary: After the chatbox finishes printing, polls for the dismiss key (R/L); when pressed it re-arms
+  the chatbox status bit and reports the message was acknowledged.
+interface: () -> r0 = 1 if the dismiss key was pressed this frame, else 0; clobbers r4, r7, calls clearStatusBits/sub_803CB00
+  with mask 0x200 on the status word at 0x200BC5C
+details: First clears bit 0x200 in the chatbox status/flag word at 0x200BC5C via clearStatusBits. Then
+  calls sub_803CB18(1); if it returns zero the function exits with 0. Otherwise it reads the pressed-key
+  halfword from the toolkit's joypad struct (r10->oToolkit_JoypadPtr, oJoypad_Pressed) and tests mask
+  0x30<<4 = 0x300 (R|L). On a press it calls sub_803CB00(0x200), restoring the status bit, sets r4 = 1,
+  and returns it — so callers can loop on this until the player acknowledges the finished text. The 0x200
+  bit thus appears to mean "message finished / waiting for dismiss".
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl clearStatusBits with ldr r0, =0x200 at entry clears bit 0x200 of the status word; bl sub_803CB18
+    with r0=1 gates the rest (beq loc_803CB6C exits when it returns 0); ldrh r0, [r7,#oJoypad_Pressed]
+    then tst with 0x300 checks R/L press; on key hit, bl sub_803CB00 with 0x200 re-sets the same status
+    bit and r4=1 is returned; single caller sub_803C7B4 fits a per-frame poll loop pattern (returns 0
+    until done)
+  refs:
+  - bn6f/asm/asm03_1_1.s:8245
+  - 0x0803C7B4 sub_803C7B4
+  - 0x0803CB0C clearStatusBits
+  - 0x0803CB00 sub_803CB00
+  - 0x0803CB18 sub_803CB18
+  reproduce: python3 tools/asmcat.py 0x0803CB44
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- exact role of sub_803CB18(1) — presumably 'text finished / box idle' check on the chatbox
+- why the dismiss key is R/L (0x300) rather than A/B — caller context or the game's dialog script would
+  confirm
+- meaning of the 0x200 status bit to other readers of 0x200BC5C
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803CB44 -> chatbox_pollDismiss
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803CB44

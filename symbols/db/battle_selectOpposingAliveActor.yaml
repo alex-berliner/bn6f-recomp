@@ -1,0 +1,49 @@
+name: battle_selectOpposingAliveActor
+address: '0x080E4C26'
+kind: function
+status: probable
+summary: Picks one alive actor from the opposite side of r5's actor (the one with the smallest value at
+  +0x24) and returns two of its bytes, unless battle-effect bit 0x8 routes to a variant routine.
+interface: (r0 = actor/context pointer in r5, side flag at +0x16) -> r0 = selected actor's byte at +0x12,
+  r1 = byte at +0x13; r0 = 0xFF if no alive actor found on that side
+details: First calls GetBattleEffects; if bit 0x8 of the effects mask is set, it instead tail-calls sub_80E4C78
+  and returns whatever that produces. Otherwise it reads a byte at [r5+0x16], XORs it with 1 (side flip),
+  and uses side*0x10 as offset into oBattleState_AliveBattleActors, whose entries are pointers loaded
+  from the battle state via oToolkit_BattleStatePtr. It walks 4 slots, skipping null entries, and keeps
+  the actor whose halfword at +0x24 is strictly smallest (first one wins ties). If a match was found it
+  returns that actor's bytes at +0x12 and +0x13 as r0/r1, otherwise 0xFF in r0.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl GetBattleEffects; tst r0,#8 then bl sub_80E4C78 — effect-dependent alternate path; ldrb
+    r0,[r5,#0x16]; eor r0,#1; mul r0,#0x10; add #oBattleState_AliveBattleActors — selects the flipped
+    side''s alive-actor list; loop stride 4 with ldr r6,[r7] over 4 entries — array of actor pointers;
+    cmp of halfwords at +0x24 keeping the smaller — picks the actor with minimum 0x24 value; ldrb r0,[r3,#0x12];
+    ldrb r1,[r3,#0x13]; mov r0,#0xFF on no match — returns two actor fields or 0xFF sentinel'
+  refs:
+  - bn6f/asm/asm31.s:98237
+  - 0x080E4BD4 sub_80E4BD4
+  - 0x0802D246 GetBattleEffects
+  - 0x080E4C78 sub_80E4C78
+  reproduce: python3 tools/asmcat.py 0x080E4C26
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611'
+open_questions:
+- What field +0x24 of a battle actor means (action countdown, priority, position?) — needed for a precise
+  name
+- What bytes +0x12/+0x13 are (panel coords, object id, ...?)
+- What sub_80E4C78 does differently when effect bit 0x8 is set
+- Who is r5 (actor? effect context?) and what caller sub_80E4BD4 does with the returned pair
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 92d789ff
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E4C26 -> battle_selectOpposingAliveActor
+  where: bn6f 20e8d3f2
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E4C26
