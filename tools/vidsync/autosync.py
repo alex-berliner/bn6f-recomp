@@ -956,7 +956,9 @@ def try_pick(D):
     if not tasks: log('  pick: no entry starts as a preset'); return None
     t = max(tasks, key=lambda t: (t[2][0], -t[2][1]))
     log(f'  pick: {len(tasks)} entries started as LocEnemy presets; furthest {t[0]} to {t[2][0]} (mean cost {t[2][1]:.3f})')
-    if t[2][0] < D + PARTIAL: return None
+    # (100 frames: the battle's intro to its first custom screen, where the hand handler takes over; run9s
+    # 1050536, the video's CircusMan 146 frames on)
+    if t[2][0] < D + 100: return None
     f = int(t[0][1:].split(':')[0])
     return state_at(at[f] - 1), [t[1]]          # (again: state_at's scratch slot held another write point)
 
