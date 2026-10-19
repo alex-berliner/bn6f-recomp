@@ -1,0 +1,51 @@
+name: chatbox_clearTextBuffers
+address: '0x0803C558'
+kind: function
+status: probable
+summary: Clears the two 16-byte text-related buffers of the current chatbox/dialog struct and calls a
+  companion chatbox routine, used when a dialog is dismissed before starting a jack-in sequence.
+interface: () -> void; no args passed — relies on the caller's r5 (dialog/struct pointer) which flows
+  through untouched to clearStructBufferPair; r4-r7 preserved
+details: 'The body is just two calls: clearStructBufferPair, which zeroes the 16-byte fields at struct+0x130
+  and struct+0x150 of the struct the caller holds in r5 (sub_803C558 never touches r5, so it passes the
+  caller''s pointer straight through), and sub_81467A0, a far-ROM routine taking no arguments. Both call
+  sites are nearly identical overworld/dialog state machines: after chatbox_mask_eFlags2009F38(8) confirms
+  a chatbox-related flag and sub_803BB94 returns nonzero, they call this, then sub_803BB90(0x1E) (sets
+  a 30-frame wait), ow_checkJackInFlag, sub_803BB2C(0xB) (likely a sound/id setter), and advance the state
+  byte at [r5,#1] to 0x20. This placement fits wiping the dialog''s text buffers when a message window
+  closes. The buffers'' exact contents and sub_81467A0''s behavior are not visible from this call sites.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_803C558: only ''bl clearStructBufferPair; bl sub_81467A0'' — a pure clearing wrapper; clearStructBufferPair
+    zeroes 16-byte fields at struct+0x130 and +0x150 via the caller''s r5, which sub_803C558 leaves untouched;
+    both call sites (0x08039BF4, 0x08049252) follow chatbox_mask_eFlags2009F38(8) and sub_803BB94 checks,
+    then set a 30-frame delay and advance state to 0x20 — a dialog-closing transition; neither caller
+    sets up any arguments before the call, confirming it is argument-less and struct-context-driven'
+  refs:
+  - bn6f/asm/asm03_1_1.s:7403
+  - 0x08039BC0 sub_8039BC0
+  - 0x0804921E sub_804921E
+  - 0x0803C26A clearStructBufferPair
+  - 0x081467A0 sub_81467A0
+  reproduce: python3 tools/asmcat.py 0x0803C558
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-045129'
+open_questions:
+- what sub_81467A0 at 0x081467A0 does (its ROM region is not disassembled here)
+- what the 0x130/0x150 buffers store (text lines, name strings, or render scratch)
+- whether the 'chatbox' framing is right — the flag check is chatbox-namespaced but the struct could be
+  a broader overworld dialog struct
+sources:
+- wf investigate investigate-20261019-045129
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 6cc0fbc9
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803C558 -> chatbox_clearTextBuffers
+  where: bn6f 3e7e443d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803C558

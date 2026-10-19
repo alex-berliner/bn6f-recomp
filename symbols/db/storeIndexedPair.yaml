@@ -1,0 +1,46 @@
+name: storeIndexedPair
+address: '0x0803C434'
+kind: function
+status: probable
+summary: Writes two parallel 32-bit arrays (0x200A3C0 and 0x200A3E0) at a caller-supplied index, building
+  paired per-slot tables from two getter calls
+interface: (r0 = index, r1 = first value, r2 = second value) -> void; writes unk_200A3C0[index] = r1 and
+  unk_200A3E0[index] = r2
+details: The function scales r0 by 4 and stores r1 into the array at 0x200A3C0 and r2 into the parallel
+  array at 0x200A3E0 (the two arrays are 0x20 apart, so each holds at least 8 word entries). It is a trivial
+  two-word setter with no other logic or flag effects. Its only known caller loops a counter r4 from 0
+  upward, calls sub_81466E4(r4) and sub_8146714(r4), and passes their return values as the pair, so it
+  fills both tables slot by slot with the results of those getters for each index.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_803C434: lsl r0,r0,#2 then str r1,[r3,r0] / str r2,[r3,r0] against off_803C460=unk_200A3C0
+    and off_803C464=unk_200A3E0 — indexed writes to two parallel arrays; caller 0x0803CAE8: pop {r1} places
+    sub_81466E4(r4)''s return in r1 and r2 = sub_8146714(r4)''s return before bl sub_803C434 with r0 =
+    r4, confirming (index, valueA, valueB) argument order; caller loop loc_803CAD2 increments r4 and repeats,
+    so the function is used once per index to fill both tables; the two destination addresses differ by
+    0x20, so the arrays are parallel tables of word entries, not one structure'
+  refs:
+  - bn6f/asm/asm03_1_1.s:7216
+  - 0x0803CAC4 sub_803CAC4
+  reproduce: python3 tools/asmcat.py 0x0803C434
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-045129'
+open_questions:
+- what sub_81466E4 and sub_8146714 return (their meaning determines what the tables hold — stats, IDs,
+  pointers?)
+- the loop count r6 in the caller and the true array sizes at 0x200A3C0/0x200A3E0
+- who reads the two tables afterwards and for what gameplay purpose
+sources:
+- wf investigate investigate-20261019-045129
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 6cc0fbc9
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803C434 -> storeIndexedPair
+  where: bn6f 3e7e443d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803C434

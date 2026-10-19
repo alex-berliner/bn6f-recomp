@@ -1,0 +1,47 @@
+name: battle_getAiAttackDuration
+address: '0x080F6592'
+kind: function
+status: probable
+summary: Returns the frame duration for an AI attack, used to initialize the AI attack-vars block
+interface: (r0 = pointer to duration data, here dword_80F65A0) -> r0 = duration value stored into oAIAttackVars_AttackDuration
+details: 'Thin wrapper: it loads the address of dword_80F65A0 (contents 0x3C3C3C3C, i.e. four bytes of
+  0x3C = 60) into r0 and tail-calls sub_800FE28, returning its result. Its only caller, the AI attack-vars
+  initializer sub_80F65EE, calls it right after loading AI attack params (with difficulty tier already
+  fetched) and stores the return value halfword into oAIAttackVars_AttackDuration, then installs a panel-choose
+  callback and finds the target object. The 0x3C3C3C3C table suggests per-tier (or otherwise indexed)
+  duration entries of 60 frames each; sub_800FE28 presumably indexes/selects from the table passed in
+  r0, possibly at random or by the current difficulty tier. The function itself has no logic beyond delegating
+  to that selector with the data pointer.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_80F6592: ldr r0, off_80F659C; bl sub_800FE28 — pure forwarding of dword_80F65A0 to the
+    selector; dword_80F65A0: .word 0x3C3C3C3C — table of four 0x3C (60) values, sized like a per-difficulty-tier
+    table; caller 0x080F6600: bl sub_80F6592; strh r0,[r7,#oAIAttackVars_AttackDuration] — result is the
+    attack duration; caller precedes it with battle_getAiDifficultyTier and battle_loadAiAttackParams,
+    matching an AI attack setup sequence'
+  refs:
+  - bn6f/asm/asm31.s:136427
+  - 0x080F65EE sub_80F65EE
+  - 0x0800FE28 sub_800FE28
+  reproduce: python3 tools/asmcat.py 0x080F6592
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-045129'
+open_questions:
+- 'sub_800FE28 is unidentified: whether it selects by difficulty tier, randomly, or otherwise from the
+  r0 table'
+- whether the dword is a byte table (four 0x3C entries) or a single reused word; more call sites or the
+  selector's code would confirm
+sources:
+- wf investigate investigate-20261019-045129
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 6cc0fbc9
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F6592 -> battle_getAiAttackDuration
+  where: bn6f 3e7e443d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F6592

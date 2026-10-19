@@ -1,0 +1,45 @@
+name: ai_setAttackParamCooldown
+address: '0x080E8788'
+kind: function
+status: probable
+summary: After an AI attack finishes, stores 8 into field 0x8 of the attack's parameter/scratch structure,
+  rearming some delay timer.
+interface: (r0 = pointer to AI attack param/scratch struct, may be NULL) -> r0 clobbered; no return value
+details: 'The routine is a guarded field write: if r0 is non-NULL it stores the constant 8 at offset 0x8
+  of the pointed-to structure, otherwise it does nothing. Both callers invoke it at the very end of an
+  attack state, after the step timer hits zero, the object''s animation is reset to 0, and object_exitAttackState
+  has been called — and only if the attack''s parameter/scratch pointer (oAIAttackVars field, e.g. ScratchPointerOrPanel
+  or AiAttackParam) is non-zero. Field 0x8 of that struct is likely a delay/cooldown or repeat counter
+  the AI logic re-reads when planning the next attack; the value 8 suggests a fixed tick count.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_80E8788: ''tst r0,r0; beq'' then ''mov r1,#8; str r1,[r0,#8]'' — pure guarded store of
+    8 to +0x8; ai_attackHoldState 0x080FB3F2: loads oAIAttackVars_ScratchPointerOrPanel, ''tst/beq'' skips
+    call when NULL, then bl sub_80E8788; sub_80F204E 0x080F2076: identical pattern with oAIAttackVars_AiAttackParam,
+    called only after object_exitAttackState and anim reset; Both call sites are in the timer-expiry branch
+    (strh StepTimer / bgt) of attack-hold state handlers'
+  refs:
+  - bn6f/asm/asm31.s:107269
+  - 0x080FB3CA ai_attackHoldState
+  - 0x080F204E sub_80F204E
+  reproduce: python3 tools/asmcat.py 0x080E8788
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-045129'
+open_questions:
+- The layout of the AI attack param/scratch structure is unknown, so the meaning of field 0x8 (cooldown
+  ticks vs repeat count) is inferred from the value 8 and call timing; a reader/writer of that struct
+  elsewhere would confirm
+sources:
+- wf investigate investigate-20261019-045129
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 6cc0fbc9
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E8788 -> ai_setAttackParamCooldown
+  where: bn6f 3e7e443d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E8788

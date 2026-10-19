@@ -1,0 +1,44 @@
+name: t1_testFlagBit
+address: '0x0803C316'
+kind: function
+status: probable
+summary: Tests bit (1<<index) of the 16-bit flag word word_200A2B0 and returns the result in the Z flag.
+interface: (r0 = bitmask, typically 1<<slot) -> r0 unchanged; Z flag set if bit is clear, clear if set
+details: Loads the halfword at eS200A290+0x20 (word_200A2B0) and executes tst r1, r0, so callers branch
+  on the returned flags via a plain beq/bne after the call (pop {pc} preserves flags). r0 is a bit mask
+  built by callers as 1<<index. sub_8049BC0 loops index 0..7 over slots, skipping slots whose bit is clear,
+  and only processes slots with the bit set (before calling ow_checkJackInFlag and per-slot helpers).
+  sub_811727C tests bit [r5,#4] to decide whether to reposition a sprite (0x23 vs 0x21 state written to
+  [r5]) and then calls sprite_update. No other memory is touched.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_803C316 body: ldrh r1,[r2,#0x20]; tst r1,r0; pop {pc} - pure bit test returning flags;
+    0x08049BC8: mov r0,#1; lsl r0,r4; bl sub_803C316; beq skip - loops slot index r4 as bit mask, only
+    acts when bit set; 0x08117286: ldrb r1,[r5,#4]; lsl r0,r1; bl sub_803C316; beq - guards a sprite_setCoordinates
+    call on the tested bit; Caller 0x8049BC0 combines the bit test with ow_checkJackInFlag, suggesting
+    the word tracks per-slot/per-player state'
+  refs:
+  - bn6f/asm/asm03_1_1.s:7015
+  - 0x08049BC0 sub_8049BC0
+  - 0x0811727C sub_811727C
+  reproduce: python3 tools/asmcat.py 0x0803C316
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-045129'
+open_questions:
+- What word_200A2B0 represents (player/party slot flags, link flags, ...) - the bit's game meaning is
+  unknown
+- Whether other code writes this word, which would reveal what setting a bit means
+sources:
+- wf investigate investigate-20261019-045129
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 6cc0fbc9
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803C316 -> t1_testFlagBit
+  where: bn6f 3e7e443d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803C316

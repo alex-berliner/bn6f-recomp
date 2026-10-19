@@ -1,0 +1,44 @@
+name: e_setCutsceneActive
+address: '0x08143F38'
+kind: function
+status: probable
+summary: sets the cutscene/event-active flag byte in the global event state struct (entry point sets 1;
+  the call_8143F3C entry sets 0)
+interface: (no args) -> r0 = 0; writes byte_2001019 (eStruct2001010+9) = 1, or 0 when entered at call_8143F3C
+details: 'Two-entry setter for a single flag byte at eStruct2001010+9: the main entry stores 1, the alternate
+  call target call_8143F3C stores 0, then both return 0 in r0. No other fields are touched and no callees
+  are invoked. The only seen caller invokes it immediately after StartCutscene(byte_8093358, 0) inside
+  an event handler dealing with flags EVENT_D30/D34/D35/D36, right before clearing those flags, suggesting
+  the byte marks that a cutscene/event sequence is active. The clear entry''s callers are not shown, so
+  the exact semantic (active vs. busy vs. input-lock) is unconfirmed.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'asm: entry does mov r0,#1 then strb r0,[r5,#0x9] with r5=eStruct2001010; call_8143F3C:: path
+    stores 0 instead — a set/clear pair; caller 0x08143978 calls it directly after StartCutscene(byte_8093358,0)
+    at 0x08143A22, then clears EVENT_D30/D34/D35/D36; the function takes no arguments and always returns
+    r0=0, so it is called purely for its flag side effect; data touched is only the single byte eStruct2001010+9
+    (byte_2001019)'
+  refs:
+  - bn6f/asm/asm37_1.s:4282
+  - 0x08143978 sub_8143978
+  reproduce: python3 tools/asmcat.py 0x08143F38
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-045129'
+open_questions:
+- what byte_2001019 (eStruct2001010+9) means to the game — need a reader of that byte to confirm 'cutscene
+  active' vs some other state
+- who calls the call_8143F3C (set-to-0) entry and in what situation the flag is cleared
+sources:
+- wf investigate investigate-20261019-045129
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 6cc0fbc9
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8143F38 -> e_setCutsceneActive
+  where: bn6f 3e7e443d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8143F38

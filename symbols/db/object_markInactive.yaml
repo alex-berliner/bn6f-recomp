@@ -1,0 +1,45 @@
+name: object_markInactive
+address: '0x080BFF34'
+kind: function
+status: probable
+summary: Null-safely writes 0xFF to an object/task's byte at +0x11, used by a caller to deactivate three
+  object pointers held in a struct
+interface: (r0 = object/task pointer or NULL) -> r0 = untouched (returns via mov pc, lr); no flag use
+  by caller
+details: The function tests r0 and, only if non-NULL, stores the byte 0xFF at offset 0x11 of the pointed-to
+  structure; nothing else is touched and no value is returned. Writing 0xFF into a small state/counter
+  field is a typical 'kill/free/set-inactive' pattern for GBA engine objects, and the null check makes
+  it safe to call on empty slots. The single caller loads three pointers from fields 0x60, 0x64 and 0x68
+  of its own struct and runs this on each in sequence, i.e. it deactivates a fixed set of three associated
+  objects at once. The function itself never dereferences beyond +0x11, so it is purely a one-byte flag
+  setter on the callee-side structure.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'asm: tst r0,r0 / beq skip guards a NULL pointer before any write; asm: mov r1,#0xff; strb r1,[r0,#0x11]
+    — the only effect is byte 0xFF at +0x11; caller 0x080E8F98 calls it on r5+0x60, +0x64, +0x68 — three
+    sibling slots cleared together; caller ignores r0 afterwards and just pops/returns, so it is called
+    for its side effect only'
+  refs:
+  - bn6f/asm/asm31.s:17559
+  - 0x080E8F98 sub_80E8F98
+  reproduce: python3 tools/asmcat.py 0x080BFF34
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-045129'
+open_questions:
+- Which structure type carries the +0x11 byte (object vs task vs effect) and what 0xFF means there (free-list
+  tag, dead flag, etc.)
+- What struct owns the three pointers at +0x60/0x64/0x68 and when in the game this deactivation runs
+sources:
+- wf investigate investigate-20261019-045129
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 6cc0fbc9
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BFF34 -> object_markInactive
+  where: bn6f 3e7e443d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BFF34

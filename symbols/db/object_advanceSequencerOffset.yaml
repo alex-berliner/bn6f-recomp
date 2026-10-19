@@ -1,0 +1,47 @@
+name: object_advanceSequencerOffset
+address: '0x081175BC'
+kind: function
+status: probable
+summary: Advances the actor-sequencer data offset at [r5+0xC] by r0, moving to the next entry of a coordinate/duration
+  table once a step's countdown finishes.
+interface: (r0 = stride/step size to add) -> [r5+0xC] += r0; no return value
+details: Adds r0 to the word at [r5+0xC] of the caller's state structure (r5 is the caller's frame, not
+  an argument). Callers use r5+0xC as an offset into a table fetched via sub_81175C4, whose entries hold
+  signed-halfword coordinates (read at +2/+4 and passed to sprite_setCoordinates) and a duration halfword
+  stored to the countdown at [r5+0x10]. Each caller counts that field down; on expiry it clears the active
+  flag byte at [r5+9], resets the countdown, and calls this function with the stride for that entry type
+  (8, 4 or 6) to point at the next entry. Variable strides suggest entries of differing sizes per step
+  kind.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_81175BC body: ldr r1,[r5,#0xc]; add r0,r0,r1; str r0,[r5,#0xc] — pure offset accumulator;
+    sub_81174C0: after countdown [r5+0x10] expires and flag [r5+9] cleared, calls it with r0=8; sub_811753C:
+    same expiry pattern, calls it with r0=4; reads entry duration via ldrh [r0,#2] from sub_81175C4; sub_811756C:
+    reads signed coords at +2/+4 from sub_81175C4 result and passes them to sprite_setCoordinates, then
+    advances offset by 6'
+  refs:
+  - bn6f/asm/asm32.s:19134
+  - 0x081174C0 sub_81174C0
+  - 0x0811753C sub_811753C
+  - 0x0811756C sub_811756C
+  reproduce: python3 tools/asmcat.py 0x081175BC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-045129'
+open_questions:
+- exact contents/format of the table indexed by [r5+0xC] (sub_81175C4 not shown), so the meaning of each
+  stride (8/4/6) is inferred, not proven
+- what structure r5 points to and which game system owns it (sprite animation vs scripted object movement)
+sources:
+- wf investigate investigate-20261019-045129
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 6cc0fbc9
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81175BC -> object_advanceSequencerOffset
+  where: bn6f 3e7e443d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81175BC

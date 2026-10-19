@@ -1,0 +1,46 @@
+name: getSpawnTablePos
+address: '0x080B8E62'
+kind: function
+status: probable
+summary: reads a two-byte (x,y)-style entry from the table at byte_80B8BD4 (5-byte stride) for the given
+  index, used to position an illusion spawn.
+interface: (r0 = entry index) -> r0 = first byte (low/pos component), r1 = second byte (high component);
+  no flags set (returns via mov pc, lr)
+details: 'Pure table lookup: multiplies r0 by 5, indexes into byte_80B8BD4, and returns the first two
+  bytes of the 5-byte record in r0/r1 (remaining 3 bytes unused by this caller). The caller sub_80BDA7C
+  passes index 0x11 and combines the result with object_getFlip(): r4 = flip*0xB00 + r1*0x100 + r0, i.e.
+  a packed coordinate that is mirrored for the other flip side, then loads data from the object at +0x34
+  and calls spawnIllusionObject_80E33FA. The 5-byte stride and the flip-dependent packing suggest each
+  record holds a mirrored-able position/offset for spawning the illusion object.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_80B8E62: ''mul r0,r1(=5); add r2,r2,r0; ldrb r0,[r2]; ldrb r1,[r2,#1]'' — two bytes per
+    entry from byte_80B8BD4; caller 0x80BDA94: ''mov r0,#0x11; bl sub_80B8E62'' then ''add r4,r4,r1; lsl
+    r4,r4,#8; add r4,r4,r0'' — result packed into a coordinate value; caller combines it with object_getFlip()
+    (''lsl r4,#8; add r4,#0xb; lsl r4,#8''), showing a flip-mirrored position; result feeds ''bl spawnIllusionObject_80E33FA'',
+    so the bytes are placement data for the spawned illusion'
+  refs:
+  - bn6f/asm/asm31.s:1633
+  - 0x080BDA7C sub_80BDA7C
+  reproduce: python3 tools/asmcat.py 0x080B8E62
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-045129'
+open_questions:
+- what the remaining 3 bytes of each 5-byte record mean
+- what the two returned bytes exactly are (x/y pixels, tile, or packed offset) and whether other callers
+  use them differently
+- what object/entity type spawnIllusionObject_80E33FA places, to confirm the 'illusion' framing
+sources:
+- wf investigate investigate-20261019-045129
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 6cc0fbc9
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80B8E62 -> getSpawnTablePos
+  where: bn6f 3e7e443d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80B8E62

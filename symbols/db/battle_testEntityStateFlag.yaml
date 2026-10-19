@@ -1,0 +1,45 @@
+name: battle_testEntityStateFlag
+address: '0x0804691A'
+kind: function
+status: probable
+summary: Returns the first byte (a state/active flag) of the 0x58-byte entry indexed by r0 in the array
+  at byte_2011860, as a Z-flag boolean test
+interface: (r0 = index into byte_2011860 array) -> r0 = byte value; Z set if byte == 0 (mov pc, lr preserves
+  flags)
+details: Loads the base byte_2011860, computes base + r0*0x58 with a multiply, and reads the entry's byte
+  at offset 0. It returns via 'mov pc, lr' after 'tst r0, r0', deliberately keeping the Z flag so callers
+  branch on whether the flag byte is zero. The 0x58-byte stride suggests a table of fixed-size records
+  (one per battle entity or task slot) whose first byte is a status/active flag. The caller (a battle
+  main-loop function that also dispatches AI and updates sprite graphics) tests entry 3 and, if the flag
+  is nonzero, calls sub_811E744. No writes are performed; it is a pure read-and-test helper.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldr r1, off_8046928 / mul r2, r0 (#0x58) indexes a 0x58-byte-record array at byte_2011860;
+    ldrb r0, [r1] / tst r0, r0 / mov pc, lr: returns byte 0 of the record and keeps the Z flag for the
+    caller''s beq; caller sub_8144048 at 0x08144088 calls it with r0=3 right after battle_callAIDispatch_8046818
+    and battleObject_updateSpriteGfxForAll_8046854, branching on the result; surrounding battleObject_initAIChipQueueSlot_80468C6
+    calls in the same caller place this in the battle subsystem with per-entity/per-slot state'
+  refs:
+  - bn6f/asm/asm03_2.s:1344
+  - 0x08144048 sub_8144048
+  reproduce: python3 tools/asmcat.py 0x0804691A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-045129'
+open_questions:
+- What structure the 0x58-byte records at byte_2011860 actually are (entity slots vs. task/message slots)
+- The exact meaning of the offset-0 flag byte and what sub_811E744 does when it is set
+- Which other indices (0-8?) are valid and who else indexes this array
+sources:
+- wf investigate investigate-20261019-045129
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 6cc0fbc9
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_804691A -> battle_testEntityStateFlag
+  where: bn6f 3e7e443d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_804691A

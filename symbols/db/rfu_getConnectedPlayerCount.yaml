@@ -1,0 +1,46 @@
+name: rfu_getConnectedPlayerCount
+address: '0x0814690C'
+kind: function
+status: probable
+summary: returns a halfword status/count field of the wireless (RFU) shared struct at 200FE00+0x26, used
+  to decide whether a wireless session has enough participants before ending it
+interface: () -> r0 = halfword at [eStruct200FE00+0x26]; no flags set intentionally
+details: 'A trivial getter: loads the halfword at offset 0x26 of the RFU/comm work area eStruct200FE00
+  and returns it. In sub_803C97C the value is compared against the result of sub_8146918(byte_200AF84[4]);
+  if that value is >= this one, rfu_setStateEnded is called and state 2 is returned, otherwise state 0
+  — consistent with ''connected players >= required players'' checking. In sub_803C84A it is called right
+  after sub_81468F4 as part of a polling sequence whose return value is discarded, suggesting the pair
+  updates/reads comm state each frame. The exact meaning of the 0x26 field (player count vs link state
+  counter) is not provable from these callers alone.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_814690C: ldr r0,=eStruct200FE00; ldrh r0,[r0,#0x26]; bx lr — pure getter of that struct
+    field; sub_803C97C: cmp r4,r0 / blt skip; then bl rfu_setStateEnded — field gates ending the wireless
+    session; r4 comes from sub_8146918(byte_200AF84[4]), so the comparison pairs a config byte with this
+    struct field; sub_803C84A calls it after sub_81468F4 in a poll-style routine returning (0,0), consistent
+    with per-frame comm state sampling'
+  refs:
+  - bn6f/asm/libs.s:5739
+  - 0x0803C84A sub_803C84A
+  - 0x0803C97C sub_803C97C
+  reproduce: python3 tools/asmcat.py 0x0814690C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-045129'
+open_questions:
+- exact meaning of halfword 200FE26 (connected player count, link state, or packet counter)
+- what sub_8146918 computes from byte_200AF84[4] and what sub_81468F4 does
+- full layout of eStruct200FE00
+sources:
+- wf investigate investigate-20261019-045129
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 6cc0fbc9
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_814690C -> rfu_getConnectedPlayerCount
+  where: bn6f 3e7e443d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_814690C

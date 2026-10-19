@@ -1,0 +1,45 @@
+name: rfu_setLinkPhase
+address: '0x0813D9A0'
+kind: function
+status: probable
+summary: Writes the wireless-link phase/state ID into offset 0x8 of the RFU link work struct at 0x200BC50.
+interface: (r0 = link phase ID (halfword, e.g. 0x22/0x33/0x34)) -> r0 clobbered; writes halfword at [0x200BC58]
+details: 'The function is a 3-instruction setter: it stores r0 as a halfword at offset 0x8 of the static
+  RFU work struct eS200BC50 (field word_200BC58) and returns. Callers pass small phase-like IDs — 0x34
+  in rfu_disconnectLink and 0x33 in sub_803C6F4 (both ending link teardown and returning 1/0), and 0x22
+  in rfu_updateLinkManager when a disconnected slot is detected, immediately followed by rfu_setLinkCommand(0).
+  The values look like RFU link-management phase codes used by the 0x200AF80 link-state machine, so the
+  field is likely the current link phase/command slot. No flags are meaningful since the function just
+  pops {pc}.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_813D9A0 body: strh r0, [r1,#0x8] with r1 = eS200BC50 — pure setter for halfword field at
+    0x200BC58; rfu_disconnectLink: ldr r0, =0x34; bl sub_813D9A0; then rfu_setLinkCommand(0) during teardown;
+    rfu_updateLinkManager: on detecting a disconnected slot (byte_200AF81==1, dword_200AF8C->byte nonzero)
+    calls it with 0x22 then rfu_setLinkCommand(0); sub_803C6F4: sets phase 0x33 then returns 1/0 as a
+    teardown-style step'
+  refs:
+  - bn6f/asm/asm37_0.s:4582
+  - 0x0803C6A8 rfu_disconnectLink
+  - 0x0803C8B4 rfu_updateLinkManager
+  - 0x0803C6F4 sub_803C6F4
+  reproduce: python3 tools/asmcat.py 0x0813D9A0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-045129'
+open_questions:
+- exact meaning of the halfword at 0x200BC50+0x8 (phase vs command id) and the enum values 0x22/0x33/0x34;
+  readers of that field would confirm
+sources:
+- wf investigate investigate-20261019-045129
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 6cc0fbc9
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_813D9A0 -> rfu_setLinkPhase
+  where: bn6f 3e7e443d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_813D9A0

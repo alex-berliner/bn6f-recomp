@@ -1,0 +1,44 @@
+name: link_compareStateBytes
+address: '0x0803E88C'
+kind: function
+status: probable
+summary: compares two bytes of eLinkState (+3 vs +4) and returns the comparison in the flags
+interface: () -> flags set by cmp eLinkState+4, eLinkState+3 (r0/r1 clobbered); caller uses bgt on the
+  result
+details: Loads eLinkState, reads the byte at offset 4 and the byte at offset 3, compares them with cmp,
+  and returns immediately — pop {pc} preserves the flags, so the function exists to hand a byte-vs-byte
+  comparison to its caller. No value is returned in r0. The caller (sub_803E288) sets up a local of 8
+  bytes, calls it, and uses 'bgt' to skip a scan loop that walks halfwords looking for values 0x62 and
+  0x60. The meaning of eLinkState+3 and +4 is not otherwise shown; they are plausibly two counters or
+  indices of the link state (e.g. buffer indices) whose ordering gates the caller's behavior.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_803E88C: ldrb r0,[r2,#4]; ldrb r1,[r2,#3]; cmp r0,r1; pop {pc} — flags are the only output;
+    sub_803E288 at 0x0803E29A: bl sub_803E88C; bgt loc_803E330 — result consumed via flags only; operand
+    symbol is eLinkState, tying the compared bytes to the link/comm state; caller''s following code scans
+    halfwords for 0x62/0x60, so the comparison gates that scan'
+  refs:
+  - bn6f/asm/asm03_1_1.s:11539
+  - 0x0803E288 sub_803E288
+  reproduce: python3 tools/asmcat.py 0x0803E88C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-045129'
+open_questions:
+- what eLinkState+3 and +4 mean (send/receive counters? substate indices?) — more callers or the writers
+  of those bytes would settle it
+- whether callers ever use signed bgt/ble interpretations; only the unsigned/signed-agnostic bgt use is
+  seen
+sources:
+- wf investigate investigate-20261019-045129
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 6cc0fbc9
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803E88C -> link_compareStateBytes
+  where: bn6f 3e7e443d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803E88C

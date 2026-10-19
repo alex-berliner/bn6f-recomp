@@ -1,0 +1,46 @@
+name: submenu_getStatePtr
+address: '0x0812ED2C'
+kind: function
+status: probable
+summary: Returns the pointer to the current submenu state structure kept in the global at 0x2037780.
+interface: () -> r0 = pointer to the active submenu state struct; no flags set intentionally (movs not
+  used)
+details: 'Body is just ''ldr r0, =unk_2037780; mov pc, lr'', i.e. it dereferences a fixed word at 0x2037780
+  and returns the pointer stored there. Callers treat the result as the base of a state struct: submenu_renderSelectedWindow
+  reads halfword fields 0x20 and 0x24 from it as the selected-entry index/delta into the window-id table
+  at word_2023FA0, and sub_812EAC4 writes words/halfwords into word_2023FA0 right after. Since several
+  callers also reset VRAM, palettes and E-struct records, these are submenu init/render routines sharing
+  this state object.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_812ED2C body: ldr r0, off_812ED30 (=unk_2037780); mov pc, lr — pure pointer getter; submenu_renderSelectedWindow
+    0x812EF22: bl sub_812ED2C; mov r7,r0; ldrh r0,[r7,#0x20]; ldrh r1,[r7,#0x24] — uses result as struct
+    base; sub_812EAC4 0x812EACE: bl sub_812ED2C; mov r5,r0, then stores 0x90 and 1 into word_2023FA0 fields;
+    sub_812E9AC 0x812E9AE: first call of a routine that zero-fills VRAM/palettes and resets E-struct records
+    — submenu init context; five callers, all using the result immediately as a state pointer; no other
+    use seen'
+  refs:
+  - bn6f/asm/asm35.s:366
+  - 0x0812EF20 submenu_renderSelectedWindow
+  - 0x0812E9AC sub_812E9AC
+  - 0x0812EAC4 sub_812EAC4
+  reproduce: python3 tools/asmcat.py 0x0812ED2C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-045129'
+open_questions:
+- exact layout of the state struct and whether 0x2037780 is exclusive to this submenu subsystem (would
+  confirm a 'submenu_' prefix over a generic getter name)
+sources:
+- wf investigate investigate-20261019-045129
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 6cc0fbc9
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_812ED2C -> submenu_getStatePtr
+  where: bn6f 3e7e443d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_812ED2C

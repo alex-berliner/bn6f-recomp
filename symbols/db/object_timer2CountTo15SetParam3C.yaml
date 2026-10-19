@@ -1,0 +1,40 @@
+name: object_timer2CountTo15SetParam3C
+address: '0x080BDB8C'
+kind: function
+status: probable
+summary: 'Per-frame tick for a battle object: counts Timer2 up, and once 15 frames have passed writes
+  state value 0xC to Param3.'
+interface: (r0 unused/r5 = battle object pointer) -> r0 = new Timer2 value; flags from cmp
+details: Increments the object's oBattleObject_Timer2 halfword each call, evidently once per frame, and
+  compares it to 15. While the count is below 15 it does nothing more; on the 15th frame it stores the
+  byte 0xC into oBattleObject_Param3, which given the naming pattern is likely a state/step selector consumed
+  by the object's dispatcher. r5 is not set up inside, so the caller must have the object pointer already
+  in r5 (typical for these in-place object handlers). It preserves everything except r0 and the two object
+  fields it touches.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrh/strh on [r5,#oBattleObject_Timer2] with add #1: frame counter increment; cmp r0,#0xf /
+    blt locret: action fires only once, after 15 ticks; strb r0(=0xC),[r5,#oBattleObject_Param3]: writes
+    the expected next state byte; no callees and no stack use: pure field-update handler on the r5 object'
+  refs:
+  - bn6f/asm/asm31.s:12567
+  reproduce: python3 tools/asmcat.py 0x080BDB8C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-045129'
+open_questions:
+- No callers known, so which battle object uses this and what Param3=0xC triggers is unknown
+- Whether Timer2 is reset elsewhere (looping vs one-shot behavior) is not shown
+sources:
+- wf investigate investigate-20261019-045129
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 6cc0fbc9
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BDB8C -> object_timer2CountTo15SetParam3C
+  where: bn6f 3e7e443d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BDB8C

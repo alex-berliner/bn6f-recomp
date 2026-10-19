@@ -1,0 +1,42 @@
+name: rfu_getCommStatusBytes
+address: '0x08048FC4'
+kind: function
+status: probable
+summary: reads two status bytes from the wireless-comm buffer at 0x200A290, used by a submenu handler
+  to detect a state (0x1C) that ends the wireless session
+interface: (void) -> r0 = byte at 0x200A290, r1 = byte at 0x200A291; no flags guaranteed
+details: Loads the pointer to the small buffer/struct eS200A290 into r5 and returns its first two bytes
+  in r0 and r1 with no side effects. In the only caller (sub_812A574, after checking no screen fade is
+  active), r1 is compared to 0x1C; if it matches and JOYPAD_B is pressed, the caller calls rfu_setStateEnded,
+  plays SOUND_EXIT_SUBMENU and stores 0xC at r5+0xC, i.e. it aborts the wireless session from this screen.
+  So byte 0x200A291 appears to be a link/session state or received-command code, and 0x1C is a specific
+  value that allows the user to back out with B.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_8048FC4: ldr r5, =eS200A290; ldrb r0,[r5]; ldrb r1,[r5,#1] — pure two-byte getter; caller
+    0x0812A57C: bl sub_8048FC4; cmp r1,#0x1C; bne skip — result byte gates the exit path; exit path calls
+    rfu_setStateEnded then PlaySoundEffect(SOUND_EXIT_SUBMENU) — wireless session teardown; surrounding
+    bl IsScreenFadeActive check shows it runs in a menu/overworld UI update loop'
+  refs:
+  - bn6f/asm/asm03_2.s:4828
+  - 0x0812A574 sub_812A574
+  reproduce: python3 tools/asmcat.py 0x08048FC4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-045129'
+open_questions:
+- what structure/protocol lives at eS200A290 (rfu receive buffer?) and what state 0x1C actually means
+- who writes 0x200A290/0x200A291, and what r0 (first byte) is used for — no caller seen reading it
+sources:
+- wf investigate investigate-20261019-045129
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 6cc0fbc9
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8048FC4 -> rfu_getCommStatusBytes
+  where: bn6f 3e7e443d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8048FC4

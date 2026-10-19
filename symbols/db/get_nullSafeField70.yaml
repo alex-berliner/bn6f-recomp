@@ -1,0 +1,47 @@
+name: get_nullSafeField70
+address: '0x080CEAEE'
+kind: function
+status: probable
+summary: 'Null-safe getter: returns the word at offset 0x70 of the struct pointed to by r0, or 0 if the
+  pointer is null.'
+interface: (r0 = struct pointer or NULL) -> r0 = *(r0+0x70), or 0 if r0 was NULL; flags set by the caller's
+  tst on the result
+details: The function tests r0 and, if non-null, loads r0 from [r0,#0x70] and returns; if r0 is null it
+  simply returns 0 (r0 unchanged), making it a safe field accessor. It has no other side effects and preserves
+  all registers except r0. Its caller sub_80E8656 loads three pointers from [r5,#0x60], [r5,#0x64] and
+  [r5,#0x68] and calls it on each in turn, branching away as soon as any call returns nonzero; only if
+  all three return zero does it return immediately. The data at offset 0x70 of these structs appears to
+  be a nonzero-when-'something active/valid' value, but what the field means (counter, pointer, flag)
+  is not shown by this evidence.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_80CEAEE body: ''tst r0,r0 / beq locret / ldr r0,[r0,#0x70] / mov pc,lr'' — plain null-checked
+    field load at +0x70; Null path leaves r0 = 0, so callers see 0 for a NULL pointer (safe-getter semantics);
+    sub_80E8656 calls it on three successive struct pointers (r5+0x60/0x64/0x68) and ''tst r0,r0 / bne''
+    after each, aborting on the first nonzero; sub_80E8656 returns without side effects only when all
+    three calls yield 0, so the field is being used as a boolean-ish test'
+  refs:
+  - bn6f/asm/asm31.s:50217
+  - 0x080E8656 sub_80E8656
+  reproduce: python3 tools/asmcat.py 0x080CEAEE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-045129'
+open_questions:
+- What structure the r0 pointer refers to and what field +0x70 semantically is (counter, pointer, active
+  flag?)
+- What sub_80E8612 does when any of the three tests passes, which would clarify what the check is for
+- What r5 is in sub_80E8656 and what the three pointers at +0x60/0x64/0x68 are (three slots of some manager?)
+sources:
+- wf investigate investigate-20261019-045129
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 6cc0fbc9
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CEAEE -> get_nullSafeField70
+  where: bn6f 3e7e443d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CEAEE

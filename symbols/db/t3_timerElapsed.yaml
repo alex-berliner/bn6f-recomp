@@ -1,0 +1,43 @@
+name: t3_timerElapsed
+address: '0x0803BB94'
+kind: function
+status: probable
+summary: Ticks down a frame-count timer in the state struct at [r5,#0x2c] and returns 1 once it has expired.
+interface: () -> r0 = 1 when countdown [r5+0x2c] reached below 0 after decrement, 0 otherwise; no flags
+details: 'Decrements the 32-bit field at [r5,#0x2c]; if the decremented value is still >= 0 it stores
+  it back and returns 0, otherwise it returns 1 without storing. This is a once-per-call countdown check:
+  the caller is expected to prime the field (likely via sub_803BB90, which is called with r0=0x1e = 30
+  frames right after this in both call sites) and poll until it returns nonzero. Uses r5 as a context/state
+  pointer, matching the surrounding timer/flag helpers in the same address cluster.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'body: ldr r0,[r5,#0x2c]; sub r0,#1; blt -> mov r0,#1 else str back and return 0 (countdown
+    semantics); both callers call it immediately after chatbox_mask_eFlags2009F38(8) and skip their setup
+    when it returns 0, i.e. it gates a delayed action; after a nonzero return both callers call sub_803BB90(0x1e)
+    and set state byte [r5,#1]=0x20, consistent with priming/using the same timer field; 0x1e (=30 frames,
+    half a second) passed to the sibling setter matches a frame-count timer'
+  refs:
+  - bn6f/asm/asm03_1_1.s:6087
+  - 0x08039BC0 sub_8039BC0
+  - 0x0804921E sub_804921E
+  reproduce: python3 tools/asmcat.py 0x0803BB94
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-045129'
+open_questions:
+- sub_803BB90 and sub_803C558 are unexamined; confirming sub_803BB90 writes r0 to [r5,#0x2c] would make
+  the timer pairing certain
+- what state object r5 points to (chatbox/script context) is not identified from these call sites alone
+sources:
+- wf investigate investigate-20261019-045129
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 6cc0fbc9
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803BB94 -> t3_timerElapsed
+  where: bn6f 3e7e443d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803BB94

@@ -1,0 +1,47 @@
+name: rfu_setFlag10h
+address: '0x0813D8D0'
+kind: function
+status: probable
+summary: Sets bit 0x10 in the RFU wireless shared-state flags word before the caller sends link command
+  0.
+interface: () -> r0 = 1 (from rfu_orFlags); clobbers lr; no arguments
+details: 'A one-line wrapper: it calls rfu_orFlags with r0 = 0x10, which ORs bit 0x10 (bit 4) into the
+  flags word at offset 0xC of the RFU/wireless shared state structure at 0x200BC50 (eS200BC50). Its only
+  caller (sub_81475D4) invokes it in the branch where byte_200AF85 != 1 — i.e. the wireless connection
+  is not in the expected state — immediately before calling rfu_setLinkCommand(0), so the flag likely
+  signals a link state to the wireless partner as part of connection teardown/error handling. The callee
+  rfu_orFlags already knows the structure and offset, so no new structure is introduced. Return value
+  is whatever rfu_orFlags returns (its success flag). No other fields or structures are touched.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'body: mov r0,#0x10; bl rfu_orFlags — pure flag-set wrapper, no other logic; callee rfu_orFlags
+    ORs bits into offset 0xC flags of RFU state 0x200BC50, so bit 0x10 of that word is set; caller at
+    0x081477F8 runs it only when byte_200AF85 != 1, right before rfu_setLinkCommand(0) — abnormal-link
+    path'
+  refs:
+  - bn6f/asm/asm37_0.s:4427
+  - 0x081475D4 sub_81475D4
+  - 0x08147748 sub_81475D4
+  - 0x0814775C sub_81475D4
+  - 0x0803CB00 rfu_orFlags
+  reproduce: python3 tools/asmcat.py 0x0813D8D0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-045129'
+open_questions:
+- what bit 0x10 specifically means to the wireless partner (e.g. disconnect request vs. busy) — needs
+  the peer-side handler or protocol docs
+- whether other code reads/clears this bit to confirm the semantics
+sources:
+- wf investigate investigate-20261019-045129
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 6cc0fbc9
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_813D8D0 -> rfu_setFlag10h
+  where: bn6f 3e7e443d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_813D8D0

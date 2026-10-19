@@ -1,0 +1,46 @@
+name: rfu_setLinkState
+address: '0x08146E5C'
+kind: function
+status: probable
+summary: Writes a state/phase byte into the 0x200AF80 wireless link-state structure.
+interface: (r0 = pointer to link-state struct at 0x200AF80, r1 = state byte) -> r0 clobbered; flags not
+  meaningful
+details: 'The function is a two-instruction byte setter: it stores r1 at offset 5 of the structure whose
+  base is byte_200AF80 (the link manager state block) and returns. In rfu_updateLinkManager it is called
+  with r1=1 only when byte_200AF81 == 1 and the byte pointed to by dword_200AF8C is nonzero, right before
+  running a state step (sub_813D9A0 with 0x22) and resetting the link command — i.e. it queues a new state
+  for the link machine. In sub_812A350 it is called with r1=2 immediately after running a chatbox text
+  script, again after setting rfu flags, suggesting it selects the link machine''s next phase after an
+  in-game dialog. Byte_200AF81 itself is read as a comparison field, so offset 5 is a sibling state/mode
+  field, not a counter.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'asm: strb r1,[r0,#5]; bx lr — pure single-field setter on the r0 struct; caller 0x0803C8D0:
+    ldr r0 =byte_200AF80, mov r1,#1, bl sub_8146E5C — sets field on link-state block before sub_813D9A0(0x22);
+    caller 0x0812A3A8: after chatbox_runScript... with =byte_200AF80, mov r1,#2 — picks a different state
+    after a dialog; caller guards: ldrb r0,[r4,#1]; cmp #1 gates the call, so offset 5 is a state-like
+    field of the same struct'
+  refs:
+  - bn6f/asm/libs.s:6491
+  - 0x0803C8B4 rfu_updateLinkManager
+  - 0x0812A350 sub_812A350
+  reproduce: python3 tools/asmcat.py 0x08146E5C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-045129'
+open_questions:
+- exact semantics of the values 1 and 2 within the 0x200AF80 link-state machine (field layout not fully
+  mapped)
+sources:
+- wf investigate investigate-20261019-045129
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 6cc0fbc9
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8146E5C -> rfu_setLinkState
+  where: bn6f 3e7e443d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8146E5C

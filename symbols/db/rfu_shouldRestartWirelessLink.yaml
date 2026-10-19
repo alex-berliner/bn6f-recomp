@@ -1,0 +1,46 @@
+name: rfu_shouldRestartWirelessLink
+address: '0x0803EA50'
+kind: function
+status: probable
+summary: returns the wireless-link flag from eStruct200BC30 that callers use to decide whether to re-init
+  the RFU session or run error/cleanup handling
+interface: () -> r0 = flag byte at eStruct200BC30+1 (0/1); no flags touched
+details: 'A two-instruction getter: loads the address of eStruct200BC30 and returns the byte at offset
+  1 (0x200BC31). Every call site follows the same pattern: first call sub_803EA78 (which presumably updates
+  the struct from RFU state), then call this, then branch on the result. Nonzero leads to rfu_initWirelessSession
+  (restarting the wireless session); zero leads to reset of a state/countdown struct (fields +1/+2/+0x28
+  cleared) and a handler call (sub_8147B24 / sub_8146E60). So the byte acts as a ''link needs restart''
+  or disconnect flag maintained elsewhere in eStruct200BC30.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_803EA50: ldr r1,=eStruct200BC30; ldrb r0,[r1,#1]; mov pc,lr — pure getter of byte 0x200BC31;
+    0x0812A5F8/0x0812A6F8: sub_803EA78 then sub_803EA50, tst r0,r0, bne -> rfu_initWirelessSession; 0x0812A4AC:
+    after sub_803EA78/sub_803EA50, result==0 path calls sub_8146E60, nonzero path calls sub_8148540; callers
+    in rfu context: rfu_testStatusFlags(#0x10/#0x20) and clearStatusBits surround the calls, confirming
+    wireless subsystem'
+  refs:
+  - bn6f/asm/asm03_1_1.s:11882
+  - 0x0812A4AC sub_812A4AC
+  - 0x0812A5F8 sub_812A5F8
+  - 0x0812A6F8 sub_812A6F8
+  reproduce: python3 tools/asmcat.py 0x0803EA50
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-045129'
+open_questions:
+- what sub_803EA78 writes into eStruct200BC30 to set this flag
+- 'exact semantics: disconnect flag vs connection-established flag; sub_8147B24/sub_8148540 purpose would
+  disambiguate'
+sources:
+- wf investigate investigate-20261019-045129
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 6cc0fbc9
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803EA50 -> rfu_shouldRestartWirelessLink
+  where: bn6f 3e7e443d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803EA50
