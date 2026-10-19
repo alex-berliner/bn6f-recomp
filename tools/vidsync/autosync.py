@@ -1883,10 +1883,14 @@ snap()
 bad = 0; last_v = []; status = 'end of video'; t0 = time.time(); g0 = b.g; nfix = 0
 # losses asked for (VIDSYNC_LOSE_AT, comma-separated game frames: job_driver.sh reads ~/vidsync/lose_at.env): a
 # picture that went wrong under the loss bar (run8z: the map off from 895845 after the PET menu, lost only at 898232)
-# (G+: every handler and the RNG search there, for a battle that went another way before its loss: run9c 977330)
-LOSE_AT = sorted((int(x.strip().rstrip('+')), x.strip().endswith('+')) for x in os.environ.get('VIDSYNC_LOSE_AT', '').split(',')
-                 if x.strip() and int(x.strip().rstrip('+')) > b.g)
-forced = None; forced_all = False
+# (G+: every handler and the RNG search there, for a battle that went another way before its loss: run9c 977330;
+# G:a/b: only handlers a and b, run9o 1048900: the offset handler took a no-op jump where the hp one was meant)
+def _lose_at(x):
+    g, _, names = x.strip().partition(':')
+    return int(g.rstrip('+')), (None if g.endswith('+') else set(names.split('/')) if names else {'position', 'relocate'})
+LOSE_AT = sorted((t for t in map(_lose_at, filter(str.strip, os.environ.get('VIDSYNC_LOSE_AT', '').split(','))) if t[0] > b.g),
+                 key=lambda t: t[0])
+forced = None; forced_only = None
 while True:
     # a stretch of frames at once (b.run: in C while there is one branch); it ends where a frame below may
     # snapshot, log or checkpoint, and b.run stops after a frame above the desync cost, a stall or the video's end
@@ -1906,7 +1910,7 @@ while True:
         if bad >= 30 or stalled:
             lost = True; break
         if LOSE_AT and g >= LOSE_AT[0][0]:
-            forced, forced_all = LOSE_AT.pop(0); lost = True; break
+            forced, forced_only = LOSE_AT.pop(0); lost = True; break
         if v >= b.N - bm.K - 2:
             end = True; break
         if A.until is not None and g >= A.until:
@@ -1931,7 +1935,7 @@ while True:
             # a loss asked for is MegaMan's place on the map (the sync held there): only those handlers, and the
             # run goes on when they find nothing
             was_forced = forced is not None; forced = None
-            if was_forced: only_was, ONLY = ONLY, (None if forced_all else {'position', 'relocate'})
+            if was_forced: only_was, ONLY = ONLY, forced_only
             KEEP_NEXT[0] = False; fix = repair(D); keep_later = keep_later or KEEP_NEXT[0]
             if was_forced:
                 ONLY = only_was
