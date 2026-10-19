@@ -1,0 +1,49 @@
+name: ai_attackStepWaitCurAnim14
+address: '0x08105A72'
+kind: function
+status: probable
+summary: AI attack step that initializes a timed pause (element 4, anim 0x14, timer = AttackDuration)
+  and, once the timer expires, tears the battle object's attack state down via object_exitAttackState.
+interface: (r7 = oAIAttackVars of active object, r5 = oBattleObject) -> r0 = unused; no flags
+details: On first entry (oAIAttackVars_AttackElement == 0) it stamps the attack element to 4, switches
+  the object's CurAnim to 0x14, and loads oAIAttackVars_StepTimer from oAIAttackVars_AttackDuration —
+  the 'wait N frames' setup of an AI attack step. On subsequent calls it decrements StepTimer each frame;
+  when it hits zero it calls object_exitAttackState_801171C to clear the attack vars, chip lockout, AI
+  flags and power-atk state, ending the attack. r7 and r5 are inherited scratch registers from the enclosing
+  AI attack-step dispatcher, so this is one case of that state machine.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst; bne — first-vs-repeat detection on the AI attack-vars
+    struct; mov r0,#4; strb [r7,#oAIAttackVars_AttackElement] plus strb #0x14 to oBattleObject_CurAnim
+    — fixed element/anim chosen at init; ldrh [r7,#oAIAttackVars_AttackDuration] strh [r7,#oAIAttackVars_StepTimer]
+    then decrement-until-zero loop — frame-countdown behavior; bl object_exitAttackState_801171C on timer
+    expiry — ends the attack like other attack steps'
+  refs:
+  - bn6f/asm/asm31.s:164905
+  - 0x0801171C object_exitAttackState_801171C
+  reproduce: python3 tools/asmcat.py 0x08105A72
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615; the run''s proposed name ai_attackWaitStep was contested;
+    tools/investigate_land.py dedupe gave this distinct name (hyper/glm-5.3-flash proposed, minimax/MiniMax-M3
+    agreed)'
+coverage:
+- battlesweep
+open_questions:
+- Which in-game attack uses this step (battlesweep route only) — a caller listing would name the specific
+  enemy/move
+- Whether element 4 and anim 0x14 correspond to a specific named element/pose (e.g. wood / guard-like
+  pose)
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 29efbb25
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8105A72 -> ai_attackStepWaitCurAnim14
+  where: bn6f 9b02e011
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8105A72

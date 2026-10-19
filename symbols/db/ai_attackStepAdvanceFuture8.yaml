@@ -1,0 +1,54 @@
+name: ai_attackStepAdvanceFuture8
+address: '0x080F7A6C'
+kind: function
+status: probable
+summary: 'Per-frame tick that advances an AI attacker one panel: after the step timer expires it commits
+  the planned panel move, releases the reserved panel, and resets the timer for the next step'
+interface: (r5 = battle object, r7 = object AI vars) -> void; commits FuturePanelX/Y into PanelX/Y and
+  reloads StepTimer=8, HitElement=8
+details: Counts down oAIAttackVars_StepTimer each call and does nothing until it hits 0. On expiry it
+  sets oBattleObject_CurAnim to 3, copies oBattleObject_FuturePanelX/Y into oBattleObject_PanelX/Y, calls
+  object_removePanelReserve to free the panel the object reserved for the move, then object_setCoordinatesFromPanels
+  and object_updateCollisionPanels to sync pixel position, collision panel and facing to the new tile.
+  Finally it reloads StepTimer with 8 and stores 8 into oAIAttackVars_HitElement, priming the next step/phase
+  of the attack. The 8 written to HitElement looks like a phase parameter (e.g. element or step count
+  for the follow-up), not a hit element in the usual sense.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrh/strh on oAIAttackVars_StepTimer with bgt locret: whole body is gated on a per-frame countdown;
+    strb FuturePanelX/FuturePanelY into PanelX/PanelY immediately before object_removePanelReserve: commits
+    a pre-planned move; callees object_setCoordinatesFromPanels and object_updateCollisionPanels recompute
+    pixel position and collision/facing from the new panel; timer reloaded with #8 twice at the end, second
+    store into oAIAttackVars_HitElement, primes the next phase'
+  refs:
+  - bn6f/asm/asm31.s:135658
+  - 0x0801BB46 object_removePanelReserve
+  - 0x0800E29C object_setCoordinatesFromPanels
+  - 0x0801A04C object_updateCollisionPanels
+  reproduce: python3 tools/asmcat.py 0x080F7A6C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231; the run''s proposed name ai_attackStepTick was contested;
+    tools/investigate_land.py dedupe gave this distinct name (hyper/glm-5.3-flash proposed, minimax/MiniMax-M3
+    agreed)'
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- No callers captured, so which AI attack(s) invoke this step and what the HitElement=8 store means for
+  the following phase is unconfirmed
+- What animation 3 represents for this object family (walk vs. attack pose) is not visible here
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 29efbb25
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F7A6C -> ai_attackStepAdvanceFuture8
+  where: bn6f 9b02e011
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F7A6C

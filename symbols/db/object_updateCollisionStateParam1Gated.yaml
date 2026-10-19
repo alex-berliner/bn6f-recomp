@@ -1,0 +1,53 @@
+name: object_updateCollisionStateParam1Gated
+address: '0x080C8D10'
+kind: function
+status: probable
+summary: 'Per-frame update for a battle object while it is caught in a collision: tears down old collision
+  data, spawns the hit effect, and either dispatches by current action or re-presents collision data each
+  frame.'
+interface: (r5 = battle object) -> void; sets object state to CUR_STATE_DESTROY when the battle is over
+details: 'This looks like the shared ''inside a collision'' state handler for battle objects (r5). It
+  first removes the object''s collision data and spawns the hit-effect object at the collision point.
+  If the battle is over it clears the object''s collision region and forces its state word to CUR_STATE_DESTROY.
+  Otherwise, if the collision set a flags value in the collision data it clears the object''s collision
+  region, then branches on oBattleObject_Param1 == 4: when Param1 is not 4 and no time-stop is active
+  it refreshes the object''s collision state via object_presentCollisionData, else it dispatches through
+  a 3-entry jump table indexed by oBattleObject_CurAction (entries at sub_80C8D64, sub_80C8D8E, sub_80C8DBC).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'opens with bl object_removeCollisionData then bl object_spawnCollisionEffect (collision teardown
+    + hit effect); bl battle_isBattleOver; taken path clears collision region and stores #CUR_STATE_DESTROY
+    into oBattleObject_CurStateActionPhaseAndPhaseInitialized; ldr r0,[r5,#oBattleObject_CollisionDataPtr];
+    ldr r0,[r0,#oCollisionData_FlagsFromCollision] gates object_clearCollisionRegion; ldrb r0,[r5,#oBattleObject_CurAction];
+    ldr r1,[r1,r0]; bx r1 with off_80C8D58 dispatch table of three Thumb handlers; battle_isTimeStop /
+    Param1==4 gate selects between object_presentCollisionData and the action dispatch'
+  refs:
+  - bn6f/asm/asm31.s:36368
+  - 0x0800A18E battle_isBattleOver
+  - 0x0800A098 battle_isTimeStop
+  - 0x0801A074 object_clearCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080C8D10
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607; the run''s proposed name object_updateCollisionState
+    was contested; tools/investigate_land.py dedupe gave this distinct name (hyper/glm-5.3-flash proposed,
+    minimax/MiniMax-M3 agreed)'
+coverage:
+- battlesweep
+open_questions:
+- What the three dispatched handlers (sub_80C8D64/8E/DBC) do, to confirm which collision situation (e.g.
+  hole panel, boss grab) this state represents
+- Meaning of oBattleObject_Param1 == 4 and which objects set it
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 29efbb25
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C8D10 -> object_updateCollisionStateParam1Gated
+  where: bn6f 9b02e011
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C8D10

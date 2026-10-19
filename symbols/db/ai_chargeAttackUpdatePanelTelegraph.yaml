@@ -1,0 +1,50 @@
+name: ai_chargeAttackUpdatePanelTelegraph
+address: '0x080FC8B6'
+kind: function
+status: probable
+summary: 'AI-controlled attack state handler: sets up a charge attack on first entry, telegraphs/highlights
+  the target panel in front while charging, and fires (sets HitElement) when the timer runs out.'
+interface: (r5 = battle object, r7 = oAIAttackVars state) -> r0 = void; writes AttackElement, CurAnim,
+  StepTimer, ChargeCycles, HitElement
+details: 'On first invocation (AttackElement == 0) it initializes the attack: sets AttackElement to 4,
+  CurAnim to 0xF, copies AttackBoost2 into StepTimer as the duration, and clears ChargeCycles. On later
+  calls it increments ChargeCycles and, every 8 ticks (lsr #3 carry), calls object_getFrontDirection and
+  highlights the panel 2 tiles ahead of the object''s PanelX at its PanelY (region kind 9, using AllianceAndDirectionFlip)
+  — a telegraph of the incoming hit. Meanwhile StepTimer counts down; when it reaches 0 the attack fires
+  by setting HitElement to 0x10. r5/r7 are caller-provided, so this is an AI attack-mode callback rather
+  than a standalone routine.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb/tst on oAIAttackVars_AttackElement gates one-time init: sets element 4, anim 0xF, StepTimer
+    = AttackBoost2; bl object_getFrontDirection then add to oBattleObject_PanelX and bl object_highlightPanelRegion(x2,
+    y, 9, alliance) telegraphs the front panel; ChargeCycles >> 3 carry gives a repeating highlight every
+    8 frames while charging; StepTimer countdown reaching 0 stores 0x10 into oAIAttackVars_HitElement,
+    i.e. the attack lands; Callee summaries (object_getFrontDirection = +1/-1 facing multiplier, object_highlightPanelRegion)
+    match the telegraph pattern'
+  refs:
+  - bn6f/asm/asm31.s:147713
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800CCD4 object_highlightPanelRegion
+  reproduce: python3 tools/asmcat.py 0x080FC8B6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606; the run''s proposed name ai_chargeAttackUpdate was
+    contested; tools/investigate_land.py dedupe gave this distinct name (hyper/glm-5.3-flash proposed,
+    minimax/MiniMax-M3 agreed)'
+open_questions:
+- Which enemy/attack uses this handler (element 4 and hit element 0x10 identity unknown)
+- Why the telegraph is 2 tiles ahead rather than 1
+- Who dispatches this function (no caller found)
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 29efbb25
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80FC8B6 -> ai_chargeAttackUpdatePanelTelegraph
+  where: bn6f 9b02e011
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FC8B6

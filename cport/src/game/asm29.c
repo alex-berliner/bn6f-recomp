@@ -39,7 +39,7 @@ Next ho_80A4984(void) {
     switch (selector) {
     case 0x0: GUEST_CALL(battleObject_initFromParams_80A49B0);   break;
     case 0x4: GUEST_CALL(event_80A4A08); break;
-    case 0x8: GUEST_CALL(sub_80A4A90);   break;
+    case 0x8: GUEST_CALL(ow_freeMapObjectTailcall);   break;
     }
 
     RETURN_TO_CALLER();

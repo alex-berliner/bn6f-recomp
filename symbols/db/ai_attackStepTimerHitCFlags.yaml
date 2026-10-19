@@ -1,0 +1,48 @@
+name: ai_attackStepTimerHitCFlags
+address: '0x080FC898'
+kind: function
+status: probable
+summary: 'Per-frame AI attack step timer: when the countdown expires, clears the attack-step flag, marks
+  the object as currently moving, and sets the hit element.'
+interface: (r7 = battle object with oAIAttackVars) -> void; flags from ldrh/strh update the subtract result
+  (StepTimer - 1)
+details: Decrements oAIAttackVars_StepTimer; while it is still positive the function does nothing else.
+  When the timer reaches zero or below, it clears ObjectFlags1 bit 0x40 via object_clearFlag, sets the
+  ObjectFlags1 bit at position OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT via object_setFlag1, and stores 0xC
+  into oAIAttackVars_HitElement (12 likely being an element/attack-type id used for later hit processing).
+  Note the timer is only reloaded to a fresh value elsewhere, so this runs every frame while a step timer
+  is active.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrh r0,[r7,#oAIAttackVars_StepTimer]; sub r0,#1; strh; bgt locret — frame-countdown gate; bl
+    object_clearFlag with r0=0x40 clears a bit in the object's ObjectFlags1 collision data; bl object_setFlag1
+    with r0=(1<<OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT) marks the object currently moving; strh r0(=0xC),[r7,#oAIAttackVars_HitElement]
+    writes the element/attack id; only callees are object_clearFlag/object_setFlag1, both known battle-object
+    flag helpers
+  refs:
+  - bn6f/asm/asm31.s:147414
+  - 0x0801A15C object_clearFlag
+  - 0x0801A152 object_setFlag1
+  reproduce: python3 tools/asmcat.py 0x080FC898
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606; the run''s proposed name ai_attackStepTick was contested;
+    tools/investigate_land.py dedupe gave this distinct name (hyper/glm-5.3-flash proposed, minimax/MiniMax-M3
+    agreed)'
+open_questions:
+- no caller is known, so what triggers this and which AI attack uses element id 0xC is unconfirmed
+- meaning of the cleared 0x40 flag bit (attack-step/involved-in-move?) needs its set-side caller
+- how HitElement=0xC is consumed afterwards
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 29efbb25
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80FC898 -> ai_attackStepTimerHitCFlags
+  where: bn6f 9b02e011
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FC898

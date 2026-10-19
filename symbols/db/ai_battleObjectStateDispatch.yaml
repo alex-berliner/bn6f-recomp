@@ -1,0 +1,47 @@
+name: ai_battleObjectStateDispatch
+address: '0x08101A68'
+kind: function
+status: probable
+summary: Runs the per-AI-state handler for a battle object by dispatching through a table indexed by the
+  object's AI script id.
+interface: (r5 = battle object) -> r0 = handler return value; calls handler with lr=pc (long-call)
+details: 'Loads the battle object''s AIData pointer from oBattleObject_AIDataPtr and builds pointers to
+  AIState (AIData+0x80) and AIData+0xA0. Reads oAIState_ScriptId from the AI state struct, uses it to
+  index off_8101A84 — an 8-entry table of Thumb handlers (sub_8101AA0, sub_8101E24, sub_8101E4A, sub_8101E70,
+  sub_8101E96, sub_8101EBC, sub_8101EE2, plus one more) — and calls it via the lr=pc/bx lr long-call idiom,
+  which also keeps r5 (the owning battle object) intact for the handler. It is a pure dispatcher: no state
+  is modified here and the script id is not bounds-checked, so ids above 7 read garbage from past the
+  table.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldr r7,[r5,#oBattleObject_AIDataPtr]; add r6,r6,r7 reaches AIData+0x80 = AI state block; ldrb
+    r0,[r6,#oAIState_ScriptId]; ldr r1,[r1,r0] indexes off_8101A84 handler table by script id; mov lr,pc;
+    bx r1 is the standard Thumb long-call, preserving r5 as the object pointer for the callee; table at
+    off_8101A84 holds 8 code pointers, matching the small set of AI state handlers at 0x8101AA0-0x8101EE2;
+    executed by the battlesweep route with no other callers, consistent with a per-frame AI state dispatcher
+  refs:
+  - bn6f/asm/asm31.s:157401
+  reproduce: python3 tools/asmcat.py 0x08101A68
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121; the run''s proposed name ai_dispatchStateScript was
+    contested; tools/investigate_land.py dedupe gave this distinct name (hyper/glm-5.3-flash proposed,
+    minimax/MiniMax-M3 agreed)'
+coverage:
+- battlesweep
+open_questions:
+- what the eight callees (sub_8101AA0 etc.) each do, i.e. the semantics of the individual AI script states
+- whether anything else writes oAIState_ScriptId, to confirm the id range stays within 0-7
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 29efbb25
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8101A68 -> ai_battleObjectStateDispatch
+  where: bn6f 9b02e011
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8101A68

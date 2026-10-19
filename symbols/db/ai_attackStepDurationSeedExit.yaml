@@ -1,0 +1,48 @@
+name: ai_attackStepDurationSeedExit
+address: '0x080F5DAE'
+kind: function
+status: probable
+summary: 'AI attack-state tick: initializes the attack element/duration on entry, counts the step timer
+  down, and returns the object to its idle animation and exits attack state when time runs out.'
+interface: (r7 = battle object AI attack vars, r5 = battle object) -> no return; updates oAIAttackVars_AttackElement,
+  oAIAttackVars_StepTimer, oBattleObject_CurAnim
+details: If oAIAttackVars_AttackElement is 0, it is initialized to 4 and oAIAttackVars_StepTimer is seeded
+  from oAIAttackVars_AttackDuration, so this is the first call of a multi-frame attack. On subsequent
+  calls the StepTimer is decremented each tick until it hits zero. When the timer expires, oBattleObject_CurAnim
+  is set to 0 (idle/neutral anim) and object_exitAttackState is called to leave the attack state. Element
+  value 4 is presumably a fixed element assigned to this AI attack (possibly wood/none depending on the
+  element enum). No callers are known, so the element meaning and which enemy uses this handler are unconfirmed.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst; bne — branches on the element to decide init
+    vs. countdown; mov r0,#4; strb [r7,#oAIAttackVars_AttackElement] — assigns fixed element 4 on first
+    tick; ldrh/strh StepTimer from AttackDuration, then sub #1/bgt — per-frame countdown of the attack
+    duration; mov r0,#0; strb [r5,#oBattleObject_CurAnim] — resets object animation when timer expires;
+    bl object_exitAttackState — hands control back out of the AI attack state'
+  refs:
+  - bn6f/asm/asm31.s:132276
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x080F5DAE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615; the run''s proposed name ai_attackStepTick was contested;
+    tools/investigate_land.py dedupe gave this distinct name (hyper/glm-5.3-flash proposed, minimax/MiniMax-M3
+    agreed)'
+coverage:
+- battlesweep
+open_questions:
+- Which AI attack table registers this routine (element enum meaning of value 4)
+- What the caller passes and where r5/r7 come from, since no callers are recorded
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 29efbb25
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F5DAE -> ai_attackStepDurationSeedExit
+  where: bn6f 9b02e011
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F5DAE

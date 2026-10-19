@@ -1,0 +1,53 @@
+name: ai_attackStepWindupAnim3Hit8
+address: '0x080F8794'
+kind: function
+status: probable
+summary: 'Per-frame tick of an enemy AI step/advance attack: commits the target panel and plays the wind-up
+  anim on first call, then after a 3-frame delay activates the attack''s hit element.'
+interface: (r7 = AI attack vars struct, r5 = battle object) -> void; sets oAIAttackVars_HitElement when
+  done
+details: Runs off oAIAttackVars_AttackElement in r7 as a phase flag. On the initial call (element 0) it
+  writes element 4, switches the object to animation 3, copies FuturePanelX/Y into PanelX/Y, releases
+  the reserved panel, recomputes pixel coordinates and collision panels, clears collision flag 0x40, sets
+  ObjectFlags1 'currently moving' (bit 1<<? = 0x... value 1 shifted), and stores a 3-frame StepTimer.
+  On subsequent calls it simply decrements StepTimer and, on reaching 0, writes HitElement = 8 so the
+  attack's damage/effect phase begins. It is a state-machine tick rather than a one-shot setup.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb/tst on [r7,#oAIAttackVars_AttackElement] gates a one-time init branch (asm lines 2-5);
+    init branch copies FuturePanelX/Y to PanelX/Y then calls object_removePanelReserve + object_setCoordinatesFromPanels
+    + object_updateCollisionPanels; object_clearFlag(0x40) and object_setFlag1(1<<CURRENTLY_MOVING) mark
+    the object as stepping; strh #3 to StepTimer then a decrement loop that on expiry stores HitElement
+    = 8 (loc_80F87CC)'
+  refs:
+  - bn6f/asm/asm31.s:136917
+  - 0x0801A15C object_clearFlag
+  - 0x0801BB46 object_removePanelReserve
+  - 0x0800E29C object_setCoordinatesFromPanels
+  reproduce: python3 tools/asmcat.py 0x080F8794
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607; the run''s proposed name ai_attackStepTick was contested;
+    tools/investigate_land.py dedupe gave this distinct name (hyper/glm-5.3-flash proposed, minimax/MiniMax-M3
+    agreed)'
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- which specific AI attack this implements (no caller identified; routes 'battlesweep'/'beastsp' hint
+  at a beast sweep) and what element codes 4 and 8 mean for the hit
+- exact meaning of collision flag 0x40 cleared here
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 29efbb25
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F8794 -> ai_attackStepWindupAnim3Hit8
+  where: bn6f 9b02e011
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F8794

@@ -1,0 +1,50 @@
+name: ai_attackStepSubstepHitBranch
+address: '0x080F3518'
+kind: function
+status: probable
+summary: 'AI attack substep timer tick: when the step timer runs out, resets the object''s anim/flags
+  and picks the attack''s hit element based on the substep index.'
+interface: (r7 = AIAttackVars struct, r5 = battle object) -> void; sets object anim to 0, clears flag
+  0x40, sets CURRENTLY_MOVING_1, writes HitElement 0x10 or 0x18
+details: 'Runs as a per-frame step of an enemy AI attack: decrements oAIAttackVars_StepTimer and returns
+  while it is still positive. When it hits zero, it sets oBattleObject_CurAnim to 0, clears ObjectFlags1
+  bit 0x40 (via object_clearFlag) and sets the ObjectFlags1 bit at CURRENTLY_MOVING_1 (via object_setFlag1).
+  It then writes oAIAttackVars_HitElement = 0x18 when oAIAttackVars_SubStepIndex > 1, or 0x10 when SubStepIndex
+  <= 1, so the two variants of the attack (initial vs later substeps) get different hit elements. This
+  looks like the tail of one AI attack routine shared by an enemy whose later substeps hit with a different
+  element.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrh r0,[r7,#oAIAttackVars_StepTimer]; sub #1; bgt locret: per-frame countdown gate for the
+    attack step; strb r0->oBattleObject_CurAnim + clearFlag 0x40 + setFlag1 CURRENTLY_MOVING_1: ends the
+    attack pose/motion state; ldrb SubStepIndex; cmp #1; ble writes HitElement 0x10 else 0x18: element
+    chosen per substep of the same attack; callees object_clearFlag/object_setFlag1 operate on the battle
+    object''s CollisionData ObjectFlags1, confirming r5 is a battle object'
+  refs:
+  - bn6f/asm/asm31.s:127138
+  - 0x0801A15C object_clearFlag
+  - 0x0801A152 object_setFlag1
+  reproduce: python3 tools/asmcat.py 0x080F3518
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615; the run''s proposed name ai_attackStepTick was contested;
+    tools/investigate_land.py dedupe gave this distinct name (hyper/glm-5.3-flash proposed, minimax/MiniMax-M3
+    agreed)'
+coverage:
+- battlesweep
+open_questions:
+- which enemy/attack routine this belongs to (no known caller), and what hit elements 0x10/0x18 denote
+- what ObjectFlags1 bit 0x40 means (probably the attack/pose-in-progress flag)
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 29efbb25
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F3518 -> ai_attackStepSubstepHitBranch
+  where: bn6f 9b02e011
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F3518

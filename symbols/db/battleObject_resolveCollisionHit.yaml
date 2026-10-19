@@ -1,0 +1,51 @@
+name: battleObject_resolveCollisionHit
+address: '0x080CC800'
+kind: function
+status: probable
+summary: 'Resolves a battle object''s collision: tears down collision data, spawns the hit effect, applies
+  the collision''s damage, and either destroys the object or dispatches its per-action collision handler.'
+interface: (r5 = battle object) -> r0 = 0 if the object survives with a handler dispatched, else clears
+  collision region and sets oBattleObject_CurState = CUR_STATE_DESTROY; uses r0-r3, lr
+details: The object in r5 first removes its collision data and spawns a hit-effect object at its position.
+  It then checks battle-over/time-stop conditions; if the battle is over or object_applyDamage returns
+  negative, the object is torn down (collision region cleared, CurState set to CUR_STATE_DESTROY). Otherwise
+  the collision's flags word (oCollisionData_FlagsFromCollision via oBattleObject_CollisionDataPtr) is
+  tested against a per-alliance flag mask table at byte_80CC860 (indexed by oBattleObject_Alliance <<
+  2); a match also destroys the object. If time-stop is active it merely refreshes present-collision state,
+  else it dispatches through off_80CC850 (3 entries) indexed by oBattleObject_CurAction to sub_80CC868/sub_80CC892/sub_80CC8BA
+  which finish the collision response.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'calls object_removeCollisionData then object_spawnCollisionEffect (asm lines 2-3) - classic
+    hit cleanup; bl object_applyDamage with r0=0 and branches to destroy on negative result; tests oCollisionData_FlagsFromCollision
+    against byte_80CC860[Alliance*4] masks 0x05800000/0x0A800000 to force destruction; destroy path: object_clearCollisionRegion
+    + strb CUR_STATE_DESTROY to oBattleObject_CurState; dispatch table off_80CC850 indexed by oBattleObject_CurAction
+    with mov lr,pc; bx r1 - per-action collision handlers'
+  refs:
+  - bn6f/asm/asm31.s:44631
+  - 0x0800A18E battle_isBattleOver
+  - 0x0800A098 battle_isTimeStop
+  - 0x0801A074 object_clearCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080CC800
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614; the run''s proposed name object_resolveCollisionHit
+    was contested; tools/investigate_land.py dedupe gave this distinct name (hyper/glm-5.3-flash proposed,
+    minimax/MiniMax-M3 agreed)'
+open_questions:
+- exact meaning of the per-alliance flag bits in oCollisionData_FlagsFromCollision (byte_80CC860)
+- what the three per-action handlers sub_80CC868/892/8BA do (e.g. knockback vs. flinch vs. delete)
+- which callers invoke this and with which collision kinds (no callers known)
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 29efbb25
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CC800 -> battleObject_resolveCollisionHit
+  where: bn6f 9b02e011
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CC800

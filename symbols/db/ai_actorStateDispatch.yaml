@@ -1,0 +1,48 @@
+name: ai_actorStateDispatch
+address: '0x0810FDD0'
+kind: function
+status: probable
+summary: 'AI-state dispatcher for an enemy actor: indexes a 3-entry handler table by the actor''s script/state
+  id and calls that handler.'
+interface: (r6 = actor object, field oAIState_ScriptId = state index) -> r0 = whatever the dispatched
+  handler returns; returns to this function's caller
+details: Loads the actor's current state id from [r6,#oAIState_ScriptId], uses it to index a jump table
+  at off_810FDE4 containing three thumb handlers (ai_checkActorNearbyOrTimeoutScript, ai_dashAttackInit,
+  sub_810FF1C), and calls the selected one via the lr=pc/bx trick so control returns here, then pops back
+  to the caller. The table has exactly 3 entries, so this actor's behavior is a 3-state machine (e.g.
+  idle/check, dash-attack setup, sub_810FF1C state). No bounds check on the state id. Note the pushed
+  r4 and r6 are unused except r6 as the actor pointer, suggesting a shared signature for actor AI update
+  steps.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r6,#oAIState_ScriptId]; ldr r1,[table,r0]; mov lr,pc; bx r1 — indexed call into state
+    table; table off_810FDE4 holds ai_checkActorNearbyOrTimeoutScript+1, ai_dashAttackInit+1, sub_810FF1C+1
+    — three AI script states; field name oAIState_ScriptId in the r6 object struct identifies this as
+    an AI state selector; run on the 'battlesweep' route, consistent with battle enemy AI updating
+  refs:
+  - bn6f/asm/asm32.s:4332
+  reproduce: python3 tools/asmcat.py 0x0810FDD0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121; the run''s proposed name ai_dispatchStateScript was
+    contested; tools/investigate_land.py dedupe gave this distinct name (hyper/glm-5.3-flash proposed,
+    minimax/MiniMax-M3 agreed)'
+coverage:
+- battlesweep
+open_questions:
+- what sub_810FF1C (third state) does, to name the state machine's full behavior
+- which caller passes r6 and at what point in the enemy update loop this runs
+- exact meaning of each state index value in the actor's script
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 29efbb25
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_810FDD0 -> ai_actorStateDispatch
+  where: bn6f 9b02e011
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810FDD0

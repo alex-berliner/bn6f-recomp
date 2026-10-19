@@ -1,0 +1,44 @@
+name: object_customScreenRunAction
+address: '0x080E47D4'
+kind: function
+status: probable
+summary: Per-frame action dispatcher for the battle object that dims/undims the screen and draws the chip
+  name during the custom screen sequence.
+interface: (r5 = battle object, oBattleObject_CurAction selects handler) -> r0 = handler result; flags
+  from handler
+details: Tail-dispatches to one of four handlers via off_80E47E8 indexed by oBattleObject_CurAction (r5+CurAction),
+  using the mov lr,pc/bx pattern so handlers can return to the pop {pc}. Action 0 calls object_dimScreen,
+  action 1 calls object_drawChipName, action 2 calls sub_80E47F8, action 3 calls object_undimScreen. The
+  dim/draw/undim sequence matches the fade and chip-name display shown while the custom screen opens and
+  closes in battle.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#oBattleObject_CurAction]; ldr r1,[r1,r0]; bx r1 — dispatch on object''s CurAction;
+    off_80E47E8 table: dimScreen, drawChipName, sub_80E47F8, undimScreen — open/hold/close phases of the
+    custom screen overlay; mov lr,pc; bx r1 with pop {pc} — standard thumb call-and-return trampoline
+    to action handlers'
+  refs:
+  - bn6f/asm/asm31.s:98171
+  reproduce: python3 tools/asmcat.py 0x080E47D4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111; the run''s proposed name object_customScreenUpdate
+    was contested; tools/investigate_land.py dedupe gave this distinct name (hyper/glm-5.3-flash proposed,
+    minimax/MiniMax-M3 agreed)'
+open_questions:
+- No callers known, so which entity spawns this object and drives CurAction is unconfirmed
+- sub_80E47F8 (action 2) is unknown — presumably the hold/idle phase between dim and undim
+- Whether this object is the custom-screen opener specifically or a generic dim+chip-name overlay
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 29efbb25
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E47D4 -> object_customScreenRunAction
+  where: bn6f 9b02e011
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E47D4

@@ -1,0 +1,51 @@
+name: battle_spawnChipAttackObjectKind5D
+address: '0x080E7546'
+kind: function
+status: probable
+summary: Spawns battle object 0x5D (a chip-attack-style object) and initializes its panel position, element,
+  damage, chip ID, and alliance copied from a related object.
+interface: (r0 = panelX, r1 = panelY, r2 = element, r5 = related object ptr, r6 = damage, r7 = chipID)
+  -> r0 = new oBattleObject* or NULL; r1-r3, r5 clobbered
+details: 'Saves the caller''s r0-r2 and r5, calls object_spawnType4 with object ID 0x5D (r1-r4 still holding
+  caller values as initializer params), and receives the new object pointer back in r5. ''mov r0,r5''
+  plus ''beq'' is a null check (spawn failure) that also moves the pointer into r0 so it survives the
+  pop. The pop shifts the saved args: r1=panelX, r2=panelY, r3=element, and restores r5 to the caller-supplied
+  related-object pointer. It then writes PanelX, PanelY, Element, RelatedObject1Ptr, DamageAndStaminaDamageCounterDisabler
+  (from r6), and ChipID (from r7), and copies Alliance by reading it from the related object at oBattleObject_Alliance.
+  The use of ChipID and the damage field strongly suggests this object represents a chip attack whose
+  owner/alliance comes from the related object.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mov r0, #0x5d; bl object_spawnType4 — spawns a type-4 battle object with ID 0x5D; mov r0,r5
+    / beq locret — null check on the spawned object returned in r5, kept alive in r0 across the pop; pop
+    {r1-r3,r5} then strb r1/r2/r3 into oBattleObject_PanelX/PanelY/Element — saved caller args become
+    field values; str r5,[r0,#oBattleObject_RelatedObject1Ptr] and ldrb r1,[r5,#oBattleObject_Alliance]
+    — alliance is copied from the related object; str r6,[r0,#oBattleObject_DamageAndStaminaDamageCounterDisabler];
+    str r7,[r0,#oBattleObject_ChipID] — damage and chip ID mark it as a chip-spawned attack'
+  refs:
+  - bn6f/asm/asm31.s:103936
+  - 0x080033AC object_spawnType4
+  reproduce: python3 tools/asmcat.py 0x080E7546
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-022109; the run''s proposed name battle_spawnChipAttackObject
+    was contested; tools/investigate_land.py dedupe gave this distinct name (hyper/glm-5.3-flash proposed,
+    minimax/MiniMax-M3 agreed)'
+open_questions:
+- What battle object 0x5D actually is in game terms (no known callers to confirm which chip/attack uses
+  it)
+- What the fourth initializer parameter (r4, passed through to object_spawnType4 but never stored here)
+  controls
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 29efbb25
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E7546 -> battle_spawnChipAttackObjectKind5D
+  where: bn6f 9b02e011
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E7546

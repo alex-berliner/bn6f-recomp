@@ -1,0 +1,45 @@
+name: object_tickChipNameSequence
+address: '0x080E3AD8'
+kind: function
+status: probable
+summary: Dispatches a per-state update handler for a battle object based on its current action, using
+  a 4-entry jump table.
+interface: (r5 = battle object) -> calls handler from off_80E3AEC[oBattleObject_CurAction] and returns
+  its result in r0
+details: 'Reads oBattleObject_CurAction from the object in r5 and indexes the table at off_80E3AEC, then
+  tail-ish calls (mov lr,pc; bx r1) the selected Thumb handler with r5 preserved. The four states map
+  to object_dimScreen, object_drawChipName, sub_80E3AFC (no-op/local), and object_undimScreen, suggesting
+  the object animates through: dim the screen, draw the chip name, idle, un-dim. It is a plain state-machine
+  tick with no bounds check on the action index.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r5,#oBattleObject_CurAction]; ldr r1,[table,r0]; mov lr,pc; bx r1 — indexed state dispatch;
+    table off_80E3AEC = {object_dimScreen, object_drawChipName, sub_80E3AFC, object_undimScreen} — screen-dim/chip-name
+    lifecycle; r5 is the sole input and is passed through untouched to every handler; mov lr,pc keeps
+    Thumb state, so entries are Thumb pointers (off by +1); no callers known; callees dim/undim screen
+    and draw chip name match a chip-selection display object
+  refs:
+  - bn6f/asm/asm31.s:96281
+  reproduce: python3 tools/asmcat.py 0x080E3AD8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111; the run''s proposed name object_dispatchCurActionHandler
+    was contested; tools/investigate_land.py dedupe gave this distinct name (hyper/glm-5.3-flash proposed,
+    minimax/MiniMax-M3 agreed)'
+open_questions:
+- which object and game flow drives this state machine (no callers known)
+- what sub_80E3AFC does (third state)
+- exact meaning of each CurAction value 0-3
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 29efbb25
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E3AD8 -> object_tickChipNameSequence
+  where: bn6f 9b02e011
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E3AD8

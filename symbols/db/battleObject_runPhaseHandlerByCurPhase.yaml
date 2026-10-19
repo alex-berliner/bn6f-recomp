@@ -1,0 +1,47 @@
+name: battleObject_runPhaseHandlerByCurPhase
+address: '0x080C16BE'
+kind: function
+status: probable
+summary: Steps the battle object in r5 through its state machine by calling the handler for the current
+  phase.
+interface: (r5 = battle object, r0 = don't care) -> r0 = whatever the phase handler returns; tail-called
+  via bl-style long call
+details: Reads the byte at oBattleObject_CurPhase off the object pointer in r5, uses it as an index into
+  the 4-entry table off_80C16D0, and long-calls the handler (mov lr, pc; bx r1). r0 is reloaded with the
+  phase value before the call, so handlers receive the current phase in r0 and the object in r5. The four
+  handlers are sub_80C16E0, sub_80C1734, sub_80C174A, and battle_waitMarkedFrameThenAdvance, the last
+  being the idle 'wait one frame' step. Since the table has only 4 entries, a phase value >= 4 would index
+  out of bounds; this object apparently only uses phases 0-3.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#oBattleObject_CurPhase] then ldr r1,[r1,r0] indexes the table by the object''s
+    phase; off_80C16D0 contains exactly 4 code pointers: sub_80C16E0, sub_80C1734, sub_80C174A, battle_waitMarkedFrameThenAdvance+1;
+    mov lr, pc; bx r1 is the standard THUMB long-call dispatch, so each entry is a per-phase handler;
+    battle_waitMarkedFrameThenAdvance as the last entry shows the table is per-phase step functions, the
+    final one idling a frame; no callers known, so the choice of r5 as the object pointer is inferred
+    from the oBattleObject_ field offset'
+  refs:
+  - bn6f/asm/asm31.s:21101
+  reproduce: python3 tools/asmcat.py 0x080C16BE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111; the run''s proposed name battle_dispatchCurPhaseHandler
+    was contested; tools/investigate_land.py dedupe gave this distinct name (hyper/glm-5.3-flash proposed,
+    minimax/MiniMax-M3 agreed)'
+open_questions:
+- No callers are known, so it is unconfirmed whether this is the generic per-object phase stepper or one
+  specific object's update entry
+- What sub_80C16E0, sub_80C1734 and sub_80C174A do (which phases 0-2 represent) is unknown
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 29efbb25
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C16BE -> battleObject_runPhaseHandlerByCurPhase
+  where: bn6f 9b02e011
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C16BE

@@ -1,0 +1,53 @@
+name: ai_attackStepWindupAnim22HitC
+address: '0x08105D5C'
+kind: function
+status: probable
+summary: 'State-machine step for an AI enemy''s melee attack: on first tick it commits to the target panel
+  (anim 0x16, move + collision setup) and starts a 4-frame timer; on later ticks it counts down and registers
+  hit element 0xC when the timer expires.'
+interface: (r5 = battle object, r7 = AI attack vars) -> void; no return value
+details: Runs on a battle object's AI attack variables. If oAIAttackVars_AttackElement is still 0, it
+  sets AttackElement = 4, plays anim 0x16, copies FuturePanelX/Y into PanelX/Y, releases the panel reservation,
+  recomputes pixel coordinates from the panels, syncs the collision panels/facing, clears ObjectFlags1
+  bit 0x40, sets the CURRENTLY_MOVING_1 flag, and loads StepTimer = 4. On subsequent calls it decrements
+  StepTimer; when it hits 0 it stores HitElement = 0xC, which presumably triggers the actual damage application
+  elsewhere. The two-phase structure (init once, then count down) is a typical per-frame attack state
+  handler.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne splits the init pass from the countdown
+    pass; copy of FuturePanelX/Y to PanelX/Y plus bl object_removePanelReserve and object_setCoordinatesFromPanels
+    commits the move onto the reserved panel; bl object_updateCollisionPanels and object_setFlag1 with
+    bit 1<<OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT mark the object as mid-move for collision; strh #4,[r7,#oAIAttackVars_StepTimer]
+    then a decrement-until-zero loop ending in HitElement = 0xC is the fixed 4-frame windup before the
+    hit; callees (object_clearFlag/object_setFlag1 on CollisionData ObjectFlags1) match the battle move/collision
+    setup seen in known attack routines'
+  refs:
+  - bn6f/asm/asm31.s:164440
+  - 0x0801A15C object_clearFlag
+  - 0x0801BB46 object_removePanelReserve
+  - 0x0800E29C object_setCoordinatesFromPanels
+  reproduce: python3 tools/asmcat.py 0x08105D5C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607; the run''s proposed name ai_attackStepTick was contested;
+    tools/investigate_land.py dedupe gave this distinct name (hyper/glm-5.3-flash proposed, minimax/MiniMax-M3
+    agreed)'
+coverage:
+- battlesweep
+open_questions:
+- Which enemy/attack uses this handler and what element values 4 and 0xC mean exactly
+- Where HitElement = 0xC is consumed (the actual damage/hit routine) to confirm the attack type
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 29efbb25
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8105D5C -> ai_attackStepWindupAnim22HitC
+  where: bn6f 9b02e011
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8105D5C

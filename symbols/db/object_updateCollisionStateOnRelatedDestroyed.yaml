@@ -1,0 +1,52 @@
+name: object_updateCollisionStateOnRelatedDestroyed
+address: '0x080DA53A'
+kind: function
+status: probable
+summary: Per-frame update for a battle object that processes its collision state and reacts when its related
+  object is destroyed
+interface: (r5 = battle object) -> r0 = ?; flags from battle_isTimeStop/battle_isBattleOver tests used
+  for control flow only
+details: First removes the object's previous collision data and spawns a hit-effect object at the last
+  collision's coordinates. If the battle is over (battle_isBattleOver != 0) it instead clears the collision
+  region and sets the object's state word to CUR_STATE_DESTROY. Otherwise, if the collision's flags-from-collision
+  field is nonzero it clears the collision region; then, if the related object's CurAction is 0xB (destroyed),
+  and time is not stopped, it dispatches through a jump table at off_80DA588 indexed by the object's own
+  CurAction (single entry = sub_80DA58C). In the normal path it calls object_presentCollisionData to refresh
+  hit/status data and run shared collision processing for this frame.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_removeCollisionData / object_spawnCollisionEffect at start: clears stale collision
+    data and spawns the hit effect; battle_isBattleOver test leads to object_clearCollisionRegion + CUR_STATE_DESTROY
+    store at loc_80DA578; ldr r0,[r0,#oCollisionData_FlagsFromCollision]; tst/beq gates object_clearCollisionRegion
+    on leftover collision flags; related object''s CurAction==0xB plus battle_isTimeStop gate the dispatch
+    table off_80DA588 (single entry sub_80DA58C+1); normal tail path calls object_presentCollisionData,
+    the known shared per-frame collision processor'
+  refs:
+  - bn6f/asm/asm31.s:74246
+  - 0x0800A18E battle_isBattleOver
+  - 0x0800A098 battle_isTimeStop
+  - 0x0801A074 object_clearCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080DA53A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614; the run''s proposed name object_updateCollisionState
+    was contested; tools/investigate_land.py dedupe gave this distinct name (hyper/glm-5.3-flash proposed,
+    minimax/MiniMax-M3 agreed)'
+open_questions:
+- Which object types use this update (no callers known) and what CurAction 0xB means exactly for the related
+  object
+- What sub_80DA58C does when the related object is destroyed (handler body not shown)
+- Whether the single-entry dispatch table implies only CurAction 0 is valid for this object kind
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 29efbb25
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DA53A -> object_updateCollisionStateOnRelatedDestroyed
+  where: bn6f 9b02e011
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DA53A

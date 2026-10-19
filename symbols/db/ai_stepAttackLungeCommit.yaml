@@ -1,0 +1,52 @@
+name: ai_stepAttackLungeCommit
+address: '0x080FC5AE'
+kind: function
+status: probable
+summary: 'AI attack step: commits the object onto its reserved target panel (step-in attack) and runs
+  a 13-frame timer before ending the attack state'
+interface: (r0 = battle object ptr via r5/r7 AI attack vars; r0 clobbered) -> r0 = undefined; sets AttackElement,
+  commits panel move, sets CURRENTLY_MOVING flag
+details: First invocation (AttackElement == 0) marks the attack as started by writing element 4, switches
+  the battle object to animation 3, passes oAIAttackVars_ScratchVar to sub_80FCF9C (unknown helper), copies
+  FuturePanelX/FuturePanelY into PanelX/PanelY, releases the panel reserve, recomputes pixel coordinates
+  from the new panel, syncs the collision record/facing, clears flag 0x40, and sets the ObjectFlags1 'currently
+  moving' bit, then starts a 0xD-frame StepTimer. On subsequent calls it merely decrements StepTimer;
+  when it reaches zero it calls object_exitAttackState to return to idle. This is a two-phase 'lunge onto
+  the adjacent panel and pause' melee attack routine of the battle AI.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r7,#oAIAttackVars_AttackElement] / bne loc_80FC5EC acts as a started-already test gating
+    the one-time setup; strb r0,[r5,#oBattleObject_PanelX] from FuturePanelX plus bl object_removePanelReserve
+    commits the pre-reserved panel move; bl object_setCoordinatesFromPanels / object_updateCollisionPanels
+    refresh position and collision after the step; mov r0,#1; lsl r0,#OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT;
+    bl object_setFlag1 marks the object as mid-move; StepTimer = 0xD then countdown with bl object_exitAttackState
+    at expiry ends the attack
+  refs:
+  - bn6f/asm/asm31.s:144771
+  - 0x0801A15C object_clearFlag
+  - 0x0801BB46 object_removePanelReserve
+  - 0x0800E29C object_setCoordinatesFromPanels
+  reproduce: python3 tools/asmcat.py 0x080FC5AE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607; the run''s proposed name ai_stepAttack was contested;
+    tools/investigate_land.py dedupe gave this distinct name (hyper/glm-5.3-flash proposed, minimax/MiniMax-M3
+    agreed)'
+coverage:
+- battlesweep
+open_questions:
+- What element value 4 means and which enemies use this attack
+- What sub_80FCF9C does with oAIAttackVars_ScratchVar (likely spawns the attack hitbox/effect)
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 29efbb25
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80FC5AE -> ai_stepAttackLungeCommit
+  where: bn6f 9b02e011
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FC5AE

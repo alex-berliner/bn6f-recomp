@@ -1,0 +1,51 @@
+name: ai_attackStepPauseThenAttack
+address: '0x080F5C2C'
+kind: function
+status: probable
+summary: 'Per-frame tick for an AI enemy''s attack step: counts the step timer down, first transitioning
+  from a movement pause into the attack phase, then exiting the attack state when the attack phase timer
+  runs out.'
+interface: (r0 = destroyed by ldrb/tst, r5 = battle object, r7 = AI attack vars struct) -> r0 = clobbered;
+  no meaningful return
+details: Reads oAIAttackVars_AttackElement as a phase selector. If it is 0 (pre-attack pause), it decrements
+  oAIAttackVars_StepTimer; on expiry it sets the object's current animation to 0, clears ObjectFlags bit
+  0x40, sets the CURRENTLY_MOVING_1 flag (bit 1) to make the object move, reloads StepTimer from oAIAttackVars_AttackDuration,
+  and sets AttackElement to 4 to enter the attack phase. If AttackElement is nonzero, it decrements StepTimer
+  and, on expiry, calls object_exitAttackState to end the attack. The struct at r7 is the AI attack variable
+  block (element/step timer/duration fields); r5 is the battle object whose collision-data flags are modified.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bne loc_80F5C58 after tst on oAIAttackVars_AttackElement splits the pause phase from the attack
+    phase; pause phase: strb #0 to oBattleObject_CurAnim, clearFlag 0x40, setFlag1 1<<CURRENTLY_MOVING_1_BIT,
+    reload timer from oAIAttackVars_AttackDuration, set AttackElement=4; attack phase: only decrements
+    oAIAttackVars_StepTimer then bl object_exitAttackState on zero; callees object_setFlag1/object_clearFlag/object_exitAttackState
+    confirm it drives a battle object''s attack state machine'
+  refs:
+  - bn6f/asm/asm31.s:131888
+  - 0x0801A15C object_clearFlag
+  - 0x0801A152 object_setFlag1
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x080F5C2C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-182231; the run''s proposed name ai_attackStepTick was contested;
+    tools/investigate_land.py dedupe gave this distinct name (hyper/glm-5.3-flash proposed, minimax/MiniMax-M3
+    agreed)'
+coverage:
+- battlesweep
+open_questions:
+- exact gameplay meaning of AttackElement=4 and flag 0x40 (which enemy/attack uses this step handler)
+- what the caller (unknown) passes and how this tick is dispatched among other AI attack handlers
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 29efbb25
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F5C2C -> ai_attackStepPauseThenAttack
+  where: bn6f 9b02e011
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F5C2C

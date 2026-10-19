@@ -1,0 +1,54 @@
+name: ai_attackStepAnim3LoopAdvance4
+address: '0x0810A49C'
+kind: function
+status: probable
+summary: 'Per-frame update for an AI attack step: loops animation frame 3 until it signals completion,
+  and when the step timer expires resets object vars and advances to the next attack phase (anim 4, 30-frame
+  counter).'
+interface: (r0 = ? unused, r5 = battle object ptr, r7 = oAIAttackVars block) -> r0 = counter time / 0x10
+  for call; flags from timer decrement test
+details: If the object's CurAnim is 3, it fetches the current frame's attribute byte via sprite_getFrameParameters
+  and, when bit 0x80 is set (frame-attribute end-of-anim marker), rewrites CurAnim to 0 so the anim restarts.
+  Every call decrements oAIAttackVars_StepTimer at r7; when it hits zero, it clears the object's two ExtraVars
+  words, calls object_setCounterTime with 0x1e (30 frames), sets CurAnim to 4, and stores 0x10 into oAIAttackVars_HitElement
+  — the element/hit value for the next phase. Runs during the recorded battlesweep/beastsp routes, so
+  it is an AI-driven attack state machine step, not player-side code.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#oBattleObject_CurAnim]; cmp #3 + sprite_getFrameParameters tst 0x80 -> reset anim:
+    anim-3 loop with end marker in frame attributes; ldrh r0,[r7,#oAIAttackVars_StepTimer]; sub #1; strh;
+    bne ret: frame-tick gate for the phase transition; mov r0,#0x1e; bl object_setCounterTime: arms a
+    30-frame counter for the next phase; strb #4,[r5,#oBattleObject_CurAnim] and mov #0x10; strh [r7,#oAIAttackVars_HitElement]:
+    switches to anim 4 with hit element 0x10; str r0,[r5,#oBattleObject_ExtraVars]/+4: clears the object''s
+    extra vars at the phase boundary'
+  refs:
+  - bn6f/asm/asm31.s:174569
+  - 0x08002DEA sprite_getFrameParameters
+  - 0x0800E9DC object_setCounterTime
+  reproduce: python3 tools/asmcat.py 0x0810A49C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615; the run''s proposed name ai_attackStepTick was contested;
+    tools/investigate_land.py dedupe gave this distinct name (hyper/glm-5.3-flash proposed, minimax/MiniMax-M3
+    agreed)'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- Which enemy/attack this step machine belongs to (route names beastsp/battlesweep suggest a Beast-form
+  boss) and what anims 3 and 4 depict
+- Meaning of oAIAttackVars_HitElement = 0x10 and how the next consumer reads it
+- Who calls this (no direct callers captured) and where StepTimer is initialized
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 29efbb25
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_810A49C -> ai_attackStepAnim3LoopAdvance4
+  where: bn6f 9b02e011
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810A49C

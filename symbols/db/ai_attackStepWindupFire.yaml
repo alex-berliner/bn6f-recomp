@@ -1,0 +1,47 @@
+name: ai_attackStepWindupFire
+address: '0x080F6B94'
+kind: function
+status: probable
+summary: 'Per-frame AI attack state: on entry picks element 4 and a 30-frame wait, then when the timer
+  runs out performs the attack and returns to the normal state.'
+interface: (r7 = object whose oAIAttackVars_* fields hold AttackElement/StepTimer) -> r0 = clobbered;
+  sets AttackElement=4 and StepTimer=30 on first run, decrements StepTimer each later frame
+details: First frame, when oAIAttackVars_AttackElement is 0, it writes element 4 and a 30-frame StepTimer,
+  i.e. it initializes a delayed attack. On subsequent frames it decrements StepTimer each call until it
+  reaches 0, then calls sub_80F73FA (presumably the attack execution, not yet analyzed) and object_exitAttackState
+  to leave the attack routine. This is a standard AI 'wind-up then fire' step for one enemy attack, with
+  element id 4 hard-coded.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst; bne — branches on whether the attack has been
+    initialized; mov r0,#4 / strb ... AttackElement and mov r0,#0x1e / strh ... StepTimer set the 30-frame
+    wind-up; ldrh ... StepTimer; sub r0,#1; bgt skip — classic per-frame countdown; bl sub_80F73FA then
+    bl object_exitAttackState — fire attack once, then leave attack state; callee object_exitAttackState
+    (known) confirms this runs inside the AI attack-state machine
+  refs:
+  - bn6f/asm/asm31.s:136261
+  - 0x08011714 object_exitAttackState
+  - 0x080F73FA sub_80F73FA
+  reproduce: python3 tools/asmcat.py 0x080F6B94
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-022109; the run''s proposed name ai_attackWaitStep was contested;
+    tools/investigate_land.py dedupe gave this distinct name (hyper/glm-5.3-flash proposed, minimax/MiniMax-M3
+    agreed)'
+open_questions:
+- what sub_80F73FA does (the actual attack effect), which would confirm whether element 4 selects a specific
+  enemy attack
+- which enemy/attack uses this, since no caller was identified
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 29efbb25
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F6B94 -> ai_attackStepWindupFire
+  where: bn6f 9b02e011
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F6B94

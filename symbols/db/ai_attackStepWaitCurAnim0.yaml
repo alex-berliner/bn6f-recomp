@@ -1,0 +1,50 @@
+name: ai_attackStepWaitCurAnim0
+address: '0x080FF01E'
+kind: function
+status: probable
+summary: AI attack-state handler that waits out the configured attack duration, then exits the attack
+  state.
+interface: (r0 = unused here, r7 = oAIAttackVars, r5 = battle object) -> r0 = object_exitAttackState result
+  on expiry; no meaningful return otherwise
+details: 'Reads oAIAttackVars_AttackElement as a state marker: if it is 0, the function initializes the
+  attack — writes element 4 to AttackElement, sets oBattleObject_CurAnim to 0, and copies oAIAttackVars_AttackDuration
+  into oAIAttackVars_StepTimer as the countdown. If the element is already nonzero, it decrements StepTimer
+  each call; once the timer reaches zero it calls object_exitAttackState to leave the attack. So the routine
+  is a two-phase per-frame step: setup on first call, frame-countdown on later calls. Element 4 presumably
+  marks this attack as in progress / a specific element for the AI''s current attack.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst r0,r0; bne loc_80FF034 — zero element selects
+    the init branch; strb r0(4),[r7,#oAIAttackVars_AttackElement]; strb r0(0),[r5,#oBattleObject_CurAnim]
+    — init sets element marker and resets animation; ldrh r0,[r7,#oAIAttackVars_AttackDuration]; strh
+    r0,[r7,#oAIAttackVars_StepTimer] — duration becomes the countdown timer; loc_80FF034: sub r0,#1; strh
+    r0,[r7,#oAIAttackVars_StepTimer]; bgt skip — countdown on repeat calls; bl object_exitAttackState
+    when timer hits 0 — ends the attack state'
+  refs:
+  - bn6f/asm/asm31.s:151070
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x080FF01E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615; the run''s proposed name ai_attackWaitStep was contested;
+    tools/investigate_land.py dedupe gave this distinct name (hyper/glm-5.3-flash proposed, minimax/MiniMax-M3
+    agreed)'
+coverage:
+- battlesweep
+open_questions:
+- No callers are known, so the AI struct layout meaning of element value 4 (element id vs in-progress
+  flag) is unconfirmed
+- What sets oAIAttackVars_AttackDuration and how this step is scheduled relative to other AI attack steps
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 29efbb25
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80FF01E -> ai_attackStepWaitCurAnim0
+  where: bn6f 9b02e011
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FF01E

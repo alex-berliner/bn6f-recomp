@@ -1,0 +1,43 @@
+name: ai_attackStepWaitByIndex
+address: '0x08102488'
+kind: function
+status: probable
+summary: AI attack step that waits a set number of frames doing nothing (plays idle animation) before
+  returning to the normal state
+interface: (r0/r1 unused; r7 = AI attack vars struct, r5 = battle object) -> r0 clobbered; flags from
+  the timer decrement
+details: 'If oAIAttackVars_AttackElement is 0 on entry, this initializes the step: sets the object''s
+  oBattleObject_CurAnim to 0 (idle/neutral animation), copies oAIAttackVars_AttackStepIndex into oAIAttackVars_StepTimer
+  as the step duration, and writes 4 into AttackElement as a ''step in progress / none'' sentinel so init
+  doesn''t rerun. Each call then decrements StepTimer; once it reaches 0 it calls object_exitAttackState
+  to end the attack. Essentially a do-nothing timed attack step for AI-controlled objects.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb/tst on oAIAttackVars_AttackElement gates a one-time init block (0x810248C-0x810249A); init
+    sets oBattleObject_CurAnim=0 and StepTimer=AttackStepIndex, i.e. play idle anim for StepIndex frames;
+    mov r0,#4; strb [r7,#oAIAttackVars_AttackElement] marks the step as started (sentinel value); bgt
+    on the decremented StepTimer keeps the step alive until the timer expires; bl object_exitAttackState
+    when the timer hits 0 ends the attack step
+  refs:
+  - bn6f/asm/asm31.s:157849
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x08102488
+  result: 'proposed by hyper/glm-5.3-flash; cross-checked by minimax/MiniMax-M3: agree; run wf investigate
+    investigate-20261018-203615; the run''s proposed name ai_attackStepWait was contested; tools/investigate_land.py
+    dedupe gave this distinct name (hyper/glm-5.3-flash proposed, minimax/MiniMax-M3 agreed)'
+coverage:
+- battlesweep
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 29efbb25
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8102488 -> ai_attackStepWaitByIndex
+  where: bn6f 9b02e011
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8102488

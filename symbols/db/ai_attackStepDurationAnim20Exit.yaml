@@ -1,0 +1,50 @@
+name: ai_attackStepDurationAnim20Exit
+address: '0x08105E3C'
+kind: function
+status: probable
+summary: 'AI attack state-machine tick: starts an attack step (element 4, anim 0x14, timer = AttackDuration)
+  on first call, then counts down and exits the attack state when the timer expires'
+interface: (no args; r7 = object AI-attack-vars, r5 = battle object) -> r0 clobbered; sets/clears attack
+  state via object_exitAttackState_801171C
+details: 'Reads oAIAttackVars_AttackElement: if it is still 0, it ''begins'' the attack by writing element=4,
+  setting oBattleObject_CurAnim to 0x14 (the attack animation), and copying oAIAttackVars_AttackDuration
+  into oAIAttackVars_StepTimer. On subsequent calls it decrements StepTimer; once it reaches zero it calls
+  object_exitAttackState_801171C, which clears the attack scratch, does mode-specific cleanup, and clears
+  the using-action/power-atk state. It is thus the per-frame updater for the attack''s active window.
+  Element value 4 likely denotes a default/neutral attack element chosen when the AI hasn''t picked one.
+  Runs during battlesweep routes on battle objects.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst; bne — element==0 marks 'attack not yet started';
+    mov r0,#0x14; strb r0,[r5,#oBattleObject_CurAnim] — start branch plays the attack animation; ldrh
+    r0,[r7,#oAIAttackVars_AttackDuration]; strh r0,[r7,#oAIAttackVars_StepTimer] — arms the step timer
+    from the attack's configured duration; sub r0,#1; strh; bgt — per-frame countdown of the attack step;
+    bl object_exitAttackState_801171C — timer expiry tears down the AI attack state
+  refs:
+  - bn6f/asm/asm31.s:165435
+  - 0x0801171C object_exitAttackState_801171C
+  reproduce: python3 tools/asmcat.py 0x08105E3C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615; the run''s proposed name ai_attackStepTick was contested;
+    tools/investigate_land.py dedupe gave this distinct name (hyper/glm-5.3-flash proposed, minimax/MiniMax-M3
+    agreed)'
+coverage:
+- battlesweep
+open_questions:
+- No known callers, so unclear which AI mode/action routes here and what element 4 specifically represents
+- Whether AttackDuration is in frames and whether other fields of the AI-attack vars are set elsewhere
+  before entry
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 29efbb25
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8105E3C -> ai_attackStepDurationAnim20Exit
+  where: bn6f 9b02e011
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8105E3C

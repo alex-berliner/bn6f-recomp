@@ -1,0 +1,46 @@
+name: ai_attackDispatchByHitElement3
+address: '0x08106DEC'
+kind: function
+status: probable
+summary: Dispatches an AI attack handler based on the element recorded in the AI attack vars, jumping
+  to one of three element-specific routines.
+interface: (r7 = AI attack vars struct) -> tail-jump to table[HitElement]; no direct return value
+details: 'Reads the HitElement byte at offset 0 of the AI attack vars struct (r7), uses it to index a
+  3-entry function pointer table at off_8106E00, and tail-calls the selected routine via mov lr,pc / bx
+  r1. Entry 0 is sub_8106E0C, entry 1 is the known ai_attackCommitStep, entry 2 is sub_8106E94, so the
+  three cases correspond to three element classes of an AI-driven attack. The jump is a tail-call: the
+  callee returns directly to this function''s caller via lr, making pop {r7,pc} a formality for the fallthrough
+  case. The table is thumb pointers (+1), stored right after the code.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_HitElement]; ldr r1,[r1,r0]; bx r1 — indexed jump table on the hit-element
+    field; table entries: sub_8106E0C+1, ai_attackCommitStep+1, sub_8106E94+1 — middle slot is a known
+    AI attack routine; mov lr,pc / bx r1 with pop {r7,pc} — tail-call dispatch, no post-call code; 3-entry
+    table matches a small closed set of element values for HitElement'
+  refs:
+  - bn6f/asm/asm31.s:168440
+  reproduce: python3 tools/asmcat.py 0x08106DEC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121; the run''s proposed name ai_attackDispatchByHitElement
+    was contested; tools/investigate_land.py dedupe gave this distinct name (hyper/glm-5.3-flash proposed,
+    minimax/MiniMax-M3 agreed)'
+coverage:
+- battlesweep
+open_questions:
+- Exact element values mapping to each entry (which elements hit slots 0/1/2)
+- What sub_8106E0C and sub_8106E94 do, and why ai_attackCommitStep is the middle case
+- Which callers populate AI attack vars HitElement before reaching this dispatch
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 29efbb25
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8106DEC -> ai_attackDispatchByHitElement3
+  where: bn6f 9b02e011
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8106DEC

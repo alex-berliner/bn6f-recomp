@@ -1,0 +1,51 @@
+name: ai_attackStepWaitByDuration
+address: '0x080FB1E2'
+kind: function
+status: probable
+summary: AI attack-state step that arms a wait timer on entry (element 4) and, once it counts down, returns
+  the object to its normal state.
+interface: (r0 = element byte read from r7's AI attack vars; r5 = battle object; r7 = AI attack vars struct)
+  -> r0 = clobbered; flags from tst/sub not meaningful to caller
+details: 'Reads oAIAttackVars_AttackElement from the AI attack variable block in r7. If it is still 0/none,
+  this is the first tick: the element is set to 4, the object''s current animation (r5+oBattleObject_CurAnim)
+  is reset to 0, and oAIAttackVars_AttackDuration is copied into oAIAttackVars_StepTimer as the countdown.
+  On subsequent ticks it decrements StepTimer each frame; when it reaches zero it calls object_exitAttackState
+  to leave the attack state. So it is a fixed-duration wait/hold step inside the AI attack state machine,
+  whose length is preconfigured in AttackDuration.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement] / tst r0,r0 / bne loc_80FB1F8 - one-shot init on
+    first entry vs countdown afterwards; strb #4,[r7,#oAIAttackVars_AttackElement] and strb #0,[r5,#oBattleObject_CurAnim]
+    - arms element 4 and resets the object''s animation; ldrh [r7,#oAIAttackVars_AttackDuration] -> strh
+    [r7,#oAIAttackVars_StepTimer] - seeds the countdown from the configured duration; sub r0,#1 / strh
+    / bgt locret - per-frame decrement until the timer expires; bl object_exitAttackState on timer expiry
+    - the step ends the attack state'
+  refs:
+  - bn6f/asm/asm31.s:142899
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x080FB1E2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615; the run''s proposed name ai_attackStepWait was contested;
+    tools/investigate_land.py dedupe gave this distinct name (hyper/glm-5.3-flash proposed, minimax/MiniMax-M3
+    agreed)'
+coverage:
+- battlesweep
+- chips
+open_questions:
+- No known callers, so the value 4's meaning for AttackElement (a specific element/attack id?) is unconfirmed
+- Whether this is one step of a larger AI attack state machine dispatch (a caller table would confirm
+  naming as a 'wait' step)
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 29efbb25
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80FB1E2 -> ai_attackStepWaitByDuration
+  where: bn6f 9b02e011
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FB1E2

@@ -1,0 +1,48 @@
+name: ai_attackStepDurationIdleExit
+address: '0x080F939E'
+kind: function
+status: probable
+summary: 'Per-frame AI attack step handler: arms the attack (element 4, anim 0, timer) once, then counts
+  it down and exits the attack state.'
+interface: (r0 = scratch, uses r5 = battle object, r7 = AI attack vars) -> r0 = object_exitAttackState
+  result when timer expires; flags from decrement
+details: Reads oAIAttackVars_AttackElement from the AI vars struct at r7; if zero it initializes the attack
+  by writing element id 4, setting oBattleObject_CurAnim at r5 to 0, and loading oAIAttackVars_AttackDuration
+  into oAIAttackVars_StepTimer as the phase length. Otherwise it decrements StepTimer each call and branches
+  out while it is still positive. When the timer reaches zero it calls object_exitAttackState to return
+  the object to its normal state. The hard-coded element 4 suggests this handler belongs to one specific
+  enemy attack whose element is fixed. It behaves like the generic 'charge/step then release' attack pattern
+  used by battle AI objects.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'tst r0,r0 / bne skips init: first-call init path writes AttackElement=4, CurAnim=0, copies
+    AttackDuration to StepTimer; StepTimer decrement with bgt keeps ticking each frame until zero; bl
+    object_exitAttackState on timer expiry ends the attack state; fields oAIAttackVars_* and oBattleObject_CurAnim
+    match the known battle-object AI attack structure'
+  refs:
+  - bn6f/asm/asm31.s:139113
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x080F939E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615; the run''s proposed name ai_attackStepTick was contested;
+    tools/investigate_land.py dedupe gave this distinct name (hyper/glm-5.3-flash proposed, minimax/MiniMax-M3
+    agreed)'
+coverage:
+- battlesweep
+open_questions:
+- Which enemy/attack uses element id 4 (i.e., which caller routes here) is unknown
+- Whether the element is ever meant to be preset by a different initializer rather than forced here
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 29efbb25
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F939E -> ai_attackStepDurationIdleExit
+  where: bn6f 9b02e011
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F939E

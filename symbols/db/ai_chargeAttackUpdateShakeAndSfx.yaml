@@ -1,0 +1,48 @@
+name: ai_chargeAttackUpdateShakeAndSfx
+address: '0x08104C18'
+kind: function
+status: probable
+summary: 'AI attack-state update: locks the attacker in place with anim 0x4b and charges for ~60 frames
+  with camera shake and periodic sound 0xE3, then flags the hit element.'
+interface: (r5 = battle object, r7 = oAIAttackVars state) -> r0 = 4 (element) written to HitElement when
+  timer expires; no return value
+details: If oAIAttackVars_AttackElement is unset, sets it to 4, copies PanelX/Y into FuturePanelX/Y so
+  the enemy stays put, sets animation 0x4B, plays sound 0x91, starts a camera shake (magnitude 2, using
+  StepTimer as duration) and initializes StepTimer=60 and ChargeCycles=16. During charging it plays sound
+  0xE3 every 16 frames (ChargeCycles) and decrements StepTimer each frame; when StepTimer reaches 0 it
+  writes element 4 into oAIAttackVars_HitElement, handing off to the attack's hit phase.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'Entry branch on oAIAttackVars_AttackElement with one-time setup: anim 0x4B, sound 0x91, camera_initShakeEffect_80302a8,
+    StepTimer=60 (sub_8104C18:12-31); FuturePanelX/Y copied from PanelX/Y show the attacker holds position
+    during the move; ChargeCycles=16 with sound 0xE3 retriggered every 16 frames is a repeating charge/whir
+    loop (loc_8104C50); On StepTimer expiry HitElement=4 signals the charge finished and damage element
+    to use (locret_8104C6E); Callees are only PlaySoundEffect and camera_initShakeEffect_80302a8, matching
+    a charging attack flourish'
+  refs:
+  - bn6f/asm/asm31.s:165239
+  - 0x080005CC PlaySoundEffect
+  - 0x080302A8 camera_initShakeEffect_80302a8
+  reproduce: python3 tools/asmcat.py 0x08104C18
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606; the run''s proposed name ai_chargeAttackUpdate was
+    contested; tools/investigate_land.py dedupe gave this distinct name (hyper/glm-5.3-flash proposed,
+    minimax/MiniMax-M3 agreed)'
+open_questions:
+- Which enemy/attack uses this routine (no caller known), and which element constant 4 is (needed for
+  a more precise name)
+- What consumes oAIAttackVars_HitElement after this state ends
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 29efbb25
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8104C18 -> ai_chargeAttackUpdateShakeAndSfx
+  where: bn6f 9b02e011
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8104C18

@@ -1,0 +1,47 @@
+name: ai_attackStepDurationStartExit
+address: '0x0810849C'
+kind: function
+status: probable
+summary: 'Per-frame tick of an enemy AI attack: initializes element/timer on first run, counts the step
+  timer down, and exits the attack state when it expires.'
+interface: (r0 = unused/element check value, r7 = AI attack vars struct, r5 = battle object) -> r0 = destroyed;
+  updates oAIAttackVars_AttackElement, StepTimer, oBattleObject_CurAnim
+details: Reads oAIAttackVars_AttackElement from the AI attack-vars struct in r7; if it is still 0 (no
+  element assigned), the attack has not started, so it stores element 4, zeroes oBattleObject_CurAnim
+  on the object in r5, and copies oAIAttackVars_AttackDuration into oAIAttackVars_StepTimer as the attack's
+  lifetime. Once started, each call decrements StepTimer and, when it reaches zero, falls through to object_exitAttackState
+  to restore the object's normal state. Element value 4 likely selects a default/neutral element for the
+  attack. With no known callers it is unclear which AI attack script invokes this.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst r0,r0; bne — branches between init path and countdown
+    path; strb r0,[r7,#oAIAttackVars_AttackElement] with r0=4 sets the attack's element on entry; ldrh/strh
+    AttackDuration->StepTimer arms the countdown from the attack's configured duration; bl object_exitAttackState
+    fires only when StepTimer reaches 0, ending the attack; strb r0,[r5,#oBattleObject_CurAnim] resets
+    the object's animation when the attack starts
+  refs:
+  - bn6f/asm/asm31.s:173382
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x0810849C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-022109; the run''s proposed name ai_attackStepTick was contested;
+    tools/investigate_land.py dedupe gave this distinct name (hyper/glm-5.3-flash proposed, minimax/MiniMax-M3
+    agreed)'
+open_questions:
+- No callers known, so which AI attack/state selects this handler is unknown
+- What element value 4 corresponds to (neutral? specific element?) is not shown here
+- Whether r5/r7 are always battle-object and AI-attack-vars in the caller context
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 29efbb25
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_810849C -> ai_attackStepDurationStartExit
+  where: bn6f 9b02e011
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810849C

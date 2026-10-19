@@ -1,0 +1,48 @@
+name: ai_attackStepBoost2SeedExit
+address: '0x081037E4'
+kind: function
+status: probable
+summary: 'Per-frame AI attack-state timer: initializes element/anim/timer on entry, counts down, and exits
+  the attack state when the timer expires.'
+interface: (r5 = battle object, r7 = oAIAttackVars struct) -> r0 = 0 after init or timer tick; updates
+  oAIAttackVars_AttackElement, _StepTimer, oBattleObject_CurAnim
+details: On first run (AttackElement == 0) it sets AttackElement = 4, clears the object's current animation
+  to 0, and seeds StepTimer from AttackBoost2, acting as state initialization. On subsequent frames it
+  decrements the 16-bit StepTimer each call; when it reaches zero it calls object_exitAttackState to leave
+  the attack state. Runs as part of battle AI object update (seen in 'battlesweep' routes). The hardcoded
+  element value 4 selects a specific attack/animation variant. No return value is produced beyond the
+  flags from the decrement tst/sub.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne branches between init and tick paths; mov
+    r0,#4; strb [r7,#oAIAttackVars_AttackElement] plus strb #0 to oBattleObject_CurAnim on init; ldrb
+    [r7,#oAIAttackVars_AttackBoost2]; strh [r7,#oAIAttackVars_StepTimer] seeds the countdown; ldrh StepTimer;
+    sub #1; strh; bgt skips exit — timer-based state duration; bl object_exitAttackState when the timer
+    hits zero'
+  refs:
+  - bn6f/asm/asm31.s:160552
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x081037E4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-203615; the run''s proposed name ai_attackStepTick was contested;
+    tools/investigate_land.py dedupe gave this distinct name (hyper/glm-5.3-flash proposed, minimax/MiniMax-M3
+    agreed)'
+coverage:
+- battlesweep
+open_questions:
+- Which attack/element value 4 corresponds to, and what object_exitAttackState hands control back to
+- Where AttackBoost2 is set by the caller, to know what duration it encodes
+sources:
+- wf investigate investigate-20261018-203615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 29efbb25
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81037E4 -> ai_attackStepBoost2SeedExit
+  where: bn6f 9b02e011
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81037E4

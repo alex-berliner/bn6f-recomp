@@ -1,0 +1,52 @@
+name: battle_spawnChipAttackObjectKind20
+address: '0x080E2B5A'
+kind: function
+status: probable
+summary: 'Spawns a battle object (spawnType4, kind 0x20) and fills it with chip-attack context: panel
+  position, element, allied source object, damage and chip ID.'
+interface: (r0 = PanelX, r1 = PanelY, r2 = Element, r5 = source/related object, r6 = damage value, r7
+  = ChipID; r0=0x20 passed to spawn) -> r0 = new object ptr or 0 if spawn failed
+details: 'Stashes the three stack-passed args with push {r0-r2,r5}, calls object_spawnType4 with r0=0x20,
+  then pops the args shifted into r1-r3 so they can be written into the new object. Takes the returned
+  object from r5 (mov r0,r5 also sets flags for the beq null-check; on failure it returns 0 in r0). It
+  writes oBattleObject_PanelX/PanelY/Element from the args, stores the caller''s r5 as oBattleObject_RelatedObject1Ptr,
+  copies AllianceAndDirectionFlip from that related object (ldrh/strh pair), and stores r6 into DamageAndStaminaDamageCounterDisabler
+  and r7 into oBattleObject_ChipID. r6 and r7 are never set inside, so the caller must pass them in those
+  registers — a non-standard extended calling convention. Quirk: the type-4 initializer runs inside spawnType4
+  before these fields are written, so the object''s logic must read them only after this wrapper returns.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'push {r0-r2,r5} / pop {r1-r3,r5}: args saved across the spawn call and restored shifted, then
+    strb to oBattleObject_PanelX/PanelY/Element; mov r0,r5 followed by beq locret: new object pointer
+    taken from r5, null-checked to return 0; ldrh r1,[r5,#oBattleObject_AllianceAndDirectionFlip] / strh
+    into the new object: alliance copied from the related object; str r6,[DamageAndStaminaDamageCounterDisabler]
+    / str r7,[oBattleObject_ChipID] with r6/r7 never initialized locally: caller-supplied damage and chip
+    ID; bl object_spawnType4 with r0=0x20: only the kind constant is set by this wrapper, everything else
+    comes from the caller'
+  refs:
+  - bn6f/asm/asm31.s:93342
+  - 0x080033AC object_spawnType4
+  reproduce: python3 tools/asmcat.py 0x080E2B5A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-022109; the run''s proposed name battle_spawnChipAttackObject
+    was contested; tools/investigate_land.py dedupe gave this distinct name (hyper/glm-5.3-flash proposed,
+    minimax/MiniMax-M3 agreed)'
+open_questions:
+- What object kind 0x20 actually is and what its type-4 initializer does with the not-yet-written fields
+- Which in-game callers invoke this and what they pass in r5/r6/r7 (likely a chip-use handler setting
+  damage and chip ID)
+- Whether r0=0x20 is an object kind, HP/size, or another initializer parameter
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 29efbb25
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E2B5A -> battle_spawnChipAttackObjectKind20
+  where: bn6f 9b02e011
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E2B5A
