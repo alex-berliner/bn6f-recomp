@@ -1,0 +1,43 @@
+name: rfu_setWirelessFlags
+address: '0x0803C6C0'
+kind: function
+status: probable
+summary: Marks the RFU shared state (0x200BC50) with wireless-active flags (0x8 | 0x80) after running
+  a setup step, and reports success.
+interface: (no args) -> r0 = 1, r1 = 1; corrupts lr
+details: 'Takes no arguments and first calls sub_813D978 (unknown, possibly a hardware/RFU init or wait
+  step). It then twice calls rfu_orFlags, which ORs its r0 bits into the flags word at offset 0xC of the
+  RFU/wireless shared state structure at 0x200BC50: first bit 0x8, then bit 0x80 (combined 0x88). Finally
+  it returns r0 = 1 and r1 = 1, a hardcoded success/true result in two registers, suggesting a boolean
+  plus a status or a two-word return. No caller is known, so the exact trigger context is unclear, but
+  the shape is a one-shot ''enable wireless mode'' toggle on the RFU state.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl sub_813D978 then two bl rfu_orFlags with r0 = 8 and r0 = 0x80 set the 0x88 flag bits via
+    the known flags-OR helper; rfu_orFlags's known summary states it ORs bits into offset 0xC flags of
+    the 0x200BC50 RFU structure, so the target structure is identified; mov r0,#1 / mov r1,#1 before pop
+    {pc} shows a fixed double success return with no computed value
+  refs:
+  - bn6f/asm/asm03_1_1.s:7582
+  - 0x0803CB00 rfu_orFlags
+  - 0x0813D978 sub_813D978
+  reproduce: python3 tools/asmcat.py 0x0803C6C0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-033611'
+open_questions:
+- what sub_813D978 does (init, reset, or poll of the RFU?)
+- which game flow calls this (no callers known), and what flags 0x8 and 0x80 mean semantically
+sources:
+- wf investigate investigate-20261019-033611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7a974ab5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803C6C0 -> rfu_setWirelessFlags
+  where: bn6f efc3f1a6
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803C6C0

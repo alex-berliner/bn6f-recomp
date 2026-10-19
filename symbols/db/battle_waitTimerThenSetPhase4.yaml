@@ -1,0 +1,46 @@
+name: battle_waitTimerThenSetPhase4
+address: '0x080E8BB0'
+kind: function
+status: probable
+summary: 'Battle-object phase handler: counts down the object''s Timer each frame and, once it expires,
+  switches the object to phase 4.'
+interface: (r5 = battle object) -> void; sets r5->Timer--, r5->CurPhaseAndPhaseInitialized = 4 when Timer
+  goes negative; flags from the sub/bge
+details: Reads the 16-bit Timer field of the battle object at r5, decrements it, and writes it back every
+  call. As long as the result is still >= 0 (bge), it simply returns, so callers keep invoking it while
+  the timer runs. When the timer underflows below zero (it was 0 this frame, and the decremented value
+  -1 is still stored back), the function writes 4 into CurPhaseAndPhaseInitialized, moving the object's
+  state machine to phase 4 (without the phase-initialized bit set). It uses no other fields and calls
+  nothing, so it is purely a 'wait N frames, then advance' step. The exact phase-4 meaning depends on
+  the object type, which callers would reveal.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrh/strh on r5,#oBattleObject_Timer with sub r0,#1: per-frame countdown of the object''s timer;
+    bge locret: keeps returning until the decrement makes the value negative; strh r0=4 into CurPhaseAndPhaseInitialized
+    only on expiry: advances the object''s phase to 4; no callees and no other field accesses: behavior
+    is solely timer-wait then phase set'
+  refs:
+  - bn6f/asm/asm31.s:107573
+  reproduce: python3 tools/asmcat.py 0x080E8BB0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-033611'
+open_questions:
+- No callers are known, so the object type and what phase 4 means for it are unknown
+- Whether Timer is reloaded elsewhere (e.g., by the previous phase) and its units (frames) is inferred
+  but unconfirmed
+- Whether CurPhaseAndPhaseInitialized bit 15 (phase-initialized) is expected to be set by the phase-4
+  handler itself
+sources:
+- wf investigate investigate-20261019-033611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7a974ab5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E8BB0 -> battle_waitTimerThenSetPhase4
+  where: bn6f efc3f1a6
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E8BB0

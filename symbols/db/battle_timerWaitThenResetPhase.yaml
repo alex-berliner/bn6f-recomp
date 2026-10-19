@@ -1,0 +1,40 @@
+name: battle_timerWaitThenResetPhase
+address: '0x080D9120'
+kind: function
+status: probable
+summary: Battle-object phase handler that waits on Timer and resets the object's phase to 0 when it expires
+interface: (r5 = battle object) -> void; sets object Timer-1 each call, zeroes CurPhaseAndPhaseInitialized
+  when Timer hits 0
+details: Reads oBattleObject_Timer from the object at r5, decrements it, writes it back, and branches
+  to return unless the result was zero. When the timer reaches zero it stores 0 into oBattleObject_CurPhaseAndPhaseInitialized,
+  clearing both the current phase and its 'initialized' flag so the object's state machine restarts from
+  phase 0. It preserves all other registers and only touches r5's fields, so it is intended as a per-frame
+  callback/phase handler. Note it returns even when the phase resets, and never signals completion otherwise.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrh r0,[r5,#oBattleObject_Timer]; sub r0,#1; strh back — per-frame countdown of the object's
+    timer; bne locret — resets only on the frame the timer reaches zero; strh r0(=0),[r5,#oBattleObject_CurPhaseAndPhaseInitialized]
+    — returns the phase machine to phase 0 with initialized flag cleared; push {lr}/pop {pc} with no calls
+    — pure field-manipulation handler, no side effects
+  refs:
+  - bn6f/asm/asm31.s:72668
+  reproduce: python3 tools/asmcat.py 0x080D9120
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-033611'
+open_questions:
+- Which object(s) install this as a phase handler and what the preceding phase sets Timer to — a caller
+  or object initializer would confirm the wait duration and purpose
+sources:
+- wf investigate investigate-20261019-033611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7a974ab5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D9120 -> battle_timerWaitThenResetPhase
+  where: bn6f efc3f1a6
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D9120

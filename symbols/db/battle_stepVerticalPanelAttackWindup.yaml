@@ -1,0 +1,46 @@
+name: battle_stepVerticalPanelAttackWindup
+address: '0x080BB0D2'
+kind: function
+status: probable
+summary: Object attack-phase step that highlights a 1x2 vertical panel area for 16 frames as an attack
+  windup, then advances the phase script.
+interface: (r5 = battle object) -> r0 = 0; updates oBattleObject_Timer/Timer2/CurAnim/CurPhaseAndPhaseInitialized
+details: State-machine step for a battle object. On first entry (PhaseInitialized==0) it stores Timer=0x10
+  and PhaseInitialized=4, so the windup lasts 16 frames. Every frame it calls battle_highlightTwoVerticalPanels
+  to flash a 1x2 area on the object's grid side, decrements Timer2 (an independent counter, likely for
+  a sound/effect trigger elsewhere), and when Timer reaches 4 switches the object to animation 0xC (telegraph
+  pose). When Timer underflows it calls sub_80BB1FE (presumably spawning/firing the actual attack), resets
+  Timer to 0x3C and moves the phase script to phase 0xC, which is presumably the attack-execution phase.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'first-entry block stores Timer=0x10 and PhaseInitialized=4 (sub_80BB0D2: ldrb/tst then strh
+    0x10, strb 4); bl battle_highlightTwoVerticalPanels every frame — callee summary says it highlights
+    a 1x2 vertical panel area; cmp r0,#4 / strb 0xC to CurAnim switches animation near the end of the
+    windup; timer underflow path calls sub_80BB1FE, then sets Timer=0x3C and CurPhaseAndPhaseInitialized=0xC,
+    i.e. hands off to the next phase; no known callers; r5 object base and oBattleObject_* field offsets
+    match other battle object update steps'
+  refs:
+  - bn6f/asm/asm31.s:6529
+  - 0x080BB1D8 battle_highlightTwoVerticalPanels
+  - 0x080BB1FE sub_80BB1FE
+  reproduce: python3 tools/asmcat.py 0x080BB0D2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-033611'
+open_questions:
+- what sub_80BB1FE does (presumably spawns the attack entity for phase 0xC)
+- which enemy/attack uses this step — needs the caller or phase-table entry that dispatches to it
+- what Timer2 counts toward (checked in another step, not here)
+sources:
+- wf investigate investigate-20261019-033611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7a974ab5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BB0D2 -> battle_stepVerticalPanelAttackWindup
+  where: bn6f efc3f1a6
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BB0D2

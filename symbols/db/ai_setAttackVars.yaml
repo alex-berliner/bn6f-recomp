@@ -1,0 +1,43 @@
+name: ai_setAttackVars
+address: '0x0801244A'
+kind: function
+status: probable
+summary: Initializes an AI attack's parameter block (damage 20, extra damage 138, packed attack property
+  0x33C00) and returns 0x5E.
+interface: (r7 = pointer to oAIAttackVars struct) -> r0 = 0x5E; writes Damage, ExtraDamage, AttackBoost2
+details: Stores 0x14 into oAIAttackVars_Damage and 0x8A into oAIAttackVars_ExtraDamage as halfwords, then
+  writes the word 0x00033C00 (from a literal pool constant) into oAIAttackVars_AttackBoost2, likely a
+  packed field encoding attack element/motion/area data. It ends by loading 0x5E into r0 and returning
+  via mov pc, lr, so the caller receives 0x5E in addition to the filled struct — typical of per-attack
+  setup routines dispatched through an AI function table, where the return value is probably a frame duration
+  or step id. No stack is used and no other state is touched.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'strh r0 (0x14) into [r7,#oAIAttackVars_Damage] sets base damage to 20; strh r0 (0x8A) into
+    [r7,#oAIAttackVars_ExtraDamage] sets secondary damage to 138; ldr r0, =0x33C00 / str into [r7,#oAIAttackVars_AttackBoost2]
+    stores the packed attack property word; mov r0, #0x5E before mov pc, lr shows a value is returned
+    to the caller; writes go exclusively through known oAIAttackVars offsets, identifying the structure
+    as the AI attack parameter block'
+  refs:
+  - bn6f/asm/asm00_2.s:8057
+  reproduce: python3 tools/asmcat.py 0x0801244A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-033611'
+open_questions:
+- which enemy/attack this parameter set belongs to — needs the dispatch table or caller that references
+  this address
+- meaning of the returned 0x5E and of the packed 0x33C00 AttackBoost2 value
+sources:
+- wf investigate investigate-20261019-033611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7a974ab5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_801244A -> ai_setAttackVars
+  where: bn6f efc3f1a6
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_801244A

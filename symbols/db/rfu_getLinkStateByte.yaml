@@ -1,0 +1,44 @@
+name: rfu_getLinkStateByte
+address: '0x0803C48C'
+kind: function
+status: probable
+summary: 'Returns the wireless link state: 0xFE when flag bit 0x8 is set, 0xFF when bit 0x4 is clear,
+  else the current state byte at 200A2A6.'
+interface: () -> r0 = link state byte (0xFE / 0xFF sentinel or byte at 200A2A6); Z flag set according
+  to result via tst
+details: 'Calls rfu_testStatusFlags twice on the global wireless status word: first with mask 0x8 — if
+  that bit is set it returns 0xFE immediately. Otherwise it tests mask 0x4; if that bit is clear it returns
+  0xFF. When bit 0x4 is set, it loads the byte at eS200A290+0x16 and returns that as the current link/session
+  state. The tst r0,r0 before return sets Z based on the state value so callers can branch on zero. No
+  other memory is touched and r4-r7 are only used as scratch.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldr r5, off_803C4AC loads eS200A290 as the only data base; only access is ldrb r4,[r5,#0x16];
+    bl rfu_testStatusFlags with r0=8 then bne returns constant 0xFE (asm lines 4-6); second rfu_testStatusFlags
+    with r0=4; beq skips the RAM load and returns 0xFF; only variable return path loads byte at 200A2A6,
+    so 0xFE/0xFF act as not-connected/pending sentinels; only callee is rfu_testStatusFlags, tying the
+    function to the rfu wireless subsystem
+  refs:
+  - bn6f/asm/asm03_1_1.s:7237
+  - 0x0803CB18 rfu_testStatusFlags
+  reproduce: python3 tools/asmcat.py 0x0803C48C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-033611'
+open_questions:
+- No callers known, so the meaning of 0xFE/0xFF and of the 200A2A6 byte (state code? slot? error id?)
+  is unconfirmed
+- Which feature uses this (trading, wireless battle lobby, Wonder Trade) is unknown; a caller would disambiguate
+sources:
+- wf investigate investigate-20261019-033611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7a974ab5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803C48C -> rfu_getLinkStateByte
+  where: bn6f efc3f1a6
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803C48C

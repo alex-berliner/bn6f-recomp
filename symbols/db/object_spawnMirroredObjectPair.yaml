@@ -1,0 +1,47 @@
+name: object_spawnMirroredObjectPair
+address: '0x080E83FC'
+kind: function
+status: probable
+summary: Spawns two kind-0x99 battle objects at two panels using data from a helper-filled struct, mirroring
+  the second one's flip bit.
+interface: (r5 = source battle object) -> r0 = 0; sets PhaseInitialized=4 on the source object
+details: First call sub_80E84D0 fills an 8-byte stack struct (panel x/y pairs, a halfword each). If it
+  succeeds, the function spawns object kind 0x99 at panel (struct[0],struct[1]) with halfword struct[2]
+  as an argument, copying the source object's element, Z16 and damage+Z16 fields, and passing r5+6 as
+  the link struct. If struct[4] is nonzero, a second object is spawned at panel (struct[4],struct[5])
+  with r5+7 as link, and its DirectionFlip bit is XORed with 1, i.e. horizontally mirrored relative to
+  the first. It then marks the source object PhaseInitialized=4 so the spawn only happens once, and if
+  both Param3 and Param4 of the source are zero, resets it to CurAction=0xC, phase 0. This is a one-shot
+  'spawn a pair of mirrored entities at panels' step in an object's action script.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'calls battle_spawnType3Object99AtPanel twice with panels/args read from the stack struct at
+    sp+0, element and damage taken from r5; eor r1,#1 on oBattleObject_DirectionFlip after the second
+    spawn mirrors it; strb #4,[r5,#oBattleObject_PhaseInitialized] guards one-shot behavior via the leading
+    tst/bne; resets CurAction=0xC and phase 0 when Param3|Param4 == 0, typical end-of-action cleanup;
+    sub_80E84D0 returns success flag and fills the two-panel configuration used for the spawns'
+  refs:
+  - bn6f/asm/asm31.s:106496
+  - 0x080D876E battle_spawnType3Object99AtPanel
+  - 0x080E84D0 sub_80E84D0
+  reproduce: python3 tools/asmcat.py 0x080E83FC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-033611'
+open_questions:
+- unknown which game entity/boss uses this object kind 0x99 and what the spawned objects do
+- 'sub_80E84D0 not analyzed: which panels it selects (player-relative? attack-row?) and what struct[2]/struct[6]
+  arguments mean'
+sources:
+- wf investigate investigate-20261019-033611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7a974ab5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E83FC -> object_spawnMirroredObjectPair
+  where: bn6f efc3f1a6
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E83FC

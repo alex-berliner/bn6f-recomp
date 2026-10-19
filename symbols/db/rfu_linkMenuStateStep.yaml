@@ -1,0 +1,48 @@
+name: rfu_linkMenuStateStep
+address: '0x080493BC'
+kind: function
+status: probable
+summary: Advance one step of a wireless-link (RFU) menu/connection state machine, updating a state byte
+  and RFU status flags.
+interface: (r5 = pointer to state struct, pre-set by caller; [r5+1] = state/next-state byte) -> r0 = last
+  call result; modifies RFU flags and [r5+1]
+details: The routine tests RFU status flag 0x40 and, if clear, tests flag 8; if that is also clear it
+  calls sub_803C330 and, on a nonzero result, calls sub_803C2A0 and ORs flag 0x20 into the RFU flags before
+  writing 0x3C to the state byte at [r5+1]. If sub_803C330 returned zero it instead tests flag 0x10 and,
+  when set, writes 0x44 to [r5+1]. It always finishes by calling sub_803A104 and sub_8049BC0. Notably
+  r5 is never initialized inside the function, so the caller must set it — the routine looks like one
+  arm of a larger state-machine dispatch (or an inlined fragment) rather than a standalone entry point.
+  The byte values 0x3C/0x44 look like next-state or timer codes for the link menu.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: lines testing rfu_testStatusFlags with 0x40, 8, then 0x10 gate all state transitions; mov r0,#0x20;
+    bl rfu_orFlags sets an RFU status flag only on the sub_803C330!=0 path; strb r0,[r5,#1] with 0x3C
+    or 0x44 stores a next-state/timer byte in a caller-provided struct; unconditional tail calls to sub_803A104
+    and sub_8049BC0 run every invocation; r5 is used but never loaded, so this is a fragment of a state
+    machine driven by a caller
+  refs:
+  - bn6f/asm/asm03_2.s:5308
+  - 0x0803CB00 rfu_orFlags
+  - 0x0803CB18 rfu_testStatusFlags
+  - 0x0803A104 sub_803A104
+  reproduce: python3 tools/asmcat.py 0x080493BC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-033611'
+open_questions:
+- who sets r5 and what structure [r5+1] belongs to (state byte? timer? menu index?)
+- meaning of RFU flag bits 0x40, 0x20, 0x10, 0x8 in the shared state at 0x200BC50
+- what sub_803C330/sub_803C2A0/sub_803A104/sub_8049BC0 do; no callers of this routine are known
+sources:
+- wf investigate investigate-20261019-033611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7a974ab5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80493BC -> rfu_linkMenuStateStep
+  where: bn6f efc3f1a6
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80493BC

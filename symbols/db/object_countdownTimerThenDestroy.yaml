@@ -1,0 +1,42 @@
+name: object_countdownTimerThenDestroy
+address: '0x080E8E82'
+kind: function
+status: probable
+summary: Decrement the battle object's Timer each frame; once it expires, mark the object for destruction.
+interface: (r5 = battle object) -> r0 = scratch; sets oBattleObject_CurStateActionPhaseAndPhaseInitialized
+  to CUR_STATE_DESTROY when Timer goes below zero
+details: Loads the halfword at oBattleObject_Timer from the battle object in r5, subtracts 1, and stores
+  it back. If the decremented value is still non-negative (bge), it just returns. When the timer underflows
+  (negative), the function writes CUR_STATE_DESTROY into the combined current-state/action-phase field,
+  which makes the engine destroy the object on its next state update. No other fields are touched and
+  no calls are made; the caller must set oBattleObject_Timer beforehand to the desired lifetime in frames.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrh r0,[r5,#oBattleObject_Timer]; sub r0,#1; strh — per-frame countdown of the Timer field;
+    bge locret — only acts when the timer has gone negative; mov r0,#CUR_STATE_DESTROY; str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]
+    — requests object destruction; no known callers/callees and 8 instructions — a trivial per-frame tick
+    handler, consistent with an object's update callback
+  refs:
+  - bn6f/asm/asm31.s:107963
+  reproduce: python3 tools/asmcat.py 0x080E8E82
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-033611'
+open_questions:
+- Which objects use this tick (who assigns the update pointer and sets Timer) is unknown since no callers
+  are identified
+- exact semantics of the Timer field's sign handling when it starts at 0 (immediately destroyed) not confirmed
+  from callers
+sources:
+- wf investigate investigate-20261019-033611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7a974ab5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E8E82 -> object_countdownTimerThenDestroy
+  where: bn6f efc3f1a6
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E8E82

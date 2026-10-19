@@ -1,0 +1,42 @@
+name: rfu_disconnectLink
+address: '0x0803C6A8'
+kind: function
+status: probable
+summary: 'Likely a wireless-link teardown step: clears the RFU link command to 0 and reports completion'
+interface: (r0 = self, ignored) -> r0 = 1 (done flag?), r1 = 0; no flags meaningful
+details: Discards its argument immediately, calls sub_813D9A0 with 0x34 (unknown purpose, possibly a state/struct
+  id), then invokes rfu_setLinkCommand(0), which writes command/state byte 0 into the RFU session struct
+  and, on change, clears the associated progress/timer fields — consistent with ending or cancelling a
+  link session. Returns r0 = 1 and r1 = 0, matching a state-handler 'finished' return convention. The
+  unused self parameter suggests the annotation was copied from a caller-side context.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldr r0,=0x34; bl sub_813D9A0 — unknown callee called with constant 0x34 before anything else;
+    mov r0,#0; bl rfu_setLinkCommand — stores link command 0 via the known RFU command setter; mov r0,#1;
+    mov r1,#0; pop {pc} — returns the (true, 0) pair typical of a completed state step; comment ''(self:
+    * S200BC50 $r7)'' but r0 is never read — the parameter is dead in this body'
+  refs:
+  - bn6f/asm/asm03_1_1.s:7567
+  - 0x0813D934 rfu_setLinkCommand
+  - 0x0813D9A0 sub_813D9A0
+  reproduce: python3 tools/asmcat.py 0x0803C6A8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-033611'
+open_questions:
+- No known callers to confirm when this teardown step runs or what state machine owns it
+- sub_813D9A0 and its 0x34 argument are unknown
+- Whether link command 0 means 'disconnect' or another state
+sources:
+- wf investigate investigate-20261019-033611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7a974ab5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803C6A8 -> rfu_disconnectLink
+  where: bn6f efc3f1a6
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803C6A8

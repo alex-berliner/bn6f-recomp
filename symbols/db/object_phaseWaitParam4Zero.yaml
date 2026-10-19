@@ -1,0 +1,42 @@
+name: object_phaseWaitParam4Zero
+address: '0x080BCC88'
+kind: function
+status: probable
+summary: Battle-object phase handler that keeps the object in its current phase while Param4 is nonzero,
+  then moves it to phase 8 once Param4 reads zero.
+interface: (r5 = battle object) -> r0 = scratch; no meaningful return; writes phase 8 to oBattleObject_CurPhaseAndPhaseInitialized
+  when Param4 == 0
+details: Reads oBattleObject_Param4 (byte at +Param4) from the object in r5. tst/bne returns immediately
+  if Param4 != 0, leaving the phase untouched. If Param4 == 0, stores halfword 8 into oBattleObject_CurPhaseAndPhaseInitialized,
+  which sets CurPhase to 8 and clears the phase-initialized flag. This is a per-frame phase-tick style
+  handler (push {lr}/pop {pc}, no other state touched). The meaning of Param4 and of phase 8 is not determined
+  from this function alone; presumably the enclosing phase loop calls it until the transition fires.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r5,#oBattleObject_Param4]; tst r0,r0; bne locret — stays in phase while Param4 nonzero;
+    mov r0,#8; strh r0,[r5,#oBattleObject_CurPhaseAndPhaseInitialized] — advances to phase 8 only when
+    Param4 == 0; strh writes the raw halfword, so the phase-initialized bit is cleared along with the
+    phase set
+  refs:
+  - bn6f/asm/asm31.s:10392
+  reproduce: python3 tools/asmcat.py 0x080BCC88
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-033611'
+open_questions:
+- which phase dispatches to this handler and what phase 8 means for this object type
+- what Param4 counts or flags (needs callers or the object's phase table to tell whether this is a timer,
+  a hit-freeze, a despawn wait, etc.)
+sources:
+- wf investigate investigate-20261019-033611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7a974ab5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BCC88 -> object_phaseWaitParam4Zero
+  where: bn6f efc3f1a6
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BCC88

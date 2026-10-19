@@ -1,0 +1,44 @@
+name: testAndClearWorkFlag
+address: '0x0803F324'
+kind: function
+status: probable
+summary: Reads a 1-byte flag in the work area at 0x200AC30+4, returns its old value, and clears it if
+  it was set (test-and-clear).
+interface: () -> r0 = previous flag value (nonzero if it was set); no flags meaningful
+details: 'Loads the address of unk_200AC30 from a literal pool, reads byte_200AC34 (offset +4) into r0,
+  and TSTs it against itself to set the Z flag. If the byte is zero it returns immediately with r0 = 0;
+  otherwise it writes 0 back to the same byte before returning, leaving r0 holding the old nonzero value.
+  So it atomically consumes a one-shot ''event happened'' flag: each call to it clears the flag, so a
+  set flag is reported only once. The struct at 0x200AC30 is otherwise untouched here; only offset +4
+  is used.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r1,#0x4]; tst r0,r0; beq — returns old byte and skips clear when zero (sub_803F324);
+    mov r0,#0; strb r0,[r1,#0x4] — clears byte_200AC34 only when it was nonzero; r0 still holds the pre-clear
+    value on the clearing path, so callers get the old flag state; only data touched is unk_200AC30+4
+    via literal pool off_803F4B8; no callees
+  refs:
+  - bn6f/asm/asm03_1_1.s:13197
+  - 0x0803F26C sub_803F26C
+  - 0x0803F334 sub_803F334
+  reproduce: python3 tools/asmcat.py 0x0803F324
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-033611'
+open_questions:
+- what subsystem owns the struct at 0x200AC30 (callers sub_803F26C/sub_803F334 not analyzed here), so
+  no prefix could be assigned
+- what event the flag signals and who sets byte_200AC34
+sources:
+- wf investigate investigate-20261019-033611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7a974ab5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803F324 -> testAndClearWorkFlag
+  where: bn6f efc3f1a6
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803F324

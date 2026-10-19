@@ -1,0 +1,46 @@
+name: battle_updatePeriodicSelfElementHitbox
+address: '0x080D0590'
+kind: function
+status: probable
+summary: Battle object update that spawns an element-based hitbox on its own panel every 12 frames for
+  a 30-frame lifetime, then destroys itself.
+interface: (r0 = battle object, r5-relative oBattleObject struct) -> void; no meaningful return, sets
+  oBattleObject_CurState to CUR_STATE_DESTROY on expiry
+details: On first invocation (CurPhase == 0) it enters phase 4, sets oBattleObject_Timer to 30 and oBattleObject_Timer2
+  to 12. Every frame it increments Timer2, and each time it reaches 12 it calls battle_spawnSelfElementCollisionRegion
+  (which uses the object's stored element and damage data to place a hitbox on the object's own panel)
+  and resets Timer2 to 0 — i.e. a hitbox refresh every 12 frames. Independently it decrements the 30-frame
+  Timer; once it goes negative the object's CurState is set to CUR_STATE_DESTROY so the object engine
+  removes it. The phase-4 guard makes the spawn intervals uniform rather than one leading edge, suggesting
+  a damaging tile (e.g. a burning/elemental panel object) that ticks damage while active.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#oBattleObject_CurPhase]/tst/bne: one-time init sets phase 4, Timer=0x1E, Timer2=0xC;
+    cmp r0,#0xC / blt skip / bl battle_spawnSelfElementCollisionRegion: spawns the element hitbox every
+    12 frames; Timer decrement / bge / mov r0,#CUR_STATE_DESTROY / strb [r5,#oBattleObject_CurState]:
+    object self-destructs after 30 frames; callee summary of battle_spawnSelfElementCollisionRegion confirms
+    it uses the object''s own element/damage data on its own panel'
+  refs:
+  - bn6f/asm/asm31.s:53681
+  - 0x080D05EC battle_spawnSelfElementCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080D0590
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-033611'
+open_questions:
+- No callers known, so which enemy/object or battle script uses this handler is unknown
+- The element/damage fields referenced by battle_spawnSelfElementCollisionRegion come from the object
+  struct; which specific trap/attack (fire trap, poison tile, etc.) this is needs the spawn site
+sources:
+- wf investigate investigate-20261019-033611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7a974ab5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D0590 -> battle_updatePeriodicSelfElementHitbox
+  where: bn6f efc3f1a6
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D0590

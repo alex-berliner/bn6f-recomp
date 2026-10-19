@@ -1,0 +1,43 @@
+name: object_countdownTimer
+address: '0x081386F0'
+kind: function
+status: probable
+summary: Counts down a frame timer on an object's work area and clears a state/active byte flag when it
+  reaches zero.
+interface: (r5 = object work struct) -> void; sets flags via the countdown compare
+details: 'Loads the halfword at r5+6, decrements it, and stores it back; if it is now nonzero the function
+  returns, otherwise it writes 0 to the byte at r5+3. This is a classic wait-N-frames pattern on an object/work
+  struct: field +6 is a countdown counter and field +3 is a byte flag (likely an active/state/phase byte)
+  that is cleared once the timer expires. No other registers or memory are touched, and it tail-returns
+  with pop {pc}. The caller sub_81386CC presumably invokes this as one step of a state machine for that
+  object.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrh r0,[r5,#6]/sub r0,#1/strh r0,[r5,#6] — decrement of a halfword timer field; bne locret
+    — early return while the timer is still counting; mov r0,#0; strb r0,[r5,#3] — clears a byte flag
+    only when the timer hits zero; 8-instruction tail-call leaf (pop {pc}) — pure per-frame tick handler,
+    no other side effects
+  refs:
+  - bn6f/asm/asm36.s:17896
+  - 0x081386CC sub_81386CC
+  reproduce: python3 tools/asmcat.py 0x081386F0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-033611'
+open_questions:
+- which object/subsystem r5 belongs to (caller sub_81386CC's context is unknown)
+- the exact meaning of the byte at r5+3 (state byte vs active flag)
+- what sets the halfword at r5+6 and its units (frames vs something else)
+sources:
+- wf investigate investigate-20261019-033611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7a974ab5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81386F0 -> object_countdownTimer
+  where: bn6f efc3f1a6
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81386F0

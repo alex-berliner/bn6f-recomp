@@ -1,0 +1,44 @@
+name: battle_clearExtraSelfRef
+address: '0x080D5128'
+kind: function
+status: probable
+summary: If the object's ExtraVars field points to a pointer that references this object itself, zeroes
+  that pointer.
+interface: (r0 = unused, r5 = battle object) -> no return value; flags from cmp
+details: 'Reads the ExtraVars field (offset oBattleObject_ExtraVars) of the battle object in r5, treats
+  it as a pointer to a word, and loads that word. If the word equals the object''s own address (r5), it
+  stores 0 there, i.e. it nulls out a reference that points back at this object. It does this non-destructively
+  otherwise: if the word points elsewhere, nothing is changed. This pattern is typical of cleanup code
+  that removes back-references to an object (e.g. ''last hit by'' or ''target'' links) so no stale pointer
+  to a dying object remains. Note r0 is unused, and the function relies on r5 being set by the caller.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldr r1,[r5,#oBattleObject_ExtraVars]; ldr r0,[r1] — ExtraVars is dereferenced as pointer-to-pointer;
+    cmp r0,r5; bne locret — only acts when the pointed-to value is the object itself; mov r0,#0; str r0,[r1]
+    — zeroes the referencing word; called from sub_80D5050 and sub_80D50C6, likely object teardown paths
+    (summaries unknown)
+  refs:
+  - bn6f/asm/asm31.s:64097
+  - 0x080D5050 sub_80D5050
+  - 0x080D50C6 sub_80D50C6
+  reproduce: python3 tools/asmcat.py 0x080D5128
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-033611'
+open_questions:
+- Which semantic field inside ExtraVars is being nulled (target, attacker, owner, etc.) — caller context
+  or struct docs needed
+- What sub_80D5050 / sub_80D50C6 do (presumably despawn/death cleanup) to confirm when this runs
+sources:
+- wf investigate investigate-20261019-033611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7a974ab5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D5128 -> battle_clearExtraSelfRef
+  where: bn6f efc3f1a6
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D5128

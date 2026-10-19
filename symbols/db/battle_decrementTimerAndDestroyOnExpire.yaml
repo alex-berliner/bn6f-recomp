@@ -1,0 +1,43 @@
+name: battle_decrementTimerAndDestroyOnExpire
+address: '0x080C3E88'
+kind: function
+status: probable
+summary: Battle-object helper that counts the object's Timer down each tick and marks the object for destruction
+  once it expires.
+interface: (r5 = battle object) -> r0 = destroyed object state written; no return value; flags from the
+  sub set by the last sub
+details: 'Loads the halfword at oBattleObject_Timer of the battle object in r5, subtracts 1, and stores
+  it back. If the decremented timer is still non-negative (bge), nothing else happens this tick. Once
+  the timer goes negative, it writes CUR_STATE_DESTROY into oBattleObject_CurStateActionPhaseAndPhaseInitialized,
+  so the object''s state machine tears it down next update. This is the standard ''timed object'' expiry
+  pattern: the object''s Timer field doubles as a frame countdown, and destroying is done purely via the
+  state field rather than a direct despawn call. Being r5-based, it is a callback-style routine invoked
+  with the object already in r5 (typical for battle object update/state handlers).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrh/strh on r5,#oBattleObject_Timer shows a per-tick countdown of the object's Timer halfword;
+    bge locret skips destruction while the timer has not yet gone negative; mov r0,#CUR_STATE_DESTROY
+    + str to oBattleObject_CurStateActionPhaseAndPhaseInitialized requests object teardown; push {lr}
+    ... pop {pc} tail-less return fits a called helper rather than an inlined state case
+  refs:
+  - bn6f/asm/asm31.s:26538
+  reproduce: python3 tools/asmcat.py 0x080C3E88
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-033611'
+open_questions:
+- no known callers, so which object kinds use this timer-to-destroy behavior is unconfirmed
+- exact tick rate (per frame vs per state-machine step) depends on where the caller invokes it
+sources:
+- wf investigate investigate-20261019-033611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7a974ab5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C3E88 -> battle_decrementTimerAndDestroyOnExpire
+  where: bn6f efc3f1a6
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C3E88

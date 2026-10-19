@@ -1,0 +1,49 @@
+name: rfu_stateStep
+address: '0x0803CA2C'
+kind: function
+status: probable
+summary: 'Per-frame step of the RFU/wireless link state machine: either runs a fallback/reset path with
+  a flag request, or dispatches to the handler selected by the link state''s mode byte.'
+interface: (r7 = *S200BC50 wireless state; args unused) -> r0 = 0, r1 = 0; calls handler at [state+3]
+  with lr set to return here
+details: Reads byte_200AF85 (byte_200AF80+5); if nonzero it calls sub_813D978 and rfu_orFlags(8), marking
+  flag bit 8 (offset 0xC) in the RFU shared state at 0x200BC50. Otherwise it indexes the two-word table
+  off_803CA58 with the byte at [r7,#3] and tail-dispatches to sub_803CA64 or sub_803CA90 via 'mov lr,pc;
+  bx r0', a Thumb call whose return address (pc+4) lands on loc_803CA4C. After the dispatched handler
+  (or the fallback) returns, the function zeroes r0 and r1 and returns, so the (u32?, bool) result is
+  always (0,0). The struct field +3 acts as a state/mode selector with exactly two handlers, so this is
+  a small wireless-connection state machine step rather than a game-logic routine.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[byte_200AF85]; nonzero path calls sub_813D978 then ''mov r0,#8; bl rfu_orFlags'' —
+    flags bit 8 in the RFU state; zero path: ''ldrb r0,[r7,#3]; ldr r0,[off_803CA58,r0]; mov lr,pc; bx
+    r0'' — dispatch on state byte into a 2-entry handler table; off_803CA58 holds sub_803CA64+1 and sub_803CA90+1,
+    the two RFU state handlers; epilogue ''mov r0,#0; mov r1,#0; pop {pc}'' — fixed zero return regardless
+    of path; callee rfu_orFlags writes offset 0xC of the 0x200BC50 RFU structure, matching the documented
+    self type'
+  refs:
+  - bn6f/asm/asm03_1_1.s:8091
+  - 0x0803CB00 rfu_orFlags
+  - 0x0813D978 sub_813D978
+  reproduce: python3 tools/asmcat.py 0x0803CA2C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-033611'
+open_questions:
+- What sub_813D978 does (would tell whether the nonzero-flag path is a reset or a timeout fallback)
+- What handlers sub_803CA64 and sub_803CA90 do (would reveal the two link states, e.g. open/closed)
+- What byte_200AF85 means and who sets it
+- No callers known, so the calling convention (r7 as self, args ignored) is unconfirmed
+sources:
+- wf investigate investigate-20261019-033611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7a974ab5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803CA2C -> rfu_stateStep
+  where: bn6f efc3f1a6
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803CA2C

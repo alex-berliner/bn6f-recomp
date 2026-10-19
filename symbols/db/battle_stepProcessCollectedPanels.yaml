@@ -1,0 +1,49 @@
+name: battle_stepProcessCollectedPanels
+address: '0x080BACBC'
+kind: function
+status: probable
+summary: Battle-object phase that collects matching field panels once, then invokes a per-panel routine
+  on them one at a time every 12 frames before ending the phase.
+interface: (r5 = battle object) -> r0 = destroyed/no return; updates PhaseInitialized, Param2 = panel
+  count, Param3 = panel index, Timer, and on completion sets CurAction = 0x14 and clears CurPhaseAndPhaseInitialized
+details: On first run (PhaseInitialized == 0) it sets the phase-initialized flag to 4 and calls battle_collectPanelsByAllianceMask,
+  storing the returned panel count into oBattleObject_Param2 and resetting Param3 and Timer; if no panels
+  matched it falls straight through to completion. On subsequent runs it decrements Timer each call, and
+  when it expires calls sub_80BAE60 with Param3 as the panel index, increments Param3, and reloads Timer
+  with 12 for the next panel. When the index reaches the collected count, it terminates the step by setting
+  CurAction to 0x14 and zeroing CurPhaseAndPhaseInitialized. The 12-frame cadence and per-panel dispatch
+  suggest a staged effect applied across the matched panels (e.g., a boss attack or panel alteration),
+  one panel at a time.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb/tst PhaseInitialized + 'mov r0,#4; strb' guard initializes once, collecting panels via
+    battle_collectPanelsByAllianceMask; count stored in Param2, index in Param3, and Timer reloaded to
+    0xc between panels (strh r0,[r5,#oBattleObject_Timer] at loc_80BACDC path); bl sub_80BAE60 with r0
+    = Param3 dispatches work for the current panel index; cmp r0,r1 / bge leads to 'mov r0,#0x14; strb
+    ... CurAction' and zeroed CurPhaseAndPhaseInitialized, the standard phase-exit pattern
+  refs:
+  - bn6f/asm/asm31.s:5950
+  - 0x080BAE3C battle_collectPanelsByAllianceMask
+  - 0x080BAE60 sub_80BAE60
+  reproduce: python3 tools/asmcat.py 0x080BACBC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-033611'
+open_questions:
+- What sub_80BAE60 actually does to each panel (attack spawn, transformation, etc.), which would pin down
+  the game meaning
+- Which alliance mask / panel attributes the collection filter targets, i.e. which boss or attack uses
+  this phase
+sources:
+- wf investigate investigate-20261019-033611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7a974ab5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BACBC -> battle_stepProcessCollectedPanels
+  where: bn6f efc3f1a6
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BACBC

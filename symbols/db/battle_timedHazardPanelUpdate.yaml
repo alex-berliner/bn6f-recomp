@@ -1,0 +1,46 @@
+name: battle_timedHazardPanelUpdate
+address: '0x080D0BD4'
+kind: function
+status: probable
+summary: 'Battle-object update routine: while the object sits on its stored target panel it counts down
+  a timer, repeatedly spawning an elemental collision/hitbox on its own panel, then destroys itself.'
+interface: (r5 = battle object) -> updates oBattleObject_Timer, ExtraVars and CurState; no return value
+  used
+details: Reads the object's PanelX/PanelY and compares them to coordinates stored at +0x12/+0x13 of the
+  structure pointed to by ExtraVars+8. If they match and the Timer has not run out (decremented each call),
+  it calls sub_80D0CE0 and battle_spawnObjectCollisionRegion, placing a hitbox on the object's own panel
+  with the object's element, and every 8th frame (Timer & 7) also runs sub_80D0CB4 and sub_80D0D28. If
+  the object is not on the target panel or the timer expires, it calls sub_80D0C7C, zeroes ExtraVars[0],
+  and sets the state word to CUR_STATE_DESTROY, ending the object.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0/r1 from oBattleObject_PanelX/Y compared to ExtraVars+8 fields 0x12/0x13 (position check);
+    oBattleObject_Timer is decremented and blt falls through to the destroy path; bl battle_spawnObjectCollisionRegion
+    inside the timer-active branch spawns a hitbox on the object's own panel; mov r1,#7 / and r0,r1 /
+    tst gates sub_80D0CB4 + sub_80D0D28 to every 8th frame; fallthrough sets r0=CUR_STATE_DESTROY into
+    oBattleObject_CurStateActionPhaseAndPhaseInitialized after zeroing ExtraVars[0]
+  refs:
+  - bn6f/asm/asm31.s:54538
+  - 0x080D0C5C battle_spawnObjectCollisionRegion
+  - 0x080D0C7C sub_80D0C7C
+  - 0x080D0CB4 sub_80D0CB4
+  reproduce: python3 tools/asmcat.py 0x080D0BD4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-033611'
+open_questions:
+- What sub_80D0C7C, sub_80D0CB4, sub_80D0CE0 and sub_80D0D28 do (animation/sound/effect?), and which attack
+  spawns this object, to confirm the hazard type
+sources:
+- wf investigate investigate-20261019-033611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7a974ab5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D0BD4 -> battle_timedHazardPanelUpdate
+  where: bn6f efc3f1a6
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D0BD4

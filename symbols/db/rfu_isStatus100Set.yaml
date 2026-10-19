@@ -1,0 +1,43 @@
+name: rfu_isStatus100Set
+address: '0x0803C514'
+kind: function
+status: probable
+summary: Returns 1 if bit 0x100 of the global RFU status word (0x0200A290) is set, else 0.
+interface: () -> r0 = 1 if RFU status flag 0x100 set, else 0; Z flag from final tst
+details: 'Computes mask 0x100 (mov r0,#0x10; lsl r0,#4) and passes it to rfu_testStatusFlags, which ANDs
+  it against the global status word at 0x0200A290 and sets Z on no match. If the bit is set, r4 is set
+  to 1; otherwise it stays 0. Returns r4 in r0 and ends with tst r0,r0 so the caller can also branch on
+  Z. It is a pure predicate: no other state is read or written, and all six call sites are inside sub_8148234.
+  Bit 0x100 of the RFU status word presumably indicates an established/active wireless connection state.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldr r5, =0x0200A290 + bl rfu_testStatusFlags with r0=0x100: single-bit test of global RFU status
+    word; mov r4,#0 / beq skip / mov r4,#1 / mov r0,r4: boolean 0/1 result of the flag test; tst r0,r0
+    before pop: result also exposed via Z flag for callers that branch; all six callers are sub_8148234,
+    which calls it repeatedly between other RFU-related calls at 0x08148234-0x0814843C'
+  refs:
+  - bn6f/asm/asm03_1_1.s:7323
+  - 0x08148234 sub_8148234
+  - 0x08148368 sub_8148234
+  - 0x08148380 sub_8148234
+  - 0x0803CB18 rfu_testStatusFlags
+  reproduce: python3 tools/asmcat.py 0x0803C514
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-033611'
+open_questions:
+- exact meaning of status bit 0x100 (connected vs. initialized vs. error) — needs RFU status flag layout
+  or the surrounding logic of sub_8148234
+sources:
+- wf investigate investigate-20261019-033611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7a974ab5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803C514 -> rfu_isStatus100Set
+  where: bn6f efc3f1a6
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803C514

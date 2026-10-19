@@ -1,0 +1,46 @@
+name: t3_remapIdsViaLookupTable
+address: '0x08131EE4'
+kind: function
+status: probable
+summary: Rewrites a 30-entry halfword ID array in RAM, replacing each ID with its counterpart from a small
+  4-entry old→new lookup table, before the caller fades the screen and switches game state.
+interface: () -> void; no args, no return value
+details: 'Loops over 30 halfwords (0x3C bytes) at unk_202527C. For each value it scans byte_8131BF4, which
+  holds 4 halfword pairs: an old ID at byte_8131BF4+0/2/4/6 and its replacement at byte_8131BFC+0/2/4/6
+  (the two tables are parallel, stride 8 total). On a match it takes the paired value from byte_8131BFC;
+  if no entry matches (loop exits at r3==8), the original value is kept unchanged. The result is written
+  to the parallel array unk_20251A0 at the same index, so unk_202527C itself is not modified. Its only
+  known caller, t3_setStateAndFadeScreen, runs it right before setting a state variable to 0x14 and starting
+  a (12,16) screen fade, consistent with patching up world/ID data for the state the game is about to
+  enter.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrh r0,[r6,r4] with r4 stepping 2 up to 0x3C: exactly 30 halfword entries copied/translated;
+    inner loop compares against 4 halfwords at byte_8131BF4 (cmp r3,#8 exit) — a 4-entry match table;
+    on match r0 is reloaded from byte_8131BFC at the same index: parallel old/new ID tables; strh r0,[r7,r4]
+    writes results to unk_20251A0, source array untouched; only caller t3_setStateAndFadeScreen invokes
+    it immediately before a state change to 0x14 and screen fade'
+  refs:
+  - bn6f/asm/asm36.s:3812
+  - 0x081311F0 t3_setStateAndFadeScreen
+  reproduce: python3 tools/asmcat.py 0x08131EE4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-033611'
+open_questions:
+- what the 30 IDs in unk_202527C represent (area/map/warp/object IDs?)
+- what the four entries in byte_8131BF4/byte_8131BFC map between and when that table is populated
+- who consumes unk_20251A0 afterward and how state 0x14 uses it
+sources:
+- wf investigate investigate-20261019-033611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7a974ab5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8131EE4 -> t3_remapIdsViaLookupTable
+  where: bn6f efc3f1a6
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8131EE4

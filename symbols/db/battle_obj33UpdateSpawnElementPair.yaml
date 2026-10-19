@@ -1,0 +1,50 @@
+name: battle_obj33UpdateSpawnElementPair
+address: '0x080E93A0'
+kind: function
+status: probable
+summary: 'Per-frame update for an element-based battle object: on its first tick it spawns two companion
+  objects (object #33 and one via sub_80C24D2) inheriting its element, height and flags, then ends itself
+  once both Param1 and Param2 have cleared.'
+interface: (r0 = scratch (overwritten), r5 = battle object this) -> r0 = destroyed? (phase 8 written);
+  sets PhaseInitialized = 4 on first run
+details: 'On first invocation (oBattleObject_PhaseInitialized == 0) it latches PhaseInitialized = 4 and
+  makes two spawn calls. Both calls receive r2 = this->Element, r6 = Z16Save | (StaminaDamageCounterDisabler
+  << 16), r4 = 0, r5 = this->RelatedObject1Ptr, and r7 = &this->byte4 for the first call vs &this->byte5
+  for the second — so the two children are anchored to two adjacent bytes of the parent, likely per-child
+  state/counters. The first spawn is battle_spawnObj33WithElement (object #33, element-customised); the
+  second is the unknown sub_80C24D2 with the same argument pattern. Every tick afterwards it checks Param1
+  and Param2: if either is non-zero it returns, and when both are zero it writes phase 8 into CurPhaseAndPhaseInitialized,
+  i.e. the object finishes once both children have signalled completion.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#oBattleObject_PhaseInitialized]; tst/bne skips the spawn block, then strb #4 —
+    one-shot init inside an update handler; both spawn calls load Element into r2 and Z16Save|StaminaDamageCounterDisabler<<16
+    into r6, only differing in r7 = this+4 vs this+5; callee battle_spawnObj33WithElement is documented
+    as spawning object #33 with element/vars/related-object/alliance/collision setup; final block: Param1
+    and Param2 both zero -> mov r0,#8; strh [r5,#CurPhaseAndPhaseInitialized] — self-termination phase;
+    no other known callers; runs as an object phase/update handler with r5 = object pointer'
+  refs:
+  - bn6f/asm/asm31.s:108738
+  - 0x080C1EAC battle_spawnObj33WithElement
+  - 0x080C24D2 sub_80C24D2
+  reproduce: python3 tools/asmcat.py 0x080E93A0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-033611'
+open_questions:
+- 'what object #33 and sub_80C24D2''s spawn actually are (visual/attack identity of the children)'
+- what writes Param1/Param2 (presumably the spawned children clearing bytes 4/5 of the parent)
+- what phase 8 means in this object's phase table and what the parent's own visual behaviour is
+sources:
+- wf investigate investigate-20261019-033611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7a974ab5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E93A0 -> battle_obj33UpdateSpawnElementPair
+  where: bn6f efc3f1a6
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E93A0

@@ -1,0 +1,44 @@
+name: battle_initLoopbackLinkPackets
+address: '0x0800B49E'
+kind: function
+status: probable
+summary: (Re)builds the two loopback battle link packets the game exchanges with itself in solo battles.
+interface: () -> void; r0/r1 clobbered via callee calls
+details: 'Calls sub_802E45E twice: first with r0=0 targeting byte_203F4A4, then r0=1 targeting byte_203F5A4
+  (exactly 0x100 later, so two adjacent packet-sized buffers). byte_203F4A4 is known from symdb as the
+  payload of the received loopback battle link packet, containing the battle seed restored at battle phase
+  8 and later the battle result record. r0 therefore likely selects which packet to produce (slot/template
+  0 vs 1) rather than being a fill byte. The routine takes no arguments and preserves nothing but callee-saved
+  regs, so it is a plain initializer invoked before/around battle link setup. Exact behavior depends on
+  the unshown callee sub_802E45E.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'both calls go to the same helper with r1 = byte_203F4A4 then byte_203F5A4, two buffers 0x100
+    apart (packet-sized); symdb: byte_203F4A4 is the loopback battle link packet payload holding the battle
+    seed (battle phase 8); r0 alternates 0 then 1 across the two calls, consistent with a packet/bank
+    selector; no other arguments or globals touched; function is a standalone init-style thunk (push/pop
+    lr, tail returns)'
+  refs:
+  - bn6f/asm/asm00_1.s:19113
+  - 0x0802E45E sub_802E45E
+  reproduce: python3 tools/asmcat.py 0x0800B49E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-033611'
+open_questions:
+- 'body of sub_802E45E is unshown: is r0 a packet index, source template, or fill value?'
+- which callers invoke this and at what battle phase (link setup vs phase 8 seed restore) would confirm
+  timing and the r0 meaning
+sources:
+- wf investigate investigate-20261019-033611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7a974ab5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_800B49E -> battle_initLoopbackLinkPackets
+  where: bn6f efc3f1a6
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800B49E

@@ -1,0 +1,51 @@
+name: sprite_drawValuePairAndQueueOam
+address: '0x0803A4D0'
+kind: function
+status: probable
+summary: Renders two small text/number buffers from an object's state fields and queues an OAM entry for
+  each at fixed screen positions.
+interface: (r5 = object/UI struct; r4 = [r5+0x24] reused per call) -> r0 = result of last sprite_queueOamEntryAt;
+  no flags guaranteed
+details: 'The function works on a struct in r5 (set up by caller sub_803A410) and twice repeats the same
+  pattern: fill a buffer via sub_803B814, then queue one OAM entry with sprite_queueOamEntryAt. First
+  pass: sub_803B814(8, 0x13, 6, r5+0xF0, [r5+0x24]), then sub_803C418() supplies the OAM handle, and an
+  entry is queued at (0x58, 0x18) with parameter 4. Second pass: sub_803B814(0xa8, 0x83, 6, r5+0x110,
+  [r5+0x24]), sub_8146728(r5+0x120) supplies the handle, and an entry is queued at (0x80, 0x88). Field
+  [r5+0x24] (likely palette/OAM attribute) is reloaded before each draw call; the buffers live at fixed
+  offsets 0xF0, 0x110, 0x120 in the struct. The paired fixed screen coordinates suggest a label/value
+  display pair.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: Both halves end in 'bl sprite_queueOamEntryAt' with r2=4, confirming each renders one queued
+    sprite; sub_803B814 is called with a struct-derived pointer (r5+0xF0, r5+0x110) and [r5+0x24] reloaded
+    via 'ldrh r4,[r5,#0x24]' each time; sub_803C418 and sub_8146728 results are moved straight into r3
+    as the 4th argument of sprite_queueOamEntryAt (OAM handle); Fixed positions 0x58/0x18 and 0x80/0x88
+    passed to queueOamEntryAt show two distinct on-screen slots; Sole caller sub_803A410 must set up r5,
+    indicating a per-object draw step rather than a global routine
+  refs:
+  - bn6f/asm/asm03_1_1.s:3323
+  - 0x0803A410 sub_803A410
+  - 0x0803BA00 sprite_queueOamEntryAt
+  - 0x0803B814 sub_803B814
+  - 0x0803C418 sub_803C418
+  reproduce: python3 tools/asmcat.py 0x0803A4D0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-033611'
+open_questions:
+- Exact meaning of sub_803B814's (r0,r1,r2) arguments (tile indices vs coordinates vs char/width)
+- What sub_803C418 vs sub_8146728 allocate (OAM slot vs graphics resource)
+- Which game object owns the struct and what the two displayed values represent
+sources:
+- wf investigate investigate-20261019-033611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7a974ab5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803A4D0 -> sprite_drawValuePairAndQueueOam
+  where: bn6f efc3f1a6
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803A4D0

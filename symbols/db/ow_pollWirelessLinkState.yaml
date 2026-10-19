@@ -1,0 +1,47 @@
+name: ow_pollWirelessLinkState
+address: '0x0812A5B4'
+kind: function
+status: probable
+summary: Overworld handler that polls RFU link status flags and writes the resulting connection state
+  into an object's state byte
+interface: (r0 = ignored; r5 = pointer to an overworld/state struct with u8 state at +0xC and u16 counter
+  at +0x28) -> r0 = clobbered; no meaningful return
+details: 'First calls ow_checkJackInFlag and bails, storing 0 to [r5+0xC], if the game is not jack-in.
+  It then tests RFU status bit 0x4: if set, it writes state 8 and zeroes the halfword counter at +0x28.
+  Otherwise it tests bit 0x8 (state 0xC if set), and finally bit 0x20; when 0x20 is set it calls sub_803C28A(0x83)
+  — likely an error/notification handler — before also writing state 0xC. The state byte at +0xC drives
+  whatever overworld script or object owns the struct; bit 0x4 corresponds to an active link and 0x8/0x20
+  to later/error link phases.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl ow_checkJackInFlag + strb #0,[r5,#0xc] on failure ties it to the jack-in/overworld context;
+    bl rfu_testStatusFlags with 0x4/0x8/0x20 gates each state write, showing RFU link-state polling; strb
+    #8,[r5,#0xc] / strh #0,[r5,#0x28] and strb #0xc,[r5,#0xc] show it updates a state field plus a counter;
+    mov r0,#0x83; bl sub_803C28A only on flag 0x20 suggests an error-path action before state 0xC; r5
+    is never initialized inside, implying a caller-supplied struct per object/NPC update convention'
+  refs:
+  - bn6f/asm/asm33.s:15144
+  - 0x0813D638 ow_checkJackInFlag
+  - 0x0803CB18 rfu_testStatusFlags
+  - 0x0803C28A sub_803C28A
+  reproduce: python3 tools/asmcat.py 0x0812A5B4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-033611'
+open_questions:
+- which caller sets r5 and what struct owns fields 0xC and 0x28
+- what sub_803C28A(0x83) does (message? sound? event trigger?)
+- exact meaning of each RFU status bit
+sources:
+- wf investigate investigate-20261019-033611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7a974ab5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_812A5B4 -> ow_pollWirelessLinkState
+  where: bn6f efc3f1a6
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_812A5B4

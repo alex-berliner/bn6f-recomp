@@ -1,0 +1,45 @@
+name: ai_spawnAttackFromVars
+address: '0x080FAC8A'
+kind: function
+status: probable
+summary: Thin AI wrapper that packages the oAIAttackVars fields and calls object_spawnAttackObject to
+  spawn the AI's attack object.
+interface: (args largely passed through from caller; r7 = oAIAttackVars*) -> r0 = spawned object from
+  object_spawnAttackObject; flags clobbered
+details: The function reads oAIAttackVars_InitFlag and oAIAttackVars_AttackBoost2 from the oAIAttackVars
+  struct at r7, widens AttackBoost2 to a full word (zero-extends the upper 3 bytes), and passes them together
+  with oAIAttackVars_ScratchVar as arguments to object_spawnAttackObject, which fills the new kind-0x80
+  battle object in as an attack (panel position, element, damage word, alliance/direction). It is essentially
+  an argument-marshalling shim; the caller sub_80FAC34 sets up r0/r1/r7 beforehand. The bytes and pointer
+  table after the function (byte_80FACB8 repeating pattern, off_80FAD9C with battle phase handlers) belong
+  to subsequent functions, not this one.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r2,[r7,#oAIAttackVars_InitFlag] / ldrb r4,[r7,#oAIAttackVars_AttackBoost2] feed spawn arguments;
+    mov/orr sequence zero-extends r4 into a 32-bit value before the call; ldr r6,[r7,#oAIAttackVars_ScratchVar]
+    then bl object_spawnAttackObject (0x080D54F0); only caller is sub_80FAC34, an AI attack routine sharing
+    the same oAIAttackVars struct
+  refs:
+  - bn6f/asm/asm31.s:145254
+  - 0x080FAC34 sub_80FAC34
+  - 0x080D54F0 object_spawnAttackObject
+  reproduce: python3 tools/asmcat.py 0x080FAC8A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-033611'
+open_questions:
+- exact meaning of the r0/r1 arguments supplied by sub_80FAC34 (object kind vs sprite/placement)
+- which of InitFlag/AttackBoost2 maps to element vs attack-boost flag in object_spawnAttackObject
+sources:
+- wf investigate investigate-20261019-033611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7a974ab5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80FAC8A -> ai_spawnAttackFromVars
+  where: bn6f efc3f1a6
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FAC8A

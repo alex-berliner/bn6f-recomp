@@ -1,0 +1,49 @@
+name: rfu_getLinkState
+address: '0x0803CB24'
+kind: function
+status: probable
+summary: Returns the current wireless link state code (0xFE, 0xFF, or the stored state byte) for RFU-based
+  play.
+interface: '(r0 = unused scratch, r7 = pointer to global RFU/link state struct) -> r0 = state code: 0xFE
+  if status flag 0x08 set, 0xFF if flag 0x04 clear, else byte at [r7+6]; Z flag set iff result is 0'
+details: Initializes the return value to 0xFE, then tests the global RFU status flags word for mask 0x08
+  via rfu_testStatusFlags; if set it returns 0xFE immediately. Otherwise it sets 0xFF and tests mask 0x04;
+  if that flag is clear it returns 0xFF. If flag 0x04 is set, it loads a byte from offset 6 of the struct
+  pointed to by r7 (a caller-maintained global pointer, since r7 is not saved or set here) and returns
+  that as the state. The 0xFE/0xFF values act as sentinel states distinct from the stored per-connection
+  state byte.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: both branches funnel to `mov r0,r4; tst r0,r0; pop {r4,pc}` — a pure state-code getter with
+    no side effects; two rfu_testStatusFlags calls with masks 8 and 4 gate which of 0xFE / 0xFF / [r7,#6]
+    is returned; r7 is used without setup and r7 is not pushed, so the struct base is a caller/global-maintained
+    pointer; the only callee is rfu_testStatusFlags, tying the function to the RFU wireless status word;
+    both callers (0x803C7B4, 0x803C7E8) sit in the same wireless code block, consistent with a shared
+    status query
+  refs:
+  - bn6f/asm/asm03_1_1.s:8249
+  - 0x0803C7B4 sub_803C7B4
+  - 0x0803C7E8 sub_803C7E8
+  - 0x0803CB18 rfu_testStatusFlags
+  reproduce: python3 tools/asmcat.py 0x0803CB24
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-033611'
+open_questions:
+- which exact semantic the 0x08 and 0x04 status-flag bits carry (master/child vs connected) — would need
+  the meaning of the RFU status word
+- what field 6 of the r7 struct holds (slot/connection index vs error code) — needs the struct definition
+  or a caller showing how the return value is dispatched
+sources:
+- wf investigate investigate-20261019-033611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7a974ab5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803CB24 -> rfu_getLinkState
+  where: bn6f efc3f1a6
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803CB24

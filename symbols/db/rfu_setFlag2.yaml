@@ -1,0 +1,41 @@
+name: rfu_setFlag2
+address: '0x0803C85C'
+kind: function
+status: probable
+summary: Sets bit 1 (value 2) in the flags word of the fixed RFU/wireless shared state at 0x200BC50 and
+  returns false.
+interface: () -> r0 = 0, r1 = 0; always returns false/zero pair
+details: 'Thin wrapper: it loads r0 = 2 and calls rfu_orFlags, which ORs the given bits into the flags
+  word at offset 0xC of the hard-coded wireless state structure at 0x200BC50 (no self pointer is passed;
+  the struct address is fixed). It then returns r0 = 0 and r1 = 0 unconditionally, so the bool return
+  is always false regardless of the flag operation. Effectively a one-way ''raise flag 2'' request on
+  the RFU state; the flag is never cleared here. No callers are known, so the semantic meaning of bit
+  1 (e.g. some wireless-adapter state like ''connection requested'') is unconfirmed.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mov r0, #2; bl rfu_orFlags — sole effect is ORing value 2 into the flags word of struct 0x200BC50;
+    mov r0, #0; mov r1, #0; pop {pc} — returns a constant (u32=0, bool=false) pair independent of the
+    flag call; No other reads/writes or branches: 7 instructions total, no local state touched'
+  refs:
+  - bn6f/asm/asm03_1_1.s:7826
+  - 0x0803CB00 rfu_orFlags
+  reproduce: python3 tools/asmcat.py 0x0803C85C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-033611'
+open_questions:
+- No callers known, so the meaning of flag bit 1 in the RFU flags word and when this is invoked is unknown
+- Whether the constant false return value is ever checked by a caller
+sources:
+- wf investigate investigate-20261019-033611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 7a974ab5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803C85C -> rfu_setFlag2
+  where: bn6f efc3f1a6
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803C85C
