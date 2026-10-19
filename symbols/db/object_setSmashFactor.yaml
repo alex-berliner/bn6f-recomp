@@ -1,0 +1,47 @@
+name: object_setSmashFactor
+address: '0x0814F988'
+kind: function
+status: probable
+summary: Sets a strength value on an object tagged with the 'Smsh' magic and recomputes its scaled product
+  field.
+interface: (r0 = object ptr with magic 'Smsh' (0x68736D53) at +0x34, r1 = 8-bit factor) -> r0 clobbered
+  (popped into pc path); stores factor at +0x1E and factor*base>>8 at +0x20; flags from cmp/mul
+details: The function takes a struct pointer in r0 and a value in r1, masks r1 to 16 bits, and only acts
+  if the struct's field at +0x34 equals the fourcc 0x68736D53 ('Smsh' little-endian). It stores the masked
+  r1 into halfword +0x1E, reads halfword +0x1C as a base value, computes base*factor with the result arithmetically
+  shifted right by 8 (a fixed-point /256 scale), and writes that to halfword +0x20. If the magic check
+  fails it does nothing, so this is a type-guarded setter rather than a generic field write. The /256
+  fixed-point multiply suggests +0x1C is a full magnitude and +0x20 a scaled result (e.g. a size or intensity
+  driven by a 0-255 factor). No other fields are touched and there is no call in this function.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldr r3,[r2,#0x34] / cmp r3, 0x68736D53 (''Smsh'') guards the whole body — type tag check; strh
+    r1,[r2,#0x1e] after lsl/lsr #16 masking — factor stored as halfword; mul r0,r1; asr r0,#8; strh r0,[r2,#0x20]
+    — fixed-point product base(+0x1C)*factor>>8; bne skips everything when magic mismatches — setter is
+    object-type-specific'
+  refs:
+  - bn6f/asm/libs.s:25334
+  reproduce: python3 tools/asmcat.py 0x0814F988
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+coverage:
+- beastsp
+- maps
+open_questions:
+- No callers captured, so what game object carries the 'Smsh' tag and what +0x1C/+0x20 mean in game terms
+  (size? damage? squash factor?) is unknown
+- Whether +0x1C is written elsewhere (e.g. an init or update routine) would confirm the fixed-point interpretation
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_814F988 -> object_setSmashFactor
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_814F988

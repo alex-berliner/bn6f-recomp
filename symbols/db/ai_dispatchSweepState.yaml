@@ -1,0 +1,45 @@
+name: ai_dispatchSweepState
+address: '0x0810EA4E'
+kind: function
+status: probable
+summary: 'AI state dispatcher for the battle-sweep actor: reads the object''s AI state id and tail-calls
+  that state''s handler from a 4-entry jump table.'
+interface: (r6 = AI object, [r6+oAIState_ScriptId] = state id) -> jumps to handler table[state]; no return
+  value of its own
+details: 'Loads the object''s current state id from field oAIState_ScriptId of the object at r6, indexes
+  the pointer table at off_810EA60 with it, and tail-jumps to the handler in Thumb mode (mov lr, pc; bx
+  r1), so handlers return to this frame''s pop. The table has exactly 4 handlers: ai_branchScriptOnActorsWithNonzeroParam,
+  sub_810EAA2, ai_initAttackSweep, and sub_810EADE — a branch-on-param script case, two unknown sweep
+  steps, and an attack-sweep initializer. The callee name ai_initAttackSweep and the recorded battlesweep
+  route identify this as the per-frame state machine driver of the sweep AI. It preserves r4/r6 and passes
+  r6 (the object) untouched, so handlers read the same object.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r6,#oAIState_ScriptId]; ldr r1,[table,r0]; bx r1 = dispatch on object's state field;
+    table entry .word ai_initAttackSweep+1 ties this to the attack-sweep behavior; mov lr,pc; bx r1 with
+    pop {r4,r6,pc} = tail-call dispatch keeping caller return intact; recorded route battlesweep matches
+    the sweep handler in its table
+  refs:
+  - bn6f/asm/asm32.s:2093
+  reproduce: python3 tools/asmcat.py 0x0810EA4E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+coverage:
+- battlesweep
+open_questions:
+- what sub_810EAA2 and sub_810EADE (the two unnamed table entries) do
+- exact object structure beyond oAIState_ScriptId and the meaning of each state index 0-3
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810EA4E -> ai_dispatchSweepState
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810EA4E

@@ -1,0 +1,48 @@
+name: battle_clearDropEntryById
+address: '0x080E544C'
+kind: function
+status: probable
+summary: Searches the battle state's two drop slots for a matching id and zeroes that slot and its paired
+  word.
+interface: (r0 = drop id to match) -> r0 = destroyed; r1-r3, flags clobbered, no return value
+details: Loads the battle state via r10 (toolkit) + oToolkit_BattleStatePtr and iterates two 4-byte-strided
+  slots starting at oBattleState_Drop. Each slot has a main word (compared against r0) and a companion
+  word stored 8 bytes after the slot's own word; on a match both words are written zero. Nothing is returned,
+  and unmatched slots are left untouched. The dword_80E546C word is dead literal-pool padding, not data
+  the routine reads. Exact meaning of the drop fields (likely a drop/chip id plus count or timer) depends
+  on how callers fill them.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldr r2,[r10,#oToolkit_BattleStatePtr]; add r2,#oBattleState_Drop — operates on battleState.drop;
+    loop runs exactly 2 iterations (cmp r1,#2) with stride 4: two slots in the drop array; cmp r0,r3 /
+    str r3,[r2]; str r3,[r2,#8] — matches r0 against slot word, zeroes it and the word 8 bytes on; no
+    bl and mov pc,lr — pure in-place state clear, no return value'
+  refs:
+  - bn6f/asm/asm31.s:98102
+  - 0x08018186 sub_8018186
+  - 0x080CD1BE sub_80CD1BE
+  - 0x080E5314 sub_80E5314
+  reproduce: python3 tools/asmcat.py 0x080E544C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+coverage:
+- beastsp
+- chips
+open_questions:
+- what the paired +8 word means (count vs. timer) — needs a caller that writes the drop slots
+- what values r0 holds in practice (drop item id? object id?) from sub_8018186/sub_80CD1BE/sub_80E5314
+  context
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80E544C -> battle_clearDropEntryById
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E544C

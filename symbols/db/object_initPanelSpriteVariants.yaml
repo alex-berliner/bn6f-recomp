@@ -1,0 +1,51 @@
+name: object_initPanelSpriteVariants
+address: '0x080DA494'
+kind: function
+status: probable
+summary: 'Initialization step of a battle object: places it on a panel, loads its sprite/animation, and
+  sets up its collision data before handing control to the update state.'
+interface: (r5 = battle object) -> void; on failure to allocate collision data the object is freed
+details: 'Runs object_setCoordinatesFromPanels and zeroes Z16, shifting X by ±0x50 toward the front unless
+  Param1 is set. Loads sprite resource (0x10, 0x12, 0x80) with no shadow, sets flag bit 1 in oObjectHeader_Flags,
+  and picks the animation from a table indexed by oBattleObject_Param1 (table at off_80DA530 holds entries
+  0 and 1), applying palette 0 and the object''s flip. It then decrements Z16 and Y16 by 1, calls object_createCollisionData
+  (freeing the object if no slot is available), and configures the collision: setup region 0xB size 5,
+  a region chosen from byte_80DA538 by Param1 (0x8 for variant 0, 0x2E for variant 1), hit effect 0xFF,
+  status effect 0x10, and object_presentCollisionData for the first frame. Finally it stores CUR_STATE_UPDATE
+  into oBattleObject_CurStateActionPhaseAndPhaseInitialized so the per-frame update handler takes over.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_setCoordinatesFromPanels followed by strh r0,[r5,#oBattleObject_Z16]=0 positions
+    the object on its panel; sprite_load #0x10,#0x12,#0x80 + sprite_noShadow + anim from table [off_80DA530
+    + Param1] builds the visual for one of two variants; byte_80DA538 = {0x8, 0x2E} indexed by oBattleObject_Param1
+    selects the collision region via object_setCollisionRegion; object_createCollisionData with ''free
+    object on failure'' (bne skip / bl object_freeMemory) is the standard spawn-time collision setup;
+    final str CUR_STATE_UPDATE to oBattleObject_CurStateActionPhaseAndPhaseInitialized makes this an init
+    phase, not the update itself'
+  refs:
+  - bn6f/asm/asm31.s:74170
+  - 0x08019892 object_createCollisionData
+  - 0x08003458 object_freeMemory
+  - 0x0800E456 object_getFlip
+  reproduce: python3 tools/asmcat.py 0x080DA494
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+open_questions:
+- Which in-game entity this is (sprite resource 0x10/0x12/0x80 is not identified here); no callers known,
+  so the owning chip/object is unknown
+- Meaning of the two Param1 variants (the differing collision regions 0x8 vs 0x2E suggest two forms/sizes,
+  but the sprite/region data must be checked elsewhere)
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80DA494 -> object_initPanelSpriteVariants
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DA494

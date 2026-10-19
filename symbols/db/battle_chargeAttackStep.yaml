@@ -1,0 +1,53 @@
+name: battle_chargeAttackStep
+address: '0x080EFF28'
+kind: function
+status: probable
+summary: 'Per-frame step of a player-charged battle attack: registers A-button presses to build charge,
+  then at charge thresholds spawns strike collision/effect objects or a charged projectile.'
+interface: (r5 = battle object, r7 = AI attack vars) -> void; no meaningful return, spawns objects as
+  side effects
+details: 'Driven from the AI attack state machine (oAIAttackVars). While AttackElement is 0 it waits for
+  a button press (checked via sub_8012956 against oAIData_JoypadPressed), increments the press counter
+  Unk_40, plays the OK sound, then on the first press plays the charge sound, spawns the temp attack object,
+  sets StepTimer=0x15 and AttackElement=4. Each StepTimer expiry increments ChargeCycles; if fewer presses
+  than the counter Unk_40 were registered the element resets to 0 to wait for the next press, otherwise
+  HitElement is set to 8 to finish. At StepTimer==0xC it attacks: with charge 0-2 it spawns a collision
+  region on the front panel using a per-charge-level table (byte_80F004C: region kind 2/4/6 plus effect
+  params) plus an effect object via spawn_t1_0x0_EffectObject; with charge >=3 it instead calls sub_80CF91E
+  to spawn a projectile and gives it XVelocity 0x800 (forward, flipped via object_getFlip). Damage used
+  is oAIAttackVars_Damage + AttackBoost.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'press handler increments [r7,#oAIAttackVars_Unk_40] and plays SOUND_OK_8B (press/tap counting);
+    first entry: object_setAnimation(5), charge sound 0x131, temp attack object spawn, AttackElement=4;
+    locret path: ChargeCycles++ then ''cmp r0, Unk_40; bge -> HitElement=8 else AttackElement=0'' (charge
+    must reach press count); StepTimer==0xC: charge<3 spawns object_spawnCollisionRegion with table byte_80F004C
+    indexed by ChargeCycles*4 + spawn_t1_0x0_EffectObject; charge>=3 spawns via sub_80CF91E with XVelocity
+    0x800; callees object_getFrontDirection/object_getFlip/object_getCoordinatesForPanels place the attack
+    on the panel in front of the actor'
+  refs:
+  - bn6f/asm/asm31.s:120893
+  - 0x080005CC PlaySoundEffect
+  - 0x080EBAE8 battle_getNaviIdFromActor
+  - 0x0800E276 object_getCoordinatesForPanels
+  reproduce: python3 tools/asmcat.py 0x080EFF28
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+open_questions:
+- which exact button sub_8012956 checks (r0 = r7+0x30 points at a flags byte in the attack vars)
+- identity of sub_80CF91E (charged projectile spawner?) and which attack/Navicust chip this routine implements
+- meaning of Unk_44 (set to 1 when ChargeCycles==2 and a press is registered)
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80EFF28 -> battle_chargeAttackStep
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EFF28

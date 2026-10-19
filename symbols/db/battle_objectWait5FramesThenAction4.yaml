@@ -1,0 +1,45 @@
+name: battle_objectWait5FramesThenAction4
+address: '0x080D837C'
+kind: function
+status: probable
+summary: Battle-object state step that waits 5 frames on first entry, then switches the object to CurAction
+  4.
+interface: (r0 = unused/scratch, r5 = battle object pointer) -> r0 = 0 or remaining timer; updates oBattleObject_CurPhase,
+  oBattleObject_Timer, oBattleObject_CurAction, oBattleObject_CurPhaseAndPhaseInitialized
+details: Reads oBattleObject_CurPhase from the object in r5; if phase is 0 it initializes the wait by
+  writing phase 4 and Timer = 5 and returns immediately. On later invocations it decrements oBattleObject_Timer
+  and returns while it is still > 0. Once the timer expires it writes CurAction = 4 and zeroes CurPhaseAndPhaseInitialized
+  so the object's action handler restarts at phase 0. CurPhase is left at 4 during the whole wait, suggesting
+  phase 4 is this handler's own id within a dispatcher. No other objects or globals are touched.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#oBattleObject_CurPhase] / tst r0,r0 + bne: phase 0 means first entry, initializes
+    the wait; mov r1,#4; strb r1,[r5,#oBattleObject_CurPhase] + mov r0,#5; strh r0,[r5,#oBattleObject_Timer]:
+    sets 5-frame timer under phase 4; ldrh r0,[r5,#oBattleObject_Timer]; sub r0,#1; strh; bgt: per-frame
+    countdown while waiting; mov r0,#4; strb r0,[r5,#oBattleObject_CurAction] + zeroing CurPhaseAndPhaseInitialized:
+    transition to action 4 with fresh phase state'
+  refs:
+  - bn6f/asm/asm31.s:69627
+  reproduce: python3 tools/asmcat.py 0x080D837C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+coverage:
+- battlesweep
+open_questions:
+- Which battle object type or AI script uses this handler (no callers known), and what action 4 means
+  for it
+- Whether Timer is counted in frames or subframes (assumed frames from typical battle loop usage)
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D837C -> battle_objectWait5FramesThenAction4
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D837C

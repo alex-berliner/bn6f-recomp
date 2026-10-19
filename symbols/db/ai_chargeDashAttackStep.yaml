@@ -1,0 +1,53 @@
+name: ai_chargeDashAttackStep
+address: '0x081048AA'
+kind: function
+status: probable
+summary: 'Per-frame state handler for an AI battle object''s dash attack: on first call it sets up attack
+  data and launches itself toward the target''s panel, then each frame it telegraphs by highlighting panels
+  and moves until the step timer expires.'
+interface: (r0 unused entry; r5 = battle object ptr, r7 = AI attack vars) -> r0 = varies via callees;
+  state fields in r5/r7 updated
+details: 'Runs each frame while an attack is active: if oAIAttackVars_AttackElement is 0 it initializes
+  — sets element 4, animation 0x4F, collision data (0x35/2/3), copies ScratchVar into oCollisionData_SelfDamage/StaminaDamageCounterDisabler,
+  sets collision region 1, snaps its panel to (alliance-based table value, target object''s byte 0x13),
+  computes FuturePanel two panels ahead via object_getFrontDirection, computes velocity toward the target
+  panels with sub_8105174/sub_8105294, starts a step timer, plays SFX 0x1C7, and zeroes ChargeCycles.
+  On later frames it increments ChargeCycles (every 8 frames highlighting the target panel), advances
+  X/Z by the stored velocities, re-derives panel from coordinates, clears its collision region and calls
+  sub_8105354 if the collision flags came back nonzero, and re-registers region 1 whenever its panel changes.
+  When the step timer hits 0 it writes HitElement 0x14, handing off to the hit phase.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne splits init frame (element==0) from per-frame
+    movement; init branch: object_updateCollisionData r1=0x35, sets SelfDamage/StaminaDamageCounterDisabler
+    from ScratchVar, sets collision region 1, copies target panel coords; FuturePanelX = PanelX + 2*object_getFrontDirection()
+    shows a two-panel forward lunge; per-frame: adds XVelocity/ZVelocity to X/Z and object_setPanelsFromCoordinates
+    — continuous movement across panels; timer expiry writes HitElement 0x14 and PlaySoundEffect(0x1C7)
+    during init — telegraphed charge attack'
+  refs:
+  - bn6f/asm/asm31.s:163644
+  - 0x080005CC PlaySoundEffect
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0800E276 object_getCoordinatesForPanels
+  reproduce: python3 tools/asmcat.py 0x081048AA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+open_questions:
+- Which enemy/AI uses this attack (no caller known)
+- what sub_8105174/sub_8105294 compute exactly (target interpolation vs. velocity scaling)
+- what sub_8105354 does when collision flags are set
+- meaning of ScratchVar's split halves written into SelfDamage and StaminaDamageCounterDisabler
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_81048AA -> ai_chargeDashAttackStep
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81048AA

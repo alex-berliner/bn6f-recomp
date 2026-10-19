@@ -1,0 +1,48 @@
+name: movePackedCoordsByDir
+address: '0x08142952'
+kind: function
+status: probable
+summary: Offsets a packed (x | y<<8) coordinate pair by a cardinal-direction step taken from a table,
+  scaled by r2, and returns the repacked halfword.
+interface: (r0 = packed coords, x in low byte / y in high byte; r1 = direction entry index; r2 = step
+  multiplier) -> r0 = new packed coords (x&0xFF | y<<8); flags clobbered
+details: 'Loads two signed bytes from table byte_8142980 at offset r1*2 (r1 selects an entry of a dx,dy
+  pair), multiplies each by r2, and adds them to the low and high bytes of r0 respectively, repacking
+  as x|(y<<8). The table holds eight (dx,dy) pairs: (0,0),(+1,0),(0,0),(0,+1),(0,0),(-1,0),(0,0),(0,-1)
+  — i.e. right/down/left/up steps with unused interleaved zero entries, so even half-indices are no-ops.
+  No clamping is done; each component is 8-bit (low byte masked, high byte shifted), so callers must keep
+  coordinates in range or rely on wraparound. Signed bytes allow negative (0xFF = -1) steps. It is a pure
+  helper with no other state or side effects.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrsb r2/r3 from byte_8142980 (pairs 0,0/1,0/0,1/FF,0/0,FF) are per-axis direction deltas;
+    mul r2,r6 / mul r3,r6 scales both deltas by r2 before adding; add r0 to low byte and add r1 (from
+    lsr r4,#8) then lsl #8/orr repacks x|y<<8; and r0,#0xFF on the result keeps the x component within
+    one byte'
+  refs:
+  - bn6f/asm/asm37_1.s:1757
+  - 0x081428D4 sub_81428D4
+  reproduce: python3 tools/asmcat.py 0x08142952
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+coverage:
+- beastsp
+open_questions:
+- Caller sub_81428D4 is unknown, so what the packed coordinate represents (tile coords vs pixels) and
+  what entity/menu uses it is unconfirmed
+- Why the table interleaves zero pairs (whether r1 is a raw direction code where even values mean stationary,
+  or an index-doubling convention) is not shown here
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8142952 -> movePackedCoordsByDir
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8142952

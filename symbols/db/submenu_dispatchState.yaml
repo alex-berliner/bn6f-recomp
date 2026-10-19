@@ -1,0 +1,45 @@
+name: submenu_dispatchState
+address: '0x0811997C'
+kind: function
+status: probable
+summary: Dispatches submenu processing to one of three state handlers chosen by a state byte in the caller's
+  struct, with sSubmenu passed in r6.
+interface: (r5 = state struct, state byte at [r5,#8]) -> tail-call to handler selected from off_8119990
+  with r6 = sSubmenu; returns handler's return value
+details: Loads sSubmenu into r6 so the selected handler can work on the submenu data, then reads a byte
+  at [r5,#8] and uses it to index a three-entry Thumb function-pointer table (off_8119990). It calls the
+  selected handler with mov lr, pc / bx r0 and pops pc, i.e. a tail call that preserves the handler's
+  return value in r0. r5 is presumably the active object/panel struct whose byte field is the submenu's
+  current state or mode. The three targets (sub_81199A0, sub_81199C0, sub_81199DC) are not shown, so the
+  exact states they implement remain unknown.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldr r6, off_811999C (sSubmenu) sets up the submenu pointer before the indirect call; ldrb r1,
+    [r5,#8] then ldr r0, [r0,r1] selects a handler by a state byte in the caller's struct; off_8119990
+    holds exactly three Thumb pointers (+1), i.e. a small state table; mov lr, pc / bx r0 / pop {pc} is
+    a tail call returning the handler's r0 unchanged
+  refs:
+  - bn6f/asm/asm32.s:23925
+  reproduce: python3 tools/asmcat.py 0x0811997C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+coverage:
+- beastsp
+open_questions:
+- the three handlers sub_81199A0/C0/DC are not shown, so the meaning of each state value and what the
+  submenu screen/menu does is unconfirmed
+- no known callers, so r5's actual struct type and how [r5,#8] is maintained is inferred only
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_811997C -> submenu_dispatchState
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811997C

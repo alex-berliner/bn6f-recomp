@@ -1,0 +1,49 @@
+name: ow_postBattleResetState
+address: '0x0812B640'
+kind: function
+status: probable
+summary: 'One-shot post-battle overworld reset: waits for the screen fade to finish, then clears all transient
+  overworld/battle state and reinitializes battle structures.'
+interface: (r5 = game-state/task struct) -> r0 = clobbered; sets r5+2 = 8 and r5+0x1B |= 2 when the reset
+  runs
+details: 'Called presumably as a state step each frame. It first checks eStruct203F7D8+1 == 4 and, if
+  so, ORs bit 1 into r5+0x1B (a state word). If a screen fade is still active it returns immediately;
+  once the fade is done it performs the full reset: sets r5+2 = 8, resets the battle-overlay scene record
+  array, clears the chatbox, frees all objects of type 0x21, clears the NPC state words, zero-fills eStruct200a6a0
+  and another global, re-inits the scenario effect state at 0x2000780, rebuilds the extra toolkit pointer
+  slots, clears event flags EVENT_172D and EVENT_172F, and finally calls getBattleSettings_200AF60 followed
+  by initBattleStructsAndVram_80071D4 to rebuild battle data/VRAM for the next battle.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'loc_812B652: bl IsScreenFadeActive; beq locret — reset only runs once the fade finishes; bl
+    battle_resetEStructRecords_8046664 — callee summary says it re-inits records ''returning from a battle'';
+    bl ClearEventFlagFromImmediate with EVENT_172D and EVENT_172F — clearing battle-result/scenario flags;
+    bl getBattleSettings_200AF60 then bl initBattleStructsAndVram_80071D4 — rebuilds battle structures/VRAM;
+    bl FreeAllObjectsOfSpecifiedTypes (type 0x21) + npc_clearOverworldNpcStateWord_8004702 — clears overworld
+    object/NPC state'
+  refs:
+  - bn6f/asm/asm33.s:17323
+  - 0x0802F12C ClearEventFlagFromImmediate
+  - 0x08006C22 RandomizeExtraToolkitPointers
+  - 0x08046664 battle_resetEStructRecords_8046664
+  reproduce: python3 tools/asmcat.py 0x0812B640
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+open_questions:
+- Which game state/task owns r5 (offsets 2 and 0x1B) and what the bit/word values mean
+- What eStruct203F7D8 is and why value 4 at +1 gates the r5+0x1B bit set
+- Exact meaning of event flags EVENT_172D/EVENT_172F
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_812B640 -> ow_postBattleResetState
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_812B640

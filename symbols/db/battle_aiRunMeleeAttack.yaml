@@ -1,0 +1,51 @@
+name: battle_aiRunMeleeAttack
+address: '0x080EE1AC'
+kind: function
+status: probable
+summary: 'Per-frame driver of an AI navi''s melee attack: starts the swing animation/sound, spawns the
+  navi-specific attack object and slash effect, then at a fixed timer tick spawns a damage collision region
+  on the panel in front and hits up to three panels.'
+interface: (r5 = battle object, r7 = AI attack vars) -> void; sets oAIAttackVars_AttackElement/StepTimer,
+  oAIAttackVars_HitElement when done
+details: 'State machine keyed on oAIAttackVars_AttackElement: when 0, it plays animation 5, sound 0x1F,
+  and spawns a temp attack object whose ID is (AiDifficultyTier ? 0x33 : 0x2A) + (naviId<<8), plus an
+  effect object at the panel given by object_getFlip/panel coords, then sets AttackElement=4 and StepTimer=0x15.
+  When the countdown reaches 0xC it calls object_spawnCollisionRegion one panel in front (dword 0x1205FF04
+  as region params) with a 10-frame timer, damage taken from oAIAttackVars_Damage + AttackBoost, and loops
+  x=1..3 calling sub_80CD488 (hit/damage application per panel offset). When the timer goes negative it
+  sets HitElement=4 to end the attack. The InitFlag field is passed to the collision-region spawner as
+  a parameter.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'plays sound 0x1F and animation 5 before spawning: ''bl object_setAnimation'' / ''bl PlaySoundEffect''
+    near top; attack object ID depends on navi and difficulty: mov r4,#0x2a/#0x33; add r4,r4,naviId<<8
+    then ''bl spawn_t1_0x5_tempAttackObject_80B8E30''; hitbox spawned one panel ahead: ''bl object_getFrontDirection;
+    add r0, r1=[PanelX]; bl object_spawnCollisionRegion'' with dword 0x1205FF04; damage passed to hit
+    routine: ''ldr r6,[Damage]; ldrh r0,[AttackBoost]; add r6,r6,r0'' before the sub_80CD488 loop for
+    panels 1..3; timer state machine: StepTimer=0x15 set at start, decremented each frame, HitElement=4
+    written when it drops below 0'
+  refs:
+  - bn6f/asm/asm31.s:116993
+  - 0x080005CC PlaySoundEffect
+  - 0x080EBAE8 battle_getNaviIdFromActor
+  - 0x0800E276 object_getCoordinatesForPanels
+  reproduce: python3 tools/asmcat.py 0x080EE1AC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+open_questions:
+- exact meaning of the 0x1205FF04 region-parameter word and the sub_80CD488 loop's per-panel semantics
+- which AI navi(s) use this routine (no known callers) and what animation 5 looks like
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80EE1AC -> battle_aiRunMeleeAttack
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EE1AC

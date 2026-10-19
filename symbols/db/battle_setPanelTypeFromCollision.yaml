@@ -1,0 +1,44 @@
+name: battle_setPanelTypeFromCollision
+address: '0x080DFDD6'
+kind: function
+status: probable
+summary: Maps the collision-data flag bits of a battle object to a panel/terrain type index (1-5, 0 =
+  none) stored in its related object's byte 0x74.
+interface: (r5 = battle object) -> void; writes byte 0x74 of [r5+#RelatedObject1Ptr]; no return value
+details: Reads oCollisionData_FlagsFromCollision from [r5+#oBattleObject_CollisionDataPtr], then clears
+  byte 0x74 of the object pointed to by RelatedObject1Ptr. It walks a 5-entry word table at byte_80DFE08
+  (0x2, 0x8, 0x10, 0x20, 0x400) and on the first bit set in the flags stores index+1 into byte 0x74; if
+  no bit matches the byte stays 0. The related object is presumably the tile/panel entity under the actor,
+  and 0x74 holds its panel-type enum. r4, r6, r7 are pushed but unused.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldr r1, [r1,#oCollisionData_FlagsFromCollision] loads the collision flag word to be tested;
+    tst r1, r2 loop over off_80DFE04 table of single-bit masks 0x2/0x8/0x10/0x20/0x400; strb r0, [r1,#0x74]
+    with r0 = index+1 stores the matched type into RelatedObject1Ptr+0x74; initial strb r2 (0), [r0,#0x74]
+    ensures 0 when no terrain flag matches
+  refs:
+  - bn6f/asm/asm31.s:86066
+  - 0x080DFC8C sub_80DFC8C
+  reproduce: python3 tools/asmcat.py 0x080DFDD6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+coverage:
+- battlesweep
+open_questions:
+- Exact meaning of each flag bit / resulting panel type value (needs collision flag enum or a consumer
+  of byte 0x74)
+- what RelatedObject1Ptr refers to (tile object vs another actor) — caller sub_80DFC8C is undocumented
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80DFDD6 -> battle_setPanelTypeFromCollision
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DFDD6

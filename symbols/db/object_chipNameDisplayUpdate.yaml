@@ -1,0 +1,43 @@
+name: object_chipNameDisplayUpdate
+address: '0x080E7C1C'
+kind: function
+status: probable
+summary: State-machine update for a battle object that dims the screen, shows a chip name, waits, then
+  restores the screen.
+interface: (r5 = battle object, r0 unused on entry) -> dispatches to handler for [r5,#oBattleObject_CurAction];
+  no r0 return
+details: Reads the object's current action (oBattleObject_CurAction from r5) and tail-jumps through a
+  4-entry dispatch table at off_80E7C30 using the computed-call trick (mov lr, pc; bx r1). State 0 calls
+  object_dimScreen (darken the battle screen), state 1 calls object_drawChipName, state 2 runs sub_80E7C40
+  (likely a delay/wait state), and state 3 calls object_undimScreen. The sequence dim -> draw name ->
+  pause -> undim matches a short cinematic overlay, e.g. announcing a special/dark chip in battle.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#oBattleObject_CurAction]; ldr r1,[r1,r0]; mov lr,pc; bx r1 — action-indexed tail
+    dispatch; dispatch table entries are object_dimScreen+1, object_drawChipName+1, sub_80E7C40+1, object_undimScreen+1
+    in that order; dim/undim bracketing plus drawChipName implies a transient screen-dimming chip-name
+    announcement; listed route 'chips' places it in the battle chip flow
+  refs:
+  - bn6f/asm/asm31.s:103663
+  reproduce: python3 tools/asmcat.py 0x080E7C1C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+coverage:
+- chips
+open_questions:
+- exact gameplay trigger (which chip/scene spawns this object)
+- what sub_80E7C40 does (probably a frame-wait state)
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80E7C1C -> object_chipNameDisplayUpdate
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E7C1C

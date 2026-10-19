@@ -1,0 +1,48 @@
+name: object_dispatchStateHandler
+address: '0x0811C08C'
+kind: function
+status: probable
+summary: Dispatches an object's per-state handler by jumping to a function pointer chosen from a small
+  table using the object's state byte.
+interface: (r5 = object pointer) -> calls table[ [r5,#8] ] as Thumb handler with r5 still set; returns
+  to caller via pop {pc}
+details: 'Reads the object''s state byte at offset 0x08 from r5, indexes the jump table at off_811C0A0,
+  and calls the selected Thumb handler via ''mov lr, pc; bx r0'' so the handler returns straight back
+  into this function''s pop {pc}. The table has exactly three entries: object_initCenteredSprite+1, object_updateSpriteTimerState8+1,
+  and an unknown handler sub_811C10E+1. There is no bounds check on the state byte, so states beyond 2
+  would jump into garbage. r5 is used without being set here, so the caller must place the object pointer
+  in r5 (and likely r0-r4 for arguments). This is a standard object state-machine step: one handler per
+  state, advanced by whoever writes r5+0x08.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r1,[r5,#8]; ldr r0,[r0,r1]; bx r0 — state byte indexes a function pointer table on the
+    object at r5; off_811C0A0 holds exactly three Thumb pointers (init/update/unknown), one per state;
+    'mov lr, pc; bx r0; pop {pc}' — tail-bridge call returning immediately to this function's caller;
+    first two table entries are known object sprite routines, tying this to the object/sprite subsystem;
+    no callers known and 16 instructions — likely invoked via a shared object update vtable or script
+    call
+  refs:
+  - bn6f/asm/asm32.s:29112
+  reproduce: python3 tools/asmcat.py 0x0811C08C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+coverage:
+- battlesweep
+open_questions:
+- which caller sets r5 and what object type uses this 3-state machine
+- what sub_811C10E (third state handler) does
+- whether r0-r4 carry arguments into the handlers
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_811C08C -> object_dispatchStateHandler
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811C08C

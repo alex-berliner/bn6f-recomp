@@ -1,0 +1,53 @@
+name: battle_dispatchNextPhase
+address: '0x0800855E'
+kind: function
+status: probable
+summary: Per-frame battle turn-state machine step that unpauses the battle, updates AI input, and routes
+  to the next phase state (cust gauge, phase advance, BeastOut intro, or death anim) based on the current
+  phase mode.
+interface: (r5 = pointer to battle flow state struct with u32 state id at +0 and u8 flag at +5; r10 =
+  toolkit with battle state ptr) -> r0 = varies from callees; sets [r5+0] to the next state id (8, 0xc,
+  0x14 or 0x18)
+details: 'This is one handler of the battle flow state machine: on entry it unpauses the battle, runs
+  the navi-AI joypad update for both players (0 then 1), sets a flag via battle_setFlags, and advances
+  the phase state and the Unk_40 counter. It then reads battle_getPhaseMode: mode 1 increments oBattleState_PhaseStepIndex
+  and jumps to state 8, mode 2 increments oBattleState_CustGaugeChargeLevel (cust gauge rising) and jumps
+  to state 0xc, mode 7 jumps to state 0x14. Otherwise it calls battle_checkFlowAdvanceFlags: if the battle
+  is over/time-stopped (0xFF) it checks battle_shouldPlayDeathAnim and on result 1 pauses and enters state
+  0x14; if a ready-flag is set it stores the flag byte, pauses the battle, enters state 0x18 and starts
+  the BeastOut transformation sequence. The state ids written to [r5] are indices of sibling handlers
+  in the same state machine.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'phaseMode==1/2/7 branches each store a distinct id (8/0xc/0x14) into [r5], a state-machine
+    next-state field; flow-advance path: strb r0,[r5,#5]; PauseBattle; state 0x18; battle_playBeastOutSequence_801E15C;
+    entry does UnpauseBattle + battle_updateNaviAIJoypad twice, typical top-of-turn processing; battle
+    over path: battle_shouldPlayDeathAnim==1 → PauseBattle and state 0x14; phase step writes touch oBattleState_PhaseStepIndex
+    / oBattleState_CustGaugeChargeLevel via toolkit battle state ptr'
+  refs:
+  - bn6f/asm/asm00_1.s:11697
+  - 0x0800A028 PauseBattle
+  - 0x0800A032 UnpauseBattle
+  - 0x0800A97A battle_IsBattleEnding_800A97A
+  reproduce: python3 tools/asmcat.py 0x0800855E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+open_questions:
+- exact role of the byte stored at [r5+5] and how the state ids 8/0xc/0x14/0x18 map to named sibling handlers
+  — a caller or the state table containing 0x800855E would confirm
+- which phase mode ids 1, 2 and 7 correspond to in game terms beyond cust-gauge/step behaviors inferred
+  here
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_800855E -> battle_dispatchNextPhase
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800855E

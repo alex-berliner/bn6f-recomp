@@ -1,0 +1,48 @@
+name: battle_getScaledAbsYVelocity
+address: '0x080C1538'
+kind: function
+status: probable
+summary: Divides the battle object's absolute Y velocity by a per-type fixed-point divisor and stores
+  the quotient as a byte on the object.
+interface: (r0 = ignored/scratch, r5 = battle object pointer via caller's r5) -> r0 = byte stored; no
+  meaningful flags
+details: Reads the byte at [r5+0x64] (a type/selector field on the battle object), scales it by 4, and
+  uses it to pick a word from the two-entry table at byte_80C1558 (0x00400000 for entry 0, 0x00100000
+  for entry 1). It loads [r5+oBattleObject_YVelocity], takes its absolute value (neg if negative), then
+  performs a BIOS signed division (svc 6, so the table value is the divisor and |YVelocity| the numerator).
+  The quotient's low byte is stored back at [r5+0x61]. This looks like converting a fixed-point vertical
+  speed into a small integer (pixel step, counter, or magnitude class) whose scale depends on the object's
+  type. The function relies on the caller's r5 rather than its own r0, so it is an internal helper for
+  sub_80C12A6's object loop.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,0x64]; lsl #2; ldr from off_80C1558 selects one of two divisors (0x400000 / 0x100000);
+    ldr r1,[r5,#oBattleObject_YVelocity] with neg-on-negative gives abs(YVelocity) as the dividend for
+    svc 6; strb r0,[r5,0x61] stores only the low byte of the quotient back onto the object; only caller
+    sub_80C12A6 and the battlesweep route tie it to battle object processing'
+  refs:
+  - bn6f/asm/asm31.s:20453
+  - 0x080C12A6 sub_80C12A6
+  reproduce: python3 tools/asmcat.py 0x080C1538
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+coverage:
+- battlesweep
+open_questions:
+- game meaning of the byte stored at object+0x61 (pixel displacement, frame counter, etc.)
+- what field 0x64 encodes and why only two divisor entries exist
+- what sub_80C12A6 does with the stored value
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80C1538 -> battle_getScaledAbsYVelocity
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C1538

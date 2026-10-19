@@ -1,0 +1,64 @@
+name: color_lerpTowardWhite
+address: '0x03005FC0'
+kind: function
+status: probable
+summary: Blends a packed BGR555 color toward white by per-channel fixed-point fractions, adding the scaled
+  gap to the base color.
+interface: (r0 = packed color in r5-style arg, r1 = red fraction, r2 = green fraction, r3 = blue fraction,
+  16.16 fixed point) -> r0 = blended BGR555 color; flags clobbered
+details: 'Takes a 15-bit color in r0 (r5) and splits it into three 5-bit fields: bits 0-4, bits 5-9, bits
+  10-14 (BGR555 layout). Each channel is inverted (31 - channel), then multiplied by its own 16.16 parameter
+  and shifted right 16, giving per-channel step = (max - base) * fraction. The scaled values are recombined
+  at shifts 0/5/10 and added to the original color, i.e. result = base + (white - base) * frac per channel,
+  a linear interpolation toward white. With equal r1=r2=r3 this is the usual fade-to-white/brighten operation;
+  unequal fractions tint toward white unevenly. It clobbers r4, r5 is restored from r8, and returns via
+  mov pc, lr.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'lsl/lsr pairs 0x1b, 0x16, 0x11 extract three 5-bit fields of the input color; sub r1,#0x1f
+    then sub of channel computes (31 - channel) per field; mul + lsr #0x10 applies 16.16 fixed-point scaling
+    per channel; lsl #5 / lsl #0xa plus orr recombine channels and add r0, r5 rebuilds a BGR555 pixel;
+    executed across nearly all recorded routes (battle, menus, story), consistent with a generic color/fade
+    utility'
+  refs:
+  - bn6f/asm/asm38.s:651
+  reproduce: python3 tools/asmcat.py 0x03005FC0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+coverage:
+- battle
+- battles1
+- battles2
+- beastsp
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- no callers identified, so whether it is used as a uniform fade-to-white (r1=r2=r3) or per-channel tint
+  is unconfirmed
+- exact color layout convention (BGR vs RGB at bit 0) inferred from shift pattern, not from a known consumer
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_3005FC0 -> color_lerpTowardWhite
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_3005FC0

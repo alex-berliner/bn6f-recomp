@@ -1,0 +1,46 @@
+name: ai_setHitElementFromBoostTable
+address: '0x0811387C'
+kind: function
+status: probable
+summary: Selects an element byte from a two-entry table indexed by the AI attack's AttackBoost2 level,
+  stores it as HitElement, and clears AttackElement.
+interface: '() -> r0 = scratch; modifies oAIAttackVars at r7: HitElement = table[AttackBoost2], AttackElement
+  = 0; no flags used'
+details: Takes oAIAttackVars_AttackBoost2 from the r7 AI-attack-variable struct, multiplies by 4 to index
+  a pointer table at off_8113894 whose two entries (byte_811389C=0x04, byte_811389D=0x10) are element-code
+  bytes, and stores the selected byte into oAIAttackVars_HitElement. It then zeroes oAIAttackVars_AttackElement.
+  The 4x stride suggests the table was built as word-spaced pointers even though the targets are bytes.
+  It is a leaf routine that only writes the two AI-variable fields, so it is likely a per-attack init
+  step for an AI move whose hit element depends on the charge/boost stage. The values 0x04 and 0x10 look
+  like the game's element enum (e.g. fire vs. elec-style codes) rather than damage.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r7,#oAIAttackVars_AttackBoost2]; lsl r0,r0,#2 indexes off_8113890 table by boost level;
+    ldrb r0,[r0]; strb r0,[r7,#oAIAttackVars_HitElement] copies the selected byte into HitElement; mov
+    r0,#0; strb r0,[r7,#oAIAttackVars_AttackElement] always clears AttackElement; byte_811389C=0x04 and
+    byte_811389D=0x10 are the only two selectable values, matching an element enum; leaf function touching
+    only oAIAttackVars fields, consistent with an AI attack-setup step run from the battlesweep route
+  refs:
+  - bn6f/asm/asm32.s:11484
+  reproduce: python3 tools/asmcat.py 0x0811387C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+coverage:
+- battlesweep
+open_questions:
+- Which attack or AI entity uses this (no callers known), and what element codes 0x04/0x10 map to, to
+  name it precisely
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_811387C -> ai_setHitElementFromBoostTable
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811387C

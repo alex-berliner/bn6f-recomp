@@ -1,0 +1,47 @@
+name: ai_attackStepTick
+address: '0x081128DA'
+kind: function
+status: probable
+summary: 'Per-frame update for one AI attack step: initializes attack element/animation, then counts down
+  a timer and switches to the hit animation and hit element when it expires.'
+interface: (r0 = init/attack flag (nonzero skips init), r5 = battle object, r7 = AI attack vars) -> r0
+  clobbered; flags from timer decrement
+details: 'If r0 is zero, the function initializes the attack: stores 1 into oAIAttackVars_AttackElement
+  (r7) and 1 into oBattleObject_CurAnim (r5), i.e. the attack''s windup/swing animation. It then decrements
+  oAIAttackVars_StepTimer; while it is nonzero nothing else happens. When the timer reaches 0, it sets
+  oBattleObject_CurAnim to 2 (recovery/end animation) and oAIAttackVars_HitElement to 4, marking the step
+  as landed. This is a helper for an element-based AI attack state machine; it has no calls of its own,
+  so its meaning rests entirely on the AI-attack-vars fields it writes.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: cmp r0,#0 / bne skips the init block that writes oAIAttackVars_AttackElement=1 and oBattleObject_CurAnim=1;
+    ldrh/sub/strh on oAIAttackVars_StepTimer shows a per-call countdown; on timer expiry stores CurAnim=2
+    and oAIAttackVars_HitElement=4, ending the attack step; no callee calls; pure field manipulation on
+    the battle object and its AI attack vars; runs on recorded AI-controlled routes (battlesweep, beastsp),
+    consistent with an AI attack helper
+  refs:
+  - bn6f/asm/asm32.s:9603
+  reproduce: python3 tools/asmcat.py 0x081128DA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- No caller is captured, so the meaning of r0 (object pointer, attack-started flag, or result of a previous
+  step) is unconfirmed
+- Which AI attack/element this belongs to (values 1 and 4) is not identifiable from this function alone
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_81128DA -> ai_attackStepTick
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81128DA

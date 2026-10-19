@@ -1,0 +1,47 @@
+name: ow_stampMapTileTemplate
+address: '0x08142CC8'
+kind: function
+status: probable
+summary: Stamps one tile-block pattern, selected by index, from a template table into the overworld map-tile
+  grid.
+interface: (r0 = destination tile-grid buffer (eMapTilesState-style struct), r1 = template index) -> r0
+  = none; flags clobbered
+details: Reads a byte from eMapTilesState200be70 (byte 0) to use as the destination grid's row stride,
+  then selects a template pointer from the table at off_8142D44 via r1<<2. Copies halfwords [template+6]
+  and [template+8] to dest+6/+8 (header fields), then copies a 6-cell row from source row 1 and row 2
+  (source row stride 8 halfwords) and a 2-cell piece from source row 3 into the destination at (row*stride
+  + col)*2. Each template is 0x40 bytes (32 halfwords = 8-wide x 4 rows), matching the 8619B50/8619B90
+  pointer spacing. Effectively draws a small multi-tile stamp/block onto the map tile buffer.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldr r6,[off_8142D44,r1<<2] selects one of two 0x40-byte-spaced template structs (8619B50/8619B90);
+    three copy loops write to [r5,(r4*r2+r7)*2] with r4=byte[200be70] as stride and r2=1..3 as source
+    rows; copies exactly 6+6+2 halfwords plus offsets 6/8, i.e. a fixed small tile pattern, not bulk data;
+    only data reference is eMapTilesState200be70, read for the stride byte; destination comes from r0
+  refs:
+  - bn6f/asm/asm37_1.s:2244
+  - 0x0808D108 sub_808D108
+  - 0x0808D11C sub_808D11C
+  reproduce: python3 tools/asmcat.py 0x08142CC8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+coverage:
+- beastsp
+open_questions:
+- what sub_808D108/sub_808D11C pass in r0 and r1 (which state buffer, which template indices)
+- exact meaning of the header halfwords at template+6/+8 and dest+6/+8
+- whether byte 0 of eMapTilesState is truly a grid width or a tile-count/flag
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8142CC8 -> ow_stampMapTileTemplate
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8142CC8

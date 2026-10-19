@@ -1,0 +1,49 @@
+name: object_initSpawnOnCurrentPanel
+address: '0x080D387C'
+kind: function
+status: probable
+summary: 'State-entry for an object materializing on its current panel: sets up its sprite, hitbox, appear
+  sound, and hands control to the update state, freeing the object if the panel is invalid.'
+interface: (r5 = battle object) -> r0 = destroyed; spawns sprite 0x2E, collision 4x5, sound 0xB8, sets
+  CurState=CUR_STATE_UPDATE
+details: Reads the object from r5. If object_isCurrentPanelValid fails, calls object_freeMemory and returns.
+  Otherwise ORs flag bits 0x3 into oObjectHeader_Flags, loads sprite 0x2E (sprite_load/sprite_noShadow),
+  resets CurAnim/CurAnimCopy to 0 and loads animation data, applies object_getFlip via sprite_setFlip,
+  and positions via object_setCoordinatesFromPanels with Z=0. Shifts oBattleObject_X forward by 0x140000
+  * object_getFrontDirection(). Sets palette 0, allocates collision data (object_setupCollisionData 4x5
+  with r3=1), sets hit effect 0xFF, copies oBattleObject_Param2 to oBattleObject_Timer2, sets collision
+  region 2, presents the collision data, plays sound 0xB8, and stores CUR_STATE_UPDATE into oBattleObject_CurStateActionPhaseAndPhaseInitialized
+  before calling sub_80D390A.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'beq loc_80D3904 -> object_freeMemory: invalid-panel path deletes the object; sprite_load(0x80,0x10,0x2e)+sprite_setAnimation+object_setCoordinatesFromPanels:
+    full battle-object sprite spawn setup; object_setupCollisionData(4,5,1)+object_setCollisionRegion(2)+object_presentCollisionData:
+    arms a hitbox; PlaySoundEffect(0xb8) then CurState=CUR_STATE_UPDATE: appear sound and transition into
+    the active update state; uses r5 throughout without loading it: called as an object handler with r5
+    preloaded by the caller'
+  refs:
+  - bn6f/asm/asm31.s:59799
+  - 0x080005CC PlaySoundEffect
+  - 0x08019892 object_createCollisionData
+  - 0x08003458 object_freeMemory
+  reproduce: python3 tools/asmcat.py 0x080D387C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+open_questions:
+- No known caller, so the object type owning this state entry is unknown; a caller or the sprite-0x2E
+  identity would confirm which enemy/obstacle spawns this way
+- Purpose of the follow-up routine sub_80D390A and the meaning of Param2 copied into Timer2
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D387C -> object_initSpawnOnCurrentPanel
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D387C

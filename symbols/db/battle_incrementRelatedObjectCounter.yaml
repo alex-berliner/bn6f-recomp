@@ -1,0 +1,47 @@
+name: battle_incrementRelatedObjectCounter
+address: '0x080DFB80'
+kind: function
+status: probable
+summary: 'Per-battle-object updater: when a type-dependent collision flag is set, adds a fixed amount
+  to a related object''s counter field, clamped to its max field.'
+interface: (r5 = battle object ptr, r0-r4 clobbered) -> void; sets flags via the final bl/cmp chain only
+  from sub_80DFBE4
+details: 'Reads the object''s id byte at battleObject+0x60 and indexes byte_80DFBC0 (id*4) for a mask
+  (0x10 or 0x20) that is ANDed with the collision data''s FlagsFromCollision; if nonzero, it indexes byte_80DFBD8
+  (id*2) for an increment (0x02 or 0x00). That increment is added to RelatedObject1Ptr''s halfword at
+  +0x60 and the result is clamped to that object''s halfword at +0x62 (the cap), storing it back. Finally
+  it tail-calls sub_80DFBE4. The two tables are per-id: which collision flag enables the effect, and how
+  much is added per call, so some ids do nothing and others tick the counter up.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#0x60]; lsl #2; ldr off_80DFBBC -> byte_80DFBC0 mask AND [r1,#oCollisionData_FlagsFromCollision];
+    beq skips the update; ldrh r0,[off_80DFBD4 table] at id*2 gives increment values 0x2/0x0; ldrh r2/r3
+    from RelatedObject1Ptr+0x60/+0x62; add, cmp ble, strh back to +0x60 implements add-with-cap; tail
+    bl sub_80DFBE4 before pop shows this is one step of a per-object update chain'
+  refs:
+  - bn6f/asm/asm31.s:85743
+  - 0x080DFA58 sub_80DFA58
+  - 0x080DFBE4 sub_80DFBE4
+  reproduce: python3 tools/asmcat.py 0x080DFB80
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+coverage:
+- battlesweep
+open_questions:
+- what field +0x60/+0x62 of the related object semantically is (a buff stack, charge, HP, etc.)
+- what the collision flags 0x10/0x20 in oCollisionData_FlagsFromCollision mean
+- what sub_80DFBE4 does and what context sub_80DFA58 provides (which object types have id byte 0x60)
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80DFB80 -> battle_incrementRelatedObjectCounter
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DFB80

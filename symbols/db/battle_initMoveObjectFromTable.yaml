@@ -1,0 +1,51 @@
+name: battle_initMoveObjectFromTable
+address: '0x080D80B4'
+kind: function
+status: probable
+summary: Initializes a battle object (a spawned attack/projectile) from a static 16-byte definition table
+  entry selected by the object's Param1, then switches it to its update state.
+interface: (r5 = battle object with Param1 = table index) -> r0 = 0 on success; object freed if collision
+  slot allocation fails
+details: 'Uses oBattleObject_Param1*0x10 to index the table at byte_80D7F4C and stores the entry pointer
+  in RelatedObject1Ptr. From the entry it loads the sprite (bytes 4/5), picks shadow vs no-shadow from
+  the low nibble of byte 0xA, sets the animation (byte 6, with CurAnimCopy=0xFF), palette (high nibble
+  of 0xA), flip via object_getFlip, Param4 (byte 9), XVelocity = frontDirection * entry word 0xC, and
+  Param3 (byte 8). It allocates collision data (freeing the object on failure) and programs the hitbox
+  from bytes 0-3 plus region byte 3 and hit-effect 0xFF, optionally applying a status effect (byte 0xB).
+  Special case: index 0x11 triggers sub_801A4D0(0x18,1); finally it runs one present/update pass and sets
+  the object''s state to CUR_STATE_UPDATE.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#oBattleObject_Param1]; mul r0,r1(0x10); ldr r7,=byte_80D7F4C — selects a 16-byte
+    entry from a definition table; bl sprite_load/sprite_loadAnimationData/sprite_setPalette/sprite_setFlip
+    — sets up the object's visuals from the entry; ldr r1,[r7,#0xc]; mul r0(=object_getFrontDirection),r1;
+    str -> oBattleObject_XVelocity — movement speed/direction from the table; bl object_createCollisionData;
+    beq-free path bl object_freeMemory; then object_setupCollisionData/setCollisionHitEffect(0xFF)/setCollisionRegion
+    — builds the hitbox from the entry; mov r0,#CUR_STATE_UPDATE; str -> oBattleObject_CurStateActionPhaseAndPhaseInitialized;
+    bl sub_80D8172 — hands the object over to its per-frame update state
+  refs:
+  - bn6f/asm/asm31.s:69273
+  - 0x08019892 object_createCollisionData
+  - 0x08003458 object_freeMemory
+  - 0x0800E456 object_getFlip
+  reproduce: python3 tools/asmcat.py 0x080D80B4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+open_questions:
+- What sub_80D8172 (the state's update routine) does per frame
+- Exact meaning of the special case Param1==0x11 / sub_801A4D0(0x18,1)
+- Which attack/projectile variants the table entries at byte_80D7F4C correspond to
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D80B4 -> battle_initMoveObjectFromTable
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D80B4

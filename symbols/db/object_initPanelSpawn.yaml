@@ -1,0 +1,51 @@
+name: object_initPanelSpawn
+address: '0x080CFEE4'
+kind: function
+status: probable
+summary: 'Spawn/init routine for a battle object placed on a field panel: loads its sprite, positions
+  it on the panel, sets up its collision, and enters its main state — freeing the object if the battle
+  is over or the panel is invalid.'
+interface: (r5 = battle object) -> void; r0 = scratch/status from callees
+details: First checks battle_isBattleOver and object_isCurrentPanelValid; either failing routes to object_freeMemory,
+  so the object only lives while its panel is valid. On success it loads sprite set 0x80/palette 0xc/entry
+  0x2f via sprite_load + sprite_loadAnimationData and sprite_noShadow, resets CurAnim (0) and CurAnimCopy
+  (0xFF). It converts PanelX/PanelY to screen coordinates with object_getCoordinatesForPanels, stores
+  Y, sets Z to 0xB4<<16, and computes X as the panel x minus object_getFrontDirection times 0xB4<<16 (offset
+  in the facing direction), then applies object_getFlip via sprite_setFlip. It allocates collision data
+  (object_createCollisionData; failure also frees the object), fills it with object_setupCollisionData
+  using Param1 as the region value with size 0x1c, 5 hit types, then clears the collision region and publishes
+  it with object_presentCollisionData. Finally it writes CUR_STATE_UPDATE to the object's state/phase
+  word and tail-calls sub_80CFF62 as the object's first state handler.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: battle_isBattleOver + object_isCurrentPanelValid guards both branch to object_freeMemory (loc_80CFF5C);
+    sprite_load(0x80,0xc,0x2f) + sprite_loadAnimationData + sprite_noShadow and CurAnim=0/CurAnimCopy=0xFF
+    set up the object's visuals; PanelX/PanelY -> object_getCoordinatesForPanels -> Y, Z=0xB4<<16, X =
+    x - getFrontDirection*0xB4<<16 places it offset on its panel; object_createCollisionData/object_setupCollisionData(0x1c,5,Param1)/object_clearCollisionRegion/object_presentCollisionData
+    build and publish its hitbox; CUR_STATE_UPDATE stored to oBattleObject_CurStateActionPhaseAndPhaseInitialized
+    then tail-call sub_80CFF62 as next state step
+  refs:
+  - bn6f/asm/asm31.s:51942
+  - 0x0800A18E battle_isBattleOver
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x08019892 object_createCollisionData
+  reproduce: python3 tools/asmcat.py 0x080CFEE4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+open_questions:
+- What entity this spawns (sprite id 0x80/0xc/0x2f) and what sub_80CFF62's state machine does are unknown;
+  no callers known, so the trigger context (which battle script spawns it) is unidentified
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80CFEE4 -> object_initPanelSpawn
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CFEE4

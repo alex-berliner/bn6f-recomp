@@ -1,0 +1,50 @@
+name: ow_setWarpTrigger
+address: '0x08141914'
+kind: function
+status: probable
+summary: Records a map-anchored trigger point (position offset by a per-index pair, size 12x8) into the
+  eStruct2001010 slot, tagging it with the current map group/number.
+interface: (r0 = base x, r1 = base y, r2 = param stored at +0x24, r3 = index into byte_8141958 offset
+  table) -> r0 = 0 (clobbered); writes eStruct2001010+0x18..0x3B
+details: Index r3 selects a pair of words from byte_8141958 (r3*8 bytes apart) which are added to r0 and
+  r1 as x/y offsets; the results are stored at eStruct2001010+0x1C/0x20/0x24 and r3 itself at byte +0x1B.
+  The function then stamps the trigger with the current map by copying oGameState_MapGroup and oGameState_MapNumber
+  from the GameState into bytes +0x18/+0x19 and zeroing +0x1A. Finally it initializes the following record's
+  first four bytes (0x2001038-0x200103B) to 12, 8, 0xFF, 0xFF — plausibly a 12x8 activation box with two
+  'unset' byte fields (likely destination coordinates or ids). Writing map group/number plus an x/y position
+  strongly suggests an overworld transition/warp or event trigger registration rather than a sprite operation.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldr r6,[r4] / add r0,r0,r6 and ldr r6,[r4,#4] / add r1,r1,r6 apply per-index x/y offsets from
+    byte_8141958 (r3*8 stride); str r2,[r5,#0x24] and strb r3,[r5,#0x1b] store the remaining trigger parameters;
+    ldrb r0,[r7,#oGameState_MapGroup] / oGameState_MapNumber stored at +0x18/+0x19 tags the entry with
+    the current map; constants 12, 8, 0xFF, 0xFF written to 0x2001038-0x200103B look like a hitbox size
+    plus unset destination fields; single caller sub_8089F5E and recorded 'beastsp' route run it during
+    overworld/event flow
+  refs:
+  - bn6f/asm/asm37_1.s:115
+  - 0x08089F5E sub_8089F5E
+  reproduce: python3 tools/asmcat.py 0x08141914
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+coverage:
+- beastsp
+open_questions:
+- meaning of r2 (destination map, warp id, or trigger type) and of the 0xFF bytes at 0x200103A/B
+- exact layout/consumers of eStruct2001010 — need the code that reads 0x2001028-0x200103B to confirm trigger-vs-warp
+  semantics
+- what sub_8089F5E is doing when it calls this
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8141914 -> ow_setWarpTrigger
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8141914

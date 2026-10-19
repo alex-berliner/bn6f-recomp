@@ -1,0 +1,50 @@
+name: battle_objectApplyPendingActionChange
+address: '0x080DA448'
+kind: function
+status: probable
+summary: 'Phase handler: if a pending action-change flag is set on the battle object, clears it and forces
+  CurAction to 8 with phase reset to 0.'
+interface: (r0 = battle object, r5 = battle object) -> r0 unchanged; sets oBattleObject_CurAction = 8,
+  CurPhaseAndPhaseInitialized = 0 when ExtraVars+0x1c != 0
+details: 'Reads a flag at ExtraVars+0x1c; when zero it does nothing and returns. When nonzero it clears
+  the flag, stores action id 8 into oBattleObject_CurAction, and zeroes the halfword oBattleObject_CurPhaseAndPhaseInitialized
+  (clearing both the phase index and its initialized bit), so the phase state machine restarts the object
+  in action 8 from its first phase. It behaves as one of the five phase handlers dispatched by battle_objectPhaseDispatch,
+  acting as a deferred ''interrupt current action'' mechanism: something else sets the flag, and this
+  handler consumes it at the next phase step. The literal pool (off_80DA45C pointing at 0x2D0 and dword_80DA3E8)
+  is shared with the neighboring dispatch code, and 0x2D0 is likely the ExtraVars field offset used to
+  locate the flag.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldr r0,[r5,#ExtraVars+0x1c]; beq locret: only acts when the pending-change flag is set; str
+    r1,#0 into ExtraVars+0x1c after the check: the flag is consumed, i.e. a one-shot request; strb #8
+    into oBattleObject_CurAction and strh #0 into CurPhaseAndPhaseInitialized: restarts object in action
+    8, phase 0; called from battle_objectPhaseDispatch: it runs as a step of the phase state machine,
+    not an init routine'
+  refs:
+  - bn6f/asm/asm31.s:74126
+  - 0x080DA172 battle_objectPhaseDispatch
+  - 0x080DA266 sub_80DA266
+  reproduce: python3 tools/asmcat.py 0x080DA448
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+coverage:
+- chips
+open_questions:
+- Who writes ExtraVars+0x1c and with what value — flinch, screen-drag, or a chip effect would confirm
+  the trigger
+- What action id 8 means in the battle object action table (idle vs. forced-move vs. stun)
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80DA448 -> battle_objectApplyPendingActionChange
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DA448

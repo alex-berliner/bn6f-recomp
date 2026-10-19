@@ -1,0 +1,55 @@
+name: req_enqueueTask
+address: '0x080068EC'
+kind: function
+status: probable
+summary: 'Producer for a polled background-request queue: fills the fixed control block at byte_20081B0
+  with a command id, parameters and a work-buffer pointer, then raises its active flag.'
+interface: '(r0 = word param stored at +0x4, r1 = word param stored at +0x8, r2 = byte command stored
+  at +0x1, r3 = packed value whose upper halfword is stored at +0x2) -> r0 = 1; clobbered: r4-r7 not visible
+  to caller, flags destroyed'
+details: 'It writes a single static request control block at 0x20081B0: byte +0x1 = r2 (command/type),
+  halfword +0x2 = r3>>16 (parameter, e.g. count), word +0x4 = r0 and word +0x8 = r1 (likely source/destination
+  or pointer/length pair), word +0xC = constant pointer unk_2008E80, word +0x10 = constant 0x500. Finally
+  it stores 1 into byte +0x0 last, which behaves as a pending/busy flag a polling worker would test —
+  the last-store order is deliberate. unk_2008E80 is therefore a 0x500-byte work buffer permanently attached
+  to the request, not per-call data. The function has no callees and touches no other state; it is purely
+  the enqueue half of a producer/consumer pair. Both callers (sub_803FBE8 twice, sub_8006920 once) just
+  prepare r0-r3 and call this to post a job.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'loc_80068F2: stores r2/r3>>16/r0/r1 into byte_20081B0+1/+2/+4/+8, i.e. a fixed command+param
+    block; off_8006908/off_800690C: constant writes of unk_2008E80 and 0x500 to +0xC/+0x10 show a dedicated
+    0x500-byte work buffer; mov r0,#1; strb r0,[r7] as the final store: +0x0 is a set-last active/pending
+    flag; no bl anywhere in the function: enqueue only, consumer is elsewhere; called twice by sub_803FBE8
+    (0x803FBE8/0x803FC00) with different r0-r3, consistent with posting different jobs'
+  refs:
+  - bn6f/asm/asm00_1.s:7395
+  - 0x08006920 sub_8006920
+  - 0x0803FBE8 sub_803FBE8
+  - 0x0803FC00 sub_803FBE8
+  reproduce: python3 tools/asmcat.py 0x080068EC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+coverage:
+- battle
+- battlesweep
+- chips
+- fuzz
+open_questions:
+- which routine polls byte_20081B0+0 and executes the request (would confirm r0/r1 meaning and the command
+  table for r2/r3)
+- what subsystem the queue serves (save/flash, wireless, decompression, etc.) to fix the symbol prefix
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80068EC -> req_enqueueTask
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80068EC

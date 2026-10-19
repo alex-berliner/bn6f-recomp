@@ -1,0 +1,50 @@
+name: battle_dispatchBPwrAtkHandler
+address: '0x080117BA'
+kind: function
+status: probable
+summary: Dispatches the per-chip Beast Out attack-power handler selected by the index in r0, with r7 preloaded
+  with the object's AI attack vars.
+interface: (r0 = attack/chip handler index, r5 = battle object) -> tail-calls table handler (off_80117D4[r0]);
+  r6 = oBattleObject_AIDataPtr, r7 = aiData + oAIData_AttackVars on entry to handler
+details: 'Loads the battle object''s AI data pointer from [r5+oBattleObject_AIDataPtr] and precomputes
+  r7 = aiData + oAIData_AttackVars, which handlers can use for the attack variable block. Then it indexes
+  the 0x94-entry word table at off_80117D4 with lsl r0,r0,#2 and performs a long-call trick (mov lr,pc;
+  bx r0) so any ARM/THUMB-state handler returns straight back to this function''s caller. The table is
+  a per-attack-id jump table of Beast Power attack routines: entry 0x41 is battle_setupBeastPwrAttackVars,
+  0x16 is ai_initBeastPwrAttackVars, and most entries are per-chip BPwrAtk init/damage handlers (megamanChargeShotBPwrAtk_init,
+  greatfireAPwrAtk_init, slashcrossBPwrAtk_init, tomahawkmanBPwrAtk_init, bubbleSpreadBPwrAtk_init, etc.);
+  unimplemented ids point at nullsub_44, and several ids reuse the charge-shot handler. Runs on the beastsp
+  route, consistent with Beast Out attack handling.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'lsl r0,r0,#2 / ldr r0,[r1,r0] / mov lr,pc; bx r0: indexed long-call dispatch over off_80117D4;
+    r6/r7 setup from oBattleObject_AIDataPtr and oAIData_AttackVars prepares the attack-var context handlers
+    expect; table contents: battle_setupBeastPwrAttackVars (0x41) and ai_initBeastPwrAttackVars (0x16)
+    alongside many *_BPwrAtk_init handlers; many ids fall back to nullsub_44 and several reuse megamanChargeShotBPwrAtk_init,
+    showing default/no-op per attack id; captured execution on the beastsp route matches the Beast Out
+    attack theme of the table'
+  refs:
+  - bn6f/asm/asm00_2.s:6160
+  reproduce: python3 tools/asmcat.py 0x080117BA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+coverage:
+- beastsp
+open_questions:
+- exact meaning of the r0 index (attack/chip id vs. animation step) — a caller would need to show what
+  value it passes
+- what sub_8011AF2 and the many unnamed per-id sub_* handlers each do
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80117BA -> battle_dispatchBPwrAtkHandler
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80117BA

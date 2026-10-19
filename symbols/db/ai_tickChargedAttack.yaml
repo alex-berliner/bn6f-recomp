@@ -1,0 +1,49 @@
+name: ai_tickChargedAttack
+address: '0x08107388'
+kind: function
+status: probable
+summary: 'Enemy-AI attack state machine tick: on first call it arms an attack (element 4, timer = AttackDuration),
+  counts the timer down each frame, and on expiry stamps HitElement = 0x24 to trigger the hit.'
+interface: (r7 = AI entity whose oAIAttackVars is the target) -> r0 = 0/scratch only; no meaningful return,
+  updates oAIAttackVars_AttackElement, _StepTimer, _HitElement
+details: 'All state lives in the oAIAttackVars struct at r7. Phase 1: if AttackElement is 0, it writes
+  element 4 into AttackElement and copies AttackDuration (halfword) into StepTimer, so the attack stays
+  armed for its configured duration. Phase 2 (element already set): it decrements StepTimer each call
+  and returns while it is still >0. When the timer reaches 0, it writes 0x24 into the halfword HitElement,
+  presumably the value some other AI/battle routine polls to apply or spawn the attack''s hit. The two-phase
+  ''arm then count down then emit hit code'' pattern is typical of a delayed/charging enemy attack, but
+  which attack (element 4 and hit code 0x24) is not provable from this stub alone.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement] / tst r0,r0 bne — branches on ''already armed'' vs
+    ''initialize''; mov r0,#4 strb [r7,#oAIAttackVars_AttackElement] + copies AttackDuration into StepTimer:
+    arming phase sets element and duration; ldrh r0,[r7,#oAIAttackVars_StepTimer]; sub r0,#1; strh; bgt
+    — per-call countdown until timer hits zero; mov r0,#0x24 strh [r7,#oAIAttackVars_HitElement] — on
+    expiry it emits hit code 0x24 into HitElement; route ''battlesweep'' execution and pure oAIAttackVars
+    access mark it as part of the enemy AI attack step logic'
+  refs:
+  - bn6f/asm/asm31.s:169246
+  reproduce: python3 tools/asmcat.py 0x08107388
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+coverage:
+- battlesweep
+open_questions:
+- What element value 4 and hit code 0x24 correspond to in the battle element/attack tables
+- Which enemy/AI object calls this and how HitElement is consumed afterward
+- Whether AttackDuration is set per-attack elsewhere, and if the timer expiring should reset AttackElement
+  for reuse
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8107388 -> ai_tickChargedAttack
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8107388

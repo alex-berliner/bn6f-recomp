@@ -1,0 +1,50 @@
+name: object_bounceAtTargetColumn
+address: '0x080D1F68'
+kind: function
+status: probable
+summary: 'Velocity-driven battle object: once it has reached/passed its target column, reverses its vertical
+  velocity or turns horizontally toward the target using ExtraVars as speed.'
+interface: (r5 = battle object, r1 = target panel Y) -> void; sets oBattleObject_XVelocity/YVelocity
+details: r5 is an oBattleObject. It compares the incoming r1 (a target row) against the object's PanelY,
+  negating both when YVelocity is negative so the 'passed the target' test works for either direction;
+  if the target is still ahead it returns without changes. Otherwise it calls sub_80D200C, whose result
+  r0 appears to be a target column. If r0 equals the object's PanelX it simply negates YVelocity (vertical
+  bounce); otherwise it sets XVelocity = ExtraVars * (+1/-1 depending on whether the target column is
+  right or left of PanelX) and zeroes YVelocity, i.e. it turns the object horizontally at the target column
+  using ExtraVars as the speed magnitude.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r2,[r5,#oBattleObject_PanelY] / ldr r3,[r5,#oBattleObject_YVelocity] with neg-pair on
+    r1,r2 when vel<0 — direction-aware ''past target'' check; bl sub_80D200C then cmp r0,[r5,#oBattleObject_PanelX]
+    — r0 is a column compared against the object''s own panel; beq loc_80D1F98: neg old YVelocity and
+    store back — pure vertical reversal when already at that column; ldr r0,[r5,#oBattleObject_ExtraVars];
+    mul r0,r3; str r0,[XVelocity] + str 0,[YVelocity] — horizontal turn using ExtraVars as magnitude;
+    sole caller object_stepUpdateByVelocity runs this between velocity-based step handlers, matching a
+    per-frame bounce/turn update'
+  refs:
+  - bn6f/asm/asm31.s:56389
+  - 0x080D1EF2 object_stepUpdateByVelocity
+  - 0x080D200C sub_80D200C
+  reproduce: python3 tools/asmcat.py 0x080D1F68
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+coverage:
+- battlesweep
+open_questions:
+- what sub_80D200C computes exactly (target column? blocked-panel check?) — its body is not shown
+- which enemy/attack object uses this and what ExtraVars semantically holds (speed magnitude vs counter)
+- meaning of the r1 target-Y argument in the caller
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D1F68 -> object_bounceAtTargetColumn
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D1F68

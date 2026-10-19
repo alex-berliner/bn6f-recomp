@@ -1,0 +1,53 @@
+name: ai_attackCycleTick
+address: '0x080F9D94'
+kind: function
+status: probable
+summary: Enemy AI state-machine tick that cycles through two turns of setup, then two attacks, alternating
+  between two attack patterns via a toggling step counter.
+interface: (r6 = enemy/AI object) -> r0 = clobbered; updates oAIState_TurnCounter/AttackCounter/StepCounter
+  in the object and dispatches to one of four AI subroutine handlers
+details: 'Reads and writes three byte fields of the battle object''s AI state at r6: oAIState_TurnCounter,
+  oAIState_AttackCounter, oAIState_StepCounter. TurnCounter counts 0,1,2 calling sub_80F9F24 each tick,
+  then resets; from then on AttackCounter counts 0,1,2 calling sub_80F9F44 each tick, then resets; on
+  each full cycle the StepCounter bit is XORed with 1 and its old value selects between sub_80F9F76 (step==0)
+  and sub_80F9FA6 (step!=0). So the routine is a periodic AI phase scheduler: two initial turns, then
+  a repeating loop of two generic attack ticks alternating between two pattern handlers. All four callees
+  are unknown subroutines, so the concrete boss/attack identities cannot be determined from this function
+  alone.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb/strb on oAIState_TurnCounter/AttackCounter/StepCounter show it is an AI state dispatcher
+    over an enemy object in r6; cmp r0,#2 / blt with reset-to-0 implements a 3-tick cycle per phase; eor
+    r1,r0 with 1 toggles StepCounter, selecting between sub_80F9F76 and sub_80F9FA6 as two alternating
+    attack behaviors; bl sub_80F9F24 in the initial phase vs sub_80F9F44 in the looping phase shows a
+    two-stage (intro then repeating) schedule; recorded execution in battlesweep/chips routes confirms
+    it runs during battle, not menus
+  refs:
+  - bn6f/asm/asm31.s:141055
+  - 0x080F9F24 sub_80F9F24
+  - 0x080F9F44 sub_80F9F44
+  - 0x080F9F76 sub_80F9F76
+  reproduce: python3 tools/asmcat.py 0x080F9D94
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+coverage:
+- battlesweep
+- chips
+open_questions:
+- What sub_80F9F24/sub_80F9F44/sub_80F9F76/sub_80F9FA6 do (move, chips, attacks?) to identify the boss
+  and rename phases
+- Which enemy object/AI table entry invokes this handler, since no caller is known
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F9D94 -> ai_attackCycleTick
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F9D94

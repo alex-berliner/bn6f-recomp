@@ -1,0 +1,50 @@
+name: battle_processBarrierOnHit
+address: '0x080E0C74'
+kind: function
+status: probable
+summary: Battle-object state handler that decides the object's next action after a hit, based on the target's
+  barrier type and HP.
+interface: (r5 = battle object) -> r0 = 0; writes oBattleObject_CurAction and oBattleObject_CurPhaseAndPhaseInitialized
+  on the object
+details: 'Uses r5 as the current battle object (caller left it set). First it follows the pointer at oBattleObject_ExtraVars+4
+  and tests the byte it points to; if clear (or the pointer chain is empty), it sets CurAction = 4 and
+  resets the phase counter, ending the routine. Otherwise it loads the target from oBattleObject_RelatedObject1Ptr
+  and reads its oCollisionData_Barrier: barrier 0 leads to the same CurAction = 4 path, while barrier
+  type 0x10 stores oCollisionData_SavedHitModifier into ExtraVars+8 and sets CurAction = 8. Any other
+  barrier type with a nonzero BarrierHP returns without changing state (hit absorbed by the barrier);
+  if the barrier HP is 0 it falls into the CurAction = 4 path. No flags are meaningful; the routine only
+  writes back into the battle object.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r3,#oCollisionData_Barrier] / cmp with 0 and 0x10 branch on barrier type (asm lines
+    8-12); ldrb r0,[r3,#oCollisionData_BarrierHP]; tst r0,r0; bne locret -> barrier HP blocks the state
+    change (lines 14-16); mov r0,#4 / strb [r5,#oBattleObject_CurAction] plus phase reset is the default
+    outcome (lines 18-22); str SavedHitModifier into [r5,#oBattleObject_ExtraVars+8] before choosing CurAction
+    8 for barrier 0x10 (lines 24-26); Recorded route 'battlesweep' and use of oBattleObject_RelatedObject1Ptr
+    match attack-sweep collision handling of a struck object
+  refs:
+  - bn6f/asm/asm31.s:87846
+  reproduce: python3 tools/asmcat.py 0x080E0C74
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+coverage:
+- battlesweep
+open_questions:
+- What actions 4 and 8 mean exactly (e.g. flinch vs. barrier-shatter animation) — needs the action state
+  machine or callers
+- What the flag behind ExtraVars+4 represents (hit-connection flag vs. something else)
+- Which barrier value 0x10 corresponds to in game terms (shield/holy/etc.)
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80E0C74 -> battle_processBarrierOnHit
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E0C74

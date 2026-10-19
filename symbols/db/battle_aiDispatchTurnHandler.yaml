@@ -1,0 +1,44 @@
+name: battle_aiDispatchTurnHandler
+address: '0x080F648C'
+kind: function
+status: probable
+summary: Dispatches the per-turn AI handler for a battle object, chosen by the AI state's ScriptId (normal
+  AI vs scripted variant).
+interface: (r5 = battle object) -> calls handler(r6 = aiData+0x80 AI state struct, r7 = aiData+0xA0);
+  no return value; returns to caller via lr=pc trick
+details: 'Reads oBattleObject_AIDataPtr from the battle object at r5. r6 = aiData+0x80 is the AI state
+  struct whose oAIState_ScriptId byte selects from the jump table at off_80F64A8 (2 entries: battle_aiTurnHandler
+  and sub_80F64E6). r7 = aiData+0xA0 is a second AI-data area passed to the handler. Sets lr=pc before
+  bx so the handler''s return lands directly on the pop, effectively a tail-call with saved r6/r7. The
+  dispatch means some encounters use a scripted AI turn routine instead of the standard one.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r6,#oAIState_ScriptId]; ldr r1,[r1,r0]; bx r1 — index-of-table dispatch on AI state
+    ScriptId; off_80F64A8 entries: battle_aiTurnHandler+1 and sub_80F64E6+1 — two turn-handler variants;
+    ldr r7,[r5,#oBattleObject_AIDataPtr] then r6=+0x80, r7=+0xA0 — sets up AI data/state pointers before
+    the call; mov lr,pc; bx r1; pop {r6,r7,pc} — tail-call pattern returning to this function''s caller;
+    first table target is the known battle_aiTurnHandler — confirms the called routines are AI turn processors'
+  refs:
+  - bn6f/asm/asm31.s:133811
+  reproduce: python3 tools/asmcat.py 0x080F648C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+coverage:
+- battlesweep
+open_questions:
+- What sub_80F64E6 does (the alternate scripted-AI handler) and what sets oAIState_ScriptId to 1
+- Exact layout/meaning of the aiData+0xA0 block passed in r7
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F648C -> battle_aiDispatchTurnHandler
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F648C

@@ -1,0 +1,45 @@
+name: get_valueFromIdPairTable
+address: '0x0809AC48'
+kind: function
+status: probable
+summary: Looks up r0 in a 0xFF-terminated (id,value) byte-pair table and returns the paired value, or
+  0x1A if not found.
+interface: (r0 = lookup id byte) -> r0 = matched value byte, or 0x1A (26) on miss; flags clobbered by
+  pops only
+details: 'Scans byte_809AC68 two bytes at a time: first byte is the key, second the value, until a key
+  of 0xFF ends the table. If r0 equals a key, the following value is returned in r0. On reaching the terminator
+  it returns 0x1A as a default. The static table maps 0x53->0x15, 0x51->0x16, 0x55->0x17. r1 is reused
+  as the table cursor, so no other state is touched. The 0xFF,0xFF tail means the miss path and table
+  end are the same check.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'loc_809AC4C: ldrb r2,[r1]/ldrb r3,[r1,#1]/add r1,#2 reads (key,value) pairs; cmp r2,#0xFF /
+    beq loc_809AC5E makes 0xFF key the terminator; cmp r0,r2 / bne loop; mov r0,r3 returns the paired
+    value on match; loc_809AC5E: mov r0,#0x1A is the not-found default; byte_809AC68: 53 15 51 16 55 17
+    FF FF gives the three mappings and terminator'
+  refs:
+  - bn6f/asm/asm28_0.s:2544
+  reproduce: python3 tools/asmcat.py 0x0809AC48
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+coverage:
+- beastsp
+open_questions:
+- No callers captured, so the domain of keys 0x51/0x53/0x55 and outputs 0x15-0x17 is unknown (navi/beast
+  ids? item ids?)
+- Whether other tables of this pair format exist and whether callers pass alternative table pointers (the
+  table pointer is fixed here)
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_809AC48 -> get_valueFromIdPairTable
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_809AC48

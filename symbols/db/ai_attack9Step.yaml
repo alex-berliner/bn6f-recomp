@@ -1,0 +1,46 @@
+name: ai_attack9Step
+address: '0x08101E24'
+kind: function
+status: probable
+summary: 'AI attack-9 state step: first invocation queues the panel-choose attack setup, then on later
+  invocations resets the AI script state and runs the post-move follow-up.'
+interface: (r6 = AI state object, r7 = AI attack vars) -> r0 = 0; no meaningful return
+details: Reads oAIState_AttackDecisionFlag from the AI state struct at r6; when clear, writes 4 to that
+  flag and tail-calls ai_setupAttack9PanelChoose (which saves the chosen panel/object and starts attack
+  9). Once the flag is set, it zeroes oAIState_ScriptId and oAIState_SubState, checks oAIAttackVars_HasMoved
+  at r7, and only then calls sub_8101F70 (unknown follow-up, likely executing the attack after the move).
+  Reached via recorded battlesweep routes with no direct caller found, so it is presumably dispatched
+  through the AI script/state table.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb/tst on [r6,#oAIState_AttackDecisionFlag] gates two phases (sub_8101E24+2..+A); bl ai_setupAttack9PanelChoose
+    with flag=4 stored first shows it arms attack 9 panel selection; strb/strh zeroing oAIState_ScriptId
+    and oAIState_SubState resets the AI script state in phase 2; ldrb [r7,#oAIAttackVars_HasMoved] guards
+    bl sub_8101F70, tying phase 2 to the enemy having moved
+  refs:
+  - bn6f/asm/asm31.s:157902
+  - 0x08101F08 ai_setupAttack9PanelChoose
+  - 0x08101F70 sub_8101F70
+  reproduce: python3 tools/asmcat.py 0x08101E24
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+coverage:
+- battlesweep
+open_questions:
+- what sub_8101F70 does (fire the attack, reposition, or just clear vars) — needs its disassembly
+- how this handler is dispatched (which AI state table/case selects it) and which boss/attack uses attack
+  9
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8101E24 -> ai_attack9Step
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8101E24

@@ -1,0 +1,53 @@
+name: gui_initIndexedSprite
+address: '0x0811D894'
+kind: function
+status: probable
+summary: Initializes one of five GUI sprite variants (animation, palettes, slot halfword, priority, position)
+  selected by an index stored in the object, unless the variant is disabled in a table.
+interface: (r0 unused; object pointer in r5, variant index at [r5+5]) -> r0 = clobbered; sets [r5]=1,
+  and [r5+7]=1 with early return if the enable byte is 0
+details: 'Marks the object active by storing 1 at [r5] and reads a variant index (0-4) from [r5+5]. It
+  checks byte_811D940[index]; if zero it sets [r5+7]=1 and skips setup (currently all entries are 0x53,
+  so this path is inert). Otherwise it runs initGuiSprite on the object, sets animation 0, loads animation
+  data, disables the shadow, then configures appearance from five parallel tables indexed by the variant:
+  sub-entry palette bank (byte_811D945: 3,5,7,9,11), palette (byte_811D94F: 2,4,6,8,10), a halfword 0x300+index*0x20
+  written via slotList_storeHalfwordAndClearField (off_811D904), sub-record field A (byte_811D94A: 3,3,3,3,2),
+  sprite priority 3, and x/y coordinates from a halfword pair table (byte_811D92C). The object pointer
+  is taken from r5, implying a caller-side convention where r5 holds the object base.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: strb r1,[r5] / ldrb r0,[r5,#5] then table lookup in byte_811D940 with early exit storing [r5,#7]=1
+    — enable flag and variant index fields of the object struct; bl initGuiSprite_8002770 followed by
+    sprite_setAnimation(0), sprite_loadAnimationData, sprite_noShadow — standard GUI sprite bring-up sequence;
+    parallel per-index tables byte_811D945/byte_811D94F/byte_811D94A feeding sprite_setSubEntryPaletteBank/sprite_setPalette/sprite_setSubRecordFieldA
+    — five fixed visual variants; off_811D904 holds 0x300..0x380 stride 0x20, passed to slotList_storeHalfwordAndClearField_800306C
+    — writes a per-variant halfword into a slot list; byte_811D92C pairs (0xA8,0x59),(0x38,0x8C),(0x6D,0x55),(0xB7,0x8F),(0x48,0x61)
+    passed to sprite_setCoordinates — five fixed screen positions
+  refs:
+  - bn6f/asm/asm32.s:31830
+  - 0x0800306C slotList_storeHalfwordAndClearField_800306C
+  - 0x080026A4 sprite_loadAnimationData
+  - 0x08002F90 sprite_noShadow
+  reproduce: python3 tools/asmcat.py 0x0811D894
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+open_questions:
+- No callers are known, so the object struct layout (fields at +0, +5, +7) and what gameplay system owns
+  it are unconfirmed
+- The meaning of the 0x300-based halfword written into the slot list is unknown
+- Which screen or menu these five variants appear on (byte_811D940 currently all 0x53, so the disable
+  path never triggers with shipped data)
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_811D894 -> gui_initIndexedSprite
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811D894

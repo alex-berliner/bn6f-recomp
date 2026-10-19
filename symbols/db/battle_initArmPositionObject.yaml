@@ -1,0 +1,54 @@
+name: battle_initArmPositionObject
+address: '0x080DBB64'
+kind: function
+status: probable
+summary: Spawn/init step for a battle object that resolves an arm-slot id to a position, loads its sprite
+  there, and sets up its collision box, freeing itself if the slot is invalid.
+interface: (r5 = battle object) -> r0 = 1 if the object was initialized and switched to CUR_STATE_UPDATE,
+  else the object was freed; clobbers r0-r3
+details: Reads the object's ExtraVars as an arm/part slot id and calls enemy_getArmPosition_800F26C; 0xFF
+  (invalid/absent slot) makes it object_freeMemory and bail. Otherwise it saves the returned x/y/? record,
+  calls sprite_load with the id, sets oObjectHeader_Flags bit 1, enables/disables the shadow from the
+  fifth returned byte, sets CurAnim and CurAnimCopy from the third byte plus sprite_setAnimation and sprite_loadAnimationData,
+  and sets the palette from the fourth byte. ExtraVars 0xD8/0xD9 get sub_8002EAC instead of the alliance-based
+  sprite_setFlip. It then snaps to panel coordinates, offsets X by frontDirection * 0x120000, sets Z16
+  to 0x10, allocates collision data, and on success configures it with (6, 5, 3), hit effect 0x0A, marks
+  the collision present, and advances the object's state phase to CUR_STATE_UPDATE; if collision allocation
+  fails the object is freed.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldr r0,[r5,#oBattleObject_ExtraVars]; bl enemy_getArmPosition_800F26C; cmp r0,#0xff; beq frees-object
+    path: position comes from the arm-slot table, invalid id aborts the spawn; sprite_load / sprite_setAnimation
+    / sprite_loadAnimationData / sprite_setPalette sequence driven by the returned 5-byte position record
+    (x,y,anim,palette,shadow); bl object_getFrontDirection; mul by 0x12<<16; add to oBattleObject_X, strh
+    #0x10 to oBattleObject_Z16: places the body one half-panel in front of the arm position; object_createCollisionData
+    + object_setupCollisionData(6,5,3) + object_setCollisionHitEffect(0xA) + object_presentCollisionData:
+    builds a static hitbox with hit-effect type 0xA; mov r0,#CUR_STATE_UPDATE stored to oBattleObject_CurStateActionPhaseAndPhaseInitialized:
+    ends the init phase and hands control to the update handler'
+  refs:
+  - bn6f/asm/asm31.s:77250
+  - 0x0800F26C enemy_getArmPosition_800F26C
+  - 0x08019892 object_createCollisionData
+  - 0x08003458 object_freeMemory
+  reproduce: python3 tools/asmcat.py 0x080DBB64
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+open_questions:
+- No callers are known, so which entity/attack spawns this object (and whether 0xA hit effect is a specific
+  visual like a slash or impact) is unconfirmed
+- Exact meaning of the 5-byte arm-position record's fields beyond x/y/anim/palette/shadow, and what sub_8002EAC
+  does for ExtraVars 0xD8/0xD9, are unknown
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80DBB64 -> battle_initArmPositionObject
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DBB64

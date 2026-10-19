@@ -1,0 +1,49 @@
+name: ai_battlesweepTargetPanelStep
+address: '0x08100D2C'
+kind: function
+status: probable
+summary: AI attack state step that picks a target panel on first run and, after a timed delay, triggers
+  the attack effect on that panel, reporting success or failure via HitElement.
+interface: (r7 = oAIAttackVars struct) -> r0 = status/element code written to HitElement (0x10 = attack
+  executed, 0x14 = no target); no flags of interest
+details: 'It reads oAIAttackVars_AttackElement: if unset (0), it sets it to 4 and calls sub_8101190, which
+  returns a target panel in r0/r1 (X/Y); on success it stores TargetPanelX/Y and loads StepTimer from
+  AttackBoost2 (the charge/delay in frames), otherwise it writes HitElement = 0x14 to signal failure.
+  On later calls (element already 4) it decrements StepTimer each frame until it hits 0, then clears SubStepIndex,
+  calls sub_8101204 with the stored TargetPanelX/Y to apply the attack at that panel, and writes HitElement
+  = 0x10 to mark completion. This is a classic multi-frame attack coroutine step: init-and-target on entry,
+  count down, then execute and report.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne splits first-call init vs later countdown;
+    bl sub_8101190 with r0/r1 stored into TargetPanelX/TargetPanelY — a panel-picker callee; strh r0,[r7,#oAIAttackVars_StepTimer]
+    loaded from AttackBoost2 — delay taken from an attack stat; bl sub_8101204 with TargetPanelX/Y then
+    HitElement=0x10 — effect fired at the chosen panel, success code; HitElement=0x14 only in the beq
+    failure path of the targeting call — error/abort code
+  refs:
+  - bn6f/asm/asm31.s:155756
+  - 0x08101190 sub_8101190
+  - 0x08101204 sub_8101204
+  reproduce: python3 tools/asmcat.py 0x08100D2C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+coverage:
+- battlesweep
+open_questions:
+- What sub_8101190's selection criteria are (which panel it returns) and what effect sub_8101204 spawns
+  at the panel; element value 4 and the exact HitElement code semantics (0x10/0x14) are only inferred
+  from usage
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8100D2C -> ai_battlesweepTargetPanelStep
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8100D2C

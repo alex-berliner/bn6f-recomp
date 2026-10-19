@@ -1,0 +1,48 @@
+name: ai_attackWindupTick
+address: '0x080FF40A'
+kind: function
+status: probable
+summary: 'AI attack wind-up state tick: initializes an element-4 attack with animation 0x11, then counts
+  7 frames before arming the hit element.'
+interface: (r0 = unused/scratch, r5 = battle object, r7 = oAIAttackVars) -> updates oAIAttackVars_AttackElement
+  / StepTimer / HitElement, sets oBattleObject_CurAnim; flags from tst/ldrh countdown
+details: 'This is a per-frame tick for an AI-controlled battle object''s attack sequence, using the oAIAttackVars
+  fields at r7. On the first call (AttackElement == 0) it arms the attack: writes element 4 into oAIAttackVars_AttackElement,
+  sets the object''s current animation to 0x11 via r5, and loads StepTimer with 7. On subsequent calls
+  it decrements StepTimer; once it reaches zero it writes 0x18 into oAIAttackVars_HitElement, apparently
+  marking the attack as ready to land. The two-branch structure (init when element is zero, countdown
+  otherwise) is a standard BN AI ''charge then release'' pattern, so callers are expected to invoke it
+  every frame while the attack is active.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement] + tst/bne: first branch is a one-time init keyed
+    on a zero element; strb r0,#4,[r7,#oAIAttackVars_AttackElement] and strh #7,[StepTimer]: arms element
+    4 with a 7-frame delay; mov r0,#0x11; strb r0,[r5,#oBattleObject_CurAnim]: plays a battle animation
+    on the object during the wind-up; ldrh/sub/strh on StepTimer with bgt and fallthrough to strh #0x18,[HitElement]:
+    countdown ends by setting HitElement to 0x18'
+  refs:
+  - bn6f/asm/asm31.s:152465
+  reproduce: python3 tools/asmcat.py 0x080FF40A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+coverage:
+- battlesweep
+open_questions:
+- Which enemy/object calls this (no callers recorded), so the exact attack and element-4 meaning in the
+  game's element enum are unconfirmed
+- What HitElement value 0x18 triggers downstream — the consumer that reads it after the timer expires
+  was not seen
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80FF40A -> ai_attackWindupTick
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FF40A

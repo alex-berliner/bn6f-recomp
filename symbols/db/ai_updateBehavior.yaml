@@ -1,0 +1,50 @@
+name: ai_updateBehavior
+address: '0x0810E17A'
+kind: function
+status: probable
+summary: 'Per-frame AI update for a battle object: check a gate condition, refresh the object''s current
+  animation, and dispatch the handler for the object''s current AI script.'
+interface: (r5 = battle object, r6 = AI state block) -> r0 = value from the dispatched script handler
+  or undefined; no meaningful flags
+details: If oBattleObject+0x66 (r5) is set, or sub_810E34A returns nonzero, the function goes straight
+  to script dispatch; otherwise it calls sub_810E2EC to obtain an animation id. If that id is 0xFF it
+  dispatches immediately, otherwise it stores the id into oBattleObject_CurAnim and calls sub_810E0D4,
+  then sets oAIState_ScriptId (r6) to 8 before returning. Dispatch is a jump table (off_810E1B0) indexed
+  by oAIState_ScriptId with three entries (sub_810E1BC/sub_810E1F0/sub_810E262), called via a computed
+  'mov lr, pc; bx r1' tail-dispatch that returns through pop {r4,r6,pc}. This is the classic pattern of
+  an enemy-AI tick that selects an animation and runs one of the script handlers.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#0x66]; tst; bne loc_810E18C gates dispatch on an object flag; strb r0,[r5,#oBattleObject_CurAnim]
+    and strb #8,[r6,#oAIState_ScriptId] write known object/AI-state fields; ldr r1,[r1,r0] over off_810E1B0''s
+    3 handler words with mov lr,pc; bx r1 is a table dispatch by ScriptId; fallback path forces ScriptId=8
+    and resets the current animation before popping; recorded on the battlesweep route, i.e. inside battle
+    gameplay where AI state ticks run'
+  refs:
+  - bn6f/asm/asm32.s:997
+  - 0x0810E0D4 sub_810E0D4
+  - 0x0810E2EC sub_810E2EC
+  - 0x0810E34A sub_810E34A
+  reproduce: python3 tools/asmcat.py 0x0810E17A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+coverage:
+- battlesweep
+open_questions:
+- Purpose of sub_810E34A (gate check) and sub_810E2EC (animation id source) is unknown; their semantics
+  would confirm whether this is enemy AI vs another object kind
+- Meaning of script id 8 and of oBattleObject+0x66 not established without seeing the three dispatch handlers
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810E17A -> ai_updateBehavior
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810E17A

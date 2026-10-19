@@ -1,0 +1,50 @@
+name: init_cutsceneSceneState
+address: '0x081312FC'
+kind: function
+status: probable
+summary: 'Scene-state init: wipes VRAM/palette/tile buffers, resets battle scene records, starts a fade
+  and chatbox script 0x68, and marks the event state advanced.'
+interface: (r5 = event/scene state struct pointer; r10 = toolkit) -> void; sets bit 0x20 of byte at [r5+0x1B]
+details: Calls zeroFillVRAM, zeroes the IWRAM palette buffer 0x3001960 and the 0x2000-byte BG tile buffer,
+  and applies overlay palette 0x10. It resets the battle-overlay eStruct record array (battle_resetEStructRecords_8046664)
+  and chatbox_8040818, then writes 0x1F40 to the toolkit render-info halfword at offset 0 and clears offsets
+  0x10-0x1A. A byte saved from [r7+0xC] is preserved only if [r5+2] is nonzero while a 0x80-byte block
+  at r7+0xC is zero-filled. It packs an animation-table lookup (dword_8129180 table) into [r7+0x12], sets
+  a screen fade (8, 0x10), runs text script index 0x68 from eTextScript201BA20 via the chatbox, and ORs
+  0x20 into the state byte [r5+0x1B] to signal the state has been started/advanced.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'zeroFillVRAM + ZeroFill_byte_3001960 + ZeroFillGFX30025c0: full rendering-state teardown at
+    scene start; battle_resetEStructRecords_8046664 and chatbox_8040818 prepare battle-overlay records
+    and chatbox before dialogue; SetScreenFade(8,0x10) then chatbox_runScript_803FD9C_on_eTextScript201BA20(0x68)
+    starts a faded-in scripted cutscene; ldrb r1,[r5,#0x1b]; orr r1,#0x20; strb — sets the standard ''state
+    started'' flag on the scene struct; strh 0x1F40 into render info and clearing offsets 0x10-0x1A resets
+    scroll/render counters for the new scene'
+  refs:
+  - bn6f/asm/asm36.s:2444
+  - 0x0813096C sub_813096C
+  - 0x08130FC8 sub_8130FC8
+  - 0x08000900 ZeroFillByEightWords
+  - 0x0800183C ZeroFillGFX30025c0
+  - 0x080017E0 ZeroFill_byte_3001960
+  reproduce: python3 tools/asmcat.py 0x081312FC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+open_questions:
+- Which story cutscene/scene this belongs to (script 0x68 content and callers sub_813096C/sub_8130FC8
+  would identify it)
+- Meaning of the 0x1F40 render-info value and of the preserved byte at [r7+0xC] gated by [r5+2]
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_81312FC -> init_cutsceneSceneState
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81312FC

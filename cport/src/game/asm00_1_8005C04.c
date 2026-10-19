@@ -2264,7 +2264,7 @@ Next battle_main_8007800(void) {
     case 0x00: GUEST_CALL(battle_finishBattle_8007850);           break;
     case 0x04: GUEST_CALL(battle_update_8007A44); break;
     case 0x08: GUEST_CALL(sub_8007B80);           break;
-    case 0x0C: GUEST_CALL(sub_8007E62);           break;
+    case 0x0C: GUEST_CALL(battle_runFrame);           break;
     case 0x10: GUEST_CALL(sub_8007F4E);           break;
     default: break; /* 0x14: handler was removed from the ROM */
     }

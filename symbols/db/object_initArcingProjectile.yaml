@@ -1,0 +1,50 @@
+name: object_initArcingProjectile
+address: '0x080CB2A8'
+kind: function
+status: probable
+summary: 'Initialization for a battle attack object: loads its sprite/animation, sets up collision, and
+  precomputes a flight toward a target panel over a table-chosen duration.'
+interface: (r5 = battle object) -> r0 = destroyed/unused; object state set to CUR_STATE_UPDATE
+details: 'Snapshots coordinates from panels, zeroes Z, loads sprite resource (0x80, bank 0x10, id 0x2B)
+  with no shadow, sets flag 0x2, animation 0, palette 0 and flip from object_getFlip. Allocates collision
+  data (freeing the object on failure) and configures it with (7,5,3) plus hit effect 6, then marks it
+  present. It computes ExtraVars+4 = frontDirection * (Param2 - PanelX) * 0x28 / 2 — the pixel distance
+  to panel Param2 (0x28 = half panel width) — and reads per-Param1 tables: a byte (4,5,5,6) into ExtraVars+8
+  and a frame count (0x40,0x33,0x33,0x2A) into Timer, likely difficulty or level variants. Timer2 = 0x40
+  and ZVelocity = 0x40<<16 set an initial upward arc, sub_80CB434 presumably queues the first sprite frame,
+  and the state switches to CUR_STATE_UPDATE.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl sprite_load (0x80,0x10,0x2B) + sprite_noShadow + sprite_setAnimation/setPalette/setFlip:
+    standard object spawn-time sprite setup; bl object_createCollisionData ... bl object_freeMemory on
+    failure and object_setupCollisionData(7,5,3)/setCollisionHitEffect(6): attack-object collision setup;
+    mul r0,r2 (direction*(Param2-PanelX)); mul by 0x28, lsr 1, stored to ExtraVars+4: movement toward
+    target panel in pixels; byte_80CB344 and off_80CB358 tables indexed by Param1<<2 feed ExtraVars+8
+    and Timer: variant/difficulty parameters; str #0x40 to Timer2 and 0x400000 to ZVelocity then state
+    := CUR_STATE_UPDATE: initial vertical velocity and handoff to the update loop'
+  refs:
+  - bn6f/asm/asm31.s:41817
+  - 0x08019892 object_createCollisionData
+  - 0x08003458 object_freeMemory
+  - 0x0800E456 object_getFlip
+  reproduce: python3 tools/asmcat.py 0x080CB2A8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+open_questions:
+- What object/resource sprite 0x80-0x2B is, which would pin down the exact attack (no callers known)
+- What sub_80CB434 does (likely initial frame/pose setup)
+- Meaning of ExtraVars+8 byte (4/5/5/6) and how the update loop consumes these fields
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80CB2A8 -> object_initArcingProjectile
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CB2A8

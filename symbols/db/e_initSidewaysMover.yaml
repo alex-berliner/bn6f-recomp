@@ -1,0 +1,52 @@
+name: e_initSidewaysMover
+address: '0x080D5160'
+kind: function
+status: probable
+summary: 'Initializes a battle object (enemy-like): places it on its panel, loads sprite 0x80 anim 0x17
+  with shadow, sets up collision, gives it 255 HP and a fixed horizontal velocity away from its facing
+  side.'
+interface: (r5 = battle object, already allocated) -> r0 = 0 on success path unused; on collision-slot
+  failure frees the object; sets CurStateActionPhase to CUR_STATE_UPDATE
+details: 'Runs the standard battle-object init sequence: snaps coordinates to its panel, loads sprite
+  resource (0x80, 8, 9), sets flag bit 1 (shadow/visible) in oObjectHeader_Flags, selects animation 0x17,
+  applies palette 0 and facing via object_getFlip. It then allocates a collision-data slot; if none is
+  free it calls sub_80D5348 and object_freeMemory to bail out. On success it programs collision entry
+  0x29 with box 0x14 x 3, hit effect 0xA, clears its collision region, and presents the collision data.
+  XVelocity is set to frontDirection * 0x49000, so the object slides horizontally in the direction implied
+  by its alliance side; HP and MaxHP are both set to 255. Finally sub_80D532C is called with the object''s
+  PanelX/PanelY, and the state machine is advanced to CUR_STATE_UPDATE.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sprite_load(0x80,8,9) + sprite_setAnimation(0x17) + sprite_loadAnimationData set up the object''s
+    visuals; object_createCollisionData + object_setupCollisionData(0x29,0x14,3) + hit effect 0xA configure
+    its hitbox; frontDirection * dword_80D5358(=0x49000) stored to oBattleObject_XVelocity gives fixed
+    horizontal movement; HP/MaxHP both written 0xFF; sub_80D532C(PanelX,PanelY) then state set to CUR_STATE_UPDATE
+    ends init; failure path: beq loc_80D51DA -> sub_80D5348 + object_freeMemory when no collision slot
+    is available'
+  refs:
+  - bn6f/asm/asm31.s:63128
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x08019892 object_createCollisionData
+  - 0x08003458 object_freeMemory
+  reproduce: python3 tools/asmcat.py 0x080D5160
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+open_questions:
+- Which enemy/object sprite 0x80 with animation 0x17 corresponds to (no callers known to confirm context)
+- What sub_80D532C does with the panel coordinates (possibly panel-dependent setup such as burrowing or
+  positioning)
+- What collision type 0x29 and hit effect 0xA mean in the shared collision tables
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D5160 -> e_initSidewaysMover
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D5160

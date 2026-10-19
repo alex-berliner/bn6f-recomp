@@ -1,0 +1,49 @@
+name: object_stepWaitTimer
+address: '0x080CABD0'
+kind: function
+status: probable
+summary: Battle-object behavior step that waits a Param1-selected number of frames, then ends the object's
+  action.
+interface: (r5 = battle object ptr) -> r0 = 0/4 clobbered; sets oBattleObject_CurPhase, Timer, then CurAction=4
+  and CurPhase=0 when the timer expires
+details: On first entry (CurPhase==0) the step writes phase 4, reads oBattleObject_Param1 as an index
+  into the byte table at dword_80CABFC (entries 0x50,0x3C,0x30,0x30 — 80,60,48,48 frames) and stores the
+  selected value into oBattleObject_Timer. On subsequent frames it decrements the 16-bit Timer with sub/bge,
+  so it also fires when the timer is negative (e.g. preinitialized to 0xFFFF means 'expire immediately').
+  When the count runs out it writes CurAction=4 (action finished) and zeroes CurPhaseAndPhaseInitialized
+  so the next action starts from phase 0. It uses r5 as the object pointer with no argument in r0, matching
+  the project's object-step calling convention.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#oBattleObject_CurPhase]; tst/bne splits first tick vs. countdown (sub_80CABD0);
+    ldrb r0,[r5,#oBattleObject_Param1]; ldrb r0,[r1,r0] indexes dword_80CABFC into oBattleObject_Timer;
+    dword_80CABFC holds 0x50,0x3C,0x30,0x30 — a small set of frame delays; ldrh/sub/strh on Timer with
+    bge falls through only when negative, then mov #4 strb [r5,#oBattleObject_CurAction] and phase cleared
+    to 0'
+  refs:
+  - bn6f/asm/asm31.s:40825
+  reproduce: python3 tools/asmcat.py 0x080CABD0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+coverage:
+- battle
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- exact battle-object semantics of CurAction=4 (assumed 'action complete') and which behaviors select
+  Param1 0..3; no callers captured to confirm
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80CABD0 -> object_stepWaitTimer
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CABD0

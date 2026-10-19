@@ -1,0 +1,43 @@
+name: battle_floatObjectYSine
+address: '0x0810FA64'
+kind: function
+status: probable
+summary: Oscillates a battle object's Y position with a sine-wave bob around a base height.
+interface: (r0 unused; r5 = battle object) -> updates [obj+oBattleObject_Y]; no meaningful return/flags
+details: The routine reads a byte at obj+0x76 (a per-frame counter/step) and adds it to an accumulated
+  angle at obj+0x77, doubling the sum as an index into math_sinTable. The sine value is scaled by 12 <<
+  8 (amplitude), then multiplied by a ±1 factor picked from byte_810FA98 via (obj+0x74)*4 — entries 1,0,0,0
+  / -1,-1,-1,-1 select bobbing up or down. The result is added to a base Y held in ExtraVars+0x18 and
+  written to oBattleObject_Y, giving a smooth floating/bobbing vertical motion. The 0x74 byte therefore
+  acts as a phase/direction selector shared by several objects pointing at the same table pairs.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrh r0,[r2,r3] with r2=math_sinTable after angle bytes at r5+0x76/0x77 — sine lookup; mov
+    r1,#0xc; mul; lsl #8 — fixed amplitude of 12 in 8.8 fixed point; ldr r1,[r2,r1] from byte_810FA98
+    (0x1 / 0xFFFFFFFF words) — ±1 sign multiplier via r5+0x74; add r1,[r5,#oBattleObject_ExtraVars+0x18];
+    str r1,[r5,#oBattleObject_Y] — base height plus bob stored to object Y'
+  refs:
+  - bn6f/asm/asm32.s:3927
+  - 0x0810F7EC sub_810F7EC
+  reproduce: python3 tools/asmcat.py 0x0810FA64
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+coverage:
+- battlesweep
+open_questions:
+- Caller sub_810F7EC is unnamed, so which object/enemy uses this bob and what obj+0x74 (direction) and
+  obj+0x76 (step size) mean in game terms is unconfirmed
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810FA64 -> battle_floatObjectYSine
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810FA64

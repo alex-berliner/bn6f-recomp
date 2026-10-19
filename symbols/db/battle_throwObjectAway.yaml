@@ -1,0 +1,52 @@
+name: battle_throwObjectAway
+address: '0x0810E4F0'
+kind: function
+status: probable
+summary: Fully cleans a battle object out of the fight (collision, AI, actor list, held chip) and then
+  launches it off as a thrown projectile.
+interface: (r5 = battle object, r7 = its AI-attack-vars struct; no args in r0-r3) -> r0 = 0xF00000 * frontDirection
+  (throw speed X); r5/r7 object fields updated
+details: 'The routine first strips the object of all battle presence: it clears its collision region,
+  collision result, collision state, AI data and barrier flag, zeroes its held-chip count, writes 0xFFFF
+  to its Chip field, nulls its related-object pointer, and removes it from the alive actor list. It then
+  reads object_getFrontDirection, scales it by 0xF00000 as a horizontal speed component, converts the
+  object''s PanelX/PanelY to pixel coordinates with object_getCoordinatesForPanels, and feeds those to
+  math_getThrowSpeeds (with 0xFFFF8000 as a bound) to get an arc. The resulting velocities are stored
+  into oBattleObject_XVelocity/oBattleObject_ZVelocity, oAIAttackVars_StepTimer is set to 0x28 (40 frames),
+  and oAIAttackVars_HitElement is set to 4, so the object flies off while remaining an active, element-tagged
+  attacker for that duration.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl chain of object_clearCollisionRegion / battle_ClearObjectCollisionResult / battle_resetCollisionState
+    / battle_clearAIDataAndBarrier wipes all combat state; strh #-1 into oBattleObject_Chip and RemoveGivenAliveBattleActorFromList(r5)
+    detach the object from play; mul r4, r0 with dword_810E7A0=0xF00000 after object_getFrontDirection
+    gives a directional throw speed; bl math_getThrowSpeeds then stores into oBattleObject_XVelocity/oBattleObject_ZVelocity,
+    i.e. a projectile launch; strh #0x28 into oAIAttackVars_StepTimer and #4 into oAIAttackVars_HitElement
+    set the throw''s duration and element'
+  refs:
+  - bn6f/asm/asm32.s:1398
+  - 0x080077B4 RemoveGivenAliveBattleActorFromList
+  - 0x0801A5E2 battle_ClearObjectCollisionResult_801A5E2
+  - 0x0801A7F4 battle_clearAIDataAndBarrier_801A7F4
+  reproduce: python3 tools/asmcat.py 0x0810E4F0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+open_questions:
+- No caller is known, so which game event triggers this throw (a specific enemy attack, wind effect, or
+  removal animation) is unconfirmed
+- What element value 4 means and what sub_801DD34 / sub_800AAE8 do during the cleanup
+- The role of r7's AI-attack-vars struct beyond StepTimer/HitElement written here
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810E4F0 -> battle_throwObjectAway
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810E4F0

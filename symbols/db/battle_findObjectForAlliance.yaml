@@ -1,0 +1,54 @@
+name: battle_findObjectForAlliance
+address: '0x080CF7A4'
+kind: function
+status: probable
+summary: Scans the active battle objects and stores the first one whose alliance flag word matches this
+  object's alliance into this->RelatedObject2Ptr, returning whether one was found.
+interface: (r5 = battle object whose oBattleObject_Alliance is tested) -> r0 = 1 if a matching object
+  was stored in r5->oBattleObject_RelatedObject2Ptr, else 0
+details: 'Calls sub_801A4DC with a 0x10-byte stack buffer, which is filled with pointers to active battle
+  objects and returns their count (r4). It then walks that array, and for each object loads obj->0x54
+  (a sub-structure pointer, skipped if NULL) and tests the word at +0x30 against a per-alliance bitmask:
+  mask = table[alliance*4] from off_80CF7E8, entries 0x4000000 (alliance 1) and 0x8000000 (alliance 2),
+  i.e. bit (25+alliance). On the first object whose flag word has this object''s alliance bit set, it
+  writes that object''s pointer into r5->oBattleObject_RelatedObject2Ptr and returns 1; otherwise returns
+  0. Quirk: the mask table is indexed starting at off_80CF7E4, so alliance 0 would read the table pointer
+  itself rather than a mask, suggesting the caller only uses alliances 1/2 (or 0 means ''no lookup'').'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl sub_801A4DC with sp buffer and size 0x10, result used as object count and iteration bound
+    (sub_80CF7A4 lines 3-7); ldrb r2,[r5,#oBattleObject_Alliance]; lsl r2,#2; ldr r2,[r3,r2] indexes mask
+    table off_80CF7E8 = {0x4000000, 0x8000000}; ldr r1,[r1,#0x30] via obj->[0x54] tests a per-object flag
+    word with AND; beq skips non-matching objects; str r0,[r5,#oBattleObject_RelatedObject2Ptr]; mov r0,#1
+    stores the found object and returns true; loop add r6,#4 / cmp r3,r4 walks the pointer array filled
+    by sub_801A4DC
+  refs:
+  - bn6f/asm/asm31.s:50993
+  - 0x080CF658 sub_80CF658
+  - 0x0801A4DC sub_801A4DC
+  reproduce: python3 tools/asmcat.py 0x080CF7A4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+coverage:
+- battlesweep
+open_questions:
+- Exact semantics of the flag word at obj->[0x54]+0x30 (alliance membership vs targeting/protection flags)
+  — needs the code that writes that field
+- What sub_801A4DC is (presumably 'get list of active battle objects') and whether order of the returned
+  array matters for which object is chosen
+- What the caller sub_80CF658 uses RelatedObject2Ptr for, to confirm the game-level meaning (e.g. ally/heal-target
+  lookup)
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80CF7A4 -> battle_findObjectForAlliance
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CF7A4

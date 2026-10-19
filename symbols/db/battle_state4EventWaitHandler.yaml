@@ -1,0 +1,47 @@
+name: battle_state4EventWaitHandler
+address: '0x08009754'
+kind: function
+status: probable
+summary: 'Battle state-4 tick handler: waits 10 frames if state-4 events are pending then advances to
+  phase 4, otherwise jumps straight to battle state 8.'
+interface: () -> void; r5 = battle state struct, writes SubPhaseInitFlag/CountdownTimer/State4EventCount
+  read, StatePhaseAndInitFlag, Index_01
+details: 'Uses r5 as the global battle state struct, no arguments. First pass (SubPhaseInitFlag==0): if
+  State4EventCount is nonzero, sets CountdownTimer to 0xA (10 frames) and sets SubPhaseInitFlag=4; if
+  zero, sets Index_01 to 8 and StatePhaseAndInitFlag to 0 to move to the next battle state. Subsequent
+  frames decrement CountdownTimer until it goes negative, then writes phase 4 into StatePhaseAndInitFlag
+  (leaving the init flag as-is, i.e. 4). The 10-frame delay likely lets state-4 event processing (results
+  screens, flag events) finish before the phase advances.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb [r5,#oBattleState_State4EventCount] / tst r1,r1 / beq loc_800977A gates the two paths
+    on pending events; strh #0xa,[r5,#oBattleState_CountdownTimer] + init flag=4 arms a 10-frame wait;
+    decrement loop: sub r0,#1 ... bge locret; on expiry strh #4 -> StatePhaseAndInitFlag advances to phase
+    4; no-event path: mov #8 / strb -> Index_01 and strh #0 -> StatePhaseAndInitFlag switches to battle
+    state 8 phase 0; r5 is never set in the function, so it reads the global battle state struct by convention'
+  refs:
+  - bn6f/asm/asm00_1.s:14262
+  reproduce: python3 tools/asmcat.py 0x08009754
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+coverage:
+- battlesweep
+open_questions:
+- No known caller, so what battle state 4 and 8 represent (results? cleanup?) is inferred only from field
+  names
+- What the counted State4EventCount events actually are and what processes them while the 10-frame countdown
+  runs
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8009754 -> battle_state4EventWaitHandler
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8009754

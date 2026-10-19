@@ -1,0 +1,47 @@
+name: battle_setActionPhase8
+address: '0x080C4204'
+kind: function
+status: probable
+summary: Sets a battle object's packed action-phase field to 8 (marking the phase not yet initialized),
+  used to restart the battle state machine at phase 8.
+interface: (r0 = battle object pointer or 0) -> r0 destroyed; no flags guaranteed (falls through tst/beq)
+details: 'The routine is tiny: it tests r0 and, if non-null, stores the immediate value 8 into the battle
+  object''s packed field oBattleObject_CurStateActionPhaseAndPhaseInitialized, then returns. Writing 8
+  sets the phase counter to 8 and clears the phase-initialized sub-field, so on the next battle-loop tick
+  the engine runs phase 8''s initialization handler before its update. The r0==0 guard makes it safe to
+  call with a possibly-null object pointer. No other state is touched and it has no callees. What phase
+  8 means (e.g. custom-screen open, post-action reset) is not visible from this function alone.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sub_80C4204+2: tst r0,r0 / beq skip — null-guarded single-object setter; sub_80C4204+6: mov
+    r1,#8; str r1,[r0,#oBattleObject_CurStateActionPhaseAndPhaseInitialized] — only effect is writing
+    phase value 8; locret_80C420C: mov pc,lr — bare return, no callee calls, confirming a trivial state
+    setter; Called from sub_80111DC at 0x080111DC during recorded beastsp route — battle-flow context;
+    off_80C4210/blocks of 0/1 bytes following are unrelated neighboring data (flag tables), not touched
+    by the function'
+  refs:
+  - bn6f/asm/asm31.s:26598
+  - 0x080111DC sub_80111DC
+  reproduce: python3 tools/asmcat.py 0x080C4204
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+coverage:
+- beastsp
+open_questions:
+- what semantic phase 8 has in the battle state machine (a caller context or the phase dispatch table
+  would show it)
+- what sub_80111DC does around the call, i.e. when in the turn this reset is issued
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80C4204 -> battle_setActionPhase8
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C4204

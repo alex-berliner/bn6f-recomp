@@ -1,0 +1,48 @@
+name: ai_tryEnterAttackFinishState
+address: '0x0810E2EC'
+kind: function
+status: probable
+summary: Transitions a battle object's AI into an attack-finish state (flag 0x66), choosing the grounded
+  (1) or airborne (0x10) variant and loading a version-dependent halfword into 0x7C.
+interface: (r5 = battle object) -> r0 = 1 (ground finish started), 3 (air finish started, anim/timer set),
+  or 0xFF (already in that state or no finish flag set); flags clobbered
+details: 'Reads the object''s byte at +0x64: if set, and the AI state byte at +0x66 is not already 1,
+  it stores 1 there and returns 1. Otherwise it checks +0x65: if set and state != 0x10, it stores 0x10,
+  then follows oBattleObject_AIDataPtr and reads oAIData_Version_16, uses it to index byte_810E174, and
+  stores the looked-up halfword at +0x7C (likely an animation or delay value per Navi version), returning
+  3. If neither flag applies or the target state is already active, it returns 0xFF. Field +0x66 thus
+  acts as an AI sub-state selector used by the attack-finish flow.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: branch on [r5,#0x64] picks the ground path storing 1 at [r5,#0x66]; branch on [r5,#0x65] with
+    state 0x10 stores 0x10 and ldrb r0,[r0,#oAIData_Version_16]; ldrb r0,[r1,r0] from off_810E324=byte_810E174
+    then strh r0,[r5,#0x7C] sets per-version value; caller 0x0810DE00 ai_finishAttackByElement runs this
+    as part of ending a custom AI attack; returns 1/3 on transition and 0xFF when state already matches
+    or flags unset
+  refs:
+  - bn6f/asm/asm32.s:1205
+  - 0x0810DE00 ai_finishAttackByElement
+  - 0x0810E17A sub_810E17A
+  reproduce: python3 tools/asmcat.py 0x0810E2EC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+coverage:
+- battlesweep
+open_questions:
+- exact meaning of +0x66 values 1 and 0x10 (anim state vs AI script id)
+- what byte_810E174 contains per version and how the halfword at +0x7C is consumed
+- what flags +0x64/+0x65 represent (e.g. grounded/aerial attack types)
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810E2EC -> ai_tryEnterAttackFinishState
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810E2EC

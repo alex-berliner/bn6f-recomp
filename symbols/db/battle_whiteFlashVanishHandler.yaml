@@ -1,0 +1,55 @@
+name: battle_whiteFlashVanishHandler
+address: '0x080171D8'
+kind: function
+status: probable
+summary: 'Battle-object phase handler that kills an object with a white-flash fade: flashes its palette
+  for ~90 frames, then detaches it from the battle (alliance, panel reserve, alive list) with a screen
+  fade and hands off to the destroy phase.'
+interface: (r5 = battle object) -> void; sets object phase 4 on setup, phase 8 on finish
+details: On first entry (PhaseInitialized==0, skipped while time-stop is active) it zeroes PreventAnim,
+  RelatedObject1Ptr and the AI's TempAttackObjectPtr, spawns a linked type-0x11 object (r7 = AIData+0x74)
+  plus an effect object, sets both the object's and the effect's Timer to 0x5A (90 frames), and stores
+  phase 4. While the timer counts down, every 4th frame it calls sprite_forceWhitePalette, making the
+  object flash white. When the timer expires it clears the alliance target slot pointing at itself, releases
+  its reserved panel via object_removePanelReserve, follows the AI's SpawnedSourceObjectPtr (sub_80E1A86),
+  reads its NameID, removes itself from the alive-actor list, triggers SetScreenFade(4,4), spawns another
+  linked object, and moves to CurPhaseAndPhaseInitialized = 8 (likely the shared destroy phase). Objects
+  with NameID in 0x173–0x17E keep their current animation instead of being forced to CurAnim 2, suggesting
+  a specific family (bosses?) uses a custom vanish pose.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'locret path: timer decrement, ''lsr r0,#2; bcc'' then sprite_forceWhitePalette — periodic white
+    flashing while dying; timer expiry path calls battle_ClearAllianceTargetSlotIfSelf, object_removePanelReserve
+    and RemoveGivenAliveBattleActorFromList — full battle-state teardown; SetScreenFade(4,4) and final
+    ''strh #8, [r5,CurPhaseAndPhaseInitialized]'' — fade effect then advance to cleanup phase; NameID
+    range check vs 0x173/0x17E gates ''strb #2,[CurAnim]'', so certain object IDs keep their own animation;
+    setup zeroes PreventAnim/RelatedObject1Ptr/AI TempAttackObjectPtr and spawns linked + effect objects
+    with Timers 0x5A — staged vanish sequence'
+  refs:
+  - bn6f/asm/asm00_2.s:18853
+  - 0x080077B4 RemoveGivenAliveBattleActorFromList
+  - 0x0802CDD0 battle_ClearAllianceTargetSlotIfSelf_802CDD0
+  - 0x08011020 battle_getObjectNameID_8011020
+  reproduce: python3 tools/asmcat.py 0x080171D8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+open_questions:
+- What object family has NameID 0x173–0x17E (why they keep CurAnim instead of anim 2)
+- What sub_80E1A86 does with the SpawnedSourceObjectPtr and what the spawned type-0x11 linked objects/effect
+  are (dissolve effect?)
+- No caller is known — whether this is a generic enemy-delete handler or specific to one enemy needs cross-referencing
+  phase-handler tables
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80171D8 -> battle_whiteFlashVanishHandler
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80171D8

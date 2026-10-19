@@ -1,0 +1,48 @@
+name: ai_attackTickElement4
+address: '0x081033CE'
+kind: function
+status: probable
+summary: 'Per-frame tick of an AI attack: on first run sets attack element 4 and animation 7 and starts
+  the timer, then counts down and on expiry resets the substep and sets hit element 0x10.'
+interface: (r5 = battle object, r7 = oAIAttackVars block) -> r0 clobbered; writes oAIAttackVars_AttackElement,
+  oAIAttackVars_StepTimer, oAIAttackVars_SubStepIndex, oAIAttackVars_HitElement and oBattleObject_CurAnim
+details: 'If oAIAttackVars_AttackElement is 0, the routine initializes the attack: stores element 4 into
+  AttackElement, sets the object''s current animation (oBattleObject_CurAnim) to 7, and copies oAIAttackVars_TimerOrCycles
+  into oAIAttackVars_StepTimer to start the countdown. Otherwise it decrements StepTimer each call and
+  returns while it is still positive. When the countdown reaches 0, it zeroes oAIAttackVars_SubStepIndex
+  and stores 0x10 into oAIAttackVars_HitElement, which likely selects the hit/damage element for the strike
+  that follows. The function is stateless between enemies (state lives in the r7 block) and is invoked
+  from the recorded battle route, so it is one step of a specific enemy/attack''s AI script. Which attack
+  this is (element code 4, anim 7) is not determinable without callers.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne shows a first-run init vs. countdown split
+    (sub_81033CE start); init path: strb #4 AttackElement, strb #7 oBattleObject_CurAnim, strh TimerOrCycles
+    into StepTimer; countdown path: ldrh StepTimer, sub #1, strh, bgt exit — a per-frame timer; expiry
+    path: SubStepIndex=0 and HitElement=0x10 stored when the timer lapses; no calls to other functions;
+    state only via oAIAttackVars/oBattleObject fields, matching an inline AI attack step'
+  refs:
+  - bn6f/asm/asm31.s:160899
+  reproduce: python3 tools/asmcat.py 0x081033CE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+coverage:
+- battlesweep
+open_questions:
+- Which enemy/attack this step belongs to (element 4, anim 7) — needs the caller or the AI script table
+- What hit element 0x10 means downstream (which code consumes oAIAttackVars_HitElement)
+- Whether TimerOrCycles is set once at attack start by a parent dispatcher
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_81033CE -> ai_attackTickElement4
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81033CE

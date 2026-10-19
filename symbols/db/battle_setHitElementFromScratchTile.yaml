@@ -1,0 +1,47 @@
+name: battle_setHitElementFromScratchTile
+address: '0x080F420A'
+kind: function
+status: probable
+summary: Sets the AI attack's HitElement based on the panel/tile state pointed to by the attack's scratch
+  pointer, defaulting when there is none.
+interface: () -> void; writes oAIAttackVars_HitElement (strh, r7 frame); no flags meaningful, returns
+  nothing
+details: Reads a pointer from oAIAttackVars_ScratchVar and dereferences it. If the pointer is NULL, it
+  stores 0x18 into oAIAttackVars_HitElement and exits. Otherwise it loads the byte at offset +9 of the
+  pointed-to struct; if that byte equals 4 it stores 0x10 into HitElement, and for any other value it
+  stores 4. The three constants (4, 0x10, 0x18) look like element IDs used later by damage/interaction
+  code, with offset +9 being a tile-type field, so this likely picks the attack element from the panel
+  the target/attack interacts with.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldr r0,[r7,#oAIAttackVars_ScratchVar]; ldr r0,[r0]; tst — reads and dereferences a state pointer
+    before branching; beq loc_80F4220 after cmp r0,#4 with strh r0,[r7,#oAIAttackVars_HitElement] of 0x10
+    — byte +9==4 selects element 0x10; loc_80F4226 stores 0x18 when the scratch pointer is NULL — a default
+    element; Frame fields oAIAttackVars_ScratchVar/oAIAttackVars_HitElement match battle AI attack state,
+    and the routine runs on the battlesweep route
+  refs:
+  - bn6f/asm/asm31.s:129409
+  reproduce: python3 tools/asmcat.py 0x080F420A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+coverage:
+- battlesweep
+open_questions:
+- What structure ScratchVar points to and what field +9 encodes (panel type?) — need a caller that sets
+  ScratchVar
+- Which callers consume oAIAttackVars_HitElement (damage-calc or status effect) to confirm element constants
+  4/0x10/0x18
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F420A -> battle_setHitElementFromScratchTile
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F420A

@@ -1,0 +1,67 @@
+name: sio_linkStateUpdate
+address: '0x081446AC'
+kind: function
+status: probable
+summary: 'Per-frame SIO/link state machine: samples the SIO control register, advances a comm state, and
+  periodically copies a status byte out of the comm struct.'
+interface: () -> r0 undefined; updates struct eTimerEnable200F460 (state at +1, mode at +2, counter at
+  +0xD, 4-byte field at +0x2A), writes byte_200F448 and byte_200F450
+details: 'Reads SIOControlRegister, masks bits 4-5 (lsl #26/lsr #30) and stores them at struct+2. Dispatches
+  on the state byte at +1: state 4 runs sub_8144920/sub_8144AFC/sub_8144BF0; state 2 calls sub_814475C
+  — if it returns nonzero, transitions to state 3 with counter +0xD set to 8 (or state 4 when the byte
+  at +0 is zero), and if it returns zero fills the 4-byte field at +0x2A with 0xFF (a clear/receive buffer
+  reset). Every call it increments the counter at +0xD, zeroes byte_200F450, and when the counter wraps
+  to 8 copies struct+0x995 into byte_200F448. This is a polling/tick handler for the link-comm task, not
+  battle logic; it runs from both menus and battle routes, consistent with an always-on comm driver update.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldr r0, off_81446D4 (=SIOControlRegister) then lsl/lsr #30 and strb to struct+2: samples SIO
+    mode each call; state byte at 200F461 compared to 2 and 4 dispatches sub_814475C vs sub_8144920/8144AFC/8144BF0;
+    loc_81446DC: nonzero sub_814475C result sets state 3 (+0xD=8) or state 4; zero result fills 4 bytes
+    at +0x2A with 0xFF; tail: counter at +0xD incremented and cleared byte_200F450; when counter == 8,
+    byte at struct+0x995 copied to byte_200F448'
+  refs:
+  - bn6f/asm/libs.s:837
+  - 0x0814475C sub_814475C
+  - 0x08144920 sub_8144920
+  - 0x08144AFC sub_8144AFC
+  reproduce: python3 tools/asmcat.py 0x081446AC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- beastsp
+- fuzz
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- what sub_814475C tests (handshake complete? byte received?)
+- what protocol the states 2/3/4 implement (cable link vs RFU/wireless)
+- what the struct+0x995 byte and byte_200F448 mean downstream
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_81446AC -> sio_linkStateUpdate
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81446AC

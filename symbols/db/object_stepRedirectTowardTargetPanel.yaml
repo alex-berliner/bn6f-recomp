@@ -1,0 +1,50 @@
+name: object_stepRedirectTowardTargetPanel
+address: '0x080D1FA0'
+kind: function
+status: probable
+summary: For a horizontally moving battle object that has reached/blocked its target X column, either
+  reverses its XVelocity or switches to vertical movement toward the target row.
+interface: (r0 = target panel X (sign-flipped with XVelocity), r1 = target panel Y) -> void; writes oBattleObject_XVelocity/YVelocity
+details: 'Reads the object''s PanelX and XVelocity; when moving left both r0 and PanelX are negated so
+  the comparison r0 > PanelX is direction-relative, and the function returns immediately while the object
+  still has panel columns to cover in its heading. Otherwise it calls sub_80D200C (a panel-ahead validity
+  check) and returns if it succeeds (bge). If the way ahead fails, it branches on r1 vs PanelY: if equal
+  it simply negates XVelocity (bounce back), otherwise it computes a direction multiplier (+1 if target
+  row is greater, -1 if less), sets YVelocity = ExtraVars+4 * direction, and zeroes XVelocity so the object
+  now travels vertically toward the target row. ExtraVars+4 acts as the object''s vertical speed.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r2,[r5,#oBattleObject_PanelX] / ldr r3,[r5,#oBattleObject_XVelocity] with neg when XVelocity<0
+    makes the cmp direction-relative; bl sub_80D200C; bge locret - early return unless the panel-ahead
+    check reports a problem; cmp r1, [r5,#oBattleObject_PanelY] with beq -> neg XVelocity, str back: same-row
+    case reverses horizontal travel; mul r0,r3 with ExtraVars+4 stored to YVelocity and mov r0,#0 stored
+    to XVelocity: turns motion vertical at a fixed speed; Caller object_stepUpdateByVelocity dispatches
+    here per-frame based on the moving object''s XVelocity, matching a heading-change handler'
+  refs:
+  - bn6f/asm/asm31.s:56424
+  - 0x080D1EF2 object_stepUpdateByVelocity
+  - 0x080D200C sub_80D200C
+  reproduce: python3 tools/asmcat.py 0x080D1FA0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- exact meaning of r0 (target panel X vs a column limit) — caller argument setup would confirm
+- what sub_80D200C checks/returns (panel occupied, off-field, etc.)
+- which enemies/objects use ExtraVars+4 as vertical speed
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D1FA0 -> object_stepRedirectTowardTargetPanel
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D1FA0

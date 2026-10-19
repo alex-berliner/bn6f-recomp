@@ -1,0 +1,49 @@
+name: ai_attackCycleStrikes
+address: '0x080F3628'
+kind: function
+status: probable
+summary: AI attack routine that drives a spawned attack object through repeated 2→3 state cycles, decrementing
+  a repeat counter, then reports completion in HitElement
+interface: (r7 = AI attack vars struct; r0 unused input) -> r0 = result flags; writes oAIAttackVars_HitElement
+  (4 = another cycle, 0x20 = done) and object state byte +0xB
+details: 'Reads oAIAttackVars_AttackElement as a phase: 0 means start — the ScratchVar pointer is dereferenced
+  to an attack object, byte +9 must be 0 to proceed, then TimerOrCycles is copied into StepTimer, the
+  object''s state byte +0xB is set to 2, and AttackElement is set to 4. Phase 4 decrements StepTimer each
+  call; on timeout it sets the object''s state to 3, decrements AttackBoost2 (a repeat-count), and if
+  nonzero writes 4 to HitElement to schedule the next cycle, else 0x20 (attack finished). If the object
+  pointer is null at any check, the routine jumps straight to writing 0x20, i.e. aborts/completes. So
+  the attack loops ''cycles'' times, each cycle lasting TimerOrCycles frames, animating the spawned object
+  via state bytes 2 and 3.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: phase check `ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst; bne loc_80F3654` splits setup from
+    countdown; `strh r0,[r7,#oAIAttackVars_StepTimer]` from TimerOrCycles then `sub r0,#1; bgt` implements
+    a per-cycle frame delay; `strb r1,[r0,#0xb]` writes 2 then 3 to the pointed object's state byte, and
+    `ldrb r1,[r0,#9]` gates on the object; `ldrb r0,[r7,#oAIAttackVars_AttackBoost2]; sub r0,#1; tst;
+    beq` counts repeats and chooses HitElement 4 vs 0x20; null ScratchVar deref paths both fall through
+    to `strh r0(0x20),[r7,#oAIAttackVars_HitElement]`, the completion value
+  refs:
+  - bn6f/asm/asm31.s:127903
+  reproduce: python3 tools/asmcat.py 0x080F3628
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+coverage:
+- battlesweep
+open_questions:
+- which enemy/attack this routine belongs to (no callers or recorded route label beyond 'battlesweep')
+- exact meaning of object fields +9 and +0xB (likely alive-flag and animation/action state)
+- whether 0x20 in HitElement is a generic 'attack done' code shared by other AI attack routines
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F3628 -> ai_attackCycleStrikes
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F3628

@@ -1,0 +1,44 @@
+name: ai_dispatchAttackState
+address: '0x0811037C'
+kind: function
+status: probable
+summary: Calls the AI attack handler matching the enemy's current attack-state byte (charge / release
+  / end).
+interface: (r7 = AI attack vars struct) -> long-call to table handler, returns to caller; no return value
+  set
+details: 'Loads off_8110390, reads the byte at [r7,#oAIAttackVars_HitElement], and uses it as an index
+  into a 4-entry function-pointer table, then does mov lr,pc / bx r1 (ARM Thumb long-call) so the callee
+  returns back here. Table entries: ai_attackChargeStep, sub_8110416, ai_releaseChargedAttack, battle_endAttackWhenFrameFlagSet.
+  The field is clearly a small attack-state enum, not an element id — indices must stay within 0..3. It
+  acts as the state-machine step for enemy attack behavior during battle.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r7,#oAIAttackVars_HitElement]; ldr r1,[r1,r0] indexes a pointer table with the struct
+    byte; table off_8110390 has exactly 4 entries, all battle/AI attack routines (charge, release, end-on-frame-flag);
+    mov lr,pc / bx r1 / pop {pc} is a long-call, so it behaves as 'run the selected handler then return';
+    ai_attackChargeStep and ai_releaseChargedAttack names show a charge-state attack sequence
+  refs:
+  - bn6f/asm/asm32.s:5016
+  reproduce: python3 tools/asmcat.py 0x0811037C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+coverage:
+- battlesweep
+open_questions:
+- no known caller, so which AI routine invokes this per frame is unconfirmed
+- exact meaning of each state value (0..3) and of sub_8110416 within the sequence
+- whether the [r7] offset is really misnamed 'HitElement' or a different struct is passed via r7
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_811037C -> ai_dispatchAttackState
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811037C

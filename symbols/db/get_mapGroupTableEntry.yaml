@@ -1,0 +1,46 @@
+name: get_mapGroupTableEntry
+address: '0x080A755C'
+kind: function
+status: probable
+summary: Selects one of four lookup tables based on the current map group (with a sub-index when in map
+  group 0x81) and returns a pointer to the entry indexed by the caller's counter at +0x30.
+interface: (r5 = context object, field +0x30 = u32 entry index; reads GameState via r10) -> r0 = pointer
+  (table_base + 4*index); r4 clobbered, flags meaningless
+details: 'Reads oGameState_MapGroup from the GameState pointed to by the toolkit; if it equals 0x81 the
+  table index comes from GameState+5, otherwise it defaults to 3. That index (0-3) selects a word-sized
+  base pointer from off_80A7580 (byte_81414CC/154C/15F4/172C, each ~0x80-0x130 bytes apart, so per-map/variant
+  arrays). The entry pointer is base + 4*([r5+0x30]), i.e. r5+0x30 is a running index into the chosen
+  array. Quirk: r4 is pushed but never used.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'cmp r0,#0x81 / ldrb r3,[r3,#5] vs mov r3,#3: table index is map-group dependent; ldr r2,[r2,r3]
+    over off_80A7580 with 4 word entries: table-of-tables selection; add r0,r1,r2 with r1 = [r5+0x30]<<2:
+    returns base + 4*caller index; distinct tables at 81414CC..814172C spaced ~0x80-0x130: parallel per-map
+    data arrays'
+  refs:
+  - bn6f/asm/asm29.s:4469
+  - 0x080A7514 sub_80A7514
+  reproduce: python3 tools/asmcat.py 0x080A755C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+coverage:
+- beastsp
+open_questions:
+- what the byte arrays at 81414CC/154C/15F4/172C contain (dialogue ids? object ids?), which would reveal
+  the semantic purpose
+- what caller sub_80A7514 does with the returned pointer and what object r5 is
+- which map group 0x81 is and what GameState+5 enumerates inside it
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80A755C -> get_mapGroupTableEntry
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A755C

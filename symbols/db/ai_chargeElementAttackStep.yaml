@@ -1,0 +1,49 @@
+name: ai_chargeElementAttackStep
+address: '0x080F7E30'
+kind: function
+status: probable
+summary: Enemy AI attack state that starts a charge for element 4 (wood) with a per-difficulty delay,
+  then fires by setting hit element 0xC when the timer runs out.
+interface: (r7 = object's oAIAttackVars) -> void; no return value
+details: Uses r7 as a battle object's AI attack state struct. On entry, if AttackElement is 0 it stores
+  4 (wood) into AttackElement, indexes dword_80F7E64 by AiDifficultyTier (all four bytes are 6, so every
+  difficulty charges 6 frames) into StepTimer, and if the pointer in ScratchVar dereferences to non-null
+  sets byte 0xB of the pointed-to object to 1 (likely marking it/its target as charging or triggering
+  it). Once the element is set, subsequent calls just decrement StepTimer; when it reaches zero they write
+  0xC into HitElement, which a later step presumably consumes as the attack hit. Runs as one step of the
+  battle enemy-AI attack state machine (routes battlesweep/beastsp/chips).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/beq branch: element 0 -> strb #4 sets element
+    to 4 and loads charge time from tier table into StepTimer; dword_80F7E64 = 0x06060606: every AiDifficultyTier
+    yields a 6-frame StepTimer; ldr r0,[r7,#oAIAttackVars_ScratchVar]; ldr r0,[r0]; strb #1,[r0,#0xb]:
+    flags a pointer held in ScratchVar when non-null; loophalf: dec StepTimer, ''bgt'' exit, then strh
+    #0xc,[r7,#oAIAttackVars_HitElement] fires the attack; struct fields oAIAttackVars_* and the battle-AI
+    routes (battlesweep, beastsp) place it in the enemy attack step machine'
+  refs:
+  - bn6f/asm/asm31.s:137098
+  reproduce: python3 tools/asmcat.py 0x080F7E30
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- what element 4 and HitElement 0xC are consumed as downstream (exact attack id semantics)
+- what object ScratchVar points to and what its byte 0xB means
+- which enemy/AI controller calls this step — no caller captured
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F7E30 -> ai_chargeElementAttackStep
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F7E30

@@ -1,0 +1,51 @@
+name: ai_stepTargetedPanelAttack
+address: '0x08100D6A'
+kind: function
+status: probable
+summary: 'AI attack step routine: picks a target panel once, then fires on it repeatedly (5 times) on
+  a timer before reporting completion.'
+interface: (r7 = AI attack vars struct, r5 = battle object) -> updates oAIAttackVars fields; writes 0x14
+  to HitElement when the attack sequence ends
+details: State machine keyed on oAIAttackVars_AttackElement. On entry with AttackElement == 0 it sets
+  element 4, plays animation 7 on the object in r5, and calls sub_81011B2 to select a target; that callee
+  returns success flag in r0 with target panel X in r0 and Y in r1, which are stored into TargetPanelX/Y,
+  and the current TimerOrCycles is copied into StepTimer as the per-shot delay. While AttackElement is
+  nonzero it decrements StepTimer; on expiry it calls sub_8101204(TargetPanelX, TargetPanelY) to execute
+  one hit on the panel, increments SubStepIndex, and resets AttackElement to 0 to pick a (possibly new)
+  target for the next shot. After the 5th shot (SubStepIndex >= 5) it writes 0x14 (20) into oAIAttackVars_HitElement,
+  the shared 'result/next action' field the AI dispatcher reads. The element value 4 and animation 7 suggest
+  a specific enemy attack type rather than a generic helper.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/beq — AttackElement doubles as the step's state
+    flag; bl sub_81011B2 with r0/r1 stored to TargetPanelX/TargetPanelY — callee returns a target panel
+    coordinate pair; bl sub_8101204 called with TargetPanelX/Y after StepTimer counts down — the per-tick
+    hit on the chosen panel; SubStepIndex increment with cmp r0,#5; bge — exactly five shots per attack
+    use; mov r0,#0x14; strh r0,[r7,#oAIAttackVars_HitElement] — completion value written to the AI result
+    field
+  refs:
+  - bn6f/asm/asm31.s:155792
+  - 0x081011B2 sub_81011B2
+  - 0x08101204 sub_8101204
+  reproduce: python3 tools/asmcat.py 0x08100D6A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+coverage:
+- battlesweep
+open_questions:
+- What attack/element id 4 maps to and which enemy uses this step (sub_81011B2 and sub_8101204 are unnamed)
+- Whether sub_8101204 spawns a projectile, an object, or directly damages the panel
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8100D6A -> ai_stepTargetedPanelAttack
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8100D6A

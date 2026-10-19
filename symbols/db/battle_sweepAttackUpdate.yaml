@@ -1,0 +1,48 @@
+name: battle_sweepAttackUpdate
+address: '0x0810324E'
+kind: function
+status: probable
+summary: 'Per-tick update for the AI battlesweep attack: initializes its state, periodically highlights
+  the next panel to sweep, and signals the hit phase when the step timer expires.'
+interface: (r7 = AI attack vars struct, r5 = battle object) -> r0 = destroyed; updates oAIAttackVars fields
+  and object CurAnim
+details: On first run (AttackElement == 0) it sets AttackElement to 4, plays object animation 6 on the
+  battle object, copies TimerOrCycles into StepTimer and clears ChargeCycles. On subsequent ticks it increments
+  ChargeCycles and, when bit 3 of the counter is clear (i.e., during 8 of every 16 ticks), calls battle_highlightSweepPanel
+  with AttackBoost2 (the panel column/argument for the sweep highlight). Each tick it decrements StepTimer,
+  and when it reaches 0 it stores 0x10 into HitElement, which appears to be the state flag telling the
+  attack framework to apply the sweep's hit. Uses oAIAttackVars fields AttackElement, TimerOrCycles, StepTimer,
+  ChargeCycles, AttackBoost2, HitElement and oBattleObject_CurAnim.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne — one-time init branch sets element 4 and
+    anim 6 (asm lines 2-9); bl battle_highlightSweepPanel with r0 = AttackBoost2, gated by lsr r0,#3 /
+    bcs — periodic panel highlight every other 8-tick window; sub r0,#1 on StepTimer; on zero stores 0x10
+    into HitElement, the attack-hit handoff value; callee battle_highlightSweepPanel is documented as
+    the battlesweep panel highlighter, confirming the attack identity
+  refs:
+  - bn6f/asm/asm31.s:160692
+  - 0x081039D8 battle_highlightSweepPanel
+  reproduce: python3 tools/asmcat.py 0x0810324E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+coverage:
+- battlesweep
+open_questions:
+- Exact meaning of AttackElement value 4 and HitElement 0x10 (element IDs vs phase flags) would be confirmed
+  by the attack framework's consumer of HitElement
+- Whether AttackBoost2 is a column index or a boost-modified value for highlightSweepPanel
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810324E -> battle_sweepAttackUpdate
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810324E

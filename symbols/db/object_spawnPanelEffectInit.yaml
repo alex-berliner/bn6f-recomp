@@ -1,0 +1,51 @@
+name: object_spawnPanelEffectInit
+address: '0x080C5A58'
+kind: function
+status: probable
+summary: 'Late half of a battle-object spawner: validates the panel, loads a sprite and collision data,
+  then hands the object to its update state.'
+interface: (r5 = battle object header, carried over from caller) -> r0 = destroyed; spawns object on current
+  panel or frees it
+details: Uses r5 (set by the preceding code — callers unknown, so this is likely a branch/fallthrough
+  target inside a larger spawn routine). If object_isCurrentPanelValid fails it calls object_freeMemory
+  and exits. Otherwise it loads sprite resource (0x80,0x10,0x24), clears the shadow, sets object flag
+  bit 1, resets both animation fields to 0 and reloads animation/palette 0, then sets Param1 += 0x28 and
+  Timer to that value (a frame lifetime/counter). It positions the object one unit above its panel (Y
+  -= 0xffff0000 fixed-point, Z = -1.0) via object_setCoordinatesFromPanels, allocates a collision slot,
+  and on failure frees the object. On success it configures the collision box to 0x48 x 0x2a with power
+  1, sets hit effect 1, clears the collision region, refreshes collision state, switches CurStateActionPhaseAndPhaseInitialized
+  to CUR_STATE_UPDATE, and calls sub_80C5AD4 (the object's update handler).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'tst r0,r0 / beq loc_80C5AAC with object_freeMemory: aborts spawn if panel invalid or collision
+    slot unavailable; sprite_load(0x80,0x10,0x24) + sprite_setAnimation(0) + sprite_loadAnimationData:
+    gives the new object its graphic; Param1+0x28 stored to both Param1 and Timer: countdown-style lifetime
+    field; object_setupCollisionData(0x48,0x2a,1) + object_setCollisionHitEffect(1): attack box with damage/effect;
+    str CUR_STATE_UPDATE to oBattleObject_CurStateActionPhaseAndPhaseInitialized then bl sub_80C5AD4:
+    hands control to the update phase'
+  refs:
+  - bn6f/asm/asm31.s:29696
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x08019892 object_createCollisionData
+  - 0x08003458 object_freeMemory
+  reproduce: python3 tools/asmcat.py 0x080C5A58
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+open_questions:
+- which sprite resource (0x80/0x10/0x24) this is, i.e. what visible object it spawns
+- what sub_80C5AD4 (the update state) does, to identify the object's behavior
+- the original caller that sets r5, to confirm the spawn context and full interface
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80C5A58 -> object_spawnPanelEffectInit
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C5A58

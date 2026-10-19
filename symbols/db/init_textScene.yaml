@@ -1,0 +1,53 @@
+name: init_textScene
+address: '0x080395E4'
+kind: function
+status: probable
+summary: 'Initializes a dialog/text-driven scene: resets graphics and render info, loads palette slot
+  0x11, starts music 0x22, sets up the chatbox and text-script buffer, and writes an initial scene-state
+  byte (8 or 0x10).'
+interface: () -> (); stores state byte and 0 via a pointer returned in r5 by a callee; no return value
+  in r0
+details: Starts with sub_803FA42 and chatbox_8040818, then sets the frame's LCD control to 0x40 and clears
+  the render-info counters so the frame render list rebuilds from scratch. resetAllGraphicsState_8005F40
+  wipes VRAM/WRAM/palettes and installs dummy BG scroll callbacks, and toolkit_applyOverlayPalette_80015FC
+  copies overlay palette slot 0x11 from ROM. copyData_803B216/sub_803BEC0/sub_803BA28 build the text-script
+  command buffer from a static word-index table, and music_80005F2 starts background music 0x22. sub_803C3E0
+  is called with arguments in r6/r7 (8,0); if it returns non-equal, r6 becomes 0x10, and the resulting
+  byte pair is stored through r5, which is never assigned in this function — so a callee (most plausibly
+  sub_803C3E0) must return the destination struct pointer in r5.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl SetRenderInfoLCDControl with 0x40 followed by renderInfo_8001788/80017A0 resets display state
+    for a fresh scene; bl resetAllGraphicsState_8005F40 and toolkit_applyOverlayPalette_80015FC(0x11)
+    are classic scene-init graphics setup; bl music_80005F2 with 0x22 selects the scene's background track;
+    bl sub_803BEC0 expands a text-script word table into per-byte command records, matching chatbox_8040818
+    earlier; strb r6/r7,[r5] with r6=8 or 0x10 chosen by the sub_803C3E0 comparison writes a scene-state
+    selector, r5 sourced from a callee
+  refs:
+  - bn6f/asm/asm03_1_1.s:1349
+  - 0x08001778 SetRenderInfoLCDControl
+  - 0x08001788 renderInfo_8001788
+  - 0x080017A0 renderInfo_80017A0
+  reproduce: python3 tools/asmcat.py 0x080395E4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+open_questions:
+- Which scene/menu this initializes — no callers known and callee summaries for sub_803FA42, copyData_803B216,
+  sub_803BA28, sub_803C3E0 are missing
+- Which callee produces r5 (presumably sub_803C3E0) and what struct the state bytes 8/0x10 are written
+  into
+- Meaning of the 8 vs 0x10 selection and of music id 0x22
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80395E4 -> init_textScene
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80395E4

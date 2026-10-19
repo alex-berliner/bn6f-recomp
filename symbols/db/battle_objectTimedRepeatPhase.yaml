@@ -1,0 +1,46 @@
+name: battle_objectTimedRepeatPhase
+address: '0x080C7A20'
+kind: function
+status: probable
+summary: 'Battle object phase-4 handler: on entry sets phase 4 and an 18-frame timer, then every 18 frames
+  performs an action (sub_80C7BCC) until it has run Param2 times, then destroys the object.'
+interface: (r5 = battle object ptr, reads oBattleObject_CurPhase/Timer/Param2/Param3) -> mutates object
+  fields; sets object state to CUR_STATE_DESTROY when done
+details: 'This is a per-object battle state routine dispatched on r5. When CurPhase is 0 it initializes:
+  sets CurPhase to 4 and Timer to 0x12 (18 frames). Afterwards it decrements Timer each tick; when it
+  hits -1 it calls sub_80C7BCC (the repeated action), increments Param3 (a counter of times performed),
+  and reloads Timer with 0x12. Once Param3 >= Param2 (target count in Param2) it stops repeating and writes
+  CUR_STATE_DESTROY to oBattleObject_CurStateActionPhaseAndPhaseInitialized so the object is torn down.
+  So the object performs the same action Param2 times at 18-frame intervals after entering this phase.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'loc entry: ldrb CurPhase; tst; phase 0 => strb #4 to CurPhase and strh #0x12 to Timer (phase
+    init); tick: ldrh Timer; sub #1; strh; bge skip — countdown gate for the repeated action; repeat body:
+    bl sub_80C7BCC; ldrb Param3; add #1; strb; reload Timer #0x12; exit: ldrb Param3 vs ldrb Param2; cmp;
+    bge; mov #CUR_STATE_DESTROY; str to oBattleObject_CurStateActionPhaseAndPhaseInitialized'
+  refs:
+  - bn6f/asm/asm31.s:34025
+  - 0x080C7BCC sub_80C7BCC
+  reproduce: python3 tools/asmcat.py 0x080C7A20
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+coverage:
+- battlesweep
+open_questions:
+- What sub_80C7BCC actually performs (attack, spawn, movement?) is unknown — no callees known below it,
+  so the game-specific meaning of the repeated action and which object type uses Param2/Param3 this way
+  is unidentified
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80C7A20 -> battle_objectTimedRepeatPhase
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C7A20

@@ -1,0 +1,52 @@
+name: battle_initParentLinkedEnemy
+address: '0x080D25F8'
+kind: function
+status: probable
+summary: Initialization routine for a battle enemy that inherits its damage-disable state from a parent
+  object, sets up its sprite, collision region, HP, and spawns a companion type-4 object.
+interface: (r5 = battle object header, freshly spawned) -> r0 = 0 on success; on collision-slot allocation
+  failure the object is freed and the function returns via object_freeMemory
+details: Positions the object from panel coordinates, loads sprite (gfx 0x80, sheet 8, palette 0xf), sets
+  Flags bit 1 (likely visible/shadow-related), selects animation 0xd, palette 0, and applies the object's
+  effective flip. It copies the DamageAndStaminaDamageCounterDisabler word from RelatedObject1Ptr into
+  itself, making it share the parent's invulnerability/counter-disable state. It then allocates a collision-data
+  slot; if none is free it calls sub_80D2A58 and frees itself. On success it sets up a collision region
+  0x29 at (0x14, 3) with hit effect 6, clears its collision region, loads HP/MaxHP from the byte_80D25CC
+  table indexed by Param1*2, spawns child object type 4 id 0x47 into ExtraVars+0x1c, zeroes RelatedObject2Ptr,
+  and advances its state machine to CUR_STATE_UPDATE.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldr r0,[r5,#oBattleObject_RelatedObject1Ptr]; ldr/str of DamageAndStaminaDamageCounterDisabler
+    copies the parent's damage-disable state to this object; ldrb r0,[r5,#oBattleObject_Param1]; lsl r0,#1;
+    ldrh from byte_80D25CC stores both HP and MaxHP, i.e. a per-variant HP table; beq loc_80D2676 path
+    calls object_freeMemory after object_createCollisionData returns 0, a typical battle-object init failure
+    path; battle_spawnType4Obj71 result stored in ExtraVars+0x1c shows this object owns a spawned companion
+    object; mov r0,#CUR_STATE_UPDATE stored to CurStateActionPhaseAndPhaseInitialized ends init and hands
+    control to the per-frame state handler
+  refs:
+  - bn6f/asm/asm31.s:57276
+  - 0x080E5B62 battle_spawnType4Obj71
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x08019892 object_createCollisionData
+  reproduce: python3 tools/asmcat.py 0x080D25F8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+open_questions:
+- Which enemy/boss this init belongs to (sprite id 0x80, anim 0xd, collision region 0x29) — needs identification
+  from the sprite data or callers
+- What the spawned child object 0x47 is and its role relative to this object
+- What the HP table at byte_80D25CC encodes (difficulty/rank variants?) and what Param1 selects
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D25F8 -> battle_initParentLinkedEnemy
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D25F8

@@ -1,0 +1,46 @@
+name: calcDistSqToPoint
+address: '0x0811438E'
+kind: function
+status: probable
+summary: Returns the squared distance from an (x,y) argument pair to the (x,y) point stored in the struct
+  pointed to by r3.
+interface: (r0 = x, r1 = y, r3 = ptr to {s32 x; s32 y} point) -> r0 = ([r3]-x)^2 + ([r3+4]-y)^2; flags
+  from final add
+details: Loads two s32 fields from the struct at r3 (offsets 0 and 4, i.e. an x/y point pair), subtracts
+  the r0/r1 arguments from them, squares each difference with mul rX,rX, sums the squares, and returns
+  the result in r0 without touching lr (it never pushes, just mov pc,lr). No memory is written and no
+  callees are used; it is a pure helper. The result is a squared distance, so callers presumably compare
+  it against thresholds or other distances to avoid an isr/sqrt. Nothing here reveals which subsystem's
+  point struct r3 points to; the only known caller sub_8114316 is itself unnamed, and the route is only
+  'battlesweep'.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sub r0,r2,r0 / mul r0,r2 with r2=[r3] computes ([r3]-r0)^2 (dx squared); sub r1,r2,r1 / mul
+    r1,r2 with r2=[r3,#4] computes ([r3+4]-r1)^2 (dy squared); add r0,r0,r1 then mov pc,lr: pure sum-of-squares
+    return, no other state touched; only caller is sub_8114316 (unnamed), so the consuming subsystem/struct
+    is not visible here'
+  refs:
+  - bn6f/asm/asm32.s:12980
+  - 0x08114316 sub_8114316
+  reproduce: python3 tools/asmcat.py 0x0811438E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+coverage:
+- battlesweep
+open_questions:
+- what struct r3 points to (x/y pair of what object?)
+- how sub_8114316 uses the result (nearest-target pick, range check, etc.)
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_811438E -> calcDistSqToPoint
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811438E

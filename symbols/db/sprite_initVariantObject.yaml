@@ -1,0 +1,48 @@
+name: sprite_initVariantObject
+address: '0x08117424'
+kind: function
+status: probable
+summary: Initializes an entity's sprite display for one of several variants, using byte [r5+5] to pick
+  both a palette bank and a tile-slot offset.
+interface: () -> void; uses r5 as the entity/object work pointer, no args or return value
+details: 'Sets the entity''s state byte [r5] to 0x23, calls loc_8002774 with 0xc (likely loading sprite
+  resource 12 into the object), then configures the sprite: animation 0 with data loaded, no shadow, scalable
+  sprite at scale 0x80x0x80. The variant byte [r5+5] is added to 5 for the palette bank and also scaled
+  (<<4, plus base 0x200) as the halfword written by slotList_storeHalfwordAndClearField, so each variant
+  occupies its own 16-tile slot starting at tile 0x200. It then fixes priority 3, a sub-record field to
+  0, coordinates (0,0), stores 4 at [r5+8], and finishes by calling two local setup routines sub_81175AC
+  and sub_8117488.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: strb 0x23 to [r5] and strb 4 to [r5,#8] show it initializes an entity's state/work fields; ldrb
+    [r5,#5] feeds both sprite_setSubEntryPaletteBank_800304A (r0=5+variant) and the 0x200+variant<<16-slot
+    halfword, tying one index to palette and tile placement; sequence sprite_setAnimation/loadAnimationData/noShadow/makeScalable/setScaleParameters(0x80,0x80)
+    is a standard sprite display setup block; sprite_setPriority 3, sprite_setCoordinates(0,0) finish
+    the renderable's default placement; calls sub_81175AC and sub_8117488 as further entity-local setup,
+    so this is a composite init not just a sprite setter
+  refs:
+  - bn6f/asm/asm32.s:18779
+  - 0x0800306C slotList_storeHalfwordAndClearField_800306C
+  - 0x080026A4 sprite_loadAnimationData
+  - 0x08002D14 sprite_makeScalable
+  reproduce: python3 tools/asmcat.py 0x08117424
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+open_questions:
+- what sprite resource 0xc passed to loc_8002774 is and what that callee does
+- what sub_81175AC and sub_8117488 do (likely more entity setup)
+- no known caller, so the scene and the meaning of the variant byte [r5+5] (which icon/NPC set) are unconfirmed
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8117424 -> sprite_initVariantObject
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8117424

@@ -1,0 +1,53 @@
+name: battle_objectPanelEmergeStep
+address: '0x0802DACC'
+kind: function
+status: probable
+summary: Per-frame state step that plays an object's one-shot emerge-from-panel setup (white flash, panel
+  reserve, flip, effects, sound) and then counts down a 10-frame timer before advancing the state machine.
+interface: (r5 = battle object, r7 = state/work struct; r0-r3 clobbered) -> r0 clobbered; sets [r7,#0]=4
+  when the 10-frame timer [r7,#0x10] expires
+details: 'Runs as a two-phase state: if [r7,#1] is set it only decrements the halfword timer at [r7,#0x10]
+  and writes state 4 to [r7,#0] on expiry; otherwise it performs the emerge setup once. The setup flashes
+  the sprite white, sets battle flag 4, copies panel coords from [r5+0x14/0x15] into [r5+0x12/0x13], removes
+  then re-reserves the object''s panel, recomputes collision panels and sprite coordinates, stores battle_checkEmergeDirectionFlip''s
+  result in [r5+0x17], refreshes sprite/arm, clears object flags 0x1c41 and flags2 bit 0x10, sets animation
+  2, spawns three effect objects using the triple at [r5+0x34..0x3c] (zeroing [r5+0x3c] first), zeroes
+  [r5+0x4c] and fields 0x5c/0x68 of the object at [r5+0x58], plays sound effect 0x6C, then arms the timer
+  (10) and substate flag.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl battle_checkEmergeDirectionFlip ... strb r0,[r5,#0x17] — the callee is documented as the
+    panel-landing/emerge animation DirectionFlip, stored into an object field; object_removePanelReserve
+    / object_reservePanel / object_setCoordinatesFromPanels / object_updateCollisionPanels cluster re-places
+    the object on its panel, matching an emerge landing; bl sprite_forceWhitePalette + PlaySoundEffect(0x6c)
+    + three spawn_t1_0x0_EffectObject calls from [r5+0x34..] = one-shot emerge presentation; strh 0xa,[r7,#0x10];
+    strb 4,[r7,#1] then loc_802DB4A decrements [r7,#0x10] and writes 4 to [r7,#0] at 0 — a timed substate
+    that hands off to state 4; ldrb r0,[r7,#1]; bne loc_802DB4A gates the whole setup so it executes exactly
+    once for the emerge
+  refs:
+  - bn6f/asm/asm03_0.s:16320
+  - 0x080005CC PlaySoundEffect
+  - 0x0800F2C6 battleObject_refreshSpriteAndArm_800F2C6
+  - 0x0800F46C battle_checkEmergeDirectionFlip
+  reproduce: python3 tools/asmcat.py 0x0802DACC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+open_questions:
+- No caller is known, so the identity of the emerging object (enemy type/obstacle) and the meaning of
+  state 4 in its state machine are unconfirmed
+- Exact meaning of the [r5+0x12/0x13] vs [r5+0x14/0x15] panel-coordinate field pairs and the struct at
+  [r5+0x58] fields 0x5c/0x68 is inferred only from usage
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_802DACC -> battle_objectPanelEmergeStep
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802DACC

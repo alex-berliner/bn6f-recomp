@@ -1,0 +1,56 @@
+name: battle_recoverToPanelPhase
+address: '0x08017688'
+kind: function
+status: probable
+summary: Battle-object phase handler that resets a stunned/pulled object and snaps it onto its reserved
+  panel, then waits until it is freed before returning to its normal action.
+interface: (r5 = battle object pointer, no register args) -> r0 = scratch; writes oBattleObject_PhaseInitialized,
+  PanelX/Y, Z, CurAnim, CurAction, CurPhaseAndPhaseInitialized and many object/AI flag bits
+details: 'On the first tick (PhaseInitialized == 0) it performs a one-time reset: sets ObjectFlags1 bit
+  0x400000, clears flags 0x41 and the flashing-invisible timer, resets collision state and invulnerable
+  time, plays SFX 0x18 (0x19-1), clears AIData Unk_48 mask 0x20005F and the PwrAtk charged state, then
+  copies FuturePanelX/Y into PanelX/Y, removes the panel reservation, recomputes coordinates and collision
+  panels, zeroes Z and the RelatedObject1/TempAttackObject pointers, sets CurAnim 2 (mirror via object_getFlip/sprite_setFlip),
+  and saturating-adds 1 (cap 3) to Alliance. It then stores PhaseInitialized = 4 and switches to polling:
+  each frame, if any joypad button is pressed in the object''s AIData it decrements the halfword at CollisionData+0x2A,
+  and when that counter reaches 0 it clears ObjectFlags1 0x10000. Once flag 0x10000 is clear the handler
+  cleans up (AIData Unk_44 mask 0x1000003F, flag 0x400000), restores CurAnim 0 and sets CurAction = 8
+  with CurPhase/PhaseInitialized = 0, handing the object back to its normal routine.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'init block gated by ldrb [r5,#oBattleObject_PhaseInitialized]/bne 8017708, ending with strb
+    #4 into PhaseInitialized; ldrb FuturePanelX/Y -> strb PanelX/Y followed by object_removePanelReserve,
+    object_setCoordinatesFromPanels, object_updateCollisionPanels and Z = 0; JoypadPressed test decrements
+    ldrsh [CollisionDataPtr,#0x2A] and clears flag 0x10000 when it hits 0; exit path tests flag 0x10000
+    (tst 1<<16) and only then clears 0x1000003F/0x400000 and sets CurAction=8, CurPhase=0; PlaySoundEffect(0x18)
+    via mov r0,#0x19; add r0,#0xff'
+  refs:
+  - bn6f/asm/asm00_2.s:19424
+  - 0x08103E12 sub_8103E12
+  - 0x08105630 sub_8105630
+  - 0x0800FFEE ClearAIData_Unk_44_Flag
+  - 0x080005CC PlaySoundEffect
+  - 0x08012EA8 battleObject_clearPwrAtkState_8012EA8
+  reproduce: python3 tools/asmcat.py 0x08017688
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+open_questions:
+- what callers 0x8103E12 and 0x8105630 are (which move/attack/effect sets this phase), to name the state
+  precisely
+- exact meaning of ObjectFlags1 0x10000/0x400000 and AIData masks 0x20005F / 0x1000003F
+- what collision field +0x2A counts (held/bound timer?) and which game mechanic the mash-to-clear counter
+  serves
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8017688 -> battle_recoverToPanelPhase
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8017688

@@ -1,0 +1,46 @@
+name: ai_sweepAttackDispatch
+address: '0x0811121C'
+kind: function
+status: probable
+summary: 'Dispatcher for the battlesweep AI attack: jumps to the next attack step based on the AI attack
+  vars'' HitElement state byte.'
+interface: (r7 = AI attack vars struct) -> r0 = HitElement value passed to selected handler; returns to
+  caller after handler via pop
+details: Reads the byte at r7+oAIAttackVars_HitElement and uses it as an index into a three-entry jump
+  table at off_8111230. Entry 0 calls ai_sweepPanelHighlightStep, entry 1 calls sub_811128C, entry 2 calls
+  genericAI_exitAttackStateAffterDelay_81097B4. The mov lr,pc / bx r1 idiom is just a Thumb long-call,
+  so each handler returns into the pop; control never comes back to this function otherwise. The HitElement
+  field is thus being reused as an attack-phase selector for the sweep attack sequence rather than a true
+  element. No argument setup is done besides carrying r0 through, so handlers expect the state in r0 and
+  their context elsewhere.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_HitElement]; ldr r1,[r1,r0] — indexed dispatch on the attack-vars
+    HitElement byte; Jump table words: ai_sweepPanelHighlightStep+1, sub_811128C+1, genericAI_exitAttackStateAffterDelay_81097B4+1;
+    mov lr,pc / bx r1 / pop {r4-r7,pc} — tail-dispatch pattern, not a real call chain; Recorded route
+    ''battlesweep'' plus ai_sweepPanelHighlightStep callee ties it to the sweep attack AI'
+  refs:
+  - bn6f/asm/asm32.s:6797
+  reproduce: python3 tools/asmcat.py 0x0811121C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+coverage:
+- battlesweep
+open_questions:
+- No caller is known, so what writes the phase value into oAIAttackVars_HitElement before this dispatch
+  is unclear
+- Purpose of the middle handler sub_811128C is unknown
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_811121C -> ai_sweepAttackDispatch
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811121C

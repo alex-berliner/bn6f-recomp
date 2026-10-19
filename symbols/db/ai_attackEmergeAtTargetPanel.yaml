@@ -1,0 +1,55 @@
+name: ai_attackEmergeAtTargetPanel
+address: '0x0801562C'
+kind: function
+status: probable
+summary: Enemy AI attack step that makes the object emerge/warp onto its reserved target panel (white-flash,
+  sound, effect), then waits ~30 frames before releasing AI flags and leaving the attack state.
+interface: (r5 = battle object, r7 = AI attack vars context) -> void; sets r0 result of battle_checkEmergeDirectionFlip
+  into oBattleObject_DirectionFlip
+details: On first entry (oAIAttackVars_AttackElement == 0) it flags RelatedObject2Ptr with bits 0x14,
+  derives a phase value (1, or 2 when PendingStateAction is 4/6/7) into the element byte, plays SFX 0x8E,
+  copies FuturePanelX/Y into PanelX/Y, removes the panel reserve and recomputes coordinates/collision
+  panels. It sets the emerge direction flip, refreshes sprite/arm, spawns effect object 3 from the object's
+  +0x34 data with flag bit 2 set, clears object flags, zeroes AIType, and writes byte 0x2C of the NaviStats
+  (alliance-aware) to 0. It then loads sprite resource 0x80 and animation data, applies the current animation
+  (skipping the generic object_setAnimation when phase==2), forces the white palette (spawn flash), and
+  starts the turn-open process; it also negates the AI forward-step delta for a custom gauge-bar animation
+  and clears RelatedObject1Ptr/AIData TempAttackObjectPtr/TargetObjectPtr, sets NameID to 0x1A0, and arms
+  a 30-frame StepTimer. On subsequent frames it only decrements the timer; when it expires it clears AIData
+  flag masks 0x1000863D and 0x200900 and either exits the attack state (phase != 2) or promotes PendingStateAction
+  into CurStateActionPhaseAndPhaseInitialized and zeroes it (phase == 2).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: copies oBattleObject_FuturePanelX/Y to PanelX/Y then calls object_removePanelReserve + object_setCoordinatesFromPanels
+    + object_updateCollisionPanels; PlaySoundEffect(0x8e) and spawn_t1_0x0_EffectObject with oObjectHeader_Flags
+    |= 4 right after battle_checkEmergeDirectionFlip; sprite_forceWhitePalette twice and sprite_load(0x80)
+    + sprite_loadAnimationData match a spawn/emerge flash; oAIAttackVars_StepTimer = 0x1e and tail loop
+    decrements it, then ClearAIData_Unk_44_Flag(0x1000863d) / ClearAIDataUnk0x48Flag(0x200900) and object_exitAttackState;
+    phase dispatch on oBattleObject_PendingStateAction values 4/6/7 stored via oAIAttackVars_AttackElement
+    reused as phase counter
+  refs:
+  - bn6f/asm/asm00_2.s:15176
+  - 0x0800FFEE ClearAIData_Unk_44_Flag
+  - 0x08013774 GetBattleNaviStatsByte_AllianceFromBattleObject
+  - 0x080005CC PlaySoundEffect
+  reproduce: python3 tools/asmcat.py 0x0801562C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+open_questions:
+- exact caller (AI attack dispatch table) to confirm which navi/boss uses this and what effect id 3 is
+- meaning of the phase==2 path (PendingStateAction 4/6/7 mapping) and what sub_80158CC / sub_8011384 /
+  sub_8011268 do
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_801562C -> ai_attackEmergeAtTargetPanel
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_801562C

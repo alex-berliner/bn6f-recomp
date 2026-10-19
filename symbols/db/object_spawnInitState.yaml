@@ -1,0 +1,48 @@
+name: object_spawnInitState
+address: '0x080D0DAC'
+kind: function
+status: probable
+summary: State-entry handler that fully initializes a battle object's position, sprite/animation, and
+  collision box, then hands control to the normal update state.
+interface: (r5 = battle object) -> void; on collision-slot allocation failure frees the object instead
+details: Runs as a battle-object state routine (r5 = current object). It snaps the object to its panel
+  coordinates, sets Z to 0xFF, loads sprite sheet 0x80 with 0x14x0x14 cell size, disables its shadow,
+  sets object Flags bit 1, and starts animation 0 (loading its data and selecting palette 0 with flip
+  from object_getFlip). It then allocates a collision slot via object_createCollisionData; if that fails
+  it frees the object entirely (object_freeMemory) and returns. Otherwise it configures the collision
+  box (0xA, 5, 3 — likely half-extents/offsets), sets hit effect 3, clears the collision region, refreshes
+  collision presence for this frame, and stores CUR_STATE_UPDATE into CurStateActionPhaseAndPhaseInitialized
+  so the object proceeds to normal updating.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_setCoordinatesFromPanels + strh 0xFF to oBattleObject_Z16 positions the object on
+    its panel at the top Z layer; mov r0,#0x80 / r1=r2=#0x14 then bl sprite_load and sprite_noShadow set
+    up the sprite sheet without a shadow; bl object_createCollisionData / tst r0,r0 / bne → bl object_freeMemory
+    shows the failure path frees the object; mov r1,#0xa / r2,#5 / r3,#3 before object_setupCollisionData
+    defines the collision box; str CUR_STATE_UPDATE to oBattleObject_CurStateActionPhaseAndPhaseInitialized
+    transitions to the update phase
+  refs:
+  - bn6f/asm/asm31.s:53990
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x08019892 object_createCollisionData
+  - 0x08003458 object_freeMemory
+  reproduce: python3 tools/asmcat.py 0x080D0DAC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+open_questions:
+- Which specific object/entity uses this state handler (no caller found), and what sprite sheet 0x80 depicts
+- Exact meaning of the collision-setup parameters (0xA, 5, 3) and hit effect 3
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D0DAC -> object_spawnInitState
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D0DAC

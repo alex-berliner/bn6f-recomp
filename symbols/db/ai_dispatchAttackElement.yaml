@@ -1,0 +1,46 @@
+name: ai_dispatchAttackElement
+address: '0x080F7C5E'
+kind: function
+status: probable
+summary: Dispatches to the AI enemy's attack routine selected by the current attack element
+interface: (r7 = AI attack vars struct, element in [r7,#oAIAttackVars_HitElement]) -> tail-jumps to element
+  handler, never returns here
+details: 'Reads the element byte at oAIAttackVars_HitElement from the AI attack vars in r7, indexes the
+  7-entry table at off_80F7C70 (elements: normal, fire, aqua, elec, wood plus two more slots), and performs
+  mov lr, pc / bx r1 so the chosen handler returns straight to this function''s caller (a computed jump,
+  not a call). Targets include ai_chooseAttackPanel, sub_80F7CF0, sub_80F7D1C, sub_80F7D34, sub_80F7DBA,
+  sub_80F7E30 and ai_updateTimedAttack. Element 0 maps to ai_chooseAttackPanel and element 6 to ai_updateTimedAttack,
+  so the table order likely follows the game''s element enum. It only exists to share the single ldrb/index/branch
+  prologue across all element attack behaviors.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_HitElement] indexes a jump table — selection is by element; off_80F7C70
+    holds seven code pointers, first = ai_chooseAttackPanel, last = ai_updateTimedAttack; mov lr,pc /
+    bx r1 is a tail-jump: handlers continue in the caller''s context; recorded routes battlesweep/beastsp/chips
+    run it during AI-controlled enemy attacks'
+  refs:
+  - bn6f/asm/asm31.s:136846
+  reproduce: python3 tools/asmcat.py 0x080F7C5E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- exact element enum order for slots 1-5 (fire/aqua/elec/wood and the 7th entry)
+- what the unnamed handlers sub_80F7CF0..sub_80F7E30 do per element
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F7C5E -> ai_dispatchAttackElement
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F7C5E

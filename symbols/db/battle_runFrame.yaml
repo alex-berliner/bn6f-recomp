@@ -1,0 +1,48 @@
+name: battle_runFrame
+address: '0x08007E62'
+kind: function
+status: probable
+summary: 'Per-frame battle main routine: dispatches the current battle state''s handler, then runs the
+  common sprite/panel/OAM render pipeline.'
+interface: (r5 = * BattleState) -> r0 = clobbered; sets byte at eStruct203F7D8+1 to 2
+details: 'Reads BattleState field oBattleState_Index_01 as an index into a 3-entry jump table (off_8007EAC:
+  sub_8007EB8/F14/F2C) and tail-calls the selected state handler with LR=PC. On return it executes the
+  fixed per-frame tail: sprite_setRenderFlushState, sprite_resetPaletteCount, project+queue all object
+  sprites, render object sprites, update sprites, update panels, run flagged callbacks, refresh the custom
+  gauge from AI, reset palette slot 0, gameMode_switchToMode2, finish the queued sprite group (recording
+  palette count into slot 5 of byte_200F389), and drain the OAM queue. Finally it stores 2 into eStruct203F7D8+1,
+  likely a frame/phase flag consumed elsewhere.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#oBattleState_Index_01]; ldr r1,[r1,r0]; bx r1 — indexes jump table off_8007EAC
+    by the battle state byte; Callee chain battleObject_projectAndQueueSprites_8003E18 -> battle_renderObjectSprites_8004218
+    -> battle_queueAllOamEntries_8009FCC is the standard per-frame battle render pass; mov lr, pc; bx
+    r1 — long-bl branch keeps lr as return into the common tail, so the table entries are state handlers;
+    Final strb r0(=2),[r1,#1] to eStruct203F7D8+1 marks the frame as completed for an outside watcher;
+    battle_updateCustGaugeFromAI_802E156 and updateBattlePanels_800C5E0 in the tail are per-frame battle
+    screen upkeep, confirming main-loop context
+  refs:
+  - bn6f/asm/asm00_1.s:10758
+  - 0x080049B0 battleObject_finishQueuedSpriteGroup_80049B0
+  - 0x08003E18 battleObject_projectAndQueueSprites_8003E18
+  - 0x08009FCC battle_queueAllOamEntries_8009FCC
+  reproduce: python3 tools/asmcat.py 0x08007E62
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+open_questions:
+- What sub_8007EB8/F14/F2C do (the three state handlers) and the exact meaning of the eStruct203F7D8+1
+  = 2 store and of BattleState index values 0-2
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8007E62 -> battle_runFrame
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8007E62

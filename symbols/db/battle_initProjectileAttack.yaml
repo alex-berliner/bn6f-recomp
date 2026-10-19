@@ -1,0 +1,52 @@
+name: battle_initProjectileAttack
+address: '0x080D7420'
+kind: function
+status: probable
+summary: 'First-state routine for a battle attack object: loads its sprite on the current panel, sets
+  a table-driven velocity toward the enemy side, computes how long it should fly, plays a sound, and hands
+  control to the update state.'
+interface: (r5 = battle object) -> r0 = destroyed?(never read); sets oBattleObject velocities, Timer,
+  CurState
+details: Converts panel position to pixel coordinates, then tries to load sprite 0x6050300 or 0x6050100
+  (chosen by Param3) plus collision data; if the panel is invalid or the load fails, it spawns an effect
+  object at oBattleObject+0x34 and frees itself via object_freeMemory. On success it sets flag bit1, applies
+  palette Param1 via sprite_setPalette, and takes YVelocity from word table byte_80D74D4[Param2] (0xC0000),
+  XVelocity = YVelocity * object_getFrontDirection(), nudging X by 2*facing. It requests hit-effect 0xA
+  and computes Timer = (0x280000*dist - 2*YVelocity)/YVelocity + 1 via SWI div, where dist is 3 by default
+  or, when Param4 != 0, the panel distance from the opposite side's back column (7*(alliance^1) - PanelX)
+  — i.e. it flies a fixed panel distance at its current speed. Finally it plays SFX 0x120, sets CurState
+  = CUR_STATE_UPDATE, and calls sub_80D74DC.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sprite loaded with VRAM 0x6050300 vs 0x6050100 selected by ldrb [r5,#oBattleObject_Param3]
+    (loc_80D743A); failure path: bl spawn_t1_0x0_EffectObject then bl object_freeMemory (loc_80D7442);
+    ldr r1,[r1,r2] from byte_80D74D4 with r2=Param2<<2, then mul r1,r0 with object_getFrontDirection sets
+    X/Y velocity; svc 6 (divide) computes Timer from 0x280000*panelDistance - 2*YVelocity, a distance-over-speed
+    flight time; PlaySoundEffect(0x21+0xff=0x120) and strb CUR_STATE_UPDATE to oBattleObject_CurState
+    before sub_80D74DC'
+  refs:
+  - bn6f/asm/asm31.s:67743
+  - 0x080005CC PlaySoundEffect
+  - 0x08011504 battleObject_initSpriteAndCollision_8011504
+  - 0x08003458 object_freeMemory
+  reproduce: python3 tools/asmcat.py 0x080D7420
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+open_questions:
+- No caller is known, so which attack/object in the game uses this routine is unidentified
+- Effect ID and behavior of spawn_t1_0x0_EffectObject call and of sub_80D74DC are unknown
+- Exact fixed-point scale of the velocity/distance constants (0xC0000, 0x280000) is unconfirmed
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D7420 -> battle_initProjectileAttack
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D7420

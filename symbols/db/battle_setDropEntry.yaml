@@ -1,0 +1,51 @@
+name: battle_setDropEntry
+address: '0x080E541A'
+kind: function
+status: probable
+summary: Replaces the drop entry in the battle state's drop array at the given slot, deleting the old
+  entry first.
+interface: (r0 = new entry pointer, r1 = slot index, r2 = secondary value stored at entry+8) -> r0 = 0;
+  no meaningful flags
+details: Computes &battleState[index*4 + oBattleState_Drop], so oBattleState_Drop is an array of entry
+  records (pointer at +0, second word at +8). If the slot holds a non-null pointer, that old entry is
+  passed to sub_80E5410, which by usage acts as a destructor/free for drop entries. It then stores r0
+  at slot+0 and r2 at slot+8, overwriting the entry wholesale. r1 is a slot index rather than a byte offset
+  (shifted left by 2).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldr r4, [r10, #oToolkit_BattleStatePtr] then add r4, r1<<2 + oBattleState_Drop: indexes an
+    array in battle state; tst r3, r3 / beq / bl sub_80E5410: old non-null entry is destroyed before overwrite;
+    str r0, [r4]; str r2, [r4,#8]: writes new pointer and its companion word into the slot; Called from
+    sub_80CD114 and sub_80E532C on routes battlesweep/chips/beastsp, consistent with battle drop handling;
+    Entry layout (ptr at +0, word at +8) matches an entity-like record being swapped in a slot array'
+  refs:
+  - bn6f/asm/asm31.s:98069
+  - 0x080CD114 sub_80CD114
+  - 0x080E532C sub_80E532C
+  - 0x080E5410 sub_80E5410
+  reproduce: python3 tools/asmcat.py 0x080E541A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- What sub_80E5410 actually does (free/destruct vs clear) and the exact meaning of the +8 word (count?
+  owner?)
+- What the Drop array entries reference at runtime (dropped chip/item entities?) — a caller context in
+  sub_80CD114 would confirm
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80E541A -> battle_setDropEntry
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E541A

@@ -1,0 +1,51 @@
+name: battle_initFlyToPanelAttack
+address: '0x080DDC30'
+kind: function
+status: probable
+summary: Initializes a battle object that flies from its spawn position to a target panel over 10 frames,
+  then becomes an active collidable attack object.
+interface: '(r5 = battle object header, oBattleObject_Param1 = target panel: low 3 bits column, bits 4+
+  row) -> void; object freed if collision-slot allocation fails, otherwise state set to CUR_STATE_UPDATE'
+details: Sets object flag bit 1, loads sprite 0x56 (palette 0x10?) and plays animation 2, then syncs flip
+  and position from panels. It nudges the object half a panel (0x80000) forward along its front direction
+  and 0x80000 down in Z. Param1 encodes the destination panel (column in low 3 bits, row in the high nibble);
+  object_getCoordinatesForPanels gives the target pixel coordinates, and SWI 6 division computes per-frame
+  X/Y/Z velocities as (target - current)/10 with oBattleObject_Timer = 10, so the object glides to that
+  panel in exactly 10 frames. It then allocates collision data (freeing the object if none is available),
+  sets up a collision box (0x15, 5, 3), copies the element's hit effect into the collision data, clears
+  the collision region, presents it, plays sound effect 0xFF, and switches the object to its update state.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'Param1 decode (lsr #4 / lsl 0x1d+lsr 0x1d) fed to object_getCoordinatesForPanels gives a target
+    panel column/row; svc 6 divides (target - current coordinate) by 10 for X/Y/ZVelocity with Timer set
+    to 0xa: a 10-frame glide to the target; X += 0x80000 * object_getFrontDirection and Z += 0x80000 offset
+    the spawn point half a panel forward/down; object_createCollisionData failing leads to object_freeMemory;
+    success path calls object_setupCollisionData, battle_setCollisionHitEffectFromElement, object_presentCollisionData;
+    PlaySoundEffect(0xFF) and oBattleObject_CurState = CUR_STATE_UPDATE finish the handoff to the per-frame
+    update logic'
+  refs:
+  - bn6f/asm/asm31.s:81621
+  - 0x080005CC PlaySoundEffect
+  - 0x0801A146 battle_setCollisionHitEffectFromElement
+  - 0x0801A074 object_clearCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080DDC30
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+open_questions:
+- No callers are known, so which attack/obstacle uses sprite 0x56 and how Param1 is populated is unseen
+- The meaning of object flag bit 1 set at entry is unknown
+- What the update-state handler does on arrival (impact behavior) is not shown here
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80DDC30 -> battle_initFlyToPanelAttack
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DDC30

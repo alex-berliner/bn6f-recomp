@@ -1,0 +1,48 @@
+name: chatbox_setChoiceCursorGeometry
+address: '0x0804286C'
+kind: function
+status: probable
+summary: Chatbox script command that loads a choice-cursor size/type and writes cursor box geometry into
+  the chatbox work struct.
+interface: (r0 = word-size table base off_80428A0, r4 = script ptr {?, sizeType@+4, x@+2, y@+3}, r5 =
+  chatbox struct) -> r0 = 1; r4 += 5 (script advance)
+details: Reads a choice-cursor type from [r4+4], stores it as oChatbox_ChoiceCursorSource, and uses it
+  (x8) to index a table of {width16, height16} word pairs (0x1E/8, 0x14/8, 0x1E/9 — three standard choice-box
+  sizes). It copies x ([r4+2]) and y ([r4+3]) into oChatbox_CurTileXBlockPos/oChatbox_CurTileYBlockPos,
+  the size words into oChatbox_CurTileWidth16/oChatbox_CurTileHeight16, and computes (pos + size - 2)
+  << 3 into oChatbox_CursorIdx and oChatbox_CursorX — pixel offsets of the cursor near the box's inner
+  edge. It then advances the script pointer by 5 bytes and returns 1, so the chatbox script interpreter
+  continues.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: strb [r4+4] -> oChatbox_ChoiceCursorSource, then lsl r3,#3 indexes off_80428A0 pair table; table
+    words 0x1E/0x08, 0x14/0x08, 0x1E/0x09 look like width/height in 16ths for three box sizes; strb [r4+2]/[r4+3]
+    -> CurTileXBlockPos/CurTileYBlockPos, table words -> CurTileWidth16/CurTileHeight16; (pos+size-2)<<3
+    stored to oChatbox_CursorIdx and oChatbox_CursorX = pixel edge offsets; add r4,#5; mov r0,#1 matches
+    chatbox script-command convention (advance ptr, return continue)
+  refs:
+  - bn6f/asm/chatbox.s:6386
+  reproduce: python3 tools/asmcat.py 0x0804286C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+coverage:
+- beastsp
+- maps
+open_questions:
+- no caller captured, so which chatbox script opcode dispatches to this and whether r5 is the global chatbox
+  struct is inferred, not proven
+- exact meaning of oChatbox_CursorIdx vs oChatbox_CursorX consumers downstream
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_804286C -> chatbox_setChoiceCursorGeometry
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_804286C

@@ -1,0 +1,58 @@
+name: ai_attackDashAdvanceStep
+address: '0x080F11BC'
+kind: function
+status: probable
+summary: 'Per-frame update for the advance/dash phase of an AI enemy''s attack: on first run it reserves
+  the target panel and becomes invulnerable, then it slides the object along its X velocity toward that
+  panel until it arrives, hits a solid panel, or the step timer expires, at which point it sets the attack''s
+  HitElement to move to the next attack phase.'
+interface: (r0 unused entry; r5 = battle object, r7 = oAIAttackVars struct) -> r0 = unused; updates object
+  X, panels, collision data, and r7 attack vars
+details: 'On entry, if oAIAttackVars_AttackElement is 0 it initializes the attack: sets AttackElement=4,
+  copies PanelX/PanelY into FuturePanelX/Y, reserves the panel via object_reservePanel, sets flags CANNOT_SLIDE
+  and bit 22, grants invulnerability (0xFFFF via dword_80F1524), zeroes SelfDamage and the stamina-damage-counter
+  disabler in the object''s collision data, sets CurAnim=0xF, clears AttackBoost2/ScratchVar/AiAttackParam,
+  plays sound effect 0xE4, and calls sub_80F146E with 0x60000 (likely an animation/effect spawn). On subsequent
+  frames it adds oBattleObject_XVelocity to oBattleObject_X, converting the new pixel position back to
+  panel coordinates via convertXYToPanelXY_800E258; if the panel is invalid or solid it stops and sets
+  HitElement=4 (blocked). Otherwise it updates panels/collision panels, calls sub_80F149C when the panel
+  column changed, and decrements oAIAttackVars_StepTimer; when it reaches 0 it sets HitElement=8 to end
+  the advance. Note the odd tst/bne structure: the initialization branch runs when the element byte is
+  zero, so the caller must zero it before starting this attack.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb [r7,#oAIAttackVars_AttackElement] zero-test splits one-time init (reserve panel, flags,
+    sound 0xE4) from per-frame movement; ldr [r5,#oBattleObject_XVelocity] added to oBattleObject_X, then
+    convertXYToPanelXY_800E258 + object_isValidPanel/object_isPanelSolid re-derive the panel from pixels;
+    sub_80F149C called only when ldrb [r5,#oBattleObject_PanelX] differs from saved r4, i.e. the object
+    entered a new panel column; StepTimer decremented with 'sub r0,#1; bgt' and on expiry 'mov r0,#8;
+    strh r0,[r7,#oAIAttackVars_HitElement]' ends the phase; Callees object_reservePanel/object_setInvulnerableTime/object_updateCollisionData
+    confirm this is a battle-object attack setup, not a menu or overworld routine
+  refs:
+  - bn6f/asm/asm31.s:123337
+  - 0x080005CC PlaySoundEffect
+  - 0x0800E258 convertXYToPanelXY_800E258
+  - 0x0800E276 object_getCoordinatesForPanels
+  reproduce: python3 tools/asmcat.py 0x080F11BC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+open_questions:
+- No known callers, so which enemy/attack state machine invokes this and what HitElement values 4 and
+  8 mean downstream is unconfirmed
+- The exact purpose of sub_80F146E/sub_80F14BC/sub_80F149C (0x60000 argument suggests an animation or
+  effect) is unknown
+- Which attack element/value 4 represents and the meaning of oAIAttackVars fields ScratchVar/AiAttackParam
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F11BC -> ai_attackDashAdvanceStep
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F11BC

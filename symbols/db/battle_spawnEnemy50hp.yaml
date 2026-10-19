@@ -1,0 +1,51 @@
+name: battle_spawnEnemy50hp
+address: '0x080D46D8'
+kind: function
+status: probable
+summary: 'Initializes a battle enemy/object: loads its sprite and animation, sets its name/HP/element
+  and collision data, then switches it to the update state.'
+interface: (r5 = battle object header, implicit) -> r0 = destroyed; sets oBattleObject_CurState = CUR_STATE_UPDATE
+  on success
+details: This is a spawn/init routine for a battle object reached via r5. It sets the object-flags bit
+  1, loads sprite resource (0x80, 0xc, 0x34), plays animation 1 (also copied into the anim-copy field),
+  loads animation data, updates the sprite, and applies the object's effective flip from object_getFlip.
+  It writes name ID 0xE2, HP and MaxHP both 0x32 (50), element 0 (none), and a 0x1E0 (480-frame) timer.
+  It allocates a collision-data slot via object_createCollisionData; if allocation fails it frees the
+  object and returns. On success it configures the collision box (0xc, 0xd, 1), clears its collision region,
+  sets hit-effect type 0, runs object_presentCollisionData for the first frame, sets the state to CUR_STATE_UPDATE,
+  and calls sub_80D4754 (presumably the update/state handler).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl sprite_load with r0=0x80, r1=0xc, r2=0x34 followed by sprite_hasShadow/setAnimation/loadAnimationData/update/setFlip
+    is standard battle-object sprite bring-up; strh 0xE2 -> oBattleObject_NameID and 0x32 -> both oBattleObject_HP
+    and oBattleObject_MaxHP identify it as an enemy initializer; bl object_createCollisionData; tst r0,r0;
+    bne ... else bl object_freeMemory is the standard 'abort spawn if no collision slot' pattern; mov
+    r0,#CUR_STATE_UPDATE; strb [r5,#oBattleObject_CurState]; bl sub_80D4754 hands the object to its per-frame
+    update handler; Callees object_getFlip/object_setPanelsFromCoordinates/object_setCollisionHitEffect
+    are all battle-object helpers
+  refs:
+  - bn6f/asm/asm31.s:61754
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x08019892 object_createCollisionData
+  - 0x08003458 object_freeMemory
+  reproduce: python3 tools/asmcat.py 0x080D46D8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+open_questions:
+- What enemy/object name ID 0xE2 and sprite 0x80 correspond to (needs sprite/table data)
+- What sub_80D4754 does (likely the update handler, which would confirm the object's behavior)
+- Who calls this spawner (no callers known) and what the 0x1E0 timer counts down to
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D46D8 -> battle_spawnEnemy50hp
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D46D8

@@ -1,0 +1,56 @@
+name: ai_attackRushForward
+address: '0x08015766'
+kind: function
+status: probable
+summary: 'Enemy-AI navi melee/step-forward attack routine: initiates the attack (move to front panel,
+  spawn effect, sound, chip-class setup), then busy-waits ~30 frames before returning done.'
+interface: (r5 = battle object ptr) -> r0 = 1 while attack state active, 0 when finished; uses AIData+0xA0
+  vars
+details: 'On entry it reads the AI attack struct (AIData+0xA0): if AttackElement is nonzero the attack
+  is already running, so it just decrements StepTimer and returns 1 until it hits 0. When AttackElement==0
+  it starts the attack: sets battle flag 4, plays SFX 0x8E, copies FuturePanelX/Y into PanelX/Y, frees
+  the reserved panel, recomputes coordinates/collision panels, sets CurAnim=2 (attack anim, CurAnimCopy=0xFF),
+  checks emerge flip, and spawns an effect object at object x+0x14 (an impact/flash in front), flagging
+  it via oObjectHeader_Flags|=4. It clears AIType, flags the related object (Param3=1, flags|=0x14), reads
+  the navi-stats byte 0x2C to pick a chip class (0 if <=0x0A, 0xB if <=0x11, else 0xC), loads that sprite
+  with a white-palette flash, rewrites the stats byte, sets a battle text id from the same value, sets
+  player navi-stats field 0x0E, and runs turn-open processing. It then clears invulnerability and collision
+  region, sets StepTimer=30 (0x1E) and AttackElement=4; on expiry it clears battle flag 4, restores collision
+  region 1, zeroes HitElement and the related object''s Param3, and returns 0.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r7,#oAIAttackVars_AttackElement]; beq start-path — re-entry blocked while value 4 is
+    stored at end; ldrb FuturePanelX/Y -> strb PanelX/Y + object_removePanelReserve + object_setCoordinatesFromPanels
+    — object hops to the panel in front; bl PlaySoundEffect with r0=0x8e and spawn_t1_0x0_EffectObject
+    at x+0x14 with flags|=4 — attack start feedback/effect; GetBattleNaviStatsByte 0x2C thresholds 0x0A/0x11
+    pick chip_class_lookup 0/0xB/0xC — attack power variant chosen from navi stats; StepTimer=0x1E counted
+    down, then battle_clearFlags(4), object_setCollisionRegion(1), HitElement=0, return r6=0; sole caller
+    ai_eventuallyRunsAIAttack_801AF44 and callees battleObject_computeAIStepForwardDeltaX/SetBattleNaviStatsByte
+    fit an enemy step-forward attack
+  refs:
+  - bn6f/asm/asm00_2.s:15310
+  - 0x0801AF44 ai_eventuallyRunsAIAttack_801AF44
+  - 0x08013774 GetBattleNaviStatsByte_AllianceFromBattleObject
+  - 0x080005CC PlaySoundEffect
+  - 0x08013754 SetBattleNaviStatsByte_AllianceFromBattleObject
+  reproduce: python3 tools/asmcat.py 0x08015766
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+open_questions:
+- exact meaning of navi-stats byte 0x2C and the chip classes 0/0xB/0xC chosen from it
+- which visual effect ID spawn_t1_0x0_EffectObject with param 3 creates
+- what sub_8011384/sub_8011268 compute with the saved stats byte
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8015766 -> ai_attackRushForward
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8015766

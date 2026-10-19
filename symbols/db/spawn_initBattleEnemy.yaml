@@ -1,0 +1,51 @@
+name: spawn_initBattleEnemy
+address: '0x080CC790'
+kind: function
+status: probable
+summary: 'Spawns/initializes a battle enemy object: places it on its panel, loads its sprite and animation,
+  sets up collision and HP, then enters the update state.'
+interface: (r5 = battle object header, already allocated) -> r0 = 0 on success path, object freed and
+  uninitialized if collision slots exhausted; no flags of interest
+details: Recomputes the object's pixel position from its panel coords, sets Z=0x14, and loads sprite resource
+  (0x80,0x10,0x39), marking the object with flag bit 1. It resets animation 0, applies palette 0 and the
+  object's effective facing (alliance XOR flip override) to the sprite. It allocates collision data; if
+  that fails it frees the object's memory and aborts. Otherwise it configures the collision (0x40, 0xD,
+  3), sets hit effect 0xFF, runs the first present-collision pass, reads HP from the halfword table byte_80CC764
+  indexed by Param1*2 (a per-variant HP table), stores it into both HP and MaxHP, and sets the state to
+  CUR_STATE_UPDATE. This is the classic battle-object one-time init invoked from an object's spawn path.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: calls object_setCoordinatesFromPanels and sets oBattleObject_Z16=0x14 before sprite_load, the
+    standard spawn-position setup; sprite_load/sprite_hasShadow/sprite_setAnimation/sprite_loadAnimationData/sprite_setPalette/sprite_setFlip
+    chain fully initializes the object's visuals; object_createCollisionData with a bne to object_freeMemory
+    on failure shows a spawn that can be refused when slots run out; object_setupCollisionData(0x40,0xD,3)
+    plus object_setCollisionHitEffect(0xFF) configures the enemy's collision box and hit kind; HP/MaxHP
+    loaded from table byte_80CC764 at Param1*2 then state set to CUR_STATE_UPDATE, ending the one-time
+    init
+  refs:
+  - bn6f/asm/asm31.s:44582
+  - 0x08019892 object_createCollisionData
+  - 0x08003458 object_freeMemory
+  - 0x0800E456 object_getFlip
+  reproduce: python3 tools/asmcat.py 0x080CC790
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+open_questions:
+- Which enemy/character this specific initializer belongs to (sprite id 0x39, palette 0x80) — needs the
+  caller or the sprite table entry
+- What Param1 enumerates (variant/level index into the HP table) — needs the code that writes Param1 before
+  spawning
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80CC790 -> spawn_initBattleEnemy
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CC790

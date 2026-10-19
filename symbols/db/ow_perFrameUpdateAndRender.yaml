@@ -1,0 +1,46 @@
+name: ow_perFrameUpdateAndRender
+address: '0x08138848'
+kind: function
+status: probable
+summary: 'Runs the overworld frame: updates player/NPC/map objects, resolves interactions, then queues
+  and flushes all overworld sprites.'
+interface: () -> (); no arguments or return value, r0-r3 clobbered by the calls
+details: 'This is the overworld''s single per-frame entry point. It first zeroes the object interaction-area
+  pool, then dispatches updates for the player object, NPC objects, and map objects (each gated by their
+  own pause/battle conditions), and resolves pairwise interaction-area hits (snapping the player to touched
+  objects). It then runs the camera and the render pipeline: set render-flush state and reset the palette
+  count, render map objects, initialize per-frame palette-group records, draw NPC sprites, and finalize
+  the battle-sprite-group queue, finish groups, and queue map-object sprites for OAM.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ZeroFillObjectInteractionAreas_800378C then checkOWObjectInteractions_80037f4 bracket the object-update
+    calls, matching the update-then-interact frame order; TryUpdateEachOWPlayerObject/NPCObject/MapObject
+    called in sequence = the overworld's per-frame update dispatchers; camera_802FFF4 plus sprite_setRenderFlushState/sprite_resetPaletteCount
+    begin the render half of the frame; ends with npc_drawSprites_800467C, sprite_finalizeBattleSpriteGroupQueue,
+    sprite_finishGroup, owMapObject_queueSprites_8004934 — the OAM-building tail of a render pass
+  refs:
+  - bn6f/asm/asm36.s:17878
+  - 0x08138348 sub_8138348
+  - 0x08003BA2 TryUpdateEachOWPlayerObject_8003BA2
+  - 0x080048D2 TryUpdateEachOverworldMapObject_80048D2
+  - 0x0800461E TryUpdateEachOverworldNPCObject_800461E
+  reproduce: python3 tools/asmcat.py 0x08138848
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+open_questions:
+- whether this is called directly from the main overworld loop or via a state dispatcher; caller sub_8138348's
+  own role is unrenamed
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8138848 -> ow_perFrameUpdateAndRender
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8138848

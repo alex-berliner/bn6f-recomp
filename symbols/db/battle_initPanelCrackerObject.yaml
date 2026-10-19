@@ -1,0 +1,51 @@
+name: battle_initPanelCrackerObject
+address: '0x080D0634'
+kind: function
+status: probable
+summary: Initializes a battle object that sits on a panel, shows a sprite, cracks that panel, and sets
+  up its collision, switching to its update state.
+interface: '(r5 = battle object header, fields pre-set: Param1/Param2/Param4, PanelX/Y) -> r0 = value
+  from first state handler sub_80D072C; fails early by freeing the object if the current panel is invalid
+  or no collision slot is free'
+details: 'Acts as an object-init: it first requires the object''s current panel to be valid (object_isCurrentPanelValid),
+  otherwise it frees the object. It loads sprite 0x80 with size chosen by oBattleObject_Param1 — 0xC x
+  0x1C for Param1 in {0,2,3,4,5}, 0x10 x 0x32 otherwise (i.e. 1) — then sets flag bit 1 in oObjectHeader_Flags,
+  resets CurAnim, sets palette 0 and flip from object_getFlip, and copies Param2 into the Timer. It positions
+  the object via object_setCoordinatesFromPanels; for Param1 4/5 it nudges X by facing (object_getFrontDirection)
+  with constants 0x80000/0x70000*Param4, and always offsets Y and Z by 0x20000. It allocates collision
+  data and configures it: rect r3(3, or 1 if Param1==1) x r1=4 x r2=5, hit effect 1 (3 if Param1==1) plus
+  status effect 0x12 when Param1==1, then presents it. Finally, for every Param1 except 1 it calls object_crackPanel
+  on the object''s panel, and stores CUR_STATE_UPDATE into the state/phase field before jumping into sub_80D072C.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'beq loc_80D06CE / bl object_freeMemory: bails out (frees object) when object_isCurrentPanelValid
+    returns 0; sprite_load #0x80 with sizes 0xC/0x1C vs 0x10/0x32 selected by oBattleObject_Param1, then
+    sprite_setAnimation/setPalette/setFlip; bl object_createCollisionData ... bl object_setupCollisionData
+    + object_setCollisionHitEffect/statusEffect1 builds collision from Param1; bl object_crackPanel called
+    for Param1 0,2,3,4,5 but skipped for 1, which instead gets collision status effect 0x12; str CUR_STATE_UPDATE,
+    [r5,#state/phase] then bl sub_80D072C: standard init-then-enter-update-state pattern of object initializers'
+  refs:
+  - bn6f/asm/asm31.s:52985
+  - 0x08019892 object_createCollisionData
+  - 0x08003458 object_freeMemory
+  - 0x0800E456 object_getFlip
+  reproduce: python3 tools/asmcat.py 0x080D0634
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+open_questions:
+- Which in-game entity/attack spawns this object and what sprite 0x80 depicts (no callers known, so Param1's
+  exact variant meanings and the identity of status effect 0x12 are unconfirmed)
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D0634 -> battle_initPanelCrackerObject
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D0634

@@ -1,0 +1,47 @@
+name: battle_spawnStaggeredChildren
+address: '0x080E8F00'
+kind: function
+status: probable
+summary: Battle-object state handler that spawns three attached sub-objects with staggered start delays
+  (0/10/30 frames) and advances to the update phase.
+interface: (r5 = battle object this, no args) -> r0 = CUR_STATE_UPDATE; stores three child handles in
+  oBattleObject_ExtraVars[0..2], sets oBattleObject_CurStateActionPhaseAndPhaseInitialized = 6
+details: 'Runs three identical calls to sub_80BFF00 with fixed args (type=6, param=2, parent=[r5+RelatedObject1Ptr],
+  last arg 0), differing only in packed r4: low byte 0x00/0x0A/0x1E (frame delays 0/10/30), byte 0x14
+  (20) shared, and halfword 3/2/1 in bits 16-31. Each returned handle is stored to a separate ExtraVars
+  slot (+0,+4,+8), so the caller keeps the children alive/tracks them. After the third spawn it writes
+  CUR_STATE_UPDATE into the state/phase field, ending this setup phase of the object''s AI. The structure
+  is a typical BN6 battle-object state step: one-shot spawn logic followed by a phase transition.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'three near-identical ''mov r0,#6 / mov r1,#2 / ldr r2,[r5,#oBattleObject_RelatedObject1Ptr]
+    / bl sub_80BFF00'' blocks with r4 = 0x31400, 0x2140A, 0x1141E; each result is stored to a distinct
+    slot: ''str r0,[r5,#oBattleObject_ExtraVars] / +4 / +8''; tail writes ''mov r0,#CUR_STATE_UPDATE;
+    str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]'', the standard phase-advance pattern;
+    executed by recorded routes under ''battlesweep'', i.e. it runs during live battle gameplay as object
+    state code'
+  refs:
+  - bn6f/asm/asm31.s:106322
+  - 0x080BFF00 sub_80BFF00
+  reproduce: python3 tools/asmcat.py 0x080E8F00
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+coverage:
+- battlesweep
+open_questions:
+- what object type (6,2) sub_80BFF00 actually spawns — its summary would name the attack/pattern
+- exact meaning of the packed r4 fields (delay vs. position vs. count) and of the shared 0x14 byte
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80E8F00 -> battle_spawnStaggeredChildren
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E8F00

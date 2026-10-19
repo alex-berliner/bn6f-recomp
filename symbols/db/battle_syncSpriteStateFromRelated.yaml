@@ -1,0 +1,48 @@
+name: battle_syncSpriteStateFromRelated
+address: '0x080BCA72'
+kind: function
+status: probable
+summary: Copies a battle object's visual/sprite state (hide-flag, shader, palette, flip, mosaic) from
+  its related object, then dispatches to a per-action handler.
+interface: (r5 = battle object) -> r0 = result of dispatched action handler; sets oObjectHeader_Flags
+  bit 1 from related object
+details: 'Loads oBattleObject_RelatedObject1Ptr and syncs the caller''s sprite state onto itself: it merges
+  bit 1 of the related object''s oObjectHeader_Flags into its own Flags (clearing that bit first), copies
+  the color shader, final palette, sprite flag-0x10 plus render-info-high byte (via loc_8002F02 setter),
+  the DirectionFlip byte plus effective flip (object_getFlip -> sprite_setFlip), and the mosaic/scaling
+  parameters (sprite_setAlpha). It then indexes off_80BCAD0 by oBattleObject_CurAction and tail-calls
+  that handler with the lr=pc/thumb-interwork trick. This mirrors one object''s appearance onto another,
+  e.g. a clone/transformed body tracking its source.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'load r4 = [r5,#oBattleObject_RelatedObject1Ptr]; copies flag bit 2 of related object into own
+    oObjectHeader_Flags; paired calls sprite_getColorShader/sprite_setColorShader and sprite_getFinalPalette/sprite_setFinalPalette
+    on RelatedObject1Ptr; copies oBattleObject_DirectionFlip from related object then object_getFlip ->
+    sprite_setFlip; sprite_getMosaicScalingParameters result fed to sprite_setAlpha; final dispatch: r1
+    = [off_80BCACC + CurAction*4]; mov lr,pc; bx r1 into off_80BCAD0 table'
+  refs:
+  - bn6f/asm/asm31.s:9952
+  - 0x080BCA24 sub_80BCA24
+  - 0x08002F3E obj_getSpriteFlag10AndRenderInfoHigh_8002F3E
+  - 0x0800E456 object_getFlip
+  - 0x08002EDC sprite_getColorShader
+  reproduce: python3 tools/asmcat.py 0x080BCA72
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+open_questions:
+- what sub_80BCAD4 (the single CurAction table entry) does, and what sub_80BCA24 is, would confirm which
+  clone/transform feature uses this sync
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80BCA72 -> battle_syncSpriteStateFromRelated
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BCA72

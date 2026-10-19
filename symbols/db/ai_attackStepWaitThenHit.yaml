@@ -1,0 +1,45 @@
+name: ai_attackStepWaitThenHit
+address: '0x081024EE'
+kind: function
+status: probable
+summary: 'Enemy AI attack step: on first entry initializes a wait timer and attack element, then when
+  the timer expires marks the attack''s hit element so the strike fires.'
+interface: (r5 = battle object, r7 = oAIAttackVars) -> void; no meaningful return, flags not used by callers
+details: If oAIAttackVars_AttackElement is unset (0), it seeds oAIAttackVars_StepTimer from oAIAttackVars_TimerOrCycles,
+  switches the object's animation to 0xd via oBattleObject_CurAnim, and records the attack element as
+  4. On every call it decrements oAIAttackVars_StepTimer; once the counter reaches zero it writes 8 into
+  oAIAttackVars_HitElement, which presumably triggers the actual hit/damage phase. This is the classic
+  two-phase 'wind-up then strike' pattern used by AI attack handlers, driven from the battle script/AI
+  dispatcher in the battlesweep route.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne guards one-time initialization of StepTimer,
+    anim 0xd and element 4; decrement of oAIAttackVars_StepTimer with bgt locret skips the strike until
+    the counter expires; mov r0,#8; strh r0,[r7,#oAIAttackVars_HitElement] sets the hit element only after
+    the wait finishes; strb r0,[r5,#oBattleObject_CurAnim] sets a wind-up animation on the battle object,
+    matching an AI attack charge phase
+  refs:
+  - bn6f/asm/asm31.s:158838
+  reproduce: python3 tools/asmcat.py 0x081024EE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+coverage:
+- battlesweep
+open_questions:
+- which enemy/attack this step belongs to (caller unknown), and the meaning of element codes 4 and 8 in
+  oAIAttackVars
+- whether anim 0xd is a specific wind-up pose shared by this attack family
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_81024EE -> ai_attackStepWaitThenHit
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81024EE

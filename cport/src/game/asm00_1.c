@@ -2215,10 +2215,10 @@ static void call_subsystem_handler(u32 index, u32 game_state) {
     case 0x20: GUEST_CALL(scenario_finalizeFrameOrRestart_8005642); break;
     case 0x24: GUEST_CALL(sub_80056B8); break;
     case 0x28: GUEST_CALL(sub_800572C); break;
-    case 0x2C: GUEST_CALL(sub_80057A0); break;
+    case 0x2C: GUEST_CALL(pet_tickSceneAndReloadOnFade); break;
     case 0x30: GUEST_CALL(gamestate_runOverworldSceneStep_80055CE); break;
     case 0x34: GUEST_CALL(mainState_runFrame_8005814); break;
-    case 0x38: GUEST_CALL(sub_800585A); break;
+    case 0x38: GUEST_CALL(pet_perFrameTickWithFadeReset); break;
     }
 }
 

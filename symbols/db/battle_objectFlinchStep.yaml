@@ -1,0 +1,48 @@
+name: battle_objectFlinchStep
+address: '0x080E717A'
+kind: function
+status: probable
+summary: 'Per-frame handler for a battle object''s flinch/stagger state: forces action 4 with a 15-frame
+  timer, then switches to anim 9 and action 8 when it expires.'
+interface: (r0 = battle object, copied to r5) -> void; no return value, flags not meaningful
+details: 'Reads oBattleObject_CurAction: if it is 4 the state is already active and control jumps to the
+  countdown; if it is 8 the object is already recovered and the function returns immediately. Otherwise
+  it writes 4 to CurAction and 0xF to oBattleObject_Timer to (re)start the stagger. Each frame it decrements
+  Timer until it hits 0 (bgt loop), then sets oBattleObject_CurAnim to 9 and CurAction to 8, ending the
+  state. Only the generic battle-object fields CurAction, Timer, CurAnim are touched; no calls, no other
+  state.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: strb r1,#4 / strh r0,#0xf into oBattleObject_CurAction/Timer initializes the stagger state (sub_80E717A);
+    cmp r0,#4 / beq and cmp r0,#8 / beq show it is a re-entrant per-frame state handler, not a one-shot
+    setter; decrement-until-zero on oBattleObject_Timer (sub r0,#1 ... bgt) is the fixed 15-frame delay;
+    transition on expiry writes CurAnim=9 and CurAction=8, i.e. stagger anim then recovery/idle action;
+    sole caller sub_80E7142 invokes it right after itself, consistent with an action-dispatch table entry
+  refs:
+  - bn6f/asm/asm31.s:102174
+  - 0x080E7142 sub_80E7142
+  reproduce: python3 tools/asmcat.py 0x080E717A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- exact meaning of action 4 (flinch vs other brief stun) not confirmed — caller/dispatcher context or
+  anim 9's identity would confirm
+- whether CurAction 8 is generic idle or a specific post-hit recovery state
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80E717A -> battle_objectFlinchStep
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E717A

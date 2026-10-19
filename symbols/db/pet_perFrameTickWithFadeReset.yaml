@@ -1,0 +1,55 @@
+name: pet_perFrameTickWithFadeReset
+address: '0x0800585A'
+kind: function
+status: probable
+summary: 'Per-frame PET/main tick: runs the scene dispatcher, scenario effects, object dispatch and the
+  full sprite/OW render pipeline, and when a screen fade is active performs a full teardown-and-reinit
+  then jumps the main jumptable to state 0x50.'
+interface: () -> (); sets the byte at *oToolkit_MainJumptableIndexPtr to 0x50 and tears down/reinits global
+  state when a fade is in progress; tail clobbers r0/r1/r5/r7
+details: 'Every call it ticks the PET scene dispatcher (dispatch_80339CC), the scenario effect jumptable,
+  object dispatch by type, then the whole render path: sprite flush/palette reset, overworld map object
+  rendering, palette group init, NPC sprite draw, battle-sprite group queue finalize, group finish, OW
+  sprite queuing, and the armed event callback. It then checks IsScreenFadeActive: if no fade is active
+  it simply returns (beq locret). If a fade IS active, it executes a reset sequence: chatbox_8040818,
+  FreeAllObjectsOfSpecifiedTypes(0x21), npc_clearOverworldNpcStateWord, resetAllGraphicsState, runSetupStepAndClearWorkArea,
+  sprite battle-fade gfx init, zero-fills, scenario_initEffectState, RandomizeExtraToolkitPointers and
+  reloadCurNaviStatBoosts, then loads the GameState pointer from the toolkit and writes 0x50 to the main
+  jumptable index to switch to the next game state. Note the comment''s ''(self: * GameState $r5)'' is
+  misleading — r5 is only loaded late from oToolkit_GameStatePtr, and no GameState field is otherwise
+  touched.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl dispatch_80339CC / scenario_runEffectStateJumptable / object_dispatchByType at top: per-frame
+    scene+object tick; long render chain (sprite_setRenderFlushState ... owMapObject_queueSprites, event_runArmedCallback)
+    = standard frame draw pipeline; IsScreenFadeActive; beq locret_80058CC — reset block only runs while
+    a fade is active; reset block: FreeAllObjectsOfSpecifiedTypes(0x21), resetAllGraphicsState, runSetupStepAndClearWorkArea,
+    zeroFill, scenario_initEffectState = full teardown/reinit; tail writes 0x50 to *oToolkit_MainJumptableIndexPtr
+    after reloadCurNaviStatBoosts — game-state transition on fade completion'
+  refs:
+  - bn6f/asm/asm00_1.s:5222
+  - 0x08006C22 RandomizeExtraToolkitPointers
+  - 0x080339CC dispatch_80339CC
+  - 0x080024AE event_runArmedCallback_80024AE
+  reproduce: python3 tools/asmcat.py 0x0800585A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+open_questions:
+- 'No known caller: unknown which main-loop state invokes this, so whether 0x50 means ''reload PET menu''
+  or another state is unconfirmed'
+- Exact meaning of jumptable index 0x50 and whether chatbox_8040818 closes an open textbox before the
+  reset
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_800585A -> pet_perFrameTickWithFadeReset
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800585A

@@ -1,0 +1,47 @@
+name: battle_barrierLatchPlayAnim
+address: '0x0810ABD0'
+kind: function
+status: probable
+summary: 'Per-frame battle object behavior: when not barriered and an internal counter is active, latch
+  a one-shot flag and switch the object to animation 2.'
+interface: (r0 = unused/garbage on entry, r5 = battle object) -> r0 = clobbered; sets obj +0x7C halfword
+  = 1 and obj CurAnim = 2 when triggered; no return value used
+details: 'Reads the object''s collision data pointer and returns immediately if oCollisionData_Barrier
+  is nonzero, so the effect is suppressed while the object is barriered/shielded. Otherwise it tests the
+  halfword at obj+0x7E (some countdown or condition value) and the halfword at obj+0x7C, which acts as
+  a latch: if the counter is nonzero and the latch is still 0, it stores 1 into +0x7C and sets oBattleObject_CurAnim
+  to 2. Because the latch is set on first trigger, the animation change happens only once per activation
+  of the counter; subsequent frames do nothing. Once +0x7E reaches 0 the routine also does nothing. The
+  barrier check suggests this animates a hit/flash/reaction that only applies to unshielded targets.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r0,#oCollisionData_Barrier]; tst/bne — early-out when barrier active (asm lines 2-5);
+    ldrh r0,[r5,#0x7E]; tst/beq — triggers only while counter at +0x7E nonzero; ldrh r0,[r5,#0x7C]; tst/bne
+    — +0x7C is a once-only latch, skipped if already set; strh #1,[r5,#0x7C] then strb #2,[r5,#oBattleObject_CurAnim]
+    — latches flag and starts animation 2'
+  refs:
+  - bn6f/asm/asm31.s:176473
+  reproduce: python3 tools/asmcat.py 0x0810ABD0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+coverage:
+- battlesweep
+open_questions:
+- No callers known, so what object/state owns +0x7E and +0x7C (timer? HP threshold? hit count?) is unconfirmed
+- Which animation index 2 corresponds to for this object family, and what visual/behavioral effect the
+  routine is meant to signal
+- Whether the caller passes the object in r5 via a shared behavior-table convention rather than r0
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810ABD0 -> battle_barrierLatchPlayAnim
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810ABD0

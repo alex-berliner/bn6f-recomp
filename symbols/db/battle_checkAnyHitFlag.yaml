@@ -1,0 +1,47 @@
+name: battle_checkAnyHitFlag
+address: '0x081129EE'
+kind: function
+status: probable
+summary: If any of the five hit/contact flags in the battle object's collision data is set, sets the object's
+  ExtraVars hit flag to 1.
+interface: (r5 = battle object) -> r0 clobbered; sets oBattleObject_ExtraVars = 1 if collision data fields
+  0x82,0x84,0x86,0x88,0x8A are nonzero, else leaves them
+details: Reads oBattleObject_CollisionDataPtr from the object at r5 and sums halfwords at offsets 0x82,
+  0x84, 0x86, 0x88, 0x8A — five consecutive flags likely representing distinct hit/contact categories
+  (e.g. per element or per collision side). If the total is nonzero it stores 1 into oBattleObject_ExtraVars,
+  otherwise it leaves ExtraVars untouched. Skips entirely when oBattleObject_CurAction == 0xb, so that
+  action state ignores hits. No calls, no other memory touched; r1/r2 are scratch. ExtraVars here acts
+  as a boolean latch consumed elsewhere.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#oBattleObject_CurAction]; cmp #0xb; beq exit — action gate before checking; ldrh
+    r1/r2 from [CollisionDataPtr, #0x82..0x8A] then add chain — sums five flag halfwords; tst r1,r1; beq
+    exit — only acts when any flag nonzero; mov r0,#1; str r0,[r5,#oBattleObject_ExtraVars] — raises boolean
+    hit flag on the object'
+  refs:
+  - bn6f/asm/asm32.s:9742
+  reproduce: python3 tools/asmcat.py 0x081129EE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+coverage:
+- battlesweep
+- beastsp
+- maps
+open_questions:
+- What the five collision-data halfwords at 0x82–0x8A individually mean (element? direction?)
+- Which code reads ExtraVars afterwards to consume the flag, and what gameplay effect (flinch? counter?)
+  follows
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_81129EE -> battle_checkAnyHitFlag
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81129EE

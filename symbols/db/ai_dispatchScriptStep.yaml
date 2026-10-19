@@ -1,0 +1,46 @@
+name: ai_dispatchScriptStep
+address: '0x08106924'
+kind: function
+status: probable
+summary: 'AI-state dispatcher: calls one of three per-enemy script handlers selected by the object''s
+  oAIState_ScriptId.'
+interface: (r5 = battle object) -> r6 = aiData+0x80, r7 = aiData+0xA0 passed to callee; returns via lr;
+  no r0 result defined
+details: Reads the battle object's AIDataPtr (r5+oBattleObject_AIDataPtr), then precomputes two pointers
+  into the AI data block (aidata+0x80 and aidata+0xA0) in r6/r7 before the call, so the three handlers
+  (sub_810694C, sub_8106964, sub_81069B4) evidently expect them there rather than in argument registers.
+  It indexes off_8106940 with the byte at [aidata+0x80+oAIState_ScriptId] and performs a long-call (mov
+  lr, pc; bx r1) into the selected handler, returning straight to the caller. Only three script IDs are
+  valid (table has exactly 3 entries); a larger ScriptId would jump through garbage. This is a step dispatcher
+  for a scripted AI boss/enemy phase machine.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldr r7,[r5,#oBattleObject_AIDataPtr] + r6/r7 offsets 0x80/0xA0 set up before the call; ldrb
+    r0,[r6,#oAIState_ScriptId]; ldr r1,[r1,r0] indexes the 3-entry table by script id; off_8106940 holds
+    exactly three thumb pointers: sub_810694C, sub_8106964, sub_81069B4; mov lr, pc; bx r1 is the standard
+    interwork-region long-call, confirming a plain dispatch-and-return'
+  refs:
+  - bn6f/asm/asm31.s:167824
+  reproduce: python3 tools/asmcat.py 0x08106924
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+coverage:
+- battlesweep
+open_questions:
+- what the three handlers (sub_810694C/966/9B4) do with r6/r7 (aidata+0x80, +0xA0), to identify the enemy
+  and refine the name
+- which values of oAIState_ScriptId are actually written for this object
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8106924 -> ai_dispatchScriptStep
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8106924

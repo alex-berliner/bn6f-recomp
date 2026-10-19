@@ -1,0 +1,52 @@
+name: battle_calcPanelSlideStep
+address: '0x080F70E0'
+kind: function
+status: probable
+summary: Computes a signed 16.16 fixed-point X movement step (40 px per panel) for sliding the active
+  battle object toward a target panel column.
+interface: (r0 = target panel X, r1 = step divisor/speed, r5 = active battle object) -> r0 = ±r1 (negative
+  when moving left), r1 = (0x280000 * |panelX - target|) / r1; no flags of note
+details: 'Reads oBattleObject_PanelX from the battle object in r5 and takes dx = panelX - r0. The sign
+  of dx decides the direction: if dx >= 0, r1 is negated before being copied to r0, so the returned r0
+  is negative for leftward movement. |dx| is multiplied by 0x28 (40 pixels, one panel column at 240/6)
+  shifted left 16 to form a 16.16 fixed-point distance, then divided by the original r1 using BIOS SWI
+  6 (Div), yielding the per-unit increment returned in r1. r0 is restored from the stack to the sign-adjusted
+  r1 value, so callers get direction and magnitude separately. No memory is written; the function is pure
+  arithmetic on the object''s panel position.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r2,[r5,#oBattleObject_PanelX]; sub r2,r2,r0 — compares the object's panel column with the
+    r0 target; neg r1,r1 guarded by cmp r2,#0/blt — sign of the result flips with movement direction;
+    mov r3,#0x28; lsl r3,r3,#16; mul r3,r2 — 40 px per panel column as 16.16 fixed point times |dx|; svc
+    6 with r1 restored from r4 — BIOS signed Div producing the fixed-point quotient returned in r1; Four
+    callers at 0x080F67B6-0x080F6C96 on battle ('battlesweep') routes, matching a battle-object movement
+    helper
+  refs:
+  - bn6f/asm/asm31.s:135423
+  - 0x080F67B6 sub_80F67B6
+  - 0x080F6994 sub_80F6994
+  - 0x080F6ABC sub_80F6ABC
+  reproduce: python3 tools/asmcat.py 0x080F70E0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+coverage:
+- battlesweep
+open_questions:
+- Exact semantics of r1 (frame count, speed, or plainly 1) and whether callers rely on r0 being ±1 — needs
+  the callers' bodies
+- Which structure field receives the returned step, and whether the 40-px-per-panel scale is screen pixels
+  or another unit
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F70E0 -> battle_calcPanelSlideStep
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F70E0

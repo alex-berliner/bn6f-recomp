@@ -1,0 +1,44 @@
+name: ai_attackElementStep
+address: '0x08107258'
+kind: function
+status: probable
+summary: Per-entity battle-AI step that assigns a default attack element and counts down a timer before
+  flagging a hit element
+interface: (r7 = AI entity struct oAIAttackVars) -> r0 = 0 (discarded); no flags relied on by caller
+details: 'Reads oAIAttackVars_AttackElement (byte at r7). If it is zero, stores element value 4 into AttackElement
+  and a 10-frame delay into StepTimer, then returns. On subsequent calls it decrements StepTimer; when
+  it reaches zero it stores 0x10 into the halfword oAIAttackVars_HitElement. This is a self-contained
+  state step of an AI attack routine: initialize element+delay on first entry, then wait, then set the
+  HitElement result code that later AI code presumably acts on. Element 4 and result 0x10 are the only
+  constants; no other state is touched.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst r0,r0; bne — branches on whether an element
+    is already set; mov r0,#4; strb r0,[r7,#oAIAttackVars_AttackElement] plus strh #0xa StepTimer — initialization
+    branch with 10-frame delay; ldrh/sub/strh on StepTimer then bgt — countdown loop across repeated calls;
+    strh #0x10,[r7,#oAIAttackVars_HitElement] — terminal result written when timer expires; runs only
+    on the ''battlesweep'' route with no known callers, consistent with a battle AI attack-state handler'
+  refs:
+  - bn6f/asm/asm31.s:169057
+  reproduce: python3 tools/asmcat.py 0x08107258
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+coverage:
+- battlesweep
+open_questions:
+- Which caller invokes this and what it does afterwards with oAIAttackVars_HitElement = 0x10
+- Meaning of element value 4 and result 0x10 (element enum / hit-code table not seen)
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8107258 -> ai_attackElementStep
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8107258

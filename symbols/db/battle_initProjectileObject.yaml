@@ -1,0 +1,50 @@
+name: battle_initProjectileObject
+address: '0x080DB9B8'
+kind: function
+status: probable
+summary: 'Battle-object init handler: loads the object''s sprite resources, links a related object, allocates
+  collision data, gives it a facing-based X velocity, and switches it to its update state.'
+interface: (r5 = battle object ptr, set by caller) -> r0 = clobbered; on failure of related-object lookup
+  or collision allocation the object is freed; flags and CurState updated
+details: Decompresses and loads sprite resource (0x10,0x47), sets the hasShadow flag bit in oObjectHeader_Flags,
+  resets CurAnim/CurAnimCopy/Param1 to 0, applies animation 0, palette 0 and object_getFlip via sprite_setFlip.
+  Calls sub_80DC38A to fetch a related object stored into oBattleObject_RelatedObject2Ptr and frees the
+  object if none is found. Allocates collision data (failing frees the object), configures it with (4,5,3),
+  sets XVelocity = object_getFrontDirection() * 0x30000, stores hit-effect 0xFF, refreshes collision state,
+  copies Damage & 0xFFF into ExtraVars+4, and writes CUR_STATE_UPDATE to CurStateActionPhaseAndPhaseInitialized.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl sprite_decompressTemp/sprite_load/sprite_hasShadow/sprite_setAnimation with resources 0x10,0x47
+    — sprite setup typical of object init; bl sub_80DC38A; str r0,[r5,#oBattleObject_RelatedObject2Ptr];
+    bne skip; bl object_freeMemory — requires a related/parent object; bl object_createCollisionData/object_setupCollisionData(4,5,3)
+    then object_setCollisionHitEffect(0xFF) and object_presentCollisionData; ldr r1,=0x30000; mul with
+    object_getFrontDirection result into oBattleObject_XVelocity — moves away from its spawner/facing;
+    ldrh Damage & 0xFFF -> ExtraVars+4 and CUR_STATE_UPDATE written to CurStateActionPhaseAndPhaseInitialized
+    ends the init
+  refs:
+  - bn6f/asm/asm31.s:77041
+  - 0x08019892 object_createCollisionData
+  - 0x08003458 object_freeMemory
+  - 0x0800E456 object_getFlip
+  reproduce: python3 tools/asmcat.py 0x080DB9B8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+open_questions:
+- What kind of projectile/object this is (sprite 0x10/0x47 identity) and which spawn table or enemy references
+  it — no caller is known
+- What sub_80DC38A returns (parent lookup semantics) and what ExtraVars+4 (saved damage value) is used
+  for in the update state
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80DB9B8 -> battle_initProjectileObject
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DB9B8

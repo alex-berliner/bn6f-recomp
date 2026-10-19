@@ -1,0 +1,46 @@
+name: battle_runCustomScreenPhase
+address: '0x080E0730'
+kind: function
+status: probable
+summary: Dispatches the battle custom-screen phase handler based on the object's CurAction (dim screen,
+  draw chip name, spawn objects, undim).
+interface: (r5 = battle object) -> returns from the dispatched handler; flags from handler
+details: 'Reads oBattleObject_CurAction from the object in r5 and indexes a 4-entry branch table at off_80E0744,
+  then tail-calls (mov lr, pc; bx r1) the selected handler. The table covers the four steps of the custom-screen
+  transition: object_dimScreen (0), object_drawChipName (1), battle_spawnTypeFObjectsAhead (2), and object_undimScreen
+  (3). This is the open/close sequence of the custom screen in battle: fade in, show the chip name, spawn
+  pre-placed objects, fade back. Each step presumably advances CurAction to the next one, making this
+  a small per-frame state machine.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0, [r5,#oBattleObject_CurAction]; ldr r1,[r1,r0]; bx r1 — table dispatch on CurAction;
+    branch table off_80E0744 = dimScreen, drawChipName, spawnTypeFObjectsAhead, undimScreen; mov lr,pc;
+    bx r1; pop {pc} — tail-call so the handler can return directly to this routine's caller
+  refs:
+  - bn6f/asm/asm31.s:87224
+  reproduce: python3 tools/asmcat.py 0x080E0730
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+coverage:
+- beastsp
+- menus2
+- menus3
+- story2
+open_questions:
+- exact semantics of each CurAction index beyond the handler names (e.g. which index opens vs closes the
+  screen)
+- which battle object/state owns r5 and where this is scheduled from
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80E0730 -> battle_runCustomScreenPhase
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E0730

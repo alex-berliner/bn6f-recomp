@@ -1,0 +1,49 @@
+name: object_setupVariantSprite
+address: '0x0811D7D0'
+kind: function
+status: probable
+summary: Initializes a type-0x23 object's GUI sprite from its variant index (palette, priority, coordinates,
+  flip), or flags it done if the variant has no sprite.
+interface: (r0 = object state ptr? r5 = state block, r6 = flip flag; variant index at [r5+5], sub-variant
+  at [r5+6]) -> r0 = 1 if skipped, else void; state fields 0x07/0x14/0x16/0x1A/0x1E written
+details: Reads variant index [r5+5]; byte_811D884[variant]==0 means no sprite, so it sets state byte 7
+  = 1 and returns. Otherwise calls initGuiSprite, writes type byte 0x23 to [r5], sets animation 0, loads
+  animation data, disables shadow, sets palette bank 5, then palette = byte_811D88E[variant], priority
+  2, and sub-record A = byte_811D889[variant]. Stores 0x1E0 into a sprite slot via slotList_storeHalfwordAndClearField.
+  Coordinates come from byte_811D87C[variant] (halfword offsets -8,128 or 248,128) passed through sub_811DC00
+  and stored to state +0x1A/+0x1E before sprite_setCoordinates; word at state +0x14 is off_811D874[[r5+6]]
+  (0x700 or -0x700) and +0x16 is zeroed; sprite_setFlip is called with 0 or 1 depending on r6.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'byte_811D884 gate: ldrb r0,[r2,r0]; tst; bne — zero variants set [r5+7]=1 and skip all setup;
+    initGuiSprite_8002770 call followed by sprite_setAnimation/loadAnimationData/noShadow/palette/priority
+    chain; Variant-indexed tables byte_811D889 (sub-record A) and byte_811D88E (palette) indexed by [r5+5];
+    Coordinate offsets in byte_811D87C selected by [r5+5]<<2, combined via sub_811DC00 into state +0x1A/+0x1E
+    before sprite_setCoordinates; Flip value 0/1 selected by r6 (tst r6,r6; beq) passed to sprite_setFlip'
+  refs:
+  - bn6f/asm/asm32.s:31743
+  - 0x0800306C slotList_storeHalfwordAndClearField_800306C
+  - 0x080026A4 sprite_loadAnimationData
+  - 0x08002F90 sprite_noShadow
+  reproduce: python3 tools/asmcat.py 0x0811D7D0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+open_questions:
+- What object type 0x23 is in game terms (no callers known, no other context)
+- Meaning of the state fields +0x14 (0x700 / -0x700) and +0x16
+- What sub_811DC00 computes (assumed coordinate transform)
+- Why variants 1, 2 and 4 skip sprite setup but still set the byte-7 flag
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_811D7D0 -> object_setupVariantSprite
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811D7D0

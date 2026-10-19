@@ -3181,7 +3181,7 @@ Next chatbox_F7_move(void) {
 
     R1 = state << 2;
     switch (state) {
-    case 0: R0 = 0x0804286C; GUEST_CALL(sub_804286C); break;
+    case 0: R0 = 0x0804286C; GUEST_CALL(chatbox_setChoiceCursorGeometry); break;
     case 1: R0 = 0x080428B8; GUEST_CALL(sub_80428B8); break;
     case 2: R0 = 0x080428C0; GUEST_CALL(chatbox_initFromScriptEntry_80428C0); break;
     case 3: R0 = 0x080428E4; GUEST_CALL(sub_80428E4); break;

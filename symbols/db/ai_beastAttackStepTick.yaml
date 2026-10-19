@@ -1,0 +1,48 @@
+name: ai_beastAttackStepTick
+address: '0x0810F376'
+kind: function
+status: probable
+summary: 'Per-frame tick of a multi-step Beast-Out (Falzar/wood-element) AI attack: counts down the step
+  timer and hit counter, tags each hit with wood element, and ends the attack when the counter runs out.'
+interface: (r0 implicit; r5 = battle object ptr, r7 = AI attack vars block) -> r0 = 0 or new HitElement
+  value; no flags relied on
+details: 'Decrements oAIAttackVars_StepTimer; while it is still >= 0 the attack continues. Once it goes
+  negative, it decrements oAIAttackVars_AttackBoost2: if boosts remain it stores element 4 (wood) into
+  oAIAttackVars_HitElement, matching Falzar Beast Out''s wood element; when the counter hits 0 it reloads
+  oAIAttackVars_AttackDuration into StepTimer, clears oBattleObject_CurAnim on the object in r5, and writes
+  0xC (no element / attack finished) to HitElement. The jump table right after points at battle object
+  state handlers (RunSpawnAnimationMaybe, battleObjectStateDispatcher, sub_810F2EC, sub_810F434), placing
+  this among the beast AI attack-state routines used by the battlesweep/beastsp routes.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrh StepTimer/sub 1/bge locret: frame tick that keeps returning until the timer expires; ldrb
+    AttackBoost2, sub 1, beq: counts down a number of remaining hits/steps; mov r0,#4; strh HitElement:
+    active hits are tagged element 4 (wood, Falzar''s element); loc_810F38E: StepTimer=AttackDuration,
+    CurAnim=0, HitElement=0xC resets/ends the attack; off_810F39C jump table lists beast AI siblings sub_810F2EC/sub_810F434
+    and battleObject AI dispatchers'
+  refs:
+  - bn6f/asm/asm32.s:3125
+  reproduce: python3 tools/asmcat.py 0x0810F376
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- No caller captured, so the meaning of HitElement 4 vs 0xC and which beast/attack this state belongs
+  to is inferred from context, not confirmed
+- Exact encoding of HitElement (element id vs attack id) needs a consumer of the field
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810F376 -> ai_beastAttackStepTick
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810F376

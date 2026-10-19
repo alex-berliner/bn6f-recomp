@@ -1,0 +1,51 @@
+name: pet_tickSceneAndReloadOnFade
+address: '0x080057A0'
+kind: function
+status: probable
+summary: Per-frame tick of the PET/menu scene state; once a screen fade is active it tears the scene down
+  and hands control to the reload/main-jumptable mode 0x40.
+interface: '(self: * GameState $r5) -> (); sets eMainJumptableIndex byte to 0x40 when tearing down'
+details: 'Runs one frame of the current scene: the PET menu dispatcher, the scenario effect-state jumptable,
+  per-type object dispatch, the full sprite/NPC/map-object draw-and-queue pipeline, and any armed event
+  callback. It then checks IsScreenFadeActive; if no fade is active it just returns, but during a fade
+  it unloads everything: clears chatbox, frees objects of type 0x21, wipes NPC state words, resets graphics
+  and setup work areas, re-inits sprite fade gfx and effect state, zero-fills work, re-randomizes the
+  extra toolkit pointers and reloads the current navi''s stat boosts. Finally it reads the GameState pointer
+  from the toolkit, and stores 0x40 (byte) into the main jumptable index, presumably selecting the next
+  (scene reload) mode. So this is the tick handler that keeps a scene alive until a fade-out triggers
+  a full unload-and-transition.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: sequence bl dispatch_80339CC ... bl owMapObject_queueSprites_8004934 is the standard per-frame
+    scene render pipeline; bl IsScreenFadeActive / beq locret_8005812 gates the teardown path on an active
+    screen fade; teardown calls FreeAllObjectsOfSpecifiedTypes(0x21), resetAllGraphicsState_8005F40, runSetupStepAndClearWorkArea_8005F6C,
+    scenario_initEffectState_8003962; ldr r0,[r7,#oToolkit_MainJumptableIndexPtr]; mov r1,#0x40; strb
+    r1,[r0] switches the main jumptable to mode 0x40; reloadCurNaviStatBoosts_813c3ac and RandomizeExtraToolkitPointers
+    fit a scene reload, matching the GameState (self) comment
+  refs:
+  - bn6f/asm/asm00_1.s:5156
+  - 0x08006C22 RandomizeExtraToolkitPointers
+  - 0x080339CC dispatch_80339CC
+  - 0x080024AE event_runArmedCallback_80024AE
+  reproduce: python3 tools/asmcat.py 0x080057A0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+open_questions:
+- no caller is known, so which GameState slot installs this handler (and for which map/scene group) is
+  unconfirmed
+- what game mode 0x40 in the main jumptable actually is (presumably the scene-reload step) is not shown
+  here
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80057A0 -> pet_tickSceneAndReloadOnFade
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80057A0

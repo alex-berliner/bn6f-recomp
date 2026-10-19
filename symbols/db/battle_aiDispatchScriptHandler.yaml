@@ -1,0 +1,46 @@
+name: battle_aiDispatchScriptHandler
+address: '0x080FB9DC'
+kind: function
+status: probable
+summary: Dispatches the Falzar/boss AI script handler selected by the object's current AI script id each
+  frame.
+interface: (r5 = battle object) -> calls handler[aiData->scriptCount? scriptId]; r7 = aiData+0xA0 passed
+  to callee
+details: Loads oBattleObject_AIDataPtr from the object in r5, points r6 at aiData+0x80 and reads oAIState_ScriptId
+  as an index (0..4). r7 is advanced to aiData+0xA0 (a per-AI state/counter field the handlers presumably
+  read or update). It then calls the matching entry of the ROM jump table at off_80FB9F8 (battle_aiSetScriptByDifficulty
+  plus four local script handlers) via the lr=pc/bx trick and returns immediately after. No flags or return
+  value are consumed here; the handlers do the work.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldr r7,[r5,#oBattleObject_AIDataPtr]; ldrb r0,[r6,#oAIState_ScriptId] selects a handler index;
+    ldr r1,[r1,r0]; mov lr,pc; bx r1 is a five-entry jump table dispatch (off_80FB9F8); first table entry
+    is battle_aiSetScriptByDifficulty, an already-named AI script routine; recorded route 'battlesweep'
+    matches boss AI execution context; r7 = aiData+0xA0 set before bx but unused locally, so it is handed
+    to the callees
+  refs:
+  - bn6f/asm/asm31.s:144660
+  reproduce: python3 tools/asmcat.py 0x080FB9DC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-222121'
+coverage:
+- battlesweep
+open_questions:
+- what fields at aiData+0xA0 mean and which of the four unnamed handlers (sub_80FBA24..sub_80FBBCA) do
+  what
+- whether r7 is intentionally passed or just leftover; callers unknown so r5 setup and call frequency
+  unconfirmed
+sources:
+- wf investigate investigate-20261018-222121
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f feeac2b3
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80FB9DC -> battle_aiDispatchScriptHandler
+  where: bn6f 2b224b6a
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FB9DC
