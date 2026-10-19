@@ -707,7 +707,7 @@ def ask(model: ModelSpec, prompt: str, system: str, tag: str) -> tuple[str, Tool
     """(the reply, or "" and the provider's error). tools/llm.py waits out Hyper's hourly rate limit
     itself; an HTTP 402 (out of credits) comes back as the error and stops the run."""
     try:
-        reply = _complete(model, prompt, system=system, max_tokens=MAX_TOKENS, timeout=600, retries=2,
+        reply = _complete(model, prompt, system=system, max_tokens=MAX_TOKENS, timeout=180, retries=3,
                           tag=tag, usage_log=str(USAGE_LOG))
     except RuntimeError as error:
         return "", ToolMessage(str(error)[:300])
