@@ -156,7 +156,7 @@ def replay(n):
         c = min(b.e.errs(v - 3, 7))
         br.node = bm.Node(k, v, br.node)
         out.append((b.g, c, 1, v))
-        if c > rf.LOSS: br.bad += 1
+        if c > lossmax(b.g): br.bad += 1
         else: br.bad = 0
         if br.bad >= 30: break
     b.e.save(br.slot); br.h = b.e.gf()[1]
@@ -192,7 +192,7 @@ def ck_file(w):
     path = os.path.join(A.out, f'w_{g}.state')
     b.e.load(slot); b.e.savef(path)
     return {'state': path, 'g': g, 'h': h, 'v0': v0, 'cost': cost.tolist(), 'key': node.key, 'v': node.v,
-            'pokes': [list(p) for p in b.pokes if p[0] < g]}
+            'pokes': [list(p) for p in b.pokes if p[0] < g], 'strict': [list(x) for x in STRICT]}
 
 def dist(a, x, mx=400):
     for i in range(mx + 1):
@@ -478,7 +478,7 @@ def path_reach(w, extra, until, D):
     for g in range(w[0], until):
         mask_for(g)
         b.e.step(ks[g - p0][0]); c = min(b.e.errs(ks[g - p0][1] - 3, 7)); tot += c; n += 1
-        bad = bad + 1 if c > rf.LOSS else 0
+        bad = bad + 1 if c > lossmax(g) else 0
         if bad >= 30: set_emu_pokes(); return g - 30, tot / n
     set_emu_pokes(); return until, tot / max(n, 1)
 
@@ -506,7 +506,8 @@ def reach_many(w, extras, until, D):
     run = [list(p) for p in b.pokes]
     tid_s = {str(tid): tid for tid in extras}       # (task ids are strings: the remote's carry a prefix)
     tasks = [{'kind': 'path', 'id': str(tid), 'ck': ck, 'pokes': run + [list(x) for x in ex], 'keys': [k for k, _ in ks],
-              'vids': [v for _, v in ks], 'until': until, 'windows': [list(x) for x in LENIENT], 'mask': OVERLAY_MASK}
+              'vids': [v for _, v in ks], 'until': until, 'windows': [list(x) for x in LENIENT], 'mask': OVERLAY_MASK,
+              'strict': [list(x) for x in STRICT]}
              for tid, ex in extras.items()]
     res = {tid_s[tid]: list(r) for tid, r in evaluate(tasks).items()}
     if 'path' not in PAR_OK:
@@ -963,8 +964,13 @@ def save_ck(path):
     c['last_fix'] = LAST_FIX; c['failed'] = {str(d): sorted(v) for d, v in FAILED.items()}
     json.dump(c, open(path + '.json', 'w'))
 OVERLAY_MASK = [0, 52, 6, 114]    # thumbnail rows/columns a stream alert covers (its text runs to ~100 px down)
+# strict windows (VIDSYNC_STRICT=a-b:cost,...): a lower loss cost there, for a battle that goes another way under
+# the usual one (run9c: the video's DublShot hits BombCorn at ~977280, ours HonyBmbr; frame costs 2-3.5 against
+# 2.8, the loss only at 978150)
+STRICT = [(int(r.split('-')[0]), int(r.split('-')[1].split(':')[0]), float(r.split(':')[1]))
+          for r in os.environ.get('VIDSYNC_STRICT', '').split(',') if r.strip()]
 def lossmax(g):
-    return rf.LOSS
+    return rf.loss_at(g, STRICT)
 def in_overlay(g):
     return any(a <= g < z for a, z in LENIENT)
 MASK_ON = [False]

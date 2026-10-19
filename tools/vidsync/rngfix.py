@@ -39,10 +39,13 @@ def run_task(b, ck, extra, until, bad_max=30):
     b.g, b.v0 = ck['g'], ck['v0']
     b.branches = [bm.Branch(slot, ck['h'], np.array(ck['cost']), bm.Node(ck['key'], ck['v'], None))]
     bad = 0; tot = 0.0; n = 0; last_v = []
-    loss = ck.get('loss', LOSS)
+    strict = [tuple(x) for x in ck.get('strict', [])]
     b.e.cmd('mask ' + ' '.join(str(x) for x in ck.get('mask', [])))   # (a stream overlay's area left out)
     while b.g < until:
-        for g, best, _, v in b.run(until - b.g, loss, b.N - bm.K - 2):   # stops after a frame above the loss cost
+        # (in stretches that end at a strict window's edge: the loss cost is one per stretch)
+        stop = min([until] + [x for a, z, _ in strict for x in (a, z) if x > b.g])
+        loss = loss_at(b.g, strict, ck.get('loss', LOSS))
+        for g, best, _, v in b.run(stop - b.g, loss, b.N - bm.K - 2):   # stops after a frame above the loss cost
             tot += best; n += 1
             bad = bad + 1 if best > loss else 0
             if bad >= bad_max: return [g - bad_max, tot / n]
@@ -89,7 +92,11 @@ def _qtask(t):
 
 # ---- the driver's own judges, on the workers: path_reach (the path's keys from W with a write, no sync) and a
 # grid of RAM writes each scored by the picture a few frames later (try_relocate, try_mapobj, try_tornado)
-def path_score(e, ck, pokes, keys, vids, until, windows=(), mask=(), loss=LOSS):
+def loss_at(g, strict=(), base=LOSS):
+    """the loss cost at game frame g: base, or lower inside a strict window (a, z, cost)"""
+    return min([base] + [c for a, z, c in strict if a <= g < z])
+
+def path_score(e, ck, pokes, keys, vids, until, windows=(), mask=(), loss=LOSS, strict=()):
     """From ck's machine with pokes (all of them: the run's and the write), keys[i] at game frame ck['g'] + i
     against video frame vids[i]: [the game frame where the picture leaves the video (30 frames above loss), or
     until; the mean frame cost]. The comparison leaves out mask inside the windows (the overlay's)."""
@@ -101,7 +108,7 @@ def path_score(e, ck, pokes, keys, vids, until, windows=(), mask=(), loss=LOSS):
         want = any(a <= g < z for a, z in windows)
         if want != on: e.cmd('mask ' + (' '.join(map(str, mask)) if want else '')); on = want
         e.step(keys[i]); c = min(e.errs(vids[i] - 3, 7)); tot += c; n += 1
-        bad = bad + 1 if c > loss else 0
+        bad = bad + 1 if c > loss_at(g, strict, loss) else 0
         if bad >= 30: return [g - 30, tot / n]
     return [until, tot / max(n, 1)]
 
@@ -126,7 +133,8 @@ def _emu():
         _E = Emu()
     return _E
 def _ptask(t):
-    return t['id'], path_score(_emu(), t['ck'], t['pokes'], t['keys'], t['vids'], t['until'], t['windows'], t['mask'])
+    return t['id'], path_score(_emu(), t['ck'], t['pokes'], t['keys'], t['vids'], t['until'], t['windows'], t['mask'],
+                               strict=[tuple(x) for x in t.get('strict', [])])
 def _gtask(t):
     return t['id'], grid_score(_emu(), t['ck'], t['pokes'], t['cands'], t['keys'], t['vid'], t['span'], t['mask'])
 KINDS = {'path': _ptask, 'grid': _gtask}
