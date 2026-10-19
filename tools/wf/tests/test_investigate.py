@@ -1,6 +1,8 @@
 """The investigate workflow's pure parts: what ranks a target first, how a model's answers are read,
 what a candidate must pass, and the graph end to end with fake models."""
 import json
+import threading
+import time
 from pathlib import Path
 
 from typing import cast
@@ -358,7 +360,8 @@ class Fakes:
 
 def fake_graph(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, contexts: tuple[Context, ...],
                proposals: tuple[Proposal, ...], verdicts: tuple[Verdict, ...], asked: list[str]) -> None:
-    def select(run_dir: Path, count: int, only: tuple[FunctionName, ...]) -> tuple[Target, ...]:
+    def select(run_dir: Path, count: int, only: tuple[FunctionName, ...],
+               retry: frozenset[str] = frozenset()) -> tuple[Target, ...]:
         return tuple(context.target for context in contexts)
 
     def gather(targets: tuple[Target, ...], run_dir: Path) -> tuple[Context, ...]:
@@ -434,3 +437,231 @@ def test_a_run_out_of_credits_keeps_what_is_done() -> None:
                     stopped=ToolMessage("out of credits"))
     assert "2 candidates of 5" in report.totals() and "out of credits" in report.totals()
     assert "1 retries" in report.totals()
+
+# ── the retry of an earlier run's unnamed ones ─────────────────────────
+
+def write_proposal(runs: Path, run_id: str, name: str, proposed: str | None, finished: bool = False,
+                   problem: str | None = None) -> None:
+    folder = runs / run_id / "proposals"
+    folder.mkdir(parents=True, exist_ok=True)
+    answer = None if proposed is None else {"proposed_name": proposed, "summary": "s", "interface": None,
+                                            "details": None, "evidence": ["e"], "self_score": 3,
+                                            "open_questions": []}
+    (folder / f"{name}.json").write_text(json.dumps(
+        {"name": name, "address": 0x08000000, "answer": answer, "tokens": 1, "seconds": 1.0,
+         "retries": 0, "problem": problem, "finished": finished}))
+
+
+def test_unnamed_names_takes_a_run_s_unnamed_not_landed_ones(monkeypatch: pytest.MonkeyPatch,
+                                                             tmp_path: Path) -> None:
+    runs = tmp_path / "investigate"
+    write_proposal(runs, "run1", "sub_1", None)
+    write_proposal(runs, "run1", "sub_2", "sprite_named")
+    write_proposal(runs, "run1", "sub_3", None, finished=True)
+    write_proposal(runs, "run1", "sub_4", None)          # but landed since: it has a db entry
+    monkeypatch.setattr(investigate, "INVESTIGATE", runs)
+    monkeypatch.setattr(investigate, "db_names", lambda: frozenset({"sub_4"}))
+    assert investigate.unnamed_names("run1") == frozenset({"sub_1"})
+    assert investigate.unnamed_names("no-such-run") == frozenset()
+
+
+def test_a_retry_run_selects_the_unnamed_despite_the_earlier_candidate(monkeypatch: pytest.MonkeyPatch,
+                                                                       tmp_path: Path) -> None:
+    fake_selection(monkeypatch, tmp_path, finished=frozenset({"sub_08000000", "sub_08000004"}))
+    retry = frozenset({"sub_08000004"})
+    assert [t.name for t in select_targets(tmp_path, 500, (), retry=retry)] == ["sub_08000004"]
+    # without the retry the earlier candidate keeps the function out
+    assert [t.name for t in select_targets(tmp_path, 500, ())] == ["sub_08000002"]
+
+
+# ── the call sites in the graph and the callers' snippets ──────────────
+
+def test_the_call_graph_keeps_the_call_sites(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    graph = {"entries": {"caller_a": {"addr": "0x08001000", "unit": "caller_a"},
+                         "sub_1": {"addr": "0x08002000", "unit": "sub_1"}},
+             "sites": [{"addr": "0x08001004", "caller": "caller_a", "kind": "call", "target": "sub_1"},
+                       {"addr": "0x08001008", "caller": "caller_a", "kind": "call", "target": "sub_1"},
+                       {"addr": "0x08002000", "caller": "sub_1", "kind": "call", "target": "sub_1"}]}
+    (tmp_path / "graph.json").write_text(json.dumps(graph))
+    monkeypatch.setattr(investigate, "GRAPH", tmp_path / "graph.json")
+    monkeypatch.setattr(investigate, "_graph_cache", None)
+    callers, callees, sites = investigate.call_graph()[0x08002000]
+    assert callers == frozenset({0x08001000})
+    assert callees == frozenset()                             # its only call is to itself: not a site
+    assert sites == ((0x08001004, 0x08001000), (0x08001008, 0x08001000))
+
+
+def test_snippet_around_takes_the_instructions_around_the_call() -> None:
+    lines = tuple("\tmov r0, r1" if index != 20 else "\tbl sub_1" for index in range(40))
+    text = investigate.snippet_around(lines, 20)
+    shown = text.splitlines()
+    assert len(shown) == 25                                   # 12 before, the call, 12 after
+    assert shown[12] == "\tbl sub_1" and "\tmov r0, r1" in shown[0]
+
+
+def test_call_lines_finds_the_call_by_label_or_address(monkeypatch: pytest.MonkeyPatch) -> None:
+    import funcindex
+    assembly = "\tpush {lr}\n\tbl sub_1\n\tbl wrapper_2000\n\tbl elsewhere\n\tpop {pc}"
+    units = {"wrapper_2000": funcindex.Unit(0x08002000, 0x08002010, funcindex.Contract((), (), ()), None),
+             "elsewhere": funcindex.Unit(0x08009000, 0x08009010, funcindex.Contract((), (), ()), None)}
+    calls = investigate.call_lines(assembly, "sub_1", GuestAddress(0x08002000), units)
+    assert calls == (1, 2)                                    # by label, then by the alias's address
+
+
+def test_the_call_sites_show_how_the_callers_use_it(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    (tmp_path / "caller.s").write_text(
+        "caller:\n\tpush {lr}\n\tldr r0, =byte_2000000\n\tmov r1, #8\n\tbl sub_1\n"
+        "\tstr r0, [r4]\n\tpop {pc}\n\tthumb_func_end caller\n")
+    monkeypatch.setattr(investigate, "ASM_DIR", tmp_path)
+    import funcindex
+    units = {"caller": funcindex.Unit(0x08001000, 0x08001010, funcindex.Contract((), (), ()), "caller.s:5")}
+    sites = (investigate.CallSite(caller=FunctionName("caller"), address=GuestAddress(0x08001000),
+                                  site=GuestAddress(0x08001006), summary=None),)
+    text = investigate.sites_text_of(target("sub_1", address=0x08002000), sites, "sub_1", units)
+    assert "calls it at 0x08001006" in text
+    assert "\tbl sub_1" in text and "str r0, [r4]" in text
+
+
+def test_a_call_site_outside_the_caller_s_assembly_says_so(monkeypatch: pytest.MonkeyPatch,
+                                                           tmp_path: Path) -> None:
+    (tmp_path / "caller.s").write_text("caller:\n\tpop {pc}\n\tthumb_func_end caller\n")
+    monkeypatch.setattr(investigate, "ASM_DIR", tmp_path)
+    sites = (investigate.CallSite(caller=FunctionName("caller"), address=GuestAddress(0x08001000),
+                                  site=GuestAddress(0x08001006), summary=None),)
+    text = investigate.sites_text_of(target("sub_1", address=0x08002000), sites, "sub_1", {})
+    assert "not in the caller's bn6f assembly" in text
+
+
+def test_the_shown_call_sites_prefer_what_the_project_knows(monkeypatch: pytest.MonkeyPatch) -> None:
+    known = {0x08001000: "sub_a", 0x08002000: "battle_named", 0x08003000: "sub_c", 0x08004000: "sub_d"}
+
+    def find(address: int) -> str | None:
+        return known.get(address)
+
+    site_list = ((0x08001004, 0x08001000), (0x08002004, 0x08002000), (0x08003004, 0x08003000),
+                 (0x08004004, 0x08004000))
+    sites = investigate.sites_of(target("sub_1", address=0x08009000), site_list, find,
+                                 {"battle_named": "Runs the battle objects."})
+    assert len(sites) == 3 and sites[0].caller == "battle_named"   # the known one first, 3 at most
+
+
+# ── the empty-listing fix: a unit name's functions are labelled inside ──
+
+def test_an_asm_named_unit_s_function_finds_its_label(monkeypatch: pytest.MonkeyPatch,
+                                                      tmp_path: Path) -> None:
+    (tmp_path / "asm33.s").write_text(
+        "\tthumb_func_start sub_8123198\nsub_8123198:\n\tldr r2, =word_200DCF0\n\tmov pc, lr\n"
+        "\tthumb_func_end sub_8123198\n")
+    monkeypatch.setattr(investigate, "ASM_DIR", tmp_path)
+    text = investigate.assembly_of("asm33.s:4", "asm33")      # the scores' name is the unit's
+    assert text.startswith("sub_8123198:") and text.rstrip().endswith("thumb_func_end sub_8123198")
+    assert investigate.label_at(GuestAddress(0x08123198), FunctionName("asm33"),
+                                lambda address: "sub_8123198" if address == 0x08123198 else None) \
+        == "sub_8123198"
+    assert investigate.label_at(GuestAddress(0x08123198), FunctionName("asm33"), lambda address: None) \
+        == "asm33"
+
+
+def test_the_label_index_covers_the_asm_and_data_chunk_files(monkeypatch: pytest.MonkeyPatch,
+                                                             tmp_path: Path) -> None:
+    (tmp_path / "bn6f" / "data").mkdir(parents=True)
+    (tmp_path / "bn6f" / "asm").mkdir(parents=True)
+    (tmp_path / "bn6f" / "ewram.s").write_text("eS200BC50:: // 0x200bc50\n")
+    (tmp_path / "bn6f" / "data" / "dat00.s").write_text("byte_3006F6C:\n\t.byte 0x3\n")
+    (tmp_path / "bn6f" / "asm" / "asm38.s").write_text("word_200DCF0:: // 0x200dcf0\n")
+    monkeypatch.setattr(investigate, "REPO", tmp_path)
+    monkeypatch.setattr(investigate, "ASM_DIR", tmp_path / "bn6f" / "asm")
+    labels = investigate.label_index()
+    assert labels["eS200BC50"][0] == tmp_path / "bn6f" / "ewram.s"
+    assert labels["byte_3006F6C"][0] == tmp_path / "bn6f" / "data" / "dat00.s"
+    assert labels["word_200DCF0"][0] == tmp_path / "bn6f" / "asm" / "asm38.s"
+
+
+# ── the context: the call sites are the evidence ───────────────────────
+
+def test_the_context_shows_the_call_sites_and_keeps_the_assembly_last(tmp_path: Path) -> None:
+    sites_file = tmp_path / "sub_8000000.sites.asm"
+    sites_file.write_text("== 0x08001000 caller calls it at 0x08001004\n\tbl sub_8000000\n")
+    context = context_of(target("sub_8000000"), tmp_path).model_copy(update={
+        "sites": (investigate.CallSite(caller=FunctionName("caller"), address=GuestAddress(0x08001000),
+                                       site=GuestAddress(0x08001004), summary=None),),
+        "sites_text": sites_file})
+    text = investigate.context_text(context)
+    assert "Call sites (how its callers use it):" in text
+    assert "bl sub_8000000" in text
+    assert text.index("Call sites") < text.index("Assembly:")   # the target's assembly is still last
+    assert text.rstrip().endswith("```")
+
+
+def test_the_prompt_says_the_call_sites_are_the_evidence(monkeypatch: pytest.MonkeyPatch,
+                                                         tmp_path: Path) -> None:
+    monkeypatch.setattr(investigate, "read_scores", name_prefix_rows)
+    monkeypatch.setattr(investigate, "PREFIX_MIN", 1)
+    prompt = investigate.prompt_investigate(context_of(target("sub_8000000"), tmp_path),
+                                            investigate.name_prefixes())
+    assert "call sites are the evidence" in prompt
+    assert "used only as" in prompt
+    assert investigate.CONTEXT_TOKENS == 6_000
+
+
+# ── the stragglers: give up, do not cache, do not block the exit ───────
+
+def test_a_straggler_is_abandoned_after_the_pass_s_others_finish(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(investigate, "STRAGGLER_SECONDS", 1)
+    items = (0, 1, 2, 3)
+
+    def one(item: int) -> str:
+        if item == 3:
+            time.sleep(3.0)                               # the straggler: every other one is done
+        return f"done {item}"
+
+    def stub(item: int, why: str) -> str:
+        return f"stub {item}: {why}"
+
+    cancelled = threading.Event()
+    started = time.monotonic()
+    out = investigate._run_pass(items, 4, one, stub, cancelled)  # pyright: ignore[reportPrivateUsage]
+    assert out[:3] == ("done 0", "done 1", "done 2")
+    assert out[3].startswith("stub 3: abandoned:")
+    assert time.monotonic() - started < 2.5               # the run did not wait for the straggler
+    assert cancelled.is_set()
+
+
+def test_an_abandoned_request_is_not_cached(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    def no_json(*arguments: object, **keyword: object) -> str:
+        return "not a json reply"
+
+    monkeypatch.setattr(investigate, "_complete", no_json)
+    cancelled = threading.Event()
+    cancelled.set()
+    proposal = investigate.ask_investigate(MODEL, context_of(target("sub_1"), tmp_path), tmp_path,
+                                           "run1", (), cancelled)
+    assert proposal.problem is not None
+    assert not (tmp_path / "proposals" / "sub_1.json").exists()   # a later run asks again
+    answered = investigate.ask_investigate(MODEL, context_of(target("sub_1"), tmp_path), tmp_path,
+                                           "run2", ())
+    assert (tmp_path / "proposals" / "sub_1.json").exists()       # a normal answer is cached
+    assert answered.problem is not None
+
+
+def test_abandoned_problems_are_recognised() -> None:
+    assert investigate.abandoned(ToolMessage("abandoned: still unanswered 300 s after the pass's "
+                                             "last other request finished"))
+    assert not investigate.abandoned(ToolMessage("skipped: the model is out of credits"))
+    assert not investigate.abandoned(None)
+
+
+def test_a_straggler_is_counted_and_still_gets_its_candidate(monkeypatch: pytest.MonkeyPatch,
+                                                             tmp_path: Path) -> None:
+    contexts = (context_of(target("sub_8000000"), tmp_path),)
+    proposals = (Proposal(name=FunctionName("sub_8000000"), address=GuestAddress(0x08000000),
+                          answer=None, tokens=0, seconds=0.0,
+                          problem=ToolMessage("abandoned: still unanswered 300 s after the pass's "
+                                              "last other request finished")),)
+    verdicts = (Verdict(name=FunctionName("sub_8000000"), address=GuestAddress(0x08000000), reply=None,
+                        tokens=0, seconds=0.0, problem=ToolMessage("no proposal to check")),)
+    fake_graph(monkeypatch, tmp_path, contexts, proposals, verdicts, [])
+    run_dir = tmp_path / "investigate" / "run9"
+    report = run_investigate(InvestigateState(run_dir=run_dir), run_id="investigate-9", tracked=False)
+    assert report.stragglers == 1 and "1 abandoned" in report.totals()
+    assert (run_dir / "sub_8000000.yaml").exists()            # its candidate says what is missing

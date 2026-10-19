@@ -17,14 +17,16 @@ Runs are tracked in the Burr UI under project `recomp-investigate`.
 
 The placeholder functions worth investigating first, and which --only names were not eligible.
 
-- reads: `run_dir: Path`, `count: int`, `only: tuple[FunctionName, ...]`
+- reads: `run_dir: Path`, `count: int`, `only: tuple[FunctionName, ...]`, `retry_unnamed: str | None`
 - produces: `targets: tuple[Target, ...]`, `notes: tuple[ToolMessage, ...]`
 - then: `gather_the_contexts` when `some_selected`; `write_the_candidates` when `none_selected`
 
 ### `gather_the_contexts` (step)
 
 Each target's brief: its assembly, bn6f's comment, its callers and callees with what the
-project knows about them, the data it touches (the assembly is kept under the run's directory).
+project knows about them, up to three callers' code around their call sites (how the callers
+set the call up and use the result), and the data it touches (the assembly and the snippets
+are kept under the run's directory).
 
 - reads: `targets: tuple[Target, ...]`, `run_dir: Path`
 - produces: `contexts: tuple[Context, ...]`

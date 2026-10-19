@@ -46,6 +46,7 @@ class InvestigateState(BaseModel):
     run_dir: Path                                        # build/investigate/RUN_ID
     count: int = DEFAULT_COUNT
     only: tuple[FunctionName, ...] = ()
+    retry_unnamed: str | None = None                     # an earlier run's ID: re-ask its unnamed ones
     model: ModelSpec = DEFAULT_MODEL
     checker: ModelSpec = DEFAULT_CHECKER
     jobs: int = DEFAULT_JOBS
@@ -66,6 +67,7 @@ class SelectInput(Result):
     run_dir: Path
     count: int
     only: tuple[FunctionName, ...]
+    retry_unnamed: str | None = None
 
 
 class SelectOutput(Result):
@@ -76,8 +78,20 @@ class SelectOutput(Result):
 @workflow.step
 def select_the_targets(given: SelectInput) -> SelectOutput:
     """The placeholder functions worth investigating first, and which --only names were not eligible."""
-    targets = select_targets(given.run_dir, given.count, given.only)
-    return SelectOutput(targets=targets, notes=not_selectable(given.only, targets))
+    retry = investigate.unnamed_names(given.retry_unnamed) if given.retry_unnamed \
+        else frozenset[str]()
+    if retry:
+        eligible = select_targets(given.run_dir, len(retry), given.only, retry=retry)
+        targets = eligible[:given.count]
+    else:
+        eligible = targets = select_targets(given.run_dir, given.count, given.only)
+    notes = not_selectable(given.only, targets)
+    if retry:
+        have = {target.name for target in eligible}
+        notes += tuple(ToolMessage(f"{name}: run {given.retry_unnamed} left it unnamed, but it is not "
+                                   "an eligible placeholder any more (renamed, or no lifted unit)")
+                       for name in sorted(retry) if name not in have)
+    return SelectOutput(targets=targets, notes=notes)
 
 
 class GatherInput(Result):
@@ -92,7 +106,9 @@ class GatherOutput(Result):
 @workflow.step
 def gather_the_contexts(given: GatherInput) -> GatherOutput:
     """Each target's brief: its assembly, bn6f's comment, its callers and callees with what the
-    project knows about them, the data it touches (the assembly is kept under the run's directory)."""
+    project knows about them, up to three callers' code around their call sites (how the callers
+    set the call up and use the result), and the data it touches (the assembly and the snippets
+    are kept under the run's directory)."""
     return GatherOutput(contexts=gather_all(given.targets, given.run_dir))
 
 
@@ -157,7 +173,7 @@ def write_the_candidates(given: WriteInput) -> WriteOutput:
     by_name = {context.target.name: context for context in given.contexts}
     verdict_of = {verdict.name: verdict for verdict in given.verdicts}
     syms = investigate.elf_symbols(frozenset(proposal.name for proposal in given.proposals))
-    written = agreed = revised = disagreed = nulls = invalid = retries = 0
+    written = agreed = revised = disagreed = nulls = invalid = retries = stragglers = 0
     problems: list[ToolMessage] = list(given.notes)
     pairs: list[tuple[Proposal, Verdict]] = []
     for proposal in given.proposals:
@@ -167,6 +183,10 @@ def write_the_candidates(given: WriteInput) -> WriteOutput:
             continue
         pairs.append((proposal, verdict))
         retries += proposal.retries + verdict.retries
+        if investigate.abandoned(proposal.problem):
+            stragglers += 1
+        if investigate.abandoned(verdict.problem):
+            stragglers += 1
         if investigate.out_of_credits(proposal.problem) or investigate.out_of_credits(verdict.problem):
             problems.append(ToolMessage(f"{proposal.name}: {verdict.problem or proposal.problem}"))
             continue
@@ -198,7 +218,7 @@ def write_the_candidates(given: WriteInput) -> WriteOutput:
                               f"what was done and stopped cleanly ({stopped})")
     return WriteOutput(report=Report(selected=len(given.proposals), written=written, agreed=agreed,
                                      revised=revised, disagreed=disagreed, nulls=nulls, invalid=invalid,
-                                     retries=retries,
+                                     retries=retries, stragglers=stragglers,
                                      tokens=sum(proposal.tokens for proposal in given.proposals)
                                      + sum(verdict.tokens for verdict in given.verdicts),
                                      problems=tuple(problems), stopped=stopped))

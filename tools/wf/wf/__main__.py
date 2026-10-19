@@ -10,7 +10,7 @@ launcher at the root) is `python -m wf ARGS` with this folder's venv.
   python -m wf queue   --stop | --status    # ask the running queue to finish its farm runs and end (SIGTERM
                                             # or Ctrl-C too; twice: at once, jobs under way stay open); its ledger
   python -m wf drafts  --model PROVIDER/MODEL [--drafter P/M] [--prompt old] [--jobs N] [FUNCTION...]   # entries for accepted candidates
-  python -m wf investigate [--count N] [--only NAME]... [--model M] [--checker M] [--jobs N]
+  python -m wf investigate [--count N] [--only NAME]... [--retry-unnamed RUN_ID] [--model M] [--checker M] [--jobs N]
                        # cheap models propose candidate symbols/db entries for placeholder functions;
                        # the candidates (for review, nothing installed) go to build/investigate/RUN_ID
   (a model can be a tier: tier/cheap, tier/strong; each request goes to the first of its sources with quota)
@@ -133,6 +133,7 @@ class InvestigateCommand(BaseModel):
     command: Literal["investigate"]
     count: int
     only: tuple[FunctionName, ...] = Field(alias="only")
+    retry_unnamed: str | None = None
     model: ModelSpec
     checker: ModelSpec
     jobs: int
@@ -365,7 +366,8 @@ def start_investigate(command: InvestigateCommand) -> None:
     run_dir = investigate.INVESTIGATE / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
     before = investigate.quota_snapshot(run_dir / "quota-before.json")
-    start = InvestigateState(run_dir=run_dir, count=command.count, only=command.only, model=command.model,
+    start = InvestigateState(run_dir=run_dir, count=command.count, only=command.only,
+                             retry_unnamed=command.retry_unnamed, model=command.model,
                              checker=command.checker, jobs=command.jobs)
     try:
         report = run_investigate(start, run_id)
@@ -595,6 +597,8 @@ def parse_command() -> Command:
     look.add_argument("--count", type=int, default=DEFAULT_INVESTIGATE_COUNT,
                       help=f"how many functions to take (default {DEFAULT_INVESTIGATE_COUNT})")
     look.add_argument("--only", action="append", default=[], help="investigate these functions, whatever else")
+    look.add_argument("--retry-unnamed", help="an earlier run's ID: re-ask the functions its proposals left "
+                                              "without a name (their new candidates go to the new run folder)")
     look.add_argument("--model", default=DEFAULT_INVESTIGATE_MODEL, help="who proposes (default hyper/glm-5.3-flash)")
     look.add_argument("--checker", default=DEFAULT_INVESTIGATE_CHECKER,
                       help="who cross-checks (default hyper/qwen3.8-flash)")

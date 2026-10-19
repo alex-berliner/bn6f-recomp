@@ -2,7 +2,8 @@
 selects, what each model is shown and asked, how the answers are read, and the symbols/db-format
 candidate it writes for review. Nothing here touches bn6f, symbols/db or git: candidates and the
 report go under build/investigate/RUN_ID, and the run is resumable (a proposal or cross-check once
-asked is cached there, and functions with a finished candidate are skipped).
+asked is cached there, and functions with a finished candidate are skipped — `--retry-unnamed RUN_ID`
+re-asks exactly the ones an earlier run's proposals left without a name).
 
 The models are asked through tools/llm.py `complete` (their token use lands in the shared log,
 tools/convert/usage.jsonl, read back per call by tag). A reply that holds no JSON object is asked
@@ -15,8 +16,7 @@ import subprocess
 import sys
 import threading
 import time
-from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor
+from collections.abc import Callable, Sequence
 from datetime import date
 from pathlib import Path
 from typing import Literal, cast
@@ -42,12 +42,17 @@ DATA_FILES = ("data.s", "ewram.s", "iwram_data.s", "iwram.s", "rom.s", "vram.s")
 USAGE_LOG = REPO / "tools/convert/usage.jsonl"     # where tools/llm.py logs every call
 QUOTA = REPO / "tools/convert/quota.py"            # the providers' own meters (Hyper: credits)
 
-CONTEXT_TOKENS = 3_500                             # the brief a model sees, all sections together
+CONTEXT_TOKENS = 6_000                             # the brief a model sees, all sections together
 CHARS_PER_TOKEN = 2.6                              # code and assembly, as tools/llm.py measures prompts
 SMALL_INSTRUCTIONS = 120                           # a small function ranks first
 MAX_LISTED = 6                                     # callers/callees named per section, most relevant first
 MAX_QUOTED = 200                                   # chars of a quoted summary or data comment
 MAX_TOKENS = 10_000                                # output cap: room for the reasoning AND the JSON after it
+MAX_CALL_SITES = 3                                 # callers whose code around the call site is shown
+SITE_INSTRUCTIONS = 25                             # instructions of a caller shown around one call site
+SITE_CHARS = 1_600                                 # chars of one call-site snippet, cut at a line
+STRAGGLER_SECONDS = 300                            # a request still unanswered this long after the last other
+                                                   # request of its pass finished is abandoned
 
 DEFAULT_MODEL = ModelSpec("hyper/glm-5.3-flash")   # the farm's cheap converter proposes
 DEFAULT_CHECKER = ModelSpec("hyper/qwen3.8-flash") # a different Hyper model cross-checks
@@ -90,15 +95,27 @@ class DataSymbol(Result):
     comment: ToolMessage | None
 
 
+class CallSite(Result):
+    """One caller's call of the function: who calls it, where, and what the project knows about
+    the caller (its code around the call site is the evidence the context shows)."""
+    caller: FunctionName
+    address: GuestAddress              # the caller's own address
+    site: GuestAddress                 # the call instruction's address
+    summary: ToolMessage | None        # the symbols/db entry's summary, when the caller has one
+
+
 class Context(Result):
-    """Everything the models are shown about one function. The assembly itself stays on disk
-    (contexts/NAME.asm, beside the run's candidates), so the run's state stays small."""
+    """Everything the models are shown about one function. The assembly itself and the callers'
+    call-site snippets stay on disk (contexts/NAME.asm, contexts/NAME.sites.asm, beside the run's
+    candidates), so the run's state stays small."""
     target: Target
     assembly: Path
     comment: ToolMessage | None
     callers: tuple[Neighbour, ...]
     callees: tuple[Neighbour, ...]
-    data: tuple[DataSymbol, ...]
+    sites: tuple[CallSite, ...] = ()       # the callers' calls (up to MAX_CALL_SITES)
+    sites_text: Path = Path("")            # the snippets around them; empty: no call site is known
+    data: tuple[DataSymbol, ...] = ()
 
 
 class Answer(Result):
@@ -190,6 +207,7 @@ class Report(Result):
     retries: int                       # answers asked a second time after an unusable reply
     tokens: int
     problems: tuple[ToolMessage, ...]
+    stragglers: int = 0                # requests abandoned still unanswered (see STRAGGLER_SECONDS)
     stopped: ToolMessage | None = None   # e.g. the provider ran out of credits mid-run
 
     def totals(self) -> str:
@@ -197,7 +215,9 @@ class Report(Result):
         return (f"{self.written} candidates of {self.selected} functions: {self.agreed} agreed, "
                 f"{self.revised} revised, {self.disagreed} disagreed, {self.nulls} without a name, "
                 f"{self.invalid} invalid; {self.tokens} tokens (~{per:,.0f} per function); "
-                f"{self.retries} retries" + (f"; {self.stopped}" if self.stopped else ""))
+                f"{self.retries} retries"
+                + (f"; {self.stragglers} abandoned" if self.stragglers else "")
+                + (f"; {self.stopped}" if self.stopped else ""))
 
 
 # ── what the run works on ──────────────────────────────────────────────
@@ -307,9 +327,12 @@ def rank(targets: tuple[Target, ...]) -> tuple[Target, ...]:
     return tuple(sorted(targets, key=key))
 
 
-def select_targets(run_dir: Path, count: int, only: tuple[FunctionName, ...]) -> tuple[Target, ...]:
-    """The placeholder functions worth investigating, ranked, up to COUNT (all of ONLY when given),
-    none that an earlier run already wrote a candidate for."""
+def select_targets(run_dir: Path, count: int, only: tuple[FunctionName, ...],
+                   retry: frozenset[str] = frozenset()) -> tuple[Target, ...]:
+    """The placeholder functions worth investigating, ranked, up to COUNT (all of ONLY when given,
+    only the RETRY names when a --retry-unnamed run selects from an earlier run's unanswered ones);
+    none that an earlier run already wrote a candidate for — except exactly the RETRY names, whose
+    earlier candidate held no name."""
     units = funcindex.lifted_units()
     find = funcindex.unit_finder(funcindex.unit_ranges())
     neighbours = call_graph() if GRAPH.exists() else {}
@@ -318,7 +341,11 @@ def select_targets(run_dir: Path, count: int, only: tuple[FunctionName, ...]) ->
     done = finished_names()
     targets: list[Target] = []
     for name, address, score in read_scores():
-        if score > 1 or not placeholder(name) or name in done:
+        if score > 1 or not placeholder(name):
+            continue
+        if retry and name not in retry:      # a retry run takes the earlier run's unnamed ones
+            continue
+        if name in done and name not in retry:
             continue
         if only and name not in only:
             continue
@@ -327,7 +354,7 @@ def select_targets(run_dir: Path, count: int, only: tuple[FunctionName, ...]) ->
             continue
         covered = tuple(route for route, addresses in routes.items()
                         if unit.lo in addresses or unit.lo + 1 in addresses)
-        callers, callees = neighbours.get(address & ~1, (frozenset(), frozenset()))
+        callers, callees, _sites = neighbours.get(address & ~1, (frozenset(), frozenset(), ()))
         named = sum(1 for n in (*callers, *callees)
                     if (found := find(n)) is not None and (not placeholder(found) or found in db))
         targets.append(Target(name=name, address=address, score=score,
@@ -345,9 +372,43 @@ def not_selectable(only: tuple[FunctionName, ...], selected: tuple[Target, ...])
                              "(score, existing candidate or lifted unit)") for name in only if name not in have)
 
 
-def call_graph() -> dict[int, tuple[frozenset[int], frozenset[int]]]:
-    """Address -> (its callers' addresses, its callees' addresses): the ABI export's call sites with
-    a known target, like tools/funcindex.py call_neighbours but with the direction kept."""
+def unnamed_names(run_id: str) -> frozenset[str]:
+    """The functions of an earlier run whose proposal got no usable name (no answer at all, or no
+    proposed name in it) and whose candidate was not landed since: what --retry-unnamed selects
+    from. The run's own proposal caches are read, so the run need not have finished cleanly."""
+    folder = INVESTIGATE / run_id / "proposals"
+    if not folder.is_dir():
+        return frozenset()
+    out: set[str] = set()
+    for path in folder.glob("*.json"):
+        try:
+            loaded = cast(object, json.loads(path.read_text()))
+        except (json.JSONDecodeError, OSError):
+            continue
+        if not isinstance(loaded, dict):
+            continue
+        row = cast(dict[str, object], loaded)
+        answer = cast(dict[str, object] | None, row.get("answer"))
+        named = answer is not None and isinstance(answer.get("proposed_name"), str) \
+            and bool(answer.get("proposed_name"))
+        if named or row.get("finished") is True or not isinstance(row.get("name"), str):
+            continue
+        out.add(str(row["name"]))
+    landed = db_names()
+    return frozenset(name for name in out if name not in landed)
+
+
+_graph_cache: dict[int, tuple[frozenset[int], frozenset[int], tuple[tuple[int, int], ...]]] | None = None
+
+
+def call_graph() -> dict[int, tuple[frozenset[int], frozenset[int], tuple[tuple[int, int], ...]]]:
+    """Address -> (its callers' addresses, its callees' addresses, its call sites as
+    (site address, caller address) in address order): the ABI export's call sites with a known
+    target, like tools/funcindex.py call_neighbours but with the direction kept. The 70 MB export
+    is parsed once per process."""
+    global _graph_cache
+    if _graph_cache is not None:
+        return _graph_cache
     graph = cast(dict[str, object], json.loads(GRAPH.read_text()))
     entries = cast(dict[str, dict[str, object]], graph.get("entries", {}))
     address_of = {name: int(str(entry["addr"]), 16) & ~1 for name, entry in entries.items()}
@@ -356,6 +417,7 @@ def call_graph() -> dict[int, tuple[frozenset[int], frozenset[int]]]:
         unit_of_name.setdefault(str(entry["unit"]), set()).add(address_of[name])
     callers: dict[int, set[int]] = {}
     callees: dict[int, set[int]] = {}
+    sites: dict[int, set[tuple[int, int]]] = {}
     for site in cast(list[object], graph.get("sites", [])):
         if not isinstance(site, dict):
             continue
@@ -365,13 +427,17 @@ def call_graph() -> dict[int, tuple[frozenset[int], frozenset[int]]]:
         if not isinstance(target, str) or target not in address_of or not isinstance(caller, str):
             continue
         callee = address_of[target]
+        where = int(str(fields.get("addr", "0x0")), 16) & ~1
         for from_address in unit_of_name.get(caller, ()):
             if from_address == callee:
                 continue
             callees.setdefault(from_address, set()).add(callee)
             callers.setdefault(callee, set()).add(from_address)
-    return {address: (frozenset(callers.get(address, ())), frozenset(callees.get(address, ())))
-            for address in {*callers, *callees}}
+            sites.setdefault(callee, set()).add((where, from_address))
+    _graph_cache = {address: (frozenset(callers.get(address, ())), frozenset(callees.get(address, ())),
+                              tuple(sorted(sites.get(address, ()))))
+                    for address in {*callers, *callees}}
+    return _graph_cache
 
 
 # ── the context a model is shown ───────────────────────────────────────
@@ -387,10 +453,14 @@ def label_lines(path: Path) -> dict[str, int]:
 
 
 def label_index() -> dict[str, tuple[Path, int]]:
-    """Where bn6f defines each data label (the files data lives in), for comments and refs."""
+    """Where bn6f defines each data label, for comments and refs: the six data files, plus the data
+    the asm and data/chunk files define among them (IWRAM data and strings live there, and a
+    function's constants are labelled in the same asm file as its code)."""
+    files = [REPO / "bn6f" / name for name in DATA_FILES]
+    files += sorted((REPO / "bn6f/data").glob("*.s"))
+    files += sorted(ASM_DIR.glob("*.s"))
     out: dict[str, tuple[Path, int]] = {}
-    for name in DATA_FILES:
-        path = REPO / "bn6f" / name
+    for path in files:
         if path.exists():
             out |= {label: (path, line) for label, line in label_lines(path).items()}
     return out
@@ -440,21 +510,53 @@ def label_line(path: Path, name: str) -> int | None:
     return None if match is None else text[:match.start()].count(chr(10)) + 1
 
 
+def label_before(path: Path, line: int) -> str | None:
+    """The label defined at or just above LINE in PATH (`NAME:` or a thumb_func_start NAME), when
+    the lifted header's function is not called NAME (an asmNN unit holds several sub_* labels)."""
+    lines = path.read_text(errors="replace").splitlines()
+    for index in range(min(line, len(lines)) - 1, -1, -1):
+        text = lines[index].strip()
+        start = re.match(r"(?:thumb_func_start\s+)?(\w+):(?:\s|$)", text)
+        if start is not None:
+            return start[1]
+    return None
+
+
+def source_path(source: str) -> Path | None:
+    """The bn6f file a lifted header names: FILE.s is looked for under bn6f/asm first, then under
+    bn6f/data (functions lifted out of the data chunks — function-pointer tables' targets — and
+    their neighbours live there), then under bn6f/ itself."""
+    name = source.partition(":")[0]
+    for base in (ASM_DIR, REPO / "bn6f/data", REPO / "bn6f"):
+        path = base / name
+        if path.exists():
+            return path
+    return None
+
+
 def assembly_of(source: str, name: str) -> str:
     """The bn6f assembly of NAME: from its label definition to its func_end, in the file the lifted
     header names (FILE.s:LINE). The label is found by name, as tools/asmcat.py does it, so the
-    function ends where it ends (a header line one past the label must not run to end-of-file)."""
+    function ends where it ends (a header line one past the label must not run to end-of-file).
+    A unit name that is not the function's label (asm33's functions are sub_8123198, ...) falls
+    back to the label defined just above the header's line."""
     match = re.fullmatch(r"([\w.]+):(\d+)", source)
     if match is None:
         return ""
-    path = ASM_DIR / match[1]
-    if not path.exists():
+    path = source_path(source)
+    if path is None:
         return ""
     text = path.read_text(errors="replace")
+    label = name
     start = re.search(rf"(?m)^{re.escape(name)}:", text)
+    if start is None and match[2]:
+        above = label_before(path, int(match[2]))
+        if above is not None:
+            label = above
+            start = re.search(rf"(?m)^{re.escape(above)}:", text)
     if start is None:
         return ""
-    end = re.search(rf"(?m)^\s*(?:thumb|arm)_func_end\s+{re.escape(name)}\s*$", text[start.start():])
+    end = re.search(rf"(?m)^\s*(?:thumb|arm)_func_end\s+{re.escape(label)}\s*$", text[start.start():])
     return text[start.start():start.start() + (end.end() if end else len(text))].rstrip()
 
 
@@ -466,20 +568,132 @@ def write_context_assembly(run_dir: Path, name: FunctionName, source: str) -> Pa
     return path
 
 
+def label_at(address: GuestAddress, name: FunctionName, find: Finder) -> str:
+    """The function's label in bn6f, which is not always the scores' name: meaning_scores.tsv also
+    lists unit names (asm33), whose functions are labelled sub_8123198 inside — the unit at the
+    address is the label to look for (the empty listings round 15 showed)."""
+    return find(address & ~1) or str(name)
+
+
+def call_lines(assembly: str, label: str, address: GuestAddress,
+              units: dict[str, funcindex.Unit]) -> tuple[int, ...]:
+    """The 0-based line numbers of ASSEMBLY's `bl` instructions that reach the function at ADDRESS
+    (by label name, or by the callee's address when bn6f wrote an alias under the label)."""
+    wanted = address & ~1
+    out: list[int] = []
+    for number, line in enumerate(assembly.splitlines()):
+        match = re.match(r"\s*bl\w*\s+(\w+)", line)
+        if match is None:
+            continue
+        if match[1] == label:
+            out.append(number)
+            continue
+        unit = units.get(match[1])
+        if unit is not None and unit.lo & ~1 == wanted:
+            out.append(number)
+    return tuple(out)
+
+
+def _instruction_lines(lines: Sequence[str], index: int) -> bool:
+    """Is LINES[INDEX] a line the window counts (not blank, not an alignment/pool marker)?"""
+    text = lines[index].strip()
+    return bool(text) and not text.startswith((".balign", ".pool", ".align"))
+
+
+def snippet_around(lines: Sequence[str], call: int, limit: int = SITE_INSTRUCTIONS) -> str:
+    """About LIMIT instructions of the caller around its call of the function (the call line kept):
+    how the caller set the arguments up and what it does with the result."""
+    before: list[str] = []
+    index, taken = call - 1, 0
+    while index >= 0 and taken < (limit - 1) // 2:
+        if _instruction_lines(lines, index):
+            before.insert(0, lines[index])
+            taken += 1
+        index -= 1
+    after: list[str] = []
+    index, taken = call + 1, 0
+    while index < len(lines) and taken < limit // 2:
+        if _instruction_lines(lines, index):
+            after.append(lines[index])
+            taken += 1
+        index += 1
+    return "\n".join([*before, lines[call], *after]).rstrip()
+
+
+def write_site_snippets(run_dir: Path, name: FunctionName, text: str) -> Path:
+    """The callers' snippets around their call sites, one file beside the target's assembly."""
+    path = run_dir / "contexts" / f"{name}.sites.asm"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text)
+    return path
+
+
+def sites_of(target: Target, site_list: tuple[tuple[int, int], ...], find: Finder,
+             summaries: dict[str, str]) -> tuple[CallSite, ...]:
+    """The function's call sites as the context shows them (up to MAX_CALL_SITES, a caller the
+    project knows something about first): who calls it, where, and what the caller is."""
+    chosen: list[CallSite] = []
+    for site, caller_address in sorted(site_list)[:MAX_CALL_SITES * 4]:
+        caller = find(caller_address)
+        if caller is None:
+            continue
+        chosen.append(CallSite(caller=FunctionName(caller), address=GuestAddress(caller_address),
+                               site=GuestAddress(site),
+                               summary=ToolMessage(summaries[caller]) if caller in summaries else None))
+    chosen.sort(key=lambda site: (site.summary is None, placeholder(site.caller), site.caller))
+    return tuple(chosen[:MAX_CALL_SITES])
+
+
+def sites_text_of(target: Target, sites: tuple[CallSite, ...], label: str,
+                  units: dict[str, funcindex.Unit]) -> str:
+    """The snippets file's text: one section per call site, the caller's code around its call."""
+    parts: list[str] = ["# how its callers use it: the call sites are the evidence for the purpose"]
+    for site in sites:
+        caller_unit = units.get(site.caller)
+        source = caller_unit.asm if caller_unit is not None else None
+        caller_assembly = assembly_of(source, site.caller) if source else ""
+        calls = call_lines(caller_assembly, label, target.address, units)
+        lines = caller_assembly.splitlines()
+        # a caller's several calls of the target: its sites in address order against the `bl` lines
+        # in file order (bn6f writes them in address order)
+        own = sorted((s for s in sites if s.caller == site.caller), key=lambda s: s.site)
+        position = own.index(site)
+        call = calls[position] if position < len(calls) else None
+        header = (f"== 0x{site.address:08X} {site.caller} calls it at 0x{site.site:08X}"
+                  + (f" — {site.summary}" if site.summary else ""))
+        if call is None:
+            parts.append(f"{header}\n(the call site is not in the caller's bn6f assembly: "
+                         "the call may be through a wrapper)\n")
+            continue
+        text = snippet_around(lines, call)
+        if len(text) > SITE_CHARS:
+            text = text[:SITE_CHARS].rsplit("\n", 1)[0] + "\n(... cut)"
+        parts.append(f"{header}\n{text}\n")
+    return "\n".join(parts)
+
+
 def gather_context(target: Target, run_dir: Path, labels: dict[str, tuple[Path, int]],
-                   summaries: dict[str, str], find: Finder,
-                   neighbours: dict[int, tuple[frozenset[int], frozenset[int]]]) -> Context:
+                   summaries: dict[str, str], find: Finder, units: dict[str, funcindex.Unit],
+                   neighbours: dict[int, tuple[frozenset[int], frozenset[int],
+                                               tuple[tuple[int, int], ...]]]) -> Context:
     """What the models see about one function: its assembly, bn6f's comment above it, its callers
-    and callees with the summaries they have, and the data it touches."""
+    and callees with the summaries they have, up to three callers' code around their call sites,
+    and the data it touches (the assembly and the snippets are kept under the run's directory)."""
+    label = label_at(target.address, target.name, find)
     assembly = write_context_assembly(run_dir, target.name, target.source)
-    source_file, _, _unit_line = target.source.partition(":")
-    source_path = ASM_DIR / source_file
-    label = label_line(source_path, target.name) if source_path.exists() else None
-    comment = comment_above(source_path, label, target.name) if label else None
-    callers, callees = neighbours.get(target.address & ~1, (frozenset(), frozenset()))
+    source_file = source_path(target.source)
+    label_line_number = label_line(source_file, label) if source_file is not None else None
+    comment = comment_above(source_file, label_line_number, label) \
+        if source_file is not None and label_line_number else None
+    callers, callees, site_list = neighbours.get(target.address & ~1,
+                                                 (frozenset(), frozenset(), ()))
+    sites = sites_of(target, site_list, find, summaries)
+    text = sites_text_of(target, sites, label, units) if sites else ""
     return Context(target=target, assembly=assembly, comment=comment,
                    callers=_neighbours(callers, find, summaries),
                    callees=_neighbours(callees, find, summaries),
+                   sites=sites,
+                   sites_text=write_site_snippets(run_dir, target.name, text) if sites else Path(""),
                    data=_data_symbols(assembly.read_text(errors="replace") if assembly.exists() else "", labels))
 
 
@@ -511,8 +725,10 @@ def gather_all(targets: tuple[Target, ...], run_dir: Path) -> tuple[Context, ...
     labels = label_index()
     summaries = db_summaries()
     find = funcindex.unit_finder(funcindex.unit_ranges())
+    units = funcindex.lifted_units()
     neighbours = call_graph() if GRAPH.exists() else {}
-    return tuple(gather_context(target, run_dir, labels, summaries, find, neighbours) for target in targets)
+    return tuple(gather_context(target, run_dir, labels, summaries, find, units, neighbours)
+                 for target in targets)
 
 
 # ── the brief the models see ───────────────────────────────────────────
@@ -532,8 +748,17 @@ def neighbour_text(kind: str, neighbours: tuple[Neighbour, ...]) -> str:
     return f"{kind}:\n" + "\n".join(lines)
 
 
+def sites_text(context: Context) -> str:
+    """The call sites' section: the callers' code around each call, how they set it up and use it."""
+    if not context.sites or not context.sites_text.exists():
+        return ""
+    text = context.sites_text.read_text(errors="replace")
+    return "Call sites (how its callers use it):\n" + text.strip()
+
+
 def context_text(context: Context) -> str:
-    """The ~3.5k-token brief: where the function runs, what is around it, its assembly last."""
+    """The ~6k-token brief: where the function runs, what is around it, its call sites, its
+    assembly last (what the rest of the context leaves of the budget)."""
     target = context.target
     lines = [f"{target.name} at 0x{target.address:08X} ({target.instructions} instructions, "
              f"meaning score {target.score})"]
@@ -544,6 +769,9 @@ def context_text(context: Context) -> str:
     if context.comment:
         lines.append(f"bn6f's comment above it:\n  {_trim(context.comment, 300)}")
     lines.append(neighbour_text("Callers", context.callers))
+    sites = sites_text(context)
+    if sites:
+        lines.append(sites)
     lines.append(neighbour_text("Callees", context.callees))
     if context.data:
         data = [f"  {d.name}" + (f" — {_trim(d.comment)}" if d.comment else "") for d in context.data]
@@ -594,7 +822,13 @@ def name_prefixes(scores: tuple[ScoreRow, ...] | None = None) -> tuple[str, ...]
 
 INVESTIGATE_TASK = """You will be shown one undocumented function of MegaMan Battle Network 6 Falzar (GBA):
 its bn6f assembly, the functions around it (callers and callees, with what the project already knows
-about them), the data it touches, and where in the game it runs. Say what the function is for.
+about them), the callers' code around their call sites where they call it, the data it touches, and
+where in the game it runs. Say what the function is for.
+
+The call sites are the evidence for the purpose: how the callers set the arguments up and what they
+do with the result tells you what the function is for. A function used only as X by its callers can
+be named for that use ("returns the X of ...", "sets the X ...") even when the code alone does not
+say why.
 
 Reason briefly, then reply with exactly one JSON object and nothing else — no markdown fence, no
 prose before or after it (both spend the reply's token budget and can cut the JSON off):
@@ -726,6 +960,12 @@ def out_of_credits(problem: ToolMessage | None) -> bool:
     return problem is not None and "HTTP 402" in problem
 
 
+def abandoned(problem: ToolMessage | None) -> bool:
+    """The request was given up on: still unanswered STRAGGLER_SECONDS after the pass's last other
+    request finished (a resumed run asks again; nothing was cached for it)."""
+    return problem is not None and problem.startswith("abandoned:")
+
+
 def cached[R: Result](path: Path, name: str, made: type[R]) -> R | None:
     """What an earlier attempt of this run already got for NAME (the run is resumable)."""
     file = path / f"{name}.json"
@@ -744,9 +984,11 @@ def keep(path: Path, name: str, result: Result) -> None:
 
 
 def ask_investigate(model: ModelSpec, context: Context, run_dir: Path, run_id: str,
-                    prefixes: tuple[str, ...]) -> Proposal:
+                    prefixes: tuple[str, ...], cancelled: threading.Event | None = None) -> Proposal:
     """The investigating model's answer for one function, or the problem that left none. An unusable
-    reply (no JSON object in it) is asked once more, with a short follow-up; the retry is counted."""
+    reply (no JSON object in it) is asked once more, with a short follow-up; the retry is counted.
+    A request whose pass was abandoned around it (CANCELLED set) is not cached: a later run asks
+    again."""
     target = context.target
     if (INVESTIGATE / run_id / f"{target.name}.yaml").exists():
         return Proposal(name=target.name, address=target.address, answer=None, tokens=0, seconds=0.0,
@@ -770,14 +1012,16 @@ def ask_investigate(model: ModelSpec, context: Context, run_dir: Path, run_id: s
                         f"Reply again with only the JSON object, nothing else.")
     proposal = Proposal(name=target.name, address=target.address, answer=answer, tokens=tokens,
                         seconds=round(time.monotonic() - started, 1), retries=retries, problem=problem)
-    keep(run_dir / "proposals", target.name, proposal)
+    if cancelled is None or not cancelled.is_set():
+        keep(run_dir / "proposals", target.name, proposal)
     return proposal
 
 
 def ask_check(model: ModelSpec, context: Context, proposal: Proposal, run_dir: Path, run_id: str,
-              prefixes: tuple[str, ...]) -> Verdict:
+              prefixes: tuple[str, ...], cancelled: threading.Event | None = None) -> Verdict:
     """The cross-check model's verdict on one proposal; a proposal without a usable name is not
-    asked. An unusable reply is asked once more with a short follow-up; the retry is counted."""
+    asked. An unusable reply is asked once more with a short follow-up; the retry is counted. A
+    request whose pass was abandoned around it (CANCELLED set) is not cached."""
     cached_verdict = cached(run_dir / "checkers", proposal.name, Verdict)
     if cached_verdict is not None:
         return cached_verdict
@@ -801,8 +1045,61 @@ def ask_check(model: ModelSpec, context: Context, proposal: Proposal, run_dir: P
     verdict = Verdict(name=proposal.name, address=proposal.address, reply=parsed, tokens=tokens,
                       seconds=round(time.monotonic() - started, 1), retries=retries,
                       problem=problem)
-    keep(run_dir / "checkers", proposal.name, verdict)
+    if cancelled is None or not cancelled.is_set():
+        keep(run_dir / "checkers", proposal.name, verdict)
     return verdict
+
+
+def _run_pass[Item, Out](items: tuple[Item, ...], jobs: int, one: Callable[[Item], Out],
+                         stub: Callable[[Item, str], Out],
+                         cancelled: threading.Event) -> tuple[Out, ...]:
+    """one(item) for every item, at most JOBS daemon threads at a time, in the items' order. A
+    request still unanswered STRAGGLER_SECONDS after the last other request of the pass finished is
+    abandoned: the stub stands in for it (counted in the report, nothing cached under its name),
+    the workers are told to stop taking work, and the run does not wait for them — daemon threads,
+    so a hung provider call cannot hold the exit."""
+    if not items:
+        return ()
+    results: dict[int, Out] = {}
+    finished_at: list[float] = []
+    state = {"next": 0}
+    lock = threading.Lock()
+
+    def worker() -> None:
+        while not cancelled.is_set():
+            with lock:
+                index = state["next"]
+                if index >= len(items):
+                    return
+                state["next"] = index + 1
+            try:
+                out = one(items[index])
+            except Exception as error:            # one worker's crash must not take the pass down
+                out = stub(items[index], f"the request itself failed: {error}")
+            with lock:
+                results[index] = out
+                finished_at.append(time.monotonic())
+
+    threads = [threading.Thread(target=worker, daemon=True)
+               for _ in range(max(1, min(jobs, len(items))))]
+    for thread in threads:
+        thread.start()
+    while True:
+        with lock:
+            missing = any(index not in results for index in range(len(items)))
+            last = finished_at[-1] if finished_at else None
+        if not missing:
+            break
+        if last is not None and time.monotonic() - last >= STRAGGLER_SECONDS:
+            cancelled.set()     # every other request finished long ago: the rest are stragglers
+            break
+        time.sleep(0.5)
+    with lock:
+        for index in range(len(items)):
+            if index not in results:
+                results[index] = stub(items[index], f"abandoned: still unanswered {STRAGGLER_SECONDS} s "
+                                                   "after the pass's last other request finished")
+        return tuple(results[index] for index in range(len(items)))
 
 
 def investigate_all(model: ModelSpec, contexts: tuple[Context, ...], run_dir: Path, run_id: str, jobs: int,
@@ -810,39 +1107,47 @@ def investigate_all(model: ModelSpec, contexts: tuple[Context, ...], run_dir: Pa
     """Every context investigated, several at a time; a 402 (the provider is out of credits) stops
     the asking and the rest are reported as skipped, everything done kept."""
     stop = threading.Event()
+    cancelled = threading.Event()
 
     def one(context: Context) -> Proposal:
         if stop.is_set():
             return Proposal(name=context.target.name, address=context.target.address, answer=None, tokens=0,
                             seconds=0.0, problem=ToolMessage("skipped: the model is out of credits"))
-        proposal = ask_investigate(model, context, run_dir, run_id, prefixes)
+        proposal = ask_investigate(model, context, run_dir, run_id, prefixes, cancelled)
         if out_of_credits(proposal.problem):
             stop.set()
         return proposal
 
-    with ThreadPoolExecutor(max_workers=max(1, min(jobs, len(contexts) or 1))) as pool:
-        return tuple(pool.map(one, contexts))
+    def stub(context: Context, why: str) -> Proposal:
+        return Proposal(name=context.target.name, address=context.target.address, answer=None, tokens=0,
+                        seconds=0.0, problem=ToolMessage(why))
+
+    return _run_pass(contexts, jobs, one, stub, cancelled)
 
 
 def check_all(model: ModelSpec, contexts: tuple[Context, ...], proposals: tuple[Proposal, ...],
               run_dir: Path, run_id: str, jobs: int, prefixes: tuple[str, ...] = ()) -> tuple[Verdict, ...]:
-    """Every proposal cross-checked, several at a time, the same 402 rule."""
+    """Every proposal cross-checked, several at a time, the same 402 and straggler rules."""
     by_name = {context.target.name: context for context in contexts}
     listed = prefixes or name_prefixes()
     stop = threading.Event()
+    cancelled = threading.Event()
 
     def one(proposal: Proposal) -> Verdict:
         context = by_name[proposal.name]
         if stop.is_set():
             return Verdict(name=proposal.name, address=proposal.address, reply=None, tokens=0, seconds=0.0,
                            problem=ToolMessage("skipped: the model is out of credits"))
-        verdict = ask_check(model, context, proposal, run_dir, run_id, listed)
+        verdict = ask_check(model, context, proposal, run_dir, run_id, listed, cancelled)
         if out_of_credits(verdict.problem):
             stop.set()
         return verdict
 
-    with ThreadPoolExecutor(max_workers=max(1, min(jobs, len(proposals) or 1))) as pool:
-        return tuple(pool.map(one, proposals))
+    def stub(proposal: Proposal, why: str) -> Verdict:
+        return Verdict(name=proposal.name, address=proposal.address, reply=None, tokens=0, seconds=0.0,
+                       problem=ToolMessage(why))
+
+    return _run_pass(proposals, jobs, one, stub, cancelled)
 
 
 def status_of(proposal: Proposal, verdict: Verdict) -> SymbolStatus:
