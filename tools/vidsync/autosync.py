@@ -1293,7 +1293,10 @@ def try_split(D):
     m = [float(np.mean([c for _, c in cs[i:i + 20]])) for i in range(len(cs) - 20)]
     b0 = float(np.median(m[60:360]))          # the battle's own level: the custom screen and its first moves
     hi = max(1.1, 1.6 * b0)
-    st = next((cs[i][0] for i in range(360, len(m) - 100) if m[i] > hi and np.mean(m[i:i + 100]) > 1.5 * b0), None)
+    # (a clear step: run9z 1083353 took a dark stretch at ~1.1 against 0.67 for one, sent the run back there and
+    # let wrong kills through; the real ones were 1.3-1.6 against ~0.7)
+    st = next((cs[i][0] for i in range(360, len(m) - 100)
+               if m[i] > hi and np.mean(m[i:i + 100]) > max(1.25, 1.8 * b0)), None)
     if st is None or st > D - 150 or any(a <= st < z for a, z, _ in STRICT): return None
     val = round(max(1.0, 1.4 * b0), 2)
     w = state_at(st - 60)
@@ -1416,7 +1419,8 @@ def kill_try(D, back, foes, vD, side, tmpl, cands):
         res = evaluate(tasks)
         # (a close match only: a deletion that cuts short a battle the video goes on with scrapes by at 1.7-2.0;
         # the right ones were 0.7-1.2)
-        ok = [t for t in tasks if res[t[3]][0] >= gR + 120 and res[t[3]][1] < kill_cost()]
+        # (and clearly past the loss: in a strict window a deletion that only reaches the loss 'held', run9z 1083358)
+        ok = [t for t in tasks if res[t[3]][0] >= max(gR + 120, D + 60) and res[t[3]][1] < kill_cost()]
         if not ok:
             log(f'  {"kill" if side else "die"}: no deletion time holds (furthest {max(r[0] for r in res.values())}, want {gR + 120}, best mean cost {min(r[1] for r in res.values()):.2f})')
             if how.startswith('black') and W0 >= D:
