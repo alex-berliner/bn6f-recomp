@@ -143,5 +143,7 @@ def link_shared(tree: Path) -> None:
         path = tree / name
         if not path.is_symlink() and (REPO / name).exists():
             if path.is_dir():
+                if any(path.iterdir()):
+                    continue   # files tracked in git (build-vidsync/progress.md): the worktree keeps its own
                 path.rmdir()   # an empty submodule directory
             path.symlink_to(REPO / name)
