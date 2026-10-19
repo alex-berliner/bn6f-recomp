@@ -1,0 +1,45 @@
+name: grid_stepPackedTileCoordsInDirection
+address: '0x08143E68'
+kind: function
+status: probable
+summary: Steps a packed (x|y<<8) tile coordinate n tiles in a facing direction using a per-direction (dx,dy)
+  table.
+interface: (r0 = packed coords (low byte x, high byte y), r1 = direction index 0-7, r2 = step count) ->
+  r0 = packed coords moved (x + dx*n, y + dy*n)
+details: 'Loads a signed-byte (dx,dy) pair from table byte_8143E94 at offset direction*2, multiplies each
+  by r2, adds to the low byte (x) and the r0>>8 high byte (y) separately, and recombines with orr into
+  a packed result. Table entries: dir1 = (+1,0), dir3 = (0,+1), dir5 = (-1,0), dir7 = (0,-1); even direction
+  codes are (0,0), so only odd codes step. Sign extension is handled via ldrsb. Pure function, no globals
+  written.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'add r7,r7,r1 after lsl r1,#1 and ldrsb pair: per-direction signed delta table at byte_8143E94;
+    mul r2/r3 by r6 then add to low/high byte of r0 and orr recombine: returns shifted packed coords;
+    callers call with r0 = grid->map converted coords, r1 = GetOWPlayerFacingDirection(), r2 = 1: one-tile
+    step in facing dir; table bytes 01/FF show +x/+y/-x/-y unit steps; even dir pairs are 0,0; sub_8143DEA
+    tests dir&1 and falls back to dir-1/dir+1 (&7), matching the odd-only table layout'
+  refs:
+  - bn6f/asm/asm37_1.s:4162
+  - 0x08093074 sub_8093074
+  - 0x080930A4 sub_80930A4
+  - 0x08143DEA sub_8143DEA
+  reproduce: python3 tools/asmcat.py 0x08143E68
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-094015'
+open_questions:
+- exact meaning of even direction codes (why callers retry dir±1 for them)
+- which structure the packed coords belong to beyond the Groundman minigame grid
+sources:
+- wf investigate investigate-20261019-094015
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 20b6f329
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8143E68 -> grid_stepPackedTileCoordsInDirection
+  where: bn6f 63b1db8c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8143E68

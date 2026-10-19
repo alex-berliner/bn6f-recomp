@@ -1,0 +1,44 @@
+name: shop_incrementPurchaseCount
+address: '0x08048D60'
+kind: function
+status: probable
+summary: Increments (saturating at 255) the per-item purchase counter for a given item id in one of the
+  shop-data item lists.
+interface: (r0 = list/table index (e.g. 9 = shop), r1 = item id) -> r0 = destroyed; increments count byte
+  of matching record
+details: 'Reads entry r0 from table dword_8046B98 (stride 0x10): +8 is an offset added to toolkit->ShopDataPtr
+  to locate an array of 8-byte records, +0xC is the record count. Each record is {u8 valid-flag, u8 count,
+  u16 itemId, ...}; the function walks records, skipping invalid ones (byte0 == 0) and those whose itemId
+  (halfword +2) != r1, and on a match increments the count byte at +1, clamping to 0xFF, then returns.
+  If no record matches, it does nothing. Called with r0=9 by sub_804A970, which first removes chips via
+  TakeChips for each entry of a 32-byte-stride list at word_202A020, passing each entry''s id halfword.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mul r0,#0x10; ldr [r7,#0xc]/[r7,#8] — table entry gives record array offset and count; ldr
+    r1,[r10,#oToolkit_ShopDataPtr]; add r7,r7,r1 — record array lives in shop data; cmp r6,r4 (record
+    halfword+2 vs r1) and strb r4,[r7,#1] after inc, clamp cmp #0xff — increments per-id counter; caller
+    0x804A98C: r0=9, r1=ldrh [r7] from 32-byte records at word_202A020 after TakeChips — tallies per item
+    id; tst r4,r4; beq skip — records with flag byte 0 are ignored'
+  refs:
+  - bn6f/asm/asm03_2.s:4465
+  - 0x0804A970 sub_804A970
+  reproduce: python3 tools/asmcat.py 0x08048D60
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-094015'
+open_questions:
+- exact meaning of the table index r0=9 and which in-game shop/menu owns word_202A020
+- whether the count byte drives stock depletion or a purchase-history display (caller's result is unused)
+sources:
+- wf investigate investigate-20261019-094015
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 20b6f329
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8048D60 -> shop_incrementPurchaseCount
+  where: bn6f 63b1db8c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8048D60

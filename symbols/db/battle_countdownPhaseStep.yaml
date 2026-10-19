@@ -1,0 +1,48 @@
+name: battle_countdownPhaseStep
+address: '0x080D3BC2'
+kind: function
+status: probable
+summary: 'Per-frame battle-object phase step: counts down a per-Param1 duration for up to 4 repeat cycles
+  (anim 0x14), with a periodic tick, then leaves the phase'
+interface: (r0 = unused on entry; r5 = battle object) -> r0 = scratch; updates oBattleObject_Timer, Timer2,
+  Param4, CurAnim, CurAction, CurPhaseAndPhaseInitialized
+details: On phase init (PhaseInitialized==0) sets it to 4, calls battle_remapCurAnimForPhase, and seeds
+  Timer from byte_80D3C3C[Param1] (halfword durations 80/90/100/110 frames), clearing Timer2. Each frame,
+  if sub_80D3F96 returns nonzero it aborts the phase with CurAction=0xC and phase=0. Otherwise Timer2
+  increments and sub_80D4004 runs every 8 frames (Timer2 bit 3). When Timer underflows, Param4 counts
+  a completed cycle; below 4 it sets CurAnim=0x14 and calls sub_80D3DFA(0), whose nonzero result exits
+  with CurAction=4, else after 4 cycles exits with CurAction=0x10; both clear the phase field.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrh r0,[r1,r0] off byte_80D3C3C with Param1*2 loads a duration into oBattleObject_Timer (0x50/0x5A/0x64/0x6E);
+    Timer decremented each frame; on underflow Param4++ and cycle repeats with CurAnim=0x14 up to 4 times
+    (cmp r0,#4 / bge loc_80D3C2E); Timer2 bit 3 gates the every-8-frames call to sub_80D4004; Phase init
+    path sets PhaseInitialized=4 and calls battle_remapCurAnimForPhase, confirming this is a phase handler;
+    All exits write CurAction (0xC/0x4/0x10) and reset CurPhaseAndPhaseInitialized to 0
+  refs:
+  - bn6f/asm/asm31.s:61652
+  - 0x080D3F10 battle_remapCurAnimForPhase
+  - 0x080D3DFA sub_80D3DFA
+  - 0x080D3F88 sub_80D3F88
+  reproduce: python3 tools/asmcat.py 0x080D3BC2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-094015'
+open_questions:
+- Which object/enemy uses this phase (no callers found); meaning of Param1 (difficulty vs. variant index)
+- What sub_80D3F96 tests for (interrupt condition leading to CurAction 0xC)
+- What sub_80D4004 does every 8 frames (sound, particle, or shake)
+- What sub_80D3DFA(0) checks to pick CurAction 4 vs 0x10, and what those action IDs mean for this object
+sources:
+- wf investigate investigate-20261019-094015
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 20b6f329
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D3BC2 -> battle_countdownPhaseStep
+  where: bn6f 63b1db8c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D3BC2

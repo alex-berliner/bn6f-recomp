@@ -1,0 +1,45 @@
+name: battle_objectRunCurrentAction
+address: '0x080C1A7C'
+kind: function
+status: probable
+summary: 'Battle object dispatcher: jumps to the per-action handler selected by the object''s CurAction
+  field.'
+interface: (r5 = battle object) -> tail-calls action handler for oBattleObject_CurAction; handler address
+  returned in r0 to caller's bx path
+details: Reads the object's current action id from r5+oBattleObject_CurAction and indexes a 10-entry handler
+  table at off_80C1A90, then uses the classic 'mov lr, pc; bx r1' trick so the handler's return lands
+  on the pop {pc}, effectively a tail call into per-action state logic. The table mixes generic battle
+  routines (battle_objectPhasePlaySfxThenEnd, object_wait30FramesThenAction18, object_stateDespawn) with
+  object-specific handlers (sub_80C1AEE..sub_80C1DC4). Entry 0 uses battle_objectPhasePlaySfxThenEnd,
+  entry 9 is object_stateDespawn, so action 0 likely plays an sfx and ends, action 9 despawns. This is
+  the standard per-object action/state update step invoked from the object update loop.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#oBattleObject_CurAction] + ldr r1,[r1,r0]: index-selected dispatch on the object''s
+    current action; mov lr, pc; bx r1 with pop {pc}: tail-call into handler while returning to caller;
+    table entries battle_objectPhasePlaySfxThenEnd / object_wait30FramesThenAction18 / object_stateDespawn:
+    battle object state-machine routines; 10-entry table: one handler per possible CurAction value of
+    this object type'
+  refs:
+  - bn6f/asm/asm31.s:21843
+  reproduce: python3 tools/asmcat.py 0x080C1A7C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-094015'
+open_questions:
+- which object type uses this dispatch table and what each of the object-specific handlers (sub_80C1AEE
+  etc.) do
+- what sets oBattleObject_CurAction before this runs
+sources:
+- wf investigate investigate-20261019-094015
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 20b6f329
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C1A7C -> battle_objectRunCurrentAction
+  where: bn6f 63b1db8c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C1A7C

@@ -1,0 +1,48 @@
+name: rfu_findMatchingPeerSlot
+address: '0x08146808'
+kind: function
+status: probable
+summary: Searches the wireless peer list for the entry whose 13-byte record matches the record selected
+  from unk_20098B0, returning its slot index or 4 if none matches.
+interface: (r0 = record index into unk_20098B0, stride 16) -> r0 = matching slot index, or 4 when no peer
+  matches; clobbers r4,r5
+details: 'The argument is scaled by 16 to pick a record in unk_20098B0, of which the first 13 bytes are
+  the comparison payload. After sub_814665C runs, it loops i = 0..byte_2010288-1, calls sub_81466F4(i)
+  to obtain a record pointer, and t3_compareBytes-checks the first 13 bytes against the selected record;
+  on equality it returns that i. If the loop exhausts the list it returns 4, the sentinel for ''no match''
+  (list capacity appears to be 4). The caller treats 4 as failure: it sets flag 0x40 via rfu_orFlags and
+  counts down a retry counter before rfu_setStateEnded.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'lsl/lsr r0 by 0x18/0x14 gives index*16 into unk_20098B0, then 13 bytes are copied as the compare
+    target; loop compares sub_81466F4(i) record vs target with t3_compareBytes len 0xd and returns i on
+    first match; loop bound read from byte_2010288; on exhaustion mov r0,#4 acts as not-found sentinel;
+    caller sub_803C7E8: cmp r0,#4 / bne continues normally, else sets flag 0x40 and retries before rfu_setStateEnded;
+    caller is in the rfu link-state flow (rfu_getLinkState 0xfe/0xff checks), so the list is wireless
+    peers'
+  refs:
+  - bn6f/asm/libs.s:5575
+  - 0x0803C7E8 sub_803C7E8
+  - 0x08146A18 t3_compareBytes
+  - 0x0814665C sub_814665C
+  - 0x081466F4 sub_81466F4
+  reproduce: python3 tools/asmcat.py 0x08146808
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-094015'
+open_questions:
+- What the 13-byte records contain (name/profile/ID) and what sub_81466F4(i) actually returns
+- Whether other callers use a non-4 return value directly as a peer slot
+sources:
+- wf investigate investigate-20261019-094015
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 20b6f329
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8146808 -> rfu_findMatchingPeerSlot
+  where: bn6f 63b1db8c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8146808

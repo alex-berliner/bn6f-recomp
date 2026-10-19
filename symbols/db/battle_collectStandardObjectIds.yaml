@@ -1,0 +1,49 @@
+name: battle_collectStandardObjectIds
+address: '0x080BC100'
+kind: function
+status: probable
+summary: Scans the battle object list, writes the IDs of all 'standard' battle objects into the caller's
+  object at +0x60 as an array, and returns how many were found.
+interface: (); caller's r5 = battle object base (implicit dest pointer) -> r0 = count of standard objects;
+  IDs stored at [r5 + 0x60 + i*4]
+details: Walks the toolkit's battle state object pointer array (oBattleState_BattleObjectList, 29 slots,
+  stride 4) and for each non-null object reads its ID at +0x28. battle_idIsStandard filters out the four
+  special IDs (0xD3, 0xDA, 0xE9, 0xEA); surviving IDs are stored into the caller's object at offset 0x60
+  + index*4 (a per-object ID array), the index incremented, and sub_800F884 called with the object pointer
+  (purpose unknown). The loop's total count is returned in r0. Note the callee relies on the caller's
+  r5 for the destination — an implicit argument. The caller runs this once during a countdown (timer hits
+  10), stores the count in oBattleObject_Param1, and plays sound 0xAD if any standard objects were found.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'callee loops r4 = 0..0x1C step 4 over [battleState + oBattleState_BattleObjectList], reading
+    object pointers; ldr r2,[r0,#0x28] + bl battle_idIsStandard + str r2,[r5,r1] with r1 = 0x60 + r6*4
+    shows ID collection into caller object array; mov r0,r6 / pop shows the accumulated index count is
+    the return value; caller at 0x080BC012: strb r0,[r5,#oBattleObject_Param1]; nonzero -> PlaySoundEffect
+    0xAD, on a countdown timer; battle_idIsStandard excludes IDs 0xD3, 0xDA, 0xE9, 0xEA, defining ''standard''
+    for this list'
+  refs:
+  - bn6f/asm/asm31.s:9031
+  - 0x080BBFE8 sub_80BBFE8
+  - 0x0800F486 battle_idIsStandard
+  - 0x0800F884 sub_800F884
+  reproduce: python3 tools/asmcat.py 0x080BC100
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-094015'
+open_questions:
+- What sub_800F884 does with the object pointer (per-object side effect of the collection?)
+- Which battle scenario this countdown belongs to and what the four excluded IDs (0xD3, 0xDA, 0xE9, 0xEA)
+  are, to name the filter more specifically
+sources:
+- wf investigate investigate-20261019-094015
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 20b6f329
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BC100 -> battle_collectStandardObjectIds
+  where: bn6f 63b1db8c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BC100

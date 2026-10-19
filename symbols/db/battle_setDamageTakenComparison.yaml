@@ -1,0 +1,44 @@
+name: battle_setDamageTakenComparison
+address: '0x0802CB38'
+kind: function
+status: probable
+summary: Records both sides' total damage taken in the battle-result struct at 203EAD0 and stores which
+  side took less damage.
+interface: (r0 = total damage taken by side 1, r1 = total damage taken by side 0) -> r0 = 0; writes dword_203EAD0
+  struct and byte [r5,#0x10]
+details: 'Stores r0 and r1 as halfwords at dword_203EAD0+8 and +0xA, then computes a verdict: 0xFF if
+  equal, 0 if r0<r1, 1 if r0>r1; this verdict is also written to caller state byte [r5,#0x10]. From the
+  verdict it derives a winner code at dword_203EAD4+3 (byte 0x203EAD7): 3 on a tie, otherwise 2 if the
+  verdict matches oBattleState_PlayerSide or 1 if not — i.e. which side took less damage. Finally it clears
+  the dword at 203EAD0 and the halfwords at 203EADC/203EADE, resetting the struct''s counters for a new
+  comparison phase.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: strh r0/r1 to 203EAD8/203EADA store the two totals passed in; cmp/beq/blt chain yields 0xFF/0/1
+    verdict stored to [r5,#0x10] and 0x203EAD7; eor r0, r6 against oBattleState_PlayerSide decides the
+    2-vs-1 winner code; caller 0x0800838A passes battle_getPlayerTotalDamageTaken(1) and (0) as r0/r1,
+    then advances its phase state to 4; zeroing 203EAD0, 203EADC, 203EADE resets counters after recording
+    the comparison
+  refs:
+  - bn6f/asm/asm03_0.s:14229
+  - 0x0800838A sub_800838A
+  reproduce: python3 tools/asmcat.py 0x0802CB38
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-094015'
+open_questions:
+- Exact meaning of the winner codes 1/2/3 at 0x203EAD7 and what consumes this struct later (likely a draw-breaking
+  or post-battle stat display)
+sources:
+- wf investigate investigate-20261019-094015
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 20b6f329
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_802CB38 -> battle_setDamageTakenComparison
+  where: bn6f 63b1db8c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802CB38

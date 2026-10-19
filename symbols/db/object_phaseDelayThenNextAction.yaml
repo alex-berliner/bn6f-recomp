@@ -1,0 +1,44 @@
+name: object_phaseDelayThenNextAction
+address: '0x080C2E6E'
+kind: function
+status: probable
+summary: 'Battle-object phase handler: one-time setup (anim 0xF, 60-frame timer, queue something one panel
+  ahead via sub_80C2FBC), then counts down and on expiry returns to phase 0 with CurAction=8.'
+interface: (r5 = battle object ptr; r0/r1 unused on entry) -> void; sets PhaseInitialized=4 on first run,
+  then Timer countdown, ends with CurPhaseAndPhaseInitialized=0 and CurAction=8
+details: 'First-entry branch initializes the phase: RelatedObject1Ptr=0, CurAnim=0xF, Timer=60, then computes
+  target x = FuturePanelX+1, mirrored to -1 (subtract 2) when Alliance^DirectionFlip != 0, and calls sub_80C2FBC(x,
+  2) — plausibly spawning/placing something on the adjacent panel. Sets PhaseInitialized=4. Subsequent
+  frames decrement Timer; when it reaches 0 the phase field is zeroed and CurAction is set to 8. All state
+  lives in the standard oBattleObject_* fields.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#oBattleObject_PhaseInitialized]/bne: two-stage init-then-run phase pattern; str
+    r0,[r5,#oBattleObject_RelatedObject1Ptr] and strb 0xF -> CurAnim, 0x3C -> Timer: init anim and 60-frame
+    delay; add r0,#1 ... eor r2,r4 ... sub r0,#2: target panel mirrored across FuturePanelX by Alliance/DirectionFlip;
+    bl sub_80C2FBC with (adjusted x, r1=2) then PhaseInitialized=4; Timer-- until 0, then CurPhaseAndPhaseInitialized=0
+    and CurAction=8'
+  refs:
+  - bn6f/asm/asm31.s:24560
+  - 0x080C2FBC sub_80C2FBC
+  reproduce: python3 tools/asmcat.py 0x080C2E6E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-094015'
+open_questions:
+- what sub_80C2FBC(x,2) does (spawn object? set panel flag?)
+- which battle object / enemy uses this phase and what anim 0xF and action 8 mean
+- which caller dispatches here (none known) to confirm the object type
+sources:
+- wf investigate investigate-20261019-094015
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 20b6f329
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C2E6E -> object_phaseDelayThenNextAction
+  where: bn6f 63b1db8c
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C2E6E
