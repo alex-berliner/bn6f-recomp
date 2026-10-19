@@ -1303,6 +1303,10 @@ def try_split(D):
     return w, []
 
 KILL_COST = 1.5
+FORCED_NOW = [False]         # the repair is a loss asked for: a kill there is wanted (progress over a battle's
+                             # last turns), its bar the frames to the result screen, not a close match (run9x 1068170:
+                             # the deletion held to the screen at 1.98)
+def kill_cost(): return 2.2 if FORCED_NOW[0] else KILL_COST
 def try_kill(D, side=1):
     """A battle that went another way than the video's (its AI, hands, damage): end it when the video's does
     (side 1: our enemies deleted; side 0: MegaMan deleted, a game over the video has).
@@ -1396,7 +1400,7 @@ def try_kill(D, side=1):
         res = evaluate(tasks)
         # (a close match only: a deletion that cuts short a battle the video goes on with scrapes by at 1.7-2.0;
         # the right ones were 0.7-1.2)
-        ok = [t for t in tasks if res[t[3]][0] >= gR + 120 and res[t[3]][1] < KILL_COST]
+        ok = [t for t in tasks if res[t[3]][0] >= gR + 120 and res[t[3]][1] < kill_cost()]
         if not ok:
             log(f'  {"kill" if side else "die"}: no deletion time holds (furthest {max(r[0] for r in res.values())}, want {gR + 120}, best mean cost {min(r[1] for r in res.values()):.2f})')
             if how.startswith('black') and W0 >= D:
@@ -1445,7 +1449,7 @@ def try_skipahead(D):
     w3 = (J, slot, h, vbest - bm.RATE * h, np.array([0.5 * abs(o) for o in bm.OFFS]), bm.Node(node.key, vbest, node.parent))
     r = evaluate([(ck_file(w3), [], J + 300, 'SA')] * 2)['SA']
     log(f'  skip ahead: re-anchored {vbest - vJ:+d} video frames at {J}, the sync reaches {r[0]} (mean cost {r[1]:.3f})')
-    if r[0] >= J + 300 and r[1] < KILL_COST:
+    if r[0] >= J + 300 and r[1] < kill_cost():
         FREE.append((D, J))
         return w3, []
     return None
@@ -1499,7 +1503,7 @@ def kill_through_black(D, W0, gB, kill, vD, side, tmpl=None):
         w3 = (J, slot, h, vD + int(round((J - D) * bm.RATE)) - bm.RATE * h, np.array([0.5 * abs(o) for o in bm.OFFS]), node)
         r = evaluate([(ck_file(w3), [], J + 300, 'KB')] * 2)['KB']
         log(f'  {who} through black: deleting at {Wd}, the sync from {J} reaches {r[0]} (mean cost {r[1]:.3f})')
-        if r[0] >= J + 300 and r[1] < KILL_COST:
+        if r[0] >= J + 300 and r[1] < kill_cost():
             FREE.append((D, J))
             return w3, ([hold] if hold else []) + [[Wd, kill]]
     return None
@@ -2008,7 +2012,9 @@ while True:
             # run goes on when they find nothing
             was_forced = forced is not None; forced = None
             if was_forced: only_was, ONLY = ONLY, forced_only
+            FORCED_NOW[0] = was_forced
             KEEP_NEXT[0] = False; fix = repair(D); keep_later = keep_later or KEEP_NEXT[0]
+            FORCED_NOW[0] = False
             if was_forced:
                 ONLY = only_was
                 if fix is None: log(f'  the loss asked for at {D}: no place fixed it; going on'); continue
