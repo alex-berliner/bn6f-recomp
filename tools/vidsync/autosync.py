@@ -1384,6 +1384,9 @@ def try_kill(D, side=1):
             if how.startswith('black') and W0 >= D:
                 r2 = kill_through_black(D, W0, gR, kill, vD, side)
                 if r2: return r2
+            if how.startswith('result') and W0 >= D:
+                r2 = kill_through_black(D, W0, gR, kill, vD, side, tmpl=tmpl)
+                if r2: return r2
             continue
         t = max(ok, key=lambda t: (res[t[3]][0], -res[t[3]][1]))
         log(f'  {"kill" if side else "die"}: delete at {t[1][0][0]} holds to {res[t[3]][0]} (mean cost {res[t[3]][1]:.3f})')
@@ -1391,22 +1394,73 @@ def try_kill(D, side=1):
         return w2, [t[1][0]]
     return None
 
-def kill_through_black(D, W0, gB, kill, vD, side):
+def try_skipahead(D):
+    """Our battle ends well before the video's (run9r 1049400: on the video's keys ours throws all three viruses
+    off the field and is back on the map at ~1049700, the video's battle goes on to ~1050700), so no deletion time
+    lines the two up. Play the video's keys to our map, find the video frame ahead that shows the same map, and
+    re-anchor the video there (v0 jumps ahead; the stretch between is FREE): the trace leaves the video's last
+    part of that battle out, as an offset jump does a few frames."""
+    from feat import emu_thumb
+    w = state_at(D)
+    if w is None: return None
+    b.e.load(w[1])
+    if b.e.read(syms.GS_SUBSYSTEM, 1)[0] != 0x0C: return None
+    vD = w[5].v if w[5] is not None else b.vbase(w[2])
+    set_emu_pokes(); node = w[5]; G = None
+    for g in range(D, D + 1500):
+        vg = vD + int(round((g - D) * bm.RATE)); k = b.key(vg); b.e.step(k); node = bm.Node(k, vg, node)
+        if b.e.read(syms.GS_SUBSYSTEM, 1)[0] == 4: G = g + 1; break
+    if G is None: return None
+    # (a frame of the map itself, not the fade: a black frame matches any other, run9r 1049728 -> 0.1)
+    J = G
+    while True:
+        vg = vD + int(round((J - D) * bm.RATE)); k = b.key(vg); b.e.step(k); node = bm.Node(k, vg, node); J += 1
+        th = emu_thumb(b.e.shot()).astype(np.float32)
+        if J - G >= 30 and float(th.std()) > 20: break
+        if J - G > 400: return None
+    vJ = vD + int(round((J - D) * bm.RATE))
+    ds = [(float(np.abs(b.T[min(v, b.N - 1)].astype(np.float32) - th).mean()), v) for v in range(vJ + 60, vJ + 4000)]
+    dv, vbest = min(ds)
+    log(f'  skip ahead: ours back on the map at {G} (the video {vJ} still in the battle); its map at {J} looks most like video {vbest} ({dv:.1f})')
+    if dv > 12: return None
+    gg, h = b.e.gf(); slot = RSLOT - 1; b.e.save(slot)
+    w3 = (J, slot, h, vbest - bm.RATE * h, np.array([0.5 * abs(o) for o in bm.OFFS]), bm.Node(node.key, vbest, node.parent))
+    r = evaluate([(ck_file(w3), [], J + 300, 'SA')] * 2)['SA']
+    log(f'  skip ahead: re-anchored {vbest - vJ:+d} video frames at {J}, the sync reaches {r[0]} (mean cost {r[1]:.3f})')
+    if r[0] >= J + 300 and r[1] < KILL_COST:
+        FREE.append((D, J))
+        return w3, []
+    return None
+
+def kill_through_black(D, W0, gB, kill, vD, side, tmpl=None):
     """A battle that ends in black (a story battle: the scene goes on on the map) and went another way than the
     video's: its last stretch cannot match (the field, MegaMan's HP: run8e at 539262, the video's LifeSword ends a
     navi on a field of grass and ice). Delete, play the video's keys unjudged (a FREE window), and move the
     deletion until our black starts on the video's frame gB (with the video's keys the scene after a deletion
     runs faster than without: W0 from the keyless measure was ~90 frames early); then judge the sync from a
-    little after gB."""
+    little after gB. With tmpl (the result screen's panel, from try_kill), the end is that screen instead of
+    black: a random battle that went another way, skipped to its result screen (run9r 1049400)."""
     who = "kill" if side else "die"
+    from feat import emu_thumb
+    def ended(shot):
+        if tmpl is None: return float(np.asarray(shot, np.float32).mean()) < 10
+        return float(np.abs(emu_thumb(shot)[PANEL_T] - tmpl).mean()) < 12
 
+    # (skipped to its result screen: ours can win sooner than the video on the video's keys, run9r 1049400, ours
+    # back on the map 200 frames before the video's deletion; the enemies are held alive (HP 9999) from the loss)
+    hold = None
+    if tmpl is not None:
+        wD = state_at(D)
+        if wD is None: return None
+        b.e.load(wD[1]); foes = enemies_alive(side)
+        if foes: hold = [D + 1, ','.join(f'{a + 0x24:#x}=0x270f/2' for a in foes)]   # (a poke at D is before D's state)
     def play(Wd, to):
         wD = state_at(D)
         if wD is None: return None, None, None
-        b.e.load(wD[1]); set_emu_pokes([[Wd, kill]]); node = wD[5]; black = None
+        b.e.load(wD[1]); set_emu_pokes([[Wd, kill]] + ([hold] if hold else [])); node = wD[5]; black = None
         for g in range(D, to):              # (each frame on the path: its keys are the trace's)
             vg = vD + int(round((g - D) * bm.RATE)); k = b.key(vg); b.e.step(k); node = bm.Node(k, vg, node)
-            if black is None and g >= Wd and float(np.asarray(b.e.shot(), np.float32).mean()) < 10: black = g + 1
+            if black is None and g >= Wd and ended(b.e.shot()): black = g + 1
         set_emu_pokes()
         return wD, node, black
 
@@ -1429,7 +1483,7 @@ def kill_through_black(D, W0, gB, kill, vD, side):
         log(f'  {who} through black: deleting at {Wd}, the sync from {J} reaches {r[0]} (mean cost {r[1]:.3f})')
         if r[0] >= J + 300 and r[1] < KILL_COST:
             FREE.append((D, J))
-            return w3, [[Wd, kill]]
+            return w3, ([hold] if hold else []) + [[Wd, kill]]
     return None
 
 # subchips with a movement counter (submenu_subchip_8124230 etc.): event flag byte/mask, counter address.
@@ -1774,7 +1828,7 @@ def repair(D):
     tried = {name for name, _ in first}
     order = [('offset', try_offset), ('overlay', try_overlay), ('hand', try_hand), ('redraw', try_redraw), ('gmd', try_gmd),
              ('subchip', try_subchip), ('position', try_position), ('relocate', try_relocate), ('nudge', try_nudge), ('tornado', try_tornado), ('mapobj', try_mapobj),
-             ('encounter', try_encounter), ('pick', try_pick), ('library', try_library), ('hp', try_hp), ('split', try_split), ('kill', try_kill), ('die', lambda D: try_kill(D, 0)),
+             ('encounter', try_encounter), ('pick', try_pick), ('library', try_library), ('hp', try_hp), ('split', try_split), ('kill', try_kill), ('skipahead', try_skipahead), ('die', lambda D: try_kill(D, 0)),
              *[(name, h) for name, h in PLUGINS if name not in MATCHERS]]
     # a battle whose folder shuffle no fix has held to yet: its first hand goes before a video jump (a wrong hand
     # costs little on the custom screen, and the offset handler re-anchored over one, run8t 839618)
