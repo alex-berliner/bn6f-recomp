@@ -4,34 +4,33 @@ kind: function
 previous_names:
 - sub_80A7E4C
 status: probable
-summary: Indirect tail-call dispatch on battle object AIData by current action byte (r5->+9), invoking
-  one of three action handlers.
-interface: '(r0 = AIData base via r5, r1 = log2 of step?, r2 = ?, r3 = saved ptr) -> r0 = new r0 written
-  by callee (varies: 0x4, 0x1d, 0x14, 0x13, 0x12, 0x11, ...); side effects: jumps via tail-call into one
-  of sub_80A7E6C / sub_80A7EA4 / sub_80A7EBE; no other stack use'
-details: "The function is a thin trampoline: it pushes r4-r7 and lr, then loads a table pointer off_80A7E5C,\
-  \ indexes it by the byte at [r5+9] (which, given r5 holds a battle object per the \"beastsp\" snapshot\
-  \ context, is the CurAction field per oBattleObject:0x9), loads the corresponding function pointer,\
-  \ and bx's into it with lr=pc; control returns via the matching pop which restores r4-r7 and pc, i.e.\
-  \ the chosen handler is tail-called.\n  The handler table at off_80A7E60 has three entries (three sub_80A7E6C/sub_80A7EA4/sub_80A7EBE),\
-  \ suggesting an action-byte dispatch for 3 distinct CurAction values (e.g. initiative states / counter\
-  \ / parry / chase, but that is speculation; only the values 0,1,2 are dispatched).\n  Captured r0 returns\
-  \ range 0x04..0x1d across many snapshots, consistent with each action handler returning a per-frame\
-  \ u8 state code; the dispatch itself doesn't write to them.\n  The function does not modify any callee-saved\
-  \ state beyond lr; r5 (the battle object/AIData base) is preserved by being in the saved set. r1 (=0x04)\
-  \ and r2 (=0x0c) appear to be parameters passed through to the selected handler.\n"
+summary: Indirect tail-call dispatch on battle object AIData by current action byte (r5->+9), invoking one of three
+  action handlers.
+interface: '(r0 = AIData base via r5, r1 = log2 of step?, r2 = ?, r3 = saved ptr) -> r0 = new r0 written by callee
+  (varies: 0x4, 0x1d, 0x14, 0x13, 0x12, 0x11, ...); side effects: jumps via tail-call into one of sub_80A7E6C /
+  sub_80A7EA4 / sub_80A7EBE; no other stack use'
+details: "The function is a thin trampoline: it pushes r4-r7 and lr, then loads a table pointer off_80A7E5C, indexes\
+  \ it by the byte at [r5+9] (which, given r5 holds a battle object per the \"beastsp\" snapshot context, is the\
+  \ CurAction field per oBattleObject:0x9), loads the corresponding function pointer, and bx's into it with lr=pc;\
+  \ control returns via the matching pop which restores r4-r7 and pc, i.e. the chosen handler is tail-called.\n\
+  \  The handler table at off_80A7E60 has three entries (three sub_80A7E6C/sub_80A7EA4/sub_80A7EBE), suggesting\
+  \ an action-byte dispatch for 3 distinct CurAction values (e.g. initiative states / counter / parry / chase, but\
+  \ that is speculation; only the values 0,1,2 are dispatched).\n  Captured r0 returns range 0x04..0x1d across many\
+  \ snapshots, consistent with each action handler returning a per-frame u8 state code; the dispatch itself doesn't\
+  \ write to them.\n  The function does not modify any callee-saved state beyond lr; r5 (the battle object/AIData\
+  \ base) is preserved by being in the saved set. r1 (=0x04) and r2 (=0x0c) appear to be parameters passed through\
+  \ to the selected handler.\n"
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- `push {r4-r7,lr}` / `pop {r4-r7,pc}` (asm29.s:5668-5669 and 5673) show this is a pure dispatcher
-    saving only callee-saved regs plus lr, returning by restoring pc. - `ldrb r1, [r5,#9]` (asm29.s:5669)
-    reads the action byte from offset 0x9 of the r5-based object, matching oBattleObject.CurAction at
-    0x9. - `ldr r0, off_80A7E5C; ldr r0, [r0,r1]; mov lr, pc; bx r0` (asm29.s:5670-5673) is the textbook
-    Thumb switch-table tail call into one of three handlers. - Caller `lr=080a7e20` (from snap_beastsp_0180000_*.bin
-    entries) sits just before this function at 0x80a7e20, consistent with a single in-battle caller. -
-    Captured entry r0=080a7e4d / r1=4 / r2=0xc and exit r0 values stepping 4,0x1d,0x14,0x13,0x12,0x11
-    across snapshots show the three handlers can each produce a variety of u8 result codes (state machine
-    outputs).'
+  detail: '- `push {r4-r7,lr}` / `pop {r4-r7,pc}` (asm29.s:5668-5669 and 5673) show this is a pure dispatcher saving
+    only callee-saved regs plus lr, returning by restoring pc. - `ldrb r1, [r5,#9]` (asm29.s:5669) reads the action
+    byte from offset 0x9 of the r5-based object, matching oBattleObject.CurAction at 0x9. - `ldr r0, off_80A7E5C;
+    ldr r0, [r0,r1]; mov lr, pc; bx r0` (asm29.s:5670-5673) is the textbook Thumb switch-table tail call into one
+    of three handlers. - Caller `lr=080a7e20` (from snap_beastsp_0180000_*.bin entries) sits just before this function
+    at 0x80a7e20, consistent with a single in-battle caller. - Captured entry r0=080a7e4d / r1=4 / r2=0xc and exit
+    r0 values stepping 4,0x1d,0x14,0x13,0x12,0x11 across snapshots show the three handlers can each produce a variety
+    of u8 result codes (state machine outputs).'
   refs:
   - bn6f/asm/asm00_2.s
   reproduce: 'python3 tools/asmcat.py 0x080A7E4C
@@ -46,13 +45,12 @@ evidence:
     '
   result: beastsp
 open_questions:
-- Which three AI/CurAction values map to the three handlers (we only know the table has 3 entries and
-  the index is the live byte at [r5+9]).
+- Which three AI/CurAction values map to the three handlers (we only know the table has 3 entries and the index
+  is the live byte at [r5+9]).
 - Whether the handlers are class-specific AI behaviors (initiative, counter-attack, dodge) versus animation/event
   steps; both fit the byte ranges seen in exit r0.
-- Whether r5 really points to a BattleObject or to an AIData struct (offset 0x9 in AIData is `Unk_09`,
-  less semantically meaningful than CurAction on BattleObject); settling this would require the r5 value
-  at the call site at 0x80a7e20.
+- Whether r5 really points to a BattleObject or to an AIData struct (offset 0x9 in AIData is `Unk_09`, less semantically
+  meaningful than CurAction on BattleObject); settling this would require the r5 value at the call site at 0x80a7e20.
 sources:
 - discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
 changes:
@@ -64,3 +62,7 @@ changes:
   what: rename sub_80A7E4C -> battle_dispatchAIActionByAction_80A7E4C
   where: bn6f 66c2a27e
   tool: tools/rename_symbol.py
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f d20a8fa3
+  tool: tools/symdoc.py
