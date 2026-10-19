@@ -1,0 +1,47 @@
+name: ai_dispatchScriptStateHandlers
+address: '0x0810AA72'
+kind: function
+status: probable
+summary: Dispatches an enemy AI per-state handler selected by the AI script-state field (r6 object), like
+  a state-machine step.
+interface: (r6 = AI/enemy object, uses oAIState_ScriptId) -> r0 = value returned by the chosen state handler;
+  flags preserved via lr trampoline
+details: 'Loads a pointer table at off_810AA84, indexes it with [r6,#oAIState_ScriptId], and performs
+  a long call (mov lr,pc; bx r1) to the selected handler, returning straight to the caller after pop.
+  The table has exactly three entries, so this AI state machine has only three script states. One entry
+  is the known ai_startChargeAttack, confirming these are battle AI behaviors (charge/attack phases).
+  r4 and r6 are preserved across the call, implying handlers also operate on the object in r6. Quirk:
+  the lr-trampoline call means handlers return with pc from pop, so they must not corrupt lr-relative
+  state.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldr r1, off_810AA80 / ldr r1,[r1,r0] with r0=[r6,#oAIState_ScriptId]: table dispatch on AI
+    state field; mov lr, pc / bx r1: long-call into the selected state handler; table entry .word ai_startChargeAttack+1:
+    one state triggers the enemy''s charge attack; two other entries sub_810AAD0+1 and sub_810AB40+1:
+    remaining states of the same 3-state machine; push {r4,r6,lr} / pop {r4,r6,pc}: thunks through, so
+    this is a shared entry point called per AI tick'
+  refs:
+  - bn6f/asm/asm31.s:175549
+  reproduce: python3 tools/asmcat.py 0x0810AA72
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battlesweep
+open_questions:
+- Which enemy/boss owns this state machine (would need a caller or the object template that installs this
+  as its AI callback)
+- What sub_810AAD0 and sub_810AB40 do (presumably movement and attack/fire states)
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810AA72 -> ai_dispatchScriptStateHandlers
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810AA72

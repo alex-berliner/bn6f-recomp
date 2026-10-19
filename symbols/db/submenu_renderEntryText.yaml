@@ -1,0 +1,54 @@
+name: submenu_renderEntryText
+address: '0x08118134'
+kind: function
+status: probable
+summary: Renders the text/gfx for one entry of the submenu's item list into a per-slot text buffer, after
+  classifying the entry's state.
+interface: (r0 = base index from sSubmenu.unk_24, r1 = entry offset from r5 (slot id at [r5,#4]), r5 =
+  submenu slot struct) -> void; stores state byte at [r5,#0xE] and a halfword at toolkit->Unk200a220+8
+details: 'Computes an index as sSubmenu.unk_24 + [r5,#4] - 2 and bounds-checks it against sSubmenu.unk_1E;
+  out of range returns without rendering. Each 4-byte entry in word_201DA80 holds two halfwords: the first
+  is a text id (validated against sentinel 0x14C) and the second a value/state word. It writes a state
+  byte to [r5,#0xE]: 4 if text id == 0x14C, 0 if second halfword nonzero, else 2, and stores the state
+  halfword to toolkit->Unk200a220+8. It then calls renderTextGfx_8045F8C with r0 = TextScript873EA50,
+  r1 = (textId - 0x90) >> 2 as glyph-chunk index, r2 = one of seven 0x400-spaced buffers (byte_2017A00..unk_2019200)
+  selected by slot, r3 = a per-slot tile/palette offset from byte_81181C0 (0x33C0, 0x2BC0, ... stepping
+  8), and fixed r4=8, r5=1, r6=dword_86B7AE0, r7=0. The seven buffers plus seven tile offsets suggest
+  the submenu displays up to seven such entries simultaneously.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrh r0,[r6,#0x24]; ldrb r1,[r5,#4]; add r0,r0,r1; sub r0,#2; cmp with ldrh r1,[r6,#0x1e] —
+    index = sSubmenu.unk_24 + slot - 2, bounded by unk_1E; cmp r2,#0x14C / beq sets r4=4; tst r2,r2 on
+    second halfword sets 0/2; strb r4,[r5,#0xE] — entry state classification; ldr r4,[r4,#oToolkit_Unk200a220_Ptr];
+    str r2,[r4,#8] — publishes entry state word to toolkit; ldrh r1,[r1]; sub r1,#0x90; lsr r1,#2 with
+    r0=TextScript873EA50 — text id becomes glyph chunk index for renderTextGfx_8045F8C; off_811819C lists
+    7 dest buffers and byte_81181C0 seven tile bases 0x33C0/0x2BC0/0x23C0... — per-slot render destinations
+  refs:
+  - bn6f/asm/asm32.s:20471
+  - 0x08117F9C sub_8117F9C
+  - 0x08118030 sub_8118030
+  - 0x0811805C sub_811805C
+  - 0x08045F8C renderTextGfx_8045F8C
+  reproduce: python3 tools/asmcat.py 0x08118134
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- beastsp
+open_questions:
+- Exact game meaning of the word_201DA80 entries (chip list? library? trade items?) and of the 0x14C sentinel
+- Meaning of the state values 0/2/4 written to [r5,#0xE] — needs callers' handling of that field
+- What sSubmenu.unk_24/unk_1E represent (scroll base and visible-entry count presumably)
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8118134 -> submenu_renderEntryText
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8118134

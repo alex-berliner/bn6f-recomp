@@ -1,0 +1,54 @@
+name: get_sqDistToPoint
+address: '0x08010460'
+kind: function
+status: probable
+summary: Returns the squared distance from a point (r0,r1) to a point stored in a struct passed in r3.
+interface: (r0 = x, r1 = y, r3 = pointer to struct {x, y} at +0/+4) -> r0 = (ref.x - x)^2 + (ref.y - y)^2;
+  flags from final add
+details: Loads a reference x from [r3] and reference y from [r3+4], subtracts the given coordinates, squares
+  each difference with mul, and sums them into r0. It never multiplies the whole sum out to a true distance,
+  so callers presumably compare it against a squared threshold. The struct is only ever read, and r3 (not
+  a stack-passed or normal register arg) carries it, suggesting an ABI quirk or a 'this'-like fourth argument.
+  Coordinates could be screen pixels or field/tile positions; nothing here disambiguates.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldr r2,[r3] / sub r0,r2,r0 / mul r0,r2 computes (ref.x - x)^2 (asm lines 1-3); ldr r2,[r3,#4]
+    / sub r1,r2,r1 / mul r1,r2 computes (ref.y - y)^2 (asm lines 5-7); add r0,r0,r1 returns the sum of
+    squares in r0 (asm line 8); no callee calls and no known caller; recorded on many routes (battles,
+    menus, story) so it is a generic utility
+  refs:
+  - bn6f/asm/asm00_2.s:3520
+  reproduce: python3 tools/asmcat.py 0x08010460
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battles1
+- battles2
+- battlesweep
+- beastsp
+- fuzz
+- menus2
+- story2
+- story4
+- story5
+- story6
+- story8
+- story9
+open_questions:
+- No caller is known, so the meaning of the reference point struct and the coordinate space (screen vs.
+  field) is unknown
+- Which callers use it to threshold distances vs. sort by proximity
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8010460 -> get_sqDistToPoint
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8010460

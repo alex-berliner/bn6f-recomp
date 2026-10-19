@@ -1,0 +1,46 @@
+name: object_freeRelatedObjectAndExtraVars
+address: '0x08011236'
+kind: function
+status: probable
+summary: 'Battle-object cleanup helper: deletes and nulls the object''s RelatedObject2 pointer and its
+  ExtraVars allocation.'
+interface: (r5 = battle object) -> r0 = 0; clears oBattleObject_RelatedObject2Ptr and oBattleObject_ExtraVars
+  fields
+details: Reads [r5,#oBattleObject_RelatedObject2Ptr]; if non-null calls sub_80C44C8 on it and stores 0
+  back into the field, then repeats the same pattern for [r5,#oBattleObject_ExtraVars]. Both fields follow
+  the same check-free-null idiom, so sub_80C44C8 acts as the shared free/delete routine for whatever these
+  fields point at (likely the heap allocator or object destructor). This is a teardown step, run for the
+  beastsp route's battle objects; the object pointer r5 is set up by the caller and no return value is
+  produced. No flags are meaningfully returned since it ends with pop {pc}.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldr r0,[r5,#oBattleObject_RelatedObject2Ptr]; tst/beq; bl sub_80C44C8; str #0 back — free-and-null
+    pattern; identical check-free-null sequence repeated for oBattleObject_ExtraVars at loc_8011246; function
+    ends pop {pc} with r0=0 after each free, no other side effects; runs in beastsp routes on battle objects,
+    consistent with a cleanup/destructor helper'
+  refs:
+  - bn6f/asm/asm00_2.s:5293
+  - 0x080C44C8 sub_80C44C8
+  reproduce: python3 tools/asmcat.py 0x08011236
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- beastsp
+open_questions:
+- what sub_80C44C8 actually does (heap free vs object destructor) — its body is not shown
+- which caller invokes this and at what point of object lifetime (death vs battle end)
+- exact meaning of RelatedObject2Ptr vs ExtraVars in the battle object structure
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8011236 -> object_freeRelatedObjectAndExtraVars
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8011236

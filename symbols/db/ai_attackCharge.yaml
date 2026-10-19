@@ -1,0 +1,54 @@
+name: ai_attackCharge
+address: '0x0810DE3C'
+kind: function
+status: probable
+summary: 'Per-frame update for an enemy AI charged attack: arms the element/boost, plays the charge animation,
+  then fires and counts down the attack duration.'
+interface: (r0 unused; r5 = battle object, r7 = oAIAttackVars) -> r0 clobbered; updates oAIAttackVars
+  and object animation state
+details: On the first call (AttackElement == 0) it marks the attack started (sets AttackElement = 1),
+  combines the object's bytes at +0x7A/+0x7B into a single value in AttackBoost2, passes it to sub_810DFD0
+  (likely registering the attack power/effect), switches the object to animation 4 (charge pose) and zeroes
+  four ExtraVars fields. Each frame with StepTimer bit 2 clear it calls sub_810DED2 (likely spawning/moving
+  the charge effect). When the StepTimer countdown reaches 0 it switches to animation 5 (release), sets
+  a 0x10-frame counter via object_setCounterTime, reloads StepTimer from AttackDuration, sets HitElement
+  = 4, and clears AttackElement so the cycle can re-arm.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'cmp r0, #0 / bne loc_810DE6A plus strb r0=1,[r7,#oAIAttackVars_AttackElement]: one-shot arming
+    block on first run; ldrb from object +0x7A/+0x7B, lsl 4/orr into AttackBoost2, then bl sub_810DFD0:
+    builds and applies an attack-power value; mov r0, #4 / strb [r5,#oBattleObject_CurAnim] then anim
+    5 with object_setCounterTime(0x10): charge then release animation phases; StepTimer decrement loop
+    with reload from AttackDuration and HitElement = 4: timed attack window with a fixed hit property;
+    callees object_setCounterTime and the two unknown sub_810DED2/sub_810DFD0 fit an AI attack-state helper'
+  refs:
+  - bn6f/asm/asm32.s:591
+  - 0x0800E9DC object_setCounterTime
+  - 0x0810DED2 sub_810DED2
+  - 0x0810DFD0 sub_810DFD0
+  reproduce: python3 tools/asmcat.py 0x0810DE3C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battlesweep
+open_questions:
+- No known callers, so which boss/attack this handler serves and what element 1 / HitElement 4 denote
+  is unconfirmed
+- sub_810DFD0 and sub_810DED2 are unnamed, so the exact effect of AttackBoost2 and the per-frame sub-step
+  are unknown
+- Meaning of the four cleared oBattleObject_ExtraVars+8..0x14 fields (likely per-attack scratch state)
+  is unverified
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810DE3C -> ai_attackCharge
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810DE3C

@@ -1,0 +1,66 @@
+name: object_checkCollisionFlagsAndLinkPair
+address: '0x03007650'
+kind: function
+status: probable
+summary: For a pair of battle objects, checks that one's target collision flags match the other's self
+  collision flags and, if so, records the collision link between them.
+interface: (r0 = object A collision/entity record, r1 = object B record) -> r0 = preserved via callee
+  flow; no meaningful return, flags clobbered
+details: Loads oCollisionData_TargetCollisionTypeFlags from r0 (the object seeking targets) and oCollisionData_SelfCollisionTypeFlags
+  from r1 (the candidate target) and tst's them; if no flag bits overlap, the pair is ignored entirely.
+  Otherwise it saves both records in r6/r7 and calls sub_3007218 and then sub_3007692, each with the same
+  (r0=A, r1=B) arguments, presumably recording the collision connection in each direction or on both records.
+  This is the per-pair inner step of object_linkCollisionData, which iterates a group mask table to feed
+  pairs in during battle (skipped when paused). The symmetric structure (two callees, same argument order)
+  suggests one call handles each side of the link.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: tst of [r0,#oCollisionData_TargetCollisionTypeFlags] with [r1,#oCollisionData_SelfCollisionTypeFlags]
+    gates everything — flag-compatibility check between two collision records; beq skip means non-matching
+    flag pairs do nothing, i.e. this is a filter + link step, not unconditional processing; caller object_linkCollisionData
+    (known summary) feeds object pairs from a per-group mask table during battle, matching a pair-wise
+    collision linker; two consecutive bl sub_3007218 / bl sub_3007692 with identical (r0,r1) arguments
+    fits 'record the connection on both sides' of the caller's summary
+  refs:
+  - bn6f/asm/asm38.s:3895
+  - 0x030075FC object_linkCollisionData
+  - 0x03007218 sub_3007218
+  - 0x03007692 sub_3007692
+  reproduce: python3 tools/asmcat.py 0x03007650
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- beastsp
+- chips
+- fuzz
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- exact effect of sub_3007218 vs sub_3007692 — whether they write each other's link lists or one computes
+  hit data first
+- whether r0 is always the attacker/target-seeker and r1 the target, or the roles are symmetric
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_3007650 -> object_checkCollisionFlagsAndLinkPair
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_3007650

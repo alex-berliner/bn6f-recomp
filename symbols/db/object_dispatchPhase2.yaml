@@ -1,0 +1,45 @@
+name: object_dispatchPhase2
+address: '0x080CD0F8'
+kind: function
+status: probable
+summary: Trampoline that tail-calls one of two per-phase handlers based on the battle object's current
+  phase, used by a chip-related object.
+interface: (r5 = battle object) -> r0 = phase index passed to handler; returns to caller of this function
+  via pop {pc}
+details: Loads a jump-table base from a literal pool, reads the object's oBattleObject_CurPhase byte (r5-based
+  battle-object struct), indexes the table, and does the classic mov lr,pc / bx r1 trick so the handler's
+  return lands on pop {pc}. The table at off_80CD10C has exactly two entries (sub_80CD114+1, sub_80CD12C+1),
+  so the object has a two-phase state machine. r5 is used unpushed, so the caller guarantees it points
+  at the active battle object. The recorded execution route is chips, suggesting this is the update dispatcher
+  for a chip-spawned effect or chip-use animation object, but the handlers' bodies were not shown so their
+  exact behavior is unknown.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#oBattleObject_CurPhase] + ldr r1,[r1,r0] indexes a table by the object's phase
+    field; off_80CD10C holds exactly two Thumb handler addresses (sub_80CD114+1, sub_80CD12C+1), a two-state
+    machine; mov lr,pc; bx r1 makes the callee return to pop {pc}, i.e. a dispatch trampoline, not a plain
+    branch; Recorded route 'chips' places it in chip processing
+  refs:
+  - bn6f/asm/asm31.s:45705
+  reproduce: python3 tools/asmcat.py 0x080CD0F8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- chips
+open_questions:
+- Which chip or chip-effect object uses this dispatcher (no callers known)
+- What sub_80CD114 (phase 0) and sub_80CD12C (phase 1) do, to name the states precisely
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80CD0F8 -> object_dispatchPhase2
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CD0F8

@@ -1,0 +1,43 @@
+name: ow_forceKeyState
+address: '0x0813768C'
+kind: function
+status: probable
+summary: ORs a key bitmask into all three fields (held, just-pressed, repeat) of the toolkit's joypad
+  state, injecting fake held buttons.
+interface: (r0 = key bitmask to force) -> r0 = clobbered; modifies toolkit joypad held/new/repeat halves
+details: Fetches the joypad struct pointer from the toolkit at r10 (oToolkit_JoypadPtr), then ORs r0 into
+  the halfword at +0 (currently held keys), +4 (newly pressed this frame), and +2 (key repeat), storing
+  each back. This makes the engine behave as if those buttons are physically pressed for that frame. Likely
+  used by scripted sequences (the recorded route is beastsp, i.e. Beast Out) to force input, e.g. to auto-trigger
+  or hold a transformation/cutscene. No flags are meaningfully returned; only LR is stacked.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldr r2,[r10,#oToolkit_JoypadPtr] identifies the toolkit joypad struct (asm line 3-4); three
+    orr/strh pairs at offsets #0, #4, #2 match the held/new/repeat key layout; orr r1,r0 before each store
+    shows r0 is a bitmask merged into all three key fields; only caller sub_81375AC is nearby in the same
+    compilation unit, suggesting a scripted-input helper pair'
+  refs:
+  - bn6f/asm/asm36.s:15488
+  - 0x081375AC sub_81375AC
+  reproduce: python3 tools/asmcat.py 0x0813768C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- beastsp
+open_questions:
+- exact caller context (sub_81375AC body unknown) — which sequence forces which keys
+- whether the bitmask uses the standard A/B/R/L/Start bit assignments of this joypad struct
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_813768C -> ow_forceKeyState
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_813768C

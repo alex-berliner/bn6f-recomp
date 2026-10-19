@@ -1,0 +1,49 @@
+name: shop_addItemStockEntry
+address: '0x08048CCC'
+kind: function
+status: probable
+summary: Merges an 8-byte item/stock record into an indexed inventory-style list, stacking quantities
+  up to 0xFF or filling the first empty slot.
+interface: (r0 = list index, r1 = pointer to 8-byte entry {id, count, halfword, byte, pad}) -> void; flags
+  not meaningful
+details: The function looks up an entry at dword_8046B98 + r0*0x10; field +8 (added to the toolkit's ShopDataPtr)
+  is the record array base and field +0xC its record count. For each of the caller-supplied 8-byte records
+  it first scans the array for a record whose bytes 0, 2 and 4 all match; on a match it adds the record's
+  count (byte 1) to the stored count, saturating at 0xFF. If no matching record exists, it scans for the
+  first record with id byte 0 (empty slot) and CopyBytes-copies the whole 8-byte record there. Both scans
+  iterate the array in 8-byte strides up to the count from +0xC.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sub_8048CCC:008 ldr r7, off_8046B98; mul r0,#0x10 indexes a 0x10-byte descriptor per list;
+    sub_8048CCC:014 ldr r5,[r7,#0xC] / ldr r7,[r7,#8]: array base and count come from the descriptor;
+    sub_8048CCC:020 add r7, r10''s oToolkit_ShopDataPtr: the array lives in the toolkit''s shop data buffer;
+    sub_8048CCC:030-062 compares bytes 0/2/4 of each stride-8 record, then add byte1 with cmp r4,#0xFF
+    clamp stored back; sub_8048CCC:074-086 falls through to a second scan for byte0==0 and calls CopyBytes(src=r6,
+    dest=r7, 8) to fill the empty slot'
+  refs:
+  - bn6f/asm/asm03_2.s:4344
+  - 0x08048F88 sub_8048F88
+  - 0x08000920 CopyBytes
+  reproduce: python3 tools/asmcat.py 0x08048CCC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- beastsp
+open_questions:
+- exact meaning of the 8-byte record's halfword field and byte 4 (item id vs. price vs. flags)
+- whether the ShopDataPtr-named buffer is truly shop stock or a generic item inventory; the sole caller
+  sub_8048F88 would clarify the source of the records
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8048CCC -> shop_addItemStockEntry
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8048CCC

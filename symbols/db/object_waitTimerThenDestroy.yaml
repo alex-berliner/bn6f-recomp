@@ -1,0 +1,45 @@
+name: object_waitTimerThenDestroy
+address: '0x080E3A74'
+kind: function
+status: probable
+summary: Generic battle-object state handler that waits Param2 frames then destroys the object.
+interface: (r0 = battle object, in r5 by convention) -> r0 = undefined; sets oBattleObject_CurStateActionPhaseAndPhaseInitialized
+  to CUR_STATE_DESTROY when the timer expires
+details: 'On the first invocation (CurPhase == 0) it initializes the wait: sets CurPhase to 4, copies
+  the byte at oBattleObject_Param2 into oBattleObject_Timer as the delay count. Every subsequent call
+  decrements Timer; while it is still positive (bgt) it just returns, leaving the object alive. Once the
+  decrement reaches zero or below, it writes CUR_STATE_DESTROY into the combined CurState/ActionPhase/PhaseInitialized
+  field so the battle engine deletes the object. The phase=4 marker ensures the Param2->Timer copy only
+  happens once. This is a reusable ''linger for N frames, then despawn'' script step for battle objects/effects.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#oBattleObject_CurPhase]; tst/bne skips re-init, so phase gates one-time setup;
+    strb r1(=4),[r5,#oBattleObject_CurPhase] and strh r0(=Param2),[r5,#oBattleObject_Timer] on first run;
+    ldrh r0,[r5,#oBattleObject_Timer]; sub r0,#1; bgt locret: loop until timer counts down to 0; mov r0,#CUR_STATE_DESTROY;
+    str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized] kills the object; Runs on recorded
+    battle routes (battlesweep, beastsp), consistent with a battle-object update handler'
+  refs:
+  - bn6f/asm/asm31.s:94087
+  reproduce: python3 tools/asmcat.py 0x080E3A74
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- No direct caller identified, so which objects/effects use this wait-then-destroy step (and what Param2
+  values are typical) is unconfirmed
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80E3A74 -> object_waitTimerThenDestroy
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E3A74

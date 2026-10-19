@@ -1,0 +1,51 @@
+name: battle_beastOutTimerTick
+address: '0x08136A0C'
+kind: function
+status: probable
+summary: Counts down the Beast Out timer each tick and, when it expires, tears down the beast-out state
+  (scales, e-struct effects, screen registers) back to normal form.
+interface: '(r0 = unused/ignored; r5 = beast-out state object: +0x12 countdown, +0x13 flag, +0x3 next
+  state; r10 = toolkit) -> r0 = 0 written to r5+0x13; no meaningful return'
+details: 'Each call it stores counter r5+0x12 >> 2 into the struct at toolkit->Unk2009740+2 (likely remaining-time
+  for UI/logic) and decrements r5+0x12. While the counter is still >= 0 it calls sub_8136B10(3) each tick;
+  when it underflows, it enters the end path: writes state 0x28 to r5+3, zeroes the counter and all four
+  bytes of the 2009740 beast-out struct, zeroes render-info halfwords +0x18/+0x1a (sprite scale/offset),
+  writes 0x2f/0x3f/0x3f to 200f3a0+9..0xb (screen blend/fade values), calls sub_8136B74, clears eStructArr2008450
+  entries 0xA and 0xB via sub_8046696 (which also marks their sprites unscalable, undoing the beast-out
+  enlargement), calls sub_8136BA0(0xB), and clears r5+0x13. The recorded ''beastsp'' route and the scale-clearing
+  callee match the Beast Out mechanic in BN6.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb/strb r5+0x12 with lsr #2 into 2009740+2 then decrement: periodic countdown of beast-out
+    timer; end path zeroes 2009740+0..3 and renderInfo +0x18/+0x1a, resetting beast-out runtime and sprite
+    scale; bl sub_8046696 with 0xA and 0xB clears e-struct entries whose sprites were scaled (beast-out
+    enlargement removed); 200f3a0+9..b set to 0x2f/0x3f/0x3f before sub_8136B74, consistent with a screen
+    blend reset on Beast Over; r5+3 = 0x28 hands the object a new state; r5+0x13 = 0 marks the tick handled'
+  refs:
+  - bn6f/asm/asm36.s:13813
+  - 0x08046696 sub_8046696
+  - 0x08136B10 sub_8136B10
+  - 0x08136B74 sub_8136B74
+  reproduce: python3 tools/asmcat.py 0x08136A0C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- beastsp
+open_questions:
+- Exact meaning of the 2009740 struct fields and the 200f3a0+9..b registers (blend vs palette)
+- What sub_8136B10(3), sub_8136B74 and sub_8136BA0 do specifically
+- Who calls this function and what r0 is meant to carry
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8136A0C -> battle_beastOutTimerTick
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8136A0C

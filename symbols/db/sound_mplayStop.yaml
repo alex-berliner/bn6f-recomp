@@ -1,0 +1,50 @@
+name: sound_mplayStop
+address: '0x0814EB1C'
+kind: function
+status: probable
+summary: 'm4a music-player stop: kills every active track''s sounding channel and resets the track state
+  for one MusicPlayerInfo.'
+interface: (r0 = MusicPlayerInfo* song) -> r0 = undefined; no flags used by callers
+details: 'r0 is an m4a MusicPlayerInfo: +0x08 is the track count, +0x2C the pointer to the 0x50-byte track
+  structs, and +0x34 an ''ident'' guard that must equal the magic 0x68736D53 (''Smsh''). On entry it increments
+  the guard (+0x34) so the IRQ-side player code skips that player, then loops over all tracks; for each
+  track whose flag byte has both 0x80 (track allocated/active) and 0x40 (voice playing) set, it invokes
+  that track''s own handler through mplay_trackHandler_814ECB4 with command 0x80 passed on the stack (the
+  m4a convention), silencing the channel. It then resets the track to defaults: flags back to 0x80 (active
+  but silent), +0xF = 2, +0x13 = 0x40, +0x19 = 0x16, and +0x24 = 1. Finally it restores the magic into
+  +0x34 so normal playback processing resumes. This mirrors the stock m4a library''s MPlayStop behaviour.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldr r1,[r7,#0x34]; cmp with dword_814EB80=0x68736D53 and increment/restore matches the m4a ident
+    reentrancy guard around MPlayStop; ldrb r5,[r7,#8] / ldr r4,[r7,#0x2c] with 0x50-byte stride = MusicPlayerInfo
+    trackCount and TrackData array; test of flag bits 0x80 and 0x40 on track byte 0 selects only sounding
+    tracks; bl mplay_trackHandler_814ECB4 with 0x80 pushed on the stack is the m4a pattern for invoking
+    a track's handler with a stop command; constant reset of track fields 0xF/0x13/0x19/0x24 after stopping
+    matches clearing per-track playback state to defaults
+  refs:
+  - bn6f/asm/libs.s:23194
+  - 0x0814ECB4 mplay_trackHandler_814ECB4
+  reproduce: python3 tools/asmcat.py 0x0814EB1C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- beastsp
+- story9
+open_questions:
+- exact semantics of track fields +0xF, +0x13, +0x19 and +0x24 in this engine's TrackData
+- no direct caller captured — it is likely invoked via function pointer or from unrecorded routes; a caller
+  would confirm which songs/players are stopped with it
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_814EB1C -> sound_mplayStop
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_814EB1C

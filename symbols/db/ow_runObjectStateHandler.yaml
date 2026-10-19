@@ -1,0 +1,43 @@
+name: ow_runObjectStateHandler
+address: '0x080A9F58'
+kind: function
+status: probable
+summary: Calls the overworld object's state handler selected by the object's state field.
+interface: (r5 = object struct) -> dispatches to handler via table lookup; r0 passes through as handler
+  arg
+details: Reads a byte at r5+0x8 (the object's state index) and indexes a table of Thumb function pointers
+  at off_80A9F6C. The three handlers are ow_initObjectSprite, ow_updateApproachObject, and sub_80A9FFC
+  (state 2), matching an init/approach/... behavior state machine for overworld objects. It sets lr to
+  pc manually to call the Thumb handler, then pops pc, so the handler's return goes straight back to this
+  function's caller. r5 is not set up inside the function, so the object struct must be a caller-maintained
+  register convention. r0 loaded from the table is only used as the branch target, so the handler inherits
+  any r0 the caller set.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r1,[r5,#8]; ldr r0,[r0,r1]; bx r0 — state-indexed dispatch (0x080A9F5C-0x080A9F62); table
+    entries are ow_initObjectSprite+1, ow_updateApproachObject+1, sub_80A9FFC+1 — object behavior handlers;
+    route data says it runs on maps, consistent with an overworld object tick
+  refs:
+  - bn6f/asm/asm29.s:10042
+  reproduce: python3 tools/asmcat.py 0x080A9F58
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- maps
+open_questions:
+- what sub_80A9FFC (state 2) does, to confirm the state machine's full behavior
+- which caller invokes this per frame and what struct r5 points to
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80A9F58 -> ow_runObjectStateHandler
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A9F58

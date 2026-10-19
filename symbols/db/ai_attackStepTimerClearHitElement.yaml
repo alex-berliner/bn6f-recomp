@@ -1,0 +1,45 @@
+name: ai_attackStepTimerClearHitElement
+address: '0x081074C4'
+kind: function
+status: probable
+summary: 'AI attack-step handler: counts down a per-attack timer and, when it expires, clears the battle
+  object''s current animation and sets the AI hit element to 0xC.'
+interface: (r5 = battle object, r7 = AI attack vars, r0 = scratch) -> void; sets flags via the bgt on
+  the decremented counter
+details: Each call decrements oAIAttackVars_StepTimer at [r7] and returns early while it is still positive.
+  Once the counter reaches zero, it stores 0 into oBattleObject_CurAnim at [r5] (back to default/idle
+  animation) and stores 0xC into oAIAttackVars_HitElement at [r7], presumably resetting the pending hit
+  element to a 'none/neutral' value after an attack resolves. No calls are made and no other state is
+  touched; it is a leaf routine typical of the per-frame attack-script steps.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrh/sub/strh on [r7,#oAIAttackVars_StepTimer] with bgt skip: plain frame countdown (sub_81074C4:
+    2-4); mov r0,#0; strb [r5,#oBattleObject_CurAnim]: resets object animation when timer expires (sub_81074C4:
+    6-7); mov r0,#0xc; strh [r7,#oAIAttackVars_HitElement]: assigns the constant element value 0xC (sub_81074C4:
+    8-9); push/pop {lr} only, no callee calls: pure leaf AI step, fits the attack-vars structure layout;
+    no callers known; context is battlesweep AI attack-step dispatch'
+  refs:
+  - bn6f/asm/asm31.s:168719
+  reproduce: python3 tools/asmcat.py 0x081074C4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battlesweep
+open_questions:
+- what element value 0xC means in the hit-element enum
+- which attack script registers this step and with which initial StepTimer
+- whether the CurAnim clear returns the object to idle or to a specific pose
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_81074C4 -> ai_attackStepTimerClearHitElement
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81074C4

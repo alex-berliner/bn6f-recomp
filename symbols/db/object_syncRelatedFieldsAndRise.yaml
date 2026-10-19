@@ -1,0 +1,45 @@
+name: object_syncRelatedFieldsAndRise
+address: '0x080C02DA'
+kind: function
+status: probable
+summary: 'Per-frame object update: copies three words at offset 0x34 from the object''s related object,
+  then moves the object one step up in Y and Z.'
+interface: (r5 = battle object) -> r0 = destroyed; modifies oBattleObject fields 0x34-0x3C, Y16, Z16
+details: Loads RelatedObject1Ptr from the object at r5, reads 12 bytes starting at offset 0x34 of that
+  related object, and stores them into the same offsets (0x34, 0x38, 0x3C) of r5's own object, so the
+  two objects keep those fields in sync each frame. After syncing, it increments oBattleObject_Y16 and
+  oBattleObject_Z16 by 1 each, a steady per-frame drift (up and/or deeper), typical of an effect or projectile
+  rising away from its source. No other state is touched and no callees are made. The exact meaning of
+  the synced 0x34-0x3C fields is unknown from this function alone; the caller sub_80C023C is also undocumented.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldr r1,[r5,#oBattleObject_RelatedObject1Ptr]; ldmia/stmia at +0x34 copies r1-r3 words from
+    related object into r5; ldrh/strh on oBattleObject_Y16 and oBattleObject_Z16 with add #1 gives the
+    +1/+1 per-frame movement; only two field groups touched (0x34 block and Y/Z), so it is a self-contained
+    movement/sync tick; executed on the battlesweep route, consistent with a battle-scene object behavior
+    step'
+  refs:
+  - bn6f/asm/asm31.s:17691
+  - 0x080C023C sub_80C023C
+  reproduce: python3 tools/asmcat.py 0x080C02DA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battlesweep
+open_questions:
+- what fields 0x34-0x3C of the related object and the copy target mean (velocity? timer? color?)
+- which object type uses this and what sub_80C023C sets up before calling it
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80C02DA -> object_syncRelatedFieldsAndRise
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C02DA

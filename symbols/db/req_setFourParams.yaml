@@ -1,0 +1,50 @@
+name: req_setFourParams
+address: '0x0809E3C4'
+kind: function
+status: probable
+summary: Stores four pending parameters into the eStruct2000aa0 request block and raises its active/valid
+  flag byte.
+interface: (r0 = param1, r1 = param2, r2 = param3, r3 = param4) -> r0 = 1 (clobbered); no flags meaningful
+  (returns via pop {pc})
+details: 'The routine is a pure setter for the global struct at 0x2000AA0: it writes the four word arguments
+  to consecutive fields at +0xC, +0x10, +0x14 and +0x18, then stores 1 into the byte at +0xB, which acts
+  as a ''request pending/armed'' flag. It touches nothing else and calls nothing, so the actual processing
+  of these parameters happens elsewhere in code that consumes eStruct2000aa0 when the flag is set. The
+  tight argument-block-plus-flag shape is the classic deferred-command/request pattern, hence the req_
+  prefix.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: str r0/r1/r2/r3 to [r4,#0xC..0x18] shows four consecutive word params saved (sub_809E3C4 lines
+    3-6); mov r0,#1; strb r0,[r4,#0xB] sets the enable/pending byte at 0x2000AAB (lines 7-8); ldr r4,
+    off_809E430 = eStruct2000aa0 shows the fixed global target struct; no calls and pop {r4-r7,pc} confirm
+    it is a leaf setter with no side effects beyond the struct; two callers (sub_8089EBC, sub_808FD64)
+    and use on recorded beastsp routes show it is a runtime request-arming call
+  refs:
+  - bn6f/asm/ow_player.s:2791
+  - 0x08089EBC sub_8089EBC
+  - 0x0808FD64 sub_808FD64
+  reproduce: python3 tools/asmcat.py 0x0809E3C4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- beastsp
+open_questions:
+- Which consumer reads byte_2000AAB and the four param words, and what operation it then performs (this
+  would pin down the request's game meaning)
+- What the two callers pass as the four arguments (would reveal parameter semantics, e.g. IDs/coordinates/counters)
+- Whether byte at +0xB has other states (e.g. cleared elsewhere) indicating a state machine rather than
+  a simple flag
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_809E3C4 -> req_setFourParams
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_809E3C4

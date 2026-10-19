@@ -1,0 +1,51 @@
+name: navicust_handlePlacementCursorInput
+address: '0x0813612C'
+kind: function
+status: probable
+summary: 'Navi Customizer part-placement screen: per-frame input handler that confirms/cancels, rotates
+  the held part, and moves the board cursor.'
+interface: (r0 = toolkit?, r5 = naviCust screen state struct) -> r0 = destroyed; updates cursor/rotation
+  fields and plays menu sounds
+details: 'Reads the joypad via the toolkit''s JoypadPtr: A (key 1) calls navicust_confirmPartPlacement,
+  B (key 2) calls sub_813640C (likely cancel/back). Held R/L (0x100/0x200) bump the byte at [r5+0xE] mod
+  4 — the rotation of the part being placed — via sub_813B928/sub_813B920 and call sub_8136384. Direction
+  keys scroll positions: Up/Down (0xC0) adjust halfword [r5+0x2C] and Left/Right (0x30) adjust [r5+0x28],
+  each wrapping between a paired halfword (0x2E/0x2A) and limits supplied by sub_813633C/sub_8136318 from
+  byte_8136210[[r5+0xF]*2], a per-entry pair {6/7, 6/7} of board dimensions selected by [r5+0xF]. Each
+  successful move or rotation plays SOUND_MENU_CUR_MOVE. The current/previous halfword pairs (0x28/0x2A,
+  0x2C/0x2E) are compared so no-ops don''t replay the sound.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: tst r4,#1 → bl navicust_confirmPartPlacement; tst r4,#2 → bl sub_813640C (A=confirm, B=back);
+    tst r4,#0x100/0x200 → [r5+0xE] = ([r5+0xE]±1) & 3, then bl sub_8136384 (rotation mod 4); ldr r1, off_813620C;
+    ldrb r0,[r7]/[r7,#1]; bl sub_8136318/sub_813633C give move limits from byte_8136210 pair indexed by
+    [r5+0xF]; Direction masks 0xC0/0x30 wrap [r5+0x2C]/[r5+0x28] against the paired halfwords 0x2E/0x2A;
+    mov r0,#SOUND_MENU_CUR_MOVE; bl PlaySoundEffect after every successful move/rotate
+  refs:
+  - bn6f/asm/asm36.s:12643
+  - 0x0813594C sub_813594C
+  - 0x080005CC PlaySoundEffect
+  - 0x08136450 navicust_confirmPartPlacement
+  - 0x08136318 sub_8136318
+  reproduce: python3 tools/asmcat.py 0x0813612C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- beastsp
+open_questions:
+- Exact meaning of sub_8136318/sub_813633C return values (limit lookup vs sentinel compared against 0x30/0xC0)
+- What sub_813640C (B button) does — presumed cancel/back-out of the placement screen
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_813612C -> navicust_handlePlacementCursorInput
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_813612C

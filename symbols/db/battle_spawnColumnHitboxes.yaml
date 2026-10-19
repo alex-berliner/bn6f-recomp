@@ -1,0 +1,52 @@
+name: battle_spawnColumnHitboxes
+address: '0x080C73BE'
+kind: function
+status: probable
+summary: Spawns a vertical line of three collision regions at the object's panel column and sets each
+  region's timer from a lookup table.
+interface: (r0 = object ptr in r5 convention; uses oBattleObject fields) -> r0 = 0 if all spawns failed;
+  clobbers r4/r6/r7 (restored)
+details: 'Loops r4 = 1..3 and for each iteration calls object_spawnCollisionRegion with r0 = oBattleObject_PanelX,
+  r1 = r4, r2 = oBattleObject_Element, r3 = 0, plus extra arguments loaded into r4 = 0x405FF01 (pushed
+  as a stack arg), r6 = oBattleObject_DamageAndStaminaDamageCounterDisabler and r7 = 3 before the bl,
+  suggesting the callee reads extended parameters from those registers. If a spawn succeeds (returns nonzero),
+  it reads oBattleObject_Param1, shifts left by 2 as a table index into off_80C73FC (four entries, all
+  currently 0x48 = 72 frames), and stores that halfword into the new region''s oBattleObject_Timer. The
+  y values 1..3 make this a 3-panel column of hitboxes aligned to the owner''s X, sharing the owner''s
+  element. The constant 0x405FF01 likely packs lifetime/flags for the region. Quirk: all four timer table
+  entries are identical (0x48), so Param1 currently selects among equal values.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: loop ldrb r0,[r5,#oBattleObject_PanelX] / mov r1,r4 with r4 counting 1..3 (loc_80C73C2..add
+    r4,#1); bl object_spawnCollisionRegion with r2 = oBattleObject_Element and stack arg 0x405FF01 via
+    push {r4}; on success ldrb r1,[r5,#oBattleObject_Param1]; lsl r1,#2; ldr r1,[off_80C73FC,r1]; strh
+    into oBattleObject_Timer; table off_80C73FC contains four 0x48 entries, i.e. timer 72 frames; caller
+    sub_80C7306 and battle-route execution place it in the battle object attack-update path
+  refs:
+  - bn6f/asm/asm31.s:33029
+  - 0x080C7306 sub_80C7306
+  - 0x080C536A object_spawnCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080C73BE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battlesweep
+open_questions:
+- exact meaning of the r4/r6/r7 extra parameters to object_spawnCollisionRegion (0x405FF01 packing, the
+  3)
+- whether r1 = 1..3 is an absolute panel Y or an offset from PanelY
+- what object/attack this belongs to (caller sub_80C7306 undocumented)
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80C73BE -> battle_spawnColumnHitboxes
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C73BE

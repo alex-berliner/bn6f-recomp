@@ -1,0 +1,52 @@
+name: ai_getGridMargins
+address: '0x0813B84C'
+kind: function
+status: probable
+summary: Measures the empty margins (left/right/top/bottom) of the current AI entity's 7x7 byte grid mask
+  and returns them as four values.
+interface: () -> r0 = left margin, r1 = right margin, r2 = top margin, r3 = bottom margin; flags clobbered
+details: Calls ai_dispatchFromGlobalByte (dispatching on the global byte at 0x20096D8) and treats r0 as
+  a pointer to a 7x7 grid of bytes (49 bytes, one byte per cell). For each of the 7 rows it scans left-to-right
+  counting leading zero cells until the first nonzero byte and keeps the row minimum, giving the left
+  inset; a mirrored right-to-left scan gives the right inset. Two column scans (stride +7 from offset
+  0, and stride -7 from offset 0x2A=42) give the top and bottom insets the same way. Results are stashed
+  in [sp,0x4..0x10] and loaded into r0-r3 at return. Zero bytes are 'empty'; any nonzero byte stops the
+  per-line count, so margins measure how far the shape is inset from each grid edge.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: '813B84C: bl ai_dispatchFromGlobalByte then mov r7,r0 / str r7,[sp] — grid pointer comes from
+    the AI dispatcher; 813B862-813B870: inner loop ldrb r3,[r7,r0], count r2++ until nonzero byte, over
+    7 entries — leading-empty-cell count per line; 813B87C add r7,#7 and 813B8AA add r7,#1: row-major
+    grid, stride 7 — confirms 7x7 byte layout; 813B8C0 add r0,#7 cmp r0,#0x31 and 813B8F0 starting at
+    0x2a: column scans with stride 7 from both ends; 813B908: ldr r0..r3 from [sp,4/8/c/10] then pop —
+    returns the four computed margins in r0-r3'
+  refs:
+  - bn6f/asm/asm37_0.s:168
+  - 0x08136318 sub_8136318
+  - 0x0813633C sub_813633C
+  - 0x08136384 sub_8136384
+  - 0x0813B790 ai_dispatchFromGlobalByte
+  reproduce: python3 tools/asmcat.py 0x0813B84C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- beastsp
+open_questions:
+- What the 7x7 grid semantically is (attack/collision mask vs. sprite tiles) — would need the ai dispatcher's
+  callee table or the structure at 0x20096D8's target
+- How callers at 0x8136318/0x813633C/0x8136384 consume the four margins (e.g. to offset a hitbox or position
+  a beast-over effect)
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_813B84C -> ai_getGridMargins
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_813B84C

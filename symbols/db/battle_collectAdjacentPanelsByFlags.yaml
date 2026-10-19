@@ -1,0 +1,51 @@
+name: battle_collectAdjacentPanelsByFlags
+address: '0x0800D45C'
+kind: function
+status: probable
+summary: Scans the 3x3 panels around a battle object and collects coordinates of panels whose status flags
+  match a required/forbidden mask pair into a list, returning the count.
+interface: (r5 = battle object, r7 = output byte array, r2 = required panel-flag mask, r3 = forbidden
+  panel-flag mask) -> r0 = number of entries written to [r7]; each entry is (panelY<<4)|panelX
+details: 'Iterates panelY = 3..1 and panelX = 6..1 over the whole field, but only accepts coordinates
+  where the object''s PanelX/PanelY (oBattleObject_PanelX/Y at r5) place the panel within a 3x3 neighborhood
+  (offset -1..+1 in both axes). For each candidate it preserves r0-r3 across a call to object_getPanelParameters(x,
+  y), then tests the returned flags: skip if any r3 bit is set, skip unless all r2 bits are set. Matches
+  are stored as one byte (y<<4)|x at [r7 + index], index in r6; returns the index as the count. Note the
+  masks and buffers arrive in non-standard registers (r2, r3, r5, r7), so the caller sets them up directly.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: loops r1=3..1 and r0=6..1 (asm 800D45E-800D464) exactly cover the 18 field panels x=1..6, y=1..3;
+    bounds checks of [r5+oBattleObject_PanelX]/[r5+oBattleObject_PanelY] vs r0/r1 (800D466-800D494) limit
+    hits to the ±1 neighborhood of the object; bl object_getPanelParameters with push/pop of r0-r3 (800D47E-800D486)
+    queries each candidate panel's flags; tst r4,r3 / and r4,r2; cmp r4,r2 (800D488-800D48E) require all
+    r2 bits set and no r3 bits; strb (r1<<4)|r0 to [r7,r6], r6++, return r6 (800D492-800D49A) writes packed
+    coordinates and returns the count
+  refs:
+  - bn6f/asm/object.s:4049
+  - 0x08112B06 sub_8112B06
+  - 0x0800C8F8 object_getPanelParameters
+  reproduce: python3 tools/asmcat.py 0x0800D45C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- Caller sub_8112B06 is undocumented, so the meaning of the r2/r3 flag masks (which panel types are being
+  sought/avoided) and the identity/size of the r7 output buffer are unconfirmed
+- Why the object pointer and output buffer arrive in r5/r7 instead of the standard argument registers
+  is unclear without seeing the caller's setup
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_800D45C -> battle_collectAdjacentPanelsByFlags
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800D45C

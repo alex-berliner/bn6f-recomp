@@ -1,0 +1,57 @@
+name: shellSortByKey
+address: '0x030069A8'
+kind: function
+status: probable
+summary: In-place ascending shellsort of an array of 32-byte records, keyed by one signed 32-bit word
+  chosen by index.
+interface: (r0 = array base, r1 = element count, r2 = key word index within each 32-byte element) -> r0
+  = 0; array sorted ascending in place, no flags meaningful.
+details: 'Computes a Knuth 3h+1 gap starting at 1 (loc_30069C2: gap = gap*3+1 while gap <= n), then repeatedly
+  gap /= 3 using divsi3 and runs an insertion pass per gap: for i from gap to n-1, the 32-byte element
+  at index i is copied to a 0x24-byte stack buffer, and while arr[i-gap] > buffer key (signed compare
+  on the word at byte offset keyIndex*4) elements are shifted up by gap slots. Each element is copied
+  with eight-word ldmia/stmia pairs (0x20 bytes + 4-byte key field saved at sp+0x20), so records are exactly
+  32 bytes. Sorts strictly ascending; count 0 or 1 is handled by the gap/div loops falling through. No
+  subsystem prefix is evident since no callers are known.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'loc_30069C2: r5 = 3*r5+1 loop while r5 <= r1 is the Knuth gap sequence for shellsort; loc_3006A40:
+    loads off_3006B14 = divsi3 and divides r0 (= gap) by 3, looping while quotient > 0; loc_30069D4-loc_3006A26:
+    copies a 32-byte element to sp, then shifts arr[i-gap] up while arr[i-gap] > temp key — classic insertion-sort
+    inner loop with stride gap; r4 = r9<<2 and ldr at [r3<<5 + r4 + base] show the comparison key is the
+    word at offset keyIndex*4 of each 0x20-byte element; Final store at loc_3006A26 writes the buffered
+    element to slot i (or last shifted position), leaving the array sorted in place; returns 0'
+  refs:
+  - bn6f/asm/asm38.s:2112
+  - 0x0814DA9C divsi3_814DA9C
+  reproduce: python3 tools/asmcat.py 0x030069A8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battles1
+- battles2
+- beastsp
+- maps
+- menus3
+- story4
+- story6
+- story8
+- story9
+open_questions:
+- Which game subsystem owns the 32-byte record and its key field (callers unknown), so a subsystem prefix
+  and a more semantic name are not yet determinable
+- Whether the key field offset argument is ever passed nonzero in practice
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_30069A8 -> shellSortByKey
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_30069A8

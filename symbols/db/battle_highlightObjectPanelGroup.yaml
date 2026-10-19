@@ -1,0 +1,50 @@
+name: battle_highlightObjectPanelGroup
+address: '0x080C7B88'
+kind: function
+status: probable
+summary: Marks every panel of the group selected by the battle object's Param3 as highlighted, reading
+  packed row/column bytes from the object's panel list.
+interface: (r0 = unused/0x74 constant, r5 assumed = battle object pointer) -> r0 = trashed by call; marks
+  panels via object_highlightPanel
+details: 'Uses r5 as a battle-object struct. Reads Param3 (oBattleObject_Param3), then entry (Param3-1)
+  of the byte array at object+0x74 as the group''s panel count (r6); sums entries 0..Param3-2 of that
+  same array to get the group''s start offset (r7) into a packed coordinate pool at object+0x60. For each
+  of the count bytes it splits a packed panel coordinate: high nibble (lsr #4) and low 3 bits (lsl 0x1d/lsr
+  0x1d) are passed as the two arguments to object_highlightPanel, which sets the panel flag byte at offset
+  1 to 1. So +0x74 acts as a length table over a shared coordinate pool at +0x60, letting one object hold
+  several panel-shape groups selected by Param3. No return value is computed; r4/r6/r7 are preserved.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r6,[r0] with r0 = 0x74+(Param3-1)+r5: group length comes from the +0x74 array indexed
+    by Param3; loop at loc_80C7B9A sums bytes 0x74..0x74+Param3-2 into r7: start offset into the coordinate
+    pool; loc_80C7BB2 reads [0x60+r7+r5+r4], splits with lsr #4 and low-3-bit mask: packed row/column
+    byte; bl object_highlightPanel with (high nibble, low 3 bits) marks each listed panel highlighted;
+    caller sub_80C79BC on the battlesweep route invokes it with a battle object in r5'
+  refs:
+  - bn6f/asm/asm31.s:34107
+  - 0x080C79BC sub_80C79BC
+  - 0x0800CBD8 object_highlightPanel
+  reproduce: python3 tools/asmcat.py 0x080C7B88
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battlesweep
+open_questions:
+- Exact meaning of the packed nibbles (which is row vs column) would be confirmed by object_highlightPanel's
+  coordinate convention
+- What gameplay feature writes the +0x74 length table and +0x60 coordinate pool, and what Param3's group
+  index selects (attack area vs highlight pattern), needs the writer of those fields
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80C7B88 -> battle_highlightObjectPanelGroup
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C7B88

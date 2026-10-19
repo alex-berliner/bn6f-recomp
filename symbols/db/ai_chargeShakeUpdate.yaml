@@ -1,0 +1,52 @@
+name: ai_chargeShakeUpdate
+address: '0x080FE394'
+kind: function
+status: probable
+summary: 'Per-frame update for an AI enemy''s charging/quake attack: sets element and charge animation,
+  periodically shakes the camera, then flags the hit element when the charge timer runs out.'
+interface: (r5 = battle object, r7 = AI attack vars struct; r0/r1 unused on entry) -> void; sets HitElement=8
+  in oAIAttackVars when the attack timer expires
+details: 'On the first call (AttackElement==0) it stamps element 4 into oAIAttackVars_AttackElement, sets
+  the object''s current animation to 4, copies AttackBoost2 into StepTimer as the charge duration, clears
+  TimerOrCycles, resets ChargeCycles to 0xA, and triggers a camera shake (magnitude 0, duration 0xA).
+  On subsequent frames it counts ChargeCycles down from 0xA and re-fires the same camera shake each time
+  it reaches zero, giving repeated quakes during the charge. It increments TimerOrCycles every frame and
+  calls sub_80FE72C on 7 out of every 8 frames (carry of lsr #3 skip), likely a step/sound effect. Finally
+  it decrements StepTimer and, when it hits zero, writes 8 into oAIAttackVars_HitElement, marking the
+  charge complete so the actual hit can resolve.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]; bne -> one-shot init branch stamps element 4 and
+    anim 4 (first block); bl camera_initShakeEffect_80302a8 with r0=0, r1=0xA fires both at init and every
+    time ChargeCycles counts to zero; TimerOrCycles increment plus lsr #3 with bcs skip gates sub_80FE72C
+    to 7-of-8 frames (periodic effect); StepTimer countdown from AttackBoost2 ends with strh r0,#8 into
+    oAIAttackVars_HitElement, ending the charge; Callee camera_initShakeEffect writes magnitude/duration
+    into the camera struct, matching the quake behavior'
+  refs:
+  - bn6f/asm/asm31.s:149687
+  - 0x080302A8 camera_initShakeEffect_80302a8
+  - 0x080FE72C sub_80FE72C
+  reproduce: python3 tools/asmcat.py 0x080FE394
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- What sub_80FE72C does (sound/step effect?) is unverified
+- Which enemy/attack uses element 4 and HitElement 8, and what reads HitElement afterward, is not shown
+  by the captured callers
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80FE394 -> ai_chargeShakeUpdate
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FE394

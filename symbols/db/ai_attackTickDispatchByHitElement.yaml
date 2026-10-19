@@ -1,0 +1,43 @@
+name: ai_attackTickDispatchByHitElement
+address: '0x080ED6E6'
+kind: function
+status: probable
+summary: Dispatches the AI attack's periodic update to either the default periodic tick or the timed-attack
+  tick based on the attack's hit-element byte.
+interface: (r7 = AI attack vars struct) -> tail-calls ai_attackPeriodicTick or aiAttack_tickTimerAndExitWhenDone_80ECA0C;
+  no other registers consumed
+details: Reads the HitElement byte at offset oAIAttackVars_HitElement in the r7 AI attack struct and uses
+  it as an index into the 2-entry table at off_80ED6F8. Element 0 selects ai_attackPeriodicTick; any nonzero
+  element selects aiAttack_tickTimerAndExitWhenDone_80ECA0C, i.e. attacks with an element are treated
+  as finite/timed. It performs the call via 'mov lr, pc; bx r1', a long-call idiom preserving Thumb state,
+  so it returns to the pop {pc}. Effectively it is a one-line element-dependent tick wrapper; r1 is clobbered
+  as scratch.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0, [r7,#oAIAttackVars_HitElement] loads the dispatch index from the AI attack struct;
+    off_80ED6F8 table: entry 0 = ai_attackPeriodicTick+1, entry 1 = aiAttack_tickTimerAndExitWhenDone_80ECA0C+1;
+    mov lr, pc / bx r1 / pop {pc} is a plain tail-ish long call with no other state touched'
+  refs:
+  - bn6f/asm/asm31.s:115079
+  reproduce: python3 tools/asmcat.py 0x080ED6E6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- beastsp
+open_questions:
+- No captured caller, so what fills oAIAttackVars_HitElement (true element vs a timed-attack flag) and
+  why element attacks use the timer path is unconfirmed
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80ED6E6 -> ai_attackTickDispatchByHitElement
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80ED6E6

@@ -1,0 +1,52 @@
+name: battle_loadBeastOutFormParams
+address: '0x080A5FD0'
+kind: function
+status: probable
+summary: Loads one Beast Out form's byte parameters from the IWRAM table byte_2000EC0 into the transformation
+  struct and copies three table words into the battle object during Beast Out initialization.
+interface: (r5 = beast-out struct (index at +4), r6 = battle object) -> r0 = undefined; fills r5+0x24,
+  r5+6, r5+7, r6+0x88/0x8C/0x90
+details: Reads index r4 = byte [r5+4] (the Beast Out form/type) and fetches byte_2000EC0[0xA+r4] into
+  r5+0x24 (stored as a word, likely a duration or counter), [0xE+r4] into r5+7, and [0x12+r4] into r5+6
+  — three parallel per-form byte arrays. If the byte at 0xE+index is zero it stores 1 to byte [r5+0] and
+  calls e_setFlagFromIndexTable, which resolves a flag ID using the caller's struct, so a form with that
+  byte clear is treated as an activated/raised case. It then copies the three fixed words at byte_2000EC0+0xD4/0xD8/0xDC
+  into r6+0x88/0x8C/0x90, three consecutive fields of the battle object (possibly pointers or stat/color
+  words shared by all forms). No return value is produced. The table lives in IWRAM at 0x2000EC0, so its
+  contents are populated at runtime, not from ROM.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldr r7, off_80A604C =byte_2000EC0 and ldrb r4,[r5,#4] show a per-form index into an IWRAM table;
+    three parallel reads at table offsets 0xA/0xE/0x12 plus index are stored to r5+0x24/7/6; cmp r0,#0
+    / bne skips the [r5]=1 store and bl e_setFlagFromIndexTable, so a zero byte triggers the flag path;
+    fixed words at table +0xD4/0xD8/0xDC are copied to r6+0x88/0x8C/0x90 (three consecutive object fields);
+    sole caller battle_beastOutInit_80A5AF8 initializes the Beast Out transformation BattleObject, matching
+    the per-form parameter load
+  refs:
+  - bn6f/asm/asm29.s:2420
+  - 0x080A5AF8 battle_beastOutInit_80A5AF8
+  - 0x080A5E8C e_setFlagFromIndexTable
+  reproduce: python3 tools/asmcat.py 0x080A5FD0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- beastsp
+open_questions:
+- what writes byte_2000EC0 at runtime (its per-form byte arrays and the words at +0xD4..)
+- meanings of r5+0x24/6/7 and r6+0x88..0x90 need the rest of battle_beastOutInit and the per-frame driver
+  to confirm
+- which story flag e_setFlagFromIndexTable sets and why it fires only when the 0xE byte is zero
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80A5FD0 -> battle_loadBeastOutFormParams
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A5FD0

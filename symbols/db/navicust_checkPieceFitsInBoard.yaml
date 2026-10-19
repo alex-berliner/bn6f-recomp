@@ -1,0 +1,55 @@
+name: navicust_checkPieceFitsInBoard
+address: '0x0813BFB8'
+kind: function
+status: probable
+summary: 'NaviCust helper: checks whether the held part''s occupied cells all land inside the valid 4x4
+  board area, returning 1 if any cell falls outside.'
+interface: (r0 = ignored/part id already in global, r1 = placement x, r2 = placement y) -> r0 = 1 if any
+  occupied shape cell is outside the valid region, 0 if it fits; no flags of interest
+details: Fetches a 7x7 row-major byte grid describing the selected part's cell occupancy via ai_dispatchFromGlobalByte
+  (shape chosen by the global byte at 20096D8, presumably the currently held NaviCust part). It then scans
+  all 49 cells, treating each nonzero byte as an occupied cell of the piece. Each cell's effective coordinate
+  is (r1-3+col, r2-3+row), i.e. the placement arguments anchor the 7x7 shape canvas so its center sits
+  at the given position. An occupied cell whose effective x or y is outside 1..4 makes the function return
+  1 immediately (piece would hang off the board); cells with coordinates <0 or >=7 are skipped without
+  being read. If the whole grid is scanned without violation it returns 0.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl ai_dispatchFromGlobalByte at 813BFC0 obtains the 7x7 occupancy grid keyed by global byte
+    20096D8; outer loop advances r7 by 7 per row and inner loop reads ldrb r4,[r7,r3] with r3 0..6, a
+    7x7 byte grid; tst r4,r4 / beq skips empty canvas cells, so only nonzero (occupied) cells are validated;
+    cmp r1,#1..bgt / cmp r2,#1..bgt fall through to 'mov r0,#1' return whenever an occupied cell is outside
+    1..4 in either axis; caller 0x8137378 navicust_checkPiecePlacement uses it as one of the per-failure-type
+    validations when placing the held part
+  refs:
+  - bn6f/asm/asm37_0.s:1346
+  - 0x08137378 navicust_checkPiecePlacement
+  - 0x08137028 sub_8137028
+  - 0x081371B0 sub_81371B0
+  - 0x0813B790 ai_dispatchFromGlobalByte
+  reproduce: python3 tools/asmcat.py 0x0813BFB8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- beastsp
+open_questions:
+- exact meaning of r1/r2 (board cell of the shape center vs canvas anchor) and how the 7x7 canvas is aligned
+  to the on-screen board
+- whether shape bytes distinguish normal part cells from plus-block cells (only nonzero vs zero is checked
+  here)
+- why coordinates <0 or >=7 are silently skipped instead of failing, and what callers sub_8137028/sub_81371B0
+  pass for r1/r2
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_813BFB8 -> navicust_checkPieceFitsInBoard
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_813BFB8

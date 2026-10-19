@@ -1,0 +1,44 @@
+name: battle_dispatchHitElementHandler
+address: '0x080F3E2A'
+kind: function
+status: probable
+summary: Dispatcher that reads the attack's hit element from the battle AI attack vars and calls one of
+  three element-specific routines through a jump table.
+interface: (r7 = battle context) -> calls handler off a 3-entry table indexed by [r7+oAIAttackVars_HitElement];
+  no direct return value manipulation visible
+details: Reads the byte at oAIAttackVars_HitElement from the battle context in r7, uses it as an index
+  into a word table at off_80F3E3C (elements 0-2), and calls the selected thumb handler by loading its
+  address into r1 and doing 'mov lr, pc; bx r1' (ARM-Thumb interwork call, preserving r7 across the call).
+  The table points to sub_80F3E48, sub_80F3E7A, and sub_80F3EA2. The trick of setting lr = pc means the
+  callee returns into the pop, so this is a plain call wrapper, not a tail call. Only three elements are
+  handled; other values would index past the table.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0, [r7,#oAIAttackVars_HitElement] indexes ldr r1, [r1,r0] jump table at off_80F3E3C; mov
+    lr, pc; bx r1 with pop {r7,pc} after is a call-and-return to three handlers sub_80F3E48/80F3E7A/80F3EA2;
+    executed by the recorded 'battlesweep' route, so it runs during battle attack processing
+  refs:
+  - bn6f/asm/asm31.s:128409
+  reproduce: python3 tools/asmcat.py 0x080F3E2A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battlesweep
+open_questions:
+- what the three handlers (sub_80F3E48, sub_80F3E7A, sub_80F3EA2) do, to name it more precisely
+- which element values 0-2 correspond to
+- full caller context to confirm r7 is the standard battle work structure
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F3E2A -> battle_dispatchHitElementHandler
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F3E2A

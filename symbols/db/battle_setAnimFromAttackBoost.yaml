@@ -1,0 +1,47 @@
+name: battle_setAnimFromAttackBoost
+address: '0x0810BA28'
+kind: function
+status: probable
+summary: Picks the battle object's current animation from an AI attack-state variable via a lookup table,
+  or leaves it unchanged when the state is 0xFF.
+interface: (r5 = battle object, r7 = oAIAttackVars) -> r0 destroyed; sets [r5+oBattleObject_CurAnim] unless
+  table lookup yields 0xFF
+details: 'Reads oAIAttackVars_AttackBoost2 from the r7 AI attack-variables struct and uses it as an index
+  into a 4-byte inline table at dword_810BA3C (bytes: 0x02, 0x00, 0x05, 0xFF). A result of 0xFF means
+  "no change" and the routine returns without touching the object; otherwise the byte is written to the
+  object''s oBattleObject_CurAnim field. So boost state 0 -> anim 2, state 1 -> anim 0, state 2 -> anim
+  5, any other value -> keep current animation. It is a tiny mapping helper shared by two nearby routines
+  in the battle AI/object update path (routes recorded under battlesweep).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackBoost2]; ldrb r0,[r1,r0] — the state variable indexes a byte
+    table; cmp r0,#0xff; beq locret — 0xFF is a skip sentinel that leaves CurAnim untouched; strb r0,[r5,#oBattleObject_CurAnim]
+    — the only write, to the object''s animation field; table bytes 0xFF050002: index 0->2, 1->0, 2->5,
+    3->0xFF (no change); called from sub_810B8EC and sub_810B964, both battle-update routines on battlesweep
+    routes'
+  refs:
+  - bn6f/asm/asm31.s:177554
+  - 0x0810B8EC sub_810B8EC
+  - 0x0810B964 sub_810B964
+  reproduce: python3 tools/asmcat.py 0x0810BA28
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battlesweep
+open_questions:
+- what semantic values 2/0/5 correspond to in the animation table (attack windup vs. recovery etc.)
+- exact meaning of AttackBoost2's states 0-2 and when 0xFF is set
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810BA28 -> battle_setAnimFromAttackBoost
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810BA28

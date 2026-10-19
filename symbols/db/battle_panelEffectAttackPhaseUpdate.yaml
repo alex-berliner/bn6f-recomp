@@ -1,0 +1,50 @@
+name: battle_panelEffectAttackPhaseUpdate
+address: '0x080CB184'
+kind: function
+status: probable
+summary: Per-frame phase handler for a battle object that times out, spawns panel-effect objects on the
+  facing panel, and destroys itself.
+interface: (r0 = unused, r5 = battle object ptr) -> void; sets oBattleObject_CurPhase, Timer, spawns effects,
+  finally CurState = CUR_STATE_DESTROY
+details: 'Standard battle-object phase runner: on CurPhase==0 it switches to phase 4, calls sub_80CB208(0,
+  0x20), and loads Timer with 0x20. It then decrements Timer each frame; at 13 it calls sub_80CB208(1,0xd)
+  and sub_80CB208(2,0xd) (likely anim/sound steps keyed to the countdown), and at 7 it spawns facing-panel
+  effect type 2. When the timer hits 0 it spawns facing-panel effect type 1, writes CUR_STATE_DESTROY
+  to oBattleObject_CurStateActionPhaseAndPhaseInitialized, and clears Timer2. The two effect types at
+  staggered ticks suggest a two-stage visual attack on the panel in front of the object.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#oBattleObject_CurPhase] / strb phase=4 on entry: standard phase-init pattern (asm
+    lines 2-7); timer loaded to 0x20 then decremented, compared to 0xd and 7 at fixed ticks (loc_80CB19E);
+    spawn_facingPanelEffect(2) at tick 7 and spawn_facingPanelEffect(1) at tick 0 before destroying; mov
+    r0,#CUR_STATE_DESTROY; str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized] ends the
+    object; callees are only sub_80CB208 (unknown, called with (0,0x20) and (1/2,0xd)) and spawn_facingPanelEffect'
+  refs:
+  - bn6f/asm/asm31.s:41516
+  - 0x080CB248 spawn_facingPanelEffect
+  - 0x080CB208 sub_80CB208
+  reproduce: python3 tools/asmcat.py 0x080CB184
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- What sub_80CB208(r0,r1) does (animation/sound/counter setup?) — determines whether this is an attack,
+  trap, or field effect
+- Which attack or object in the battle system instantiates this handler (no callers recorded), and which
+  effect types 1 and 2 of spawn_facingPanelEffect are
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80CB184 -> battle_panelEffectAttackPhaseUpdate
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CB184

@@ -1,0 +1,47 @@
+name: battle_checkRelatedObjectAlive
+address: '0x080C031E'
+kind: function
+status: probable
+summary: Checks whether the battle object's related object still has HP, and moves it into its death state
+  (8) if not.
+interface: (r0 = scratch, r5 = battle object whose RelatedObject1Ptr is tested) -> r0 = HP if alive, 0
+  if dead; flags set from HP comparison
+details: Reads the pointer at r5+oBattleObject_RelatedObject1Ptr and its oBattleObject_HP halfword. If
+  HP != 0 it returns immediately with r0 still holding the HP value, so callers can use it as a truthy
+  alive check. If HP == 0 it stores 8 into oBattleObject_CurStateActionPhaseAndPhaseInitialized, starting
+  that object's death/defeat state, and returns 0. No other registers or structures are touched.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrh r0,[r0,#oBattleObject_HP]; cmp r0,#0; bne return — alive check reads the related object's
+    HP; mov r1,#8; str r1,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized] — nonzero HP leads
+    to state 8, a terminal/death phase; r0=0 is set only on the HP==0 path, so the return value distinguishes
+    dead from alive; recorded route 'battlesweep' and both callers sub_80C023C/sub_80C025C fit battle
+    update/AI polling of a target's survival
+  refs:
+  - bn6f/asm/asm31.s:17732
+  - 0x080C023C sub_80C023C
+  - 0x080C025C sub_80C025C
+  reproduce: python3 tools/asmcat.py 0x080C031E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battlesweep
+open_questions:
+- What state 8 exactly triggers (death animation vs. removal) is inferred from the state field name, not
+  from a known state handler
+- Why the alive path returns the raw HP instead of a flag — caller code at 0x80C023C/0x80C025C would confirm
+  how the return value is used
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80C031E -> battle_checkRelatedObjectAlive
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C031E

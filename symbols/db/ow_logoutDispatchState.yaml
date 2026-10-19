@@ -1,0 +1,45 @@
+name: ow_logoutDispatchState
+address: '0x080A9ECC'
+kind: function
+status: probable
+summary: Dispatches the logout sequence's current state (0=start effect, 1=middle step, 2=release map
+  object) by tail-calling its handler.
+interface: (r5 = logout state-machine object; state byte at [r5,#8] selects handler) -> tail-jump to handler;
+  returns to this function's caller
+details: Loads a handler table at off_80A9EE0, indexes it with the object's state byte [r5,#8], and performs
+  a Thumb tail-call via 'mov lr, pc; bx r0', so the chosen handler returns straight to whoever called
+  this dispatcher. State 0 = ow_startLogoutEffect, state 1 = sub_80A9F30 (likely the actual logout processing),
+  state 2 = ow_releaseMapObject. The object pointer arrives in r5 rather than r0, so callers keep it in
+  a callee-saved register. The state byte is presumably advanced by the handlers themselves; the dispatcher
+  does not clamp the index.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r1,[r5,#8]; ldr r0,[r0,r1] indexes a 3-entry handler table by a state field; targets are
+    ow_startLogoutEffect, sub_80A9F30, ow_releaseMapObject — an ow logout sequence; mov lr,pc; bx r0 is
+    a Thumb tail-call, making this a dispatch trampoline; executed by recorded beastsp routes, matching
+    Beast Out logout transitions
+  refs:
+  - bn6f/asm/asm29.s:9961
+  reproduce: python3 tools/asmcat.py 0x080A9ECC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- beastsp
+open_questions:
+- what sub_80A9F30 (state 1) does
+- the exact structure laid out at r5 (field 8 = state; what else)
+- which engine code sets the state byte and calls this dispatcher
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80A9ECC -> ow_logoutDispatchState
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A9ECC

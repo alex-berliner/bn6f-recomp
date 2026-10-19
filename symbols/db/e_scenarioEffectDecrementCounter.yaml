@@ -1,0 +1,46 @@
+name: e_scenarioEffectDecrementCounter
+address: '0x08142184'
+kind: function
+status: probable
+summary: Decrements by one the counter byte at offset 0x0E of the scenario-effect state structure when
+  an overworld event finishes.
+interface: (no args used) -> r0 = decremented value; no flags returned (popped with pc)
+details: Loads the pointer to eScenarioEffectState2000780, reads byte 200078E (offset 0x0E of the scenario-effect
+  state), subtracts 1, and stores it back. It is a one-byte decrement of a counter/timer field inside
+  that struct, called from ow_objectFinishEventAndFree as an overworld map object's event ends. The other
+  fields of the struct are untouched here, and no other callees or consumers of the decremented value
+  are visible, so what the counter counts (steps, frames, remaining triggers) is unknown. Only the decrement
+  side is shown; a reader/consumer of byte 200078E would confirm the field's meaning.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'asm 0x0814218E-96: ldrb r0,[r5,#0xe]; sub r0,#1; strb r0,[r5,#0xe] — plain 1-byte decrement;
+    off_8142308 points to eScenarioEffectState2000780, tying the field to scenario-effect state; sole
+    caller ow_objectFinishEventAndFree invokes it while ending/freeing an overworld object''s event; no
+    branches, no other struct access — the whole routine is exactly this decrement'
+  refs:
+  - bn6f/asm/asm37_1.s:884
+  - 0x080A7F26 ow_objectFinishEventAndFree
+  reproduce: python3 tools/asmcat.py 0x08142184
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- beastsp
+open_questions:
+- what byte 200078E counts or times — need a reader of eScenarioEffectState+0x0E
+- whether other functions write or reset offset 0x0E of this struct
+- why the decrement happens at event end — likely a per-event trigger counter for a scripted scenario
+  effect
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8142184 -> e_scenarioEffectDecrementCounter
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8142184

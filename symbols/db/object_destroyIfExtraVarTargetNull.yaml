@@ -1,0 +1,48 @@
+name: object_destroyIfExtraVarTargetNull
+address: '0x080E557A'
+kind: function
+status: probable
+summary: Battle-object update step that destroys the object when the value pointed to by its ExtraVars+0xC
+  pointer is zero.
+interface: (r5 = battle object, no args) -> r0 = 0 on the destroy path or the loaded value otherwise;
+  object state written when destroyed
+details: Reads a pointer from the battle object's ExtraVars field at offset +0xC, dereferences it once,
+  and compares the loaded value against zero. If it is nonzero the routine does nothing and returns; if
+  it is zero it stores CUR_STATE_DESTROY into oBattleObject_CurStateActionPhaseAndPhaseInitialized, making
+  the object's state machine transition to its destroy state on the next update. Because it only branches
+  over the store, r0 ends up holding either the loaded value or CUR_STATE_DESTROY. The indirection suggests
+  the object watches a counter or flag owned by something else (e.g. a linked object or timer) and self-destructs
+  once it hits zero.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldr r0,[r5,#oBattleObject_ExtraVars+0xc]; ldr r0,[r0] — indirect check through a pointer stored
+    in the object's extra vars; cmp r0,#0; bne locret — skip when the watched value is nonzero; mov r0,#CUR_STATE_DESTROY;
+    str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized] — requests destroy state only when
+    value is zero; called from recorded battle routes (battlesweep, beastsp) with r5 = battle object,
+    consistent with an object-state update hook
+  refs:
+  - bn6f/asm/asm31.s:97920
+  reproduce: python3 tools/asmcat.py 0x080E557A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- what object kind(s) use this update and what ExtraVars+0xC points to (counter, HP, flag of a paired
+  object)
+- exact meaning of the watched value being zero vs nonzero for gameplay
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80E557A -> object_destroyIfExtraVarTargetNull
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E557A

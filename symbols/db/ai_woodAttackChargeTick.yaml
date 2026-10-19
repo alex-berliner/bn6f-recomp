@@ -1,0 +1,53 @@
+name: ai_woodAttackChargeTick
+address: '0x080F404E'
+kind: function
+status: probable
+summary: 'Per-frame handler for an enemy AI attack: on first run it plays a charge animation/sound and
+  spawns the attack object, then after a fixed timer expires it flips the object''s state to the fire/hit
+  step.'
+interface: (r0,r1 = unused here; r5 = battle object, r7 = oAIAttackVars context) -> r0 = 0 or countdown
+  result; updates oAIAttackVars fields and the spawned object's state byte.
+details: 'Reads oAIAttackVars_AttackElement as a phase selector: when 0 it initializes the attack — sets
+  AttackElement to 4 (wood?), plays anim 0x15 on the battle object, calls sub_80C8070 with PanelX/PanelY,
+  InitFlag, AiDifficultyTier and Damage to spawn the attack, plays sound effect 0xBA, sets the spawned
+  object''s +0xB state byte to 4, and loads a step delay from byte_80F40AC indexed by AiDifficultyTier*2
+  into StepTimer; if PanelParamFlags2 is set it also calls sub_80E3FC4. On later frames (element nonzero)
+  it decrements StepTimer, and once it reaches 0 sets the object''s state byte to 5 and writes HitElement
+  = 0x14 (0x14 = wood-type hit element?), ending the charge phase. All four difficulty table entries are
+  0x48, so the charge delay is difficulty-independent.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/beq-style branch splits init vs countdown phases
+    (start of func); mov r0,#4; strb r0,[r7,#oAIAttackVars_AttackElement]; anim 0x15 + bl sub_80C8070(panelX,Y,flag,tier,damage)
+    spawns the attack; mov r0,#0xba; bl PlaySoundEffect — charge SFX at init only; ldrh r0,[r1,r0] from
+    off_80F40A8=byte_80F40AC (all 0x48) into oAIAttackVars_StepTimer — difficulty-indexed delay; countdown
+    branch: when StepTimer hits 0, strb #5,[obj+0xB] and strh #0x14,[r7,#oAIAttackVars_HitElement]'
+  refs:
+  - bn6f/asm/asm31.s:128701
+  - 0x080005CC PlaySoundEffect
+  - 0x080C8070 sub_80C8070
+  - 0x080E3FC4 sub_80E3FC4
+  reproduce: python3 tools/asmcat.py 0x080F404E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battlesweep
+open_questions:
+- sub_80C8070 and sub_80E3FC4 are unnamed; their behavior would confirm what attack object is spawned
+  and what the PanelParamFlags2 check gates
+- exact meaning of state bytes 4/5 at object+0xB and whether element 4 / hit element 0x14 specifically
+  denote wood
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F404E -> ai_woodAttackChargeTick
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F404E

@@ -1,0 +1,45 @@
+name: ai_dispatchScript
+address: '0x081002E8'
+kind: function
+status: probable
+summary: 'Runs the battle AI''s script-id handler: reads the object''s AI data, picks a function from
+  a script-id table, and calls it.'
+interface: (r5 = battle object) -> r0 = handler return; r6 = aiData+0x80, r7 = aiData+0xA0 passed through
+  to the handler
+details: 'Loads the battle object''s AI data pointer (oBattleObject_AIDataPtr), sets r6 = aiData+0x80
+  and r7 = aiData+0xA0, then reads the script id byte at aiData+0x80+oAIState_ScriptId. It indexes a table
+  of handler pointers (currently one entry, sub_8100308) with that id and performs a BL-style long call
+  via ''mov lr, pc; bx r1''. The script table is extensible: more .word entries after sub_8100308 would
+  add script ids. This is the classic BN enemy-AI custom-script dispatcher pattern.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldr r7,[r5,#oBattleObject_AIDataPtr] + offsets 0x80/0xA0 set up the AI-state context for the
+    handler; ldrb r0,[r6,#oAIState_ScriptId]; ldr r1,[r1,r0] indexes a handler table by script id; mov
+    lr, pc; bx r1 is the standard thumb long-call, dispatching to sub_8100308; off_8100304 holds a per-script-id
+    function table, confirming a dispatch (not a direct call); executed by the battlesweep route, matching
+    per-frame enemy AI script execution
+  refs:
+  - bn6f/asm/asm31.s:153694
+  reproduce: python3 tools/asmcat.py 0x081002E8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battlesweep
+open_questions:
+- what sub_8100308 does (the single known script handler) to confirm the 'script' framing
+- whether more table entries exist elsewhere for other script ids
+- the exact meaning of aiData+0x80/0xA0 fields consumed by the handler
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_81002E8 -> ai_dispatchScript
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81002E8

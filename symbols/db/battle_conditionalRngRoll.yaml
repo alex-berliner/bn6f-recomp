@@ -1,0 +1,51 @@
+name: battle_conditionalRngRoll
+address: '0x08116834'
+kind: function
+status: probable
+summary: Scans an 8-entry pointer array at [r5+0x60]; if enough entries are active and none is flagged,
+  rolls a 1/8 RNG chance and returns 4, otherwise 0.
+interface: (r5 = base of a structure holding 8 pointers at +0x60, r0 unused) -> r0 = 4 if all conditions
+  pass and (RNG & 7) == 4, else r0 = 0; clobbers r0-r4,r6
+details: 'The function iterates 8 pointer slots at r5+0x60 (r5 is a hidden input set by the caller, not
+  a real argument). For each non-null pointer it increments a total counter and reads byte at +4: if that
+  byte equals 4 the whole check aborts with 0. Byte at +6 is also read, and entries with value >= 1 are
+  counted separately. After the loop, only if at least 5 slots are non-null and at least 3 have byte+6
+  >= 1 does it call GetPositiveSignedRNG, mask with 7, and return 4 on exactly one of the 8 outcomes;
+  every other path returns 0. The return value 4 (not a boolean) suggests the caller dispatches on it
+  as a state/variant id.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'loc_8116842 loop: ldr r1,[r0] over 8 slots at r5+0x60 (mov r0,#0x60; add r0,r0,r5), r3 counts
+    down from 8; ldrb r2,[r1,#4]; cmp r2,#4; beq loc_8116874 — byte+4==4 aborts the check with r7 still
+    0; ldrb r1,[r1,#6]; cmp r1,#1; blt skip; add r6,#1 — byte+6>=1 entries counted in r6, total non-null
+    in r4; cmp r4,#5 / cmp r6,#3 / blt — requires >=5 non-null and >=3 flagged entries before rolling;
+    bl GetPositiveSignedRNG; and r0,#7; cmp r0,#4 — only the single outcome 4 passes, returned via r7'
+  refs:
+  - bn6f/asm/asm32.s:16928
+  - 0x081167D2 sub_81167D2
+  - 0x08001532 GetPositiveSignedRNG
+  reproduce: python3 tools/asmcat.py 0x08116834
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- What structure r5 points to and what the pointer array at +0x60 represents (chips, panels, objects?)
+- Meaning of byte+4 == 4 (a disqualifying type/class?) and byte+6 >= 1 (a charge or usage count?)
+- What caller sub_81167D2 does with the return value 4 — needed to give this a game-semantic name (e.g.
+  a random transformation or event trigger)
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8116834 -> battle_conditionalRngRoll
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8116834

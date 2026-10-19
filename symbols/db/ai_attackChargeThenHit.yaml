@@ -1,0 +1,44 @@
+name: ai_attackChargeThenHit
+address: '0x080FC58E'
+kind: function
+status: probable
+summary: 'AI attack state: defaults the attack element, waits the attack duration, then marks the hit
+  frame active.'
+interface: (r7 = oAIAttackVars struct) -> void; no return value, flags not meaningful
+details: If oAIAttackVars_AttackElement is 0, it is set to 4 (a default element) and oAIAttackVars_StepTimer
+  is initialized from oAIAttackVars_AttackDuration; this is the setup/charge phase. Otherwise the StepTimer
+  counts down each call. When it reaches 0, oAIAttackVars_HitElement is set to 0x20, presumably a bitflag
+  marking the attack's hit as active this frame. Purely a per-frame tick of an AI attack state machine
+  reading/writing the attack vars block in r7; no branches taken if timer still positive.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne skips setup, else element=4 and StepTimer=AttackDuration;
+    StepTimer is decremented and bgt exits while still counting (loc_80FC5A0); on timer expiry HitElement
+    is set to 0x20, a flag-like value, then returns; struct offsets are all in the oAIAttackVars block
+    reached via r7, matching an AI attack routine; no callees and no flags consumed; behavior is entirely
+    local state transitions
+  refs:
+  - bn6f/asm/asm31.s:145696
+  reproduce: python3 tools/asmcat.py 0x080FC58E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battlesweep
+open_questions:
+- meaning of element value 4 and HitElement flag 0x20 (element/flag tables not shown)
+- which enemy/AI routine calls this and what the AttackDuration values typically are
+- whether HitElement=0x20 is consumed by a collision routine next frame
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80FC58E -> ai_attackChargeThenHit
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FC58E

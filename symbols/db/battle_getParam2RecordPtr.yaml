@@ -1,0 +1,52 @@
+name: battle_getParam2RecordPtr
+address: '0x080E5B7A'
+kind: function
+status: probable
+summary: Tiny helper that computes the address of a 12-byte record, indexed by the current battle object's
+  Param2, inside a table and leaves it in r6.
+interface: (r0 = table base pointer; r5 = battle object pointer already set by caller) -> r6 = r0 + Param2*12
+  + 0x40; no return value, no flags
+details: 'The function only does pointer arithmetic: it reads the byte at oBattleObject_Param2 from the
+  battle object in r5, multiplies it by 0xC (12-byte stride), adds 0x40 and the argument r0, and stores
+  the sum in r6. The result is not returned in r0; instead r6 carries the computed pointer to whatever
+  follows in the caller, so this is an address-computation macro-like helper rather than a standalone
+  routine. All five callers sit immediately after it (0x80E5B88–0x80E5C0C) and appear to be a family of
+  similar tiny accessors. Without the callers'' bodies the identity of the table is unknown; the 0x40
+  offset suggests the records live past a header in the structure pointed to by r0. Param2 is being used
+  purely as a record index here.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#oBattleObject_Param2]; mov r1,#0xC; mul r0,r1 — index taken from the battle object's
+    Param2 with 12-byte stride; add r0,#0x40; add r6,r0,r4 — base pointer r0 (saved in r4) plus fixed
+    0x40 offset, result left in r6, not r0; all five callers are the immediately following tiny functions
+    (0x80E5B88..0x80E5C0C), a family of local accessors; function ends with mov pc,lr and clobbers nothing
+    but r6 — a pure address-computation helper
+  refs:
+  - bn6f/asm/asm31.s:98790
+  - 0x080E5B88 sub_80E5B88
+  - 0x080E5BA2 sub_80E5BA2
+  - 0x080E5BDE sub_80E5BDE
+  reproduce: python3 tools/asmcat.py 0x080E5B7A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- what structure r0 points to and what the 12-byte records at +0x40 are — the callers' bodies (not shown)
+  would reveal the field being accessed
+- whether the other four nearby sub_80E5Bxx accessors use the same table with different offsets
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80E5B7A -> battle_getParam2RecordPtr
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E5B7A

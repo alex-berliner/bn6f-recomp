@@ -1,0 +1,56 @@
+name: ai_attackDiagonalPanelSweep
+address: '0x0810BAAC'
+kind: function
+status: probable
+summary: AI attack routine that marches a panel-hit attack diagonally across the field from the object's
+  front, enqueueing one attack entry per panel until it leaves the field.
+interface: '(r4 = battle object, r5 = object work area (scratch 0x7D-0x84), r7 = AI attack vars: Damage/ExtraDamage,
+  Timer, YOffset(oAIAttackVars_AttackBoost2)) -> r0 = clobbered; no meaningful return'
+details: 'Copies the attack''s Damage/ExtraDamage pair to [r5+0x80] and stashes a per-attack pointer at
+  [r5+0x84], clearing the panel counter at 0x7F. Computes the starting panel as (PanelX + frontDirection,
+  PanelY + YOffset), where YOffset indexes the table dword_810BB58 (signed bytes -1/0/+1), so ''AttackBoost2''
+  is really a row offset. It then loops: for each panel with Y in 1..3 and X not yet at the boundary from
+  dword_810BB60 (7 for alliance 0, 0 for alliance 1), it calls sub_80D94F2 with panelX/r0, panelY/r1,
+  Element/r2, the pointer/r3, a packed word (timer<<16 | YOffset | (counter*3)<<8)/r4 and the damage pair/r6,
+  advancing the pointer by 4 each time. After each call it steps X by the facing direction and Y by the
+  row offset again (a diagonal walk) and increments the counter. The loop exits once the walk leaves the
+  6x5 panel area (Y==0 or Y==4) or reaches the far edge, making this a diagonal sweeping attack such as
+  a boss''s slanted beam/line.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrsb r2,[r2,r3] off dword_810BB58=0x100FF gives signed Y offsets -1/0/+1 indexed by oAIAttackVars_AttackBoost2
+    (810BAD0-810BADC); dword_810BB60=0x7 indexed by oBattleObject_Alliance gives the stopping X (7 vs
+    0), i.e. the far edge relative to side (810BAF4-810BB00); loop bounds cmp r1,#0 / cmp r1,#4 keep the
+    walk on rows 1-3 of the panel grid (810BAEA-810BAF0); sub_80D94F2 receives panelX/Y, Element, an advancing
+    +4 pointer and a packed (timer,offset,counter*3) word — one call per panel (810BB16-810BB2C); object_getFrontDirection
+    orients the walk along the object's facing, called for both the start panel and each step (810BAC2,
+    810BB34)
+  refs:
+  - bn6f/asm/asm31.s:177639
+  - 0x0810B964 sub_810B964
+  - 0x0800E2CA object_getFrontDirection
+  - 0x080D94F2 sub_80D94F2
+  reproduce: python3 tools/asmcat.py 0x0810BAAC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battlesweep
+open_questions:
+- sub_80D94F2's exact behavior (attack/hit registration vs visual spawn) is unknown; knowing it would
+  confirm this is a damaging diagonal line attack
+- the caller sub_810B964 is undocumented, so the AI state/attack id that selects this routine and the
+  exact meaning of the Version/Timer fields are unconfirmed
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810BAAC -> ai_attackDiagonalPanelSweep
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810BAAC

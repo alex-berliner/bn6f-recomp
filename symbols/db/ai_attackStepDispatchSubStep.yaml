@@ -1,0 +1,50 @@
+name: ai_attackStepDispatchSubStep
+address: '0x0810AF30'
+kind: function
+status: probable
+summary: Dispatches an AI attack's per-substep handler via a jump table indexed by the attack object's
+  SubStepIndex.
+interface: (r0 = attack/effect object, r7 = AI attack vars) -> tail-calls handler from off_810AF44; r0
+  returned per handler; no flags set here
+details: 'Tail-jumps to one of three Thumb handlers selected by [r7, oAIAttackVars_SubStepIndex]: ai_attackStepPlayIntroAnim,
+  sub_810AF90, or ai_attackStepSpawnFrontHitbox. It is a pure trampoline — it loads the table base from
+  off_810AF40, indexes it with the substep counter, and does ''mov lr, pc; bx r1'' to call the handler
+  in Thumb state. r0 is not modified, so the caller''s object pointer is passed straight through to the
+  handler. The table lives right after the code and holds handler addresses+1 (Thumb bit set). Called
+  once per frame from the attack-step loop (ai_attackStepExitOnScratch) and when initializing an attack
+  from spawnSweepPanelEffect, so it advances the attack''s intro/hitbox-spawn substeps.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r7,#oAIAttackVars_SubStepIndex]; ldr r1,[r1,r0]; bx r1 — table dispatch on attack substep
+    index; off_810AF44 entries are ai_attackStepPlayIntroAnim, sub_810AF90, ai_attackStepSpawnFrontHitbox
+    (+1 Thumb pointers); called from ai_attackStepExitOnScratch, whose summary says it runs the attack's
+    update routine per frame; called from battle_spawnSweepPanelEffect right after initializing the AI
+    attack state, i.e. to start its first substep
+  refs:
+  - bn6f/asm/asm31.s:176144
+  - 0x0810B058 ai_attackStepExitOnScratch
+  - 0x0810B244 battle_spawnSweepPanelEffect
+  - 0x0810B13E sub_810B13E
+  reproduce: python3 tools/asmcat.py 0x0810AF30
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- what sub_810AF90 (the middle substep handler) does specifically
+- exact structure layout at r7 beyond oAIAttackVars_SubStepIndex offset
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810AF30 -> ai_attackStepDispatchSubStep
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810AF30

@@ -1,0 +1,53 @@
+name: get_variantOffsetPtr
+address: '0x03006F48'
+kind: function
+status: probable
+summary: Returns the input pointer advanced by a per-variant offset looked up from a small table, using
+  a type byte in the structure as the index.
+interface: (r0 = pointer to struct whose byte at +0x01 selects a layout variant) -> r0 = r0 + byte_3006F58[type];
+  r1 and r7 clobbered, flags set by the add
+details: Loads the byte at r0+1 and uses it as an index into the 4-entry table byte_3006F58 = {3,0,0,0},
+  then returns r0 plus the table value. So variant 0 yields r0+3 while variants 1-3 yield r0 unchanged,
+  i.e. it skips a 3-byte header that only one struct variant has. It touches no other fields and calls
+  nothing; it is a tiny pointer-adjustment helper. The actual struct and the meaning of the type byte
+  are unknown because no callers are on record. Its presence on routes across battles, maps, menus and
+  story shows it is a widely shared utility.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r7, [r0,#1] reads the variant/type selector from offset 1 of the struct; ldrb r1, [r7,r1]
+    with off_3006F54 = byte_3006F58 indexes the offset table {3,0,0,0}; add r0, r0, r1; mov pc, lr returns
+    r0 advanced by the table value and nothing else
+  refs:
+  - bn6f/asm/asm38.s:2893
+  reproduce: python3 tools/asmcat.py 0x03006F48
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battles1
+- battles2
+- beastsp
+- maps
+- menus3
+- story2
+- story4
+- story6
+- story8
+- story9
+open_questions:
+- Which structure r0 points to and what its type byte at +1 enumerates
+- Why only variant 0 skips 3 bytes (what those 3 bytes are in that layout)
+- A known caller would confirm the struct and let the name be tied to a subsystem
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_3006F48 -> get_variantOffsetPtr
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_3006F48

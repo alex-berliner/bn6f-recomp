@@ -1,0 +1,49 @@
+name: navicust_testFlag
+address: '0x08137648'
+kind: function
+status: probable
+summary: Tests one bit of a NaviCust state struct's flag halfword, returning the result in the Z flag.
+interface: (r0 = flag index into byte_813765C mask table, r1 = offset added to caller's r5 struct base)
+  -> Z flag set if bit clear (tst result); r0 = mask, r1 = loaded halfword
+details: Loads a 16-bit mask from byte_813765C at index r0, then loads the halfword at [r5 + r1] (r5 is
+  the caller's NaviCust state struct base) and TSTs the two, so the caller branches on the Z flag; no
+  value is returned in r0. The mask table is 1,2,4,8,0x20,0x10,0x40,0x80,0x200,0x100 — indices 4/5 and
+  8/9 are swapped relative to a plain 1<<i mapping, so the index encodes a specific flag ordering. All
+  known callers are NaviCust menu/placement/dialog validators that branch on this test, so it is their
+  shared 'is flag X set in the state struct' predicate.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrh r0, [r2,r0] with r2=byte_813765C: r0 is an index into a bit-mask table, not a raw mask;
+    tst r0, r1 / pop {pc}: result is delivered only via flags, no r0 return value; add r1, r1, r5 / ldrh
+    r1, [r1]: tests a halfword inside the caller''s r5-based struct at offset r1; all six callers are
+    navicust_* handlers (checkEquipDialogs, checkPiecePlacement, dialogStateHandler, countBeastOutUses),
+    matching a shared flag-test helper; table order 0x20 before 0x10 and 0x200 before 0x100 shows indices
+    map to named flags, not a linear shift'
+  refs:
+  - bn6f/asm/asm36.s:15453
+  - 0x081370D4 navicust_checkEquipDialogs
+  - 0x08137378 navicust_checkPiecePlacement
+  - 0x08137618 navicust_countBeastOutUses
+  reproduce: python3 tools/asmcat.py 0x08137648
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- beastsp
+open_questions:
+- exact meaning of each flag index within the NaviCust state struct (which offset r1 each caller passes
+  and which game flag each bit corresponds to)
+- whether any caller uses the returned r0/r1 values rather than just the Z flag
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8137648 -> navicust_testFlag
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8137648

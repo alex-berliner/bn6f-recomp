@@ -1,0 +1,46 @@
+name: battle_setAnimFromAiAttackVar
+address: '0x0810BA40'
+kind: function
+status: probable
+summary: Picks a battle-object animation id from the AI's attack-state variable via a small lookup table,
+  skipping the write on a 0xFF sentinel.
+interface: (r5 = battle object, r7 = AI attack vars) -> r0 = chosen anim id (clobbered); sets CurAnim
+  unless table entry is 0xFF
+details: Loads r0 = oAIAttackVars_AttackBoost2 from the struct at r7, uses it as an index into the table
+  at 0x810BA54 (bytes 08, 07, 09, FF), and if the fetched value is not 0xFF stores it into oBattleObject_CurAnim
+  at r5. The 0xFF entry acts as a no-op sentinel, so index 3 leaves the animation untouched. It is a leaf
+  function that only touches the caller-provided structs; the table dword_810BA54 = 0xFF090708 decodes
+  to the four byte entries. Likely called mid-attack-sweep to swap the boss/enemy animation according
+  to the current AI attack phase.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackBoost2] then ldrb r0,[r1,r0]: field used as table index; cmp
+    r0,#0xFF / beq: 0xFF table entry suppresses the update; strb r0,[r5,#oBattleObject_CurAnim]: result
+    written to object''s current animation; table 0xFF090708 = anim ids 08,07,09,FF for indices 0-3; called
+    from sub_810B8EC in battlesweep routes: battle AI attack context'
+  refs:
+  - bn6f/asm/asm31.s:177572
+  - 0x0810B8EC sub_810B8EC
+  reproduce: python3 tools/asmcat.py 0x0810BA40
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battlesweep
+open_questions:
+- Which boss/attack this anim table (8,7,9) belongs to — needs sub_810B8EC's summary or a known anim-id
+  list
+- Exact semantics of oAIAttackVars_AttackBoost2 (phase counter vs. attack selector)
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810BA40 -> battle_setAnimFromAiAttackVar
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810BA40

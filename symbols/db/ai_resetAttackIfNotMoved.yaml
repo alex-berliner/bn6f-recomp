@@ -1,0 +1,43 @@
+name: ai_resetAttackIfNotMoved
+address: '0x080F59E8'
+kind: function
+status: probable
+summary: 'AI state routine: if the AI hasn''t moved yet, clear its attack counter, run a follow-up handler,
+  then reset the state script id to 0.'
+interface: (r6 = AI state struct, r7 = AI attack vars) -> r0 = 0; no meaningful return; flags from tst
+details: Reads the HasMoved flag from the AI attack-vars block pointed to by r7. If it is nonzero, the
+  body is skipped. Otherwise it stores 0 into oAIState_AttackCounter (the AI's attack/charge counter)
+  and calls sub_80F5AA0 (purpose unknown, likely the per-state action or transition helper). Finally,
+  unconditionally, it clears oAIState_ScriptId to 0, so the AI state's script restarts from the beginning
+  next tick; r4 is pushed but unused.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r7,#oAIAttackVars_HasMoved]; tst/bne guards the reset body; strb r0(=0),[r6,#oAIState_AttackCounter]
+    clears the attack counter when HasMoved==0; bl sub_80F5AA0 only inside the not-moved branch; mov r1,#0;
+    strb r1,[r6,#oAIState_ScriptId] unconditionally restarts the state script; executed on the battlesweep
+    route, consistent with battle AI state stepping
+  refs:
+  - bn6f/asm/asm31.s:131941
+  - 0x080F5AA0 sub_80F5AA0
+  reproduce: python3 tools/asmcat.py 0x080F59E8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battlesweep
+open_questions:
+- what sub_80F5AA0 does (no known callers besides this, no summary)
+- which AI state(s) dispatch to this handler, to confirm it is an attack-related state end
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F59E8 -> ai_resetAttackIfNotMoved
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F59E8

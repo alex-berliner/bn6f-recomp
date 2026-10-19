@@ -1,0 +1,50 @@
+name: battle_playSideVariantAnim
+address: '0x080CA4F6'
+kind: function
+status: probable
+summary: Picks one of four animation variants on battle object r5 based on its team (alliance) XOR facing
+  (directionFlip) and plays it via the helper at 0x80CA4D8.
+interface: (r5 = battle object pointer, implicit) -> r0 = animation index ((alliance ^ directionFlip)
+  * 5 + 1), r1 = 3, r3 = 0x10000 passed to sub_80CA4D8; returns nothing
+details: Reads oBattleObject_Alliance and oBattleObject_DirectionFlip from the battle object in r5 and
+  XORs them, producing a 0/1 selector that combines team side with horizontal flip. It multiplies by 5
+  and adds 1, yielding animation ids 1, 6, 11, or 16 — a stride-5 table of per-side/per-facing animation
+  variants. It then calls sub_80CA4D8 with r1 = 3 (likely an animation slot, priority, or mode) and r3
+  = 0x10000 (possibly a frame duration or 16.0 fixed-point speed). The function has no other state or
+  branching; it is a thin wrapper parameterizing the helper from object fields.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#oBattleObject_Alliance] / ldrb r1,[r5,#oBattleObject_DirectionFlip] / eor — side+facing
+    selector; mov r1,#5; mul r0,r1; add r0,#1 — animation ids 1,6,11,16, stride 5 variant table; bl sub_80CA4D8
+    with r1=3, r3=0x10000 — delegates play/set of the chosen animation; called from sub_8108454 during
+    the recorded beastsp route — used in the BeastOut sequence
+  refs:
+  - bn6f/asm/asm31.s:39765
+  - 0x08108454 sub_8108454
+  - 0x080CA4D8 sub_80CA4D8
+  reproduce: python3 tools/asmcat.py 0x080CA4F6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- beastsp
+open_questions:
+- Purpose of sub_80CA4D8's r1=3 and r3=0x10000 arguments (animation slot? frame delay?) is unknown without
+  its disassembly
+- Caller sub_8108454 is undocumented, so the gameplay context (which BeastOut anim this triggers) is only
+  inferred from the capture route
+- Whether the base animation index corresponds to a sprite animation table or an OAM/palette effect needs
+  the callee's code
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80CA4F6 -> battle_playSideVariantAnim
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CA4F6

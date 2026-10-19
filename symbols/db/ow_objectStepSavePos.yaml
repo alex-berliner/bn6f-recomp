@@ -1,0 +1,45 @@
+name: ow_objectStepSavePos
+address: '0x0813594C'
+kind: function
+status: probable
+summary: Saves an overworld object's current position into its previous-position fields, conditionally
+  runs a follow-up step, and clears a counter byte.
+interface: (r0-r4 unused; r5 = object struct pointer, set by caller) -> r0 clobbered; no meaningful return
+details: 'Copies the halfword at r5+0x28 to r5+0x2A and r5+0x2C to r5+0x2E, i.e. the familiar pattern
+  of stashing current X/Y into ''previous X/Y'' slots before something moves the object. It then tests
+  the byte flag at r5+0x0D: if it is zero, it calls sub_813612C (unknown callee, likely the actual movement/state-advance
+  work); if the flag is set the call is skipped. Finally it stores 0 into the byte at r5+0x13, which looks
+  like a per-frame counter, delay, or substate being reset each step. With no callers or known callees,
+  the exact game role (movement tick vs. animation/waypoint step) can''t be pinned down.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrh/strh pairs copy r5+0x28->r5+0x2A and r5+0x2C->r5+0x2E (cur->prev position pattern); ldrb
+    r0,[r5,#0xd]; tst; bne skips the bl sub_813612C when flag 0x0D is set; strb r0(=0),[r5,#0x13] clears
+    a per-object byte at offset 0x13 every call; no callers recorded; only callee is unknown sub_813612C,
+    so role is inferred from field writes only
+  refs:
+  - bn6f/asm/asm36.s:11621
+  - 0x0813612C sub_813612C
+  reproduce: python3 tools/asmcat.py 0x0813594C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- beastsp
+open_questions:
+- what sub_813612C does (would confirm whether this is a movement or animation step)
+- which structure r5 points to and what offsets 0x0D, 0x13, 0x28-0x2E mean in it
+- a known caller would show when in the overworld update loop this runs and what the flag 0x0D gates
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_813594C -> ow_objectStepSavePos
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_813594C

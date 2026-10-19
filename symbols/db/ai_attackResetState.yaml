@@ -1,0 +1,43 @@
+name: ai_attackResetState
+address: '0x0810DEC4'
+kind: function
+status: probable
+summary: Clears an enemy AI attack's timers and detaches its extra-vars, ending the attack action.
+interface: (r0 = unused; r5 = battle object; r7 = oAIAttackVars) -> r0 = 0; flags not meaningful
+details: Stores 0 into oAIAttackVars_AttackDuration and oAIAttackVars_StepTimer (halfwords via r7), then
+  stores 0 into oBattleObject_ExtraVars (r5), releasing the pointer to the attack's variable block. It
+  is the attack-state teardown/reset called from ai_attackUpdate when the attack timer expires (and reachable
+  via sub_810DE00). r0 is overwritten with 0 immediately and never used as input. The caller must already
+  have r7 pointing at the oAIAttackVars struct, as is the convention in the ai_attackUpdate family.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'strh r0, [r7,#oAIAttackVars_AttackDuration] / [r7,#oAIAttackVars_StepTimer] zero both attack
+    timers; str r0, [r5,#oBattleObject_ExtraVars] nulls the object''s extra-vars pointer; caller 0x0810DE96
+    ai_attackUpdate ''ends the attack state when it expires'' matches this teardown; 7-instruction body
+    with no callees: pure field-reset, no side effects'
+  refs:
+  - bn6f/asm/asm32.s:669
+  - 0x0810DE96 ai_attackUpdate
+  - 0x0810DE00 sub_810DE00
+  reproduce: python3 tools/asmcat.py 0x0810DEC4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battlesweep
+open_questions:
+- exact caller context in sub_810DE00 (only decompiled path is battlesweep via ai_attackUpdate)
+- whether ExtraVars memory is freed or reused elsewhere
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810DEC4 -> ai_attackResetState
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810DEC4

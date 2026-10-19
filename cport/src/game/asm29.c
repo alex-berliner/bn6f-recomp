@@ -1543,11 +1543,11 @@ static void clear_event_flag_sub_80A9C26(u32 flags) {
     GUEST_CALL(ClearEventFlag);
 }
 
-/* register form: calls sub_80A9CAE outside this file, which has no typed C interface yet */
+/* register form: calls npc_isPlayerNearPos outside this file, which has no typed C interface yet */
 static u32 event_npc_check(void) {
     /* r0 is deliberately NOT set here: the original passes along whatever
      * r0 the preceding TestEventFlag call left behind. */
-    GUEST_CALL(sub_80A9CAE);
+    GUEST_CALL(npc_isPlayerNearPos);
     return R0;
 }
 

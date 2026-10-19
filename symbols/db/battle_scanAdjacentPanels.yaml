@@ -1,0 +1,54 @@
+name: battle_scanAdjacentPanels
+address: '0x080F37D8'
+kind: function
+status: probable
+summary: Checks the four panels adjacent to a battle object's panel and calls a handler (sub_80C8DE0)
+  for each one whose status flags have bit 0x10 set.
+interface: (r5 = battle object, r2/r4/r6 = context passed through) -> r0 = last object_getPanelParameters
+  result; calls sub_80C8DE0(r0=dx, r1=dy, r2, r4, r6) per matching neighbor
+details: 'The function loops r7 = 0..3 over a table of four (dx,dy) signed-byte pairs at byte_80F3824:
+  (-1,0),(1,0),(0,-1),(0,1), i.e. the four orthogonally adjacent panels. For each, it adds the offset
+  to the object''s oBattleObject_PanelX/PanelY fields (loaded from r5, which the caller must set since
+  r5 is not written here) and calls object_getPanelParameters. If the returned panel status word has bit
+  0x10 set, it restores the caller''s r2/r4/r6 from the stack and calls sub_80C8DE0 with r0=dx, r1=dy
+  plus that context. It is effectively ''for each of the 4 neighboring panels with flag 0x10, do X'';
+  the exact meaning of flag 0x10 and of the callback are not visible here. Note it never modifies the
+  object, so it is a query/dispatch helper.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: byte_80F3824 holds four ldrsb pairs (-1,0),(1,0),(0,-1),(0,1) — the four orthogonal neighbor
+    offsets; ldrb r2,[r5,#oBattleObject_PanelX] / ldrb r3,[r5,#oBattleObject_PanelY] anchor the scan on
+    the object's own panel; tst r0,#0x10 after object_getPanelParameters gates the call to sub_80C8DE0;
+    loop bound cmp r7,#4 confirms exactly the four neighbors are tested; callers sub_80F0832 (twice) and
+    sub_80F32BC run on the battlesweep route, consistent with battle-side panel logic
+  refs:
+  - bn6f/asm/asm31.s:127687
+  - 0x080F0832 sub_80F0832
+  - 0x080F083E sub_80F0832
+  - 0x080F32BC sub_80F32BC
+  - 0x0800C8F8 object_getPanelParameters
+  - 0x080C8DE0 sub_80C8DE0
+  reproduce: python3 tools/asmcat.py 0x080F37D8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battlesweep
+open_questions:
+- meaning of panel status bit 0x10 in object_getPanelParameters' return word
+- what sub_80C8DE0 does with (dx,dy, r2, r4, r6), which would refine the name (e.g. spawn effect vs. apply
+  status)
+- why r5 rather than r0 carries the object pointer — which caller convention sets it
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F37D8 -> battle_scanAdjacentPanels
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F37D8

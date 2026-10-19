@@ -1,0 +1,42 @@
+name: ai_dispatchScriptState
+address: '0x0811557C'
+kind: function
+status: probable
+summary: Dispatches the battle AI's per-frame update to the handler for the current AI script state id.
+interface: (r6 = AI/object work struct, r0 preserved into handler) -> returns handler's r0; flags from
+  handler
+details: Reads the byte at oAIState_ScriptId in the r6 work struct and indexes off_8115590, a table with
+  two entries (ai_selectAttack, sub_8115654), calling the selected handler via mov lr, pc / bx r1 so control
+  returns straight to the pop epilogue. r0 (the state id) is passed through to the handler; the work struct
+  itself is only reachable via r6. With only two states, it is a tiny state machine, the first state being
+  attack selection. The state id is not range-checked, so a bad id would jump through garbage.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r6,#oAIState_ScriptId]; ldr r1,[r1,r0] selects handler by current AI state; table off_8115590
+    contains ai_selectAttack+1 as state 0's handler; mov lr, pc; bx r1 makes it a plain call returning
+    to the pop epilogue
+  refs:
+  - bn6f/asm/asm32.s:14877
+  reproduce: python3 tools/asmcat.py 0x0811557C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- what state 1 (sub_8115654) does
+- which caller owns the r6 work struct and how oAIState_ScriptId is advanced between states
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_811557C -> ai_dispatchScriptState
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811557C

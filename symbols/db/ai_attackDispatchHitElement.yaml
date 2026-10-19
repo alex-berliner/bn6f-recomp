@@ -1,0 +1,55 @@
+name: ai_attackDispatchHitElement
+address: '0x080EB628'
+kind: function
+status: probable
+summary: Dispatches an in-progress AI attack to an element-specific handler based on which element the
+  attack hit.
+interface: (r7 = AI attack vars struct) -> calls handler from jump table; returns to caller after pop
+  {pc}
+details: Reads the HitElement byte from the AI attack vars struct at r7 (field oAIAttackVars_HitElement),
+  uses it to index a pointer table at off_80EB63C, and calls the selected thumb handler with pc-switch
+  (mov lr, pc; bx r1). The table's two known entries route element 0 to sub_80EB644 and any other element
+  to aiAttackTimerTick_80EB758, so only two behaviors are visible here — likely normal (none) vs a coded
+  element. No arguments are passed to the handlers; they presumably share state via r7 or globals. lr
+  is used as the link register to make the tail-style call return straight back to this function's caller.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0, [r7,#oAIAttackVars_HitElement] selects the dispatch index from the AI attack struct;
+    ldr r1, [r1,r0] with base off_80EB63C is a handler pointer table indexed by element; table words sub_80EB644+1
+    and aiAttackTimerTick_80EB758+1 are thumb code pointers; mov lr, pc; bx r1 is the standard thumb indirect
+    call-and-return pattern; executed on recorded battle routes (battles1, story*, chips), consistent
+    with battle AI attack processing
+  refs:
+  - bn6f/asm/asm31.s:110666
+  reproduce: python3 tools/asmcat.py 0x080EB628
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battles1
+- beastsp
+- chips
+- fuzz
+- story2
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- why the two-element table maps element 0 to sub_80EB644 and others to the timer tick; whether HitElement
+  can exceed 1 and out-of-range indexes are possible
+- what sub_80EB644 does for the default/normal case
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80EB628 -> ai_attackDispatchHitElement
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EB628

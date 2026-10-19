@@ -1,0 +1,46 @@
+name: ai_attackChargeTick
+address: '0x08100EEE'
+kind: function
+status: probable
+summary: 'Per-frame AI attack state tick: initializes an attack (element 4, duration from AttackBoost2)
+  then counts down and signals the hit (element 8) when the timer expires.'
+interface: (r0-r3 unused; r7 = object with oAIAttackVars) -> updates oAIAttackVars_AttackElement/StepTimer/HitElement;
+  no return value
+details: State machine tick over the oAIAttackVars struct at r7. When AttackElement is 0 it writes 4 into
+  AttackElement and copies AttackBoost2 into StepTimer as the frame countdown. On later frames it decrements
+  StepTimer; when it hits 0 it stores 8 into HitElement, which downstream attack code presumably reads
+  as the element of the landing hit. It touches only these three fields and returns without setting flags
+  meaningfully. The semantics of element values 4 and 8, and what AttackBoost2 means as a duration, are
+  not shown by this code.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst; bne — entry condition is ''attack not yet initialized'';
+    strb #4 into AttackElement and strh AttackBoost2 into StepTimer — one-time attack setup with a frame
+    duration; ldrh StepTimer, sub #1, bgt — per-frame countdown of the attack; strh #8 into HitElement
+    when timer expires — signals the attack''s hit element on completion; executed by recorded ''battlesweep''
+    routes, consistent with an AI attack step handler'
+  refs:
+  - bn6f/asm/asm31.s:155393
+  reproduce: python3 tools/asmcat.py 0x08100EEE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battlesweep
+open_questions:
+- Which boss/attack this handler belongs to (no caller or dispatch table entry known)
+- Meaning of element constants 4 (initial) and 8 (hit) in the battle element enum
+- What AttackBoost2 normally holds and how it relates to attack duration
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8100EEE -> ai_attackChargeTick
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8100EEE

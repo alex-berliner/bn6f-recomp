@@ -1,0 +1,46 @@
+name: ow_getPlayerPosition
+address: '0x0809E1BC'
+kind: function
+status: probable
+summary: Returns the overworld player object's three position coordinates (fields 0x1C, 0x20, 0x24) in
+  r1-r3.
+interface: (no inputs; r0 ignored) -> r1 = player obj +0x1C (X), r2 = player obj +0x20 (Y), r3 = player
+  obj +0x24 (Z/height); clobbers r1-r3, preserves r0
+details: Loads r10's toolkit pointer, reads GameStatePtr, then OverworldPlayerObjectPtr, and pulls three
+  consecutive longwords starting at offset 0x1C of the player object. The three values are almost certainly
+  the object's 3D/position coordinates, since the caller ow_applyCutsceneDirOffset adds a cutscene-direction-dependent
+  pixel offset (32/64/96 along one axis) to the three values it receives. The function ignores its r0
+  argument entirely; the player object is always taken from the global game state. No other fields are
+  touched and no calls are made.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldr r3,[r3,#oGameState_OverworldPlayerObjectPtr] then three loads at +0x1c/+0x20/+0x24: returns
+    a coordinate triple from the player object; caller 0x0809C890 ow_applyCutsceneDirOffset is documented
+    as adding a positional offset to three coordinate values — matches the returned triple; no callees
+    and r0 unused: a pure global-state getter'
+  refs:
+  - bn6f/asm/ow_player.s:2335
+  - 0x0809C890 ow_applyCutsceneDirOffset
+  - 0x0809332C sub_809332C
+  reproduce: python3 tools/asmcat.py 0x0809E1BC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- beastsp
+open_questions:
+- Exact meaning of the third field (Z vs shadow-Y vs facing) at player object +0x24 would be confirmed
+  by seeing how callers use r3
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_809E1BC -> ow_getPlayerPosition
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_809E1BC

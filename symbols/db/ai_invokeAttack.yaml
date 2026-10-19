@@ -1,0 +1,51 @@
+name: ai_invokeAttack
+address: '0x08103B10'
+kind: function
+status: probable
+summary: Loads the AI attack parameters out of the AIAttackVars struct and invokes the shared attack-execution
+  routine.
+interface: (r0 = attacker/caller context, r7 = AIAttackVars struct ptr) -> r0 = result of sub_80CF058;
+  r2 = InitFlag, and DifficultyTier/Damage/TargetObjectPtr passed via r4/r6/r7
+details: 'This is a thin wrapper that reads four fields from the oAIAttackVars struct addressed by r7:
+  InitFlag into r2, AiDifficultyTier into r4, Damage into r6, and TargetObjectPtr into r7, then tail-calls
+  sub_80CF058 without altering r0. The use of callee-saved r4/r6/r7 to carry arguments suggests sub_80CF058
+  is a shared helper that reads its extended parameters from these registers (or the wrapper is a trampoline
+  into an inlined call site), which is unusual but consistent across the whole function. The field names
+  mark this as part of the enemy/battle AI attack machinery: it takes the staged attack data (target,
+  damage, difficulty gating, init flag) and hands it to the common executor. Its only caller sub_8103A20
+  and its appearance in recorded battle routes place it in normal battle AI attack dispatch.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r2,[r7,#oAIAttackVars_InitFlag] / ldrb r4,[r7,#oAIAttackVars_AiDifficultyTier] load AI
+    attack struct fields (sub_8103B10 lines 2-4); ldr r6,[r7,#oAIAttackVars_Damage] / ldr r7,[r7,#oAIAttackVars_TargetObjectPtr]
+    load damage and target from same struct; bl sub_80CF058 with r0 untouched forwards the attack context
+    to a single shared callee; sole caller is sub_8103A20, and the function runs on recorded battlesweep
+    routes, i.e. during battle AI attack execution; 8-instruction body with no other logic shows it is
+    purely a parameter-marshalling wrapper
+  refs:
+  - bn6f/asm/asm31.s:161288
+  - 0x08103A20 sub_8103A20
+  - 0x080CF058 sub_80CF058
+  reproduce: python3 tools/asmcat.py 0x08103B10
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battlesweep
+open_questions:
+- what sub_80CF058 does with r0 and the r4/r6/r7 parameters (its summary would confirm this is attack
+  execution vs. something else like attack queuing)
+- what value r0 holds on entry — presumably the attacking object or its AI work struct, set by sub_8103A20
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8103B10 -> ai_invokeAttack
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8103B10

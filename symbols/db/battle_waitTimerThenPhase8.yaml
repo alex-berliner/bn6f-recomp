@@ -1,0 +1,44 @@
+name: battle_waitTimerThenPhase8
+address: '0x080DA1AE'
+kind: function
+status: probable
+summary: 'Per-frame tick: counts down the object''s Timer2, and on reaching 0 restarts its animation and
+  advances the battle object to phase 8.'
+interface: (r5 = battle object pointer, implicit) -> void; decrements oBattleObject_Timer2, on zero sets
+  oBattleObject_CurAnim=0, oBattleObject_Timer2=10, oBattleObject_CurPhaseAndPhaseInitialized=8
+details: Runs once per frame for some battle object (r5). Each call decrements the 16-bit Timer2 field;
+  while nonzero it returns immediately. When Timer2 hits 0, it clears CurAnim (animation restarts from
+  frame 0), reloads Timer2 with 0xA (10 frames), and writes 8 to CurPhaseAndPhaseInitialized, telling
+  the object's phase dispatcher to run phase 8 next. The timer reload implies phase 8 (or something it
+  triggers) can route back into this wait. No other state is touched.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrh/strh on oBattleObject_Timer2 with ''sub r0,#1'' and ''bne locret'' = frame countdown returning
+    early; strb #0 to oBattleObject_CurAnim on expiry = restart the object''s animation; strh #0xa to
+    oBattleObject_Timer2 = reload the same countdown with 10 frames; strh #8 to oBattleObject_CurPhaseAndPhaseInitialized
+    = hand control to phase 8 of the object''s state machine'
+  refs:
+  - bn6f/asm/asm31.s:73473
+  reproduce: python3 tools/asmcat.py 0x080DA1AE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- chips
+open_questions:
+- 'No callers known: which battle object/chip installs this as its tick handler, and what phase 8 does
+  with the restarted animation, is unknown'
+- Whether Timer2=10 is a shared default or specific to this wait (other timer users would confirm)
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80DA1AE -> battle_waitTimerThenPhase8
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DA1AE

@@ -1,0 +1,60 @@
+name: battle_getNaviIdFromActor
+address: '0x080EBAE8'
+kind: function
+status: probable
+summary: Maps a battle actor (type + AI index, or its alliance byte) to a compact Navi identifier used
+  elsewhere in battle code.
+interface: (r0 = battle object) -> r0 = compact Navi ID (0 if none); corrupts r4, r7
+details: 'Reads oBattleObject_AIDataPtr, then oAIData_ActorType and oAIData_AIIndex. Type 0 returns 0;
+  type 1 returns the AI index only when it is below 0xD, otherwise 0; type 2 returns the index, remapping
+  0x13 to 0xE. For type 2 with index 0 it calls GetBattleNaviStatsByte_AllianceFromBattleObject with byte
+  offset 0x2C: alliance <0xB gives 0, 0x11..0x12 or 0x17 give 0xC, 0xC or >0x12 (except 0x17) give 0xD.
+  The output is a dense ID over disparate actor sources, i.e. an index into some Navi-ordered table.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r4,#oAIData_ActorType]/ldrb r1,[r4,#oAIData_AIIndex] then branchy remapping into r7
+    (asm start); type 2 index 0: bl GetBattleNaviStatsByte_AllianceFromBattleObject with r1=0x2C, result
+    0xB/0xC/0x11/0x17 thresholds decide 0xC vs 0xD; type 1 index >=0xD and type 2 index 0x13→0xE show
+    a compacting/remap into a dense ID space; six callers, several clustered at 0x80EE1AC..0x80EF9A2,
+    all battle-flow code per the recorded battle routes'
+  refs:
+  - bn6f/asm/asm31.s:111177
+  - 0x080BDFA6 sub_80BDFA6
+  - 0x080EE1AC sub_80EE1AC
+  - 0x080EE406 sub_80EE406
+  - 0x08013774 GetBattleNaviStatsByte_AllianceFromBattleObject
+  reproduce: python3 tools/asmcat.py 0x080EBAE8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battles1
+- beastsp
+- chips
+- fuzz
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- what the returned ID indexes into (portraits, voices, Navi chip table?) — would need a caller's use
+  of the result
+- exact meaning of ActorType values 0/1/2 and the alliance byte range 0xB..0x17
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80EBAE8 -> battle_getNaviIdFromActor
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EBAE8

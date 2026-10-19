@@ -1,0 +1,52 @@
+name: ai_updateChargeAttack
+address: '0x080EE5A8'
+kind: function
+status: probable
+summary: AI attack-state handler that, after a step delay, spawns an elemental attack on the panel in
+  front of the enemy and then counts down its charge lifetime before marking the attack finished.
+interface: (r0 = unused/overwritten, r5 = battle object, r7 = oAIAttackVars struct) -> r0 = scratch; updates
+  oAIAttackVars fields, no meaningful return
+details: This is one step of an enemy AI attack state machine operating on the oAIAttackVars struct in
+  r7. While AttackElement is 0 it counts down StepTimer; when it reaches 0 it increments a counter at
+  TempAttackObjectPtr+0x10, sets ChargeCycles to 5 (or SubStepIndex-5 when AttackStepIndex != 1), sets
+  AttackElement = 4, then calls object_getFrontDirection to get the facing +/-1 and calls sub_80D6B78
+  with the target panel X (PanelX + direction), PanelY, Damage+AttackBoost, AttackBoost2, InitFlag, r3=0
+  and r4 = object+0x4C (an embedded sub-struct) — evidently spawning the attack entity/hitbox on the front
+  panel. Once AttackElement is nonzero, the function instead decrements ChargeCycles each frame and, at
+  zero, stores HitElement = 8, which appears to signal the attack phase is over. Element value 4 likely
+  selects a specific attack element/type for the spawned attack.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne splits 'not yet fired' vs 'fired' states;
+    bl object_getFrontDirection then add r0,r0,PanelX computes the panel in front as the attack target;
+    bl sub_80D6B78 receives damage+AttackBoost, AttackBoost2, InitFlag and r5+0x4C, so it spawns/initializes
+    the attack on that panel; ChargeCycles set to 5 or SubStepIndex-5, then decremented each frame until
+    storing HitElement=8; counter at [TempAttackObjectPtr,#0x10] incremented once when the attack spawns
+  refs:
+  - bn6f/asm/asm31.s:117102
+  - 0x0800E2CA object_getFrontDirection
+  - 0x080D6B78 sub_80D6B78
+  reproduce: python3 tools/asmcat.py 0x080EE5A8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- chips
+open_questions:
+- What sub_80D6B78 actually spawns (projectile vs direct panel hit) — its code would confirm
+- Meaning of AttackElement value 4 and HitElement value 8 in the AI attack enum
+- Which enemy/chip attack route invokes this handler and what the oAIAttackVars struct at +0x4C of the
+  object contains
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80EE5A8 -> ai_updateChargeAttack
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EE5A8

@@ -1,0 +1,52 @@
+name: battle_spawnRowPanelEffect
+address: '0x080C6FC8'
+kind: function
+status: probable
+summary: Spawns a series of ground/panel effect objects (via sub_80E3A92) along the battle object's row
+  toward a target panel X, with a variant selected by Param1.
+interface: (r0 = effect param A (byte packed into r4[8..15]), r1 = target panel X; r5 = battle object)
+  -> r0 = clobbered; no meaningful return
+details: Reads the object's Param1 and maps it through byte_80C7028 to a variant value (1 only when Param1==4,
+  else 0). It first calls sub_80E3A92 with r0=arg1(target X), r1=PanelY, r4 = variant<<16 | paramA<<8
+  | 1 (a 'first/leading' flag), r7=RelatedObject1Ptr. It then loops count 1..4, computing x = PanelX +
+  object_getFrontDirection()*count, and calls sub_80E3A92 again at each x with r2=target X and r4 = variant<<16
+  | paramA<<8 | 0, stopping as soon as x reaches the target panel. RelatedObject1Ptr is passed each time,
+  so the spawned effects are tied to the acting object. The 4-panel sweep with early exit at the target
+  panel suggests a traveling ground effect that spans the row between user and target.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#oBattleObject_Param1] + byte_80C7028 lookup gives variant, nonzero only for Param1==4;
+    bl object_getFrontDirection; mul r0,r6; add r0,PanelX walks panels 1..4 in facing direction; cmp r0,r2
+    / beq loc_80C701E stops the sweep when the target panel X is reached; first sub_80E3A92 call packs
+    r4 = variant<<16|paramA<<8|1, later calls use flag 0 (leading vs trailing spawn); r7 = [r5,#oBattleObject_RelatedObject1Ptr]
+    passed to sub_80E3A92 on every spawn
+  refs:
+  - bn6f/asm/asm31.s:32504
+  - 0x080C6E90 sub_80C6E90
+  - 0x0800E2CA object_getFrontDirection
+  - 0x080E3A92 sub_80E3A92
+  reproduce: python3 tools/asmcat.py 0x080C6FC8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- purpose of sub_80E3A92 (its r0/r2/r4 field meanings) is unknown, so the exact visual/attack (e.g. snake,
+  eruption, trap row) can't be confirmed
+- what Param1 and byte_80C7028 index 4 actually represent (element? panel type?)
+- why the first spawn occurs at the target X rather than the object's own panel
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80C6FC8 -> battle_spawnRowPanelEffect
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C6FC8

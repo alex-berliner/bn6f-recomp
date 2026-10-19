@@ -1,0 +1,46 @@
+name: battle_updateRegionAttackObject
+address: '0x080E55E0'
+kind: function
+status: probable
+summary: Per-frame state dispatcher for delayed region-attack battle objects, jumping to a handler based
+  on the object's CurAction.
+interface: (r5 = battle object) -> tail-jumps to state handler; no return value of its own
+details: Reads oBattleObject_CurAction (byte at [r5,+CurAction]) and uses it to index the table at off_80E55F4,
+  then performs a manual tail call (mov lr, pc; bx r1) to the selected state handler. State 0 = battle_waitScreenFadeEnd
+  (object idles until the battle-intro/fade finishes), state 1 = battle_updateDelayedRegionAttackObject
+  (main delayed panel-attack logic), state 2 = sub_80E566C (unknown third state, likely cleanup/destruction).
+  r1 is loaded via a pointer-table indirection (off_80E55F0 points at off_80E55F4) rather than directly,
+  so the table address is data-driven. The two trailing zero bytes are padding between this thunk and
+  the table.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#oBattleObject_CurAction]; ldr r1,[r1,r0]; mov lr,pc; bx r1 — indexed dispatch on
+    object action state; jump table entries battle_waitScreenFadeEnd+1 and battle_updateDelayedRegionAttackObject+1
+    name the object type and idle state; mov lr,pc / pop {pc} pattern makes this a tail-called per-frame
+    update entry (lr holds return, handler branches back); called from recorded battle routes (battlesweep),
+    consistent with a battle-object update step
+  refs:
+  - bn6f/asm/asm31.s:97982
+  reproduce: python3 tools/asmcat.py 0x080E55E0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battlesweep
+open_questions:
+- what sub_80E566C (state 2) does — likely the removal/destruction state
+- which specific attack/object IDs use this update routine (would confirm the 'region attack' reading
+  from callers/spawn sites)
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80E55E0 -> battle_updateRegionAttackObject
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E55E0

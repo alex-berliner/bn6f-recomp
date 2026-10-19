@@ -1,0 +1,48 @@
+name: renderTextPair
+address: '0x081199E4'
+kind: function
+status: probable
+summary: Renders two text scripts (via the text-gfx toolkit) into RAM tile buffers and publishes them
+  to VRAM, storing render state on a caller-provided struct.
+interface: (r5 = state struct [byte +4 flag; result slots +0x10/+0x14/+0x18], r6 = context struct [halfword
+  +0x1c = glyph index]) -> r0 = renderer result of 2nd call; writes [r5+0x10]=0, [r5+0x14]=result, [r5+0x18]=0
+details: Calls renderTextGfx_8045F8C twice. First call uses eTextScript201D280 rendered into buffer byte_201B200
+  / VRAM 0x600B800 with glyph index 0xa, or the index in [r6+0x1c] when byte [r5+4] is nonzero. Second
+  call uses TextScript873EA50 into byte_201B480 / VRAM 0x600BA80, always with index [r6+0x1c]. Both calls
+  pass r4=0xa (probably tile/row count), r5=1 (flag), r6=dword_86A5D60 (font/palette table), r7=0. The
+  two buffer pairs (0x201B200/0x201B480, 0x600B800/0x600BA80) are 0x280 apart, i.e. two adjacent 20-tile
+  text blocks. r5 and r6 are preserved via push/pop since they are caller state.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'two back-to-back bl renderTextGfx_8045F8C with script pointers eTextScript201D280 and TextScript873EA50;
+    VRAM dests 0x600B800 and 0x600BA80 with RAM sources byte_201B200/byte_201B480, each pair 0x280 apart;
+    glyph index arg r1 = 0xa default, overridden by ldrh [r6,#0x1c] when byte [r5,#4] != 0; results stored
+    to struct fields: str r0,[r5,#0x10] before calls and str r0,[r5,#0x14] after the second call; executed
+    on the beastsp route, consistent with a menu screen drawing two text labels'
+  refs:
+  - bn6f/asm/asm32.s:23794
+  - 0x081199C0 sub_81199C0
+  - 0x08045F8C renderTextGfx_8045F8C
+  reproduce: python3 tools/asmcat.py 0x081199E4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- beastsp
+open_questions:
+- identity of the caller sub_81199C0 and which screen/menu this pair of labels belongs to
+- exact meaning of r4=0xa, r5=1, r7=0 arguments to renderTextGfx_8045F8C
+- contents of the two text scripts (what strings are drawn) and layout of the r5/r6 structs
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_81199E4 -> renderTextPair
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81199E4

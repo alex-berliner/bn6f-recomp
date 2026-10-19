@@ -1,0 +1,45 @@
+name: ai_timerAttackSelect
+address: '0x081164EC'
+kind: function
+status: probable
+summary: 'Battle AI step: start a timer seeded from the object, pick a random attack once, count the timer
+  down, then reset the substate when it expires'
+interface: (r6 = AI state object, r5 = acting object) -> r0 = undefined; updates oAIState_SubState and
+  oAIState_Timer
+details: Runs as one step of the AI state machine for an acting object. On entry with oAIState_SubState
+  == 0 it sets SubState to 1, copies the halfword at object+0x64 into oAIState_Timer as the wait duration,
+  and calls ai_randomAttackPick to choose an attack (closest enemy plus a pattern-table value and a random
+  0-2 roll). On subsequent calls it decrements oAIState_Timer every frame; when it reaches 0 it clears
+  SubState back to 0, handing control back to the state machine (which would then presumably fire the
+  chosen attack). r4-r7 are preserved but unused except as pointer arguments.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r6,#oAIState_SubState]; cmp 0; strb 1 — one-shot initialization guarded by SubState;
+    mov r0,#0x64; ldrh r0,[r5,r0]; strh r0,[r6,#oAIState_Timer] — timer duration taken from object field
+    0x64; bl ai_randomAttackPick — attack chosen once at step start, matching its documented summary;
+    ldrh/sub #1/strh/bne loop then strb 0 to SubState — frame countdown that resets the substate on expiry'
+  refs:
+  - bn6f/asm/asm32.s:16619
+  - 0x08116510 ai_randomAttackPick
+  reproduce: python3 tools/asmcat.py 0x081164EC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battlesweep
+open_questions:
+- meaning of the object halfword at +0x64 (custom delay? panel/timer field?)
+- which AI versions route here and what the picked attack index is consumed by in the parent state machine
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_81164EC -> ai_timerAttackSelect
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81164EC

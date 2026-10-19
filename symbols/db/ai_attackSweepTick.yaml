@@ -1,0 +1,44 @@
+name: ai_attackSweepTick
+address: '0x08107244'
+kind: function
+status: probable
+summary: 'Per-frame tick for an enemy AI attack state: counts down a step timer and, on expiry, resets
+  the object''s animation and clears its hit element.'
+interface: (r5 = battle object, r7 = oAIAttackVars struct) -> r0 = destroyed; flags set by the final strb/strh
+  are not meaningful; no return value
+details: Decrements the halfword oAIAttackVars_StepTimer in the AI attack vars pointed to by r7 and returns
+  while it is still positive. When the counter reaches 0 (or below), it zeroes the byte oBattleObject_CurAnim
+  in the battle object at r5, putting the enemy back on its idle/default animation, and stores 0xC into
+  oAIAttackVars_HitElement, which for a hit-element field likely means 'no element / attack ended'. It
+  runs inside a recorded 'battlesweep' route, suggesting it belongs to a sweeping/lunging enemy attack
+  routine that waits a fixed number of frames before disarming the hitbox.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrh/sub/strh on oAIAttackVars_StepTimer with 'bgt locret' is a standard frame-countdown tick;
+    mov r0,#0; strb r0,[r5,#oBattleObject_CurAnim] resets the object's current animation on expiry; mov
+    r0,#0xc; strh r0,[r7,#oAIAttackVars_HitElement] writes a constant hit-element/none value, not a pointer
+    or address; executed by the 'battlesweep' route, matching an AI attack-pattern context for oAIAttackVars
+  refs:
+  - bn6f/asm/asm31.s:168351
+  reproduce: python3 tools/asmcat.py 0x08107244
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battlesweep
+open_questions:
+- exact enemy/attack this belongs to (caller unknown), and whether HitElement=0xC means 'no element' or
+  a specific element id
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8107244 -> ai_attackSweepTick
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8107244

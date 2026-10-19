@@ -3581,7 +3581,7 @@ Next sub_804C144(void) {
     if ((s32)effect_counter > 0x24) {
         GUEST_CALL(tickActionTimer_804C214);
     } else if ((s32)effect_counter > 0) {
-        GUEST_CALL(sub_804C244);
+        GUEST_CALL(battle_flashTickFrames);
     } else {
         /* Counter has reached 0: tear down the effect. */
         R4 = LD32(R10 + oToolkit_RenderInfoPtr);

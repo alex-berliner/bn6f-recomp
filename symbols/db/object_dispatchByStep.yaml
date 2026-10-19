@@ -1,0 +1,55 @@
+name: object_dispatchByStep
+address: '0x0802BDF0'
+kind: function
+status: probable
+summary: Thunk that calls an object's per-step handler chosen by the step index stored at [r5+2].
+interface: (r5 = object ptr; step = byte [r5,#2]) -> jumps to table[step] with r0 = step, r1 = &jump table
+  base; returns handler's r0
+details: Reads the object's current step counter (byte at r5+2), uses it to index a two-entry thumb function-pointer
+  table at off_802BE04, and tail-dispatches via 'mov lr, pc; bx r1'. Entry 0 is objStepFinishSetState4_802BE0C
+  (a known 'finish step, set state 4' object helper) and entry 1 is sub_802BE36, so the object has two
+  scripted steps. The jump table is stored right after the code (the .byte 0,0 padding plus two .word
+  entries). r5 is not loaded inside, so the caller must have set r5 to the object structure; r0 passed
+  to the handler is the step index. Behaves as the standard per-frame step dispatcher for one small object/task
+  routine.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0, [r5,#2]; ldr r1,[r1,r0]; mov lr,pc; bx r1 — step-indexed indirect dispatch (asm lines
+    3-6); off_802BE04 points to objStepFinishSetState4_802BE0C, a known object step-finish helper, implying
+    an object step machine; two-entry table (objStepFinishSetState4_802BE0C, sub_802BE36) — a 2-step object
+    routine; executed on recorded routes across battles, menus and story — typical of common object/task
+    stepping
+  refs:
+  - bn6f/asm/asm03_0.s:12107
+  reproduce: python3 tools/asmcat.py 0x0802BDF0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battles1
+- battles2
+- beastsp
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- which object/task type this belongs to and what sub_802BE36's step does — no caller or object structure
+  is known to confirm the r5 layout
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_802BDF0 -> object_dispatchByStep
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802BDF0

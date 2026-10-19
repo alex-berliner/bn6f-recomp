@@ -1,0 +1,66 @@
+name: ow_setPlayerAnimByDirection
+address: '0x0809D560'
+kind: function
+status: probable
+summary: Sets the overworld player object's animation and action state for its current facing direction,
+  choosing the source table from context (normal, internet navi, event flag, or active script routine).
+interface: (r5 = OW player object) -> writes oOWPlayerObject_AnimationSelect, oOWPlayerObject_ActionSubState=4,
+  oOWPlayerObject_Unk_38/3C; no return value
+details: 'r1 is set to byte_2000AA3 (player-navi-in-internet flag) only when MapGroup >= INTERNET_MAP_GROUP_START,
+  and selects which of two 2-entry table-pointer lists to use; EVENT_1716 switches to an alternate list
+  (off_809D5BC vs off_809D5B0). If the script timer dword_200ACF8 in eStruct200ace0 is nonzero, the table
+  pointer is instead taken from oS200ace0_OWRoutinePointer, letting scripts override the animation tables.
+  The final table is indexed by the player''s FacingDirection with 12-byte strides (dir*12 via dir*8+dir*4):
+  byte at +0 is stored to AnimationSelect, words at +4 and +8 to Unk_38/Unk_3C, and ActionSubState is
+  set to 4. The static tables byte_809CF5C/byte_809CFBC/byte_809D0DC hold these per-direction entries;
+  byte_809D0DC is shared as the second (internet) entry of both lists.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#oOWPlayerObject_FacingDirection] then stride-12 indexing (lsl r1,r0,#3; lsl r0,r0,#2;
+    add) selects the table entry; strb r0,[r5,#oOWPlayerObject_AnimationSelect]; mov r0,#4; strb r0,[r5,#oOWPlayerObject_ActionSubState]
+    writes the anim state; r1 = byte_2000AA3 only when MapGroup >= INTERNET_MAP_GROUP_START, picking normal
+    vs internet table set; tst r1,r1 on oS200ace0_ScriptTimer; if nonzero the table comes from oS200ace0_OWRoutinePointer
+    (script override); movflag EVENT_1716 / TestEventFlagFromImmediate swaps the pointer list off_809D5B0
+    -> off_809D5BC
+  refs:
+  - bn6f/asm/ow_player.s:517
+  - 0x0802F164 TestEventFlagFromImmediate
+  reproduce: python3 tools/asmcat.py 0x0809D560
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battle
+- battles2
+- beastsp
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story8
+- story9
+- wander
+open_questions:
+- No callers captured, so the exact trigger (e.g. after movement or on direction change) and the meaning
+  of Unk_38/Unk_3C fields are unknown
+- Semantics of oS2000aa0_OWPlayerNaviInternetFlag and EVENT_1716 (beast-out form?) not confirmed
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_809D560 -> ow_setPlayerAnimByDirection
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_809D560

@@ -1,0 +1,43 @@
+name: object_timerWaitStep
+address: '0x080D141A'
+kind: function
+status: probable
+summary: Battle-object state-machine step that counts down the object's timer and, on expiry, advances
+  it to action 4 with a fresh phase.
+interface: (r5 = battle object) -> r0 = 0/1 clobbered; flags from the final sub/strh sequence (bne uses
+  timer decrement)
+details: Each call decrements oBattleObject_Timer on the battle object in r5 and returns immediately while
+  it is nonzero. When the timer reaches zero it writes 4 into oBattleObject_CurAction and clears oBattleObject_CurPhaseAndPhaseInitialized,
+  so the object's AI state machine proceeds to action 4 on the next update with phases reset. This is
+  the standard 'wait N frames then move to next action' handler pattern; r0 is used as scratch throughout
+  and the function always returns via mov pc, lr.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrh/sub/strh on oBattleObject_Timer is a per-frame countdown (asm lines 1-3); bne locret keeps
+    the object waiting until the timer hits zero; strb #4 to oBattleObject_CurAction selects the next
+    action once the wait ends; strh #0 to oBattleObject_CurPhaseAndPhaseInitialized resets phase state
+    for the new action; route: battlesweep — runs during battle object updates'
+  refs:
+  - bn6f/asm/asm31.s:54666
+  reproduce: python3 tools/asmcat.py 0x080D141A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battlesweep
+open_questions:
+- which object(s) use this handler and what action 4 means for them — needs the object's action table/callers
+  to confirm semantics
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D141A -> object_timerWaitStep
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D141A

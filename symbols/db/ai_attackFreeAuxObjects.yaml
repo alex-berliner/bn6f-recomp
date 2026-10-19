@@ -1,0 +1,50 @@
+name: ai_attackFreeAuxObjects
+address: '0x0810BB64'
+kind: function
+status: probable
+summary: Releases the up-to-five auxiliary object/effect pointers stored in a battle object's ExtraVars
+  during AI attack cleanup.
+interface: (r0 = clobbered; r5 = battle object) -> r0 = result of last sub_80D9532 call; r4-r7 preserved
+details: 'Reads five consecutive 32-bit fields at oBattleObject_ExtraVars+8, +0xC, +0x10, +0x14, +0x18
+  of the object in r5 and passes each to sub_80D9532 in sequence, presumably a delete/free-despawn routine.
+  No null checks on the fields, so sub_80D9532 must handle invalid or empty slots itself. Nothing else
+  is touched and no flags are set intentionally. It acts as a shared teardown helper for the generic AI
+  attack state machine: several jump-table states (sub_810BBF6, sub_810BC10, sub_810BC2A, sub_810BE74)
+  and ai_attackUpdateHitDispatch itself call it when leaving an attack. The byte tables and jump table
+  following it belong to the adjacent state handlers, not to this function.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'Body is only five loads from oBattleObject_ExtraVars+8..+0x18 each followed by ''bl sub_80D9532'';
+    Callers are ai_attackUpdateHitDispatch and the attack-state handlers sub_810BBF6/BC10/BC2A/BE74 from
+    its jump table; r5-relative fixed offsets imply the caller always has the battle object in r5, matching
+    the state-machine convention; No stores or other work: purely a batch release of the five slots'
+  refs:
+  - bn6f/asm/asm31.s:177735
+  - 0x0810B878 ai_attackUpdateHitDispatch
+  - 0x0810B964 sub_810B964
+  - 0x0810BBF6 sub_810BBF6
+  - 0x080D9532 sub_80D9532
+  reproduce: python3 tools/asmcat.py 0x0810BB64
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- What sub_80D9532 actually does (free, despawn, unlink) — needed to confirm whether these are object
+  pointers or another resource
+- Whether all five ExtraVars slots are always in use or some are left as null/garbage for certain attacks
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810BB64 -> ai_attackFreeAuxObjects
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810BB64

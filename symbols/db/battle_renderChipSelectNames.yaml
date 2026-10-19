@@ -1,0 +1,57 @@
+name: battle_renderChipSelectNames
+address: '0x0802B358'
+kind: function
+status: probable
+summary: Draws the names of up to five chips for the in-battle chip-selection screen, marking the regular/tag
+  chip slots differently.
+interface: (r0 = halfword chip-ID list, 0xFFFF = empty slot; r1 = base of a 5-entry destination block;
+  r5 = battle-state struct preloaded by caller) -> renders via renderTextGfx_8045F8C into VRAM 0x6008E00
+  + i*0x280; no return value used.
+details: Loops i = 0..4, accumulating an index r6 by the halfword at [r5+0x24] each pass and doubling
+  it to index r0's halfword array. A chip ID of 0xFFFF falls back to TextScript8736D74 with mode r7 =
+  0xC; otherwise the ID indexes byte_802B5FC at id*8+4 (plus byte [r5+0x12], >0x32 forcing r7 = 0xC) and
+  byte_802B3F8[id*2] (a stride-6 offset table) into TextScriptVirusChipNames to select the name string.
+  When the running index equals the bytes at [r5+0x10] or [r5+0x11] (0xFF = none) the mode r7 becomes
+  0xC instead of 8, matching special highlighting of the regular and tag chip slots. Each name (10 chars,
+  r4 = 0xA) is rendered into tile rows spaced 0x280 bytes apart from 0x6008E00, with dword_86B7AE0 as
+  the font/gfx source. Note r5 is never set inside the function, so callers must preload this battle-struct
+  pointer.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'Loop of 5 iterations writing at base + i*0x280 (0x6008E00, r6*0x280) via renderTextGfx_8045F8C
+    with r4 = 0xA, r5 = 1 (802B3AC-802B3C4); byte_802B3F8 is a stride-6 offset table indexing TextScriptVirusChipNames,
+    selected per chip ID from the r0 array (802B39A-802B3B0); 0xFFFF sentinel in the ID array falls back
+    to TextScript8736D74 with r7 = 0x29/0xC (802B388-802B392); Bytes [r5+0x10]/[r5+0x11] (0xFF sentinels)
+    gate r7 = 0xC vs 8, i.e. regular/tag slot highlighting (802B368-802B37E); Callee summary: renderTextGfx_8045F8C
+    publishes text-gfx pointer and hands glyph chunk to the renderer (sub_3006B94)'
+  refs:
+  - bn6f/asm/asm03_0.s:10954
+  - 0x0802A8A4 sub_802A8A4
+  - 0x0802A9D0 sub_802A9D0
+  - 0x0802B560 sub_802B560
+  - 0x08045F8C renderTextGfx_8045F8C
+  reproduce: python3 tools/asmcat.py 0x0802B358
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battlesweep
+open_questions:
+- Exact meaning of r7 = 8 vs 0xC (color vs x-offset vs glyph mode) passed to renderTextGfx_8045F8C via
+  the stack push
+- Semantics of byte_802B5FC at id*8+4 and the >0x32 test against [r5+0x12]
+- Full layout of the r5 battle struct (fields 0x10, 0x11, 0x12, 0x24) and which caller preloads r5
+- Whether TextScript8736D74 (the 0xFFFF fallback) is an empty/blank name or a special label
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_802B358 -> battle_renderChipSelectNames
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802B358

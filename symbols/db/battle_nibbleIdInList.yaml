@@ -1,0 +1,49 @@
+name: battle_nibbleIdInList
+address: '0x08102E5C'
+kind: function
+status: probable
+summary: Builds a byte ID from two nibbles and reports (0=yes, 1=no) whether it appears in a 0-terminated
+  byte list.
+interface: (r0 = low nibble of ID, r1 = high nibble of ID, r2 = ptr to 0-terminated byte list) -> r0 =
+  0 if ID found in list, 1 if not
+details: r1 is shifted left 4 and orr'd into r0, packing two nibbles into one byte, which is then compared
+  against every entry of the array pointed to by r2 until a 0 terminator is reached. Returns 0 on a match,
+  1 if the terminator is reached without a match, so the return value is inverted relative to a typical
+  'found' boolean. The list entries are bytes, suggesting packed IDs (e.g. two nibble-sized fields stored
+  together). No other registers or memory are touched; the list pointer r2 is clobbered. Only one caller
+  (sub_8102CF8) is known and undocumented, so what list is being searched and what the ID means is not
+  determinable from this function alone.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'lsl r1, r1, #4 / orr r0, r1: packs r1 into the high nibble of r0 (asm at 8102E5C); loc_8102E62
+    loop: ldrb r1,[r2]; cmp r1,#0 beq exit; cmp r1,r0 bne loop — linear scan for the packed byte; mov
+    r3,#1 on entry, mov r3,#0 on match, mov r0,r3 at end: returns 0 when found, 1 when not; sole caller
+    sub_8102CF8 is itself undocumented, giving no higher-level context'
+  refs:
+  - bn6f/asm/asm31.s:159494
+  - 0x08102CF8 sub_8102CF8
+  reproduce: python3 tools/asmcat.py 0x08102E5C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battlesweep
+open_questions:
+- what list sub_8102CF8 passes in r2 and what the nibble-packed byte identifies (enemy ID, chip flag,
+  battle flag?)
+- why the ID is passed as two separate nibble arguments rather than one byte — likely two small fields
+  at the call site
+- whether the inverted return (0=found) is treated as success by the caller
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8102E5C -> battle_nibbleIdInList
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8102E5C

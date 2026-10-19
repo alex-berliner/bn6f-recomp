@@ -1,0 +1,45 @@
+name: battle_phaseWaitTimer2
+address: '0x080E5304'
+kind: function
+status: probable
+summary: Battle-object phase step that counts down Timer2 and ends the phase (sets phase 0) once it hits
+  zero.
+interface: (r5 = battle object) -> r0 clobbered; sets CurPhaseAndPhaseInitialized = 0 when Timer2 expires;
+  flags from the decrement
+details: Loads Timer2 (oBattleObject_Timer2) from the object at r5, decrements it, and stores it back.
+  While the counter is nonzero it does nothing else; when it reaches zero it stores 0 to oBattleObject_CurPhaseAndPhaseInitialized,
+  which is the convention for 'this phase is finished / return to default phase'. It is presumably registered
+  as a per-object step or phase callback; the phase's action is just a fixed-length wait. Note it takes
+  its object in r5 rather than r0, so it is likely called from a dispatcher that keeps the object in r5.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrh r0,[r5,#oBattleObject_Timer2]; sub r0,#1; strh back — per-call countdown of Timer2; bne
+    locret — waits until the counter reaches zero; strh r0(=0),[r5,#oBattleObject_CurPhaseAndPhaseInitialized]
+    — phase cleared on expiry, i.e. phase ends after the delay; called with object in r5 per the field
+    offsets, consistent with battle-object phase callbacks in this codebase
+  refs:
+  - bn6f/asm/asm31.s:97554
+  reproduce: python3 tools/asmcat.py 0x080E5304
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- no recorded caller, so which phase/table registers this handler and what Timer2 value it is loaded with
+  is unknown
+- whether Timer2 is set by the caller before installing this handler or reloaded each phase tick
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80E5304 -> battle_phaseWaitTimer2
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E5304

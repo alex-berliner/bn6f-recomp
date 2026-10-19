@@ -1,0 +1,54 @@
+name: battle_checkObjectPanelFlags
+address: '0x08102EE2'
+kind: function
+status: probable
+summary: Condition helper that checks whether the battle panel tied to an object's sub-id (field r5+0x16)
+  has the required panel flag state, returning nonzero only if the check passes.
+interface: (no register args; reads caller's r5 = object struct, field +0x16 = sub-id) -> r0 = 0 if panel
+  state check fails, nonzero (sub-id*5+1) if it passes; flags set by the tst before the final pop
+details: Reads a byte id from the object at r5+0x16 and uses it to index byte_8102F0C with an 8-byte stride,
+  yielding a pair of 32-bit mask words per id (0x10/0x0F8800A0 and 0x30/0x0F8800A0 for the two entries
+  present). It then calls object_checkPanelParameters with r0 = id*5+1, r1 = 2, and the two table words
+  in r2/r3, matching that callee's documented 'required mask set / forbidden mask set' panel test. If
+  the callee returns 0, this function forces r0 = 0 and returns; otherwise it returns with r0 still holding
+  id*5+1, which is nonzero and thus truthy. The id*5+1 argument is an odd encoding — possibly a packed
+  panel coordinate or grid index rather than a plain id. The neighboring pointer table (off_8102F1C–off_8102F2C
+  pointing at byte_8102C90/CE8/E4C) suggests this is one of a family of small per-id helper routines sharing
+  a dispatch structure. No callers are known, so the owning object type and the exact meaning of the id
+  byte remain unconfirmed.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#0x16]; lsl r0,#3 + off_8102F34 = byte_8102F0C: per-id 8-byte table of two mask
+    words; r2/r3 loaded from the table entry, r1 = 2, r0 = id*5+1 pushed right before bl object_checkPanelParameters
+    (argument setup); tst r0,r0 after the call, then beq loc_8102F08 → mov r0,#0: returns 0 only when
+    the panel check fails; callee summary (''panel at given coordinates matches required flag state, all
+    of one mask, none of another'') matches the two-mask table layout; recorded route is battlesweep,
+    consistent with a battle-side panel/terrain condition check'
+  refs:
+  - bn6f/asm/asm31.s:159579
+  - 0x0800CC86 object_checkPanelParameters
+  reproduce: python3 tools/asmcat.py 0x08102EE2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battlesweep
+open_questions:
+- meaning of the r0 = id*5+1 argument to object_checkPanelParameters (packed coordinate? grid index?)
+  and of the constant r1 = 2
+- which object/script structure r5 belongs to and what field +0x16 enumerates (only 2 table entries seen)
+- actual callers — needed to tell whether this is an AI/script condition, a trap or mystery-data spawn
+  gate, etc.
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8102EE2 -> battle_checkObjectPanelFlags
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8102EE2

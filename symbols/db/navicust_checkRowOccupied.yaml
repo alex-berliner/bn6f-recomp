@@ -1,0 +1,56 @@
+name: navicust_checkRowOccupied
+address: '0x0813BF60'
+kind: function
+status: probable
+summary: Scans the 7x7 Navi Customizer grid and returns whether any occupied cell lies on the middle row
+  within ±3 columns of the given column.
+interface: (r0 = unused/dispatch seed, r1 = column, r2 = row) -> r0 = 1 if a nonzero grid byte is found
+  in row 3 with column in [r1-3, r1+3], else 0
+details: Obtains a grid pointer by calling ai_dispatchFromGlobalByte (global byte at 20096D8 selects it),
+  then treats it as a 7x7 row-major byte map with stride 7. It walks the 7-row window arg2-3..arg2+3 (clipped
+  to 0..6) and, per row, the 7 column offsets clipped to arg1-3..arg1+3. A cell counts only if its byte
+  is nonzero AND the running row counter equals 3; hitting such a cell returns 1 at once, otherwise it
+  returns 0. Because arg2 is always a valid row, the row window always spans row 3, so arg2 mostly just
+  positions the scan; the effective test is 'row 3 occupied near column arg1'. Called from navicust_checkPiecePlacement,
+  so the boolean is one of the placement-validation outcomes; row 3 likely maps to the command-line arm
+  of the grid layout.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl ai_dispatchFromGlobalByte; mov r7, r0 — result used as base pointer of a byte array, not
+    a scalar; ldr r4, [r7,r3] with r7 += 7 per outer iteration and r3 = 0..6 — 7x7 row-major byte grid;
+    cmp r1,#0 / cmp r1,#7 and cmp r2,#0 / cmp r2,#7 — both coordinates clipped to a 0..6 grid; cmp r2,#3;
+    bne skip plus tst r4,r4; beq skip — only nonzero bytes in row 3 trigger the early return 1; Caller
+    navicust_checkPiecePlacement validates placing the held part at the cursor cell, so this is a placement-occupancy
+    check
+  refs:
+  - bn6f/asm/asm37_0.s:1295
+  - 0x08137378 navicust_checkPiecePlacement
+  - 0x08137028 sub_8137028
+  - 0x081371B0 sub_81371B0
+  - 0x0813B790 ai_dispatchFromGlobalByte
+  reproduce: python3 tools/asmcat.py 0x0813BF60
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- beastsp
+open_questions:
+- 'Exact gameplay meaning of the return: which placement-failure dialog or rule in checkPiecePlacement
+  consumes it'
+- Whether row 3 of the buffer is the command-line arm or another special row
+- What the global byte at 20096D8 selects — the ai_dispatchFromGlobalByte summary may not cover this usage
+- Why the scan window is ±3 cells when only row 3 is tested (what arg2/arg1 conventions the unnamed callers
+  0x8137028/0x81371B0 use)
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_813BF60 -> navicust_checkRowOccupied
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_813BF60

@@ -1,0 +1,51 @@
+name: npc_isPlayerNearPos
+address: '0x080A9CAE'
+kind: function
+status: probable
+summary: Returns 1 if the player is inside a small X/Y window around an event NPC's position at the same
+  Z level, else 0.
+interface: '(r5 = NPC/object struct: X +0xC, Y +0x10, Z +0x14) -> r0 = 1 if player within 16.0 units in
+  X and Y of object position (X offset -64.0, Y offset +64.0) and player Z == object Z + 64.0; else r0
+  = 0'
+details: 'Reads the player object via the eOWPlayerObject pointer: Z at +0x24, X at +0x1C, Y at +0x20
+  (all s16.16). The Z check requires exact equality with the object''s Z + 0x400000 (64.0). X and Y deltas
+  use fixed offsets 0xFFC00000 (-64.0) on X and 0x400000 (+64.0) on Y before the comparison, then absolute
+  values are compared against 0x100000 (16.0), so the accepted window is roughly [objX-80, objX-48] x
+  [objY+48, objY+80]. The X/Y offsets and Z bias suggest the object stores an anchor (e.g. sprite center)
+  different from the walk tile, or the constants target the player''s foot position. r4, r6, r7 are pushed
+  but unused beyond r5 (compiler artifact). Used by eventFlagNpcUpdate_80A9C26, which toggles NPCs between
+  hidden/shown on event flags, so this likely gates whether the player is standing in the NPC''s space.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldr r0,[eOWPlayerObject,#0x24] / ldr r1,[r5,#0x14]; add r1,r1,0x400000; cmp r0,r1; bne fail
+    — exact Z-plane equality with a 64.0 bias (0x80A9CAE-0x80A9CB8); deltas: playerX - ([r5+0xC]+0xFFC00000)
+    and playerY - ([r5+0x10]+0x400000), then neg if negative (0x80A9CBC-0x80A9CE6); cmp r0,#0x100000 /
+    cmp r1,#0x100000 with bgt fail — 16.0-unit window in both axes (0x80A9CE6-0x80A9CF2); sole known caller
+    eventFlagNpcUpdate_80A9C26 toggles NPC hidden/shown on event flags, matching a player-proximity gate'
+  refs:
+  - bn6f/asm/asm29.s:9647
+  - 0x080A9C26 eventFlagNpcUpdate_80A9C26
+  reproduce: python3 tools/asmcat.py 0x080A9CAE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- beastsp
+open_questions:
+- 'Exact meaning of the -64/+64 X/Y offsets and +64 Z bias: whether the object''s stored position is sprite-center
+  vs tile, or the box targets the player''s foot point'
+- How eventFlagNpcUpdate uses the return value (block toggle vs trigger appear) — need the call site in
+  the caller's body to confirm
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80A9CAE -> npc_isPlayerNearPos
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A9CAE

@@ -1,0 +1,46 @@
+name: ai_spawnAttackShot
+address: '0x08103A08'
+kind: function
+status: probable
+summary: 'Wrapper that fires one AI enemy shot: packs the shot kind and difficulty tier and forwards panel
+  position, damage, and target to the common attack-spawn routine.'
+interface: (r0 = shot/attack kind byte) -> spawns attack object via 0x080CED58; returns callee's result
+details: r0 is shifted left 8 and ORed with the attacker's AI difficulty tier byte, producing a 16-bit
+  packed parameter (kind in the high byte, difficulty tier in the low byte) passed as r3. It then loads
+  the attacker's panel X/Y from the battle object at r5, an init/variant flag and the shot damage from
+  the AI attack-vars struct at r7, plus the target object pointer, and calls sub_80CED58 with all six
+  arguments. The single caller (ai_stepMultiShotAttack) invokes it per shot while counting down its shot
+  budget, so this is the per-shot spawn step of a repeated AI attack. All the real work happens in the
+  shared callee; this function is only argument assembly from the object and AI state structures.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: lsl r0,#8 + orr with oAIAttackVars_AiDifficultyTier packs kind<<8|tier as one 16-bit argument;
+    ldrb r0/[r5,#oBattleObject_PanelX], ldrb r1/[r5,#oBattleObject_PanelY] pass the attacker's panel coords;
+    ldr r6 [r7,#oAIAttackVars_Damage] and ldr r7 [r7,#oAIAttackVars_TargetObjectPtr] pass damage and target;
+    sole caller ai_stepMultiShotAttack calls this between shots while decrementing a shot budget
+  refs:
+  - bn6f/asm/asm31.s:161146
+  - 0x081033F6 ai_stepMultiShotAttack
+  - 0x080CED58 sub_80CED58
+  reproduce: python3 tools/asmcat.py 0x08103A08
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battlesweep
+open_questions:
+- exact semantics of sub_80CED58 (object ID table? projectile type?) would confirm the packed argument
+  layout and what the r2 init flag selects
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8103A08 -> ai_spawnAttackShot
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8103A08

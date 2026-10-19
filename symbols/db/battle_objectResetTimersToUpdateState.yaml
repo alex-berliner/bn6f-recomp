@@ -1,0 +1,42 @@
+name: battle_objectResetTimersToUpdateState
+address: '0x080E21F8'
+kind: function
+status: probable
+summary: Small battle-object state step that restarts the object's timers and switches it to the update
+  state.
+interface: (r5 = battle object pointer) -> r0 = CUR_STATE_UPDATE; no flags used
+details: 'r5 is an oBattleObject. It stores 1 into Timer, then reads Param2 and stores it into Timer2,
+  effectively re-arming a secondary counter whose duration was set earlier in Param2. Finally it writes
+  CUR_STATE_UPDATE into the CurState/ActionPhase field, so the object''s normal update routine runs next.
+  This looks like the tail of an object''s init/wait state: it behaves like a transition handler that
+  commits timing values and moves to the generic update state. No branches or other fields are touched.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: strh r0,#1 to [r5,#oBattleObject_Timer] resets the main timer; ldrb/strh copies Param2 into
+    Timer2, seeding the wait duration; str CUR_STATE_UPDATE to oBattleObject_CurStateActionPhaseAndPhaseInitialized
+    ends the state switch; tail-call shape (push {lr}... pop {pc}, no bl) fits a state-handler invoked
+    via function pointer
+  refs:
+  - bn6f/asm/asm31.s:90799
+  reproduce: python3 tools/asmcat.py 0x080E21F8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battlesweep
+open_questions:
+- no known callers, so it is unclear which object types use this as a state handler
+- exact meaning of Timer2 vs Param2 (one-shot delay vs repeat count) needs the owning state machine
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80E21F8 -> battle_objectResetTimersToUpdateState
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E21F8

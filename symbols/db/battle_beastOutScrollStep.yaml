@@ -1,0 +1,55 @@
+name: battle_beastOutScrollStep
+address: '0x081186A8'
+kind: function
+status: probable
+summary: Advances the beast-out transformation's two scrolling sprite strips one step toward their target
+  positions and reports how many have arrived.
+interface: (r0 unused, r6 = beast-out state object, r7 via sub_81187DC = scroll-state object) -> r0 =
+  count (0-2) of scroll fields that reached their target; flags from final compare
+details: Reads a selector byte at r6+0xF, doubles it to index a pair of base bytes at byte_811873C. For
+  two halfword fields of the state object (r6+0x28 and r6+0x2C, an entry index each) it computes a target
+  position = index*0x14 + base - 1 (0x14 = stride per entry, e.g. 20 px/frame per icon in a strip). It
+  calls sub_8118320 with (target, currentValue) for the scroll object's halfword fields r7+0xC and r7+0xE,
+  storing the result back — so sub_8118320 moves/updates the current scroll value toward the given target.
+  Each time the returned value equals the target, a counter on the stack is incremented; the function
+  returns that counter, so 2 means both scroll fields have finished moving. Called repeatedly (from several
+  sub_81184xx wrappers and battle_initBeastOutForm) until it returns 2, i.e. a per-frame step of the beast-out
+  scroll animation.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: target = ldrh [r6,#0x28]*0x14 + byte_811873C[sel*2] - 1 stored on stack before each sub_8118320
+    call; result of sub_8118320 is stored back to r7+0xC / r7+0xE and compared to the target; match increments
+    stack counter; return value is the counter capped by 'cmp r0,#2' — a completion count, typical of
+    per-frame animation step functions; caller battle_initBeastOutForm and its wrappers suggest a state
+    machine driving the beast-out transform animation; stride 0x14 plus table-selected base implies a
+    scrolling strip of fixed-size entries whose target cell is chosen by r6 fields
+  refs:
+  - bn6f/asm/asm32.s:21224
+  - 0x081184C0 battle_initBeastOutForm
+  - 0x0811847C sub_811847C
+  - 0x081184EC sub_81184EC
+  - 0x08118320 sub_8118320
+  - 0x081187DC sub_81187DC
+  reproduce: python3 tools/asmcat.py 0x081186A8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- beastsp
+open_questions:
+- exact behavior of sub_8118320 (does it step by 1, wrap, or ease toward the target?)
+- what object sub_81187DC returns (scroll/OAM state struct) and what the halfwords at +0xC/+0xE are named
+- semantic meaning of the 0x14 stride (pixels? OAM entries?) and of fields r6+0x28/+0x2C
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_81186A8 -> battle_beastOutScrollStep
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81186A8

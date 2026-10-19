@@ -1,0 +1,45 @@
+name: calc_hypotFixed12
+address: '0x080014D4'
+kind: function
+status: probable
+summary: computes sqrt(x²+y²) of a 2D vector in 20.12 fixed point via the BIOS Sqrt SWI
+interface: (r0 = x in 20.12 fixed, r1 = y in 20.12 fixed) -> r0 = sqrt(x²+y²) in 20.12 fixed; flags from
+  final lsl
+details: Arithmetic-shifts r0 right by 12, squares it (mul r0,r2), does the same for r1, adds the squares,
+  then issues SWI 8 (GBA BIOS Sqrt) and shifts the result left by 12. Inputs are therefore 20.12 fixed-point
+  coordinates and the return value is the vector magnitude back in 20.12 fixed point. No memory access
+  or state; a pure leaf utility for distance/radius math. The asr/mul/lsl pattern keeps only the integer
+  parts of each square, so precision is limited to whole units.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'asr r0,#12 + mov r2,r0 + mul r0,r2: squares the first fixed-point input (0x080014D6-0x080014DC);
+    same pattern on r1 then add r0,r0,r1: sums x²+y²; svc 8 is the BIOS Sqrt call on GBA (BIOS_Sqrt);
+    lsl r0,#12 before pop converts the integer sqrt result back to 20.12 fixed; many call sites across
+    battle/field code (0x08089EBC, 0x081428D4, ...) consistent with a generic distance helper'
+  refs:
+  - bn6f/asm/asm00_0.s:2752
+  - 0x08089EBC sub_8089EBC
+  - 0x0808A054 sub_808A054
+  - 0x080A8D42 sub_80A8D42
+  reproduce: python3 tools/asmcat.py 0x080014D4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- beastsp
+open_questions:
+- exact in-game meaning of the two arguments at each call site (position delta vs explicit vector)
+- why callers chose this truncated-precision form rather than a full-precision multiply
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80014D4 -> calc_hypotFixed12
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80014D4

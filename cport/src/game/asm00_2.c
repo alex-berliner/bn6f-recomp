@@ -1544,7 +1544,7 @@ Next sub_8011450(void) {
         break;
 
     case 24:
-        GUEST_CALL(sub_80C46B6);
+        GUEST_CALL(battle_objectInvalidateAnimCopy);
         break;
 
     case 2: case 3: case 4: case 5: case 6: case 7: case 8:

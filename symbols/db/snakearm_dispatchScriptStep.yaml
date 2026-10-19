@@ -1,0 +1,44 @@
+name: snakearm_dispatchScriptStep
+address: '0x08112A4A'
+kind: function
+status: probable
+summary: Dispatches the snakearm boss AI's per-step script handler based on the AI state's ScriptId
+interface: (r6 = AI state object) -> r0 = whatever the dispatched step handler returns; lr set so handler
+  can return to this frame
+details: Reads the byte at oAIState_ScriptId of the AI object in r6, uses it to index a table of Thumb
+  function pointers at off_8112A5C, sets lr to pc (so the callee's bx lr lands back at the pop) and jumps
+  to the handler. Index 0 falls into sub_8112A64, index 1 into battle_aiSnakeArmTickStep_8112A78; larger
+  ScriptIds would read garbage from beyond the table. This is a classic two-entry script stepper for the
+  SnakeArm boss AI, letting the battle loop tick one scripted step per call.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r6,#oAIState_ScriptId]; ldr r1,[table,r0] selects the handler by the AI state's script
+    step; mov lr,pc; bx r1 with pop {r4,r6,pc} makes each handler continue to this dispatcher's epilogue;
+    table entry 1 is battle_aiSnakeArmTickStep_8112A78, tying this to the snakearm AI subsystem; r6 (not
+    a passed register) is the AI object, matching a per-object battle update convention
+  refs:
+  - bn6f/asm/asm32.s:9690
+  reproduce: python3 tools/asmcat.py 0x08112A4A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- what sub_8112A64 (step 0) does
+- whether ScriptId can exceed 1 in practice and what happens then
+- where the battle loop calls this and how the AI state's ScriptId is advanced
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8112A4A -> snakearm_dispatchScriptStep
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8112A4A

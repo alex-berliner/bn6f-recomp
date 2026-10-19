@@ -1,0 +1,48 @@
+name: ow_scrollBg2LeftStepState
+address: '0x0802A9B4'
+kind: function
+status: probable
+summary: Runs the BG2 left-scroll animation once per frame and, when it finishes, advances a state machine
+  to phase 4 and latches a flag byte.
+interface: (r0 = unused/scratch, r4/r5 = state struct ptr) -> r0 = callee return; writes state->+1 = 4,
+  state->+2 = (state->+0x10 != 0xFF); flags from callee
+details: 'This is a per-frame driver for the horizontal BG2 slide: it calls ow_scrollBg2LeftWriteTiles
+  (which steps X 120->0 in 12px steps, writing tile columns from unk_2035000 into BG block 3). The BNE
+  tests the callee''s return value, so while the scroll is still running nothing else happens. Once the
+  callee returns zero (scroll complete), it stores 4 into the state byte at r5+1, i.e. advances to the
+  next task phase. It then reads a byte at r5+0x10 and writes 1 to r5+2 unless it equals 0xFF, in which
+  case 0 — 0xFF likely means ''flag not applicable/unset'', so +2 becomes a conditional 0/1 marker (possibly
+  mute vs. sound or skip flag). r5 is the owning task/state object of the cutscene/overworld transition;
+  r0 is passed through untouched to the callee.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl ow_scrollBg2LeftWriteTiles then bne locret: early exit while the slide is still animating;
+    strb r0(=4), [r5,#1]: writes next state/phase 4 only after the callee reports completion; ldrb r0,[r5,#0x10];
+    cmp #0xFF; strb r1,[r5,#2]: sets byte +2 to 1 normally, 0 when +0x10 is 0xFF; callee summary says
+    it animates X 120->0 writing tiles from unk_2035000 into BG block 3, matching a scripted screen transition
+    step'
+  refs:
+  - bn6f/asm/asm03_0.s:9755
+  - 0x0802AF6C ow_scrollBg2LeftWriteTiles
+  reproduce: python3 tools/asmcat.py 0x0802A9B4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battlesweep
+open_questions:
+- exact meaning of the +2 byte and the 0xFF sentinel at +0x10 (skip-sound vs. completion marker unknown)
+- which task/state struct r5 points to (owner of the +1 phase field)
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_802A9B4 -> ow_scrollBg2LeftStepState
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802A9B4

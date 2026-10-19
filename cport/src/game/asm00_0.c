@@ -220,7 +220,7 @@ static void play_bgm(u32 song_id, u32 arg1, u32 ch_index, u32 toolkit) {
     /* Five MML driver calls; r4-r7 inside the original are just scratch locals for
      * song_id/arg1/channel_buf, which we keep as C locals so they survive across calls. */
     call_sound_8000808(song_id,     arg1,    ch_offset, (A_m4a_SongNumStart | 1));
-    call_sound_8000808(channel_buf, arg1,    ch_offset, (A_sub_814EB1C | 1));
+    call_sound_8000808(channel_buf, arg1,    ch_offset, (A_sound_mplayStop | 1));
     call_sound_8000808(channel_buf, 0xFF,    0,         (A_sub_814F9AC | 1));
     call_sound_8000808(song_id,     0xFF,    0,         (A_sub_814E9F0 | 1));
     call_sound_8000808(channel_buf, arg1,    0,         (A_sub_814EAF0 | 1));

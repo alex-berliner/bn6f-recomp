@@ -1,0 +1,65 @@
+name: object_testAndClearCollisionIndexBit
+address: '0x03007880'
+kind: function
+status: probable
+summary: Test-and-clears an object's collision-occupancy bit in the battle collision index table, returning
+  the old word and setting flags on whether the bit was set.
+interface: (r0 = word index in collision index table, r1 = group index (<<3), r2 = pointer to CollisionData
+  struct) -> r0 = old table word; Z flag set iff the object's CollisionIndexBit was already clear
+details: Computes unk_2034F60 + ((r0 + r1*8) << 2), i.e. an array of 32-bit words indexed as 8 words per
+  group, and loads the word there. It reads the object's single-bit mask from CollisionData at offset
+  oCollisionData_CollisionIndexBit, clears that bit in the word with bic and stores it back. Before storing
+  it keeps the old word in r0 and tst's it against the bit mask, so the caller learns via flags whether
+  the object was still marked as occupying that collision slot. unk_2034F60 is thus a bitset in IWRAM
+  tracking which collision-index slots are taken by battle objects. It returns immediately with no other
+  side effects; the return value in r0 is the whole pre-clear word, not just the bit.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bic r1, r2 / str r1, [r3] clears the bit mask taken from [r2,#oCollisionData_CollisionIndexBit],
+    i.e. the object's slot bit; tst r0, r2 after mov r0, r1 tests the old word against the mask before
+    returning, leaving Z to report whether the bit was set; caller 0x03007550 _object_removeCollisionData
+    shows this frees an object's entry in the collision index during object teardown; base unk_2034F60
+    with index arithmetic (r1<<3 + r0)<<2 shows a fixed array of 32-bit words, 8 per r1 group
+  refs:
+  - bn6f/asm/asm38.s:4219
+  - 0x03007550 _object_removeCollisionData
+  - 0x03007828 sub_3007828
+  reproduce: python3 tools/asmcat.py 0x03007880
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- beastsp
+- chips
+- fuzz
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- exact meaning of the r0/r1 split of the table index (8 words per group) — whether it is per-side, per-panel-row
+  or a free-list bucket is not visible from this function alone
+- what oCollisionData_CollisionIndexBit indexes (free-slot allocation vs panel occupancy) would need the
+  matching set/allocate counterpart
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_3007880 -> object_testAndClearCollisionIndexBit
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_3007880

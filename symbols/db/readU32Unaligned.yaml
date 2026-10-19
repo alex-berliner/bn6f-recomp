@@ -1,0 +1,45 @@
+name: readU32Unaligned
+address: '0x080A7B7A'
+kind: function
+status: probable
+summary: Reads a 32-bit little-endian value from a possibly unaligned address, byte by byte, returning
+  it in r1.
+interface: (r0 = source address, need not be word-aligned) -> r1 = 32-bit value assembled from bytes [r0..r0+3];
+  r0 preserved; flags not meaningful
+details: Loads each of the four bytes at r0 separately with ldrb, shifts bytes 1-3 left by 8/16/24, ORs
+  them together into r1, and returns via mov pc, lr. This is the canonical Thumb-safe unaligned word read,
+  since Thumb has no unaligned ldr. The result lands in r1, not r0, so callers use it as a second argument
+  or move it themselves. No memory is written and no other registers are touched. Its single known caller
+  is undocumented, so which game structure it is reading for is unknown.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'asm: ldrb r1,[r0]; ldrb r2,[r0,#1]; lsl r2,#8; orr — bytes 0-3 shifted and ORed into r1; asm:
+    mov pc, lr returns with no write or call, a pure read helper; caller list shows only sub_80A7AE0,
+    itself unrenamed, so no subsystem context'
+  refs:
+  - bn6f/asm/asm29.s:5324
+  - 0x080A7AE0 sub_80A7AE0
+  reproduce: python3 tools/asmcat.py 0x080A7B7A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- beastsp
+open_questions:
+- which subsystem owns this helper — the only caller sub_80A7AE0 is undocumented
+- why the result is returned in r1 instead of r0 (caller convention); reading sub_80A7AE0 would confirm
+  usage
+- whether an equivalent unaligned u16 read exists nearby, indicating a small unaligned-access family
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80A7B7A -> readU32Unaligned
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A7B7A

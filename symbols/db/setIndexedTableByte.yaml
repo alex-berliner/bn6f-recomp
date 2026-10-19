@@ -1,0 +1,46 @@
+name: setIndexedTableByte
+address: '0x0800AB2E'
+kind: function
+status: probable
+summary: Writes one byte into a fixed table at byte_203EAE0 whose entries are 16 bytes each.
+interface: (r0 = entry index, r1 = byte offset within entry, r2 = value to store) -> void; no flags meaningful
+  (strb sets none)
+details: 'Computes r0*0x10 and adds it to the base pointer byte_203EAE0, then stores the byte in r2 at
+  offset r1 within that 16-byte entry, i.e. byte_203EAE0[index*16 + offset]. The table is in EWRAM and
+  is addressed absolutely, so it is a persistent scratch/flags area rather than a stack or per-frame buffer.
+  The function is a pure setter: it reads nothing, calls nothing, and only writes one byte. With six callers
+  (0x08014D70, 0x08014FA8, 0x08015128, 0x080151D4, 0x080155CC, 0x0802D65E) it is a shared helper for whatever
+  records live in this table, and it runs on the recorded beastsp route.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'mov r3, #0x10 / mul r0, r3: entry stride is 16 bytes; ldr r3, off_800AC04 // =byte_203EAE0:
+    fixed EWRAM table base; strb r2, [r3,r1]: writes value r2 at offset r1 inside the selected entry;
+    no branches or calls: pure single-byte store helper'
+  refs:
+  - bn6f/asm/asm00_1.s:17548
+  - 0x08014D70 sub_8014D70
+  - 0x08014FA8 sub_8014FA8
+  - 0x08015128 sub_8015128
+  reproduce: python3 tools/asmcat.py 0x0800AB2E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- beastsp
+open_questions:
+- What the 16-byte entries at byte_203EAE0 represent (flags, struct fields, message slots) — callers'
+  code around 0x08014D70 etc. would show which offsets r1 they pass and what r2 values mean
+- Whether the same table is also read elsewhere, which would reveal field semantics
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_800AB2E -> setIndexedTableByte
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800AB2E

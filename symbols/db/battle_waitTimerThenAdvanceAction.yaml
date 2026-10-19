@@ -1,0 +1,44 @@
+name: battle_waitTimerThenAdvanceAction
+address: '0x080CD12C'
+kind: function
+status: probable
+summary: 'Battle-object tick handler: counts down Timer2 and, once it expires, pushes the object into
+  its next scripted action.'
+interface: (r5 = battle object) -> r0 = leftover timer (0); no meaningful return; no flags
+details: Reads the halfword at oBattleObject_Timer2 on the object in r5 and decrements it each call. While
+  the timer is nonzero it just stores the decremented value and returns. When the count reaches zero it
+  writes 3 into oBattleObject_ExtraVars+0xC (an extra state variable), sets oBattleObject_CurAction to
+  9, and zeroes oBattleObject_CurPhaseAndPhaseInitialized so the new action starts from phase 0. This
+  is the classic 'wait N frames, then move to the next action' step of an object's action/phase state
+  machine; the caller is unknown, so the exact object type and the meaning of action 9 / extra value 3
+  are not pinned down.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrh/strh on [r5,#oBattleObject_Timer2] with sub #1 and bne locret: plain countdown-and-return;
+    on expiry: mov r0,#3; str [r5,#oBattleObject_ExtraVars+0xc] sets a follow-up state value; mov r0,#9;
+    strb [r5,#oBattleObject_CurAction] selects the next action id; strh #0 into oBattleObject_CurPhaseAndPhaseInitialized
+    restarts the phase counter for the new action'
+  refs:
+  - bn6f/asm/asm31.s:45736
+  reproduce: python3 tools/asmcat.py 0x080CD12C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- chips
+open_questions:
+- which object/action script calls this (no callers known), and what action 9 and ExtraVars+0xC=3 mean
+  for that object
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80CD12C -> battle_waitTimerThenAdvanceAction
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CD12C

@@ -1,0 +1,47 @@
+name: sprite_setAnimPtrFromId
+address: '0x080A6E50'
+kind: function
+status: probable
+summary: Interpreter opcode handler (0x24/0x25) that resolves an id byte through a pointer table and stores
+  the resulting pointer into the sprite work struct.
+interface: (r0 = id byte from struct, r1 = pointer table) -> r0 = pointer stored at [r5,r6]; flags clobbered
+  by cmp
+details: 'r6 is the opcode index passed by the caller''s dispatch: 0x24 takes the id byte at struct+4
+  and indexes PtrTable_80A6050, anything else (0x25 path) takes struct+5 and indexes off_80A619C. The
+  chosen table entry (word-sized, indexed id*4) is stored at [r5, r6], so each opcode writes the pointer
+  into the struct field at its own offset (0x24 or 0x25). The routine is a tail helper (mov pc, lr) shared
+  by two dispatch sites. The two id bytes likely hold the current animation/graphic id, and the tables
+  map those ids to animation or frame-data pointers. Only r0/r1 setup differs between the two opcode cases;
+  all addressing is through r5 and r6.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: cmp r6,#0x24 / bne selects between struct+4 with PtrTable_80A6050 and struct+5 with off_80A619C
+    (loc_80A6E5A); ldr r0,[r1,r0] after lsl r0,r0,#2 loads a word from a table indexed by the id byte;
+    str r0,[r5,r6] stores the pointer into the struct field matching the opcode index; mov pc, lr tail
+    return with no callee calls — a pure table-lookup helper
+  refs:
+  - bn6f/asm/asm29.s:3455
+  - 0x080A6A34 sub_80A6A34
+  - 0x080A6D38 sub_80A6D38
+  reproduce: python3 tools/asmcat.py 0x080A6E50
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- beastsp
+open_questions:
+- What PtrTable_80A6050 and off_80A619C actually point to (animation frames vs other data) is not shown
+- Callers sub_80A6A34/sub_80A6D38 are unnamed; their dispatch switch would confirm r6 is a script opcode
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80A6E50 -> sprite_setAnimPtrFromId
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A6E50

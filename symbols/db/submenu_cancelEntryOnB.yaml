@@ -1,0 +1,48 @@
+name: submenu_cancelEntryOnB
+address: '0x0802B560'
+kind: function
+status: probable
+summary: On B press, cancels/closes the currently open submenu entry (window slot), restoring the underlying
+  screen and playing the exit sound.
+interface: (r5 = submenu work struct; r10 = toolkit) -> r0 = PlaySoundEffect return; reads joypad held
+details: Checks the low-sensitivity held joypad for bit 2 (B button); if not held it returns immediately.
+  It reads the entry IDs at r5+0x11 and r5+0x10 (skipping if both are 0xFF), calls sub_802B5B0 with the
+  active entry ID, then writes 0xFF into that field to free/close the entry. It calls sub_802B358(unk_2031000,
+  decomp_2032000) and sub_802B438(unk_2030E60, unk_2031000), which look like restoring the saved background/layer
+  buffers under the closed window, then plays SOUND_EXIT_SUBMENU.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: tst r0,#2 on oJoypad_LowSensitivityHeld gates the whole body on B being held; ldrb r0,[r5,#0x11]/[r5,#0x10]
+    then strb 0xFF back — picking the open entry and marking it closed; bl sub_802B5B0 with the entry
+    ID before clearing it; sub_802B358/802B438 shuffle buffers unk_2031000/decomp_2032000/unk_2030E60
+    like backing-store restore; mov r0,#SOUND_EXIT_SUBMENU; bl PlaySoundEffect — the canonical cancel
+    sound
+  refs:
+  - bn6f/asm/asm03_0.s:11217
+  - 0x0802A9D0 sub_802A9D0
+  - 0x080005CC PlaySoundEffect
+  - 0x0802B358 sub_802B358
+  - 0x0802B438 sub_802B438
+  reproduce: python3 tools/asmcat.py 0x0802B560
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battlesweep
+open_questions:
+- what sub_802B5B0 does with the entry ID (close animation vs free)
+- exact meaning of the 0x10/0x11 fields in the r5 structure
+- whether sub_802B358/802B438 restore VRAM/tilemap or other state
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_802B560 -> submenu_cancelEntryOnB
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802B560

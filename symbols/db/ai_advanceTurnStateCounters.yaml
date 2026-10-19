@@ -1,0 +1,54 @@
+name: ai_advanceTurnStateCounters
+address: '0x08101C3A'
+kind: function
+status: probable
+summary: Per-tick battle AI scheduler that advances an enemy's turn/attack/step counters with random skips
+  and, on a new attack step, looks up action tables before tail-jumping into the shared AI continuation.
+interface: (r5 = battle object, r6 = AI state block) -> r0 = result of tail-branch into sub_8101CC0; no
+  meaningful return of its own, flags clobbered
+details: 'The function ticks three counters in the AI state block: TurnCounter is incremented each call
+  (with a ~50% RNG-gated double increment via lsr #6 carry); once it reaches 3 it is reset to 0, starting
+  a new turn. AttackCounter then cycles 0..3 (again with an RNG-gated extra bump via lsr #4); when it
+  exceeds 3 the attack cycle resets and control jumps into sub_8101CC0 without picking a new action. StepCounter
+  cycles 0..2; when it wraps, the function calls sub_810222C twice with r0=0, r1=0, the battle object
+  from oAIData_BattleObjectPtr, and two byte tables (byte_8101DBC, byte_8101DD0), branching into different
+  sub_8101CC0 entries depending on which call returns nonzero — i.e. it consults AI action-decision tables
+  when a new movement/attack step begins. Finally oAIState_Unk_0d is XOR-toggled each tick and selects
+  between two continuation paths in sub_8101CC0, likely alternating behavior (e.g. side/direction of the
+  next action).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: '0x8101C3A-0x8101C56: TurnCounter incremented, GetPositiveSignedRNG lsr #6 carry gives a random
+    extra increment before b loc_8101D64; 0x8101C58-0x8101C86: TurnCounter>=3 resets it; AttackCounter
+    cycles 0..3 with lsr #4 RNG-gated extra bump; 0x8101C8C-0x8101CA8: StepCounter>=2 resets it and calls
+    sub_810222C(0,0,battleObject,byte_8101DBC) then (...byte_8101DD0), branching on nonzero results; 0x8101CB4:
+    oAIState_Unk_0d eor #1 toggles each tick and picks between loc_8101D6C/loc_8101D72 entries of sub_8101CC0;
+    callees list shows all tail branches (0x8101D64-0x8101D86) land inside sub_8101CC0, the shared continuation'
+  refs:
+  - bn6f/asm/asm31.s:157011
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x08101D64 sub_8101CC0
+  - 0x08101D6C sub_8101CC0
+  reproduce: python3 tools/asmcat.py 0x08101C3A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battlesweep
+open_questions:
+- Which boss/enemy AI this handler belongs to (no known callers)
+- Exact semantics of sub_810222C and the two byte tables (likely weighted action/attack selectors)
+- Meaning of the oAIState_Unk_0d toggle and what the two sub_8101CC0 entry points do differently
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8101C3A -> ai_advanceTurnStateCounters
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8101C3A

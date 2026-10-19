@@ -1,0 +1,46 @@
+name: battle_checkRelatedAction
+address: '0x080E7A50'
+kind: function
+status: probable
+summary: Keeps this battle object in action 4 (restarting its phase) unless its related object has reached
+  action 0xB.
+interface: (r5 = battle object, no args) -> r0 clobbered; sets oBattleObject_CurAction=4 and oBattleObject_CurPhaseAndPhaseInitialized=0
+  on the object in r5 unless related object's CurAction is 0xB
+details: 'Loads the object''s RelatedObject1Ptr, reads that object''s oBattleObject_CurAction, and compares
+  it against 0xB. If the related object is in action 0xB the routine returns immediately, leaving r5''s
+  state untouched; otherwise it writes action 4 into r5''s oBattleObject_CurAction and zeroes oBattleObject_CurPhaseAndPhaseInitialized,
+  restarting that action from its first phase. This looks like a per-frame guard/transition tick: the
+  object is forced into (or held ready to re-enter) action 4 until the partner object reaches state 0xB.
+  No other fields or callees are touched.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r0,#oBattleObject_CurAction]; cmp r0,#0xb; beq locret — early-out when related object
+    is in action 0xB; mov r0,#4; strb r0,[r5,#oBattleObject_CurAction] — forces own action to 4 otherwise;
+    strh r0 (0) into oBattleObject_CurPhaseAndPhaseInitialized — restarts the action's phase counter;
+    no callers known and run from recorded battle routes, so 0xB's meaning (e.g. finished/idle state)
+    is unconfirmed
+  refs:
+  - bn6f/asm/asm31.s:103019
+  reproduce: python3 tools/asmcat.py 0x080E7A50
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battlesweep
+open_questions:
+- what action 0xB of the related object represents (needs a caller or the related object's action table)
+- what action 4 is on this object type and why it is repeatedly re-forced
+- which object kinds use this (no known callers)
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80E7A50 -> battle_checkRelatedAction
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E7A50

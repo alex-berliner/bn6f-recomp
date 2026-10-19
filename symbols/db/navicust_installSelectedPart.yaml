@@ -1,0 +1,54 @@
+name: navicust_installSelectedPart
+address: '0x081364E8'
+kind: function
+status: probable
+summary: 'Navi Customizer: commits the currently selected program placement onto the customization board
+  and refreshes the affected UI state.'
+interface: (r0 = program/flag id used with flag base 0x2660; r5 = NaviCust screen-state struct) -> r0
+  = undefined; sets [r5+0xc]=0x10, [r5+2]=8, saves cursor [r5+0x24]->[r5+0x3a], [r5+0x20]->[r5+0x38]
+details: Tests event flag 0x2660 + r0 (the flag range looks like per-program 'installed' state for the
+  Navi Customizer), though the result (r4) is stored but never used — a likely leftover. It then calls
+  sub_813BA08 with r0=id and the selected cell coordinates [r5+0x28]/[r5+0x2c] and byte [r5+0xe] (probably
+  grid X/Y and part color or slot data), then sub_813B950 with the same struct and coordinates, both presumably
+  updating the board/occupancy. It rebuilds the key-item/program list via submenu_rebuildKeyItemList,
+  then sets state bytes [r5+0xc]=0x10 and [r5+2]=8 (screen/phase and cursor step), and stashes the list
+  cursor and scroll offsets into [r5+0x3a]/[r5+0x38] so the redraw preserves position. Called from navicust_confirmPartPlacement,
+  this is the branch that actually applies a confirmed placement.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl TestEventFlag with r1 = 0x2660 + r0: per-program installed-flag check keyed by the selected
+    program id; bl sub_813BA08/sub_813B950 receive [r5+0x28],[r5+0x2c],[r5+0xe] — the selected board cell
+    coordinates and part attribute; bl submenu_rebuildKeyItemList immediately after, consistent with the
+    installed-program list changing; stores [r5+0xc]=0x10, [r5+2]=8 and copies cursor/scroll [r5+0x24],[r5+0x20]
+    to [r5+0x3a],[r5+0x38] — state transition plus cursor save; sole caller navicust_confirmPartPlacement:
+    this runs on the confirm path of part placement'
+  refs:
+  - bn6f/asm/asm36.s:13140
+  - 0x08136450 navicust_confirmPartPlacement
+  - 0x0802F168 TestEventFlag
+  - 0x08135D9C submenu_rebuildKeyItemList
+  - 0x0813B950 sub_813B950
+  reproduce: python3 tools/asmcat.py 0x081364E8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- beastsp
+open_questions:
+- What sub_813BA08 and sub_813B950 write (board grid vs. flag/mark arrays) to confirm install vs. remove
+- Meaning of [r5+0xe] (color, part id, or cell attribute)
+- Why the flag-test result in r4 is dead — possibly a removed early-return for already-installed parts
+- Whether flag base 0x2660 is indeed the NaviCust installed-programs flag range
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_81364E8 -> navicust_installSelectedPart
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81364E8

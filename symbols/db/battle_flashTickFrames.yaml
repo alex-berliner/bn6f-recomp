@@ -1,0 +1,50 @@
+name: battle_flashTickFrames
+address: '0x0804C244'
+kind: function
+status: probable
+summary: Initializes and steps the frame counter for the battle screen-flash/background-fill effect driven
+  by its caller.
+interface: (r5 = effect state object, r10 = toolkit; uses toolkit->oToolkit_Unk2009740_Ptr) -> r0 = void;
+  sets state fields 0x11/0x18 and struct bytes 0-3
+details: 'On first entry (state byte [r5+0x11] <= 0) it seeds the flash struct behind oToolkit_Unk2009740_Ptr:
+  byte0=0x44, byte1=0x3B, byte2=0x10 (total frames), byte3=0 (frame index), and sets a 2-frame sub-timer
+  at [r5+0x18]. Every call thereafter it counts down [r5+0x18]; on expiry it reloads it to 2 and, if the
+  flash index byte3 is still below 0x10, increments byte3 and decrements byte2 (frames remaining) while
+  nonzero. So byte3 acts as the current flash frame (0..15) and byte2 the remaining count, matching the
+  caller sub_804C144 which advances a frame index on timer expiry and copies a 32x32 tile block from one
+  of 8 frame buffers into character block 2. The bytes 0x44/0x3B written at init are unexplained, and
+  the effect aborts silently once byte3 reaches 0x10.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: Init branch writes 0x44/0x3B/0x10/0 to Unk2009740 struct, matching a one-time effect setup;
+    byte3 < 0x10 guard plus increment/decrement of byte2 = frame index vs frames-remaining pattern; [r5+0x18]
+    is a self-reloading 2-frame tick timer gating each advance; caller sub_804C144's summary (flash effect,
+    frame index on timer expiry, tile copies) matches the counter structure
+  refs:
+  - bn6f/asm/asm03_2.s:10152
+  - 0x0804C144 sub_804C144
+  reproduce: python3 tools/asmcat.py 0x0804C244
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- beastsp
+- story5
+- story6
+open_questions:
+- meaning of the constants 0x44 and 0x3B written to struct bytes 0-1
+- full layout of the struct at toolkit+oToolkit_Unk2009740_Ptr and how the caller consumes bytes 2/3
+- what [r5+0x11] is set to by other code (whether re-init can retrigger the flash)
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_804C244 -> battle_flashTickFrames
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_804C244

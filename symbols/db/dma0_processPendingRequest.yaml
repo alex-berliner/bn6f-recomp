@@ -1,0 +1,73 @@
+name: dma0_processPendingRequest
+address: '0x03005D24'
+kind: function
+status: probable
+summary: IWRAM vblank-style service routine that applies a queued DMA0/copy request from a work struct
+  at 0x20081B0, or just disables DMA0 when the request tag is 0x80.
+interface: (void) -> void; reads request struct at byte_20081B0, programs DMA0 registers (SAD/DAD/CNT)
+  and performs a CpuSet word copy; no meaningful return value, flags clobbered
+details: 'The struct at 0x20081B0 acts as a pending-transfer record: +0 is a flag byte, +1 the DMA0 word
+  count (8-bit), +2 the DMA0 control halfword, +4 the CPU-copy source pointer, +8 the DMA0 destination,
+  +0xC the DMA0 source (which is also the CPU-copy destination) and +0x10 the CPU-copy size in words.
+  The routine first clears bit31 of DMA0CNT (disable) so the channel can be reprogrammed safely. If flag
+  == 0x80 it only clears the flag and returns, i.e. an ''abort/disable DMA0'' request. Otherwise it writes
+  SAD=[+0xC], DAD=[+8], CNT=count|control<<16, then calls copyWordsWrapper(src=[+4], dst=[+0xC], words=[+0x10])
+  to fill the DMA source buffer; the DMA itself fires later per its timing bits in the control halfword.
+  The pending flag is only cleared in the 0x80 path, so either the caller clears it after a normal transfer
+  or the request is meant to persist.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r3,[byte_20081B0]; beq exit — flag byte gates the whole routine; ldr r0,=DMA0SourceAddress
+    / bic r2,0x80000000 / str [r0,#8] — clears DMA0 enable bit before reprogramming; cmp r3,#0x80; strb
+    0 — tag 0x80 means 'disable only', just clears the flag; str [r0]=[[struct+0xC]], str [r0,#4]=[[struct+8]],
+    str [r0,#8]=byte[1]|half[2]<<16 — SAD/DAD/CNT loaded from struct fields; r0=[struct+4], r1=[struct+0xC],
+    r2=[struct+0x10], bx copyWordsWrapper — CPU word copy from struct[+4] into the DMA source buffer
+  refs:
+  - bn6f/asm/asm38.s:181
+  - 0x03005CF0 sub_3005CF0
+  - 0x080068E0 copyWordsWrapper
+  reproduce: python3 tools/asmcat.py 0x03005D24
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- beastsp
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- Purpose of the 0x80 tag's caller-side context (abort vs one-shot disable) — sub_3005CF0 is unnamed
+- 'Why the CPU copy destination equals the DMA source address: confirm DMA0 timing is vblank/hblank so
+  the DMA fires after the buffer is filled'
+- Who clears the pending flag after a normal (non-0x80) transfer
+- What game data typically flows through this struct (the routes suggest broad use, likely a generic deferred-copy
+  service)
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_3005D24 -> dma0_processPendingRequest
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_3005D24

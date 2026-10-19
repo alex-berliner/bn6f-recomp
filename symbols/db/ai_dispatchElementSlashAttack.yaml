@@ -1,0 +1,47 @@
+name: ai_dispatchElementSlashAttack
+address: '0x080ECDFC'
+kind: function
+status: probable
+summary: AI attack-step dispatcher that jumps to the walk-slash attack handler matching the hit element
+  (normal vs other).
+interface: (uses r7 = AI attack vars struct; r0 = oAIAttackVars_HitElement byte) -> tail-dispatched handler
+  via lr=pc; r0/r1 clobbered
+details: Reads the HitElement byte from the AI attack variable struct at [r7], indexes a 2-entry table
+  at off_80ECE10, and branches to the chosen routine with lr=pc so the callee returns straight to this
+  function's caller. Entry 0 is ai_walkSlashAttackStep (normal-element walk-then-slash behavior) and entry
+  1 is sub_80ECEBC, presumably the elemental variant of the same attack. It is a pure thunk/dispatcher
+  with no state of its own; the callee keeps working on the same r7 struct. The two-entry table suggests
+  the element byte is treated as a boolean here (e.g. normal vs non-normal/stronger variant), so any element
+  value >= 2 would index out of the table.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_HitElement] then ldr r1,[r1,r0]: element field selects the jump-table
+    entry; off_80ECE10 holds ai_walkSlashAttackStep+1 and sub_80ECEBC+1: only the two slash-attack variants;
+    mov lr,pc; bx r1: tail-call pattern letting the handler return directly to this function''s caller;
+    name ai_walkSlashAttackStep shows it belongs to the AI melee (walk-slash) attack subsystem'
+  refs:
+  - bn6f/asm/asm31.s:113846
+  reproduce: python3 tools/asmcat.py 0x080ECDFC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- beastsp
+open_questions:
+- What sub_80ECEBC does exactly (likely the elemental variant of the walk-slash attack) to confirm the
+  element split
+- Which attack/AI script invokes this and what values oAIAttackVars_HitElement can take (whether it is
+  really boolean or needs a bounds mask)
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80ECDFC -> ai_dispatchElementSlashAttack
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80ECDFC

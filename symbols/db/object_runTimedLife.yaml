@@ -1,0 +1,49 @@
+name: object_runTimedLife
+address: '0x080C802C'
+kind: function
+status: probable
+summary: Battle object state handler that keeps the object alive for a fixed duration, clearing its collision
+  region on hit and destroying it when the timer expires
+interface: (r5 = battle object, not passed in regs) -> r0 = destroyed? side effects only
+details: 'Reads oBattleObject_CurPhase: when 0, stores phase 4 and loads oBattleObject_Timer from a byte
+  table (byte_80C8068) indexed by oBattleObject_Param1<<2... actually Param1<<1, all entries 0x48 (72
+  frames). In phase 4 it checks oCollisionData_FlagsFromCollision via oBattleObject_CollisionDataPtr and,
+  if nonzero, calls object_clearCollisionRegion to drop out of the collision grid immediately. It then
+  decrements oBattleObject_Timer; when it reaches 0 it clears the collision region again and writes CUR_STATE_DESTROY
+  to oBattleObject_CurStateActionPhaseAndPhaseInitialized, so the object removes itself. The unused Param1-based
+  table suggests variants were planned with different lifetimes.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'phase 0 branch stores #4 to oBattleObject_CurPhase and copies a table halfword into oBattleObject_Timer
+    (sub_80C802C early lines); timer decrement with bgt locret means it waits N frames before acting;
+    expiry path sets CUR_STATE_DESTROY to oBattleObject_CurStateActionPhaseAndPhaseInitialized, the standard
+    battle-object self-removal; both hit and expiry paths call object_clearCollisionRegion, matching a
+    persistent field object leaving the collision grid; table byte_80C8068 is four identical 0x48 entries
+    indexed by Param1*2'
+  refs:
+  - bn6f/asm/asm31.s:34716
+  - 0x0801A074 object_clearCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080C802C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battlesweep
+open_questions:
+- which object/move uses this handler (no known callers) and whether any Param1 value selects a table
+  entry other than 0x48
+- 'what the collision flag check means here: whether an early clear happens on any contact or only specific
+  collision types'
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80C802C -> object_runTimedLife
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C802C

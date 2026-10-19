@@ -1,0 +1,46 @@
+name: battle_waitTimer2EndPhase
+address: '0x080CD1AE'
+kind: function
+status: probable
+summary: Battle object phase handler that counts down Timer2 and ends the phase (clearing CurPhase) when
+  it hits zero.
+interface: (r5 = battle object) -> decrements oBattleObject_Timer2; when zero, sets oBattleObject_CurPhaseAndPhaseInitialized
+  = 0; flags not meaningful
+details: Loads the halfword at oBattleObject_Timer2 from the battle object in r5, subtracts 1, and stores
+  it back. If the result is nonzero the function returns immediately, keeping the object in its waiting
+  state. When the counter reaches zero it writes 0 to oBattleObject_CurPhaseAndPhaseInitialized, which
+  is the standard 'phase finished' signal in the battle loop. It is a leaf routine using r5 as the object
+  pointer, so the caller supplies the object outside the standard r0-r3 argument registers — typical of
+  phase-handler tables. No other fields are touched.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrh r0,[r5,#oBattleObject_Timer2] / sub r0,#1 / strh — timer countdown; bne locret — early
+    return while timer still running; strh r0 (=0) into oBattleObject_CurPhaseAndPhaseInitialized only
+    when timer expires — phase-advance signal; called from recorded chip routes — battle-system context
+    matching battle-object fields
+  refs:
+  - bn6f/asm/asm31.s:45815
+  reproduce: python3 tools/asmcat.py 0x080CD1AE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- chips
+open_questions:
+- no caller is known, so it is unclear which phase table invokes this and which chip/effect uses this
+  wait
+- exact meaning of the phase value 0 vs other values in CurPhaseAndPhaseInitialized could be confirmed
+  from the battle loop
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80CD1AE -> battle_waitTimer2EndPhase
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CD1AE

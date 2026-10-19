@@ -1,0 +1,49 @@
+name: battle_refreshCollisionRegionOnPanelChange
+address: '0x08110D7C'
+kind: function
+status: probable
+summary: If a battle object's panel position changed, update the cached X/Y and re-set its collision region
+  to region 1.
+interface: (r5 = battle object pointer; reads panelX/panelY) -> void; clobbers r0-r3, flags from compare
+details: Loads the object's current panel X (oBattleObject_PanelX) and Y (oBattleObject_PanelY) and compares
+  them with cached copies at offsets 0x82 and 0x83 of the same object. If both match, it returns immediately
+  — nothing moved. Otherwise it stores the new X/Y into the 0x82/0x83 cache and calls object_setCollisionRegion
+  with r0 = 1 as the region index, updating the object's collision data to the new tile. The object pointer
+  is taken from r5 rather than r0, so it is a leaf helper embedded in a routine that already holds the
+  object in r5; it is referenced from a state-handler pointer table (off_8110DC0 area) and called by sub_811088A.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#oBattleObject_PanelX] / ldrb r1,[r5,#oBattleObject_PanelY] vs cached ldrb at offsets
+    0x82/0x83, early return if equal (8110D7C-8110D92); on mismatch, strb r0/r1 back to offsets 0x82/0x83
+    (8110D94-8110D9C); mov r0,#1; bl object_setCollisionRegion — callee 'stores a region index byte into
+    a battle object's collision data' (8110D9E); caller sub_811088A appears in the same state-handler
+    pointer table (off_8110DC0), consistent with per-tick movement upkeep; executed on battlesweep/beastsp
+    routes, i.e., during live battle object updates
+  refs:
+  - bn6f/asm/asm32.s:6260
+  - 0x0811088A sub_811088A
+  - 0x0801A07C object_setCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x08110D7C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- exact meaning of collision region index 1 (which region it denotes — own side, whole area, etc.)
+- why the object pointer arrives in r5 rather than via a register argument (likely inlined into a parent
+  handler; confirming from sub_811088A's context would raise confidence)
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8110D7C -> battle_refreshCollisionRegionOnPanelChange
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8110D7C

@@ -1,0 +1,50 @@
+name: ai_restartAttackAnimOnLoop
+address: '0x081135A4'
+kind: function
+status: probable
+summary: When the current attack animation reaches its end frame, rewind it to frame 0 and reload the
+  AI attack timer/hit element so the attack repeats.
+interface: (r5 = battle object, r7 = AI attack vars; sprite_getFrameParameters args already set) -> void;
+  sets oBattleObject_CurAnim=0, oAIAttackVars_StepTimer=AttackDuration, oAIAttackVars_HitElement=0xC when
+  anim-end flag set
+details: Calls sprite_getFrameParameters and tests bit 0x80 of the attribute byte, the animation-end/loop
+  marker. If clear, it returns without touching state, so this runs every frame of the attack. On end,
+  it zeroes the object's current animation index so the animation restarts, copies oAIAttackVars_AttackDuration
+  into oAIAttackVars_StepTimer to re-arm the per-step delay, and writes 0xC (12) into oAIAttackVars_HitElement,
+  re-declaring the attack's hit element. This produces a looping attack animation with periodic hit windows
+  for beast-form AI attacks (routes battlesweep and beastsp).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'tst r0, #0x80 after sprite_getFrameParameters gates all writes: only fires on the animation-end
+    frame attribute; strb r0,[r5,#oBattleObject_CurAnim] with r0=0 restarts the object''s animation from
+    the first frame; ldrh/strh pair copies oAIAttackVars_AttackDuration into oAIAttackVars_StepTimer,
+    re-arming the attack step delay; strh #0xC into oAIAttackVars_HitElement re-applies the attack''s
+    element for the next pass; recorded routes battlesweep/beastsp (Beast Over forms) match a looping
+    repeated-hit beast attack helper'
+  refs:
+  - bn6f/asm/asm32.s:11096
+  - 0x08002DEA sprite_getFrameParameters
+  reproduce: python3 tools/asmcat.py 0x081135A4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- Which attack state/jump-table entry invokes this (callers unknown), and what HitElement value 0xC maps
+  to in the element table
+- Exact semantics of attribute bit 0x80 in sprite_getFrameParameters (anim end vs. loop flag)
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_81135A4 -> ai_restartAttackAnimOnLoop
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81135A4

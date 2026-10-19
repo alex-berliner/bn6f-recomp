@@ -1,0 +1,49 @@
+name: ow_animVariantToAnimId
+address: '0x080A8038'
+kind: function
+status: probable
+summary: Translates an overworld animation variant selector into an animation id via an 8-entry lookup
+  table, returning 0xFF for invalid/none.
+interface: (r0 = variant selector index) -> r0 = animation id (0xFF if the selector is an even/half-invalid
+  entry); flags not meaningful
+details: 'The whole routine is a table lookup: it loads a byte from byte_80A8044 at offset r0 and returns
+  it. The table is pairs FF,00,FF,01,FF,02,FF,03 — every even index yields 0xFF (a likely ''none/invalid''
+  sentinel used elsewhere in the engine) while indices 1,3,5,7 map to 0-3. This matches the caller ow_animWaitStep,
+  which plays an animation variant before waiting ~30 frames, so the selector likely encodes an NPC facing/variant
+  half that must be resolved to a concrete animation id before playback. The rest of the section (byte_80A804C
+  onward) holds OAM-entry-style data and sprite/frame id lists, consistent with this being animation-support
+  data for overworld NPCs.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'Body is only ''ldrb r0, [r1,r0]'' with r1 = byte_80A8044 — a pure indexed lookup; byte_80A8044
+    = FF,00,FF,01,FF,02,FF,03: even slots 0xFF, odd slots 0..3; Caller ow_animWaitStep ''plays an animation
+    variant'' then waits, matching a variant-to-id resolution; 0xFF sentinel is a common ''no animation/invalid''
+    value in this codebase''s overworld animation fields'
+  refs:
+  - bn6f/asm/asm29.s:6038
+  - 0x080A7E6C ow_animWaitStep
+  - 0x080A7F78 sub_80A7F78
+  reproduce: python3 tools/asmcat.py 0x080A8038
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- beastsp
+open_questions:
+- Exact meaning of the selector's even/odd split (e.g. a halfword where the high byte marks validity)
+  would confirm the 0xFF semantics
+- Which structure field the caller stores the result into (animation id vs. frame index) is not visible
+  from the caller summary alone
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80A8038 -> ow_animVariantToAnimId
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A8038

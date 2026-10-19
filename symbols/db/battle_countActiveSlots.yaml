@@ -1,0 +1,42 @@
+name: battle_countActiveSlots
+address: '0x080C7572'
+kind: function
+status: probable
+summary: Counts how many of the battle object's three pointer fields at +0x64..0x6C are non-null and returns
+  the tally.
+interface: (r5 = battle object pointer) -> r0 = number of set slots (0-3); flags clobbered
+details: Iterates i = 0..2 and loads r5 + 0x64 + i*4 (fields 0x64, 0x68, 0x6C of the battle object struct),
+  incrementing r0 whenever the loaded word is non-zero. It takes its object pointer in r5 rather than
+  r0, so the caller keeps it in r5 across the call. The return value is a count of active/occupied sub-entries,
+  presumably spawned children, timers, or attached entities tracked in three parallel slots.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldr r1, [r5,r1] with r1 = 0x64 + i*4 reads three consecutive words of the object struct; tst
+    r1,r1 / beq skips increment only for zero entries, so it is a non-null counter; loop bound cmp r3,#3
+    / blt fixes exactly three slots; sole caller battle_objectTick keeps the object in r5 and can branch
+    on the returned count
+  refs:
+  - bn6f/asm/asm31.s:33277
+  - 0x080C7450 battle_objectTick
+  reproduce: python3 tools/asmcat.py 0x080C7572
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battlesweep
+open_questions:
+- what the three 0x64/0x68/0x6C fields actually hold (children, targets, timers) — needs the battle object
+  struct layout and how battle_objectTick uses the returned count
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80C7572 -> battle_countActiveSlots
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C7572

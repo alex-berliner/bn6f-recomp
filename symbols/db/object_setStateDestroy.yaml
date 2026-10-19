@@ -1,0 +1,44 @@
+name: object_setStateDestroy
+address: '0x080DFACE'
+kind: function
+status: probable
+summary: Marks the battle object in r5 for destruction by writing CUR_STATE_DESTROY into its state field.
+interface: (r5 = battle object pointer, no args) -> r0 clobbered (= CUR_STATE_DESTROY); object's state
+  set to destroy
+details: Stores the CUR_STATE_DESTROY constant into oBattleObject_CurStateActionPhaseAndPhaseInitialized
+  (offset 0 of the battle object struct), which packs the current state, action phase, and phase-initialized
+  flag. The state machine that iterates battle objects presumably reads this field each update and frees/handles
+  the object accordingly. The push {lr}/pop {pc} prologue is vestigial since nothing is called — it exists
+  only so the routine can be BL'd to. r0 is clobbered as a side effect of loading the constant. No other
+  fields are touched.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized] with mov r0,#CUR_STATE_DESTROY
+    writes the destroy state into the object's packed state word at 0x080DFAD0-0x080DFAD4; r5 used directly
+    as the object pointer matches the battle-object 'this' convention seen across object routines; no
+    calls between push {lr} and pop {pc} confirm it is a pure field-setter thunk
+  refs:
+  - bn6f/asm/asm31.s:85338
+  reproduce: python3 tools/asmcat.py 0x080DFACE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battlesweep
+open_questions:
+- No known callers, so which object types invoke this and from which state contexts is unverified
+- Exact semantics of the packed state field's upper bits (action phase, phase-initialized) when DESTROY
+  is written are not shown here
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80DFACE -> object_setStateDestroy
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DFACE

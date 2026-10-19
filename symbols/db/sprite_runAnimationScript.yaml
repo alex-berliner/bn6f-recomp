@@ -1,0 +1,55 @@
+name: sprite_runAnimationScript
+address: '0x08045FD0'
+kind: function
+status: probable
+summary: Selects an animation entry from a loaded animation file and immediately runs its opcode stream
+  through the Toolkit's animation interpreter, returning the interpreter's result.
+interface: (r0 = ptr to resource whose halfwords at 2*index are offsets to opcode streams, r1 = packed
+  (animFilePtrTableByteOffset<<16 | scriptIndex); r10 = toolkit) -> r0 = dword at 200A25C; r8/r9/r12 preserved,
+  r1 clobbered
+details: 'Three entry points (0x8045FD0/…FDA/…FE4) share one tail and differ only in the two bytes written
+  to the Toolkit''s animation work area (oToolkit_Unk200a220_Ptr): (+3,+4) = (1,1), (0,1) or (2,0) — some
+  playback-mode/flag pair. The high halfword of r1 indexes the pointer table dword_3006B84, and the resulting
+  animation-file pointer is stored to work area +0x38. After pop {r0-r3} restores the original args, the
+  low halfword of r1 selects a halfword offset in the r0 resource table (ldrh r1,[r0,r1*2]) and r0 = r0
+  + offset is the opcode stream to execute. It then calls the known animation opcode dispatcher sub_8046154
+  with the stream in r0, saving/restoring r8, r9 and r12 around the call, and finally returns the dword
+  at 200A220+0x3C, which the interpreter evidently leaves as its result. Executed from battles, map and
+  menu routes, so it is the generic ''play this animation now'' entry point.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: strb r0,[r2,#3] / strb r3,[r2,#4] write mode bytes into the 200A220 animation struct, values
+    differ per entry point; lsr r0,r1,#0x10 + ldr r0,[dword_3006B84,r0] + str r0,[r2,#0x38] stores the
+    selected animation file pointer; lsl/lsr r1,#0x10/#0xf + ldrh r1,[r0,r1] + add r0,r0,r1 resolves the
+    opcode stream from arg0's halfword offset table; ldr r1,=sub_8046154+1; mov lr,pc; bx r1 invokes the
+    known animation opcode dispatcher on that stream; ldr r0,[byte_200A220,#0x3c]; pop {pc} returns the
+    interpreter's result field
+  refs:
+  - bn6f/asm/asm03_2.s:53
+  - 0x0803BE30 sub_803BE30
+  - 0x08046154 sub_8046154
+  reproduce: python3 tools/asmcat.py 0x08045FD0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battles2
+- maps
+- menus3
+open_questions:
+- meaning of the work-area bytes at +3/+4 and what distinguishes the three entry points
+- what the returned dword at 200A25C contains (wait count, end status, ...)
+- exact layout of the dword_3006B84 entries and what the file pointer at +0x38 is used for by the opcodes
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8045FD0 -> sprite_runAnimationScript
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8045FD0

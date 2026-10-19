@@ -1,0 +1,44 @@
+name: battle_setObjectAnim
+address: '0x080B8E70'
+kind: function
+status: probable
+summary: Sets a battle object's current animation index, invalidating the animation-copy byte so the animation
+  engine restarts it.
+interface: (r0 = battle object ptr (may be null), r1 = anim id) -> r0 unchanged; flags from tst
+details: If the object pointer r0 is non-null, the function stores the animation id r1 into oBattleObject_CurAnim
+  and writes 0xFF into oBattleObject_CurAnimCopy. Writing 0xFF to the copy makes it differ from CurAnim,
+  which downstream animation code reads as 'animation changed, restart/current anim needs re-apply'. Null
+  pointer is silently ignored, so callers can pass optional objects. All known callers are in the beast-out
+  battle routines, consistent with battle object animation control.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: strb r1,[r0,#oBattleObject_CurAnim] stores the anim id argument; mov r1,#0xff + strb into oBattleObject_CurAnimCopy
+    is the classic anim-restart invalidation; tst r0,r0 / beq guards against a null object pointer; callers
+    at 0x080BE1DC–0x080BF94E are battle-side code (beastsp route)
+  refs:
+  - bn6f/asm/asm31.s:1627
+  - 0x080BE1DC sub_80BE1DC
+  - 0x080BEF02 sub_80BEF02
+  - 0x080BF8DA sub_80BF8DA
+  reproduce: python3 tools/asmcat.py 0x080B8E70
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- beastsp
+open_questions:
+- exact semantics of oBattleObject_CurAnimCopy in the animation update loop (assume 0xFF triggers restart)
+  not verified here
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80B8E70 -> battle_setObjectAnim
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80B8E70

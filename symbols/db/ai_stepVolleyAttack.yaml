@@ -1,0 +1,49 @@
+name: ai_stepVolleyAttack
+address: '0x08108352'
+kind: function
+status: probable
+summary: Per-frame stepper for an enemy AI attack that fires three volleys and then sets a final hit element.
+interface: (r0 = unused/scratch, r7 = oAIAttackVars, r5 = battle object) -> void; updates oAIAttackVars
+  fields only
+details: 'On first run (AttackElement == 0) it initializes the attack: sets oAIAttackVars_AttackElement
+  to 4, plays battle-object animation 0xc (CurAnim), gives it 12 frames via object_setCounterTime, and
+  loads TimerOrCycles=0, ChargeCycles=5, StepTimer=30. On later frames, while TimerOrCycles <= 2 it counts
+  ChargeCycles down from 5; on reaching 0 it calls sub_8108E10 with the volley index (0/1/2), increments
+  TimerOrCycles, and reloads ChargeCycles=5 — i.e. three shots spaced 5 frames apart. StepTimer counts
+  down each frame; when it expires (after 30 frames) it writes 8 to oAIAttackVars_HitElement, likely marking
+  the attack''s hit/element result. Uses no r0 input despite being passed one; all state lives in the
+  AI attack-vars struct at r7 and the object at r5.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement] / bne skip-init: first-run init block sets element
+    4, anim 0xc, object_setCounterTime(12); ChargeCycles reload of #5 after each sub_8108E10(TimerOrCycles)
+    call: three indexed volleys at 5-frame intervals; StepTimer seeded with 0x1e at init and decremented
+    every frame, expiring into strh #8,[r7,#oAIAttackVars_HitElement]; bl object_setCounterTime after
+    mov r0,#0xc ties the routine to the battle object''s counter timer'
+  refs:
+  - bn6f/asm/asm31.s:170632
+  - 0x0800E9DC object_setCounterTime
+  - 0x08108E10 sub_8108E10
+  reproduce: python3 tools/asmcat.py 0x08108352
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battlesweep
+open_questions:
+- Which enemy/attack this belongs to (no callers known; only the battlesweep route shows it)
+- What sub_8108E10 spawns or does per volley index
+- What HitElement=8 means downstream
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8108352 -> ai_stepVolleyAttack
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8108352

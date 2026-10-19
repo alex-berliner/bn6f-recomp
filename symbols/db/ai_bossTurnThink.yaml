@@ -1,0 +1,50 @@
+name: ai_bossTurnThink
+address: '0x08100308'
+kind: function
+status: probable
+summary: 'Per-frame boss AI state machine: waits a difficulty-based number of turns, then cycles through
+  attack steps, dispatching one of several action routines.'
+interface: (r5 = battle object, r6 = AI state struct) -> r0 = ?; no meaningful flags
+details: Looks up a turn threshold byte from dword_810039C indexed by the AI difficulty tier (values 3,2,2,0x20
+  for tiers 0-3). If TurnCounter < threshold, it increments TurnCounter and calls sub_810055C (the waiting/idle
+  action). Otherwise it resets TurnCounter, increments AttackCounter up to 3 (after which all counters
+  reset and sub_8100570 runs), toggles StepCounter, and if StepCounter was 0 also toggles AggressionFlag
+  and adds 3 to TurnCounter. When stepping, it dispatches on battle object ExtraVars (1..4) to sub_81005A6
+  / sub_81005DE / sub_8100614 / sub_810064C, with default falling to sub_8100580 — these are presumably
+  distinct attack/move routines.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl battle_getAiDifficultyTier_800FE36 then ldrb r0,[r1,r0] indexes dword_810039C (bytes 03
+    02 02 20) for the turn threshold; cmp r1,r0 / blt on oAIState_TurnCounter increments it and calls
+    sub_810055C, i.e. wait N turns between actions; AttackCounter capped at 3: ''cmp r0,#3 / bge'' resets
+    TurnCounter+=3 and all counters, calling sub_8100570; switch on [r5,#oBattleObject_ExtraVars] with
+    cases 1-4 calling four distinct sub_81006xx/81005xx action routines; fields oAIState_TurnCounter/AttackCounter/StepCounter/AggressionFlag
+    form a scripted boss attack-phase state machine'
+  refs:
+  - bn6f/asm/asm31.s:153714
+  - 0x0800FE36 battle_getAiDifficultyTier_800FE36
+  - 0x0810055C sub_810055C
+  - 0x08100570 sub_8100570
+  reproduce: python3 tools/asmcat.py 0x08100308
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battlesweep
+open_questions:
+- What the five action callees (sub_810055C/570/580/5A6/5DE/614/64C) actually do in battle (attack vs
+  move) to name the dispatch cases precisely
+- Which boss/enemy this AI belongs to and what ExtraVars values 1-4 mean for it
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8100308 -> ai_bossTurnThink
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8100308

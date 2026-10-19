@@ -1,0 +1,46 @@
+name: battle_aiHookForcedActionOnHitElement
+address: '0x080C7A06'
+kind: function
+status: probable
+summary: AI-side check that, when the object was just hit by an attack of hit-element 0x14, forces the
+  object into action 8 with a fresh phase counter.
+interface: (r5 = battle object) -> void; no return value, clobbers r0-r2
+details: Loads the object's RelatedObject1Ptr (likely the AI/attacker context) and reads oAIAttackVars_HitElement
+  at offset 0xA0 into the AI data. If the hit element equals 0x14, it overwrites oBattleObject_CurAction
+  with 8 and zeroes oBattleObject_CurPhaseAndPhaseInitialized, restarting whatever state machine action
+  8 runs; otherwise it does nothing. This reads like one of the per-element reaction hooks the battle
+  AI runs after taking a hit (e.g. a knockback/stagger-style forced action for that element). r0 is not
+  an argument despite being first read, so the routine operates purely on the r5 object.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r2,#oAIAttackVars_HitElement]; cmp r0,#0x14 — branches only on a specific hit element
+    from the AI attack vars; strb r0,#8 into oBattleObject_CurAction — forcibly replaces the object's
+    current action; strh r0,#0 into oBattleObject_CurPhaseAndPhaseInitialized — resets phase and phase-initialized
+    flag for the new action; uses oBattleObject_RelatedObject1Ptr -> oBattleObject_AIDataPtr to reach
+    the attacker/hit context of the r5 object; executed only in battle routes, consistent with a battle
+    AI hit-reaction hook
+  refs:
+  - bn6f/asm/asm31.s:33906
+  reproduce: python3 tools/asmcat.py 0x080C7A06
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battlesweep
+open_questions:
+- no caller is recorded, so it is not confirmed which AI dispatcher invokes this hook or when
+- which element 0x14 is in the BN6 hit-element enum (wind? break? cursor?) and thus the real trigger
+- what CurAction 8 means in the object action table (blown back? stunned? custom reaction?)
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80C7A06 -> battle_aiHookForcedActionOnHitElement
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C7A06

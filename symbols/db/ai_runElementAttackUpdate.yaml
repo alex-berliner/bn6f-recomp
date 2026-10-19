@@ -1,0 +1,51 @@
+name: ai_runElementAttackUpdate
+address: '0x0811088A'
+kind: function
+status: probable
+summary: 'Per-frame AI attack-state update: clears collision region on certain hit flags, then dispatches
+  to an element-specific attack handler.'
+interface: (r5 = battle object, r7 = AI attack vars) -> r0 = handler return value; flags clobbered
+details: Reads the object's collision data and tests oCollisionData_FlagsFromCollision; if any of the
+  bits in mask 0x0C000000 are set, calls object_clearCollisionRegion so the attack stops registering collisions
+  in its region. Then loads oAIAttackVars_HitElement from the AI attack vars struct and uses it as an
+  index into the table at off_81108B4, long-calling (mov lr,pc; bx r1) the selected handler; entries include
+  known AI attack routines like ai_updateDiveAttack, ai_attackTelegraphFrontPanel, ai_lungeAttackUpdate,
+  ai_checkGuardFrame and genericAI_exitAttackStateAffterDelay. After the handler returns, it always calls
+  sub_8110D7C before popping. Effectively the shared update step for an enemy's element-based attack behavior
+  (Dive/Beast-style attacker used in battlesweep and beastsp routes).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'tst of oCollisionData_FlagsFromCollision against 0xC000000 followed by object_clearCollisionRegion
+    (asm after ldr r0,[r5,#oBattleObject_CollisionDataPtr]); ldrb r0,[r7,#oAIAttackVars_HitElement]; ldr
+    r1,[r1,r0]; mov lr,pc; bx r1 — element-indexed dispatch into off_81108B4; table entries are known
+    AI attack routines: ai_updateDiveAttack, ai_attackTelegraphFrontPanel, ai_attackFrontPanel, ai_lungeAttackUpdate,
+    genericAI_exitAttackStateAffterDelay_81097B4; trailing bl sub_8110D7C runs unconditionally after every
+    dispatched handler'
+  refs:
+  - bn6f/asm/asm32.s:5588
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x08110D7C sub_8110D7C
+  reproduce: python3 tools/asmcat.py 0x0811088A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- Purpose of sub_8110D7C called after the handler (common post-attack step) is unknown
+- Exact meaning of collision flag bits 0x0C000000 and the semantics of oAIAttackVars_HitElement values
+  beyond matching the 11-entry table
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_811088A -> ai_runElementAttackUpdate
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811088A

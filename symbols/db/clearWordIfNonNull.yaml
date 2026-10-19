@@ -1,0 +1,43 @@
+name: clearWordIfNonNull
+address: '0x080FCF9C'
+kind: function
+status: probable
+summary: Null-safe helper that writes 0 through a pointer (clears a flag/word) if the pointer is non-null.
+interface: (r0 = pointer to word, or NULL) -> if r0 != 0, *r0 = 0; r0 unchanged, no meaningful return
+details: 'Tests r0 against itself (tst r0, r0); if the pointer is null it returns immediately, otherwise
+  it stores 0 (mov r1, #0; str r1, [r0]) to the addressed 32-bit word. This is a classic defensive ''clear
+  if set'' utility used to zero a flag, counter, or request field without risking a NULL write. Nothing
+  else is touched and no callee is invoked. The exact meaning of the cleared word depends on the callers,
+  none of which are documented here.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'tst r0, r0 / beq locret_80FCFA6: skips the write when pointer is null; mov r1, #0; str r1,
+    [r0]: stores zero as a 32-bit word through r0; six callers in the 0x080FC2DC-0x080FCC22 range all
+    invoke it as a plain helper with no result used; no callees and no data references: pure in-place
+    write, no structure layout inferable'
+  refs:
+  - bn6f/asm/asm31.s:147062
+  - 0x080FC2DC sub_80FC2DC
+  - 0x080FC5AE sub_80FC5AE
+  - 0x080FC792 sub_80FC792
+  reproduce: python3 tools/asmcat.py 0x080FCF9C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battlesweep
+open_questions:
+- which structure/field the callers pass (flag, timer, request slot) is unknown without documented callers
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80FCF9C -> clearWordIfNonNull
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FCF9C

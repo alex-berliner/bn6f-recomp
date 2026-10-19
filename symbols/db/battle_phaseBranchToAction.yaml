@@ -1,0 +1,44 @@
+name: battle_phaseBranchToAction
+address: '0x080C72BC'
+kind: function
+status: probable
+summary: Battle-object action step that, once its phase counter reaches 3 or 4, switches the object into
+  a different action (9 or 10) and resets the phase.
+interface: (r5 = battle object) -> r0 clobbered; writes oBattleObject_CurAction and clears oBattleObject_CurPhaseAndPhaseInitialized
+  when phase is 3 or 4, otherwise returns unchanged
+details: Reads oBattleObject_PhaseInitialized from the object at r5. If it equals 3, it stores action
+  9 into oBattleObject_CurAction; if it equals 4, it stores action 10 instead. In both cases it also writes
+  0 to oBattleObject_CurPhaseAndPhaseInitialized (halfword, clearing both the phase counter and the initialized
+  flag), which is the standard pattern for handing the object over to the next action in the battle update
+  loop. If the phase is anything else (including 0-2), it just returns, letting the current phase keep
+  running. This is a typical 'wait N phases, then branch to a follow-up action' state used by battle scripts/objects.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#oBattleObject_PhaseInitialized]; cmp #3 / #4 selects which follow-up action is
+    entered; strb #9/#0xa into oBattleObject_CurAction then strh 0 into oBattleObject_CurPhaseAndPhaseInitialized
+    matches the engine''s action-transition idiom; bne locret_80C72DA leaves phases 0-2 running unchanged,
+    confirming it is a per-frame phase check, not a one-shot init'
+  refs:
+  - bn6f/asm/asm31.s:32882
+  reproduce: python3 tools/asmcat.py 0x080C72BC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battlesweep
+open_questions:
+- no known caller, so which object/action chain uses this (i.e. what actions 9 and 10 mean for that object)
+  is unknown; a caller or the battle action table would confirm the exact gameplay context
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80C72BC -> battle_phaseBranchToAction
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C72BC

@@ -1,0 +1,45 @@
+name: ai_waitThenScript4
+address: '0x0810BCA0'
+kind: function
+status: probable
+summary: AI object state handler that waits a version-dependent number of frames, then resets the timer
+  and switches the AI script to id 4.
+interface: (r6 = AI state struct (oAIState_Timer, oAIState_ScriptId), r4 = object data (oAIData_Version_16))
+  -> void; flags set by cmp of timer vs threshold
+details: Increments the 16-bit timer field of the AI state struct at r6 each call. Looks up a per-variant
+  threshold from table byte_810BBD8, indexed by the object's version byte at oAIData_Version_16 in r4.
+  If the timer has not reached the threshold it returns; otherwise it zeroes oAIState_Timer and writes
+  script id 4 into oAIState_ScriptId, advancing this object's AI script. It is one entry of an AI handler
+  dispatch table, hence r4/r6 rather than an explicit ABI.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrh/add/strh on [r6,#oAIState_Timer] increments a per-object frame timer; ldrb r1,[r1,r2] with
+    r1=byte_810BBD8 and r2=[r4,#oAIData_Version_16] selects a wait length per object version; cmp r0,r1
+    / blt locret keeps waiting until the threshold is hit; on expiry, timer is cleared and mov r0,#4 /
+    strb into [r6,#oAIState_ScriptId] transitions to script 4; run under recorded battle routes (battlesweep,
+    beastsp), consistent with a battle AI handler
+  refs:
+  - bn6f/asm/asm31.s:177885
+  reproduce: python3 tools/asmcat.py 0x0810BCA0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- which AI handler table contains this address and which object/enemy variant uses it
+- contents of byte_810BBD8 per version, and what AI script 4 does for those objects
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810BCA0 -> ai_waitThenScript4
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810BCA0

@@ -1,0 +1,46 @@
+name: battle_dispatchPhaseHandler
+address: '0x08009E10'
+kind: function
+status: probable
+summary: 'State-machine step: reads the current phase byte from a battle-state struct and calls the matching
+  handler function from a table.'
+interface: (r5 = state struct with phase byte at oBattleState_StatePhase) -> calls handler table entry
+  for the phase; returns to caller when handler returns
+details: 'Loads the phase byte from the state struct at r5, uses it as an index into a table of function
+  pointers (here at off_8009E24, pointed to via off_8009E20), and calls the selected handler with mov
+  lr,pc / bx r1 so the handler returns back into this thunk, which then pops pc to return to its own caller.
+  The table here has two entries: RunTextScriptDustManUndernetTut_8009E2C (thumb) and sub_8009E40, so
+  this instance drives a two-phase scripted sequence (tutorial text then a follow-up step). The table
+  pointer is loaded indirectly, so other instances of the pattern can use different handler tables. Pure
+  dispatcher: no state fields are written and no flags are meaningful.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#oBattleState_StatePhase] then ldr r1,[r1,r0] — phase byte indexes the handler
+    table; mov lr,pc / bx r1 — tail-call into the selected handler with return into this function; table
+    off_8009E24 holds two thumb pointers: RunTextScriptDustManUndernetTut_8009E2C and sub_8009E40 — a
+    2-phase scripted tutorial state machine; push {lr} ... pop {pc} wrapper — plain thunk with no other
+    work'
+  refs:
+  - bn6f/asm/asm00_1.s:15227
+  reproduce: python3 tools/asmcat.py 0x08009E10
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battlesweep
+open_questions:
+- no known callers, so which struct r5 points to and who advances oBattleState_StatePhase is unconfirmed
+- whether the same dispatcher pattern is duplicated elsewhere with other tables is unknown
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8009E10 -> battle_dispatchPhaseHandler
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8009E10

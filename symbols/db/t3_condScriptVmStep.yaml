@@ -1,0 +1,50 @@
+name: t3_condScriptVmStep
+address: '0x0814FBFC'
+kind: function
+status: probable
+summary: 'Executes one instruction of a small conditional byte-code script: arithmetic on byte variables,
+  or a comparison that on success dispatches a registered callback, on failure skips the embedded 4-byte
+  target.'
+interface: (r0 = vm context (var array ptr at +0x18), r1 = script state (PC at +0x40)) -> r0 = callback/void
+  result; flags clobbered
+details: 'r1+0x40 is a program counter into a byte-code stream: it reads a 3-byte instruction (opcode,
+  variable offset, operand) and advances the PC. [r4+0x18] is the base of a byte-variable array addressed
+  by the first operand. Opcodes 0-5 are stores/arith: 0=var=imm, 1=var+=imm, 2=var-=imm, 3=var=var2, 4=var+=var2,
+  5=var-=var2. Opcodes 6-17 are unsigned comparisons (==, !=, >, >=, <, <=) against an immediate or another
+  variable; on TRUE it loads a function pointer from [0x3005574] and tail-calls it with (r4, r6) — likely
+  a handler that consumes the following 4-byte branch target — while on FALSE it just does PC += 4, skipping
+  that target.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldr r0,[r6,#0x40] / str r1,[r6,#0x40] pattern: r6+0x40 is a PC cursor consumed byte-by-byte;
+    switch on opcode r5 (18 cases) with add/sub/store and var-vs-imm and var-vs-var compare forms; all
+    compare cases branch to loc_814FD34 (call [0x3005574] via rfu_callFuncByPtr_814DA68) on true, loc_814FD48
+    (PC += 4) on false; operand1 is always an offset into the byte array at [r4+0x18] (r2 = base + operand);
+    off_3005574 is the only external data touched, read as a function pointer passed to the dispatcher'
+  refs:
+  - bn6f/asm/libs.s:25698
+  - 0x0814DA68 rfu_callFuncByPtr_814DA68
+  reproduce: python3 tools/asmcat.py 0x0814FBFC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- beastsp
+open_questions:
+- what structures r4 (context) and r6 (script state) belong to and where scripts are stored
+- what the callback pointer at 0x3005574 does with the trailing 4 bytes (presumably a branch target that
+  it writes into the PC at r6+0x40)
+- which game feature assembles these scripts (route beastsp only)
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_814FBFC -> t3_condScriptVmStep
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_814FBFC

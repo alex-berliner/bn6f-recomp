@@ -1,0 +1,47 @@
+name: ai_computeDiveDuration
+address: '0x0810FCA2'
+kind: function
+status: probable
+summary: Computes the dive attack's flight duration in frames from the object's Y velocity and stores
+  it in the object.
+interface: (r5 = battle object ptr, r0-r4/r6-r7 scratch) -> r0 = duration stored to obj+0x6E; clobbers
+  r0-r1 (SWI Div also r1,r3)
+details: Reads the variant byte at obj+0x74, scales it by 4, and indexes table byte_810FCC4 to get a 32-bit
+  distance constant (entries 0x00400000 and 0x00100000 in fixed point; index 0/1 select 0 or these values).
+  It takes the absolute value of obj YVelocity and performs SWI 6 (Div) to get frames = distance / |YVel|,
+  then writes the quotient byte to obj+0x6E, which acts as a timer/delay field. Because it operates on
+  r5 without setting it up, it expects the caller (ai_diveToBackRowUpdate) to have r5 pointing at the
+  battle object. The 0 entries for indices 0-1 would yield duration 0, so those variants presumably never
+  reach this path or skip movement.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#0x74]; lsl r0,r0,#2; ldr r0,[r1,r0] — variant byte indexes the dword table byte_810FCC4
+    (bytes 00 00 40 00 / 00 00 10 00); ldr r1,[r5,#oBattleObject_YVelocity]; cmp/neg — takes |YVel| before
+    SWI 6 (GBA Div) divides the table constant by it; mov r1,#0x6E; strb r0,[r5,r1] — result stored as
+    a byte-sized counter at object offset 0x6E; Caller 0x0810F770 ai_diveToBackRowUpdate moves the attacker
+    down by its Y velocity, consistent with distance/velocity = frame count
+  refs:
+  - bn6f/asm/asm32.s:4170
+  - 0x0810F770 ai_diveToBackRowUpdate
+  reproduce: python3 tools/asmcat.py 0x0810FCA2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battlesweep
+open_questions:
+- Exact meaning of the variant byte at obj+0x74 (dive subtype?) and why two table entries are 0
+- Precise semantics of the obj+0x6E counter (one-shot timer vs animation delay)
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810FCA2 -> ai_computeDiveDuration
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810FCA2

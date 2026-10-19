@@ -1,0 +1,44 @@
+name: ai_dispatchBeastOutScript
+address: '0x0810C1D8'
+kind: function
+status: probable
+summary: Dispatches the beast-out AI script handler selected by the object's AI script id and tail-calls
+  it
+interface: (r6 = enemy/ai object with oAIState_ScriptId) -> r0 = handler's return; flags per handler
+details: Reads oAIState_ScriptId from the object at r6, indexes a two-entry jump table at off_810C1EC,
+  and calls the handler with lr=pc so the Thumb handler can return to the pop sequence. Entry 0 goes to
+  sub_810C1F4, entry 1 to ai_initBeastOutAttack, so this is the per-script-state entry point of the beast-out
+  attack AI routine. r1 is reused as the table base then the handler pointer; other registers are passed
+  through untouched to the handler. The push/pop of r4,r6 is only to preserve the object pointer convention
+  across the call.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r6,#oAIState_ScriptId] selects the table slot from the object''s AI script id; table
+    off_810C1EC has exactly two entries: sub_810C1F4+1 and ai_initBeastOutAttack+1; mov lr, pc / bx r1
+    implements the Thumb far-call, so this is a dispatcher, not inline logic; callee name ai_initBeastOutAttack
+    ties the table to beast-out attack AI'
+  refs:
+  - bn6f/asm/asm31.s:178492
+  reproduce: python3 tools/asmcat.py 0x0810C1D8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- what sub_810C1F4 (script entry 0) does
+- which callers set oAIState_ScriptId to 0 or 1 before invoking this dispatcher
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810C1D8 -> ai_dispatchBeastOutScript
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810C1D8

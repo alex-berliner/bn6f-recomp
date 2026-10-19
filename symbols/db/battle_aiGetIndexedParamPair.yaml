@@ -1,0 +1,53 @@
+name: battle_aiGetIndexedParamPair
+address: '0x080F3CA4'
+kind: function
+status: probable
+summary: Returns a packed pair of AI parameters (low half from one table, high half from a constant-10
+  table) selected by an index and the battle object's AI version.
+interface: (r0 = entry index) -> r0 = (tableB[index][aiVersion] << 16) | tableA[index][aiVersion]; no
+  flags meaningful
+details: The index in r0 is scaled by 8 (four halfwords per entry, one per AI version) and used to address
+  two parallel byte tables. Each halfword is fetched via battle_aiGetVersionedTableEntry, which picks
+  the halfword matching the battle object's AI version (with a special scaled entry for version 4). The
+  first table holds variable values (0x28/0x50/0x6E, and an unused parallel set 0x50/0xA0/0xDC), while
+  the second table is uniformly 0xA (10) in all three variants. The two halfwords are combined as (second
+  << 16) | first and returned as one word. The extra pointer/halfword tables at 80F3CE0/80F3CE8/80F3D04/80F3D0C
+  are sibling data not referenced by this particular build of the routine, suggesting variant tables for
+  other game revisions or alternate callers.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: mul r2,#8 + add builds an 8-byte-stride entry address into the table at byte_80F3CD8 (asm lines
+    3-8); battle_aiGetVersionedTableEntry_800FE12 is called twice, once per table, and its summary matches
+    version-indexed halfword reads; lsl r0,#0x10 ; orr r0,r6 packs the second read into the high halfword
+    of the return value; second table byte_80F3CFC/D04/D0C is uniformly 0xA, so the high halfword is effectively
+    a constant 10; sibling unreferenced tables (off_80F3CCC words 2-3, off_80F3CF0 words 2-3) show parallel
+    table variants beside the used ones
+  refs:
+  - bn6f/asm/asm31.s:128232
+  - 0x080F3B24 sub_80F3B24
+  - 0x0800FE12 battle_aiGetVersionedTableEntry_800FE12
+  reproduce: python3 tools/asmcat.py 0x080F3CA4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battlesweep
+open_questions:
+- What the returned values mean in game terms (frame timers, probabilities, difficulty thresholds?) —
+  caller sub_80F3B24 has no known summary
+- What the index in r0 selects (a battle/chip ID, an AI behavior class, a difficulty step?)
+- Why the high halfword table exists at all when every entry is 10, and which code uses the alternative
+  0x50/0xA0/0xDC table variant
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F3CA4 -> battle_aiGetIndexedParamPair
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F3CA4

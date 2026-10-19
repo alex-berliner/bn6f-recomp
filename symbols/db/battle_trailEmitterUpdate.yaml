@@ -1,0 +1,50 @@
+name: battle_trailEmitterUpdate
+address: '0x080C8ED0'
+kind: function
+status: probable
+summary: 'Per-frame battle-object action handler: spawns a one-time backward trail of collision regions,
+  ticks a looping sound effect, and cleans up when the action is finished or cancelled.'
+interface: (r5 = battle object ptr, no args) -> updates object's CurPhase/CurAnim/Timer2 in place; no
+  return value
+details: 'On the first run (CurPhase == 0) it latches phase 4, calls object_spawnBackwardTrailCollision
+  to lay three collision cells behind the object, switches to animation 2, and zeroes Timer2. Each frame
+  it calls sub_80C8FDC, decrements Timer2, and when it expires plays sound effect 0x12B (mov #0x2c; add
+  #0xff) and reloads Timer2 with 0x10, giving a repeating sound every 16 frames. If PhaseInitialized ==
+  3 (the action is being ended/cancelled) it sets CurAnim to 3 (return pose), clears CurAction and CurPhase/PhaseInitialized
+  so the object resumes idle. r5 is used directly with no register setup, so this is an object-update
+  handler invoked with the battle object in r5.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'phase gate: ldrb [r5,#oBattleObject_CurPhase]; tst; strb #4 then bl object_spawnBackwardTrailCollision
+    — one-time trail spawn; sound loop: ldrh Timer2; sub #1; bgt; PlaySoundEffect(0x2c+0xff=0x12B); strh
+    #0x10 into Timer2; anim 2 selected on entry and anim 3 (return) with CurAction=0/phase=0 when PhaseInitialized==3,
+    i.e. standard action-handler cleanup; callee object_spawnBackwardTrailCollision is known to spawn
+    a three-cell collision row opposite facing, matching the trail theme'
+  refs:
+  - bn6f/asm/asm31.s:36753
+  - 0x080005CC PlaySoundEffect
+  - 0x080C8FA0 object_spawnBackwardTrailCollision
+  - 0x080C8FDC sub_80C8FDC
+  reproduce: python3 tools/asmcat.py 0x080C8ED0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-212108'
+coverage:
+- battlesweep
+open_questions:
+- what sub_80C8FDC does (per-frame logic of this object)
+- which in-game object/attack uses this handler (identity of sound 0x12B and the trail would pin the name)
+- no known callers, so the dispatch context is unconfirmed
+sources:
+- wf investigate investigate-20261018-212108
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f aea1c835
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80C8ED0 -> battle_trailEmitterUpdate
+  where: bn6f e44158ed
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C8ED0
