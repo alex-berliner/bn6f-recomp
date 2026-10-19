@@ -931,28 +931,34 @@ def try_pick(D):
         if wf is None: continue
         b.e.load(wf[1]); P0 = b.e.u32(rf.PRIMARY)
         ents = battle_table(b.e.u32(BATTLE_PTR))
-        set_emu_pokes(); found = {}
+        wf = state_at(W - 1)
+        if wf is None: continue
+        # the search writes as the fix will (a poke at W, from the frame before): a poke lands at another point of
+        # the frame than a write after loading W's state, so the RNG value that starts the battle differs (run9f
+        # 990002: the direct write's j started it, the same j as a poke did not)
+        spec = lambda q, j: rf.spec(rf.PRIMARY, rf.rng_move(P0, j)) + f',{syms.ENC_GATE:#x}=0x8/4,{syms.ENC_PRESET:#x}={q:#x}/4'
+        found = {}
         for q in ents:
             for j in (x for k in range(0, 101) for x in ((k, -k) if k else (0,))):
-                b.e.load(wf[1])
-                b.e.cmd(f'write32 {rf.PRIMARY:x} {rf.rng_move(P0, j):x}')
-                b.e.cmd(f'write32 {syms.ENC_GATE:x} 8'); b.e.cmd(f'write32 {syms.ENC_PRESET:x} {q:x}')
-                for g in range(W, W + 5):
+                set_emu_pokes([[W, spec(q, j)]]); b.e.load(wf[1])
+                for g in range(W - 1, W + 5):
                     b.e.step(ks[g - p0][0])
                     if b.e.read(syms.GS_SUBSYSTEM, 1)[0] != 4: break
                 if b.e.read(syms.GS_SUBSYSTEM, 1)[0] != 4: found[q] = j; break
+        set_emu_pokes()
         if not found: continue
-        ck = ck_file(wf); at[f] = W
-        for q, j in found.items():
-            spec = rf.spec(rf.PRIMARY, rf.rng_move(P0, j)) + f',{syms.ENC_GATE:#x}=0x8/4,{syms.ENC_PRESET:#x}={q:#x}/4'
-            tasks.append((ck, [[W, spec]], D + 300, f'K{f}:{q:x}:{j}'))
+        at[f] = W
+        # judged on the path's keys (path_reach): the beam sync of the sync tasks lost every entry alike in the
+        # long white of the battle's start (run9f 990005)
+        ex = {f'K{f}:{q:x}:{j}': [[W, spec(q, j)]] for q, j in found.items()}
+        r = reach_many(wf, ex, D + 300, D)
+        tasks += [(tid, ex[tid][0], r[tid]) for tid in ex]
     if not tasks: log('  pick: no entry starts as a preset'); return None
-    res = evaluate(tasks)
-    t = max(tasks, key=lambda t: (res[t[3]][0], -res[t[3]][1]))
-    log(f'  pick: {len(tasks)} entries started as LocEnemy presets; furthest {t[3]} to {res[t[3]][0]} (mean cost {res[t[3]][1]:.3f})')
-    if res[t[3]][0] < D + PARTIAL: return None
-    f = int(t[3][1:].split(':')[0])
-    return state_at(at[f]), [t[1][0]]          # (again: state_at's scratch slot held another write point)
+    t = max(tasks, key=lambda t: (t[2][0], -t[2][1]))
+    log(f'  pick: {len(tasks)} entries started as LocEnemy presets; furthest {t[0]} to {t[2][0]} (mean cost {t[2][1]:.3f})')
+    if t[2][0] < D + PARTIAL: return None
+    f = int(t[0][1:].split(':')[0])
+    return state_at(at[f] - 1), [t[1]]          # (again: state_at's scratch slot held another write point)
 
 LENIENT = list(LENIENT_START)  # [(from, to)]: game frames where a stream overlay covers part of the video
 FREE = [tuple(x) for x in json.load(open(A.start + '.json')).get('free', [])]   # [(from, to)]: frames a kill
