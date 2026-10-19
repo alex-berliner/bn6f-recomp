@@ -1,0 +1,48 @@
+name: battle_aiAttackSetBeastPwrDamage
+address: '0x080122DA'
+kind: function
+status: probable
+summary: AI attack step that computes a Beast-Out scaled attack damage and stores it into the attack vars,
+  returning the next state 9.
+interface: (r5 = battle object, r7 = AI attack vars) -> stores damage to oAIAttackVars_Damage/ExtraDamage/InitFlag;
+  r0 = 9 (next state code)
+details: Loads the battle object's Alliance field (oBattleObject_Alliance) and calls the beast power-Atk
+  helper with a fixed index 0x10, which reads a 2-byte base entry from the beast power table (byte_80212D4)
+  and scales it via sub_8012642. The resulting damage is stored to oAIAttackVars_Damage. It then hard-sets
+  ExtraDamage to 0x8A and clears InitFlag, apparently so the attack initialization runs fresh. The constant
+  return of 9 strongly suggests this is one step of a state-machine dispatcher where each handler returns
+  the next state. Alliance is passed to the callee, so the damage likely scales with cross-fusion/beast-out
+  state of the acting side.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mov r0,#0x10 + ldrb r1,[r5,#oBattleObject_Alliance] then bl battle_beastPwrAtk_addScaledBaseFromIndex_8010D04:
+    fixed beast-power table index 16, alliance as side parameter; strh r0,[r7,#oAIAttackVars_Damage]:
+    callee result is the attack damage; mov r0,#0x8a; strh r0,[r7,#oAIAttackVars_ExtraDamage] and strb
+    r0(=0),[r7,#oAIAttackVars_InitFlag]: secondary damage constant plus reset of init flag; mov r0,#9;
+    pop {pc}: constant return matches a state-machine next-state id, not a value; Callee summary forwards
+    (idx, two table bytes) from byte_80212D4 to sub_8012642, confirming a scaled damage-table lookup'
+  refs:
+  - bn6f/asm/asm00_2.s:7724
+  - 0x08010D04 battle_beastPwrAtk_addScaledBaseFromIndex_8010D04
+  reproduce: python3 tools/asmcat.py 0x080122DA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+open_questions:
+- No callers known, so the state id 9 and the dispatching structure are unconfirmed
+- Meaning of ExtraDamage=0x8A (flat add? element id?) not provable without the attack-execution code
+- Exact semantics of the 0x10 entry in the byte_80212D4 table unknown
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 039e4a79
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80122DA -> battle_aiAttackSetBeastPwrDamage
+  where: bn6f f3b509a5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80122DA

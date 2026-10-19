@@ -1,0 +1,54 @@
+name: battleObject_queuePairedSprites
+address: '0x081278E8'
+kind: function
+status: probable
+summary: Queues two OAM sprite entries for a battle object, selecting a variant from two adjacent lookup
+  tables via the object's byte at +0xD.
+interface: (r5 = battle object ptr, reads signed byte at r5+0xD as variant index; r0 = ((variant*8 + 0x200)<<16)|0x70
+  and +0x220 variant, r1 = 0x70, r2 = 0, r3 = table, r4 = 0x80004000) -> r0 = callee result (next row
+  index); queues 2 OAM entries, then calls sub_8127944
+details: Reads the signed byte field at r5+0xD, multiplies it by 8 (table row stride), and adds a base
+  (0x200 for the first sprite, 0x220 for the second); the result is shifted to the high halfword and OR'd
+  with 0x70 in the low halfword, so r0 packs a tile/coordinate pair for the OAM queueing callee. It passes
+  row index 0 into two adjacent u16 tables (dword_8126904, dword_8126908) via battleObject_queueOamFromTableRow_811FAF4,
+  with fixed OAM attributes 0x80004000 (attr1 0x8000 / attr2 0x4000), once per table — i.e. two sprite
+  pieces drawn together, with the object's +0xD byte picking which graphics variant of each piece. After
+  both entries are queued it calls the unknown sub_8127944 before returning. The identical structure of
+  the two calls apart from base (0x200 vs 0x220) and table pointer strongly suggests a two-part composite
+  sprite (e.g. two halves or two layers of one effect/indicator).
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrsb r0,[r5,#0xD]; lsl r0,#3 — per-object variant byte scaled by the 8-byte table row stride;
+    two identical calls to battleObject_queueOamFromTableRow_811FAF4 with r2=0 and tables dword_8126904
+    / dword_8126908 differing only in the 0x200/0x220 base; callee summary: queues one OAM entry from
+    a u16 table by row index — confirms this routine builds two queued sprites; fixed attr word 0x80004000
+    loaded into r4 for both calls, typical OAM attr1/attr2 pair; tail call to unknown sub_8127944 before
+    pop {r4-r7,pc}'
+  refs:
+  - bn6f/asm/asm33.s:9223
+  - 0x0811FAF4 battleObject_queueOamFromTableRow_811FAF4
+  - 0x08127944 sub_8127944
+  reproduce: python3 tools/asmcat.py 0x081278E8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+open_questions:
+- No callers known, so the meaning of the +0xD field (variant/frame selector?) and which on-screen element
+  uses these two tables is unconfirmed
+- sub_8127944 is undocumented; it may post-process the queued entries or update r5 state
+- Exact packing semantics of r0's high halfword (tile base vs screen coordinate) depend on the callee's
+  internals
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 039e4a79
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81278E8 -> battleObject_queuePairedSprites
+  where: bn6f f3b509a5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81278E8

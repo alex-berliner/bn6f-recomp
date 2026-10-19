@@ -1,0 +1,48 @@
+name: ai_beastPwrAtkSetVars
+address: '0x08012292'
+kind: function
+status: probable
+summary: 'AI attack-step setup: computes the beast power-attack damage for alliance index 6 and stores
+  it (plus a fixed extra damage) into the AI attack vars, then advances to AI state 9.'
+interface: (r5 = battle object pointer, r7 = AI attack vars struct) -> stores oAIAttackVars_Damage, oAIAttackVars_ExtraDamage=0x8A,
+  oAIAttackVars_InitFlag=0; r0 = 9 (next AI state/step)
+details: Reads the battle object's Alliance field (r5 + oBattleObject_Alliance) and passes it with a hardcoded
+  index of 6 to battle_beastPwrAtk_addScaledBaseFromIndex_8010D04, which looks up a 2-byte beast power-Atk
+  table entry and scales it. The returned value is stored as oAIAttackVars_Damage, and a constant 0x8A
+  (138) is written to oAIAttackVars_ExtraDamage. It clears oAIAttackVars_InitFlag to 0, marking the attack
+  vars as uninitialized/pending for a later phase, and returns 9, which the caller's AI state machine
+  presumably uses as the next step. The fixed index 6 strongly suggests a specific beast-form attack (this
+  is the Falzar version), and the returned state id means the function is one arm of a larger AI attack
+  dispatch.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: hardcoded index 'mov r0,#6' plus ldrb of oBattleObject_Alliance before the beast-power call
+    shows which attack is configured; strh r0,[r7,#oAIAttackVars_Damage] stores the callee's computed
+    attack value; constant 0x8A written to oAIAttackVars_ExtraDamage is the attack's fixed extra damage;
+    strb 0 into oAIAttackVars_InitFlag resets the attack-init flag for a later setup pass; mov r0,#9 before
+    pop {pc} matches other AI state-machine steps returning the next state id
+  refs:
+  - bn6f/asm/asm00_2.s:7679
+  - 0x08010D04 battle_beastPwrAtk_addScaledBaseFromIndex_8010D04
+  reproduce: python3 tools/asmcat.py 0x08012292
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+open_questions:
+- which attack/state id 9 corresponds to (no caller is known to confirm the dispatch table)
+- what the 0x8A extra damage represents mechanically (element/type effect?)
+- exact semantics of oAIAttackVars_InitFlag=0 in the consuming step
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 039e4a79
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8012292 -> ai_beastPwrAtkSetVars
+  where: bn6f f3b509a5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8012292

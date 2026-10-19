@@ -1,0 +1,48 @@
+name: mysteryData_gatherForNavi
+address: '0x08099E3C'
+kind: function
+status: probable
+summary: Runs a prerequisite step, then looks up the current Navi's mystery-data entry and stores it plus
+  a status byte into a work structure, returning 0.
+interface: (no meaningful args; uses r5/r7/r10 as context pointers) -> r0 = 0; r2 from callee stored to
+  [r5,#4]
+details: First calls sub_809F9BE (effect unknown), then loads a base pointer from [r7,#0x90] and stores
+  it at [r6,#0x4c], where r6 comes from [r10,#0x2c] — likely a work/context struct. It then calls mysteryData_lookupForNavi_809FC96,
+  storing its two return words (the four mystery-data bytes and C/V flags) into fields 0x54 and 0x58 of
+  that same struct, and stores the callee's r2 as a byte at [r5,#4]. Finally it always returns 0, suggesting
+  a state-machine step that cannot fail here. The touched struct (offsets 0x4c, 0x54, 0x58 from [r10,#0x2c])
+  is presumably a mystery-data or overworld-reward context.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl sub_809F9BE before any data work — a setup/refresh step whose result is not used directly;
+    ldr r6,[r10,#0x2c]; str r0,[r6,#0x4c] — caches a base pointer into the target struct; bl mysteryData_lookupForNavi_809FC96
+    followed by str r0,[r6,#0x54]; str r1,[r6,#0x58] — result words stored into adjacent struct fields;
+    strb r2,[r5,#4] stores the lookup's r2 (flags/status) as a byte in a separate struct; mov r0,#0; pop
+    — unconditional success return, typical of a queued/update step
+  refs:
+  - bn6f/asm/asm28_0.s:909
+  - 0x0809FC96 mysteryData_lookupForNavi_809FC96
+  - 0x0809F9BE sub_809F9BE
+  reproduce: python3 tools/asmcat.py 0x08099E3C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-030611; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+open_questions:
+- No callers known — need one to see when this runs (map load, BMD interaction, Navi menu?)
+- sub_809F9BE is undocumented; it likely prepares the struct the results are written into
+- The structures at [r10,#0x2c] (fields 0x4c/0x54/0x58) and r5 (field 0x04) are unidentified, so the exact
+  consumer of the stored data is unknown
+sources:
+- wf investigate investigate-20261019-030611
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 039e4a79
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8099E3C -> mysteryData_gatherForNavi
+  where: bn6f f3b509a5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8099E3C

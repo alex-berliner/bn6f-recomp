@@ -1,0 +1,47 @@
+name: battle_objectRunPhase
+address: '0x080E62B4'
+kind: function
+status: probable
+summary: 'Runs one battle object''s phase: initializes it once, steps it each call, and advances the object
+  to phase 4 when the step reports done.'
+interface: (r0/r4? = battle object in r5 on entry) -> r0 = clobbered; sets oBattleObject_CurPhaseAndPhaseInitialized
+  = 4 when the step function signals completion
+details: Reads the PhaseInitialized byte of the battle object at r5; if zero, calls sub_80E6316 (one-time
+  phase setup) and stores 4 into PhaseInitialized so init never runs again. Each invocation then calls
+  sub_80E6438, whose nonzero return marks the phase as finished, at which point the function stores 4
+  into the CurPhaseAndPhaseInitialized halfword, ending the phase. The object pointer lives in r5, so
+  this is compiled as part of a larger routine or called with r5 preset (no callers known). Note PhaseInitialized
+  is written as a byte while the combined phase field is written as a halfword, consistent with CurPhaseAndPhaseInitialized
+  packing phase and initialized-flag together.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb/tst on oBattleObject_PhaseInitialized with bl sub_80E6316 guarded — one-time init pattern
+    (loc_80E62B4..C4); strb #4 to PhaseInitialized after init prevents re-initialization; bl sub_80E6438;
+    tst r0,r0; bne — nonzero return means phase finished; strh #4 into oBattleObject_CurPhaseAndPhaseInitialized
+    on completion — transition to phase 4'
+  refs:
+  - bn6f/asm/asm31.s:102032
+  - 0x080E6316 sub_80E6316
+  - 0x080E6438 sub_80E6438
+  reproduce: python3 tools/asmcat.py 0x080E62B4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+open_questions:
+- what sub_80E6438 actually checks (its completion condition defines the phase's purpose)
+- what phase value 4 means in the battle object phase state machine
+- who calls this and how r5 is set up
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 039e4a79
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E62B4 -> battle_objectRunPhase
+  where: bn6f f3b509a5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E62B4

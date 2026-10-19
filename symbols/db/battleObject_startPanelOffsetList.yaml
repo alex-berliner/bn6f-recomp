@@ -1,0 +1,47 @@
+name: battleObject_startPanelOffsetList
+address: '0x08114074'
+kind: function
+status: probable
+summary: Wrapper that picks a panel-offset list from PanelOffsetListsPointerTable by index and hands it
+  (plus r6) to sub_8114088 to run.
+interface: (r4 = index into PanelOffsetListsPointerTable, r6 = parameter passed through) -> tail-calls
+  sub_8114088(r4 = list pointer, r6); no direct return value used
+details: Loads the PanelOffsetListsPointerTable base, scales r4 by 4, and reads the pointer at [table
+  + r4*4], so r4 selects one of the offset lists (the caller passes r4 = 0x2c). It then tail-branches
+  into sub_8114088, which receives the selected list pointer in r4 and the untouched r6. All other work
+  (actually consuming the list) is done by the callee. The caller sets r6 from the battle object's field
+  at +0x16, suggesting it is a per-object parameter such as a step count or variant selector.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_8114074: ldr r7, off_8114084 (PanelOffsetListsPointerTable); lsl r4,r4,#2; ldr r4,[r7,r4]
+    — r4 indexes the pointer table; sub_8114074 ends with bl sub_8114088, tail-calling with the loaded
+    pointer in r4 and r6 unchanged; Caller 0x08113FC0 sets mov r4,#0x2c and ldrb r6,[r5,#0x16] immediately
+    before bl sub_8114074; Caller first calls battleObject_findClosestEnemyBattleObject_80103F8 and GetAllianceDependentPanelParamArgs,
+    so this runs as part of a battle-object panel effect'
+  refs:
+  - bn6f/asm/asm32.s:12671
+  - 0x08113FC0 sub_8113FC0
+  - 0x08114088 sub_8114088
+  reproduce: python3 tools/asmcat.py 0x08114074
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+open_questions:
+- What sub_8114088 does with the list pointer and r6 (apply offsets to panels, queue an animation, spawn
+  tiles?)
+- What list entry 0x2c of PanelOffsetListsPointerTable contains
+- Exact meaning of r6 (index within the list, repetition count, or object field semantics)
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 039e4a79
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8114074 -> battleObject_startPanelOffsetList
+  where: bn6f f3b509a5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8114074

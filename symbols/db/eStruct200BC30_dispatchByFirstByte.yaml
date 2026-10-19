@@ -1,0 +1,46 @@
+name: eStruct200BC30_dispatchByFirstByte
+address: '0x08131F80'
+kind: function
+status: probable
+summary: Dispatcher that indexes a handler table with the first byte of the EWRAM 0x200BC30 record and
+  jumps to the selected handler.
+interface: (no args) -> r0 = value from eStruct200BC30_getJumpOffset00; returns to this function's caller
+  via handler's lr
+details: Calls eStruct200BC30_getJumpOffset00 to read the first byte of the record at EWRAM 0x200BC30,
+  then loads a word from the table at 0x08131F94 using that byte as a byte offset. It performs a linked
+  tail-jump (mov lr, pc; bx r1), so the chosen handler's return lands on the pop {pc} and control goes
+  back to this function's caller. The visible table is eight null entries followed by one handler word
+  (sub_8131FA0+1) at offset 8, meaning only state value 8 currently dispatches anywhere; values 0-7 would
+  jump to address 0 and crash. This is a state-machine/per-state dispatch stub, presumably with more handlers
+  patched in elsewhere or the record only ever holding 8 in the flows that reach it.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl eStruct200BC30_getJumpOffset00 supplies the index from the record''s first byte (asm line
+    2); ldr r1, [r1,r0] with r1=0x08131F94 selects a handler word by byte offset; mov lr, pc; bx r1 is
+    a Thumb linked jump so handlers return through pop {pc}; table: eight 0x00 bytes then .word sub_8131FA0+1,
+    so only index 8 has a target; no known callers yet, so the triggering game context is unconfirmed'
+  refs:
+  - bn6f/asm/asm36.s:3891
+  - 0x0803EA60 eStruct200BC30_getJumpOffset00
+  reproduce: python3 tools/asmcat.py 0x08131F80
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-022109; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+open_questions:
+- who calls this and in what game situation the record at 0x200BC30 holds each state value
+- whether the table at 0x08131F94 is longer than the 9 shown entries (other handlers filled elsewhere)
+- what sub_8131FA0 (the index-8 handler) does
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 039e4a79
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8131F80 -> eStruct200BC30_dispatchByFirstByte
+  where: bn6f f3b509a5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8131F80

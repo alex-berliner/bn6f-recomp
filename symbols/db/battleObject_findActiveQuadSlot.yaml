@@ -1,0 +1,51 @@
+name: battleObject_findActiveQuadSlot
+address: '0x0803D180'
+kind: function
+status: probable
+summary: Scans four consecutive battle-object descriptor slots (starting 0x90 index-units before r0) and
+  returns the relative index of the first one whose byte at +3 is nonzero, or 0 if all four are clear.
+interface: (r0 = base battle-object descriptor index) -> r0 = base + offset (0..3) of first slot with
+  byte[+3] != 0, or 0 if none; flags clobbered
+details: The function computes r4 = r0 - 0x90, then for i = 0..3 calls battleObject_getByIndex_813B780
+  with index r4 + i to fetch a 0x10-byte descriptor slot from StructArr_813944C. Each slot's byte at offset
+  3 is loaded and compared against r5 (0); as long as it equals 0 the loop advances to the next slot.
+  If a slot with a nonzero byte at +3 is found, the loop exits and the function returns r4 + i + 0x90,
+  i.e. the original r0 plus the slot's offset within the scanned quad. If all four slots have a zero byte
+  at +3, it returns 0. Byte +3 thus acts as an occupied/active flag for these descriptors, and the 0x90
+  back-offset suggests the caller passes an index into a group whose four checked slots live one 0x90-sized
+  block earlier. Nothing writes to the structures; it is a pure search.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: loop at loc_803D18A calls battleObject_getByIndex_813B780 with r0 = (arg - 0x90) + i for i =
+    0..3 (cmp r6,#4 / blt); ldrb r0,[r7,#3]; cmp r0,r5 with r5 = 0 tests the descriptor's byte at offset
+    3 against zero; loc_803D1A2 returns r4 + r6 + 0x90 = original argument + i, i.e. the matched slot's
+    index offset; fallthrough when cmp r6,#4 / blt fails returns 0, the all-slots-zero case; sole caller
+    sub_803D170 has no known summary, so it cannot confirm the semantic meaning
+  refs:
+  - bn6f/asm/asm03_1_1.s:9198
+  - 0x0803D170 sub_803D170
+  - 0x0813B780 battleObject_getByIndex_813B780
+  reproduce: python3 tools/asmcat.py 0x0803D180
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-022109; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+open_questions:
+- what field byte +3 of the 0x10-byte battle-object descriptor represents (active flag, type, team, ...)
+- why the scan starts 0x90 index-units before the argument — whether r0 is an index, a byte offset, or
+  a pointer into StructArr_813944C
+- how sub_803D170 uses the returned value (as an index, pointer, or just a found/offset flag), which would
+  pin down the game-level purpose
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 039e4a79
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803D180 -> battleObject_findActiveQuadSlot
+  where: bn6f f3b509a5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803D180

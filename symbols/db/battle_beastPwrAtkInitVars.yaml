@@ -1,0 +1,46 @@
+name: battle_beastPwrAtkInitVars
+address: '0x08011BA2'
+kind: function
+status: probable
+summary: Initializes an enemy AI attack-vars block for a beast-power attack with base damage 30 x multiplier
+  20 and fixed difficulty/charge settings.
+interface: (r7 = pointer to oAIAttackVars struct, implicit) -> r0 = 0x27 (next attack state/step); struct
+  fields Damage/ExtraDamage/InitFlag/etc. written
+details: Calls battle_beastPwrAtk_addScaledBase_8012642 with r0=0x1E (base damage) and r1=0x14 (multiplier)
+  and stores the returned total to oAIAttackVars_Damage. Sets ExtraDamage to 0x94 (148), InitFlag to 1,
+  AiDifficultyTier to 1, ChargeReadyFlag to 0, AttackBoost to 0, ChipUseDelay to 0, and stores the constant
+  word 0x23C to oAIAttackVars_AttackBoost2. Returns 0x27 in r0, likely a state or step identifier consumed
+  by the caller's AI attack dispatcher. The struct base arrives in r7, so the caller passes the attack-vars
+  context via the high register, typical of these battle AI routines.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl battle_beastPwrAtk_addScaledBase_8012642 with r0=0x1E, r1=0x14 then ''strh r0,[r7,#oAIAttackVars_Damage]''
+    ties it to the known beast-power attack damage helper; strb/strh sequence writes the full oAIAttackVars
+    field set (InitFlag, AiDifficultyTier, ChargeReadyFlag, AttackBoost, ChipUseDelay) — a pure initializer;
+    constant 0x23C stored as a word to oAIAttackVars_AttackBoost2 via off_8011BCC; mov r0,#0x27 before
+    pop {pc} — returns a step/state id, so it is an attack-setup step, not a compute routine; no branchy
+    logic and no other memory access besides the struct: single-purpose field-packing routine'
+  refs:
+  - bn6f/asm/asm00_2.s:6596
+  - 0x08012642 battle_beastPwrAtk_addScaledBase_8012642
+  reproduce: python3 tools/asmcat.py 0x08011BA2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-022109; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+open_questions:
+- No known caller, so which boss/attack uses this block (and what r7 points to at call time) is unconfirmed
+- Meaning of the returned 0x27 and of the 0x23C word in AttackBoost2 not shown by this function alone
+sources:
+- wf investigate investigate-20261019-022109
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 039e4a79
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8011BA2 -> battle_beastPwrAtkInitVars
+  where: bn6f f3b509a5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8011BA2

@@ -1,0 +1,48 @@
+name: textScript_resetBuffers
+address: '0x0813BA64'
+kind: function
+status: probable
+summary: Resets the toolkit's text-script working buffers by copying default script data (0x40 bytes)
+  and default state/data (0x188 bytes) into the buffers pointed to by toolkit fields 0x14c and 0x190.
+interface: () -> void; no return value, clobbers r0-r3, lr
+details: Loads the toolkit pointer via r10+oToolkit_Unk200414c_Ptr and CopyWords-copies 0x40 bytes from
+  the eTextScript201BA00 constant block into that buffer, then loads the toolkit pointer at r10+oToolkit_Unk2004190_Ptr
+  and copies 0x188 bytes from byte_201BA40 into it. Both destinations are addressed indirectly through
+  the toolkit struct, so this reinitializes preallocated engine buffers in EWRAM (0x200414c and 0x2004190
+  areas) with known-good defaults from ROM/other EWRAM. CopyWords (SWI 5 CpuSet wrapper) receives byte
+  counts and converts them to word counts, so both sizes are multiples of 4. No conditionals or return
+  value; it is a pure bulk-init routine.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldr r1, off_813BA9C =eTextScript201BA00; mov r2,#0x40; bl CopyWords — fills first toolkit buffer
+    with script data; ldr r1, off_813BAA0 =byte_201BA40; ldr r2, =0x188; bl CopyWords — fills second toolkit
+    buffer (0x188 bytes); both destinations come from [r10,#oToolkit_Unk200414c_Ptr] / [#oToolkit_Unk2004190_Ptr],
+    i.e. toolkit-owned EWRAM buffers; sole caller sub_813658C is consistent with an init/reset step since
+    the routine is unconditional and stateless
+  refs:
+  - bn6f/asm/asm37_0.s:532
+  - 0x0813658C sub_813658C
+  - 0x0800093C CopyWords
+  reproduce: python3 tools/asmcat.py 0x0813BA64
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+open_questions:
+- exact role of the 0x200414c vs 0x2004190 buffers (script interpreter state vs script text/data) needs
+  confirmation from the callers of those buffers
+- whether byte_201BA40 is default script state or eReader/card-related payload; inspecting sub_813658C's
+  context would clarify when this reset runs
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 039e4a79
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_813BA64 -> textScript_resetBuffers
+  where: bn6f f3b509a5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_813BA64

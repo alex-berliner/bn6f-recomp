@@ -1,0 +1,43 @@
+name: aiAttack_woodElementStep
+address: '0x080F5EBE'
+kind: function
+status: probable
+summary: 'AI attack state step: on first run sets the attack to element 4 (Wood) with a 30-frame timer,
+  then once the timer expires marks the attack hit (HitElement = 0x10)'
+interface: (r7 = AI attack vars struct oAIAttackVars) -> void; no return value, updates AttackElement/StepTimer/HitElement
+  fields
+details: Called as part of an AI attack state machine, using r7 as a struct pointer. If oAIAttackVars_AttackElement
+  is 0 (none), it writes 4 into AttackElement and 0x1E (30) into StepTimer, then returns — the initialization
+  pass. On subsequent runs it decrements StepTimer; when it reaches 0 it stores 0x10 into oAIAttackVars_HitElement,
+  which presumably signals the attack's hit/impact phase to the surrounding AI code. Nothing else is touched
+  and there is no return value.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst r0,r0; bne — branches on existing element, so
+    this is a state step keyed off the struct; mov r0,#4; strb r0,[r7,#oAIAttackVars_AttackElement] —
+    initializes attack element to 4 on the null-element pass; mov r0,#0x1e; strh r0,[r7,#oAIAttackVars_StepTimer]
+    — arms a 30-frame delay; sub r0,#1; strh ...; bgt — timer countdown each invocation; mov r0,#0x10;
+    strh r0,[r7,#oAIAttackVars_HitElement] — fires the hit flag when the timer expires
+  refs:
+  - bn6f/asm/asm31.s:135545
+  reproduce: python3 tools/asmcat.py 0x080F5EBE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+open_questions:
+- No callers known, so what attack or enemy uses this step (and why element 4 specifically) is unconfirmed
+- The meaning of HitElement = 0x10 in the AI attack structure is inferred from the field name only
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 039e4a79
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F5EBE -> aiAttack_woodElementStep
+  where: bn6f f3b509a5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F5EBE
