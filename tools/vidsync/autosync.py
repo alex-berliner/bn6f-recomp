@@ -1200,7 +1200,7 @@ def try_hp(D):
     # strict window, run9n 1049138, where any write before it is undone by the hit)
     for back in [-20] + list(range(30, 631, 30)):
         W = D - back
-        if W > b.g: continue
+        if W + HP_STEPS > b.g: continue           # (the path's keys end at b.g)
         if W < ring[0][0]: return None
         w = state_at(W)
         if w is None: return None
