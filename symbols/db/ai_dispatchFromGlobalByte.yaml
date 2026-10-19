@@ -1,0 +1,50 @@
+name: ai_dispatchFromGlobalByte
+address: '0x0813B790'
+kind: function
+status: probable
+summary: 'Thin AI-dispatch wrapper: reads a global byte at 20096D8 and passes it as the dispatch argument
+  to the battle AI dispatcher, leaving r0 untouched.'
+interface: (r0 = battle object/actor pointer, preserved) -> r0 = dispatcher's return; tail-calls battleObject_runAIDispatchTable_813B7A0
+  with r1 = byte_20096D8 value
+details: Loads the single byte at byte_20096D8 into r1 and tail-calls the AI dispatcher, which looks up
+  the caller's battle object, selects an AIData field (0x8 or 0xc) based on event flag 0x2660+actorIndex,
+  and tail-calls a 4-entry thunk table. r0 is forwarded unchanged, so this is a parameter-less wrapper
+  whose only input is the global byte — likely an AI routine/variant index set elsewhere by the beast-sp
+  AI scripts. All callers are in the same 813B7xx-813Bxxx block (beast sp route), consistent with several
+  scripted AI entry points sharing this dispatch helper. No state is written by this function itself.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sub_813B790: ldr r1, off_813B79C; ldrb r1, [r1] loads the global byte as the only new argument;
+    bl into battleObject_runAIDispatchTable_813B7A0 which tail-calls a 4-entry AI thunk table; r0 is never
+    loaded or modified, so the battle object is forwarded from each caller; all six callers (813B84C..813BFB8)
+    sit in the same beastsp code region, suggesting shared AI dispatch glue'
+  refs:
+  - bn6f/asm/asm37_0.s:38
+  - 0x0813B84C sub_813B84C
+  - 0x0813B950 sub_813B950
+  - 0x0813BB00 sub_813BB00
+  - 0x0813B7A0 battleObject_runAIDispatchTable_813B7A0
+  reproduce: python3 tools/asmcat.py 0x0813B790
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- beastsp
+open_questions:
+- What semantic value byte_20096D8 holds (AI variant index vs. actor id) — needs the code that writes
+  it
+- What the four thunk targets do, to confirm whether this is beast-sp-specific or generic AI dispatch
+  glue
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_813B790 -> ai_dispatchFromGlobalByte
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_813B790

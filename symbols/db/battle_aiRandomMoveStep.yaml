@@ -1,0 +1,51 @@
+name: battle_aiRandomMoveStep
+address: '0x080CAC00'
+kind: function
+status: probable
+summary: AI handler that picks a random destination panel, waits a per-type delay, then performs the move
+  and ends the action.
+interface: (r5 = battle object) -> updates oBattleObject_CurPhase/Param3/Param4/Timer/CurAction; no return
+  value
+details: Runs one step of the object's phase state machine. On phase 0 it writes phase 4, calls the AI
+  panel picker (results into Param3/Param4, likely destination row/col), calls the element-attack-modifier
+  routine, and sets Timer from dword_80CAC40[Param1] (values 6,6,12,12 frames). On later phases it decrements
+  Timer each frame; when it goes negative it calls the modifier routine again with r0=Param3, r1=Param4
+  (the picked panel), writes 0 to CurAction and clears CurPhaseAndPhaseInitialized to finish the action.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'phase 0 branch: strb #4,[r5,CurPhase] then bl battle_aiPickMovePanels_80CAC82, storing r2/r3
+    into Param3/Param4; Timer loaded from table off_80CAC3C -> 0x06060C0C indexed by oBattleObject_Param1;
+    timer branch decrements Timer and only acts when it goes negative (sub r0,#1; bge skip); on timeout:
+    bl battle_applyElementAttackModIfEnabled_80CAD14 with r0=Param3,r1=Param4, then CurAction=0 and phase
+    cleared; callee battle_aiPickMovePanels summary: ''picks two random destination panels for an AI battle
+    object''s movement'''
+  refs:
+  - bn6f/asm/asm31.s:40680
+  - 0x080CAC82 battle_aiPickMovePanels_80CAC82
+  - 0x080CAD14 battle_applyElementAttackModIfEnabled_80CAD14
+  reproduce: python3 tools/asmcat.py 0x080CAC00
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battle
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- exact meaning of battle_applyElementAttackModIfEnabled in the second call — whether r0/r1 as panel coords
+  actually trigger the move or the callee does something else with them
+- which enemy/AI type uses this handler and what Param1 indexes (a difficulty or behaviour selector?)
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80CAC00 -> battle_aiRandomMoveStep
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CAC00

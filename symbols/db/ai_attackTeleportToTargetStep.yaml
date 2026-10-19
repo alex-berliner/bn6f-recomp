@@ -1,0 +1,50 @@
+name: ai_attackTeleportToTargetStep
+address: '0x080F4DC4'
+kind: function
+status: probable
+summary: AI attack step that teleports the attacker onto its target panel and, after a 3-frame delay,
+  marks the strike as landed.
+interface: (r5 = battle object, r7 = oAIAttackVars state) -> void; sets object PanelX/Y, CurAnim=3, AttackElement=4,
+  StepTimer, and finally HitElement=8
+details: 'Reads oAIAttackVars_AttackElement as the attack''s phase flag: when 0, it writes element 4,
+  sets the object''s animation to 3, copies the stored TargetPanelX/Y into the object''s PanelX/PanelY,
+  then calls object_setCoordinatesFromPanels and object_updateCollisionPanels so the sprite position,
+  collision record, and facing match the new panel, and loads StepTimer with 3. On later invocations (AttackElement
+  nonzero) it just decrements StepTimer; when it reaches 0 it stores 8 into oAIAttackVars_HitElement,
+  which the surrounding attack state machine presumably reads as ''impact now''. The instant panel jump
+  suggests a teleport/lunge-style enemy attack rather than a projectile. Uses r5/r7 as hidden arguments,
+  so it is a step handler invoked from a larger AI attack dispatcher.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst; bne — element 0 gates the one-time teleport
+    phase; strb r0,[r5,#oBattleObject_PanelX]/[r1,#oBattleObject_PanelY] copies TargetPanelX/Y onto the
+    object; bl object_setCoordinatesFromPanels + bl object_updateCollisionPanels sync pixel position and
+    collision to the new panel; decrement of oAIAttackVars_StepTimer with bgt, then 'mov r0,#8; strh r0,[r7,#oAIAttackVars_HitElement]'
+    raises the hit flag after 3 frames
+  refs:
+  - bn6f/asm/asm31.s:130238
+  - 0x0800E29C object_setCoordinatesFromPanels
+  - 0x0801A04C object_updateCollisionPanels
+  reproduce: python3 tools/asmcat.py 0x080F4DC4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- No callers are recorded, so the AI attack dispatcher and the meaning of HitElement=8 downstream are
+  unconfirmed
+- What element value 4 denotes in this attack table (element vs. attack type) is not shown here
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F4DC4 -> ai_attackTeleportToTargetStep
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F4DC4

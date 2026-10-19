@@ -1,0 +1,48 @@
+name: getEventFlagList
+address: '0x0802B2A0'
+kind: function
+status: probable
+summary: Builds a halfword list (0xFF-filled) of which of 27 event flags (0x197..0x1B4 range) are set,
+  storing flag-base+1 IDs and returning the count.
+interface: (r0 = u16 out buffer[27]) -> r0 = number of set flags written; flags from cmp/blt loop
+details: First ByteFills 0x1B*2 = 54 bytes of the caller-supplied buffer with 0xFF (empty-slot marker).
+  It then loops over the 27-entry table at byte_802B2E0 of u16 event flags; for each flag that TestEventFlag
+  reports set, it stores (flag - 0x197) + 1 as a halfword at the next slot. The written value is therefore
+  a 1-based index into the flag range 0x197-0x1B4 (flags 0x1A0 and 0x1A3 are missing from the table),
+  while unset slots stay 0xFF. Returns the number of entries written (r6/2). Callers presumably consume
+  the list and count for a menu/log display.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl ByteFill with count 0x1b*2 and value 0xFF initializes the output array; loop calls TestEventFlag
+    on table entries byte_802B2E0 (flags 0x197..0x1B4); strh r0,[r7,r6] stores flag-0x197+1 at halfword
+    slots, advancing r6 by 2; return value lsr r0,r6,#1 is the count of written entries; callers sub_802A8A4
+    / sub_8128CD8 receive buffer + count for further use
+  refs:
+  - bn6f/asm/asm03_0.s:10885
+  - 0x0802A8A4 sub_802A8A4
+  - 0x08128CD8 sub_8128CD8
+  - 0x0802F168 TestEventFlag
+  - 0x08000964 ByteFill
+  reproduce: python3 tools/asmcat.py 0x0802B2A0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- what the 27 flags (0x197..0x1B4) actually unlock in-game — caller context would identify the list's
+  purpose (e.g., scene/album/defeat log)
+- what value semantics the caller gives to the 0xFF filler and the 1-based IDs
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_802B2A0 -> getEventFlagList
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802B2A0

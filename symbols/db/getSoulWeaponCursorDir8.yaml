@@ -1,0 +1,51 @@
+name: getSoulWeaponCursorDir8
+address: '0x08142896'
+kind: function
+status: probable
+summary: Returns one of 8 directions pointing from one soul-weapon cursor to another, from their camera-space
+  coordinates.
+interface: (r0 = first cursor selector, r1 = second cursor selector) -> r0 = 8-way direction index 0..7
+  from first cursor to second; clobbers r1-r3, lr
+details: Calls GetSoulWeaponCursorCameraCoords twice, once with r0 and once with r1, pushing the first
+  (x,y) pair to keep it across the second call. Computes dx = second.x - first.x and dy = -(second.y -
+  first.y), then calls calcAngle_800117C (BIOS ArcTan2) to get a 0..255 angle. The angle is rounded to
+  16 sectors (add 0x10, lsr 4, and 0xF), halved to 8, decremented, and masked with 7 so the underflow
+  wraps -1 to 7. Result is a coarse compass direction between the two cursors, likely for beast-out targeting/aim
+  snapping.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'both bl GetSoulWeaponCursorCameraCoords calls take r0 then r1, showing two cursor selectors
+    are compared; bl calcAngle_800117C on the coordinate delta yields a full-turn 0..255 angle; add #0x10
+    / lsr #4 / and #0xF / lsr #1 / sub #1 / and #7 folds the angle into 8 wrapped sectors; callee GetSoulWeaponCursorCameraCoords
+    and beastsp route place it in the beast-out soul-weapon aiming system'
+  refs:
+  - bn6f/asm/asm37_1.s:1630
+  - 0x0808964C sub_808964C
+  - 0x080A7F78 sub_80A7F78
+  - 0x08142B58 sub_8142B58
+  - 0x0800117C calcAngle_800117C
+  - 0x08142868 GetSoulWeaponCursorCameraCoords
+  reproduce: python3 tools/asmcat.py 0x08142896
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- beastsp
+open_questions:
+- what the cursor selector argument values mean (object pointers vs indices)
+- which gameplay feature consumes the returned direction (callers sub_808964C/sub_80A7F78/sub_8142B58
+  are not yet named)
+- why dy is negated relative to dx (screen-y-down vs angle convention)
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8142896 -> getSoulWeaponCursorDir8
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8142896

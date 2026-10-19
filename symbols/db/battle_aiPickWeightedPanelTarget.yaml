@@ -1,0 +1,55 @@
+name: battle_aiPickWeightedPanelTarget
+address: '0x080C7632'
+kind: function
+status: probable
+summary: Battle AI helper that pools qualifying panels from HP/alliance-weighted columns, picks one at
+  random, and passes its decoded coordinates to a follow-up action routine.
+interface: (r0, r1 unused; r2, r3 = filter params passed to object_getPanelsInColumnFiltered; r5 = actor
+  battle object) -> r0 = sub_80C761C result, or 0 if no panel qualified; r4/r6/r7 clobbered.
+details: Reads the actor's oBattleObject_Alliance (x16) and compares the related object's HP against MaxHP/4
+  to choose one of four 8-entry weight tables in byte_80C7698 (alliance0 uses entries 4/5, alliance1 uses
+  3/2; low HP shifts the weight toward the far column). It loops 8 times, passing each table byte as the
+  panel base to object_getPanelsInColumnFiltered, which appends encoded panel IDs of panels passing object_checkPanelParameters
+  into a stack buffer, accumulating the count; repeated column values therefore weight the pool. If the
+  pool is empty it returns 0. Otherwise it takes GetPositiveSignedRNG modulo the pool size (svc 6), reads
+  that encoded panel ID, splits it into a low-3-bit field and a high-nibble field, and calls sub_80C761C(lowField,
+  highField, 0) — presumably to spawn/apply something on that panel.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrh r1,[r3,#oBattleObject_MaxHP]; lsr r1,r1,#2; cmp with HP selects +0/+8 table half; ldrb
+    r0,[r5,#oBattleObject_Alliance]; lsl r0,#4; off_80C7694 -> byte_80C7698 holds four rows of 8 bytes
+    valued 2..5; loop: ldrb r0,[r7,r4]; bl object_getPanelsInColumnFiltered with advancing buffer sp+8+r6
+    and passed-through r2/r3; bl GetPositiveSignedRNG; svc 6 (divide) by pool count, then ldrb r0,[sp+8,r1]
+    picks a random pooled entry; lsr r1,r0,#4 / lsl r0,#0x1d+lsr splits the encoded ID; bl sub_80C761C
+    with r2=0, else return 0'
+  refs:
+  - bn6f/asm/asm31.s:33358
+  - 0x080C758E sub_80C758E
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x0800CFDC object_getPanelsInColumnFiltered
+  - 0x080C761C sub_80C761C
+  reproduce: python3 tools/asmcat.py 0x080C7632
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- What sub_80C761C does with the decoded row/column pair (spawn object, attack, panel conversion?) — its
+  body would confirm the summary's action
+- Whether byte_80C7698 entries are column indices (weighting interpretation) or panel-type filters passed
+  as r0; object_getPanelsInColumnFiltered/object_checkPanelParameters internals would settle this and
+  the meaning of r2/r3
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80C7632 -> battle_aiPickWeightedPanelTarget
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C7632

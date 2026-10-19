@@ -1,0 +1,50 @@
+name: ai_initAttackTargetNearestEnemy
+address: '0x08115A96'
+kind: function
+status: probable
+summary: 'AI attack-state initializer: loads version-specific attack parameters, targets the nearest enemy
+  object, and switches the object into attack mode.'
+interface: (r4 = AI data ptr, r5 = battle object, r6 = AI state block, r7 = attack vars block) -> r0 =
+  0; sets state fields and enters attack
+details: Reads the AI data's version byte (oAIData_Version_16) as an index into three byte tables (step
+  timer, charge cycles, attack duration) and one word table (damage), storing each into the r7 attack-vars
+  struct. Copies the object's ExtraVars pointer into the attack-vars PanelChooseCallback and stores the
+  object's Alliance XOR 1 to find the closest opposing battle object, saving it as TargetObjectPtr. Calls
+  object_setAttack0 with attack id 0xa, then writes AI script id 4 to oAIState_ScriptId before returning.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r1,[r4,#oAIData_Version_16] then indexed loads from byte_811599E/81159A4/81159AA and word
+    table 8115980 store StepTimer/ChargeCycles/AttackDuration/Damage; ldr r0,[r5,#oBattleObject_ExtraVars];
+    str r0,[r7,#oAIAttackVars_PanelChooseCallback] copies panel-choose callback into attack vars; ldrb
+    r0,[r5,#oBattleObject_Alliance]; eor r0,#1 then bl battleObject_findClosestEnemyBattleObject_80103F8
+    stores the opposing object as TargetObjectPtr; mov r0,#0xa; bl object_setAttack0 selects the attack
+    routine to run; mov r0,#4; strb r0,[r6,#oAIState_ScriptId] hands control to the AI script that drives
+    the attack
+  refs:
+  - bn6f/asm/asm32.s:15350
+  - 0x080103F8 battleObject_findClosestEnemyBattleObject_80103F8
+  - 0x08011680 object_setAttack0
+  reproduce: python3 tools/asmcat.py 0x08115A96
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- exact meaning of the three byte-table values (StepTimer/ChargeCycles/AttackDuration) vs their use in
+  the attack routine
+- which attack object/attack id 0xa corresponds to
+- route only shows battlesweep usage; other callers unknown
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8115A96 -> ai_initAttackTargetNearestEnemy
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8115A96

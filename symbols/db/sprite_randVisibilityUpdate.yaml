@@ -1,0 +1,52 @@
+name: sprite_randVisibilityUpdate
+address: '0x08116F9C'
+kind: function
+status: probable
+summary: Per-frame updater that drives a randomized sprite flicker/visibility effect for an object, conditionally
+  resetting its state byte when a menu/chat state is active and the sprite is near the top of the screen.
+interface: (r0 = unused at entry; r5 = object context, [r5,#0xe] = mode/flag halfword) -> r0 = clobbered;
+  no meaningful return; writes object state byte [r5]
+details: 'Reads halfword [r5,#0xe]; if it is nonzero the object state byte [r5] is set to 0xA3, otherwise
+  to 1. Calls sub_81170AC (r5-based helper), then passes [r5,#0xe] to sub_81170C0, which draws twice from
+  BIOS PRNG and applies the resulting visibility mask to the sprite via sprite_setUnk0x2c — i.e. the sprite
+  is randomly shown/hidden each frame. It then reads the sSubmenu state byte: when it equals 0x18 or 8
+  it calls sprite_getCoordinates, and if the returned coordinate is < 0x38 it forces [r5] back to 1. Likely
+  a weather/ambient or concealment flicker effect on overworld maps, but the exact object and meaning
+  of state 0xA3 are unconfirmed.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'loc_8116FA8: tst of [r5,#0xe] selects storing 0xA3 or 1 into [r5]; bl sub_81170C0 with r0=[r5,#0xe];
+    callee is documented as applying a randomized visibility mask through sprite_setUnk0x2c; off_8116FD0
+    reads sSubmenu byte and gates the coordinate check on states 0x18 and 8; locret path: r0<0x38 from
+    sprite_getCoordinates causes strb r0=1,[r5]; Recorded execution only on maps/story2 routes, consistent
+    with an overworld ambient effect'
+  refs:
+  - bn6f/asm/asm32.s:17840
+  - 0x081170C0 sub_81170C0
+  - 0x080030A8 sprite_getCoordinates
+  - 0x081170AC sub_81170AC
+  reproduce: python3 tools/asmcat.py 0x08116F9C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- maps
+- story2
+open_questions:
+- what object r5 points to and what state value 0xA3 means
+- what sub_81170AC does with the r5 object
+- why sSubmenu states 8 and 0x18 trigger the re-show, and which coordinate (x or y) is compared against
+  0x38
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8116F9C -> sprite_randVisibilityUpdate
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8116F9C

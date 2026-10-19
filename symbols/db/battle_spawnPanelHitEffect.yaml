@@ -1,0 +1,51 @@
+name: battle_spawnPanelHitEffect
+address: '0x0810E746'
+kind: function
+status: probable
+summary: Spawns a battle effect (type 0x15 plus an alliance/facing variant) at the panel position of the
+  object in r5, converting the callers' panel column/row to screen pixels.
+interface: (r0 = panel column, r1 = panel row, r5 = battle object) -> r0 = spawned effect object pointer
+  (via callee)
+details: Takes a panel column/row in r0/r1 from the caller and the battle object in r5. It computes (oBattleObject_Alliance
+  XOR oBattleObject_DirectionFlip) << 8 and saves it, calls object_getCoordinatesForPanels to turn the
+  column/row into 16.16 fixed-point pixel coordinates, then calls the type-4 effect-object spawner with
+  x in r1, y in r2, r3 = 0, and the effect parameter formed as 0x15 | ((alliance^directionFlip) << 8)
+  in r4/r0. Effect 0x15 with this side/direction-encoding prefix is the standard panel hit/spark effect
+  used by attack code; the XOR of alliance and direction flip encodes which of the four effect variants
+  to show.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#oBattleObject_Alliance] / eor with oBattleObject_DirectionFlip, lsl #8: variant
+    bits come from the object''s side and facing; bl object_getCoordinatesForPanels: caller args are panel
+    column/row converted to pixel x/y; ldr r4, =0x15; orr r4, r0: base effect id 0x15 ORed with the shifted
+    variant bits; bl spawn_t1_0x0_EffectObject: spawns the type-4 effect object at those coordinates;
+    Called from sub_810E5B0 and sub_810E6F6, executed during battlesweep routes (attack-processing context)'
+  refs:
+  - bn6f/asm/asm32.s:1690
+  - 0x0810E5B0 sub_810E5B0
+  - 0x0810E6F6 sub_810E6F6
+  - 0x0800E276 object_getCoordinatesForPanels
+  - 0x080E05F6 spawn_t1_0x0_EffectObject
+  reproduce: python3 tools/asmcat.py 0x0810E746
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- 'Exact meaning of effect 0x15 (which visual: buster hit, contact spark, etc.) not confirmed from code'
+- Whether the spawned-object pointer in r0 is consumed by the callers
+- The exact field layout of the type-4 effect object and how the <<8 variant bits map to its variant field
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810E746 -> battle_spawnPanelHitEffect
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810E746

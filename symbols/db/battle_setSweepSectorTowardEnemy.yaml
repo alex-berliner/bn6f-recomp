@@ -1,0 +1,51 @@
+name: battle_setSweepSectorTowardEnemy
+address: '0x08116210'
+kind: function
+status: probable
+summary: Stores at battle object +0x68 one of six sector codes (0-5) describing where the closest enemy
+  stands relative to the object (ahead/behind x above/below/same row), in facing-relative coordinates.
+interface: (r0 = battle object, r5 must also hold the same battle object) -> no return value (r0/r1 restored);
+  writes byte [obj+0x68] = 0..5
+details: 'Gets the object''s facing step via object_getEnemyDirection (+1 player side, -1 enemy side),
+  then flips the object''s alliance and calls battleObject_findClosestEnemyBattleObject_80103F8 to locate
+  the nearest opposing object. It reads the enemy''s panel coords from bytes 0x12/0x13, computes dx =
+  (obj.PanelX - enemy.x) * facingStep and dy = obj.PanelY - enemy.y, and classifies: same row ahead =
+  4, same row behind = 5, and the four diagonal quadrants as 0 (ahead+up), 2 (ahead+down), 1 (behind+up),
+  3 (behind+down), mirroring the six directions of a sweep/area attack. The result is stored with strb
+  r0,[r5,#0x68]. Quirk: the object pointer is passed in r0 but used via caller-set r5, and r0/r1 are saved
+  and restored across the whole body, so the function has no visible return value.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_getEnemyDirection then pop {r2}; mul r0,r2 -> dx is mirrored by facing so 'ahead'
+    is relative to the actor; eor r0,#1 on oBattleObject_Alliance before battleObject_findClosestEnemyBattleObject_80103F8
+    selects the opposing alliance; ldrb r2,[r0,#0x12]/[r0,#0x13] read the found enemy's panel X/Y to compare
+    with [r5,#oBattleObject_PanelX/Y]; the 0..5 strb to [r5,#0x68] exactly matches a 3x2 sector partition
+    (cmp r1,#0 same-row split; cmp r0,#1 / cmp r1,#1 diagonal quadrants); executed by the 'battlesweep'
+    route, consistent with a sweep-style attack direction chooser
+  refs:
+  - bn6f/asm/asm32.s:16187
+  - 0x08115FCE sub_8115FCE
+  - 0x080103F8 battleObject_findClosestEnemyBattleObject_80103F8
+  - 0x0800E2C0 object_getEnemyDirection
+  reproduce: python3 tools/asmcat.py 0x08116210
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- exact meaning of the values 0-5 stored at battle object +0x68 (which attack/AI state consumes them)
+- what sub_8115FCE does around the call (whether +0x68 is read as an attack direction index)
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8116210 -> battle_setSweepSectorTowardEnemy
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8116210

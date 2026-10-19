@@ -1,0 +1,51 @@
+name: object_timerDialogueUpdate
+address: '0x0812A028'
+kind: function
+status: probable
+summary: 'Per-frame object update: draws the object''s sprite if flagged, counts down a timer, and on
+  expiry switches state and runs text script 0x5E; also checks sub_813D648 each frame to branch into an
+  alternate state.'
+interface: (r5 = object state struct) -> void; sets [r5+1]/[r5+2] state bytes and [r5+0x10] substate when
+  timer expires, r0 clobbered
+details: This is a state-machine tick for an entity whose context pointer is in r5. Each frame it calls
+  sprite_drawIfFlagSet_812B504 (renders via sub_811FAF4 only when bit 4 of [r5+0x1B] is set), then decrements
+  the 16-bit timer at [r5+0x28]. When the timer reaches zero it writes 0x44 to [r5+1], 0 to [r5+2], and
+  5 to [r5+0x10] (state/substate fields), then calls chatbox_runScript_803FD9C_on_eTextScript201BA20 with
+  script index 0x5E to pop up dialogue. Every frame it also calls sub_813D648 and, when that returns zero,
+  takes a different transition, writing 0xC to [r5+1] and 8 to [r5+2]. The [r5+1]/[r5+2] pair looks like
+  a two-byte state/phase selector consumed by a dispatcher elsewhere.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl sprite_drawIfFlagSet_812B504 first: renders this entity''s sprite only if its flag bit 0x10
+    at [r5+0x1B] is set; ldrh/strh on [r5,#0x28] with sub #1 and bne: classic per-frame countdown timer
+    gate; on expiry writes state 0x44/0 and substate 5 then bl chatbox_runScript... with r0=0x5e: triggers
+    text script 0x5E; bl sub_813D648 followed by bne over the [r5+1]=0xC, [r5+2]=8 writes: a per-frame
+    condition selecting an alternate state transition'
+  refs:
+  - bn6f/asm/asm33.s:14345
+  - 0x08132280 chatbox_runScript_803FD9C_on_eTextScript201BA20
+  - 0x0812B504 sprite_drawIfFlagSet_812B504
+  - 0x0813D648 sub_813D648
+  reproduce: python3 tools/asmcat.py 0x0812A028
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- menus3
+open_questions:
+- What object/state table owns the [r5+1]/[r5+2] values 0x44/0 and 0xC/8 (dispatcher not among known callees)
+- What sub_813D648 checks (its result selects the transition)
+- Which in-game scene uses script index 0x5E of eTextScript201BA20
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_812A028 -> object_timerDialogueUpdate
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_812A028

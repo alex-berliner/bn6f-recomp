@@ -1,0 +1,48 @@
+name: ai_chargeFrontPanelAttackStep
+address: '0x081085C2'
+kind: function
+status: probable
+summary: 'AI attack routine: initializes a charged strike, periodically highlights the panel in front
+  of the user as a telegraph, and after a countdown sets the hit element to trigger the attack.'
+interface: (r7 = AI attack vars struct, r5 = battle object) -> void; updates oAIAttackVars_AttackElement/ChargeCycles/StepTimer/HitElement
+details: 'On first entry (AttackElement == 0) it arms the attack: sets AttackElement = 4, copies AttackBoost2
+  into StepTimer as the strike countdown, and clears ChargeCycles. Each subsequent tick increments ChargeCycles;
+  every 8th cycle (lsr #3 carry) it calls object_getFrontDirection and object_highlightPanelRegion to
+  flash the adjacent panel at (PanelX + dir, PanelY) with highlight type 2, telegraphing the attack. The
+  StepTimer counts down each tick and, when it reaches 0, sets HitElement = 0x14, presumably making the
+  pending strike hit that element/panel next.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne + mov #4 store: one-time attack init branch;
+    strh AttackBoost2 -> StepTimer, mov #0 -> ChargeCycles: countdown sourced from a per-AI tuning field;
+    lsr r0,#3 / bcs: highlightPanelRegion fires only every 8 charge cycles, a pulsing telegraph; bl object_getFrontDirection
+    + PanelX/PanelY/AllianceAndDirectionFlip into object_highlightPanelRegion: targets the panel facing
+    the user; sub StepTimer; bgt; mov #0x14 -> HitElement: when the countdown ends the attack resolves
+    with element 0x14'
+  refs:
+  - bn6f/asm/asm31.s:170681
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800CCD4 object_highlightPanelRegion
+  reproduce: python3 tools/asmcat.py 0x081085C2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- Which enemy/AI uses this attack and what element 4 and hit element 0x14 correspond to in the element
+  table
+- What the AI state machine does after HitElement is set (the actual damage-dealing step is elsewhere)
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_81085C2 -> ai_chargeFrontPanelAttackStep
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81085C2

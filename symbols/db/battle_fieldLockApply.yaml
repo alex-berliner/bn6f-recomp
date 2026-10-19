@@ -1,0 +1,60 @@
+name: battle_fieldLockApply
+address: '0x08128500'
+kind: function
+status: probable
+summary: Thin battle-handler wrapper that feeds the two-byte config at 2000FE0 and the caller object's
+  halfword param into the field-lock dispatch over all battle objects.
+interface: '(r5 = battle object/scene struct; args built internally: r0 = dword_2027590 context/table,
+  r1 = halfword [r5+0x1E], r2 = byte 2000FE0, r3 = byte 2000FE1) -> r0 = battle_fieldLockDispatch_8120018
+  result; flags clobbered'
+details: 'The function is a seven-instruction shim: it loads two adjacent bytes from the small state struct
+  at byte_2000FE0 (2000FE0 and 2000FE1), loads the fixed pointer dword_2027590, takes r1 from offset 0x1E
+  of the calling object in r5, and tail-calls battle_fieldLockDispatch_8120018, which performs the two-pass
+  lock/unlock of a field array across all battle objects before running a mode-dispatched handler. So
+  this routine''s only role is to supply that dispatcher''s arguments from persistent scratch state plus
+  the per-object halfword at +0x1E. It is invoked from the full battle-scene reset path (battle_sceneReset_8127A1C),
+  so it runs while the scene is being torn down/reinitialised. The 280-instruction count is misleading:
+  everything after pop {pc} at byte_812851C is unrelated data tables (byte arrays, index maps) placed
+  after the function, not code it executes. What the two bytes and the halfword mean (e.g. target object
+  id vs lock flags vs field mode) cannot be read from this shim alone — it depends on the callee''s contract
+  for r2/r3 and the meaning of dword_2027590.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r2,[r0] / ldrb r3,[r0,#1] load the pair at byte_2000FE0 as the dispatch''s r2/r3 args;
+    ldrh r1,[r5,#0x1e] takes the dispatch''s r1 from offset 0x1E of the caller''s object struct; ldr r0,off_8128518
+    passes fixed pointer dword_2027590 as the dispatch context/table; bl battle_fieldLockDispatch_8120018
+    then pop {pc}: pure argument-marshalling tail-call into the known field-lock dispatcher; only caller
+    is battle_sceneReset_8127A1C, whose summary is the full battle-scene reset that rebuilds battle object
+    state'
+  refs:
+  - bn6f/asm/asm33.s:10846
+  - 0x08127A1C battle_sceneReset_8127A1C
+  - 0x08127BE4 sub_8127BE4
+  - 0x08120018 battle_fieldLockDispatch_8120018
+  reproduce: python3 tools/asmcat.py 0x08128500
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- beastsp
+- menus3
+- story1
+- story2
+- story8
+open_questions:
+- meaning of the two bytes at byte_2000FE0 (lock flags? object ids? field coords?)
+- what dword_2027590 points to (dispatch table vs handler context) and how [r5+0x1E] indexes it
+- why reset calls it — whether it clears or reapplies per-object field locks during scene teardown
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8128500 -> battle_fieldLockApply
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8128500

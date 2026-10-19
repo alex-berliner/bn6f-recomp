@@ -1,0 +1,48 @@
+name: beastsp_feedBoardCodeInput
+address: '0x08136804'
+kind: function
+status: probable
+summary: On A/B/L/R presses during the Navi Customizer board, converts the selected cell's content into
+  a code input and feeds it to the BeastSP secret-code checker.
+interface: (r0 = new key bitmask, r5 = board state) -> void; [r5+0x17] code-progress index updated in
+  place
+details: r0 is a held/pressed key bitmask tested against 0x303 (A|B|L|R); if none pressed it returns immediately.
+  Otherwise it sums the two cursor coordinate fields at [r5+0x20] and [r5+0x24] and calls sub_8136290,
+  which returns a pointer whose halfword is the selected cell's value; subtracting 0x90 maps that cell
+  value onto a code-button id. That id and the running progress index [r5+0x17] go to beastsp_checkSecretCode,
+  which validates one step of the 10-input code (toggling 4 event flags on completion) and returns the
+  updated index, stored back to [r5+0x17]. The trailing byte tables (0x14,0xA... and repeated 0x30/0x32...
+  0x34... 0x38 patterns) look like neighboring cell/palette layout data rather than code data.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'tst r0, r1 with dword_8136824 = 0x303 gates on A/B/L/R presses before doing anything; ldrh
+    [r0] after sub_8136290, then sub r0, #0x90: cell value converted to a code symbol; bl beastsp_checkSecretCode
+    with r1 = [r5+0x17] and strb r0, [r5+0x17]: stateful code-entry step, matching that callee''s summary;
+    Caller navicust_handleBoardInput supplies the key bitmask and owns the cursor fields at r5+0x20/0x24'
+  refs:
+  - bn6f/asm/asm36.s:13555
+  - 0x08135830 navicust_handleBoardInput
+  - 0x0813C334 beastsp_checkSecretCode
+  - 0x08136290 sub_8136290
+  reproduce: python3 tools/asmcat.py 0x08136804
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- beastsp
+open_questions:
+- Exact meaning of sub_8136290's arguments/return (grid lookup into what structure) not verified
+- Which BeastSP unlock flags beastsp_checkSecretCode toggles (the 4 event-flag ids)
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8136804 -> beastsp_feedBoardCodeInput
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8136804

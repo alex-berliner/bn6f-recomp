@@ -1,0 +1,46 @@
+name: ow_storeFacingDir4to7
+address: '0x0809B7EC'
+kind: function
+status: probable
+summary: Reads the player's overworld facing direction, remaps it from 0-3 to 4-7, and stores it in a
+  byte field of the object at r5.
+interface: (r5 = object struct, not passed in r0-r3) -> r0 = 0; writes byte at [r5,#5]
+details: Calls GetOWPlayerFacingDirection (returns 0-3 for down/left/right/up presumably), then adds 4
+  and masks with 7, yielding values 4-7. That value is stored as a byte at offset 5 of the structure in
+  r5. The +4 remap suggests offset 5 holds an enum where 0-3 are already used for something else (e.g.
+  four facing values of a different sprite set, or NPC-relative directions) and 4-7 denote 'same as player,
+  shifted'. Always returns 0, so callers likely ignore or use it as success. Note r5 is not set up in
+  this function, so it relies on a caller convention not visible here.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl GetOWPlayerFacingDirection at start: input is the player''s overworld facing; add r0,#4;
+    mov r1,#7; and r0,r1: maps direction 0-3 to 4-7; strb r0,[r5,#5]: single byte written to offset 5
+    of r5 struct; mov r0,#0 before pop: fixed zero return value; 10-instruction body with no other side
+    effects: pure ''derive and store direction'' helper'
+  refs:
+  - bn6f/asm/asm28_0.s:3371
+  - 0x0809E2B8 GetOWPlayerFacingDirection
+  reproduce: python3 tools/asmcat.py 0x0809B7EC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- beastsp
+open_questions:
+- No callers known, so the identity of the r5 structure and the meaning of the 4-7 encoding at offset
+  5 are unconfirmed
+- Whether offset 5 is an animation/frame index, a facing field of an NPC/beast-out object, or something
+  else
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_809B7EC -> ow_storeFacingDir4to7
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_809B7EC

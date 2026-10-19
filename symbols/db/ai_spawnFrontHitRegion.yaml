@@ -1,0 +1,47 @@
+name: ai_spawnFrontHitRegion
+address: '0x08115D76'
+kind: function
+status: probable
+summary: Spawns a battle collision region on the panel in front of an AI attacker, carrying its damage/extra
+  damage.
+interface: (r5 = battle object, r7 = oAIAttackVars struct) -> r0 = spawned region?; flags clobbered by
+  calls
+details: Reads Damage and ExtraDamage from the r7 AI attack vars struct and packs them (damage | extra<<16)
+  into r6 as the region's damage word. Calls object_getFrontDirection on r5 to get the +1/-1 facing multiplier,
+  adds it to the object's PanelX to get the target panel column, using PanelY as the row and InitFlag
+  from the attack vars. Then calls object_spawnCollisionRegion with r4=0x705FF04 (a pointer, likely region
+  descriptor/callback data) and r7=3, then returns. Effectively a helper that materializes an AI attack's
+  hitbox one panel ahead of the user.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrh r0,[r7,#oAIAttackVars_Damage] / ldrh r1,[r7,#oAIAttackVars_ExtraDamage]; orr r0,r1,lsl#16
+    packs damage fields; bl object_getFrontDirection + add r0,r0,[r5,#oBattleObject_PanelX] computes front
+    panel X; ldr r4,=0x705FF04 / ldr r7,=3 passed as fixed args to object_spawnCollisionRegion; only callees
+    are object_getFrontDirection and object_spawnCollisionRegion, matching a spawn-hitbox helper
+  refs:
+  - bn6f/asm/asm32.s:15648
+  - 0x08115CF8 sub_8115CF8
+  - 0x0800E2CA object_getFrontDirection
+  - 0x080C536A object_spawnCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x08115D76
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- Meaning of the 0x705FF04 pointer and the type value 3 passed to object_spawnCollisionRegion
+- Which AI attack(s) call the caller sub_8115CF8, to name the attack specifically
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8115D76 -> ai_spawnFrontHitRegion
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8115D76

@@ -1,0 +1,50 @@
+name: battle_getUnoccupiedRowMask
+address: '0x0810A7E0'
+kind: function
+status: probable
+summary: Returns a 3-bit mask of battle rows that no enemy of the acting object's alliance currently occupies
+  or is moving into.
+interface: (r5 = acting battle object, Alliance read from it) -> r0 = row bitmask, bit (y-1) set when
+  row y is free; flags set by final cmp/sub
+details: 'Builds a stack array of up to 7 enemy object pointers via object_getEnemyByNameRange (args:
+  buffer, 7, name/range 0xC, alliance from [r5,#oBattleObject_Alliance]). For each found enemy it takes
+  oBattleObject_PanelY, or oBattleObject_FuturePanelY when oBattleObject_CurAction == 0xA (object mid-move),
+  and clears bit (y-1) in r4. r4 starts at 7, so bits 0-2 correspond to the three rows of the battle field
+  and higher bits are never set. The returned mask thus marks rows with no standing or incoming enemy;
+  the caller (Piranha panel picker sub_810A724) can use it to pick a valid target row.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_getEnemyByNameRange with r0=stack buffer, r1=7, r2=0xC, r3=[r5,#oBattleObject_Alliance]
+    fills the enemy list; loop reads [r6,#oBattleObject_PanelY], switching to #oBattleObject_FuturePanelY
+    when [r6,#oBattleObject_CurAction]==0xa; bic r4, r2 after lsl r2, r1 with r1=y-1 removes each occupied
+    row''s bit from r4; r4 initialized to 7 and returned in r0, so set bits are the unoccupied rows 1..3;
+    caller sub_810A724 is the Piranha panel picker validating panels and rolling GetPositiveSignedRNG
+    % count'
+  refs:
+  - bn6f/asm/asm31.s:174992
+  - 0x0810A724 sub_810A724
+  - 0x0800EBD4 object_getEnemyByNameRange
+  reproduce: python3 tools/asmcat.py 0x0810A7E0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- exact meaning of arguments 7 and 0xC to object_getEnemyByNameRange (max count vs name-range id)
+- whether the enemy list is inclusive or exclusive of the given alliance
+- how the caller consumes the returned mask (row selection vs exclusion)
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810A7E0 -> battle_getUnoccupiedRowMask
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810A7E0

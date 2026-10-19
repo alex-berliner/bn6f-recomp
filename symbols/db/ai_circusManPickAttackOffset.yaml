@@ -1,0 +1,47 @@
+name: ai_circusManPickAttackOffset
+address: '0x080FE9B0'
+kind: function
+status: probable
+summary: Picks a random target offset (row/column position) for a CircusMan attack, shifted by 0x3C when
+  a panel/object flag is set.
+interface: (r5 = CircusMan battle object) -> r0 = computed position offset; flags clobbered by calls
+details: Draws two random values with sub_800FE28 over the small tables at byte_80FE9DC (word of 0xE,
+  then word of 0), adds the second draw multiplied by the object's field at oBattleObject_ExtraVars+8
+  to the first, then tests the object's flag word (object_getFlag) against 0xA000 and adds 0x3C (a 3-panel
+  step) if set. The result is a position offset for the attack chosen by ai_circusManAttackInit, which
+  then stores it in the per-attack state and enters attack state 0xA.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: two bl sub_800FE28 calls with byte_80FE9DC and byte_80FE9DC+4 are random draws (tables hold
+    0xE,0xE,0xE,0xE then zeros); mul r0, r1 with [r5,#oBattleObject_ExtraVars+8] scales one draw by a
+    per-object field; tst r0, 0xa000 on object_getFlag result gates the +0x3C displacement; sole caller
+    0x080FEB20 ai_circusManAttackInit sets up CircusMan's attack state and uses this result
+  refs:
+  - bn6f/asm/asm31.s:150224
+  - 0x080FEB20 ai_circusManAttackInit
+  - 0x0801A166 object_getFlag
+  - 0x0800FE28 sub_800FE28
+  reproduce: python3 tools/asmcat.py 0x080FE9B0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- exact semantics of sub_800FE28 (weighted pick vs rand-below-N) and what the +4 zero table contributes
+- meaning of the 0xA000 flag bit and the object field multiplied in; exact position encoding (what unit
+  0x3C represents)
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80FE9B0 -> ai_circusManPickAttackOffset
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FE9B0

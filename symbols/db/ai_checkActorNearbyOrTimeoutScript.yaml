@@ -1,0 +1,51 @@
+name: ai_checkActorNearbyOrTimeoutScript
+address: '0x0810FE18'
+kind: function
+status: probable
+summary: AI script step that scans the battlefield for any actor with a nonzero parameter near (0x60,0x5b,0x60);
+  if found it sets script 8 to keep going, otherwise it times out after 3 ticks (or honors a one-shot
+  flag) and switches to script 4 with ExtraVars=1.
+interface: (r0 = collision region id, r5 = battle object ptr, r6 = AI state ptr) -> r0 = count/sum result
+  from scan; sets [r5+0x66] counter, [r5+0x7d] flag, [r5+ExtraVars], [r6+scriptId]
+details: 'First it stores collision region 1 into the object''s collision data via object_setCollisionRegion.
+  It then calls FindBattleActorsWithNonzeroParam_ReturnCountAndSum with (0x60,0x5b,0x60), presumably an
+  x/y/radius or panel search; if the returned count is nonzero it simply returns, leaving the AI to its
+  current flow. When nothing is found, a one-shot flag at [r5+0x7d] short-circuits to the transition path
+  (clear the flag, ExtraVars=1, scriptId=4). Otherwise a retry counter at [r5+0x66] is incremented: while
+  it stays at or below 2 the function sets scriptId=8 (retry/keep waiting), and on the third failure it
+  resets the counter, sets ExtraVars=1 and scriptId=4 (give up / advance). r5 and r6 are preserved caller-provided
+  object/state pointers, consistent with an AI script opcode handler.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_setCollisionRegion with r0=1 arms collision region 1 before the scan; bl FindBattleActorsWithNonzeroParam_ReturnCountAndSum
+    called with (0x60,0x5b,0x60); cmp r0,#0 / bne exits silently when an actor is present; counter at
+    [r5+0x66] incremented and cmp r1,#2 / ble keeps scriptId=8 for up to 3 empty scans; fallback path
+    writes ExtraVars=1 and scriptId=4 via strb r0,[r6,#oAIState_ScriptId]; one-shot byte [r5+0x7d] set
+    skips the counter and forces the same script 4 transition
+  refs:
+  - bn6f/asm/asm32.s:4300
+  - 0x0801A07C object_setCollisionRegion
+  - 0x08109630 FindBattleActorsWithNonzeroParam_ReturnCountAndSum
+  reproduce: python3 tools/asmcat.py 0x0810FE18
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- Which AI script/opcode table invokes this (no known caller) and what scripts 4 and 8 do in that enemy's
+  script set
+- Exact meaning of the (0x60,0x5b,0x60) search arguments and of ExtraVars=1 in the object structure
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810FE18 -> ai_checkActorNearbyOrTimeoutScript
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810FE18

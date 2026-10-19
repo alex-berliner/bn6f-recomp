@@ -1,0 +1,43 @@
+name: ai_setEntityGuardState
+address: '0x080E7AA0'
+kind: function
+status: probable
+summary: 'Marks an entity as a guard-type object: writes guard id 4 into its state byte and clears its
+  timer halfword.'
+interface: (r0 = entity/object pointer) -> r0 = none; no flags meaningful
+details: Null-checks the pointer, then stores the byte 4 at offset +0x9 and zero to the halfword at +0xA
+  of the structure. Given the sole caller ai_guardAttackStep (which converts the enemy into a guard object
+  for a timed duration), offset +0x9 is an object kind/state byte where 4 means 'guard', and +0xA is a
+  counter or duration field reset to 0 so the guard state starts fresh. The routine is a tiny two-field
+  setter with a defensive null check.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'tst r0,r0 / beq: pointer is an optional struct handle, not a value; mov r1,#4; strb r1,[r0,#9]:
+    writes constant 4 to the object''s kind/state byte; mov r1,#0; strh r1,[r0,#0xa]: clears an adjacent
+    halfword, consistent with resetting a duration counter; only caller ai_guardAttackStep turns the enemy
+    into a guard object, matching the constant 4'
+  refs:
+  - bn6f/asm/asm31.s:102943
+  - 0x080FC3E2 ai_guardAttackStep
+  reproduce: python3 tools/asmcat.py 0x080E7AA0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- exact meaning of the +0x9 byte (object kind vs. AI state) and the +0xA halfword (timer vs. counter)
+  needs more callers or the entity struct layout to confirm
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80E7AA0 -> ai_setEntityGuardState
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E7AA0

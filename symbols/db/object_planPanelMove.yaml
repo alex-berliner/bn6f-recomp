@@ -1,0 +1,54 @@
+name: object_planPanelMove
+address: '0x0810FF68'
+kind: function
+status: probable
+summary: Reserves the panel under battle object r5, runs three movement/validity checks that may yield
+  new panel coordinates, then releases the panel reservation and returns the chosen coordinates.
+interface: (r5 = battle object) -> r0 = panel X, r1 = panel Y on the all-checks-fail path; on an early
+  exit r0/r1 are whatever the succeeding check returned; calls object_reservePanel and object_removePanelReserve
+details: 'The function first reads oBattleObject_PanelX/PanelY from the object in r5 and calls object_reservePanel
+  to claim that panel (presumably for this object). It then calls three helper checks (sub_810FF9C, sub_810FFC4,
+  sub_8110000) in sequence; if any returns nonzero in r0 it branches straight to the epilogue, keeping
+  whatever r0/r1 that check produced, and only if all three return zero does it reload r5''s current PanelX/PanelY.
+  In both cases it pushes r0/r1, calls object_removePanelReserve on r5''s panel coords to release the
+  previous reservation, pops r0/r1 back, and returns. The structure strongly suggests a per-object relocation
+  step: try candidate destinations via the three checks, fall back to the current panel, and always release
+  the old reservation. The checks'' meaning and the exact contents returned on the early-exit path are
+  not visible from this routine alone.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#oBattleObject_PanelX]/ldrb r1,[...PanelY]; bl object_reservePanel — reserves the
+    panel at the object's own coordinates; three bl calls each followed by tst r0,r0 / bne loc_810FF8E
+    — early exit when a check succeeds; fall-through path reloads r5's PanelX/PanelY before loc_810FF8E
+    — default result is the current panel; push {r0,r1}; ldrb coords from r5; bl object_removePanelReserve;
+    pop {r0,r1} — always releases the reservation, preserving the chosen coords as the return value; runs
+    on the recorded 'battlesweep' route and touches only oBattleObject_PanelX/PanelY — battle object panel-bookkeeping,
+    hence the object prefix
+  refs:
+  - bn6f/asm/asm32.s:4480
+  - 0x0801BB46 object_removePanelReserve
+  - 0x0801BB1C object_reservePanel
+  - 0x0810FF9C sub_810FF9C
+  reproduce: python3 tools/asmcat.py 0x0810FF68
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- What sub_810FF9C, sub_810FFC4 and sub_8110000 actually test (adjacent-panel occupancy, blocked directions,
+  phase state?) and whether they return coordinates or a flag in r0/r1
+- No known caller, so the caller context (which object uses this, and when in the battle loop) is unconfirmed
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810FF68 -> object_planPanelMove
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810FF68

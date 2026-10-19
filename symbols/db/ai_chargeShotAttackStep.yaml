@@ -1,0 +1,54 @@
+name: ai_chargeShotAttackStep
+address: '0x080FFDAC'
+kind: function
+status: probable
+summary: 'Per-frame AI attack handler: on the first call it puts the object into a charge (anim 6, element
+  4) with a timer, and once the countdown reaches the cycle point it fires (anim 7 + sound 0xBA), aborting
+  with HitElement=0x10 if the timer runs out first.'
+interface: (r5 = battle object, r7 = AI attack vars struct) -> r0 = destroyed; sets AttackElement, CurAnim,
+  ScratchVar, StepTimer, HitElement fields
+details: 'On entry it checks oAIAttackVars_AttackElement: if zero it starts the attack by writing element
+  4, setting oBattleObject_CurAnim to 6 (charge pose), calling sub_80E71A0 whose result is stored in oAIAttackVars_ScratchVar
+  (likely attack power/params), arming object_setCounterTime(0xC), and loading oAIAttackVars_StepTimer
+  with TimerOrCycles+0xF. On later calls it decrements StepTimer: when it equals oAIAttackVars_TimerOrCycles
+  (i.e. 15 frames after charging) it calls sub_810007C (presumably spawning the projectile), sets CurAnim
+  to 7 (fire pose) and plays sound effect 0xBA. If StepTimer instead counts down to 0 without reaching
+  the cycle value, it writes 0x10 into oAIAttackVars_HitElement, ending/aborting the attack. The ScratchVar
+  from sub_80E71A0 and the exact behavior of sub_810007C are unverified.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'first-entry branch sets AttackElement=4, CurAnim=6, calls sub_80E71A0 into ScratchVar, object_setCounterTime(0xC),
+    StepTimer=TimerOrCycles+0xF; countdown branch: StepTimer==TimerOrCycles triggers sub_810007C, CurAnim=7
+    and PlaySoundEffect(0xBA) — a charge-then-fire pattern; timer expiring (<=0) without firing writes
+    0x10 to oAIAttackVars_HitElement, an abort/finish marker; callees PlaySoundEffect and object_setCounterTime
+    are known engine/battle helpers used by attack routines'
+  refs:
+  - bn6f/asm/asm31.s:152816
+  - 0x080005CC PlaySoundEffect
+  - 0x0800E9DC object_setCounterTime
+  - 0x080E71A0 sub_80E71A0
+  reproduce: python3 tools/asmcat.py 0x080FFDAC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- what sub_80E71A0 returns into oAIAttackVars_ScratchVar (power? element-dependent value?)
+- what sub_810007C spawns (the projectile/hitbox type)
+- which enemy/element value 4 corresponds to, and why TimerOrCycles+15 is the fire timing
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80FFDAC -> ai_chargeShotAttackStep
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FFDAC

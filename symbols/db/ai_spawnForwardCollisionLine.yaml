@@ -1,0 +1,47 @@
+name: ai_spawnForwardCollisionLine
+address: '0x080F99CA'
+kind: function
+status: probable
+summary: Spawns three collision-region panels in a line 1-3 panels ahead of an enemy, dealing the attack's
+  damage on each.
+interface: (r5 = battle object, r7 = oAIAttackVars) -> r0 = ?; clobbers r4-r7 (saved/restored)
+details: Loops r4 = 1..3; each iteration computes frontDirection * r4 + the actor's PanelX to place a
+  collision region progressively farther in front (PanelY fixed). It passes oAIAttackVars_InitFlag as
+  one arg, 0 as another, reads oAIAttackVars_Damage into r6, and uses the constants 0x400FF01 (flags/type
+  for object_spawnCollisionRegion) and 3 (likely region lifetime or size). The damage comes from a shared
+  AI attack-variable struct, so the caller sets up Damage and InitFlag before invoking this. The register-argument
+  convention (r4-r7) matches the spawnCollisionRegion callee rather than this routine's own signature.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'loop: mov r4,#1 ... add r4,#1; cmp r4,#3; ble loc_80F99CE - three placements at increasing
+    offsets; mul r0,r4 on object_getFrontDirection result plus ldrb PanelX gives x = panelX + dir*1..3;
+    ldr r6,[r7,#oAIAttackVars_Damage] feeds the spawned region''s damage; dword_80F99F4 = 0x400FF01 and
+    dword_80F99F8 = 3 are the spawn parameter constants; callee object_spawnCollisionRegion confirms a
+    battle collision region is created each iteration'
+  refs:
+  - bn6f/asm/asm31.s:139937
+  - 0x080F94D8 sub_80F94D8
+  - 0x0800E2CA object_getFrontDirection
+  - 0x080C536A object_spawnCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080F99CA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- exact meaning of 0x400FF01 flags and the constant 3 (lifetime vs size) in object_spawnCollisionRegion
+- what sub_80F94D8 does to set up oAIAttackVars before calling this
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F99CA -> ai_spawnForwardCollisionLine
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F99CA

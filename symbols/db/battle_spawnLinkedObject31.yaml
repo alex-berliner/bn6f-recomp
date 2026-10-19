@@ -1,0 +1,51 @@
+name: battle_spawnLinkedObject31
+address: '0x080E3FB4'
+kind: function
+status: probable
+summary: Spawns a battle object (type-4, id 0x31) as a child of the calling battle object and back-links
+  it via RelatedObject1Ptr.
+interface: (r5 = parent battle object; other args forwarded to object_spawnType4) -> returns new object
+  in r0; new object's RelatedObject1Ptr = parent r5
+details: Saves the incoming r5 (the 'self' battle object, passed in r5 rather than the usual ABI) into
+  r6, then calls object_spawnType4 with r0 = 0x31. The spawn wrapper returns the newly created battle
+  object in r5 (r5 is only restored by the pop, so the callee's r5 is used). The function then stores
+  the saved parent pointer (r6) into the new object's oBattleObject_RelatedObject1Ptr field, making the
+  spawned object point back at its owner. This is the standard pattern for attached child objects (auras,
+  effects, held entities) in battle. The literal 0x31 selects which kind of child object is created; what
+  entity that id corresponds to is not shown here.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'mov r6, r5 before the call and pop {r5,r6,pc} without reloading r5 show r5 is both input and
+    callee-returned value; mov r0, #0x31 then bl object_spawnType4: spawns battle object id 0x31 via the
+    type-4 spawn wrapper; str r6, [r0, #oBattleObject_RelatedObject1Ptr] after the call links the new
+    object back to the original r5 pointer; callers sub_80C2FBC/sub_80F09DC etc. run on the battlesweep
+    route, consistent with in-battle spawning'
+  refs:
+  - bn6f/asm/asm31.s:94714
+  - 0x080C2FBC sub_80C2FBC
+  - 0x080D1610 sub_80D1610
+  - 0x080F09DC sub_80F09DC
+  - 0x080033AC object_spawnType4
+  reproduce: python3 tools/asmcat.py 0x080E3FB4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- which battle entity id 0x31 is (needs the spawn-type table or the spawned object's initializer)
+- what the other spawn parameters (r1-r3/stack) passed through to object_spawnType4 mean
+- which specific callers use it and in what context (enemy AI effect, obstacle, etc.)
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80E3FB4 -> battle_spawnLinkedObject31
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E3FB4

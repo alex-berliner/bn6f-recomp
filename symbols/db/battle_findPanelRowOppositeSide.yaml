@@ -1,0 +1,51 @@
+name: battle_findPanelRowOppositeSide
+address: '0x080F9980'
+kind: function
+status: probable
+summary: 'Thin battle-AI wrapper: asks object_getClosestPanelMatchingRowFiltered whether a panel matching
+  a filter byte exists on the opposite side of the arena, returning the row index or 0.'
+interface: (r0 = struct whose +0x13 byte is the filter/match value; r5 = battle object whose alliance
+  byte selects the side) -> r0 = matching row index, or 0 if none; flags clobbered by callee
+details: 'The routine loads r1 from [r0,#0x13] (a filter byte consumed by the callee''s matching check)
+  and reloads r0 with the alliance/side byte at oBattleObject_Alliance of the object in r5, then tail-calls
+  object_getClosestPanelMatchingRowFiltered. The callee scans rows on the side opposite the given side,
+  up to six panels behind, and returns the first row whose panel passes the filter and validity checks.
+  Back in the wrapper, tst r0,r0 / bne passes a nonzero row straight through; the ''mov r0,#0'' on the
+  zero path is redundant since r0 is already 0. So the whole function is just a parameter-marshalling
+  wrapper: side comes from the r5 object, the match criterion from the r0 struct. Given it runs under
+  the battlesweep route, it is most plausibly an enemy-AI/battle-script condition or targeting helper.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r1,[r0,#0x13] then ldrb r0,[r5,#oBattleObject_Alliance] before bl object_getClosestPanelMatchingRowFiltered
+    — side from r5's object, filter from r0 struct; tst r0,r0 / bne locret / mov r0,#0 — pure result passthrough,
+    wrapper does no computation of its own; callee's known summary (rows opposite the side, six panels
+    back, filter+validity) matches the two arguments supplied here; recorded execution under battlesweep
+    places it in battle/enemy-AI logic rather than overworld or menu code
+  refs:
+  - bn6f/asm/asm31.s:139889
+  - 0x0800D086 object_getClosestPanelMatchingRowFiltered
+  reproduce: python3 tools/asmcat.py 0x080F9980
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- no callers known, so the identity of the r0 struct and the meaning of its +0x13 byte (panel type? object
+  id? column?) is unconfirmed
+- whether r5 is set to the same object as r0 by the caller, or points to a different battle object
+- exact semantics of the alliance byte passed as the callee's first argument (side vs full object pointer)
+  could be re-checked in object_getClosestPanelMatchingRowFiltered itself
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F9980 -> battle_findPanelRowOppositeSide
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F9980

@@ -1,0 +1,51 @@
+name: object_checkPanelTwoBehind
+address: '0x08103936'
+kind: function
+status: probable
+summary: Returns 1 if the panel two tiles behind the battle object's facing matches the required/forbidden
+  panel-flag masks, else 0.
+interface: (r0 = battle object ptr, r1 = unused, r2 = required-flag mask, r3 = forbidden-flag mask) ->
+  r0 = 1/0 panel test result; flags from tst
+details: Reads the object's panel coordinates from bytes +0x12 (X) and +0x13 (Y). Calls object_getFrontDirection
+  (+1/-1 alliance-facing multiplier), negates and doubles it to get an X offset of -2 or +2, and adds
+  it to the object's X, so the tested panel lies two tiles on the side opposite the object's front. It
+  then calls object_checkPanelParameters(panelX, panelY, r2, r3) and additionally pushes the computed
+  X and Y as two stack arguments before the call (an extra 6-arg passing the callee apparently ignores).
+  The result of checkPanelParameters is returned directly; the bne/mov r0,#0 sequence only zeroes r0 on
+  failure, leaving the callee's 1 intact on success. Likely used by an attack/hitbox routine that targets
+  the space behind the user.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r4,[r0,#0x12] / ldrb r6,[r0,#0x13] load the object's panel X/Y bytes; bl object_getFrontDirection;
+    neg r0,r0; mov r1,#2; mul r0,r1 computes a -2*direction X offset; bl object_checkPanelParameters with
+    (offsetX, y, r2, r3) matches its (x, y, requiredMask, forbiddenMask) signature; bne loc_8103962 skips
+    mov r0,#0, so the callee's 1/0 result is passed through unchanged; push {r0,r1} right before bl passes
+    the computed coords again as stack args 5/6, which the callee's known behavior ignores
+  refs:
+  - bn6f/asm/asm31.s:160749
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x08103936
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- Why the two extra stack arguments are pushed for object_checkPanelParameters — its full signature may
+  take 6 args
+- Which caller invokes this (no callers known) and what chip/entity uses a 'two tiles behind' panel test
+- Whether +0x12/+0x13 are panel coords or a different offset field
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8103936 -> object_checkPanelTwoBehind
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8103936

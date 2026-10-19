@@ -1,0 +1,57 @@
+name: ai_pickMoveTargetPanel
+address: '0x08113F94'
+kind: function
+status: probable
+summary: Battle AI helper that selects a destination panel for the object in r5 — trying a random effect-checked
+  panel, then a random alliance-parameter panel, falling back to the object's own panel — and clears the
+  panel reservation on the chosen tile.
+interface: (r5 = battle object) -> r0 = chosen panel X, r1 = chosen panel Y; flags clobbered by calls
+details: 'Reads the object''s PanelX/PanelY from the battle-object struct (r5) and first reserves that
+  panel via object_reservePanel, likely so the random pickers won''t (re)select the tile it already occupies.
+  It then calls ai_pickRandomPanelEffectCheck; if it returns nonzero, its r0/r1 panel coords are kept,
+  otherwise battle_pickAllianceParamPanel is tried as a second candidate source, and if that also fails
+  the object''s own panel coords are used. The chosen coords are pushed, and object_removePanelReserve
+  is called with them (and r5) to release the reservation on the final panel before returning the coords
+  in r0/r1. Quirk: the release is applied to the chosen panel, which exactly undoes the initial reserve
+  only in the own-panel fallback case, suggesting the pickers or the caller rely on reservation bookkeeping
+  being cleared for the selected tile. Runs only in battle (battlesweep routes), consistent with enemy
+  movement/positioning AI.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0/r1 from [r5,#oBattleObject_PanelX/Y] then bl object_reservePanel: initial reserve of
+    the object''s own panel; bl ai_pickRandomPanelEffectCheck; tst r0,r0; bne loc_8113FB2 keeps that call''s
+    r0/r1 coords on success; bl battle_pickAllianceParamPanel as second-chance random panel source, same
+    tst/bne pattern; fallback at loc_8113FB2 reloads the object''s own PanelX/PanelY when both pickers
+    fail; push {r0,r1} ... pop {r0,r1} before bl object_removePanelReserve releases the reservation on
+    the chosen panel'
+  refs:
+  - bn6f/asm/asm32.s:12190
+  - 0x08114040 ai_pickRandomPanelEffectCheck
+  - 0x08114060 battle_pickAllianceParamPanel
+  - 0x0801BB46 object_removePanelReserve
+  reproduce: python3 tools/asmcat.py 0x08113F94
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- Why object_reservePanel is called on the object's own panel up front (exclusion from random picks vs.
+  side-effect on the reserver flag) is not visible without reading object_reservePanel's body
+- Whether the random pickers themselves reserve the panel they return, which would explain unconditionally
+  removing the reservation on the chosen panel
+- Which AI routine calls this and what it does with the returned panel coords (move target vs. attack
+  placement)
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8113F94 -> ai_pickMoveTargetPanel
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8113F94

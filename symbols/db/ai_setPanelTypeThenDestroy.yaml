@@ -1,0 +1,46 @@
+name: ai_setPanelTypeThenDestroy
+address: '0x080D7008'
+kind: function
+status: probable
+summary: Battle object phase handler that turns the panel under it into a new panel type, waits Param2
+  frames, then removes itself.
+interface: (r5 = battle object) -> void; sets object state to CUR_STATE_DESTROY when timer expires
+details: On first invocation (CurPhase == 0) it advances the object to phase 4, switches its sprite to
+  animation 0x13, and calls object_setPanelType with its own PanelX/PanelY and type 6, then loads oBattleObject_Param2
+  into the Timer. On every later call it decrements Timer; once it reaches 0 it calls object_clearCollisionRegion
+  to leave the collision grid and writes CUR_STATE_DESTROY into CurState, so the object engine despawns
+  it. Panel type 6 combined with a one-shot spawn-animate-wait-destroy pattern fits a terrain-modifying
+  effect object (e.g. grass/seed panel changer).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb/mov #4/strb to oBattleObject_CurPhase guards one-time init on entry; bl object_setPanelType
+    with r0/r1 = PanelX/PanelY and r2 = 6 sets the panel under the object; strh Param2 -> Timer then sub
+    #1/bgt implements a Param2-frame delay; bl object_clearCollisionRegion + CUR_STATE_DESTROY on timer
+    expiry despawns the object; callees object_setPanelType/object_clearCollisionRegion are the known
+    battle terrain/collision setters'
+  refs:
+  - bn6f/asm/asm31.s:66890
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0800CC0A object_setPanelType
+  reproduce: python3 tools/asmcat.py 0x080D7008
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- Which battle effect or enemy uses this (no callers known), and what panel type 6 is named in the project's
+  enum
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D7008 -> ai_setPanelTypeThenDestroy
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D7008

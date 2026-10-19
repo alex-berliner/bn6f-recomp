@@ -1,0 +1,50 @@
+name: battle_scenarioEffectInputStep
+address: '0x080896D4'
+kind: function
+status: probable
+summary: 'State-machine step for the scenario effect screen: polls the chip-select input handler and either
+  starts the camera script or advances the state byte to 0x10/0x18 depending on which button was pressed.'
+interface: (no args; r5 = caller-set pointer to a state/state-machine byte) -> r0 = 1 always; no flags
+  used by caller
+details: Calls battleObject_scenarioEffectInputHandler_8089704, which maps A/B/L/R joypad input over the
+  active scenario-effect slot, and dispatches on its return code. Code 1 leads to cutscene_startCameraScript
+  (advancing to the scripted camera part). Code 2 writes 0x10 into the byte at [r5], and any other nonzero
+  code runs sub_8089CDC then sub_80468EC(1) and writes 0x18 to [r5], i.e. distinct follow-up states. Code
+  0 (no input) does nothing. It always returns 1, typical of a 'still running / handled' step result in
+  this state-machine style. r4-r7 are saved but r5 is only read here, so the caller must have loaded the
+  context pointer before calling.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl battleObject_scenarioEffectInputHandler_8089704 then beq/cmp #1/cmp #2 dispatch on its return
+    code; cmp r0,#2 / mov r0,#0x10 / strb r0,[r5] writes next-state 0x10 on one input; fallthrough path:
+    bl sub_8089CDC, bl sub_80468EC(1), mov r0,#0x18 / strb r0,[r5] writes next-state 0x18; cmp r0,#1 /
+    beq loc_80896FA / bl cutscene_startCameraScript advances to the camera script on code 1; loc_8089700:
+    mov r0,#1 / pop — unconditional 1 return, step-handler convention'
+  refs:
+  - bn6f/asm/asm23.s:928
+  - 0x08089704 battleObject_scenarioEffectInputHandler_8089704
+  - 0x08089CC4 cutscene_startCameraScript
+  - 0x080468EC sub_80468EC
+  reproduce: python3 tools/asmcat.py 0x080896D4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- beastsp
+open_questions:
+- which caller sets r5 and what structure the 0x10/0x18 state bytes belong to
+- which physical buttons map to handler codes 1/2/other (only the callee's summary hints at A/B/L/R)
+- what sub_8089CDC and sub_80468EC do in the 0x18 path
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80896D4 -> battle_scenarioEffectInputStep
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80896D4

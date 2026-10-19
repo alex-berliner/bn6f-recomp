@@ -1,0 +1,54 @@
+name: navicust_checkEquipDialogs
+address: '0x081370D4'
+kind: function
+status: probable
+summary: NaviCust menu handler that validates the player's part setup, pops the matching warning dialog
+  (script 0x10/0x11/0x12/0x14) and writes the next menu state (0x34/0x38) to [r5].
+interface: (r5 = state-out byte ptr, r7 = naviCust menu context) -> r0 = last dialog/param result; [r5]
+  = next state 0x34 or 0x38; no branch flags of use
+details: 'First closes/resets dialog slot 0x3F8 via sub_8137670, bails if byte [r7,#0xd] is set, and returns
+  early when sub_8137648(0, 0xa) reports equality (likely a fade/transition-done check). When context
+  state [r7,#2]==4 it reads halfword [r7,#0x20]: value 1 or 2 shows dialog 0x10/0x11 and sets next state
+  0x34; otherwise it passes param 1 to sub_8137670, shows dialog 0x14, calls sub_81375D8 and sets state
+  0x38. When state==8 it reads halfwords [r7,#0x28] and [r7,#0x2c] as (base,index) into battle_checkItemFlagFor_813B9B4,
+  which probes the toolkit flag array at 0x200414C with 7-byte stride; if the flag is set it shows dialog
+  0x12, sets state 0x34 and clears the dialog param. The four dialog ids and two result codes make this
+  the equip-error/notice branch of the Navi Customizer screen state machine.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: callee RunTextScriptNaviCustDialog with ids 0x10/0x11/0x12/0x14 places this in the NaviCust
+    dialog system; battle_checkItemFlagFor_813B9B4([r7,#0x28],[r7,#0x2c]) reads the 0x200414C item/part
+    flag array, so the state==8 path gates dialog 0x12 on a part/flag condition; strb 0x34/0x38 into [r5]
+    after each dialog shows it drives a parent state machine's next step; switch on [r7,#2] (4 vs 8) is
+    a menu-state dispatch typical of the customizer screen loop; initial sub_8137670(0x3F8) and the [r7,#0xd]
+    guard match dialog-window open/close bookkeeping
+  refs:
+  - bn6f/asm/asm36.s:14659
+  - 0x0813B9B4 battle_checkItemFlagFor_813B9B4
+  - 0x081376A8 RunTextScriptNaviCustDialog
+  - 0x081375D8 sub_81375D8
+  reproduce: python3 tools/asmcat.py 0x081370D4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- beastsp
+open_questions:
+- exact meaning of dialog ids 0x10/0x11/0x12/0x14 (need the NaviCust text table) — likely 'not enough
+  memory', 'remove part first', etc.
+- what [r7,#0x20] and the (0x28,0x2c) pair index into (selected part vs installed part slots)
+- roles of sub_81375D8/sub_8137648/sub_8137670 and which parent dispatches to this handler (no caller
+  captured)
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_81370D4 -> navicust_checkEquipDialogs
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81370D4

@@ -1,0 +1,51 @@
+name: ow_applyCutsceneDirOffset
+address: '0x0809C890'
+kind: function
+status: probable
+summary: Adds a cutscene-direction-dependent positional offset (32/64/96 pixels along one axis) to three
+  coordinate values when initializing an overworld object.
+interface: (r0 = scratch, r1/r2/r3 = base coords (high halves), r5 = object struct) -> r0 = 0, r1/r2/r3
+  = coords + offset; clobbers r4-r6
+details: 'First calls sub_809E1BC and keeps the upper halves of r1-r3 as three base values. It then reads
+  eCutsceneState+0x70 and the byte at +0xC of that struct (0-3), using it to pick one of four 24-byte
+  vector tables at off_809C8CC: right(+x), down(+y), left(-x), up(-y). The caller''s struct field at r5+4,
+  times 8, selects one of three magnitude groups inside the table (32, 64, or 96 as halfwords), and the
+  three halfwords of that group are added to r1, r2 and r3 respectively. Only one component of the vector
+  is nonzero, so the offset moves the position along a single axis in the direction of the cutscene camera/scroll.
+  Returns 0 in r0. This looks like placing a newly spawned overworld object (e.g. the log-out effect)
+  off-screen or stepped away from the player along the current cutscene direction.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sub_809C890 calls sub_809E1BC then uses lsr r1/r2/r3,#0x16... #0x10 upper halves as base values;
+    ldr r0,[eCutsceneState+0x70]; ldrb r0,[r0,#0xc]; lsl #2 indexes off_809C8CC''s four tables; tables
+    hold halfwords 0x20/0x40/0x60 or 0xFFE0/0xFFC0/0xFFA0 in one of the first two slots — axis+sign, growing
+    magnitude; ldrb r4,[r5,#4]; lsl r4,#3 selects which of the three 8-byte magnitude groups is used;
+    only callers are ow_initSpriteObject and ow_startLogoutEffect, both overworld object initializers'
+  refs:
+  - bn6f/asm/asm28_0.s:4576
+  - 0x080A9D30 ow_initSpriteObject
+  - 0x080A9EEC ow_startLogoutEffect
+  - 0x0809E1BC sub_809E1BC
+  reproduce: python3 tools/asmcat.py 0x0809C890
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- beastsp
+open_questions:
+- what sub_809E1BC returns in r0-r3 (screen vs world coords, and what the third component is)
+- what the byte at eCutsceneState+0x70+0xC semantically means (camera direction vs cutscene step)
+- what the r5 struct and its field +4 (0-2, magnitude selector) represent
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_809C890 -> ow_applyCutsceneDirOffset
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_809C890

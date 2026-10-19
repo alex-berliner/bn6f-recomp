@@ -1,0 +1,52 @@
+name: ai_stepMultiShotAttack
+address: '0x081033F6'
+kind: function
+status: probable
+summary: 'Per-frame update for an AI enemy''s repeated attack state: starts the attack animation/sound
+  once, then counts down between shots and queues the next shot until the shot budget runs out.'
+interface: (r0 = ? unused entry, r5 = battle object, r7 = AI attack vars) -> void; no return value used
+details: 'Uses the AI attack-vars struct (r7) and a battle object (r5). When AttackElement is 0 the attack
+  is (re)armed: element is set to 4, the object''s animation set to 8 with CurAnimCopy = 0xFF, sub_8103A08
+  is called with SubStepIndex (likely per-shot setup such as target/position), sounds 0xAE and 0xFF play,
+  StepTimer = 15, and on the first shot object_setCounterTime(0x12) is set. When AttackElement is nonzero
+  it is a timing state: StepTimer counts down; on expiry AttackBoost2 (remaining shot count) is decremented
+  — if still positive, SubStepIndex is incremented and AttackElement cleared so the next shot starts;
+  if exhausted, HitElement is set to 0x14 (0x14 appears to be the ''no element/done'' sentinel the AI
+  uses to end the attack).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb/tst on oAIAttackVars_AttackElement splits arm-phase vs. wait-phase, and AttackElement is
+    reset to 0 to trigger the next shot; AttackBoost2 is decremented and gates between 'advance SubStepIndex
+    and repeat' and writing 0x14 to HitElement; sub_8103A08 is called with SubStepIndex right after setting
+    anim 8/CurAnimCopy 0xFF, i.e. per-shot setup; PlaySoundEffect 0xAE (attack/charge SFX) and StepTimer=15
+    delay between shots; object_setCounterTime(0x12) only when SubStepIndex==0, i.e. on the first shot
+    of the sequence
+  refs:
+  - bn6f/asm/asm31.s:159983
+  - 0x080005CC PlaySoundEffect
+  - 0x0800E9DC object_setCounterTime
+  - 0x08103A08 sub_8103A08
+  reproduce: python3 tools/asmcat.py 0x081033F6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- What element id 4 and HitElement sentinel 0x14 mean exactly (element table needed)
+- What sub_8103A08 does with SubStepIndex (per-shot targeting? variant selection?)
+- Which enemy/AI uses this and what the animation id 8 looks like
+- Meaning of the 0xFF sound id (stop vs. voice cue)
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_81033F6 -> ai_stepMultiShotAttack
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81033F6

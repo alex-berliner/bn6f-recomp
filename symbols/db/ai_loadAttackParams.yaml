@@ -1,0 +1,46 @@
+name: ai_loadAttackParams
+address: '0x08108124'
+kind: function
+status: probable
+summary: Loads an enemy AI attack's two version-dependent parameter halfwords into the attack state's
+  damage field.
+interface: (r0 = attack index) -> stores packed (highTable<<16 | lowTable) at [AIDataPtr+0xA0]; r0 clobbered
+details: Indexes byte_8108190 and byte_81081D8 with r0*8 and calls battle_aiGetVersionedTableEntry_800FE12
+  on each, which selects the halfword by the battle object's AI version. The first result becomes the
+  low halfword, the second (zero-extended via lsl 16) the high halfword; they are orr'd together and stored
+  as a 32-bit value at oAIAttackVars_Damage (AIDataPtr+0xA0). The 8-byte stride suggests each table slot
+  holds several version entries, of which only the version-selected one is read.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: two battle_aiGetVersionedTableEntry_800FE12 calls with tables byte_8108190/byte_81081D8 and
+    stride 8 (asm); results packed with lsl r0,16 + orr and stored at [r5+oBattleObject_AIDataPtr]+0xa0
+    = oAIAttackVars_Damage; all callers (ai_initAttackState, battle_aiInitAttack0, sub_8108046/80A6/80E6)
+    are attack-init routines
+  refs:
+  - bn6f/asm/asm31.s:170055
+  - 0x0810806E ai_initAttackState
+  - 0x08108014 battle_aiInitAttack0
+  - 0x08108046 sub_8108046
+  - 0x0800FE12 battle_aiGetVersionedTableEntry_800FE12
+  reproduce: python3 tools/asmcat.py 0x08108124
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- exact meaning of the second halfword (high 16 bits of the damage word) — needs the code that reads oAIAttackVars_Damage
+- contents/layout of byte_8108190 and byte_81081D8 not shown
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8108124 -> ai_loadAttackParams
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8108124

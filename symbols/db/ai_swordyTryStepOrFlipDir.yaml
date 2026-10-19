@@ -1,0 +1,50 @@
+name: ai_swordyTryStepOrFlipDir
+address: '0x0810B62E'
+kind: function
+status: probable
+summary: 'Swordy AI movement probe: validates the panel in the object''s current direction; if blocked,
+  flips the stored direction and revalidates, returning 0 if both fail.'
+interface: (r5 = battle object) -> r0 = nonzero if a valid panel exists (direction left flipped if it
+  was reversed), 0 if blocked in both directions
+details: Calls battle_checkAlliancePanelAtObjectPos to test the panel one step ahead per the object's
+  stored direction field (oBattleObject_ExtraVars+8, a signed step/direction value). If the check succeeds
+  the function returns that nonzero result immediately. On failure it negates ExtraVars+8 — flipping the
+  object's horizontal direction — and calls the panel check again. If the second check also fails it returns
+  0, leaving the direction flipped. The caller (Swordy attack step at 0x0810B436) uses the result to decide
+  whether to advance toward the target or fall back to other move logic.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl battle_checkAlliancePanelAtObjectPos then bne locret: success returns the panel-check result
+    unchanged; ldr r0,[r5,#oBattleObject_ExtraVars+8]; neg r0,r0; str r0,...: flips a signed direction/step
+    field on first-check failure; second bl battle_checkAlliancePanelAtObjectPos with mov r0,#0 fallback:
+    returns 0 only if both directions are blocked; caller 0x0810B436 ai_swordyTryStartAttack uses this
+    before launching attack 0xC, fitting a pre-approach step check'
+  refs:
+  - bn6f/asm/asm31.s:176759
+  - 0x0810B436 ai_swordyTryStartAttack
+  - 0x0810B3E4 sub_810B3E4
+  - 0x0810B646 battle_checkAlliancePanelAtObjectPos
+  reproduce: python3 tools/asmcat.py 0x0810B62E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- exact semantics of the alliance-indexed panel requirement used by the callee (which panel flags qualify
+  as valid)
+- whether ExtraVars+8 is a direction flag or a velocity magnitude and who else reads the flipped value
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810B62E -> ai_swordyTryStepOrFlipDir
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810B62E

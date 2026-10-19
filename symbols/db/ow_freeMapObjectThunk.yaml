@@ -1,0 +1,47 @@
+name: ow_freeMapObjectThunk
+address: '0x080A87E8'
+kind: function
+status: probable
+summary: Thin wrapper that frees an overworld map object, preserving r4-r7 for its caller.
+interface: (r0 = map object slot/pointer, as taken by FreeOverworldMapObject) -> r0 = FreeOverworldMapObject's
+  return; r4-r7 preserved.
+details: The function only saves r4-r7 and lr, calls FreeOverworldMapObject with the incoming arguments
+  untouched, and restores the registers before returning. It changes nothing about the arguments, so r0
+  (and any other register arguments) pass straight through to the free routine, which clears the object's
+  allocation bit, marks its slot free, and unmarks it in the sprite system. The register save/restore
+  and bl-and-pop structure indicate it exists as a callable stub, most likely so some table or callback
+  can point at a 'free this map object' action without its caller needing to preserve r4-r7 itself. No
+  caller is known, so why the extra wrapper layer is needed cannot be confirmed.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'asm: push {r4-r7,lr} / bl FreeOverworldMapObject / pop {r4-r7,pc} — the entire body is a passthrough
+    call; callee FreeOverworldMapObject is documented as releasing an overworld map object slot and unmarking
+    it in the sprite system; no argument setup or modification appears between push and bl, so all arguments
+    are forwarded unchanged'
+  refs:
+  - bn6f/asm/asm29.s:6891
+  - 0x080048B2 FreeOverworldMapObject
+  reproduce: python3 tools/asmcat.py 0x080A87E8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- beastsp
+open_questions:
+- 'No known caller: the recorded beastsp route never invokes it, so its calling context (script command,
+  callback table, destructor) is unknown'
+- Whether the wrapper exists only for register preservation or to serve as a function-pointer target is
+  unconfirmed
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80A87E8 -> ow_freeMapObjectThunk
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A87E8

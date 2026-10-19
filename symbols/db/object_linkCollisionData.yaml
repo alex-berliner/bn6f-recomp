@@ -1,0 +1,70 @@
+name: object_linkCollisionData
+address: '0x030075FC'
+kind: function
+status: probable
+summary: During battle (skipped when paused), links one object's collision record to every battle entity
+  whose bit is set in a per-group mask table, recording the connection on both sides.
+interface: (r0 = battle object ptr, only used as arg to battle_isPaused, r1 = collision group index into
+  unk_2034F60, r2 = oCollisionData of the linking object) -> r0,r1,r2 preserved; returns via flags from
+  battle_isPaused (bne if paused/flag set)
+details: 'First calls battle_isPaused and bails out if the pause flag is set (push/pop {r0-r2} preserves
+  args across the call while keeping the NZ flags). It then indexes unk_2034F60 by r1*32 and loads a 32-bit
+  mask whose set bits nominate other battle entities, taken from an entity array whose base is [r10+0x30]
+  and whose stride is 0xA8. For each set bit it tests the candidate''s +0x44 field against r2''s oCollisionData_LinkedCollisionIndices:
+  if they already overlap the link is skipped, otherwise the mask is merged into r2''s LinkedCollisionIndices
+  and r2''s oCollisionData_CollisionIndexBit is OR''d into the candidate''s +0x68 bitfield. Finally it
+  calls sub_3007650 twice, once in each argument order, apparently to register the link symmetrically
+  on both records.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'push {r0-r2}/pop {r0-r2} before bne locret: battle_isPaused call is only a guarded early exit,
+    args survive it; lsl r1,#3; lsl r0,#2 => r1*32-byte entries in unk_2034F60, word loaded into r7 and
+    consumed bit-by-bit via lsl r7/bcs; tst r0,r1 / bne skip against [r6+0x44] shows already-linked pairs
+    are detected via a bitmask and not re-linked; str to [r5,oCollisionData_LinkedCollisionIndices] and
+    [r6,#0x68] stores mutual link bits on both collision records; add r6,#0xa8 in the bit loop walks a
+    fixed-stride battle entity array; sub_3007650 called with (r5,r6) then (r6,r5) for two-way registration'
+  refs:
+  - bn6f/asm/asm38.s:3834
+  - 0x03007550 _object_removeCollisionData
+  - 0x0800A03C battle_isPaused
+  - 0x03007650 sub_3007650
+  reproduce: python3 tools/asmcat.py 0x030075FC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- beastsp
+- chips
+- fuzz
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- what sub_3007650 actually registers (call it to confirm the link semantics)
+- exact meaning of the unk_2034F60 group-index table (who fills it and when)
+- why the sole caller is _object_removeCollisionData — whether this relinks after collision data is freed
+  or the caller name is misleading
+- what fields +0x44 and +0x68 of the 0xA8-stride entity struct are named in the project
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_30075FC -> object_linkCollisionData
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_30075FC

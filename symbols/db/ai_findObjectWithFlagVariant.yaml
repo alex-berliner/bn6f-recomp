@@ -1,0 +1,51 @@
+name: ai_findObjectWithFlagVariant
+address: '0x080F7768'
+kind: function
+status: probable
+summary: Searches the battle object list for an object whose id matches a fixed 4-entry list and, if its
+  collision flags have bits 0xA000 set, returns a pointer 0x3C bytes into it instead of the object base.
+interface: (void) -> r0 = battle object pointer (or base+0x3C if flag bits 0x8000|0x2000 set); flags preserved
+  by tail of callee calls
+details: 'Loads a pointer to a packed constant 0x1014181E (four bytes: 1E 18 14 10, plausibly four object
+  ids/kinds) and passes it to sub_800FE28, which likely walks the battle object list and returns the first
+  match. On that result it calls object_getFlag to read the first collision/flag word, and tests it against
+  0xA000. If those bits are set, it adds 0x3C to the returned pointer before returning, i.e. it returns
+  an alternate sub-struct of the same object. Called only by ai_initSpoutManAttack to set up attack variables,
+  so it appears to fetch some helper/auxiliary object relevant to SpoutMan''s attack.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'off_80F7784/dword_80F7788 = 0x1014181E passed to sub_800FE28 looks like a packed id list for
+    a search; bl object_getFlag then tst r0, 0xa000 / beq gates the alternate return value on collision-flag
+    bits; add r4, #0x3c before returning shows a variant sub-record at +0x3C of the matched object; sole
+    caller ai_initSpoutManAttack uses the result while initializing SpoutMan''s attack state'
+  refs:
+  - bn6f/asm/asm31.s:135474
+  - 0x080F7886 ai_initSpoutManAttack
+  - 0x0801A166 object_getFlag
+  - 0x0800FE28 sub_800FE28
+  reproduce: python3 tools/asmcat.py 0x080F7768
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- exact semantics of sub_800FE28 (is it an object-id search?) and what object ids 0x10/0x14/0x18/0x1E
+  denote
+- what the +0x3C struct variant represents in the battle object layout
+- meaning of flag bits 0x8000/0x2000 in the first collision flag word
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F7768 -> ai_findObjectWithFlagVariant
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F7768

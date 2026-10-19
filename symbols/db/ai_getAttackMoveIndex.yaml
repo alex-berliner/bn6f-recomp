@@ -1,0 +1,50 @@
+name: ai_getAttackMoveIndex
+address: '0x080F3B8C'
+kind: function
+status: probable
+summary: Computes the enemy AI's attack-move index for the turn, shifting the result by +0x3C when the
+  active object carries flag bits 0x8000/0x2000.
+interface: () -> r0 = AI attack-move index (0..? or 0x3C..?); no flags set
+details: Calls sub_800FE28 with a pointer to dword_80F3BAC (0x14191E28, four bytes 0x14/0x19/0x1E/0x28
+  — likely 20/25/30/40 thresholds, e.g. HP-percentage breakpoints picking one of four moves) and keeps
+  the result. It then reads the battle object's first collision flag word via object_getFlag and tests
+  it against 0xA000 (bits 15 and 13); if either is set, 0x3C (60) is added to the index. The final value
+  is returned and, per the caller, used by ai_selectAttackBranch to choose among attack setups — so the
+  return is an offset/selector into an AI move table, with the +0x3C half selecting an alternate move
+  set for flagged objects.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sub_800FE28 is called with off_80F3BA8 pointing at dword_80F3BAC = 0x14191E28 (four packed
+    byte thresholds 20/25/30/40); tst r0, r1 with r1 = 0xA000 checks flag bits 15/13 from object_getFlag''s
+    collision-data word; add r4, #0x3C shifts the returned index by 60 when those flags are set; sole
+    caller 0x080F3A24 ai_selectAttackBranch uses the result to program the AI attack-vars block for the
+    chosen move'
+  refs:
+  - bn6f/asm/asm31.s:127925
+  - 0x080F3A24 ai_selectAttackBranch
+  - 0x0801A166 object_getFlag
+  - 0x0800FE28 sub_800FE28
+  reproduce: python3 tools/asmcat.py 0x080F3B8C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- what sub_800FE28 actually compares against the 20/25/30/40 threshold table (probably the enemy's HP
+  fraction)
+- which object states flag bits 0x8000 and 0x2000 of the collision word represent
+- what the base and +0x3C halves of the index point into in the AI attack table
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F3B8C -> ai_getAttackMoveIndex
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F3B8C

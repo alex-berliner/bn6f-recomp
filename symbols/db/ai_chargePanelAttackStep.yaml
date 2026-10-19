@@ -1,0 +1,52 @@
+name: ai_chargePanelAttackStep
+address: '0x080FA22A'
+kind: function
+status: probable
+summary: 'AI attack state: on first tick locks the target panel and charges, periodically highlighting
+  it, then fires the attack when the timer expires.'
+interface: (r0 unused; r7 = attack vars struct) -> updates oAIAttackVars fields, sets HitElement = 8 (fired)
+  or 0x10 (invalid target); flags clobbered by calls
+details: On entry, if oAIAttackVars_AttackElement is 0 it is initialized to 4 (attack kind), and the target
+  object's panel coords (offsets 0x12/0x13) are validated with object_isValidPanel; if valid they're copied
+  into TargetPanelX/Y, StepTimer is loaded from AttackBoost2 and ChargeCycles zeroed. On subsequent ticks
+  ChargeCycles increments and every 8th tick (bit 3 carry) the target panel is re-highlighted via object_highlightPanel
+  while StepTimer counts down. When StepTimer reaches 0 the attack itself is launched by calling sub_80FAB2C
+  with the stored panel coords and HitElement is set to 8. If the target panel was out of the 6x3 grid,
+  HitElement is set to 0x10 instead, aborting without attacking.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement] / tst / bne: init-once branch stores element 4 and
+    latches TargetPanelX/Y from target obj +0x12/+0x13; bl object_isValidPanel; beq loc_80FA27E sets HitElement=0x10
+    on invalid panel; lsr r0,#3 / bcs around object_highlightPanel: panel highlighted only every 8 charge
+    ticks; sub r0,#1 on oAIAttackVars_StepTimer; when <=0 calls sub_80FAB2C(TargetPanelX,TargetPanelY)
+    and sets HitElement=8; Fields oAIAttackVars_AttackElement/TargetObjectPtr/TargetPanelX/Y/StepTimer/ChargeCycles/AttackBoost2/HitElement
+    mark r7 as the AI attack-vars struct'
+  refs:
+  - bn6f/asm/asm31.s:140918
+  - 0x0800CBD8 object_highlightPanel
+  - 0x0800CC72 object_isValidPanel
+  - 0x080FAB2C sub_80FAB2C
+  reproduce: python3 tools/asmcat.py 0x080FA22A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+- chips
+open_questions:
+- What attack sub_80FAB2C actually spawns (its summary is unknown), and which enemy/element uses AttackElement=4
+  with HitElement=8
+- Whether StepTimer semantics (ticks vs frames) and AttackBoost2 scaling match other AI attack routines
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80FA22A -> ai_chargePanelAttackStep
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FA22A

@@ -1,0 +1,53 @@
+name: ai_attackPhaseOut
+address: '0x08102366'
+kind: function
+status: probable
+summary: 'AI attack routine: halves a counter if the target is adjacent, then makes the object unable
+  to slide and removes it from its collision region (goes intangible) before advancing its element/state
+  field.'
+interface: (no args; r5 = battle object, r7 = oAIAttackVars) -> r0 = result of sub_810990E; flags clobbered
+  by calls
+details: 'Reads the target''s panel X/Y from the AI attack vars and the object''s own PanelX/PanelY; if
+  both differences (+1) land in 0..2 (target within the 3x3 around the object), it halves oAIAttackVars_ScratchVar
+  via lsr #1, otherwise skips. It then ORs OBJECT_FLAGS_CANNOT_SLIDE into the object''s flags, adds 4
+  to oAIAttackVars_HitElement, clears the object''s collision region via object_clearCollisionRegion (removing
+  it from collision lookups), and finally calls sub_810990E. The combination of cannot-slide plus a cleared
+  collision region strongly suggests the object entering an intangible/untargetable (e.g., phased-out
+  or buried) state; halving ScratchVar when the player is nearby looks like adjusting a timer, but its
+  meaning is unconfirmed.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bmi/cmp #3 checks on panel deltas (0x8102378-0x8102386) gate halving ScratchVar to targets
+    within a 3x3 area; lsr r0, r0, #1 into oAIAttackVars_ScratchVar halves the counter only in the adjacency
+    case; mov r0, #OBJECT_FLAGS_CANNOT_SLIDE; bl object_setFlag1 sets the no-slide flag on the object;
+    bl object_clearCollisionRegion removes the object from its collision region, matching an intangible
+    state; add r0, #4 into oAIAttackVars_HitElement advances a state/element field before the final call'
+  refs:
+  - bn6f/asm/asm31.s:157692
+  - 0x081022B0 sub_81022B0
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0801A152 object_setFlag1
+  - 0x0810990E sub_810990E
+  reproduce: python3 tools/asmcat.py 0x08102366
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- what sub_810990E does (likely the next step of the attack/state machine)
+- what oAIAttackVars_ScratchVar counts (timer? attack power?)
+- what adding 4 to HitElement selects
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8102366 -> ai_attackPhaseOut
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8102366

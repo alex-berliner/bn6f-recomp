@@ -1,0 +1,49 @@
+name: ai_setupVersionedAttack
+address: '0x08115A5C'
+kind: function
+status: probable
+summary: Initializes an AI enemy's attack-parameter block from its AI-data version, queues attack id 0xB,
+  and advances the AI state to script 8.
+interface: (r4 = AI entity data, r6 = AI state struct, r7 = AI attack vars struct) -> r0 = clobbered;
+  attack vars fields and oAIState_ScriptId written
+details: If oAIData_Version_16 (byte at r4) is zero it does nothing but still advances state. Otherwise
+  it indexes byte_8115998 by the version to get an attack duration stored into oAIAttackVars_AttackDuration,
+  sets AiDifficultyTier=2, AttackBoost2=0x12, TimerOrCycles=0x13, and picks a panel-choose callback based
+  on the version (ai_pickPanelInFrontOfEnemies for nonzero versions, sub_8015C48 for version 0 — an odd
+  inversion since the version-0 check already guarded the body). ScratchVar and AiAttackParam are set
+  to 3, attack id 0xB is queued via object_setAttack0, and genericAI_movementRelated_8109952 is called
+  before writing oAIState_ScriptId=8.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r1,[r4,#oAIData_Version_16]; beq loc_8115A90 — early exit keyed on AI version; ldrb r0,[r0,r1]
+    from byte_8115998 strh into oAIAttackVars_AttackDuration — per-version duration table; PanelChooseCallback
+    set to ai_pickPanelInFrontOfEnemies or sub_8015C48 depending on version; mov r0,#0xb; bl object_setAttack0
+    — queues a specific attack; mov r0,#8; strb r0,[r6,#oAIState_ScriptId] — transitions AI to script
+    8
+  refs:
+  - bn6f/asm/asm32.s:15317
+  - 0x08109952 genericAI_movementRelated_8109952
+  - 0x08011680 object_setAttack0
+  reproduce: python3 tools/asmcat.py 0x08115A5C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- What attack id 0xB is and what sub_8015C48 does differently from ai_pickPanelInFrontOfEnemies
+- Which enemy/AI dataset byte_8115998 belongs to and what the version field indexes overall
+- Why the version==0 branch still advances the AI state script
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8115A5C -> ai_setupVersionedAttack
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8115A5C

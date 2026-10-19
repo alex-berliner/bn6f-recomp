@@ -1,0 +1,48 @@
+name: ow_getApproachTarget
+address: '0x080AA04C'
+kind: function
+status: probable
+summary: Looks up an overworld object's approach target from a byte table and returns it as a 16.16 fixed-point
+  value.
+interface: (r0 = index into byte_2001130 table) -> r0 = signed byte value << 16 (16.16); flags clobbered
+  by lsl
+details: Reads a signed byte at byte_2001130[index] via ldrsb, then lsl r0,#0x10 to convert it to a 16.16
+  fixed-point number, so table entries are small integers (likely -128..127 step/target values, e.g. pixels
+  or distance). ow_updateApproachObject uses this as the target its object's +0x14 16.16 field counts
+  toward one unit per frame, and for object kind 8 sets EVENT_1640 when the high word hits 0x20. ow_initObjectSprite
+  also calls it, presumably to seed the initial +0x14 value. The table at 0x2001130 in IWRAM is likely
+  filled per-map with per-object approach distances. r1 is used as scratch for the table pointer.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldr r1, off_80AA054 / ldrsb r0,[r1,r0]: signed-byte table lookup indexed by r0; lsl r0,#0x10:
+    scales the byte to 16.16 fixed point; ow_updateApproachObject steps +0x14 by 1 toward the value returned
+    here, so the return is a target; ow_initObjectSprite also calls it, consistent with initializing the
+    same +0x14 field; target table byte_2001130 lives in IWRAM, so it is map/state-dependent data set
+    elsewhere'
+  refs:
+  - bn6f/asm/asm29.s:10125
+  - 0x080A9F78 ow_initObjectSprite
+  - 0x080A9FB8 ow_updateApproachObject
+  reproduce: python3 tools/asmcat.py 0x080AA04C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- maps
+open_questions:
+- what fills byte_2001130 and what the index (r0) is — object id, kind, or a map-local slot
+- exact semantics of the +0x14 field (distance in pixels? frame counter target?) and why the high word
+  0x20 (32) triggers EVENT_1640 for kind-8 objects
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80AA04C -> ow_getApproachTarget
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80AA04C

@@ -1,0 +1,51 @@
+name: ai_rushGetApproachColumn
+address: '0x0810F9F6'
+kind: function
+status: probable
+summary: For a telegraphed rush attack, computes the column adjacent to the attack target on the attacker's
+  side, or 0 if the target/state is invalid.
+interface: (r0 = ai attack state ptr (r5 set by caller), r7 = state ptr with TargetObjectPtr) -> r0 =
+  target[0x12] - frontDir (approach column) or 0; r1 = 0 on success
+details: Reads a flag byte at state+0x7F; when set, direction comes from sub_810FA2C (called with that
+  byte), otherwise from object_getFrontDirection (+1/-1 based on alliance side and DirectionFlip). Loads
+  the target object pointer from r7+oAIAttackVars_TargetObjectPtr and bails with r0=0 if null. Also requires
+  the halfword at target+0x24 to be > 0 (likely a validity/timer field). On success returns target byte
+  0x12 minus the facing multiplier — the panel column in front of the target toward the attacker — which
+  the caller ai_rushAttackStep uses as the slide destination before enabling the hitbox. r1 is zeroed
+  only on the success paths.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: caller 0x0810F6C4 ai_rushAttackStep 'pause, slide onto the target panel, then enable hitbox'
+    matches a computed approach column; bl object_getFrontDirection + 'sub r1, r1, r4' gives target[0x12]
+    adjusted by the +1/-1 facing multiplier; ldr r0,[r7,#oAIAttackVars_TargetObjectPtr]; tst/beq loc_810FA28
+    shows target-pointer validity gate returning 0; ldrh r1,[r0,#0x24]; cmp r1,#0; ble loc_810FA28 gates
+    on a positive halfword in the target object; flag at r5+0x7F switches direction source to sub_810FA2C,
+    falling through to the normal path when it returns 0
+  refs:
+  - bn6f/asm/asm32.s:3801
+  - 0x0810F6C4 ai_rushAttackStep
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0810FA2C sub_810FA2C
+  reproduce: python3 tools/asmcat.py 0x0810F9F6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- exact meaning of target object fields 0x12 (assumed panel column) and halfword 0x24
+- semantics of sub_810FA2C and the state+0x7F flag (custom/forced direction?)
+- how ai_rushAttackStep consumes the return value (destination column vs. boolean)
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810F9F6 -> ai_rushGetApproachColumn
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810F9F6

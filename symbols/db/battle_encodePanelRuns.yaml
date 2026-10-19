@@ -1,0 +1,69 @@
+name: battle_encodePanelRuns
+address: '0x0800C67C'
+kind: function
+status: probable
+summary: Finalises the player panel grid by scanning it as a zigzag from row 1 downward and row 6 upward,
+  emitting a 0xFF-terminated list of 4-byte equal-panel run records to byte_203F6B0.
+interface: () -> void; writes run records to byte_203F6B0 (4 bytes each, first byte 0xFF terminates)
+details: 'Uses two stack cursors initialised to 1 and 6, which must be the first and last panel rows of
+  the grid built by battle_buildPlayerPanelGrid_800C4BC. Each pass calls countMatchingRun_800C84A(cursor,
+  dir) with dir alternating +1/-1 (r4 is negated every iteration), counting a run of equal 8-byte-stride
+  panel entries next to the cursor row. For each run it writes a record: byte2 = run length, byte3 = value
+  returned in r1 by countMatchingRun, byte1 = -dir, byte0 = (count-1)*dir + count, then advances that
+  pass''s cursor by count*dir (r5 = [r6] + count*dir stored back), so consecutive records tile the grid
+  without overlap. The two cursors close in on each other (loop exits when cursor1 >= 6-cursor), producing
+  records ordered from the top edge down and bottom edge up alternately. The byte0 formula and the meaning
+  of countMatchingRun''s r1 return are not fully pinned down without that callee''s body, but the structure
+  is a run-length/packing pass over the panel grid, likely consumed by panel rendering or a panel animation.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'loc_800C68C: cursors [sp]=1 and [sp+4]=6, loop while [sp] < [sp+4], r4 negated each pass (neg
+    r4) — two-sided zigzag scan; bl countMatchingRun_800C84A with (cursor, ±1); strb r0,[r7,#2] / strb
+    r1,[r7,#3] store count and returned value as a record; add r5,r5,r3 / str r5,[r6]: cursor advanced
+    by count*dir, so each record consumes one full run of equal panels; strb r0,[r7] / strb r3,[r7,#1]:
+    record bytes 0-1 = (count-1)*dir+count and -dir; ldr r7,off_800C8D0 = byte_203F6B0 output base; loc_800C6CE:
+    strb 0xFF,[r7] terminates the record list; sole caller battle_buildPlayerPanelGrid_800C4BC is the
+    panel-grid builder'
+  refs:
+  - bn6f/asm/object.s:1863
+  - 0x0800C4BC battle_buildPlayerPanelGrid_800C4BC
+  - 0x0800C84A countMatchingRun_800C84A
+  reproduce: python3 tools/asmcat.py 0x0800C67C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- beastsp
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- exact meaning of countMatchingRun_800C84A's r1 return and thus record byte3/byte0 (need that callee's
+  asm)
+- which consumer reads the byte_203F6B0 record list (panel draw batching vs. panel-slide/animation script)
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_800C67C -> battle_encodePanelRuns
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800C67C

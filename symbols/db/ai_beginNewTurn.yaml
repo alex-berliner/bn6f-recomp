@@ -1,0 +1,45 @@
+name: ai_beginNewTurn
+address: '0x08111DF0'
+kind: function
+status: probable
+summary: 'AI turn-start handler: restarts the object''s turn counter and clears its current action/phase.'
+interface: (no args read; r6 = battle object/AI state pointer) -> r0 = 0 (from callee); r6->oAIState_TurnCounter
+  = 1
+details: 'Stores the halfword 1 into r6''s oAIState_TurnCounter field, then tail-calls battle_ResetObjectActionState_80165B8,
+  which sets the object''s action to 8 (idle/none) and clears its current phase and phase-initialized
+  flag, returning 0. Together this re-initializes the enemy AI for a fresh turn: counter back at 1, no
+  action queued. r6 must be set up by the caller (typical AI dispatch keeps the object in r6), since the
+  function never sets it itself. Runs in battle AI context per the recorded battlesweep/beastsp routes.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sub_8111DF0: ''mov r0, #1; strh r0, [r6,#oAIState_TurnCounter]'' resets the turn counter to
+    1; sub_8111DF0: ''bl battle_ResetObjectActionState_80165B8'' — callee sets action to 8 and clears
+    current phase/phase-initialized flag; callee returns 0 in r0 and sub_8111DF0 just pops {pc}, so the
+    function effectively returns 0; r6 is the only struct pointer used and is caller-provided, matching
+    an AI dispatcher keeping the object in r6'
+  refs:
+  - bn6f/asm/asm32.s:8153
+  - 0x080165B8 battle_ResetObjectActionState_80165B8
+  reproduce: python3 tools/asmcat.py 0x08111DF0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- No caller is known, so we cannot confirm when this is invoked (per-turn dispatch vs. specific AI state)
+  or what r0/r1 originally carry
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8111DF0 -> ai_beginNewTurn
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8111DF0

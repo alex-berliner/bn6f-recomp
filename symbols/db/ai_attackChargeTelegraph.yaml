@@ -1,0 +1,45 @@
+name: ai_attackChargeTelegraph
+address: '0x08108648'
+kind: function
+status: probable
+summary: 'AI attack charge-up phase: highlights the panel in front of the user every 8 cycles, then flags
+  the attack (0x1c) to fire when the step timer runs out.'
+interface: () -> void; r7 = oAIAttackVars struct, r5 = owner battle object; sets oAIAttackVars_AttackElement/StepTimer/ChargeCycles/HitElement
+details: 'Called each frame for the AI-controlled object''s current attack. If AttackElement is 0 it initializes
+  the attack: element = 4, StepTimer = TimerOrCycles, ChargeCycles = 0. During the charge it increments
+  ChargeCycles; every 8th cycle (lsr #3 carry) it calls object_highlightPanelRegion on the panel at PanelX+getFrontDirection,
+  PanelY with region argument 4, repeatedly flashing the target tile. Each frame it also decrements StepTimer,
+  and on reaching 0 writes 0x1c to HitElement, which presumably triggers the real attack handler.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb/tst on oAIAttackVars_AttackElement gates an init branch that sets element 4 and copies
+    TimerOrCycles into StepTimer; ChargeCycles++ with lsr #3 carry test gates the highlight call at loc_810865E;
+    object_getFrontDirection + PanelX/Y/AllianceAndDirectionFlip feed object_highlightPanelRegion(r2=4);
+    StepTimer-- loop ends by strh #0x1c into oAIAttackVars_HitElement (locret_8108686)'
+  refs:
+  - bn6f/asm/asm31.s:170756
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800CCD4 object_highlightPanelRegion
+  reproduce: python3 tools/asmcat.py 0x08108648
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- No callers known, so which AI state machine dispatches element 4 and consumes HitElement 0x1c (the actual
+  attack effect) is unverified
+- Meaning of element 4 and the highlight region parameter 4 (visual style of the telegraph) not confirmed
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8108648 -> ai_attackChargeTelegraph
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8108648

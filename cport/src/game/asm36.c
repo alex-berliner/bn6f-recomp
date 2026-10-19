@@ -225,7 +225,7 @@ Next sub_81325F4(void) {
  * inputs:  R5 = object pointer
  * outputs: writes [R5+1] = 8, [R5+2] = dispatch result, [R5+3] = 4
  *
- * Calls sub_803EBB8 first, then dispatches on sub_8132290's return value:
+ * Calls sub_803EBB8 first, then dispatches on menu_dispatchStateHandler's return value:
  *   0x18 / 0x1C -> replace field with sub_81325F4(LD8(R5+0x12))
  *   0x20 / 0x24 -> field = 0x0C
  *   default     -> field = 0x10
@@ -234,7 +234,7 @@ Next sub_8132614(void) {
     GUEST_CALL(sub_803EBB8);
     ST8(R5 + 1, 8);
 
-    GUEST_CALL(sub_8132290);
+    GUEST_CALL(menu_dispatchStateHandler);
     u32 result = R0;
 
     /* Pick the value written to [R5+2] from the dispatch table. */

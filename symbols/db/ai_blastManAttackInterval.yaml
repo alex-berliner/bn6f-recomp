@@ -1,0 +1,49 @@
+name: ai_blastManAttackInterval
+address: '0x080FD2F8'
+kind: function
+status: probable
+summary: BlastMan AI helper returning the frame delay between its attacks, lengthened when a certain object
+  flag is set
+interface: () -> r0 = attack interval in frames (30/40/50/60, +60 if flag 0xA000 set); flags clobbered
+  by callees
+details: Calls sub_800FE28 with pointer to dword_80FD318, a word packing four bytes 0x1E/0x28/0x32/0x3C
+  (30,40,50,60) — clearly a per-difficulty (or per-something) table of frame counts selected by sub_800FE28.
+  It then reads the battle object's collision-data flag word via object_getFlag and, if bits 0xA000 are
+  set, adds 0x3C (60) to the base value before returning it. The BlastMan AI caller (sub_80FD158) uses
+  move-counter and RNG checks before attacking, so this value is the cooldown interval controlling how
+  often BlastMan fires its attack. The 0xA000 flag bits presumably denote a state (e.g. a status or panel
+  condition) that makes BlastMan wait longer between attacks.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'off_80FD314 -> dword_80FD318 = 0x1E28323C: four packed byte delays 30/40/50/60 frames passed
+    to sub_800FE28; tst r0, 0xA000 / add r4, #0x3C: adds 60 frames when the object flag word has those
+    bits; bl object_getFlag: result is read fresh from the battle object''s collision data, so the bonus
+    is state-dependent; caller sub_80FD158 is the BlastMan AI attack step gating on move counter and GetPositiveSignedRNG
+    & 0xF < 8'
+  refs:
+  - bn6f/asm/asm31.s:147190
+  - 0x080FD158 sub_80FD158
+  - 0x0801A166 object_getFlag
+  - 0x0800FE28 sub_800FE28
+  reproduce: python3 tools/asmcat.py 0x080FD2F8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- what sub_800FE28 does with the 4-byte table (likely indexes by difficulty/rank, but unverified)
+- the meaning of flag bits 0xA000 on the battle object (which status/condition grants the +60 delay)
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80FD2F8 -> ai_blastManAttackInterval
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FD2F8

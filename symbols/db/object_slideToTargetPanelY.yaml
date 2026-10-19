@@ -1,0 +1,50 @@
+name: object_slideToTargetPanelY
+address: '0x080C8F14'
+kind: function
+status: probable
+summary: Animates a battle object sliding vertically from its current panel row to the target row in Param4
+  over 6 frames, then ends its action.
+interface: (r5 = battle object, no args) -> void; sets oBattleObject_YVelocity, Timer, Y, PanelY, CurPhase,
+  CurAction
+details: 'Phase-machine step keyed on oBattleObject_CurPhase: on phase 0 it stores phase 4, computes delta
+  = Param4 - PanelY, writes YVelocity = delta*0x40000 (fixed-point Y speed) and a Timer derived via SWI
+  6 Div as (delta*0x180000)/(delta*0x40000) = 6 frames. On subsequent frames it integrates Y += YVelocity,
+  calls object_setPanelsFromCoordinates so the panel row follows the pixels, and counts the timer down.
+  When the timer expires it calls object_setCoordinatesFromPanels to snap the final position, clears CurAction
+  to 0 and CurPhaseAndPhaseInitialized to 0. Total displacement is 6*delta*0x40000 = delta*0x180000 fixed-point,
+  i.e. exactly delta panels, so the object ends on row Param4; if delta is 0 the BIOS divide by zero yields
+  a bogus timer (quirk).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#oBattleObject_CurPhase]; strb r1(=4) sets phase 4 for the movement state (asm start);
+    sub r1,r1,r3 of Param4-PanelY then mul by 0x40000<<16 pattern stores oBattleObject_YVelocity (delta*0x40000);
+    svc 6 on (delta*0x180000)/(delta*0x40000) gives constant timer 6 stored to oBattleObject_Timer; loop
+    adds YVelocity to oBattleObject_Y and calls object_setPanelsFromCoordinates each frame; expiry path
+    calls object_setCoordinatesFromPanels then zeroes oBattleObject_CurAction and CurPhaseAndPhaseInitialized
+  refs:
+  - bn6f/asm/asm31.s:36760
+  - 0x0800E29C object_setCoordinatesFromPanels
+  - 0x0800E2AC object_setPanelsFromCoordinates
+  reproduce: python3 tools/asmcat.py 0x080C8F14
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- No known caller, so what gameplay effect uses this slide (knockback, wind push, forced movement?) and
+  what Param4 normally holds (absolute target row vs. panel delta) is unconfirmed
+- Behavior when Param4 == PanelY (SWI 6 divide-by-zero timer value) is unverified
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80C8F14 -> object_slideToTargetPanelY
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C8F14

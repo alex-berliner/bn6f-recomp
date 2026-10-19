@@ -1,0 +1,47 @@
+name: get_progressStageFlagIndex
+address: '0x08121108'
+kind: function
+status: probable
+summary: Returns the index (0-6) of the highest set flag among a fixed table of story flags {0x400,0x500,0x600,0x800,0xA00,0xC00,0xE00},
+  defaulting to 0.
+interface: () -> r0 = u16 index 0..6 of highest set flag in the table (0 if none set); Z from TestEventFlag's
+  last result is clobbered
+details: Scans a static table of 7 halfword flag IDs (0x400, 0x500, 0x600, 0x800, 0xA00, 0xC00, 0xE00)
+  from the last entry down to the first using TestEventFlag, stopping at the first set flag; the returned
+  value is the table index (byte offset / 4, so 0..6). If no flag is set (including the 0x400 entry),
+  it forces r6=0 and returns 0. The stride-0x200 flag IDs suggest ordered story-progress milestones. The
+  single caller, reloadCurNaviBaseStats_8120df0, presumably uses this index to select which stats table
+  row to load for the navi.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'off_8121128 holds the halfword flag IDs 0x400,0x500,0x600,0x800,0xA00,0xC00,0xE00, indexed
+    by r6 in steps of 4; loop at loc_812110E: ldr r0,[r4,r6]; bl TestEventFlag; bne exits as soon as a
+    flag is set; return at loc_812111E: lsr r0,r6,#2 converts byte offset to table index 0..6; if the
+    loop falls through (no flag set), mov r6,#0 forces return value 0; sole caller reloadCurNaviBaseStats_8120df0
+    implies the index picks a stats/state variant tied to progress'
+  refs:
+  - bn6f/asm/asm32.s:38800
+  - 0x08120DF0 reloadCurNaviBaseStats_8120df0
+  - 0x0802F168 TestEventFlag
+  reproduce: python3 tools/asmcat.py 0x08121108
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- beastsp
+open_questions:
+- what story/event the flags 0x400-0xE00 (stride 0x200) actually represent
+- which table reloadCurNaviBaseStats_8120df0 indexes with the result
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8121108 -> get_progressStageFlagIndex
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8121108

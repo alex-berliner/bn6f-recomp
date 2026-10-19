@@ -1,0 +1,60 @@
+name: battle_checkVersionBossSpawn
+address: '0x080AA6EC'
+kind: function
+status: probable
+summary: Scans the current battle's enemy spawn list for a version-specific boss-type enemy and returns
+  1 if a per-version threshold on it is met.
+interface: (r7 = some context struct whose +0xC holds a pointer to a 4-byte-per-entry enemy list) -> r0
+  = 1 if condition met, else 0; flags clobbered by calls
+details: 'First tests event flag EVENT_1D8; if clear it returns 0 immediately. Otherwise it walks the
+  array at [r7,#0xC] in 4-byte entries: entry byte0 with bit0 cleared acts as a type tag, 0xF0 terminates
+  the walk, and 0x10 marks an enemy entry whose 12-bit enemy index is byte2 + (byte3>>4)<<8. For each
+  such entry it calls GetVerActorTyAndAIIdx and keeps the last one whose record has actor_type 0 (boss)
+  and version >= 4 (Falzar-exclusive), saving version and ai_index. At the terminator, if such an enemy
+  was found, it calls sub_802D652(ai_index) and compares the result against word_80AA754[version-4] (values
+  0x20, 0x10), returning 1 only when the result is >= the threshold. The caller-supplied r7 base (list
+  pointer at +0xC) is not set up inside this function, so it depends on a caller/context register.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl TestEventFlagFromImmediate on EVENT_1D8 gates the whole check (sub_80AA6EC+4); loop over
+    4-byte entries: type tag byte0&~1, 0xF0 terminator, 0x10 spawns with 12-bit index from bytes 2-3;
+    bl GetVerActorTyAndAIIdx_80182B4 then filters actor_type==0 and version>=4 (asm at 80AA71A-80AA728);
+    word_80AA754 = {0x2010} supplies per-version thresholds indexed by version-4; bl sub_802D652(ai_index)
+    result compared with threshold to produce the 0/1 return'
+  refs:
+  - bn6f/asm/asm29.s:11066
+  - 0x080182B4 GetVerActorTyAndAIIdx_80182B4
+  - 0x0802F164 TestEventFlagFromImmediate
+  - 0x0802D652 sub_802D652
+  reproduce: python3 tools/asmcat.py 0x080AA6EC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battles1
+- battles2
+- beastsp
+- fuzz
+- maps
+- menus3
+- story2
+- story8
+- story9
+open_questions:
+- What struct r7 points to and who fills the list at +0xC (no caller captured)
+- What sub_802D652 returns for an ai_index (HP? level? counter?) and thus what the 0x20/0x10 thresholds
+  mean
+- What event flag EVENT_1D8 represents in the story flags
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80AA6EC -> battle_checkVersionBossSpawn
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80AA6EC

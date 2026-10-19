@@ -1,0 +1,49 @@
+name: ai_releaseChargedAttack
+address: '0x0811046A'
+kind: function
+status: probable
+summary: 'AI attack helper: ticks down a charge counter and, when it expires or a collision flag bit fires,
+  tears down the attack state and sets the attack animation/hit element.'
+interface: (r0 = battle object) -> r0 = clobbered, no return value; no flags of interest
+details: 'Called with a battle object; r5/r7 hold the same object''s field base. It first checks the object''s
+  collision flag word for bit 0x1000. If that bit is clear and the word at *oAIAttackVars_AiAttackParam
+  is nonzero, it decrements oAIAttackVars_ChargeCycles and returns while it''s still >0 — i.e. the attack
+  is still charging. Otherwise it performs the release: writes 0 to *AiAttackParam and *PanelChooseCallback
+  and to AiAttackParam+4, calling battle_ResetObjectTimerTo8_80C4072 (null-safe write of 8 to object+8)
+  after each clear, then sets oBattleObject_CurAnim to 3 and oAIAttackVars_HitElement to 0xC. So the routine
+  both counts down the charge and finalizes the attack (animation 3, element/attack id 12).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'tst r0, #0x1000 against object_getFlag() result; bne jumps straight to the teardown at loc_8110488;
+    ChargeCycles is decremented and ''bgt locret'' keeps charging while it''s positive, so <=0 falls through
+    to teardown; Teardown zeroes AiAttackParam, AiAttackParam+4 and PanelChooseCallback, each followed
+    by battle_ResetObjectTimerTo8; oBattleObject_CurAnim = 3 and oAIAttackVars_HitElement = 0xC are the
+    only positive writes, marking the attack as launched; Runs only on the battlesweep route, consistent
+    with an enemy''s charge-then-strike attack routine'
+  refs:
+  - bn6f/asm/asm32.s:5052
+  - 0x080C4072 battle_ResetObjectTimerTo8_80C4072
+  - 0x0801A166 object_getFlag
+  reproduce: python3 tools/asmcat.py 0x0811046A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- Which enemy/attack this belongs to (battlesweep route context unknown in detail)
+- Meaning of collision-flag bit 0x1000 and why it forces immediate release
+- What element/attack id 0xC corresponds to and what animation 3 shows
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_811046A -> ai_releaseChargedAttack
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811046A

@@ -1,0 +1,51 @@
+name: ai_setupSweepDirection
+address: '0x08111F08'
+kind: function
+status: probable
+summary: Chooses and applies the direction of the enemy's sweeping attack, alternating front/back each
+  turn via oAIState_AttackCounter and retrying the other side when one direction yields nothing.
+interface: (r6 = enemy object with AI state) -> r0 clobbered; writes oAIState_AttackCounter (0/1 = direction
+  used) and calls sub_8111F38 with +1/-1 direction
+details: It reads object_getFrontDirection (+1/-1 facing multiplier) and the enemy's oAIState_AttackCounter.
+  If the counter is 0 it first tries direction +dir via sub_8111F38; if that returns 0 (no valid result)
+  it flips the counter to 1 and tries -dir. If the counter was already 1 (or after flipping) it tries
+  -dir, falling back to +dir and resetting the counter to 0. The final counter value is written back,
+  so the sweep direction effectively alternates between AI turns, preferring the remembered side and falling
+  back to the opposite side when a direction fails. sub_8111F38(dir) presumably validates/sets the sweep
+  target side for the pending AI attack (attack 0xA/0xB set up by ai_setupAttackPlan), returning nonzero
+  on success.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_getFrontDirection gives the ±1 facing multiplier used as the sweep direction base;
+    ldrb r7,[r6,#oAIState_AttackCounter] / strb r7,[r6,#oAIState_AttackCounter] toggles and persists a
+    0/1 direction memory; sub_8111F38 is tried as +dir, then -dir, then +dir again, with only nonzero
+    results keeping the direction — a fallback chain over two opposite sides; sole caller ai_setupAttackPlan
+    invokes it while filling AI attack variables for the per-turn attack setup
+  refs:
+  - bn6f/asm/asm32.s:8298
+  - 0x08111E14 ai_setupAttackPlan
+  - 0x0800E2CA object_getFrontDirection
+  - 0x08111F38 sub_8111F38
+  reproduce: python3 tools/asmcat.py 0x08111F08
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- what sub_8111F38 actually does with the direction (validate targets vs. write AI attack fields) and
+  which boss/attack this sweep belongs to
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8111F08 -> ai_setupSweepDirection
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8111F08

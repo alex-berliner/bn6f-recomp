@@ -554,10 +554,10 @@ static u32 compute_panel_attr(u32 tile_type) {
     return R1;
 }
 
-/* register form: calls sub_800C67C outside this file, which has no typed C interface yet */
+/* register form: calls battle_encodePanelRuns outside this file, which has no typed C interface yet */
 static void finalize_panels(u32 r2_in, u32 r3_in) {
     R2 = r2_in; R3 = r3_in;
-    GUEST_CALL(sub_800C67C);
+    GUEST_CALL(battle_encodePanelRuns);
     /* leaves c, v, r2, r3 in the guest state */
 }
 
@@ -568,7 +568,7 @@ static void finalize_panels(u32 r2_in, u32 r3_in) {
  *   col_mask – one bit per interior column (1..6) indicating an active panel.
  *   record   – table12 record holding 4-bit HP nibbles per grid cell.
  *
- * After populating ePanelData, calls sub_800C67C which finalises the
+ * After populating ePanelData, calls battle_encodePanelRuns which finalises the
  * grid state and answers in r2/r3/c/v.
  */
 static void build_battle_panels(u32 arg0, u32 col_mask, u32 r2_in, u32 r3_in) {
@@ -632,12 +632,12 @@ static void build_battle_panels(u32 arg0, u32 col_mask, u32 r2_in, u32 r3_in) {
         }
     }
 
-    /* Finalise the grid; sub_800C67C sets r2, r3, c, v as outputs */
+    /* Finalise the grid; battle_encodePanelRuns sets r2, r3, c, v as outputs */
     finalize_panels(r2_in, r3_in);
 }
 
-/* battle_buildPlayerPanelGrid_800C4BC(r0 = table arg, r1 = column bitmask, r2/r3 = passthrough to sub_800C67C)
- * -> r2, r3, c, v (from sub_800C67C) */
+/* battle_buildPlayerPanelGrid_800C4BC(r0 = table arg, r1 = column bitmask, r2/r3 = passthrough to battle_encodePanelRuns)
+ * -> r2, r3, c, v (from battle_encodePanelRuns) */
 Next battle_buildPlayerPanelGrid_800C4BC(void) {
     build_battle_panels(R0, R1, R2, R3);
     RETURN_TO_CALLER();

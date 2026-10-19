@@ -1,0 +1,51 @@
+name: battle_spawnIllusionPair
+address: '0x080BFD90'
+kind: function
+status: probable
+summary: Spawns two illusion/afterimage objects at the current battle object's position, mirroring selection
+  by facing.
+interface: (r0 = battle object (passed to object_getFlip)) -> void; r5 (current battle object) must be
+  set by caller
+details: Reads the effective flip of the object, then builds a packed ID (base 0x141308 or 0x1308 plus
+  flip<<24 and the object/handle value<<16). It copies three words from the current object at offset 0x34
+  (fixed-point x/y/z position) into r1-r3, subtracts 0x10000 (one unit) from r2 and r3, and calls spawnIllusionObject_80E33FA
+  with r6=0x8108 and r7=0xF (first spawn) or 0x101000F (second spawn). Both spawns use the same position,
+  so it emits a mirrored pair of visual-effect objects whose graphics/variant depends on which way the
+  object faces. r0 at the call ends up as r5+0x40 (the pointer advanced past the three position words),
+  which the callee presumably uses as a source-data pointer.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_getFlip twice; result shifted <<24 into r4 selects 0x141308 vs 0x1308 variant, so
+    facing picks the spawn flavor; ldmia r0!,{r1-r3} from r5+0x34 loads the object's 3-word fixed-point
+    position as spawn coordinates; sub r2,#0x10000 / sub r3,#0x10000 offsets the spawn position by one
+    fixed-point unit; two spawnIllusionObject_80E33FA calls differing only in r7 (0xF vs 0x101000F) spawn
+    the paired effects; run during battlesweep routes, consistent with a battle visual-effect spawner
+  refs:
+  - bn6f/asm/asm31.s:16937
+  - 0x080BFA38 sub_80BFA38
+  - 0x081022E4 sub_81022E4
+  - 0x0800E456 object_getFlip
+  - 0x080E33FA spawnIllusionObject_80E33FA
+  reproduce: python3 tools/asmcat.py 0x080BFD90
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- exact meaning of the packed r4 ID words (0x141308/0x1308) passed to spawnIllusionObject_80E33FA
+- what r0 = r5+0x40 means to the callee (data pointer vs leftover)
+- what r6=0x8108 encodes (palette/behavior) and what effect visually these illusions are
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80BFD90 -> battle_spawnIllusionPair
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BFD90

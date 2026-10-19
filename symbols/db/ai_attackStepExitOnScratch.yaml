@@ -1,0 +1,47 @@
+name: ai_attackStepExitOnScratch
+address: '0x0810B058'
+kind: function
+status: probable
+summary: 'Per-frame AI attack step: runs the attack''s update routine, then leaves the attack state if
+  its scratch flag/var is set.'
+interface: (r7 = battle object with AI attack vars) -> r0 = undefined; calls object_exitAttackState when
+  ScratchVar != 0
+details: First calls sub_810AF30, presumably the per-frame body of some enemy attack routine. It then
+  loads oAIAttackVars_ScratchVar from the object's AI attack variable struct via r7 and compares it to
+  0; if it is nonzero it tails into object_exitAttackState to end the attack state, otherwise it returns
+  with the attack still active. The scratch var thus acts as a completion/end flag set by the attack logic
+  (likely inside sub_810AF30). Only 9 instructions; no other state is touched. Actual caller context and
+  the identity of sub_810AF30 are unknown.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl sub_810AF30 runs the attack-specific update before the check; ldr r0,[r7,#oAIAttackVars_ScratchVar];
+    cmp r0,#0; beq skip tests the AI attack struct scratch field; bl object_exitAttackState on nonzero
+    scratch var shows it ends an attack state; naming of oAIAttackVars_ScratchVar indicates r7 is a battle
+    object with AI attack variables
+  refs:
+  - bn6f/asm/asm31.s:175973
+  - 0x08011714 object_exitAttackState
+  - 0x0810AF30 sub_810AF30
+  reproduce: python3 tools/asmcat.py 0x0810B058
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- what sub_810AF30 does and which attack uses it
+- who calls sub_810B058 and how oAIAttackVars_ScratchVar is set
+- exact semantics of the scratch var (flag vs. counter)
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810B058 -> ai_attackStepExitOnScratch
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810B058

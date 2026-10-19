@@ -1,0 +1,50 @@
+name: object_aiAttackSequence
+address: '0x08113A76'
+kind: function
+status: probable
+summary: 'AI attack state machine: counts 3 idle ticks, fires the attack (two subs + sound 0xB0), then
+  waits out a step timer before clearing the attack state.'
+interface: (r5 = object struct, r7 = oAIAttackVars struct) -> r0 = clobbered; flags clobbered by bl calls
+details: Runs on an object with oAIAttackVars. If AttackElement is 0 (not yet attacking), it increments
+  the byte at [r5,0x6e] each call; on reaching 3 it calls sub_8113BEC and sub_8113C18 (presumably starting
+  the attack), plays sound 0xB0, and sets AttackElement=1. While attacking, it reads the current sprite
+  frame parameters via sprite_getFrameParameters; when the 0x80 attribute bit is set it decrements the
+  StepTimer halfword, and when that reaches 0 it stores 0x20 into HitElement and resets AttackElement
+  to 0, ending the attack. The 0x80 frame bit likely marks the attack/recovery animation frames during
+  which the timer runs.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'count loop: ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst; increment [r5,0x6e] and cmp #3
+    before firing; firing block calls sub_8113BEC, sub_8113C18, then PlaySoundEffect(0xB0) and sets AttackElement=1;
+    timer block: sprite_getFrameParameters; tst r0,#0x80 gates decrementing [r7,#oAIAttackVars_StepTimer];
+    on timer expiry: strh 0x20 into oAIAttackVars_HitElement and strb 0 into AttackElement, restarting
+    the cycle; uses only documented oAIAttackVars fields (AttackElement, StepTimer, HitElement) and sprite_getFrameParameters,
+    matching battle-object AI patterns'
+  refs:
+  - bn6f/asm/asm32.s:11519
+  - 0x080005CC PlaySoundEffect
+  - 0x08002DEA sprite_getFrameParameters
+  - 0x08113BEC sub_8113BEC
+  reproduce: python3 tools/asmcat.py 0x08113A76
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- what sub_8113BEC and sub_8113C18 do (likely spawn the projectile / set attack visuals)
+- meaning of the byte at [r5,0x6e] and why it is not an oAIAttackVars field
+- exact semantics of the 0x80 bit in sprite frame parameters and sound ID 0xB0
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8113A76 -> object_aiAttackSequence
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8113A76

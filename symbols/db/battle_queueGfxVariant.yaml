@@ -1,0 +1,48 @@
+name: battle_queueGfxVariant
+address: '0x080282AE'
+kind: function
+status: probable
+summary: Queues a 0x100-byte VRAM graphics transfer, picking one of two 256-byte tile blocks in ROM based
+  on a flag byte in the caller's work struct.
+interface: (r1 = dest VRAM address set by caller; r4 = work struct, byte [r4,#7] selects variant) -> queues
+  GFX transfer of byte_86E79CC (flag==0) or byte_86E79CC+0x100 (flag!=0), 0x100 bytes; no return value
+details: 'The function reads byte_86E79CC as the base source and 0x100 as the size, then branches on a
+  byte stored at offset 7 of the struct pointed to by r4: if zero it uses the first 256-byte block, otherwise
+  it skips to the second block at +0x100. It then calls QueueEightWordAlignedGFXTransfer(src, dest, size),
+  leaving r1 (the destination) untouched from the caller. Two variant graphics of 0x100 bytes each (16
+  4bpp tiles) live side by side in ROM at 0x86E79CC. r4 is the caller''s persistent object/work pointer,
+  so this is a per-object graphics (re)load helper rather than a standalone routine. It only pushes lr,
+  so dest and struct pointer must both be prepared by the caller.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldr r0, off_80283A0 / ldr r2, off_80283A4 loads base src byte_86E79CC and size 0x100; ldrb r3,[r4,#7];
+    cmp; beq selects between base and base+0x100 variant blocks; bl QueueEightWordAlignedGFXTransfer confirms
+    it is a queued VRAM copy with size 0x100; no r1 setup and bare push {lr}/pop {pc} show dest and r4
+    come from the caller's context; recorded routes battlesweep/beastsp place it in battle-side object
+    graphics loading
+  refs:
+  - bn6f/asm/asm03_0.s:4310
+  - 0x08000AC8 QueueEightWordAlignedGFXTransfer
+  reproduce: python3 tools/asmcat.py 0x080282AE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- what byte_86E79CC depicts (which object/tiles) and what byte [r4+7] means in the caller's struct
+- which callers set r1 and r4, needed to confirm the exact object and destination
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80282AE -> battle_queueGfxVariant
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80282AE

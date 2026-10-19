@@ -1,0 +1,48 @@
+name: battle_clearCollisionQueue
+address: '0x0800EA22'
+kind: function
+status: probable
+summary: Cancels an enemy's pending collision/hit entries and clears a set of ObjectFlags2 bits for the
+  active battle object.
+interface: (r0 = none on entry path; uses caller's r5 = battle object) -> r0 = 0 clobbered; no meaningful
+  return
+details: First clears ObjectFlags2 bits 0x300EE (mask loaded from literal pool) via object_clearFlag2
+  on the current object. It then fetches the object's CollisionDataPtr and treats offset 0x80 as a running
+  total halfword. It walks five halfword slots at +0x82..+0x8A, subtracting each slot's value from the
+  total and zeroing the slot, then zeroes the word at +0x8C and writes the adjusted remainder back to
+  +0x80. This looks like draining queued collision/hit counts (total minus queued entries) while wiping
+  the queue, alongside clearing the collision flag bits.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_clearFlag2 with r0=0x300EE literal (dword_800ECDC) clears specific collision flag
+    bits; ldr r2,[r5,#oBattleObject_CollisionDataPtr] shows it operates on the caller's current battle
+    object; loop at loc_800EA38 subtracts and zeroes halfwords +0x82..+0x8A, leaving remainder in r1;
+    strh r1,[r2,#0x80] rewrites the total as (old total - sum of cleared entries); called from battle_8108F74's
+    per-frame enemy update, consistent with frame-end collision cleanup
+  refs:
+  - bn6f/asm/object.s:5983
+  - 0x08108F74 battle_8108F74
+  - 0x0801A176 object_clearFlag2
+  reproduce: python3 tools/asmcat.py 0x0800EA22
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- Exact meaning of the +0x80 total vs the five +0x82..+0x8A slots (hit counts? collision rect entries?)
+- What states the 0x300EE ObjectFlags2 bits represent
+- Which callers set up those entries before this drains them
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_800EA22 -> battle_clearCollisionQueue
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800EA22

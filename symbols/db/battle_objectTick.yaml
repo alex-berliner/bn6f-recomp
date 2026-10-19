@@ -1,0 +1,49 @@
+name: battle_objectTick
+address: '0x080C7450'
+kind: function
+status: probable
+summary: 'Per-frame update for a battle object: computes a param, then dispatches its current action handler,
+  or destroys it when the battle is over.'
+interface: (r5 = battle object) -> void; clobbers r0-r3,lr
+details: r5 points to a battle object (fields oBattleObject_Param2, oBattleObject_CurAction, oBattleObject_CurStateActionPhaseAndPhaseInitialized).
+  If battle_isBattleOver says the battle ended, the object's state is set to CUR_STATE_DESTROY. Otherwise
+  sub_80C7572 computes a value stored into Param2, and unless a time-stop is active, the word at off_80C747C
+  indexed by CurAction is called as an ARM routine (mov lr,pc; bx r1) — entry 0 is sub_80C7484, entry
+  1 is sub_80C7524, so CurAction has at least two values. Time-stop skips the action handler but still
+  updates Param2.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bne loc_80C7472 after battle_isBattleOver sets state CUR_STATE_DESTROY into oBattleObject_CurStateActionPhaseAndPhaseInitialized;
+    strb r0,[r5,#oBattleObject_Param2] stores result of sub_80C7572 each frame; ldr r1,[r1,r0] with r0=oBattleObject_CurAction
+    dispatches through off_80C747C to sub_80C7484/sub_80C7524; battle_isTimeStop checked (bne skip) before
+    invoking the action handler; runs on recorded battlesweep route, consistent with a battle-scene object
+    update
+  refs:
+  - bn6f/asm/asm31.s:33094
+  - 0x0800A18E battle_isBattleOver
+  - 0x0800A098 battle_isTimeStop
+  - 0x080C7572 sub_80C7572
+  reproduce: python3 tools/asmcat.py 0x080C7450
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- what sub_80C7572 computes into Param2
+- what sub_80C7484 and sub_80C7524 do per action
+- what object type(s) use this tick — no caller known, so the owning subsystem is inferred only from the
+  oBattleObject fields
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80C7450 -> battle_objectTick
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C7450

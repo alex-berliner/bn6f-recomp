@@ -1,0 +1,50 @@
+name: battle_checkReachedFrontPanel
+address: '0x080DD2E0'
+kind: function
+status: probable
+summary: Checks whether a battle object has finished moving to the panel in front of it and, if so, snaps
+  its position to that panel's center.
+interface: (r5 = battle object) -> r0 = 1 if the object has arrived at its front target panel (X/Y snapped
+  to panel coordinates), else 0; no flags meaningful
+details: 'Reads the object''s ExtraVars pointer and aborts with 0 if null. Uses ExtraVars+0x12 as a target
+  column offset: (PanelX - offset) * getFrontDirection() must be >= 0, i.e. the target panel lies in the
+  object''s facing direction, otherwise returns 0. It then converts PanelX/PanelY to fixed-point pixel
+  coordinates and computes the horizontal distance |panelX - obj.X|; if that distance exceeds 0x30000
+  (3.0 pixels) the object hasn''t arrived yet and 0 is returned. On arrival it writes the panel''s pixel
+  coordinates into oBattleObject_X/Y and returns 1. ExtraVars+0x12 appears to be a step/move-target column
+  set by the caller (a sweeping enemy routine).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: tst on [r5,#oBattleObject_ExtraVars] with beq return shows it operates only on objects with
+    extra vars; sub r3, PanelX, [extra,#0x12] then mul by object_getFrontDirection and blt gives a facing-direction
+    guard; two object_getCoordinatesForPanels calls plus the 0x30000 compare implement an arrival-distance
+    threshold in fixed-point pixels; str of panel coords into oBattleObject_X/Y and mov r0,#1 is the arrival/snap
+    success path; sole caller sub_80DD1AC sits on the 'battlesweep' route, consistent with an enemy stepping
+    panel by panel
+  refs:
+  - bn6f/asm/asm31.s:80002
+  - 0x080DD1AC sub_80DD1AC
+  - 0x0800E276 object_getCoordinatesForPanels
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x080DD2E0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- exact meaning of ExtraVars+0x12 (target column vs. offset from it) and which entity sets it
+- what caller sub_80DD1AC does with the returned flag
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80DD2E0 -> battle_checkReachedFrontPanel
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DD2E0

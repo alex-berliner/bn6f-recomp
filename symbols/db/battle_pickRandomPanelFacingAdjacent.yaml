@@ -1,0 +1,50 @@
+name: battle_pickRandomPanelFacingAdjacent
+address: '0x081114EE'
+kind: function
+status: probable
+summary: From a battle object's facing direction, takes the adjacent panel, looks up its alliance-dependent
+  panel param, and returns a random reachable panel chosen relative to it.
+interface: (r5 = battle object; direction at [r5+0x64], panel at +PanelX/+PanelY, team at +Alliance) ->
+  r0 = result panel/params from GetRandomRelativePanelFiltered
+details: 'Reads a 0-3 direction index from oBattleObject+0x64 and uses byte_8111524 (four signed dx/dy
+  pairs: N,E,S,W) to step one panel from the object''s current panel. The stepped-to panel coordinates
+  are passed with byte_8111740 to GetAllianceDependentPanelParamArgs, which returns a param word and args
+  pointer indexed by oBattleObject_Alliance. Those are forwarded (r2, r3) along with r4=1 to GetRandomRelativePanelFiltered,
+  which selects a random reachable panel relative to the stepped panel. The function effectively implements
+  ''pick a random panel biased/filtered by the panel in front of the actor''. Runs in battle (battlesweep
+  route); caller sub_81114C8 is also unnamed.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: byte_8111524 holds exactly 4 signed-byte (dx,dy) pairs matching cardinal directions, indexed
+    by [r5+0x64]<<1; add r0,r0,r2 / add r1,r1,r3 offsets oBattleObject_PanelX/PanelY before the param
+    lookup; GetAllianceDependentPanelParamArgs is called with byte_8111740, param/args returned are forwarded
+    to the next call; GetRandomRelativePanelFiltered receives the computed panel coords in r0/r1 and filter
+    arg r4=1
+  refs:
+  - bn6f/asm/asm32.s:7050
+  - 0x081114C8 sub_81114C8
+  - 0x081096FA GetAllianceDependentPanelParamArgs
+  - 0x08015E46 GetRandomRelativePanelFiltered
+  reproduce: python3 tools/asmcat.py 0x081114EE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- Meaning of the r4=1 argument to GetRandomRelativePanelFiltered (filter mask vs count)
+- What parameter table byte_8111740 represents and which battle effect uses it
+- What sub_81114C8 (the only caller) does, which would confirm the gameplay context
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_81114EE -> battle_pickRandomPanelFacingAdjacent
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81114EE

@@ -1,0 +1,56 @@
+name: battle_spawnExtraVarsObject
+address: '0x080E11E0'
+kind: function
+status: probable
+summary: Spawns a battle object via object_spawnType4 with kind 0xA, then stores r7 into its ExtraVars
+  field and sets header flag bits 0x04|0x10 on it.
+interface: (r5 = spawn kind 0xA constant?, r7 = value for oBattleObject_ExtraVars) -> r0 = spawned battle
+  object pointer (or untouched on failure); flags set by callee's return test
+details: Calls object_spawnType4 with r0 = 0xA to create a battle object; on success it writes r7 into
+  the new object's oBattleObject_ExtraVars word and ORs 0x14 (bits 2 and 4) into oObjectHeader_Flags.
+  The beq after the call skips both stores when the spawn fails, so the callee's return/flags signal success.
+  The disassembly shows mov r0, r5 reading r5 that was never written in this listing (push/pop pair also
+  looks off), so the register setup likely comes from the caller or the listing is imperfect. Called from
+  battle_objectCountdownAndDestroy, suggesting it spawns a helper/effect object tied to a dying object,
+  carrying a pointer-like value in ExtraVars.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_spawnType4 with mov r0, #0xa shows it creates a battle object of the callee''s type
+    with parameter 0xA; str r7, [r0,#oBattleObject_ExtraVars] stores the caller-supplied r7 into the new
+    object''s extra-vars field; ldrb/orr #0x14/strb on oObjectHeader_Flags sets flag bits 0x04 and 0x10
+    on the spawned object; beq locret skips the field writes, so the spawn routine''s success status gates
+    them; caller battle_objectCountdownAndDestroy invokes it during object lifetime expiry, implying a
+    destroy-related spawn'
+  refs:
+  - bn6f/asm/asm31.s:88251
+  - 0x080D9C54 battle_objectCountdownAndDestroy
+  - 0x08015040 sub_8015040
+  - 0x080152C8 sub_80152C8
+  - 0x080033AC object_spawnType4
+  reproduce: python3 tools/asmcat.py 0x080E11E0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- Exact meaning of the 0xA argument to object_spawnType4 (object variant/id) and what the 0x14 flag bits
+  do at runtime
+- What the r7 value stored in ExtraVars points to or encodes; callers sub_8015040/sub_80152C8 etc. are
+  unnamed
+- The mov r0, r5 / push-pop {r5,r7} sequence looks like a listing artifact; verifying the true register
+  usage needs the raw bytes
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80E11E0 -> battle_spawnExtraVarsObject
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E11E0

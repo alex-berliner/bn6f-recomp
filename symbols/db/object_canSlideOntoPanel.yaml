@@ -1,0 +1,50 @@
+name: object_canSlideOntoPanel
+address: '0x080D8C10'
+kind: function
+status: probable
+summary: Returns whether the panel at the given coordinates exists, is not a hole/broken panel, and has
+  status bit 0x10 set, used to validate a sliding object's target panel.
+interface: (r0 = packed panel x/y coords) -> r0 = 1 if panel is valid slide target, else 0; r1 clobbered,
+  flags clobbered
+details: Calls object_getPanelParameters to fetch the panel status word for the coordinates in r0. If
+  the word is 0 (off-field or nonexistent panel) it returns 0. It then tests the word against mask 0xF800000
+  — if any of those high bits (presumably hole/broken/out panel states) are set it returns 0. Finally
+  it requires bit 0x10 (0x10 = some usable/occupied-panel state) to be set, returning 1 only if all three
+  conditions hold. Used by object_updateSlideMovement, which slides a battle object toward its FuturePanel
+  target and aborts the action based on this check, so it gates whether the slide may continue onto the
+  next panel.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_getPanelParameters with coords in r0, then tst r0,r0 / beq return-0: off-field panels
+    rejected (sub_80D8C10 lines 2-5); tst r0, 0xF800000 / bne return-0: hole/broken-class panel bits disqualify
+    the panel; tst r0,#0x10 / beq return-0: bit 0x10 of panel status is required for a return of 1; only
+    caller object_updateSlideMovement slides along X toward a FuturePanel and ''aborts if the target panel
+    becomes invalid'', matching this validation; returns via mov r0,#1 / mov r0,#0 with no other side
+    effects — a pure panel-validity predicate'
+  refs:
+  - bn6f/asm/asm31.s:70515
+  - 0x080D8A3C object_updateSlideMovement
+  - 0x0800C8F8 object_getPanelParameters
+  reproduce: python3 tools/asmcat.py 0x080D8C10
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- beastsp
+open_questions:
+- exact meaning of panel status bit 0x10 and of the 0xF800000 mask bits (would need the panel-status flag
+  definitions or other callers)
+- whether the caller aborts on 0 or on 1, i.e. whether bit 0x10 means 'free' or 'blocked'
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D8C10 -> object_canSlideOntoPanel
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D8C10

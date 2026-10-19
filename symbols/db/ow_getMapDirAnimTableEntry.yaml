@@ -1,0 +1,46 @@
+name: ow_getMapDirAnimTableEntry
+address: '0x080A7528'
+kind: function
+status: probable
+summary: Returns a pointer into the current map's per-direction animation table for an overworld object,
+  used by the face-player/set-anim helpers.
+interface: (implicit r5 = overworld object) -> r0 = pointer to tableBase + [r5+0x30]*8; clobbers r1-r3
+details: Reads GameState's MapGroup; for map group 0x81 the table index comes from the byte at GameState+5
+  (a sub-area selector), otherwise index 3 is used. The index selects one of four base pointers in the
+  table at off_80A754C (byte_8140D6C, byte_8140E6C, byte_8140FBC, byte_814122C). It then adds the caller
+  object's field at +0x30 shifted left by 3 (8-byte entries) to the selected base and returns that address
+  in r0. Callers ow_facePlayerSetAnim and ow_setAnimFromDirTable use the result as the per-direction animation
+  table from which they pick a facing animation.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r3,#oGameState_MapGroup]; cmp r0,#0x81 selects sub-index from gameState+5 else #3;
+    ldr r2,[off_80A754C,r3] picks one of 4 map-keyed table bases; r1=[r5,#0x30] lsl 3; add r0,r1 -> returns
+    base + objectField*8; both callers (ow_facePlayerSetAnim, ow_setAnimFromDirTable) pick direction animations
+    from the returned table'
+  refs:
+  - bn6f/asm/asm29.s:4417
+  - 0x080A7454 ow_facePlayerSetAnim
+  - 0x080A74A8 ow_setAnimFromDirTable
+  reproduce: python3 tools/asmcat.py 0x080A7528
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- beastsp
+open_questions:
+- exact meaning of object field +0x30 (direction index or anim slot)
+- layout of the 8-byte entries in byte_8140D6C etc.
+- which maps the four table bases and the gameState+5 sub-index correspond to
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80A7528 -> ow_getMapDirAnimTableEntry
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A7528

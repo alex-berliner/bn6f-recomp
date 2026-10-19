@@ -1,0 +1,47 @@
+name: battle_clearObjectStatusUnlessPhase1
+address: '0x080145C2'
+kind: function
+status: probable
+summary: Battle hook that clears an object's status/affliction flags and collision timers unless the battle
+  is in phase 1 (likely the custom screen, where status timers should be frozen).
+interface: (r0 = battle object or state passed through implicitly via r10; no explicit args used) -> r0
+  = result of battle_clearObjectStatusFlagsAndTimers; no meaningful flags
+details: Reads the toolkit's battle-state pointer from r10 and loads oBattleState_BattlePhase. If the
+  phase equals 1, it returns immediately without doing anything; otherwise it tail-context-calls battle_clearObjectStatusFlagsAndTimers_801A264,
+  which clears the object's status flags in both flag words and zeroes its blind/confusion-style collision
+  timers. The phase==1 early-out suggests status clearing is suppressed while that phase (probably the
+  custom screen) is active, so timers don't expire during it. Note the callee is called with r0 holding
+  the phase byte read from battle state, so the callee's first argument is likely a battle-state pointer
+  or index rather than a direct object pointer, and the project's summary of the callee may be imprecise.
+  Only 9 instructions; no known callers, so its trigger context is unconfirmed.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: mov r0, r10; ldr r0,[r0,#oToolkit_BattleStatePtr] — gets battle state from toolkit; ldrb r0,[r0,#oBattleState_BattlePhase];
+    cmp r0,#1; beq locret — skips the clear when battle phase is 1; bl battle_clearObjectStatusFlagsAndTimers_801A264
+    — reuses the known status/timer-clearing routine
+  refs:
+  - bn6f/asm/asm00_2.s:12990
+  - 0x0801A264 battle_clearObjectStatusFlagsAndTimers_801A264
+  reproduce: python3 tools/asmcat.py 0x080145C2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- beastsp
+open_questions:
+- No known callers, so the trigger point (per-frame hook? cure event?) and what r0 the callee actually
+  expects are unconfirmed
+- Which battle phase value 1 corresponds to (custom screen vs another turn phase) is not shown here
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80145C2 -> battle_clearObjectStatusUnlessPhase1
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80145C2

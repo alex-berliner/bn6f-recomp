@@ -1,0 +1,51 @@
+name: battle_spawnDelayedObject56
+address: '0x08010F86'
+kind: function
+status: probable
+summary: Spawns a battle object of type 0x56 linked to a battle object, passing a combined 32-bit parameter
+  (delay << 16 | 0xB) and storing the new object in the owner's RelatedObject2Ptr field.
+interface: (r0 = owner battle object, r2 = 16-bit count/delay in low half) -> r0 = spawned object; also
+  stores it at [r5 + oBattleObject_RelatedObject2Ptr]
+details: The routine takes a 16-bit value from the low half of r2, shifts it into the high half, and ORs
+  in 0xB (r4 = 0xB + (r2 << 16)), forming a 32-bit parameter that looks like a frame counter/delay of
+  r2*0x10000 + 11 frames. It calls the known spawner battle_spawnObject56LinkedToOwner_80C44A8 with r0
+  (the owner object) and that parameter, which spawns battle object type 0x56, inherits alliance/direction
+  from the owner, and sets header flag bits 0x04|0x10. The returned object pointer is stored into r5's
+  field oBattleObject_RelatedObject2Ptr, linking it back to the caller's context. Given its recorded use
+  from the 'battlesweep' and 'chips' routes, it most likely implements a chip effect that spawns a timed
+  support/auxiliary object attached to the user. The meaning of the 0xB low half (timer value or object
+  sub-parameter) is inferred, not proven.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'lsl r2, r2, #0x10 / add r4, r4, r2 builds the 32-bit spawn parameter (r2<<16)+0xB (asm lines
+    3-5); bl battle_spawnObject56LinkedToOwner_80C44A8 with r4 as argument matches the known spawner''s
+    parameter slot; str r0, [r5,#oBattleObject_RelatedObject2Ptr] stores the spawned object into the caller''s
+    battle object field; Recorded routes ''battlesweep'' and ''chips'' place it inside battle/chip-effect
+    execution; Callee summary: spawns object type 0x56, links to owner, sets header flags 0x04|0x10'
+  refs:
+  - bn6f/asm/asm00_2.s:4959
+  - 0x080C44A8 battle_spawnObject56LinkedToOwner_80C44A8
+  reproduce: python3 tools/asmcat.py 0x08010F86
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+- chips
+open_questions:
+- 'Exact meaning of the (r2<<16)+0xB parameter: frame delay vs. object sub-command'
+- Which chip/effect script invokes this and what object type 0x56 does in-game
+- What r5 points to (owner object vs. a battle-state struct) and full semantics of RelatedObject2Ptr
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8010F86 -> battle_spawnDelayedObject56
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8010F86

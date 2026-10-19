@@ -1,0 +1,48 @@
+name: ai_chargeFrontPanelAttack
+address: '0x080FC226'
+kind: function
+status: probable
+summary: 'AI attack state machine: starts a charge attack (element 4, anim 0xF), highlights the panel(s)
+  in front of the enemy while charging, and triggers the hit when the step timer expires.'
+interface: (no args; r5 = battle object, r7 = AI attack vars) -> void
+details: 'When oAIAttackVars_AttackElement is 0 the attack is initialized: element is set to 4, the object''s
+  current animation to 0xF, the step timer is loaded from AttackBoost2, and ChargeCycles is cleared. On
+  subsequent calls ChargeCycles increments; every 8 cycles (lsr #3 carry) it computes the facing multiplier
+  via object_getFrontDirection and calls object_highlightPanelRegion on the adjacent panel in front (panelX+dir,
+  panelY, alliance/direction-flip in r3, region size 6). Meanwhile StepTimer counts down, and when it
+  reaches 0 the attack fires by writing HitElement = 0x10 for the damage handler downstream. The highlighted
+  panel is the telegraph of where the attack will land.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: AttackElement==0 branch sets element 4, anim 0xF, StepTimer=AttackBoost2, ChargeCycles=0 (init
+    state); ChargeCycles>>3 carry-gated call to object_getFrontDirection + object_highlightPanelRegion
+    highlights the front panel every 8 charge cycles; StepTimer decrement to 0 writes HitElement=0x10,
+    handing off to the attack/damage phase; r5 fields oBattleObject_PanelX/PanelY/AllianceAndDirectionFlip
+    confirm the highlighted panel is relative to the acting battle object
+  refs:
+  - bn6f/asm/asm31.s:145020
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800CCD4 object_highlightPanelRegion
+  reproduce: python3 tools/asmcat.py 0x080FC226
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- Which enemy/attack uses this handler and what element 4 / HitElement 0x10 map to concretely
+- What region size 6 in object_highlightPanelRegion covers (single panel vs shape) and who consumes the
+  highlight to deal damage
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80FC226 -> ai_chargeFrontPanelAttack
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FC226

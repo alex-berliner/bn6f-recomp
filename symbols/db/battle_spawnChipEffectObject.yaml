@@ -1,0 +1,50 @@
+name: battle_spawnChipEffectObject
+address: '0x080DA390'
+kind: function
+status: probable
+summary: Spawns the type-3 battle object 0xA6 (a chip-spawned field effect entity) at a given panel with
+  a given element and alliance, marking it as active in the field.
+interface: (r0 = damage/stamina-disabler value, r1 = panel X, r2 = panel Y, r3 = element, r4 = alliance/flip
+  (r5 entry), r6 = value for oBattleObject_DamageAndStaminaDamageCounterDisabler) -> r0 = spawned object
+  or 0 on failure; flags set by callee
+details: 'It saves r0-r2/r5, calls object_spawnType3 with object ID 0xA6, then restores the caller''s
+  arguments and copies them into the new battle object: the disabler word at oBattleObject_DamageAndStaminaDamageCounterDisabler,
+  panel X/Y and element bytes, and the alliance/direction-flip halfword. It sets bit 0x10 in oObjectHeader_Flags
+  (an active/in-field marker) and finally calls setFieldBattleObject_800F614 with the low byte of the
+  alliance value, registering the object as a field battle object. If the spawn failed (r0 = 0), it returns
+  immediately without touching anything. The pushed-register trick lets it keep the five spawn parameters
+  across the call.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'push {r0-r2,r5} before bl object_spawnType3, then pop and str/strb the saved values into the
+    new object''s fields; mov r0, #0xa6 immediately before object_spawnType3 selects the object kind;
+    orr r2, r1 with r1=#0x10 on oObjectHeader_Flags marks the spawned object active; bl setFieldBattleObject_800F614
+    with r1 = alliance & 0xFF registers the object in the battle field; caller sub_80E7C40 lies on recorded
+    ''chips'' routes, matching a chip-spawned helper object'
+  refs:
+  - bn6f/asm/asm31.s:73638
+  - 0x080E7C40 sub_80E7C40
+  - 0x08003358 object_spawnType3
+  - 0x0800F614 setFieldBattleObject_800F614
+  reproduce: python3 tools/asmcat.py 0x080DA390
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- chips
+open_questions:
+- which chip(s) invoke sub_80E7C40 and what gameplay effect object 0xA6 produces in its initializer
+- exact meaning of the disabler word and of flag 0x10 on oObjectHeader_Flags
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80DA390 -> battle_spawnChipEffectObject
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DA390

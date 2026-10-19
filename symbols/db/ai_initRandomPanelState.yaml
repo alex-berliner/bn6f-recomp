@@ -1,0 +1,48 @@
+name: ai_initRandomPanelState
+address: '0x0811627A'
+kind: function
+status: probable
+summary: 'Battle AI init: rolls a random 0-3 value, records the object''s current panel position, and
+  marks it unable to slide.'
+interface: (r5 = battle object pointer, other regs caller-saved) -> void; sets object fields, no return
+  value
+details: 'Treats r5 as a battle object: zeroes oBattleObject_ExtraVars+4 and ExtraVars, then calls GetRNG
+  and stores rand&3 at object+0x68 (an AI state/choice var, e.g. one of four directions). Copies oBattleObject_PanelX
+  and PanelY into bytes 0x69 and 0x6a, presumably remembering where the object stands for a later move/attack
+  decision, and zeroes byte 0x6b. Finally ORs OBJECT_FLAGS_CANNOT_SLIDE into ObjectFlags1 via object_setFlag1,
+  so the object stays planted on its panel. Offsets 0x68-0x6b are per-object AI scratch variables; the
+  meaning of the 0-3 roll depends on the object''s AI handler, which is not shown here.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl GetRNG; and r0,#3; strb r0,[r5,#0x68] — random 0-3 stored in AI var 0x68 (asm lines 4-8);
+    ldrb PanelX/PanelY; strb to r5+0x69/0x6a — current panel position saved into AI vars; mov r0,#OBJECT_FLAGS_CANNOT_SLIDE;
+    bl object_setFlag1 — object flagged cannot-slide; str #0 to ExtraVars and ExtraVars+4 — AI state/counters
+    reset at entry'
+  refs:
+  - bn6f/asm/asm32.s:16248
+  - 0x0800151C GetRNG
+  - 0x0801A152 object_setFlag1
+  reproduce: python3 tools/asmcat.py 0x0811627A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+- maps
+open_questions:
+- Which enemy/AI uses this and what the 0-3 value at 0x68 selects (needs the handler that reads offsets
+  0x68-0x6b)
+- No callers known, so the trigger condition (spawn, hit, turn start) is unconfirmed
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_811627A -> ai_initRandomPanelState
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811627A

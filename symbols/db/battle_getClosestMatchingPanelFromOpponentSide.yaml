@@ -1,0 +1,53 @@
+name: battle_getClosestMatchingPanelFromOpponentSide
+address: '0x080FB812'
+kind: function
+status: probable
+summary: Thin battle helper that finds the first panel row on the side opposite to an object's alliance
+  whose panel passes a check, forwarding the result to the caller.
+interface: (r0 = battle object whose byte 0x13 supplies the panel-check/filter id; r5 = context object
+  whose alliance selects the side to scan from) -> r0 = row index of first matching panel, or 0 if none;
+  flags from callee
+details: 'The function is a two-line wrapper: it loads the calling object''s byte at offset 0x13 into
+  r1 (the filter/check parameter consumed by object_getClosestPanelMatchingRowFiltered) and the Alliance
+  field (offset in oBattleObject) of the object held in r5 into r0, then tail-calls the callee and returns
+  its result unchanged. Per the callee''s known summary, the scan walks rows opposite to the given side
+  starting six rows behind, testing each panel against the filter and validity checks, and returns 0 when
+  nothing qualifies. Note the odd argument split: the ''self'' object comes in r0 only to supply the filter
+  byte, while the alliance that positions the scan comes from r5, so r5 must be set up by the caller''s
+  loop/context, not the argument. No known callers yet, so which object owns byte 0x13 and what its values
+  mean is unconfirmed.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r1,[r0,#0x13] then bl object_getClosestPanelMatchingRowFiltered: byte 0x13 is the callee''s
+    filter parameter; ldrb r0,[r5,#oBattleObject_Alliance]: the side scanned is taken from the r5 object''s
+    alliance field; pop {pc} immediately after bl: result of callee is returned directly in r0; callee
+    summary ''scans rows opposite ... panel passes the parameter and validity checks, or 0'' matches the
+    returned semantics'
+  refs:
+  - bn6f/asm/asm31.s:143758
+  - 0x0800D086 object_getClosestPanelMatchingRowFiltered
+  reproduce: python3 tools/asmcat.py 0x080FB812
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+- chips
+open_questions:
+- no known callers, so the meaning of the r5 context object and which entity the alliance belongs to is
+  inferred, not proven
+- what battle-object field offset 0x13 holds (panel-type/effect filter id? row?) and the full parameter
+  table of the callee
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80FB812 -> battle_getClosestMatchingPanelFromOpponentSide
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FB812

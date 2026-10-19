@@ -1,0 +1,52 @@
+name: spawn_panelEffectForSide
+address: '0x0810E774'
+kind: function
+status: probable
+summary: Spawns a type-0 battle effect object at a given field panel, tagged with the source object's
+  side (alliance XOR direction flip).
+interface: (r0 = panel column, r1 = panel row, r5 = source battle object) -> r0 = spawned effect object
+  pointer
+details: The original r0/r1 (panel col/row) are pushed, then oBattleObject_Alliance XOR oBattleObject_DirectionFlip
+  from r5 is shifted left 8 to form a side flag and saved. object_getCoordinatesForPanels converts col/row
+  into 16.16 fixed-point screen x (r0) and y (r1); the function rearranges to r1=x, r2=y, sets r3=0, pops
+  the side flag, ORs in 0x14 (likely an effect parameter/offset) and calls spawn_t1_0x0_EffectObject.
+  The side flag in bit 8 presumably tells the effect object which way to render or which alliance it belongs
+  to. Nearby tables (widths 0x64/0x96/0xC8/0xFA, decreasing heights) belong to the surrounding attack
+  state data, not this routine itself.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: eor of [r5,#oBattleObject_Alliance] and [r5,#oBattleObject_DirectionFlip] shifted <<8, pushed
+    and popped into r0 as the spawn flag; object_getCoordinatesForPanels called with the saved panel col/row,
+    results moved to r1=x, r2=y; spawn_t1_0x0_EffectObject called with r4 = 0x14 | sideFlag, r3 = 0; push/pop
+    of r0,r1 around the flag computation preserves the incoming panel coordinates; both callers sub_810E5B0
+    and sub_810E6F6 sit in the battlesweep attack route with effect-state tables at off_810E7B0
+  refs:
+  - bn6f/asm/asm32.s:1715
+  - 0x0810E5B0 sub_810E5B0
+  - 0x0810E6F6 sub_810E6F6
+  - 0x0800E276 object_getCoordinatesForPanels
+  - 0x080E05F6 spawn_t1_0x0_EffectObject
+  reproduce: python3 tools/asmcat.py 0x0810E774
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- Exact meaning of the 0x14 ORed into the flag (z offset, sub-effect id, or flags) depends on spawn_t1_0x0_EffectObject's
+  parameter layout
+- What sub_810E5B0/sub_810E6F6 are (which attack uses this) is unknown; their code would confirm the effect's
+  visual identity
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810E774 -> spawn_panelEffectForSide
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810E774

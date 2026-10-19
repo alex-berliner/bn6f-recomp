@@ -1,0 +1,49 @@
+name: ow_objectFinishEventAndFree
+address: '0x080A7F26'
+kind: function
+status: probable
+summary: 'Ends an overworld map object''s event: clears state fields, sets the object''s event flag plus
+  a related flag at 0x1650+id, then releases the object''s slot.'
+interface: (r5 = map object struct with event id at +4; r7 = owner struct) -> r0 = freed; no meaningful
+  flags
+details: The routine first zeroes [r7,#4] (halfword) and [r7,#6] (byte), likely resetting counters/state
+  in a caller-provided struct. It then reads the event id from the object's field +4, passes it through
+  sub_81427A4 (whose return value is fed straight to SetEventFlag), and additionally sets flag 0x1650
+  + id, suggesting a base flag region indexed by the object's event id. Finally it calls FreeOverworldMapObject
+  with the same pointer, releasing the object from the global allocation bitfield and sprite system. This
+  looks like the 'event completed, despawn NPC' path for overworld map objects; the mov r0,r0 pairs are
+  interwork veneers.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'strh/strb #0 to [r7,#4]/[r7,#6] clears two state fields before anything else; ldrb r0,[r5,#4];
+    bl sub_81427A4; bl SetEventFlag — flag derived from object''s event id; ldr r0,=0x1650; ldrb r1,[r5,#4];
+    add r0,r0,r1; bl SetEventFlag — second flag = 0x1650 + event id; bl FreeOverworldMapObject last, releasing
+    the same object struct; recorded on the beastsp route, consistent with an overworld object event finishing'
+  refs:
+  - bn6f/asm/asm29.s:5868
+  - 0x080048B2 FreeOverworldMapObject
+  - 0x0802F114 SetEventFlag
+  - 0x08142184 sub_8142184
+  reproduce: python3 tools/asmcat.py 0x080A7F26
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- beastsp
+open_questions:
+- What sub_81427A4 does with the event id (it supplies the value actually passed to SetEventFlag)
+- What struct r7 points to and the meaning of the +4/+6 fields
+- Which caller passes r7, since no caller is captured
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80A7F26 -> ow_objectFinishEventAndFree
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A7F26

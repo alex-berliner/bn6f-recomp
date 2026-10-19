@@ -1,0 +1,47 @@
+name: ai_performPanelEffect
+address: '0x080F73BC'
+kind: function
+status: probable
+summary: Wrapper that pulls init flag, AI difficulty tier and damage from the current AI attack vars and
+  passes them to the per-panel effect routine used by the panel-targeting AI attack.
+interface: (r7 = oAIAttackVars struct, no args in registers) -> r0 = result of sub_80D5EB0; r0 = oAIAttackVars_InitFlag,
+  r1 = oAIAttackVars_AiDifficultyTier, r2 = oAIAttackVars_Damage
+details: 'Pure argument-marshalling thunk: it reads three fields out of the oAIAttackVars structure addressed
+  by r7 — the byte InitFlag, the byte AiDifficultyTier, and the word Damage — then calls sub_80D5EB0 with
+  those as r0-r2 and returns its result. It saves only r4 and r6 (loaded but unused locally, presumably
+  clobbered by the callee). Its only known caller is ai_pickRandomMatchingPanels, which per its summary
+  picks shuffled candidate panels and invokes a per-panel effect, so this is that per-invocation effect
+  call. The actual behaviour is entirely delegated to sub_80D5EB0, which is undocumented, so the effect
+  itself (damage application, panel change, etc.) is not visible here.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r2,[r7,#oAIAttackVars_InitFlag] / ldrb r4,[r7,#oAIAttackVars_AiDifficultyTier] / ldr r6,[r7,#oAIAttackVars_Damage]
+    load AI attack vars; values in r2/r4/r6 are the only setup before bl sub_80D5EB0, so they are its
+    arguments; only caller 0x080F7238 ai_pickRandomMatchingPanels 'invokes a per-panel effect', matching
+    an effect-dispatch wrapper
+  refs:
+  - bn6f/asm/asm31.s:135103
+  - 0x080F7238 ai_pickRandomMatchingPanels
+  - 0x080D5EB0 sub_80D5EB0
+  reproduce: python3 tools/asmcat.py 0x080F73BC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- purpose of callee sub_80D5EB0 — decompiling it would confirm which panel effect is performed
+- exact meaning/valid range of oAIAttackVars_InitFlag and AiDifficultyTier fields
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F73BC -> ai_performPanelEffect
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F73BC

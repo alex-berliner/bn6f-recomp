@@ -1,0 +1,54 @@
+name: object_startFacingStep
+address: '0x080A79DC'
+kind: function
+status: probable
+summary: Sets an entity's sprite animation and initializes a linear move of param-scaled ±8 px toward
+  the entity's facing direction over a param-length duration.
+interface: '(r5 = entity/base struct, r6 = sprite/motion slot, r7 = params: [1]=anim id, [2]=duration
+  divisor, [3]=distance scalar) -> r0 = 1'
+details: Caches the animation id from param byte 1 into the slot (offset 2) and applies it via sprite_setAnimation
+  plus sprite_loadAnimationData. Indexes byte_80A7A38 by anim id*2 to get signed per-direction offsets
+  (8,0 / 0,8 / -8,0 / 0,-8), multiplies both by param byte 3, and adds them to r5+0xC / r5+0x10 (current
+  x/y) to form a destination stored at r6+0x1C / r6+0x20. Param byte 2 is used with SWI 6 (Div) as 0x10000/value,
+  giving a fixed-point reciprocal step size kept at r6+0x24 with its complement in halfword r6+6, suggesting
+  per-frame interpolation toward the target. The unmodified r5+0xC/0x10 values are also copied to r6+0x14/0x18
+  as the move's origin. Finally calls sub_80A7BA2 with r0=4 (likely arming a per-frame step handler) and
+  returns 1.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r7,#1]; strb r0,[r6,#2]; bl sprite_setAnimation then sprite_loadAnimationData — param
+    1 is an animation index applied to the entity; ldrsb pair from byte_80A7A38 at [r6,#2]*1 gives table
+    {8,0, 0,8, -8,0, 0,-8} — per-direction ±8 offsets; mul r0/r1 by ldrb r2,[r7,#3], add to [r5,#0xC]/[r5,#0x10],
+    store to [r6,#0x1C]/[r6,#0x20] — scaled displacement from current position; mov r0,#0x40; lsl r0,#8;
+    svc 6 with r1=[r7,#2] — Div of 0x10000 by param 2, result to r6+0x24 (fixed-point step); str [r5,#0xC]/[r5,#0x10]
+    into r6+0x14/0x18 then bl sub_80A7BA2(4), return 1 — records origin and hands off to a follow-up handler
+  refs:
+  - bn6f/asm/asm29.s:5082
+  - 0x080026A4 sprite_loadAnimationData
+  - 0x08002DA4 sprite_setAnimation
+  - 0x080A7BA2 sub_80A7BA2
+  reproduce: python3 tools/asmcat.py 0x080A79DC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- beastsp
+open_questions:
+- What sub_80A7BA2(r0=4) does — likely installs a per-frame move/step callback that consumes r6+0x1C/0x20
+  and the step reciprocal
+- Which entity/struct layouts r5 (fields 0xC/0x10 = current x/y?) and r6 correspond to, and who calls
+  this with the 3-byte param block
+- Whether the beastsp route context means this is a Beast-Out lunge/step or a generic knockback/dash initializer
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80A79DC -> object_startFacingStep
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A79DC

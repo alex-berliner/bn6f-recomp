@@ -1,0 +1,50 @@
+name: ai_loadBossAttackDamagePair
+address: '0x080F5AD4'
+kind: function
+status: probable
+summary: Looks up a boss attack's damage values from two versioned AI tables and stores them as a word
+  pair in the boss AI's attack variables.
+interface: (r0 = boss/enemy battle object or AI index) -> r0 = combined value stored; writes [AIDataPtr+0xA0]
+  = oAIAttackVars_Damage
+details: Given r0, it multiplies by 8 and indexes two 8-byte-per-entry tables (byte_80F5B34 and byte_80F5B58)
+  via battle_aiGetVersionedTableEntry_800FE12, which selects the halfword by the battle object's AI version.
+  The first read gives the low halfword; the second is shifted left 16 and OR'd in, forming a word of
+  two damage values. That word is stored at [battleObject AIDataPtr + 0xA0] into the oAIAttackVars_Damage
+  field. Called by ai_decideAttackPattern when the boss switches/rolls its attack routine, so this seeds
+  the damage parameters of the chosen attack. The 8-byte stride and version-scaled entries mirror the
+  standard BN6 AI parameter table layout.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: mul r0,#8 + byte_80F5B34/byte_80F5B58 table lookups via battle_aiGetVersionedTableEntry_800FE12
+    (asm lines 3-13); lsl r0,#0x10 ; orr r6 combines two versioned halfwords into one word (asm lines
+    14-16); str r6,[AIDataPtr+0xA0] writes into oAIAttackVars_Damage of the battle object's AI data (asm
+    lines 17-20); caller ai_decideAttackPattern chooses attack routines per turn, matching an attack-parameter
+    loader
+  refs:
+  - bn6f/asm/asm31.s:131892
+  - 0x080F594C ai_decideAttackPattern
+  - 0x080F5AA0 sub_80F5AA0
+  - 0x0800FE12 battle_aiGetVersionedTableEntry_800FE12
+  reproduce: python3 tools/asmcat.py 0x080F5AD4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- what the two tables' entries precisely represent (e.g. per-version damage vs. turn-count values) beyond
+  being version-indexed halfwords
+- which boss(s) use this pair of tables and how the two halfwords split into fields within oAIAttackVars_Damage
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F5AD4 -> ai_loadBossAttackDamagePair
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F5AD4

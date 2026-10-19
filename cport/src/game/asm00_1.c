@@ -3507,7 +3507,7 @@ Next mainState_runFrame_8005814(void) {
  *                                               same map, jack in anim, walk in
  *                                               direction
  *   0x10 ow_startJackOutMapEnterCutscene                            jack out warp
- *   0x14 sub_8005A00                            levbus warp
+ *   0x14 startBeastSpCutscene                            levbus warp
  *   0x18 sub_8005A0C                            underground warp
  *   0x1C sub_8005A28                            like 0x00, but with a delay +
  *                                               plays a hardcoded sound

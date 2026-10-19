@@ -1,0 +1,54 @@
+name: battle_tutorialRunScriptStep
+address: '0x080272D0'
+kind: function
+status: probable
+summary: 'Executes one two-byte step of the first-battle tutorial script: run a tutorial chatbox script,
+  wait a fixed timer, or write a byte into the player''s NaviStats.'
+interface: (r4 = ptr to current tutorial opcode {u8 cmd, u8 arg}, r5 = tutorial controller struct) ->
+  updates r5+0x40 instruction pointer / r5+0x2 next-state; r0 clobbered
+details: This is one dispatch handler of the battle-tutorial state machine. The controller struct at r5
+  holds the instruction pointer at +0x40 (advanced by 2 after non-terminal commands), a next-state/action
+  code at +2 (8 after a script, 0xC after the wait, 0x10 for the unknown/default opcode which appears
+  to end or abort the step), a tutorial-archive selector at +0xC used to index the TextScriptFirstBattleTutorials
+  pointer array, and a countdown at +0x44 set to 0x50 (80 frames) for the wait command. Opcode 0 runs
+  chatbox_runScript on the selected tutorial archive with the operand as script index; opcode 1 just sets
+  the wait state and timer; opcode 2 passes its operand and the byte at BattleState+0xD to battle_setPlayerNaviStatsField0E,
+  i.e. it patches a per-side player NaviStats byte mid-tutorial.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r4] / cmp 0,1,2 then default: dispatch on 2-byte tutorial opcodes at [r4], operand
+    at [r4,#1]; ldr r0,off_802731C; ldrb r1,[r5,#0xc]; lsl r1,#2; ldr r0,[r0,r1]; bl chatbox_runScript
+    — runs tutorial text selected by controller field 0xC; str r4,[r5,#0x40] after add r4,#2 — controller
+    +0x40 is the tutorial script program counter; mov r0,#0x50; str r0,[r5,#0x44] with state 0xC — a frame
+    countdown (~80 frames) for the wait opcode; bl battle_setPlayerNaviStatsField0E with [r4,#1] and [BattleState+0xD]
+    — opcode 2 writes a NaviStats field for one battle side'
+  refs:
+  - bn6f/asm/asm03_0.s:2024
+  - 0x08015BEC battle_setPlayerNaviStatsField0E_8015BEC
+  - 0x08040384 chatbox_runScript
+  reproduce: python3 tools/asmcat.py 0x080272D0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+- beastsp
+- menus2
+open_questions:
+- exact meaning of the next-state codes written to r5+0x2 (8/0xC/0x10) depends on the dispatcher that
+  owns this struct
+- which NaviStats field offset 0x0E is (HP byte? flag?) and what tutorial step uses opcode 2
+- what TextScriptFirstBattleTutorials entries correspond to which tutorial message
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80272D0 -> battle_tutorialRunScriptStep
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80272D0

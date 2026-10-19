@@ -1,0 +1,53 @@
+name: ai_calcPixelOffsetToPanel
+address: '0x080F46A4'
+kind: function
+status: probable
+summary: 'AI movement math helper: converts a target panel coordinate into a pixel-space offset from a
+  battle object''s current panel, using 40x24-px panel metrics.'
+interface: (r0 = target panel X, r1 = target panel Y, r2 = scale factor, r5 = battle object) -> r0/r1
+  = (target - object) * r2 along the differing axis (other = 0), r2 = (panelSize<<16) / r2 via SWI Div;
+  clobbers r3
+details: 'Reads the object''s oBattleObject_PanelX / oBattleObject_PanelY from the object passed in r5
+  (not r0, an unusual convention). If the target X equals the object''s X, it works on the vertical axis:
+  r1 = (targetY - panelY) * r2, r0 = 0, and uses 24<<16; otherwise r0 = (targetX - panelX) * r2, r1 =
+  0, with 40<<16. It then saves r0/r1 across SWI 6 (Div), which computes panelSize<<16 / r2 and returns
+  that quotient in r2. 40 and 24 are the pixel width/height of one battle panel (6*40 = 240, 3*24 = 72),
+  so the function expresses a panel-space delta in pixels and also derives a reciprocal-like value from
+  r2. The three outputs are presumably combined by the caller into a slide/dash velocity toward the reserved
+  target panel.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'cmp r0,[r5,#oBattleObject_PanelX] / beq: picks horizontal vs vertical case from the object''s
+    panel coords; mul r0,r2 with mov r3,#0x28; lsl #0x10: scales the panel delta and uses 40<<16, the
+    panel width in 16.16 px; mov r3,#0x18; lsl #0x10 = 24<<16, the panel height in pixels, for the vertical
+    branch; svc 6 (SWI Div) with r0=r3, r1=r2: divides the panel-size constant by r2, result passed back
+    in r2; callers ai_attackBeginDash and ai_tryStepTowardTargetRow reserve a target panel and start velocity-based
+    movement toward it'
+  refs:
+  - bn6f/asm/asm31.s:129382
+  - 0x080F4144 ai_attackBeginDash
+  - 0x080F3F24 ai_tryStepTowardTargetRow
+  - 0x080F3D44 sub_80F3D44
+  reproduce: python3 tools/asmcat.py 0x080F46A4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- Exact meaning of the r2 argument (velocity, frame count, or fixed-point scale) and how the callers combine
+  the three return values into movement
+- Whether r5 is always the acting battle object set up by the callers
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F46A4 -> ai_calcPixelOffsetToPanel
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F46A4

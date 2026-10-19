@@ -1830,9 +1830,9 @@ static void call_sub_81283A0(void) {
     GUEST_CALL(sub_81283A0);
 }
 
-/* register form: calls sub_8128500 outside this file, which has no typed C interface yet */
+/* register form: calls battle_fieldLockApply outside this file, which has no typed C interface yet */
 static void call_sub_8128500(void) {
-    GUEST_CALL(sub_8128500);
+    GUEST_CALL(battle_fieldLockApply);
 }
 
 /* register form: calls palette_fillBufferWithFadeByte_8128260 outside this file, which has no typed C interface yet */
@@ -5509,7 +5509,7 @@ Next sub_8129F48(void) {
  *
  * Table contents (byte offset -> handler):
  *   0  -> menu_subMenu_dispatchByIndex_812A008   (mode 0)
- *   4  -> sub_812A028   (mode 1)
+ *   4  -> object_timerDialogueUpdate   (mode 1)
  *   8  -> sub_812A058   (mode 2)
  *  12  -> sub_812A14C   (mode 3)
  *  16  -> sub_812A0CC   (mode 4)
@@ -5525,7 +5525,7 @@ Next sub_8129FE0(void) {
         GUEST_CALL(menu_subMenu_dispatchByIndex_812A008);
         break;
     case 4:
-        GUEST_CALL(sub_812A028);
+        GUEST_CALL(object_timerDialogueUpdate);
         break;
     case 8:
         GUEST_CALL(sub_812A058);

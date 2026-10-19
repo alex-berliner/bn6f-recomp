@@ -1,0 +1,48 @@
+name: battle_lobbedBombStep
+address: '0x080D5DC8'
+kind: function
+status: probable
+summary: 'Per-frame update stub for the lobbed-bomb battle object: ends in destroy state when the battle
+  is over, respects time-stop, otherwise dispatches into bomb-specific update logic.'
+interface: (r5 = battle object) -> r0 = 0/1 from checks, discarded; no return value used; sets oBattleObject_CurStateActionPhaseAndPhaseInitialized
+  = CUR_STATE_DESTROY on battle end
+details: 'Called each frame for a battle object whose state is kept in r5. If battle_isBattleOver returns
+  true it stores CUR_STATE_DESTROY into the object''s combined state/phase word, freeing the object. Otherwise,
+  if battle_isTimeStop says the battle is frozen it returns without updating. Otherwise it reads oBattleObject_CurAction
+  and calls through a dispatch table at off_80D5DF0, which contains a single handler, battle_lobbedBombUpdate,
+  so only action 0 is valid; the tail ''mov lr, pc; bx r1'' plus following branch is the standard BL-long-call
+  trampoline. Quirk: the action-indexed table has exactly one entry, so any CurAction value other than
+  0 would call garbage.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl battle_isBattleOver; tst; bne -> stores CUR_STATE_DESTROY into [r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]
+    (loc_80D5DE4); bl battle_isTimeStop; bne locret skips the update while time-stop is active; ldrb r0,[r5,#oBattleObject_CurAction];
+    ldr r1,[r1,r0]; bx r1 dispatches via off_80D5DF0; off_80D5DF0 contains only battle_lobbedBombUpdate+1,
+    identifying this as the lobbed bomb object's frame update
+  refs:
+  - bn6f/asm/asm31.s:64482
+  - 0x0800A18E battle_isBattleOver
+  - 0x0800A098 battle_isTimeStop
+  reproduce: python3 tools/asmcat.py 0x080D5DC8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- Which object spawn sets this as its update handler (no caller recorded) to confirm the lobbed-bomb identity
+- What battle_lobbedBombUpdate does with the object fields, and whether other CurAction values are ever
+  set for this object
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D5DC8 -> battle_lobbedBombStep
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D5DC8

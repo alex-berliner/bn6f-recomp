@@ -1,0 +1,49 @@
+name: internet_tickAlertSoundTimer
+address: '0x08033D88'
+kind: function
+status: probable
+summary: Decrements a repeating timer in the Internet-overworld UI state and plays SFX 0x9A (then reloads
+  the timer) each time it reaches zero.
+interface: (r5 = UI/state struct, r0 unused on entry) -> r0 = scratch/return of PlaySoundEffect; no meaningful
+  flags; field [r5,#7] is the countdown byte
+details: Reads the byte at [r5,#7], subtracts 1, and branches back to store it if still positive. When
+  the counter expires (<= 0), it plays sound effect 0x9A through PlaySoundEffect and reloads the counter
+  with 0x60 (96 frames, about 1.6 s), so the sound repeats at a fixed interval as long as this is called
+  every frame. r5 points to a struct whose field 7 holds the countdown, likely the Internet HUD state
+  used by the caller. Storing the reload with strb means the timer is a single byte and wraps naturally
+  if it were ever loaded at 0 into an expired state again.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#7]; sub r0,#1; bgt loc_8033D9C — classic countdown-tick pattern on a state byte;
+    mov r0,#0x9a; bl PlaySoundEffect — fixed SFX played on expiry; mov r0,#0x60; strb r0,[r5,#7] — timer
+    reloads to 96 frames for a self-repeating beep; caller 0x08033B46 internet_redrawOverworldUi — runs
+    alongside the Internet HUD redraw, so r5 is the overworld-UI state; second caller 0x08033B30 wraps
+    the same tick, consistent with a per-frame update hook
+  refs:
+  - bn6f/asm/asm03_1_0.s:753
+  - 0x08033B46 internet_redrawOverworldUi
+  - 0x08033B30 sub_8033B30
+  - 0x080005CC PlaySoundEffect
+  reproduce: python3 tools/asmcat.py 0x08033D88
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- beastsp
+open_questions:
+- what SFX 0x9A actually is (would identify whether this is an alarm, low-HP beep, or ambience tick)
+- what the rest of the struct at r5 holds and which HUD condition enables the timer (a caller showing
+  the enable path would pin the meaning)
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8033D88 -> internet_tickAlertSoundTimer
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8033D88

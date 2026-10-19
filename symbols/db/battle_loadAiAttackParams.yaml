@@ -1,0 +1,52 @@
+name: battle_loadAiAttackParams
+address: '0x080F663C'
+kind: function
+status: probable
+summary: Reads two per-version AI table halfwords for an attack index and stores them packed into the
+  object's AI attack-vars damage field.
+interface: (r0 = attack/enemy index, r5 = battle object) -> no return; writes word at battleObject->AIDataPtr+0xA0
+  (oAIAttackVars_Damage)
+details: The function takes an index in r0, multiplies it by 8 (stride of byte_80F669C and byte_80F66C0
+  tables), and calls battle_aiGetVersionedTableEntry_800FE12 on each table, which selects a halfword based
+  on the battle object's AI version. The first result becomes the low halfword of r6 and the second (shifted
+  left 16) the high halfword, forming one packed word. It then reads oBattleObject_AIDataPtr from the
+  battle object in r5, offsets it by 0xA0, and stores the packed word as oAIAttackVars_Damage. Called
+  by battle_initAiAttackVars during AI attack-state setup, so the two halfwords are per-version attack
+  parameters (e.g. damage plus a second attribute like hit count or panel target) for the attack being
+  prepared.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'mul r0,#8 + add to byte_80F669C/byte_80F66C0: indexes two 8-byte-stride tables by the input;
+    two calls to battle_aiGetVersionedTableEntry_800FE12: values vary with the object''s AI version; lsl
+    r0,#0x10 + orr r6 packs both halfwords into one word; str r6,[r3,#oAIAttackVars_Damage] with r3=AIDataPtr+0xA0:
+    result lands in the AI attack-vars struct; caller battle_initAiAttackVars sets up per-object AI attack
+    state and starts attack0 id 0xB'
+  refs:
+  - bn6f/asm/asm31.s:133363
+  - 0x080F65C4 battle_initAiAttackVars
+  - 0x080F65EE sub_80F65EE
+  - 0x080F661E sub_80F661E
+  - 0x0800FE12 battle_aiGetVersionedTableEntry_800FE12
+  reproduce: python3 tools/asmcat.py 0x080F663C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- exact meaning of the two halfwords (damage plus what — hit count, charge time, panel target?)
+- what r0 indexes exactly (attack id vs enemy id) and what the two tables byte_80F669C/byte_80F66C0 hold
+  per entry
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F663C -> battle_loadAiAttackParams
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F663C

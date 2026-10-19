@@ -1,0 +1,53 @@
+name: battle_spawnChipPanelObject
+address: '0x080CD2B4'
+kind: function
+status: probable
+summary: Spawns battle object 0x48 (a chip-effect entity) at a given panel with a direction, flags it,
+  and sets one of its byte attributes.
+interface: '(r0-r3 = spawn args passed through to object_spawnType3: id/type word, panel X, panel Y, alliance/direction)
+  -> r0 = pointer to new battle object, or unchanged-on-fail path; flags set on object header'
+details: 'The routine saves its incoming arguments, calls object_spawnType3 with a fixed value 0x48 as
+  the object identifier, and on success writes the caller''s arguments into the new object: byte oBattleObject_PanelX,
+  byte oBattleObject_PanelY, halfword oBattleObject_AllianceAndDirectionFlip, and word oBattleObject_DamageAndStaminaDamageCounterDisabler.
+  It then ORs 0x10 into oObjectHeader_Flags (a state/attribute bit) and calls setFieldBattleObject_800F614
+  with (r3 & 0xFF, 1), tying an object field to the low byte of the direction/alliance argument. Given
+  it runs on the recorded ''chips'' routes, this is a chip effect that places an object on a specific
+  panel facing a specific direction; the exact identity of object 0x48 (e.g. a boulder or other placed
+  entity) is not shown here.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'mov r0, #0x48; bl object_spawnType3 — spawns a fixed object id via the type-3 battle spawner;
+    strb r1/r2 to oBattleObject_PanelX/PanelY and strh r3 to oBattleObject_AllianceAndDirectionFlip —
+    places the object at a panel with a facing; ldrb r2,[r0,#oObjectHeader_Flags]; orr 0x10; strb — sets
+    header flag 0x10 on the spawned object; bl setFieldBattleObject_800F614 with r1 = r3 & 0xFF, r2 =
+    1 — sets an object field from the direction argument; Caller sub_80E30E0 and route tag ''chips'' indicate
+    this is invoked as part of a chip effect'
+  refs:
+  - bn6f/asm/asm31.s:45904
+  - 0x080E30E0 sub_80E30E0
+  - 0x08003358 object_spawnType3
+  - 0x0800F614 setFieldBattleObject_800F614
+  reproduce: python3 tools/asmcat.py 0x080CD2B4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- chips
+open_questions:
+- What object id 0x48 is (which chip/entity the spawner resolves it to) — needs the object table or sub_80E30E0's
+  context
+- What flag 0x10 on oObjectHeader_Flags means and what setFieldBattleObject_800F614 sets (field index
+  semantics)
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80CD2B4 -> battle_spawnChipPanelObject
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CD2B4

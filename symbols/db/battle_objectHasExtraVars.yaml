@@ -1,0 +1,45 @@
+name: battle_objectHasExtraVars
+address: '0x080FFAEC'
+kind: function
+status: probable
+summary: Predicate that reports whether a battle object has allocated its ExtraVars block.
+interface: (r5 = battle object pointer; r0 unused) -> r0 = 1 if [r5+oBattleObject_ExtraVars] != NULL,
+  else 0; flags clobbered by tst
+details: Loads the object's ExtraVars pointer field and tests it with tst; if the pointer is NULL it falls
+  through and returns 0 in r0 (the loaded value, which is 0), otherwise sets r0 = 1. It is a simple boolean
+  'does this object have extra vars' check, taking the object via r5 (the battle-object register convention)
+  rather than r0. No other fields are touched and it never writes memory.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldr r0,[r5,#oBattleObject_ExtraVars]; tst r0,r0; beq return — returns the pointer's nullness
+    as 0/1; mov r0,#1 before pop {pc} — returns true only when the pointer is non-null; caller sub_80FF904
+    (JudgeMan AI step) calls it among other guard checks before RNG-gated attack branches, consistent
+    with a cheap per-step condition
+  refs:
+  - bn6f/asm/asm31.s:152446
+  - 0x080FF904 sub_80FF904
+  reproduce: python3 tools/asmcat.py 0x080FFAEC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- Whether callers treat a non-null result as 'has extra vars' vs. some other semantic (e.g., 'in special
+  state'); more caller context would confirm
+- Which AI states allocate ExtraVars for JudgeMan
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80FFAEC -> battle_objectHasExtraVars
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FFAEC

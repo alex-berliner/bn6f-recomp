@@ -1,0 +1,48 @@
+name: battle_endAttackReturnToIdle
+address: '0x080F2268'
+kind: function
+status: probable
+summary: 'Battle-object callback that cancels/finishes the current action: resets the object''s animation
+  to 0 and exits its attack state.'
+interface: (r5 = battle object, r0 unused) -> r0 = object_exitAttackState result; no meaningful flags
+details: r5 points at a battle object struct; the function stores 0 into the byte at oBattleObject_CurAnim,
+  resetting the object's current animation index (presumably the idle/default animation), then calls object_exitAttackState,
+  which clears whatever attack-related state the object was in. With no other arguments or returns, it
+  looks like a state-machine hook run when an object's attack or action ends, snapping it back to its
+  resting pose. The 6-instruction body suggests it is a small callback (e.g. an 'attack finished' or 'cancel'
+  handler) invoked indirectly, which is why no direct callers are on record. Recorded execution from the
+  battlesweep route shows it runs during normal battle flow.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: strb r0,[r5,#oBattleObject_CurAnim] with r0=0 resets the object's current animation to the idle
+    index; tail call to object_exitAttackState (0x08011714), the known routine that leaves the object's
+    attack state; r5 is used without being set in the function, so the caller passes the object via the
+    register convention for state callbacks; no return value is produced beyond object_exitAttackState's
+    r0, consistent with a void state-hook; executed on the battlesweep route, matching a battle object
+    state transition
+  refs:
+  - bn6f/asm/asm31.s:125094
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x080F2268
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- which state table or dispatch invokes this callback (its slot would confirm whether it is the 'attack
+  end' vs 'action cancel' hook)
+- whether oBattleObject_CurAnim 0 is the idle animation or merely a 'none' sentinel
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F2268 -> battle_endAttackReturnToIdle
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F2268

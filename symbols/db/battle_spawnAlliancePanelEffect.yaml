@@ -1,0 +1,48 @@
+name: battle_spawnAlliancePanelEffect
+address: '0x081039A4'
+kind: function
+status: probable
+summary: Spawns a battle effect object on the calling object's side of the field, choosing one of four
+  effect variants by the r0 index.
+interface: (r0 = 1-based variant index, r5 = battle object whose Alliance field selects the field side)
+  -> r0 = spawned effect object pointer
+details: The index in r0 is decremented and used to pick a byte from the table at dword_81039D4 (values
+  0x35,0x36,0x37,0x38). The object's oBattleObject_Alliance is doubled to index a per-alliance pair of
+  panel column/row values at dword_8103A04, which object_getCoordinatesForPanels converts to 16.16 fixed-point
+  screen coordinates. It then calls spawn_t1_0x0_EffectObject to create a type-0 effect object, with the
+  effect parameter built as (alliance << 8) | variant byte in r4. So each alliance/side of the battlefield
+  gets its own effect variant id, suggesting a per-side panel visual (e.g. panel break/crack states 0x35-0x38).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sub r0,#1 + ldrb r0,[r0_table] indexes dword_81039D4 = bytes 37 36 35 38, four effect variants;
+    ldrb r0,[r5,#oBattleObject_Alliance]; lsl #1 indexes dword_8103A04 pair fed to object_getCoordinatesForPanels;
+    orr r4,(alliance<<8)|variant before bl spawn_t1_0x0_EffectObject encodes side+variant into the spawned
+    effect; callees are exactly the panel-coordinate converter and the effect-object spawn wrapper'
+  refs:
+  - bn6f/asm/asm31.s:160806
+  - 0x08103286 sub_8103286
+  - 0x0800E276 object_getCoordinatesForPanels
+  - 0x080E05F6 spawn_t1_0x0_EffectObject
+  reproduce: python3 tools/asmcat.py 0x081039A4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- what effect ids 0x35-0x38 render (panel crack vs disappear etc.) needs the effect object's draw handler
+- what caller sub_8103286 passes in r0 (which gameplay event picks the variant) and what structure dword_8103A04
+  officially is
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_81039A4 -> battle_spawnAlliancePanelEffect
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81039A4

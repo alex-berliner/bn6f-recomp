@@ -1,0 +1,52 @@
+name: battle_scanOwnRowForPanel
+address: '0x08106460'
+kind: function
+status: probable
+summary: Scans one row of the object's own half of the battle grid, starting at the center column and
+  moving toward the back, returning whether any panel there matches the requested flag masks.
+interface: (r0 = battle object ptr (row read from +0x13), r1 = unused, r2 = panel-flag set mask, r3 =
+  panel-flag clear mask; r5 = battle object ptr (side from +0x16)) -> r0 = 1 if a matching panel was found,
+  else 0
+details: 'Reads the row (y) from [r0,#0x13] and the side/alliance flag from [r5,#0x16] (likely the same
+  object passed twice). The side flag picks the starting column: 3 when the flag is 0, 4 otherwise — i.e.
+  the own-side column adjacent to the center line. object_getEnemyDirection gives +1 for the player side
+  and -1 for the enemy side; it is negated so the scan walks from the center toward the own back row (3,2,1
+  or 4,5,6). Each column is tested with object_checkPanelParameters(col, row, r2, r3); the first hit ends
+  the loop and returns that call''s nonzero result, while running off the 1..6 column range returns 0.
+  Quirk: the matching column index is tracked in r4 but never returned, only the boolean; the caller presumably
+  re-locates the panel.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r6,[r0,#0x13] / ldrb r0,[r5,#0x16]: row and side come from battle-object fields; tst r0,r0
+    + mov r4,#3/#4: start column depends on the side flag; bl object_getEnemyDirection; neg r0: scan step
+    is opposite of facing, i.e. toward own back row; bl object_checkPanelParameters with (r4=col, r6=row,
+    r2, r3) inside the 1..6-bounded loop; bne loc_810649A returns the check''s 1; loop exhaustion at loc_8106498
+    sets r0=0'
+  refs:
+  - bn6f/asm/asm31.s:166297
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0800E2C0 object_getEnemyDirection
+  reproduce: python3 tools/asmcat.py 0x08106460
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- Which panel flag masks r2/r3 represent (panel type being searched for, e.g. holes, poison, ice) — needs
+  a caller
+- Whether r0 and r5 are always the same object
+- Why the found column is not returned; a caller would show whether it re-derives the position
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8106460 -> battle_scanOwnRowForPanel
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8106460

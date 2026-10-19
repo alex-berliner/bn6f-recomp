@@ -1,0 +1,52 @@
+name: submenu_restoreSnapshot
+address: '0x08123408'
+kind: function
+status: probable
+summary: Reloads a saved copy of the submenu state from IWRAM into sSubmenu and resumes the submenu scene
+  (main jumptable 0x28).
+interface: () -> void; sets the toolkit main-jumptable index to 0x28, no return value
+details: 'Copies 0x80 words (0x200 bytes) from the IWRAM buffer unk_2037780 into the sSubmenu structure
+  at 0x2009A30 via CopyWords (BIOS CpuSet). It then re-initializes sSubmenu''s leading state bytes: byte[0]
+  = 0, byte[1] (jo_01) = 0x10, byte[2] = 0, so the top of the structure is a fixed header the copy does
+  not own. Finally it reads the toolkit pointer from r10 (oToolkit_MainJumptableIndexPtr) and stores 0x28
+  as the next main-jumptable state, i.e. it queues a scene change as its side effect. Given it runs on
+  recorded routes through battles and maps and is invoked from the scene-update fade-teardown path, unk_2037780
+  is most plausibly a snapshot of the submenu saved when play left the menu, restored when returning to
+  it.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl CopyWords with r0=unk_2037780, r1=sSubmenu, r2=0x80 words — bulk reload of submenu data
+    from a backup buffer; strb 0/[0x10]/0 into sSubmenu+0/+1/+2 right after the copy — fixed header init,
+    so byte fields are re-set not restored; ldr r10-based oToolkit_MainJumptableIndexPtr; strb #0x28 —
+    ends by selecting main-jumptable state 0x28; caller sceneUpdate_804A078 runs this on the fade-active
+    teardown branch, consistent with a scene transition back into the menu; route coverage battles2+maps
+    fits saving the submenu snapshot before battle and restoring it after'
+  refs:
+  - bn6f/asm/asm33.s:364
+  - 0x0804A078 sceneUpdate_804A078
+  - 0x08049E5C sub_8049E5C
+  - 0x0800093C CopyWords
+  reproduce: python3 tools/asmcat.py 0x08123408
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battles2
+- maps
+open_questions:
+- where unk_2037780 is written (the matching save-side function) to confirm it is a submenu snapshot
+- what main jumptable state 0x28 is in the project's state table
+- meaning of sSubmenu byte fields 0-2 (jo_01 = 0x10 in particular)
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8123408 -> submenu_restoreSnapshot
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8123408

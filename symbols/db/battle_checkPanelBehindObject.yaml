@@ -1,0 +1,47 @@
+name: battle_checkPanelBehindObject
+address: '0x08108CBA'
+kind: function
+status: probable
+summary: Checks whether the panel one tile behind a battle object's facing matches the required panel-flag
+  mask.
+interface: (r0 = battle object ptr, r2 = required-flag mask, r3 = forbidden-flag mask) -> r0 = 1 if panel
+  matches, else 0
+details: Calls object_getFrontDirection on the object, negates it to point away from the enemy side, and
+  adds the object's x/y coordinates stored at struct offsets 0x12 and 0x13 to get the tile coordinates
+  of the panel behind the object. It then calls object_checkPanelParameters(x, y, r2, r3), passing through
+  the caller's required/forbidden panel-flag masks (r2/r3 are preserved via push/pop across the calls).
+  Returns the 1/0 result of that check. Because the direction is negated, this tests the object's rear
+  tile rather than its front tile.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'neg r0, r0 after object_getFrontDirection gives the opposite of the facing direction; ldrb
+    [r4,#0x12]/[r4,#0x13] added to the direction form the panel coordinates from the object''s x/y; push/pop
+    {r2,r3} around the calls preserves caller mask args for object_checkPanelParameters; callee summaries:
+    getFrontDirection gives +/-1 by alliance side; checkPanelParameters tests a tile against flag masks
+    and returns 1/0'
+  refs:
+  - bn6f/asm/asm31.s:171650
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x08108CBA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- Which callers use it and what flag masks they pass (recorded route 'battlesweep' only), and whether
+  offsets 0x12/0x13 are exactly the object's x/y or an offset position
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8108CBA -> battle_checkPanelBehindObject
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8108CBA

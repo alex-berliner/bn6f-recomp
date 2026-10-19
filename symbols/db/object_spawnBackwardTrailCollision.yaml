@@ -1,0 +1,49 @@
+name: object_spawnBackwardTrailCollision
+address: '0x080C8FA0'
+kind: function
+status: probable
+summary: Spawns a row of three collision regions trailing behind a battle object, opposite its facing
+  direction.
+interface: (r5 = oBattleObject*; r0 not used) -> r0 = 0 or pointer to last spawned collision region; no
+  flags of interest
+details: Iterating r4 = 0..2, it computes an offset of -getFrontDirection() * r4 and adds it to the object's
+  PanelX, keeping PanelY fixed, so three consecutive panels are targeted going backwards from the object's
+  facing. Each iteration calls object_spawnCollisionRegion(x, PanelY, Element, 0, 0x4050101, DamageAndStaminaDamageCounterDisabler,
+  3), reusing the spawner's damage field and passing constant 0x4050101 and 3. If a region was created
+  (nonzero r0), the object's Param2 is copied into the new object's Timer field, likely its lifetime or
+  delay. The three regions are therefore a trail of damaging panels left behind the moving/facing object.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'loop counter: add r4,#1 / cmp r4,#3 / blt loc_80C8FA4 — exactly three spawns; neg r0,r0; mul
+    r0,r4; add to [r5,#oBattleObject_PanelX] — offsets 0,-dir,-2dir behind the facing direction; ldrb
+    Element, DamageAndStaminaDamageCounterDisabler and constants 0x4050101/3 passed to object_spawnCollisionRegion;
+    strh Param2 into [r0,#oBattleObject_Timer] of each spawned region — per-region timer from the source
+    object; callee object_getFrontDirection gives the +1/-1 side-based facing multiplier that is negated'
+  refs:
+  - bn6f/asm/asm31.s:36842
+  - 0x080C8ED0 sub_80C8ED0
+  - 0x0800E2CA object_getFrontDirection
+  - 0x080C536A object_spawnCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080C8FA0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- what the constant 0x4050101 encodes in object_spawnCollisionRegion (region type/attribute bitmask?)
+- whether Timer=Param2 is a lifetime or activation delay for each trail region
+- which specific battle object/attack calls sub_80C8ED0 (unknown caller) to confirm the in-game move
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80C8FA0 -> object_spawnBackwardTrailCollision
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C8FA0

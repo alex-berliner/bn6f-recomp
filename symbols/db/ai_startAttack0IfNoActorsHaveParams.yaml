@@ -1,0 +1,47 @@
+name: ai_startAttack0IfNoActorsHaveParams
+address: '0x08115F2E'
+kind: function
+status: probable
+summary: 'Enemy AI attack handler: starts a charge attack (object_setAttack0 type 0xA) with version-specific
+  stats unless some actor has the three checked parameters set.'
+interface: (r4 = AIData actor, r5 = battle object, r6 = AI state, r7 = AIAttackVars) -> r0 = 0; clears
+  oAIState_ScriptId
+details: First counts actors whose parameter 0x64/0xA9/0xAE values are nonzero; if the count is nonzero
+  the attack is skipped entirely. Otherwise it fills oAIAttackVars (AttackDuration, Damage, ExtraDamage,
+  StepTimer) from four per-version byte tables indexed by oAIData_Version_16, sets ChargeCycles to 0x10,
+  sets CurAnim to 1 and ExtraVars+4 to 1, calls object_setAttack0 with argument 0xA, and zeroes AttackElement.
+  Finally it always stores 0 into oAIState_ScriptId, ending the AI script step. The version tables imply
+  the attack's numbers differ between Gregar/Falzar builds or enemy versions.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl FindBattleActorsWithNonzeroParam_ReturnCountAndSum with r0=0x64, r1=0xA9, r2=0xAE gates the
+    whole setup on cmp r0,#0 / bne; four ldrb [table, version] stores into oAIAttackVars_AttackDuration/_Damage/_ExtraDamage/_StepTimer
+    use byte_8115E44/E14/E1C/E3C; mov r0,#0x10 into oAIAttackVars_ChargeCycles plus bl object_setAttack0
+    with r0=0xA marks a charged attack launch; final strb 0 to oAIState_ScriptId at loc_8115F6E resets
+    the AI script on both paths
+  refs:
+  - bn6f/asm/asm32.s:15860
+  - 0x08109630 FindBattleActorsWithNonzeroParam_ReturnCountAndSum
+  - 0x08011680 object_setAttack0
+  reproduce: python3 tools/asmcat.py 0x08115F2E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- what gameplay parameters 0x64/0xA9/0xAE represent (which actor state the check tests)
+- what attack type 0xA in object_setAttack0 is and which enemy this AI script belongs to
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8115F2E -> ai_startAttack0IfNoActorsHaveParams
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8115F2E

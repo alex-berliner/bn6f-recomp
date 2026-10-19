@@ -1,0 +1,54 @@
+name: battle_checkPanelAtObjectOffset
+address: '0x08111F38'
+kind: function
+status: probable
+summary: Checks whether the panel at a caller-given X offset from a battle object's current panel satisfies
+  an alliance-dependent panel condition.
+interface: (r0 = base X offset, r5 = battle object; r3 auto = table byte_8111F60) -> r0 = nonzero (the
+  absolute X) if the panel at (base+objPanelX, objPanelY) matches the alliance's entry, else 0; flags
+  clobbered
+details: Loads the object's PanelX/PanelY from the battle object in r5, adds the caller's r0 offset to
+  PanelX, and passes (x, y) with r3 = byte_8111F60 to GetAllianceDependentPanelParamArgs, which picks
+  one of the table's two 8-byte entries by the object's alliance field and yields a param word and args
+  pointer. Those are fed to object_checkPanelParameters, which tests the tile at those coordinates against
+  required/not-required flag mask sets. On mismatch it returns 0; on match it returns the popped r0 (base+PanelX),
+  a nonzero truthy value. The table holds two entries (0x10/0x0F8800A0-ish and 0x30/0x0F880080-ish), one
+  per alliance, so the accepted panel state depends on which team the object is on. The odd pop {r0,r1}
+  after the compare means the success return value is just 'nonzero', not a meaningful result.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r1,[r5,#oBattleObject_PanelX]; add r0,r0,r1 / ldrb PanelY: coordinates are the object''s
+    panel plus an offset; ldr r3,=byte_8111F60 then bl GetAllianceDependentPanelParamArgs: alliance-indexed
+    2x8-byte parameter table; bl object_checkPanelParameters: the looked-up entry is used as a panel flag-state
+    test at those coordinates; cmp r0,#0 / pop {r0,r1} / bne locret / mov r0,#0: returns 0 on mismatch,
+    popped (nonzero) r0 on match; byte_8111F60 has exactly two 8-byte entries, matching the two alliances'
+  refs:
+  - bn6f/asm/asm32.s:8324
+  - 0x08111F08 sub_8111F08
+  - 0x081096FA GetAllianceDependentPanelParamArgs
+  - 0x0800CC86 object_checkPanelParameters
+  reproduce: python3 tools/asmcat.py 0x08111F38
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- exact semantics of the param word and the args mask data in byte_8111F60 (what panel flag states 0x10/0x30
+  select)
+- why the caller passes a base X offset (what gameplay situation checks a relative panel)
+- what sub_8111F08 does with the result
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8111F38 -> battle_checkPanelAtObjectOffset
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8111F38

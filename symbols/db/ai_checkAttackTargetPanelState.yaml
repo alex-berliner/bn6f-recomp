@@ -1,0 +1,50 @@
+name: ai_checkAttackTargetPanelState
+address: '0x08112EFA'
+kind: function
+status: probable
+summary: For an AI attack, resolves the attack's target panel X+param offset, validates the panel's state
+  against an alliance-dependent parameter table, and commits the shifted target coordinates if valid.
+interface: (r7 = AI attack vars struct; no register args) -> r0 = 1 if target panel passed the state check
+  and TargetPanelX/Y were updated, else r0 = 0
+details: Reads oAIAttackVars_AiAttackParam and adds it to oAIAttackVars_TargetPanelX, then calls GetAllianceDependentPanelParamArgs
+  with the table byte_8112F24 (first entry 0x20 = required panel flag mask), indexed by the object's alliance
+  field, yielding a param word (r0) and args (r1,r2 = the panel X/Y from the table entry). It then calls
+  object_checkPanelParameters to test whether the computed panel matches the required flag state (mask
+  set / mask clear). If the check passes, it writes the table entry's X and Y back into oAIAttackVars_TargetPanelX/Y;
+  otherwise the target coordinates are left unchanged. The 0x20 mask likely means the panel must be in
+  a specific state (e.g., a hole or boosted panel) for the attack to target it.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: add r0,r0,r1 with ldr r1,[r7,#oAIAttackVars_AiAttackParam] shifts TargetPanelX by the attack
+    param; bl GetAllianceDependentPanelParamArgs with off_8112F20 table gives alliance-dependent panel
+    params/args; bl object_checkPanelParameters then beq locret skips the stores, so commit happens only
+    when the panel state matches; strb r1/r2 back to oAIAttackVars_TargetPanelX/Y commits the new target
+    coordinates; byte_8112F24 entries 0x20 and 0x01 are the required/cleared flag masks consumed by object_checkPanelParameters
+  refs:
+  - bn6f/asm/asm32.s:10144
+  - 0x08112E7C sub_8112E7C
+  - 0x081096FA GetAllianceDependentPanelParamArgs
+  - 0x0800CC86 object_checkPanelParameters
+  reproduce: python3 tools/asmcat.py 0x08112EFA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- Exact meaning of the 0x20/0x01 panel flag masks (which panel states) and which AI attacks route through
+  sub_8112E7C to reach this check
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8112EFA -> ai_checkAttackTargetPanelState
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8112EFA

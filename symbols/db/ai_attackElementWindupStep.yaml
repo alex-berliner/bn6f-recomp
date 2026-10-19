@@ -1,0 +1,48 @@
+name: ai_attackElementWindupStep
+address: '0x08100894'
+kind: function
+status: probable
+summary: 'AI attack wind-up step: on first call assigns the attack''s element, plays a wind-up anim/effect/sound,
+  then after 20 frames arms the strike element.'
+interface: (r5 = battle object, r7 = oAIAttackVars struct) -> r0 = clobbered; sets oAIAttackVars_AttackElement/StepTimer/HitElement
+  and oBattleObject_CurAnim
+details: 'If oAIAttackVars_AttackElement is 0, it initializes the wind-up: sets AttackElement = 4, switches
+  the battle object to anim 6 (charge/wind-up pose), spawns an effect at the object''s panel via battle_spawnEffectAtObjectPanel,
+  plays sound 77, and loads StepTimer with 0x14 (20 frames). On later calls it decrements StepTimer each
+  frame; when it reaches zero it writes HitElement = 8, which presumably tells the following attack-step
+  logic to resolve the strike with that element. It is a per-frame state function inside an enemy AI attack
+  routine, using the shared oAIAttackVars scratch fields.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb [r7,#oAIAttackVars_AttackElement] / tst+bne: first-call vs wait-call branching (0x8100894-0x810089A);
+    strb #4 to AttackElement and #6 to oBattleObject_CurAnim: set element and wind-up animation (0x810089C-0x81008A4);
+    bl battle_spawnEffectAtObjectPanel + PlaySoundEffect(SOUND_LOG_IN_77): telegraph effect and sound
+    (0x81008AA-0x81008B0); StepTimer = 0x14 then decrement-and-bgt loop: 20-frame delay before HitElement
+    = 8 (0x81008B2-0x81008BC)'
+  refs:
+  - bn6f/asm/asm31.s:154201
+  - 0x080005CC PlaySoundEffect
+  - 0x08101218 battle_spawnEffectAtObjectPanel
+  reproduce: python3 tools/asmcat.py 0x08100894
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- 'Caller attack routine unknown: which attack/state sequence calls this and what HitElement = 8 is consumed
+  by'
+- Exact element enum meaning of 4 (and hit-element value 8) not confirmed from this code alone
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8100894 -> ai_attackElementWindupStep
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8100894

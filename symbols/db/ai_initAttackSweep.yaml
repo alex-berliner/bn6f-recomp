@@ -1,0 +1,50 @@
+name: ai_initAttackSweep
+address: '0x0810EAA6'
+kind: function
+status: probable
+summary: 'AI attack-phase initializer: arms a panel-choose callback, loads attack duration by game version,
+  and starts attack id 0x0B.'
+interface: (r4 = AI data ptr, r5 = AI counter object, r6 = AI state, r7 = oAIAttackVars) -> r0 = 0; sets
+  attack vars and resets oAIState_ScriptId
+details: Increments a per-object counter at [r5,0x74] (likely a phase/use counter) and installs sub_810EB76
+  as oAIAttackVars_PanelChooseCallback, the routine that later picks the panel to attack. It loads AttackDuration
+  from byte_810E804 indexed by oAIData_Version_16, hardcodes AiDifficultyTier=2, AttackBoost2=0x14 and
+  TimerOrCycles=0x15, and sets ScratchVar and AiAttackParam to 3. It then calls object_setAttack0 with
+  r0=0x0B to begin attack slot 11, calls genericAI_movementRelated_8109952 to reposition/queue movement,
+  and clears oAIState_ScriptId so the AI state machine returns to script 0. The whole block is a one-shot
+  setup for one attack step of the AI, run during battlesweep-recorded play.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: str r0, [r7,#oAIAttackVars_PanelChooseCallback] with =sub_810EB76+1 arms the panel-choose callback;
+    ldrb r0, [byte_810E804 + oAIData_Version_16]; strh ... AttackDuration — version-dependent duration
+    table; mov r0,#0xb; bl object_setAttack0 — starts attack id 11; bl genericAI_movementRelated_8109952
+    then strb 0, [r6,#oAIState_ScriptId] — hand control back to AI script 0; counter at [r5,0x74] incremented
+    each call, suggesting this state is entered repeatedly per attack cycle
+  refs:
+  - bn6f/asm/asm32.s:2117
+  - 0x08109952 genericAI_movementRelated_8109952
+  - 0x08011680 object_setAttack0
+  reproduce: python3 tools/asmcat.py 0x0810EAA6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- Which boss/encounter this belongs to (battlesweep route suggests a specific fight) and what attack id
+  0x0B performs
+- Meaning of the hardcoded 0x14/0x15/3 constants in oAIAttackVars fields
+- What sub_810EB76 (the installed panel-choose callback) actually chooses
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810EAA6 -> ai_initAttackSweep
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810EAA6

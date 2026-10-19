@@ -1,0 +1,54 @@
+name: navicust_checkPiecePlacement
+address: '0x08137378'
+kind: function
+status: probable
+summary: 'Navi Customizer screen: validates placing the held part at the cursor''s grid cell, showing
+  the appropriate dialog on each failure type, and advances the state machine on success.'
+interface: (r5 = screen state struct, r7 = cursor/held-part struct; r0 momentarily 0x3f8 to sub_8137670)
+  -> r0 = status from last call; writes next-state byte [r5] (0x68 = stay, 0x6c = proceed) and halfword
+  [r5+0xe] = 0 on success
+details: 'Reads a flag at [r7+0xd] (bails if set), then uses sub_8137648(0,0xa) as a gate. Checks the
+  cursor cell [r7+0x28]=x, [r7+0x2c]=y against the NaviCust grid via sub_813BB68 (base in oToolkit_Unk2004190_Ptr);
+  occupied -> dialog 0x20, sub_813BFB8 failure -> 0x22, sub_813BF60 failure -> 0x1f, each ending in state
+  0x68 and sub_8137670(0). Then examines the four neighboring cells (x±1, y±1): if a neighbor is occupied
+  and its 8-byte entry''s first halfword (via toolkit_getUnk2004190EntryPtr_813B9FC) equals 0x34, dialog
+  0x21 plays and placement is rejected — 0x34 marks a part type that cannot be adjacent. If all checks
+  pass it calls sub_8137670(1), clears [r5+0xe], and sets state 0x6c. sub_8137670 with 0x3f8/0/1 looks
+  like a sound/flag setter tied to the attempt result.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl sub_813BB68 with r2/r3 from [r7+0x28]/[r7+0x2c] (plus ±1 variants) probes the grid cell and
+    its four neighbors; toolkit_getUnk2004190EntryPtr_813B9FC then ldrh r0,[r7]; cmp r0,#0x34 identifies
+    the forbidden neighbor part; four distinct RunTextScriptNaviCustDialog ids (0x1f,0x20,0x21,0x22) match
+    distinct failure reasons in the NaviCust dialog bank; success path clears [r5+0xe] and writes 0x6c
+    to [r5] while failures write 0x68 — a UI state machine advance; callees sub_813BFB8/sub_813BF60 and
+    the 0x90 (0x90-cell NaviCust grid buffer) base pointer tie this to the Navi Customizer screen
+  refs:
+  - bn6f/asm/asm36.s:15013
+  - 0x0813B9FC toolkit_getUnk2004190EntryPtr_813B9FC
+  - 0x081376A8 RunTextScriptNaviCustDialog
+  - 0x08137648 sub_8137648
+  reproduce: python3 tools/asmcat.py 0x08137378
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- beastsp
+open_questions:
+- exact meaning of entry halfword 0x34 (which part it identifies — likely the Plus part's coverage or
+  a specific chip)
+- what sub_813BFB8 and sub_813BF60 test (e.g. out-of-bounds vs. compressed/bug part rules) and what dialogs
+  0x1f/0x22 say
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8137378 -> navicust_checkPiecePlacement
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8137378

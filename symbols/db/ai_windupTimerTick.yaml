@@ -1,0 +1,50 @@
+name: ai_windupTimerTick
+address: '0x081138D8'
+kind: function
+status: probable
+summary: 'Per-frame AI attack phase tick: counts down a wind-up timer and, on expiry, launches the enemy''s
+  attack (anim, sound 0xBA, hitbox setup).'
+interface: (r5 = battle object, r7 = oAIAttackVars) -> void; sets object anim to 3, counter time 0x18,
+  reloads StepTimer from AttackDuration
+details: Each invocation decrements oAIAttackVars_StepTimer and returns unless it hits zero, so callers
+  run it every frame while the wind-up phase lasts. On expiry it sets the object's counter to 0x18 frames
+  via object_setCounterTime, switches oBattleObject_CurAnim to 3 (attack pose), calls sub_80C00C2 with
+  (ExtraVars+8, 9) and two unknown helpers (sub_8113C48, sub_8113BAC) that likely place the attack's hitbox/projectile,
+  then plays sound effect 0xBA. It reloads StepTimer from oAIAttackVars_AttackDuration so the next phase
+  will also tick down, and clears the attack element while setting HitElement to 0xC (likely a fixed damage/elem
+  value for this attack).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrh r0,[r7,#oAIAttackVars_StepTimer]; sub r0,#1; bne locret — classic per-frame countdown gate;
+    mov r0,#3; strb r0,[r5,#oBattleObject_CurAnim] — switches object to an attack animation; mov r0,#0xba;
+    bl PlaySoundEffect — plays a distinct sound effect when the phase fires; strh r0,[r7,#oAIAttackVars_StepTimer]
+    reloaded from AttackDuration — re-arms the tick for the next phase; HitElement=0xC / AttackElement=0
+    stores in oAIAttackVars — configuring the attack's damage properties
+  refs:
+  - bn6f/asm/asm32.s:11307
+  - 0x080005CC PlaySoundEffect
+  - 0x0800E9DC object_setCounterTime
+  - 0x080C00C2 sub_80C00C2
+  reproduce: python3 tools/asmcat.py 0x081138D8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- Which enemy/boss attack this state machine belongs to (callers unknown)
+- What sub_8113C48 and sub_8113BAC do (projectile spawn? hitbox placement?)
+- Meaning of HitElement value 0xC and the ExtraVars+8/9 call
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_81138D8 -> ai_windupTimerTick
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81138D8

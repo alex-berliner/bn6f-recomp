@@ -30,7 +30,7 @@ Next m4aSoundInit(void) {
         R0 = player;
         R1 = LD32(entry + 4);                      /* tracks */
         R2 = LD8(entry + 8);                       /* number of tracks */
-        GUEST_CALL(sub_814F08C);                   /* MPlayOpen */
+        GUEST_CALL(mplay_initPlayer);                   /* MPlayOpen */
         ST8(player + 0x0B, LD16(entry + 0x0A));    /* player->priority-ish field */
         ST32(player + 0x18, MEMACC_DEFAULT);
     }

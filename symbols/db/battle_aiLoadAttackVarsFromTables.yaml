@@ -1,0 +1,51 @@
+name: battle_aiLoadAttackVarsFromTables
+address: '0x080F865C'
+kind: function
+status: probable
+summary: Loads two per-enemy AI table values (e.g. attack damage and a companion stat) into the battle
+  object's AI attack variables.
+interface: (r0 = battle object / enemy AI index) -> writes word to [AIDataPtr+0xA0] (oAIAttackVars_Damage);
+  returns via popped regs
+details: Takes the enemy/AI index in r0, multiplies by 8 (stride of the per-AI table rows), and reads
+  a halfword entry from two tables (byte_80F86BC and byte_80F86E0) through battle_aiGetVersionedTableEntry_800FE12,
+  which applies version-dependent scaling (notably for AI version 4). The first value is kept as the low
+  halfword and the second, shifted left 16, becomes the high halfword; the combined word is stored at
+  [r5+oBattleObject_AIDataPtr]+0xA0, the oAIAttackVars_Damage field. So each AI id has an 8-byte row whose
+  first two halfwords seed the AI's attack parameters, adjusted per AI version. The function is a pure
+  loader with no branching beyond the two lookups.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: mul r0,r2,#8 then bl battle_aiGetVersionedTableEntry_800FE12 twice with different table bases
+    (off_80F86B0, off_80F86D4); lsl r0,#16; orr r6 combines the two halfword reads into one value; str
+    r6,[r3+0xA0] into oBattleObject_AIDataPtr+oAIAttackVars_Damage; sole caller battle_aiEnemyAiActionHandler_80F8448
+    runs this during enemy AI tick when selecting an attack
+  refs:
+  - bn6f/asm/asm31.s:137409
+  - 0x080F8448 battle_aiEnemyAiActionHandler_80F8448
+  - 0x0800FE12 battle_aiGetVersionedTableEntry_800FE12
+  reproduce: python3 tools/asmcat.py 0x080F865C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- exact meaning of the high halfword stored in oAIAttackVars_Damage (second table column) — needs the
+  table data or more AI code reading that field
+- whether r0 is the battle object pointer or a raw AI id; the multiply-by-8 with no dereference before
+  the lookup suggests a raw index, but the caller context would confirm
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F865C -> battle_aiLoadAttackVarsFromTables
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F865C

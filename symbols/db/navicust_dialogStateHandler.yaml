@@ -1,0 +1,55 @@
+name: navicust_dialogStateHandler
+address: '0x081374D4'
+kind: function
+status: probable
+summary: 'Per-frame NaviCust dialog handler: waits for the dialog to be ready, then on state 4 or 8 triggers
+  the next NaviCust text script (checking a toolkit part flag for state 8).'
+interface: (r7 = dialog state object, r5 = out byte ptr; r0/r1 unused) -> r0 = script/text id side effect;
+  writes 0x7C or 0x78 to [r5]
+details: 'First calls sub_8137670 with 0x3F8 (likely priming a dialog/text variable), then bails out if
+  byte [r7,#0xD] is nonzero or if sub_8137648(0,10) returns false (a readiness/gate check, e.g. dialog
+  not busy or 10-frame condition). It then dispatches on the state byte [r7,#2]: for state 4 it calls
+  sub_8137670(1) and stores 0x7C (124) into [r5], presumably the next text/dialog id to run; for state
+  8 it reads halfwords [r7,#0x28] and [r7,#0x2C] and calls battle_checkItemFlagFor_813B9B4, which tests
+  a byte in the toolkit''s 0x200414C array at offset r0 + r1*7 (7-byte-per-entry NaviCust part records).
+  If that flag is set it runs RunTextScriptNaviCustDialog with id 0x24, stores 0x78 (120) into [r5], and
+  calls sub_8137670(0). The 0x78/0x7C bytes look like follow-up dialog/script selectors chosen by which
+  NaviCust interaction state was reached.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl sub_8137670 with 0x3F8 and later with 1/0 brackets the state machine, matching a dialog-var
+    setter; cmp r0,#4 / cmp r0,#8 on ldrb [r7,#2] show a two-case dispatch on an object state byte; bl
+    battle_checkItemFlagFor_813B9B4 with [r7,#0x28],[r7,#0x2C] probes the 7-byte-stride toolkit array
+    at 0x200414C; bl RunTextScriptNaviCustDialog with r0=0x24 runs a NaviCust text script only when the
+    part flag passes; strb 0x7C/[r5] and strb 0x78/[r5] store state-dependent follow-up ids into the caller's
+    object
+  refs:
+  - bn6f/asm/asm36.s:15194
+  - 0x0813B9B4 battle_checkItemFlagFor_813B9B4
+  - 0x081376A8 RunTextScriptNaviCustDialog
+  - 0x08137648 sub_8137648
+  reproduce: python3 tools/asmcat.py 0x081374D4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- beastsp
+open_questions:
+- Exact meaning of the 0x7C/0x78 bytes written to [r5] (next text id vs. state code) and the identity
+  of sub_8137670/sub_8137648
+- Which NaviCust part flag (index/offset semantics in the 0x200414C array) state 8 is testing
+- No callers captured, so the meaning of r7 (which actor owns +0xD, +2, +0x28, +0x2C) is inferred only
+  from field use
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_81374D4 -> navicust_dialogStateHandler
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81374D4

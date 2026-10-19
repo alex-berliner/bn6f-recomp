@@ -1,0 +1,44 @@
+name: object_destroyClearBackref
+address: '0x080C7530'
+kind: function
+status: probable
+summary: Destructor variant that clears another object's back-pointer to this object before destroying
+  it.
+interface: (r5 = this battle object) -> r0 = object_genericDestroy result; no flag contract visible
+details: Loads the object's oBattleObject_ExtraVars pointer, then reads the word it points to; if that
+  word still equals r5 (i.e., another structure stores a reference back to this object there), it writes
+  0 to unlink it. It then tail-calls object_genericDestroy to release panel tile reserves, collision data,
+  and the object's memory. The extra-vars target is thus a foreign slot holding a pointer to this object,
+  cleared only when it still matches. Uses r5 rather than r0 for 'this', matching the destructor calling
+  convention used around battle objects.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldr r1,[r5,#oBattleObject_ExtraVars]; ldr r0,[r1]; cmp r0,r5 — reads a slot whose value is compared
+    against this object; bne loc_80C753E / mov r0,#0; str r0,[r1] — zeroes the slot only when it equals
+    r5 (conditional unlink); bl object_genericDestroy — ends with the generic battle-object destructor,
+    so this is a specialized destroy path
+  refs:
+  - bn6f/asm/asm31.s:33216
+  - 0x08016C8A object_genericDestroy
+  reproduce: python3 tools/asmcat.py 0x080C7530
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- Which object type or field stores the back-pointer in oBattleObject_ExtraVars (no known caller); what
+  relationship it models (owner, parent, linked partner)
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80C7530 -> object_destroyClearBackref
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C7530

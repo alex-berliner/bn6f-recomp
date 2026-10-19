@@ -1,0 +1,48 @@
+name: object_checkPanelBehindObject
+address: '0x080FCDBA'
+kind: function
+status: probable
+summary: Returns whether the panel directly behind a battle object (opposite its facing direction) matches
+  caller-supplied panel flag masks.
+interface: (r0 = battle object ptr, r2/r3 = required/forbidden panel flag masks passed through) -> r0
+  = 1 if the behind-panel matches, else 0
+details: Reads the object's panel coordinates at +0x12 (x) and +0x13 (y). Gets the alliance facing multiplier
+  from object_getFrontDirection, negates it, and adds it to x, yielding the coordinates of the panel one
+  tile behind the object relative to its facing. It then calls object_checkPanelParameters with those
+  x/y in r0/r1 and the caller's r2/r3 mask pair (preserved via push/pop across the first call) and returns
+  that result unchanged; on failure it forces r0 = 0. No state is modified, it is a pure coordinate-shifting
+  wrapper around the panel test.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: neg r0,r0; ldrb r1,[r4,#0x12]; add r0,r0,r1 — computes x minus the facing multiplier, i.e. one
+    panel behind (asm lines 4-7); ldrb r1,[r4,#0x13] — y coordinate taken straight from object field 0x13;
+    bl object_checkPanelParameters with r0/r1 = computed x/y and r2/r3 passed through untouched (push
+    {r2,r3}/pop {r2,r3} preserve them); tst r0,r0 / mov r0,#0 — returns the callee's boolean verdict,
+    zeroed on mismatch
+  refs:
+  - bn6f/asm/asm31.s:146564
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x080FCDBA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- No known caller, so the meaning of the r2/r3 masks and the in-game use (custom panel checks, AI, etc.)
+  is unconfirmed
+- Field 0x12/0x13 semantics (x/y vs y/x) assumed from object_checkPanelParameters' (x,y) argument order
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80FCDBA -> object_checkPanelBehindObject
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FCDBA

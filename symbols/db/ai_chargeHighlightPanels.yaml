@@ -1,0 +1,52 @@
+name: ai_chargeHighlightPanels
+address: '0x080F4DF8'
+kind: function
+status: probable
+summary: 'Per-frame AI attack charge: initializes the attack (element 4, anim 0xF, timer from AttackBoost2),
+  then while charging highlights the panel region in front of the object every 8 frames and sets HitElement=0xC
+  when the charge timer expires.'
+interface: (r5 = battle object ptr, r7 = oAIAttackVars struct) -> r0 = undefined; updates oAIAttackVars
+  fields and draws panel highlight
+details: 'On the first call (AttackElement==0) it starts the attack: writes element 4 into oAIAttackVars_AttackElement,
+  sets the object''s current animation to 0xF, loads the charge duration from oAIAttackVars_AttackBoost2
+  into StepTimer, and zeroes ChargeCycles. On subsequent frames it decrements StepTimer; when it reaches
+  0 it writes 0xC into oAIAttackVars_HitElement and stops. While the timer is still counting, ChargeCycles
+  is incremented and every 8th cycle (carry out of lsr #3) it calls object_getFrontDirection and object_highlightPanelRegion
+  with x=PanelX+frontDir, y=PanelY, count 4, and r3 = (DirectionFlip<<8)|Alliance, i.e. a periodic flashing
+  highlight of the panels about to be hit. r7 is the AI attack-variable struct and r5 the oBattleObject;
+  callers must supply both.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne branches between init (sets element 4, anim
+    0xF, StepTimer=AttackBoost2) and the charge loop; charge loop: StepTimer decrement, on zero ''mov
+    r0,#0xc; strh r0,[r7,#oAIAttackVars_HitElement]''; ChargeCycles lsr #3 + bcs gates the highlight to
+    every 8th frame; bl object_getFrontDirection then object_highlightPanelRegion(r0=x+dir, r1=PanelY,
+    r2=4, r3=(DirectionFlip<<8)|Alliance); route ''battlesweep'' and callee object_getFrontDirection show
+    this is an enemy AI battle attack telegraph'
+  refs:
+  - bn6f/asm/asm31.s:130268
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800CCD4 object_highlightPanelRegion
+  reproduce: python3 tools/asmcat.py 0x080F4DF8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- exact meaning of element 4 and HitElement 0xC in this attack
+- what panel width/count 4 covers (row of 4 panels in front?)
+- which AI attack routine dispatches to this and what AttackBoost2 normally holds
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F4DF8 -> ai_chargeHighlightPanels
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F4DF8

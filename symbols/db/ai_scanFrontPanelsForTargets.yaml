@@ -1,0 +1,54 @@
+name: ai_scanFrontPanelsForTargets
+address: '0x080F382C'
+kind: function
+status: probable
+summary: AI helper that checks the three panels in a column directly in front of a battle object and records
+  a per-row entry for each panel whose status flag 0x10 is set.
+interface: (r0 = entry array base, r1 = value A (<<8), r2 = value B (<<16), r3 = value C, r5 = battle
+  object ptr, r6 = extra word, r7 = AI attack vars ptr) -> r0 = sub_80C8C4C result of last call; no meaningful
+  flags
+details: Loops a counter from 0 to 2 and computes dy = counter-1, so it examines rows PanelY-1, PanelY,
+  PanelY+1. For each row it computes x = object_getFrontDirection() + PanelX (i.e. the panel one column
+  in front of the object, direction-aware via the alliance/DirectionFlip logic) and reads that panel's
+  status word with object_getPanelParameters. If bit 0x10 of the panel status is set, it packs a word
+  from the caller's arguments (r3 | r1<<8 | r2<<16), indexes the r0 array by counter*4 (one slot per row),
+  and calls sub_80C8C4C(slotPtr, packedWord, r7->oAIAttackVars_InitFlag, savedR6). Bit 0x10 of the panel
+  flags is likely an occupancy/blocking property (e.g. an object or hole on the panel). The per-row slot
+  pointer and packed word suggest entries are queued for a later attack/damage step rather than executed
+  here.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'loop counter 0..2 with ''sub r2,#1'' gives dy=-1,0,1 around oBattleObject_PanelY (loc_80F383E..loc_80F3880);
+    x = object_getFrontDirection() + PanelX targets the single column in front of the object; tst r0,#0x10
+    / beq skips the call unless panel status bit 0x10 is set; r0 = [sp] + counter<<2 selects one of three
+    consecutive array slots per row; callees object_getFrontDirection/object_getPanelParameters and r7#oAIAttackVars_InitFlag
+    place it in enemy-AI attack targeting (route: battlesweep)'
+  refs:
+  - bn6f/asm/asm31.s:127584
+  - 0x080F30B2 sub_80F30B2
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800C8F8 object_getPanelParameters
+  - 0x080C8C4C sub_80C8C4C
+  reproduce: python3 tools/asmcat.py 0x080F382C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- purpose of sub_80C8C4C (queue/apply?) and the meaning of the packed r1/r2/r3 word are unknown
+- exact meaning of panel status bit 0x10 needs the panel-flags table
+- caller sub_80F30B2 would clarify which AI attack uses this scan and what the r0 array is consumed by
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F382C -> ai_scanFrontPanelsForTargets
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F382C

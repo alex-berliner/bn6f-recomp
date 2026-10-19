@@ -3219,7 +3219,7 @@ Next sceneUpdate_804A078(void) {
         R0 = 0x40;
         GUEST_CALL(SetRenderInfoLCDControl);
         GUEST_CALL(chatbox_8040818);
-        GUEST_CALL(sub_8123408);
+        GUEST_CALL(submenu_restoreSnapshot);
     } else {
         GUEST_CALL(sub_8049F70);
     }

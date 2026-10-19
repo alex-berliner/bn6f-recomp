@@ -1,0 +1,54 @@
+name: ai_attackFrontPanel
+address: '0x08110AE4'
+kind: function
+status: probable
+summary: 'AI melee attack handler: on the sprite''s attack-active frame, sets the attack animation/element
+  and spawns the attack one panel in front of the user.'
+interface: (r5 = battle object, r7 = AI attack vars) -> r0 = result of sub_80D6B78; no meaningful flags
+details: It first reads the current animation frame's parameters via sprite_getFrameParameters and only
+  acts when bit 0x80 of the attribute byte is set (the frame's 'attack fires now' flag), otherwise it
+  returns immediately. On the active frame it forces the object's CurAnim to 5 (attack/swing animation),
+  sets oAIAttackVars_HitElement to 0x14 and AttackElement to 0 (neutral), then queries object_getFrontDirection
+  for the +1/-1 facing multiplier. It adds that to the object's PanelX to get the target panel one tile
+  ahead at the object's own PanelY, and calls sub_80D6B78 passing the attack's Damage, AttackBoost2 and
+  PanelChooseCallback loaded from the AI attack var block. r4-r7 are shuffled so the callee receives target
+  X/Y in r0/r1 and the damage/boost/callback trio in r4/r6/r7, matching a shared 'spawn panel attack'
+  helper signature.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'tst r0,#0x80 after sprite_getFrameParameters gates everything on the frame''s attribute byte
+    (asm lines 3-5); strb #5,[r5,#oBattleObject_CurAnim] plus HitElement=0x14/AttackElement=0 configure
+    the attack on hit (lines 6-11); object_getFrontDirection result added to oBattleObject_PanelX gives
+    the adjacent front panel as target; Damage/AttackBoost2/PanelChooseCallback loaded from oAIAttackVars
+    and passed to sub_80D6B78, a generic attack-spawn helper; route recordings (battlesweep, beastsp)
+    place it in AI attack script execution, matching the oAIAttackVars structure'
+  refs:
+  - bn6f/asm/asm32.s:5836
+  - 0x0800E2CA object_getFrontDirection
+  - 0x08002DEA sprite_getFrameParameters
+  - 0x080D6B78 sub_80D6B78
+  reproduce: python3 tools/asmcat.py 0x08110AE4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- What sub_80D6B78 does exactly (assumed spawn-panel-attack helper) and the full meaning of HitElement=0x14
+  and anim id 5
+- Which AI attack scripts dispatch here, to confirm the attack type (slash/punch style implied by single
+  front panel)
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8110AE4 -> ai_attackFrontPanel
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8110AE4

@@ -1,0 +1,49 @@
+name: menu_dispatchStateHandler
+address: '0x08132290'
+kind: function
+status: probable
+summary: 'Menu state dispatcher: reads the menu record''s current state and tail-trampolines into that
+  state''s handler, handing it the eLinkState pointer.'
+interface: (r5 = menu record, r0/r1 = passthrough args) -> jumps to handler jt[r5.state]; r2 = eLinkState
+  ptr; returns to caller after handler via lr=pc trampoline
+details: Loads the eLinkState global address with sub_803E8F8 into r2, then reads byte [r5,#0xe] (the
+  record's current state/choice) and indexes the jump table off_81322A8/jt_81322AC with state*4. It performs
+  a thumb trampoline (mov lr, pc; bx r0) so each handler runs with the link state available in r2 and
+  returns to this function's epilogue (pop {pc}). Callers are menu/battle step wrappers (battle_stepWaitForStateRunUpdate,
+  sub_8132614) that poll a state value before invoking it, consistent with a per-frame menu state machine,
+  and it only runs on menus3 routes.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#0xe]; lsl r0,#2; ldr r0,[r1,r0] — dispatch is a jump table indexed by the record's
+    state byte; bl sub_803E8F8 -> mov r2,r0 — result (eLinkState ptr, per callee summary) is passed to
+    every handler; mov lr,pc; bx r0; pop {pc} — classic thunk so state handlers return through this function;
+    callers battle_stepWaitForStateRunUpdate / sub_8132614 poll state values and write next handler index,
+    matching a state-machine step
+  refs:
+  - bn6f/asm/asm36.s:4223
+  - 0x0812B26C battle_stepWaitForStateRunUpdate
+  - 0x08132614 sub_8132614
+  - 0x0812A76C sub_812A76C
+  - 0x0803E8F8 sub_803E8F8
+  reproduce: python3 tools/asmcat.py 0x08132290
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- menus3
+open_questions:
+- exact identity of the r5 record structure and its field 0xe semantics
+- what the individual jt_81322AC handlers do (would confirm which menu this is, e.g. eLink vs battle menu)
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8132290 -> menu_dispatchStateHandler
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8132290

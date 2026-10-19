@@ -1,0 +1,53 @@
+name: object_pickRandomPanelPosFiltered
+address: '0x081078C2'
+kind: function
+status: probable
+summary: Returns a random battle panel position (column in r0, row in r1) from columns 1-6, avoiding the
+  requesting object's own column and row; falls back to the object's own position if no candidates.
+interface: (r0/r5 = object, r2 = filter arg1, r3 = filter arg2) -> r0 = column (0-7), r1 = row; no flags
+  used
+details: Saves the object's fields 0x12 (column) and 0x13 (row), then loops columns 1..6, skipping the
+  column equal to field 0x12. Each iteration calls object_getPanelsInColumnIgnoreRowFiltered (column,
+  row=field 0x13, r2, r3) with an output pointer at sp+0x10+r6, and accumulates the returned count; entries
+  appear to be packed bytes (column in low 3 bits, row in the high nibble). If at least one entry was
+  collected, GetPositiveSignedRNG supplies a random value which is reduced modulo the count via SWI 6
+  (Div, remainder in r1) to pick one entry, which is then unpacked into r0=column (low 3 bits) and r1=row
+  (bits 4-7). If no panel qualified, it returns the object's own fields 0x12/0x13 instead. Note the loop
+  reads the skip field from r5, which is never set inside this function, so the caller must alias the
+  object in r5 (or this is a mis-disassembly of [r0,#0x12]).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'loop at 81078D6-81078EE: iterates r4=1..6, skips when [r5,#0x12]==r4, calls object_getPanelsInColumnIgnoreRowFiltered
+    with r7=sp+0x10+r6 as buffer and adds return to r6 (entry count); 8107900: GetPositiveSignedRNG then
+    SWI 6 (Div) with r1=r6 gives random index into the collected entries at sp+0x10; 8107910 prologue
+    exit: lsr r1,r0,#4 and lsl/lsr 0x1d unpack row (high nibble) and column (low 3 bits) from the packed
+    byte; loc_810790C fallback: returns ldrb [r5,#0x12] and [r5,#0x13], i.e. the object''s own position
+    when no panel was found'
+  refs:
+  - bn6f/asm/asm31.s:168991
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x0800CF14 object_getPanelsInColumnIgnoreRowFiltered
+  reproduce: python3 tools/asmcat.py 0x081078C2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- Exact meaning of the r2/r3 filter arguments passed through to object_getPanelsInColumnIgnoreRowFiltered
+  (panel type / area restrictions?)
+- Whether r5 is guaranteed to alias the r0 object (the skip check reads r5, never assigned here) and whether
+  entry packing is (row<<4)|column as inferred
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_81078C2 -> object_pickRandomPanelPosFiltered
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81078C2

@@ -1,0 +1,49 @@
+name: battle_waitScreenFadeEnd
+address: '0x0800B97E'
+kind: function
+status: probable
+summary: Battle-object phase step that starts a screen fade and blocks the object's action until the fade
+  finishes.
+interface: (r5 = battle object, no args) -> void; advances oBattleObject_CurAction by 4 and clears phase
+  state when the fade completes
+details: On first entry (PhaseInitialized == 0) it calls SetScreenFade(0x78, 0x80), resets oBattleObject_Timer,
+  and sets PhaseInitialized = 4. Every frame it increments Timer, then checks IsScreenFadeActive; while
+  a fade is running it just returns, keeping the object in this phase. Once the fade is no longer active,
+  it adds 4 to oBattleObject_CurAction (moving to the next action state) and zeroes oBattleObject_CurPhaseAndPhaseInitialized
+  so the object's phase machine restarts for the next action. r5 is the battle object struct passed implicitly
+  via the register; Timer/PhaseInitialized/CurAction/CurPhaseAndPhaseInitialized are its standard phase-machine
+  fields.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl SetScreenFade with r0=0x78, r1=0x80 runs once under the PhaseInitialized guard (loc 800B97E..800B996);
+    bl IsScreenFadeActive; bne locret keeps the object polling every frame while the fade lasts; after
+    fade ends: ldrb r0,[r5,#oBattleObject_CurAction]; add r0,#4; strb — advances the action state by one
+    entry; mov r0,#0; strh r0,[r5,#oBattleObject_CurPhaseAndPhaseInitialized] resets the sub-phase for
+    the next action; oBattleObject_Timer is incremented per frame but never compared, so it only records
+    fade-wait duration'
+  refs:
+  - bn6f/asm/object.s:186
+  - 0x080062F8 IsScreenFadeActive
+  - 0x08006270 SetScreenFade
+  reproduce: python3 tools/asmcat.py 0x0800B97E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- meaning of SetScreenFade's arguments 0x78 and 0x80 (color/speed fields)
+- which battle object(s) use this action step and what CurAction+4 leads to, since no caller was identified
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_800B97E -> battle_waitScreenFadeEnd
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800B97E

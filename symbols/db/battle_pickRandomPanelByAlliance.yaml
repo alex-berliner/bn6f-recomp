@@ -1,0 +1,55 @@
+name: battle_pickRandomPanelByAlliance
+address: '0x08112562'
+kind: function
+status: probable
+summary: Picks a random panel near a battle object's position using an alliance-dependent candidate list,
+  filtering by a panel flag.
+interface: (r5 = battle object) -> r0/r1 = chosen panel coords (via tail-call); r0 = object PanelX, r1
+  = PanelY, r3 = table byte_81125E0 on entry to callee
+details: 'Reads the battle object''s PanelX and PanelY and calls GetAllianceDependentPanelParamArgs with
+  the two-entry (8-byte each) table byte_81125E0; entry 0 carries param word 0x10, entry 1 param 0x30,
+  each with an args pointer, so the entry chosen depends on the object''s team. The returned param and
+  args pointer are forwarded unchanged (no register setup between the bl''s) to panelFlagCheck_8015D80,
+  the filtered random relative-panel picker, whose relative offsets get transformed by the object''s facing.
+  The trailing data blobs (off_8112584/off_811259C lists like {0,-1,0,1,0x7F}) are relative-offset candidate
+  lists in the same style, most likely consumed by the sibling caller sub_811252C. Net effect: select
+  a random panel around the object, with different parameters/candidates for player-side vs enemy-side
+  objects, typical of AI attack-panel selection.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0/r1 from oBattleObject_PanelX/Y then bl GetAllianceDependentPanelParamArgs with r3 =
+    byte_81125E0 (alliance-indexed 8-byte entries, params 0x10 and 0x30); no instruction between the two
+    bl''s: r0/r1 results of the param lookup are forwarded straight into panelFlagCheck_8015D80, the AI
+    random relative-panel picker; neighboring data off_8112584/off_811259C hold 0x7F-terminated relative
+    offset lists, matching panelFlagCheck_8015D80''s expected candidate-list format; recorded execution
+    in battlesweep/beastsp battle routes and the single caller sub_811252C, a sibling picker over the
+    same data block, fit AI panel targeting'
+  refs:
+  - bn6f/asm/asm32.s:9044
+  - 0x0811252C sub_811252C
+  - 0x081096FA GetAllianceDependentPanelParamArgs
+  - 0x08015D80 panelFlagCheck_8015D80
+  reproduce: python3 tools/asmcat.py 0x08112562
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- exact return convention of panelFlagCheck_8015D80 (absolute panel coords vs relative offsets in r0/r1)
+- what the args-pointer words 0x0F8800A0/0x0F880080 in byte_81125E0 resolve to (literal pointers vs base-relative)
+- meaning of param values 0x10 and 0x30 (panel-flag mask? search radius?)
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8112562 -> battle_pickRandomPanelByAlliance
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8112562

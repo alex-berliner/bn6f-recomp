@@ -1,0 +1,53 @@
+name: object_checkTargetColumnPanels
+address: '0x080F3704'
+kind: function
+status: probable
+summary: Returns 1 if any of a table-chosen panel, its two vertical neighbours, or the panel one step
+  in front matches the caller's panel-flag masks, else 0.
+interface: (r0=?) r5=object (field 0x16 = table index), r2=required panel mask, r3=forbidden panel mask
+  -> r0 = 1 if any checked panel matches, 0 if none; flags clobbered
+details: 'Reads byte [r5+0x16], doubles it, and fetches a (x,y) coordinate pair from table dword_80F3780
+  (bytes 01 02 06 20, likely more entries follow). It then calls object_checkPanelParameters four times:
+  at (x,y), (x,y-1), (x,y+1), and (x+object_getFrontDirection(), y), passing the caller''s r2/r3 masks
+  through unchanged each time. On the first successful check it exits with that nonzero result in r0;
+  if all four fail it sets r0=0. The shape checked is a 3-tall vertical column at the table''s x plus
+  one extra panel toward the object''s facing side. The coordinate source being a data table indexed by
+  an object field suggests per-state/per-attack target positions, but the object structure and full table
+  are unknown.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldr r0,[r5,#0x16]; lsl #1; off_80F377C -> dword_80F3780: coordinate pair fetched from table
+    indexed by object field 0x16; four object_checkPanelParameters calls with (x,y), (x,y-1), (x,y+1),
+    (x+object_getFrontDirection(), y) — checks panel plus vertical neighbours plus one panel toward front;
+    bne loc_80F3776 after each tst: returns callee''s nonzero result on first match; mov r0,#0 before
+    exit when no check matched: boolean ''any match'' semantics; r2/r3 stored to stack at entry and passed
+    unchanged to every callee: caller-supplied required/forbidden panel masks'
+  refs:
+  - bn6f/asm/asm31.s:127424
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x080F3704
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- what structure r5 points to and what field 0x16 selects (attack step, object kind, ...?)
+- full contents of the coordinate table at dword_80F3780 (only 4 bytes shown; entry 1 = (6,0x20) has an
+  implausible y if raw row index)
+- which caller invokes this and what masks r2/r3 it passes — that would pin down the in-game purpose (e.g.
+  an enemy attack needing empty/hole panels)
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F3704 -> object_checkTargetColumnPanels
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F3704

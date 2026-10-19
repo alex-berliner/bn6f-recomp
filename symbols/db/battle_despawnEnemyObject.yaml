@@ -1,0 +1,52 @@
+name: battle_despawnEnemyObject
+address: '0x080E33D2'
+kind: function
+status: probable
+summary: 'Tears down a defeated enemy battle object: signals a linked object, notifies a per-enemy counter
+  via the enemy''s version/actor/AI record, then frees the object slot.'
+interface: (r0 unused, r5 = battle object ptr via caller convention) -> r0 clobbered; sets flag 0x4 on
+  RelatedObject2's flags when Param1 == 0xFF
+details: Reads oBattleObject_Param1; if it equals 0xFF and oBattleObject_RelatedObject2Ptr is non-null,
+  it ORs flag 0x4 into that object's oObjectHeader_Flags (likely telling a linked/child object, e.g. a
+  summon or panel object, that its owner is gone). It then loads oBattleObject_NameID and calls unpackVerActorTyAndAIIdx_800F29C
+  to decompose it into the enemy's {version, actor type, AI index} register triple, calls sub_8011044
+  with r2=1 (possibly decrementing a live-enemy count for that kind), and finally calls object_freeMemory
+  to unlink and free the object's slot. Ran on the recorded battlesweep and beastsp routes, consistent
+  with enemy-death cleanup.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'cmp r1,#0xFF + flag 0x4 OR into [RelatedObject2Ptr,#oObjectHeader_Flags] marks a linked object
+    at lines starting loc_80E33E8 path; ldrh r0,[r5,#oBattleObject_NameID]; bl unpackVerActorTyAndAIIdx_800F29C
+    identifies r5 as an enemy battle object; bl sub_8011044 with r2=1 immediately before bl object_freeMemory
+    fits a count/decrement hook in a teardown sequence; tail call object_freeMemory (known: clears flags,
+    frees bitmap slot, unlinks active list) shows the object is being destroyed; recorded routes battlesweep/beastsp
+    match enemy-defeat cleanup context'
+  refs:
+  - bn6f/asm/asm31.s:93008
+  - 0x08003458 object_freeMemory
+  - 0x0800F29C unpackVerActorTyAndAIIdx_800F29C
+  - 0x08011044 sub_8011044
+  reproduce: python3 tools/asmcat.py 0x080E33D2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- Purpose of sub_8011044 (r0/r1 from the unpacked record, r2=1) — a caller or its body is needed to confirm
+  it is a live-enemy counter/decrement
+- Exact meaning of Param1 == 0xFF and flag 0x4 on RelatedObject2 (which object types pair this way)
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80E33D2 -> battle_despawnEnemyObject
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E33D2

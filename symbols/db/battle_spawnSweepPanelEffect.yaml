@@ -1,0 +1,52 @@
+name: battle_spawnSweepPanelEffect
+address: '0x0810B244'
+kind: function
+status: probable
+summary: 'Part of an AI attack routine: if the attack-scratch variable is set, spawns a type-0 effect
+  object at the object''s future panel and initializes the AI attack state (charge cycles and hit element).'
+interface: (r5 = battle object, r7 = AI attack-vars struct) -> r0 = spawned effect object or undefined;
+  no flags of interest
+details: First calls sub_810AF30 (unknown helper, likely part of the same AI attack setup). If the AIAttackVars
+  scratch var at [r7+oAIAttackVars_ScratchVar] is nonzero, it reads the object's FuturePanelX/Y, converts
+  them to fixed-point screen coordinates via object_getCoordinatesForPanels, and spawns an effect-type-0
+  battle object there (spawn_t1_0x0_EffectObject with x/y in r0-r2, r3=0x100000, r4=0x15). It then stores
+  3 into oAIAttackVars_ChargeCycles and 0xC into oAIAttackVars_HitElement, setting up the charge timer
+  and hit element for the attack that follows. The scratch-var gate means the effect/state setup only
+  happens on a specific pass through the caller's attack state machine.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb FuturePanelX/Y + bl object_getCoordinatesForPanels: effect is placed at the panel the
+    object is about to act on; bl spawn_t1_0x0_EffectObject with r4=0x15: spawns a fixed visual effect
+    object at those coordinates; strh #3,[r7,#oAIAttackVars_ChargeCycles] and strh #0xC,[r7,#oAIAttackVars_HitElement]:
+    initializes AI attack state after spawning; cmp r0,#0 against oAIAttackVars_ScratchVar with early
+    return: state setup is conditional on an AI attack variable; single caller sub_810B1F4 in the recorded
+    ''battlesweep'' route: runs during an AI attack sequence'
+  refs:
+  - bn6f/asm/asm31.s:176246
+  - 0x0810B1F4 sub_810B1F4
+  - 0x0800E276 object_getCoordinatesForPanels
+  - 0x080E05F6 spawn_t1_0x0_EffectObject
+  - 0x0810AF30 sub_810AF30
+  reproduce: python3 tools/asmcat.py 0x0810B244
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- What sub_810AF30 does (called unconditionally at entry)
+- What effect subtype 0x15 renders as visually, and what HitElement=0xC means in game terms
+- Which enemy/attack this belongs to — caller sub_810B1F4's role in the battlesweep sequence is unknown
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810B244 -> battle_spawnSweepPanelEffect
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810B244

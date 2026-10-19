@@ -1,0 +1,54 @@
+name: submenu_rebuildKeyItemList
+address: '0x08135D9C'
+kind: function
+status: probable
+summary: Rebuilds the key-item/chip list buffer for a list menu (Navi Customizer screen context), then
+  re-clamps the menu's cursor and scroll offsets to the new entry count.
+interface: (r5 = list-state struct, set by caller) -> r0 = entry count; list buffer word_201DA80 rewritten,
+  struct fields +0x1e/+0x20/+0x24/+0x38/+0x3a updated
+details: 'Zero-fills 0xBC<<2 = 752 bytes (188 word-sized entries) at word_201DA80, then fills that buffer
+  with (id, count) entries via battle_collectKeyItemCounts, or via sub_8135E6C when the byte at [r5] equals
+  0x28 (a different list mode). It stores the entry count ((end-base)>>2) at [r5+0x1e] and clamps a 4-row-visible
+  list: if count >= 4 it caps [r5+0x24] (+ its copy at +0x3a) at count-4 (max scroll) and adjusts [r5+0x20]
+  (+0x38) accordingly; otherwise it sets [r5+0x20]/+0x38 to min(count, old) and resets [r5+0x24]/+0x3a
+  to 0. The paired fields (+0x20/+0x38, +0x24/+0x3a) look like current vs. saved cursor/scroll for the
+  same list.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ZeroFillByWord(word_201DA80, 0xBC<<2) clears the entry buffer before repopulating; branch on
+    ldrb r0,[r5]; cmp #0x28 picks sub_8135E6C vs battle_collectKeyItemCounts as list filler; count computed
+    as (r6 - word_201DA80)>>2 and stored at [r5+0x1e]; clamp logic (cmp r0,#4 / strh to +0x20,+0x24,+0x38,+0x3a)
+    matches a 4-visible-row list cursor/scroll fixup; caller battle_initNaviCustomizerScene_81356F4 and
+    callee battle_collectKeyItemCounts (25-slot toolkit list) place this in the Navi Customizer key-item
+    menu'
+  refs:
+  - bn6f/asm/asm36.s:12132
+  - 0x081356F4 battle_initNaviCustomizerScene_81356F4
+  - 0x08135968 sub_8135968
+  - 0x08135A44 sub_8135A44
+  - 0x080008E0 ZeroFillByWord
+  - 0x08135E18 battle_collectKeyItemCounts
+  - 0x08135E6C sub_8135E6C
+  reproduce: python3 tools/asmcat.py 0x08135D9C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- beastsp
+open_questions:
+- exact meaning of the 0x28 mode flag in [r5] and what sub_8135E6C builds instead
+- which of the duplicated fields (+0x20 vs +0x38, +0x24 vs +0x3a) is cursor vs scroll
+- how argument registers are passed in (r5 is preloaded by callers)
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8135D9C -> submenu_rebuildKeyItemList
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8135D9C

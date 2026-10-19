@@ -1,0 +1,48 @@
+name: battle_spawnPanelElementEffect
+address: '0x080D8BD4'
+kind: function
+status: probable
+summary: Spawns an element-typed collision region on the caller's panel plus a matching effect object
+  carrying the caller's position and alliance.
+interface: (r5 = source battle object) -> r0 = effect object pointer or 0; no flags meaningful
+details: Takes the source object's PanelX, PanelY and Element and calls object_spawnCollisionRegion with
+  dword 0x1205ff10 as the region descriptor/flags, so a hitbox appears on the object's panel with the
+  element applied. It then reads the source's Alliance, shifts it left 8, and ORs it into 0x43 (r4) as
+  an argument for spawn_t1_0x0_EffectObject, which creates a type-4 effect object. Twelve bytes starting
+  at source+0x34 (position/size fields) are copied via ldmia as the effect's parameters. If the effect
+  object spawns successfully, its oBattleObject_Param3 is increased by 2, likely a delay/animation-phase
+  tweak. Returns the effect object pointer, or 0 if spawning failed.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0/r1/r2 of PanelX/PanelY/Element followed by bl object_spawnCollisionRegion (sub_80D8BD4);
+    ldrb Alliance, lsl #8, orr into r4=0x43 before bl spawn_t1_0x0_EffectObject; add r0,#0x34; ldmia {r1-r3}
+    copies position-ish fields into the effect spawn args; ldrb/strb [r0,#oBattleObject_Param3] with add
+    #2 adjusts the spawned effect''s Param3; callee spawn_t1_0x0_EffectObject returns type-4 battle object
+    pointer, which is what is returned here'
+  refs:
+  - bn6f/asm/asm31.s:70477
+  - 0x080D8ADC sub_80D8ADC
+  - 0x080E05F6 spawn_t1_0x0_EffectObject
+  - 0x080C536A object_spawnCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080D8BD4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- beastsp
+open_questions:
+- exact meaning of dword_80D8C54 = 0x1205ff10 (collision-region flag encoding)
+- which attack or status triggers the only caller sub_80D8ADC, to name the effect in game terms
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D8BD4 -> battle_spawnPanelElementEffect
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D8BD4

@@ -128,10 +128,10 @@ Next crt0_start_800027C(void) {
 }
 
 /* ── crt0_entry_trampoline_8000288 ── */
-/* crt0_entry_trampoline_8000288: trampoline that invokes sub_3005E2C as a leaf call and
- * returns straight back to our own caller. sub_3005E2C's results in
+/* crt0_entry_trampoline_8000288: trampoline that invokes init_installCommIntrHandlers as a leaf call and
+ * returns straight back to our own caller. init_installCommIntrHandlers's results in
  * r2/r3 are passed through unchanged; r4 is untouched. */
 Next crt0_entry_trampoline_8000288(void) {
-    GUEST_CALL(sub_3005E2C);
+    GUEST_CALL(init_installCommIntrHandlers);
     RETURN_TO_CALLER();
 }

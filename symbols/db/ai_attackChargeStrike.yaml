@@ -1,0 +1,49 @@
+name: ai_attackChargeStrike
+address: '0x08107278'
+kind: function
+status: probable
+summary: AI attack state that charges for a set delay, periodically highlighting the panel in front of
+  the user, then triggers a hit by setting HitElement to 0x14.
+interface: (r0 = [oAIAttackVars_AttackElement] via r7, r5 = battle object, r7 = AI attack vars) -> updates
+  ChargeCycles/StepTimer/AttackElement/HitElement; no return value
+details: If AttackElement is 0 (attack not yet started), it sets AttackElement=4, copies AttackBoost2
+  into StepTimer as the charge duration, and clears ChargeCycles. While charging it increments ChargeCycles
+  every frame; every 8 frames it calls object_getFrontDirection and object_highlightPanelRegion to flash
+  the panel directly in front of the object (at PanelX+dir, PanelY) as a telegraph. It also decrements
+  StepTimer each frame; when it reaches 0 the charge finishes and HitElement is set to 0x14, which presumably
+  makes the owner's attack script apply the actual hit/element. The 'bcs' skip means the panel highlight
+  happens only on every 8th frame (ChargeCycles bit 3 set after increment).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'init branch: mov r0,#4; strb [r7,#oAIAttackVars_AttackElement]; strh AttackBoost2 -> StepTimer
+    (charge duration from a boost field); bl object_getFrontDirection + ldrb PanelX/PanelY + bl object_highlightPanelRegion
+    telegraphs the front panel; lsr r0,#3; bcs skips the highlight on non-multiple-of-8 frames (periodic
+    flash); when StepTimer hits 0: mov r0,#0x14; strh [r7,#oAIAttackVars_HitElement] fires the attack;
+    all state is in oAIAttackVars, matching other AI attack handlers'
+  refs:
+  - bn6f/asm/asm31.s:168099
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800CCD4 object_highlightPanelRegion
+  reproduce: python3 tools/asmcat.py 0x08107278
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- what attack/element value 4 and HitElement 0x14 correspond to in the AI attack table
+- what AttackBoost2 represents (only that it feeds the charge timer is visible)
+- which enemies/attacks route into this handler, since no callers are recorded
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8107278 -> ai_attackChargeStrike
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8107278

@@ -1,0 +1,51 @@
+name: ai_attackAnimUpdate
+address: '0x0810A462'
+kind: function
+status: probable
+summary: 'Per-frame AI attack-state handler: plays/restarts the attack animation (anim 3) and counts down
+  a 20-frame timer before leaving the attack state.'
+interface: () -> r0 = scratch only; touches r5 = battle object (oBattleObject_CurAnim), r7 = AI attack
+  vars (StepTimer, HitElement); no return value
+details: 'If the object''s current animation is 3 (the attack anim), it calls sprite_getFrameParameters
+  and tests attribute bit 0x80 (a hidden/end frame); when seen it resets CurAnim to 0. It then calls sub_810A534
+  (the attack trigger/condition check, still unnamed); on a nonzero result it arms the attack: sets CurAnim
+  = 3, StepTimer = 0x14 (20 frames) and HitElement = 0xC, then returns. Otherwise it decrements StepTimer
+  each frame and, when it reaches zero, calls object_exitAttackState to leave the attack. The HitElement
+  = 0xC write suggests the attack''s element/type is fixed for whatever move this handles.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#oBattleObject_CurAnim] / cmp #3 gates the sprite_getFrameParameters call, whose
+    0x80 attribute-bit test resets CurAnim to 0; nonzero return of sub_810A534 stores CurAnim=3, StepTimer=0x14
+    and HitElement=0xC before returning; zero path decrements oAIAttackVars_StepTimer and calls object_exitAttackState
+    when it hits 0; uses known battle-object and oAIAttackVars fields, matching an AI attack step routine;
+    recorded in battlesweep and beastsp routes, consistent with enemy/boss AI attack execution'
+  refs:
+  - bn6f/asm/asm31.s:174536
+  - 0x08002DEA sprite_getFrameParameters
+  - 0x08011714 object_exitAttackState
+  - 0x0810A534 sub_810A534
+  reproduce: python3 tools/asmcat.py 0x0810A462
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- what sub_810A534 checks to trigger the attack (needs its own analysis)
+- which attack/move this belongs to (HitElement 0xC and the beastsp route suggest a specific beast-related
+  attack)
+- whether anim 3 and element 0xC values are shared with other AI attack handlers
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810A462 -> ai_attackAnimUpdate
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810A462

@@ -1,0 +1,49 @@
+name: ai_syncPanelHighlight
+address: '0x0810FC30'
+kind: function
+status: probable
+summary: Keeps the highlighted/collision panel of a diving or swooping enemy in sync with its current
+  panel position
+interface: (r5 = battle object, PanelX/PanelY current) -> void; no return value used
+details: Compares oBattleObject_PanelX/PanelY against cached copies at +0x6C/+0x6D; returns early if unchanged.
+  On change, calls sub_810FC68 with the old cached X/Y (presumably releasing the highlight/collision on
+  the previous panel), writes the new PanelX/PanelY into +0x6C/+0x6D, then calls object_setCollisionRegion
+  with r0=1 (a fixed region index, likely the 'occupied/highlight' region) and the new panel coordinates.
+  Fields 0x6C/0x6D thus act as a 'last highlighted panel' cache. Used by the dive-to-back-row and swoop
+  attack AI state handlers each frame while the enemy moves.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: cmp of ldrb [r5,#oBattleObject_PanelX/PanelY] vs [r5,#0x6C/0x6D] with early return shows a cached-panel-changed
+    check; bl sub_810FC68 receives old 0x6C/0x6D values before they are overwritten, implying cleanup
+    of the previous panel; strb of new PanelX/PanelY into 0x6C/0x6D then bl object_setCollisionRegion
+    ties the update to collision/highlight bookkeeping; callers ai_diveToBackRowUpdate and ai_swoopAttackUpdate
+    are both documented as highlighting the panel beneath the moving enemy
+  refs:
+  - bn6f/asm/asm32.s:4073
+  - 0x0810F770 ai_diveToBackRowUpdate
+  - 0x0810F898 ai_swoopAttackUpdate
+  - 0x0810F7EC sub_810F7EC
+  - 0x0801A07C object_setCollisionRegion
+  - 0x0810FC68 sub_810FC68
+  reproduce: python3 tools/asmcat.py 0x0810FC30
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- Exact semantics of sub_810FC68 (old-panel argument handling) and the meaning of region index 1 in object_setCollisionRegion
+  would confirm the highlight interpretation
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810FC30 -> ai_syncPanelHighlight
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810FC30

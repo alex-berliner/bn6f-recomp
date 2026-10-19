@@ -1,0 +1,47 @@
+name: ai_prepNoSlideAttack
+address: '0x080F336C'
+kind: function
+status: probable
+summary: AI attack state step that hides the attacker from collision (no slide), waits 3 frames, then
+  assigns the attack's hit element.
+interface: (r7 = battle object AI attack vars) -> void; sets AttackElement, CANNOT_SLIDE flag, collision
+  region, StepTimer/HitElement
+details: Reads oAIAttackVars_AttackElement from the current object's AI attack vars. If it is still 0
+  (unset), it writes element 4, ORs OBJECT_FLAGS_CANNOT_SLIDE into the object's flags via object_setFlag1,
+  clears the collision region so the object occupies no panel, and sets the StepTimer to 3. On subsequent
+  calls it decrements StepTimer; when it reaches 0 it writes 0x1C into oAIAttackVars_HitElement, handing
+  off to the next attack stage. This matches enemies/objects that attack without sliding onto a panel
+  (e.g. appearing in place, then striking with a fixed element 0x1C).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: tst on [r7,#oAIAttackVars_AttackElement] with 'mov r0,#4; strb' initializes the element on first
+    run (0x080F336C-0x080F3376); bl object_setFlag1 with r0=#OBJECT_FLAGS_CANNOT_SLIDE prevents panel
+    sliding during the attack; bl object_clearCollisionRegion removes the object from its collision region
+    while preparing; StepTimer set to 3 then decremented each entry, acting as a short delay before the
+    strike; On timer expiry writes 0x1C to oAIAttackVars_HitElement, selecting the attack's hit element
+  refs:
+  - bn6f/asm/asm31.s:126908
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x0801A152 object_setFlag1
+  reproduce: python3 tools/asmcat.py 0x080F336C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- No callers known, so which enemy/attack uses this state and what element 0x1C is are unconfirmed
+- Exact semantics of AttackElement value 4 (placeholder/attack type) not verified
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80F336C -> ai_prepNoSlideAttack
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F336C

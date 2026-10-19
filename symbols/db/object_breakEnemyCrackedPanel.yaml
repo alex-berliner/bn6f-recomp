@@ -1,0 +1,50 @@
+name: object_breakEnemyCrackedPanel
+address: '0x080CA510'
+kind: function
+status: probable
+summary: If the panel under the object is cracked and owned by the opposing side, converts it to panel
+  type 6 (hole/broken panel).
+interface: (r5 = battle object) -> r0 = destroyed; reads oBattleObject_PanelX/PanelY/Alliance/RelatedObject1Ptr
+details: First requires the object's RelatedObject1Ptr to have a nonzero ListIndex, otherwise returns.
+  It reads the object's PanelX/PanelY and fetches the panel's status flags via object_getPanelParameters.
+  If flag 0x10 (cracked panel) is not set it returns. It then computes alliance*0x20 (0x20 = player-owned,
+  0x40 = enemy-owned panel ownership flags) and returns if the panel's ownership bit already matches the
+  object's own alliance; only when the cracked panel belongs to the other side does it call object_setPanelType(x,
+  y, 6), turning the panel into type 6. The dword 0xFF800000 right after suggests the routine sits in
+  a table of object step/handler pointers. Typical use would be an attack/effect that punches through
+  cracked enemy panels, converting them to holes.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'tst r0,#0x10 + beq exit: only cracked panels (flag 0x10) proceed; mul r1,Alliance,#0x20; and
+    r2,r0,#0x20; cmp: exits when panel ownership flag already equals object''s own side; bl object_setPanelType
+    with r2=#6: final effect is rewriting the panel type to 6; early ldrb ListIndex check via RelatedObject1Ptr
+    gates the effect on a valid linked object; uses oBattleObject_PanelX/PanelY, matching the known object
+    header layout for panel coordinates'
+  refs:
+  - bn6f/asm/asm31.s:39742
+  - 0x080CA408 sub_80CA408
+  - 0x0800C8F8 object_getPanelParameters
+  - 0x0800CC0A object_setPanelType
+  reproduce: python3 tools/asmcat.py 0x080CA510
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- beastsp
+open_questions:
+- What panel type 6 exactly represents (hole vs. other terrain) needs the object_setPanelType enumeration
+- Which caller sub_80CA408 is (attack, chip effect, or beast-over ability) and why RelatedObject1Ptr must
+  be set
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80CA510 -> object_breakEnemyCrackedPanel
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CA510

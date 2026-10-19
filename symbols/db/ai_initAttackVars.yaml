@@ -1,0 +1,52 @@
+name: ai_initAttackVars
+address: '0x08113F10'
+kind: function
+status: probable
+summary: 'Initializes an enemy AI attack: picks the nearest enemy-of-the-owner target, loads per-version
+  attack duration, and kicks off attack 0xB via the AI attack-variable struct.'
+interface: (r5 = BattleObject whose alliance is flipped for targeting, r7 = AIAttackVars struct, r6 =
+  AIState, r4 = AIData) -> r0 = 0; sets object attack 0xB, writes AIAttackVars fields
+details: Clears oBattleObject_CurAnim on the object, installs sub_8113F94+1 as the oAIAttackVars_PanelChooseCallback,
+  and calls battleObject_findClosestEnemyBattleObject with the object's alliance XOR 1 (i.e. the opposing
+  side) to fill oAIAttackVars_TargetObjectPtr. It then loads a per-version byte from byte_8113D84 indexed
+  by oAIData_Version_16 into oAIAttackVars_AttackDuration, and hardcodes AiDifficultyTier=2, AttackBoost2=0x14,
+  TimerOrCycles=0x15, and ScratchVar=AiAttackParam=3. It invokes object_setAttack0 with attack id 0xB,
+  calls sub_8114214 (unknown helper), and finally zeroes oAIState_ScriptId (with a second branch clearing
+  the first byte of r6 as well). This reads as one step of a scripted enemy AI state machine preparing
+  an attack.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'str sub_8113F94+1 into oAIAttackVars_PanelChooseCallback then findClosestEnemyBattleObject(alliance^1)
+    -> oAIAttackVars_TargetObjectPtr; byte_8113D84[oAIData_Version_16] -> oAIAttackVars_AttackDuration
+    (per-version attack timing table); bl object_setAttack0 immediately after mov r0, #0xb sets attack
+    id 0xB; ScratchVar and AiAttackParam both set to 3, plus fixed difficulty/boost/timer constants, all
+    in the oAIAttackVars struct; ends by writing 0 to oAIState_ScriptId, matching a state-machine step
+    transition'
+  refs:
+  - bn6f/asm/asm32.s:12122
+  - 0x080103F8 battleObject_findClosestEnemyBattleObject_80103F8
+  - 0x08011680 object_setAttack0
+  - 0x08114214 sub_8114214
+  reproduce: python3 tools/asmcat.py 0x08113F10
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- what sub_8114214 does (likely additional per-attack setup)
+- which attack/behavior id 0xB and AiAttackParam=3 correspond to in the enemy's AI script
+- what the panel-choose callback sub_8113F94 picks (probably the target panel for the attack)
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8113F10 -> ai_initAttackVars
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8113F10

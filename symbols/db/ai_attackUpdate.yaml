@@ -1,0 +1,50 @@
+name: ai_attackUpdate
+address: '0x0810DE96'
+kind: function
+status: probable
+summary: 'Per-frame update for an enemy AI attack action: initializes the attack element and sound once,
+  then counts a timer down and ends the attack state when it expires.'
+interface: (r0 = battle object?, r5 = object base, r7 = AI attack vars struct) -> r0 = PlaySoundEffect
+  result / clobbered; flags from timer test
+details: 'Reads oAIAttackVars_AttackElement from the r7 struct; if it is still 0, sets it to 1, calls
+  sub_810DF2E (likely spawning/firing the attack object) and plays sound effect 0xF7. Each call then decrements
+  oAIAttackVars_StepTimer; while it is nonzero the function returns immediately. When the timer hits 0
+  it clears the object''s current animation (r5+oBattleObject_CurAnim), calls sub_810DEC4 (cleanup/finish),
+  and calls object_exitAttackState to hand control back. So it is the tick handler of a one-shot AI attack:
+  one-time setup on entry, timed duration, then exit.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]; bne skip — setup (set element=1, bl sub_810DF2E,
+    PlaySoundEffect 0xF7) runs only on first tick; ldrh/sub/strh on [r7,#oAIAttackVars_StepTimer] with
+    bne locret — a countdown gate for the attack duration; on expiry: mov r0,#0; strb r0,[r5,#oBattleObject_CurAnim]
+    resets the object animation; bl object_exitAttackState on expiry — this is an attack-state routine
+    per the known callee; callee sub_810DF2E reached only inside the one-time-init branch, consistent
+    with firing the attack once'
+  refs:
+  - bn6f/asm/asm32.s:640
+  - 0x080005CC PlaySoundEffect
+  - 0x08011714 object_exitAttackState
+  - 0x0810DEC4 sub_810DEC4
+  reproduce: python3 tools/asmcat.py 0x0810DE96
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- exact identity of sub_810DF2E and sub_810DEC4 (fire projectile vs. cleanup) not confirmed without their
+  bodies
+- which battle object/AI enemy uses this handler, and what element value 1 denotes
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_810DE96 -> ai_attackUpdate
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810DE96

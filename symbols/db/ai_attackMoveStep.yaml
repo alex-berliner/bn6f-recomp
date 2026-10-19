@@ -1,0 +1,49 @@
+name: ai_attackMoveStep
+address: '0x080FC684'
+kind: function
+status: probable
+summary: 'Per-tick step of an AI attack: when the step timer expires, snaps the battle object onto its
+  target panel and sets the attack''s element/anim state.'
+interface: (r5 = battle object, r7 = AI attack vars) -> r0 = 0; no flags
+details: Part of an AI-driven attack sequence stored in oAIAttackVars. Each call decrements the StepTimer
+  and returns early while it is still positive. When it reaches zero, it sets the object's current animation
+  to 3, copies TargetPanelX/Y into the object's PanelX/PanelY, recomputes pixel coordinates from panels
+  (object_setCoordinatesFromPanels), and syncs collision panels plus facing (object_updateCollisionPanels).
+  It then reloads the step timer with 3 ticks and sets oAIAttackVars_HitElement to 8, likely selecting
+  the hit/effect element for the attack. This looks like the 'move onto target panel' phase of a multi-step
+  AI attack script, driven by a routing table (battlesweep route).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrh r0,[r7,#oAIAttackVars_StepTimer]; sub r0,#1; bgt locret — per-tick countdown gate; strb
+    r0,[r5,#oBattleObject_CurAnim] with r0=3 — plays the attack/move animation on trigger; copies TargetPanelX/Y
+    into oBattleObject_PanelX/Y then calls object_setCoordinatesFromPanels — teleports/positions object
+    on target panel; bl object_updateCollisionPanels — refreshes collision record and facing for the new
+    panel; strh r0,[r7,#oAIAttackVars_HitElement] with r0=8, timer reset to 3 — sets attack element and
+    schedules next step
+  refs:
+  - bn6f/asm/asm31.s:145600
+  - 0x0800E29C object_setCoordinatesFromPanels
+  - 0x0801A04C object_updateCollisionPanels
+  reproduce: python3 tools/asmcat.py 0x080FC684
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- which AI attack script/route this step belongs to and what element value 8 means
+- what oAIAttackVars_HitElement is consumed by later steps
+- whether other attack variants share this routine with different constants
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80FC684 -> ai_attackMoveStep
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FC684

@@ -1,0 +1,53 @@
+name: battle_findForwardBlockX
+address: '0x080C6F08'
+kind: function
+status: probable
+summary: Scans up to 5 panels straight ahead of a battle object (facing direction, same row) and returns
+  the x of the first panel that is 'blocked', equals a target x, or lies off the 2..5 range.
+interface: (r0 = target/stop panel x; r5 = current battle object) -> r0 = x coordinate of the panel where
+  the scan stopped; r4-r7 preserved, other flags clobbered.
+details: Loads a per-alliance 32-bit mask from byte_80C6F48 (alliance 0 -> 0x05800000, alliance 1 -> 0x0A800000,
+  indexed via oBattleObject_Alliance<<2). For step r6 = 1..5 it computes x = oBattleObject_PanelX + object_getFrontDirection()*r6
+  (y unchanged, so a straight line along the facing row) and calls object_getPanelParameters(x, y). It
+  stops (returning the current scanned x, since pop {r0,r1} restores x before every exit branch) when
+  the panel's status word has a mask bit set (tst r0,r4), when x equals the r0 argument, or when x <=
+  1 or x >= 6; otherwise after 5 steps it returns the last x. The tst is deliberately done on the panel-result
+  r0 before the pop that overwrites it with x. The alliance-dependent masks presumably mark panels occupied/blocked
+  per side, but the exact panel-status bit meanings are not confirmed here.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldr r4,[off_80C6F44 + Alliance<<2] then tst r0,r4 against object_getPanelParameters result:
+    per-side blocking mask; mul r0,r6 with r6=1..5 added to oBattleObject_PanelX, y fixed: straight scan
+    of up to 5 panels in facing direction; cmp r0,r7 / cmp r0,#1 ble / cmp r0,#6 bge on the popped x:
+    stops at target x or outside columns 2..5; pop {r0,r1} precedes all exit branches, so r0 returned
+    is always the scanned panel''s x; Callees object_getFrontDirection and object_getPanelParameters confirm
+    it works on battle objects and panel coordinates'
+  refs:
+  - bn6f/asm/asm31.s:32383
+  - 0x080C6E90 sub_80C6E90
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800C8F8 object_getPanelParameters
+  reproduce: python3 tools/asmcat.py 0x080C6F08
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- Which panel-status bits 0x05800000/0x0A800000 represent (holes, broken, obstacles?)
+- What caller sub_80C6E90 does with the returned x and what the r0 target-x argument means (AI advance
+  limit? attack reach?)
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80C6F08 -> battle_findForwardBlockX
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C6F08

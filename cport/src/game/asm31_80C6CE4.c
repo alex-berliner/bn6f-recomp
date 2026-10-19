@@ -2279,7 +2279,7 @@ Next battle_object_SetStateUpdatePhase_80CAB88(void) {
  *   actions 0xA and 0xB are terminal and need no per-frame processing.
  * - If the battle clock is stopped, the update is skipped as well.
  * - Otherwise the object's own CurAction indexes the handler table
- *   off_80CABC8 (0 -> sub_80CABD0, 1 -> sub_80CAC00) and that handler is
+ *   off_80CABC8 (0 -> sub_80CABD0, 1 -> battle_aiRandomMoveStep) and that handler is
  *   invoked with r0 = action id (and r1 = table entry, as in the original).
  *   Its results are left in r5/r8-r12 for our caller. */
 Next sub_80CAB90(void) {
@@ -2309,7 +2309,7 @@ Next sub_80CAB90(void) {
     if (handler == 0x080CABD1)
         GUEST_CALL(sub_80CABD0);
     else if (handler == 0x080CAC01)
-        GUEST_CALL(sub_80CAC00);
+        GUEST_CALL(battle_aiRandomMoveStep);
     RETURN_TO_CALLER();
 }
 

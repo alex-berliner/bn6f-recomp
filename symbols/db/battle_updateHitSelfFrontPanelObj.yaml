@@ -1,0 +1,50 @@
+name: battle_updateHitSelfFrontPanelObj
+address: '0x080C85C0'
+kind: function
+status: probable
+summary: Per-frame update for a battle object whose actions are dispatched via a 2-entry table (an idle/unknown
+  handler and battle_hitSelfAndFrontPanel); destroys the object when the battle is over.
+interface: (r5 = battle object) -> r0 = 0; sets oBattleObject_CurStateActionPhaseAndPhaseInitialized to
+  CUR_STATE_DESTROY when battle is over, otherwise dispatches CurAction through the jump table
+details: 'Standard battle-object main routine: if battle_isBattleOver returns true it forces the object''s
+  state word to CUR_STATE_DESTROY (battle ends). Otherwise it normally checks battle_isTimeStop and skips
+  the update while time is frozen, except when oBattleObject_Param1 equals 4, which bypasses the time-stop
+  gate. It then indexes a jump table at off_80C85EC with oBattleObject_CurAction (two entries) and calls
+  the handler via mov lr,pc; bx r1, returning to the common epilogue afterwards. Entry 1 is battle_hitSelfAndFrontPanel,
+  suggesting this object is an enemy/obstacle whose attack damages its own panel tile.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl battle_isBattleOver / tst r0,r0 / bne -> writes CUR_STATE_DESTROY to oBattleObject_CurStateActionPhaseAndPhaseInitialized;
+    cmp r0,#4 after ldrb [r5,#oBattleObject_Param1] skips the battle_isTimeStop check when Param1==4;
+    ldrb [r5,#oBattleObject_CurAction] then ldr r1,[r1,r0] with table off_80C85EC dispatches per action
+    state; table entry 1 is battle_hitSelfAndFrontPanel+1, the only known handler, giving the object its
+    behavior; mov lr,pc / bx r1 is the project's usual thumb jump-table dispatch inside object update
+    routines
+  refs:
+  - bn6f/asm/asm31.s:35500
+  - 0x0800A18E battle_isBattleOver
+  - 0x0800A098 battle_isTimeStop
+  reproduce: python3 tools/asmcat.py 0x080C85C0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- what sub_80C85F4 (table entry 0) does — probably the idle/default action
+- which enemy/object uses this routine, and what Param1==4 means (likely an invulnerable or scripted state)
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80C85C0 -> battle_updateHitSelfFrontPanelObj
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C85C0

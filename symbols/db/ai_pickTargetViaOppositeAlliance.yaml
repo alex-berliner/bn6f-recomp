@@ -1,0 +1,51 @@
+name: ai_pickTargetViaOppositeAlliance
+address: '0x08113DFC'
+kind: function
+status: probable
+summary: Battle AI script step that searches for an opposing-team object and, if none is 'blocked' by
+  some status, locks it as the attack target, otherwise falls through to retry/alternate scripts.
+interface: (r5 = battle object ptr, r6 = AI state ptr, r7 = AI attack vars ptr) -> void; sets oAIState_ScriptId
+  to 4, 8, or 0xC
+details: Early-outs if the object's collision flags (object_getFlag) have any bit of 0xA000 set. It XORs
+  the object's Alliance field with 1 and calls sub_8114316, which appears to look up an object belonging
+  to the opposite team (the call result is later reused as an object pointer). If that lookup fails, a
+  per-object counter at offset 0x66 is incremented and wraps at 3; on wrap the AI script id becomes 4,
+  otherwise 0xC. If the lookup succeeds, it scans battle actors with nonzero values at struct offsets
+  0x60, 0x91 and 0x96; only when no such actor exists does it store the found object into oAIAttackVars_TargetObjectPtr,
+  set ExtraVars to 1, and switch to script 8. The three-way script-id dispatch (4/8/0xC) confirms this
+  is one state of an enemy AI script driven by the AI state struct.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_getFlag; tst r0, 0xA000; bne exit - gated on object collision/status flags; ldrb r0,[r5,#oBattleObject_Alliance];
+    eor r0,#1; bl sub_8114316 - query something about the opposite team; counter at [r5,#0x66] wraps at
+    3 -> scriptId=4, else scriptId=0xC (retry ladder); bl FindBattleActorsWithNonzeroParam(0x60,0x91,0x96);
+    pop {r1}; bne exit - only acts when no actor matches those fields; str r1,[r7,#oAIAttackVars_TargetObjectPtr];
+    scriptId=8 - locks the found object as attack target
+  refs:
+  - bn6f/asm/asm32.s:11967
+  - 0x0801A166 object_getFlag
+  - 0x08109630 FindBattleActorsWithNonzeroParam_ReturnCountAndSum
+  - 0x08114316 sub_8114316
+  reproduce: python3 tools/asmcat.py 0x08113DFC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- What sub_8114316 does exactly (presumably 'find first object with the given alliance value')
+- Meaning of object fields 0x60, 0x91, 0x96 used as the actor-scan criteria
+- Which enemy/boss AI script uses this state and what scripts 4, 8 and 0xC do
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8113DFC -> ai_pickTargetViaOppositeAlliance
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8113DFC

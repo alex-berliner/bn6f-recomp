@@ -1,0 +1,56 @@
+name: ai_randomAttackPick
+address: '0x08116510'
+kind: function
+status: probable
+summary: 'Battle AI step: finds the closest enemy to the acting object, then calls helper sub_80DFAD6
+  with a value picked from the AI version''s pattern table and a random 0-2 roll.'
+interface: (r4 = AI data of acting object, r5 = acting BattleObject) -> r0 = result of sub_80DFAD6(r0=table
+  value, r1=random 0-2, r2=closest enemy BattleObject)
+details: Reads the acting object's Alliance field from r5, inverts it (eor 1) and passes it to battleObject_findClosestEnemyBattleObject_80103F8;
+  if no enemy is found it returns immediately. Otherwise it indexes a table-of-tables at off_8116554 by
+  the AI's Version field (oAIData_Version_16 << 2), draws GetPositiveSignedRNG()&0xF to select an entry
+  from that 16-byte repeating pattern (values 0,2,3 or 0,2,3,4 depending on version), draws another RNG&0xF
+  to index byte_8116594 (a repeating 0,1,2 pattern), and finally calls sub_80DFAD6 with (selected value,
+  random 0-2, enemy object pointer). The &0xF masks are wider than the repeating period, so the draws
+  are uniform over the pattern's distinct values. The pattern tables likely encode attack/move choices;
+  the meaning of the arguments to sub_80DFAD6 is not visible here.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r5,#oBattleObject_Alliance]; eor r0,#1; bl battleObject_findClosestEnemyBattleObject_80103F8
+    — targets nearest opposing-alliance object; ldrb r0,[r4,#oAIData_Version_16]; lsl#2; ldr off_8116550
+    — table chosen by AI version field; bl GetPositiveSignedRNG; and r0,#0xf; ldrb r0,[r1,r0] — random
+    index into the version''s 16-byte repeating value table; second GetPositiveSignedRNG&0xF indexes byte_8116594
+    (0,1,2 pattern) giving r1 for the call; pop {r0}/pop {r2}; bl sub_80DFAD6 — passes selected value,
+    random 0-2, and the enemy object to the helper; route note ''battlesweep'': only ever runs inside
+    battle AI processing'
+  refs:
+  - bn6f/asm/asm32.s:16490
+  - 0x081164EC sub_81164EC
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x080103F8 battleObject_findClosestEnemyBattleObject_80103F8
+  - 0x080DFAD6 sub_80DFAD6
+  reproduce: python3 tools/asmcat.py 0x08116510
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- What sub_80DFAD6 does with (table value, random 0-2, enemy object) — likely an attack/move executor,
+  which would pin down what the table values 0-4 mean
+- Whether r4/r5 are exactly (AIData, BattleObject) of the same entity or two different objects
+- Why the Alliance eor is needed if the callee already finds enemies — maybe the callee matches against
+  the passed alliance
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8116510 -> ai_randomAttackPick
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8116510

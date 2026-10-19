@@ -1,0 +1,51 @@
+name: object_frameUpdate
+address: '0x080D592C'
+kind: function
+status: probable
+summary: 'Per-frame battle-object handler: destroys the object when the battle ends, otherwise dispatches
+  the object''s CurAction handler unless time-stop is active.'
+interface: (r5 = battle object) -> r0 = destroyed (sets oBattleObject_CurState = CUR_STATE_DESTROY) or
+  dispatched action handler; flags from tst on battle-over result
+details: 'Standard battle-object per-frame think routine. It first checks battle_isBattleOver; if the
+  battle is over it writes CUR_STATE_DESTROY into oBattleObject_CurState and returns, which is the usual
+  way battle objects are torn down. Otherwise it checks battle_isTimeStop and skips the update while time
+  is frozen. The update itself is a dispatch through table off_80D5954 indexed by oBattleObject_CurAction,
+  called via ''mov lr, pc; bx r1'' (Thumb interwork tail-call). The table has two entries: action 0 ->
+  sub_80D595C, action 1 -> object_landingImpactState, so this object supports only two actions, one of
+  which is a landing/impact state (suggesting a falling or slamming entity).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bne loc_80D5948 after battle_isBattleOver + strb CUR_STATE_DESTROY to [r5,#oBattleObject_CurState]
+    ends the object when battle is over; bne locret_80D594C after battle_isTimeStop skips the update during
+    time-stop; ldrb r0,[r5,#oBattleObject_CurAction]; ldr r1,[r1,r0]; mov lr,pc; bx r1 is a per-action
+    dispatch table call; off_80D5954 entry 1 = object_landingImpactState+1, a known battle-object state
+    handler; push {lr} ... pop {pc} with no r0/r1 setup shows it operates on the object kept in r5 by
+    its caller
+  refs:
+  - bn6f/asm/asm31.s:63843
+  - 0x0800A18E battle_isBattleOver
+  - 0x0800A098 battle_isTimeStop
+  reproduce: python3 tools/asmcat.py 0x080D592C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+- chips
+open_questions:
+- No known caller, so which entity type uses this handler (and thus a more specific name) is unknown
+- sub_80D595C (action 0 handler) is unanalyzed; reading it would reveal what the object does before/other
+  than landing
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D592C -> object_frameUpdate
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D592C

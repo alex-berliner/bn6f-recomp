@@ -1,0 +1,48 @@
+name: ai_attackChargeFront
+address: '0x081074D8'
+kind: function
+status: probable
+summary: 'Enemy AI attack state: charges while highlighting the front panel, then triggers the hit when
+  the timer runs out'
+interface: (r5 = battle object, r7 = oAIAttackVars) -> r0 = next AI attack element; sets AttackElement/StepTimer/ChargeCycles/HitElement
+details: When AttackElement is 0 (attack start), sets AttackElement=4, copies AttackBoost2 into StepTimer
+  as the charge duration, and clears ChargeCycles. Each subsequent call increments ChargeCycles; every
+  8th cycle (lsr r0,#3 carry) it computes the panel one tile in front via object_getFrontDirection and
+  marks it with object_highlightPanelRegion (region type 2). StepTimer counts down each frame; when it
+  reaches 0, HitElement is set to 0x10, which presumably spawns/resolves the attack hit. This is one entry
+  of the AI's attack dispatch table, executed during the 'battlesweep' AI phase.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]; bne ... : state machine keyed on attack element,
+    initialises charge on 0; strh r0,[r7,#oAIAttackVars_ChargeCycles] / add r0,#1 / lsr r0,#3 bcs: charge-cycle
+    counter ticking every 8 frames; bl object_getFrontDirection + object_highlightPanelRegion(r0,r1,r2=2,r3):
+    highlights the panel(s) in front of the object during charge; sub r0,#1 strh ... bgt / mov r0,#0x10
+    strh r0,[r7,#oAIAttackVars_HitElement]: fires the hit element when StepTimer expires; callee object_getFrontDirection
+    returns +1/-1 facing multiplier, confirming the target panel is in front of the enemy'
+  refs:
+  - bn6f/asm/asm31.s:168437
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800CCD4 object_highlightPanelRegion
+  reproduce: python3 tools/asmcat.py 0x081074D8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- What HitElement=0x10 specifically spawns (which attack/hit handler consumes it) and what AttackElement=4
+  / highlight type 2 correspond to in the attack table
+- The exact meaning of AttackBoost2 (charge duration modifier) and StepTimer units
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_81074D8 -> ai_attackChargeFront
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81074D8

@@ -849,13 +849,13 @@ static void chatbox_state_load_obj_table_entry(u32 self, u32 work, u32 state) {
     GUEST_CALL(battle_loadObjTableEntryAndSetState4_80272B8);
 }
 
-/* register form: calls sub_80272D0 outside this file, which has no typed C interface yet */
+/* register form: calls battle_tutorialRunScriptStep outside this file, which has no typed C interface yet */
 static void chatbox_state_80272D0(u32 self, u32 work, u32 state) {
     R0 = state;
     R1 = CHATBOX_H_80272D0;
     R4 = work;
     R5 = self;
-    GUEST_CALL(sub_80272D0);
+    GUEST_CALL(battle_tutorialRunScriptStep);
 }
 
 /* register form: calls chatbox_setState4IfFlag80Clear_8027320 outside this file, which has no typed C interface yet */

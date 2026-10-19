@@ -1,0 +1,45 @@
+name: battle_endAttackWhenFrameFlagSet
+address: '0x081104B2'
+kind: function
+status: probable
+summary: Per-frame AI check that ends an enemy's attack state once the current animation frame carries
+  attribute bit 0x80.
+interface: (r7 = battle object) -> void; no meaningful return, flags clobbered by tst/bl
+details: 'Calls sprite_getFrameParameters for the object''s current animation frame and tests the attribute
+  byte for bit 0x80. When the bit is set, it clears the AI scratch variable pointed to by oAIAttackVars_ScratchVar
+  (stores 0) and calls object_exitAttackState to leave the attack state; otherwise it just returns. This
+  makes the attack''s duration driven by the animation: the frame marked 0x80 signals the strike/finish
+  point. Likely used as an AI step callback (battlesweep route) where the attack waits until a specific
+  frame before reverting.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl sprite_getFrameParameters then tst r0,#0x80 / beq ret: only acts when the frame attribute
+    has bit 0x80; str r1(=0),[r7,oAIAttackVars_ScratchVar] clears the AI attack scratch var when the flag
+    fires; bl object_exitAttackState immediately after clearing the var ends the attack; no action at
+    all when bit 0x80 is clear (straight pop {pc}), so it''s a passive per-frame check'
+  refs:
+  - bn6f/asm/asm32.s:5091
+  - 0x08002DEA sprite_getFrameParameters
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x081104B2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- exact meaning of attribute bit 0x80 in sprite_getFrameParameters (attack-hit frame vs animation end)
+- which caller registers this as an AI step callback and what the cleared scratch var counts
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_81104B2 -> battle_endAttackWhenFrameFlagSet
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81104B2

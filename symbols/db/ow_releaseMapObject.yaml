@@ -1,0 +1,45 @@
+name: ow_releaseMapObject
+address: '0x080A9F4E'
+kind: function
+status: probable
+summary: Thin wrapper that frees an overworld map object, likely used as a cleanup/destructor callback.
+interface: (r0 = overworld map object to free) -> r0 = FreeOverworldMapObject result; flags from FreeOverworldMapObject
+details: 'The function is a 5-instruction thunk: it preserves r4-r7 (which it never uses), tail-calls
+  FreeOverworldMapObject with r0 unchanged, and returns its result. It adds no logic of its own, so it
+  exists purely to be referenced by address — most plausibly as an object''s destroy/free callback or
+  a direct wrapper for map-object cleanup. Since r4-r7 are saved despite the tail call, the wrapper was
+  likely compiled from a source call site rather than being a hand-written alias. Its behavior is exactly
+  the callee''s: release the object slot, clear its allocation bit, and unmark its sprite.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: Body is only push {r4-r7,lr}; bl FreeOverworldMapObject; pop {r4-r7,pc} with r0 untouched (asm
+    lines 1-3); Sole callee FreeOverworldMapObject is documented as releasing an overworld map object
+    and unmarking its sprite; Executed on the beastsp recorded route, consistent with overworld object
+    cleanup during play
+  refs:
+  - bn6f/asm/asm29.s:9996
+  - 0x080048B2 FreeOverworldMapObject
+  reproduce: python3 tools/asmcat.py 0x080A9F4E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- beastsp
+open_questions:
+- No known callers, so whether it is registered as a destructor callback versus called directly for object
+  cleanup is unconfirmed
+- The exact type of the r0 argument (slot index vs object pointer) follows from FreeOverworldMapObject's
+  signature, which would confirm naming
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80A9F4E -> ow_releaseMapObject
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A9F4E

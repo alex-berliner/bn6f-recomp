@@ -1,0 +1,47 @@
+name: copyWordsWrapper
+address: '0x080068E0'
+kind: function
+status: probable
+summary: Thin forwarding wrapper around the BIOS CpuSet word-copy helper (CopyWords), passing src/dest/size
+  straight through.
+interface: (r0 = src *const u32, r1 = dest *mut u32, r2 = size in bytes) -> r0 = ? (CpuSet clobbers);
+  no meaningful return
+details: The function only pushes lr, tail-calls CopyWords (which converts the byte count and issues SWI
+  5 CpuSet in word mode), and returns. It does not touch or modify any arguments, so it is a pure pass-through/thunk
+  around the word-copy routine, likely existing to give callers a fixed call site or to keep CopyWords
+  out of direct use. No structures or fields are touched by the wrapper itself. Which buffers it copies
+  in game terms depends entirely on the single caller.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: sub_80068E0 body is only 'push {lr}; bl CopyWords; pop {pc}' — no register setup or modification;
+    callee CopyWords (0x0800093C) is the known CpuSet/SWI 5 word-copy helper taking (src, dest, byte size);
+    sole caller sub_3005D24 (0x03005D24) supplies the arguments; wrapper adds nothing of its own
+  refs:
+  - bn6f/asm/asm00_1.s:7371
+  - 0x03005D24 sub_3005D24
+  - 0x0800093C CopyWords
+  reproduce: python3 tools/asmcat.py 0x080068E0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battle
+- battlesweep
+- chips
+- fuzz
+open_questions:
+- what sub_3005D24 passes as src/dest/size (which buffers or structures are copied) — that would reveal
+  the wrapper's game-level role and a better subsystem prefix
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80068E0 -> copyWordsWrapper
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80068E0

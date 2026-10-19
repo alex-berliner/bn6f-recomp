@@ -1,0 +1,54 @@
+name: ai_pickTargetObjectFromRow
+address: '0x0811252C'
+kind: function
+status: probable
+summary: 'AI helper that resolves an object (target) for a targeted attack: tries a random row pick, then
+  falls back through variant-indexed table entries and finally the table''s first entry.'
+interface: (r0 = result of prior call, r5 = battle object) -> r0 = nonzero object/handle or 0; called
+  as tail of ai_prepareTargetedAttack before attack state 0xC
+details: Called with r0 = the object's PanelY, it asks battle_pickRandomRowObjectFields_810971A to pick
+  a random object from the row at that Y (alliance-dependent panel params) and returns its entry byte
+  (id low 3 bits, 4-bit attribute). If that returns 0, it loads a pointer table chosen by off_8112584,
+  indexes it with [r5+ExtraVars+8]<<2 (an attack/variant index), and calls sub_8112562 on that entry;
+  if still zero it retries with a second table (off_811259C) at the same index, and finally with entry
+  [0] of that second table as a default. Each call's r0 return is passed through, so the function returns
+  the first non-null candidate or 0. ExtraVars+8 acts as the selector between alternate target/attack
+  tables, matching the caller's 'records direction/panel params' behavior. The exact meaning of the table
+  entries is unknown since sub_8112562 is undocumented.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r5,#oBattleObject_PanelY]; bl battle_pickRandomRowObjectFields_810971A — random object
+    pick from the row given by the object's panel Y; ldr r2,[r5,#oBattleObject_ExtraVars+8]; lsl r2,r2,#2;
+    ldr r4,[r4,r2] — table indexed by the object's attack/variant field, twice with different base tables;
+    chained 'cmp r0,#0; bne' checks after each sub_8112562 call — first-nonzero-wins fallback chain ending
+    at table[0] default; caller ai_prepareTargetedAttack decrements a turn counter, selects a target panel
+    and records direction/panel params, then starts attack state 0xC — consistent with resolving a target
+    for a targeted attack
+  refs:
+  - bn6f/asm/asm32.s:9015
+  - 0x08112340 ai_prepareTargetedAttack
+  - 0x0810971A battle_pickRandomRowObjectFields_810971A
+  - 0x08112562 sub_8112562
+  reproduce: python3 tools/asmcat.py 0x0811252C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- what sub_8112562 does with the table entry (spawn object? return pointer? validate?)
+- contents of the tables at off_8112584 and off_811259C and what ExtraVars+8 indexes over
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_811252C -> ai_pickTargetObjectFromRow
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811252C

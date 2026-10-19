@@ -1824,7 +1824,7 @@ enum {
 
 /* battle_objectUpdateByKind_8116F34: run one battle object's type-specific update, then its sprite update.
  * R5 points at the battle object; the byte at obj+4 selects which handler runs:
- *   0/3 -> sub_8116F60, 1/4 -> battle_objectUpdateWithFieldC_8116F8C, 2 -> sub_8116F9C.
+ *   0/3 -> sub_8116F60, 1/4 -> battle_objectUpdateWithFieldC_8116F8C, 2 -> sprite_randVisibilityUpdate.
  * For fidelity with the original `mov lr, pc; bx r0`, each handler is entered with
  * R0 = its own jump-table entry and R1 = type*4 (result of the `lsl r1, r1, #2`).
  * Tail behaviour: after the handler returns, sprite_update is called on the object. */
@@ -1849,7 +1849,7 @@ Next battle_objectUpdateByKind_8116F34(void) {
     case 2:
         R0 = ADDR_sub_8116F9C;
         R1 = kind << 2;
-        GUEST_CALL(sub_8116F9C);
+        GUEST_CALL(sprite_randVisibilityUpdate);
         break;
 
     default:

@@ -1,0 +1,49 @@
+name: ai_updateFrontStrikeAttack
+address: '0x081072FE'
+kind: function
+status: probable
+summary: 'Battle-AI attack step: charges up, telegraphs and strikes the panel in front of the enemy, then
+  triggers the hit.'
+interface: (r5 = battle object ptr, r7 = oAIAttackVars state) -> updates oAIAttackVars fields; sets AttackElement=4
+  on start, HitElement=0x1C when the step timer expires
+details: 'If oAIAttackVars_AttackElement is 0 the attack begins: element is set to 4, StepTimer is loaded
+  from TimerOrCycles, and ChargeCycles is cleared. Otherwise ChargeCycles increments; every 8th increment
+  (lsr #3 sets carry) the code computes the facing direction with object_getFrontDirection, adds it to
+  oBattleObject_PanelX, and calls object_highlightPanelRegion with PanelY and AllianceAndDirectionFlip
+  to mark the target panel (r2=4, likely a highlight size/type). StepTimer is decremented each call; when
+  it reaches zero, HitElement is set to 0x1C so the engine resolves the strike on the highlighted panel.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb/tst on oAIAttackVars_AttackElement gates a one-time init that stores 4 and copies TimerOrCycles
+    to StepTimer; ChargeCycles incremented and 'lsr r0,#3; bcs' makes the panel highlight fire every 8
+    cycles; object_getFrontDirection result is added to oBattleObject_PanelX before object_highlightPanelRegion,
+    so the marked panel is the one in front; StepTimer counts down and expiry stores 0x1C into oAIAttackVars_HitElement,
+    arming the attack's damage resolution
+  refs:
+  - bn6f/asm/asm31.s:168178
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800CCD4 object_highlightPanelRegion
+  reproduce: python3 tools/asmcat.py 0x081072FE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+open_questions:
+- What element/state value 0x1C in HitElement means exactly (damage trigger vs animation cue) is not shown
+  here
+- Which enemy/attack uses this handler and what the highlighted region's size parameter 4 corresponds
+  to visually
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_81072FE -> ai_updateFrontStrikeAttack
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81072FE

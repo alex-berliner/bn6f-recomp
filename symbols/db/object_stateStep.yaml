@@ -1,0 +1,51 @@
+name: object_stateStep
+address: '0x080D0132'
+kind: function
+status: probable
+summary: 'Per-frame state-machine step for a battle object: destroys it when the battle is over or it
+  isn''t in action 10, otherwise dispatches its action-10 handler unless time-stop is active.'
+interface: (r5 = battle object) -> r0..r3 clobbered; sets object packed state field to CUR_STATE_DESTROY
+  on the destroy path, otherwise tail-dispatches into the action handler
+details: 'Standard BN6 object update thunk: if battle_isBattleOver returns nonzero or the object''s oBattleObject_CurAction
+  != 0xA, it writes CUR_STATE_DESTROY into the packed oBattleObject_CurStateActionPhaseAndPhaseInitialized
+  field, ending the object. If battle_isTimeStop says the battle is frozen it returns without doing anything.
+  Otherwise it loads a per-action handler table pointer (off_80D0160 -> off_80D0164), indexes it with
+  CurAction, and calls the handler with lr=pc so the handler returns straight back here. The table has
+  only one slot (action 0xA -> sub_80D0168), so this object only defines one action; any other action
+  value destroys it. Like most object steps it uses r5 as the object base rather than an argument register,
+  implying its caller keeps the object in r5.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl battle_isBattleOver / tst + bne -> mov #CUR_STATE_DESTROY into [r5+oBattleObject_CurStateActionPhaseAndPhaseInitialized]:
+    battle-over destroys the object; ldrb r0,[r5,#oBattleObject_CurAction]; cmp #0xa; bne destroy: only
+    action 10 continues; bl battle_isTimeStop; bne locret: time-stop freezes the step; ldr r1,off_80D0160;
+    ldr r1,[r1,r0]; mov lr,pc; bx r1: per-CurAction handler dispatch table; off_80D0164 contains a single
+    .word sub_80D0168+1: only action 0xA has a handler'
+  refs:
+  - bn6f/asm/asm31.s:52031
+  - 0x0800A18E battle_isBattleOver
+  - 0x0800A098 battle_isTimeStop
+  reproduce: python3 tools/asmcat.py 0x080D0132
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- Which battle object this belongs to and what its action-10 handler (sub_80D0168) does — need that callee
+  or a caller to see the object identity
+- How r5 is set to this object by the caller (no callers captured)
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_80D0132 -> object_stateStep
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D0132

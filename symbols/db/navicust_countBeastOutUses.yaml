@@ -1,0 +1,52 @@
+name: navicust_countBeastOutUses
+address: '0x08137618'
+kind: function
+status: probable
+summary: Counts Beast Out uses in a NaviCust state struct and sets story flag EVENT_EF (returning 1) once
+  the count passes a threshold while a condition holds.
+interface: (r0 = task state struct in r5, no args used) -> r0 = 1 if flag EVENT_EF was set this call,
+  else 0; counter byte at [r5+3] incremented and clamped to 0x4F
+details: Reads the counter byte at [r5+3], increments it, then calls sub_8137648(2, 8) whose boolean result
+  gates the threshold check. If the gate is true and count >= 0x20, or if the count exceeds 0x4F, it sets
+  the one-time story flag EVENT_EF, saturates the counter at 0x4F, and returns 1; otherwise it just stores
+  the incremented count and returns 0. The callers use the return value to decide whether to queue MegaMan's
+  Beast Out dialog and advance the menu/task state. The 0x4F clamp plus the flag-once semantics mean the
+  trigger fires at most once. The gate sub_8137648's meaning (likely a Beast Out / NaviCust state check
+  via args 2 and 8) is not visible here.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb/strb r4,[r5,#3] with add #1: byte counter in the caller''s state struct is incremented;
+    bl sub_8137648 with r0=2,r1=8 then beq: boolean gate before the threshold check; cmp r4,#0x20 / bge
+    and cmp r4,#0x4f / ble: 32-use threshold and 0x4F saturation; movflag EVENT_EF; bl SetEventFlagFromImmediate:
+    sets a one-time story flag on trigger; callers navicust_queueBeastOutDialog and navicust_runOnceDialog
+    (gated by EVENT_EE, state 0x14) consume the return to fire a dialog'
+  refs:
+  - bn6f/asm/asm36.s:15385
+  - 0x0813756C navicust_queueBeastOutDialog
+  - 0x08136F74 navicust_runOnceDialog
+  - 0x08136F0C sub_8136F0C
+  - 0x0802F110 SetEventFlagFromImmediate
+  - 0x08137648 sub_8137648
+  reproduce: python3 tools/asmcat.py 0x08137618
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615'
+coverage:
+- beastsp
+open_questions:
+- what sub_8137648(2,8) tests (its args and result meaning)
+- full layout of the r5 state struct and what field [r5+3] is named elsewhere
+- exact dialog text / context tied to EVENT_EF
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-18'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9f60ad10
+  tool: tools/symdoc.py
+- date: '2026-10-18'
+  what: rename sub_8137618 -> navicust_countBeastOutUses
+  where: bn6f 35a9b5b5
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8137618
