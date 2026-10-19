@@ -6,10 +6,11 @@
   tools/investigate_land.py style-fix [--root REPO]
   tools/investigate_land.py dedupe [--root REPO] [--limit N]
                      [--model PROPOSER] [--model-checker CHECKER]
+  tools/investigate_land.py reconcile [--root REPO] [--limit N]
   tools/investigate_land.py land-rescued [--root REPO] [--limit N] [--batch N] [--dry-run]
 
-The last three rescue the candidates earlier runs' land runs dropped for their names
-(each run's land_skipped.tsv):
+The four rescue the candidates earlier runs' land runs dropped (style-fix and dedupe from
+each run's land_skipped.tsv; reconcile from the runs' cross-check revise verdicts):
 
   style-fix: the naming-style rejects, without a model. The style rule is relaxed where
     bn6f already uses the shape (a prefix the elf's symbols or the database spell with an
@@ -25,10 +26,21 @@ The last three rescue the candidates earlier runs' land runs dropped for their n
     against the code; only agreed groups are kept. Cached under build/investigate/dedupe/
     (resumable); a 402 or a daily rate limit stops it cleanly. Agreed members go to
     build/investigate/rescue/dedupe.tsv.
+  reconcile: the candidates the cross-check revised with a `revised_name` (a second opinion
+    on the checker's name). The function is still a placeholder, has no symbols/db entry,
+    and the revised name passes the relaxed style rule, copies no part of the function's
+    address, is not taken in bn6f.elf or symbols/db, and is unique among all the runs'
+    revise candidates (a shared revised name drops every claimant). One call per function to
+    hyper/glm-5.3-flash shows the assembly context (the same context builder as investigate:
+    gather_context), the original proposal, the checker's objection and revised name and
+    summary, and asks which to keep — accept_revised, keep_original or neither. Only
+    accept_revised agrees with the checker; both models then back the revised name. Cached
+    under build/investigate/reconcile/NAME.json (resumable); a 402 or a daily rate limit
+    stops the pass cleanly. Agreed functions go to build/investigate/rescue/reconcile.tsv.
   land-rescued: writes the rescued candidates' symbols/db entries the way land does (under the
     old placeholder name, status probable, the rescue named in the evidence) and runs the
     record workflow once per batch of at most --batch (200). A record failure — the port's ROM
-    changed — is reported, never retried.
+    changed — is reported, never retried. Reads three lists (style, dedupe, reconcile).
 
 RUN_DIR is a finished investigate run (build/investigate/RUN_ID) with its
 report.tsv and one candidate symbols/db-format YAML per function. The tool
@@ -521,6 +533,22 @@ def finished_run_dirs(base: str | None = None) -> list[str]:
             continue
         run_dir = os.path.join(base, name)
         if all(os.path.exists(os.path.join(run_dir, f)) for f in ("report.tsv", "land_skipped.tsv")):
+            out.append(run_dir)
+    return out
+
+
+def any_run_dirs(base: str | None = None) -> list[str]:
+    """The investigate runs that wrote a report.tsv (their investigation finished, regardless of
+    whether land ran). The reconcile pass wants every revise verdict, even runs that were never
+    landed (they still wrote checkers/NAME.json). A run the provider refused, *.failed-429,
+    is not included."""
+    base = base or os.path.join(ROOT, "build", "investigate")
+    out: list[str] = []
+    for name in sorted(os.listdir(base)):
+        if not name.startswith("investigate-") or name.endswith(".failed-429"):
+            continue
+        run_dir = os.path.join(base, name)
+        if os.path.exists(os.path.join(run_dir, "report.tsv")):
             out.append(run_dir)
     return out
 
@@ -1053,12 +1081,426 @@ def run_dedupe(limit: int | None, only: str | None, dry: bool,
         print(f"stopped: {stopped}")
 
 
+# ── the reconcile pass: a second opinion on the checker's revised name ──
+
+RECONCILE_SYSTEM = ("You give a second opinion on a function's name in a GBA game's disassembly "
+                   "(MegaMan Battle Network 6 Falzar). Reply with exactly one JSON object and "
+                   "nothing else.")
+RECONCILE_JOBS = 8                       # model calls in flight
+RECONCILE_TAG = "reconcile"
+RECONCILE_PROMPT_TOKENS = 3_500          # the budget per call (a fit Hyper keeps warm)
+
+
+class ReviseCandidate(NamedTuple):
+    """One function the cross-check revised: which run, the function, what the check said."""
+    run_id: str
+    name: str                     # the placeholder, e.g. "sub_80C4766"
+    address: str                  # "0x080C4766" (the placeholders live here, untouched)
+    original_name: str            # the original proposer's name (the run's report.tsv proposed)
+    original_summary: str         # the original proposer's one-line summary (no Proposed name: prefix)
+    original_interface: str | None
+    checker_reason: str           # why the checker revised (the reason field)
+    revised_name: str             # the checker's proposed name
+    revised_summary: str          # the checker's proposed one-line summary
+
+
+def _read_revise_candidate(run_id: str, name: str) -> ReviseCandidate | None:
+    """One checkers/NAME.json: the revise verdict's data, the original proposal's, the address."""
+    check_path = os.path.join(ROOT, "build", "investigate", run_id, "checkers", f"{name}.json")
+    proposal_path = os.path.join(ROOT, "build", "investigate", run_id, "proposals", f"{name}.json")
+    if not (os.path.exists(check_path) and os.path.exists(proposal_path)):
+        return None
+    try:
+        check = json.loads(open(check_path, encoding="utf-8").read())
+        proposal = json.loads(open(proposal_path, encoding="utf-8").read())
+    except (OSError, json.JSONDecodeError):
+        return None
+    reply = check.get("reply") if isinstance(check, dict) else None
+    answer = proposal.get("answer") if isinstance(proposal, dict) else None
+    if not isinstance(reply, dict) or reply.get("verdict") != "revise":
+        return None
+    if not isinstance(answer, dict):
+        return None
+    revised_name = reply.get("revised_name")
+    if not isinstance(revised_name, str) or not revised_name.strip():
+        return None
+    original_name = answer.get("proposed_name")
+    if not isinstance(original_name, str) or not original_name.strip():
+        return None
+    original_summary = str(answer.get("summary") or "")
+    original_interface = answer.get("interface")
+    return ReviseCandidate(run_id=run_id, name=name,
+                           address=f"0x{check['address']:08X}" if isinstance(check.get("address"), int)
+                                   else str(check.get("address") or ""),
+                           original_name=original_name, original_summary=original_summary,
+                           original_interface=str(original_interface) if original_interface else None,
+                           checker_reason=str(reply.get("reason") or ""),
+                           revised_name=revised_name,
+                           revised_summary=str(reply.get("revised_summary") or ""))
+
+
+def _collect_revise_candidates(base: str | None = None) -> list[ReviseCandidate]:
+    """Every revise verdict across the runs that wrote a report.tsv (skipping *.failed-429) —
+    even runs that were never landed, since their checkers/ is still there."""
+    out: list[ReviseCandidate] = []
+    for run_dir in any_run_dirs(base):
+        run_id = os.path.basename(run_dir)
+        checkers = os.path.join(run_dir, "checkers")
+        if not os.path.isdir(checkers):
+            continue
+        for name in sorted(os.listdir(checkers)):
+            if not name.endswith(".json"):
+                continue
+            candidate = _read_revise_candidate(run_id, name[:-5])
+            if candidate is not None:
+                out.append(candidate)
+    return out
+
+
+def _reconcile_filter(candidates: list[ReviseCandidate], syms: dict[str, int], names: set[str],
+                      allowed: frozenset[str], rescued_new: set[str],
+                      base: str | None = None) \
+        -> tuple[list[ReviseCandidate], list[tuple[ReviseCandidate, str]]]:
+    """The revise candidates worth a second opinion and the ones dropped, with why.
+
+    Kept: still a placeholder, no symbols/db entry yet, no bn6f symbol under that name, has a
+    candidate yaml in the run, the revised name passes the relaxed style rule and copies no
+    part of the function's own address, the revised name is not taken in bn6f or symbols/db
+    or any of the rescue lists, and the revised name is unique across all revise candidates
+    (a shared revised name drops every claimant). BASE, when given, is the directory the
+    candidate yaml and the contexts asm are looked up under (a test's temp dir)."""
+    counts: dict[str, int] = {}
+    for candidate in candidates:
+        counts[candidate.revised_name] = counts.get(candidate.revised_name, 0) + 1
+    base_dir = base or os.path.join(ROOT, "build", "investigate")
+    keep: list[ReviseCandidate] = []
+    dropped: list[tuple[ReviseCandidate, str]] = []
+    for candidate in candidates:
+        why: str | None
+        if not placeholder(candidate.name):
+            why = "the function is no longer a placeholder"
+        elif candidate.name not in syms:
+            why = "the placeholder name no longer exists in bn6f.elf"
+        elif candidate.name in names:
+            why = "the function already has a symbols/db entry"
+        elif not os.path.exists(os.path.join(base_dir, candidate.run_id, f"{candidate.name}.yaml")):
+            why = "no candidate yaml in the run folder"
+        elif not os.path.exists(os.path.join(base_dir, candidate.run_id, "contexts",
+                                            f"{candidate.name}.asm")):
+            why = "no contexts/<name>.asm in the run folder"
+        elif (problem := style_problem(candidate.revised_name, allowed)) is not None:
+            why = f"naming style: {problem}"
+        elif (problem := address_digit_problem(candidate.revised_name, candidate.address)) is not None:
+            why = f"naming style: {problem}"
+        elif candidate.revised_name in syms:
+            why = "the revised name is already a symbol of bn6f.elf"
+        elif candidate.revised_name in names:
+            why = "the revised name is already a symbols/db entry name"
+        elif candidate.revised_name in rescued_new:
+            why = "the revised name is already in a rescue list"
+        elif counts[candidate.revised_name] > 1:
+            why = f"the revised name was proposed for {counts[candidate.revised_name]} functions"
+        else:
+            keep.append(candidate)
+            continue
+        dropped.append((candidate, why or ""))
+    return keep, dropped
+
+
+RECONCILE_TASK = """You are giving a second opinion on one function's name. The first model proposed
+a name, and the cross-check model disagreed with that name and proposed its own. You see the
+function's assembly and the surrounding context; you see BOTH the original proposal and the
+checker's revised name, summary and objection. Decide which name to keep.
+
+Read the assembly carefully. Cite specific asm lines or known callees/callers in your reason
+so the decision is grounded. The decision is between three options:
+- accept_revised: the checker's revised name says what THIS function does. The two models
+  then agree on the revised name.
+- keep_original: the original proposer's name says what THIS function does. The two models
+  agree on the original name (the cross-check was wrong to revise).
+- neither: both names miss what the function does (or one does and the other breaks the
+  naming rules); reject both.
+
+Naming rules the project enforces: lowerCamel after a prefix_, an allowed prefix list
+(prefixes the project uses with upper-case letters: {prefixes}), no digit run copied from
+the function's address, no "Maybe", no 0x literal.
+
+The function (placeholder still in bn6f.elf, run {run_id}, score {score}):
+{context}
+
+The original proposal ({original_name}): {original_summary}
+interface: {original_interface}
+
+The cross-check objected: {checker_reason}
+The cross-check's revised name: {revised_name}
+The cross-check's revised summary: {revised_summary}
+
+Reason briefly, then reply with exactly one JSON object and nothing else — no markdown
+fence, no prose around it:
+{{"decision": "accept_revised" | "keep_original" | "neither",
+  "name": "<the name you are keeping, exactly as proposed>",
+  "reason": "what in the code (asm lines, callers, callees) supports your decision, at most five sentences"}}
+"""
+
+
+def _reconcile_brief(candidate: ReviseCandidate, inv: Any, contexts_dir: Path,
+                     labels: dict[str, tuple[Path, int]], summaries: dict[str, str],
+                     find: Any, units: dict[str, Any],
+                     neighbours: dict[int, tuple[frozenset[int], frozenset[int],
+                                                tuple[tuple[int, int], ...]]]) -> str | None:
+    """The compact context for one candidate: the assembly (capped tight), the call sites if
+    the run had them, and what bn6f documents above the label. None when the function has no
+    lifted unit (the filter also drops those, but defence in depth)."""
+    address = int(candidate.address, 16)
+    unit = inv.unit_of(candidate.name, address, units, find)
+    if unit is None:
+        return None
+    target = inv.Target(name=candidate.name, address=address, score=0,
+                        instructions=(unit.hi - unit.lo) // 2,
+                        captured=(inv.SNAPSHOTS / candidate.name).is_dir(), routes=(),
+                        named_neighbours=0, source=unit.asm or "")
+    context = inv.gather_context(target, contexts_dir, labels, summaries, find, units, neighbours)
+    if not context.assembly.exists():
+        return None
+    assembly = context.assembly.read_text(errors="replace")
+    # The reconcile prompt budget is small; cap the assembly at ~1.5k tokens worth of lines.
+    budget = 1_500 * 3
+    out: list[str] = []
+    used = 0
+    for line in assembly.splitlines():
+        if used + len(line) + 1 > budget:
+            out.append(f"({len(assembly.splitlines()) - len(out)} lines cut)")
+            break
+        out.append(line)
+        used += len(line) + 1
+    head: list[str] = [f"{candidate.name} at {candidate.address}"]
+    if context.comment:
+        head.append(f"bn6f comment above it: {context.comment}")
+    head.append("Assembly:")
+    return "\n".join(head) + "\n```\n" + "\n".join(out) + "\n```"
+
+
+def parse_reconcile(reply: str) -> tuple[str | None, str | None, str | None]:
+    """(decision, name, reason) from the second-opinion reply, or (None, None, problem)."""
+    parsed = json_object(reply)
+    if parsed is None:
+        return None, None, "the reply held no JSON object"
+    decision = parsed.get("decision")
+    if decision not in ("accept_revised", "keep_original", "neither"):
+        return None, None, f"decision {decision!r} is not accept_revised, keep_original or neither"
+    name = parsed.get("name")
+    if not isinstance(name, str) or not name.strip():
+        return None, None, "a decision without a name"
+    reason = parsed.get("reason")
+    if not isinstance(reason, str) or not reason.strip():
+        return None, None, "a decision without a reason"
+    return str(decision), name.strip(), " ".join(reason.split())
+
+
+def _reconcile_targets(candidates: list[ReviseCandidate], inv: Any,
+                       contexts_dir: Path, labels: dict[str, tuple[Path, int]],
+                       summaries: dict[str, str], find: Any, units: dict[str, Any],
+                       neighbours: dict[int, tuple[frozenset[int], frozenset[int],
+                                                  tuple[tuple[int, int], ...]]]) \
+        -> tuple[list[tuple[ReviseCandidate, str]], list[ReviseCandidate]]:
+    """(candidate, brief) for every candidate, in candidates order; missing ones separately."""
+    scores = {name: score for name, _address, score in inv.read_scores()}
+    briefs: list[tuple[ReviseCandidate, str]] = []
+    missing: list[ReviseCandidate] = []
+    for candidate in candidates:
+        brief = _reconcile_brief(candidate, inv, contexts_dir, labels, summaries, find, units, neighbours)
+        if brief is None:
+            missing.append(candidate)
+            continue
+        briefs.append((candidate, brief))
+    _ = scores        # the score column is read by gather_context already; kept for completeness
+    return briefs, missing
+
+
+def _ask_reconcile_one(spec: str, candidate: ReviseCandidate, brief: str,
+                       inv: Any, prefixes: tuple[str, ...]) -> dict[str, Any]:
+    """One Hyper call, with one retry on an unusable reply (the run_dedupe pattern)."""
+    prompt = RECONCILE_TASK.format(prefixes=", ".join(prefixes) if prefixes else "(none)",
+                                   run_id=candidate.run_id, score="n/a",
+                                   context=brief,
+                                   original_name=candidate.original_name,
+                                   original_summary=candidate.original_summary or "(none)",
+                                   original_interface=candidate.original_interface or "(none)",
+                                   checker_reason=candidate.checker_reason or "(none)",
+                                   revised_name=candidate.revised_name,
+                                   revised_summary=candidate.revised_summary or "(none)")
+    decision, name, reason, problem, tokens = None, None, None, None, 0
+    for attempt in range(2):
+        tag = f"{RECONCILE_TAG} {candidate.name} {attempt}"
+        reply, ask_problem = ask_once(spec, prompt, RECONCILE_SYSTEM, tag)
+        tokens += inv.logged_tokens(inv.USAGE_LOG, tag)
+        if ask_problem is None:
+            decision, name, reason = parse_reconcile(reply)
+            if decision is None:
+                problem = reason
+                reason = None
+            else:
+                problem = None
+        else:
+            decision, name, problem = None, None, ask_problem
+        if problem is None:
+            break
+        prompt += (f"\n\nYour previous reply could not be used: {problem}\n"
+                   "Reply again with only the JSON object, nothing else.")
+    return {"candidate": candidate.name, "run": candidate.run_id, "address": candidate.address,
+            "original_name": candidate.original_name, "revised_name": candidate.revised_name,
+            "decision": decision, "name": name, "reason": reason, "problem": problem,
+            "tokens": tokens, "retries": attempt}
+
+
+def _run_reconcile_pass(spec: str, work: list[tuple[ReviseCandidate, str]],
+                        inv: Any, prefixes: tuple[str, ...]) -> list[dict[str, Any]]:
+    """Run one worker per item, at most RECONCILE_JOBS at a time; a 402 or daily limit stops
+    the pass cleanly; hung calls return None (the cache tells the run what was already done)."""
+    results: list[dict[str, Any] | None] = [None] * len(work)
+    state = {"next": 0, "stopped": False}
+    lock = threading.Lock()
+
+    def worker() -> None:
+        while True:
+            with lock:
+                if state["stopped"]:
+                    return
+                index = state["next"]
+                if index >= len(work):
+                    return
+                state["next"] = index + 1
+            candidate, brief = work[index]
+            try:
+                out = _ask_reconcile_one(spec, candidate, brief, inv, prefixes)
+            except Exception as error:
+                out = {"candidate": candidate.name, "run": candidate.run_id,
+                       "address": candidate.address, "original_name": candidate.original_name,
+                       "revised_name": candidate.revised_name, "decision": None, "name": None,
+                       "problem": f"the request itself failed: {error}", "tokens": 0, "retries": 0}
+            with lock:
+                results[index] = out
+                problem = out.get("problem")
+                if problem and ("HTTP 402" in problem or "daily rate limit" in problem):
+                    state["stopped"] = True
+
+    threads = [threading.Thread(target=worker, daemon=True) for _ in range(min(RECONCILE_JOBS, len(work)))]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    return [r if r is not None else
+            {"candidate": c.name, "run": c.run_id, "address": c.address,
+             "original_name": c.original_name, "revised_name": c.revised_name,
+             "decision": None, "name": None, "problem": "abandoned: the pass stopped cleanly",
+             "tokens": 0, "retries": 0}
+            for (c, _), r in zip(work, results)]
+
+
+def run_reconcile(limit: int | None) -> None:
+    """One Hyper glm-5.3-flash call per revise candidate (8 workers, resumable cache, stops
+    cleanly on HTTP 402 or a daily rate limit). Only `accept_revised` (name == the checker's
+    revised_name) counts as agreement; both models then back the revised name. Agreed
+    functions go to build/investigate/rescue/reconcile.tsv."""
+    sys.path.insert(0, os.path.join(TOOLS, "wf"))
+    import wf.tools.investigate as inv  # noqa: PLC0415  (the context builder)
+    syms = elf_symbols()
+    names = db_names()
+    allowed = prefixes_in_use([*syms, *names])
+    rescued_new: set[str] = set()
+    for row in read_rescue_rows("style"):
+        rescued_new.add(row.new)
+    for row in read_rescue_rows("dedupe"):
+        rescued_new.add(row.new)
+    all_revise = _collect_revise_candidates()
+    kept, dropped = _reconcile_filter(all_revise, syms, names, allowed, rescued_new)
+    dropped_summary: dict[str, int] = {}
+    for _, why in dropped:
+        dropped_summary[why] = dropped_summary.get(why, 0) + 1
+    print(f"revise candidates: {len(all_revise)} total, {len(dropped)} dropped, {len(kept)} kept")
+    if dropped:
+        for why, count in sorted(dropped_summary.items(), key=lambda pair: (-pair[1], pair[0])):
+            print(f"  dropped {count}: {why}")
+    if not kept:
+        print("nothing to reconcile")
+        return
+    if limit is not None:
+        kept = kept[:limit]
+    contexts_dir = Path(os.path.join(ROOT, "build", "investigate", "reconcile", "contexts"))
+    labels = inv.label_index()
+    summaries = inv.db_summaries()
+    find = inv.funcindex.unit_finder(inv.funcindex.unit_ranges())
+    units = inv.funcindex.lifted_units()
+    neighbours = inv.call_graph() if inv.GRAPH.exists() else {}
+    prefixes = inv.name_prefixes()
+    briefs, missing = _reconcile_targets(kept, inv, contexts_dir, labels, summaries, find, units,
+                                         neighbours)
+    if missing:
+        print(f"no assembly context for: " + ", ".join(f"{m.name} ({m.run_id})" for m in missing))
+        kept = [c for c in kept if c not in missing]
+    if not kept:
+        print("nothing to reconcile after the context check")
+        return
+    cache = os.path.join(ROOT, "build", "investigate", "reconcile")
+    os.makedirs(cache, exist_ok=True)
+    rescued: list[RescueRow] = []
+    accepted = kept_original = neither = 0
+    examples: list[tuple[ReviseCandidate, str, str, str, str]] = []
+    print(f"asking {RECONCILE_JOBS} workers in parallel for {len(kept)} candidates...")
+    work = list(zip(kept, briefs))
+    work = [(c, b) for c, b in work if load_json(os.path.join(cache, f"{c.name}.json")) is None]
+    if not work:
+        print(f"all {len(kept)} cached; re-aggregating")
+    else:
+        results = _run_reconcile_pass(PROPOSER, work, inv, prefixes)
+        for result in results:
+            candidate_name = result["candidate"]
+            save_json(os.path.join(cache, f"{candidate_name}.json"), result)
+    for candidate in kept:
+        record = load_json(os.path.join(cache, f"{candidate.name}.json"))
+        if record is None:
+            print(f"  {candidate.name}: no record (the worker was stopped or failed)")
+            continue
+        decision = record.get("decision")
+        name = record.get("name")
+        problem = record.get("problem")
+        if problem is not None:
+            print(f"  {candidate.name} ({candidate.run_id}): {problem}")
+            continue
+        # Only accept_revised counts as agreement (the second opinion backs the checker's name).
+        # keep_original means the second opinion disagrees with the checker (not agreement);
+        # neither means both names miss the function.
+        if decision == "accept_revised" and name == candidate.revised_name:
+            rescued.append(RescueRow(candidate.run_id, candidate.address, candidate.name,
+                                     candidate.revised_name, "reconcile", "-"))
+            accepted += 1
+            outcome = "accept_revised"
+        elif decision == "keep_original" and name == candidate.original_name:
+            kept_original += 1
+            outcome = "keep_original"
+        else:
+            neither += 1
+            outcome = "neither"
+        if len(examples) < 8:
+            examples.append((candidate, candidate.original_name, candidate.revised_name, outcome,
+                             record.get("reason") or ""))
+    path = write_rescue_rows("reconcile", rescued)
+    print(f"rescued: {len(rescued)} rows (agreement, accept_revised) -> {path}")
+    print(f"decisions: {accepted} accept_revised, {kept_original} keep_original, {neither} neither, "
+          f"{len(kept) - accepted - kept_original - neither} unparsed")
+    print("8 examples (placeholder, original, revised, decision, reason):")
+    for candidate, original, revised, dec, reason in examples:
+        print(f"  {candidate.name}  {original}  {revised}  {dec}  {reason[:120]}")
+
+
 def land_rescued(limit: int | None, dry: bool, batch_size: int) -> None:
     """The rescued candidates into symbols/db and bn6f, the way land does, the record workflow
-    once per batch of at most BATCH_SIZE. A record failure is reported, never retried."""
-    merged = merge_round_robin(read_rescue_rows("style"), read_rescue_rows("dedupe"))
+    once per batch of at most BATCH_SIZE. A record failure is reported, never retried. Reads
+    three lists (style, dedupe, reconcile); the rescue named in the evidence follows the kind."""
+    merged = merge_round_robin(merge_round_robin(read_rescue_rows("style"), read_rescue_rows("dedupe")),
+                              read_rescue_rows("reconcile"))
     if not merged:
-        sys.exit("no rescued rows: run style-fix and dedupe first")
+        sys.exit("no rescued rows: run style-fix, dedupe and reconcile first")
     syms = elf_symbols()
     names = db_names()
     allowed = prefixes_in_use([*syms, *names])
@@ -1101,11 +1543,7 @@ def land_rescued(limit: int | None, dry: bool, batch_size: int) -> None:
     for number, batch in enumerate(batches(keep, batch_size), 1):
         pairs: list[tuple[str, str]] = []
         for row, candidate in batch:
-            rescue = (f"its name was fixed mechanically by tools/investigate_land.py style-fix "
-                      f"(the run's proposal broke the naming style)" if row.how == "style" else
-                      f"the run's proposed name {row.group} was contested; tools/investigate_land.py "
-                      f"dedupe gave this distinct name (hyper/glm-5.3-flash proposed, "
-                      f"minimax/MiniMax-M3 agreed)")
+            rescue = _rescue_evidence(row)
             path = write_entry(candidate, row.run_id, rescue)
             problems = symdb_entry_problems(path)
             if problems:
@@ -1126,6 +1564,19 @@ def land_rescued(limit: int | None, dry: bool, batch_size: int) -> None:
               f"port ROM unchanged: {report.get('port_rom_unchanged')}")
         check_afterwards(report, log_path)
         names = db_names()      # the record run renamed the entries just landed
+
+
+def _rescue_evidence(row: RescueRow) -> str:
+    """The first evidence item's result text for a rescued row, naming the kind of rescue."""
+    if row.how == "style":
+        return ("its name was fixed mechanically by tools/investigate_land.py style-fix "
+                "(the run's proposal broke the naming style)")
+    if row.how == "dedupe":
+        return (f"the run's proposed name {row.group} was contested; tools/investigate_land.py "
+                f"dedupe gave this distinct name (hyper/glm-5.3-flash proposed, "
+                f"minimax/MiniMax-M3 agreed)")
+    return (f"proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, "
+            f"accepted by glm-5.3-flash (tools/investigate_land.py reconcile)")
 
 
 # ── main ───────────────────────────────────────────────────────────────
@@ -1407,6 +1858,96 @@ def selfcheck() -> None:
            [RescueRow("r", "0x3", "b", "d1", "dedupe", "g")])], ["s1", "d1", "s2"])
     eq("batches: five in twos", [len(b) for b in batches(list(range(5)), 2)], [2, 2, 1])
 
+    # ── the reconcile pass ──
+    eq("reconcile reply: accept_revised", parse_reconcile(
+        '{"decision": "accept_revised", "name": "ai_attackStep", '
+        '"reason": "the code at lines 4-7 confirms it"}'),
+       ("accept_revised", "ai_attackStep", "the code at lines 4-7 confirms it"))
+    eq("reconcile reply: keep_original", parse_reconcile(
+        '{"decision": "keep_original", "name": "ai_x", "reason": "ok"}')[0], "keep_original")
+    eq("reconcile reply: neither", parse_reconcile(
+        '{"decision": "neither", "name": "ai_x", "reason": "both miss it"}')[0], "neither")
+    eq("reconcile reply: fenced", parse_reconcile(
+        '```json\n{"decision": "keep_original", "name": "ai_x", "reason": "ok"}\n```')[0],
+       "keep_original")
+    eq("reconcile reply: no json", parse_reconcile("no json here")[2],
+       "the reply held no JSON object")
+    eq("reconcile reply: bad decision", parse_reconcile(
+        '{"decision": "agree", "name": "x", "reason": "y"}')[2],
+       "decision 'agree' is not accept_revised, keep_original or neither")
+    eq("reconcile reply: no name", parse_reconcile(
+        '{"decision": "accept_revised", "reason": "ok"}')[2], "a decision without a name")
+    eq("reconcile reply: no reason", parse_reconcile(
+        '{"decision": "accept_revised", "name": "x"}')[2], "a decision without a reason")
+
+    # the filter: a revise candidate that fails every rule, and one that passes them all
+    with tempfile.TemporaryDirectory() as filter_base:
+        # every test candidate has its candidate yaml and contexts asm laid down here
+        for run_id, name in (("r", "sub_801DEEE"), ("r", "sub_801E000")):
+            run_dir = os.path.join(filter_base, run_id)
+            os.makedirs(os.path.join(run_dir, "contexts"), exist_ok=True)
+            with open(os.path.join(run_dir, f"{name}.yaml"), "w") as f:
+                f.write("name: probe\n")
+            with open(os.path.join(run_dir, "contexts", f"{name}.asm"), "w") as f:
+                f.write("\tpush {lr}\n")
+        # the elf has both placeholders (no renames yet)
+        elf = {"sub_801DEEE": 0x0801DEEE, "sub_801E000": 0x0801E000}
+        good = ReviseCandidate(run_id="r", name="sub_801DEEE", address="0x0801DEEE",
+                               original_name="battle_x", original_summary="summary",
+                               original_interface=None, checker_reason="the original misidentifies X",
+                               revised_name="battle_dispatchX", revised_summary="a real dispatch")
+        bad_style = ReviseCandidate(run_id="r", name="sub_801DEEE", address="0x0801DEEE",
+                                    original_name="battle_x", original_summary="summary",
+                                    original_interface=None, checker_reason="r",
+                                    revised_name="battle_X_dispatchY", revised_summary="")
+        bad_address = ReviseCandidate(run_id="r", name="sub_801DEEE", address="0x0801DEEE",
+                                      original_name="x", original_summary="", original_interface=None,
+                                      checker_reason="r", revised_name="battle_loadDEEE",
+                                      revised_summary="")
+        bad_taken = ReviseCandidate(run_id="r", name="sub_801DEEE", address="0x0801DEEE",
+                                    original_name="x", original_summary="", original_interface=None,
+                                    checker_reason="r", revised_name="battle_takenName",
+                                    revised_summary="")
+        bad_duplicate = ReviseCandidate(run_id="r2", name="sub_801E000", address="0x0801E000",
+                                        original_name="x", original_summary="", original_interface=None,
+                                        checker_reason="r", revised_name="battle_dispatchX",
+                                        revised_summary="")
+        eq("reconcile filter: the well-formed revise passes",
+           [c.name for c in _reconcile_filter([good], elf, set(), frozenset(), set(), filter_base)[0]],
+           ["sub_801DEEE"])
+        eq("reconcile filter: a name with a style error is dropped",
+           [c.name for c in _reconcile_filter([bad_style], elf, set(), frozenset(), set(),
+                                             filter_base)[0]], [])
+        eq("reconcile filter: a name that copies the address is dropped",
+           [c.name for c in _reconcile_filter([bad_address], elf, set(), frozenset(), set(),
+                                             filter_base)[0]], [])
+        eq("reconcile filter: a name taken in bn6f is dropped",
+           [c.name for c in _reconcile_filter([bad_taken], {"battle_takenName": 0}, set(),
+                                             frozenset(), set(), filter_base)[0]], [])
+        eq("reconcile filter: a name taken in symbols/db is dropped",
+           [c.name for c in _reconcile_filter([bad_taken], elf, {"battle_takenName"}, frozenset(),
+                                             set(), filter_base)[0]], [])
+        eq("reconcile filter: a name already rescued is dropped",
+           [c.name for c in _reconcile_filter([bad_taken], elf, set(), frozenset(),
+                                             {"battle_takenName"}, filter_base)[0]], [])
+        eq("reconcile filter: a name shared by two revise candidates drops both",
+           [c.name for c in _reconcile_filter([good, bad_duplicate], elf, set(), frozenset(), set(),
+                                             filter_base)[0]], [])
+        eq("reconcile filter: only the first reason is reported for a duplicate",
+           _reconcile_filter([good, bad_duplicate], elf, set(), frozenset(), set(), filter_base)[1][0][1],
+           "the revised name was proposed for 2 functions")
+
+    eq("rescue evidence: style", _rescue_evidence(
+       RescueRow("r", "0x1", "a", "b", "style", "-")).startswith(
+       "its name was fixed mechanically"), True)
+    eq("rescue evidence: dedupe", _rescue_evidence(
+       RescueRow("r", "0x1", "a", "b", "dedupe", "shared")).startswith(
+       "the run's proposed name shared was contested"), True)
+    eq("rescue evidence: reconcile", _rescue_evidence(
+       RescueRow("r", "0x1", "a", "b", "reconcile", "-")),
+       "proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, "
+       "accepted by glm-5.3-flash (tools/investigate_land.py reconcile)")
+
     if bad:
         for b in bad:
             print("selfcheck: " + b)
@@ -1448,13 +1989,15 @@ def main() -> None:
             rest.append(arg)
             index += 1
     command = rest[0] if rest else ""
-    if command in ("style-fix", "dedupe", "land-rescued"):
+    if command in ("style-fix", "dedupe", "reconcile", "land-rescued"):
         if root is not None:
             use_root(root)
         if command == "style-fix":
             style_fix()
         elif command == "dedupe":
             run_dedupe(limit, only, dry, proposer, checker)
+        elif command == "reconcile":
+            run_reconcile(limit)
         else:
             land_rescued(limit, dry, batch)
         return
