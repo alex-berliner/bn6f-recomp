@@ -1247,6 +1247,40 @@ def try_hp(D):
     # 560 written over our result screen reached 3 frames past it, and the next loss was the same battle's end)
     return (w, [poke]) if r[0] >= D + 30 else None
 
+def try_split(D):
+    """A battle that went another way under the loss cost: the frame cost steps up (~0.7 to 1.3-1.6) long before
+    the loss, where the RNG search judged from the loss finds nothing (run9c 977280, run9j 1002200, run9k 1043920,
+    run9l 1049140, each found by hand). Find the step on the path, put a strict window over it (a loss cost
+    between the battle's own level and the step's) and go back before it: the run then loses at the split, where
+    the handlers and the RNG search can work."""
+    w = state_at(D - 30)
+    if w is None: return None
+    b.e.load(w[1])
+    if b.e.read(syms.GS_SUBSYSTEM, 1)[0] != 0x0C: return None
+    w = state_at(max(ring[0][0], D - 6000))
+    if w is None: return None
+    ks = path_keys(); p0 = b.press_gf
+    set_emu_pokes(); b.e.load(w[1]); cs = []; start = None; sub = None
+    for g in range(w[0], D):
+        mask_for(g)
+        b.e.step(ks[g - p0][0])
+        s2 = b.e.read(syms.GS_SUBSYSTEM, 1)[0]
+        if s2 == 0x0C and sub != 0x0C: start = g + 1; cs = []
+        sub = s2
+        if start is not None: cs.append((g + 1, min(b.e.errs(ks[g - p0][1] - 3, 7))))
+    if start is None or len(cs) < 600: return None
+    m = [float(np.mean([c for _, c in cs[i:i + 20]])) for i in range(len(cs) - 20)]
+    b0 = float(np.median(m[60:360]))          # the battle's own level: the custom screen and its first moves
+    hi = max(1.1, 1.6 * b0)
+    st = next((cs[i][0] for i in range(360, len(m) - 100) if m[i] > hi and np.mean(m[i:i + 100]) > 1.5 * b0), None)
+    if st is None or st > D - 150 or any(a <= st < z for a, z, _ in STRICT): return None
+    val = round(max(1.0, 1.4 * b0), 2)
+    w = state_at(st - 60)
+    if w is None: return None
+    STRICT.append((st - 40, st + 400, val))
+    log(f'  split: battle from {start} at cost ~{b0:.2f}, above {hi:.2f} from {st}: strict window {st - 40}-{st + 400} at {val}; back to {st - 60}')
+    return w, []
+
 KILL_COST = 1.5
 def try_kill(D, side=1):
     """A battle that went another way than the video's (its AI, hands, damage): end it when the video's does
@@ -1737,7 +1771,7 @@ def repair(D):
     tried = {name for name, _ in first}
     order = [('offset', try_offset), ('overlay', try_overlay), ('hand', try_hand), ('redraw', try_redraw), ('gmd', try_gmd),
              ('subchip', try_subchip), ('position', try_position), ('relocate', try_relocate), ('nudge', try_nudge), ('tornado', try_tornado), ('mapobj', try_mapobj),
-             ('encounter', try_encounter), ('pick', try_pick), ('library', try_library), ('hp', try_hp), ('kill', try_kill), ('die', lambda D: try_kill(D, 0)),
+             ('encounter', try_encounter), ('pick', try_pick), ('library', try_library), ('hp', try_hp), ('split', try_split), ('kill', try_kill), ('die', lambda D: try_kill(D, 0)),
              *[(name, h) for name, h in PLUGINS if name not in MATCHERS]]
     # a battle whose folder shuffle no fix has held to yet: its first hand goes before a video jump (a wrong hand
     # costs little on the custom screen, and the offset handler re-anchored over one, run8t 839618)
