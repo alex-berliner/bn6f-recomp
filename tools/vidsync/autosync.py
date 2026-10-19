@@ -1422,13 +1422,24 @@ def try_subchip(D):
         log(f'  subchip: not taken (cost {res[t[3]][1]:.3f}, {len(ok)} of {len(tasks)} hold)'); return None
     return w, [t[1][0]]
 
-def try_hand(D):
+def try_hand(D, deep=None):
     """The first hand of a battle is the shuffled folder's first 5 chips, and one order of 5 out of 30 is too
     rare to reach with secondary RNG writes. Write the folder order instead: after the shuffle (a big jump of
     the secondary), for each hand slot in turn, put each of the folder's distinct chips there, render the custom
     screen and compare that slot (icon and code) with the full-size video frame."""
     last = max([p[0] for p in b.pokes] + [0])
     shuf = [f for f, p, q in EVENTS if q and f in set(BIG) and f > last]
+    if deep is None:
+        # the battle's shuffle can lie before the events' 2400 frames (run9g 993234: a JudgeMan battle lost 3200
+        # frames after its first hand, which was wrong from the start): its first hand first, then the latest turn's
+        if not shuf and EVENTS and EVENTS[0][0] > last + 1:
+            r = try_hand(D, True)
+            if r: return r
+        return try_hand(D, False)
+    if deep:
+        ev = events(D, back=min(D - last, 12000))
+        shuf = [f for f, p, q in ev if q and f in set(BIG) and f > last]
+        if not shuf: return None
     ks = path_keys(); p0 = b.press_gf
     is_ok = lambda im: np.abs(im[115:125, 92:110].mean(axis=(0, 1)) - OK_RGB).max() < 12
     c = None
