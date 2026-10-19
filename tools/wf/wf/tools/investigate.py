@@ -401,6 +401,8 @@ def comment_above(path: Path, line: int, label: str) -> ToolMessage | None:
     lines = path.read_text(errors="replace").splitlines()
     comment: list[str] = []
     index = line - 1
+    if index >= len(lines):   # a label line from a stale index, past the end of the file
+        return None
     if 0 <= index < len(lines):
         inline = lines[index].partition("//")[2].strip()
         if inline and not re.fullmatch(r"0x[0-9a-fA-F]+", inline):   # data labels carry their address
