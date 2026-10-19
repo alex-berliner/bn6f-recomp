@@ -1,0 +1,46 @@
+name: ai_invalidateRelatedObjectAnimCopy
+address: '0x08107E66'
+kind: function
+status: probable
+summary: Entry into the shared tail at sub_8107E72 that first forces the object's related object to re-copy
+  its animation
+interface: (r5 = battle object, r0/r1 = whatever the shared tail needs) -> falls through to loc_8107E74;
+  LR deliberately not preserved
+details: Loads the battle object's RelatedObject2Ptr field (r5-based oBattleObject struct) and, if non-NULL,
+  calls battle_objectInvalidateAnimCopy on that pointer, writing 0xFF to that object's animation-copy
+  field so its current animation is re-copied next update. It then branches into the shared tail at 0x08107E74
+  (sub_8107E72), so this label is the variant of that tail which first invalidates the related object's
+  animation. The missing LR save is harmless only because the AI dispatcher invokes it immediately before
+  a pop {pc}, as noted in the asm comment. The rest of its behavior is whatever sub_8107E72 does, which
+  is undocumented.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldr r0,[r5,#oBattleObject_RelatedObject2Ptr]; tst/beq — acts on the object''s related-object
+    pointer only if set; bl battle_objectInvalidateAnimCopy with r0 = related object — marks that object''s
+    anim-copy field 0xFF; b loc_8107E74 — falls into sub_8107E72''s body, so this is a tail-shared entry
+    variant; comment: caller chain ai_dispatchByTypeAndIndex_800F3E8/indexByActorTypeAndAIIdxThenDispatch_800F420
+    calls it right before pop {pc}, explaining the unbalanced LR'
+  refs:
+  - bn6f/asm/asm31.s:172221
+  - 0x080C46B6 battle_objectInvalidateAnimCopy
+  - 0x08107E74 sub_8107E72
+  reproduce: python3 tools/asmcat.py 0x08107E66
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- what sub_8107E72 (the shared tail at 0x08107E74) does after the invalidation
+- which AI/actor states reach this entry via the dispatch chain
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8107E66 -> ai_invalidateRelatedObjectAnimCopy
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8107E66

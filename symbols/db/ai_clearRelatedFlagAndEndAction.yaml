@@ -1,0 +1,48 @@
+name: ai_clearRelatedFlagAndEndAction
+address: '0x080E9784'
+kind: function
+status: probable
+summary: Battle AI handler that clears the AI-data flag (offset 0x44) of the object's related object,
+  then ends the object's current action by setting CurAction=0xC and resetting the phase.
+interface: (r5 = battle object, standard AI-handler convention) -> r0 = 0; sets caller object's oBattleObject_CurAction
+  = 0xC and oBattleObject_CurPhaseAndPhaseInitialized = 0
+details: 'On entry the current battle object is in r5. The function loads oBattleObject_RelatedObject1Ptr
+  from it into r5 and calls SetAIData_Unk_44_Flag with r0 = 0, so the callee evidently consumes the object
+  pointer in r5 and writes 0 to the AI-data flag at offset 0x44 — i.e. it clears that flag on the related
+  object. After the call the original object pointer is restored from the stack, and the handler terminates
+  the object''s behavior step: CurAction is set to 0xC (12) and CurPhaseAndPhaseInitialized is zeroed
+  so the action restarts from phase 0 next tick. This is the classic shape of an AI step/attack handler
+  finishing its work and handing control back to the AI scheduler. No caller is known, so which AI state
+  leads here and what action 12 means by name is unconfirmed.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldr r5,[r5,#oBattleObject_RelatedObject1Ptr] before bl SetAIData_Unk_44_Flag shows the related
+    object is passed via r5 with r0=0 as the flag value (clears it); pop {r5} then strb r0(=0xC),[r5,#oBattleObject_CurAction]
+    ends the original object's action with action id 12; strh r0(=0),[r5,#oBattleObject_CurPhaseAndPhaseInitialized]
+    resets the action's phase to 0; callee name SetAIData_Unk_44_Flag confirms the written field is the
+    AI-data flag at offset 0x44
+  refs:
+  - bn6f/asm/asm31.s:108597
+  - 0x0800FFE4 SetAIData_Unk_44_Flag
+  reproduce: python3 tools/asmcat.py 0x080E9784
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- no callers known, so the AI context that triggers this handler and the meaning of CurAction 0xC are
+  unconfirmed
+- exact layout/semantics of the AI-data struct field at offset 0x44 in SetAIData_Unk_44_Flag is not visible
+  here
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E9784 -> ai_clearRelatedFlagAndEndAction
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E9784

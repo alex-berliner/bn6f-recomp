@@ -1,0 +1,43 @@
+name: ai_setupBeastOutAttackDamage
+address: '0x08011BE8'
+kind: function
+status: probable
+summary: Computes an AI enemy's Beast Out-scaled attack damage and initializes the attack's damage variables.
+interface: (r7 = AI attack vars struct pointer, values read from it) -> r0 = 0x3a (next state/step); sets
+  Damage, ExtraDamage, InitFlag
+details: Calls the Beast Out damage helper with base 10 and multiplier 10 (the helper clamps the multiplier
+  to 5), so the running total becomes 10*min(10,5) plus whatever was already accumulated. The result is
+  stored as halfword oAIAttackVars_Damage. It then hardcodes ExtraDamage = 0x86 (134) and sets InitFlag
+  byte to 2, marking the attack variables as initialized. Finally it returns 0x3a, likely a step/state
+  ID for the AI attack routine. All writes go through the oAIAttackVars field offsets on the struct in
+  r7.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl battle_beastPwrAtk_addScaledBase_8012642 with r0=0xa, r1=0xa computes the beast-multiplied
+    base damage; strh r0, [r7,#oAIAttackVars_Damage] stores the computed total into the AI attack struct;
+    mov r0,#0x86 / strh ...ExtraDamage and InitFlag=2 initialize the remaining attack variables; returns
+    constant 0x3a, suggesting a fixed next-state value consumed by an AI dispatcher
+  refs:
+  - bn6f/asm/asm00_2.s:6634
+  - 0x08012642 battle_beastPwrAtk_addScaledBase_8012642
+  reproduce: python3 tools/asmcat.py 0x08011BE8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- No caller is known, so the role of return value 0x3a (state ID vs timer vs attack ID) is unconfirmed
+- Which enemy/boss and which specific attack uses damage base 10 with ExtraDamage 134 is unknown without
+  the AI script table referencing this address
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8011BE8 -> ai_setupBeastOutAttackDamage
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8011BE8

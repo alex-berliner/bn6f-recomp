@@ -1,0 +1,44 @@
+name: menuSelectNextElement
+address: '0x0803AE50'
+kind: function
+status: probable
+summary: Advances the element-selection menu cursor to the next element, or clears the selection if it
+  wraps past the last element.
+interface: (r5 = element-selection menu state struct) -> r0 = clobbered; no return value; plays cursor
+  SFX on success
+details: Reads the selection index from [r5,0x11] and the element count from [r5,0x26]; if index+1 > count,
+  it instead calls menuClearElementSelection to reset the selection to the 0x3F 'none' sentinel. Otherwise
+  it stores the incremented index, calls sub_803C040 with r0=0x11 and r1=0x90 (likely refreshing the element
+  display/OAM for the new selection), zeroes the byte at [r5,0x13], and plays SOUND_CUR_MOVE_80. The struct
+  fields 0x11 (index), 0x13 (a resettable sub-state/flash counter) and 0x26 (count) are the touched state.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r5,#0x11]; add r0,#1; cmp r0,r1(=[r5,#0x26]); bgt -> wraps/clears when past last element;
+    calls menuClearElementSelection, whose known summary says it resets selection to sentinel 0x3F with
+    cursor SFX; mov r0,#0x11; mov r1,#0x90; bl sub_803C040 — refresh call passing the same field index
+    and a fixed parameter; mov r0,#SOUND_CUR_MOVE_80; bl PlaySoundEffect — the standard cursor-move SFX
+    for menu navigation
+  refs:
+  - bn6f/asm/asm03_1_1.s:4661
+  - 0x080005CC PlaySoundEffect
+  - 0x0803AEC0 menuClearElementSelection
+  - 0x0803C040 sub_803C040
+  reproduce: python3 tools/asmcat.py 0x0803AE50
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- exact behavior of sub_803C040 (display refresh vs. OAM update) and what byte [r5,0x13] counts
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803AE50 -> menuSelectNextElement
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803AE50

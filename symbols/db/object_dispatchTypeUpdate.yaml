@@ -1,0 +1,46 @@
+name: object_dispatchTypeUpdate
+address: '0x0811B3B0'
+kind: function
+status: probable
+summary: 'Object update step: dispatches the object''s per-type behavior handler from a jump table, then
+  refreshes its sprite.'
+interface: (r5 = object struct) -> r0 = result of the dispatched handler; then sprite_update runs on the
+  object; flags from handler
+details: Reads the byte at r5+9 (the object's type/handler index) and uses it as an unscaled byte offset
+  into a table of Thumb function pointers at off_811B3C8, so the stored value is effectively 4*handlerIndex.
+  It tail-calls the selected handler with mov lr,pc; bx r0 so control returns to the bl sprite_update,
+  which runs the standard sprite update (header plus byte 2 & 0xF0) on the object afterwards. The table's
+  first entry is sub_811B3CC+1; the object struct passed implicitly via r5 is the usual MMBN object work
+  area.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r1,[r5,#9]; ldr r0,[r0,r1] indexes a handler table with the object's type byte (asm lines
+    2-4); off_811B3C8 holds sub_811B3CC+1 as first entry, confirming a table of Thumb handler pointers;
+    mov lr,pc; bx r0 makes the handler return into bl sprite_update, chaining behavior then sprite refresh;
+    callee sprite_update's known summary ('Run _sprite_update on the object's sprite struct') matches
+    the trailing call
+  refs:
+  - bn6f/asm/asm32.s:27646
+  - 0x0811B35C sub_811B35C
+  - 0x080026C4 sprite_update
+  reproduce: python3 tools/asmcat.py 0x0811B3B0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- contents of the remaining handler-table entries beyond sub_811B3CC
+- whether byte r5+9 stores handlerIndex*4 or the table is consumed differently
+- what sub_811B35C (the only caller) is — presumably the object-loop step that owns r5
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_811B3B0 -> object_dispatchTypeUpdate
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811B3B0

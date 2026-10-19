@@ -1,0 +1,46 @@
+name: object_snapToPanelRaised
+address: '0x080D67D2'
+kind: function
+status: probable
+summary: Places a battle object at its panel's pixel position but raised 8 px, setting its height field
+  to 8.
+interface: (r5 = battle object ptr) -> void; updates oBattleObject_Y and oBattleObject_Z
+details: First calls object_setCoordinatesFromPanels to derive the object's screen X/Y from its grid panel
+  coords. It then loads oBattleObject_Y, adds 0x80000 (8.0 in 16.16 fixed point, i.e. 8 pixels downward
+  on screen), and stores it back. Finally it writes 0x80000 into oBattleObject_Z, the object's elevation/height
+  field, so the object sits at a fixed 8 px altitude. The constant is stored in a literal pool (dword_80D67E8)
+  and reused for both the Y offset and Z. Callers in the same 0x80D65xx–0x80D68xx region all use this
+  as a 'reposition onto panel, then elevate' step, likely for an object/obstacle whose placement must
+  visually float above the tile.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl object_setCoordinatesFromPanels before the Y edit: pixel position derived from panel grid;
+    add r0,r0,r1 with r1=0x80000 then str to [r5,#oBattleObject_Y]: shifts Y by 8 px fixed point; str
+    r1,[r5,#oBattleObject_Z]: sets the height/elevation field to the same 8.0 constant; four callers all
+    in one nearby code block (0x80D6580/6694/66E2/6810) share this placement idiom'
+  refs:
+  - bn6f/asm/asm31.s:66749
+  - 0x080D6580 sub_80D6580
+  - 0x080D6694 sub_80D6694
+  - 0x080D66E2 sub_80D66E2
+  - 0x0800E29C object_setCoordinatesFromPanels
+  reproduce: python3 tools/asmcat.py 0x080D67D2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- which specific object type(s) the four callers belong to (would confirm the 'hovering/standing on' interpretation)
+- exact semantics of oBattleObject_Z sign convention (is 0x80000 up or down in engine terms)
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D67D2 -> object_snapToPanelRaised
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D67D2

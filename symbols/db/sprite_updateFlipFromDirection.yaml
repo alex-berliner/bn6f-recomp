@@ -1,0 +1,46 @@
+name: sprite_updateFlipFromDirection
+address: '0x080BFF3E'
+kind: function
+status: probable
+summary: Recomputes an object's sprite flip state by XORing its two direction bytes (0x16, 0x17) and applying
+  it via sprite_setFlip.
+interface: (r0 = sprite object ptr) -> r0 = sprite_setFlip result; calls sprite_setFlip(r0 = flipBits
+  = byte[0x16]^byte[0x17]^1, r1 = 1)
+details: Returns immediately if r0 (sprite pointer) is null. Otherwise it loads sprite bytes 0x16 and
+  0x17, XORs them together and with 1, and passes the result to sprite_setFlip, which writes the flip
+  bits (mask 0x30) into sprite bytes 0x13 and 0x16. The XOR-then-invert means bit0 of the computed value
+  is set when the two direction bytes agree and clear when they differ, so the flip state is derived from
+  whether the two facing/direction fields match. Only the 0x30-masked bits of the computed byte have any
+  effect. Note r5 holds the sprite pointer but sprite_setFlip is called with the computed value in r0
+  and 1 in r1, so setFlip's pointer argument (if any) must come from elsewhere or its r0 is purely a value.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r5,#0x16] / ldrb r1,[r5,#0x17] / eor r0,r1 / eor r0,#1 builds a value from the sprite's
+    two direction bytes; bl sprite_setFlip with known summary 'set flip bits (mask 0x30) in sprite bytes
+    0x13 and 0x16' confirms the value is a flip state; tst r0,r0 / beq exit shows a null sprite pointer
+    is silently ignored; r1 = 1 is set right before the call, likely a mode/flag argument to sprite_setFlip
+  refs:
+  - bn6f/asm/asm31.s:17339
+  - 0x080E8FB0 sub_80E8FB0
+  - 0x08002F5C sprite_setFlip
+  reproduce: python3 tools/asmcat.py 0x080BFF3E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- Exact meaning of sprite bytes 0x16 and 0x17 (facing vs. animation direction fields) is unconfirmed
+- The role of the r1 = 1 argument to sprite_setFlip is unknown
+- Caller sub_80E8FB0 is undocumented, so the game context triggering this flip update is unclear
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BFF3E -> sprite_updateFlipFromDirection
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BFF3E

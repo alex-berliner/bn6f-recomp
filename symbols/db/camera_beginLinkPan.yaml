@@ -1,0 +1,47 @@
+name: camera_beginLinkPan
+address: '0x0813005C'
+kind: function
+status: probable
+summary: 'Starts a camera state-8 pan: picks a target id from overlay work, marks it 0x8000, snapshots
+  the link state into the camera end position, and sets speed 2.'
+interface: () -> void; reads target camera struct from caller-set r5, no args or return
+details: Stores state 8 into r5+2 and 0 into r5+3, so this initializes one mode of a camera/task state
+  struct. It fetches the overlay work struct, reads the byte at +0xC (a target/entity id), ORs in 0x8000
+  and stores the halfword to r5+0x2A and to eCamera+0xA — the 0x8000 bit likely flags the value as an
+  id/absolute target rather than a raw coordinate. camera_copyLinkStateToEnd is called to seed the camera's
+  end position from eLinkState fields 0x1C/0x0A, so the pan ends at the current link position. It then
+  writes 2 to r5+0x26 and eCamera+8, plausibly a scroll/interpolation speed. No other structs are touched;
+  the function is purely an initializer for this camera mode.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'strb #8,[r5,#2] / strb #0,[r5,#3]: sets a state byte pair, typical camera-mode init; ldrb r4,[work,#0xc];
+    orr 0x8000; strh to r5+0x2a and r0+0xa: reads a target id and flags it; bl camera_copyLinkStateToEnd:
+    end position is seeded from the current link state; strh #2 to r5+0x26 and r0+8: same constant into
+    both structs, likely speed/mode field; caller sub_812F530 is the only caller and sets up r5 before
+    the call'
+  refs:
+  - bn6f/asm/asm36.s:32
+  - 0x0812F530 sub_812F530
+  - 0x081325CC camera_copyLinkStateToEnd
+  - 0x08130404 t4_getWork
+  reproduce: python3 tools/asmcat.py 0x0813005C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- exact meaning of the 0x8000 bit and of work+0xC (target id vs screen coordinate)
+- meaning of fields r5+0x26 and eCamera+8 set to 2 (speed? duration?)
+- what sub_812F530 does to reach this state and what state 8 drives afterwards
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_813005C -> camera_beginLinkPan
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_813005C

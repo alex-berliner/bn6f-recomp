@@ -1,0 +1,40 @@
+name: object_despawn
+address: '0x080CAB14'
+kind: function
+status: probable
+summary: 'Removes a battle object from play: clears its collision region, a flag bit, and switches it
+  to the DESTROY state.'
+interface: (r5 = battle object pointer, no args passed) -> r0 = 0; flags clobbered
+details: Acts on the battle object held in r5 (register-global convention). It first calls object_clearCollisionRegion
+  so the object stops occupying its collision region, then reads oObjectHeader_Flags, clears bit 0x2,
+  and writes the flags back. Finally it stores CUR_STATE_DESTROY into oBattleObject_CurStateActionPhaseAndPhaseInitialized,
+  which makes the object's state machine process it as destroyed. This is the standard teardown entry
+  for an object rather than a state transition within normal play.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl object_clearCollisionRegion removes the object from collision detection before teardown;
+    bic r0, #2 on oObjectHeader_Flags clears the active/alive flag bit; mov r0, #CUR_STATE_DESTROY + str
+    into oBattleObject_CurStateActionPhaseAndPhaseInitialized sets the destroy state'
+  refs:
+  - bn6f/asm/asm31.s:41033
+  - 0x0801A074 object_clearCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080CAB14
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- no callers known, so the trigger context (death, despawn timer, script request) is unconfirmed
+- exact meaning of flag bit 0x2 in oObjectHeader_Flags
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CAB14 -> object_despawn
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CAB14

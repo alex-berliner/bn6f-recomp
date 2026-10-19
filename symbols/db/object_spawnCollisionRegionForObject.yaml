@@ -1,0 +1,48 @@
+name: object_spawnCollisionRegionForObject
+address: '0x081096A4'
+kind: function
+status: probable
+summary: Thin wrapper that spawns a collision region using position/size fields read from the object struct
+  in r5.
+interface: (r5 = object struct ptr) -> calls object_spawnCollisionRegion(r0=[r5,#0x12], r1=[r5,#0x13],
+  r2=[r5,#0xe], r3=0), with r4=0x405FF01, r6=[r5,#0x2c], r7=3 set before the call; return value passes
+  through.
+details: 'The function is an 11-instruction wrapper around object_spawnCollisionRegion: it loads three
+  bytes from the struct pointed to by r5 (offsets 0x12, 0x13, 0xE — plausibly x, y and a size/shape byte)
+  and passes them in r0-r2 with r3=0, so the region''s dimensions and coordinates come from the owning
+  object rather than the caller. It also prepares r4 = 0x405FF01 (a packed flag/word constant), r6 = word
+  at [r5,#0x2c], and r7 = 3, which are either additional arguments the callee reads from these registers
+  or values it expects in callee-saved registers — unusual, suggesting hand-written or non-standard calling
+  convention. It preserves r4, r6 and r7 around the call, so it is a self-contained helper. No callers
+  are known, so which entity type owns the r5 struct (battle object, trap, etc.) is unconfirmed.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r5,#0x12] / ldrb r1,[r5,#0x13] / ldrb r2,[r5,#0xe] load struct fields as first three
+    args; bl object_spawnCollisionRegion is the only call and the whole body exists to set up its arguments;
+    ldr r4,=0x405FF01 and mov r7,#3 are constants prepared for the callee, not local use; push/pop {r4,r6,r7,lr}
+    shows it is a leaf wrapper preserving only callee-saved regs it itself sets
+  refs:
+  - bn6f/asm/asm31.s:175322
+  - 0x080C536A object_spawnCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x081096A4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- object_spawnCollisionRegion's exact parameter list — whether r4/r6/r7 are stack-arg substitutes or real
+  register args
+- what structure r5 points to (no known callers) and which game entity carries fields 0xE/0x12/0x13/0x2C
+- meaning of constant 0x405FF01 and the value 3
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81096A4 -> object_spawnCollisionRegionForObject
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81096A4

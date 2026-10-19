@@ -1,0 +1,43 @@
+name: object_freeDecExtraCounter
+address: '0x080D3048'
+kind: function
+status: probable
+summary: 'Object teardown helper: decrements a byte counter in a struct referenced by the object''s extra-vars,
+  then frees the object''s slot.'
+interface: (r5 = battle object) -> r0 = decremented counter value; object freed via object_freeMemory
+details: Reads the pointer at oBattleObject_ExtraVars+8 of the object in r5, loads a byte from that pointed-to
+  struct, decrements it, and stores it back, then tail-calls object_freeMemory to release the object's
+  slot (flags, bitmap slot, object-list unlink). The decremented byte is never tested, so this is not
+  a lifetime timer with a zero-check; it most likely maintains a live-instance/reference count held by
+  some owner (e.g. a spawner or shared extra data) while the object itself is unconditionally destroyed.
+  No caller is known, so whether it is an on-delete handler or a normal exit path is unconfirmed.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldr r1,[r5,#oBattleObject_ExtraVars+8]; ldr r0,[r1]; sub r0,#1; strb r0,[r1] — decrements a
+    byte in the struct referenced by extra vars; no branch on the decremented value before bl object_freeMemory
+    — counter is bookkeeping, not a lifetime check; callees list: object_freeMemory (0x08003458) frees
+    the battle object slot, confirming this is an object teardown path'
+  refs:
+  - bn6f/asm/asm31.s:59257
+  - 0x08003458 object_freeMemory
+  reproduce: python3 tools/asmcat.py 0x080D3048
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- No callers are known, so the role of r5 and the meaning of the decremented byte (instance count vs refcount
+  vs other bookkeeping) are unverified
+- Which structure sits at [ExtraVars+8] and who initializes that counter is unknown
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D3048 -> object_freeDecExtraCounter
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D3048

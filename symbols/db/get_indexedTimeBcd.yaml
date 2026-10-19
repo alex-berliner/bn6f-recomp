@@ -1,0 +1,46 @@
+name: get_indexedTimeBcd
+address: '0x08137EF0'
+kind: function
+status: probable
+summary: Picks a halfword counter from a table using a selector byte stored at unk_201CF00+r0+1 and returns
+  it converted to packed-BCD time.
+interface: (r0 = record index into unk_201CF00 (selector byte at +1), r1 = pointer to halfword table)
+  -> r0 = packed-BCD HH:MM:SS.cc of selected halfword
+details: r7 is unk_201CF00 plus the r0 argument, so r0 selects a record in that array. The byte at offset
+  1 of that record is read as an index, used to fetch a halfword from the table passed in r1, and the
+  halfword is passed straight to memory_bcd_8000D84, the shared frame-counter-to-BCD converter. So each
+  record in unk_201CF00 effectively stores which entry of a caller-supplied counter table should be rendered
+  as a play-time-style BCD value. The mov r4,#1 is just the fixed offset constant; r4-r6 are otherwise
+  unused (pushed for alignment/convention). Without knowing what unk_201CF00's records are or what the
+  callers' tables contain, the exact game meaning of the selector is unconfirmed.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r7,r4] with r4=1 reads a selector byte at unk_201CF00[r0+1] (asm lines 4-6); ldrh r1,[r1,r0]
+    indexes a caller-supplied halfword table by that selector (line 7); bl memory_bcd_8000D84 converts
+    the selected halfword via the known play-time BCD routine (line 9); both callers sub_8137DE4/sub_8137E7C
+    are themselves undocumented, so they don't disambiguate the table contents
+  refs:
+  - bn6f/asm/asm36.s:16745
+  - 0x08137DE4 sub_8137DE4
+  - 0x08137E7C sub_8137E7C
+  - 0x08000D84 memory_bcd_8000D84
+  reproduce: python3 tools/asmcat.py 0x08137EF0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- what unk_201CF00's records represent and who writes the selector bytes
+- what tables the callers pass in r1 (which timers/counters are selectable)
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8137EF0 -> get_indexedTimeBcd
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8137EF0

@@ -1,0 +1,43 @@
+name: object_initCollisionData
+address: '0x080D4870'
+kind: function
+status: probable
+summary: First-time step of a battle object behavior script that seeds the object's collision record with
+  fixed values, then advances the phase so it never runs again.
+interface: (r5 = battle object) -> r0 = status from object_updateCollisionData; sets oBattleObject_CurPhase
+  0 -> 1
+details: 'Runs as a per-object scripted step gated on oBattleObject_CurPhase: only while the phase byte
+  is 0 does it write 1 there, so the body executes exactly once per object. It then calls object_updateCollisionData
+  with fixed arguments r0=1, r1=0xE, r2=0xF, r3=3, which per the callee''s known summary fills the object''s
+  collision record (hit modifier, pending damage, and both sides'' collision type flags) and re-evaluates
+  it, marking bit 16 while time is stopped. The specific meanings of 0xE/0xF/3 aren''t derivable from
+  this wrapper alone, but the pattern is a one-shot collision-state initializer for a spawned battle object.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r5,#oBattleObject_CurPhase]; bne skip — body only runs at phase 0, then strb 1 makes
+    it one-shot; mov r1,#0xe; mov r2,#0xf; mov r3,#3; bl object_updateCollisionData — all collision parameters
+    are hardcoded constants; callee object_updateCollisionData is documented as refreshing hit modifier/pending
+    damage/collision type flags and re-evaluating
+  refs:
+  - bn6f/asm/asm31.s:62538
+  - 0x0801A082 object_updateCollisionData
+  reproduce: python3 tools/asmcat.py 0x080D4870
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- exact meaning of the constants 1/0xE/0xF/3 in object_updateCollisionData's signature
+- which object(s) use this script step — no callers are known, so the owning behavior table is unidentified
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D4870 -> object_initCollisionData
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D4870

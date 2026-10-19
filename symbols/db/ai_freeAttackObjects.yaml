@@ -1,0 +1,43 @@
+name: ai_freeAttackObjects
+address: '0x080E8FC8'
+kind: function
+status: probable
+summary: Releases the three auxiliary objects referenced by an enemy AI attack state (fields 0x60/0x64/0x68),
+  called when the slide-in attack step finishes.
+interface: (r0 = attack/enemy AI state struct) -> r0 = destroyed; no flags of interest
+details: Takes a pointer to the AI attacker's state, reads three consecutive 32-bit pointers at offsets
+  0x60, 0x64 and 0x68, and passes each in turn to sub_80BFF56. The three fields are almost certainly handles
+  to spawned side objects (e.g. projectiles/effects belonging to the attack), and sub_80BFF56 is the shared
+  routine that tears down one such object. It is only 12 instructions and mutates nothing else, so it
+  exists purely to batch-release the attack's companions. The callee being shared across all three calls
+  rules out field-specific behavior.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: sub_80E8FC8 loads [r5,#0x60], [r5,#0x64], [r5,#0x68] and bl's sub_80BFF56 with each (asm lines
+    3-11); sole caller ai_attackMoveInStep is an enemy attack handler that slides onto a panel and schedules
+    the hit, consistent with cleanup of spawned attack objects; identical call pattern for all three fields
+    indicates one generic per-handle routine, i.e. deletion/release
+  refs:
+  - bn6f/asm/asm31.s:107489
+  - 0x081063A4 ai_attackMoveInStep
+  - 0x080BFF56 sub_80BFF56
+  reproduce: python3 tools/asmcat.py 0x080E8FC8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- what sub_80BFF56 actually does (delete vs. detach vs. update) — its own callers/callees are needed
+- what the three objects at 0x60/0x64/0x68 are (projectiles, effect sprites, or timer objects)
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E8FC8 -> ai_freeAttackObjects
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E8FC8

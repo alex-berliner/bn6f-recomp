@@ -1,0 +1,44 @@
+name: object_syncSpritePosition
+address: '0x0811D6E8'
+kind: function
+status: probable
+summary: Copies the object's stored x/y fields into its sprite's coordinates.
+interface: (r5 = object struct, no register args) -> r0 clobbered by callee; calls sprite_setCoordinates
+  with x = [r5+0x1A], y = [r5+0x1E]
+details: A tiny wrapper that loads two halfwords from the object struct at r5 — offset 0x1A and 0x1E —
+  and passes them as x/y to sprite_setCoordinates, which writes them into the sprite sub-entry selected
+  by the resource byte-2 high nibble. It has no other logic or conditionals. It is evidently a 'push current
+  object position to the sprite' helper, called from sub_811D634 whenever the object's position needs
+  re-syncing to its drawn sprite. Note it takes no r0/r1 arguments; the object pointer comes in r5, so
+  it is only valid when r5 is already set to the object.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrh r0,[r5,#0x1a] / ldrh r1,[r5,#0x1e] load the two position fields from the object struct;
+    bl sprite_setCoordinates immediately stores them as the sprite's x/y per its known summary; single
+    6-instruction body with push/pop lr only — pure forwarding wrapper; caller sub_811D634 is the only
+    user, suggesting a position-update step in that object's routine
+  refs:
+  - bn6f/asm/asm32.s:31863
+  - 0x0811D634 sub_811D634
+  - 0x0800307C sprite_setCoordinates
+  reproduce: python3 tools/asmcat.py 0x0811D6E8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- exact semantics of fields +0x1A/+0x1E (world coords vs screen coords) not confirmed without more callers
+- why the object pointer is passed in r5 rather than r0 — likely an ABI convention of the object-update
+  dispatcher
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_811D6E8 -> object_syncSpritePosition
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811D6E8

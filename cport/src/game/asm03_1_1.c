@@ -484,7 +484,7 @@ Next chipSelect_dispatchState_803AD20(void) {
     case 0x3C: GUEST_CALL(sub_803ADDA); break;
     case 0x3A: GUEST_CALL(battle_tryConfirmAction); break;
     case 0x3B: GUEST_CALL(sub_803AE2A); break;
-    case 0x3D: GUEST_CALL(sub_803AE50); break;
+    case 0x3D: GUEST_CALL(menuSelectNextElement); break;
     case 0x3E: GUEST_CALL(submenu_moveCursorBack); break;
     default:   GUEST_CALL(menuSelectElement_803AE98); break;
     }

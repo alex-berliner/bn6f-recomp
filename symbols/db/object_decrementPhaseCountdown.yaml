@@ -1,0 +1,45 @@
+name: object_decrementPhaseCountdown
+address: '0x08017FE6'
+kind: function
+status: probable
+summary: Counts down a battle object's current phase; once it runs out, clears the phase-countdown flag
+  and switches to the object's pending state action.
+interface: (r0..r3 unused; operates on the current battle object in r5) -> void; flags set by the decrement
+  (bge) decide early return
+details: Decrements oBattleObject_CurPhase and returns while it is still >= 0, so this runs every frame
+  as a countdown. When the counter goes below zero (phase finished), it clears ObjectFlags1 bit 0x100000
+  (1 << 0x14) via object_clearFlag, then copies oBattleObject_PendingStateAction into oBattleObject_CurStateActionPhaseAndPhaseInitialized
+  and zeroes oBattleObject_PendingStateAction, starting the queued next state action. The cleared flag
+  likely marks 'phase countdown active', and the copied field also encodes the new action's phase/initialized
+  bits.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb/sub/strb on oBattleObject_CurPhase with bge locret: per-frame countdown that only acts
+    when the counter expires; mov r0,#1; lsl r0,#0x14; bl object_clearFlag: clears ObjectFlags1 bit 0x100000
+    exactly when the countdown ends; ldr oBattleObject_PendingStateAction / str into oBattleObject_CurStateActionPhaseAndPhaseInitialized
+    then zeroing pending: queued next action becomes current; callee object_clearFlag summary matches:
+    clears bits of a battle object''s ObjectFlags1 in its collision data'
+  refs:
+  - bn6f/asm/asm00_2.s:20725
+  - 0x0801A15C object_clearFlag
+  reproduce: python3 tools/asmcat.py 0x08017FE6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- No known callers, so which states set PendingStateAction and this countdown is unconfirmed
+- Exact meaning of ObjectFlags1 bit 0x100000 and of the packed CurStateActionPhaseAndPhaseInitialized
+  fields
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8017FE6 -> object_decrementPhaseCountdown
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8017FE6

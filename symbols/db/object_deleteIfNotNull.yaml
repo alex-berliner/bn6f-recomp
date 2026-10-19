@@ -1,0 +1,44 @@
+name: object_deleteIfNotNull
+address: '0x080F7514'
+kind: function
+status: probable
+summary: Null-checked wrapper that deletes/frees the given object if the pointer is non-null.
+interface: (r0 = object pointer or handle) -> r0 = unchanged/void; no flags used after return
+details: The routine tests r0 against itself (tst r0, r0) and returns immediately if it is zero; otherwise
+  it tail-calls sub_80E7BF0 with r0 untouched. So it is purely a guarded single-argument call to sub_80E7BF0,
+  adding no state of its own. Its placement in attack-state teardown paths (vanish-then-remove, timeout-to-hidden-hitbox)
+  matches a guarded object-delete used before overwriting or reusing the object slot. The actual dealloc/destroy
+  semantics live entirely in the unknown callee sub_80E7BF0.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: tst r0, r0 / beq locret_80F751E — returns without calling when r0 == 0; bl sub_80E7BF0 with
+    r0 passed through — single-argument guarded call, no other setup; caller ai_attackStateVanish 'plays
+    vanish animation then removes the enemy object' — matches delete-on-teardown; caller battle_attackTimeoutToHiddenHitbox
+    'hides the attack object ... before leaving' — object teardown context
+  refs:
+  - bn6f/asm/asm31.s:137269
+  - 0x080F6BB8 ai_attackStateVanish
+  - 0x080F6F7C battle_attackTimeoutToHiddenHitbox
+  - 0x080F67B6 sub_80F67B6
+  - 0x080E7BF0 sub_80E7BF0
+  reproduce: python3 tools/asmcat.py 0x080F7514
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- What sub_80E7BF0 actually does (free vs destroy vs deactivate) is unverified; its assembly or a known
+  summary would confirm the delete semantics and whether r0 is an object pointer, handle, or allocator
+  block
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F7514 -> object_deleteIfNotNull
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F7514

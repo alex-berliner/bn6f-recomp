@@ -1,0 +1,46 @@
+name: rfu_resetSlotsAndReportOffline
+address: '0x0803C6D8'
+kind: function
+status: probable
+summary: Clears all wireless RFU slot buffers and link state, performs two reset writes, and always returns
+  false/zero (offline).
+interface: () -> r0 = 0, r1 = 0 (false); no input registers are read
+details: Despite the comment claiming a * S200BC50 argument in r7, no register input is used. It first
+  calls rfu_clearAllSlot to wipe all four RFU slot buffers, close them, and reset link-state control bytes.
+  It then calls sub_813D978 with no arguments, and sub_803CB00 twice with r0=8 and r0=0x80 respectively
+  — likely raw reset/shutdown commands or register writes to the wireless hardware. Finally it sets r0=0
+  and r1=0 and returns, so the caller always sees a false/zero result, consistent with a 'wireless unavailable
+  / disconnected' report after tearing down RFU state.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl rfu_clearAllSlot — clears and closes all four wireless slot buffers before anything else;
+    mov r0,#8 / mov r0,#0x80 before bl sub_803CB00 — two fixed reset-style writes with no other state;
+    mov r0,#0; mov r1,#0; pop {pc} — unconditional false/zero return regardless of any state; no read
+    of r0/r1/r7 anywhere — the documented * S200BC50 self argument is never used
+  refs:
+  - bn6f/asm/asm03_1_1.s:7556
+  - 0x0814A828 rfu_clearAllSlot
+  - 0x0803CB00 sub_803CB00
+  - 0x0813D978 sub_813D978
+  reproduce: python3 tools/asmcat.py 0x0803C6D8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- sub_813D978 and sub_803CB00 are unknown; their bodies would confirm whether the 8/0x80 writes are RFU
+  hardware reset commands
+- no known caller, so the meaning of the returned false/zero pair (e.g. 'not connected') is inferred,
+  not observed
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803C6D8 -> rfu_resetSlotsAndReportOffline
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803C6D8

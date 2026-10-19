@@ -1,0 +1,43 @@
+name: object_destroyRelatedLink
+address: '0x080CD90C'
+kind: function
+status: probable
+summary: Destructor for a battle object that also unlinks its related object by clearing that object's
+  header pointer before freeing itself.
+interface: (r0 = battle object to destroy; r5 also holds the object pointer) -> r0 = destroyed/undefined;
+  calls object_genericDestroy
+details: Reads the object's RelatedObject1Ptr (oBattleObject_RelatedObject1Ptr); if non-null it stores
+  0 into the related object's ObjectHeader field, severing the mutual link so the partner no longer points
+  at a live object. It then tail-calls object_genericDestroy, which releases panel tile reserves, collision
+  data and the object's memory. Because it reads itself through r5 rather than r0, it follows the standard
+  battle-object destructor convention where r5 is the this pointer. It is thus a variant destructor used
+  by object types that keep a partner reference.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldr r0,[r5,#oBattleObject_RelatedObject1Ptr] + cmp/beq null-checks the partner link; str r1(0),[r0,#oBattleObject_ObjectHeader]
+    clears the related object's header back-reference; bl object_genericDestroy ends the routine, matching
+    the generic destructor contract; no other logic present, so the only behavior is unlink + destroy
+  refs:
+  - bn6f/asm/asm31.s:47302
+  - 0x08016C8A object_genericDestroy
+  reproduce: python3 tools/asmcat.py 0x080CD90C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- No caller is known, so which object type uses this destructor variant is unclear
+- Exact meaning of clearing ObjectHeader (mark partner dead vs. just unlinking) would be confirmed by
+  the object-header semantics
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CD90C -> object_destroyRelatedLink
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CD90C

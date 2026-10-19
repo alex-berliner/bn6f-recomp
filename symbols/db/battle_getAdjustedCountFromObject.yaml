@@ -1,0 +1,45 @@
+name: battle_getAdjustedCountFromObject
+address: '0x0811BB18'
+kind: function
+status: probable
+summary: Returns a count from the caller struct, plus one if the referenced battle object's flag byte
+  is set.
+interface: (r0 = none/scratch; r5 = caller struct with count byte at +0xC and object halfword at +0xE)
+  -> r0 = [r5+0xC] (+1 if object descriptor byte 1 nonzero); flags set by cmp r1,#0
+details: Loads the halfword at [r5+0xE], subtracts 0x90, and passes it to battleObject_getByIndex_813B780
+  to obtain a 0x10-byte battle-object descriptor from StructArr_813944C. It then reads the caller's byte
+  at [r5+0xC] and the descriptor's byte at offset 1; if that byte is nonzero it increments the count before
+  returning it. The 0x90 offset suggests the +0xE field stores an object ID in a range offset by 0x90
+  relative to the descriptor array. The pattern fits computing e.g. a hit/step count with a +1 bonus tied
+  to the object's state, but the meaning of byte 1 (active/alive/type) is unconfirmed.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrh r0,[r5,#0xe]; sub r0,#0x90; bl battleObject_getByIndex_813B780 — object ID derived from
+    caller field; ldrb r0,[r5,#0xc]; ldrb r1,[r1,#1]; cmp r1,#0; add r0,#1 — result is count byte plus
+    1 when descriptor byte 1 is set; sole caller sub_811BAC4 is itself undocumented, providing no extra
+    context
+  refs:
+  - bn6f/asm/asm32.s:28628
+  - 0x0811BAC4 sub_811BAC4
+  - 0x0813B780 battleObject_getByIndex_813B780
+  reproduce: python3 tools/asmcat.py 0x0811BB18
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- what battle-object IDs 0x90+ represent and what descriptor byte 1 means
+- what the byte at [r5+0xC] counts in the caller struct
+- what sub_811BAC4 (the only caller) does with the returned value
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_811BB18 -> battle_getAdjustedCountFromObject
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811BB18

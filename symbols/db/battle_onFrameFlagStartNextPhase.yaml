@@ -1,0 +1,44 @@
+name: battle_onFrameFlagStartNextPhase
+address: '0x080C32F4'
+kind: function
+status: probable
+summary: Checks the current animation frame's attribute byte; when its 0x80 bit is set, moves the battle
+  object to animation 1 with a 60-frame timer and phase 4.
+interface: (r5 = battle object; r0 clobbered by call) -> r0 = attribute byte from sprite_getFrameParameters;
+  no meaningful return
+details: Calls sprite_getFrameParameters, which returns the current frame's attribute byte in r0. If bit
+  0x80 of that byte is clear the function returns without touching the object. Otherwise it stores 1 into
+  the object's CurAnim field, stores 0x3C (60 frames) into its Timer, and sets CurPhaseAndPhaseInitialized
+  to 4, advancing the object into a new behavior phase after a flagged animation frame plays. The object
+  pointer lives in r5, so the caller must have it in r5 before calling; the function has no visible parameters
+  of its own.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl sprite_getFrameParameters then tst r0,#0x80 gates the whole body (asm lines 2-4); strb r0(=1),[r5,#oBattleObject_CurAnim]
+    switches the object''s animation; strh #0x3C,[r5,#oBattleObject_Timer] gives a 60-frame wait in the
+    new phase; strh #4,[r5,#oBattleObject_CurPhaseAndPhaseInitialized] sets the next phase; early return
+    path leaves the object untouched when the flag bit is clear'
+  refs:
+  - bn6f/asm/asm31.s:24643
+  - 0x08002DEA sprite_getFrameParameters
+  reproduce: python3 tools/asmcat.py 0x080C32F4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- no callers known, so which battle objects/phases this serves is unknown
+- what animation 1 and phase 4 mean for the specific object is not shown
+- whether r5 must be preloaded by caller or this is part of a shared object-update macro context
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C32F4 -> battle_onFrameFlagStartNextPhase
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C32F4

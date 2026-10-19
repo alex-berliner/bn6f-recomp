@@ -1,0 +1,44 @@
+name: battle_clearRecordAndResetPhase
+address: '0x0810EA3E'
+kind: function
+status: probable
+summary: Marks the battle object's extra-var flag, unregisters its record from a four-slot table, and
+  resets its phase to 0.
+interface: (r5 = battle object ptr, also used as record id by callee) -> r0 = 0; no meaningful return
+details: Sets the qword-sized field at oBattleObject_ExtraVars+8 to 1 on the object in r5, then calls
+  sub_801DD34, which scans four entries at byte_203EB50 for one whose id equals r5 and clears its flag
+  byte (success when found). Finally it stores 0 into oBattleObject_CurPhaseAndPhaseInitialized, returning
+  the object to phase 0. The pattern is consistent with a phase/step handler that finishes a staged action
+  and tears down whatever registered the object in that table. The same r5 serving as both object pointer
+  and table id suggests the table entries store the object pointer (or an id derived from it). No callers
+  are known, so the exact battle context (which phase handler or object type uses it) is unconfirmed.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: str r0,[r5,#oBattleObject_ExtraVars+8] with r0=1 sets an extra-var flag on the object (asm line
+    3-4); bl sub_801DD34 whose known summary is 'clears the flag byte of the table entry at byte_203EB50
+    whose id equals r5'; strh r0,[r5,#oBattleObject_CurPhaseAndPhaseInitialized] with r0=0 resets the
+    object's phase to 0, typical of a handler ending its step
+  refs:
+  - bn6f/asm/asm32.s:2097
+  - 0x0801DD34 sub_801DD34
+  reproduce: python3 tools/asmcat.py 0x0810EA3E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- 'No known callers: which phase handler or object type invokes this and during which battle event'
+- What the table at byte_203EB50 actually tracks (its entries' meaning and who registers them)
+- What the ExtraVars+8 flag means to other code that reads it
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_810EA3E -> battle_clearRecordAndResetPhase
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810EA3E

@@ -1,0 +1,44 @@
+name: spawnBattleObjectTypeFour
+address: '0x080033E4'
+kind: function
+status: probable
+summary: Spawns a battle object of pool type 4 from a five-word parameter record and runs its initializer.
+interface: '(r0-r4 = five-word spawn record: type fields/position/params copied to stack) -> r0 = BattleObject
+  pointer or NULL; flags untouched by caller contract'
+details: Copies the five argument registers onto the stack to form a spawn record, then calls SpawnBattleObjectCommon
+  with obj_type = 4, which allocates from the per-type pool and initializes the object header from the
+  stack record. If allocation succeeds (r0 != NULL after tst/beq), it calls sub_8003440, which by position
+  (right after the spawn helpers) is the type-4 object's constructor/initializer that consumes the record.
+  On pool exhaustion it returns NULL and skips the initializer. The five-word record layout (likely x/y
+  position and behavior params) is not decoded from this function alone.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'stmia r7!, {r0-r4} packs the five args into the stack record passed to the spawner; mov r0,
+    #4 before bl SpawnBattleObjectCommon fixes the pool type; tst r5, r5 / beq skips the initializer call
+    on NULL allocation; bl sub_8003440 runs immediately after a successful spawn, matching a constructor
+    slot'
+  refs:
+  - bn6f/asm/asm00_1.s:451
+  - 0x080E360E sub_80E360E
+  - 0x08003278 SpawnBattleObjectCommon
+  - 0x08003440 sub_8003440
+  reproduce: python3 tools/asmcat.py 0x080033E4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- What gameplay object type 4 is (needs the single caller at 0x080E360E and its context decoded)
+- Field layout of the five-word spawn record consumed by sub_8003440
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80033E4 -> spawnBattleObjectTypeFour
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80033E4

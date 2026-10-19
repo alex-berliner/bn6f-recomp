@@ -2539,10 +2539,10 @@ Next sub_80498F8(void) {
         R0 = handler;           /* the callee sees its own table entry in R0 */
 
         switch (state) {
-        case 1: GUEST_CALL(sub_803AD04);                    break;
+        case 1: GUEST_CALL(submenu_tryExit);                    break;
         case 2: GUEST_CALL(chipSelect_dispatchState_803AD20); break;
         case 3: GUEST_CALL(sub_803AED8);                    break;
-        case 4: GUEST_CALL(sub_803AE50);                    break;
+        case 4: GUEST_CALL(menuSelectNextElement);                    break;
         case 5: GUEST_CALL(submenu_moveCursorBack);                    break;
         }
     }

@@ -1,0 +1,45 @@
+name: battle_defeatPhaseDispatch
+address: '0x08016EC4'
+kind: function
+status: probable
+summary: Phase dispatcher for a battle object's defeat sequence, branching to the defeat-object handler
+  or the next defeat sub-phase.
+interface: (r5 = battle object pointer, r0 unused on entry) -> tail-calls handler selected by [r5+oBattleObject_CurPhase];
+  returns to caller via lr/pop
+details: Loads the object's current phase byte at oBattleObject_CurPhase and indexes a two-entry jump
+  table at JumpTable8016ED8, tail-calling the selected handler with the manual mov lr,pc / bx r1 long-call
+  idiom so it returns via pop {pc}. Entry 0 is battle_defeatObject and entry 1 is sub_8016F1A, so this
+  runs the small state machine that plays out an object's defeat. The object pointer is passed in the
+  high register r5 rather than r0, matching the caller battle_objectUpdateDispatchPhase_80165C2's convention.
+  With only two phases and no other state touched, it is a thin dispatch wrapper around the defeat logic.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r5,#oBattleObject_CurPhase] then ldr r1,[r1,r0] indexes JumpTable8016ED8 by current
+    phase (asm lines 2-4); JumpTable8016ED8 contains only battle_defeatObject+1 and sub_8016F1A+1, a two-entry
+    defeat state machine; mov lr,pc / bx r1 is the standard thumb long-call tail-call, so handlers receive
+    r5 object pointer unchanged; caller battle_objectUpdateDispatchPhase_80165C2 dispatches per-phase
+    object updates, placing this as one phase family's dispatch
+  refs:
+  - bn6f/asm/asm00_2.s:18519
+  - 0x080165C2 battle_objectUpdateDispatchPhase_80165C2
+  - 0x0810E8DA sub_810E8DA
+  reproduce: python3 tools/asmcat.py 0x08016EC4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- what sub_8016F1A (phase 1) does to confirm the defeat-sequence step order
+- which object kinds use this dispatch and how oBattleObject_CurPhase reaches 0 or 1
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8016EC4 -> battle_defeatPhaseDispatch
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8016EC4

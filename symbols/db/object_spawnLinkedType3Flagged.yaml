@@ -1,0 +1,46 @@
+name: object_spawnLinkedType3Flagged
+address: '0x080C6264'
+kind: function
+status: probable
+summary: Spawns a linked type-3 battle object via object_spawnLinkedType3 and sets bit 0x10 in the new
+  object's first status byte.
+interface: (args passed through to object_spawnLinkedType3, r0 = parent/handle) -> r0 = spawned object
+  pointer, or 0 if spawn failed; flags set by callee
+details: 'A thin wrapper: it tail-passes its arguments to object_spawnLinkedType3, which spawns a kind-0xB
+  type-3 object linked to a parent (copying alliance, damage and extra-vars fields). If the returned object
+  pointer is non-null, it reads the object''s first byte (status/flags at offset 0), ORs in 0x10, and
+  stores it back; on failure (r0 == 0) it returns without touching anything. The caller of this wrapper
+  thus gets a freshly spawned linked object already marked with flag 0x10. The data after the function
+  (off_80C6278 -> byte_80C6038, dword_80C627C = 0xFFFEE000) is unrelated literal-pool data, not touched
+  by this code. The meaning of the 0x10 bit (hide, disable hitbox, etc.) is not shown here.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl object_spawnLinkedType3 with no argument setup — wrapper passes its own r0-r3 straight through;
+    cmp r0,#0 / beq locret — null-check on the spawned object pointer before modifying it; ldrb r1,[r0];
+    orr r1,#0x10; strb r1,[r0] — sets bit 0x10 in the object's byte at offset 0; callee's known summary
+    (kind-0xB type-3 spawn, linked to parent, alliance/damage/extra-vars copied) confirms the spawn role
+  refs:
+  - bn6f/asm/asm31.s:31005
+  - 0x080C6248 object_spawnLinkedType3
+  reproduce: python3 tools/asmcat.py 0x080C6264
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- What bit 0x10 of the type-3 object's first byte means (needs a caller or the object update code that
+  tests this flag)
+- Which registers object_spawnLinkedType3 expects beyond r0 (parent pointer vs spawn parameters) — no
+  caller is known to confirm
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C6264 -> object_spawnLinkedType3Flagged
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C6264

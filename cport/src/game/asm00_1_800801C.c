@@ -2975,7 +2975,7 @@ Next sub_800B79A(void) {
     switch (index) {
     case 0: GUEST_CALL(sub_800B7D0); break;
     case 1: GUEST_CALL(battle_incrementNaviStatsByte18Saturating); break;
-    case 2: GUEST_CALL(sub_800B800); break;
+    case 2: GUEST_CALL(battle_setNaviStatsByte18To7); break;
     case 3: GUEST_CALL(nullsub_2);   break;
     case 4: GUEST_CALL(sub_800B80E); break;
     }

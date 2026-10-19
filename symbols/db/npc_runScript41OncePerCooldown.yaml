@@ -1,0 +1,43 @@
+name: npc_runScript41OncePerCooldown
+address: '0x0812D83C'
+kind: function
+status: probable
+summary: Runs text script 0x41 from eTextScript201BA20 once, guarding repeats with a 100-frame cooldown
+  stored in the object's work area.
+interface: (r5 = object/npc work struct) -> r0 = chatbox script-runner result; no flags of interest
+details: Reads a word at [r5+0x6C]; if it is nonzero (cooldown still active or message already shown)
+  the function returns immediately without doing anything. Otherwise it stores the constant 0x64 (100,
+  presumably a frame countdown decremented elsewhere) into [r5+0x6C] and calls the chatbox wrapper to
+  run script index 0x41 of archive eTextScript201BA20. The one-shot-plus-timer pattern suggests a periodic
+  or trigger-once NPC line. The identity of the speaking object and what script 0x41 says are not visible
+  here.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'tst r0,r0 / bne skip: [r5+0x6C] nonzero suppresses the call, so it is a guard/cooldown field;
+    str 0x64,[r5,#0x6c] before the bl: arms a 100-unit timer right when the script is triggered; bl chatbox_runScript_803FD9C_on_eTextScript201BA20
+    with r0=0x41: runs script 0x41 of the text archive; single caller-less tail shape (push {lr}/pop {pc})
+    indicates a small object-behavior hook rather than a utility'
+  refs:
+  - bn6f/asm/asm34.s:680
+  - 0x08132280 chatbox_runScript_803FD9C_on_eTextScript201BA20
+  reproduce: python3 tools/asmcat.py 0x0812D83C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- which object owns r5 and what field 0x6C is (cooldown vs. shown-once latch)
+- what text script 0x41 of eTextScript201BA20 says, to pin the in-game context
+- who calls this and what decrements [r5+0x6C] back to zero
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_812D83C -> npc_runScript41OncePerCooldown
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_812D83C

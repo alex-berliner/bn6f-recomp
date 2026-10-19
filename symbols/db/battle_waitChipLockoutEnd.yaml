@@ -1,0 +1,46 @@
+name: battle_waitChipLockoutEnd
+address: '0x08089BAA'
+kind: function
+status: probable
+summary: Battle-side handler that idles while the chip lockout timer runs, then once it expires fires
+  an action (0xD) and sets an 0x80 flag.
+interface: (r5 = state object whose byte field receives 0x80) -> r0 = 1 always; no flags guaranteed
+details: Calls battle_tickChipLockout_8089CB4, which decrements AIData+0x18 (ChipLockoutTimer) and reports
+  whether it reached zero this frame. If the timer has not expired (result 0), the body is skipped and
+  the function returns 1 immediately, i.e. it keeps waiting. Once the timer expires, it calls sub_8089CA4
+  with r0 = 0xD — an argument that looks like a command/state ID — and then stores the byte 0x80 at [r5],
+  likely a 'decision ready' or state flag on the AI/battle object r5 points to. It unconditionally returns
+  1, matching the pattern of per-frame handler routines that report 'stay active/handled'. The callee
+  sub_8089CA4 is not documented, so the exact effect of the 0xD command and the meaning of the r5 struct
+  field are unconfirmed.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl battle_tickChipLockout_8089CB4 / beq loc_8089BBC: body only runs when the lockout timer
+    hit zero this frame; mov r0, #0xd; bl sub_8089CA4: on expiry it issues command/ID 0xD to an unknown
+    routine; mov r0, #0x80; strb r0, [r5]: sets an 0x80 flag byte in the caller-provided struct; mov r0,
+    #1 before both exit paths: always returns 1, typical keep-alive handler return; callee summary (decrements
+    ChipLockoutTimer at AIData+0x18, returns hit-zero) ties the wait directly to chip lockout'
+  refs:
+  - bn6f/asm/asm23.s:1624
+  - 0x08089CB4 battle_tickChipLockout_8089CB4
+  - 0x08089CA4 sub_8089CA4
+  reproduce: python3 tools/asmcat.py 0x08089BAA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- What sub_8089CA4 does with command 0xD (issue a chip action, set an AI state, queue an event?)
+- Which struct r5 points to and what the 0x80 byte flags; no caller is known to confirm the context
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8089BAA -> battle_waitChipLockoutEnd
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8089BAA

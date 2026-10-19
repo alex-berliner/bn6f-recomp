@@ -1,0 +1,43 @@
+name: ai_setBeastAtkDamage
+address: '0x080122AA'
+kind: function
+status: probable
+summary: AI attack-setup step that computes a Cybeast power-attack damage from the object's alliance and
+  stores it into the AI attack vars
+interface: (r5 = battle object, r7 = AI attack vars) -> r0 = 9 (next AI state/action code); no flags meaningful
+details: Loads the object's Alliance field (byte at oBattleObject_Alliance) and passes it as an index
+  to battle_beastPwrAtk_addScaledBaseFromIndex_8010D04, which scales the 2-byte beast power-Atk table
+  entry at byte_80212D4 into a damage value. The result is written to oAIAttackVars_Damage, a fixed extra-damage
+  of 0x8A (138) is written to oAIAttackVars_ExtraDamage, and oAIAttackVars_InitFlag is set to 1 to (re)initialize
+  the attack. Returns 9, most likely the next AI attack-state code for the caller's dispatcher.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r1,[r5,#oBattleObject_Alliance]; bl battle_beastPwrAtk_addScaledBaseFromIndex_8010D04
+    — alliance selects the beast power-Atk entry; strh r0,[r7,#oAIAttackVars_Damage] — computed beast
+    damage stored as the attack damage; strh #0x8a into oAIAttackVars_ExtraDamage — fixed extra damage
+    constant for this attack; strb #1 into oAIAttackVars_InitFlag — marks the attack vars as initialized;
+    mov r0,#9; pop {pc} — returns 9 like other AI attack-state handlers'
+  refs:
+  - bn6f/asm/asm00_2.s:7694
+  - 0x08010D04 battle_beastPwrAtk_addScaledBaseFromIndex_8010D04
+  reproduce: python3 tools/asmcat.py 0x080122AA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- No caller is known, so the meaning of the returned 9 (next state vs. attack id) is unconfirmed
+- What the fixed 0x8A extra damage represents (flat bonus vs. element/index) is unclear
+- Which beast attack this corresponds to (Falzar vs. Gregar side) needs the AI dispatcher table
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80122AA -> ai_setBeastAtkDamage
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80122AA

@@ -1,0 +1,44 @@
+name: object_storyExplosionBeginPhase4
+address: '0x080A9844'
+kind: function
+status: probable
+summary: Map-object handler that switches the story-explosion object to state 4, latches two byte fields
+  into word fields, and runs its update.
+interface: (r5 = map object struct, no register args) -> void; no flags meaningful
+details: r5 points to a map object struct (matches the callee's known object layout). It writes state
+  byte [r5,#8] = 4, then copies byte [r5,#5] into word field [r5,#0x24] and byte [r5,#6] into word field
+  [r5,#0x28] — likely tile/position or parameter values being widened into the object's working fields.
+  It then tail-calls into the story-explosion map object updater, which burns RNG draws per explosion
+  puff. This reads like a per-state step (state 4 entry) in the object's state machine rather than an
+  initializer, since the update runs immediately after the fields are set.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: strb r0,[r5,#8] with r0=4 sets the object's state/mode byte to 4 before updating; ldrb/str pairs
+    copy [r5,#5]->[r5,#0x24] and [r5,#6]->[r5,#0x28], caching byte params into word work fields; bl sub_80A9858
+    calls the known story-explosion map object update (types 1/0x1E/0x1F); push {lr}/pop {pc} wrapper
+    shows it is a plain dispatched handler, no return value
+  refs:
+  - bn6f/asm/asm29.s:9228
+  - 0x080A9858 sub_80A9858
+  reproduce: python3 tools/asmcat.py 0x080A9844
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- No callers are known, so it is unclear whether this is a state-machine dispatch target for state 4 or
+  a type-specific entry point
+- The exact meaning of fields 0x5/0x6 and 0x24/0x28 in the map object struct (tile coords vs timers) is
+  not confirmed
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80A9844 -> object_storyExplosionBeginPhase4
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A9844

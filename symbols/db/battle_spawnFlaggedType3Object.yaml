@@ -1,0 +1,43 @@
+name: battle_spawnFlaggedType3Object
+address: '0x080D6B9C'
+kind: function
+status: probable
+summary: Spawns a battle type-3 object (kind 0x8c) via battle_spawnLinkedType3Object and sets flag bit
+  0x10 in its first byte, returning null if the spawn failed.
+interface: '(args passed through to battle_spawnLinkedType3Object: r0..r3 spawn parameters incl. kind/link
+  values) -> r0 = spawned object pointer, or 0 if spawn failed; flags from callee (cmp sets NE/Z).'
+details: 'A thin wrapper: it tail-passes its arguments to battle_spawnLinkedType3Object, which allocates
+  a battle object of kind 0x8c and fills panel position, element, damage, alliance and owner links. On
+  success it reads the object''s first byte (offset 0, likely the object''s status/flags field), ORs in
+  0x10, and stores it back. If the spawn returns 0 the flag write is skipped and 0 is propagated to the
+  caller. The meaning of bit 0x10 in that flags byte is not established from this code alone.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl battle_spawnLinkedType3Object with no argument setup — r0..r3 forwarded unchanged from this
+    function''s caller; cmp r0, #0 / beq locret_80D6BAE — null spawn result returned unchanged; ldrb r1,[r0];
+    orr r1,#0x10; strb r1,[r0] — sets bit 4 of byte 0 of the freshly spawned object; pop {pc} with r0
+    preserved — object pointer (or 0) is the return value'
+  refs:
+  - bn6f/asm/asm31.s:67264
+  - 0x080D6B78 battle_spawnLinkedType3Object
+  reproduce: python3 tools/asmcat.py 0x080D6B9C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- what bit 0x10 of the object's flags byte means in-game
+- what kind 0x8c objects do at runtime
+- which caller(s) use this wrapper and with what spawn parameters
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D6B9C -> battle_spawnFlaggedType3Object
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D6B9C

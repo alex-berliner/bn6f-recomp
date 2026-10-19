@@ -1,0 +1,43 @@
+name: sprite_loadVariantSpritePtr
+address: '0x081175AC'
+kind: function
+status: probable
+summary: Loads the sprite-data pointer matching the entity's variant byte into the sprite object's field
+  +0xC.
+interface: (r5 = sprite object, byte [r5+5] = variant index) -> r0 = selected pointer, stored to [r5+0xC];
+  no flags
+details: Reads the variant index from byte [r5+5], scales it by 4 to index the pointer table at off_811735C,
+  and stores the fetched word at [r5+0xC] of the sprite object. This mirrors sprite_initVariantObject,
+  which uses the same byte [r5+5] to pick a palette bank and tile-slot offset, so +0xC presumably holds
+  that variant's sprite/resource pointer. Trivially a two-load helper, inlined tail-call style (mov pc,
+  lr). The table at 0x0811735C is shared with other variant-selection code.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#5] + lsl #2 + ldr r0,[r1,r0] indexes a per-variant pointer table; str r0,[r5,#0xc]
+    writes the result into the sprite object header at +0xC; table pointer off_81175B8 = off_811735C,
+    same area as other variant sprite data; caller sprite_initVariantObject uses the same [r5+5] variant
+    byte for palette/tile-slot selection'
+  refs:
+  - bn6f/asm/asm32.s:19089
+  - 0x08117424 sprite_initVariantObject
+  - 0x08117588 sub_8117588
+  reproduce: python3 tools/asmcat.py 0x081175AC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- contents of the table at 0x0811735C (sprite resource pointers vs frame data)
+- what consumers read [r5+0xC] as
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81175AC -> sprite_loadVariantSpritePtr
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81175AC

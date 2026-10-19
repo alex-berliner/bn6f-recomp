@@ -1,0 +1,43 @@
+name: ai_scheduleChipAttack
+address: '0x0801255C'
+kind: function
+status: probable
+summary: AI attack routine that loads chip params for chip 0x25 and arms the AI attack-vars timer fields
+  in r7 to fire it after a 40-frame delay.
+interface: (r7 = AI attack-vars struct base; no args in r0-r3) -> void; r0 clobbered by call
+details: 'Passes chip ID 0x25 to somethingWriteChipParams_80126E4, which loads that chip''s parameters
+  for the AI''s attack, then writes three bytes into the oAIAttackVars structure pointed to by r7: ChipUseDelay
+  = 0x28 (40), Unk_1c = 3, TimerOrCycles = 1. This is a fixed, hard-coded attack script step — one chip,
+  one delay, no branching — typical of a boss/enemy AI action entry that schedules when the chip actually
+  fires.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mov r0,#0x25; bl loc_80126EA -> writes params for chip ID 0x25 via the known chip-param writer;
+    strb r1(0x28),[r7,#oAIAttackVars_ChipUseDelay] sets the frame countdown for the attack; strb #3 to
+    Unk_1c and strb #1 to TimerOrCycles prime the attack state machine fields; no branch on inputs and
+    no return value: a fixed setup step, not a general-purpose routine; callee is the documented chip-params
+    writer, confirming the 0x25 argument is a chip ID'
+  refs:
+  - bn6f/asm/asm00_2.s:8208
+  - 0x080126EA somethingWriteChipParams_80126E4
+  reproduce: python3 tools/asmcat.py 0x0801255C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- which boss/AI table calls this (no callers known), so the exact chip identity and which attack script
+  step this is remain unconfirmed
+- meaning of oAIAttackVars_Unk_1c = 3
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_801255C -> ai_scheduleChipAttack
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_801255C

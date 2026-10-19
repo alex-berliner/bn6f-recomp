@@ -1,0 +1,45 @@
+name: battle_setVictoryAction
+address: '0x080DA2D8'
+kind: function
+status: probable
+summary: Once the battle-over condition is met, switches the player's battle object into action 2 (post-battle/victory
+  state) and resets its phase counter.
+interface: () -> no return value; operates on the battle object held in r5 (register-global), sets oBattleObject_CurAction
+  = 2 and oBattleObject_CurPhaseAndPhaseInitialized = 0 when the battle is over
+details: 'A tiny per-frame tick: it calls battle_isBattleOver and only if the battle-over conditions are
+  met it writes value 2 into the battle object''s CurAction byte and zeroes the halfword at oBattleObject_CurPhaseAndPhaseInitialized,
+  restarting that object''s phase machine for whatever action 2 is (likely the victory/battle-end animation
+  or idle). r5 is not set up in this routine, so it relies on the project''s register-global convention
+  holding the current battle object. r0/r1 arguments are unused. No flags are meaningful since it ends
+  with pop {pc}.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl battle_isBattleOver followed by tst r0,r0 / beq gates the whole body on the battle being
+    over; strb r0,#2,[r5,#oBattleObject_CurAction] selects a new CurAction for the battle object; strh
+    r0,#0,[r5,#oBattleObject_CurPhaseAndPhaseInitialized] resets the phase/phase-initialized pair, consistent
+    with entering a fresh action; no argument registers are read; only r5 is touched, matching the battle-object
+    register-global convention
+  refs:
+  - bn6f/asm/asm31.s:74632
+  - 0x0800A18E battle_isBattleOver
+  reproduce: python3 tools/asmcat.py 0x080DA2D8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- No callers are known, so which entity runs this and when in the battle loop is unconfirmed
+- What action id 2 means for this battle object (victory animation vs. battle-end cleanup) would need
+  a dispatch table over oBattleObject_CurAction
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DA2D8 -> battle_setVictoryAction
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DA2D8

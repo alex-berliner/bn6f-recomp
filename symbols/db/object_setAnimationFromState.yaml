@@ -1,0 +1,48 @@
+name: object_setAnimationFromState
+address: '0x0812B5AC'
+kind: function
+status: probable
+summary: Battle-object update callback that picks a sprite animation (4, 5, or 7) from the entity's current
+  pose/state byte and applies it.
+interface: (r5 = entity pointer; reads state byte at [r5,#2]) -> r0 = result of sprite_setEntityAnimation
+  (r1 = 0 always); no flags of interest
+details: 'Reads the byte at [r5,#2], which acts as a pose/state selector on the battle entity struct:
+  state 0x14 selects animation 4, state 0x18 selects animation 5, and any other state selects animation
+  7. It then calls sprite_setEntityAnimation with r1 = 0 (no extra data / default flag set). Note the
+  function takes no register arguments — the caller must have r5 pointing at the entity, so it is clearly
+  a leaf callback invoked from an object handler that keeps the entity in r5. The fixed r1 = 0 means no
+  animation-data pointer or no-shadow flag is passed.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'cmp [r5,#2],#0x14 / #0x18 choose anim ids 4/5, else 7 — a state-to-animation mapping (sub_812B5AC
+    lines 2-8); bl sprite_setEntityAnimation with r1 = 0 — applies the chosen animation index to the r5
+    entity; r5 is used without being set or saved in the routine, implying it is a callback run with the
+    entity already in r5; called from sub_8129DC4 and sub_8129E7C, both presumably object update handlers
+    sharing the same entity layout'
+  refs:
+  - bn6f/asm/asm33.s:17306
+  - 0x08129DC4 sub_8129DC4
+  - 0x08129E7C sub_8129E7C
+  - 0x0811A610 sprite_setEntityAnimation
+  reproduce: python3 tools/asmcat.py 0x0812B5AC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- What states 0x14 and 0x18 mean in game terms (which boss/object uses them) — the callers' handler context
+  would say
+- Why all other states map to animation 7, and what animation 7 depicts
+- What the r1 = 0 argument means precisely in sprite_setEntityAnimation (no-shadow flag vs data pointer)
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_812B5AC -> object_setAnimationFromState
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_812B5AC

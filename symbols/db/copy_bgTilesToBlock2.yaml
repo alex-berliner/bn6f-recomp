@@ -1,0 +1,45 @@
+name: copy_bgTilesToBlock2
+address: '0x08137EE0'
+kind: function
+status: probable
+summary: Thin wrapper that blits a caller-supplied tile array as a 7x14-tile rectangle into background
+  tile block 2.
+interface: (r0 = dst i, r1 = dst j, r2 = tile_ids *const u16) -> void; corrupts r2-r5, calls CopyBackgroundTiles(i,
+  j, 2, tile_ids, j_size=7, i_size=14)
+details: 'It only rearranges arguments before a tail-less call to CopyBackgroundTiles: r3 receives the
+  original r2 (tile_ids pointer), r2 is hard-coded to 2 (which 32x32 tile block to write), and r4/r5 are
+  loaded with 7 and 0xE as the j_size/i_size dimensions. So the caller picks the destination position
+  (r0, r1) and the source tile IDs, and this function fixes the block and the rectangle shape at 7 rows
+  by 14 columns (98 tiles, 112x224 px in 8px tiles). Nothing else happens; no return value. The odd r4/r5
+  argument passing matches the known CopyBackgroundTiles signature''s trailing size parameters.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mov r3, r2 / mov r2, #2: tile_ids moves to r3 and tile block is hard-coded to 2 (asm lines
+    3-4); mov r4, #7 / mov r5, #0xe: fixed 7x14 tile dimensions for the blit (asm lines 5-6); bl CopyBackgroundTiles
+    with callee signature (j, i, block, tile_ids, j_size, i_size) confirms argument mapping; sole caller
+    sub_8137E4C is itself undocumented, so the destination screen/scene is not yet pinned down'
+  refs:
+  - bn6f/asm/asm36.s:16732
+  - 0x08137E4C sub_8137E4C
+  - 0x080018C2 CopyBackgroundTiles
+  reproduce: python3 tools/asmcat.py 0x08137EE0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- which background block 2 belongs to (menu, dialog, overworld HUD?) — needs a caller chain or a known
+  CopyBackgroundTiles use site
+- what tile-id table the caller sub_8137E4C passes, to identify what visual is being drawn
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8137EE0 -> copy_bgTilesToBlock2
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8137EE0

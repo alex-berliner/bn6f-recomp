@@ -1,0 +1,42 @@
+name: clearStatusBits
+address: '0x0803CB0C'
+kind: function
+status: probable
+summary: clears the caller-supplied bit mask in the status/flag word at 0x200BC5C
+interface: (r0 = bit mask of flags to clear) -> r0 = clobbered? (not preserved, but not returned); no
+  flags; writes [0x200BC5C] &= ~r0
+details: Loads the pointer to the struct at 0x200BC50, reads the word at offset 0xC (dword_200BC5C), clears
+  every bit set in r0 via BIC, and stores it back. It is a generic bit-clear helper for that flag word;
+  the six callers around 0x8039xxx-0x803Cxxx each pass a mask, so 0x200BC5C is some shared status/flag
+  register for that subsystem. r0's value is consumed, not returned. No other fields of the struct are
+  touched.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bic r1, r0 followed by str back to [r3,#0xC] shows mask-and-clear on dword_200BC5C; single 4-instruction
+    body with no branches or other memory accesses shows it is a pure flag-clear helper; six callers in
+    the 0x8039-0x803C region suggest one shared flag word cleared from several states
+  refs:
+  - bn6f/asm/asm03_1_1.s:8176
+  - 0x0803C620 dispatch_803C620
+  - 0x08039C32 sub_8039C32
+  - 0x08039DB4 sub_8039DB4
+  reproduce: python3 tools/asmcat.py 0x0803CB0C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- what subsystem the struct at 0x200BC50 belongs to and what each bit in the +0xC flag word means
+- what each caller's mask corresponds to (would identify the flags semantically)
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803CB0C -> clearStatusBits
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803CB0C

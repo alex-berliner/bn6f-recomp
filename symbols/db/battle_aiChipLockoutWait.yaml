@@ -1,0 +1,47 @@
+name: battle_aiChipLockoutWait
+address: '0x08089BE4'
+kind: function
+status: probable
+summary: AI routine that waits until the chip lockout timer expires, then issues action 0xE and stores
+  state 0x88 before returning 1.
+interface: (implicit r5 = byte state field pointer) -> r0 = 1 always; flags from battle_tickChipLockout
+  result inside
+details: First calls battle_tickChipLockout_8089CB4, which decrements AIData+0x18 (ChipLockoutTimer) and
+  flags when it reaches/exceeds zero. If the timer has not expired, the function skips the body and just
+  returns 1. When the lockout expires, it calls sub_8089CA4 with r0=0xE (meaning unknown, possibly an
+  AI action/command code) and then stores the byte 0x88 to [r5]. r5 is never loaded in this function,
+  so the caller must have it pointing at some per-entity state byte (likely an AI step/state field). The
+  function unconditionally returns 1, suggesting it is one step of a larger AI dispatcher loop that keeps
+  running until told otherwise.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl battle_tickChipLockout_8089CB4 + beq loc_8089BF6: body only runs when the lockout timer
+    hits zero; mov r0,#0xe; bl sub_8089CA4: fires command/action 0xE once the wait ends; mov r0,#0x88;
+    strb r0,[r5]: writes magic state value 0x88 to a byte whose base is caller-supplied in r5; callee
+    summary of 0x8089CB4 (decrements AIData+0x18, returns expired?) matches the wait-until-unlocked pattern;
+    mov r0,#1 before pop: fixed return value, typical of AI step functions'
+  refs:
+  - bn6f/asm/asm23.s:1660
+  - 0x08089CB4 battle_tickChipLockout_8089CB4
+  - 0x08089CA4 sub_8089CA4
+  reproduce: python3 tools/asmcat.py 0x08089BE4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- What sub_8089CA4 does with command 0xE
+- Which structure r5 points into (no callers known to confirm)
+- Meaning of state byte 0x88
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8089BE4 -> battle_aiChipLockoutWait
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8089BE4

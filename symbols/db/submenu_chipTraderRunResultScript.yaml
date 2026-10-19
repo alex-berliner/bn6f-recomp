@@ -1,0 +1,45 @@
+name: submenu_chipTraderRunResultScript
+address: '0x0809A05C'
+kind: function
+status: probable
+summary: Chip-trader menu handler that runs the result dialog script for the traded chip index, then performs
+  a follow-up step and clears the menu's script-active flag.
+interface: (r5 = chipTrader menu state object) -> r0 = 0; no meaningful flags
+details: 'Reads the script index from state+0x08 and passes it with the TextScriptChipTrader archive (0x86C580C)
+  to chatbox_runScript, so a text box shows the chip-trader dialog line for the selected index. It then
+  calls sub_809A360 with the pointer at state+0x74, likely a follow-up update/reset for the trader state.
+  Finally it stores 0 to the byte at state+0x09 — most plausibly a ''dialog active'' or state flag — and
+  returns 0 in r0, consistent with a state-machine step handler returning a ''done'' status. The object
+  layout is: +0x08 script index (u8/u32), +0x09 flag byte, +0x74 pointer to another routine or structure.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldr r0, off_809A074 // =TextScriptChipTrader86C580C ties this to the chip-trader text archive;
+    ldr r1, [r5,#8]; bl chatbox_runScript — script index comes from the state object; ldr r0, [r5,#0x74];
+    bl sub_809A360 — extra per-state call after the dialog; strb r0, [r5,#9] with r0=0 — clears a one-byte
+    flag right after the script runs; mov r0,#0 returned, typical of state-step handlers reporting completion
+  refs:
+  - bn6f/asm/asm28_0.s:1048
+  - 0x08040384 chatbox_runScript
+  - 0x0809A360 sub_809A360
+  reproduce: python3 tools/asmcat.py 0x0809A05C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- No known caller, so the state-machine context and when this fires (e.g. after trade vs. on error) are
+  unconfirmed
+- sub_809A360 and the structure at r5 are unnamed, so the exact role of the +0x74 pointer and the +0x09
+  flag is inferred only
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_809A05C -> submenu_chipTraderRunResultScript
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_809A05C

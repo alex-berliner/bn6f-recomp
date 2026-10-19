@@ -1,0 +1,43 @@
+name: object_destroyAndBumpCounter
+address: '0x080D7C6E'
+kind: function
+status: probable
+summary: Increments a shared counter, then destroys the battle object — likely counting each time this
+  object type is removed.
+interface: (r5 = battle object) -> r0 = result of object_genericDestroy; destroys the object
+details: Reads the object's oBattleObject_ExtraVars pointer, which points at an external variable rather
+  than holding a value, increments that variable, stores it back, and then calls object_genericDestroy
+  to release panel tile reserves, collision data, and the object's memory. The counter is incremented
+  before destruction, so it ticks every time an object using this routine is torn down. The ExtraVars
+  field pointing outside the object suggests the counter is shared or read by other code (e.g., a mission
+  or event counter tracking kills/uses). No callers are known, so the exact trigger and the meaning of
+  the counter are unverified.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldr r1,[r5,#oBattleObject_ExtraVars]; ldr r0,[r1]; add r0,#1; str r0,[r1] increments a pointed-to
+    external counter; bl object_genericDestroy (0x08016C8A) releases panel tiles, collision data, and
+    object memory, confirming this is a destruction path
+  refs:
+  - bn6f/asm/asm31.s:69509
+  - 0x08016C8A object_genericDestroy
+  reproduce: python3 tools/asmcat.py 0x080D7C6E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- 'No callers known: need caller context to tell what object type uses this and what the incremented counter
+  counts'
+- The structure behind oBattleObject_ExtraVars and which game system reads the incremented value are unknown
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D7C6E -> object_destroyAndBumpCounter
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D7C6E

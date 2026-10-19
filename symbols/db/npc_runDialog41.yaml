@@ -1,0 +1,49 @@
+name: npc_runDialog41
+address: '0x0812DA4C'
+kind: function
+status: probable
+summary: Stores a caller-supplied byte into an NPC state struct, sets its state to 0x30, then makes the
+  chatbox play text script 0x41 from archive eTextScript201BA20 and loads a 0xF0 timer.
+interface: (r0 = byte parameter stored at [r5,#0x1f], r5 = NPC/object work struct) -> r0 = chatbox_runScript
+  return value; no flags meaningful
+details: The callee first saves the passed byte to offset 0x1F of the global struct in r5, then writes
+  state byte 0x30 at offset 0x02, calls the chatbox wrapper to run script index 0x41 of archive eTextScript201BA20,
+  and finally stores halfword 0xF0 at offset 0x28 (likely a timer/delay). It ignores its argument for
+  the script index — 0x41 is hardcoded — so r0 only parametrizes the struct field, probably a character/variant
+  id used by the script or the 0x30 state handler. The many callers (sub_812C3BC..sub_812CEF0) all appear
+  to be variations of the same 'talk with this NPC' setup in the 0x812Cxxx cluster.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: strb r0,[r5,#0x1f] then mov r0,#0x30; strb r0,[r5,#2] — parameter saved, NPC state byte set
+    to 0x30; mov r0,#0x41; bl chatbox_runScript_803FD9C_on_eTextScript201BA20 — hardcoded script 0x41
+    played via chatbox; mov r0,#0xf0; strh r0,[r5,#0x28] — 0xF0 halfword written to a likely timer/state
+    field after the dialog is queued; six callers at 0x812C3BC–0x812CEF0 share this exact tail, so it
+    is a common dialog-setup helper
+  refs:
+  - bn6f/asm/asm34.s:973
+  - 0x0812C3BC sub_812C3BC
+  - 0x0812C50C sub_812C50C
+  - 0x0812C5D0 sub_812C5D0
+  - 0x08132280 chatbox_runScript_803FD9C_on_eTextScript201BA20
+  reproduce: python3 tools/asmcat.py 0x0812DA4C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- What struct r5 points to (NPC object? overworld actor?) and the meaning of fields 0x1F, 0x02 (value
+  0x30) and 0x28 (0xF0)
+- Whether script 0x41 in eTextScript201BA20 is a single fixed dialog or a table entry selected by the
+  byte stored at 0x1F
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_812DA4C -> npc_runDialog41
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_812DA4C

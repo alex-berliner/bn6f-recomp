@@ -1,0 +1,41 @@
+name: battle_getPlayerHpMod100
+address: '0x08010BF0'
+kind: function
+status: probable
+summary: Returns the current player's HP modulo 100 (low two digits).
+interface: (r0 = ?, r1 = alliance flag passed to battle_findPlayer) -> r0 = playerHP % 100; r1 = remainder
+  clobbered
+details: The function forwards its argument (an alliance flag) to battle_findPlayer to fetch the player's
+  BattleObject, returning 0 if none exists. It loads oBattleObject_HP, sets r1 = 0x64 (100), and issues
+  svc 6, the BIOS Div routine, which puts quotient in r0 and remainder in r1. It then copies r1 into r0,
+  so the return value is HP % 100, not the quotient. Likely used for two-digit HP displays or HP-digit
+  breakup; the identity of r0 on entry is unknown since it is overwritten before the call.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl battle_findPlayer with r0 = r1: fetches the player BattleObject by alliance flag; ldrh r0,
+    [r0,#oBattleObject_HP]: reads the player''s HP field; mov r1, #0x64 ; svc 6: BIOS Div, HP divided
+    by 100; mov r0, r1 after svc: keeps the remainder (HP % 100) as the return value; tst r0,r0 / beq:
+    returns 0 when no player object is found'
+  refs:
+  - bn6f/asm/asm00_2.s:4547
+  - 0x080103BC battle_findPlayer
+  reproduce: python3 tools/asmcat.py 0x08010BF0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- No known callers, so the purpose of the mod-100 result (HP display? gauge?) is unconfirmed
+- What the original r0 argument means is unknown since it is discarded before battle_findPlayer is called
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8010BF0 -> battle_getPlayerHpMod100
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8010BF0

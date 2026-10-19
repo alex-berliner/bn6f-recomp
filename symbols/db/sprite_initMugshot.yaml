@@ -1,0 +1,48 @@
+name: sprite_initMugshot
+address: '0x0800279C'
+kind: function
+status: probable
+summary: Resets one of the mugshot sprites by table index and sets a flag/counter of 0x80 in the caller's
+  object struct.
+interface: (r0 = mugshot sprite index into mugshotSpritePtrs, r5 = object struct ptr, untouched) -> r0
+  clobbered by callee; stores halfword 0x80 at [r5+0x20+0x16]
+details: The incoming r0 is scaled by 4 and used as an index into the mugshotSpritePtrs pointer table;
+  the selected pointer is passed to sprite_initialize, which zeroes animation/position/timer fields and
+  sets the default 8x8 cell size on that sprite. Afterwards the function stores the halfword 0x80 into
+  field +0x16 of the caller's struct (r5 was bumped by 0x20 on entry, so it operates on a sub-struct or
+  a different base). No other state is touched and the function returns void. The 0x80 value written after
+  sprite init is likely an animation frame count, timer, or display mode for the mugshot, but its meaning
+  is not shown here.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'lsl r0, r0, #2 + ldr r0,[r0,r1] with r1=mugshotSpritePtrs: r0 indexes a pointer table of sprites;
+    bl sprite_initialize: the selected pointer is reset as a sprite object; mov r0,#0x80; strh r0,[r5,#0x16]
+    after add r5,#0x20: writes constant 0x80 to a halfword field of the caller''s struct; callee summary
+    (sprite_initialize: zeroes animation/position/timer fields, invalidates frame, 8x8 cell) matches a
+    fresh sprite setup; no other writes or branches: the whole routine is sprite-table init plus one field
+    store'
+  refs:
+  - bn6f/asm/sprite.s:199
+  - 0x0800272C sprite_initialize
+  reproduce: python3 tools/asmcat.py 0x0800279C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- No callers are known, so the meaning of r5+0x16 and the constant 0x80 (frame count? timer? mode?) is
+  unconfirmed
+- Which subsystem owns the struct at r5 (mugshot dialog box, message task) and whether other mugshotSpritePtrs
+  entries pair with distinct field values
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_800279C -> sprite_initMugshot
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800279C

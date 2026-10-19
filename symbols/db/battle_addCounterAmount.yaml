@@ -1,0 +1,50 @@
+name: battle_addCounterAmount
+address: '0x0802EEA2'
+kind: function
+status: probable
+summary: Adds an encoded amount (256 per unit) to a battle entity's counter at field 0x28, choosing a
+  capped or alternate add path based on bit 7 of the argument.
+interface: (r0 = encoded amount, bit7 = variant flag, bits0-6 = unit count; r5 = battle entity pointer)
+  -> r0 = result of the add callee; calls battle_addCappedCounter or sub_802E04E
+details: 'The entity pointer is passed in r5, not r0, so this is a helper meant to be called from code
+  already holding the entity. It tests bit 7 of r0: if clear, it shifts r0 left by 8 and calls battle_addCappedCounter,
+  which adds to the entity''s 16-bit counter at +0x28 with saturation at 0x4000; if set, it masks to 7
+  bits, shifts left by 8, and calls the unknown sub_802E04E instead. The shift means each unit of the
+  argument contributes 0x100 to the counter, so the counter stores the value in 1/256 subunits. Field
+  +0x16 of the entity is loaded as the second argument (r0) to the callee in both paths. Called from battle_chargeShotSetup,
+  the counter is most plausibly the Navi''s charge-shot energy/charge meter.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'tst r0, r1 with r1=0x80 selects between two add paths (sub_802EEA2 lines 3-5 vs 9-11); lsl
+    r1, r0, #8 before both callee calls shows amounts are scaled by 256; ldrb r0, [r5,#0x16] passes an
+    entity field as the first callee argument in both branches; callee battle_addCappedCounter adds to
+    a 16-bit field 0x28 saturating at 0x4000, confirming a counter-add; caller battle_chargeShotSetup
+    (charge shot setup) indicates the counter is charge-related'
+  refs:
+  - bn6f/asm/asm03_0.s:18973
+  - 0x0802ECFE battle_chargeShotSetup
+  - 0x0802ED8A sub_802ED8A
+  - 0x0802EDBC sub_802EDBC
+  - 0x0802E032 battle_addCappedCounter
+  - 0x0802E04E sub_802E04E
+  reproduce: python3 tools/asmcat.py 0x0802EEA2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- What sub_802E04E does differently from battle_addCappedCounter (set vs uncapped add vs subtract) determines
+  the meaning of bit 7
+- Exact semantics of the entity field at +0x16 and confirmation that field 0x28 is the charge gauge
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_802EEA2 -> battle_addCounterAmount
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802EEA2

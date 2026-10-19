@@ -1,0 +1,47 @@
+name: ai_spawnPanelAttackObject
+address: '0x080ED6CA'
+kind: function
+status: probable
+summary: Spawns the AI's attack object (kind 0x16) at a panel offset from the actor, passing its damage/boost
+  parameters.
+interface: (r0 = panel X offset, r1 = panel Y offset; r5 = actor battle object, r7 = AI attack vars) ->
+  spawns object; r0 clobbered by callee
+details: 'Adds r0/r1 to the actor''s oBattleObject_PanelX/PanelY to get target coordinates, then loads
+  the AI attack-vars block: damage + AttackBoost (passed as r2 via r6/r2 sum after the spawn wrapper reads
+  them), AttackBoost in r2, InitFlag in r3 (set to 0 here via mov r3,#0 — actually InitFlag loaded then
+  overwritten, so r3=0), and AttackBoost2 in r4. It then calls the kind-0x16 battle-object spawn wrapper,
+  which runs the basic battle-object initializer on the new object. Note the ldrb of InitFlag into r2
+  followed by mov r3,#0 means the init flag byte is read but the third argument is always zero, suggesting
+  the flag''s meaning for this spawn path is unused or handled inside the wrapper.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r2,[r5,#oBattleObject_PanelX]/add r0 — target panel computed from caller coordinates plus
+    offsets; ldr r6,[r7,#oAIAttackVars_Damage]/ldrh r2,[r7,#oAIAttackVars_AttackBoost]/add r6 — damage
+    with boost summed before spawn; bl battle_spawnBasicObjectKind0x16_80C6CE4 — creates the kind-0x16
+    battle object with basic initializer; only caller sub_80ED668 — part of an AI attack routine, consistent
+    with r7 pointing at oAIAttackVars
+  refs:
+  - bn6f/asm/asm31.s:116577
+  - 0x080ED668 sub_80ED668
+  - 0x080C6CE4 battle_spawnBasicObjectKind0x16_80C6CE4
+  reproduce: python3 tools/asmcat.py 0x080ED6CA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- exact semantics of the four arguments to the kind-0x16 spawn wrapper (damage, element/type, flag, AttackBoost2)
+  need the wrapper's initializer read
+- what object kind 0x16 actually is in-game (projectile, hazard, summon?)
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80ED6CA -> ai_spawnPanelAttackObject
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80ED6CA

@@ -1,0 +1,42 @@
+name: object_beginDestroy
+address: '0x080DC0AC'
+kind: function
+status: probable
+summary: 'Marks a battle object as destroyed: clears its active flag bit, removes it from its collision
+  region, and sets its state to DESTROY.'
+interface: (r5 = battle object header pointer, no args in r0-r3) -> r0 = clobbered by call; sets object
+  state to CUR_STATE_DESTROY
+details: Reads the object's Flags byte, clears bit 1 (likely an 'active/enabled' flag), and writes it
+  back. It then calls object_clearCollisionRegion to detach the object from its collision region, and
+  finally stores CUR_STATE_DESTROY into the combined CurState/ActionPhase/PhaseInitialized field, which
+  the engine treats as the destruction state. The object pointer is passed implicitly in r5, suggesting
+  it is called from a per-object context (e.g. an update routine using a register-cached object).
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb/strb on [r5,#oObjectHeader_Flags] with bic #2 clears the object''s bit-1 flag; bl object_clearCollisionRegion
+    matches ''removes it from its current collision region''; str CUR_STATE_DESTROY into oBattleObject_CurStateActionPhaseAndPhaseInitialized
+    sets the destroyed state; no known callers; r5-based object pointer implies use from an object update/management
+    loop'
+  refs:
+  - bn6f/asm/asm31.s:78734
+  - 0x0801A074 object_clearCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080DC0AC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- exact meaning of flag bit 1 in oObjectHeader_Flags
+- which engine loop invokes this (no callers found yet)
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DC0AC -> object_beginDestroy
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DC0AC

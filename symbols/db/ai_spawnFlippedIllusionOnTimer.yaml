@@ -1,0 +1,43 @@
+name: ai_spawnFlippedIllusionOnTimer
+address: '0x080CB6B0'
+kind: function
+status: probable
+summary: If the battle object's Param1 is 9, counts down a timer in ExtraVars+4; on expiry resets it to
+  5 and spawns a flipped illusion copy of the object.
+interface: (r5 = battle object pointer; r0 unused on entry) -> r0 = spawn_flippedIllusion result or trashed;
+  flags from the counter decrement
+details: Acts as a periodic re-spawn hook for an illusion-spawning enemy. It early-outs unless oBattleObject_Param1
+  equals 9, then decrements the 32-bit counter at oBattleObject_ExtraVars+4. When the counter drops to
+  zero or below, it reloads the counter with 5 (so a new illusion is queued roughly every 5 timer ticks)
+  and calls spawn_flippedIllusion, which creates a copy object of r5 with facing folded into the spawn
+  parameter. The 9 in Param1 presumably marks this enemy's illusion phase/state.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#oBattleObject_Param1]; cmp r0,#9; bne locret — only runs for objects tagged with
+    Param1==9; ldr/str [r5,#oBattleObject_ExtraVars+4], sub #1, bgt — countdown timer stored in the object''s
+    extra var; mov r0,#5; str — reloads the same counter with interval 5 before spawning; bl spawn_flippedIllusion
+    with r5 still holding the object pointer — spawns the copy'
+  refs:
+  - bn6f/asm/asm31.s:42666
+  - 0x080CB5B4 sub_80CB5B4
+  - 0x080CB6CA spawn_flippedIllusion
+  reproduce: python3 tools/asmcat.py 0x080CB6B0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- Which enemy/phase Param1==9 identifies; the only caller sub_80CB5B4 is also unknown, so the tick rate
+  and the state machine context are unconfirmed
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CB6B0 -> ai_spawnFlippedIllusionOnTimer
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CB6B0

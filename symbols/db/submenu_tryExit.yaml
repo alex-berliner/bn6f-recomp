@@ -1,0 +1,46 @@
+name: submenu_tryExit
+address: '0x0803AD04'
+kind: function
+status: probable
+summary: If the exit check passes, clears a menu-state flag, plays the exit-submenu sound, and tears down
+  the submenu.
+interface: (r4/r5 = menu/UI state struct, preserved) -> r0 = clobbered; sets byte [r5,#0x13]=0 when exit
+  condition holds
+details: Calls sub_803C068 with r0=0x11, r1=0x90 and exits without doing anything if the call yields equal
+  (beq to the epilogue). Otherwise it stores 0 into the flag byte at +0x13 of the struct in r5, plays
+  SOUND_EXIT_SUBMENU through the PlaySoundEffect wrapper, and calls sub_803A86A, which most likely closes
+  the submenu and returns to the previous screen. The arguments 0x11/0x90 to the condition call are not
+  interpretable without knowing sub_803C068. r4-r7 are only preserved, never used, suggesting the surrounding
+  code conventionally passes state in those registers.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl sub_803C068 with r0=0x11, r1=0x90 guards the whole body (beq locret_803AD1E); strb r0,[r5,#0x13]
+    with r0=0 clears a state byte in the menu struct; mov r0,#SOUND_EXIT_SUBMENU; bl PlaySoundEffect identifies
+    this as a submenu-exit action; bl sub_803A86A right after the sound suggests the submenu close/return
+    routine; no callers known; condition and teardown callees are both undocumented
+  refs:
+  - bn6f/asm/asm03_1_1.s:4478
+  - 0x080005CC PlaySoundEffect
+  - 0x0803A86A sub_803A86A
+  - 0x0803C068 sub_803C068
+  reproduce: python3 tools/asmcat.py 0x0803AD04
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- What sub_803C068(0x11,0x90) checks (button press vs. cursor position vs. menu selection) is unknown
+- What sub_803A86A does (full teardown vs. state reset) is unknown
+- No callers are known, so the r5 struct layout and when this fires cannot be confirmed
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803AD04 -> submenu_tryExit
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803AD04

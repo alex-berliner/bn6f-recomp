@@ -975,11 +975,11 @@ Next sub_8013E58(void) {
     case 0: GUEST_CALL(nullsub_45);   break;
     case 1: GUEST_CALL(sub_8013EC2); break;
     case 2: GUEST_CALL(sub_8013ECC); break;
-    case 3: GUEST_CALL(sub_8013ED6); break;
+    case 3: GUEST_CALL(battle_applyBlindStatus); break;
     case 4: GUEST_CALL(sub_8013EE6); break;
     case 5: GUEST_CALL(sub_8013EF0); break;
     case 6: GUEST_CALL(sub_8013EFA); break;
-    case 7: GUEST_CALL(sub_8013F04); break;
+    case 7: GUEST_CALL(battle_setBlind); break;
     case 8: GUEST_CALL(sub_8013F14); break;
     }
 
@@ -998,8 +998,8 @@ Next nullsub_45(void) {
  * GetBattleNaviStatsByte_AllianceFromBattleObject(r5, 0x16). */
 enum {
     DAMAGE_HANDLER_NULL    = 0,  /* nullsub_46  */
-    DAMAGE_HANDLER_F82     = 1,  /* sub_8013F82  */
-    DAMAGE_HANDLER_F8C     = 2,  /* sub_8013F8C  */
+    DAMAGE_HANDLER_F82     = 1,  /* object_applyStatusEffect50  */
+    DAMAGE_HANDLER_F8C     = 2,  /* battle_setCollisionStatusEffect22  */
     DAMAGE_HANDLER_F96     = 3,  /* battle_incrementNaviStatsCounter  */
 };
 
@@ -1019,10 +1019,10 @@ static u32 get_navi_stats_byte_alliance_g(u32 obj, u32 index) {
     return R0;
 }
 
-/* register form: calls sub_8013F82 outside this file, which has no typed C interface yet */
-static void call_sub_8013F82(void)  { GUEST_CALL(sub_8013F82); }
-/* register form: calls sub_8013F8C outside this file, which has no typed C interface yet */
-static void call_sub_8013F8C(void)  { GUEST_CALL(sub_8013F8C); }
+/* register form: calls object_applyStatusEffect50 outside this file, which has no typed C interface yet */
+static void call_sub_8013F82(void)  { GUEST_CALL(object_applyStatusEffect50); }
+/* register form: calls battle_setCollisionStatusEffect22 outside this file, which has no typed C interface yet */
+static void call_sub_8013F8C(void)  { GUEST_CALL(battle_setCollisionStatusEffect22); }
 /* register form: calls battle_incrementNaviStatsCounter outside this file, which has no typed C interface yet */
 static void call_sub_8013F96(void)  { GUEST_CALL(battle_incrementNaviStatsCounter); }
 
@@ -2429,7 +2429,7 @@ Next battle_ResetObjectActionState_80165B8(void) {
 /* ── battle_objectUpdateDispatchPhase_80165C2 ── */
 /* battle_objectUpdateDispatchPhase_80165C2: per-frame update for one battle object (object pointer in R5).
  *
- * - If the object's flag bit 0x40000000 is set, run sub_8016EC4 for it instead.
+ * - If the object's flag bit 0x40000000 is set, run battle_defeatPhaseDispatch for it instead.
  * - Otherwise, if the battle is currently paused, do nothing this frame.
  * - Otherwise tail-call the object's current phase handler, looked up in the
  *   table off_80165F0 by oBattleObject_CurPhase:
@@ -2442,7 +2442,7 @@ Next battle_objectUpdateDispatchPhase_80165C2(void) {
     GUEST_CALL(object_getFlag);            /* R0 = object flags */
 
     if (R0 & 0x40000000) {                 /* special-flagged object */
-        GUEST_CALL(sub_8016EC4);
+        GUEST_CALL(battle_defeatPhaseDispatch);
         RETURN_TO_CALLER();
     }
 

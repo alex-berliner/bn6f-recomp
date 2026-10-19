@@ -1,0 +1,46 @@
+name: bg_copyTilesIfRequested
+address: '0x0802BA24'
+kind: function
+status: probable
+summary: 'Conditionally performs a pending background tile copy: if the flag byte at 0x2036667 is set,
+  falls through to CopyBackgroundTiles, otherwise does nothing.'
+interface: '(r0-r3 = pass-through args for CopyBackgroundTiles: i, j, which_tile_block_32x32, tile_ids*,
+  plus stack args j_size, i_size) -> r0 = undefined; calls CopyBackgroundTiles only when byte_2036667
+  != 0'
+details: The function is a guard wrapper around CopyBackgroundTiles. It loads word_2036660, reads the
+  byte at offset +7 (byte_2036667), and only if that byte is nonzero does it branch to the call; r0-r3
+  are never touched, so all six CopyBackgroundTiles arguments (i, j, tile-block index, tile_ids pointer,
+  and the two sizes) must be prepared by the caller and pass straight through, including any stack arguments.
+  The flag byte therefore acts as a 'tile copy pending/enabled' switch stored in the work area at 0x2036660,
+  letting callers stage arguments and defer or cancel the actual VRAM/background update.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r6, [r6,#0x7] / cmp r6, #0 / beq locret_802BA32: call happens only when byte_2036667 is
+    nonzero; r0-r3 are not modified anywhere in the 8-instruction body, so all CopyBackgroundTiles arguments
+    come from the caller unchanged; only callee is CopyBackgroundTiles (tile-block copy), so the function''s
+    sole effect is that copy; sole caller sub_802B8B0 must set up the copy parameters and the flag at
+    0x2036667 before calling'
+  refs:
+  - bn6f/asm/asm03_0.s:11898
+  - 0x0802B8B0 sub_802B8B0
+  - 0x080018C2 CopyBackgroundTiles
+  reproduce: python3 tools/asmcat.py 0x0802BA24
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- who sets byte_2036667 and what the other bytes of word_2036660 mean
+- which game context (overworld map, menu, etc.) sub_802B8B0 runs in, to confirm the subsystem prefix
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_802BA24 -> bg_copyTilesIfRequested
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802BA24

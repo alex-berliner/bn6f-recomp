@@ -1,0 +1,49 @@
+name: battle_spawnPairedVariantAtFrontPanel
+address: '0x080E3290'
+kind: function
+status: probable
+summary: Battle-object step that spawns the paired variant object (0x4B) on the first matching panel in
+  front of the acting object.
+interface: (r0 = battle object in r5, r1 = panel-param index for the lookup) -> r0 = 0; spawns object
+  0x4B at found panel
+details: r5 is the acting battle object; its Alliance byte is passed to battle_getFirstPanelInFrontByParam
+  to find the first panel in the object's facing direction whose panel state matches an alliance-dependent
+  parameter entry (r1 selects the entry). If no panel is found the function returns immediately. Otherwise
+  it loads the object's Params pointer, its DamageAndStaminaDamageCounterDisabler value plus Z16Save (an
+  offset/counter into that structure), and the Alliance into r2, and calls battle_spawnPairedVariantObject,
+  which spawns object 0x4B, attaches an 8-byte per-variant record from these values, and initializes it
+  as a field battle object. The trailing .byte pool is literal data (0x08010010, 0x0F800000), not code.
+  Effectively a 'place attack/field effect object on the first panel ahead' step.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#oBattleObject_Alliance] then bl battle_getFirstPanelInFrontByParam, tst/beq: panel
+    found in front or skip; ldr r4,[r5,#oBattleObject_Params] and add r6, r6, r3 with oBattleObject_Z16Save:
+    builds per-variant spawn data; bl battle_spawnPairedVariantObject whose summary spawns object 0x4B
+    with an 8-byte record as a field battle object; early return path (beq loc_80E32AC) skips the spawn
+    when no matching panel exists'
+  refs:
+  - bn6f/asm/asm31.s:94238
+  - 0x080E321C sub_80E321C
+  - 0x080E3264 battle_getFirstPanelInFrontByParam
+  - 0x080CDC7C battle_spawnPairedVariantObject
+  reproduce: python3 tools/asmcat.py 0x080E3290
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- Exact meaning of r1 (panel-parameter index) and how Z16Save/counter offset is interpreted by battle_spawnPairedVariantObject's
+  8-byte record
+- Which attack/object uses this step; the caller sub_80E321C's role is not documented
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E3290 -> battle_spawnPairedVariantAtFrontPanel
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E3290

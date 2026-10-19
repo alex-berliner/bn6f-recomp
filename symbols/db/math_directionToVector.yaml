@@ -1,0 +1,43 @@
+name: math_directionToVector
+address: '0x080011C0'
+kind: function
+status: probable
+summary: Converts a direction index (1–8) plus a magnitude into a (dx, dy) vector, returning (0,0) for
+  direction 0.
+interface: (r0 = direction index (0 = none, 1–8 = one of 8 directions), r1 = magnitude) -> r0 = dx, r1
+  = dy; flags not meaningful
+details: 'If r0 is zero it returns 0 in both r0 and r1 as a null vector. Otherwise it subtracts 1, multiplies
+  by 64 (lsl #6), giving angle indices 0, 64, 128, ... 448 — eight evenly spaced directions on the 512-entry
+  sine/cosine table used by math_getPolarVector — and tail-calls that routine with r1 untouched as the
+  magnitude. The callee computes dx = cos(angle)*mag and dy = -sin(angle)*mag (screen y down), returning
+  the components in r0/r1. So this is a thin wrapper turning a compass-style direction enum into a movement/offset
+  vector.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: sub r0,#1; lsl r0,#6 scales index 1–8 to angle steps of 64 across the 512-entry angle table;
+    bl math_getPolarVector is called with r1 passed through unchanged as magnitude; r0==0 branch returns
+    r0=r1=0, a zero vector for 'no direction'; callee math_getPolarVector is documented as angle index
+    + magnitude -> (dx, dy) with negated y
+  refs:
+  - bn6f/asm/asm00_0.s:2298
+  - 0x080011A0 math_getPolarVector
+  reproduce: python3 tools/asmcat.py 0x080011C0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- No known callers, so the direction-index convention (which game enum values 1–8 correspond to) and whether
+  r1 is really a magnitude or just always 1 could be confirmed from use sites
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80011C0 -> math_directionToVector
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80011C0

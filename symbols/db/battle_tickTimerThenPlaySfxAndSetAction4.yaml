@@ -1,0 +1,45 @@
+name: battle_tickTimerThenPlaySfxAndSetAction4
+address: '0x080CF4C8'
+kind: function
+status: probable
+summary: 'Battle-object per-frame wait handler: counts its Timer down; on expiry resets it to 16 frames,
+  plays SFX 0xC4, and switches the object to action 4.'
+interface: (r5 = battle object, no args) -> void; sets oBattleObject_CurAction=4, CurPhase=0, Timer=16
+  on the frame the countdown reaches 0
+details: This is a state-machine step called every frame for some battle object held in r5. It decrements
+  oBattleObject_Timer and, while nonzero, does nothing else. When the timer reaches 0 it reloads Timer
+  with 0x10 (so the wait repeats every 16 frames if re-entered), plays sound effect 0xC4 via PlaySoundEffect,
+  writes 4 into oBattleObject_CurAction to select the next behavior, and zeroes oBattleObject_CurPhaseAndPhaseInitialized
+  to restart the new action's phase logic. The periodic SFX plus fixed 16-frame cadence suggests a looping/repeating
+  sound while waiting (e.g. a charge or idle hum), but without callers the owning object and the meaning
+  of action 4 are unidentified.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrh/strh on oBattleObject_Timer with sub #1 and bne skip is a classic frame countdown (asm
+    lines 2-6); bl PlaySoundEffect with mov r0,#0xC4 immediately on timer expiry (0x080CF4D8-0x080CF4DC);
+    strb #4 into oBattleObject_CurAction and zeroing CurPhaseAndPhaseInitialized is the standard action-transition
+    idiom in battle object code; reload of Timer with #0x10 shows the wait interval is 16 frames'
+  refs:
+  - bn6f/asm/asm31.s:51056
+  - 0x080005CC PlaySoundEffect
+  reproduce: python3 tools/asmcat.py 0x080CF4C8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- No known callers, so the object and battle state that use this handler are unknown
+- What sound effect 0xC4 is (which in-game event it marks)
+- What action 4 means for this object's state machine
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CF4C8 -> battle_tickTimerThenPlaySfxAndSetAction4
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CF4C8

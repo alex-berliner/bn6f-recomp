@@ -1,0 +1,42 @@
+name: start_clearIrqEnableBits
+address: '0x03005E02'
+kind: function
+status: probable
+summary: C hardware helper that clears selected interrupt sources in the IE register without ever leaving
+  interrupts globally disabled
+interface: (r0 = bitmask of IE bits to clear) -> r0 = 0 (side effect on IE); flags from mov/bic, no meaningful
+  return
+details: Reads the Interrupt Master Enable register, stores 0 to it (globally disabling IRQs), then reads
+  IE, clears (BIC) the bits selected by the r0 mask, writes IE back, and restores the saved IME value
+  before returning. r4 is only used to hold the IME value across the IE update; r0 is used as a scratch
+  mask register, so the caller's argument is consumed by the BIC and r0 ends up as 0 on return. This is
+  a classic crt0/startup utility for shutting off specific IRQ sources (e.g. timers, VBlank) during boot
+  or reset.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldr r3, off_3005E54 =InterruptMasterEnableRegister then strh 0 and restore of saved value:
+    IME save/clear/restore pattern; ldr r1, off_3005E58 =InterruptEnableRegister and ''bic r2, r0; strh
+    r2, [r1]'' clears exactly the caller-supplied mask in IE; Called from start_dead_8000268 (crt0 reset
+    path), consistent with a boot-time IRQ configuration helper'
+  refs:
+  - bn6f/asm/asm38.s:333
+  - 0x08000268 start_dead_8000268
+  reproduce: python3 tools/asmcat.py 0x03005E02
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- Which IRQ sources the caller at 0x08000268 passes in r0 (which specific interrupts the boot path disables)
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_3005E02 -> start_clearIrqEnableBits
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_3005E02

@@ -1,0 +1,46 @@
+name: battle_applyObjectColorShader
+address: '0x080C2A3A'
+kind: function
+status: probable
+summary: Applies to a battle object's sprite the color shader whose id is stored in the object's effect-id
+  field.
+interface: (r5 = battle object pointer) -> void; r0 = shaderId*1057 table offset, r1 = shaderId passed
+  to sprite_setColorShader; flags clobbered
+details: Loads the byte at oBattleObject_WobbleOrEffectTimer from the object in r5, multiplies it by 1057
+  (0x421) via lsl/add pairs, and calls sprite_setColorShader with that product in r0 and the raw id in
+  r1. The callee stores the id into the sprite block selected by the object's high-nibble sprite index,
+  so r0 is most likely a byte offset into a per-shader definition/parameter table with stride 0x421. The
+  field name oBattleObject_WobbleOrEffectTimer appears to be a misnomer; the value is really a color-shader
+  id. This is a thin one-call wrapper with no other logic. Only caller is the undocumented sub_80C2770,
+  so the triggering game context is unknown.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r1,[r5,#oBattleObject_WobbleOrEffectTimer] loads the id used as the shader selector; lsl/add
+    chain computes r0 = ((id*33)<<5)+id = id*1057, a table-stride offset passed as arg0; bl sprite_setColorShader
+    keeps r1 = raw id, matching the callee''s known ''stores a color-shader id'' behavior; function is
+    a pure wrapper: push lr, four ALU ops, one bl, pop pc'
+  refs:
+  - bn6f/asm/asm31.s:23450
+  - 0x080C2770 sub_80C2770
+  - 0x08002ED0 sprite_setColorShader
+  reproduce: python3 tools/asmcat.py 0x080C2A3A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- what sub_80C2770 does and when it invokes this (which battle state sets the shader-id field)
+- what structure sprite_setColorShader indexes with the id*1057 offset and whether stride 0x421 is correct
+- the real meaning/name of the oBattleObject_WobbleOrEffectTimer field
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C2A3A -> battle_applyObjectColorShader
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C2A3A

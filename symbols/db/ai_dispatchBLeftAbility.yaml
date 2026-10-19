@@ -1,0 +1,43 @@
+name: ai_dispatchBLeftAbility
+address: '0x08011790'
+kind: function
+status: probable
+summary: Dispatches to a per-ability handler via a jump table indexed by the AI data's BLeftAbility field,
+  with r7 pointing at the AI's attack vars.
+interface: (r6 = AIData struct) -> tail-calls handler from table off_80117D4 indexed by [r6,#oAIData_BLeftAbility]*4,
+  r7 = r6+oAIData_AttackVars; returns via pop {r6,r7,pc}
+details: 'The function is a small trampoline/dispatcher: it computes r7 = r6 + oAIData_AttackVars (a scratch/attack-variable
+  area inside the AIData struct the caller works with), then reads the byte at oAIData_BLeftAbility, multiplies
+  it by 4, and loads a function pointer from the table at off_80117D4. It sets lr = pc and branches to
+  that handler with bx r1, so the handler runs with r6 (AIData) and r7 (attack vars) already set up and
+  returns directly to the pop instruction, restoring r6/r7 and returning to the caller. This is a classic
+  switch-on-id dispatch over up to N handlers, keeping the caller (playerAI code) small.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r6,#oAIData_BLeftAbility]; lsl r0,#2; ldr r1,[r1,r0] — index*4 into a pointer table;
+    mov lr,pc; bx r1 — tail-call trick so the handler returns into pop {r6,r7,pc}; add r7,r7,r6 with r7=#oAIData_AttackVars
+    — passes the AIData attack-vars sub-area in r7; sole caller 0x080F0354 playerAI_sub_80F0354 — used
+    from the player-AI routine
+  refs:
+  - bn6f/asm/asm00_2.s:6167
+  - 0x080F0354 playerAI_sub_80F0354
+  reproduce: python3 tools/asmcat.py 0x08011790
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- which handlers live in table off_80117D4 and what each one does
+- exact semantics of oAIData_BLeftAbility (which in-battle ability it selects)
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8011790 -> ai_dispatchBLeftAbility
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8011790

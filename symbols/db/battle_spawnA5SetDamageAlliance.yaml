@@ -1,0 +1,47 @@
+name: battle_spawnA5SetDamageAlliance
+address: '0x080D9F90'
+kind: function
+status: probable
+summary: Spawns battle object type 0xA5 and initializes its damage word and alliance/flip halfword from
+  caller-supplied values.
+interface: (r0 = object id 0xA5 for spawn, r1-r4 pass through to spawn, r5 = source halfword, r6 = damage
+  word) -> r0 = caller's r5; flags from spawn result
+details: 'Wrapper over object_spawnType3 with the object id hardcoded to 0xA5; the caller''s r1-r4 are
+  passed through unmodified as the spawn''s other arguments. If the spawn returns a non-null object pointer,
+  it stores r6 (word) at oBattleObject_DamageAndStaminaDamageCounterDisabler and copies the halfword at
+  [r5] to oBattleObject_AllianceAndDirectionFlip. r5 and r6 are callee-saved registers used as an argument
+  channel: r5 is pushed/restored around its use, and r0 is reloaded from r5 before returning. On spawn
+  failure (flags zero) it returns immediately without touching fields.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mov r0, #0xa5 + bl object_spawnType3 fixes the spawned object id to 0xA5 (0x080D9F94-98); str
+    r6, [r0,#oBattleObject_DamageAndStaminaDamageCounterDisabler] writes caller''s r6 as the new object''s
+    damage (0x080D9F9E); ldrh r1,[r5,#oBattleObject_AllianceAndDirectionFlip]; strh r1,[r0,...] copies
+    an alliance/flip halfword from caller''s r5 (0x080D9FA2-FA4); push {r5}/pop {r5} around the body shows
+    r5 is a caller-passed argument, not local state; beq locret_80D9FA6 skips the field writes when the
+    spawn helper returned zero'
+  refs:
+  - bn6f/asm/asm31.s:74181
+  - 0x080D9FA8 sub_80D9FA8
+  - 0x08003358 object_spawnType3
+  reproduce: python3 tools/asmcat.py 0x080D9F90
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- Which battle object id 0xA5 actually is (unknown without the object table or a documented caller)
+- Why the caller passes data in r5/r6 and what sub_80D9FA8 loads into them
+- Whether the r0 = r5 return is intentional or a disassembly artifact (e.g. a mov r0,r0 padding misread)
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D9F90 -> battle_spawnA5SetDamageAlliance
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D9F90

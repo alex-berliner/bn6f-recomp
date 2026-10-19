@@ -1,0 +1,41 @@
+name: battle_clearCollisionDataExtra
+address: '0x0801A6A6'
+kind: function
+status: probable
+summary: Zero-fills a 0x14-byte region at offset 0x80 of the active battle object's collision data block.
+interface: (r5 = battle object, no args) -> r0 = destroyed; no return value
+details: Reads oBattleObject_CollisionDataPtr from the battle object at r5, adds 0x80 to skip past the
+  base collision struct, and calls ZeroFillByHalfword with count 0x14 (20 bytes = 10 halfwords) to clear
+  that tail region. The r5 base-addressing convention suggests this runs inside a battle object routine
+  where r5 holds the current object. The cleared area presumably holds per-hit or per-frame collision
+  scratch that must be reset before reuse. No flags or return values are meaningful; r4 is preserved.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldr r0,[r5,#oBattleObject_CollisionDataPtr] shows it targets the object's collision/hit data
+    block; add r0,#0x80 targets a region 0x80 bytes past the collision data start; mov r1,#0x14 + bl ZeroFillByHalfword
+    clears 20 bytes as halfwords, a plain clear with no computed values
+  refs:
+  - bn6f/asm/asm00_2.s:23732
+  - 0x080008C0 ZeroFillByHalfword
+  reproduce: python3 tools/asmcat.py 0x0801A6A6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- No callers are known, so the trigger context (which battle phase or object routine invokes this) is
+  unknown
+- The exact layout of the collision data block beyond 0x80 bytes is undocumented; knowing which fields
+  the 0x14 bytes cover would confirm whether these are hit entries, hurtlist entries, or scratch
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_801A6A6 -> battle_clearCollisionDataExtra
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_801A6A6

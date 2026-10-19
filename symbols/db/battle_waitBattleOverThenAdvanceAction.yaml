@@ -1,0 +1,45 @@
+name: battle_waitBattleOverThenAdvanceAction
+address: '0x080D42CC'
+kind: function
+status: probable
+summary: Battle object step that waits until the battle is over and its timer expires, then switches the
+  object to action 8 and resets its phase.
+interface: (r5 = battle object) -> r0 = 0 when it transitions (else clobbered); modifies oBattleObject_Timer2,
+  oBattleObject_CurAction, oBattleObject_CurPhaseAndPhaseInitialized
+details: First calls battle_isBattleOver; while the battle is still running (nonzero return) the function
+  returns without doing anything. Once the battle is over, it decrements the object's Timer2 halfword
+  each call until it reaches zero. At that point it stores 8 into CurAction (byte) and clears CurPhaseAndPhaseInitialized,
+  forcing the object's action/phase state machine into action 8 at phase 0. Timer2 must be preloaded by
+  earlier code, since no setup occurs here. r5 is an incoming battle object pointer not set up by this
+  routine itself.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl battle_isBattleOver with bne exit: idle until battle-over conditions are met; ldrh/sub #1/strh
+    on oBattleObject_Timer2: per-frame countdown gate before the transition; strb #8 into oBattleObject_CurAction
+    plus strh #0 into CurPhaseAndPhaseInitialized: state-machine handoff to a new action; called from
+    battle object context (r5 = object, oBattleObject_* offsets), consistent with an action/phase step
+    handler'
+  refs:
+  - bn6f/asm/asm31.s:61753
+  - 0x0800A18E battle_isBattleOver
+  reproduce: python3 tools/asmcat.py 0x080D42CC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- no callers known, so which object(s) use this step and what action 8 means in their state machine is
+  unconfirmed
+- what sets oBattleObject_Timer2 before this step runs
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D42CC -> battle_waitBattleOverThenAdvanceAction
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D42CC

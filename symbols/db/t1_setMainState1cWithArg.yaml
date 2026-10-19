@@ -1,0 +1,50 @@
+name: t1_setMainState1cWithArg
+address: '0x0803CB8C'
+kind: function
+status: probable
+summary: Requests main-loop jumptable state 0x1C, zeroing its 8-byte state block and storing the caller's
+  pointer (likely a deferred callback/data) as its argument.
+interface: (r0 = arg pointer for state 0x1C handler, passed through) -> r0 unchanged; writes byte_2008978..980
+  = 0, [0x200897C] = r0, toolkit MainJumptableIndex = 0x1C
+details: 'Zero-fills the 8-byte state struct at byte_2008978 via ZeroFillByWord, then stores r4 (the original
+  r0) at offset +4 (dword_200897C), so field +0 is zero and +4 carries the caller-supplied pointer. It
+  then loads the toolkit via r10''s MainJumptableIndexPtr and writes 0x1C to the main jumptable index
+  byte, switching the main loop''s next state. This matches the caller sprite_loadTilesDuringFadeOrRun,
+  which defers a follow-up callback until a fade ends: state 0x1C is presumably the main-loop handler
+  that consumes the stored pointer (e.g. invokes it) once that state runs. The two other callers (sub_8039F6A,
+  sub_803A086) presumably use it the same way to hand work to state 0x1C.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_803CB8C: bl ZeroFillByWord with r0=byte_2008978, r1=8 clears the struct; str r4,[r5,#0x4]
+    stores the incoming r0 into dword_200897C before the state switch; ldr r1,[r10,#oToolkit_MainJumptableIndexPtr];
+    strb 0x1C sets the main jumptable state; caller 0x080495CE sprite_loadTilesDuringFadeOrRun ''defers
+    a follow-up callback until the screen fade ends'', consistent with queuing a callback for a later
+    main state'
+  refs:
+  - bn6f/asm/asm03_1_1.s:8258
+  - 0x080495CE sprite_loadTilesDuringFadeOrRun
+  - 0x08039F6A sub_8039F6A
+  - 0x0803A086 sub_803A086
+  - 0x080008E0 ZeroFillByWord
+  reproduce: python3 tools/asmcat.py 0x0803CB8C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- what main jumptable state 0x1C does with the stored pointer (callback invocation vs data) — need the
+  state 0x1C handler's disassembly
+- which project prefix (t1/t3/etc.) actually covers the main jumptable
+- whether field +0 of the struct is a flag/count the 0x1C handler checks
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803CB8C -> t1_setMainState1cWithArg
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803CB8C

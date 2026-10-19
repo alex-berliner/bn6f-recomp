@@ -1,0 +1,42 @@
+name: battle_settleCollisionCounters
+address: '0x0800EAC4'
+kind: function
+status: probable
+summary: Transfers a pending value stored at collision-data +0x84 into the counter at +0x80 and clears
+  the pending slot.
+interface: (r0 = battle object, r5 also points to it) -> r0 = clobbered; flags from the final strh/pop
+  path (not meaningful)
+details: Loads the battle object's CollisionDataPtr from oBattleObject_CollisionDataPtr, reads the halfword
+  at +0x84, writes 0 back to +0x84, then reads the halfword at +0x80, subtracts the saved +0x84 value
+  from it, and stores the result back at +0x80. So +0x84 acts as a one-shot delta that is applied to the
+  running counter at +0x80 exactly once and then reset. Called from the enemy per-frame update (battle_8108F74),
+  so it settles a queued collision/counter adjustment each frame for that object.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldr r2,[r5,#oBattleObject_CollisionDataPtr] then ldrh r0,[r2,#0x84] / strh r1(0),[r2,#0x84]
+    reads and clears the pending slot; ldrh r1,[r2,#0x80]; sub r1,r1,r0; strh r1,[r2,#0x80] applies the
+    cleared value to the counter at +0x80; only caller battle_8108F74 is the virus/enemy per-frame update,
+    so this runs once per frame per enemy object
+  refs:
+  - bn6f/asm/object.s:6125
+  - 0x08108F74 battle_8108F74
+  reproduce: python3 tools/asmcat.py 0x0800EAC4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- exact meaning of the +0x80/+0x84 collision-data fields (flinch timer? armor charge? pending damage?)
+  — needs a writer of +0x84 and a reader of +0x80 to name them properly
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_800EAC4 -> battle_settleCollisionCounters
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800EAC4

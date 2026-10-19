@@ -1,0 +1,48 @@
+name: battle_setPoisonDamagePerTick
+address: '0x08014466'
+kind: function
+status: probable
+summary: Sets the acting object's AI-data poison damage to a fixed value and records a poison flag on
+  that side's player NaviStats.
+interface: (r5 = battle object, r0 on entry unused) -> r0 = result from battle_setPlayerNaviStatsField0E;
+  no meaningful return
+details: Loads the object's AIData pointer from oBattleObject_AIDataPtr and stores the literal 0x3C0 as
+  a halfword into oAIData_PoisonDamagePerTick, arming an ongoing poison-style per-tick damage. It then
+  reads the object's oBattleObject_Alliance byte and calls battle_setPlayerNaviStatsField0E_8015BEC with
+  r1 = 0, which writes a byte to offset 0x0E of that side's player NaviStats (only if the player object
+  exists and passes the state checks), presumably a 'poisoned' status flag consistent with the damage
+  just queued. The function reads r5 rather than r0, so it is meant to be invoked with the battle object
+  already in r5 (e.g. from an object/script handler).
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: strh 0x3C0 into [r3,#oAIData_PoisonDamagePerTick] shows it arms a fixed per-tick poison damage
+    on the AIData; ldrb r0,[r5,#oBattleObject_Alliance]; r1=0 selects which side's NaviStats is touched;
+    callee battle_setPlayerNaviStatsField0E_8015BEC writes one byte at NaviStats+0x0E gated by player-state
+    checks, matching a status flag; sole caller sub_80158CC is itself unnamed, so no call-site semantics
+    are available
+  refs:
+  - bn6f/asm/asm00_2.s:12894
+  - 0x080158CC sub_80158CC
+  - 0x08015BEC battle_setPlayerNaviStatsField0E_8015BEC
+  reproduce: python3 tools/asmcat.py 0x08014466
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- sub_80158CC is undocumented, so the triggering context (which chip/AI event calls this) is unknown
+- the meaning of the value 0x3C0 in oAIData_PoisonDamagePerTick (raw damage per tick vs. encoded) is not
+  confirmed
+- exact meaning of NaviStats+0x0E byte (poisoned flag vs. counter) rests on the callee's summary
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8014466 -> battle_setPoisonDamagePerTick
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8014466

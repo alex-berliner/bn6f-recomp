@@ -1,0 +1,46 @@
+name: object_copyPositionFromRelatedObject
+address: '0x080D5CC8'
+kind: function
+status: probable
+summary: Copies the world X/Y/Z position of the battle object's related object onto the object itself
+  and recomputes its panel coordinates.
+interface: (r5 = battle object) -> r0 = passed through to object_setPanelsFromCoordinates; flags clobbered
+  by bl
+details: Takes the pointer at oBattleObject_RelatedObject1Ptr of the battle object in r5, and block-copies
+  the three words at offset 0x34 (the related object's world X, Y, Z position fields) to offset 0x34 of
+  the object itself via ldmia/stmia. It then calls object_setPanelsFromCoordinates so the object's PanelX/PanelY
+  are recomputed from the new world position. Effectively this snaps the object to the same tile/position
+  as its related object (e.g. a linked or parent entity). The 0x34 offset for position is consistent with
+  the callee operating on world X/Y/Z.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldr r0,[r5,#oBattleObject_RelatedObject1Ptr]; add r0,#0x34; ldmia r0!,{r1-r3} reads three position
+    words from the related object; mov r0,#0x34; add r0,r0,r5; stmia r0!,{r1-r3} writes them to the same
+    offset of the own object; bl object_setPanelsFromCoordinates then refreshes PanelX/PanelY from the
+    copied world position (callee summary); Single call site sub_80D5C9A immediately precedes it, consistent
+    with a small position-sync helper
+  refs:
+  - bn6f/asm/asm31.s:65297
+  - 0x080D5C9A sub_80D5C9A
+  - 0x0800E2AC object_setPanelsFromCoordinates
+  reproduce: python3 tools/asmcat.py 0x080D5CC8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- Which entity types use RelatedObject1Ptr (parent, mirrored boss part, etc.) and when this sync runs
+  is unknown without seeing the caller sub_80D5C9A
+- Exact field names of the three words at +0x34 (X/Y/Z order) not confirmed
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D5CC8 -> object_copyPositionFromRelatedObject
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D5CC8

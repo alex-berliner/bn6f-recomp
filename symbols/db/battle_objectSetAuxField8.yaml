@@ -1,0 +1,43 @@
+name: battle_objectSetAuxField8
+address: '0x080C10E8'
+kind: function
+status: probable
+summary: Null-safe one-shot helper that writes 8 into offset +8 of an object's auxiliary structure, invoked
+  when the 0x40000000 collision flag fires.
+interface: (r0 = pointer to auxiliary object struct, may be NULL) -> r0 = untouched; returns, no flags
+  of interest
+details: Tests r0 and returns immediately if NULL; otherwise stores the literal 8 at [r0+8] and returns.
+  The caller (battle_objectUpdateFlagBit30Handler) calls it during phase 0 when collision flag bit 0x40000000
+  is set, passing the object's ExtraVars+8 pointer, then clears that pointer, making this a one-shot action.
+  The target structure is only reachable through ExtraVars+8, so it is an optional/allocated-on-demand
+  sub-struct. Field +8 receiving 8 likely encodes a state, phase, or counter value, but its semantic meaning
+  is not shown here. No other callees or flag interaction occur.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'asm: ''tst r0,r0 / beq'' + ''mov r1,#8 / str r1,[r0,#8]'' — pure null-checked store of constant
+    8 at +8; caller battle_objectUpdateFlagBit30Handler: runs this one-shot on the object''s ExtraVars+8
+    pointer when flag bit 0x40000000 is set, then clears the pointer; asm: ''mov pc, lr'' tail — no other
+    side effects, r0 not modified'
+  refs:
+  - bn6f/asm/asm31.s:20004
+  - 0x0810FDF0 battle_objectUpdateFlagBit30Handler
+  reproduce: python3 tools/asmcat.py 0x080C10E8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- what structure r0 points to (the ExtraVars+8 sub-struct) and which field offset +8 is
+- what value 8 means there — state, timer, or kind — needs a reader of that field or another caller
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C10E8 -> battle_objectSetAuxField8
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C10E8

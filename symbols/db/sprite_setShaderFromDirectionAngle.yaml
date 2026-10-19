@@ -1,0 +1,44 @@
+name: sprite_setShaderFromDirectionAngle
+address: '0x080BD374'
+kind: function
+status: probable
+summary: Sets an object's sprite color-shader id to 1057 * its battle-object direction angle, i.e. picks
+  a palette rotation for the sprite based on which way it faces.
+interface: (r5 = battle object pointer) -> r0 = none; calls sprite_setColorShader(r0 = shader id = DirectionAngle*1057,
+  r1 = DirectionAngle)
+details: Reads oBattleObject_DirectionAngle from the battle object in r5 and computes r0 = ((angle*33)<<5)+angle
+  = angle*1057, then tail-calls sprite_setColorShader, which stores that id into the sprite block selected
+  by the object's sprite index. The factor 1057 suggests the shader table has a large fixed stride per
+  direction angle (e.g. one full palette ramp per facing), so each facing angle selects a different palette
+  rotation of the same sprite. Only r5 is used, so the caller must have the object pointer in r5; there
+  is no error handling and the direction byte is used raw.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r1,[r5,#oBattleObject_DirectionAngle] shows the source field is the battle object's direction
+    angle; the shift/add chain computes r1*33*32+r1 = r1*1057 before the bl; callee sprite_setColorShader
+    stores the value as a color-shader id in the object's sprite block; sole caller sub_80BD064 shares
+    the r5 object pointer convention
+  refs:
+  - bn6f/asm/asm31.s:11258
+  - 0x080BD064 sub_80BD064
+  - 0x08002ED0 sprite_setColorShader
+  reproduce: python3 tools/asmcat.py 0x080BD374
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- what shader table stride 1057 corresponds to (entries per palette? per animation frame?)
+- which caller context / object types invoke this (only sub_80BD064 seen)
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BD374 -> sprite_setShaderFromDirectionAngle
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BD374

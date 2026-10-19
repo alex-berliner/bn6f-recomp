@@ -1,0 +1,51 @@
+name: object_updateOccupiedPanel
+address: '0x080DE730'
+kind: function
+status: probable
+summary: When the battle object has moved to a new panel, restores the panel type on its old panel, saves
+  the new panel coords, and refreshes its collision region.
+interface: (r5 = battle object ptr, no args) -> r0 = collision data ptr from object_setCollisionRegion;
+  no meaningful flags
+details: 'Compares the object''s current PanelX/PanelY with cached copies at offsets 0x60/0x61 (previous
+  panel); if equal, does nothing. Otherwise calls object_changeSolidPanelType for the OLD panel (offsets
+  0x60/0x61), letting the object''s Param1 table decide the replacement type (0xFF = leave unchanged),
+  effectively clearing/restoring the panel it occupied. Then it writes the new PanelX/PanelY into 0x60/0x61
+  and calls object_setCollisionRegion with region index 1 to re-base the object''s collision on the new
+  panel. Quirk: it''s the object''s own tracked position, not the engine''s, that decides whether anything
+  happens.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: cmp of [PanelX/PanelY] vs fields 0x60/0x61 with early return shows 0x60/0x61 cache the last
+    occupied panel (asm lines 2-11); object_changeSolidPanelType is called with r0/r1 loaded from 0x60/0x61,
+    i.e. the previous panel, before they are overwritten; new PanelX/PanelY are stored back into 0x60/0x61
+    immediately after the panel-type call; object_setCollisionRegion called with r0=1 right after updating
+    position, tying collision to the new panel; three callers (0x080DE544/80DE594/80DE618) are object
+    update routines for the same entity family using Param1-driven panel changes
+  refs:
+  - bn6f/asm/asm31.s:83943
+  - 0x080DE544 sub_80DE544
+  - 0x080DE594 sub_80DE594
+  - 0x080DE618 sub_80DE618
+  - 0x080DE768 object_changeSolidPanelType
+  - 0x0801A07C object_setCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080DE730
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- What entity uses this (callers sub_80DE544 etc. are unnamed), and whether the Param1 table restores
+  the original ground type or a fixed type
+- Whether region index 1 means single-panel collision or something else in object_setCollisionRegion
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DE730 -> object_updateOccupiedPanel
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DE730

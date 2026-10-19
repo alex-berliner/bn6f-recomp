@@ -1,0 +1,40 @@
+name: disableInterrupts
+address: '0x03005E6A'
+kind: function
+status: probable
+summary: Clears REG_IME, globally disabling interrupts.
+interface: () -> r0 = clobbered (not meaningful); REG_IME = 0
+details: Stores 0 as a halfword to the Interrupt Master Enable register (0x04000208) and returns immediately,
+  with no other side effects. It lives in IWRAM (0x03005Exx), alongside IWRAM-resident SIO code (libSIO814469C,
+  sio_linkStateUpdate), suggesting it is placed in fast/copyable memory for use during timing-sensitive
+  or reset-critical sequences. Its only known caller is the early startup routine start_80002A8. Being
+  a leaf with no callee, its purpose rests entirely on the single store.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: strh r2,[r3] with r3 = .word InterruptMasterEnableRegister and r2 = 0 — writes 0 to REG_IME;
+    no other code between push and pop — the routine is exactly this one store; located at 0x03005E6A
+    in IWRAM next to .word sio_linkStateUpdate+1 / libSIO814469C+1; sole caller start_80002A8 is an early
+    startup/entry routine
+  refs:
+  - bn6f/asm/asm38.s:414
+  - 0x080002A8 start_80002A8
+  reproduce: python3 tools/asmcat.py 0x03005E6A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- Why callers need interrupts off (startup init vs. SIO reset path) — more callers or the startup routine's
+  known behavior would confirm context
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_3005E6A -> disableInterrupts
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_3005E6A

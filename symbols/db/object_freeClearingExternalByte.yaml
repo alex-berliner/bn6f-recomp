@@ -1,0 +1,48 @@
+name: object_freeClearingExternalByte
+address: '0x080EA10A'
+kind: function
+status: probable
+summary: 'Teardown routine for a battle object: zeroes an outside byte the object pointed at, then frees
+  the object''s slot.'
+interface: (r5 = battle object) -> r0 = object_freeMemory result; Z set iff oBattleObject_Param1 was 0
+  (cmp has no branch, flags survive the return)
+details: Reads the object's Param1 byte and compares it to 0, but branches nowhere — the flags from that
+  compare are still live when the function returns, so a caller (none yet identified) could be testing
+  Param1 through them. It then loads a pointer from oBattleObject_ExtraVars+4 and stores 0 to the byte
+  it points at, wiping some external flag/counter owned elsewhere before the object disappears. Finally
+  it tail-calls object_freeMemory, which clears the object's flags, releases its bitmap slot, and unlinks
+  it from the active-object list, then pops pc. The shape — r5 object, freeMemory last — matches a per-object
+  delete/update-fallthrough handler rather than a standalone routine. What the cleared byte belongs to
+  and why Param1 is compared is not visible here.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'strb r1,[r0] with r0=[r5,#oBattleObject_ExtraVars+4]: writes 0 through a pointer stored on
+    the object; cmp r0,#0 after ldrb r0,[r5,#oBattleObject_Param1] with no following branch: dead compare
+    unless the caller consumes flags; bl object_freeMemory immediately before pop {pc}: standard object-slot
+    release ends the routine; only 9 instructions and no other callee: pure teardown, no game logic'
+  refs:
+  - bn6f/asm/asm31.s:109892
+  - 0x08003458 object_freeMemory
+  reproduce: python3 tools/asmcat.py 0x080EA10A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- No caller is known, so it is unconfirmed whether this is a delete-handler selected via the object's
+  function table
+- Which structure owns the byte at [ExtraVars+4] is unknown; a caller or the object's spawn code would
+  show what the cleared flag gates
+- Whether the Param1 compare is meaningful (caller reads flags) or leftover dead code
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80EA10A -> object_freeClearingExternalByte
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EA10A

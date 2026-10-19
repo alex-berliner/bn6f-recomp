@@ -1,0 +1,46 @@
+name: e_setEntryValue0C
+address: '0x0811AD04'
+kind: function
+status: probable
+summary: Writes a 16-bit value into field 0xC of an entry of the 0x58-byte struct array at 2008450 and
+  clears that entry's byte 0x9, if the entry is in use.
+interface: (r0 = value to store, r2 = entry index, r1 unused) -> void; no meaningful return, flags clobbered
+  by callee
+details: Saves r0 (the caller's value) in r4, then calls getStructFrom2008450 with r2 as the index; the
+  callee sets NZ flags from the entry's in-use/status byte and returns the entry pointer in r1. If the
+  entry is not in use (BEQ), nothing is written. Otherwise the value is stored as a halfword at offset
+  0xC of the entry and byte offset 0x9 is zeroed, likely a status/pending flag associated with that value.
+  The function is otherwise a two-field setter; the exact meaning of fields 0xC and 0x9 depends on the
+  struct layout, which is not shown here.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl getStructFrom2008450 with r0=r2 shows the 0x58-byte-struct array lookup by index (callee
+    returns in-use byte + entry pointer); strh r4, [r1,#0xc] stores the saved r0 argument as a halfword
+    into the entry; mov r0,#0 / strb r0,[r1,#9] clears a byte-sized field at offset 0x9 of the same entry;
+    beq locret_811AD16 skips both writes when the callee's in-use byte was zero; r4-r7 pushed though only
+    r4 is used, matching a small leaf-style setter
+  refs:
+  - bn6f/asm/asm32.s:26782
+  - 0x081302F4 sub_81302F4
+  - 0x080466C4 getStructFrom2008450
+  reproduce: python3 tools/asmcat.py 0x0811AD04
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- What the 0x58-byte entries at 2008450 represent (which game subsystem) and what field 0xC and the flag
+  at 0x9 mean
+- What sub_81302F4 passes in r0/r2, which would pin down the semantic name
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_811AD04 -> e_setEntryValue0C
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811AD04

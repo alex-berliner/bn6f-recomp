@@ -1,0 +1,44 @@
+name: object_playDelayedSfx
+address: '0x080A76CC'
+kind: function
+status: probable
+summary: Counts down an object's delay timer at +0x34 and plays sound effect 0xE2 once when the timer
+  reaches 1.
+interface: (r0 = unused by the callee body; r5 = object work struct, caller-set) -> r0 = sound ID passed
+  to PlaySoundEffect when timer hits 1; no meaningful return
+details: 'Reads a 32-bit countdown field at [r5+0x34]: if it is 0 the routine does nothing and leaves
+  it at 0 (one-shot latch). If it equals 1 it plays sound effect 0xE2 via PlaySoundEffect, then falls
+  through to the shared decrement. Any other positive value just decrements the field. So a caller that
+  loads the field with N gets the sound played after N-1 updates, exactly once, after which the 0 value
+  makes it inert. r5 must be an object/entity work structure whose +0x34 field is a scratch timer; r0-r3
+  of the entry are ignored.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldr r0,[r5,#0x34]; cmp r0,#0; beq return — 0 is a do-nothing terminal state; cmp r0,#1; mov
+    r0,#0xe2; bl PlaySoundEffect — sound fires exactly when the timer hits 1; loc_80A76DE: sub r0,#1;
+    str r0,[r5,#0x34] — shared decrement of the same timer field; Only known caller is sub_80A7640, so
+    r5 is set up by that parent as an object work pointer'
+  refs:
+  - bn6f/asm/asm29.s:4686
+  - 0x080A7640 sub_80A7640
+  - 0x080005CC PlaySoundEffect
+  reproduce: python3 tools/asmcat.py 0x080A76CC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- Which object/entity type owns the +0x34 timer field (needs sub_80A7640's context or the struct layout)
+- What game event sound effect 0xE2 corresponds to, and when the caller sets the delay
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80A76CC -> object_playDelayedSfx
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A76CC

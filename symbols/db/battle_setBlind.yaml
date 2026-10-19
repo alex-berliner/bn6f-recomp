@@ -1,0 +1,43 @@
+name: battle_setBlind
+address: '0x08013F04'
+kind: function
+status: probable
+summary: Inflicts the blind (darkness) status on a battle object for 600 frames and sets its blind flag.
+interface: (r0 unused, r5 = battle object) -> writes BlindTimer to the object's collision data and sets
+  flags2 bit 0x20; flags not meaningful
+details: Loads the collision-data pointer from the object at r5 and stores 0x258 (600 frames, 10 seconds)
+  into the BlindTimer field, then calls object_setFlag2 with bit 0x20, presumably marking the blind/darkness
+  state as active. The constant 0x258 matches a timed status effect counted down elsewhere. The r5 base
+  and the oBattleObject_CollisionDataPtr load indicate this runs on the caller's own battle object, most
+  likely the player. object_setFlag2 only ORs the given bits into the flags2 word of the collision data,
+  so the function is purely a status application, not a visual effect itself.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldr r0, off_80141C0 (=0x258); strh r0,[r1,#oCollisionData_BlindTimer] stores a 600-frame timer;
+    mov r0,#0x20; bl object_setFlag2 sets a single status bit in the object''s flags2; ldr r1,[r5,#oBattleObject_CollisionDataPtr]
+    shows it operates on the caller''s battle object; callee summary: object_setFlag2 sets bits in a battle
+    object''s flags2 collision word, confirming the flag write'
+  refs:
+  - bn6f/asm/asm00_2.s:12023
+  - 0x0801A16C object_setFlag2
+  reproduce: python3 tools/asmcat.py 0x08013F04
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-015108'
+open_questions:
+- no callers known, so the trigger (e.g. dark chip use) and which object (player?) is passed in r5 are
+  unconfirmed
+- whether bit 0x20 of flags2 is read elsewhere as 'blind active' is not shown here
+sources:
+- wf investigate investigate-20261019-015108
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 873f419a
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8013F04 -> battle_setBlind
+  where: bn6f ca7eb245
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8013F04
