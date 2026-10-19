@@ -1330,14 +1330,17 @@ def try_kill(D, side=1):
     w = state_at(D); b.e.load(w[1])     # (state_at keeps one slot)
     log(f"  {'kill' if side else 'die'}: this battle goes back {back} frames (of 600 looked at)")
     kill = ','.join(f'{a + 0x24:#x}=0x0000/2' for a in foes)
-    set_emu_pokes([[D, kill]]); b.e.load(w[1]); th = []
+    vD = w[5].v if w[5] is not None else b.vbase(w[2])
+    # (on the video's keys, not none: on the custom screen nothing ends without them, and the screen then matched
+    # its own end at once, run9y 1082950: a deletion learned at 0 frames)
+    set_emu_pokes([[D + 1, kill]]); b.e.load(w[1]); th = []
     for g in range(D, D + 420):
-        b.e.step(0x3FF); th.append(emu_thumb(b.e.shot()))
+        b.e.step(b.key(vD + int(round((g - D) * bm.RATE)))); th.append(emu_thumb(b.e.shot()))
     set_emu_pokes()
     tmpl = th[-1][PANEL_T]
     d = [float(np.abs(x[PANEL_T] - tmpl).mean()) for x in th]
     L = next((k for k, x in enumerate(d) if x < 12), None)
-    vD = w[5].v if w[5] is not None else b.vbase(w[2])
+    if L is not None and L < 30: L = None          # (the screen did not change: no end learned)
     cands = []                  # (deletion frame, the video's end frame, how): each tried until one holds
     # (from up to 600 frames before the loss: the video's battle can end before the sync notices)
     if L is not None:
@@ -1357,6 +1360,14 @@ def try_kill(D, side=1):
         vb = next((v for v in range(vD - back + int(Lb * bm.RATE), vD + 4000) if float(b.T[min(max(v, 0), b.N - 1)].mean()) < 10), None)
         if vb is not None:
             gb = D + int(round((vb - vD) / bm.RATE)); cands.insert(0, (gb - Lb, gb, f'black {Lb} frames after'))
+    # the video's end asked for (VIDSYNC_KILL_END=G, the game frame of the video's black or result screen): a long
+    # navi battle has black frames of its own before its end (run9y 1083189, Colonel's attacks; the end ~1085629)
+    if KILL_END and KILL_END[0] > D:
+        ge = KILL_END.pop(0)
+        if Lb is not None: cands = [(ge - Lb, ge, f'black {Lb} frames after (asked for)')]
+        elif L is not None: cands = [(ge - L, ge, f'result screen {L} frames after (asked for)')]
+        log(f'  {"kill" if side else "die"}: the end asked for at {ge}: ' + ', '.join(h for _, _, h in cands))
+        return kill_try(D, back, foes, vD, side, tmpl, cands)
     # the first 150 frames after the deletion ("YOU WIN" / "ENEMY DELETED", the fade) laid along the video: for
     # a battle with no result screen (the story ends it, its talk mashed through) or one the template misplaces
     seq = np.stack([th[k] for k in range(0, 150, 5)]).astype(np.float32)
@@ -1373,6 +1384,11 @@ def try_kill(D, side=1):
         + (f'; first alike at {vD + first - back} (cost {cs[first]:.1f})' if first is not None else ''))
     if first is not None:
         W0 = D + int(round((first - back) / bm.RATE)); cands.append((W0, W0 + 150, 'the deletion and fade'))
+    return kill_try(D, back, foes, vD, side, tmpl, cands)
+
+KILL_END = [int(x) for x in os.environ.get('VIDSYNC_KILL_END', '').split(',') if x.strip()]
+def kill_try(D, back, foes, vD, side, tmpl, cands):
+    """try_kill's candidates (deletion frame, the video's end frame, how), each until one holds."""
     for W0, gR, how in cands:
         if W0 < D - back:
             log(f'  {"kill" if side else "die"}: {how}: a deletion at {W0} is before this battle ({D - back})'); continue
@@ -1471,7 +1487,7 @@ def kill_through_black(D, W0, gB, kill, vD, side, tmpl=None):
     # (skipped to its result screen: ours can win sooner than the video on the video's keys, run9r 1049400, ours
     # back on the map 200 frames before the video's deletion; the enemies are held alive (HP 9999) from the loss)
     hold = None
-    if tmpl is not None:
+    if True:            # (a battle that ends in black too: run9y 1083358, ours over in a few frames, the video's 2000 frames on)
         wD = state_at(D)
         if wD is None: return None
         b.e.load(wD[1]); foes = enemies_alive(side)
