@@ -1,0 +1,54 @@
+name: object_waitEntriesIdleThenFade
+address: '0x08129DC4'
+kind: function
+status: probable
+summary: Waits until every object pointer in the list at unk_20251A0 has its +7 flag cleared, then clears
+  a marker bit on all entries, advances the caller's event state (running a chatbox line when leaving
+  state 0x30), and fades the screen.
+interface: '(r5 = event/object struct: count at +0x20, state at +3, flags at +0x1b, script offset at +0x13)
+  -> void; early-returns with screen untouched if any list entry has byte +7 nonzero'
+details: 'The function is a polling/gating step: it scans r5[0x20] pointers in the array unk_20251A0,
+  and if any pointed-to object has a nonzero byte at offset 7 it returns immediately without side effects
+  (so it is presumably called every frame until the condition holds). Once all are clear, a second pass
+  strips bit 31 from each stored pointer and writes it back, suggesting bit 31 is a temporary mark/tag
+  set by earlier processing that is now cleared. It then performs a state transition on the r5 struct:
+  if r5[3] == 0x30 it is set to 0x28, a chatbox line is run via sub_812B3E4 (which reads a script index
+  from r5+0x13), and bit 0 of r5[0x1b] is cleared; otherwise r5[3] is set to 0x18. Finally it calls SetScreenFade(8,
+  0x10) to start a screen fade, making this look like the wrap-up step of a scripted event that despawns
+  or completes a batch of objects.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'loc_8129DD4: loops over r5[0x20]*4 entries of unk_20251A0, reading [ptr+7] and bne-ing straight
+    to pop if nonzero (wait/gate); loc_8129DEC: second pass does bic bit31 on each pointer and stores
+    it back (clearing a per-entry mark); cmp r0,#0x30 / strb 0x28 + bl sub_812B3E4: state 0x30 advances
+    to 0x28 and triggers a chatbox script line keyed off the struct; ldrb r1,[r5,#0x1b]; bic bit0; strb:
+    clears a flag byte in the same event struct; bl SetScreenFade with (8, 0x10): screen fade issued after
+    the transition, typical of a cutscene step end'
+  refs:
+  - bn6f/asm/asm33.s:14046
+  - 0x0812B3E4 sub_812B3E4
+  - 0x08006270 SetScreenFade
+  - 0x0812B5AC sub_812B5AC
+  reproduce: python3 tools/asmcat.py 0x08129DC4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- No known callers, so the identity of the r5 struct (event controller vs object) and when this step runs
+  is unconfirmed
+- The meaning of byte +7 in the entries at unk_20251A0 (idle/despawn-complete flag?) and of pointer bit
+  31
+- What states 0x30, 0x28 and 0x18 mean in the event state machine, and what script sub_812B3E4 plays here
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8129DC4 -> object_waitEntriesIdleThenFade
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8129DC4

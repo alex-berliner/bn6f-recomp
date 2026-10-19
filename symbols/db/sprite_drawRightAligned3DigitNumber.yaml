@@ -1,0 +1,48 @@
+name: sprite_drawRightAligned3DigitNumber
+address: '0x0801C3A4'
+kind: function
+status: probable
+summary: Renders a value (0–100) as a right-aligned 3-digit number of 8x16 tiles into a graphics buffer,
+  with leading blank tiles.
+interface: (r0 = value 0..100, r1 = dest tile buffer ptr) -> void; queues 3 GFX transfers of 0x40 bytes
+  each
+details: 'Encodes the value into three nibbles: 100 becomes 0x100, values <10 become 0xAA0|v (two blanks
+  + digit), others become bcdConvert(v)|0xA00 (hundreds/tens/ones, blank sentinel 0xA in the leading nibble
+  — the 100 special-case avoids 0x100|0xA00 = 0xB00 colliding with that sentinel). It then loops three
+  times, shifting each nibble, indexing the tile-pointer table at off_801D8D8 (entries 0–9 digits, 0xA
+  blank), and calls QueueEightWordAlignedGFXTransfer to copy 0x40 bytes (one 8x16 4bpp digit) to r1, advancing
+  r1 by 0x40 per digit. Result is a right-aligned numeric readout, e.g. an HP/counter display built from
+  sprite tiles.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'cmp r0,#0x64 / mov r0,#1 lsl 8: hardcodes 100 as nibbles 1,0,0 instead of the BCD path; cmp
+    r0,#0xa bge / 0xAA0|v: values under 10 get two 0xA (blank) tiles before the digit; bl memory_bcdConvert;
+    orr r0,#0xA00: decimal digits packed with 0xA as leading-blank sentinel; ldr r1,off_801C44C =off_801D8D8;
+    ldr r0,[r1,r0 lsl 2]: per-digit tile source picked from pointer table; loop r7=3, bl QueueEightWordAlignedGFXTransfer
+    with size 0x40 and dest +=0x40: writes three 8x16 digit tiles in order'
+  refs:
+  - bn6f/asm/asm00_2.s:27752
+  - 0x0801C368 sub_801C368
+  - 0x08000C00 memory_bcdConvert
+  - 0x08000AC8 QueueEightWordAlignedGFXTransfer
+  reproduce: python3 tools/asmcat.py 0x0801C3A4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- What sub_801C368 and its caller pass as r1 (which buffer/sprite this number is drawn into — HP counter,
+  chip counter, etc.) would confirm the subsystem prefix
+- Whether tile table off_801D8D8 entries 0xB+ exist or 0xA is strictly the blank tile
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_801C3A4 -> sprite_drawRightAligned3DigitNumber
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_801C3A4

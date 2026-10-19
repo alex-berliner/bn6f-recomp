@@ -1,0 +1,50 @@
+name: battle_hopUpdate
+address: '0x080E4EC8'
+kind: function
+status: probable
+summary: 'Per-frame movement step for a battle object performing a repeated forward hop: applies velocity,
+  and every 2 ticks respawns the hop (reposition, reset velocities, anim, action).'
+interface: (r5 = battle object pointer, implicit) -> void; updates oBattleObject_X/Z, velocities, Timer,
+  CurAnim, CurAction
+details: 'Each call adds XVelocity to X and subtracts ZVelocity from Z (so Z counts down, e.g. a hop height/offset
+  in 16.16 fixed point), then decrements the 16-bit Timer. When Timer reaches 0 it restarts the cycle:
+  Timer = 2, snaps pixel X/Y from panel grid coords via object_setCoordinatesFromPanels, offsets X by
+  facing*0xA0000 (10 px) using object_getFrontDirection (+1/-1), sets Z = 0x1E0000 (30), XVelocity = facing*0x50000
+  (5 px/tick), ZVelocity = 0xF0000 (15), sets CurAnim = 3 (hop/jump anim), calls sub_80E5024 (likely animation/state
+  setup) and sets CurAction = 8, then calls sub_80E4FE8 (likely per-frame anim/update tail) before returning.
+  Z=30 with ZVel=15 and Timer=2 means exactly 2 ticks per hop cycle, giving a regular hopping gait toward
+  the target.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'X += XVel / Z -= ZVel at top: per-frame physics step on oBattleObject fields; Timer countdown
+    with reset to 2 matches ZVelocity 0xF0000 draining Z 0x1E0000 in 2 ticks — a fixed hop cycle; object_getFrontDirection
+    result multiplied into X offset (0xA0000) and XVelocity (0x50000): hop direction follows alliance/facing;
+    object_setCoordinatesFromPanels + fixed Z/X offsets: hop start position is re-derived from panel coords
+    each cycle; CurAnim=3 and CurAction=8 stored after reset: begins/repeats a specific attack-move state'
+  refs:
+  - bn6f/asm/asm31.s:98009
+  - 0x080E4EB8 sub_80E4EB8
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800E29C object_setCoordinatesFromPanels
+  - 0x080E4FE8 sub_80E4FE8
+  reproduce: python3 tools/asmcat.py 0x080E4EC8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- purposes of callees sub_80E4FE8 and sub_80E5024 unconfirmed (probably anim update / state init)
+- which enemy or object uses this state, and whether CurAction 8 / anim 3 is specifically 'hop', needs
+  cross-referencing other handlers
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E4EC8 -> battle_hopUpdate
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E4EC8

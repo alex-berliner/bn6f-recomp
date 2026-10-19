@@ -1,0 +1,54 @@
+name: rfu_handleConnTimeout
+address: '0x08145FFC'
+kind: function
+status: probable
+summary: 'RFU link-state watchdog: times out a pending-connection slot, then forces a disconnect and fires
+  the connection callback with error 0x25.'
+interface: (r0 = unused/ignored) -> r0 = undefined; saves/restores IME, mutates eStruct200FE00 state fields,
+  may call rfu_forceDisconnect and the connection callback
+details: Runs with interrupts masked (IME saved/cleared/restored). If the link state byte eStruct200FE00+0x4
+  is 0xF (awaiting response), it decrements the per-slot countdown halfword at +0x28 + (+0x10)*2; when
+  it reaches 0 (or the partner status halfword read via dword_2010CB0[+0x10] equals 0x27), it calls sub_81464D4,
+  advances the state to 0x18 (disconnecting), clears slot 4 via rfu_clearSlot, clears the slot's bit in
+  the +0x24 mask, and zeroes the countdown. In state 0x18 it optionally calls sub_81464D4 again (when
+  +0x2 == 1), and once +0x2 reaches 0 it zeroes +0x5 and +0x4, calls rfu_forceDisconnect with the uid
+  bytes from dword_2010CC0, and invokes rfu_fireConnCallbackAndClearState(0x25, 1) to report the failed/terminated
+  link and clear the +0x14/+0x16 state halfwords. This is the timeout/failure path of the connection state
+  machine, driven repeatedly by sub_81453F0.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: state 0xF branch decrements the slot timer halfword at +0x28+slot*2 and on expiry sets state
+    byte +0x4 to 0x18 (loc_8146036); calls rfu_clearSlot(4, slot) and clears bit (1<<slot) in byte at
+    +0x24, freeing the connection slot; state 0x18 tail calls rfu_forceDisconnect then rfu_fireConnCallbackAndClearState(0x25,1)
+    — a teardown with error-style code; countdown also expires when dword_2010CB0[slot]'s halfword ==
+    0x27, a partner-side abort status; all six call sites are in sub_81453F0, the periodic RFU state-machine
+    driver
+  refs:
+  - bn6f/asm/libs.s:4314
+  - 0x081453F0 sub_81453F0
+  - 0x081454A4 sub_81453F0
+  - 0x081454C8 sub_81453F0
+  - 0x081461B0 rfu_fireConnCallbackAndClearState
+  - 0x081461D8 rfu_forceDisconnect
+  - 0x0814A934 rfu_clearSlot
+  reproduce: python3 tools/asmcat.py 0x08145FFC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- exact meaning of partner status value 0x27 and error code 0x25 (callback IDs)
+- what sub_81464D4 does (called on both timeout entry and state 0x18)
+- relationship to the standard rfu library naming for this timeout handler
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8145FFC -> rfu_handleConnTimeout
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8145FFC

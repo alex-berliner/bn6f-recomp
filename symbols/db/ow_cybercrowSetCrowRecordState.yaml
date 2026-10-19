@@ -1,0 +1,45 @@
+name: ow_cybercrowSetCrowRecordState
+address: '0x081432FA'
+kind: function
+status: probable
+summary: Writes a new state byte into one of the eight Cybercrow crow records unless it is locked at state
+  3.
+interface: (r0 = crow record index, r1 = new state value) -> r0 = record pointer (side-effect only); no
+  meaningful flags
+details: Calls ow_cybercrowGetCrowRecord to fetch the record at r0 (index * 0x14 into byte_2000D20), then
+  checks the record's first byte (its state). If the state is 3, the write is skipped entirely; otherwise
+  r1 is stored into offset 0 of the record. So state 3 acts as a locked/permanent flag that later countdown-reset
+  callers cannot overwrite. r1 is stashed in r4 across the call; the return value is the record pointer
+  from the callee, unused by callers.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl ow_cybercrowGetCrowRecord; mov r5, r0 fetches the record struct; ldrb r0, [r5]; cmp r0,
+    #3; beq locret skips the store when state == 3; strb r4, [r5] writes r1 into offset 0 of the record;
+    caller sub_8143220 ''sets state byte to 1 unless it is 3 (sub_81432FA)'' matches exactly; callee summary
+    confirms r0 indexes the eight 0x14-byte crow records'
+  refs:
+  - bn6f/asm/asm37_1.s:3041
+  - 0x08143220 sub_8143220
+  - 0x08143248 sub_8143248
+  - 0x08143294 sub_8143294
+  - 0x081431F8 ow_cybercrowGetCrowRecord
+  reproduce: python3 tools/asmcat.py 0x081432FA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- What gameplay meaning states 0-3 have for a crow record (e.g. which values mark collected/announced
+  crows) is not shown here
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81432FA -> ow_cybercrowSetCrowRecordState
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81432FA

@@ -1,0 +1,48 @@
+name: copyBgTileBand
+address: '0x08138908'
+kind: function
+status: probable
+summary: Draws a scrolling 32x8 background-map band plus a fixed 14x6 tile patch from byte_2016A00 into
+  BG tile block 1, positioned by a counter in the caller's struct.
+interface: (r5 = struct ptr; uses byte at r5+0xC as wrap-around position counter) -> r0 = void; no flags
+  used by callers likely
+details: 'No real arguments: it relies on r5 already pointing at a struct (set by caller sub_8138528)
+  and reads only field +0xC. It computes (byte+0xA0)&0x1F == byte mod 32 and calls call_sub_3005EBA(0,
+  pos, 1, 0xD300, 0x20, 8) — 0xD300 reads as a packed screen entry (tile 0x300, palette 0xD), suggesting
+  a 32x8 map strip filled at the wrapped offset. It then calls CopyBackgroundTiles(j=9, i=pos+1, block=1,
+  byte_2016A00, 14, 6), blitting a 14x6 block of tile IDs from a static buffer into tile block 1 at a
+  fixed row. The mod-32 arithmetic makes the band''s position cycle 0..31, i.e. an animated/scrolling
+  background segment with a fixed overlay patch. The trailing dword 0xD000 at dword_8138940 hints at a
+  sibling variant of this routine using a different packed entry.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r1,[r5,#0xC]; add #0xA0; lsl/lsr 24/27 => position = byte mod 32 (asm lines 2-5); call
+    call_sub_3005EBA with r3=0xD300, r4=0x20, r5=8: 32x8 strip using packed map entry 0xD300; call CopyBackgroundTiles(j=9,
+    i=pos+1, block=1, byte_2016A00, 14, 6) draws the fixed tile patch; byte_2016A00 referenced via off_8138938
+    as the tile-id source table'
+  refs:
+  - bn6f/asm/asm36.s:18073
+  - 0x08138528 sub_8138528
+  - 0x080018C2 CopyBackgroundTiles
+  - 0x080018D0 call_sub_3005EBA
+  reproduce: python3 tools/asmcat.py 0x08138908
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- exact semantics of call_sub_3005EBA (fill vs copy of map entries, and what r0/r2 select)
+- what structure r5 points to and what the +0xC counter counts (frames? scroll steps?)
+- which game screen this background belongs to — caller sub_8138528 is undocumented
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8138908 -> copyBgTileBand
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8138908

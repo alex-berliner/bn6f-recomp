@@ -1,0 +1,48 @@
+name: ai_freeBattleObjectExtraSlots
+address: '0x0810E0D4'
+kind: function
+status: probable
+summary: Releases up to four auxiliary objects/buffers attached to a battle object's extra-vars block,
+  zeroing each slot.
+interface: (r5 = battle object) -> r0 = 0 preserved per slot; no flags meaningful on return
+details: Reads four consecutive pointer fields at oBattleObject_ExtraVars+8, +0xC, +0x10 and +0x14 of
+  the object (r5). For each non-null pointer it calls sub_80D842E with the pointer in r0 — presumably
+  a delete/free/release routine — then stores 0 back into the slot. Slots that are already null are skipped.
+  The four slots are cleared unconditionally and independently, so this is a bulk cleanup of attachments
+  created earlier in the AI behavior. The trailing data (dispatch table off_810E120 with ai_updateBehavior
+  and ai_finishAttackByElement, plus timing byte tables) confirms this lives in the generic-AI module
+  and runs during attack-exit/behavior-update cleanup.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldr r0,[r5,#oBattleObject_ExtraVars+8..0x14]; tst/beq: four sibling pointer slots checked in
+    sequence; each non-null slot: bl sub_80D842E then ''mov r0,#0; str r0,[slot]'' — release then clear
+    pattern; callers ai_finishAttackByElement and ai_updateBehavior run this as part of attack-state teardown;
+    off_810E120 dispatch table mixes this with genericAI_* and battleObject_* handlers, placing it in
+    the AI subsystem'
+  refs:
+  - bn6f/asm/asm32.s:938
+  - 0x0810DE00 ai_finishAttackByElement
+  - 0x0810E17A ai_updateBehavior
+  - 0x0810E37A sub_810E37A
+  - 0x080D842E sub_80D842E
+  reproduce: python3 tools/asmcat.py 0x0810E0D4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- sub_80D842E is unnamed; its body would show whether the slots hold spawned objects, tasks or allocated
+  buffers (free vs. despawn)
+- which AI scripts allocate into these four ExtraVars slots and what each slot semantically holds
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_810E0D4 -> ai_freeBattleObjectExtraSlots
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810E0D4

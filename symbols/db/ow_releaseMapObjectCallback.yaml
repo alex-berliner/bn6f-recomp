@@ -1,0 +1,45 @@
+name: ow_releaseMapObjectCallback
+address: '0x080A7CF6'
+kind: function
+status: probable
+summary: Thin wrapper that releases a single overworld map object via FreeOverworldMapObject, likely used
+  as a callback/function pointer.
+interface: (r0 = map object slot/pointer, passed through) -> r0 = result of FreeOverworldMapObject; r4-r7
+  preserved
+details: 'The function is a 4-instruction trampoline: it saves r4-r7 and lr, tail-calls FreeOverworldMapObject
+  with r0 untouched, and returns. Since r0-r3 are never modified, its sole argument is forwarded directly
+  to the callee, which clears the object''s active bit in the global allocation bitfield, marks its slot
+  free, and unmarks it in the sprite system. The extra push/pop of r4-r7 (unnecessary for a plain tail-call)
+  suggests it conforms to a callback ABI that requires those registers preserved, i.e. it is probably
+  stored in a function-pointer table or passed as a destructor/cleanup handler. No callers are known,
+  so the exact registration site is unknown.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'body is only push {r4-r7,lr}; bl FreeOverworldMapObject; pop {r4-r7,pc} — pure delegation;
+    callee summary: FreeOverworldMapObject clears active bit, frees slot, unmarks sprite system; r0 is
+    not touched before the bl, so the argument is forwarded unchanged; saving r4-r7 despite a tail-call
+    implies a preserved-register callback convention rather than a direct call site'
+  refs:
+  - bn6f/asm/asm29.s:5586
+  - 0x080048B2 FreeOverworldMapObject
+  reproduce: python3 tools/asmcat.py 0x080A7CF6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- no callers known — which system registers this function pointer (map object cleanup table? object destructor?)
+  is unconfirmed
+- whether r0 is a slot index or a pointer to the map object struct
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80A7CF6 -> ow_releaseMapObjectCallback
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A7CF6

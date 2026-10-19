@@ -1,0 +1,47 @@
+name: battle_objectHoleCheckPhaseHandler
+address: '0x080BB694'
+kind: function
+status: probable
+summary: 'Battle-object phase handler: plays a sound and animation, waits 3 frames, then dispatches to
+  action 4 if the object''s panel is a hole/broken panel, else action 0x14.'
+interface: (r0 = unused (object passed in r5), r5 = battle object pointer) -> r0 = clobbered; updates
+  oBattleObject_CurPhase, CurAnim, CurAction, Flags, TimerAndTimer2
+details: State-machine step indexed by oBattleObject_CurPhase. Phase 0 sets phase to 4, CurAnim to 3,
+  plays sound effect 0x94, ORs bit 1 into oObjectHeader_Flags, and stores 3 into the TimerAndTimer2 word
+  (arming the low 16-bit timer). Later phases decrement oBattleObject_Timer and return until it hits 0,
+  then call object_getPanelParameters with the object's PanelX/PanelY and AND the result with 0x10010;
+  an exact match sets CurAction 4, otherwise CurAction 0x14, and zeroes CurPhaseAndPhaseInitialized to
+  restart the action. The meaning of actions 4 and 0x14 in the owning object's action table is not visible
+  from this function.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'tst r0,r0 / bne splits phase 0 (setup: anim 3, sound 0x94, flags|=2, timer=3) from later phases;
+    locret path decrements oBattleObject_Timer and returns while bgt holds, a frame countdown; bl object_getPanelParameters
+    with PanelX/PanelY then and r0,0x10010 / cmp tests panel status bits; bne branches to CurAction=0x14
+    vs CurAction=4, both resetting phase via CurPhaseAndPhaseInitialized=0; callee object_getPanelParameters
+    is documented as returning panel status flags or 0 off-field'
+  refs:
+  - bn6f/asm/asm31.s:7263
+  - 0x080005CC PlaySoundEffect
+  - 0x0800C8F8 object_getPanelParameters
+  reproduce: python3 tools/asmcat.py 0x080BB694
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- Which panel-status bits 0x10010 represents (assumed hole/broken flags) and what actions 4 and 0x14 do
+  in the owning object's table
+- Which battle object uses this handler — no callers or action table are known
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BB694 -> battle_objectHoleCheckPhaseHandler
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BB694

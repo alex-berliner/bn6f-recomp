@@ -1,0 +1,47 @@
+name: chatbox_waitStepQueueCursorOam
+address: '0x0803BBA4'
+kind: function
+status: probable
+summary: Queues one OAM entry for the chatbox's blinking wait-cursor, cycling its tile through three animation
+  frames on an 18-frame loop.
+interface: (r0 = visibility/done flag, r1 = base id/index, r2 = frame step amount, r3/r5 = cursor state
+  struct) -> r0 = next frame counter stored at [r5+7]; no meaningful return value
+details: The function builds a packed OAM attribute pair 0x40001000 | (r0<<16) | r1 and queues it through
+  sprite_queueOamEntry with attribute argument 0x0800 | tableValue, where tableValue comes from the 18-entry
+  halfword table byte_803BBDC indexed by the state byte at [r5+7] (doubled). The table holds values 1,
+  5 and 9 — tile indices three frames apart — six frames each, so the sprite's tile steps 1→5→9 across
+  an 18-frame cycle. The state byte is advanced by r2 (saved in r4) and wraps to 0 once it reaches 0x12
+  (18), giving a continuous looping animation. r0 appears to be a show/hide or done flag folded into the
+  high attribute halfword, consistent with the caller passing a done/not-done flag.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl sprite_queueOamEntryThunk_802FE28 with r0 = 0x40001000|(r0<<16)|r1 and r1 = 0x0800|table[i]
+    builds and queues an OAM entry (asm); byte_803BBDC holds halfwords 1,5,9 in blocks of six — a 3-frame,
+    18-frame tile animation cycle; counter at [r5+7] is advanced by r2 and wrapped at cmp r0,#0x12 / blt,
+    matching the table length; caller chatbox_waitStepUpdateEntities invokes it once per frame of a chatbox
+    wait step, feeding the done flag and an indexed id
+  refs:
+  - bn6f/asm/asm03_1_1.s:6012
+  - 0x0803A186 chatbox_waitStepUpdateEntities
+  - 0x0802FE28 sprite_queueOamEntryThunk_802FE28
+  reproduce: python3 tools/asmcat.py 0x0803BBA4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- exact meaning of the r0 flag bit and r1 id inside the packed OAM word (X position vs. id)
+- what struct r5/r3 points to (chatbox cursor state?) and what field 7 is
+- whether the cursor is the 'press A' arrow or some other wait indicator
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803BBA4 -> chatbox_waitStepQueueCursorOam
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803BBA4

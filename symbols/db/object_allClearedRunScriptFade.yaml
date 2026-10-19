@@ -1,0 +1,48 @@
+name: object_allClearedRunScriptFade
+address: '0x08129E7C'
+kind: function
+status: probable
+summary: 'Event trigger: if every object in the unk_20251A0 list is cleared, deactivate them all, run
+  chatbox script 0x28 from the r5 event struct, and fade the screen.'
+interface: (r0 unused, r5 = event/trigger struct) -> r0 = void; returns early (no script, no fade) if
+  any listed object has flag [obj+7] != 0
+details: r5 is an event/trigger struct whose byte at 0x20 holds a count; shifted left by 2 it gives the
+  byte size of a pointer array at unk_20251A0. First loop walks the array, masking off bit 31 of each
+  pointer (an in-use/disabled flag) and reading byte 7 of the pointed-to object; if any object's flag
+  is nonzero it returns without doing anything. Otherwise a second loop stores each pointer back with
+  bit 31 cleared (releasing/deactivating all objects), stores 0x28 into r5+3 — the field sub_812B3FC uses
+  as its script-ID lookup — and calls it to run that chatbox line. Finally SetScreenFade(8, 0x10) starts
+  a screen fade, likely transitioning out of the area/battle once everything is cleared.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r7,[r5,#0x20]; lsl r7,#2 sizes the pointer array at unk_20251A0; first loop bics bit31
+    and tests ldrb [r0,#7], bne locret — aborts if any object flagged; second loop str r0,[r1,r6] writes
+    bit31-cleared pointers back to unk_20251A0; strb 0x28,[r5,#3] immediately before bl sub_812B3FC matches
+    its documented r5-field script-ID lookup; bl SetScreenFade with (8,0x10) ends the routine with a screen
+    fade
+  refs:
+  - bn6f/asm/asm33.s:14147
+  - 0x0812B3FC sub_812B3FC
+  - 0x08006270 SetScreenFade
+  - 0x0812B5AC sub_812B5AC
+  reproduce: python3 tools/asmcat.py 0x08129E7C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- meaning of the object flag at +7 and of bit31 in the stored pointers
+- what r5 struct is exactly and where the 0x20 count is set
+- which game moment calls this (no known callers)
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8129E7C -> object_allClearedRunScriptFade
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8129E7C

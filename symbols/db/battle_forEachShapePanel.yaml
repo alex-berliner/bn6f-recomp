@@ -1,0 +1,51 @@
+name: battle_forEachShapePanel
+address: '0x080C7132'
+kind: function
+status: probable
+summary: Iterates over a shape's panel offsets (flipped to the object's facing) and calls a worker for
+  every offset that lands on a valid grid panel.
+interface: (r0 = origin column, r1 = origin row, r2 = arg2, r3 = arg3, r4 = shape index, [sp+0x3C] = stacked
+  arg) -> r0 = last worker result; calls worker per valid panel with (col, row, arg2, arg3, r4=0, stackedArg)
+details: 'r4 selects one of three offset tables (byte_80C7194/197/19C) holding pairs of signed-byte (dx,dy)
+  offsets terminated by a 0x7F byte. Each dx is multiplied by object_getFrontDirection() (+1/-1, so shapes
+  mirror with the object''s alliance side / DirectionFlip) and added to the base column; dy is added to
+  the base row. object_isValidPanel rejects offsets outside the 6x3 battle grid, and for each surviving
+  panel sub_80C7114 is called with the transformed coordinates plus the forwarded r2/r3, r4 forced to
+  0, and the stacked 5th argument passed through. The three shapes are: single panel (0,0); two-panel
+  column (0,0),(0,1); and a wide shape (0,0),(0,-1),(0,1). This is a typical BN6 ''shape'' hit/effect-area
+  helper.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'byte_80C7194/197/19C + ''cmp r0,#0x7F'' terminator: tables of (dx,dy) signed-byte pairs, three
+    shapes selected by r4 via off_80C7188[r4*4]; mul r0,r2 with object_getFrontDirection result at sp+0x18:
+    dx is mirrored by facing direction; bl object_isValidPanel on computed (col,row) with beq skip: only
+    in-grid panels reach the worker; bl sub_80C7114 with r0=col+dx*dir, r1=row+dy, r2/r3 forwarded, r4=0,
+    r6=stacked arg: per-panel callback; Callees object_getFrontDirection and object_isValidPanel confirm
+    battle-grid context'
+  refs:
+  - bn6f/asm/asm31.s:32971
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800CC72 object_isValidPanel
+  - 0x080C7114 sub_80C7114
+  reproduce: python3 tools/asmcat.py 0x080C7132
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- What sub_80C7114 does with the per-panel coordinates (attack, panel change, spawning?) — no caller or
+  its known summary available
+- Meaning of forwarded r2/r3 and the stacked 5th argument passed to the worker
+- Which game entities/attacks call this with which shape indices
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C7132 -> battle_forEachShapePanel
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C7132

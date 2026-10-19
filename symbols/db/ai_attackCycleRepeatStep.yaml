@@ -1,0 +1,48 @@
+name: ai_attackCycleRepeatStep
+address: '0x0810610A'
+kind: function
+status: probable
+summary: 'One step of a boss AI attack: telegraphs (anim + camera shake), strikes a target panel repeatedly
+  over several cycles, then marks the hit element 0x14.'
+interface: (r7 = AIAttackVars struct, r5 = battle object) -> void; sets oAIAttackVars fields, calls camera
+  shake and panel helpers
+details: On entry with AttackElement==0 it latches state 4, picks one of two animations (0x1B/0x1C) from
+  byte_8106160 indexed by bit0 of TimerOrCycles, obtains target panel X/Y via the Falzar panel-state helper
+  sub_81065A8 (stored into TargetPanelX/Y), triggers a camera shake (magnitude 1, duration 5), and arms
+  StepTimer=5. While AttackElement!=0 it counts StepTimer down; each expiry it calls sub_8106660 (presumably
+  the strike effect) and decrements TimerOrCycles, resetting AttackElement to 0 to loop the sequence.
+  When the cycle counter reaches 0 it writes HitElement=0x14, ending the attack. The two-entry animation
+  table and parity indexing suggest alternating visuals per repetition.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'loc entry: tst AttackElement; bne skip — sets AttackElement=4, anim byte from byte_8106160[TimerOrCycles&1];
+    bl sub_81065A8 then stores r0/r1 into TargetPanelX/TargetPanelY (panel targeting); bl camera_initShakeEffect_80302a8
+    with r0=1, r1=5 (attack impact feedback); loc_8106138: decrements StepTimer, calls sub_8106660, decrements
+    TimerOrCycles, resets AttackElement=0 to repeat; fallthrough: when TimerOrCycles hits 0, strh 0x14
+    into HitElement'
+  refs:
+  - bn6f/asm/asm31.s:167954
+  - 0x080302A8 camera_initShakeEffect_80302a8
+  - 0x081065A8 sub_81065A8
+  - 0x08106660 sub_8106660
+  reproduce: python3 tools/asmcat.py 0x0810610A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- exact effect of sub_8106660 (the per-cycle strike) — no summary known
+- which boss/attack script invokes this step, since no caller is identified
+- meaning of hit element 0x14 in the damage table
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_810610A -> ai_attackCycleRepeatStep
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810610A

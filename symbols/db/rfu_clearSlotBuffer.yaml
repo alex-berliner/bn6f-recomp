@@ -1,0 +1,51 @@
+name: rfu_clearSlotBuffer
+address: '0x08146A70'
+kind: function
+status: probable
+summary: Zero-fills an RFU link-management structure and marks it active (first byte = 1) during wireless
+  init.
+interface: (r0 = pointer to RFU struct to (re)initialize) -> r0 = garbage (popped into pc via pop {r0});
+  no meaningful return, flags clobbered by CpuSet.
+details: Stores 0 into [sp], then calls SWI_CpuSet with src = sp (fill source), dest = r0, and control
+  word 0x05000055 read from byte_8146A90 (count 0x55, 32-bit/fill bits set), blanking 0x55 units (340
+  bytes if words) of the structure with zeros. It then writes 1 to the first byte of the structure, which
+  acts as an 'initialized/in use' flag. The 0x55 constant lives in an inline data pool that is actually
+  the machine code of the following functions, so the ldr picks up 0x05000055 from the pool's first word.
+  Called only from RFU wireless-link init paths (rfu_initCommState, rfu_initWirelessSession) and two unknown
+  subs, so the struct is part of the wireless adapter's per-session state, likely the slot/request management
+  buffer. Returns via pop {r0}; bx r0, discarding the value.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'str r0,[sp] with r0=0 before ''bl SWI_CpuSet'' with r0=sp, r1=r4: classic stack-based CpuSet
+    fill with value 0; ldr r2, byte_8146A90 loads control word 0x05000055 (count 0x55 plus fill/word bits)
+    from the literal pool; strb r0 (1),[r4] after the fill sets the struct''s leading flag byte to 1;
+    callers 0x08147B54 rfu_initCommState and 0x08148D24 rfu_initWirelessSession both reset wireless-link
+    buffers, matching a struct re-init helper'
+  refs:
+  - bn6f/asm/libs.s:5937
+  - 0x08147B54 rfu_initCommState
+  - 0x08148D24 rfu_initWirelessSession
+  - 0x08146E90 sub_8146E90
+  - 0x0814D8B8 SWI_CpuSet
+  reproduce: python3 tools/asmcat.py 0x08146A70
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- Exact size/semantics of the filled struct (85 halfwords vs 85 words) depends on the CpuSet fill-bit
+  convention
+- Which named RFU-library structure r0 points to (slot manager, request buffer, etc.) would need the callers'
+  struct definitions to confirm
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8146A70 -> rfu_clearSlotBuffer
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8146A70

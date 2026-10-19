@@ -1,0 +1,51 @@
+name: battle_spawnObject5bOnFlaggedPanels
+address: '0x080CFE5C'
+kind: function
+status: probable
+summary: Scans a line of three battle panels and spawns battle object kind 0x5B on each panel whose status
+  flags match a mask selected by the acting object's alliance, returning the spawn count.
+interface: (r0 = fixed panel coordinate, r1..r3,r4,r6 = args forwarded to the object-5B spawn) -> r0 =
+  number of spawns performed; reads r5 = battle object whose Alliance field picks the flag mask
+details: 'Stores all six incoming arguments on the stack, then reads [r5,#oBattleObject_Alliance], multiplies
+  by 4, and indexes off_80CFEB8 to get a panel-status mask: 0x4000000 for alliance 0, 0x8000000 for alliance
+  1, 0x4050101 for alliance 2. It loops the second coordinate from 1 to 3, calling object_getPanelParameters(fixedCoord,
+  i) and testing the returned status word against the mask; on a match it calls battle_spawnObject5b with
+  the saved arguments (loop counter passed as the second argument, i.e. the varying panel coordinate)
+  and increments a counter, which is returned. r5 is not set up in the function, so it relies on the caller''s
+  preserved battle-object pointer (a codebase convention). The masks look like per-side panel flags (e.g.
+  occupied/owned-panel bits), with alliance 2 matching a broader combination.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#oBattleObject_Alliance]; lsl #2; ldr off_80CFEB4 selects an alliance-dependent
+    flag mask from off_80CFEB8 (0x4000000/0x8000000/0x4050101); loop calls object_getPanelParameters([sp],i)
+    for i=1..3 and ''tst r0,r1; beq'' only spawns when the panel status matches the mask; on match it
+    calls battle_spawnObject5b forwarding the saved r1..r3,r4,r6 with the loop counter as the second (coordinate)
+    argument; return value [sp,#0x1c] counts successful spawns and is returned in r0'
+  refs:
+  - bn6f/asm/asm31.s:52212
+  - 0x080CFE08 sub_80CFE08
+  - 0x080CFDF2 battle_spawnObject5b
+  - 0x0800C8F8 object_getPanelParameters
+  reproduce: python3 tools/asmcat.py 0x080CFE5C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- What battle object kind 0x5B is and what its spawn arguments mean (callee summary doesn't say)
+- Exact meaning of panel status bits 0x4000000/0x8000000/0x4050101 (owned-panel? occupied?) and why alliance
+  2's mask differs in kind
+- What sub_80CFE08 passes as the fixed coordinate and the forwarded arguments, which would confirm whether
+  this is a row or column sweep
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CFE5C -> battle_spawnObject5bOnFlaggedPanels
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CFE5C

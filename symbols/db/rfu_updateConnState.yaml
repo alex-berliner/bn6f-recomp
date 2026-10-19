@@ -1,0 +1,54 @@
+name: rfu_updateConnState
+address: '0x08145120'
+kind: function
+status: probable
+summary: Advances the RFU link-connection state machine in eStruct200FE00, transitioning states and firing
+  the connection callback with the appropriate reason code.
+interface: '(r0 = bool/flag: nonzero -> abort path) -> void; updates eStruct200FE00 state bytes (+4/+5)
+  and may invoke the connection callback via rfu_fireConnCallbackAndClearState.'
+details: 'Takes a single low-byte argument treated as a flag: if set, it calls sub_8144EA4 and forces
+  the state byte at eStruct200FE00+4 to 0x17 (an error/abort state) without firing a callback. If clear,
+  it reads the current state byte at +4 and switches on (state - 5) over 14 cases, each setting a new
+  state (+4) and sub-state (+5) and picking a callback reason in r2 (0x13, 0x21, 0x23, or fall through
+  to 0x43 for the default/invalid case); after the transition, if the new state is 0 it fires rfu_fireConnCallbackAndClearState(reason,
+  0). The state-0xe case is special: it restores state bytes saved at +0x11/+0x12, forces a disconnect
+  on the link structure pointed to by dword_2010CC0 (byte at +3 used as slot id), stores that id as a
+  halfword at +0x14, and fires the callback with reason 0x33 and argument 1 before returning without the
+  tail call.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: switch on ldrb [r5,#0x4] minus 5 (jpt_8145150) shows it dispatches on the current connection
+    state in eStruct200FE00; each case writes new values to bytes +4/+5 and passes r2=0x13/0x21/0x23/0x43
+    to rfu_fireConnCallbackAndClearState with r1=0; loc_81451CA calls rfu_forceDisconnect on [dword_2010CC0]+3
+    and fires callback (0x33,1), marking a forced-disconnect transition; nonzero r0 path sets state +4=0x17
+    after calling sub_8144EA4 and skips the callback, an error/abort handling branch; all six call sites
+    are inside sub_8146F90, consistent with a per-iteration state machine step
+  refs:
+  - bn6f/asm/libs.s:2356
+  - 0x08146F90 sub_8146F90
+  - 0x08147104 sub_8146F90
+  - 0x08147108 sub_8146F90
+  - 0x081461B0 rfu_fireConnCallbackAndClearState
+  - 0x081461D8 rfu_forceDisconnect
+  - 0x08144EA4 sub_8144EA4
+  reproduce: python3 tools/asmcat.py 0x08145120
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- Exact meaning of the r0 flag (error flag vs request-result) and what sub_8144EA4 does in the abort path
+- Semantic names of the state values 5..0x17 and callback reason codes 0x13/0x21/0x23/0x33/0x43
+- Structure layout of dword_2010CC0 (likely the active link/parent descriptor, byte +3 = slot id)
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8145120 -> rfu_updateConnState
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8145120

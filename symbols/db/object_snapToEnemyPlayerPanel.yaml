@@ -1,0 +1,45 @@
+name: object_snapToEnemyPlayerPanel
+address: '0x080C3368'
+kind: function
+status: probable
+summary: Every 4 frames, a battle object copies the opposing player's panel coordinates and repositions
+  itself there, then advances to phase 8.
+interface: (r5 = battle object) -> void; sets object to CUR_STATE_DESTROY if no opposing player exists
+details: On each call, decrements oBattleObject_Timer; while nonzero it returns immediately. When it expires,
+  it computes alliance^1 and calls battle_findPlayer to fetch the opposing player. It copies the player's
+  PanelX/PanelY into the object's own PanelX/PanelY and into its CollisionDataPtr's panel fields, then
+  calls object_setCoordinatesFromPanels to recompute pixel position. It also increments Y16 and Z16 by
+  1 each cycle, reloads Timer with 3 (4-frame period), and sets CurPhase to 8. If battle_findPlayer returns
+  null, the object is destroyed via CUR_STATE_DESTROY.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrh r0,[r5,#oBattleObject_Timer]; sub 1; bne locret — 4-frame periodic tick; eor r0,#1 then
+    bl battle_findPlayer — finds the player on the opposite alliance; strb player PanelX/PanelY into object
+    and CollisionDataPtr, then bl object_setCoordinatesFromPanels — snaps to the player''s panel; add
+    #1 to Y16 and Z16, reload Timer with 3, store phase 8; beq loc_80C33A8 -> mov r0,#CUR_STATE_DESTROY
+    — no player found means self-destruct'
+  refs:
+  - bn6f/asm/asm31.s:24654
+  - 0x0800E29C object_setCoordinatesFromPanels
+  - 0x080103BC battle_findPlayer
+  reproduce: python3 tools/asmcat.py 0x080C3368
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- No caller is known, so which entity uses this (a trap, a homing attack, a boss part) is unclear
+- What phase 8 does in this object's state machine, and why Y16/Z16 increment by 1 per tick (deliberate
+  drift or artifact), is unknown
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C3368 -> object_snapToEnemyPlayerPanel
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C3368

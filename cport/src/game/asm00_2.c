@@ -1330,7 +1330,7 @@ Next stub_alwaysReturnsFalse_8010D20(void) {
 
 /* ── dispatchHandlerById_8010D58 ── */
 /* dispatchHandlerById_8010D58(r0 = handler id, r2/r3 = call arguments):
- * Dispatch table driver. Validates the id with sub_800F4A8; ids that pass
+ * Dispatch table driver. Validates the id with battle_getAllianceList; ids that pass
  * are handed to sub_800F4B2 and the call returns 0xFFFF, ids that fail are
  * dispatched to one of the five handlers in the table at off_8010D84.
  * An id of 0xFF is rejected outright with 0xFFFF.
@@ -1346,7 +1346,7 @@ Next dispatchHandlerById_8010D58(void) {
     if (id == 0xFF) {
         R0 = 0xFFFF;
     } else {
-        GUEST_CALL(sub_800F4A8);
+        GUEST_CALL(battle_getAllianceList);
         if ((s32)R0 >= 1) {
             /* id accepted: record it and report "no handler ran" */
             R0 = 1;

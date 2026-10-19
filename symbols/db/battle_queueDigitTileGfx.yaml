@@ -1,0 +1,47 @@
+name: battle_queueDigitTileGfx
+address: '0x0801D61A'
+kind: function
+status: probable
+summary: Queues a single 32-byte (one 8x8 4bpp tile) graphics copy from a ROM tile table into VRAM, used
+  to render one digit of the battle counter UI.
+interface: (r0 = tile index into table at 0x86E968C, r1 = VRAM destination pointer) -> queues 0x20-byte
+  GFX transfer via QueueEightWordAlignedGFXTransfer; no return value
+details: 'Computes r0 = index * 0x20 (r2 = 0x20, kept as the transfer size), adds the base of the tile
+  table at off_86E968C, and calls QueueEightWordAlignedGFXTransfer with (src = table + index*0x20, dest
+  = r1 passed through from the caller, size = 0x20). So each entry is one 32-byte 4bpp tile, and r1 (the
+  destination) is untouched by this function, letting the caller place each digit at successive tile slots.
+  The caller battle_queueCounterDigitGfx renders a 3-digit BCD counter, so this is the per-digit helper:
+  it copies the glyph for one digit from the ROM font/digit table to the battle UI tile area. The nearby
+  dword_801D63C..dword_801D64C constants (0x60176E0, 0x6017700, ...) are VRAM addresses in the same tile
+  region, consistent with the caller queueing digits into consecutive slots.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mul r0, r2 with r2=0x20 then add off_86E968C: indexes a 32-byte-stride tile table; r2=0x20
+    survives as the size argument to QueueEightWordAlignedGFXTransfer, i.e. one 4bpp tile; push {r1,lr}
+    keeps r1 intact as the queued destination pointer; caller battle_queueCounterDigitGfx renders a 3-digit
+    BCD counter into the battle UI tile area, matching a per-digit tile copy; dword_801D63C..dword_801D64C
+    hold 0x60176xx VRAM tile addresses in the counter''s tile strip'
+  refs:
+  - bn6f/asm/asm00_2.s:30331
+  - 0x0801D590 battle_queueCounterDigitGfx
+  - 0x08000AC8 QueueEightWordAlignedGFXTransfer
+  reproduce: python3 tools/asmcat.py 0x0801D61A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- exact contents of the table at 0x86E968C (digit glyphs vs. a wider character set) not verified
+- whether the caller uses this for other indexed tiles besides the 0-9 counter digits
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_801D61A -> battle_queueDigitTileGfx
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_801D61A

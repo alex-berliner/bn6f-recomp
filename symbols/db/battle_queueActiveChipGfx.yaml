@@ -1,0 +1,47 @@
+name: battle_queueActiveChipGfx
+address: '0x0802707C'
+kind: function
+status: probable
+summary: Queues two GFX transfers (0x80 bytes of chip-indexed graphics to VRAM 0x60172C0 and 0x20 bytes
+  from byte_872CF94 to a RAM buffer) based on active chip slot 11, then sets a state field.
+interface: (r0 unused, r5 = object/state struct) -> r0 = destroyed; queues GFX transfers, writes r5+0x40=0,
+  r5+0x44=chip*0x10+0x18, r5+2=4
+details: Fetches active-chip entry 11 via getLocOfActiveChips_8027E1C (12 bytes/entry) and reads a byte
+  at +6, falling back to +5 when +6 is zero (two ID-like fields). The chosen value *0x80 indexes byte_8725894,
+  and 0x80 bytes from there are queued to VRAM 0x60172C0 via QueueEightWordAlignedGFXTransfer — a per-chip
+  block of tile data. It then computes r5[8]*0x10+0x18 into r5+0x44 (an offset into a 0x10-strided table)
+  and queues 0x20 bytes from byte_872CF94 into byte_30016F0, likely palette/attribute data staged in IWRAM.
+  Finally stores 4 to halfword r5+2, evidently advancing this object's state machine.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: mov r0,#0xb; bl getLocOfActiveChips_8027E1C — reads fixed active-chip slot 11 (asm lines 3-5);
+    ldrb r0,[r4,#6] / [r4,#5]; mul r0,#0x80; add off_80270CC=byte_8725894 — chip ID indexes a 0x80-byte-per-entry
+    GFX table; QueueEightWordAlignedGFXTransfer(0x60172C0) — VRAM destination, so the 0x80 bytes are tile
+    data; second QueueEightWordAlignedGFXTransfer from byte_872CF94 to byte_30016F0, size 0x20 — a companion
+    32-byte blob staged in IWRAM; strh r0,[r5,#2] with r0=4 after clearing r5+0x40 and setting r5+0x44
+    — state advance of a per-object struct
+  refs:
+  - bn6f/asm/asm03_0.s:1692
+  - 0x08027E1C getLocOfActiveChips_8027E1C
+  - 0x08000AC8 QueueEightWordAlignedGFXTransfer
+  reproduce: python3 tools/asmcat.py 0x0802707C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- What active-chip slot 11 means (selected chip? reserved slot?) and which fields +5/+6 are
+- What the r5 struct is and what state value 4 at +2 triggers next
+- What byte_872CF94/byte_30016F0 contain (palette vs. attribute data) and who later consumes byte_30016F0
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_802707C -> battle_queueActiveChipGfx
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802707C

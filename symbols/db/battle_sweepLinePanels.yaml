@@ -1,0 +1,49 @@
+name: battle_sweepLinePanels
+address: '0x080BB81C'
+kind: function
+status: probable
+summary: Sweeps 5 panels in a straight or diagonal line ahead of a battle object and invokes a per-panel
+  handler on each valid one.
+interface: (r5 = battle object; uses oBattleObject_PanelX/Y, Param1, ExtraVars+4; pushes (x,y) as stack
+  args) -> r0 = callee result of last call; no meaningful return
+details: 'Reads a line-shape index from the object''s ExtraVars+4 and selects one of three (dx,dy) pairs
+  in byte_80BB860: (1,-1), (1,0), (1,1). For steps r6 = 1..5 it computes panel (PanelX + dx*dir*step,
+  PanelY + dy*step), where dir comes from object_getFrontDirection (alliance-based ±1 facing). Each computed
+  (x,y) is pushed on the stack and, if object_isValidPanel accepts it, sub_80E7942 is called with r4 =
+  oBattleObject_Param1, presumably to apply an attack/effect to that panel. Invalid panels are skipped
+  but the sweep continues. The ExtraVars+4 selector lets one routine serve straight, upper-diagonal, and
+  lower-diagonal line attacks.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'byte_80BB860 holds three signed (dx,dy) pairs indexed as 2*(ExtraVars+4): (1,-1),(1,0),(1,1);
+    mul r0,r6 then mul r1,r0 / mul r2,r6 scale both offsets by the loop step r6 = 1..5, giving a 5-panel
+    line; object_getFrontDirection supplies the ±1 facing multiplier applied to dx; push {r0,r1} before
+    bl sub_80E7942 passes the computed panel coords as stack arguments, with r4 = Param1; beq locret after
+    object_isValidPanel skips out-of-grid panels'
+  refs:
+  - bn6f/asm/asm31.s:7492
+  - 0x080BB710 sub_80BB710
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800CC72 object_isValidPanel
+  - 0x080E7942 sub_80E7942
+  reproduce: python3 tools/asmcat.py 0x080BB81C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- purpose of sub_80E7942 (likely spawns the attack/damage on the panel) is unknown, so the exact game
+  effect is unconfirmed
+- which caller attack (sub_80BB710) uses which ExtraVars+4 line index is not shown
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BB81C -> battle_sweepLinePanels
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BB81C

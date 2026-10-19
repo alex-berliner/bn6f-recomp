@@ -1,0 +1,49 @@
+name: ai_attackTwoPatternPanels
+address: '0x080F5668'
+kind: function
+status: probable
+summary: AI attack step that picks two panels from a per-difficulty pattern table via RNG and, if both
+  panels are valid ground, launches an attack on them.
+interface: (r5 = attacker object, r7 = oAIAttackVars struct) -> r0 = destroyed; uses RNG, reads TargetObjectPtr,
+  Damage, ScratchVar, AiDifficultyTier, InitFlag
+details: Advances the RNG and takes rand%3, then indexes byte_80F56D4 at (targetObject[0x13] clamped to
+  0-3 minus 1)*12 + rand*4, giving 3 variant blocks of three 2-panel coordinate pairs (each byte 1-3,
+  i.e. x,y panel coords). If the attacker is on the enemy alliance, each x is mirrored to 7-x. For each
+  of the two pairs it calls object_checkPanelParameters with masks 0x10000 (required) and 0xF800000 (forbidden),
+  so only ordinary intact panels qualify; on success it calls sub_80CC918 passing x, y, InitFlag, ScratchVar<<8|AiDifficultyTier
+  and Damage, presumably spawning the attack/hit on that panel. The table is 36 bytes, exactly covering
+  all 3x3 variants.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'svc 6 with r1=3 then lsl r1,#2: rand%3 * 4 selects one of three coordinate pairs within a block;
+    ldrb r0,[r0,#0x13] clamped to 1-3, *12 selects one of 3 pattern blocks in byte_80F56D4 (36 bytes total);
+    tst Alliance / 7-x mirror flips column coordinates for enemy-side attackers; bl object_checkPanelParameters
+    with 0x10000/0xF800000 masks gates which panels get attacked; bl sub_80CC918 receives oAIAttackVars_Damage,
+    InitFlag and difficulty/scratch combo, matching an attack-spawn signature'
+  refs:
+  - bn6f/asm/asm31.s:132986
+  - 0x080F5366 sub_80F5366
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x080CC918 sub_80CC918
+  reproduce: python3 tools/asmcat.py 0x080F5668
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- What sub_80CC918 spawns (attack entity type, element, animation) is unknown
+- Meaning of TargetObjectPtr field 0x13 (variant/attack level selector) and of the exact panel-flag masks
+  0x10000/0xF800000 could be confirmed from other AI attack handlers
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F5668 -> ai_attackTwoPatternPanels
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F5668

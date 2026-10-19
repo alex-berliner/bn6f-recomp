@@ -1,0 +1,45 @@
+name: sprite_updateAnimTowardTarget
+address: '0x080A5E00'
+kind: function
+status: probable
+summary: Thin wrapper that updates an object's animation to face its target using two position pointers
+  stored in the object struct.
+interface: (r5 = object pointer; reads [r5,#0x28] and [r5,#0x2c] as arguments to sprite_updateAnimByAngleToTarget)
+  -> tail-jumps to sprite_updateAnimByAngleToTarget; no own return value logic.
+details: 'The function is a 4-instruction thunk: it loads two 32-bit fields at offsets 0x28 and 0x2c of
+  the structure reached via r5 and tail-branches into sprite_updateAnimByAngleToTarget, which selects
+  an animation from the octant of the angle toward a target position. Given the callee''s purpose, the
+  two fields are almost certainly pointers to (or values describing) the object''s own position and its
+  target position. It saves r4 and lr per the standard prologue but never uses r4, and its only role is
+  to pull the arguments out of the object struct before the call. The caller sub_80A5D80 is undocumented,
+  so which entity type owns this struct layout is not confirmed from this snippet alone.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'body only does `ldr r0,[r5,#0x28]; ldr r1,[r5,#0x2c]; b sprite_updateAnimByAngleToTarget` (0x080A5E00-0x080A5E08);
+    callee summary: picks animation from octant of angle toward a target position, so r0/r1 are position-like
+    arguments; push {r4,lr} but r4 never used — generated wrapper, not hand-written logic; fields 0x28/0x2c
+    read from the struct at r5, matching an object/entity record passed in r5 by the caller'
+  refs:
+  - bn6f/asm/asm29.s:2189
+  - 0x080A5D80 sub_80A5D80
+  - 0x080A5E0A sprite_updateAnimByAngleToTarget
+  reproduce: python3 tools/asmcat.py 0x080A5E00
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- what structure r5 points to and what fields 0x28/0x2c actually hold (position pointers vs. coordinates)
+- which caller path (sub_80A5D80) invokes it and for which game entity
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80A5E00 -> sprite_updateAnimTowardTarget
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A5E00

@@ -1,0 +1,48 @@
+name: object_updateCountedMovement
+address: '0x080DE266'
+kind: function
+status: probable
+summary: 'Per-frame movement step for a battle object: moves it along X for a fixed number of frames,
+  then snaps it back to its home panel and reverses its velocity.'
+interface: (r5 = battle object pointer, caller-set; r0-r3 clobbered as scratch) -> void; no return value
+details: Field 0x60 is a frame counter incremented each call; while it is below the limit at 0x63, the
+  object's world X (0x34) is advanced by the value at 0x40, sub_80DE350 is called, and the object's panel
+  position is recomputed from its coordinates via object_setPanelsFromCoordinates. When the counter reaches
+  the limit, the flag at 0x62 is toggled (eor 1), the velocity at 0x44 is negated, and the object's position
+  0x34 is reset to the pixel coordinates of its stored panel (0x12=column, 0x13=row) via object_getCoordinatesForPanels.
+  The counter is then zeroed and byte 0x9 is set to 4, likely a state/animation switch. Behavior matches
+  a timed out-and-back (bouncing/boomerang-style) motion between panels. Note the object pointer comes
+  in r5, so the caller must set it up beforehand.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r2,[r5,#0x60]; add r2,#1; cmp r2,r3(=[r5,#0x63]) — counted movement duration; ldr r1,[r5,#0x34];
+    add r1,r1,r0(=[r5,#0x40]); str — per-frame X advance; loc_80DE28A: eor r1,#1 on [r5,#0x62]; neg of
+    [r5,#0x44] — direction reversal; object_getCoordinatesForPanels on [r5,#0x12],[r5,#0x13] stored into
+    [r5,#0x34] — snap back to home panel; callees object_setPanelsFromCoordinates/object_getCoordinatesForPanels
+    confirm battle-object coordinate fields'
+  refs:
+  - bn6f/asm/asm31.s:83083
+  - 0x0800E276 object_getCoordinatesForPanels
+  - 0x0800E2AC object_setPanelsFromCoordinates
+  - 0x080DE350 sub_80DE350
+  reproduce: python3 tools/asmcat.py 0x080DE266
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- No known caller, so the meaning of state byte 0x9=4 and what sub_80DE350 does are unconfirmed
+- Whether 0x62/0x44 control direction of a subsequent movement phase needs a caller or the routine reading
+  those fields
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DE266 -> object_updateCountedMovement
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DE266

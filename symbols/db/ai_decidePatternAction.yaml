@@ -1,0 +1,48 @@
+name: ai_decidePatternAction
+address: '0x08101B90'
+kind: function
+status: probable
+summary: Custom enemy AI scheduler that advances turn/attack/step counters with RNG gating and tail-calls
+  ai_chooseActionScript with the matching script selection.
+interface: (r5 = battle object, r6 = oAIState struct) -> tail-calls ai_chooseActionScript variants; no
+  direct return value
+details: Part of a patterned enemy AI. If oAIState_TurnCounter reaches 1 it resets it and jumps straight
+  to ai_chooseActionScript (8101D64). Otherwise it rolls GetPositiveSignedRNG&0xF and only proceeds (advance
+  TurnCounter, toggle state flag 0x0C) when the roll is >=5 (~69%). The toggled flag selects which script
+  table byte_8101DBC or byte_8101DC3 is tested via sub_810222C (r0=r1=0, r2=battle object from oAIData_BattleObjectPtr),
+  which returns nonzero when the script is usable; on success the AttackCounter or StepCounter is incremented/reset
+  and further flags 0x0D-0x0F toggle which variant of ai_chooseActionScript (8101D6C/D72/D7C/D86) is entered.
+  The counters thus meter how many turns/steps/attacks occur between pattern changes.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: GetPositiveSignedRNG result ANDed with 0xF and compared to 4 gates both counter increments (8101BA0,
+    8101BC2); counters oAIState_TurnCounter/AttackCounter/StepCounter are tested against 1, reset to 0
+    or incremented (8101B90-8101C0C); sub_810222C is called with script tables byte_8101DBC / byte_8101DC3
+    and result tested with tst/beq (8101BB2-8101BE6); state flags at oAIState_Unk_0c..0f are XORed with
+    1 to alternate between ai_chooseActionScript entry variants (8101C10-8101C38); all exits are tail
+    branches into ai_chooseActionScript (callees 0x08101D64-0x08101D86)
+  refs:
+  - bn6f/asm/asm31.s:158622
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x08101D64 ai_chooseActionScript
+  - 0x08101D6C ai_chooseActionScript
+  reproduce: python3 tools/asmcat.py 0x08101B90
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- which enemy/boss uses this AI state layout and what the script tables byte_8101DBC/byte_8101DC3 contain
+- exact semantics of oAIState_Unk_0c..0f flags and sub_810222C's script test
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8101B90 -> ai_decidePatternAction
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8101B90

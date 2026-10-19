@@ -14,7 +14,7 @@
  *      (bank = chip >> 8, index = chip & 0xFF), then the code letter —
  *      the no-code letter in the library view for chips neither event
  *      flag (chip+0x1E20, chip+0x2420) marks
- *   3  secret: name row drawn by sub_8047708 (kept lifted)
+ *   3  secret: name row drawn by drawChipListRowGfx (kept lifted)
  *   anything else: 16 blank tiles over the name area, and no strip
  * Kinds 2 and 3 are first dimmed (dimUnownedChipStrip_8047CFA) when the player owns
  * none: kind 2 counts the pack (GetChipCountOfCode of chip and code),
@@ -150,7 +150,7 @@ static void draw_coded_chip_row(u32 slot, u32 chip, u32 code, u32 has_code, u32 
     render_tiles(CODE_SCRIPT, letter, DECOMP_CODE + row, VRAM_CODE + row, 1);
 }
 
-/* sub_8047708 (kept lifted) draws the secret chip's name row; the
+/* drawChipListRowGfx (kept lifted) draws the secret chip's name row; the
  * original reaches it with the kind-3 path's registers — r3 = the kind
  * byte, r6 = 1 — so they are set here. */
 static void draw_secret_chip_row(u32 slot, u32 entry, u32 menu) {
@@ -162,7 +162,7 @@ static void draw_secret_chip_row(u32 slot, u32 entry, u32 menu) {
     R5 = menu;
     R6 = 1;
     R7 = entry;
-    GUEST_CALL(sub_8047708);
+    GUEST_CALL(drawChipListRowGfx);
 }
 
 /* drawBlankChipRow_8047760: a blank row — 16 blank tiles across the name area. */

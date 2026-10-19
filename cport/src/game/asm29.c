@@ -227,9 +227,9 @@ static void call_state_handler_4acc(void) {
     GUEST_CALL(sub_80A4ACC);
 }
 
-/* register form: calls sub_80A4BD4 outside this file, which has no typed C interface yet */
+/* register form: calls ow_freeObject outside this file, which has no typed C interface yet */
 static void call_state_handler_4bd4(void) {
-    GUEST_CALL(sub_80A4BD4);
+    GUEST_CALL(ow_freeObject);
 }
 
 /* Dispatch to the battle-object state handler selected by the byte at [r5+8].
@@ -1691,9 +1691,9 @@ static void call_sprite_state3_update(void) {
     GUEST_CALL(sub_80AA322);
 }
 
-/* register form: calls sub_80AA36C outside this file, which has no typed C interface yet */
+/* register form: calls ow_deleteMapObject outside this file, which has no typed C interface yet */
 static void call_sprite_state3_done(void) {
-    GUEST_CALL(sub_80AA36C);
+    GUEST_CALL(ow_deleteMapObject);
 }
 
 /* Jump-table dispatch for sprite-state-3: pick the handler from the selector byte

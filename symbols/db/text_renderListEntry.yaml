@@ -1,0 +1,50 @@
+name: text_renderListEntry
+address: '0x0811B7D4'
+kind: function
+status: probable
+summary: Draws one visible row of a text list via the toolkit text renderer, using a per-row entry from
+  word_2023FA0.
+interface: (r0 unused, r5 = row struct with u8 rowIndex at +0x4) -> r0 = renderTextGfx result; touches
+  toolkit->Unk200a220->field8; no flag contract shown
+details: Reads a scroll/first-visible-index halfword from unk_2037780+0x24 and a row-count halfword from
+  +0x1E, forms index = scroll + [r5+4] - 2, and returns without drawing if the index is negative or >=
+  count (so only in-window rows render). It then loads the halfword at word_2023FA0[index*4+2] and stores
+  it into toolkit->field_200a220_ptr+8, likely the text/glyph id for this row. Finally it calls renderTextGfx_8045F8C
+  with r0=eTextScript201BA20, r1=0x46, r2=off_811B878[rowIndex] and r3=byte_811B8A4[rowIndex] (per-row
+  callback/data tables, stride 4), r4=r5=1, r6=dword_86B7AE0, r7=0. unk_2037780 appears to be the list/menu
+  window state struct; word_2023FA0 an array of 4-byte row entries.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrh r0,[r6,#0x24]; add r0,r1; sub r0,#2; cmp r0,[r6,#0x1e] with blt/bge exits = window-range
+    gate on row index; lsl r0,r0,#2; add r0,word_2023FA0; ldrh r1,[r0,#2]; str r1,[toolkit+8] = per-row
+    4-byte entries, halfword stored into text-renderer state; bl renderTextGfx_8045F8C with r0=eTextScript201BA20,
+    r1=0x46 and per-row tables off_811B878/byte_811B8A4 = renders this row's text/glyph chunk; callers
+    at 0x811B648/0x811B66C inside object_scaleGrowStep's grow state machine call this each frame while
+    animating a UI object
+  refs:
+  - bn6f/asm/asm32.s:28164
+  - 0x0811B648 object_scaleGrowStep
+  - 0x0811B66C object_scaleGrowStep
+  - 0x0811B594 sub_811B594
+  - 0x08045F8C renderTextGfx_8045F8C
+  reproduce: python3 tools/asmcat.py 0x0811B7D4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- exact meaning of word_2037FA0 entries and of the halfword stored to toolkit+8 (glyph id vs text id)
+- what unk_2037780 is (which menu/window owns it) and what text script id 0x46 prints
+- roles of off_811B878/byte_811B8A4 per-row tables and dword_86B7AE0
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_811B7D4 -> text_renderListEntry
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811B7D4

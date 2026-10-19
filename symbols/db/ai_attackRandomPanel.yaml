@@ -1,0 +1,51 @@
+name: ai_attackRandomPanel
+address: '0x080F1E98'
+kind: function
+status: probable
+summary: 'AI attack step: picks a random panel matching an alliance-based attribute filter and launches
+  an attack on it using the object''s damage value.'
+interface: (r5 = battle object, r7 = AI attack vars struct) -> r0 = return of sub_80D54F0; no branch flags
+  of interest
+details: Reads the object's Alliance field and indexes the pair table at off_80F1EF0 (alliance<<3) to
+  get required/forbidden panel-attribute masks. It fills a stack list with all panels matching those masks
+  except the object's own panel via object_getPanelsExceptCurrentFiltered and bails out if the count is
+  zero. It then rolls GetPositiveSignedRNG and uses SWI 6 (Div) to take rand % count as an index into
+  the panel list. The selected packed panel byte is decoded as x = byte>>4, y = byte & 7. Finally it calls
+  sub_80D54F0 with (r0 = y, r1 = x, r2 = oAIAttackVars_InitFlag, r3 = 0, r4 = 0xA, r6 = oAIAttackVars_Damage),
+  i.e. spawning the attack effect on the chosen panel.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#oBattleObject_Alliance]; lsl #3; ldr pair from off_80F1EF0 -> alliance-dependent
+    required/forbidden masks for the panel filter; bl object_getPanelsExceptCurrentFiltered with list
+    buffer at sp, then ''beq'' exit when zero matches; bl GetPositiveSignedRNG; r1=count; svc 6 (Div)
+    -> remainder = random index; ldrb r0,[sp,r1] selects the panel byte; lsr r1,#4 / lsl+lsr #0x1d unpack
+    panel byte into x and y before the attack call; ldr r6,[r7,#oAIAttackVars_Damage] and r2=[r7,#oAIAttackVars_InitFlag]
+    passed into sub_80D54F0, showing it spawns a damage-dealing attack'
+  refs:
+  - bn6f/asm/asm31.s:126040
+  - 0x080F1D30 sub_80F1D30
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x0800CE64 object_getPanelsExceptCurrentFiltered
+  - 0x080D54F0 sub_80D54F0
+  reproduce: python3 tools/asmcat.py 0x080F1E98
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- Exact behavior of sub_80D54F0 (what attack/effect it spawns and how r2/r4=0xA map to its parameters)
+- Meaning of the panel attribute bits in off_80F1EF0 (which of required/forbidden correspond to e.g. hole,
+  broken, occupied panels)
+- Which enemy/AI dispatches this via caller sub_80F1D30
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F1E98 -> ai_attackRandomPanel
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F1E98

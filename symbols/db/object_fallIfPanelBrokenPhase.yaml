@@ -1,0 +1,47 @@
+name: object_fallIfPanelBrokenPhase
+address: '0x080B910C'
+kind: function
+status: probable
+summary: 'Battle-object phase handler: plays a sound, waits 5 frames, then branches the object''s action
+  depending on whether its panel is broken or a hole.'
+interface: (r5 = battle object header, no args) -> sets CurAction + phase; no return value; flags from
+  PlaySoundEffect/object_getPanelParameters clobbered
+details: On phase 0 (phase handler first entry, r5 = battle object) it sets CurPhase=4, CurAnim=3, plays
+  sound effect 0x94, sets oObjectHeader_Flags bit 1, and loads Timer with 5. On later phase ticks it decrements
+  Timer; when it expires it reads the object's PanelX/PanelY and calls object_getPanelParameters, masking
+  the status word with 0x10010 (panel-broken bit 0x10 plus 0x10000, likely the hole bit). If the masked
+  result equals 0x10010 the object's CurAction is set to 4 (presumably a falling/disappearing action),
+  otherwise to 0x10, and CurPhase is reset to 0 either way (CurPhaseAndPhaseInitialized zeroed as a halfword,
+  clearing the phase-init flag).
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: first-entry branch sets CurPhase=4, CurAnim=3 and PlaySoundEffect(0x94), typical of a one-shot
+    phase startup; timer loop 'ldrh r0,[r5,#oBattleObject_Timer]; sub r0,#1; bgt' gates the check for
+    5 frames; object_getPanelParameters result AND 0x10010 compared to 0x10010 selects CurAction=4 vs
+    CurAction=0x10; callees are only PlaySoundEffect and object_getPanelParameters, matching an object
+    idle/fall decision step
+  refs:
+  - bn6f/asm/asm31.s:2014
+  - 0x080005CC PlaySoundEffect
+  - 0x0800C8F8 object_getPanelParameters
+  reproduce: python3 tools/asmcat.py 0x080B910C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- which object/entity uses this handler (no caller known), so the meaning of actions 4 and 0x10 and of
+  status bit 0x10000 is inferred
+- exact meaning of sound 0x94
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80B910C -> object_fallIfPanelBrokenPhase
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80B910C

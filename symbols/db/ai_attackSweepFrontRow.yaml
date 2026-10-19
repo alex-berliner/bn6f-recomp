@@ -1,0 +1,48 @@
+name: ai_attackSweepFrontRow
+address: '0x080F197A'
+kind: function
+status: probable
+summary: 'AI attack: deals hits to each of the 6 panels in front of the user in sequence, staggering each
+  hit by 5 frames.'
+interface: (r5 = attacker battle object, r7 = AI attack vars (Damage, InitFlag)) -> r0 = 0/void; uses
+  facing from object_getFrontDirection
+details: Loops i = 1..6; each iteration gets the attacker's facing multiplier, computes target panel X
+  = PanelX + dir*i, with PanelY from the object, and skips invalid grid cells via object_isValidPanel.
+  For each valid panel it calls sub_80D1B22 with r0/r1 = panel (x,y), r2 = [r7+oAIAttackVars_InitFlag],
+  r3 packed as (i-1)*5 | 0x700 | 0x50000 | 0xFF000000, and r6 = [r7+oAIAttackVars_Damage]. The (i-1)*5
+  low byte reads as a frame delay for tile i, giving a wave sweeping away from the user; bytes 7/5/0xFF
+  are attack size/kind/owner-ish parameters consumed by sub_80D1B22. The unused literal off_2010708 and
+  byte_80F19CC (0xC8,0x40,0x00,0x01,0x0A) belong to the caller sub_80F1902's attack setup.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: loop bound cmp r4,#6 / ble loc_80F197E with panel offset dir*r4 from object_getFrontDirection
+    (80F197E-80F1988); valid-panel guard object_isValidPanel before each hit (80F198E-80F1998); packed
+    r3 low byte (i-1)*5 then 0x7,0x500,0xFF000000 built via orr chain (80F199E-80F19B2); damage r6 loaded
+    from oAIAttackVars_Damage before sub_80D1B22 (80F19B4-80F19B6); caller sub_80F1902 and oAIAttackVars_*
+    callee field names mark this as an AI boss attack routine
+  refs:
+  - bn6f/asm/asm31.s:125328
+  - 0x080F1902 sub_80F1902
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800CC72 object_isValidPanel
+  - 0x080D1B22 sub_80D1B22
+  reproduce: python3 tools/asmcat.py 0x080F197A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- exact semantics of sub_80D1B22's packed r3 fields (delay/size/kind) and of r2 (InitFlag)
+- which boss/attack in the game invokes sub_80F1902
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F197A -> ai_attackSweepFrontRow
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F197A

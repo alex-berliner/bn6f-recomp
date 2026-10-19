@@ -1,0 +1,47 @@
+name: init_loadCutsceneTextGlyphs
+address: '0x081314E4'
+kind: function
+status: probable
+summary: During cutscene scene setup, renders one of three sets of four glyphs from the text font into
+  the text-layer VRAM tiles.
+interface: (r0 = unused/ignored) -> r0 = destroyed; calls sub_81312EC to get cutscene state, reads state+0xC
+  to select a glyph set.
+details: Calls sub_81312EC and reads byte [r5+0xC] as a selector (0..2) into a table of three arrays of
+  four u16 character codes (off_813154C). For each of four entries (loop counter in [sp]), it takes the
+  u16 code, subtracts 0x90 and shifts right by 2 to get a glyph index, then calls renderTextGfx_8045F8C
+  with the font base TextScript873EA50, that index, scratch/stride 0x200 over byte_2019A00, VRAM destination
+  0x600A000 + i*0x200, tile count 0xB, color mode 2, and glyph table dword_86A5D60. This uploads four
+  16-tile (0x200-byte) glyph blocks to the BG text tile area. The three variants suggest version/scenario-dependent
+  text (e.g. a title or episode label) drawn while init_cutsceneSceneState starts chatbox script 0x68.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'loop of 4 iterations calling renderTextGfx_8045F8C with dest 0x600A000+i*0x200 and font TextScript873EA50;
+    u16 code minus 0x90, lsr #2, used as glyph index argument r1; selector ldrb [r5,#0xC] picks one of
+    three 8-byte arrays at off_813154C; caller init_cutsceneSceneState wipes VRAM/tile buffers and starts
+    chatbox script 0x68, then reaches this via sub_8131210'
+  refs:
+  - bn6f/asm/asm36.s:2721
+  - 0x081312FC init_cutsceneSceneState
+  - 0x08131210 sub_8131210
+  - 0x08045F8C renderTextGfx_8045F8C
+  - 0x081312EC sub_81312EC
+  reproduce: python3 tools/asmcat.py 0x081314E4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- what the four glyphs actually spell out (depends on glyph index mapping in the font)
+- what sub_81312EC's returned structure field 0xC represents (scene/variant selection)
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81314E4 -> init_loadCutsceneTextGlyphs
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81314E4

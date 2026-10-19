@@ -1,0 +1,51 @@
+name: battle_stepPanelEffectSpread
+address: '0x080E8BF8'
+kind: function
+status: probable
+summary: 'Battle panel-effect tick: clears one already-marked panel from the 6x6 flag map, then computes
+  and stores the next panel position to process.'
+interface: (r5 = battle object) -> r0 = void; stores next panel word into battleObject->ExtraVars
+details: First calls sub_80E8C84 (a guard condition); if it fails, battle_markFilteredPanelFlags rebuilds
+  the 6x6 boolean map at struct+0x64 for panels matching an alliance-dependent panel-param filter. Then,
+  if ExtraVars is nonzero, it decodes it as row = word>>4, col = word&7, computes index row*6+col+0x64
+  and clears that byte in the map — i.e. it consumes the previously selected panel. It then looks up the
+  8-byte panel-param entry via GetAllianceDependentPanelParamArgs (table byte_80E8C34, param 0x20), and
+  sub_80E8D92 uses the args to produce a new (row,col) packed as (r1<<4)+r0, which is stored back into
+  ExtraVars. So each invocation handles exactly one panel of the effect, spreading/iterating over the
+  filtered panel set one panel per tick.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'loc_80E8C06: lsr r1,r0,#4 / lsl+lsr #0x1d / mul #6 / add #0x64 indexes the +0x64 panel map
+    built by battle_markFilteredPanelFlags; strb r0(=0),[r5,r2] clears the selected panel''s map byte,
+    consuming the panel stored in ExtraVars; bl GetAllianceDependentPanelParamArgs with off_80E8C30 ->
+    byte_80E8C34 (param 0x20) supplies the effect''s panel-param args; lsl r2,r1,#4 / add r2,r0 / str
+    [r5,#oBattleObject_ExtraVars] repacks callee output as the next row/col panel word; caller sub_80E8B70
+    chains this after sub_80E8B70''s own setup, and battle_markFilteredPanelFlags''s summary matches the
+    +0x64 6x6 flag map'
+  refs:
+  - bn6f/asm/asm31.s:106679
+  - 0x080E8B70 sub_80E8B70
+  - 0x081096FA GetAllianceDependentPanelParamArgs
+  - 0x080E8CFA battle_markFilteredPanelFlags
+  - 0x080E8C84 sub_80E8C84
+  reproduce: python3 tools/asmcat.py 0x080E8BF8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- What sub_80E8C84 checks (whether the map should be (re)built) and what sub_80E8D92 actually selects
+  (random panel among flagged ones?) — needed to name the specific panel effect
+- Which in-game panel effect (e.g. grass/poison/sand spreading) uses panel-param 0x20 in byte_80E8C34
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E8BF8 -> battle_stepPanelEffectSpread
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E8BF8

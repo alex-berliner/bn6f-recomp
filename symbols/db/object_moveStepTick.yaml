@@ -1,0 +1,49 @@
+name: object_moveStepTick
+address: '0x080DE21A'
+kind: function
+status: probable
+summary: 'Per-frame movement step for a battle object: advances its position, refreshes its panel/collision
+  data, and changes its state depending on a direction/side check.'
+interface: (r5 = battle object pointer, no args) -> updates object fields; r0 clobbered
+details: 'Adds the object''s step delta at +0x44 into its position at +0x38, then calls object_setPanelsFromCoordinates
+  and object_updateCollisionPanels so the movement is reflected in panel and collision data. It then reads
+  the direction-ish flag at +0x62 (0/1), XORs it with 1 and multiplies by 3, comparing against byte +0x13
+  (likely a side/facing value in steps of 3). If they don''t match it just returns. If they match: when
+  +0x62 == 1 it calls sub_80DE3B0 and sets state bytes +9 = 0xC and +0xA = 0; otherwise it clears byte
+  +0x65, snapshots the position +0x38 into +0x68, and sets state +9 = 8. The +9/+0xA writes look like
+  the object''s state/state-timer pair, so this is a state-machine step handler for something traversing
+  the field.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ld r1,[r5,#0x38]; add r1,r1,r0(+0x44); str + object_setPanelsFromCoordinates/object_updateCollisionPanels
+    calls: position advance plus panel/collision sync; ldrb r0,[r5,#0x62]; eor with 1; mul by 3; cmp with
+    [r5,#0x13]: a 0/1 flag matched against a side/facing value; strb to [r5,#9] of 8 or 0xC and [r5,#0xA]
+    = 0: state-machine state/counter update; ldr [r5,#0x38]; str [r5,#0x68]: position snapshot stored
+    on the non-return branch'
+  refs:
+  - bn6f/asm/asm31.s:83041
+  - 0x0800E2AC object_setPanelsFromCoordinates
+  - 0x0801A04C object_updateCollisionPanels
+  - 0x080DE3B0 sub_80DE3B0
+  reproduce: python3 tools/asmcat.py 0x080DE21A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- No callers known, so the object type and which state machine (bytes +9/+0xA) this belongs to is unidentified
+- Meaning of the flag at +0x62 (move direction vs. side selector) and of byte +0x13 (team/facing?) is
+  inferred, not confirmed
+- sub_80DE3B0's behavior would clarify what the +0x62==1 branch does (arrival/turnaround/despawn)
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DE21A -> object_moveStepTick
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DE21A

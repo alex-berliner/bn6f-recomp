@@ -1,0 +1,52 @@
+name: ai_damageFlaggedPanelsInFront
+address: '0x080F1B24'
+kind: function
+status: probable
+summary: 'AI attack helper: sweeps every panel in front of the battle object and deals the attack''s damage
+  on panels whose status flags match a per-alliance mask.'
+interface: (r5 = battle object, r7 = AI attack vars {InitFlag, Damage}) -> r0 = ?; no meaningful return
+details: 'Outer loop iterates absolute panel coordinates y = 1..2 (r6) with inner loop x = 1..5 (r4),
+  i.e. the whole 5x2 panel grid. For each panel it computes dir*(objX - x) via object_getFrontDirection
+  and only processes panels strictly in front of the object (skip when >= 0). object_getPanelParameters(x,
+  y) gives the panel status word, which is tested against a per-alliance mask from byte_80F1B70 (alliance
+  0: 0x05800000, alliance 1: 0x0A800000; shared bit 0x00800000 plus alliance-specific bits). If any masked
+  flag is set, it calls sub_80D05C4 with r0 = x, r1 = y, r2 = r7->InitFlag and r6 = r7->Damage (r6 is
+  saved/restored around the call, so it is deliberately passed as an argument despite also being the loop
+  counter). The alliance-dependent masks suggest the attack only triggers on panels in a particular state,
+  but which terrain/status the bits mean is not confirmed.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: loc_80F1B2A loops r4=1..5 and r6=1..2 as absolute panel x/y passed to object_getPanelParameters;
+    mul r0,r1 with object_getFrontDirection plus 'bge' skip restricts hits to panels in front of r5; tst
+    r0,r2 against off_80F1B6C word selected by oBattleObject_Alliance<<2 gates each hit; push {r6}/ldr
+    r6,[r7,#oAIAttackVars_Damage] before bl sub_80D05C4 shows damage comes from the AI attack vars; caller
+    sub_80F1A60 and callee sub_80D05C4 are both unnamed, so no external confirmation
+  refs:
+  - bn6f/asm/asm31.s:125560
+  - 0x080F1A60 sub_80F1A60
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800C8F8 object_getPanelParameters
+  - 0x080D05C4 sub_80D05C4
+  reproduce: python3 tools/asmcat.py 0x080F1B24
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- Which panel status bits 0x05800000/0x0A800000 represent (hole, broken, grass, object-on-panel, ...)
+  — need the panel status flag layout
+- Exact signature/behaviour of sub_80D05C4 (is r6 really read as damage, and what does the InitFlag byte
+  select?)
+- What sub_80F1A60 sets up in the oAIAttackVars struct, to identify which boss/attack this belongs to
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F1B24 -> ai_damageFlaggedPanelsInFront
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F1B24

@@ -1,0 +1,55 @@
+name: battle_findNearestPanelColumn
+address: '0x080E94F8'
+kind: function
+status: probable
+summary: Scans columns successively farther from a battle object's panel X for the first column containing
+  a panel matching alliance-specific panel-flag criteria, moving the object's X there and returning how
+  many matching panels were found.
+interface: (r0 = object, r5 = battle object) -> r0 = number of matching panels found in the chosen column;
+  writes oBattleObject_PanelX when a column is found
+details: 'Starting one panel away, it walks outward one column per outer iteration: candidate X = oBattleObject_PanelX
+  - object_getEnemyDirection(object)*offset. For each candidate column it tests rows 1..3 with object_checkPanelParameters(x,
+  y, setMask, clearMask), where the masks come from a per-alliance table at byte_80E955C indexed by oBattleObject_Alliance*8
+  (alliance 0: set 0x10/clear 0; alliance 1: set 0x20/clear 0x03800000; alliance 2: set 0x30/clear 0).
+  On each match it calls sub_80DF4D4(object, matchIndex, element*10, oBattleObject_DamageAndStaminaDamageCounterDisabler)
+  and counts the match. If any panel in the column matched, it stores the candidate X into oBattleObject_PanelX
+  and returns the count; otherwise it widens the search by one column and retries. Only columns landing
+  in x=1..6 are tested, so if the search direction never yields a valid panel the loop has no visible
+  bound.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: neg r0 / mul r6 with object_getEnemyDirection builds candidate columns from oBattleObject_PanelX
+    (loc_80E9500); cmp x with 1..6 bounds the scan to the 6 battle columns (loc_80E9500); byte_80E955C
+    is read as two mask words per oBattleObject_Alliance*8 and passed to object_checkPanelParameters;
+    strb r0, [r5,#oBattleObject_PanelX] stores the matched column only when match count r7 is nonzero
+    (loc_80E954E); sub_80DF4D4 is called per matching row with oBattleObject_Element*10 and the damage
+    field, and r7 counts calls
+  refs:
+  - bn6f/asm/asm31.s:107982
+  - 0x080E94B4 sub_80E94B4
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0800E2C0 object_getEnemyDirection
+  - 0x080DF4D4 sub_80DF4D4
+  reproduce: python3 tools/asmcat.py 0x080E94F8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- What sub_80DF4D4 does with the element*10 argument and the damage/stamina field (attack, movement, or
+  per-panel effect?)
+- Which enemies/scripts call sub_80E94B4, to confirm whether this is enemy advance-toward-player AI and
+  why the facing step is negated
+- Exact meaning of the panel flag bits 0x10/0x20/0x30 and 0x03800000 in the per-alliance mask table
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E94F8 -> battle_findNearestPanelColumn
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E94F8

@@ -4,48 +4,45 @@ kind: function
 previous_names:
 - sub_801A45C
 status: probable
-summary: 'Handles a crouch/slide result of 0x40 in the object''s collision flag set: flips the partner''s
-  alliance state, adds the player''s churn-row column 8 counter, resets the object counter-timer, refreshes
-  the chatbox window panel, and plays the "crouch" sound effect.'
+summary: 'Handles a crouch/slide result of 0x40 in the object''s collision flag set: flips the partner''s alliance
+  state, adds the player''s churn-row column 8 counter, resets the object counter-timer, refreshes the chatbox window
+  panel, and plays the "crouch" sound effect.'
 interface: '(r5 = BattleObjectPtr, r10 = ToolkitPtr) -> void ; side effects: sub_802E032(0x1500), tableAddSaturatedByte_800AB46(...),
   PlaySoundEffect(SOUND_SELECT_86), sub_801E270 (window panel update)'
 details: '- `ldr r4, [r5, #oBattleObject_CollisionDataPtr]` then `ldr r6, [r4, #oCollisionData_FlagsFromCollision]`
   to read the per-tile collision result flags.
 
-  - Early-returns (the `locret_801A4A4` epilogue) if bit 0x40 of those flags is clear (`tst r6, #0x40;
-  beq locret_801A4A4`).
+  - Early-returns (the `locret_801A4A4` epilogue) if bit 0x40 of those flags is clear (`tst r6, #0x40; beq locret_801A4A4`).
 
-  - When 0x40 is set, checks `battle_testFlag0x40_800A8F8`; if true, the call to `sub_802E032(r0=Alliance^1,
-  r1=1, r1=0x1500)` flips the partner''s Alliance (off_801A54C == 0x1500) — the EOR with 1 toggles 0/1.
+  - When 0x40 is set, checks `battle_testFlag0x40_800A8F8`; if true, the call to `sub_802E032(r0=Alliance^1, r1=1,
+  r1=0x1500)` flips the partner''s Alliance (off_801A54C == 0x1500) — the EOR with 1 toggles 0/1.
 
-  - Always: `tableAddSaturatedByte_800AB46(Alliance^1, row=8, delta=1)` to bump a counter on the partner
-  row (saturated byte add).
+  - Always: `tableAddSaturatedByte_800AB46(Alliance^1, row=8, delta=1)` to bump a counter on the partner row (saturated
+  byte add).
 
-  - `strb r0, [r4, #oCollisionData_CounterTimer]` with r0=0 zeroes the counter timer (r0 was just loaded
-  with #0).
+  - `strb r0, [r4, #oCollisionData_CounterTimer]` with r0=0 zeroes the counter timer (r0 was just loaded with #0).
 
-  - If `battle_isBattleOver` returns 0 (battle still running), refreshes the window panel via `sub_801E270`
-  and plays SOUND_SELECT_86 via `PlaySoundEffect`. The `push {r0}` / `pop {r0}` shim around `PlaySoundEffect`
-  preserves the r0 returned by `sub_801E270` (the window-panel "open request" state) so the caller still
-  has the original arg/state.
+  - If `battle_isBattleOver` returns 0 (battle still running), refreshes the window panel via `sub_801E270` and
+  plays SOUND_SELECT_86 via `PlaySoundEffect`. The `push {r0}` / `pop {r0}` shim around `PlaySoundEffect` preserves
+  the r0 returned by `sub_801E270` (the window-panel "open request" state) so the caller still has the original
+  arg/state.
 
-  - net behaviour per the AI/callee hints: this fires on the "crouch result" (bit 0x40) of a collision,
-  e.g. when an enemy steps onto the player''s crouch line in the row table.
+  - net behaviour per the AI/callee hints: this fires on the "crouch result" (bit 0x40) of a collision, e.g. when
+  an enemy steps onto the player''s crouch line in the row table.
 
-  - Restore: `pop {r4, r6, pc}` is the function epilogue; r4/r6 are pushed at entry and pop restores the
-  caller''s frame. r5 and r10 are also preserved (caller-saved convention here treated as in).
+  - Restore: `pop {r4, r6, pc}` is the function epilogue; r4/r6 are pushed at entry and pop restores the caller''s
+  frame. r5 and r10 are also preserved (caller-saved convention here treated as in).
 
   '
 evidence:
 - method: assembly-reading
   date: '2026-10-14'
-  detail: '- The 0x40 test is literal: `mov r2, #0x40; tst r6, r2; beq locret_801A4A4`. - Alliance XOR
-    EOR pattern at loc_801A47C: `ldrb r0, [r5,#oBattleObject_Alliance]; mov r1, #1; eor r0, r1; mov r1,
-    #8; mov r2, #1; bl tableAddSaturatedByte_800AB46`. - Counter timer reset: `mov r0, #0; strb r0, [r4,
-    #oCollisionData_CounterTimer]`. - sub_801E270 is the "window panel update" (per callee summary), called
-    between `battle_isBattleOver` and `PlaySoundEffect`. - `PlaySoundEffect` is invoked with r0=SOUND_SELECT_86
-    (the crouch/confirm SFX in Battle Network). - Caller names: `ai_eventuallyRunsAIAttack_801AF44` (an
-    AI attack handler) and `battle_801B1C4` (a battle step/state function), both passing r5=BattleObjectPtr
+  detail: '- The 0x40 test is literal: `mov r2, #0x40; tst r6, r2; beq locret_801A4A4`. - Alliance XOR EOR pattern
+    at loc_801A47C: `ldrb r0, [r5,#oBattleObject_Alliance]; mov r1, #1; eor r0, r1; mov r1, #8; mov r2, #1; bl tableAddSaturatedByte_800AB46`.
+    - Counter timer reset: `mov r0, #0; strb r0, [r4, #oCollisionData_CounterTimer]`. - sub_801E270 is the "window
+    panel update" (per callee summary), called between `battle_isBattleOver` and `PlaySoundEffect`. - `PlaySoundEffect`
+    is invoked with r0=SOUND_SELECT_86 (the crouch/confirm SFX in Battle Network). - Caller names: `ai_eventuallyRunsAIAttack_801AF44`
+    (an AI attack handler) and `battle_801B1C4` (a battle step/state function), both passing r5=BattleObjectPtr
     and r10=ToolkitPtr — exactly the contract here.'
   refs:
   - bn6f/asm/asm00_2.s
@@ -57,8 +54,8 @@ evidence:
 
     '
 open_questions:
-- The "crouch" semantics for the 0x40 collision flag and the exact row/column 8 in the row-table counter
-  are inferred from r1=#8; semantics is plausible but not directly labelled.
+- The "crouch" semantics for the 0x40 collision flag and the exact row/column 8 in the row-table counter are inferred
+  from r1=#8; semantics is plausible but not directly labelled.
 sources:
 - discovery session 2026-10-14 batch 41 (outside model minimax/MiniMax-M3)
 changes:
@@ -70,6 +67,10 @@ changes:
   what: rename sub_801A45C -> battle_handleCollisionCrouchSlideReset_801A45C
   where: bn6f ce204b1d
   tool: tools/rename_symbol.py
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
 stamp:
   rom: rom:0119b8f2b9a1af62
   range: 0x0801A45C-0x0801A4A6

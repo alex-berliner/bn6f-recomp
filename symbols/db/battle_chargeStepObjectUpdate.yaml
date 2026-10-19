@@ -1,0 +1,47 @@
+name: battle_chargeStepObjectUpdate
+address: '0x080E991C'
+kind: function
+status: probable
+summary: Per-frame update for a battle object that drifts by its velocity and, when its timer expires,
+  logs one entry into a related object's AI charge-shot step table before destroying itself.
+interface: (r5 = battle object) -> void; destroys the object after recording a step
+details: Adds X/Y/ZVelocity to X/Y/Z and refreshes PanelX/PanelY via object_setPanelsFromCoordinates.
+  It then inspects RelatedObject1Ptr's oBattleObject_CurAction and only acts when it equals 0x58 (likely
+  the charge-shot/charging action). It decrements oBattleObject_Timer; once the timer hits zero it reads
+  oAIData_ChargeShotStepIndex from the related object's AIData, and if below 8 writes Param1 | (CurAnim<<4)
+  into the AIData array at offset 0x6C + stepIndex, increments the index, and sets its own state to CUR_STATE_DESTROY.
+  The routine ends with the standard sprite_update call. The related object is presumably MegaMan, whose
+  AI script later consumes the recorded steps.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: adds oBattleObject_X/Y/ZVelocity to X/Y/Z then 'bl object_setPanelsFromCoordinates' (movement
+    + panel snap); checks 'ldrb r0,[r0,#oBattleObject_CurAction]; cmp r0,#0x58' on RelatedObject1 before
+    doing anything; on timer expiry stores 'Param1 | CurAnim<<4' at AIData+0x6C+ChargeShotStepIndex and
+    increments the index; 'mov r0,#CUR_STATE_DESTROY; str r0,[r5,#oBattleObject_...]' marks the object
+    for destruction; tail 'bl sprite_update; pop {r4,pc}' is the standard object-frame update pattern
+  refs:
+  - bn6f/asm/asm31.s:108514
+  - 0x0800E2AC object_setPanelsFromCoordinates
+  - 0x080026C4 sprite_update
+  reproduce: python3 tools/asmcat.py 0x080E991C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- no caller is known, so which entity spawns this object and what CurAction 0x58 exactly is (charge shot?)
+  is unconfirmed
+- the meaning of the recorded bytes Param1|CurAnim<<4 in the AIData 0x6C step table (hit animation/strength?)
+  needs the AI script consumer
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E991C -> battle_chargeStepObjectUpdate
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E991C

@@ -1,0 +1,54 @@
+name: rfu_clearDisconnectedSlots
+address: '0x08146D98'
+kind: function
+status: probable
+summary: Scans the four wireless link slots for peers whose connection has ended (state 0x46/0x47/0x48),
+  clears those slots, and when every tracked slot is finished resets the player's block in the shared
+  wireless data buffer.
+interface: '(r0 = work struct ptr: +0x01 status byte out, +0x0C buffer ptr, +0x14 byte size, r1 unused)
+  -> r0 = ?; destroys r-r7 saved'
+details: 'Loops i = 0..3, testing bitmask byte_2010292 against (2<<i) to see which slots are active; for
+  each active slot it loads dword_2010CB0[i] (a link-slot state struct) and checks the halfword at +0x34.
+  States 0x46, 0x47 and 0x48 are treated as ''peer gone'': rfu_clearSlot(8, i) frees that slot, and slot
+  0x47/0x48 additionally sets [r6+1] = 2. It accumulates the checked mask bits in r7; if all bits of byte_2010292
+  were consumed (r7 == mask), it sets [r6+1] = 1, computes r9 = unk_2009480 + byte_2010328 * ((size>>2)*4)
+  (i.e. base + playerIndex * blockStride), zero-fills the buffer at [r6+0xC] for [r6+0x14] bytes, and
+  calls sub_8146E48 with (r6, r9) — presumably to rebuild/prime that block for continued reception.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: loop of 4 iterations testing byte_2010292 & (2<<i) selects which link slots to inspect; ldrh
+    from dword_2010CB0[i]+0x34 compared to 0x46/0x47/0x48 then rfu_clearSlot(8,i) — these are RFU link
+    states signalling disconnection; r7 accumulates mask bits and 'r7 == byte_2010292' gate guards the
+    buffer reset path; ZeroFillByWord([r6+0xC], [r6+0x14]) plus r9 = unk_2009480 + byte_2010328*blockSize
+    shows per-player region reset in a shared buffer; callee rfu_clearSlot confirms this is wireless-adapter
+    (RFU) link-slot management
+  refs:
+  - bn6f/asm/libs.s:6324
+  - 0x0803C8B4 sub_803C8B4
+  - 0x0803C8E8 sub_803C8E8
+  - 0x080008E0 ZeroFillByWord
+  - 0x0814A934 rfu_clearSlot
+  - 0x08146E48 sub_8146E48
+  reproduce: python3 tools/asmcat.py 0x08146D98
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- exact semantics of link states 0x46/0x47/0x48 (which one means 'normal disconnect' vs 'error')
+- what sub_8146E48 does with (struct, bufferOffset) — likely re-primes the receive block
+- what the callers sub_803C8B4/sub_803C8E8 are (probably the wireless recv polling loop) and the meaning
+  of struct fields +0x01/+0x0C/+0x14
+- meaning of byte_2010328 (likely local player slot index) and the 2-bits-per-slot layout of byte_2010292
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8146D98 -> rfu_clearDisconnectedSlots
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8146D98

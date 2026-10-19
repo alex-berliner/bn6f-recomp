@@ -1,0 +1,53 @@
+name: battle_scanPanelsForFlagMatch
+address: '0x0801273E'
+kind: function
+status: probable
+summary: Scans a line of battlefield panel columns from the entity's side toward the opponent, returning
+  1 as soon as a panel whose flags match a side-specific mask pair is found (any of rows 3/2/1), else
+  0.
+interface: (no r0 args; r5 = entity, [r5+0x16] = side/alliance id) -> r0 = 1 if a matching panel column
+  found, else 0; flags clobbered
+details: Reads the entity's side id from [r5+0x16], maps it through object_getAllianceDirection to a +1/-1
+  scan direction, and uses word_8012790 (bytes 01,06) as a per-side starting column (1 for one side, 6
+  for the other). For each column it tries rows 3,2,1 (r1 counting down) calling object_checkPanelParameters(x=r0,
+  y=r1, r2 = required-flag mask, r3 = forbidden-flag mask), where the mask pair comes from an 8-byte-per-side
+  table at byte_8012780 selected by the direction. If any check succeeds it returns that nonzero result
+  immediately; otherwise the column advances by the direction (add r0,r6) and the walk ends (r0=0) once
+  column-1 exceeds 6, i.e. after sweeping cols ~1..7 or ~6..0. The masks seen are 0x00200000/0x00000020
+  and 0x00400020/0, so it is hunting panels with a specific flag state that differs per side.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#0x16] + bl object_getAllianceDirection: side id from entity drives both scan direction
+    (r6) and table selection; ldr r2,[r7]; ldr r3,[r7,#4] with r7=byte_8012780+dir*8: per-side required/forbidden
+    flag masks passed to object_checkPanelParameters; inner loop r1=3,2,1 around bl object_checkPanelParameters:
+    three rows tested per column, first match returns; add r0,r0,r6; sub r4,r0,#1; cmp r4,#6; bls loop:
+    column walks from start (1 or 6 per word_8012790=0x0601) toward the enemy and stops when off the 0..7
+    field; locret reached either via tst/bne (returns callee''s 1) or fall-through mov r0,#0: boolean
+    found/not-found result'
+  refs:
+  - bn6f/asm/asm00_2.s:8473
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0800E2C2 object_getAllianceDirection
+  reproduce: python3 tools/asmcat.py 0x0801273E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- No known caller, so the gameplay purpose (which mechanic scans for these panel flags) is unconfirmed
+- Exact meaning of the flag bits in masks 0x20/0x2000/0x4000 (panel-state enum in object_checkPanelParameters)
+- With direction -1 the table index base-8 lands on the literal pool; the table base is likely labeled
+  8 bytes late or the direction values are not exactly +-1 — needs the real table layout
+- What entity field 0x16 formally is (alliance/side id) and which structure r5 points to
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_801273E -> battle_scanPanelsForFlagMatch
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_801273E

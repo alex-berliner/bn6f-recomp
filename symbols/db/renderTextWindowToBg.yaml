@@ -1,0 +1,50 @@
+name: renderTextWindowToBg
+address: '0x0812EF60'
+kind: function
+status: probable
+summary: Renders a small text window's glyphs into VRAM via the text renderer and blits its tile map onto
+  background block 3.
+interface: (r0 = text/source handle, passed through as r1 to renderTextGfx) -> r0 = destroyed; no meaningful
+  return
+details: Sets up a call to renderTextGfx_8045F8C with the toolkit's text-renderer state (unk_2025070),
+  the caller's argument forwarded in r1 (likely a string or text id), palette/map source byte_201B200,
+  a VRAM destination base of 0x600B800, dimensions 10x3, and glyph data at dword_86A5D60 (word_2023FA0
+  is loaded but unused in this path). After the render it calls sub_812EFA4 (unseen, presumably builds/finalizes
+  the tile map at unk_2025A70), then copies a 10x6 block of tile indices from unk_2025A70 into background
+  map block 3 at position (i=0xD, j=3) via CopyBackgroundTiles. The 10-wide layout matches between the
+  render step and the tile copy, indicating one composed text window/box. The 3-row render inside a 6-row
+  copied block suggests the box frame plus text area.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: push saves regs then mov r1,r0 forwards the caller's argument as r1 to renderTextGfx_8045F8C
+    with r0=unk_2025070 (renderer state) and r6=dword_86A5D60 (glyph data); r3=0x600B800 VRAM base with
+    r4=0xa, r5=3 gives a 10x3 text render target; bl CopyBackgroundTiles with (3, 0xD, 3, unk_2025A70,
+    10, 6) blits the prepared tile map into BG block 3; callee renderTextGfx_8045F8C is documented as
+    publishing a text-gfx base pointer and handing a glyph chunk to the renderer
+  refs:
+  - bn6f/asm/asm35.s:664
+  - 0x0812EF20 sub_812EF20
+  - 0x08045F8C renderTextGfx_8045F8C
+  - 0x080018C2 CopyBackgroundTiles
+  - 0x0812EFA4 sub_812EFA4
+  reproduce: python3 tools/asmcat.py 0x0812EF60
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- What sub_812EFA4 does between render and blit (likely fills the tile map at unk_2025A70)
+- What word_2023FA0 is for (loaded into off_812EF8C but never used in this routine)
+- Which screen/menu this window belongs to (caller sub_812EF20 is unnamed)
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_812EF60 -> renderTextWindowToBg
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_812EF60

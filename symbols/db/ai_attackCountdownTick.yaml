@@ -1,0 +1,49 @@
+name: ai_attackCountdownTick
+address: '0x080FB30E'
+kind: function
+status: probable
+summary: 'Per-frame update for an AI battle attack: on first run arms it (element, animation, sound, timers),
+  then counts down and switches animation near the end, flagging a hit element when it expires.'
+interface: (r5 = battle object, r7 = oAIAttackVars) -> void; no meaningful return, updates oAIAttackVars
+  and object fields
+details: 'If oAIAttackVars_AttackElement is still 0 it arms the attack: writes element 4, sets oBattleObject_CurAnim
+  to 0x11, plays sound effect 0xAD, sets the counter time to 0x18, stores sub_80E532C''s result into the
+  ScratchVar pointer, calls sub_80E887C with r4 = 0x0A00 and stores the result into PanelParamFlags2,
+  and copies TimerOrCycles into StepTimer. On later frames it decrements StepTimer; when it reaches TimerOrCycles-9
+  it switches CurAnim to 0x12 (a late-stage pose), and when the timer reaches 0 or below it writes 0x10
+  into oAIAttackVars_HitElement. The two-phase structure (init guarded by the element field, countdown
+  afterwards) shows this is a reusable per-frame handler rather than a one-shot routine.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: tst on oAIAttackVars_AttackElement with bne skips the whole setup block, so element!=0 marks
+    'already armed'; setup block sets anim 0x11, PlaySoundEffect(0xAD), object_setCounterTime(0x18), then
+    copies TimerOrCycles to StepTimer as the countdown; countdown branch decrements StepTimer, at StepTimer
+    == TimerOrCycles-9 writes anim 0x12; on StepTimer <= 0 it writes 0x10 to oAIAttackVars_HitElement,
+    evidently the attack's payoff step; sub_80E887C is called with r4 = 0x0A<<8 and its result stored
+    in PanelParamFlags2, suggesting panel-targeting setup
+  refs:
+  - bn6f/asm/asm31.s:144815
+  - 0x080005CC PlaySoundEffect
+  - 0x0800E9DC object_setCounterTime
+  - 0x080E532C sub_80E532C
+  reproduce: python3 tools/asmcat.py 0x080FB30E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- 'Which enemy/attack this belongs to: no caller is known, so the specific attack identity is unconfirmed'
+- What sub_80E532C returns (stored in ScratchVar) and what sub_80E887C computes into PanelParamFlags2
+- Whether element 4 and HitElement 0x10 map to a specific named element in the battle element enum
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80FB30E -> ai_attackCountdownTick
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FB30E

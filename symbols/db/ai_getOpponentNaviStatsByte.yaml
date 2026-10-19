@@ -1,0 +1,46 @@
+name: ai_getOpponentNaviStatsByte
+address: '0x08102280'
+kind: function
+status: probable
+summary: Reads a fixed byte (offset 0x20) from the opposing side's NaviStats record, used as an input
+  by the enemy battle AI action-script chooser.
+interface: (r5 = battle object, only Alliance field read; r0/r1 clobbered) -> r0 = byte at NaviStats offset
+  0x20 of the side opposite battleObject->Alliance
+details: 'Loads the battle object''s Alliance byte, XORs it with 1 to select the opposing side, then calls
+  GetBattleNaviStatsByte with r1=0x20 to fetch offset 0x20 of that side''s NaviStats record. It is essentially
+  a one-value wrapper: ''give me the foe''s NaviStats byte 0x20''. All six call sites are in ai_chooseActionScript,
+  so the value feeds the AI''s movement/action-script selection. The meaning of NaviStats offset 0x20
+  is not shown here; only the side-swap logic is certain. Note the input r0 is discarded (overwritten
+  by the ldrb), so the function takes no meaningful register arguments despite the bl''s calling convention.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r5,#oBattleObject_Alliance]; eor r0,#1 — flips to the opposite alliance before the
+    stats read; mov r1,#0x20; bl GetBattleNaviStatsByte — requests byte 0x20 from that side's NaviStats;
+    all six callers are inside ai_chooseActionScript (0x08101CC0..0x08101D86), an AI script-selection
+    routine
+  refs:
+  - bn6f/asm/asm31.s:159562
+  - 0x08101CC0 ai_chooseActionScript
+  - 0x08101D64 ai_chooseActionScript
+  - 0x08101D6C ai_chooseActionScript
+  - 0x080136CC GetBattleNaviStatsByte
+  reproduce: python3 tools/asmcat.py 0x08102280
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- what NaviStats offset 0x20 actually stores (would need the NaviStats structure layout or how ai_chooseActionScript
+  branches on the returned byte)
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8102280 -> ai_getOpponentNaviStatsByte
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8102280

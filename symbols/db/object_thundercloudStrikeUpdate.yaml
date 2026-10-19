@@ -1,0 +1,49 @@
+name: object_thundercloudStrikeUpdate
+address: '0x080E6EA0'
+kind: function
+status: probable
+summary: Battle object that strikes lightning (thunderbolt) on a panel up to six times, highlighting the
+  panel as a warning.
+interface: (r4 = object pointer, r5 = object pointer) -> r0 = none; destroys object via CurStateActionPhase
+  after 6 strikes
+details: 'Reads/writes the standard battle object struct: CurPhase, Param1 (extra initial delay added
+  to 0x1E frames), Param2 (strike counter, max 6), PanelX/PanelY (set from callee sub_80E6F32), Element
+  (passed to the thunderbolt spawner), Timer, Timer2, and the packed CurState/ActionPhase field set to
+  CUR_STATE_DESTROY at the end. Phase 0 is init: sets phase 4, Timer = Param1+0x1E, Timer2 = 0, and fetches
+  target panel coords. Phase 4 increments Timer2, calls object_highlightPanel every 8th tick (Timer2>>3
+  carry), decrements Timer; at Timer==0x1E it calls spawnThunderboltObject_80C7D50 with panel X, Y, Element,
+  r4=0 and the object''s damage field; when Timer goes negative it increments Param2 and either loops
+  back to phase 0 or destroys the object at 6 strikes.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: Phase 0 stores Param1+0x1E into Timer and fetches PanelX/Y from sub_80E6F32 (init sequence at
+    loc_80E6EB6..EED0); Timer==0x1E branch calls spawnThunderboltObject_80C7D50 with PanelX, PanelY, Element
+    (loc_80E6EF6); Timer<0 path increments Param2 and restarts phase 0 unless Param2>=6, then sets CurStateActionPhase
+    to CUR_STATE_DESTROY (loc_80E6ED8..E70A); object_highlightPanel called every 8 Timer2 ticks with the
+    stored PanelX/PanelY (warning highlight at loc_80E6EC6); Element field passed as r2 to the thunderbolt
+    spawner matches elemental lightning attack behavior
+  refs:
+  - bn6f/asm/asm31.s:102502
+  - 0x0800CBD8 object_highlightPanel
+  - 0x080C7D50 spawnThunderboltObject_80C7D50
+  - 0x080E6F32 sub_80E6F32
+  reproduce: python3 tools/asmcat.py 0x080E6EA0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- What sub_80E6F32 does exactly (likely random panel selection) is unconfirmed
+- Which in-game attack spawns this object, and the meaning of Param1's source, would be shown by the caller
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E6EA0 -> object_thundercloudStrikeUpdate
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E6EA0

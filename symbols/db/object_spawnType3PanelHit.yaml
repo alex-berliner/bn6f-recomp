@@ -1,0 +1,53 @@
+name: object_spawnType3PanelHit
+address: '0x080C6018'
+kind: function
+status: probable
+summary: Spawns a type-3 battle attack object (panel-area hit) and fills its panel, element, damage, related-object
+  and alliance fields from the caller's arguments/parent object.
+interface: (r0 = spawn kind for object_spawnType3 (0xA), r1 = panelX, r2 = panelY, r3 = element, plus
+  parent ptr/damage in higher regs) -> r0 = spawned object pointer or 0 on failure
+details: 'The routine saves its incoming arguments (and scratch registers) on the stack, calls object_spawnType3
+  with the fixed argument 0xA, and on success copies the caller-supplied values into the new battle object:
+  oBattleObject_PanelX, oBattleObject_PanelY, oBattleObject_Element, oBattleObject_RelatedObject1Ptr (parent
+  object pointer), the oBattleObject_DamageAndStaminaDamageCounterDisabler word, and oBattleObject_Alliance
+  taken from the parent object. On spawn failure it returns immediately without touching the fields. The
+  byte table after the function (pairs of 0x17/0x04-0x06 headers with 0xC/0x21 payload words) looks like
+  related attack-descriptor data for the callers that use this helper. Its only known caller, sub_80C5D84,
+  uses it while destroying a battle object to spawn a sword-flavor (Param1==1) or wind-flavor (Param1==2)
+  panel-area hit built from the dying object''s panel/element/damage fields. The printed disassembly is
+  misaligned after the bl (pop/beq/register use is inconsistent), so exact argument order beyond panelX/panelY/element
+  is reconstructed from field stores rather than the raw bytes.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: caller sub_80C5D84 spawns sword (Param1==1) or wind (Param1==2) panel-area hit using the object's
+    panel/element/damage fields, then destroys the object; stores to oBattleObject_PanelX/oBattleObject_PanelY/oBattleObject_Element
+    from popped arguments after object_spawnType3; copies oBattleObject_Alliance from the parent object
+    and links oBattleObject_RelatedObject1Ptr to it; spawns via object_spawnType3 with fixed kind 0xA,
+    checking the returned pointer before writing fields
+  refs:
+  - bn6f/asm/asm31.s:30676
+  - 0x080C5D84 sub_80C5D84
+  - 0x08003358 object_spawnType3
+  reproduce: python3 tools/asmcat.py 0x080C6018
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- Exact argument order/registers is uncertain because the printed disassembly is misaligned after the
+  bl
+- Whether the 0xA argument to object_spawnType3 selects a specific type-3 attack flavor or a generic kind
+- Which callers besides sub_80C5D84 use this helper and what the trailing byte_80C6038 table is consumed
+  by
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C6018 -> object_spawnType3PanelHit
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C6018

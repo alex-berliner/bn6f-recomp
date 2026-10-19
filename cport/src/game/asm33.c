@@ -3508,10 +3508,10 @@ static inline call_menu_confirmExitAndFade_812580C_result call_menu_confirmExitA
 }
 
 typedef struct { u32 r10; } call_sub_81266E0_result;
-/* register form: generated wrapper: sub_81266E0 has no typed C interface yet */
+/* register form: generated wrapper: battle_cycleEntryGroupIndex has no typed C interface yet */
 static inline call_sub_81266E0_result call_sub_81266E0(u32 r5) {
     R5 = r5;
-    GUEST_CALL(sub_81266E0);
+    GUEST_CALL(battle_cycleEntryGroupIndex);
     return (call_sub_81266E0_result){ R10 };
 }
 
@@ -3538,7 +3538,7 @@ static inline call_sub_8125820_result call_sub_8125820(u32 r0, u32 r1, u32 r2, u
 /* battle_input_tick_8125784 — per-frame dispatch for the battle-style menu.
  *
  * Start+B           → confirm exit & fade
- * pressed bit 0     → dedicated handler (sub_81266E0)
+ * pressed bit 0     → dedicated handler (battle_cycleEntryGroupIndex)
  * Select held       → write state byte on battle object, play cue 7A
  * cursor field set  → try submenu_moveListCursor navigation when D-pad or A/B held,
  *                     then restore the temporarily-written 16-bit field.

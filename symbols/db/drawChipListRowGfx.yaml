@@ -1,0 +1,50 @@
+name: drawChipListRowGfx
+address: '0x08047708'
+kind: function
+status: probable
+summary: 'Renders one chip-list row''s text graphics: decompresses two text blocks for the row and uploads
+  them to two consecutive VRAM tile blocks.'
+interface: (r0 = row index (multiplied by 0x400 byte offset), r1 = entry index whose >>2 selects the glyph
+  chunk, r5 = list-state pointer) -> r0 = renderer result of second call; writes eDecompBuffer2013A00/unk_2013C00
+  and VRAM 0x6008400/0x6008600; clobbers r0-r7
+details: 'Computes a per-row offset r0*0x400 (1024 bytes = one 32x32-tile block of text graphics) and
+  calls renderTextGfx_8045F8C twice for that block: first with the fixed script TextScript873EA50 decompressing
+  into eDecompBuffer2013A00+offset and uploading to VRAM 0x6008400+offset, then with a script pointer
+  read from list-state field r5+0x24 into unk_2013C00 and VRAM 0x6008600+offset. Both calls use the same
+  glyph chunk index (r1>>2) and glyph base dword_86A5D60, with flags 1,1 and 0. The 0x200 gap between
+  the two VRAM bases means the two text images are stacked in consecutive tile blocks, matching the caller
+  drawing name/code/value strips per row. The function is a pure ''render row graphics to VRAM'' helper
+  for the chip list screen.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mul r4, r0 with r4=0x40<<4=0x400 gives a per-row 1KB tile-block offset used for both decompress
+    buffers and VRAM destinations; first renderTextGfx call uses TextScript873EA50 -> eDecompBuffer2013A00
+    -> VRAM 0x6008400; second uses [r5,#0x24] -> unk_2013C00 -> VRAM 0x6008600; both calls pass r1 lsr
+    #2 as glyph-chunk index and dword_86A5D60 as glyph base, tying both images to the same text/glyph
+    set; sole caller drawChipListFiveRows_8047594 draws five rows of chip name/code/value strips from
+    8-byte entries, matching one text block per row region'
+  refs:
+  - bn6f/asm/asm03_2.s:2941
+  - 0x08047594 drawChipListFiveRows_8047594
+  - 0x08045F8C renderTextGfx_8045F8C
+  reproduce: python3 tools/asmcat.py 0x08047708
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- exact meaning of the [r5,#0x24] script pointer (second text line vs. per-chip script) and the exact
+  semantics of r1>>2 for chunk selection
+- whether TextScript873EA50 is the fixed header/label text of the list or the chip-name table
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8047708 -> drawChipListRowGfx
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8047708

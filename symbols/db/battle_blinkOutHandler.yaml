@@ -1,0 +1,46 @@
+name: battle_blinkOutHandler
+address: '0x080BD4DC'
+kind: function
+status: probable
+summary: Battle-object phase handler that flashes the object's sprite on/off each frame while counting
+  down, then ends the phase (despawn-style blink-out).
+interface: (r0 = unused, r5 = battle object header) -> r0 = 4 (next phase); updates object flags/timer/Param4
+details: On first run (PhaseInitialized==0) it applies color shader 0x7FFF to the object's sprite, sets
+  Param4=0x1F, plays sound effect 0x94, clears Timer, and marks the phase initialized. Each subsequent
+  frame it sets the object header flag bit 2 (hide sprite), then every other frame (Timer bit 0) clears
+  it again, producing a blink; Timer is incremented each frame. Param4 is decremented by 2 per frame;
+  once it reaches 0 the flag bit is set (sprite hidden), Param4 is zeroed, and the object's CurPhase is
+  set to 4 with the phase-initialized bit, ending the blink sequence.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#oBattleObject_PhaseInitialized] gate runs one-time setup (shader, sound 0x94,
+    Param4=0x1F) then strb #4 to PhaseInitialized; bl sprite_setColorShader with dword_80BD534=0x7FFF
+    tints/whitens the object''s sprite; orr/bic of oObjectHeader_Flags bit 2 on alternating Timer parity
+    implements blink visibility toggling; Param4 counts down by 2 per frame until <=0, then strh #4 to
+    oBattleObject_CurPhaseAndPhaseInitialized advances the state machine; callee PlaySoundEffect(0x94)
+    fires once at phase entry, matching a one-shot effect cue'
+  refs:
+  - bn6f/asm/asm31.s:11409
+  - 0x080005CC PlaySoundEffect
+  - 0x08002ED0 sprite_setColorShader
+  reproduce: python3 tools/asmcat.py 0x080BD4DC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- Which object/actor uses this phase (no callers known), so the exact gameplay meaning of sound 0x94 and
+  the blink context (e.g. enemy dissolve vs. item pickup) is unconfirmed
+- Whether color shader 0x7FFF means white-flash or restore-original palette
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BD4DC -> battle_blinkOutHandler
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BD4DC

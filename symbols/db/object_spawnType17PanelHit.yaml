@@ -1,0 +1,51 @@
+name: object_spawnType17PanelHit
+address: '0x080C68B0'
+kind: function
+status: probable
+summary: Spawns a type-17 battle object (a panel-area sword/wind hit spawned on object destruction) that
+  inherits the parent's panel position, element, alliance, damage and back-pointer.
+interface: (r0 = panelX, r1 = panelY, r2 = element; r5 = parent battle object) -> r0 = new type-17 object
+  or 0 on spawn failure
+details: Saves its three arguments with push {r0-r2,r5} (reloaded shifted into r1-r3), calls object_spawnType3
+  with type 0x11, and bails out if the spawn returned NULL. It then writes the passed panelX/panelY/element
+  into the new object's oBattleObject_PanelX/PanelY/Element, copies oBattleObject_Alliance from the parent
+  object in r5, and stores the parent's damage word (r6) into oBattleObject_DamageAndStaminaDamageCounterDisabler
+  and the parent pointer into oBattleObject_RelatedObject1Ptr. This makes the spawned hit a child of the
+  dying object, hitting the same panel with the same element/alliance/damage. The caller (sub_80C5D84,
+  the battle-object destruction path) uses it for the sword-flavor (Param1==1) and wind-flavor (Param1==2)
+  panel-area hits. The trailing data (dword_80C68D0, byte_80C68D4) looks like animation/behavior parameter
+  tables for these hit types, not code.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mov r0,#0x11 + bl object_spawnType3: spawns a fixed type-17 battle object; pop {r1-r3} then
+    strb r1/r2/r3 to oBattleObject_PanelX/PanelY/Element: caller-supplied position/element copied into
+    the new object; ldrb r1,[r5,#oBattleObject_Alliance]; strb r1,[r0,...]: alliance inherited from parent
+    object in r5; str r6,[r0,#oBattleObject_Damage...]; str r5,[r0,#oBattleObject_RelatedObject1Ptr]:
+    damage and parent link inherited; Caller sub_80C5D84 spawns sword (Param1==1) / wind (Param1==2) panel-area
+    hits on object destruction and sets state to destroy'
+  refs:
+  - bn6f/asm/asm31.s:31832
+  - 0x080C5D84 sub_80C5D84
+  - 0x08003358 object_spawnType3
+  reproduce: python3 tools/asmcat.py 0x080C68B0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- Exact visual/gameplay identity of type-17 objects (which sprite/behavior the initializer assigns) —
+  would need the type-3 initializer or spawn table
+- Where r6's damage word originates (set before this call by the caller, or a field of the parent)
+- Whether the byte table at 80C68D4 belongs to this hit's animation or a neighboring function
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C68B0 -> object_spawnType17PanelHit
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C68B0

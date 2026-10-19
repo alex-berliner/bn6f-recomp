@@ -1,0 +1,49 @@
+name: pet_menuSpinCursorStep
+address: '0x0804AF20'
+kind: function
+status: probable
+summary: Advances the PET menu cursor-spin one step/frame toward the chosen icon, updating the spin state
+  and playing a tick sound while it is still turning.
+interface: '(r0 = spin step code: 1-7 one direction, 8-14 the other; r5 = PET menu work struct) -> r0
+  = sound id result; writes fields 0x1e, 0x20, 0x24, 0x44 of [r5]'
+details: 'The caller supplies an encoded spin command in r0: values >7 are reduced by 7 and stored as
+  a step counter at [r5+0x24] with [r5+0x20] set to 6, while values <=7 store r0-1 at [r5+0x20] and zero
+  0x24 — i.e. two counters for spinning in opposite directions around a 7-entry ring. It recomputes a
+  sub-index from [r5+3]>>2+1 into [r5+0x44] and calls sub_804AB4C/sub_804AB6C, which likely refresh the
+  cursor sprites for the new position, then decrements the frame counter at [r5+0x1e] (and [r5+0x24] when
+  spinning the >7 way). Finally it compares a counter in eS200AC80+0x30 (minus 1) with [r5+0x1e] and,
+  if they differ, plays a sound (SOUND_EXIT_SUBMENU, probably a cursor-tick mislabeled in the DB).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'cmp r0,#7 / ble loc_804AF32 splits the input into two direction encodings, storing r0-7 or
+    r0-1 into 0x24/0x20; ldrb [r5,#3], lsr #2, add #1, strb [r5,#0x44] derives an index fed to sub_804AB4C/sub_804AB6C;
+    ldrh [r5,#0x1e], sub #1 decrements a per-call counter, matched against eS200AC80+0x30-1 at the end;
+    mov r0,#SOUND_EXIT_SUBMENU / bl PlaySoundEffect fires only while the counters disagree, i.e. while
+    still spinning; caller pet_menuCancel places this inside the PET menu handler set'
+  refs:
+  - bn6f/asm/asm03_2.s:8979
+  - 0x0804AAA4 pet_menuCancel
+  - 0x0804A4D4 sub_804A4D4
+  - 0x080005CC PlaySoundEffect
+  - 0x0804AB4C sub_804AB4C
+  - 0x0804AB6C sub_804AB6C
+  reproduce: python3 tools/asmcat.py 0x0804AF20
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- exact semantics of [r5+0x1e], 0x20, 0x24 and [r5+3]; what sub_804AB4C and sub_804AB6C update
+- meaning of the dword at eS200AC80+0x30 and why its mismatch triggers the sound
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_804AF20 -> pet_menuSpinCursorStep
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_804AF20

@@ -1,0 +1,50 @@
+name: ai_attackSpawnPanelPattern
+address: '0x08107AB2'
+kind: function
+status: probable
+summary: 'AI attack helper: spawns an attack hit on every panel of a fixed offset pattern relative to
+  the object''s position, mirrored by facing direction.'
+interface: (r5 = battle object, r7 = oAIAttackVars) -> r0 = last sub_80D07A0 result; no meaningful flags
+details: Loads a panel-offset list from PanelOffsetListsPointerTable entry 0x68 and walks it as pairs
+  of signed bytes terminated by 0x7F. For each entry it takes the object's panel coords (oBattleObject_PanelX/Y),
+  multiplies the dx byte by object_getFrontDirection's +1/-1 alliance/DirectionFlip multiplier, and adds
+  the dy byte. Offsets landing outside the 6x3 grid are skipped via object_isValidPanel. For each valid
+  panel it calls sub_80D07A0 with x, y, oAIAttackVars_InitFlag in r2, r3 = 0, r4 = 2 | (oAIAttackVars_TimerOrCycles
+  << 8) | (4 << 16), and r6 = oAIAttackVars_Damage. The packed r4 bitfields (type 2, timer byte, flag
+  4<<16) look like spawn parameters for an attack entity/hit at that panel. Caller sub_8107856 presumably
+  sets up r5/r7 and the attack vars before this runs.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldr r6, off_8107B20 / mov r0,#0x68 / ldr r6,[r6,r0]: selects attack shape list index 0x68 from
+    PanelOffsetListsPointerTable; bl object_getFrontDirection then mul r2,r4: dx offset mirrored by the
+    object''s facing side; ldrsb r2,[r6]; cmp r2,#0x7f; beq locret: offset list is (dx,dy) pairs terminated
+    by 0x7F; bl object_isValidPanel: out-of-grid offsets are skipped, confirming panel targeting; r4 =
+    2 | timer<<8 | 4<<16, r6 = oAIAttackVars_Damage, bl sub_80D07A0: per-panel attack spawn with damage
+    from AI attack vars'
+  refs:
+  - bn6f/asm/asm31.s:171444
+  - 0x08107856 sub_8107856
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800CC72 object_isValidPanel
+  - 0x080D07A0 sub_80D07A0
+  reproduce: python3 tools/asmcat.py 0x08107AB2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- What sub_80D07A0 spawns exactly (attack entity vs. direct hit) and the meaning of the packed r4 fields
+  (2, timer<<8, 4<<16)
+- Which attack the list at table index 0x68 describes; caller sub_8107856 would confirm the attack ID/context
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8107AB2 -> ai_attackSpawnPanelPattern
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8107AB2

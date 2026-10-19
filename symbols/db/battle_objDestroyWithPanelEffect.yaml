@@ -1,0 +1,53 @@
+name: battle_objDestroyWithPanelEffect
+address: '0x080CE3C4'
+kind: function
+status: probable
+summary: 'Destruction handler for a 3-variant battle object: it removes itself from collision, spawns
+  a pair of timed panel effects, plays a per-variant sound, and switches to the destroy state.'
+interface: (r0 = battle object ptr, r5 also points to it, corrupted) -> r0 = CUR_STATE_DESTROY stored
+  to object state; no return value
+details: 'The routine first calls object_clearCollisionRegion on the object at r5 so it stops registering
+  hits, then reads oBattleObject_CollisionDataPtr->oCollisionData_FlagsFromCollision: r6 becomes 1 if
+  the object had collided, 0xF otherwise (an effect lifetime in frames). It indexes two per-variant tables
+  with oBattleObject_Param1: byte_80CE421 (0x3B,0x3B,0x3C) is passed with PanelX/PanelY, the duration
+  and oBattleObject_AllianceAndDirectionFlip to sub_80CE468 (likely spawns a visual effect/object), and
+  byte_80CE41E (0x4,0x7,0x6) is passed with PanelX/PanelY and the duration to sub_80CE424 (likely a second
+  effect or a panel-state change). It then plays the halfword sound ID from byte_80CE418 selected by Param1*2
+  (0x90, 0x118, 0x11B) and finally writes CUR_STATE_DESTROY into oBattleObject_CurStateActionPhaseAndPhaseInitialized.
+  The three-entry tables suggest the object has three param-driven variants (e.g. levels or elements)
+  sharing one death animation.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: object_clearCollisionRegion call + CUR_STATE_DESTROY store show this is an object teardown path
+    (asm lines 2, 24-25); tst on oCollisionData_FlagsFromCollision selects duration 1 vs 0xF for the spawned
+    effects (lines 4-9); byte_80CE421 values 0x3B/0x3C passed with panel coords and flip to sub_80CE468
+    look like effect/animation IDs (lines 10-18); byte_80CE41E values 4/7/6 passed with panel coords to
+    sub_80CE424 suggest a per-variant panel-related effect (lines 19-23); PlaySoundEffect with byte_80CE418[param1*2]
+    IDs 0x90/0x118/0x11B gives each variant its own sound (lines 24-27)
+  refs:
+  - bn6f/asm/asm31.s:48620
+  - 0x080005CC PlaySoundEffect
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x080CE424 sub_80CE424
+  reproduce: python3 tools/asmcat.py 0x080CE3C4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- What sub_80CE468 and sub_80CE424 actually do (spawn effect object vs. alter panel terrain/state) — their
+  bodies would pin down the effect semantics
+- Which object/chip/boss uses this handler and what Param1 variant 0/1/2 represent (element or level)
+- Whether byte_80CE41E values are panel types, animation indices, or palette IDs
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CE3C4 -> battle_objDestroyWithPanelEffect
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CE3C4

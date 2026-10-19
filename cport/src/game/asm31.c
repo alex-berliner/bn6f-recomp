@@ -2923,7 +2923,7 @@ Next sub_80C5D84(void) {
         R3 = 0;
         R4 = 0x3C << 8;
         R6 = LD32(R5 + oBattleObject_DamageAndStaminaDamageCounterDisabler);
-        GUEST_CALL(sub_80C6018);
+        GUEST_CALL(object_spawnType3PanelHit);
     } else if (param1 == 2) {
         /* Wind-like effect: spread along the row in a single line. */
         R0 = LD8(R5 + oBattleObject_PanelX);
@@ -2931,7 +2931,7 @@ Next sub_80C5D84(void) {
         R2 = LD8(R5 + oBattleObject_Element);
         R3 = 0;
         R6 = LD32(R5 + oBattleObject_DamageAndStaminaDamageCounterDisabler);
-        GUEST_CALL(sub_80C68B0);
+        GUEST_CALL(object_spawnType17PanelHit);
     }
 
     ST32(R5 + oBattleObject_CurStateActionPhaseAndPhaseInitialized, CUR_STATE_DESTROY);

@@ -3424,10 +3424,10 @@ static void set_invulnerable_time(u32 frames) {
     GUEST_CALL(object_setInvulnerableTime);
 }
 
-/* register form: calls sub_802D310 outside this file, which has no typed C interface yet */
+/* register form: calls battle_clearAIDataStateBlock outside this file, which has no typed C interface yet */
 static void post_invulnerability_update(void) {
     /* the original runs this only after granting invulnerability below */
-    GUEST_CALL(sub_802D310);
+    GUEST_CALL(battle_clearAIDataStateBlock);
 }
 
 /* Consume two one-shot AI-data flag bits on behalf of a battle object, applying

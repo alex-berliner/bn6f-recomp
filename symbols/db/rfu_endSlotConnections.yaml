@@ -1,0 +1,48 @@
+name: rfu_endSlotConnections
+address: '0x081450B4'
+kind: function
+status: probable
+summary: 'RFU teardown helper: clears per-slot flags for the given player-slot mask, zeroes those slots''
+  state, force-disconnects any of them that are linked, and reports the result via the connection callback
+  with event 0x33.'
+interface: (r0 = u8 bitfield of player slots) -> r0 = callback result; no meaningful flags
+details: r0 is masked (8-bit) against a pending/request flag byte at eStruct200FE00+0x30; if no bits overlap
+  it returns without doing anything, otherwise those bits are cleared in the flag byte. For each set bit
+  i (0..3) it clears the halfword at eStruct200FE00+0x34+i*2 (four per-slot state entries). It then tests
+  the slot mask against byte [dword_2010CC0]+3 (connected-slot byte of the link struct); any overlapping
+  bits are passed to rfu_forceDisconnect, and the resulting masked value is stored to eStruct200FE00+0x14.
+  Finally it fires the connection callback (eStruct200FE00+0x40) with event id 0x33 and that masked value,
+  which also clears the +0x14/+0x16 state halfwords per the callee.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb from eStruct200FE00+0x30, bic/strb clears exactly the caller's bits before any action;
+    loop `asr r0,r4 / and r0,r5` over bits 0..3 zeroes halfwords at +0x34+bit*2 (four slot entries); mask
+    & [dword_2010CC0+3] gates a call to rfu_forceDisconnect with that mask; result masked value stored
+    to eStruct200FE00+0x14, then rfu_fireConnCallbackAndClearState(0x33, mask); callees' known summaries
+    (force-disconnect, connection callback invoker) match a slot teardown purpose
+  refs:
+  - bn6f/asm/libs.s:2296
+  - 0x081461B0 rfu_fireConnCallbackAndClearState
+  - 0x081461D8 rfu_forceDisconnect
+  reproduce: python3 tools/asmcat.py 0x081450B4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- exact meaning of the +0x30 flag byte and the four halfwords at +0x34 (likely per-slot link state/request
+  fields)
+- which game-side caller invokes this and with which slot masks (would confirm 'disconnect players X-Y'
+  semantics)
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81450B4 -> rfu_endSlotConnections
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81450B4

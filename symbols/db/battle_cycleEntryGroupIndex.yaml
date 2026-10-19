@@ -1,0 +1,49 @@
+name: battle_cycleEntryGroupIndex
+address: '0x081266E0'
+kind: function
+status: probable
+summary: Cycles a per-entry counter through the group of entries sharing the current entry's code in the
+  battle-menu list, playing the cursor-move sound when it advances.
+interface: (r5 = battle-menu work struct; r5+0x3C and r5+0x40 combine to an entry index) -> r0 = destroyed;
+  updates byte at dword_201FC20[idx*4+3]
+details: Computes idx = h[r5+0x40] + h[r5+0x3C] and indexes the 4-byte-stride array dword_201FC20. It
+  reads the entry's group code (byte at idx*4), and if the byte at idx*4+2 is nonzero it does nothing.
+  Otherwise it takes the counter at idx*4+3, increments it, and wraps it against byte_8124B1C[position],
+  where position is found by scanning the halfword table byte_8124AA4 for the entry halfword equal to
+  code+0x100 (scan limit 29 entries / 0x3A bytes). The new counter is stored back at idx*4+3, and if it
+  changed the cursor-move sound effect (SOUND_CUR_MOVE_80) is played. The 0x100 offset on the table values
+  suggests text/character-style codes, so the groups are likely entries whose names or codes share the
+  same leading value.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: idx from h[r5+0x40]+h[r5+0x3C] scaled by 4 indexes dword_201FC20 (sub_81266E0 first lines);
+    counter at idx*4+3 is incremented, then wrapped with cmp r7,r3 / mov r7,#0 against byte_8124B1C[scan
+    index]; byte_8124AA4 halfwords are compared as halfword-0x100 == code, scan bounded by cmp r3,#0x3A;
+    byte at idx*4+2 nonzero causes early exit to loc_8126736 without updating; caller battle_input_tick_8125784
+    is the battle-menu input dispatcher and PlaySoundEffect(SOUND_CUR_MOVE_80) plays the cursor sound
+    on change
+  refs:
+  - bn6f/asm/asm33.s:7072
+  - 0x08125784 battle_input_tick_8125784
+  - 0x080005CC PlaySoundEffect
+  reproduce: python3 tools/asmcat.py 0x081266E0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- exact game meaning of the group code and the table byte_8124AA4/byte_8124B1C (likely per-first-letter
+  chip lists), and what byte at idx*4+2 flags
+- which UI screen consumes the stored counter at idx*4+3 to pick the actual entry shown
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81266E0 -> battle_cycleEntryGroupIndex
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81266E0

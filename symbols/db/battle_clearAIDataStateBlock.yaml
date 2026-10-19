@@ -1,0 +1,47 @@
+name: battle_clearAIDataStateBlock
+address: '0x0802D310'
+kind: function
+status: probable
+summary: Zeroes a 16-byte block at offset 0xF0 of the battle object's AIData, resetting part of its AI
+  state.
+interface: (r5 = battle object; no args in r0-r3) -> r0 clobbered (holds AIData+0xF0); no flags meaningful,
+  returns via mov pc, lr
+details: 'Loads oBattleObject_AIDataPtr from the battle object in r5, computes AIData + 0xF0 via the sub
+  #0xF / add #0xFF pair, then writes zero to offsets 0, 4, 8 and 0xC of that address, clearing 16 bytes
+  (AIData+0xF0..0xFF). It takes no arguments and returns nothing else. Given the callers (AI timer flag
+  polling and the super-armor/permanent-invulnerability setter), the block is most plausibly AI state/counters
+  that must be reset when the object''s defensive or timer state is reinitialized. The two-instruction
+  offset arithmetic makes the exact target offset worth confirming against the AIData struct layout.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldr r0, [r5,#oBattleObject_AIDataPtr]: operates on the current battle object''s AI data; sub
+    r0,#0xF + add r0,#0xFF: net offset +0xF0 from the AIData pointer; four str r1,[r0,#0/4/8/0xC] with
+    r1=0: zeroes 16 consecutive bytes; caller battle_applySuperArmorInvulnerability: clearing runs when
+    granting armor + invulnerability; caller battleObject_tickAITimerFlags_802E4E4: clearing runs alongside
+    AI timer-flag handling'
+  refs:
+  - bn6f/asm/asm03_0.s:15400
+  - 0x0802E4E4 battleObject_tickAITimerFlags_802E4E4
+  - 0x0801479C battle_applySuperArmorInvulnerability
+  - 0x08014650 sub_8014650
+  reproduce: python3 tools/asmcat.py 0x0802D310
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- What the fields at AIData+0xF0..0xFF mean (struct definition needed)
+- Whether the +0xF0 offset is exact given the sub/add pair encoding
+- Whether r5 is always the 'current' battle object in every caller
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_802D310 -> battle_clearAIDataStateBlock
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802D310

@@ -817,9 +817,9 @@ static void ai_action_a(u32 r0_val, u32 r1_val) {
     GUEST_CALL(battleObject_markUsedAction_80143A6);
 }
 
-/* register form: calls sub_8014446 outside this file, which has no typed C interface yet */
+/* register form: calls ai_clearCounterHitChain outside this file, which has no typed C interface yet */
 static void ai_action_b(void) {
-    GUEST_CALL(sub_8014446);
+    GUEST_CALL(ai_clearCounterHitChain);
 }
 
 /* register form: calls GetPositiveSignedRNG outside this file, which has no typed C interface yet */

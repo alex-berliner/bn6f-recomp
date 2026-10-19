@@ -1,0 +1,48 @@
+name: object_updateTimedPanelCollisionSpawner
+address: '0x080D8868'
+kind: function
+status: probable
+summary: Battle-object update that repeatedly spawns an elemental damage collision region on a fixed panel
+  offset for ~10 ticks (every 15 frames), then destroys itself.
+interface: (r5 = battle object) -> void; uses no passed registers
+details: On first run it zeroes Timer, sets Timer2=10 and marks PhaseInitialized=4. Each frame Timer counts
+  down from 15; on expiry it reloads 15, gets the owner's +1/-1 facing via object_getFrontDirection, multiplies
+  by Param2, adds PanelX, and calls object_spawnDimmingCollisionRegion with PanelY, Element, Z, the constant
+  property word 0x16050C01 and the object's DamageAndStaminaDamageCounterDisabler field — i.e. it keeps
+  striking the panel Param2 tiles ahead of the owner. Timer2 counts down per spawn; after the 10th spawn
+  (Timer2 hits 0) the object is set to CUR_STATE_DESTROY. Element makes the spawned region carry that
+  element; the timestop-persistent flag comes from the callee's known behavior.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: '''bl object_getFrontDirection'' + ''mul r0, r1'' with Param2 then ''add r0, PanelX'' gives
+    the struck panel (asm at 0x80D8888-0x80D8898); ''ldr r4, dword_80D88B4'' passes fixed region property
+    word 0x16050C01 into object_spawnDimmingCollisionRegion; Timer reload ''#0xf'' after ''sub r0,#1''/''bge''
+    makes the region spawn every 15 frames; Timer2 init ''#0xa'' and ''bgt locret'' plus ''mov r0,#CUR_STATE_DESTROY''
+    limit this to 10 spawns then destroy; PhaseInitialized==0 guard sets Timer/Timer2 once, showing this
+    is a per-frame object update handler'
+  refs:
+  - bn6f/asm/asm31.s:70861
+  - 0x0800E2CA object_getFrontDirection
+  - 0x080C53A6 object_spawnDimmingCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080D8868
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- No callers known, so which attack/character object uses this spawner is unidentified
+- Exact meaning of property word 0x16050C01 (damage, hitbox size, flags) inside object_spawnDimmingCollisionRegion
+  is undecoded
+- What Param2 and Element are set to at spawn time for the real attack
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D8868 -> object_updateTimedPanelCollisionSpawner
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D8868

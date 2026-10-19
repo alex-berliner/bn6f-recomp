@@ -1,0 +1,56 @@
+name: t4_dispatchWaitStep
+address: '0x0803A58C'
+kind: function
+status: probable
+summary: 'Polling step for a task in r5: repeatedly returns 1 while a dispatcher is busy, and when it
+  finishes, writes a byte into the task and calls a table-selected handler before ending.'
+interface: (r5 = caller's task/state struct; r0.. passed through to dispatch) -> r0 = 1 to keep stepping,
+  0 when step completed; clobbers r4,r5? (r5 preserved as caller's), calls dispatch_803C620, table handler,
+  sub_8148214
+details: 'The function first calls dispatch_803C620, treating r1 as a ''busy/done'' bool and r0 as a result/state
+  value. If the dispatcher reports busy, or the IWRAM flag byte at 0x200BC50+5 is set (test0x200bc50_0x5_813D60C),
+  it falls through to sub_8148214 and returns 0. If dispatch returns 1, it indexes the table at 0x803A5C4
+  (entries of {byte value, Thumb handler}: {0,sub_803C34E}, {0x50,sub_813D750}, {0x58,sub_803C34E}) by
+  result*8, stores the entry''s byte value at [r5+1] of the caller-provided struct, then calls the entry''s
+  handler via the mov lr,pc/bx r0 idiom, after which sub_8148214 runs and 0 is returned. If the dispatcher
+  is not busy, the result is not 1, and the IWRAM flag is clear, it returns 1, so callers (five nearby
+  functions in the same module) can loop on this as a wait/advance step. The values 0x50/0x58 written
+  to [r5+1] look like small state/kind codes, but their meaning is unknown without the r5 structure.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl dispatch_803C620; tst r1,r1; bne loc_803A5B6 — r1 is a completion/busy flag steering the
+    early-out; ldr r3,off_803A5C0; lsl r4,r4,#3 — indexes an 8-byte {data word, fnptr} table by the dispatch
+    result; strb r0,[r5,#1] with table value 0x50 — writes a state byte into the caller-supplied struct
+    in r5; mov lr,pc; bx r0 after ldr r0,[r3,#4] — tail-dispatches to the table handler (sub_813D750)
+    then still runs sub_8148214; return 1 on the fall-through path (flag clear, not done) vs 0 otherwise
+    — classic polling-step return convention used by the five nearby callers
+  refs:
+  - bn6f/asm/asm03_1_1.s:3397
+  - 0x08039E2C sub_8039E2C
+  - 0x08039F78 sub_8039F78
+  - 0x0803A06C sub_803A06C
+  - 0x0813D60C test0x200bc50_0x5_813D60C
+  - 0x0803C620 dispatch_803C620
+  - 0x08148214 sub_8148214
+  reproduce: python3 tools/asmcat.py 0x0803A58C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- what structure r5 points to and what the byte written at offset 1 (0x50/0x58) selects
+- what dispatch_803C620 actually dispatches (its result values besides 1) and who advances it
+- what sub_8148214 does (likely per-step teardown/cleanup) and what the 0x200BC50+5 IWRAM flag means
+- what the handlers sub_803C34E and sub_813D750 do, which would reveal the subsystem
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803A58C -> t4_dispatchWaitStep
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803A58C

@@ -1,0 +1,49 @@
+name: battle_pickRandomEntryByStatTier
+address: '0x0802D5A8'
+kind: function
+status: probable
+summary: Reads a battle-object stat, buckets it into tier 0-9 (stat/100, clamped), and returns a random
+  halfword from that tier's row of a 10-row lookup table.
+interface: (r0 = battle object) -> r0 = random halfword from the tier's table row; flags clobbered by
+  calls
+details: Reads the halfword at offset 0x3E of the battle object via GetBattleNaviStatsHword_AllianceFromBattleObject,
+  then SWI 6 divides it by 100 and clamps the quotient to 0-9 (tier index in r6). It indexes byte_802D5E4
+  with tier*6 bytes (ten rows of three halfwords), calls GetPositiveSignedRNG, divides the random value
+  by 3 — or by 6 when tier == 9, whose row has six halfwords — doubles the remainder, and returns the
+  selected halfword with ldrh [r4,r1]. Entries are mostly small IDs (1-0x54) but 0x153 appears twice,
+  once in tier 8 and again in the adjacent dword_802D634, suggesting a sentinel/special value. The table
+  therefore behaves like a per-tier random pool (e.g. difficulty/HP-phase keyed choice), but the semantics
+  of the 0x3E stat and of the returned IDs are not confirmed.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: mov r1,#0x3e; bl GetBattleNaviStatsHword_AllianceFromBattleObject then svc 6 with r1=0x64 gives
+    stat/100; clamp chain (cmp r0,#1 / sub r1,r0,#1 / cmp r1,#9 / mov r1,#9) restricts the tier index
+    to 0-9; r0 = tier*6 and off_802D5E0 -> byte_802D5E4 show ten 6-byte (3-halfword) rows; GetPositiveSignedRNG
+    then svc 6 with r1=3 (6 when tier==9), lsl r1,#1, ldrh [r4,r1] returns one random halfword of the
+    row; only caller is the undocumented sub_802D4F0; no other cross-reference confirms the table's meaning
+  refs:
+  - bn6f/asm/asm03_0.s:15756
+  - 0x0802D4F0 sub_802D4F0
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x08013790 GetBattleNaviStatsHword_AllianceFromBattleObject
+  reproduce: python3 tools/asmcat.py 0x0802D5A8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- what stat 0x3E of the battle object holds (HP? some percentage?) and what its /100 tiers mean
+- what the returned halfwords (IDs up to 0x54 plus the repeated 0x153 sentinel) index
+- what undocumented caller sub_802D4F0 does with the result
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_802D5A8 -> battle_pickRandomEntryByStatTier
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802D5A8

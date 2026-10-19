@@ -1,0 +1,48 @@
+name: ai_attackFrontAndVertical
+address: '0x080F0E3A'
+kind: function
+status: probable
+summary: AI attack step that deals the attack's damage to the panel in front of the object and to the
+  panels directly above and below the object.
+interface: (r0 = object ptr in r5?, r5 = battle object, r7 = AI attack vars) -> void; r0 = validity flag
+  from last panel check
+details: Using object_getFrontDirection (+1/-1 from alliance/DirectionFlip), it computes the panel one
+  step ahead of oBattleObject_PanelX and, if object_isValidPanel accepts it, calls sub_80D0996 with r6
+  = oAIAttackVars_Damage, r2 = 0, r4 = 0. It then repeats the same damage call for (PanelX, PanelY-1)
+  and (PanelX, PanelY+1), each guarded by object_isValidPanel, so out-of-grid rows/columns are skipped.
+  sub_80D0996 presumably applies damage/effect to one grid panel; r2 and r4 are zeroed constants (likely
+  element/type/flags). The caller sub_80F0C64 is an AI attack routine that sets up oAIAttackVars_Damage
+  beforehand.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl object_getFrontDirection then add r0, PanelX gives the front column (80F0E3A-80F0E40); three
+    object_isValidPanel guards wrap three identical calls with r6 = [r7,#oAIAttackVars_Damage]; second/third
+    blocks use PanelY-1 and PanelY+1 with unchanged PanelX (80F0E5C, 80F0E78); callee object_getFrontDirection
+    summary matches use as facing +/-1 multiplier; sole caller sub_80F0C64 is an AI attack context (oAIAttackVars
+    struct)
+  refs:
+  - bn6f/asm/asm31.s:123732
+  - 0x080F0C64 sub_80F0C64
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800CC72 object_isValidPanel
+  - 0x080D0996 sub_80D0996
+  reproduce: python3 tools/asmcat.py 0x080F0E3A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- what sub_80D0996 does exactly (apply damage vs spawn hit effect) and the meaning of its r2/r4 = 0 arguments
+- whether the caller sets other oAIAttackVars fields (element, flinch, etc.) that modify the effect
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F0E3A -> ai_attackFrontAndVertical
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F0E3A

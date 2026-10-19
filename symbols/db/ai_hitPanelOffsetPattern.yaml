@@ -1,0 +1,49 @@
+name: ai_hitPanelOffsetPattern
+address: '0x0810506A'
+kind: function
+status: probable
+summary: 'AI attack: iterates a fixed list of panel offsets relative to the object, damaging every valid
+  panel hit.'
+interface: (r5 = battle object, r7 = AI attack vars) -> r0 = destroyed; calls object_getFrontDirection/object_isValidPanel/sub_80D07A0
+  per panel
+details: Loads a panel-offset list from the PanelOffsetListsPointerTable (entry at +0x68, pointing at
+  0x8019BE0) and gets the object's facing (+1/-1) via object_getFrontDirection. Base target is (PanelX
+  + 2*dir, PanelY); each list entry is a signed-byte pair (dx, dy) applied as x += dx*dir, y += dy, terminated
+  by a 0x7F byte. For each resulting (x, y) that passes object_isValidPanel (1-based 6x3 grid), it calls
+  sub_80D07A0 with the panel coords, r2 = AIAttackVars_InitFlag, r3 = 0, r4 = packed flags 0x47803, and
+  r6 = AIAttackVars_Damage. The mirrored-x application (dx * frontDirection) makes the pattern flip with
+  the object's alliance side, like an area nuke sweeping the enemy field.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldr r6, off_810538C (=PanelOffsetListsPointerTable); mov r0,#0x68; ldr r6,[r6,r0] loads the
+    fixed offset list; bl object_getFrontDirection; mul r0,#2 added to oBattleObject_PanelX gives direction-relative
+    base panel; ldrsb dx,dy per 2-byte entry; cmp #0x7F terminates the loop at locret_81050C0; bl object_isValidPanel
+    guards the per-panel call, skipping invalid grid cells; ldr r6,[r7,#oAIAttackVars_Damage] and r4 =
+    3|0x7800|0x40000 passed to sub_80D07A0 for each valid panel'
+  refs:
+  - bn6f/asm/asm31.s:165823
+  - 0x081044AA sub_81044AA
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800CC72 object_isValidPanel
+  - 0x080D07A0 sub_80D07A0
+  reproduce: python3 tools/asmcat.py 0x0810506A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- What sub_80D07A0 does exactly (panel attack/damage spawn?) and the meaning of its r2/r4 arguments
+- Which object/AI move invokes caller sub_81044AA, to name the attack in game terms
+- Contents of the offset list at 0x8019BE0 (shape of the hit pattern)
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_810506A -> ai_hitPanelOffsetPattern
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810506A

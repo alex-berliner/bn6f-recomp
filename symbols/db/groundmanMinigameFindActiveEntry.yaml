@@ -1,0 +1,48 @@
+name: groundmanMinigameFindActiveEntry
+address: '0x08143EDC'
+kind: function
+status: probable
+summary: Looks up the Groundman minigame's per-map entry table and returns the list index of the first
+  entry whose event flag is still unset and whose u16 field matches the given value.
+interface: (r0 = value to match against entry halfword, e.g. an id/position in the current minigame map)
+  -> r0 = 1 if a match found else 0, r1 = matching list index or 0xFF if none; flags clobbered by bl calls
+details: 'Calls GetGroundmanMinigameMapIndex to pick one of several entry lists from off_8143804 (indexed
+  *4). Each entry is 4 bytes: byte at +0 is 0xFF for the terminator, halfword at +2 is compared against
+  the caller''s r6. For entry i it calls sub_8143B5E(i) whose result is fed to TestEventFlag, so that
+  callee converts the list index into a global event/story-flag id; entries whose flag is already set
+  are skipped. Returns (1, index) for the first unflagged entry matching r6, else (0, 0xFF).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl GetGroundmanMinigameMapIndex then ldr r7,[r7,r0] selects the per-map entry list (asm lines
+    3-6); ldrb r0,[r7]; cmp r0,#0xff; beq shows 0xFF-terminated 4-byte-stride entries (loc_8143EEC); bl
+    sub_8143B5E with r4 then bl TestEventFlag shows index-to-eventflag mapping and set-flag entries being
+    skipped; ldrh r0,[r7,#2]; cmp r0,r6; ... mov r0,#1; pop matches caller value against entry field and
+    returns its index; mov r1,#0xff; mov r0,#0 fallback return when all entries are flagged or no match
+  refs:
+  - bn6f/asm/asm37_1.s:4163
+  - 0x080930A4 sub_80930A4
+  - 0x08143A54 sub_8143A54
+  - 0x0802F168 TestEventFlag
+  - 0x08143B30 GetGroundmanMinigameMapIndex
+  - 0x08143B5E sub_8143B5E
+  reproduce: python3 tools/asmcat.py 0x08143EDC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- What r6 means concretely (tile index, target id, etc.) — needs the callers sub_80930A4 / sub_8143A54
+- What sub_8143B5E computes exactly (assumed list-index -> global event flag id)
+- 'Full entry layout: bytes at +1 and +3 unused/unknown'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8143EDC -> groundmanMinigameFindActiveEntry
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8143EDC

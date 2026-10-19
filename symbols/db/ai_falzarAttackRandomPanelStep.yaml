@@ -1,0 +1,47 @@
+name: ai_falzarAttackRandomPanelStep
+address: '0x08105BBE'
+kind: function
+status: probable
+summary: Per-frame state step of a Falzar boss attack that repeatedly picks a random target panel, highlights
+  it while charging, then fires multiple hits.
+interface: (r0 unused; r7 = object with oAIAttackVars) -> r0 = scratch; updates oAIAttackVars fields
+details: 'Runs one step of an attack state machine on the object in r7. If AttackElement==0 it initializes:
+  sets AttackElement=4, calls sub_81064F4 (Falzar random-panel picker) and stores the returned panel X/Y,
+  copies TimerOrCycles to StepTimer and clears ChargeCycles. While active it increments ChargeCycles and
+  every 8th tick calls object_highlightPanel on the stored target panel (a charge-up telegraph); when
+  StepTimer counts to 0 it calls sub_8106590 to execute the hit, decrements SubStepIndex, and either resets
+  AttackElement to 0 to pick a new panel or, on the final hit, sets HitElement=0x14 (0x20 decimal) to
+  signal completion.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst; bne loc_8105BDC — state entry vs. ongoing attack;
+    bl sub_81064F4; strb r0 TargetPanelX; strb r1 TargetPanelY — random target panel chosen via Falzar
+    picker; lsr r0,#3; bcs skip object_highlightPanel — highlights target panel every 8 charge cycles;
+    bl sub_8106590 then dec SubStepIndex; beq sets HitElement=0x14 else resets AttackElement=0 — multi-hit
+    loop with finish flag
+  refs:
+  - bn6f/asm/asm31.s:167208
+  - 0x0800CBD8 object_highlightPanel
+  - 0x081064F4 sub_81064F4
+  - 0x08106590 sub_8106590
+  reproduce: python3 tools/asmcat.py 0x08105BBE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- What element/move sub_8106590 actually spawns (the fired projectile/hit)
+- What HitElement=0x14 is consumed by
+- Whether sub_81064F4's candidate list is boss-specific or shared
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8105BBE -> ai_falzarAttackRandomPanelStep
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8105BBE

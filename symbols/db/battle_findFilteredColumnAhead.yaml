@@ -1,0 +1,52 @@
+name: battle_findFilteredColumnAhead
+address: '0x080B9776'
+kind: function
+status: probable
+summary: Scans battle panels column-by-column in the object's facing direction and returns the x of the
+  first column containing a panel that passes the panel-parameter filter.
+interface: (r5 = battle object) -> r0 = column x of first matching column ahead (or out-of-range x if
+  none); flags from tst on match count
+details: 'Gets the +1/-1 facing multiplier from object_getFrontDirection, then loops with offset i=1,2,...
+  computing column = oBattleObject_PanelX + i*dir. For each column it selects a per-alliance panel-base
+  pointer from the table at off_80B97B8 (indexed by Alliance<<2) and calls object_getPanelsInColumnFiltered
+  with r7 = a 0x18-byte stack buffer, which fills it with encoded panel IDs passing object_checkPanelParameters
+  and returns the count. The push {r0}/tst/pop {r0} idiom exits the loop when the count is nonzero, leaving
+  r0 holding the pushed column x, so the return value is that column''s x. The loop only continues while
+  the column x is in 2..5 (cmp #1 ble / cmp #6 bge), bounding the search to the forward area; if no column
+  matches, it returns the first out-of-range x. The buffer contents are effectively scratch here — only
+  the nonzero count is used as the stop condition.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl object_getFrontDirection then mul r1,r6 / add r0,r0,r1: steps columns by facing direction
+    from oBattleObject_PanelX (loc_80B9782); ldr r2,[r3,r2] with r2 = Alliance<<2 and off_80B97B8 table:
+    per-alliance panel base passed to the column scanner; callee object_getPanelsInColumnFiltered writes
+    filtered panel IDs into r7=sp buffer and returns count; push {r0} ... tst r0,r0 ... pop {r0} ... bne:
+    loop exits on nonzero match count while r0 is restored to the column x, which becomes the return value;
+    cmp r0,#1 ble / cmp r0,#6 bge: scan limited to columns x in 2..5, exiting with an out-of-bounds x
+    when exhausted'
+  refs:
+  - bn6f/asm/asm31.s:2934
+  - 0x080B96C2 sub_80B96C2
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800CFDC object_getPanelsInColumnFiltered
+  reproduce: python3 tools/asmcat.py 0x080B9776
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- What object_checkPanelParameters filters on (empty, broken, occupied panels?) — determines the gameplay
+  meaning (e.g. first usable/targetable column)
+- What caller sub_80B96C2 does with the returned column x and whether it expects the panel-ID buffer contents
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80B9776 -> battle_findFilteredColumnAhead
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80B9776

@@ -1,0 +1,47 @@
+name: object_pickRandomMatchingPanel
+address: '0x08015DF0'
+kind: function
+status: probable
+summary: Scans a 0x7F-terminated list of (x,y) panel coordinates, keeps the ones whose panel flags match
+  two masks, and returns one of them chosen at random.
+interface: (r4 = ptr to byte-pair list {x,y}, 0x7F in x terminates; r2 = required-flags mask, r3 = forbidden-flags
+  mask) -> r0 = x (bits 0-2), r1 = y (bits 4-7); no flag clobber noted
+details: 'Iterates a table at r4 of coordinate pairs terminated by x == 0x7F, calling object_checkPanelParameters(x,
+  y, mask2, mask3) for each and packing matches as (y<<4)|x into a stack array. If at least one match
+  was stored, it calls GetPositiveSignedRNG and uses BIOS Div (svc 6) to take rand % count as the index,
+  loading that entry. It then splits the packed byte: low 3 bits into r0 (x) and bits 4-7 into r1 (y).
+  The &7 on x is safe since x<8 never spills into the y nibble. Note r4 is read without being set inside
+  the routine, so the table pointer must be delivered in r4 by the caller (hence no known caller signature
+  yet).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r4]; cmp #0x7F: table of byte pairs terminated by 0x7F in the x byte; bl object_checkPanelParameters
+    with r2/r3 saved args and tst/beq: keep only panels passing the flag-mask test; orr r0,r1 (y<<4) stored
+    into stack buffer with running count: packed match list; bl GetPositiveSignedRNG; svc 6; ldrb [r0,r1]:
+    random index = rand % count (BIOS Div leaves remainder in r1); lsr r1,#4 / lsl #0x1D,lsr #0x1D: unpack
+    y nibble and 3-bit x as the two return values'
+  refs:
+  - bn6f/asm/asm00_2.s:16377
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x0800CC86 object_checkPanelParameters
+  reproduce: python3 tools/asmcat.py 0x08015DF0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- Which caller sets r4 (the table pointer) and where the coordinate tables live in ROM, to confirm the
+  battle-system context
+- Whether x is truly limited to 0-7 or the &7 mask loses information for wider panels
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8015DF0 -> object_pickRandomMatchingPanel
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8015DF0

@@ -1,0 +1,48 @@
+name: rfu_softResetLinkState
+address: '0x08144D64'
+kind: function
+status: probable
+summary: Soft-resets the wireless adapter and clears the game's link state struct before tearing down
+  the connection.
+interface: () -> r0 = result of rfu_REQBN_softReset_and_checkID (0x8001 = ok); flags clobbered by callees
+details: 'Takes no arguments; it calls rfu_REQBN_softReset_and_checkID and keeps its return in r4, treating
+  0x8001 as success (on success sets byte 0x8 of eStruct200FE00 to 1). It then inspects the state byte
+  at struct+0x4: if it is neither 0x17 nor 1 it clears bytes +0x5 and +0x4, apparently cancelling an in-progress
+  operation. Unconditionally it zeroes bytes +0x7, +0xD, +0x1 and +0x0 and sets byte +0x6 to 0xFF (likely
+  ''no slot/partner''), then calls rfu_reqEndConnection with no setup to queue request 0x45 and tear down
+  the link. Finally it returns the softReset/checkID result to the caller.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl rfu_REQBN_softReset_and_checkID; cmp r4, 0x8001 — adapter reset, 0x8001 treated as success
+    code; strb writes clear eStruct200FE00 bytes 0x0/0x1/0x5/0x7/0xD and set 0x6=0xFF and 0x8=1 — wiping
+    per-link state; state byte +0x4 is compared to 0x17 and 1, values of an ongoing link operation, and
+    reset otherwise; bl rfu_reqEndConnection — queues rfu request 0x45/arg 0 to end the wireless connection;
+    sole caller sub_81453F0 invokes it from six sites, consistent with a reset/restart entry point in
+    the wireless flow
+  refs:
+  - bn6f/asm/libs.s:1815
+  - 0x081453F0 sub_81453F0
+  - 0x081454A4 sub_81453F0
+  - 0x081454C8 sub_81453F0
+  - 0x081464B4 rfu_reqEndConnection
+  - 0x08149718 rfu_REQBN_softReset_and_checkID
+  reproduce: python3 tools/asmcat.py 0x08144D64
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- Exact meaning of struct fields 0x4=0x17/1 and 0x6=0xFF needs confirmation from sub_81453F0's context
+- Whether this matches a stock librfu API wrapper (e.g. rfu_reset) rather than a game-specific routine
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8144D64 -> rfu_softResetLinkState
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8144D64

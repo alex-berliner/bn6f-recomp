@@ -1,0 +1,43 @@
+name: ow_freeObjectWrapper
+address: '0x080A79D4'
+kind: function
+status: probable
+summary: Thin wrapper that frees an overworld map object, likely used as a cleanup/destructor callback.
+interface: (r0 = overworld map object pointer) -> r0 = FreeOverworldMapObject return value; flags clobbered
+  by call
+details: The function preserves r4-r7 and lr, immediately tail-calls FreeOverworldMapObject with r0 unchanged,
+  then returns. FreeOverworldMapObject clears the object's active bit in the global allocation bitfield,
+  marks its slot free, and unmarks it in the sprite system. Since a plain wrapper around a single call
+  serves no purpose as a direct call, it is most plausibly registered somewhere as a function pointer
+  (e.g., an object's free/destructor handler). r1-r3 and flags are simply inherited from the callee's
+  contract. Nothing else is touched.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'push {r4-r7,lr}; bl FreeOverworldMapObject; pop {r4-r7,pc} — entire body is a passthrough call;
+    r0 is not modified before the bl, so the object pointer is forwarded verbatim; callee summary: FreeOverworldMapObject
+    releases the object, clears its allocation bit, and unmarks it in the sprite system'
+  refs:
+  - bn6f/asm/asm29.s:5115
+  - 0x080048B2 FreeOverworldMapObject
+  reproduce: python3 tools/asmcat.py 0x080A79D4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- 'No callers known: which code registers this as a function pointer (destructor table, object type vtable)
+  is unknown'
+- Whether r0 is a whole overworld object struct or a sub-handle depends on FreeOverworldMapObject's exact
+  parameter, not shown here
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80A79D4 -> ow_freeObjectWrapper
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A79D4

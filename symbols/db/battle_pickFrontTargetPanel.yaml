@@ -1,0 +1,48 @@
+name: battle_pickFrontTargetPanel
+address: '0x080C6D1E'
+kind: function
+status: probable
+summary: Chooses the panel in front of a battle object (or one row up/down from it) as a movement/attack
+  target, remembering the row choice in Param2.
+interface: (r5 = oBattleObject*) -> r0 = target PanelX, r1 = target PanelY; writes oBattleObject_Param2
+  (1 = row-1, 2 = row+1) on first valid pick
+details: 'Uses r5 as an oBattleObject. If Param2 is already nonzero, it returns the front panel (object_getFrontDirection
+  + PanelX) with Y offset taken from the signed-byte table dword_80C6DC8[Param2-1] = {-1, +1, 0}, validated
+  to stay in rows 0-3. If Param2 is 0, it first tests the front panel via sub_8109708 using a filter byte
+  from byte_80C6DB8 indexed by 8*(Alliance^DirectionFlip)+PanelX (16 entries per side: 8,0x20,7,6,2,1,...
+  and 06 07 00 82); if that test returns 0 it retries with filter 0x16 one row up, then 0x17 one row down,
+  and on success locks in the row by storing Param2 and returns that panel. If no panel passes the test,
+  it falls back to returning the plain front panel. The table''s per-side/per-column values look like
+  reach or occupancy filters for the random-panel picker. No caller is known, so the exact gameplay use
+  (likely a boss/AI reposition step) is inferred.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r2,[r5,#oBattleObject_Param2] then dword_80C6DC8 offsets {-1,+1,0} applied to PanelY show
+    Param2 stores the previously chosen row offset; bl object_getFrontDirection + add r0,r0,PanelX computes
+    the facing-side front panel X; byte_80C6DB8 indexed by 8*(Alliance^DirectionFlip)+PanelX supplies
+    per-column filter params for sub_8109708; three sub_8109708 calls with filters 0x16/0x17 for Y-1/Y-1
+    retries, storing Param2=1/2, show a row-escape fallback
+  refs:
+  - bn6f/asm/asm31.s:32404
+  - 0x0800E2CA object_getFrontDirection
+  - 0x08109708 sub_8109708
+  reproduce: python3 tools/asmcat.py 0x080C6D1E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- No known caller, so the gameplay context (which boss/object runs this and when) is unknown
+- Exact meaning of sub_8109708's return value and filter constants (0x16, 0x17, table bytes) is unconfirmed
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C6D1E -> battle_pickFrontTargetPanel
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C6D1E

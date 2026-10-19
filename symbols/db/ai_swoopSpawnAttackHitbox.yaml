@@ -1,0 +1,47 @@
+name: ai_swoopSpawnAttackHitbox
+address: '0x0810FACA'
+kind: function
+status: probable
+summary: Spawns the flying enemy's attack hitbox (collision region) using variant-selected parameters
+  and the AI attack vars' damage.
+interface: (r5 = enemy object, r7 = oAIAttackVars) -> r0 = spawn result from object_spawnCollisionRegion;
+  passes variant table word in r4, damage word in r6, second table word in r7, InitFlag in r2, r3 = 0
+details: 'Reads byte 0x7E of the enemy object as an attack-variant index, doubles it (lsl #2) and fetches
+  a packed 4-byte word from byte_810FAFC and byte_810FB18 (six variants each: e.g. {1,1,5,6} / {3,0,0,0}).
+  It combines oAIAttackVars_Damage and oAIAttackVars_ExtraDamage into one word (r6) and passes oAIAttackVars_InitFlag
+  as r2 with r3 = 0, then tail-calls object_spawnCollisionRegion to create the attack hitbox, handing
+  the two table words and the damage word to it via r4/r6/r7. The variant tables most likely encode hitbox
+  offset/size and an element/type byte (variant 1 carries 0x10).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r5,#0x7E]; ldr r4,[table,r0*4] selects a variant word from byte_810FAFC (six 4-byte
+    entries); ldrh r0,[r7,#oAIAttackVars_Damage]; ldrh r1,[r7,#oAIAttackVars_ExtraDamage]; orr -> damage
+    passed in r6; ldrb r2,[r7,#oAIAttackVars_InitFlag]; r3=0; pop {r0,r1} then bl object_spawnCollisionRegion
+    with all args in registers; Only caller ai_swoopMoveCheckPanel (flying enemy step movement) invokes
+    this, so it is that enemy's attack spawn step; byte_810FB18 entry {1,0x10,0,0} for variant 1 shows
+    a per-variant flag byte, consistent with element/type data
+  refs:
+  - bn6f/asm/asm32.s:4013
+  - 0x0810FBD8 ai_swoopMoveCheckPanel
+  - 0x080C536A object_spawnCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x0810FACA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- exact meaning of each byte in the two variant tables (offsets, width/height, element/type)
+- which enemy attacks use variant index 0x7E and how the caller sets it
+- argument layout expected by object_spawnCollisionRegion (r0/r1 contents here are just scratch)
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_810FACA -> ai_swoopSpawnAttackHitbox
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810FACA

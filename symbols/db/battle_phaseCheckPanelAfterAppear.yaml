@@ -1,0 +1,50 @@
+name: battle_phaseCheckPanelAfterAppear
+address: '0x080BB99C'
+kind: function
+status: probable
+summary: 'Battle-object phase handler: on entry plays a sound, switches to animation 3 and waits 3 frames,
+  then checks the panel under the object and picks action 4 if that panel is gone/hole-like (both mask
+  bits set), otherwise action 0xC.'
+interface: (r5 = battle object) -> void; writes oBattleObject_CurPhase, oBattleObject_CurAnim, oObjectHeader_Flags,
+  oBattleObject_TimerAndTimer2, oBattleObject_CurAction, oBattleObject_CurPhaseAndPhaseInitialized
+details: 'Dispatches on oBattleObject_CurPhase. Phase 0 arms the move: sets CurPhase=4, CurAnim=3, plays
+  sound effect 0x94, sets bit 0x2 of oObjectHeader_Flags (likely hides/disables the sprite), and loads
+  3 into the packed TimerAndTimer2 field. Phase 4 decrements oBattleObject_Timer; when it reaches 0 it
+  calls object_getPanelParameters(PanelX, PanelY) and tests the panel status word against mask 0x10010.
+  If (panelFlags & 0x10010) == 0x10010 (both the 0x10 and 0x10000 bits set, i.e. the panel is destroyed/hole-like),
+  it sets CurAction=4 and clears the phase pair; otherwise it sets CurAction=0xC and clears the phase
+  pair, letting the object''s action dispatcher take over. No callers are known, so which enemy/object
+  this belongs to is inferred only from structure usage.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'Phase-0 branch: sets CurPhase=4, CurAnim=3, PlaySoundEffect(0x94), ORs 0x2 into oObjectHeader_Flags,
+    Timer=3 (asm loc at 80BB99C+0x8..0x18); Phase-4 branch decrements oBattleObject_Timer and falls through
+    only when it hits 0; Calls object_getPanelParameters with oBattleObject_PanelX/PanelY, then ANDs with
+    0x10010 and compares for equality; Two outcomes set oBattleObject_CurAction to 4 or 0xC and clear
+    CurPhaseAndPhaseInitialized; Callee object_getPanelParameters is documented as ''panel status flags
+    at coordinates, 0 if off field'''
+  refs:
+  - bn6f/asm/asm31.s:7691
+  - 0x080005CC PlaySoundEffect
+  - 0x0800C8F8 object_getPanelParameters
+  reproduce: python3 tools/asmcat.py 0x080BB99C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- Which object/enemy owns this action table (no known callers) — needed to name actions 4 and 0xC precisely
+- Exact meaning of panel status bits 0x10 and 0x10000 and of sound effect 0x94
+- Whether flag bit 0x2 in oObjectHeader_Flags means 'sprite hidden'
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BB99C -> battle_phaseCheckPanelAfterAppear
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BB99C

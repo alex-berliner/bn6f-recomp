@@ -1,0 +1,51 @@
+name: ai_spawnFrontPanelAttack
+address: '0x08102BFC'
+kind: function
+status: probable
+summary: 'Enemy AI attack step: at difficulty tier 1, spawns battle object 0xBA on the panel directly
+  in front of the enemy.'
+interface: (r0 = battle object ptr in r4? actually r5 = object, r7 = AI attack vars; r0 unused on entry)
+  -> r0 = spawn result; nothing meaningful returned
+details: 'Reads oAIAttackVars_AiDifficultyTier from the AI attack-vars struct (r7) and only acts when
+  it equals 1, so this attack is gated to one difficulty setting. It calls object_getFrontDirection to
+  get the +1/-1 facing multiplier, adds it to oBattleObject_PanelX of the acting object (r5) to compute
+  the target panel''s X, passes oBattleObject_PanelY as Y. The remaining spawn parameters come from the
+  AI vars struct: oAIAttackVars_InitFlag, oAIAttackVars_AttackBoost2, and oAIAttackVars_Damage, all handed
+  to battle_spawnObjectBA which spawns object type 0xBA and runs BasicBattleObjectInitialize on it. If
+  the tier is not 1, the function returns without spawning anything. The constants after the routine (0x2831,
+  0x191, 0x193, 0x60000) look like table data shared with sibling attack handlers rather than values used
+  here.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r7,#oAIAttackVars_AiDifficultyTier]; cmp r0,#1; bne locret — spawn only happens at
+    tier 1 (asm); bl object_getFrontDirection then add r0,r0,PanelX — target panel is one panel toward
+    the enemy's facing (asm); ldr InitFlag/AttackBoost2/Damage from oAIAttackVars then bl battle_spawnObjectBA
+    — spawns object 0xBA with AI-var parameters (asm); caller sub_8102A6E is the enclosing AI attack dispatcher
+    that passes the vars struct and object pointer (caller list); callee battle_spawnObjectBA 'spawns
+    battle object 0xBA ... runs BasicBattleObjectInitialize' (callee summary)
+  refs:
+  - bn6f/asm/asm31.s:160918
+  - 0x08102A6E sub_8102A6E
+  - 0x080DC6BC battle_spawnObjectBA
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x08102BFC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- what battle object 0xBA actually is (its behavior/effect determines the precise attack name)
+- whether tier-1-only means this attack is exclusive to one difficulty or the dispatcher selects other
+  handlers for other tiers
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8102BFC -> ai_spawnFrontPanelAttack
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8102BFC

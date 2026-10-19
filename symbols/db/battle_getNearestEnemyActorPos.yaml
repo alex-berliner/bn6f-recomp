@@ -1,0 +1,51 @@
+name: battle_getNearestEnemyActorPos
+address: '0x080E8326'
+kind: function
+status: probable
+summary: Returns the tile position (x,y) of the opposing alive battle actor with the smallest value at
+  +0x24, or 0xFF if none.
+interface: (r0 = battle object, r5 = object base) -> r0 = 0xFF if no candidate, else r0 = candidate actor
+  byte 0x12 (x) with r1 = byte 0x13 (y); r1 also carries battle-effects bits briefly, flags clobbered
+details: First reads the battle-effects bitmask (GetBattleEffects) and, if bit 0x8 is set, delegates entirely
+  to sub_80E8378. Otherwise it takes the object's Alliance field, XORs it with 1 to select the opposite
+  alliance, and indexes oBattleState_AliveBattleActors + alliance*0x10, a table of four actor pointers
+  (16 bytes per alliance). It scans all four pointers, keeping the non-null actor whose halfword at +0x24
+  is strictly smaller than the current best (ties keep the earlier one). If a candidate was found it returns
+  that actor's bytes at +0x12 and +0x13 (panel x and y), otherwise it returns 0xFF. Given the caller (battle_statePeriodicElementDamage,
+  which strikes a tile every 20 frames), +0x24 is most plausibly the actor's x-position/distance, making
+  this 'pick the closest living enemy' for targeting the damage tile.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl GetBattleEffects; tst r0,#8; beq skip -> bl sub_80E8378 (special-case branch on battle effect
+    bit 3); ldrb r0,[r5,#oBattleObject_Alliance]; eor r0,#1; mul r0,#0x10; add r0,#oBattleState_AliveBattleActors
+    -> selects the 4-pointer alive-actor list of the opposite alliance; loop: cmp [r6,#0x24],[r3,#0x24];
+    bge keep-old; mov r3,r6 -> keeps the actor with the minimal halfword at +0x24; beq locret with r0=0xFF
+    when no candidate; else ldrb r0,[r3,#0x12]; ldrb r1,[r3,#0x13] -> returns x/y pair or 0xFF; caller
+    battle_statePeriodicElementDamage deals repeated element damage every 20 frames, consistent with using
+    a target position'
+  refs:
+  - bn6f/asm/asm31.s:105433
+  - 0x080E82D4 battle_statePeriodicElementDamage
+  - 0x0802D246 GetBattleEffects
+  - 0x080E8378 sub_80E8378
+  reproduce: python3 tools/asmcat.py 0x080E8326
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- meaning of the halfword at actor+0x24 (position? distance? priority?) — needed to confirm 'nearest'
+- what battle-effect bit 0x8 selects and what sub_80E8378 does in that case
+- exact return convention (r0=0xFF sentinel vs r1 still holding y) as consumed by the caller
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E8326 -> battle_getNearestEnemyActorPos
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E8326

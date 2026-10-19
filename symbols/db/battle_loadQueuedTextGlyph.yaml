@@ -1,0 +1,52 @@
+name: battle_loadQueuedTextGlyph
+address: '0x0811B71C'
+kind: function
+status: probable
+summary: Pops one queued text entry for an object's number/text popup and loads its glyph into the matching
+  text-buffer/VRAM slot via the text renderer.
+interface: (r0-r3 clobbered; r5 = object, r10 = toolkit) -> r0 = undefined; stores entry type to [r5,#0xE],
+  glyph param to toolkit->Unk200a220+8; early-returns if no queued entry in range
+details: 'Reads the queue head at unk_2037780+0x24, adds the object''s slot byte [r5,#4], minus 2; bails
+  if negative or >= the count at +0x1E. The entry at word_2023FA0 + idx*4 holds a char halfword and a
+  param halfword: char==0x14C => type 4, param!=0 => type 0, otherwise type 2, stored to [r5,#0xE]. The
+  param halfword is written to the toolkit''s render-state (Unk200a220+8). The char index (char-0x90)>>2
+  selects one of nine 0x400-byte work buffers (byte_2017A00..unk_2019A00) and one of nine VRAM destinations
+  (0x06010680..0x06014E80, from byte_811B7B0), then calls renderTextGfx_8045F8C with font base TextScript873EA50,
+  glyph-chunk table dword_86B7AE0, and fixed args r4=8, r5=1, r7=0.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrh r0,[r6,#0x24]; ldrb r1,[r5,#4]; sub r0,#2; cmp r0,r1(+0x1e) bounds-checks a per-object
+    queue slot; word_2023FA0+idx*4: char==0x14C=>r4=4, [r1,#2]!=0=>r4=0, else r4=2, stored to [r5,#0xE]
+    — entry classification; sub r1,#0x90; lsr r1,#2 indexes off_811B784 (nine 0x400-spaced RAM buffers)
+    and byte_811B7B0 (nine descending VRAM addrs 0x06014E80..0x06010680); bl renderTextGfx_8045F8C with
+    r0=TextScript873EA50, r2=buffer, r3=VRAM dest, r6=dword_86B7AE0 — hands the glyph chunk to the text
+    renderer; Called from object_scaleGrowStep''s grow phase, consistent with battle number popups appearing
+    as the object scales up'
+  refs:
+  - bn6f/asm/asm32.s:28088
+  - 0x0811B648 object_scaleGrowStep
+  - 0x0811B66C object_scaleGrowStep
+  - 0x0811B594 sub_811B594
+  - 0x08045F8C renderTextGfx_8045F8C
+  reproduce: python3 tools/asmcat.py 0x0811B71C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- Exact meaning of the three entry types (0/2/4) written to [r5,#0xE] and how the caller's state byte
+  0x10 uses them
+- Whether unk_2037780 is a battle text-queue header and what its other fields hold
+- Semantics of the param halfword stored to Unk200a220+8 (palette? attribute?)
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_811B71C -> battle_loadQueuedTextGlyph
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811B71C

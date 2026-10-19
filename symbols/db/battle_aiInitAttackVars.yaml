@@ -1,0 +1,46 @@
+name: battle_aiInitAttackVars
+address: '0x08102016'
+kind: function
+status: probable
+summary: Initializes the AI attack-variables block of a battle object and hands it to attack state 0xC.
+interface: (r7 = battle object) -> r0 = 0xC passed to object_setAttack0; no return value
+details: 'Using r7 as the object pointer, it fills the oAIAttackVars struct: three word fields (ScratchVar,
+  AiAttackParam, AttackBoost2) are fetched via sub_800FE28 from nearby constants in the 0x81019F4 data
+  block, Damage and ExtraDamage come from battle_aiGetVersionedTableEntry_800FE12 (so they scale with
+  the object''s AI version), and it hard-codes TimerOrCycles=4, SubStepIndex=1, AttackStepIndex=0, InitFlag=1,
+  AiDifficultyTier=2. Finally it calls object_setAttack0 with attack id 0xC to start the attack, making
+  this the per-attack initializer for that AI attack.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: str r0, [r7,#oAIAttackVars_*] stores show r7 is the object and the target struct is the AI attack-vars
+    block; two battle_aiGetVersionedTableEntry_800FE12 calls feed strh into Damage/ExtraDamage, matching
+    version-scaled AI stats; constant stores (TimerOrCycles=4, SubStepIndex=1, AttackStepIndex=0, InitFlag=1,
+    AiDifficultyTier=2) are typical attack-state initialization; mov r0,#0xc; bl object_setAttack0 ends
+    the routine, selecting attack 0xC; sole caller sub_8101E96 sits in the same AI attack dispatch block
+    (0x8101Exx-0x81020xx)
+  refs:
+  - bn6f/asm/asm31.s:159239
+  - 0x08101E96 sub_8101E96
+  - 0x0800FE12 battle_aiGetVersionedTableEntry_800FE12
+  - 0x08011680 object_setAttack0
+  - 0x0800FE28 sub_800FE28
+  reproduce: python3 tools/asmcat.py 0x08102016
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- what sub_800FE28 reads (likely a word from an attack-data table, but its body was not shown)
+- which attack/state id 0xC corresponds to in game terms
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8102016 -> battle_aiInitAttackVars
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8102016

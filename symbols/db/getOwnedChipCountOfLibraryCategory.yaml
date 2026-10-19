@@ -1,0 +1,46 @@
+name: getOwnedChipCountOfLibraryCategory
+address: '0x08120898'
+kind: function
+status: probable
+summary: Counts the total copies the player owns of all chips belonging to a given chip-library category.
+interface: (r0 = library category index) -> r0 = total owned chip count for that category; flags clobbered
+details: 'Loops chip IDs 1 through 0x13F, fetching each 44-byte ChipData record with getChip8021DA8. Category
+  routing: chips with flag 0x20 in byte 9 count only when the category is 6; chips with flag 0x40 (Giga)
+  count for category 5 unless bit0 of byte 0x16 is set; all other chips count for the category matching
+  byte 7, but bit0 of byte 0x16 excludes them (and the 0x40 path instead requires it clear, sending flagged
+  chips elsewhere). For each matching chip it walks the four code bytes at offsets 0-3, calling GetChipCountOfCode
+  for each valid code (r5 is saved and reused as the 0..3 loop counter) and accumulating the sum. Returns
+  the accumulated owned total in r0.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'loc_81208A0: loop over r7 = 1..0x13F calling getChip8021DA8 for each chip record; byte 9 flags
+    0x20/0x40 plus cmp r5,#5/#6 gate which category each chip is tallied under; loc_81208CA: ldrb [r0,#7]
+    compared with r5 assigns chips to a category by byte 7; byte 0x16 bit0 redirects/excludes; loc_81208DE:
+    loops 4 code bytes calling GetChipCountOfCode and adds results into r6, returned in r0; dword_81208FC
+    = 0x13F matches the 206-entry chip database''s max chip ID range'
+  refs:
+  - bn6f/asm/asm32.s:38337
+  - 0x08120A38 sub_8120A38
+  - 0x08021BC0 GetChipCountOfCode
+  - 0x08021AA4 getChip8021DA8
+  reproduce: python3 tools/asmcat.py 0x08120898
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- exact meaning of the category index values (which is Standard/Giga/Mega/etc.)
+- semantics of ChipData byte 7 (category/page id?) and byte 0x16 bit0 (secret/special chip flag?)
+- which screen or system calls sub_8120A38 and what value it passes for r0
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8120898 -> getOwnedChipCountOfLibraryCategory
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8120898

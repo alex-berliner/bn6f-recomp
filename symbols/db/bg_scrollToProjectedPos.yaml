@@ -1,0 +1,52 @@
+name: bg_scrollToProjectedPos
+address: '0x080024CC'
+kind: function
+status: probable
+summary: Projects a world position through the camera, centers the background scroll on it, and redraws
+  that region's BG tiles.
+interface: (r0 = world x, r1 = world y, r2 = region width in px (rounded up to even), r3 = region height
+  in px (rounded up to even)) -> r0 = left clamp from CopyBackgroundTiles; writes RenderInfo BG scroll
+  and Unk200f3a0 extents; clobbered r2-r7, r8-r10
+details: 'Selects one of two BG structs via dword_80025C4 (r4 = 0 or 4; the second copy is the bytes at
+  0x80025C8): field 0x18 = BG x scroll, 0x1A = BG y scroll, 0x02 = tile-block id. It calls sub_8003694
+  to project (r0,r1) to screen space, then negates and centers the result: (240 - width)/2 and (160 -
+  height)/2 are subtracted, so the region of the given size is centered on the projected point, and stores
+  the result as the BG scroll offsets. It then calls CopyBackgroundTiles(j, i, tileBlock, tileIds=r9,
+  j_size=r4>>3, i_size=r5>>3) to refill the BG map for that region. Finally it clamps the projected center
+  against the region half-extents (width/2, height/2 rounded up) and writes four clamped extents in pixels
+  (0..240 horizontally, 0..160 vertically) into Unk200f3a0+2/3 (x) and +6/7 (y), presumably the visible-tile
+  window for later OAM/clipping work.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl sub_8003694 with (r0,r1) as world coords, per its known projection summary; strh r0/[r2,0x18]
+    and strh r1/[r2,0x1A] into oToolkit_RenderInfoPtr struct after negating and centering with (0xF0-w)/2,
+    (0xA0-h)/2; ldrb r2,[struct+2] passed as which_tile_block_32x32 to CopyBackgroundTiles with sizes
+    r4>>3, r5>>3 (pixels to 8px tiles); four clamp chains against 0xF0/0xA0 ± half-size stored as bytes
+    to Unk200f3a0+2,3,6,7; dword_80025C4 = 0xFF031A18 encodes struct field offsets 0x18, 0x1A, 0x03, 0xFF
+    for the two BG variants (r4 = 0 or 4)
+  refs:
+  - bn6f/asm/asm00_0.s:5377
+  - 0x08003694 sub_8003694
+  - 0x080018C2 CopyBackgroundTiles
+  reproduce: python3 tools/asmcat.py 0x080024CC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- No caller is known, so the meaning of the two BG struct variants (offsets 0 and 4) and what world coordinates
+  are typically passed is unconfirmed
+- Exact use of Unk200f3a0+2/3/6/7 downstream (clipping window vs visible-tile range) is inferred, not
+  proven
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80024CC -> bg_scrollToProjectedPos
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80024CC

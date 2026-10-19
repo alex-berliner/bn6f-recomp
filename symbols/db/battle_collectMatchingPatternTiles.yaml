@@ -1,0 +1,49 @@
+name: battle_collectMatchingPatternTiles
+address: '0x080E3038'
+kind: function
+status: probable
+summary: Walks a panel-offset pattern list, testing each offset tile against panel-flag conditions and
+  writing matching tile coordinates to a buffer, returning the match count.
+interface: (r0 = base x, r1 = base y, r2 = panel flag mask that must be set, r3 = mask that must be clear;
+  r4 = pattern index into PanelOffsetListsPointerTable, r6 = alliance id, r7 = output byte buffer) ->
+  r0 = number of matching tiles written
+details: Loads a pointer from PanelOffsetListsPointerTable at entry r4*4, giving a list of (dx, dy) signed
+  byte pairs terminated by a 0x7F dx sentinel. Converts r6 via object_getAllianceDirection to +1/-1 and
+  multiplies each dx by it, so enemy-side entities mirror the pattern horizontally. For each offset it
+  calls object_checkPanelParameters on (baseX + dx*dir, baseY + dy) with the two masks from r2/r3; on
+  success it packs the tile as x | (y<<4) into r7[count] and increments the count. Returns the number
+  of matched tiles; the buffer contents are ordered by list order. Used by battle object/entity code to
+  test shaped panel areas (e.g. patterns of holes, grass, or other panel states) around an entity.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldr r4,[r0,r4] with off_80E3094 = PanelOffsetListsPointerTable indexes a shape list; ldrsb
+    [r4], cmp #0x7F is its terminator; bl object_getAllianceDirection then mul r0,r2 mirrors dx by player/enemy
+    side; bl object_checkPanelParameters passes r2/r3 masks with dx+baseX, dy+baseY from stack slots;
+    matched tiles stored as orr r0,r1 (y<<4) via strb [r7,r6], count returned in r0; caller sub_80E2FE8
+    sits among battle object helpers that also use the same panel-parameter/alliance routines'
+  refs:
+  - bn6f/asm/asm31.s:93631
+  - 0x080E2FE8 sub_80E2FE8
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0800E2C2 object_getAllianceDirection
+  reproduce: python3 tools/asmcat.py 0x080E3038
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- exact meaning of the two flag masks (which panel state bits) depends on object_checkPanelParameters'
+  argument semantics
+- who consumes the packed byte buffer at r7 and the meaning of the pattern index passed in r4
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E3038 -> battle_collectMatchingPatternTiles
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E3038

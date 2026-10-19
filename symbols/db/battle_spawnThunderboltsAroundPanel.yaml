@@ -1,0 +1,47 @@
+name: battle_spawnThunderboltsAroundPanel
+address: '0x080D4030'
+kind: function
+status: probable
+summary: Spawns a thunderbolt object on each of the four orthogonally adjacent panels around a battle
+  object's panel.
+interface: (r5 = battle object pointer, not an argument in r0-r3) -> r0 = result of last spawnThunderboltObject
+  call; no flags of interest
+details: 'Iterates four (dx,dy) signed-byte pairs from byte_80D4070: (-1,0),(1,0),(0,-1),(0,1). For each,
+  adds the offset to the object''s oBattleObject_PanelX/oBattleObject_PanelY and validates the resulting
+  panel with object_isValidPanel (1-based 6x3 grid check). If valid, calls spawnThunderboltObject_80C7D50
+  passing r0/r1 = neighbor panel coords, r2 = oBattleObject_Element and r6 = oBattleObject_DamageAndStaminaDamageCounterDisabler
+  from the r5 object. Quirk: the object pointer is expected in r5, which this function neither pushes
+  nor initializes, so the caller (sub_80D3D68) must set it up. All four strikes use the same element/damage,
+  so this is one attack hitting the cross-shaped panel ring around the target panel.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: byte_80D4070 holds exactly the four orthogonal unit offsets (-1,0),(1,0),(0,-1),(0,1), looped
+    with r7 = 0..3; ldrb PanelX/PanelY from r5 then add r0/r1 offsets, then bl object_isValidPanel gates
+    the spawn; bl spawnThunderboltObject_80C7D50 with r2 = [r5+oBattleObject_Element] and r6 = damage
+    field reuses the object's attack data; push {r4,r6,r7,lr} omits r5 although ldrb [r5,#oBattleObject_PanelX]
+    is used, so r5 comes from the caller
+  refs:
+  - bn6f/asm/asm31.s:61267
+  - 0x080D3D68 sub_80D3D68
+  - 0x0800CC72 object_isValidPanel
+  - 0x080C7D50 spawnThunderboltObject_80C7D50
+  reproduce: python3 tools/asmcat.py 0x080D4030
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- What attack/spell invokes this via sub_80D3D68 (which thunder-type move hits the surrounding panels)
+- Whether spawnThunderboltObject's return value is meaningful to callers
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D4030 -> battle_spawnThunderboltsAroundPanel
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D4030

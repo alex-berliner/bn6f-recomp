@@ -1,0 +1,51 @@
+name: battle_spawnRandomParticleBurstAtObject
+address: '0x080C7EC8'
+kind: function
+status: probable
+summary: Spawns 1-4 randomly-counted particles (twice) at a battle object's position from a parameter
+  table, then plays sound effect 0xD9.
+interface: (r5 = battle object ptr) -> void; clobbers r0-r7, lr; calls GetRNG, sub_80E1084(r0=2, r1=X,
+  r2=Y, r3=0, r4=1-4), PlaySoundEffect(0xD9)
+details: The function assumes r5 points to a battle object (reads oBattleObject_X and oBattleObject_Y
+  directly from it). It loops twice (r3 = 0..1), and each iteration calls GetRNG, computes r4 = (rand
+  & 3) + 1 (a random count of 1-4), and calls sub_80E1084 with r0 = 2 (particle/effect kind), the object's
+  X and Y, r3 = 0, and r4 as the count. The two word-pairs passed to sub_80E1084 come from a table at
+  dword_80C7F00 (entries walked with r6 += 8), values like 0x8000/0x00028000 and 0x00030000/0x00010000,
+  likely per-iteration particle motion/appearance parameters. After both iterations it plays sound effect
+  0xD9 once. The exact meaning of sub_80E1084's args is not confirmed from this function alone.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'loc_80C7ECE loop: bl GetRNG; mov r4,#3; and r4,r0; add r4,#1 — random 1-4 passed as 4th arg
+    to sub_80E1084; ldr r1,[r5,#oBattleObject_X] / ldr r2,[r5,#oBattleObject_Y] — effect is positioned
+    at a battle object; ldr r6,off_80C7EFC then ldr r7,[r6,#4]/ldr r6,[r6] with r6 += 8 per loop — two
+    fixed word-pair parameter entries passed to sub_80E1084(r0=2,...); mov r0,#0xd9; bl PlaySoundEffect
+    — one sound effect played after the particle spawns'
+  refs:
+  - bn6f/asm/asm31.s:34856
+  - 0x080C7E24 sub_80C7E24
+  - 0x080C7E6C sub_80C7E6C
+  - 0x0800151C GetRNG
+  - 0x080005CC PlaySoundEffect
+  - 0x080E1084 sub_80E1084
+  reproduce: python3 tools/asmcat.py 0x080C7EC8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- What sub_80E1084 does (particle spawner vs generic effect helper) and the meaning of its r0=2 and table
+  word-pairs
+- What effects 0xD9 and the table correspond to visually/audio-wise
+- What sub_80C7E24/sub_80C7E6C do, i.e. which battle object/event triggers this
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C7EC8 -> battle_spawnRandomParticleBurstAtObject
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C7EC8

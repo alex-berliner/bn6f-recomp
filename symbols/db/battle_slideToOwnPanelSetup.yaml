@@ -1,0 +1,45 @@
+name: battle_slideToOwnPanelSetup
+address: '0x080BBE0E'
+kind: function
+status: probable
+summary: Sets a battle object's X velocity toward its own back column and a timer of 5 frames per panel
+  of remaining distance.
+interface: (r5 = battle object) -> r0 = timer stored to oBattleObject_Timer; also writes oBattleObject_XVelocity
+details: 'Reads the facing multiplier via object_getFrontDirection and stores frontDirection * 0x80000
+  into oBattleObject_XVelocity (fixed-point sideways speed). It then picks the target column X: 6 for
+  alliance 0, else 1 (i.e. the back column of the object''s own side), computes |target - oBattleObject_PanelX|,
+  multiplies by 0x28<<16 (= 0x280000) and divides by 0x80000 with SWI 6 (Div), yielding 5 frames per panel
+  of distance, stored to oBattleObject_Timer. This is the setup step for the caller battle_slideToOwnPanelPhase,
+  which slides the object each frame until the timer runs out. Uses fields oBattleObject_XVelocity, oBattleObject_Alliance,
+  oBattleObject_PanelX, oBattleObject_Timer.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl object_getFrontDirection then mul with dword_80BBF08=0x80000 stored to oBattleObject_XVelocity:
+    velocity = direction * speed; target column = 6 if Alliance==0 else 1, minus oBattleObject_PanelX,
+    absolute value: distance to own back column; mul by 0x28<<16 then svc 6 (Div) with r1 still 0x80000
+    gives |dist|*5 -> oBattleObject_Timer; caller battle_slideToOwnPanelPhase slides object sideways each
+    frame and counts down, matching timer/velocity setup'
+  refs:
+  - bn6f/asm/asm31.s:8322
+  - 0x080BBCD8 battle_slideToOwnPanelPhase
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x080BBE0E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- exact pixel-per-frame scale of XVelocity (0x80000 assumed fixed-point), and whether panel X=6/1 mapping
+  matches column indexing on both sides
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BBE0E -> battle_slideToOwnPanelSetup
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BBE0E

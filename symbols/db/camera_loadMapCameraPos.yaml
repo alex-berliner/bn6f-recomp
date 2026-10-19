@@ -1,0 +1,45 @@
+name: camera_loadMapCameraPos
+address: '0x0808FBEC'
+kind: function
+status: probable
+summary: Snaps the camera to a per-map default position read from a table indexed by the current map number.
+interface: (r0 = 0 passed to camera_writeUnk03_14; reads gameState via r10) -> r0 = 0; sets camera x/y
+  from table, z = 0
+details: 'Reads the active toolkit''s GameState and picks an index: MapNumber, except when MapGroup ==
+  0x85 where index 3 is forced. Uses that index *4 into byte_808FC24, loading two halfwords as fixed-point
+  values (shifted <<16, so zero fractional part) which are passed to SetCameraXYZ as two position components,
+  with the third set to 0. Before that it zeroes a byte/word pair in the camera struct via camera_writeUnk03_14_80301b2,
+  likely resetting camera state. Table entries are 4 bytes per map: two 16-bit coordinates. The forced
+  index for MapGroup 0x85 suggests that map group reuses map 3''s camera position.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r1,[r0,#oGameState_MapGroup]; cmp #0x85 -> index 3, else MapNumber: index is the current
+    map; lsl r1,r1,#2 + ldrh from off_808FC20: 4-byte table entries, two halfwords loaded; lsl r0,#0x10
+    / lsl r1,#0x10 before SetCameraXYZ: fixed-point coords with zero fraction; bl SetCameraXYZ with r2=0:
+    writes the loaded coords into the camera struct; bl camera_writeUnk03_14_80301b2 with r0=0 first:
+    resets a camera field before positioning'
+  refs:
+  - bn6f/asm/asm25.s:505
+  - 0x080301DC SetCameraXYZ
+  - 0x080301B2 camera_writeUnk03_14_80301b2
+  reproduce: python3 tools/asmcat.py 0x0808FBEC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- No known callers, so the trigger context (map load? cutscene?) is unconfirmed
+- The meaning of the byte/word zeroed by camera_writeUnk03_14_80301b2 is unknown
+- Whether the two table halfwords are (x,y) or (x,z) — SetCameraXYZ's arg order would confirm
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_808FBEC -> camera_loadMapCameraPos
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_808FBEC

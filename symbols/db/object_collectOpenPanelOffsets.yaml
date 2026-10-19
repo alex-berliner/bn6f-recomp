@@ -1,0 +1,54 @@
+name: object_collectOpenPanelOffsets
+address: '0x080BA9A4'
+kind: function
+status: probable
+summary: Scans a block of panels ahead of a battle object (columns 2-5, rows 1-3, mirrored by alliance),
+  tests each with the panel-type and panel-flag checks, and stores the passing panels' packed (x|y<<4)
+  offsets into a byte list on the object, returning how many were found.
+interface: (r0/r5 = battle object ptr; r5 must be preset by caller) -> r0 = number of matching panels
+  written to object+0x68 list; flags clobbered
+details: 'Loops r4=0..3 over a per-alliance table byte_80BA9F8[alliance*4+r4] (alliance 0: 5,4,3,2; alliance
+  1: 2,3,4,5 — i.e. distances 2-5 mirrored to always point into the far side) crossed with r6=1..3, using
+  each pair as (x,y) panel offsets relative to the object. For each candidate it calls object_checkPanelTypeMatchesValue_800D618(table
+  value, r6, object''s oBattleObject_Alliance) and, if that passes, object_checkPanelParameters with a
+  required-flag mask of 0x10 and a forbidden mask of 0x0F880080, so only panels with flag 0x10 set and
+  none of the 0x0F880080 bits (occupied/hole-type state) qualify. Matches are packed as (tableOffset |
+  r6<<4) and appended at oBattleObject+0x68+n; the loop stops filling when no more candidates pass but
+  always runs all 16 offsets. Returns the count in r0. The caller that consumes the object+0x68 list is
+  not shown, so the downstream use (likely an attack/support picking target panels) is inferred.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#oBattleObject_Alliance]; lsl r0,#2; add r0,r4; ldrb r0,[byte_80BA9F8+r0] selects
+    an alliance-mirrored column offset; two-step filter: bl object_checkPanelTypeMatchesValue_800D618
+    then bl object_checkPanelParameters with r2=0x10, r3=0x0F880080 masks; lsl r1,#4; orr r0,r1; strb
+    r0,[r5,#0x68+r7]; add r7,#1 packs and appends each hit to the object''s list; byte_80BA9F8 = 05 04
+    03 02 02 03 04 05: two alliance rows of distances 2-5, i.e. the panel scan region is always on the
+    opposite side; mov r0,r7 before pop: the function''s return value is the number of stored entries'
+  refs:
+  - bn6f/asm/asm31.s:5472
+  - 0x080BA84C sub_80BA84C
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0800D618 object_checkPanelTypeMatchesValue_800D618
+  reproduce: python3 tools/asmcat.py 0x080BA9A4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- What consumes the object+0x68 offset list — the sole caller sub_80BA84C is unknown, so the gameplay
+  purpose (attack targeting, spawn placement, etc.) is unconfirmed
+- Exact meaning of panel flag 0x10 and the forbidden mask 0x0F880080 in the panel status word
+- Whether the table value is an absolute column or an offset from the object's column, and likewise for
+  r6 1..3 vs the 3-row grid
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BA9A4 -> object_collectOpenPanelOffsets
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BA9A4

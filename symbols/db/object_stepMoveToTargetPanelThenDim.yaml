@@ -1,0 +1,49 @@
+name: object_stepMoveToTargetPanelThenDim
+address: '0x080D3004'
+kind: function
+status: probable
+summary: Per-frame update for a battle object that drifts by its velocity each tick, and once it reaches
+  its target panel spawns a dimming collision region (attack/telegraph area) and advances its state to
+  8.
+interface: '(r5 = battle entity struct: +0x34/+0x38 pos, +0x40/+0x44 vel, +0x12/+0x13 panel, +0x60/+0x64
+  target panel, +0x2c owner, +0x8 state) -> void; calls object_setPanelsFromCoordinates and object_spawnDimmingCollisionRegion'
+details: Adds the velocity fields at +0x40/+0x44 into the position fields at +0x34/+0x38, then calls object_setPanelsFromCoordinates
+  to refresh the object's PanelX/PanelY (+0x12/+0x13). It compares the current panel bytes against target
+  values stored at +0x60 and +0x64 (word loads, but only low bytes are compared). If either comparison
+  fails it returns immediately, so this is a move-until-arrival step. On arrival it calls object_spawnDimmingCollisionRegion
+  with panelX/panelY, z=0, width 8<<16, collision params 0x4050501, owner from +0x2c, and kind/flag 3,
+  then stores 8 into +0x8, which looks like a script/state counter for the same entity. The 0x4050501
+  word likely encodes collision-region shape/flags. No callers are known, so whether it runs every frame
+  or on an animation step is unconfirmed.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_80D3004: adds [r5,#0x40] to [r5,#0x34] and [r5,#0x44] to [r5,#0x38], then bl object_setPanelsFromCoordinates;
+    ldrb [r5,#0x12]/[#0x13] compared against ldr [r5,#0x60]/[#0x64] with early return on mismatch; on
+    match: mov r2,#0; mov r3,#8 lsl 16; ldr r4,=0x4050501; bl object_spawnDimmingCollisionRegion; str
+    8 into [r5,#8] only on the arrival path, consistent with a state/script counter; both callees are
+    known object_* battle-entity helpers operating on the r5 entity struct'
+  refs:
+  - bn6f/asm/asm31.s:59080
+  - 0x0800E2AC object_setPanelsFromCoordinates
+  - 0x080C53A6 object_spawnDimmingCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080D3004
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- identity of the entity (which enemy/attack uses this) since no caller is known
+- exact meaning of spawn args 0x4050501, 8<<16 and r7=3 in object_spawnDimmingCollisionRegion
+- whether +0x8 is a script state counter or a timer
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D3004 -> object_stepMoveToTargetPanelThenDim
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D3004

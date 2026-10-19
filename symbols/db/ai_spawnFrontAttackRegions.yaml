@@ -1,0 +1,49 @@
+name: ai_spawnFrontAttackRegions
+address: '0x080F1ADE'
+kind: function
+status: probable
+summary: Spawns a chain of three collision regions on the 1st, 2nd, and 3rd panels in front of the attack's
+  owner, carrying the AI attack's damage.
+interface: (r5 = battle object, r7 = AI attack vars struct) -> r0 = undefined; no meaningful flags
+details: 'Loops r4 from 1 to 3: each iteration gets the owner''s facing multiplier (object_getFrontDirection,
+  +1/-1 by alliance/DirectionFlip), multiplies it by the step counter, and adds it to oBattleObject_PanelX
+  to compute the target panel, with oBattleObject_PanelY as the row. It reads oAIAttackVars_Damage (r6)
+  and oAIAttackVars_InitFlag (r2) from the AI attack-vars struct r7, sets r3 = 0, and calls object_spawnCollisionRegion
+  with r4 = 0x400FF01 (fixed attribute/flag word) and a per-step word from the table at byte_80F1B18 indexed
+  by (step-1)*4 (values 0x3, 0x3, 0x1000). This creates attack collision one panel at a time marching
+  away from the object, typical of a boss sweep/laser-style AI attack. The table word likely encodes region
+  size or lifetime, with 0x1000 on the last step possibly being a special flag rather than a size.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: loop r4 = 1..3 with 'mul r0, r4; add r0, r0, panelX' walks panels 1-3 ahead of the owner (loc_80F1AE2..80F1AF6);
+    object_getFrontDirection provides the +/- facing multiplier, so the sweep follows the owner's side;
+    r6/r2 loaded from oAIAttackVars_Damage/oAIAttackVars_InitFlag and passed to object_spawnCollisionRegion,
+    tying it to AI attack execution; per-step table off_80F1B14 -> byte_80F1B18 gives words 0x3, 0x3,
+    0x1000 indexed by (step-1)*4; constant r4 = 0x400FF01 passed to object_spawnCollisionRegion as a fixed
+    collision-attribute argument
+  refs:
+  - bn6f/asm/asm31.s:125526
+  - 0x080F19F0 sub_80F19F0
+  - 0x0800E2CA object_getFrontDirection
+  - 0x080C536A object_spawnCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080F1ADE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-010606'
+open_questions:
+- exact meaning of the argument words 0x3/0x3/0x1000 and of 0x400FF01 in object_spawnCollisionRegion (size?
+  lifetime? hit flags?)
+- which boss/attack uses this — caller sub_80F19F0 and the AI script that selects it are not shown
+sources:
+- wf investigate investigate-20261019-010606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 48b0d0f5
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F1ADE -> ai_spawnFrontAttackRegions
+  where: bn6f d38f6a8d
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F1ADE
