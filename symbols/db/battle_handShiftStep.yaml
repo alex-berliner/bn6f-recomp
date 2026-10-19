@@ -1,0 +1,48 @@
+name: battle_handShiftStep
+address: '0x0802DE74'
+kind: function
+status: probable
+summary: Performs one left-shift step of the selected battle-hand slot's chip data (removing its front
+  entry) and flags the corresponding record for update.
+interface: (r0 = clobbers; r5 = battle/hand object with selected hand index at +0x16) -> r0 = clobbered;
+  sets flag byte
+details: Reads the hand slot index from [r5+0x16] and fetches the 0x50-byte hand record via getBattleHandAddr_8010018
+  (array at 0x20349C0). If the counter byte at hand+1 is nonzero, it decrements it and shifts three parallel
+  u16 arrays (at hand+0x00, +0x0C and +0x18) down by one element for indices 0..5, i.e. six iterations
+  copying [i+1] into [i] — dropping the front entry of each array. Then it computes the record for the
+  same index in the 0x1D0-stride array at 0x2036120 (via getEntryPtr_2036120_1D0_802E070) and stores 1
+  at byte offset 0x53, presumably marking that record dirty/active so a later routine processes the shift
+  (likely an animation or hand-refill trigger). No caller is known, so the exact gameplay trigger (chip
+  use vs. hand scroll) is unconfirmed.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r5,#0x16]; bl getBattleHandAddr_8010018 — slot index selects the 0x50-byte hand record;
+    ldrb r0,[r7,#1] / sub r0,#1 / strb — gate counter at hand+1 decremented once per call; copy loop strh
+    [r2,#2]->[r2], [r2,#0xe]->[r2,#0xc], [r2,#0x1a]->[r2,#0x18], 6 iterations, r2+=2 — three u16 arrays
+    shifted down one; bl getEntryPtr_2036120_1D0_802E070; strb r1(=1),[r0,#0x53] — flags record 0x53 in
+    the 0x1D0-stride array for the same slot
+  refs:
+  - bn6f/asm/asm03_0.s:16770
+  - 0x08010018 getBattleHandAddr_8010018
+  - 0x0802E070 getEntryPtr_2036120_1D0_802E070
+  reproduce: python3 tools/asmcat.py 0x0802DE74
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- 'No callers known: what invokes this and at what game moment (chip use, hand scroll, refill)?'
+- What are the three u16 arrays at hand+0x00/+0x0C/+0x18 (chip IDs, sort keys, display values)?
+- What consumes flag byte 0x53 in the 0x1D0-stride records at 0x2036120?
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_802DE74 -> battle_handShiftStep
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802DE74

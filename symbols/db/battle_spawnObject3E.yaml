@@ -1,0 +1,52 @@
+name: battle_spawnObject3E
+address: '0x080CBE4A'
+kind: function
+status: probable
+summary: Spawns battle object type 0x3E and fills its panel position, element, damage, related-object
+  and alliance fields from the caller's registers.
+interface: (r0 = PanelX, r1 = PanelY, r2 = Element, r5 = source battle object to copy AllianceAndDirectionFlip
+  from, r6 = DamageAndStaminaDamageCounterDisabler word, r7 = RelatedObject1Ptr) -> r0 = new object ptr
+  or unchanged on spawn failure; flags from spawn callee (EQ = failure)
+details: Pushes r0-r2 (plus r5) and pops them shifted into r1-r3 after object_spawnType3 returns, so the
+  entry arguments become the values written to oBattleObject_PanelX/PanelY/Element of the freshly spawned
+  object. Writes r6 to the DamageAndStaminaDamageCounterDisabler field and, when the spawned object's
+  oBattleObject_Param1 is still 0, stores r7 as oBattleObject_RelatedObject1Ptr. Copies the halfword oBattleObject_AllianceAndDirectionFlip
+  from the object pointer the caller left in r5 (the popped r5 is restored to that same value), then sets
+  bit 0x10 in oObjectHeader_Flags. Finally calls setFieldBattleObject_800F614 with (object, alliance &
+  0xFF, 0) to assign the object's team. If the spawn failed (EQ branch) it returns immediately without
+  touching anything.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl object_spawnType3 with r0=0x3E creates the object; beq locret_80CBE80 skips all field setup
+    on failure; push {r0-r2,r5} / pop {r1-r3,r5} shifts entry r0-r2 into r1-r3, which are then stored
+    to PanelX/PanelY/Element; str r6,[r0,#oBattleObject_DamageAndStaminaDamageCounterDisabler] and str
+    r7,[r0,#oBattleObject_RelatedObject1Ptr] guarded by ldrb Param1 == 0; ldrh r3,[r5,#oBattleObject_AllianceAndDirectionFlip]
+    then strh back into the new object, with and r1,r3,#0xFF fed to setFieldBattleObject_800F614; orr
+    r1,r2,#0x10 into oObjectHeader_Flags right before the team-setting call
+  refs:
+  - bn6f/asm/asm31.s:43509
+  - 0x080E7E08 sub_80E7E08
+  - 0x08003358 object_spawnType3
+  - 0x0800F614 setFieldBattleObject_800F614
+  reproduce: python3 tools/asmcat.py 0x080CBE4A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- what battle object ID 0x3E actually is in-game
+- what caller sub_80E7E08 passes in r5 (the object whose alliance/flip is copied) and in r6/r7
+- the meaning of oObjectHeader_Flags bit 0x10 and whether object_spawnType3 really returns/leaves the
+  pointer where this code expects it
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CBE4A -> battle_spawnObject3E
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CBE4A

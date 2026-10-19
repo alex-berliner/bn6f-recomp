@@ -1,0 +1,53 @@
+name: link_verifyChecksumAndMatchPartner
+address: '0x0812B9F8'
+kind: function
+status: probable
+summary: 'Link-comm state handler: checksums the received buffer at unk_2033C00, then matches the link
+  partner''s eLinkState fields against a table to set the next state.'
+interface: '(r5 = comm state-machine context: +0x34 payload size, +0x26 result flag, +0x10 state, +0x2
+  substate) -> writes [r5+0x26], [r5+0x10], [r5+2]; no return value'
+details: 'Sums all bytes of unk_2033C00 up to [r5+0x34]-8 (or -12 in the second path, which also checks
+  a flag dword at +0x30), comparing the sum against the trailing dword; a match stores 4 to [r5+0x26],
+  otherwise 8 (pass/fail marker). It then calls the comm dispatcher sub_803EAE4 on eStruct200BC30: result
+  4 goes to sub_812C24C, result 1 returns, otherwise it sets [r5+0x10]=6, copies eLinkState fields 0x1C/0x0A
+  to the camera end struct via camera_copyLinkStateToEnd (also writing [r5+0x26] there), and resets link
+  state via sub_803EF74/sub_803E8F8. It then walks a 0x10-byte-stride table from sub_81323B0, matching
+  entries'' word+0x4 to eLinkState+0x1C and halfword+0x2 to +0xA, tracking hits in r3. If no entry matched,
+  sub_8132430''s result decides the transition: <=2 sets [r5+2]=0x0C, [r5+0x10]=0x0F, [r5+0x26]=0x10;
+  result 4 sets [r5+2]=0x0C, [r5+0x10]=0x10, [r5+0x26]=0x20. A single-bit match (r3==1) only sets [r5+0x10]=2.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'loc_812BA04/loc_812BA28: byte-sum of unk_2033C00 over [r5+0x34]-8/-12 compared to trailing
+    dword, result 4/8 stored to [r5+0x26] — packet checksum; bl sub_803EAE4 with cmp r0,#4/#1 branches:
+    dispatch on the eStruct200BC30 comm mode; bl camera_copyLinkStateToEnd then strh r1,[r0,#8]: publishes
+    the checksum result into the camera end struct; loc_812BA92 loop: table entries compared to eLinkState+0x1C
+    and +0xA (fields also copied by camera_copyLinkStateToEnd) — partner identity match; sub_8132430 result
+    2 vs 4 selects distinct [r5+2]/[r5+0x10]/[r5+0x26] transitions — next-state selection'
+  refs:
+  - bn6f/asm/asm33.s:17838
+  - 0x081325CC camera_copyLinkStateToEnd
+  - 0x0803E8F8 sub_803E8F8
+  - 0x0803EAE4 sub_803EAE4
+  reproduce: python3 tools/asmcat.py 0x0812B9F8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- 'no caller known, so the role of the r5 state-machine context (whose struct, which feature: trade, versus,
+  contest?) is unconfirmed'
+- what unk_2033C00 actually carries (payload received over the link?) and who fills it
+- what table sub_81323B0 enumerates and what sub_8132430 measures (would identify the partner-matching
+  semantics precisely)
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_812B9F8 -> link_verifyChecksumAndMatchPartner
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_812B9F8

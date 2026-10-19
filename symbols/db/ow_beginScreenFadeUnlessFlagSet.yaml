@@ -1,0 +1,44 @@
+name: ow_beginScreenFadeUnlessFlagSet
+address: '0x0812A67C'
+kind: function
+status: probable
+summary: If the 0x200BC50 flag bit is clear, starts a screen fade (mode 12, speed 16) and writes state
+  0x10 to [r5+0xC]; otherwise does nothing.
+interface: () -> void; uses caller's r5 as a state struct, branches on the flag test's Z flag
+details: The routine first calls the helper that reads bit 5 of the byte at IWRAM 0x200BC50+5; if that
+  flag is set it returns immediately without side effects. Otherwise it calls SetScreenFade(0xC, 0x10)
+  — presumably fade kind 12 at speed/step 16 — and then stores the byte 0x10 into offset 0xC of the struct
+  in r5, which looks like a scenario/task state field being advanced to the next step. r5 is inherited
+  from the caller, so the struct layout and meaning of state 0x10 are unknown here. With no known callers
+  it is not clear which game flow (overworld transition, cutscene, battle entry) triggers this path.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl test0x200bc50_0x5_813D60C; bne locret — early-out when the IWRAM flag is set; bl SetScreenFade
+    with r0=0xC, r1=0x10 — the only substantive action; strb r0(0x10),[r5,#0xC] — writes a step/state
+    value to a caller-provided struct; no other reads or writes: the function is purely conditional fade
+    + state write'
+  refs:
+  - bn6f/asm/asm33.s:15201
+  - 0x0813D60C test0x200bc50_0x5_813D60C
+  - 0x08006270 SetScreenFade
+  reproduce: python3 tools/asmcat.py 0x0812A67C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- no known callers, so the subsystem (overworld/event/battle) and r5's struct type are unidentified
+- meaning of SetScreenFade(0xC, 0x10) arguments (fade direction vs color?) not confirmed
+- what flag bit 5 of 0x200BC50 represents and when it gets set
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_812A67C -> ow_beginScreenFadeUnlessFlagSet
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_812A67C

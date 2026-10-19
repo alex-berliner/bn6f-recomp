@@ -1,0 +1,46 @@
+name: req_countdownDispatch
+address: '0x0801D1D8'
+kind: function
+status: probable
+summary: Counts down a one-byte timer at 0x2036857 and, when it hits zero, clears request-flag bit 16
+  and fires dispatch_801DACC with that mask.
+interface: (void) -> r0 = result of dispatch_801DACC; the counter decrement sets NZ for the branch, no
+  LR kept beyond tail pop
+details: 'Reads the byte at unk_2036850+0x7 (0x2036857), decrements it, and stores it back; while nonzero
+  it just returns. When the counter reaches zero, it forms mask 1<<16 and calls flags_clearBits_eStruct2035280_801BED6
+  to clear that bit in the flags word at dword_20352C0, then calls dispatch_801DACC with the same 1<<16
+  mask. This is a classic ''wait N frames, then signal'' pattern: some other code presumably loads the
+  counter and sets flag bit 16 to arm it, and this task polls each frame and signals on expiry. The counter
+  is not clamped, so calling this every frame after expiry would re-fire each time unless the flag/counter
+  are reset elsewhere.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb/strb around [r3,#0x7] with sub #1 and bne: per-frame decrement loop on byte_2036857; mov
+    r0,#1; lsl r0,#0x10 twice: the event/request mask 1<<16 passed to both callees; call to flags_clearBits_eStruct2035280_801BED6
+    clears the same bit in dword_20352C0 before dispatching; bl dispatch_801DACC with the mask: signals
+    the counted-down event to the dispatcher'
+  refs:
+  - bn6f/asm/asm00_2.s:29733
+  - 0x0801BED6 flags_clearBits_eStruct2035280_801BED6
+  - 0x0801DACC dispatch_801DACC
+  reproduce: python3 tools/asmcat.py 0x0801D1D8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- No known caller, so who initializes byte_2036857 and how often this runs (task/step list vs interrupt)
+  is unconfirmed
+- The meaning of the 1<<16 request bit and what dispatch_801DACC actually triggers with it
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_801D1D8 -> req_countdownDispatch
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_801D1D8

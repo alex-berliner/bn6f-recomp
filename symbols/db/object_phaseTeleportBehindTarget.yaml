@@ -1,0 +1,46 @@
+name: object_phaseTeleportBehindTarget
+address: '0x080BD67E'
+kind: function
+status: probable
+summary: 'Battle-object phase: warp the object one panel behind its target panel (anim 4), wait, then
+  advance to phase 0xC.'
+interface: (r5 = battle object) -> void; sets PanelX/PanelY, CurAnim, Timer, PhaseInitialized, then CurPhaseAndPhaseInitialized
+  = 0xC
+details: First call (PhaseInitialized == 0) stores CurAnim = 4, clears oBattleObject_Timer, computes PanelX
+  = FuturePanelX - object_getFrontDirection() (i.e., one panel opposite the object's facing side), copies
+  FuturePanelY into PanelY, calls object_setCoordinatesFromPanels to derive pixel X/Y, and sets PhaseInitialized
+  = 4. Subsequent calls decrement the Timer; when it expires the phase word is set to 0xC. Because Timer
+  is initialized to 0, the decrement wraps to 0xFFFF and the bgt falls through, so the wait lasts effectively
+  one update unless something else rewrites Timer. It is a state-machine step of some enemy/object AI,
+  r5 being the standard battle-object struct.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#oBattleObject_PhaseInitialized] / bne: standard two-stage phase handler pattern;
+    neg r0,frontDirection; add FuturePanelX; strb to PanelX: teleports one panel behind facing direction;
+    bl object_setCoordinatesFromPanels after storing PanelX/Y: recompute pixel position; Timer countdown
+    with bgt and ''mov r0,#0xc; strh CurPhaseAndPhaseInitialized'': on expiry jumps to phase 0xC; mov
+    r0,#4; strb CurAnim: plays animation 4 while waiting'
+  refs:
+  - bn6f/asm/asm31.s:11610
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800E29C object_setCoordinatesFromPanels
+  reproduce: python3 tools/asmcat.py 0x080BD67E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- 'No caller known: which enemy/object uses this phase and what phase 0xC does next are unknown'
+- Whether oBattleObject_Timer is meant to be set elsewhere (longer wait) or the 1-frame wait is intentional
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BD67E -> object_phaseTeleportBehindTarget
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BD67E

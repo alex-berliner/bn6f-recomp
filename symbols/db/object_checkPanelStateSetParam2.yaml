@@ -1,0 +1,47 @@
+name: object_checkPanelStateSetParam2
+address: '0x080CC006'
+kind: function
+status: probable
+summary: Tests the battle object's panel against an alliance-dependent panel-requirement table and flags
+  Param2=1 when the panel state does not match.
+interface: (r5 = battle object) -> r0 = panel check result (1 = match); sets oBattleObject_Param2 = 1
+  on mismatch; clobbers r1,r3,lr
+details: Reads the object's PanelX/PanelY, resolves a panel-parameter entry via GetAllianceDependentPanelParamArgs2
+  using the table at byte_80CC024 (mask bytes 0x10 set / 0x80,0x0B cleared, so it requires specific panel
+  flag bits and forbids others, e.g. hole/broken states), and calls object_checkPanelParameters. If the
+  panel does not satisfy the required flag state, it writes 1 into oBattleObject_Param2, otherwise leaves
+  Param2 untouched. The table being alliance-dependent suggests the required panel state differs between
+  player/enemy sides (e.g. panel owned or transformed by one side). It is a state check, not an action;
+  callers sub_80CBCB0/sub_80CBD10 presumably branch on Param2 afterwards.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0/r1 from oBattleObject_PanelX/PanelY then bl GetAllianceDependentPanelParamArgs2 with
+    off_80CC020=byte_80CC024 (sub_80CC006); bl object_checkPanelParameters (known: returns 1/0 for panel
+    flag mask match); bne locret skips, and only on cmp r0,#0 fallthrough is ''mov r1,#1; strb r1,[r5,#oBattleObject_Param2]''
+    executed; byte_80CC024 = 0x10,0,0,0,0,0,0x80,0x0B: required/forbidden panel flag masks for the check'
+  refs:
+  - bn6f/asm/asm31.s:43745
+  - 0x080CBCB0 sub_80CBCB0
+  - 0x080CBD10 sub_80CBD10
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0800EC48 GetAllianceDependentPanelParamArgs2
+  reproduce: python3 tools/asmcat.py 0x080CC006
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- Exact panel flag semantics encoded by byte_80CC024 (which bits mean what in panel param entries)
+- What callers sub_80CBCB0/sub_80CBD10 do with Param2=1 (which object/trap this belongs to)
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CC006 -> object_checkPanelStateSetParam2
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CC006

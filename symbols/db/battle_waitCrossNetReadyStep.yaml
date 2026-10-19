@@ -1,0 +1,47 @@
+name: battle_waitCrossNetReadyStep
+address: '0x08008B2E'
+kind: function
+status: probable
+summary: 'Battle-object state step: starts effect kind 0x58 once, then waits until the cross-net (linked)
+  battle is ready, setting a 0xC state/timer while waiting.'
+interface: (r0 = ? unused; r5 = object/eStruct-like state block) -> r0 = clobbered by calls; updates r5+3
+  (state byte), r5+8 halfword, r5+2 halfword
+details: Reads the state byte at [r5,#3]; when it is 0 it calls battle_dispatchKindEffect with kind 0x58
+  (allocating the effect via the guarded dispatch path), stores 0 to halfword [r5,#8], and writes state
+  4 to [r5,#3]. Every invocation then calls comm_checkCrossNetBattleReady_801E754; if it returns 0 (linked
+  partner not in expected mode yet), halfword [r5,#2] is set to 0xC — likely a retry delay or state code
+  — and the routine returns. If ready, it returns without changing state, letting the caller proceed.
+  r5 is preserved, so this is a step handler operating on the caller's object struct, not a standalone
+  routine.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r5,#3] / tst / bne — one-shot init gate on a state byte; mov r0,#0x58; bl battle_dispatchKindEffect_801E792
+    — kicks off battle sub-effect 0x58; strh r0(=4),[r5,#3] — advances state machine to state 4 after
+    dispatching; bl comm_checkCrossNetBattleReady_801E754; bne skip — polls linked-battle readiness; strh
+    0xC,[r5,#2] only when check returns 0 — sets wait/retry value while link not ready
+  refs:
+  - bn6f/asm/asm00_1.s:12539
+  - 0x0801E792 battle_dispatchKindEffect_801E792
+  - 0x0801E754 comm_checkCrossNetBattleReady_801E754
+  reproduce: python3 tools/asmcat.py 0x08008B2E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- Meaning of effect kind 0x58 and of the 0xC value written to +2 (retry frames vs. state code) need the
+  caller or the kind-0x58 handler table
+- Which object/state block r5 points to (exact struct layout of fields +2, +3, +8) is inferred from sibling
+  code, not proven here
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8008B2E -> battle_waitCrossNetReadyStep
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8008B2E

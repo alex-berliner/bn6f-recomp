@@ -1,0 +1,45 @@
+name: ai_setHitElementForAttack
+address: '0x080F42C8'
+kind: function
+status: probable
+summary: 'AI attack hit resolution: picks the hit element based on whether the target stands on the same
+  panel row, and aborts the attack if the struck tile is off-grid.'
+interface: (r5 = attacker object, r7 = AI attack vars block) -> r0 = 0 always; stores HitElement/PanelParamFlags2
+  in r7's struct
+details: Clears oAIAttackVars_PanelParamFlags2 and reads the target object's bytes at 0x12 (column) and
+  0x13 (row) via oAIAttackVars_TargetObjectPtr. If the target's row byte equals the attacker's oBattleObject_PanelY,
+  it stores 0xC into oAIAttackVars_HitElement (same-row case). Otherwise it calls object_isValidPanel
+  with (column, row); a valid tile stores HitElement = 4, while an invalid tile calls object_exitAttackState
+  to cancel the attack without recording a hit element.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: compares target byte 0x13 with attacker's oBattleObject_PanelY and stores 0xC to HitElement
+    on match (loc_80F42EA); passes target bytes 0x12/0x13 to object_isValidPanel and stores 4 to HitElement
+    when in-grid (0x080F42DC-0x080F42EE); stores 0 to oAIAttackVars_PanelParamFlags2 at entry; calls object_exitAttackState
+    when the panel is invalid, canceling the attack (loc_80F42F0); all writes go to the oAIAttackVars_*
+    fields of r7, so it is an AI attack-state step, not a generic battle helper
+  refs:
+  - bn6f/asm/asm31.s:130189
+  - 0x0800CC72 object_isValidPanel
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x080F42C8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- no known caller, so the trigger (which enemy attack invokes this) and the meaning of HitElement values
+  4 and 0xC in the consuming code are unconfirmed
+- exact semantics of target bytes 0x12/0x13 (panel column/row vs. sprite coords) not proven
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F42C8 -> ai_setHitElementForAttack
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F42C8

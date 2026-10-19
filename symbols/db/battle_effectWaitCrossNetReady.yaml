@@ -1,0 +1,46 @@
+name: battle_effectWaitCrossNetReady
+address: '0x08008CCA'
+kind: function
+status: probable
+summary: Battle sub-effect handler that starts sub-effect kind 0x1C and waits, refreshing a 0xC timer,
+  until the linked cross-net battle partner is ready.
+interface: '(r5 = effect struct: +2 halfword timer, +3 byte state, +8 halfword work) -> r0 = clobbered;
+  no meaningful return'
+details: 'State machine entry: when the state byte [r5,#3] is 0, it calls battle_dispatchKindEffect_801E792
+  with kind 0x1C (allocating the effect''s sprite/animation), clears the halfword at [r5,#8], and sets
+  the state byte to 4. It then calls comm_checkCrossNetBattleReady_801E754 each frame; if that returns
+  0 (link partner not yet in the expected battle mode), it reloads the halfword at [r5,#2] with 0xC, effectively
+  delaying/counting down until cross-net battle readiness. r5 is the standard battle sub-effect struct
+  used by the dispatchKindEffect family; no other fields are touched.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#3] / beq-path: one-shot init guarded by state byte at +3; mov r0,#0x1c; bl battle_dispatchKindEffect_801E792
+    — spawns sub-effect kind 0x1C; bl comm_checkCrossNetBattleReady_801E754; cmp r0,#0; bne skip — polls
+    link-battle readiness every frame; mov r0,#0xc; strh r0,[r5,#2] — refreshes timer/state halfword while
+    not ready; strb #4,[r5,#3] after init matches state-machine byte used by sibling sub-effect handlers'
+  refs:
+  - bn6f/asm/asm00_1.s:12774
+  - 0x0801E792 battle_dispatchKindEffect_801E792
+  - 0x0801E754 comm_checkCrossNetBattleReady_801E754
+  reproduce: python3 tools/asmcat.py 0x08008CCA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- Exact meaning of the 0xC stored at +2 (delay frames vs. state code) needs the sibling handlers or the
+  kind 0x1C handler
+- Which visual/intro effect kind 0x1C produces is unknown without the dispatch table entry
+- No caller is known; the struct base (eStruct2035280-derived?) is inferred only from the callee's documentation
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8008CCA -> battle_effectWaitCrossNetReady
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8008CCA

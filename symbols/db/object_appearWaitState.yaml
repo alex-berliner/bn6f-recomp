@@ -1,0 +1,48 @@
+name: object_appearWaitState
+address: '0x080C2E30'
+kind: function
+status: probable
+summary: 'Battle-object phase handler: one-shot appear setup (anim 3, mirrored flip, panel coords) then
+  a 3-frame wait before advancing to phase 0x18.'
+interface: (r5 = battle object ptr, r7 = ptr with panel XY at +0x10) -> void; updates object's phase state
+details: Runs as a per-object state function keyed off oBattleObject_PhaseInitialized. On first entry
+  it clears RelatedObject1Ptr, sets CurAnim to 3, computes a flip value as (Alliance XOR DirectionFlip)
+  XOR 1 and passes it to sprite_setFlip (i.e. sprite drawn mirrored relative to its side), sets Timer
+  to 3, copies the panel coordinate halfword from [r7+0x10] into PanelXY and converts it to pixel coordinates
+  via object_setCoordinatesFromPanels, then marks itself initialized (PhaseInitialized = 4). On subsequent
+  calls it decrements Timer; when it hits 0 it writes 0x18 into CurPhaseAndPhaseInitialized, chaining
+  to the next phase. The r7 source of the panel coords is presumably the spawning/parent object, making
+  this a spawned-object placement-then-wait state.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'first-run branch: str #0 RelatedObject1Ptr, mov #3 CurAnim, eor Alliance/DirectionFlip/1 ->
+    sprite_setFlip (80C2E30 init block); mov r0,#3; strh Timer then ldrh Timer; sub #1; bgt — a 3-frame
+    countdown gate; ldrh r0,[r7,#0x10]; strh PanelXY; bl object_setCoordinatesFromPanels — copies a panel
+    XY halfword from r7 and repositions the object; mov r0,#0x18; strh CurPhaseAndPhaseInitialized after
+    timer expiry — transitions to the next phase; mov r0,#4; strb PhaseInitialized — standard ''state
+    already initialized'' latch used by other object phase handlers'
+  refs:
+  - bn6f/asm/asm31.s:23871
+  - 0x0800E29C object_setCoordinatesFromPanels
+  - 0x08002F5C sprite_setFlip
+  reproduce: python3 tools/asmcat.py 0x080C2E30
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- Which battle object uses this state (no callers known), and what phase 0x18 does next
+- What r7 points to (likely the spawner/parent object whose panel XY at +0x10 is inherited)
+- What anim 3 depicts for this object
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C2E30 -> object_appearWaitState
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C2E30

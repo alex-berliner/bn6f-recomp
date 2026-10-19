@@ -1,0 +1,44 @@
+name: spawnBattleObject4
+address: '0x080033C8'
+kind: function
+status: probable
+summary: Thin wrapper that spawns a battle object of type 4 from a 5-word caller context and links it
+  into the battle object list.
+interface: (r0-r4 = spawn record fields) -> r0 = BattleObject* or NULL; flags clobbered by calls
+details: Stores the five incoming registers (r0-r4) as a 20-byte stack record, then calls SpawnBattleObjectCommon
+  with object type 4 in r0 and the record pointer in r1. If the returned pointer is non-NULL it calls
+  UpdateBattleObjectLinkedList to append the new object to the battle object list; the NULL case is skipped
+  silently. This is just a convenience wrapper fixing obj_type=4; the semantics of type 4 and of the five
+  record fields are not visible here.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'stmia r7!, {r0-r4} copies the caller''s 5 registers to the stack record passed as ctx; mov
+    r0, #4 before bl SpawnBattleObjectCommon fixes the object type to 4; tst r5, r5 / beq skips UpdateBattleObjectLinkedList
+    only when allocation returned NULL; callees SpawnBattleObjectCommon (pool alloc + header init from
+    stack record) and UpdateBattleObjectLinkedList (list tail insert) match a spawn-and-link wrapper'
+  refs:
+  - bn6f/asm/asm00_1.s:431
+  - 0x08003278 SpawnBattleObjectCommon
+  - 0x08003428 UpdateBattleObjectLinkedList
+  reproduce: python3 tools/asmcat.py 0x080033C8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- No callers known, so the meaning of object type 4 and the layout/meaning of the five r0-r4 record fields
+  are unknown
+- Which subsystem uses type 4 (enemy, item, effect, etc.) would be shown by callers or by the type table
+  in SpawnBattleObjectCommon
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80033C8 -> spawnBattleObject4
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80033C8

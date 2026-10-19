@@ -1,0 +1,50 @@
+name: battle_spawnEnemyFromRelatedAfterTimer
+address: '0x080BB10C'
+kind: function
+status: probable
+summary: 'Countdown object: when its timer hits zero, spawns an enemy described by its related object''s
+  record, then deletes both itself and that related object.'
+interface: (r5 = battle object, self) -> r0 = clobbered; self and RelatedObject1 marked for deletion,
+  oObjectHeader_Flags bit 1 cleared, ExtraVars byte 0
+details: 'This runs per-frame for a battle object: it decrements oBattleObject_Timer and returns while
+  the value is still positive. When the timer expires, it reads oBattleObject_NameID of its RelatedObject1
+  and unpacks it via unpackVerActorTyAndAIIdx_800F29C, then calls sub_8011044 (with r2=1) to spawn/queue
+  that {version, actor type, AI index} enemy. It then clears flag bit 1 in its own oObjectHeader_Flags,
+  sets its state to CUR_STATE_DESTROY, and calls battle_killObjectWithDependents on the related object
+  so the source object (and anything linked to it) is torn down; finally it zeroes the first byte of its
+  ExtraVars.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrh r0,[r5,#oBattleObject_Timer]; sub r0,#1; bge locret — pure countdown gate; ldrh r0,[r4,#oBattleObject_NameID];
+    bl unpackVerActorTyAndAIIdx_800F29C then bl sub_8011044 with r2=1 — spawns the enemy from the related
+    object's record; mov r0,#CUR_STATE_DESTROY; str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]
+    — self-destructs after firing; ldr r0,[r5,#oBattleObject_RelatedObject1Ptr]; bl battle_killObjectWithDependents
+    — deletes the related object and its dependents; ldr r1,[r5,#oBattleObject_ExtraVars]; strb r0(=0),[r1]
+    — clears an ExtraVars byte as a final side effect
+  refs:
+  - bn6f/asm/asm31.s:6479
+  - 0x080E13DC battle_killObjectWithDependents
+  - 0x0800F29C unpackVerActorTyAndAIIdx_800F29C
+  - 0x08011044 sub_8011044
+  reproduce: python3 tools/asmcat.py 0x080BB10C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- What sub_8011044 does exactly (spawn vs. queue vs. swap-in) and why the related object's NameID encodes
+  an enemy record — a known summary for it would raise confidence
+- Which in-game object uses this (e.g. a delayed enemy-replacement or appearance gimmick) and the meaning
+  of ExtraVars byte 0
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BB10C -> battle_spawnEnemyFromRelatedAfterTimer
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BB10C

@@ -1230,7 +1230,7 @@ Next battle_spawnHitEffectAtArm_801A42E(void) {
 /* Collision flag 0x40: this object was struck inside its counter window. */
 #define COLLISION_FLAG_COUNTER_HIT 0x40
 
-/* Popup id handed to sub_802E032 for the counter-hit callout. */
+/* Popup id handed to battle_addCappedCounter for the counter-hit callout. */
 #define POPUP_COUNTER_HIT 0x1500
 
 /* Per-side stat-table entry that tallies counter hits. */
@@ -1262,7 +1262,7 @@ static bool battle_flag_0x40_set(u32 obj, u32 collision, u32 flags) {
     return R0 != 0;
 }
 
-/* register form: calls sub_802E032 outside this file, which has no typed C interface
+/* register form: calls battle_addCappedCounter outside this file, which has no typed C interface
  * yet. Besides (side, popup id) in r0/r1 it consumes the context registers r4-r6. */
 static void show_counter_hit_popup(u32 side, u32 obj, u32 collision, u32 flags) {
     R0 = side;
@@ -1270,7 +1270,7 @@ static void show_counter_hit_popup(u32 side, u32 obj, u32 collision, u32 flags) 
     R4 = collision;
     R5 = obj;
     R6 = flags;
-    GUEST_CALL(sub_802E032);
+    GUEST_CALL(battle_addCappedCounter);
 }
 
 /* register form: calls tableAddSaturatedByte_800AB46 outside this file, which has no

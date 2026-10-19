@@ -1,0 +1,46 @@
+name: battle_breakPanelExpireUpdate
+address: '0x080DC484'
+kind: function
+status: probable
+summary: Battle-object handler that spawns a break-panel effect on the object's tile, plays sound 0x12E,
+  waits 16 frames, then destroys the object.
+interface: (r5 = battle object) -> updates object phase/timer/state; r0 clobbered
+details: Uses the standard battle-object layout (oBattleObject_CurPhase, _PanelX, _PanelY, _Timer, _CurStateActionPhaseAndPhaseInitialized).
+  On CurPhase==0 it stores phase 4, calls sub_80DC4DE once, then calls object_breakPanel_dup2 with the
+  object's panel X/Y to spawn the break-panel animation there, plays sound effect 0x2F+0xFF = 0x12E via
+  PlaySoundEffect, and sets Timer=0x10. On later calls it decrements Timer each frame; when it hits zero
+  it writes CUR_STATE_DESTROY into the combined state/phase field so the engine destroys the object. Effectively
+  a one-shot timed effect tied to a panel break.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'strb #4,[r5,#oBattleObject_CurPhase] then bl sub_80DC4DE runs only when CurPhase==0; ldrb PanelX/PanelY
+    + bl object_breakPanel_dup2 spawns the break-panel effect at the object''s tile; mov r0,#0x2f; add
+    r0,#0xff; bl PlaySoundEffect plays SFX 0x12E once at startup; Timer set to 0x10 then decremented with
+    sub r0,#1; bgt, otherwise CUR_STATE_DESTROY is stored'
+  refs:
+  - bn6f/asm/asm31.s:78892
+  - 0x080005CC PlaySoundEffect
+  - 0x0800CA8C object_breakPanel_dup2
+  - 0x080DC4DE sub_80DC4DE
+  reproduce: python3 tools/asmcat.py 0x080DC484
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- sub_80DC4DE's purpose (object-specific init?) is unknown
+- no known callers, so which battle object/entity uses this handler (e.g. which attack or obstacle spawns
+  it) is unidentified
+- exact meaning of phase value 4 in this object's phase table is unconfirmed
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DC484 -> battle_breakPanelExpireUpdate
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DC484

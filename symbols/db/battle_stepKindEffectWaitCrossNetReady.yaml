@@ -1,0 +1,44 @@
+name: battle_stepKindEffectWaitCrossNetReady
+address: '0x080090CA'
+kind: function
+status: probable
+summary: 'Battle task step: launches sub-effect kind 0x1C once, then waits until the cross-net/linked
+  battle is ready before proceeding.'
+interface: (r5 = battle task/work struct; r0 unused on entry) -> void; sets phase byte [r5+3], halfword
+  timers [r5+2] and [r5+8]
+details: First entry (phase byte [r5+3] == 0) dispatches battle sub-effect 0x1C through battle_dispatchKindEffect_801E792,
+  zeroes halfword [r5+8] (a timer or sub-state), and sets the phase to 4. On every call it polls comm_checkCrossNetBattleReady_801E754;
+  a zero return (link partner not in expected mode) causes 0xC to be stored into halfword [r5+2], keeping
+  the task in this waiting phase. Once the readiness check returns nonzero, the function returns without
+  touching state, letting an outer dispatcher move to the next phase. The struct at r5 is the standard
+  battle task work area with a phase byte at +3 and halfword scratch/state fields at +2/+8.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#3]/bne: phase byte at +3 gates one-shot effect dispatch; bl battle_dispatchKindEffect_801E792
+    with r0=0x1C: starts battle sub-effect kind 0x1C then phase := 4; bl comm_checkCrossNetBattleReady_801E754
+    + cmp/bne: polls linked-battle readiness each tick; strh 0xC,[r5+2] on not-ready: retry/next-state
+    value while waiting; no caller known: ownership of the r5 struct inferred from callee summaries only'
+  refs:
+  - bn6f/asm/asm00_1.s:13334
+  - 0x0801E792 battle_dispatchKindEffect_801E792
+  - 0x0801E754 comm_checkCrossNetBattleReady_801E754
+  reproduce: python3 tools/asmcat.py 0x080090CA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- no known caller, so the owning task and the meaning of the 0xC value in [r5+2] are inferred, not confirmed
+- which in-game effect kind 0x1C is (likely a link-battle intro/effect) is not shown here
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80090CA -> battle_stepKindEffectWaitCrossNetReady
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80090CA

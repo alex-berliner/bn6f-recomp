@@ -1,0 +1,49 @@
+name: battle_tryConfirmAction
+address: '0x0803AE04'
+kind: function
+status: probable
+summary: 'Battle-side attempt at a command: if a check succeeds it stamps command/state 0x20 on the actor,
+  plays a confirm sound and finishes the turn; otherwise it plays the denied buzz.'
+interface: (r0-r3 clobbered; uses r5 = battle object ptr) -> r0 = sub_803BFA0 result (nonzero = allowed);
+  sets [r5+0x13] = 0x20 on success
+details: 'It calls sub_803BFA0 with (0, 0x90, 0x11) as a gate: on r0 == 0 it branches to the failure path
+  which only plays SOUND_CANT_JACK_IN (the project''s ''denied'' buzz) and returns without touching state.
+  On success it stores byte 0x20 into the battle object at r5+0x13 (a command/action-state byte), plays
+  SOUND_CUR_MOVE_80 as the confirmation sound, then calls sub_803A878 to mark the object''s turn completed
+  and reset its command state. r5 is not set up in this routine, so the caller is expected to have the
+  active battle object in r5. The meaning of the gate arguments (0, 0x90, 0x11) is not visible from this
+  call site alone.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl sub_803BFA0 followed by beq loc_803AE22: a zero return routes to the failure path; failure
+    path: only ''mov r0,#SOUND_CANT_JACK_IN; bl PlaySoundEffect'' — no state change; success path: strb
+    #0x20,[r5,#0x13] writes a command/state byte on the battle object; success path plays SOUND_CUR_MOVE_80
+    then bl sub_803A878, which is known to complete the turn and reset command state; sound-only side
+    effects and single state byte are typical of the battle menu''s confirm/deny pattern'
+  refs:
+  - bn6f/asm/asm03_1_1.s:4579
+  - 0x080005CC PlaySoundEffect
+  - 0x0803A878 sub_803A878
+  - 0x0803BFA0 sub_803BFA0
+  reproduce: python3 tools/asmcat.py 0x0803AE04
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- What sub_803BFA0 checks with (0, 0x90, 0x11) — its body is unknown, so the exact command (e.g. Beast
+  Out, Cross change, chip confirm) is unidentified
+- Which caller sets r5 to the battle object, and what state/command value 0x20 corresponds to
+- Whether SOUND_CANT_JACK_IN is the correct project name for the denied buzz in this context
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803AE04 -> battle_tryConfirmAction
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803AE04

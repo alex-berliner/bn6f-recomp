@@ -1,0 +1,48 @@
+name: object_stepAccelXWhileTimer
+address: '0x080DD738'
+kind: function
+status: probable
+summary: While the object's Timer2 counts down, each frame adds 0x4000 (or 0x8000 if Param1==3) times
+  its facing direction to its X velocity, accelerating it forward.
+interface: (r5 = battle object) -> r0 = remaining Timer2; modifies oBattleObject_XVelocity and decrements
+  oBattleObject_Timer2
+details: Reads the battle object's Timer2 (offset via oBattleObject_Timer2); when it is zero the function
+  returns immediately, otherwise it decrements it by 1. It then calls object_getFrontDirection to get
+  the +1/-1 facing multiplier (based on alliance side and DirectionFlip) and builds an acceleration constant
+  of 0x4000, doubled to 0x8000 when Param1 == 3. This constant is signed by the facing direction and added
+  to the object's 32-bit XVelocity, so the object speeds up in the direction it faces for the duration
+  of the timer. The trailing dword_80DD760 (0x1E800000) is just data after the routine. Called every frame
+  from object_stepMoveX, so this acts as a timed self-acceleration behavior; the front direction rather
+  than X velocity sign suggests it always accelerates toward the opposing side.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrh r0,[r5,#oBattleObject_Timer2] / beq: only acts while Timer2 is nonzero, then decrements
+    it; bl object_getFrontDirection then mul r1,r0: acceleration is signed by front/facing direction;
+    mov r1,#0x40 lsl r1,#8 (=0x4000), doubled when ldrb r2,[r5,#Param1]==3: Param1 selects strong variant;
+    ldr r0,[r5,#oBattleObject_XVelocity]; add; str: result is an X-velocity increment; caller object_stepMoveX
+    runs it as part of per-frame horizontal movement stepping'
+  refs:
+  - bn6f/asm/asm31.s:81414
+  - 0x080DD4E8 object_stepMoveX
+  - 0x080DD4B0 sub_80DD4B0
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x080DD738
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- Which enemy/attack uses this (the meaning of Param1==3 and Timer2 initial values set by the caller)
+  is not visible here; a caller that sets Timer2/Param1 would confirm the in-game context
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DD738 -> object_stepAccelXWhileTimer
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DD738

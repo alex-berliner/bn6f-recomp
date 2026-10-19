@@ -1,0 +1,50 @@
+name: battle_spawnEStruct1IfEmpty
+address: '0x081302B0'
+kind: function
+status: probable
+summary: Spawns the eStruct records from table byte_812F054 into eStruct slot 1 at x=0xB0 on the battle
+  field, but only if slot 1 is currently free.
+interface: () -> r0 = spawn result/last record (from callee), void effect; flags set by getStructFrom2008450
+  on slot-1 in-use byte (spawn skipped when set)
+details: 'Reads the in-use/status byte of entry 1 of the 0x58-byte eStruct array at 2008450 with NZ flags
+  (getStructFrom2008450 with index 1). If that byte is nonzero the function returns immediately without
+  spawning. Otherwise it calls battle_spawnEStructRecordsAtPosition with r0 = record table byte_812F054,
+  r1 = slot 1 (the pushed/popped constant), and r2 = 0xB0 as the field position, letting the callee place
+  and position the new records. Quirk: r1 is smuggled through a push/pop around the flag-check call since
+  r1 doubles as the check argument and the spawn slot argument.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: mov r1,#1; mov r0,r1; bl getStructFrom2008450 then bne locret — spawn only happens when slot
+    1's in-use byte is zero (asm at 0x81302B4-0x81302BE); push {r1} before the check and pop {r1} after
+    set r1=1 as the slot argument for the spawn call (asm 0x81302B6/0x81302C0); ldr r0,off_81302CC loads
+    table byte_812F054 and mov r2,#0xb0 sets the position for battle_spawnEStructRecordsAtPosition (asm
+    0x81302C2-0x81302C6); callee's known summary confirms it spawns records from a caller table into a
+    slot and positions them on the field
+  refs:
+  - bn6f/asm/asm36.s:325
+  - 0x08130464 sub_8130464
+  - 0x081302D0 battle_spawnEStructRecordsAtPosition
+  - 0x080466C4 getStructFrom2008450
+  reproduce: python3 tools/asmcat.py 0x081302B0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- What entity/encounter the table at byte_812F054 describes (needs the table's data decoded)
+- Which caller context (sub_8130464) triggers this — i.e. what battle scenario needs slot 1 populated
+  at x=0xB0
+- Exact meaning of the 0xB0 position argument (x coordinate vs packed x/y) per battle_spawnEStructRecordsAtPosition's
+  convention
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81302B0 -> battle_spawnEStruct1IfEmpty
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81302B0

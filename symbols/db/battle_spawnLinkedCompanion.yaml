@@ -1,0 +1,48 @@
+name: battle_spawnLinkedCompanion
+address: '0x080DC38A'
+kind: function
+status: probable
+summary: Spawns companion battle object 0xB7 tethered to the caller's projectile object, mirroring its
+  alliance/facing and cross-linking the two.
+interface: (r5 = parent battle object, r7 = pointer to parent's companion-pointer field) -> r0 corrupted/passed
+  through r5; spawns via object_spawnType3(0xB7)
+details: 'Calls object_spawnType3 with argument 0xB7 (spawn kind/id); if the spawn fails, returns immediately.
+  On success the new object gets oBattleObject_RelatedObject1Ptr = r5 (the parent object), oBattleObject_ExtraVars
+  = r7, and *r7 = new object pointer, so parent and child reference each other. The parent''s oBattleObject_Alliance
+  and oBattleObject_DirectionFlip are copied into the child so it matches the owner''s team and facing.
+  Flag 0x10 is ORed into the child''s oObjectHeader_Flags, likely marking it as a linked/tethered object.
+  Quirk: ''mov r0, r5'' after the call overwrites the spawn result without setting flags, so the beq still
+  tests the spawn''s success flag.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mov r0, #0xb7 / bl object_spawnType3: spawns a fixed companion object type; str r5, [r0,#oBattleObject_RelatedObject1Ptr]:
+    child points back at the caller''s object; str r7,[r0,#ExtraVars] / str r0,[r7]: child pointer is
+    written through the caller''s r7 slot; ldrb/strb of oBattleObject_Alliance and oBattleObject_DirectionFlip
+    from r5: child inherits parent''s team and facing; orr with #0x10 into oObjectHeader_Flags: child
+    gets a dedicated linked-object flag; caller is battle_initProjectileObject'
+  refs:
+  - bn6f/asm/asm31.s:78756
+  - 0x080DB9B8 battle_initProjectileObject
+  - 0x08003358 object_spawnType3
+  reproduce: python3 tools/asmcat.py 0x080DC38A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- What object 0xB7 actually is (sprite/behavior) depends on object_spawnType3's argument mapping
+- What field of the parent r7 points to and what flag 0x10 means exactly need the parent struct layout
+  or more callers
+- Why 'mov r0, r5' clobbers the spawn result — whether the return value in r0 is meaningful to the caller
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DC38A -> battle_spawnLinkedCompanion
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DC38A

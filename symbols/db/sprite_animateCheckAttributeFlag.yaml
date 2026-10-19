@@ -1,0 +1,50 @@
+name: sprite_animateCheckAttributeFlag
+address: '0x080A9A76'
+kind: function
+status: probable
+summary: Advances an object's sprite animation counter, and if the current frame's attribute has bit 7
+  set, writes 8 to a state byte before running the sprite update.
+interface: (r0 = unused on entry, r5 = object struct) -> r0 = value passed to sprite_update; no flags
+  relied on
+details: 'Reads the 32-bit field at object+0x14 and adds 0x20000 to it (mov r1,#2; lsl #16), i.e. adds
+  2 to its upper halfword — most plausibly a frame/progress counter whose high half indexes the animation.
+  The updated value is passed to sprite_getFrameParameters, which returns the frame''s rendering parameters.
+  If bit 0x80 of that result is set, the byte at object+0x8 is set to 8 (skipped otherwise). It then falls
+  into sprite_update and returns, so this is a per-object sprite tick step. The exact meaning of the +0x14
+  counter layout, the returned word, and the +0x8 field is not pinned down from this function alone.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldr r0,[r5,#0x14] / add r0,r0,r1 (r1=2<<16) / str back: field obj+0x14 is incremented by 2
+    in the high halfword each call; bl sprite_getFrameParameters immediately after, with r0 = updated
+    field (callee known to read frame tile/flip/attribute params); mov r1,#0x80; tst r0,r1; beq: tests
+    bit 7 of the returned frame attribute, conditionally gating the store; mov r0,#8; strb r0,[r5,#8]:
+    flagged frames set object byte +8 to 8; bl sprite_update; pop {pc}: ends by running the known sprite
+    update on the object'
+  refs:
+  - bn6f/asm/asm29.s:9477
+  - 0x080A9A2C sub_80A9A2C
+  - 0x08002DEA sprite_getFrameParameters
+  - 0x080026C4 sprite_update
+  reproduce: python3 tools/asmcat.py 0x080A9A76
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- Exact layout of the field at obj+0x14 (is the high halfword a frame counter that getFrameParameters
+  consumes?)
+- What obj+0x8 = 8 selects in the caller's state machine (an animation id, a mode, a palette?)
+- Whether sprite_update here consumes r0 as the returned parameter value or the field is reloaded elsewhere;
+  caller sub_80A9A2C is unnamed, so the object struct owner is unknown
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80A9A76 -> sprite_animateCheckAttributeFlag
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A9A76

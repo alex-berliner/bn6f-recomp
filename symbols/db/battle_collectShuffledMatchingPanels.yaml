@@ -1,0 +1,46 @@
+name: battle_collectShuffledMatchingPanels
+address: '0x080E269A'
+kind: function
+status: probable
+summary: Scans the whole 6x3 battle panel grid for panels matching a mask, stores their coordinates as
+  (y<<4|x) bytes and shuffles the list with the RNG.
+interface: (r0 unused/r5 = battle object) -> r0 = count of matching panels; list at ExtraVars+0x68, count
+  also at ExtraVars+4
+details: Iterates the battle grid with y from 3 down to 1 (outer) and x from 6 down to 1 (inner), i.e.
+  all 18 panels. For each panel it calls object_checkPanelParameters with the required-mask in r2 and
+  clear-mask in r3, both read from the object's ExtraVars block (fields +4 and +8). Panels that pass are
+  stored as one byte (y<<4)|x into a list starting at ExtraVars+0x68 (this pointer lives at ExtraVars+0x68...
+  i.e. object+0x68 via the r7 pointer built as 0x68+r5). The match count is written to ExtraVars+4 and
+  also used as the shuffle length; if zero, the function returns without shuffling. Shuffling via ShuffleByteList_PrimaryRNG
+  randomizes panel selection order, so a caller can pop random panels from this list.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: outer loop r1=3..1, inner r0=6..1 matches the battle grid's 3 rows x 6 columns; r2=[r7,#4],
+    r3=[r7,#8] are passed as the two masks to object_checkPanelParameters; lsl r4,r1,#4; orr r4,r0; strb
+    [r7,r6] packs coordinates as (y<<4)|x bytes; str r6,[r5,#oBattleObject_ExtraVars+4] stores the match
+    count; bl ShuffleByteList_PrimaryRNG shuffles the collected list using the game RNG
+  refs:
+  - bn6f/asm/asm31.s:92225
+  - 0x08000C72 ShuffleByteList_PrimaryRNG
+  - 0x0800CC86 object_checkPanelParameters
+  reproduce: python3 tools/asmcat.py 0x080E269A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- Which battle object/entity uses this (no callers known) and what the +4/+8 mask fields mean for that
+  object
+- Exact layout/semantics of the ExtraVars fields beyond +0x68, +4, +8
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E269A -> battle_collectShuffledMatchingPanels
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E269A

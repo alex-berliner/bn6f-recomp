@@ -1,0 +1,47 @@
+name: ai_attackHitElementDispatch
+address: '0x080EC45E'
+kind: function
+status: probable
+summary: 'AI attack step: dispatches a per-element attack handler based on the hit element, then performs
+  the AI''s chip attack if the AI-data 0x44 flag has bits 0x8600 set.'
+interface: (r7 = AI attack-vars context, no register args) -> dispatches table handler with r0 = element;
+  may call ai_useChipAttack(r1=0, r2=0); no return value used
+details: Reads the element byte at [r7, oAIAttackVars_HitElement] and indexes the two-entry table off_80EC484
+  with it, calling sub_80EC490 or sub_80EC556 via mov lr,pc/bx (r0 still holds the element as argument).
+  After the handler returns, it calls GetAIData_Unk_44_Flag and tests the result against 0x8600 (bits
+  7 and 11, likely element/type marker bits in that word-sized flag); if any are set it zeroes r1/r2 and
+  calls ai_useChipAttack to make the AI fire its current chip. The element-specific handlers themselves
+  are not shown, so the exact per-element behavior is unknown.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_HitElement] then ldr r1,[r1,r0] and bx r1: table dispatch on the
+    hit element (off_80EC484 has exactly two targets); bl GetAIData_Unk_44_Flag; tst r0,#0x8600; beq skip:
+    chip attack gated on bits 7/11 of the AI-data +0x44 flag; mov r1,#0; mov r2,#0; bl ai_useChipAttack:
+    known callee sets up the player-AI chip attack with cleared attack vars; mov lr,pc / bx r1 pattern:
+    element handler is a plain call, execution resumes at the flag check afterwards'
+  refs:
+  - bn6f/asm/asm31.s:113458
+  - 0x0800FFFE GetAIData_Unk_44_Flag
+  - 0x0801056A ai_useChipAttack
+  reproduce: python3 tools/asmcat.py 0x080EC45E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- No callers known, so this step's role in the AI state machine (when it runs) is unconfirmed
+- The two element handlers sub_80EC490 and sub_80EC556 are unanalyzed; they would show what the per-element
+  attack actually does
+- Exact meaning of the 0x8600 bits in the AI-data offset-0x44 flag
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80EC45E -> ai_attackHitElementDispatch
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EC45E

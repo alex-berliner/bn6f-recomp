@@ -1,0 +1,47 @@
+name: battle_objectPostMoveUpdate
+address: '0x080CBD10'
+kind: function
+status: probable
+summary: Per-frame battle object tick that counts down a post-move delay in Timer2, clears the ExtraVars
+  flag when it expires, then refreshes the object's panel and collision state.
+interface: (r5 = battle object pointer, r0 unused on entry) -> no return value; side effects on object
+  fields only
+details: 'If the object''s ExtraVars field is nonzero, it treats Timer2 as a remaining-frames counter:
+  decrements it each call, and when it reaches 0 stores 0 into ExtraVars, ending whatever timed state
+  (e.g. a move/slide lag) the flag marks. It then unconditionally calls object_setPanelsFromCoordinates
+  to recompute PanelX/PanelY from the object''s world X/Y/Z, and object_updateCollisionPanels to sync
+  that panel position into the collision record and recompute facing for the move. Finally it calls sub_80CC006
+  (unknown, likely the next state check/handler for the object). r5 holds the object pointer throughout;
+  no return value is produced.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrh r0,[r5,#oBattleObject_Timer2] / sub r0,#1 / strh — countdown loop guarded by ExtraVars
+    != 0; mov r0,#0; str r0,[r5,#oBattleObject_ExtraVars] — flag cleared when timer expires; bl object_setPanelsFromCoordinates
+    then bl object_updateCollisionPanels — panel/collision refresh each tick; tail bl sub_80CC006 before
+    pop {pc} — hands off to an unknown per-object step
+  refs:
+  - bn6f/asm/asm31.s:43354
+  - 0x0800E2AC object_setPanelsFromCoordinates
+  - 0x0801A04C object_updateCollisionPanels
+  - 0x080CC006 sub_80CC006
+  reproduce: python3 tools/asmcat.py 0x080CBD10
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- What sub_80CC006 does (likely advances object state after the move) is unknown
+- Which callers install this as an object's update callback, and what ExtraVars/Timer2 represent in that
+  state (e.g. slide lag frames), is not shown
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CBD10 -> battle_objectPostMoveUpdate
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CBD10

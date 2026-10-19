@@ -1,0 +1,45 @@
+name: battle_stateResultScreenHandler
+address: '0x08009C06'
+kind: function
+status: probable
+summary: 'Battle state handler: sets up the result/navi-display screen once, then runs the chip-select
+  state until it finishes, advancing to state 0x14.'
+interface: (r5 = battle state struct) -> r0 = 0 when chip select still active, or sets state to Index_01=0x14
+  with SubPhase/InitFlag cleared; flags not meaningful
+details: Reads oBattleState_SubPhaseInitFlag from r5's battle state struct; on first entry calls setupNaviDisplay_802C34E
+  with r0 = unk_2035260 (the battle record at +0x0D) and stores 4 into the init flag so setup only runs
+  once. Each subsequent frame calls battle_initChipSelect_802BD60, which manages the chip-select/custom
+  screen at eS20364C0. When it returns nonzero, the handler writes 0x14 to oBattleState_Index_01 and zeroes
+  oBattleState_StatePhaseAndInitFlag, moving the battle flow to the next state. So this state bridges
+  the battle-result display and the post-battle chip selection.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'init-once pattern: ldrb/tst on oBattleState_SubPhaseInitFlag with ''bl setupNaviDisplay_802C34E''
+    guarded by bne, then strb #4; setupNaviDisplay_802C34E is documented as the battle result screen setup
+    taking unk_2035260; per-frame poll: ''bl battle_initChipSelect_802BD60; tst r0,r0; bne locret'' gates
+    the transition; transition: ''mov r0,#0x14; strb r0,[r5,#oBattleState_Index_01]'' plus zeroing StatePhaseAndInitFlag
+    when chip select returns done'
+  refs:
+  - bn6f/asm/asm00_1.s:15000
+  - 0x0802BD60 battle_initChipSelect_802BD60
+  - 0x0802C34E setupNaviDisplay_802C34E
+  reproduce: python3 tools/asmcat.py 0x08009C06
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- what state 0x14 represents in the battle flow (only inferable from other state handlers)
+- whether battle_initChipSelect_802BD60 returning nonzero means 'user confirmed' or 'screen closed'
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8009C06 -> battle_stateResultScreenHandler
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8009C06

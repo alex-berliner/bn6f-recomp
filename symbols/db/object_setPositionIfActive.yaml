@@ -1,0 +1,45 @@
+name: object_setPositionIfActive
+address: '0x0811A8F4'
+kind: function
+status: probable
+summary: Wrapper that moves an object's sprite to (x,y) only if its 2008450-struct entry is still active.
+interface: (r0 = x, r1 = y, r2 = index into eStructArr2008450) -> void; flags set from entry's in-use
+  byte (used by caller via BEQ)
+details: Saves r0/r1 (a coordinate pair), then calls getStructFrom2008450 with r2 to fetch the in-use/status
+  byte and pointer of the 0x58-byte struct entry. If the byte is zero (entry inactive/free), it returns
+  without doing anything. Otherwise it calls sprite_setCoordinates with the saved x/y on the struct pointer,
+  letting sprite_setCoordinates pick the 0x10-byte sprite sub-entry via the resource byte 2 high nibble.
+  Note it relies on getStructFrom2008450 returning the struct pointer in r1 while r0 holds the flag byte
+  checked by the conditional branch.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: getStructFrom2008450 call with r2, BEQ skips the rest when the entry's in-use byte is zero (asm
+    loc before 0x811A90E); sprite_setCoordinates called with original r0/r1 restored from stack and r1
+    = struct pointer from the getter; caller sub_811A878 is the sole user, so behavior is only seen in
+    this one context
+  refs:
+  - bn6f/asm/asm32.s:26210
+  - 0x0811A878 sub_811A878
+  - 0x080466C4 getStructFrom2008450
+  - 0x0800307C sprite_setCoordinates
+  reproduce: python3 tools/asmcat.py 0x0811A8F4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- exact meaning of the struct's first byte (active vs. other status)
+- whether r0/r1 are absolute screen coords or object-relative
+- what sub_811A878 passes for x/y and index to confirm the wrapper's role
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_811A8F4 -> object_setPositionIfActive
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811A8F4

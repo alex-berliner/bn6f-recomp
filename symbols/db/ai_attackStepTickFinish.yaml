@@ -1,0 +1,46 @@
+name: ai_attackStepTickFinish
+address: '0x08108818'
+kind: function
+status: probable
+summary: Per-frame countdown for an AI attack step; when the timer expires it resets the object's animation,
+  swaps movement flags, and sets HitElement to 0xC.
+interface: (r7 = AI attack vars, r5 = battle object) -> void; decrements oAIAttackVars_StepTimer, acts
+  only when it reaches zero
+details: 'Each call decrements the AI attack state''s StepTimer (halfword at oAIAttackVars_StepTimer)
+  and returns while it is still positive. On expiry it sets the battle object''s CurAnim byte to 0 (idle/default
+  animation), clears ObjectFlags bit 0x40, sets the ObjectFlags1 bit for CURRENTLY_MOVING_1 (value 1 <<
+  that bit), and stores 0xC into oAIAttackVars_HitElement. This looks like the tail of an AI attack routine:
+  the attack''s ''wind-up/step'' timer has run out, so the object goes back to its neutral animation and
+  the hit element for the attack''s collision is recorded as 0xC. With no callers visible it is unclear
+  whether 0xC is ''no element'' or a specific element for this attack.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrh/sub/strh on oAIAttackVars_StepTimer with ''bgt locret'' makes it a per-frame countdown;
+    strb r0(0),[r5,#oBattleObject_CurAnim] resets the object''s current animation to 0; object_clearFlag(0x40)
+    then object_setFlag1(1 << OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT) flips movement flags on the object;
+    strh #0xc into oAIAttackVars_HitElement assigns the attack''s hit element/state; callees object_clearFlag/object_setFlag1
+    confirm r5 is a battle object with CollisionData flags'
+  refs:
+  - bn6f/asm/asm31.s:172915
+  - 0x0801A15C object_clearFlag
+  - 0x0801A152 object_setFlag1
+  reproduce: python3 tools/asmcat.py 0x08108818
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- No callers known, so the enclosing attack routine and meaning of HitElement=0xC are unconfirmed
+- Which ObjectFlags bit 0x40 represents, and whether this tail is shared by several AI attack variants
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8108818 -> ai_attackStepTickFinish
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8108818

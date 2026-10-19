@@ -1,0 +1,47 @@
+name: ow_drawBackgroundTilePatch
+address: '0x0801E3E4'
+kind: function
+status: probable
+summary: Copies an 8x2 patch of tiles from byte_801EF10 onto background tile block 3 at position (j=11,i=16),
+  then sets flag bit 0x100000 in the eStruct at 0x2035280+0x44.
+interface: () -> void; ORs 0x100000 into word at eStruct2035280+0x44 (returned in r2 by callee)
+details: 'Takes no arguments: it builds the CopyBackgroundTiles call inline with r0=11 (j/x), r1=16 (i/y),
+  r2=3 (which 32x32 tile block), r3=&byte_801EF10 (source tile-id list, 16 halfwords for 8x2 tiles), r4=8
+  (j size), r5=2 (i size). After the copy succeeds it unconditionally sets bit 0x100000 (bit 20) in the
+  flag word at eStruct2035280+0x44 via flagSetBits_eStruct2035280_801BEB8, likely marking that this patch
+  has been drawn/triggered so it is not redrawn. No return value is propagated. Which screen/state this
+  runs on is not visible without callers.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'asm: mov r0,#0xb / mov r1,#0x10 / mov r2,#3 / ldr r3,=byte_801EF10 / mov r4,#8 / mov r5,#2
+    immediately before bl CopyBackgroundTiles; callee 0x080018C2 CopyBackgroundTiles has documented signature
+    (j, i, tile_block_32x32, tile_ids, j_size, i_size); ldr r0,=0x100000 then bl flagSetBits_eStruct2035280_801BEB8
+    sets that single bit at eStruct+0x44; tile_ids pointer targets byte_801EF10, a static table right
+    after the function'
+  refs:
+  - bn6f/asm/asm00_2.s:32236
+  - 0x0801BEB8 flagSetBits_eStruct2035280_801BEB8
+  - 0x080018C2 CopyBackgroundTiles
+  reproduce: python3 tools/asmcat.py 0x0801E3E4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- No callers known, so which game state/screen invokes this and what the 8x2 tile patch depicts (map feature,
+  cutscene overlay, etc.) is unknown
+- What the 0x100000 bit in eStruct2035280+0x44 gates (prevents redraw? enables something elsewhere) needs
+  a reader of that flag
+- Whether byte_801EF10 is tile IDs or a palette-indexed tile list needs confirmation from the table bytes
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_801E3E4 -> ow_drawBackgroundTilePatch
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_801E3E4

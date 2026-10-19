@@ -1,0 +1,47 @@
+name: ai_attackTeleportToPanelStep
+address: '0x0810609E'
+kind: function
+status: probable
+summary: AI attack step that warps the enemy onto its target panel with a brief pose, then hands off to
+  the hit phase.
+interface: (r5 = battle object, r7 = oAIAttackVars) -> r0 = next hit element (0xC on completion); sets
+  AttackElement, PanelX/Y, CurAnim, Z, StepTimer/HitElement
+details: Runs once per frame for an AI-controlled attack state. On the first call (AttackElement == 0)
+  it marks the attack as element 4, plays anim 0x16, copies ScratchVar and AiAttackParam into oBattleObject_PanelX/PanelY,
+  then calls object_setCoordinatesFromPanels and object_updateCollisionPanels to snap the object's pixel
+  position and collision data onto that panel, and raises oBattleObject_Z to 0x400000 (lifted off the
+  ground). It sets StepTimer to 4 frames; on later frames it just counts down, and when the timer expires
+  it writes HitElement = 0xC so the attack state advances to the strike. The Z value is never restored
+  here, so a later step presumably brings the object back down.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bne on [r7,#oAIAttackVars_AttackElement] makes the panel-placement block run only on the first
+    frame; strb r0,[r5,#oBattleObject_PanelX] / strb r1,[r5,#oBattleObject_PanelY] use ScratchVar and
+    AiAttackParam as target panel coords; bl object_setCoordinatesFromPanels + object_updateCollisionPanels
+    recompute pixel position and collision from the new panel; str r0(0x400000),[r5,#oBattleObject_Z]
+    lifts the object, consistent with a teleport/drop-in; timer counts down to 0 then strh #0xc,[r7,#oAIAttackVars_HitElement]
+    chains into the hit phase'
+  refs:
+  - bn6f/asm/asm31.s:167589
+  - 0x0800E29C object_setCoordinatesFromPanels
+  - 0x0801A04C object_updateCollisionPanels
+  reproduce: python3 tools/asmcat.py 0x0810609E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- which enemy attack uses this step and what anim 0x16 depicts
+- who resets AttackElement to 0 between uses, and whether element 4 has a specific meaning
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_810609E -> ai_attackTeleportToPanelStep
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810609E

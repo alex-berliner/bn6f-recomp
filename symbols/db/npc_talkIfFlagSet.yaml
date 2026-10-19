@@ -1,0 +1,44 @@
+name: npc_talkIfFlagSet
+address: '0x08129E54'
+kind: function
+status: probable
+summary: If chatbox event flag bit 8 is set and the object's state byte isn't 9, runs its chatbox line
+  and clears a state bit.
+interface: (r5 = npc/object struct) -> r0 = void; flags from chatbox_mask_eFlags2009F38 used for the initial
+  beq
+details: Tests event-flag word eFlags2009F38 bit 8 and returns immediately if clear. Loads the object's
+  byte at r5+0x22, masks to the low 8 bits, and skips everything if that state equals 9. Otherwise it
+  writes 8 to r5+3, calls sub_812B3E4, which reads the script index from r5+0x13 and plays the matching
+  line from eTextScript201BA20, and finally clears bit 0 of r5+0x1b. The r5+0x22 state 9 check looks like
+  a guard against repeating dialogue once the object has finished its sequence.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl chatbox_mask_eFlags2009F38 with r0=8, beq exit — only acts when flag bit 8 is set; ldrh r0,[r5,#0x22];
+    and r0,#0xff; cmp r0,#9; beq exit — early-out on object state 9; strb r0,[r5,#3] with 8 then bl sub_812B3E4
+    — the known chatbox script runner using r5+0x13; bic on bit 0 of ldrb [r5,#0x1b]/strb — clears a one-shot
+    flag after talking
+  refs:
+  - bn6f/asm/asm33.s:14118
+  - 0x08045F3C chatbox_mask_eFlags2009F38
+  - 0x0812B3E4 sub_812B3E4
+  reproduce: python3 tools/asmcat.py 0x08129E54
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- No callers known, so the struct's identity (NPC object?) and what fields r5+3 and r5+0x1b mean aren't
+  confirmed
+- Which concrete event flag bit 8 corresponds to in a given scenario
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8129E54 -> npc_talkIfFlagSet
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8129E54

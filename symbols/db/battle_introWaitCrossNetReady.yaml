@@ -1,0 +1,48 @@
+name: battle_introWaitCrossNetReady
+address: '0x080088B2'
+kind: function
+status: probable
+summary: 'Battle intro state: kicks off cross-net-battle intro effect kind 0x1C once, then waits until
+  the linked partner''s session is ready before advancing, otherwise queues state 0xC.'
+interface: (r0 = unused, r5 = battle intro/effect state struct) -> r0 = result of comm_checkCrossNetBattleReady
+  (not meaningful); mutates fields r5+2 (halfword state), r5+3 (byte state), r5+8 (halfword)
+details: This is a step in a state machine whose context struct is passed in r5. On the first entry (byte
+  at r5+3 == 0) it dispatches battle sub-effect kind 0x1C via battle_dispatchKindEffect_801E792 — that
+  callee allocates a sprite slot and picks a per-kind handler, so 0x1C is presumably the cross-net/linked-battle
+  intro effect — clears the halfword at r5+8 and sets the state byte at r5+3 to 4 to mark the effect as
+  launched. Every tick it then calls comm_checkCrossNetBattleReady_801E754, which checks the double/linked-battle
+  flag and the partner's session mode; while the partner isn't ready it writes 0xC into the halfword at
+  r5+2, which appears to be the state selector this step returns to its dispatcher. It has no known callers
+  in the listing, so the exact owner of the struct is inferred from field usage.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#3]; tst; bne guards the one-shot effect launch, matching dispatchKindEffect''s
+    re-entry guard style; mov r0,#0x1c; bl battle_dispatchKindEffect_801E792 launches intro/effect kind
+    0x1C; bl comm_checkCrossNetBattleReady_801E754; cmp r0,#0 gates the state advance on link-partner
+    readiness; strh r0,#0xc at [r5,#2] when not ready — a state value written every tick until the check
+    passes; state writes: strh [r5,#8]=0 and strb [r5,#3]=4 track the effect-launch sub-state'
+  refs:
+  - bn6f/asm/asm00_1.s:12199
+  - 0x0801E792 battle_dispatchKindEffect_801E792
+  - 0x0801E754 comm_checkCrossNetBattleReady_801E754
+  reproduce: python3 tools/asmcat.py 0x080088B2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- no known caller, so the owner struct and the meaning of state values 4 and 0xC are inferred
+- what intro effect kind 0x1C displays is not shown here
+- whether the r5+2 halfword is the caller's next-state selector needs caller confirmation
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80088B2 -> battle_introWaitCrossNetReady
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80088B2

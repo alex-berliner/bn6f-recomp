@@ -1,0 +1,44 @@
+name: object_delayedSoundAndAnims
+address: '0x08038DE0'
+kind: function
+status: probable
+summary: Object step callback that, once a frame-countdown at [r5+4] expires, plays sound 0x100, starts
+  two GFX anim scripts, and rearms the timer.
+interface: (r0 = unused/ignored, r5 = object struct) -> r0 = destroyed; no meaningful return
+details: Decrements the halfword timer at r5+4 each call; when it reaches 0 it plays sound effect 0x100,
+  runs LoadGFXAnim on two anim scripts (byte_803891C and byte_80389AC, 0x90 bytes apart in the same anim-script
+  pool), then re-arms the timer to 0x2E frames and writes state byte 0x24 to r5+2. While the countdown
+  is nonzero it does nothing, so it acts as a one-shot delayed action that repeats every 0x2E frames thereafter.
+  The r5 layout (halfword timer at +4, byte state at +2) matches the standard field/object actor struct.
+  No caller is known, so it is presumably referenced from a callback/handler table.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrh r0,[r5,#4]; sub r0,#1; strh; bne locret — countdown gate at 8038DE2-8038DEC; bl PlaySoundEffect
+    with off_8038E10 = 0x100 — fixed sound ID fired on expiry; two bl LoadGFXAnim with byte_803891C /
+    byte_80389AC — starts two anim scripts; strh #0x2E,[r5,#4] and strb #0x24,[r5,#2] — rearm timer and
+    set new state byte'
+  refs:
+  - bn6f/asm/asm03_1_1.s:694
+  - 0x080005CC PlaySoundEffect
+  - 0x08001B1C LoadGFXAnim
+  reproduce: python3 tools/asmcat.py 0x08038DE0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- No caller or table entry is known, so the owning object and the meaning of state byte 0x24 are unknown
+- What the two GFX anim scripts (byte_803891C/byte_80389AC) depict, and which in-game event uses sound
+  0x100 here
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8038DE0 -> object_delayedSoundAndAnims
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8038DE0

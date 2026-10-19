@@ -1,0 +1,45 @@
+name: sprite_setCoordinatesIfEntityExists
+address: '0x0811BC24'
+kind: function
+status: probable
+summary: Sets an object's x/y position only if the entity at the given index in the 0x58-byte struct array
+  is in use.
+interface: (r0 = x coordinate, r1 = y coordinate, r2 = entity index) -> r0 = pass-through result from
+  sprite_setCoordinates; NZ flags from the entity's in-use byte via getStructFrom2008450
+details: Loads args, calls getStructFrom2008450 with r2 = index to fetch the status/in-use byte of the
+  entry in the fixed 0x58-byte struct array at 0x2008450; if that byte is zero the function returns without
+  doing anything (beq to epilogue). Otherwise it calls sprite_setCoordinates with the saved r0/r1 coordinates
+  and the entry pointer in r1, which writes x/y into the 0x10-byte sprite sub-entry selected by the resource's
+  byte-2 high nibble. It is essentially a guarded position-update wrapper so callers don't have to check
+  entity existence themselves.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl getStructFrom2008450 then beq loc_811BC40: skip entirely when the entry''s in-use/status
+    byte is zero; mov r5, r1 then ldr r0,[sp]/ldr r1,[sp]/bl sprite_setCoordinates: forwards coordinates
+    and entry pointer to the position setter; Caller 0x0812E440 passes an entity index in r2, matching
+    the index parameter of getStructFrom2008450'
+  refs:
+  - bn6f/asm/asm32.s:28699
+  - 0x0812E440 sub_812E440
+  - 0x080466C4 getStructFrom2008450
+  - 0x0800307C sprite_setCoordinates
+  reproduce: python3 tools/asmcat.py 0x0811BC24
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- Whether r0/r1 are absolute screen/world coordinates or deltas depends on how the single caller 0x0812E440
+  fills them; exact in-game meaning of the in-use byte values (nonzero check only is certain)
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_811BC24 -> sprite_setCoordinatesIfEntityExists
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811BC24

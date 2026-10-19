@@ -1,0 +1,49 @@
+name: battle_stateChipSelectOpen
+address: '0x08009F3A'
+kind: function
+status: probable
+summary: 'Battle state handler: sets up the navi display once, then runs the chip-select/custom-screen
+  init each frame until it completes, then advances to the next state.'
+interface: (r5 = battle state struct, r0 unused on entry) -> writes oBattleState_SubPhaseInitFlag and,
+  when chip select finishes, oBattleState_Index_01 = 0x14 and resets oBattleState_StatePhaseAndInitFlag;
+  r0 clobbered
+details: This is a per-frame sub-state handler keyed off the battle state struct pointed to by r5. On
+  first entry (oBattleState_SubPhaseInitFlag == 0) it calls setupNaviDisplay_802C34E with unk_2035260
+  — the record holding the battle/result state copied into eS20364C0 — then latches the init flag to 4
+  so setup runs only once. Every frame afterwards it calls battle_initChipSelect_802BD60, which drives
+  the chip-select/custom-screen state machine at eS20364C0. When that returns nonzero (screen fully opened),
+  it stores 0x14 into oBattleState_Index_01 as the next state and zeroes oBattleState_StatePhaseAndInitFlag
+  to restart the phase machinery for the following state.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb/tst on [r5,#oBattleState_SubPhaseInitFlag] with 'mov r0,#4; strb' after setupNaviDisplay_802C34E
+    = one-time init then per-frame step pattern; bl battle_initChipSelect_802BD60; tst r0,r0; bne locret
+    = waits on the chip-select initializer before leaving; mov r0,#0x14; strb r0,[r5,#oBattleState_Index_01]
+    plus clearing oBattleState_StatePhaseAndInitFlag = state-machine advance on completion; setupNaviDisplay_802C34E
+    is fed off_8009FC4 -> unk_2035260, the same record that callee copies into the eS20364C0 custom-screen
+    state
+  refs:
+  - bn6f/asm/asm00_1.s:15470
+  - 0x0802BD60 battle_initChipSelect_802BD60
+  - 0x0802C34E setupNaviDisplay_802C34E
+  reproduce: python3 tools/asmcat.py 0x08009F3A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- exact meaning of state id 0x14 (presumably the next battle sub-state after the custom screen opens)
+- what unk_2035260 fields setupNaviDisplay consumes beyond the documented copy
+- why the init flag is set to 4 rather than 1 (flag encodes which one-time setup ran)
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8009F3A -> battle_stateChipSelectOpen
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8009F3A

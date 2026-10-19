@@ -1,0 +1,49 @@
+name: battle_copyNaviStatsByteToObject
+address: '0x0802EBE4'
+kind: function
+status: probable
+summary: Copies one NaviStats byte (offset 2) from the 203CB10 record into the navi stats record of the
+  battle object at [r5+0x16], then calls a follow-up routine with [r5+0x58]+0xA0.
+interface: (r5 = battle object/work struct, r0 = its id byte at +0x16) -> byte at NaviStats+2 of the object's
+  (alliance-selected) record set from the 203CB10 record; r6 = [r5+0x58]+0xA0 passed to sub_802ECFE.
+details: Reads a byte selector from r5+0x16 and fetches offset 2 of the NaviStats struct via GetBattleNaviStats203CB10Byte,
+  then stores that value at offset 2 of the record chosen by SetBattleNaviStatsByte_AllianceFromBattleObject
+  (real or ghost copy depending on the object's alliance flag). This effectively syncs one stat byte (offset
+  2, meaning unknown — possibly HP or a level/HP-related field) from the central 203CB10 record to a specific
+  navi's record. It then loads [r5+0x58], adds 0xA0, and calls sub_802ECFE with r6 set, whose behavior
+  is not documented. No callers are known, so the struct at r5 and the role of the trailing call are inferred
+  only from the callees' known semantics.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#0x16]; mov r1,#2; bl GetBattleNaviStats203CB10Byte — reads offset 2 of the 203CB10
+    NaviStats record; mov r2,r0; mov r1,#2; bl SetBattleNaviStatsByte_AllianceFromBattleObject — writes
+    the same byte, offset 2, via the alliance-aware setter; ldr r6,[r5,#0x58]; add r6,#0xA0; bl sub_802ECFE
+    — computes a pointer 0xA0 into a structure and calls an unknown routine; callee summaries: getter
+    reads one byte of NaviStats at 203CB10, setter writes one byte into the navi stats of a battle object
+    by alliance flag'
+  refs:
+  - bn6f/asm/asm03_0.s:18589
+  - 0x08013754 SetBattleNaviStatsByte_AllianceFromBattleObject
+  - 0x08013816 GetBattleNaviStats203CB10Byte
+  - 0x0802ECFE sub_802ECFE
+  reproduce: python3 tools/asmcat.py 0x0802EBE4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- What NaviStats field sits at offset 2 (HP? level? custom stat?)
+- What sub_802ECFE does with r6 = [r5+0x58]+0xA0 and whether r0/r5 are also inputs
+- What structure r5 is and which callers set [r5+0x16] and [r5+0x58], to pin down the game-side purpose
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_802EBE4 -> battle_copyNaviStatsByteToObject
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802EBE4

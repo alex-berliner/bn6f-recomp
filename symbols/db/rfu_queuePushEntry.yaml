@@ -1,0 +1,51 @@
+name: rfu_queuePushEntry
+address: '0x0803F030'
+kind: function
+status: probable
+summary: Enqueues a caller-supplied data block into a wireless-link ring buffer of 0x40-byte slots, returning
+  1 when the queue is full.
+interface: (r0 = src data pointer, r1 = size in bytes for CopyWords) -> r0 = 0 on success, 1 if queue
+  full; flags clobbered
+details: 'The function checks a queue-state struct at byte_200AC20: offset 0 (r5) is one index and offset
+  2 (r4) the other; if they are equal it returns 1 without copying (queue full/empty-marker). Otherwise
+  it computes the slot address unk_2009AC0 + 0x40*writeIndex and copies the caller''s data (src = r0,
+  size = r1) into that slot via CopyWords (BIOS CpuSet), then returns 0. The 0x40 stride means each entry
+  reserves 64 bytes; the state struct tracks read/write indices separately. Given the callers — rfu_initWirelessSession
+  resets these working buffers and other rfu-side routines call this — it is the producer side of the
+  wireless-link data queue.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'cmp r5,r4 / bne + mov r1,#1: equal indices short-circuits to return 1 instead of copying; ldr
+    r1,off_803F260 / mov r2,#0x40 / mul r2,r4: slot address = unk_2009AC0 + 0x40*index; bl CopyWords with
+    r0=slot, r1=caller r0 (src), r2=caller r1 (size): copies caller data into the slot; caller rfu_initWirelessSession
+    resets the wireless-link working buffers, tying byte_200AC20/unk_2009AC0 to the link subsystem; returns
+    0 after a successful copy (mov r1,#0 then mov r0,r1)'
+  refs:
+  - bn6f/asm/asm03_1_1.s:12634
+  - 0x08148D24 rfu_initWirelessSession
+  - 0x08148540 sub_8148540
+  - 0x08148A80 sub_8148A80
+  - 0x0800093C CopyWords
+  reproduce: python3 tools/asmcat.py 0x0803F030
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- Which index (offset 0 vs 2) is the write head and which is the read head — needs the consumer that pops
+  from unk_2009AC0
+- Whether slots are meant to be full 0x40 bytes or variable-size entries sharing 0x40-byte stride
+- 'Exact role in the link protocol: send queue vs receive queue, since sub_8148540/sub_8148A80/sub_8149150
+  are unnamed'
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803F030 -> rfu_queuePushEntry
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803F030

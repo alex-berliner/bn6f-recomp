@@ -1,0 +1,48 @@
+name: ai_attackWaitForObjectTimer
+address: '0x08102864'
+kind: function
+status: probable
+summary: AI attack step that waits a set number of frames while a summoned/related attack object is active,
+  then releases it and exits the attack state.
+interface: (r0 = battle object (this), r5/r7 = object and oAIAttackVars context) -> r0 = 0 on expiry;
+  sets StepTimer, AttackElement, anims
+details: On the first run (oAIAttackVars_AttackElement == 0) it sets oBattleObject_CurAnim to 0x12, calls
+  battle_setObjectAnim on RelatedObject1Ptr with anim 0, copies AiAttackParam into the halfword StepTimer
+  as a frame count, and stores 4 into AttackElement so the init branch never re-runs. Each later call
+  decrements StepTimer; while it stays >= 0 the function just returns. When the timer underflows it nulls
+  oBattleObject_RelatedObject1Ptr and the oAIData_TempAttackObjectPtr back-reference, then calls object_exitAttackState
+  to end the attack. AttackElement doubles as the step's init/state flag here (4 = counting down).
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb AttackElement / tst / bne skips init to the timer-decrement block (first-entry vs. repeat
+    behavior); mov r0,#0x12; strb [r5,CurAnim]; ldr RelatedObject1Ptr; bl battle_setObjectAnim — plays
+    the holding animation during the wait; ldr AiAttackParam; strh into StepTimer — the wait length comes
+    from the AI attack parameter; sub r0,#1; bge return; else str 0 into RelatedObject1Ptr and [AIData+TempAttackObjectPtr]
+    — detaches the temp object on expiry; bl object_exitAttackState — the timed-out path terminates the
+    attack state
+  refs:
+  - bn6f/asm/asm31.s:160123
+  - 0x080B8E70 battle_setObjectAnim
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x08102864
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- Which attack script(s) invoke this handler and what object is expected in RelatedObject1Ptr (a spawned
+  projectile/summon?) — no callers are known, so the exact in-game attack is unidentified
+- Whether AttackElement values other than 0/4 are meaningful for other step handlers sharing this state
+  struct
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8102864 -> ai_attackWaitForObjectTimer
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8102864

@@ -1,0 +1,47 @@
+name: battle_destroyObject
+address: '0x080C3448'
+kind: function
+status: probable
+summary: 'Tears down a battle object: frees its collision data, kills a linked related object, then releases
+  its object slot.'
+interface: (r5 = battle object pointer, r0 clobbered) -> r0 = object_freeMemory result; no meaningful
+  flags
+details: 'Runs with the battle object in r5 (not r0), so it is a destructor-style helper called on a known
+  object. It first frees the object''s collision-data slot via object_freeCollisionData using oBattleObject_CollisionDataPtr.
+  It then reads oBattleObject_RelatedObject1Ptr and, if non-NULL, writes 0 to that object''s oObjectHeader_Flags
+  byte — effectively deactivating/disabling a linked (child/companion) object rather than fully freeing
+  it. Finally it releases the object''s own slot with object_freeMemory, which unlinks it from the active
+  list and frees its bitmap. The quirks: r5-based addressing (expects the caller to have the object loaded),
+  and the related object is only flagged off, not freed.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl object_freeCollisionData on [r5,#oBattleObject_CollisionDataPtr] frees the object''s collision
+    slot; tst r1,r1 / beq guards oBattleObject_RelatedObject1Ptr, then strb #0 to oObjectHeader_Flags
+    disables the related object; bl object_freeMemory releases the object''s own slot per its known summary;
+    uses r5 instead of r0 as the object pointer, typical of in-place teardown helpers'
+  refs:
+  - bn6f/asm/asm31.s:24717
+  - 0x080198CE object_freeCollisionData
+  - 0x08003458 object_freeMemory
+  reproduce: python3 tools/asmcat.py 0x080C3448
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- No callers known, so the calling context (which object types use this teardown vs. a plain object_freeMemory
+  path) is unconfirmed
+- Exact meaning of zeroing oObjectHeader_Flags on the related object (full disable vs. respawn request)
+  would need a caller or that flag's other users
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C3448 -> battle_destroyObject
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C3448

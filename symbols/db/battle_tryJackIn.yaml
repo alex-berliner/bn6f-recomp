@@ -1,0 +1,47 @@
+name: battle_tryJackIn
+address: '0x0803AB46'
+kind: function
+status: probable
+summary: Attempts to move/jack-in a battle object to a target spot; on success sets its pending state
+  to 0x20 and plays the move sound, otherwise plays the denied/can't-jack-in buzz.
+interface: '(r5 = battle object, r0-r2 = fixed check args 1/0x30/0x10 passed to sub_803BFA0) -> r0 = clobbered;
+  side effects: [r5+0x13] = 0x20, sound effect played, object reset via sub_803A85C'
+details: Calls sub_803BFA0(1, 0x30, 0x10) as a validity check (result tested with beq after setting the
+  eq-style condition? — actually beq branches to the failure path when it returns zero). If the check
+  passes, it stores 0x20 into byte 0x13 of the battle object in r5 (a pending action/state field), plays
+  sound 0x80 (SOUND_CUR_MOVE_80), then calls sub_803A85C which re-enables the object, clears its pending
+  state and forces anim step 4. If the check fails, it plays SOUND_CANT_JACK_IN and returns without touching
+  the object. r5 is never set inside, so the caller selects the object; the constant check arguments suggest
+  a specific fixed destination or tile probe.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'beq loc_803AB64 after bl sub_803BFA0: zero result takes the failure path that plays SOUND_CANT_JACK_IN;
+    strb r0(=0x20),[r5,#0x13] writes a pending-state/action byte on the success path; success path plays
+    SOUND_CUR_MOVE_80 then calls known callee sub_803A85C (battle object reset, anim step 4); failure
+    path plays SOUND_CANT_JACK_IN and returns, leaving the object untouched'
+  refs:
+  - bn6f/asm/asm03_1_1.s:4173
+  - 0x080005CC PlaySoundEffect
+  - 0x0803A85C sub_803A85C
+  - 0x0803BFA0 sub_803BFA0
+  reproduce: python3 tools/asmcat.py 0x0803AB46
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- what sub_803BFA0(r0=1, r1=0x30, r2=0x10) actually tests (tile occupancy? position validity?)
+- which structure r5 points to and the exact meaning of state byte 0x13 / value 0x20
+- no known caller, so whether this is an enemy AI jack-in/teleport or a player-facing action is unconfirmed
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803AB46 -> battle_tryJackIn
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803AB46

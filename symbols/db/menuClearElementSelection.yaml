@@ -1,0 +1,47 @@
+name: menuClearElementSelection
+address: '0x0803AEC0'
+kind: function
+status: probable
+summary: 'Cancels the current element selection in a menu: plays the cursor-move SFX and sets the selection
+  index to the ''none'' sentinel 0x3F.'
+interface: (r0 = menu element struct in r5 via caller, unused) -> r0 = PlaySoundEffect return; sets [r5+8]
+  = 0x3F, [r5+0x13] = 0
+details: Reads the byte at struct+0x08 (the currently selected element index); if it is already 0x3F (the
+  'nothing selected' sentinel, 63 > any real element count) it returns without doing anything. Otherwise
+  it plays the standard cursor-move sound effect (SOUND_CUR_MOVE_80), clears the byte at struct+0x13 (a
+  flag the caller set when something was selected), and stores 0x3F into struct+0x08 to mark 'no element
+  selected'. It is a guard-then-reset routine, only reached on the failure path of the select handler
+  when the index is not below the max.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r5,#8]; cmp r0,#0x3f; beq exit — early-out when selection already cleared, so 0x3F
+    is the none/invalid sentinel; mov r0,#SOUND_CUR_MOVE_80; bl PlaySoundEffect — plays the cursor-move
+    SFX rather than the select SFX the caller uses on success; strb r0(=0),[r5,#0x13]; mov r0,#0x3f; strb
+    r0,[r5,#8] — clears a state byte and resets the selection index; called only from menuSelectElement_803AE98's
+    failure path (index >= max), so it handles the not-selectable case
+  refs:
+  - bn6f/asm/asm03_1_1.s:4684
+  - 0x0803AE98 menuSelectElement_803AE98
+  - 0x0803AE50 sub_803AE50
+  - 0x080005CC PlaySoundEffect
+  reproduce: python3 tools/asmcat.py 0x0803AEC0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- exact meaning of the byte at +0x13 (looks like a 'selection active/confirmable' flag)
+- which menu this struct belongs to (folder/edit or a navi/customizer screen) — a full read of menuSelectElement_803AE98
+  would confirm
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803AEC0 -> menuClearElementSelection
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803AEC0

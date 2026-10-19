@@ -1,0 +1,44 @@
+name: sprite_cyclePaletteAnim
+address: '0x0811A370'
+kind: function
+status: probable
+summary: Per-object animation tick that cycles the sprite's palette every 5 frames through a 3-entry lookup
+  table
+interface: (r5 = object struct, no args) -> r0 = sprite_update result; updates bytes 0xC (frame counter)
+  and 0xD (palette index)
+details: 'Uses r5 as an object/entity struct with an embedded sprite struct. Byte 0xC counts frames; when
+  it reaches 5 it wraps to 0 and byte 0xD advances through 0..2 (3-step cycle). Byte 0xD indexes dword_811A3A0,
+  whose bytes are 00 02 01 00, so the palette sequence is 0,2,1,0..., passed to sprite_setPalette (stored
+  in byte 4 of the sprite struct). sprite_update is then called every invocation to redraw the sprite.
+  Quirk: the palette table is read bytewise from a 32-bit word, so a 4th entry (0x00) exists but is never
+  reached since the index wraps at 3.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#0xC] / add / cmp #5: 5-frame timer at struct+0xC; byte 0xD wraps at 3 and indexes
+    dword_811A3A0 via ldrb r0,[r1,r0]; bl sprite_setPalette with the table byte as palette index; bl sprite_update
+    called unconditionally at the end; table word 0x10200 = bytes 00 02 01 00, a 3-entry palette sequence'
+  refs:
+  - bn6f/asm/asm32.s:25386
+  - 0x0811A358 sub_811A358
+  - 0x08002D80 sprite_setPalette
+  - 0x080026C4 sprite_update
+  reproduce: python3 tools/asmcat.py 0x0811A370
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- which entity/animation this object belongs to (only caller sub_811A358 is also unnamed)
+- whether byte 0xC/0xD have other meanings in sibling objects
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_811A370 -> sprite_cyclePaletteAnim
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811A370

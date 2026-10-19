@@ -1,0 +1,45 @@
+name: object_breakPanelAttackStep
+address: '0x080C70D8'
+kind: function
+status: probable
+summary: Step routine of a one-shot battle attack object that spawns a hitbox on its panel and crumbles
+  the panel, then destroys itself after 18 frames.
+interface: (r0 unused on entry; r5 = battle object) -> updates oBattleObject_Timer/PhaseInitialized/CurState;
+  sets object state to CUR_STATE_DESTROY when timer expires
+details: On first call (PhaseInitialized == 0) it reads oBattleObject_PanelX/PanelY and calls object_spawnCollisionRegion
+  with fixed parameters 0xa05ff01 (r3 = 0), then calls object_breakPanelLoud on the same panel tile, loads
+  the timer with 0x12 (18 frames), and sets PhaseInitialized = 4. On every call it decrements oBattleObject_Timer;
+  once it goes negative it writes CUR_STATE_DESTROY into oBattleObject_CurStateActionPhaseAndPhaseInitialized
+  so the object is removed. The hitbox parameters 0xa05ff01 are packed fields (likely power/element/extent)
+  passed through r4. It performs its effect exactly once and then idles until the timer runs out.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb [r5,#oBattleObject_PhaseInitialized] / bne guards the one-time spawn block; bl object_spawnCollisionRegion
+    with r4 = 0xa05ff01 from dword_80C7110 and panel coords from oBattleObject_PanelX/PanelY; bl object_breakPanelLoud
+    immediately after, same panel coords; timer set to 0x12 then decremented, CUR_STATE_DESTROY written
+    on expiry; called from sub_80C7098 (object step dispatcher chain)
+  refs:
+  - bn6f/asm/asm31.s:32849
+  - 0x080C7098 sub_80C7098
+  - 0x0800CB44 object_breakPanelLoud
+  - 0x080C536A object_spawnCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080C70D8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- which in-game attack spawns this object (needs the spawner in sub_80C7098's caller chain)
+- exact meaning of the packed collision-region fields in 0xa05ff01 (damage, size, element, lifetime)
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C70D8 -> object_breakPanelAttackStep
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C70D8

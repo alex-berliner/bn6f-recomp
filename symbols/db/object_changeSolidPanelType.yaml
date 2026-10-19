@@ -1,0 +1,47 @@
+name: object_changeSolidPanelType
+address: '0x080DE768'
+kind: function
+status: probable
+summary: If the battle panel at (x,y) is solid, changes it to a panel type looked up from the calling
+  object's Param1; 0xFF in the table means no change.
+interface: (r0 = panel x (must be 1..6), r1 = panel y (must be 1..3); r5 = battle object whose Param1
+  indexes the table) -> r0 = object_setPanelType result; no flags meaningful
+details: Bounds-checks x in 1..6 and y in 1..3 and returns otherwise. Saves r0/r1 around a call to object_isPanelSolid,
+  which reports whether the panel at the object's position (solid flag 0x10 of panel params) is solid;
+  if not solid, returns. Reads the object's Param1 byte (field oBattleObject_Param1 of the struct at r5),
+  indexes dword_80DE79C with it, and bails if the entry is 0xFF. Otherwise restores x/y into r0/r1 and
+  tail-calls object_setPanelType with the table byte as the new panel type. Note r5 (object pointer) is
+  not set here, so the caller sub_80DE730 must prepare it; the table shown (FF,3F,70,60) appears truncated,
+  only its first bytes are visible.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'range checks cmp r0,#7 / cmp r1,#4 match BN battle panel coordinates (x<=6, y<=3); bl object_isPanelSolid
+    + tst r0,r0 + beq exit: only acts when the target panel is solid; ldrb r2,[r5,#oBattleObject_Param1];
+    ldrb r2,[r3,r2]; cmp r2,#0xff: Param1 indexes a per-type table with 0xFF as ''no change''; tail bl
+    object_setPanelType with restored r0,r1 and r2 = table byte: performs the panel-type change; caller
+    sub_80DE730 supplies the r5 object context this routine relies on'
+  refs:
+  - bn6f/asm/asm31.s:83563
+  - 0x080DE730 sub_80DE730
+  - 0x0800CCB2 object_isPanelSolid
+  - 0x0800CC0A object_setPanelType
+  reproduce: python3 tools/asmcat.py 0x080DE768
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- Full contents of table dword_80DE79C and which panel-type constants 0x3F/0x70/0x60 are
+- What Param1 values the caller sub_80DE730 produces (which object kinds trigger which panel type)
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DE768 -> object_changeSolidPanelType
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DE768

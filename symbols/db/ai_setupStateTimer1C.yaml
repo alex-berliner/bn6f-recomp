@@ -1,0 +1,46 @@
+name: ai_setupStateTimer1C
+address: '0x08089BFA'
+kind: function
+status: probable
+summary: AI step that, unless event flag 0x80 (of eFlags2009F38) is set, resets the AI object's state
+  byte and starts a 0x1E-frame timer in AIData.
+interface: (r5 = AIData struct pointer, r0/r1 unused on entry) -> r0 = 1 (always); sets byte AIData+0x00
+  = 0x1C, byte AIData+0x08 = 0, halfword AIData+0x18 = 0x1E
+details: The function first tests bit 0x80 of the shared event-flag word eFlags2009F38 via chatbox_mask_eFlags2009F38;
+  if that bit is set it does nothing else. Otherwise it clears the byte at AIData+0x08, writes 0x1E to
+  the halfword timer at AIData+0x18 (via ai_setAIDataUnk18_8089CB0), and writes 0x1C to the AI state/command
+  byte at AIData+0x00. It unconditionally returns 1, consistent with an AI-script step that reports 'handled'.
+  The flag check suggests this setup is gated on a cutscene/encounter condition. Register r5 is used directly
+  as the struct pointer, so the caller must have it preloaded (typical for these AI handler routines).
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mov r0, #0x80; bl chatbox_mask_eFlags2009F38 — gates the whole setup on event flag bit 0x80;
+    strb r0, [r5,#8] with r0=0 — clears byte AIData+0x08 before the state write; mov r0, #0x1e; bl ai_setAIDataUnk18_8089CB0
+    — sets the 0x18 halfword (frame timer) to 0x1E; mov r0, #0x1c; strb r0, [r5] — writes 0x1C to the
+    AI state byte at offset 0; mov r0, #1 on both paths and single return — step-style handler always
+    reporting 1'
+  refs:
+  - bn6f/asm/asm23.s:1667
+  - 0x08089CB0 ai_setAIDataUnk18_8089CB0
+  - 0x08045F3C chatbox_mask_eFlags2009F38
+  reproduce: python3 tools/asmcat.py 0x08089BFA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- No callers known, so the semantics of AIData+0x00=0x1C (state id vs command) and the meaning of flag
+  0x80 are unconfirmed
+- What the 0x1E timer counts (frames until next AI action?) needs a caller or the routine that reads Unk_18
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8089BFA -> ai_setupStateTimer1C
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8089BFA

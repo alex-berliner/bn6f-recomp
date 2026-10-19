@@ -1,0 +1,46 @@
+name: object_flashWhiteDelay
+address: '0x0802DB58'
+kind: function
+status: probable
+summary: 'One-shot state handler: flashes the battle object white, plays animation 4 for 4 frames, then
+  advances the object to state 8.'
+interface: (r0 = unused/ignored, r7 = battle object struct) -> updates object fields [r7] (state/mode),
+  [r7+1] (state byte), [r7+0x10] (frame timer); returns nothing
+details: 'The routine first calls sprite_forceWhitePalette to swap the object''s palette to all-white.
+  It then checks the state byte at [r7+1]: if it is still 0, it starts animation 4 via object_setAnimation,
+  stores a 4-frame countdown into the halfword timer at [r7+0x10], and sets [r7+1] = 4 so the setup runs
+  only once. On every call it decrements [r7+0x10]; once the counter reaches 0 it writes 8 into the halfword
+  at [r7], which is the object''s state/mode field, moving the object to its next phase. The white flash
+  plus fixed short delay matches the palette-flash-then-transition pattern used for hit/deletion or boss-phase
+  flashes.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl sprite_forceWhitePalette immediately at entry — the routine's core visual effect; guard 'ldrb
+    r0,[r7,#1]; tst; bne' makes the animation/timer setup one-shot; object_setAnimation(4) plus [r7+0x10]=4
+    gives a 4-frame flash animation window; timer decrement 'ldrh/sub/strh; bgt' with fallback writes
+    state 8 into [r7], a state-machine advance
+  refs:
+  - bn6f/asm/asm03_0.s:16411
+  - 0x0800F2B6 object_setAnimation
+  - 0x08002DB0 sprite_forceWhitePalette
+  reproduce: python3 tools/asmcat.py 0x0802DB58
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- No callers are known, so which object/state machine uses this (boss phase, deletion flash, etc.) is
+  unconfirmed
+- The exact meaning of state 8 in the target object's state table is unknown
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_802DB58 -> object_flashWhiteDelay
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802DB58

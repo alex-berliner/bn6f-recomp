@@ -1,0 +1,44 @@
+name: ow_patchBackgroundStrip
+address: '0x0801EB7C'
+kind: function
+status: probable
+summary: Draws a fixed 30x2 tile strip (tile block 3) into the background map at (0,0x12) and sets the
+  matching bit 18 in the area flags word, marking that region changed.
+interface: () -> r0 = updated flag word from flagSetBits; no meaningful return otherwise
+details: Takes no arguments. Calls CopyBackgroundTiles(j=0, i=0x12, tileBlock32x32=3, tileIds=byte_801EE98,
+  j_size=0x1e, i_size=2), stamping a hardcoded tile-ID list into the BG map. Then calls flagSetBits_eStruct2035280_801BEB8
+  with 1<<0x12 (0x40000), ORing it into the flag word at eStruct2035280+0x44, which appears to record
+  that this background patch was applied. The flag bit index matching the strip's i coordinate hints the
+  flag word tracks per-strip background state. No caller is known, so the trigger (likely a cutscene or
+  area-state script) is unidentified.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl CopyBackgroundTiles with j=0, i=0x12, block 3, tileIds=byte_801EE98, size 0x1e x 2 (asm
+    lines 2-11); mov r0,#1; lsl r0,#0x12 then bl flagSetBits_eStruct2035280_801BEB8 — flag bit equals
+    the strip''s i coordinate; Callee summary: flagSetBits_eStruct2035280_801BEB8 ORs r0 into flags word
+    at eStruct2035280+0x44; Only two callees and no locals: function is exactly ''stamp tiles, set flag'''
+  refs:
+  - bn6f/asm/asm00_2.s:33385
+  - 0x0801BEB8 flagSetBits_eStruct2035280_801BEB8
+  - 0x080018C2 CopyBackgroundTiles
+  reproduce: python3 tools/asmcat.py 0x0801EB7C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- 'No callers known: which event/script triggers this patch (cutscene, flag handler, area change)?'
+- What area/entity eStruct2035280 belongs to, and what the bit 18 flag gates downstream
+- What byte_801EE98's tile IDs depict (hole, ladder, path opening?)
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_801EB7C -> ow_patchBackgroundStrip
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_801EB7C

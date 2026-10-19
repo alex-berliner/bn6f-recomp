@@ -1,0 +1,49 @@
+name: battle_runFirstTutorialChatboxStep
+address: '0x080276D6'
+kind: function
+status: probable
+summary: 'Tutorial battle state handler: when the tutorial reaches step 3 and no fade is active, displays
+  chatbox script 0xA from the first-battle-tutorial text archive and advances the step to 4.'
+interface: (r0 = unused/scratched, r5 = tutorial object ptr) -> r0 = chatbox_runScript return; touches
+  [r5+1] (state, 4 then 0x34), [r5+2] (timer/counter halfword, cleared), [r5+0xC] (step read), [r5+0xD]
+  (step, set to 4); flags from IsScreenFadeActive compare
+details: 'Early-outs if IsScreenFadeActive returns nonzero. Sets byte [r5+1]=4 and clears halfword [r5+2]
+  (likely a state/timer pair). Reads [r5+0xC]; only when it equals 3 does it act: fetches the archive
+  pointer from TextScriptFirstBattleTutorials indexed by step*4 (i.e., table slot 3, though the fetched
+  pointer is the same single archive each call) and calls chatbox_runScript(archive, 0xA). Afterwards
+  it writes 4 to [r5+0xD] (advancing the step field) and sets [r5+1]=0x34, [r5+2]=0, moving the object
+  into its next state. The step-table lookup with a hard-coded script index suggests this is one of several
+  near-identical per-step handlers.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl IsScreenFadeActive / bne locret: skips everything during a screen fade (asm lines 2-5);
+    ldr r0, off_8027708 = TextScriptFirstBattleTutorials then bl chatbox_runScript with r1=0xA: plays
+    tutorial text script 10; ldrb r2,[r5,#0xC]; cmp r2,#3: action gated on tutorial step field equal to
+    3; strb r0(=4),[r5,#0xD] plus strb 0x34,[r5,#1]: advances state machine after showing text'
+  refs:
+  - bn6f/asm/asm03_0.s:2635
+  - 0x08040384 chatbox_runScript
+  - 0x080062F8 IsScreenFadeActive
+  reproduce: python3 tools/asmcat.py 0x080276D6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- Caller identity unknown — which object/state machine owns the r5 struct and whether the [r5+1]=0x34
+  state has a known name
+- Why the archive table is indexed by step*4 while script index 0xA is fixed — other step handlers may
+  use different slots/scripts
+- Exact meaning of state 0x34 and the [r5+2] counter field in the owning struct
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80276D6 -> battle_runFirstTutorialChatboxStep
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80276D6

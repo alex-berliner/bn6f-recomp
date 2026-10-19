@@ -1,0 +1,47 @@
+name: battle_objectTimerExpire
+address: '0x080BC36E'
+kind: function
+status: probable
+summary: Runs the object's sprite update, counts down its Timer, and when it reaches 0 notifies the object
+  it was spawned from and switches this object to the destroy state.
+interface: (r0 = battle object pointer, r5 = same object) -> r0 clobbered by callees; sets oBattleObject
+  state word to CUR_STATE_DESTROY when timer expires
+details: Each call first invokes battle_tryUpdateObjectSprite to advance the object's sprite animation.
+  It then decrements the halfword at oBattleObject_Timer; if nonzero it just returns. On reaching zero,
+  it loads oAIData_SpawnedSourceObjectPtr from the object's AIData and calls sub_80E1A86, which sets the
+  source object's field 8 to 8 (likely a status/flag reset), then writes CUR_STATE_DESTROY into oBattleObject_CurStateActionPhaseAndPhaseInitialized
+  so the engine destroys the object. Typical of timed battle effects (e.g., lingering panels or effects)
+  that expire after a fixed delay and signal their creator.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl battle_tryUpdateObjectSprite advances the sprite every call; ldrh r0,[r5,#oBattleObject_Timer];
+    sub r0,#1; strh ...; bne exit implements a one-shot countdown; ldr r0,[r5,#oBattleObject_AIDataPtr];
+    ldr r0,[r0,#oAIData_SpawnedSourceObjectPtr]; bl sub_80E1A86 notifies the spawning object on expiry;
+    mov r0,#CUR_STATE_DESTROY; str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized] requests
+    self-destruction
+  refs:
+  - bn6f/asm/asm31.s:9033
+  - 0x080BC434 battle_tryUpdateObjectSprite
+  - 0x080E1A86 sub_80E1A86
+  reproduce: python3 tools/asmcat.py 0x080BC36E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- Meaning of the value 8 written to the source object's offset-8 field (sub_80E1A86 is only known to write
+  it)
+- Which concrete game objects use this timer/expiry path, and what oBattleObject_Timer's unit (frames?)
+  is
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BC36E -> battle_objectTimerExpire
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BC36E

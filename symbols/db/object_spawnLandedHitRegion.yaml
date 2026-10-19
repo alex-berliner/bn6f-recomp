@@ -1,0 +1,48 @@
+name: object_spawnLandedHitRegion
+address: '0x080DA7EC'
+kind: function
+status: probable
+summary: Spawns a battle collision/attack region on the panel where a lobbed object lands, using the object's
+  panel position and element.
+interface: (r5 = battle object) -> r0 = result of object_spawnCollisionRegion; reads oBattleObject_PanelX/PanelY/Element,
+  passes damage word 0xA05FF01 and duration 3
+details: 'Takes r5 pointing at a battle object and reads its PanelX, PanelY and Element fields, then calls
+  object_spawnCollisionRegion with (x, y, element, 0) in r0-r3 and, via the AP-register convention, r4
+  = 0xA05FF01 (packed region/damage descriptor) and r7 = 3 (likely lifetime in frames). It also loads
+  the object''s DamageAndStaminaDamageCounterDisabler field into r6 before the call, suggesting the spawned
+  region inherits damage-related attributes from the lobbed object. Given the sole caller is object_lobbedObjectUpdate,
+  which lands the object and reacts to the landing panel, this is the landing effect: it places a hit/collision
+  region on the landed panel (e.g., an elemental attack or panel effect) before the object is destroyed.
+  The function is a thin wrapper — no state of its own beyond marshalling the object''s fields into the
+  spawn call''s arguments.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0/[r5,#oBattleObject_PanelX], ldrb r1/PanelY, ldrb r2/Element: coordinates and element
+    come straight from the lobbed object; ldr r4, =0xA05FF01 and ldr r7, =0x3 are AP-convention extra
+    args to object_spawnCollisionRegion; ldr r6, [r5,#oBattleObject_DamageAndStaminaDamageCounterDisabler]
+    passes damage data from the object; sole caller object_lobbedObjectUpdate lands the object and reacts
+    to the landing panel, then destroys it'
+  refs:
+  - bn6f/asm/asm31.s:75019
+  - 0x080DA68C object_lobbedObjectUpdate
+  - 0x080C536A object_spawnCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080DA7EC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- exact meaning of the packed word 0xA05FF01 and the r7=3 argument (lifetime vs. type) inside object_spawnCollisionRegion
+- whether the spawned region damages enemies, cracks the panel, or applies an elemental effect
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DA7EC -> object_spawnLandedHitRegion
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DA7EC

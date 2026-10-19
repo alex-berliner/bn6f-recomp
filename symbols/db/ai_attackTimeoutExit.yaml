@@ -1,0 +1,49 @@
+name: ai_attackTimeoutExit
+address: '0x080ED896'
+kind: function
+status: probable
+summary: 'AI attack-state update: waits 20 frames after the element is set, then clears an object flag,
+  drops its related-object/AI attack references, and exits the attack state.'
+interface: (r5 = battle object, r7 = oAIAttackVars struct; r0 unused) -> void; sets r0 = flag bit 0x400000
+  when calling object_clearFlag
+details: 'If oAIAttackVars_AttackElement is 0 it initializes the state: StepTimer = 0x14 (20 frames) and
+  AttackElement = 4. Each call then decrements StepTimer; while it is still >= 0 the function returns
+  without doing anything. Once the timer goes negative it clears ObjectFlags1 bit (1 << 22) via object_clearFlag,
+  NULLs oBattleObject_RelatedObject1Ptr and the oAIData_TempAttackObjectPtr back-pointer (detaching the
+  attack object from its spawner/AI), and calls object_exitAttackState to end the attack. The 20-frame
+  delay is only armed on the first call (when element is still 0), so the timer starts once the attack
+  becomes active. Element value 4 presumably marks a specific AI attack kind; the cleared flag bit 0x400000
+  is some transient per-object status.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement] / strh #0x14 StepTimer / strb #4 element: one-time
+    20-frame setup on first entry; decrement of oAIAttackVars_StepTimer with bge locret_80ED8C2: pure
+    frame countdown until expiry; mov r0,#1 lsl #0x16 then bl object_clearFlag: clears ObjectFlags1 bit
+    0x400000 on timeout; str r0,[r5,#oBattleObject_RelatedObject1Ptr] and str r0,[r1,#oAIData_TempAttackObjectPtr]:
+    NULLs cross-references between object and AI data; bl object_exitAttackState as the final action:
+    ends the AI attack when the timer expires'
+  refs:
+  - bn6f/asm/asm31.s:116309
+  - 0x0801A15C object_clearFlag
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x080ED896
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- no known callers, so which AI/attack object uses this state and what element 4 denotes is unconfirmed
+- meaning of ObjectFlags1 bit 0x400000 (what status is being cleared after 20 frames)
+- exact identity of oAIAttackVars field layout and who owns r5/r7 at call time
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80ED896 -> ai_attackTimeoutExit
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80ED896

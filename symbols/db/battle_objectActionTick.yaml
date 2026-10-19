@@ -1,0 +1,49 @@
+name: battle_objectActionTick
+address: '0x080CCAB8'
+kind: function
+status: probable
+summary: 'Per-frame tick for a battle object: dispatches its CurAction handler, then advances its sprite;
+  tears the object down once the battle is over.'
+interface: (r5 = battle object pointer) -> r0 = result of object_updateSprite; if battle over, object
+  is destroyed instead
+details: Checks battle_isBattleOver; if the battle is still running it reads oBattleObject_CurAction from
+  the object at r5 and jumps through a 4-entry dispatch table (off_80CCAE4, handlers sub_80CCAF4/CCBD0/CCBDC/CCBF6)
+  selected by that action, then falls through to object_updateSprite to animate the object for this frame.
+  If the battle is over it instead writes 0 to the byte at oBattleObject_ExtraVars and sets oBattleObject_CurState
+  to CUR_STATE_DESTROY, ending the object. The function takes its object in r5 rather than r0, matching
+  the project's battle-object this-pointer convention. The four action handlers are not yet identified,
+  so what each CurAction value does is still open.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl battle_isBattleOver / tst r0,r0 / bne loc_80CCAD2 — early-out path when the battle ends;
+    ldrb r0,[r5,#oBattleObject_CurAction]; ldr r1,[r1,r0]; bx r1 — action-indexed dispatch through off_80CCAE4;
+    bl object_updateSprite — sprite advance after the action handler, matching the object-tick pattern;
+    mov r0,#CUR_STATE_DESTROY; strb r0,[r5,#oBattleObject_CurState] — destroy state on battle over; caller
+    sub_80CCA60 calls this as an object update step alongside object_updateSprite users
+  refs:
+  - bn6f/asm/asm31.s:45197
+  - 0x080CCA60 sub_80CCA60
+  - 0x0800A18E battle_isBattleOver
+  - 0x0801BBAC object_updateSprite
+  reproduce: python3 tools/asmcat.py 0x080CCAB8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- What the four handlers sub_80CCAF4, sub_80CCBD0, sub_80CCBDC, sub_80CCBF6 do, i.e. which CurAction values
+  0-3 they correspond to
+- What the byte at oBattleObject_ExtraVars means when zeroed (a per-object enable/alive flag?) and why
+  only one ExtraVars byte is cleared
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CCAB8 -> battle_objectActionTick
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CCAB8

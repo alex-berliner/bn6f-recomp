@@ -1,0 +1,45 @@
+name: battle_waitForObjectAction
+address: '0x080DCE9E'
+kind: function
+status: probable
+summary: Battle object routine that waits until a related object reaches a target action, destroying itself
+  on timeout or when the battle is over.
+interface: (r5 = battle object) -> r0 = destroyed?; sets oBattleObject_CurState = CUR_STATE_DESTROY on
+  exit conditions
+details: 'Acts as a per-frame wait/timeout handler for a battle object. If the battle is over it immediately
+  marks itself CUR_STATE_DESTROY. Unless a time-stop is active it decrements Param1 (a frame counter)
+  and destroys itself when it reaches 0. Otherwise it loads the object pointed to by RelatedObject1Ptr,
+  reads its CurAction, and compares it to Param2 (the awaited action id): if equal it returns and keeps
+  the object alive, otherwise it destroys itself. Essentially ''wait for RelatedObject1 to start action
+  Param2, give up after Param1 frames''.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl battle_isBattleOver / tst r0,r0 bne destroy: ends the wait when battle ends; bl battle_isTimeStop
+    bne skip: freezes the Param1 countdown during time-stop; ldrb r0,[r5,#oBattleObject_Param1]; sub r0,#1;
+    ble destroy: Param1 is a frame timeout; ldr r0,[r5,#oBattleObject_RelatedObject1Ptr]; ldrb r0,[r0,#oBattleObject_CurAction];
+    cmp r0, Param2; beq locret: stays alive only while waiting; mov r0,#CUR_STATE_DESTROY; strb r0,[r5,#oBattleObject_CurState]:
+    all failure paths destroy the object'
+  refs:
+  - bn6f/asm/asm31.s:80271
+  - 0x0800A18E battle_isBattleOver
+  - 0x0800A098 battle_isTimeStop
+  reproduce: python3 tools/asmcat.py 0x080DCE9E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- which script command or object behavior dispatches to this routine (no callers known), and what kind
+  of object RelatedObject1Ptr points to (player/opponent whose CurAction is awaited)
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DCE9E -> battle_waitForObjectAction
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DCE9E

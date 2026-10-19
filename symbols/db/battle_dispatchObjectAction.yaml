@@ -1,0 +1,47 @@
+name: battle_dispatchObjectAction
+address: '0x080C8892'
+kind: function
+status: probable
+summary: 'Per-frame handler for a battle object: dispatches its current action via jump table, or spawns
+  a death/exit effect and marks it destroyed when the battle is over.'
+interface: (r5 = battle object) -> void; returns via pop {pc} after long-calling the action handler
+details: 'Reads oBattleObject_CurAction (byte at [r5]) and indexes off_80C88C0, a table of two action-handler
+  thumb pointers (sub_80C88C8, sub_80C89A4), calling the selected one with lr=pc so it returns back here.
+  If battle_isBattleOver returns nonzero it instead takes the object''s death path: ldmia from offset
+  0x34 (three words, presumably position fields) as r1-r3, r4 = 0x14 as an argument, and calls spawn_t1_0x0_EffectObject
+  to spawn a generic type-0 effect at the object''s location. It then stores CUR_STATE_DESTROY into oBattleObject_CurStateActionPhaseAndPhaseInitialized
+  so the object engine deletes it. The two-entry table suggests an object with exactly two actions (e.g.
+  idle/attack or two movement modes).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl battle_isBattleOver + tst/bne splits normal dispatch from the teardown path; ldrb r0,[r5,#oBattleObject_CurAction];
+    ldr r1,[r1,r0]; mov lr,pc; bx r1 — table dispatch on the object's action; off_80C88C0 holds exactly
+    two handler pointers (sub_80C88C8, sub_80C89A4); ldmia r0!,{r1-r3} from r5+0x34 + r4=0x14 feed spawn_t1_0x0_EffectObject,
+    then CUR_STATE_DESTROY is stored to the state field; Called from sub_80C8850, consistent with an object-update/step
+    routine
+  refs:
+  - bn6f/asm/asm31.s:36171
+  - 0x080C8850 sub_80C8850
+  - 0x0800A18E battle_isBattleOver
+  - 0x080E05F6 spawn_t1_0x0_EffectObject
+  reproduce: python3 tools/asmcat.py 0x080C8892
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- Which battle object/enemy uses this handler (callers/callees sub_80C88C8 and sub_80C89A4 would identify
+  it)
+- meaning of the r4=0x14 argument and the exact layout of the fields copied from offset 0x34
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C8892 -> battle_dispatchObjectAction
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C8892

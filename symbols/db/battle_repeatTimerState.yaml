@@ -1,0 +1,48 @@
+name: battle_repeatTimerState
+address: '0x080E88D8'
+kind: function
+status: probable
+summary: State handler for a battle object that, on activation, spawns a kind-0xA extra-vars helper once
+  and then runs an 8-frame delay Param2 times before self-destructing (also destroyed when the battle
+  ends).
+interface: (r5 = battle object, r4 = 0x201 spawn param) -> r0 = void; on finish writes CUR_STATE_DESTROY
+  to object's state field
+details: Runs each frame while the battle is not over. First pass (oBattleObject_CurAction==0) sets CurAction=1,
+  calls battle_spawnExtraVarsObject with r4=0x201 (an ExtraVars payload for the kind-0xA object it spawns)
+  and loads the object Timer with 8. Subsequent passes decrement Timer; when it reaches 0 it decrements
+  oBattleObject_Param2, and if that hits 0 the object destroys itself, otherwise it clears CurAction to
+  restart the 8-frame wait. This makes a repeating periodic tick whose repeat count is configured via
+  Param2 by whoever set up the object.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl battle_isBattleOver / tst r0,r0 / bne loc_80E890C destroys the object when the battle is
+    over; ldrb r0,[r5,#oBattleObject_CurAction] cmp 0, then strb #1 and bl battle_spawnExtraVarsObject
+    with r4=0x201 and Timer=8 on first entry; ldrh Timer / sub #1 / bgt keeps the 8-frame wait looping;
+    ldrb Param2 / sub #1 / beq destroy, else strb #0 to CurAction to restart the cycle; callee battle_spawnExtraVarsObject
+    spawns object_spawnType4 kind 0xA and stores the parameter into ExtraVars'
+  refs:
+  - bn6f/asm/asm31.s:105998
+  - 0x080E88C0 sub_80E88C0
+  - 0x0800A18E battle_isBattleOver
+  - 0x080E11E0 battle_spawnExtraVarsObject
+  reproduce: python3 tools/asmcat.py 0x080E88D8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- What the kind-0xA extra-vars object actually does in-game (its handler is not shown)
+- Which setup code creates this object and what Param2 repeat count it passes
+- Whether 0x201 is a flag/parameter word or a pointer table index
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E88D8 -> battle_repeatTimerState
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E88D8

@@ -1,0 +1,45 @@
+name: battle_objectRunActionHandler
+address: '0x080DEEE8'
+kind: function
+status: probable
+summary: 'Per-frame battle-object action dispatcher: skips during time-stop, destroys the object when
+  the battle is over, otherwise jumps to the handler for the object''s current action.'
+interface: (r5 = battle object pointer, no args) -> r0 = handler-dependent; sets object state to CUR_STATE_DESTROY
+  if battle is over
+details: 'Calls battle_isBattleOver; if true it writes CUR_STATE_DESTROY into the combined CurState/ActionPhase/PhaseInitialized
+  field of the battle object at r5 and returns, tearing the object down. Otherwise calls battle_isTimeStop
+  and returns without doing anything while a time-stop is freezing the battle. Otherwise it loads oBattleObject_CurAction
+  from the object and indexes off_80DEF10 (three handler pointers: sub_80DEF1C, sub_80DEF3C, sub_80DEFC6),
+  dispatching with mov lr, pc / bx r1 so the chosen handler runs with r5 still pointing at the same object.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl battle_isBattleOver / tst + bne: battle-over path stores CUR_STATE_DESTROY into oBattleObject_CurStateActionPhaseAndPhaseInitialized;
+    bl battle_isTimeStop / bne locret: whole update is suppressed while time-stop flag (bit 2) is set;
+    ldrb r0,[r5,#oBattleObject_CurAction] + ldr r1,[r1,r0] + bx r1: jump table off_80DEF10 indexed by
+    the object''s current action; off_80DEF10 holds three code pointers (sub_80DEF1C, sub_80DEF3C, sub_80DEFC6),
+    one per action state'
+  refs:
+  - bn6f/asm/asm31.s:84523
+  - 0x080DEE8C sub_80DEE8C
+  - 0x0800A18E battle_isBattleOver
+  - 0x0800A098 battle_isTimeStop
+  reproduce: python3 tools/asmcat.py 0x080DEEE8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- What the three action handlers (sub_80DEF1C/DEF3C/DEFC6) do, i.e. which action values 0-2 mean, would
+  confirm the semantic name of the dispatch
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DEEE8 -> battle_objectRunActionHandler
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DEEE8

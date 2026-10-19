@@ -1,0 +1,48 @@
+name: battle_mirrorTimerStateUpdate
+address: '0x080BB098'
+kind: function
+status: probable
+summary: 'Per-frame update for a battle object: counts down two timers, periodically performs an action
+  with a sound, and ends (phase 8 + SE 0xBD) when its lifetime expires or a related object''s TimeStopMirror
+  flag is set.'
+interface: (r5 = battle object) -> void; r0/r1 clobbered, flags destroyed
+details: Decrements oBattleObject_Timer2; when it reaches 0, plays sound effect 0xBD and writes 8 to oBattleObject_CurPhaseAndPhaseInitialized,
+  the finished/next phase. Otherwise it decrements oBattleObject_Timer; on reaching 0 it reloads Timer
+  to 6, calls ho_80BB170 (presumably the object's periodic action, e.g. firing/spawning), and plays SE
+  0x10E. After the timer handling, it dereferences oBattleObject_RelatedObject1Ptr, reads bit 0 of oAIData_TimeStopMirrorHeld,
+  and if the mirror is held it also plays SE 0xBD and advances to phase 8 — so the object terminates early
+  on that condition, otherwise it returns and keeps looping. This is a phase-handler style AI step, called
+  from sub_80BB048.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrh/strh on Timer2 with ''beq'' to the phase-8 exit block: lifetime countdown end (80BB098-80BB0A0).;
+    Timer reload ''#6'' plus ''bl ho_80BB170'' and PlaySoundEffect(0x10E): periodic action every 6 frames
+    (80BB0AA-80BB0B8).; ldr RelatedObject1Ptr then AIData_TimeStopMirrorHeld with ''tst r0,#1'': early
+    termination when the mirror flag is set (80BB0BA-80BB0C4).; PlaySoundEffect(0xBD) + ''strh #8'' to
+    CurPhaseAndPhaseInitialized in both exit paths: phase transition on completion (80BB0C6-80BB0CC).'
+  refs:
+  - bn6f/asm/asm31.s:6412
+  - 0x080BB048 sub_80BB048
+  - 0x080005CC PlaySoundEffect
+  - 0x080BB170 ho_80BB170
+  reproduce: python3 tools/asmcat.py 0x080BB098
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- What ho_80BB170 does (the periodic action, e.g. spawning a projectile) is not shown, so the object's
+  identity/purpose beyond the timer-mirror logic is inferred from field names
+- Which battle object / enemy uses this handler and what SE 0xBD and 0x10E correspond to
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BB098 -> battle_mirrorTimerStateUpdate
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BB098

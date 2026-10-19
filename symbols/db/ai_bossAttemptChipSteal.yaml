@@ -1,0 +1,48 @@
+name: ai_bossAttemptChipSteal
+address: '0x08012464'
+kind: function
+status: probable
+summary: 'Boss-AI step: tries to steal a chip from the enemy (player) Navi; on success ends the attack
+  with a short cooldown, otherwise resets difficulty tier and arms a long boost timer before the next
+  attack.'
+interface: (r7 = boss/attacker object) -> r0 = frames until next AI action (8 on steal, 0x1C on fail);
+  r7 fields modified on failure
+details: Calls battleObject_stealChipFromEnemyNavi with 0x17E, which the callee treats as an ID (clearing
+  the victim's anti-steal flag and spawning the steal effect there). If the steal is refused (returns
+  0), it writes 2 to oAIAttackVars_AiDifficultyTier and 0x78 (120) to oAIAttackVars_AttackBoost2 on the
+  r7 object, then returns 0x1C as the wait time. If the steal succeeds, it calls object_exitAttackState
+  and returns 8. The return value is almost certainly a frame delay consumed by the enclosing boss AI
+  state machine. r0 is clobbered as scratch before the call since the real argument is the constant 0x17E.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldr r0, =0x17e; bl battleObject_stealChipFromEnemyNavi_8010740 — sole real action is triggering
+    the chip-steal behavior; tst r0,r0; beq — branches on the callee's 'was the steal performed' result;
+    strb r2/[r7,#oAIAttackVars_AiDifficultyTier] / strb 0x78,[r7,#oAIAttackVars_AttackBoost2] — writes
+    AI difficulty and boost timer fields of the r7 object; bl object_exitAttackState; mov r0,#8 vs mov
+    r0,#0x1c — two exit paths each returning a small frame count, typical AI cooldown; callee summary
+    says it clears the enemy Navi's anti-steal flag and spawns a steal effect at their panel
+  refs:
+  - bn6f/asm/asm00_2.s:7984
+  - 0x08010740 battleObject_stealChipFromEnemyNavi_8010740
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x08012464
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- What object/chip ID 0x17E identifies (which boss uses this), and the exact meaning of oAIAttackVars_AttackBoost2
+- No callers known, so the caller's handling of the 8/0x1C return values (frame delay vs. state index)
+  is unconfirmed
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8012464 -> ai_bossAttemptChipSteal
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8012464

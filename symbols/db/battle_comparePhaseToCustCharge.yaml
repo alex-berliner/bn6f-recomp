@@ -1,0 +1,49 @@
+name: battle_comparePhaseToCustCharge
+address: '0x0800AF50'
+kind: function
+status: probable
+summary: Three-way comparison of the battle phase-step index against the custom gauge charge level, offset
+  by (3 - state-4 event count), returning which side leads or a special value.
+interface: () -> r0 = 1 if phaseStep > charge + (3 - eventCount), -1 if charge > phaseStep + (3 - eventCount),
+  2 if instead eventCount >= 3, else 0; no inputs, flags clobbered
+details: 'Reads oToolkit_BattleStatePtr and loads three byte fields from the battle state: PhaseStepIndex,
+  CustGaugeChargeLevel, and State4EventCount. It computes a slack value of 3 - eventCount, then first
+  tests phaseStep > charge + slack (returns 1), then charge > phaseStep + slack (returns -1). If the two
+  are within slack of each other, it returns 2 when eventCount >= 3, otherwise 0. It is a pure read-only
+  helper with no side effects, called from the per-frame battle tick and several battle state-step handlers.
+  The slack of 3 minus event count suggests eventCount shrinks a tolerance window on some phase/charge
+  timing decision.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb from oBattleState_PhaseStepIndex, CustGaugeChargeLevel, State4EventCount off the toolkit's
+    battle-state pointer; neg r4,r2; add r4,#3 builds slack = 3 - eventCount used in both comparisons;
+    cmp r0,r5 / bgt returns 1; symmetric cmp r1,r5 / bgt returns -1; cmp r2,#3 / bge returns 2 only when
+    eventCount >= 3, else 0; called from battle_state_tick_8007CA0 and battle_stepEndFadeWait plus four
+    unnamed battle-loop steps
+  refs:
+  - bn6f/asm/asm00_1.s:18261
+  - 0x08007CA0 battle_state_tick_8007CA0
+  - 0x08008FF0 battle_stepEndFadeWait
+  - 0x08007C50 sub_8007C50
+  reproduce: python3 tools/asmcat.py 0x0800AF50
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- What the return values 2 vs 0 and ±1 select for in the callers (only battle_state_tick and one fade-step
+  caller are summarized)
+- Exact gameplay meaning of State4EventCount and CustGaugeChargeLevel fields (names come from the project,
+  semantics unverified)
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_800AF50 -> battle_comparePhaseToCustCharge
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800AF50

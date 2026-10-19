@@ -1,0 +1,48 @@
+name: triggerScreenFadeOut
+address: '0x08027134'
+kind: function
+status: probable
+summary: Script/state step that starts a screen fade-out (mode 4, rate 0x20) if none is running, stores
+  20 into a context field, then calls the next handler.
+interface: (r5 = state/context struct, not passed in r0-r3) -> r0 = result of sub_80298D8; no meaningful
+  flags
+details: The routine checks IsScreenFadeActive; if no fade is active it calls SetScreenFade(4, 0x20),
+  which per the engine API begins a fade (mode 4 with parameter 0x20, most likely a fade-to-black over
+  0x20 frames). It then stores halfword 0x14 (20) at [r5+2], apparently a timer or next-step value in
+  a per-entity or cutscene context struct pointed to by r5 (r5 is set up by the caller, since the function
+  never writes r5). Finally it unconditionally tail-calls sub_80298D8, likely the continuation/next step
+  of the same script state. With no known callers, the exact context (cutscene step table vs. object update)
+  is unconfirmed, but the fade-triggering behavior is clear from the calls.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl IsScreenFadeActive + cmp/bne guard: body only runs when no fade is in progress; mov r0,#4;
+    mov r1,#0x20; bl SetScreenFade: starts fade with mode 4, parameter 0x20; mov r0,#0x14; strh r0,[r5,#2]:
+    writes 20 into halfword field +2 of caller-provided r5 struct; bl sub_80298D8 executed unconditionally
+    at loc_802714A before pop {pc}: chains to a follow-up routine'
+  refs:
+  - bn6f/asm/asm03_0.s:1796
+  - 0x080062F8 IsScreenFadeActive
+  - 0x08006270 SetScreenFade
+  - 0x080298D8 sub_80298D8
+  reproduce: python3 tools/asmcat.py 0x08027134
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- No callers known, so the r5 context struct (owner and meaning of field +2 holding 0x14) is unidentified
+- sub_80298D8 is undocumented; it presumably continues the same script/state, confirming the 'step' interpretation
+- Exact semantics of SetScreenFade(4, 0x20) — fade direction and frame count — depend on that engine routine's
+  known behavior
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8027134 -> triggerScreenFadeOut
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8027134

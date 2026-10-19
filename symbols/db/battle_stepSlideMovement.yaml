@@ -1,0 +1,47 @@
+name: battle_stepSlideMovement
+address: '0x080DE2B0'
+kind: function
+status: probable
+summary: Per-frame stepper that slides a battle object by a fixed delta toward its destination panel and
+  triggers an arrival action when the move finishes.
+interface: (r5 = battle object pointer) -> updates object fields; r0 clobbered by calls
+details: 'Field 0x60 is a frame counter: each call it decrements and, while nonzero, adds the per-frame
+  displacement at 0x44 to the world position at 0x38, then refreshes PanelX/PanelY via object_setPanelsFromCoordinates
+  and syncs collision/facing via object_updateCollisionPanels. When the counter hits zero, it sets the
+  byte at 0x0A to 1 (a done/arrived flag read by callers), then on the first pass (when 0x0A was 0) calls
+  sub_80DE38C with the byte at 0x62 as argument, probably a landing event or animation id. Finally it
+  clears bit 1 of the status byte at 0x00 (ending the move state) and stores 8 into the word at 0x08 (next
+  state/action id). Note the object is passed in r5, not r0, so callers must set up the high register.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: adds [r5,0x44] to [r5,0x38] once per decremented frame counter at 0x60, then calls object_setPanelsFromCoordinates
+    and object_updateCollisionPanels; on counter==0 sets [r5,0xa]=1 before calling sub_80DE38C with [r5,0x62],
+    a one-shot guarded by tst/bne; clears bit 1 of [r5,0] and stores 8 to [r5,8], consistent with ending
+    a movement state; callees' known summaries (recompute PanelX/PanelY from X/Y/Z, sync collision panels)
+    match an interpolated slide across panels
+  refs:
+  - bn6f/asm/asm31.s:82945
+  - 0x0800E2AC object_setPanelsFromCoordinates
+  - 0x0801A04C object_updateCollisionPanels
+  - 0x080DE38C sub_80DE38C
+  reproduce: python3 tools/asmcat.py 0x080DE2B0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- sub_80DE38C and the meaning of the byte at 0x62 (landing event? next action id?)
+- which callers set up the counter/delta fields, to confirm whether this is a slide, knockback or scripted
+  move
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DE2B0 -> battle_stepSlideMovement
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DE2B0

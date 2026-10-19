@@ -1,0 +1,47 @@
+name: object_spawnEffect0ThenExpire
+address: '0x080D3D90'
+kind: function
+status: probable
+summary: Battle-object update that on init spawns effect-type-0 at its own position, waits 5 frames, then
+  clears its collision region and destroys itself.
+interface: (r5 = battle object pointer, implicit) -> void; sets oBattleObject_PhaseInitialized=4, Timer=5,
+  later CurState=DESTROY
+details: Typical phase-based object update reading r5 as an oBattleObject. First invocation (PhaseInitialized==0)
+  writes phase 4, calls spawn_t1_0x0_EffectObject with the object's X/Y/Z fields and r4=0x12, and sets
+  Timer=5 halfwords. Each later frame decrements Timer; once it goes negative it calls object_clearCollisionRegion
+  to drop out of the collision grid, calls sub_80D3F32, and writes CUR_STATE_DESTROY to CurState so the
+  engine deletes it. The 5-frame lifetime and single effect spawn suggest a transient ground/impact marker
+  or hit-spark anchor rather than a persistent entity.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'strb r1(=4),[r5,PhaseInitialized] + bl spawn_t1_0x0_EffectObject with ldr X/Y/Z and r4=0x12:
+    one-shot effect spawn at own coords; mov r0,#5; strh r0,[Timer] then sub r0,#1 / bge: fixed 5-frame
+    countdown; bl object_clearCollisionRegion before destroy: releases its collision-grid slot; mov r0,#CUR_STATE_DESTROY;
+    strb r0,[CurState]: self-termination path; no r0 input used before the phase check: pure per-frame
+    update via r5 object pointer'
+  refs:
+  - bn6f/asm/asm31.s:60781
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x080E05F6 spawn_t1_0x0_EffectObject
+  - 0x080D3F32 sub_80D3F32
+  reproduce: python3 tools/asmcat.py 0x080D3D90
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- What sub_80D3F32 does (likely second effect spawn or state cleanup) — would confirm the visual identity
+  of the effect
+- No callers known; which spawn site creates this object (trap, panel effect, attack animation) is unknown
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D3D90 -> object_spawnEffect0ThenExpire
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D3D90

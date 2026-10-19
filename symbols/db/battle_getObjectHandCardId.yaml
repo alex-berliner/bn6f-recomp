@@ -1,0 +1,46 @@
+name: battle_getObjectHandCardId
+address: '0x0802DEAE'
+kind: function
+status: probable
+summary: Returns the chip ID of the card in the hand slot selected by a battle object, or 0xFFFF when
+  the object's flags mark it as having none.
+interface: '(r0 = battle object ptr for object_getFlag; r5 = object context: +0x16 slot index, +0x58->+0x19
+  flag byte) -> r0 = hand card halfword at slot+2 (chip ID) or 0xFFFF; flags clobbered.'
+details: Starts with r4 = 0xFFFF as the default return. If the byte at [r5+0x58]+0x19 is nonzero, or the
+  object's first collision-flag word (via object_getFlag) has bit 0x1000 set, it skips the lookup and
+  returns 0xFFFF. Otherwise it reads the slot index from [r5+0x16], gets that hand entry from the hand
+  array at 0x20349C0 (0x50-byte strides) via getBattleHandAddr_8010018, and returns the halfword at offset
+  +2, which in the battle hand layout is the chip ID. The 0xFFFF sentinel and the 0x1000 flag check suggest
+  cases where the object has no usable chip queued. r5 is not set inside this routine, so it relies on
+  a caller/dispatcher convention establishing the object context in r5.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'default 0xFFFF loaded first: ldr r4, dword_802DED0 // =0xffff; skip path on flag byte: ldr
+    r1,[r5,#0x58]; ldrb r1,[r1,#0x19]; tst r1,r1; bne; skip path on 0x1000 flag bit: bl object_getFlag;
+    tst r0,off_802DED4(=0x1000); hand lookup: ldrb r0,[r5,#0x16]; bl getBattleHandAddr_8010018; ldrh r4,[r0,#2];
+    hand base 0x20349C0 / 0x50 strides per getBattleHandAddr_8010018 known summary'
+  refs:
+  - bn6f/asm/asm03_0.s:16803
+  - 0x08010018 getBattleHandAddr_8010018
+  - 0x0801A166 object_getFlag
+  reproduce: python3 tools/asmcat.py 0x0802DEAE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- exact meaning of the +0x58->+0x19 byte and the 0x1000 object flag
+- which halfword of the hand entry (+2) is definitively the chip ID — no caller is known to confirm use
+  of the return value
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_802DEAE -> battle_getObjectHandCardId
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802DEAE

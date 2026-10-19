@@ -1,0 +1,48 @@
+name: battle_setBeastOutAttackDamage
+address: '0x0801206E'
+kind: function
+status: probable
+summary: Sets up a Beast Out attack's parameters and computes its damage from the attacker's alliance-scaled
+  beast power table entry.
+interface: (r0 unused/scratch; uses r5 = attacker battle object, r7 = AI attack vars) -> writes oAIAttackVars_Damage
+  (scaled beast power-Atk) and oAIAttackVars_ExtraDamage = 0x8A; no return value
+details: First calls somethingWriteChipParams_80126E4 with r0=0x48, likely installing the base chip/attack
+  parameters (id 0x48) for this attack. It then loads the attacker's alliance/team byte from the battle
+  object at r5 and passes index 0x14 with battle_beastPwrAtk_addScaledBaseFromIndex_8010D04, which looks
+  up a 2-byte base value at byte_80212D4 + 2*idx (entry 0x14), forwards it to sub_8012642 for scaling
+  by alliance, and returns the final damage. That result is stored into oAIAttackVars_Damage at r7, and
+  a fixed extra-damage value of 0x8A is written into oAIAttackVars_ExtraDamage. The use of the beast power
+  table and the alliance scaling strongly ties this to Beast Out (Falzar/Gregar) damage calculation for
+  an AI-driven attack.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl loc_80126EA with r0=0x48 installs chip params before damage setup (asm line 3-4); ldrb r1,[r5,#oBattleObject_Alliance]
+    + battle_beastPwrAtk_addScaledBaseFromIndex_8010D04 with idx=0x14 scales damage by alliance (asm lines
+    6-8); strh r0,[r7,#oAIAttackVars_Damage] stores the scaled result as the attack''s damage (asm line
+    9); strh #0x8a,[r7,#oAIAttackVars_ExtraDamage] sets a fixed 0x8A extra-damage constant (asm lines
+    10-11)'
+  refs:
+  - bn6f/asm/asm00_2.s:7303
+  - 0x08010D04 battle_beastPwrAtk_addScaledBaseFromIndex_8010D04
+  - 0x080126EA somethingWriteChipParams_80126E4
+  reproduce: python3 tools/asmcat.py 0x0801206E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- No known callers, so which attack/behavior invokes this is unconfirmed
+- What sub_8012642's scaling formula does with the alliance byte
+- Exact meaning of the chip-param id 0x48 and the fixed 0x8A extra-damage constant
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_801206E -> battle_setBeastOutAttackDamage
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_801206E

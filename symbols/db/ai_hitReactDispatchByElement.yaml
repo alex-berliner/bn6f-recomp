@@ -1,0 +1,49 @@
+name: ai_hitReactDispatchByElement
+address: '0x080EDAE0'
+kind: function
+status: probable
+summary: 'AI behavior step: reacts to being hit by dispatching on the hit''s element, then conditionally
+  performs a chip attack.'
+interface: (r7 = AI data block of the acting battle object) -> r0 = destroyed; tail-dispatches through
+  a per-element handler table, may call ai_useChipAttack(r1=0, r2=0).
+details: Loads the hit-element field from the object's AI attack vars at [r7,#oAIAttackVars_HitElement]
+  and uses it to index a 3-entry handler table (off_80EDB08), invoking the handler with the classic 'mov
+  lr, pc; bx r1' THUMB dispatch. After the handler returns, it reads the AI-data flag at offset 0x44 via
+  GetAIData_Unk_44_Flag and tests it against mask 0x8600 (bits 9, 10, 15); if any set, it calls ai_useChipAttack
+  with r1 = r2 = 0, i.e. triggering the AI's chip attack with default/empty attack variables. One of the
+  three handlers is ai_attackSpawnFrontPillarRegion, so the element-dependent reaction spawns a front-row
+  pillar attack; the other two handlers (sub_80EDB14, sub_80EDC78) are unrenamed. No caller is known,
+  so the owning enemy and trigger context are inferred only from the callees.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r7,#oAIAttackVars_HitElement]; ldr r1,[r1,r0]; mov lr,pc; bx r1 — element-indexed handler
+    dispatch (off_80EDB08 table); bl GetAIData_Unk_44_Flag; tst r0,r1 with dword_80EDB04 = 0x8600 — gate
+    on AI-data flag bits 9/10/15; beq skip then mov r1,#0; mov r2,#0; bl ai_useChipAttack — conditionally
+    fires the AI chip attack with zeroed attack vars; table entry .word ai_attackSpawnFrontPillarRegion+1
+    — one element's reaction is a front-pillar-region attack
+  refs:
+  - bn6f/asm/asm31.s:116628
+  - 0x0800FFFE GetAIData_Unk_44_Flag
+  - 0x0801056A ai_useChipAttack
+  reproduce: python3 tools/asmcat.py 0x080EDAE0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- Which enemy's AI script invokes this (no caller known) and in what context (on-hit tick vs. periodic).
+- What sub_80EDB14 and sub_80EDC78 (the other two element handlers) actually do.
+- The meaning of the 0x8600 bit mask tested against the offset-0x44 AI flag, and what r1/r2=0 means for
+  ai_useChipAttack in this call.
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80EDAE0 -> ai_hitReactDispatchByElement
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EDAE0

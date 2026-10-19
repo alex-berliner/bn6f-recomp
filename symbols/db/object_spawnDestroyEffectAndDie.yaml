@@ -1,0 +1,47 @@
+name: object_spawnDestroyEffectAndDie
+address: '0x080DA956'
+kind: function
+status: probable
+summary: 'Kills the battle object at r5: spawns an effect (type 0) at its position offset 10 units, clears
+  its collision region, and marks it destroyed.'
+interface: (r5 = battle object, implicitly; no args in r0-r3) -> r0 = spawned effect object pointer (from
+  spawn wrapper); sets object state to CUR_STATE_DESTROY
+details: Loads three consecutive words from r5+0x34 (likely the object's position/coordinate triple) and
+  adds 0xA<<16 (10.0 in fixed point) to the third word, presumably a y-offset so the effect appears lower
+  on the sprite. It then calls spawn_t1_0x0_EffectObject, which spawns a type-4 battle object with effect
+  type 0 (likely the standard destruction puff/explosion). After spawning, object_clearCollisionRegion
+  removes the object from collision detection, and it stores CUR_STATE_DESTROY into r5's CurStateActionPhaseAndPhaseInitialized
+  field, ending the object's normal behavior. The r5 usage means it is a per-object helper, not a standalone
+  routine, and it uses no other fields.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldmia from r5+0x34 plus r3 += 0xA<<16 feeds position data into the effect spawn (asm lines 2-7);
+    bl spawn_t1_0x0_EffectObject spawns the type-0 effect object before death; bl object_clearCollisionRegion
+    removes collision so the dying object cannot be hit; str CUR_STATE_DESTROY into oBattleObject_CurStateActionPhaseAndPhaseInitialized
+    is the canonical destroy transition
+  refs:
+  - bn6f/asm/asm31.s:75222
+  - 0x0801A074 object_clearCollisionRegion
+  - 0x080E05F6 spawn_t1_0x0_EffectObject
+  reproduce: python3 tools/asmcat.py 0x080DA956
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- No known callers, so the exact object type and whether effect type 0 is specifically a death/explosion
+  animation is inferred only from the destroy state write
+- Which of the three words at +0x34 is x/y/z and the exact meaning of the +10 fixed-point offset needs
+  confirmation from a caller or the object struct layout
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DA956 -> object_spawnDestroyEffectAndDie
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DA956

@@ -1,0 +1,49 @@
+name: ai_attackStepTeleportToTarget
+address: '0x08100ACC'
+kind: function
+status: probable
+summary: AI attack step that instantly relocates the attacking object to the target panel, pauses 2 frames,
+  then applies the hit element
+interface: () -> void; reads r7 = AI attack vars struct, r5 = battle object; no args or return
+details: This is a state-machine step for an AI-driven attack, keyed off oAIAttackVars_AttackElement in
+  r7. On entry with AttackElement == 0 (first invocation), it latches element 4 into AttackElement, plays
+  battle object animation 3, copies TargetPanelX/Y from the attack vars into the object's PanelX/PanelY,
+  and calls object_setCoordinatesFromPanels and object_updateCollisionPanels so the object's pixels and
+  collision data snap to that panel — i.e. the attack teleports/relocates the enemy onto its target. It
+  sets StepTimer = 2 and returns. On subsequent invocations it decrements StepTimer; once it expires it
+  restores CurAnim to 0 (idle) and writes 8 into oAIAttackVars_HitElement, which the following attack
+  steps presumably consume to resolve the hit.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst+bne gates one-time setup vs countdown (asm 0x8100AD0-0x8100AD6);
+    strb TargetPanelX/Y -> oBattleObject_PanelX/Y then bl object_setCoordinatesFromPanels / object_updateCollisionPanels
+    (0x8100AE0-0x8100AEA); mov r0,#2; strh [r7,#oAIAttackVars_StepTimer] arms a 2-frame delay (0x8100AEC);
+    timer expiry: strb #0 -> CurAnim, strh #8 -> oAIAttackVars_HitElement (0x8100AF2-0x8100B00); r5/r7
+    pair and field names (oAIAttackVars_*, oBattleObject_*) match the battle AI attack-var pattern used
+    by sibling attack steps'
+  refs:
+  - bn6f/asm/asm31.s:156186
+  - 0x0800E29C object_setCoordinatesFromPanels
+  - 0x0801A04C object_updateCollisionPanels
+  reproduce: python3 tools/asmcat.py 0x08100ACC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- Which attack(s) use this step (no known caller), so the meaning of element 4 vs HitElement 8 is unconfirmed
+- What animation 3 represents on this object type
+- Whether the relocation is a teleport (e.g. Shaker-like move) or a normal fast step, and which enemy/virus
+  behavior table dispatches here
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8100ACC -> ai_attackStepTeleportToTarget
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8100ACC

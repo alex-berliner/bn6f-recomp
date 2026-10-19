@@ -1,0 +1,50 @@
+name: battle_claimTypedPanelForAlliance
+address: '0x080BAA4C'
+kind: function
+status: probable
+summary: If the panel under a battle object has one of that object's alliance's special terrain types,
+  reassigns that panel's alliance with a short timer.
+interface: (r5 = battle object, preserved) -> r0 = destroyed; loops r4 = 0..3 over table entries and r6
+  = 1..3 over alliance values, calling the panel check per combination
+details: For the object in r5, it indexes a byte table at off_80BAA84 by (Alliance<<2)+r4, giving four
+  candidate panel-type values per alliance (bytes 05 04 03 02 for alliance 0, 02 03 04 05 for alliance
+  1, i.e. terrain types 2-5). Each candidate value is passed with r6 (1..3) and the object's alliance
+  byte to object_checkPanelTypeMatchesValue_800D618, which tests the panel the object stands on. On a
+  match it calls object_setPanelAllianceTimerShort to claim/reown the panel with a short timer and stops
+  the inner loop; otherwise r6 advances through 1..3. The outer loop tries all four terrain entries, so
+  the function effectively converts any of a set of special panel types under the object to a new alliance
+  temporarily. The table lives in the literal pool itself (the .word byte_2030405 is really the byte run
+  05 04 03 02).
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r1,r0] with r0=(Alliance<<2)+r4 indexes the 4-bytes-per-alliance table at off_80BAA84;
+    table bytes are 05 04 03 02 / 02 03 04 05, i.e. panel-type values 2-5 in reverse order per alliance;
+    bl object_checkPanelTypeMatchesValue_800D618 passes table value, r6 (1..3) and the object's alliance;
+    match path does bl object_setPanelAllianceTimerShort then breaks both loop levels via loc_80BAA78;
+    single known caller sub_80BA8D0 is itself unnamed, so the gameplay trigger is not confirmed
+  refs:
+  - bn6f/asm/asm31.s:5550
+  - 0x080BA8D0 sub_80BA8D0
+  - 0x0800D618 object_checkPanelTypeMatchesValue_800D618
+  - 0x0800CC44 object_setPanelAllianceTimerShort
+  reproduce: python3 tools/asmcat.py 0x080BAA4C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- exact meaning of r6 (1..3) in the check callee - new alliance value vs object slot index
+- which battle effect/chip or object script calls sub_80BA8D0 and when
+- precise panel-type numbering for values 2-5 in BN6 terrain
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BAA4C -> battle_claimTypedPanelForAlliance
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BAA4C

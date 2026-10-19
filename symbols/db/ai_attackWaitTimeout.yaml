@@ -1,0 +1,46 @@
+name: ai_attackWaitTimeout
+address: '0x080FC9A2'
+kind: function
+status: probable
+summary: AI attack-state handler that waits AttackDuration frames, then clears a scratch word and exits
+  the attack state
+interface: (r0 = ScratchVar pointer via r7->oAIAttackVars_ScratchVar; r7 = AI attack vars struct) -> r0
+  = status from callees; no meaningful return flags
+details: Uses r7 as a struct of AI attack variables. First entry (AttackElement == 0) sets AttackElement
+  = 4 and copies AttackDuration into StepTimer to arm a frame countdown. Each later call decrements StepTimer
+  and returns while it is still positive. When it hits zero, it passes oAIAttackVars_ScratchVar (a pointer
+  stored in the struct) to clearWordIfNonNull, which writes 0 through it only if non-null — cancelling/clearing
+  some external flag or object reference — and then calls object_exitAttackState to return the entity
+  to a non-attacking state. Element value 4 presumably denotes a 'wait/none' attack kind.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst; sets it to 4 and copies AttackDuration into
+    StepTimer on first entry (arm phase); loc_80FC9B4: decrements StepTimer and bgt-loops while still
+    counting down; bl clearWordIfNonNull with r0 from oAIAttackVars_ScratchVar zeroes an external word
+    when the timer expires; bl object_exitAttackState immediately after the clear, ending the attack state;
+    no callers known; function is a per-frame AI attack-state step keyed off the oAIAttackVars struct'
+  refs:
+  - bn6f/asm/asm31.s:147554
+  - 0x080FCF9C clearWordIfNonNull
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x080FC9A2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- what the word pointed to by oAIAttackVars_ScratchVar represents (pending object pointer, flag, or charge
+  state) — needs a caller or the writer of ScratchVar
+- which enemies/bosses use attack element 4 and why AttackDuration is copied only on the first pass
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80FC9A2 -> ai_attackWaitTimeout
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FC9A2

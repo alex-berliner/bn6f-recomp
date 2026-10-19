@@ -1,0 +1,51 @@
+name: object_releaseLinkAndMove
+address: '0x080CBF54'
+kind: function
+status: probable
+summary: If the object's linked partner pointer (+0x4C, minus 0x60) matches r5, unlinks it and kicks off
+  a move toward stored coords, returning true; otherwise returns false.
+interface: (r0 = battle object, r5 = candidate partner pointer) -> r0 = 1 if the +0x4C link matched r5
+  and the move/state change was performed, else 0; clobbered per bl calls
+details: Reads the 32-bit pointer at object+0x4C, subtracts 0x60 (so the link points 0x60 bytes into some
+  other structure), and compares against r5; on mismatch it just returns 0. On match it writes 0x3C to
+  halfword +0x20 (likely a command/state id), 4 to halfword +0xA (likely a speed or step value), zeroes
+  the +0x4C pointer itself, and stores 0 at the linked structure's base (its +0x60), breaking the two-way
+  reference. It then clears flag bit 0x40 via object_clearFlag and sets the CURRENTLY_MOVING bit via object_setFlag1
+  on the same object. Finally it copies bytes +0x12 and +0x13 into +0x14 and +0x15, apparently latching
+  current values (probably panel/x-y coords) as the movement destination before the move starts.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldr r2,[r0,#0x4c]; sub r2,#0x60; cmp r2,r5; bne loc_80CBF88 — the whole action is gated on
+    the +0x4C link matching r5; strh #0x3C,[r0,#0x20] and strh #4,[r0,#0xa] — sets a command/state word
+    and a small numeric value (speed-like); str r1(0),[r0,#0x4c] and str r1(0),[r2,#0x60] — zeroes both
+    sides of the cross-object link; object_clearFlag(0x40) then object_setFlag1(1<<OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT)
+    — transitions the object into a moving state; ldrb/strb +0x12,+0x13 -> +0x14,+0x15 and return 1 vs
+    return 0 — latches coords as destination and reports whether the trigger fired'
+  refs:
+  - bn6f/asm/asm31.s:43651
+  - 0x0801A15C object_clearFlag
+  - 0x0801A152 object_setFlag1
+  reproduce: python3 tools/asmcat.py 0x080CBF54
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- No callers are known, so the meaning of r5 (partner object? expected pointer?) and who sets +0x4C to
+  point 0x60 bytes into another structure is unverified
+- The semantics of halfword +0x20 = 0x3C, halfword +0xA = 4, flags 0x40, and bytes +0x12/+0x13 vs +0x14/+0x15
+  need confirmation from the movement/state code that consumes them
+- Whether this belongs to a specific battle object type (tethered/homing entity) requires finding the
+  caller or the writer of +0x4C
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CBF54 -> object_releaseLinkAndMove
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CBF54

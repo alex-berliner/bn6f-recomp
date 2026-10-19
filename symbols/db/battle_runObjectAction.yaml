@@ -1,0 +1,45 @@
+name: battle_runObjectAction
+address: '0x080E6E74'
+kind: function
+status: probable
+summary: 'Per-frame battle object action dispatcher: ends/destroys the object when the battle is over,
+  skips during time-stop, otherwise calls the handler for the object''s current action.'
+interface: (r5 = battle object, no args) -> r0 = handler return; destroys object (state = CUR_STATE_DESTROY)
+  if battle over
+details: 'Standard object step thunk: if battle_isBattleOver returns nonzero it stores CUR_STATE_DESTROY
+  into the object''s combined state/phase field at r5+oBattleObject_CurStateActionPhaseAndPhaseInitialized.
+  Otherwise, if battle_isTimeStop is set it returns without acting. Otherwise it loads a handler pointer
+  from a table at off_80E6E9C indexed by r5+oBattleObject_CurAction and calls it via ''mov lr,pc; bx r1''
+  (ARM caller/Thumb callee trick). The table here has only one entry, sub_80E6EA0, so this instance''s
+  object type has a single action. r5 must be set up by the caller per the engine''s object-pointer convention.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl battle_isBattleOver + 'mov r0,#CUR_STATE_DESTROY; str r0,[r5,...]' handles battle end by
+    destroying the object (asm lines 2-9); bl battle_isTimeStop; bne locret returns early while time is
+    stopped (asm lines 4-5); 'ldrb r0,[r5,#oBattleObject_CurAction]; ldr r1,[r1,r0]; mov lr,pc; bx r1'
+    dispatches to an action-handler table indexed by the object's action (asm lines 7-11); off_80E6E9C
+    table contains a single word sub_80E6EA0+1, the one action handler for this object (data at end)
+  refs:
+  - bn6f/asm/asm31.s:102261
+  - 0x0800A18E battle_isBattleOver
+  - 0x0800A098 battle_isTimeStop
+  reproduce: python3 tools/asmcat.py 0x080E6E74
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- What object type uses this step function (no callers known) — r5 source would confirm the structure
+- What sub_80E6EA0 (the sole action handler) does
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E6E74 -> battle_runObjectAction
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E6E74

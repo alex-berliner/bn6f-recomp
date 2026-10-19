@@ -1,0 +1,50 @@
+name: ai_attackTwoPanelsAheadOfTarget
+address: '0x081010A0'
+kind: function
+status: probable
+summary: AI attack routine that hits the panel in front of the target plus the one above it, for two vertically
+  stacked tiles.
+interface: (r0-r3 unused? struct in r7) -> none; r7 = AI attack vars {TargetPanelX, TargetPanelY, InitFlag,
+  AiDifficultyTier, Damage}
+details: Loops twice (r6 = 0..1). Each pass computes x = TargetPanelX + object_getFrontDirection() (one
+  column toward the object's facing side) and y = TargetPanelY - 1 + r6, i.e. the target's row and the
+  row above it, and skips the hit if object_isValidPanel rejects the tile. For each valid panel it calls
+  sub_80D6EB0 with the (x, y) coords, InitFlag in r2, and a packed value 0x1E00 | AiDifficultyTier, loading
+  Damage from the struct into r6 around the call (5th-argument convention for that callee). The 0x1E00
+  constant looks like an attack/element id packed with the difficulty tier into one halfword-style argument.
+  InitFlag being forwarded suggests sub_80D6EB0 both initializes and fires the attack object at the given
+  panel.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'loop bound cmp r6,#2 / ble with y = TargetPanelY-1+r6: exactly two stacked rows are hit; bl
+    object_getFrontDirection then add r0,r0,r1(TargetPanelX): x offset one panel in facing direction;
+    bl object_isValidPanel with beq skip: per-panel bounds check before acting; r2=[InitFlag], r4=[AiDifficultyTier]|0x1E00,
+    ldr r6,[Damage] around bl sub_80D6EB0: damage/attack spawn call carrying struct fields; all fields
+    named oAIAttackVars_* on r7: this is an AI-controlled attack setup block'
+  refs:
+  - bn6f/asm/asm31.s:157061
+  - 0x08100B72 sub_8100B72
+  - 0x0800E2CA object_getFrontDirection
+  - 0x0800CC72 object_isValidPanel
+  - 0x080D6EB0 sub_80D6EB0
+  reproduce: python3 tools/asmcat.py 0x081010A0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- sub_80D6EB0 is unknown, so whether it spawns a projectile, a direct-hit attack, or an obstacle is unconfirmed
+- meaning of the 0x1E00 constant (attack id? element?) and why it is OR'd with the difficulty tier
+- caller sub_8100B72 would confirm which enemy/attack this belongs to and what the struct base r7 is
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81010A0 -> ai_attackTwoPanelsAheadOfTarget
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81010A0

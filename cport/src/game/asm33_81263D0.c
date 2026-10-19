@@ -1492,10 +1492,10 @@ static bool event_flag_set_sub_8127638(u32 flag_page, u32 flag) {
     return !ZERO_FLAG();
 }
 
-/* register form: calls sub_81276E4 outside this file, which has no typed C interface yet */
+/* register form: calls battle_getCurNaviTableEntry outside this file, which has no typed C interface yet */
 static u32 get_secondary_navi_table(u32 start_index) {
     R4 = start_index;
-    GUEST_CALL(sub_81276E4);
+    GUEST_CALL(battle_getCurNaviTableEntry);
     return R0;
 }
 

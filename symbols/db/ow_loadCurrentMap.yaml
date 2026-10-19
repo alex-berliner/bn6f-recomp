@@ -1,0 +1,48 @@
+name: ow_loadCurrentMap
+address: '0x0804CAE0'
+kind: function
+status: probable
+summary: Prepares a map (re)load for the current map group/number and kicks off the map setup routine.
+interface: () -> r0 = map id from lookup; clobbers r0-r3, lr; clears bits 0x2800 of RenderInfo halfword
+details: First it zero-fills the 8-byte scratch struct at toolkit->Unk2009740 (zeroFill_e2009740), then
+  reads the current map group and map number from the game state struct and passes them to map_lookupMapIdByGroupAndNumber_8001708,
+  which fetches the map's table entry and starts the map load. It then clears bits 0x2800 (bits 11 and
+  13) of the halfword at the start of the RenderInfo struct, presumably status flags such as 'map/buffer
+  dirty' or 'transition active' so the fresh map is treated as clean. Finally it does the ARM-mode call
+  idiom (mov lr, pc; bx r0) into sub_8006A5C, so the callee is ARM code that presumably continues map
+  setup/rendering before returning via its own bx lr. No caller is known, so whether this is an initial
+  map load, a reload, or a transition step is unconfirmed.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl zeroFill_e2009740 resets toolkit->Unk2009740 scratch struct at entry; ldrb r0,[r1,#oGameState_MapGroup]
+    / ldrb r1,[...MapNumber] then bl map_lookupMapIdByGroupAndNumber_8001708 fetches and loads the current
+    map; ldr r2,dword_804CB9C (=0x2800); bic/strh clears two flag bits in RenderInfo halfword; ldr r0,off_804CB08
+    (sub_8006A5C+1) with mov lr,pc; bx r0 is a Thumb->ARM tail call, so sub_8006A5C runs in ARM mode;
+    no other memory access in the routine; all state comes from toolkit->GameStatePtr and toolkit->RenderInfoPtr
+  refs:
+  - bn6f/asm/asm03_2.s:11119
+  - 0x08001708 map_lookupMapIdByGroupAndNumber_8001708
+  - 0x08001820 zeroFill_e2009740
+  - 0x08006A5C sub_8006A5C
+  reproduce: python3 tools/asmcat.py 0x0804CAE0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- What sub_8006A5C (ARM) does — likely the map build/draw step, which would confirm this is the map load
+  entry
+- Meaning of the 0x2800 RenderInfo flag bits
+- Who calls this routine and from what game context (map transition vs initial load)
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_804CAE0 -> ow_loadCurrentMap
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_804CAE0

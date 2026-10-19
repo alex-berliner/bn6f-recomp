@@ -1,0 +1,40 @@
+name: battle_updateTimedDespawn
+address: '0x080E792A'
+kind: function
+status: probable
+summary: Battle-object update that despawns the object when its Timer expires or when the battle ends.
+interface: (r5 = battle object) -> r0 = clobbered by calls; no meaningful return
+details: Standard per-frame object update. It first checks battle_isBattleOver; if the battle is over
+  it frees the object right away via object_freeMemory. Otherwise it decrements the object's oBattleObject_Timer
+  field (halfword at r5) each frame, and when the decremented value reaches 0 (bgt fails) it also frees
+  the object. The object pointer lives in r5, consistent with the battle-engine update-callback convention,
+  and no other fields are touched.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl battle_isBattleOver / tst r0,r0 / bne loc_80E793C frees immediately when battle is over;
+    ldrh r0,[r5,#oBattleObject_Timer]; sub r0,#1; strh ...; bgt locret — counts Timer down and falls through
+    to free at 0; both paths converge on bl object_freeMemory, releasing the object slot; no other fields
+    accessed — pure lifetime/update behavior with no rendering or logic
+  refs:
+  - bn6f/asm/asm31.s:103781
+  - 0x0800A18E battle_isBattleOver
+  - 0x08003458 object_freeMemory
+  reproduce: python3 tools/asmcat.py 0x080E792A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- No known caller, so the object type and typical Timer values it's used with are unknown
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E792A -> battle_updateTimedDespawn
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E792A

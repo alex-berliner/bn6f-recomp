@@ -1,0 +1,49 @@
+name: npc_showStateDialogue
+address: '0x08129E28'
+kind: function
+status: probable
+summary: Shows one of a handful of text-script dialogue lines chosen by an NPC object's state byte, unless
+  the screen is fading.
+interface: (r0/r4? caller context, r5 = NPC/object pointer) -> r0 = script-run result (clobbered); writes
+  0x1C to [r5+3]
+details: If IsScreenFadeActive says a fade is running, the function does nothing (skips straight to return).
+  Otherwise it takes the byte at [r5+0x22] masked to 0xFF and uses it as an index into a 12-entry table
+  at byte_8129E48, whose entries are script indices into text archive eTextScript201BA20 (0x50-0x53 for
+  indices 1-3 and 9, 0 for most others, so many states map to 'no line' / default line 0). The chosen
+  index is passed to the chatbox wrapper chatbox_runScript_803FD9C_on_eTextScript201BA20, which queues
+  that dialogue for display. Afterwards it stores 0x1C (28) into [r5+3], almost certainly a state or cooldown/timer
+  field on the same object so the NPC does not immediately re-trigger. The r5-based access implies the
+  caller set up r5 (likely via a per-object entry stub) with the NPC/object struct pointer.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl IsScreenFadeActive + beq locret_8129E42: whole body is skipped while a screen fade is active;
+    ldrh r0,[r5,#0x22]; and r0,#0xFF; ldrb r0,[r1,r0] with r1=byte_8129E48: state byte selects a script
+    index from a small table; bl chatbox_runScript_803FD9C_on_eTextScript201BA20: runs archive eTextScript201BA20
+    at the table-selected index; table bytes 0x50,0x51,0x52,0x53 (with 0 elsewhere) show only a few distinct
+    lines are ever chosen; mov r0,#0x1C; strb r0,[r5,#3]: sets an object state/timer field after speaking'
+  refs:
+  - bn6f/asm/asm33.s:14096
+  - 0x08132280 chatbox_runScript_803FD9C_on_eTextScript201BA20
+  - 0x080062F8 IsScreenFadeActive
+  reproduce: python3 tools/asmcat.py 0x08129E28
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- No callers known, so the identity of the r5 object struct and the meaning of field 0x3 (state vs. timer)
+  are unconfirmed
+- Which NPC(s) use this and what states 1-3/9 represent (e.g. different moods or quest progress) would
+  need caller context
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8129E28 -> npc_showStateDialogue
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8129E28

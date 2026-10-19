@@ -1,0 +1,51 @@
+name: sprite_storePlayTimeTableValue
+address: '0x080DA9A2'
+kind: function
+status: probable
+summary: Breaks the global play-time counter down via the clock helper and stores a table-selected 32-bit
+  value (indexed by one breakdown component) into a sprite struct's field 0x2c.
+interface: (no meaningful args; play time read globally) -> table word in r0 passed to sprite_setUnk0x2c;
+  r1 whatever breakPlayTimeIntoHMSF left, flags clobbered
+details: Calls clock_breakPlayTimeIntoHMSF_8000DE0, which splits the play-time frame counter into h/m/s/frames
+  via three BIOS divisions; only its r3 output is used here, shifted left by 2 as a byte offset and used
+  to load a word from the nearby table byte_80DA9B8. The table's visible entries (little-endian words)
+  are 0x07F8<<16, 0x0BF8<<16, 0x0DF8<<16, 0x0EF8<<16, 0x0F78<<16, 0x0FB8<<16, 0x0FD8<<16, 0x0FE8<<16,
+  0x0FF0<<16 — a sequence rising toward 0x0FF8 with halving increments (+0x400, +0x200, +0x100, ...),
+  i.e. an asymptotic ramp, suggesting a time-driven intensity/rate rather than a per-frame animation frame.
+  The loaded word is then handed to sprite_setUnk0x2c, which stores it into field 0x2c of the sprite struct
+  selected via the object header's sprite-ID nibble. No caller is known, so which sprite/entity receives
+  this and why it scales with play time is unconfirmed.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'asm: bl clock_breakPlayTimeIntoHMSF_8000DE0; only r3 of its outputs is consumed (lsl r3,r3,#2);
+    asm: ldr r0,off_80DA9B4 / ldr r0,[r0,r3] — table lookup into byte_80DA9B8 (9 words visible, rising
+    with halving deltas toward 0x0FF8<<16); asm: bl sprite_setUnk0x2c immediately after the load — table
+    value is the stored payload; callee summary: sprite_setUnk0x2c stores a 32-bit value into sprite field
+    0x2c keyed by the sprite-ID nibble; byte_80DA9B8 is local data referenced only by off_80DA9B4 in this
+    function; no callers known'
+  refs:
+  - bn6f/asm/asm31.s:75272
+  - 0x08000DE0 clock_breakPlayTimeIntoHMSF_8000DE0
+  - 0x08002FA6 sprite_setUnk0x2c
+  reproduce: python3 tools/asmcat.py 0x080DA9A2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- Which component breakPlayTimeIntoHMSF returns in r3 (frames/seconds/hours?) — that decides what the
+  table index means
+- Whether byte_80DA9B8 has more entries beyond the 9 dumped (index range of r3)
+- What sprite field 0x2c controls (fade/blink rate? accumulated effect?) and which object invokes this
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DA9A2 -> sprite_storePlayTimeTableValue
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DA9A2

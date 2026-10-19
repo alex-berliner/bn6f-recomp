@@ -1,0 +1,45 @@
+name: battle_spawnEStructIfSlotEmpty
+address: '0x08130290'
+kind: function
+status: probable
+summary: Refills battle eStruct slot 0 from a fixed spawn table whenever slot 0 is currently unused.
+interface: (r0 = unused/0 passed through, r1 = unused) -> r0 = spawned eStruct or 0; flags NZ from slot-0
+  in-use byte
+details: 'It checks eStruct slot 0 via getStructFrom2008450(0): if the in-use flag byte is nonzero, it
+  returns immediately. Otherwise it loads the fixed table pointer byte_812F04C, clears r1 (popped 0 =
+  slot 0) and sets r2=0x40, then calls battle_spawnEStructRecordsAtPosition to spawn the table''s records
+  into slot 0 and place them on the field. This is effectively a ''keep slot 0 occupied'' respawn pattern
+  — the caller (sub_8130464) presumably invokes it periodically so a persistent field object (obstacle/trap)
+  re-spawns as soon as its slot frees up.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl getStructFrom2008450 with r0=r1=0 checks slot 0's in-use flag; bne locret skips spawn when
+    occupied; pop {r1} recovers the pushed 0 so slot=0 is passed to the spawn call; ldr r0, off_81302AC
+    loads fixed table byte_812F04C as the record source; bl battle_spawnEStructRecordsAtPosition with
+    r2=0x40 spawns/positions the records
+  refs:
+  - bn6f/asm/asm36.s:306
+  - 0x08130464 sub_8130464
+  - 0x081302D0 battle_spawnEStructRecordsAtPosition
+  - 0x080466C4 getStructFrom2008450
+  reproduce: python3 tools/asmcat.py 0x08130290
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- What byte_812F04C's table contains (which eStruct/obstacle it spawns)
+- What sub_8130464 (the only caller) does and how often it calls this
+- Meaning of the r2=0x40 argument to the spawn callee
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8130290 -> battle_spawnEStructIfSlotEmpty
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8130290

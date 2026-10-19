@@ -1,0 +1,48 @@
+name: object_renderSpritePair
+address: '0x0802AEB8'
+kind: function
+status: probable
+summary: 'Per-frame render for an object: picks a variant field based on an event flag, runs two sprite-setup
+  calls, then queues an OAM entry.'
+interface: (r5 = object pointer) -> void; uses r0 as scratch/arg
+details: Reads bit 0x80 of eFlags2009F38 via chatbox_mask_eFlags2009F38; when the bit is clear it stores
+  the byte 0x24 into [r5,#1], an object field that likely selects a sprite/tile variant (the flag presumably
+  switches between two looks). It then calls sub_802B15C twice with r0=0x10 and 0x11, which appear to
+  be sprite/part indices, and finally calls object_queueOamEntryFromBase, which queues one OAM entry for
+  the object at r5 using the fixed tile base 0xB370 and fixed attribute constants. r5 is not set up inside
+  the routine, so the caller must place the object pointer there (typical for this engine's per-object
+  render dispatch). The two sub_802B15C calls with consecutive indices suggest drawing two component sprites
+  (0x10 and 0x11) before the main queueing step.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl chatbox_mask_eFlags2009F38 with r0=0x80 tests flag bit 7 of eFlags2009F38; strb 0x24,[r5,#1]
+    only when the flag bit is clear — a variant/animation byte on the object; two calls to sub_802B15C
+    with 0x10 then 0x11 look like paired sprite-part indices; final bl object_queueOamEntryFromBase queues
+    an OAM entry for the object in r5, marking this as a render routine
+  refs:
+  - bn6f/asm/asm03_0.s:10460
+  - 0x08045F3C chatbox_mask_eFlags2009F38
+  - 0x0802B270 object_queueOamEntryFromBase
+  - 0x0802B15C sub_802B15C
+  reproduce: python3 tools/asmcat.py 0x0802AEB8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- sub_802B15C is unknown — it may draw/queue the two sub-sprites or set object fields, which would sharpen
+  the summary
+- the meaning of the 0x24 value written to [r5,#1] (tile index? animation frame? palette?)
+- no callers are known, so r5's producer and the object structure layout are unconfirmed
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_802AEB8 -> object_renderSpritePair
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802AEB8

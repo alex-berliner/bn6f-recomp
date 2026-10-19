@@ -1,0 +1,49 @@
+name: object_updateCollisionByAction
+address: '0x080DAA86'
+kind: function
+status: probable
+summary: 'Per-frame collision update wrapper for a battle object: tears down its collision data, runs
+  an action-specific collision rebuild chosen by the object''s current action, then re-presents the collision
+  data.'
+interface: (r5 = battle object pointer, global; no register args) -> void; clobbers lr via mov lr,pc/bx
+  dispatch
+details: 'Reads the object from r5 (the engine''s current-object pattern), calls object_removeCollisionData
+  to tear down last frame''s collision, then indexes off_80DAAB4 with oBattleObject_CurAction and tail-dispatches
+  to one of two handlers (sub_80DAABC or sub_80DAB22) via the mov lr,pc/bx trick. After the handler returns
+  it calls object_presentCollisionData to make the new collision live. The second table entry (sub_80DAB22)
+  is a fallback/simple path: it clears the collision region, clears bit 1 of the object''s flag byte at
+  [r5], and stores 8 to the word at +8. It is essentially the standard ''remove -> rebuild by state ->
+  present'' collision tick for an object with two action states.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl object_removeCollisionData before dispatch mirrors the remove/present pairing with the trailing
+    bl object_presentCollisionData; ldrb r0,[r5,#oBattleObject_CurAction]; ldr r1,[r1,r0]; mov lr,pc;
+    bx r1 dispatches on the object''s current action; off_80DAAB4 holds exactly two handler pointers,
+    so the object has two action states; sub_80DAB22 path: bl object_clearCollisionRegion, bic bit 1 of
+    [r5], mov r0,#8; str r0,[r5,#8]; r5 used without being set implies the battle engine''s current-object
+    register convention shared with the callees'
+  refs:
+  - bn6f/asm/asm31.s:75393
+  - 0x0801A018 object_presentCollisionData
+  - 0x0801A00E object_removeCollisionData
+  reproduce: python3 tools/asmcat.py 0x080DAA86
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- No callers known, so which entity uses this and when is unclear
+- The first handler sub_80DAABC is not shown; it would confirm which object/action pair this serves
+- Exact meaning of bit 1 of the flag byte and the value 8 stored at +8 is unverified
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DAA86 -> object_updateCollisionByAction
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DAA86

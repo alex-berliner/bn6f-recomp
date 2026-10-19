@@ -1,0 +1,45 @@
+name: battle_cycleSpritePalette
+address: '0x08016AD0'
+kind: function
+status: probable
+summary: Each frame, picks one of 26 palette slots from a cycle table and applies it to the current object's
+  sprite, producing a palette-cycling animation driven by the battle-state counter.
+interface: () -> r0 = void; reads battle state field Unk_40 as counter, writes object sprite palette index
+details: 'Reads a counter from the battle state (field Unk_40), then executes SWI 6 (BIOS Div) with r1=0x1a=26:
+  quotient in r0, remainder in r1. The remainder (counter % 26) indexes a 26-byte table at unk_2020000
+  (the data runs exactly from 0x8016AE8 to the next function at 0x8016B02, zero-filled after the listed
+  22 bytes). Each table entry is a palette slot number (mostly 2, with a run of 3s at entries 4-13), which
+  is passed to sprite_setPalette to set byte 4 of the object''s sprite struct. Because the remainder advances
+  by 1 each increment of the counter, the palette steps through the 26-entry sequence repeatedly — a palette
+  flash/cycle effect.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mov r1, #0x1a; svc 6 = BIOS Div: r1 becomes counter % 26 (asm lines 3-4); ldrb r0, [r0,r1]
+    indexes the 26-byte unk_2020000 table with that remainder; bl sprite_setPalette stores the fetched
+    byte as the sprite palette index; table occupies exactly 0x8016AE8-0x8016B02, matching the divisor
+    0x1a and holding palette slots 2 and 3; callee battle_getStateUnk40_800A704 supplies the per-frame
+    counter driving the cycle'
+  refs:
+  - bn6f/asm/asm00_2.s:17908
+  - 0x0800A704 battle_getStateUnk40_800A704
+  - 0x08002D80 sprite_setPalette
+  reproduce: python3 tools/asmcat.py 0x08016AD0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- which battle object(s) call this (no caller found), i.e. what visual entity flashes
+- exact meaning of battle state field Unk_40 (assumed a frame counter)
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8016AD0 -> battle_cycleSpritePalette
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8016AD0

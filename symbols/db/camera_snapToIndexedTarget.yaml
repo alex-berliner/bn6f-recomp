@@ -1,0 +1,43 @@
+name: camera_snapToIndexedTarget
+address: '0x0808FBC0'
+kind: function
+status: probable
+summary: Snaps the camera to the X/Y position of the entry selected by a mode byte in a global struct,
+  with Z fixed at 0x40.
+interface: (no args) -> r0 = 0; sets camera 0 position and a byte/word in its struct
+details: Loads a struct pointer from the global table at off_808FCE0 (-> off_808F5D4). First calls camera_writeUnk03_80301b2(0,
+  ...) which writes byte 3 and word 0x14 into camera 0's struct. It then reads a byte at struct+0xC, doubles
+  it (lsl r3,#1) to index a pair of signed halfwords at struct+0x40+2*idx (X) and struct+0x46+2*idx (Y),
+  and calls SetCameraXYZ(x<<16, y<<16, 0x40<<16), so Z is always 0x40. Returns 0 in r0. The +0xC byte
+  acts as a selector (likely an object/slot index or camera mode) into a per-slot coordinate table.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldr r5, off_808FCE0 + ldr r5,[r5]: target struct comes from a global pointer table; bl camera_writeUnk03_80301b2
+    with r0=0 initializes/resets camera 0 fields before positioning; ldrb r3,[r5,#0xc]; lsl r3,#1; ldrsh
+    [r5,r1=0x40+r3] / 0x46+r3: X and Y read from a halfword table indexed by the +0xC byte; lsl r0/r1,#0x10
+    and r2=0x40<<16 before bl SetCameraXYZ: fixed-point X/Y from struct, constant Z=0x40; No other math
+    or branches: sole effect is positioning camera 0'
+  refs:
+  - bn6f/asm/asm25.s:481
+  - 0x080301DC SetCameraXYZ
+  - 0x080301B2 camera_writeUnk03_14_80301b2
+  reproduce: python3 tools/asmcat.py 0x0808FBC0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- What structure off_808F5D4 points to and what the +0xC byte selects (object slot? camera mode?)
+- Which code paths call this function (none known), so when in the game it runs is unconfirmed
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_808FBC0 -> camera_snapToIndexedTarget
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_808FBC0

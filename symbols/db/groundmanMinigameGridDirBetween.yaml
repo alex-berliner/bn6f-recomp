@@ -1,0 +1,46 @@
+name: groundmanMinigameGridDirBetween
+address: '0x08143EB0'
+kind: function
+status: probable
+summary: Returns an 8-way direction index pointing from one Groundman-minigame grid cell to another.
+interface: (r0 = packed grid coords of point A, r1 = packed grid coords of point B) -> r0 = direction
+  0-7 from A to B; flags clobbered
+details: 'Converts both grid coordinate pairs to map coordinates via ConvertGroundmanMinigameGridCoordsToMapCoords,
+  forms the delta B-A, and passes it to calcAngle_800117C (BIOS ArcTan2) to get a 0-255 angle byte. It
+  then quantizes that angle into eight 32-degree sectors: (angle+0x10)>>4 rounds, mask 0xF wraps, >>1
+  halves to 0-7, and the -1 with mask 7 shifts the sector boundaries so the result is a dir enum where
+  sector 0 starts at angle 16, i.e. dir 7 is centered on angle 0. The rounding (+0x10 before shifting)
+  means diagonal-ish angles snap to the nearest cardinal/diagonal direction. Input points appear to be
+  packed in single registers since only r0/r1 (and the saved r1 in r4) are forwarded to the converter.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'both points run through ConvertGroundmanMinigameGridCoordsToMapCoords before use (bl at offsets
+    2 and 8); delta r0-=r2, r1=r3-r1 then bl calcAngle_800117C computes the A->B angle; add #0x10 / lsr
+    #4 / and 0xF / lsr #1 / sub #1 / and 7 quantizes the angle byte into 8 rounded sectors with a one-index
+    shift; sole caller sub_8092F1E is undocumented, but the callees'' known summaries fully match this
+    pipeline'
+  refs:
+  - bn6f/asm/asm37_1.s:4136
+  - 0x08092F1E sub_8092F1E
+  - 0x0800117C calcAngle_800117C
+  - 0x08143DBC ConvertGroundmanMinigameGridCoordsToMapCoords
+  reproduce: python3 tools/asmcat.py 0x08143EB0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- exact bit packing of the grid-coordinate inputs (converter's r0 format not shown)
+- which of the 8 direction values corresponds to which compass direction in the minigame's dir enum
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8143EB0 -> groundmanMinigameGridDirBetween
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8143EB0

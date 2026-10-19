@@ -1,0 +1,46 @@
+name: init_tableEntry
+address: '0x0802D070'
+kind: function
+status: probable
+summary: Resets one 0x20-byte record of the IWRAM table at 0x203C4A0 to its default state.
+interface: (r0 = entry index) -> r0 = 0 (also holds entry pointer before final pop); no flags of interest
+details: 'Calls getTableEntryPtr32_802D064 to obtain the address of the 0x20-byte entry selected by r0
+  in the IWRAM array at byte_203C4A0, then ZeroFillByWord clears all 0x20 bytes. It then writes defaults:
+  byte +0x10 = 0 (likely an active/valid flag cleared) and bytes +0xd and +0xf = 0x64 (100, likely default
+  numeric values such as a counter or percentage). The entry pointer is kept on the stack across the zero-fill
+  and popped into r3 for the field writes. The function returns 0 in r0 as a byproduct of the register
+  reuse. Which game system this table belongs to is not visible from this function alone.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl getTableEntryPtr32_802D064 — entry selected by index in the byte_203C4A0 IWRAM table; mov
+    r1, #0x20 / bl ZeroFillByWord — whole 0x20-byte entry is zeroed; strb r0, [r3,#0x10] with r0=0 — flag
+    field at +0x10 cleared after the fill; mov r0, #0x64 / strb [r3,#0xd] / strb [r3,#0xf] — two fields
+    reset to 100; both callers sub_8039DB4 and sub_8039F78 are undocumented, so no caller context confirms
+    the table''s role'
+  refs:
+  - bn6f/asm/asm03_0.s:14877
+  - 0x08039DB4 sub_8039DB4
+  - 0x08039F78 sub_8039F78
+  - 0x080008E0 ZeroFillByWord
+  - 0x0802D064 getTableEntryPtr32_802D064
+  reproduce: python3 tools/asmcat.py 0x0802D070
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- Which game subsystem owns the 0x203C4A0 entry table (callers sub_8039DB4/sub_8039F78 are unnamed)
+- Meaning of the byte fields +0xd and +0xf initialized to 100, and of the +0x10 flag
+- Whether r0=0 on return is an intentional status value or incidental
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_802D070 -> init_tableEntry
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802D070

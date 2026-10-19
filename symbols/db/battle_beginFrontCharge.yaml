@@ -1,0 +1,50 @@
+name: battle_beginFrontCharge
+address: '0x080DB828'
+kind: function
+status: probable
+summary: Starts a battle object dashing forward at 6px/frame toward the front-most panel and sets its
+  Timer to the number of frames the dash will take.
+interface: (r5 = battle object) -> sets oBattleObject_XVelocity = facing*0x60000 (or 0) and oBattleObject_Timer
+  = arrival frames; r0 = Timer value
+details: Reads the object's alliance via object_getFrontDirection and stores facing*0x60000 (6.0 in 16.16
+  fixed-point) into XVelocity. If the object's PanelX already equals the far column ahead (6 for alliance
+  0, 1 otherwise), it zeroes XVelocity and Timer instead. Otherwise it converts target column with row
+  1 to screen coordinates, takes the absolute X delta, and divides it by 0x60000 using SWI 6 (Div) to
+  compute the frame count, stored in oBattleObject_Timer. So the dash self-terminates when the timer expires;
+  Timer doubles as a countdown to impact. The hardcoded row argument 1 and the far-column values (6/1)
+  are quirks worth confirming against the caller.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mul r0,r4 with r4=0x60000 then str to oBattleObject_XVelocity: 6px/frame fixed-point dash speed;
+    tst alliance / cmp PanelX with 6 or 1, then zero XVelocity+Timer: stop condition at farthest front
+    column; bl object_getCoordinatesForPanels then sub from oBattleObject_X: distance to target panel
+    in pixels; svc 6 (Div) of |delta| by 0x60000, result stored to oBattleObject_Timer: frames until arrival;
+    callee object_getFrontDirection gives the alliance-based +/-1 facing multiplier used for velocity
+    sign'
+  refs:
+  - bn6f/asm/asm31.s:77242
+  - 0x080DB75C sub_80DB75C
+  - 0x0800E276 object_getCoordinatesForPanels
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x080DB828
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- Caller sub_80DB75C is unknown — which enemy/AI state triggers this and whether the Timer triggers a
+  collision/attack on expiry
+- Why row 1 is hardcoded in the panel-to-coordinate conversion, and whether column 6/1 are absolute columns
+  or side-relative
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DB828 -> battle_beginFrontCharge
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DB828

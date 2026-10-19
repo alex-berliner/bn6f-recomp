@@ -1,0 +1,53 @@
+name: sprite_renderCharGlyph
+address: '0x08137F5C'
+kind: function
+status: probable
+summary: Clears a sprite/OAM work buffer and rebuilds it from a single character code looked up in a table,
+  then finalizes it into OAM entries.
+interface: (r0-r4 undefined on entry, caller sets r5 = object/struct; reads [r5+0x24] as a 16-bit char/index)
+  -> r0 = undefined; buffer unk_2017C68 rebuilt
+details: First zeroes 0x54 halfwords (0xA8 bytes, ~21 OAM slots) at unk_2017C68 via ZeroFillByHalfword,
+  so the buffer holds sprite/OAM data. It then reads a halfword at [r5+0x24] of the caller's struct (likely
+  a character/emote/tile index) and calls sub_8137F8C with that index, the table unk_201CF00, the buffer,
+  and constants 7 and 0 — consistent with expanding one glyph/index into the buffer using fixed width/params.
+  Finally sub_813808C is called with (0x1A, 4, buffer), plausibly committing the built entries to OAM
+  with a base tile/palette. Both callers (battle_initRoundState, submenu cursor handler) pass an object-like
+  struct in r5, so this is a shared draw-one-glyph helper used when initializing or refreshing a displayed
+  sprite.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ZeroFillByHalfword(unk_2017C68, 0x54) clears an OAM-sized work buffer before rebuilding it;
+    sub_8137F8C([r5+0x24], unk_201CF00, unk_2017C68, 7, 0) expands a char/index from a lookup table into
+    the buffer; sub_813808C(0x1A, 4, unk_2017C68) commits the buffer, args look like tile/palette constants;
+    called from battle_initRoundState and submenu_handleConfirmCancelCursorInput, both with r5 pointing
+    at a struct whose +0x24 holds the index; no callee summaries known, so the OAM interpretation is inferred
+    from the buffer size and clear-then-fill-then-commit pattern
+  refs:
+  - bn6f/asm/asm36.s:16741
+  - 0x081378D4 battle_initRoundState
+  - 0x081379A0 submenu_handleConfirmCancelCursorInput
+  - 0x08137A1C sub_8137A1C
+  - 0x080008C0 ZeroFillByHalfword
+  - 0x08137F8C sub_8137F8C
+  - 0x0813808C sub_813808C
+  reproduce: python3 tools/asmcat.py 0x08137F5C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- what unk_2017C68 actually holds (OAM entries vs tile data) and what unk_201CF00 is a table of
+- meaning of the constants 7 and 0 passed to sub_8137F8C and 0x1A/4 passed to sub_813808C
+- what field +0x24 of the caller's struct contains (character code, emote id, or tile index)
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8137F5C -> sprite_renderCharGlyph
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8137F5C

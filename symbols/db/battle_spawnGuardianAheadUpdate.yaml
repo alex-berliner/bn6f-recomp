@@ -1,0 +1,51 @@
+name: battle_spawnGuardianAheadUpdate
+address: '0x080E679C'
+kind: function
+status: probable
+summary: Per-frame update for a battle object that, once, spawns its guardian (kind 0x7d) on the panel
+  directly in front of it if that panel's state passes a flag check, then waits 30 frames before ending
+  the action.
+interface: (r0-r3 scratch, r5 = battle object ptr) -> void; sets oBattleObject_Timer/PhaseInitialized/CurAction
+  on r5, return value unused
+details: On first run (PhaseInitialized == 0) it calls object_getFrontDirection to get +1/-1 facing, computes
+  the front panel (PanelX+dir, PanelY), and tests it with object_checkPanelParameters using must-set mask
+  0x10 (r2) and must-clear mask 0x0F880080 (r3, from dword_80E6808) — i.e. the panel must be in a specific
+  state (e.g. normal, not hole/broken). If the check passes it calls spawnGuardianObject, forwarding the
+  object's Element, Params, and Damage field plus Z16Save (added to the damage argument, likely lifetime/counter),
+  with r5 as the object to register. Either way it sets Timer=0x1E and PhaseInitialized=4, so subsequent
+  frames just decrement Timer; when it reaches 0 it sets CurAction=0xC and clears phase, handing control
+  back to the object's action dispatcher. Note the spawn is skipped silently on failure but the 30-frame
+  wait still runs, so the action ends without a guardian if the front panel is invalid.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb PhaseInitialized + bne 80E67D4: classic first-run guard of a phased object update; object_getFrontDirection
+    + add to PanelX/PanelY then object_checkPanelParameters with masks 0x10 / dword_80E6808: tests the
+    panel the object faces; spawnGuardianObject call passes Element, Params, Damage+Z16Save from r5 —
+    matches that callee''s documented guardian-spawn signature; Timer=0x1E then countdown to 0 setting
+    CurAction=0xC and phase 0: 30-frame stall then action handoff'
+  refs:
+  - bn6f/asm/asm31.s:101376
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0800E2CA object_getFrontDirection
+  - 0x080D4FA6 spawnGuardianObject
+  reproduce: python3 tools/asmcat.py 0x080E679C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- Exact meaning of the panel flag masks 0x10 (r2) and 0x0F880080 (r3) — which panel states are accepted/rejected
+- Which chip/enemy action dispatches CurAction value that leads here, to name the specific guardian variant
+- Whether Z16Save added to the damage field is a lifetime/tile-count for the guardian
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E679C -> battle_spawnGuardianAheadUpdate
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E679C

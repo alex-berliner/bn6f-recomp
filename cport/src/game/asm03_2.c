@@ -2381,7 +2381,7 @@ Next sub_80497EE(void) {
 /* sub_8049808(r2, r4, r5, r10, lr): jump-table dispatcher.
  *   Calls submenu_chipSelectCursorMove(0); if it returns nonzero, the result indexes a small Thumb
  *   function-pointer table (dword_804982C: entry 1 = handleExitSubmenu_803AA24, 2 = battleObj_dispatchSubstate_803AA40,
- *   3 = sub_803ABF4, 4 = sub_803AB6C, 5 = sub_803AB94) which is tail-called with
+ *   3 = sub_803ABF4, 4 = battle_advanceMoveStep, 5 = sub_803AB94) which is tail-called with
  *   LR = 0x0804981C (the fallthrough into the default cleanup). On zero it skips
  *   the table, runs sub_803A7B8, then sub_803BC7C(0), and returns to the caller. */
 Next sub_8049808(void) {
@@ -2396,7 +2396,7 @@ Next sub_8049808(void) {
             case 1: GUEST_CALL(handleExitSubmenu_803AA24); break;
             case 2: GUEST_CALL(battleObj_dispatchSubstate_803AA40); break;
             case 3: GUEST_CALL(sub_803ABF4); break;
-            case 4: GUEST_CALL(sub_803AB6C); break;
+            case 4: GUEST_CALL(battle_advanceMoveStep); break;
             case 5: GUEST_CALL(sub_803AB94); break;
         }
     }
@@ -2543,7 +2543,7 @@ Next sub_80498F8(void) {
         case 2: GUEST_CALL(chipSelect_dispatchState_803AD20); break;
         case 3: GUEST_CALL(sub_803AED8);                    break;
         case 4: GUEST_CALL(sub_803AE50);                    break;
-        case 5: GUEST_CALL(sub_803AE78);                    break;
+        case 5: GUEST_CALL(submenu_moveCursorBack);                    break;
         }
     }
 
@@ -3160,7 +3160,7 @@ Next sub_8049FA4(void) {
         case 1: GUEST_CALL(handleExitSubmenu_803AA24);          break;
         case 2: GUEST_CALL(battleObj_dispatchSubstate_803AA40); break;
         case 3: GUEST_CALL(sub_803ABF4);                        break;
-        case 4: GUEST_CALL(sub_803AB6C);                        break;
+        case 4: GUEST_CALL(battle_advanceMoveStep);                        break;
         case 5: GUEST_CALL(sub_803AB94);                        break;
         }
     }

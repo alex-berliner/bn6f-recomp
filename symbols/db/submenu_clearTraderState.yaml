@@ -1,0 +1,46 @@
+name: submenu_clearTraderState
+address: '0x0804A2E8'
+kind: function
+status: probable
+summary: Zero-fills the chip-trader submenu state buffers (the 0x58-byte block at 0x200AC80 and the toolkit's
+  0x80-byte submenu structure) before the BugFrag chip trader opens.
+interface: () -> r0,r1 clobbered; zeroes eS200AC80 (0x58 bytes) and toolkit->SubmenuPtr buffer (0x80 bytes)
+details: 'The function takes no real arguments: it zero-fills the static 0x58-byte buffer eS200AC80, then
+  reads the toolkit pointer from register r10, loads its SubmenuPtr field, and zero-fills the 0x80-byte
+  submenu structure it points to. ZeroFillByWord is used for both fills, leaving r0/r1 intact between
+  calls. This resets menu cursor/scroll/list state so the BugFrag chip-trader submenu starts fresh; the
+  caller ow_bugfragTraderExchange invokes it right before deducting 10 bugfrags and opening the ChipTrader
+  text script. The r5 push is vestigial — r5 is never used.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldr r0, off_804A300 (=eS200AC80) + mov r1,#0x58 then bl ZeroFillByWord: clears a fixed 0x58-byte
+    buffer; mov r0,r10; ldr r0,[r0,#oToolkit_SubmenuPtr]; mov r1,#0x80; bl ZeroFillByWord: clears the
+    toolkit''s submenu structure; only non-trivial caller 0x0809A078 ow_bugfragTraderExchange runs this
+    immediately before opening the ChipTrader script; callee ZeroFillByWord is the standard word-wise
+    zero-fill, matching an init/clear role'
+  refs:
+  - bn6f/asm/asm03_2.s:7326
+  - 0x0809A078 ow_bugfragTraderExchange
+  - 0x0804A2CC sub_804A2CC
+  - 0x080008E0 ZeroFillByWord
+  reproduce: python3 tools/asmcat.py 0x0804A2E8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- exact field layout of the 0x80-byte submenu structure and of eS200AC80 (which fields are cursor/scroll/entries)
+  is unknown
+- what sub_804A2CC does and whether it confirms or broadens the 'clear submenu before opening' interpretation
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_804A2E8 -> submenu_clearTraderState
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_804A2E8

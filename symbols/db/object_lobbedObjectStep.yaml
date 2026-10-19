@@ -1,0 +1,45 @@
+name: object_lobbedObjectStep
+address: '0x080DA662'
+kind: function
+status: probable
+summary: 'Per-frame step for the lobbed-object battle object: marks it destroyed when the battle is over,
+  otherwise dispatches to its action handler unless time is stopped.'
+interface: (r5 = battle object pointer, no stack args) -> r0 = destroyed? no; updates oBattleObject_CurState
+  or calls action handler
+details: Reads the object through r5, the standard battle-object register. If battle_isBattleOver says
+  the battle should end, it stores CUR_STATE_DESTROY into oBattleObject_CurState so the object gets torn
+  down. Otherwise it checks battle_isTimeStop and does nothing while time is frozen. When neither holds,
+  it uses oBattleObject_CurAction as an index into table off_80DA688 and tail-calls the selected handler;
+  the table currently has a single entry, object_lobbedObjectUpdate, meaning this object has only one
+  action/state. This is the standard object-update dispatch pattern used for battle objects with an action-indexed
+  handler table.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bne loc_80DA67E after battle_isBattleOver stores CUR_STATE_DESTROY to [r5,#oBattleObject_CurState];
+    bne locret_80DA682 after battle_isTimeStop skips the update during time-stop; ldrb r0,[r5,#oBattleObject_CurAction];
+    ldr r1,[r1,r0]; bx r1 dispatches on action index via off_80DA688; off_80DA688 contains exactly one
+    pointer, object_lobbedObjectUpdate+1, identifying the object type
+  refs:
+  - bn6f/asm/asm31.s:74803
+  - 0x0800A18E battle_isBattleOver
+  - 0x0800A098 battle_isTimeStop
+  reproduce: python3 tools/asmcat.py 0x080DA662
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- which spawner/npc creates this object and what it represents in-game (lobbed bomb/trap?), and whether
+  other action entries were ever intended in the table
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DA662 -> object_lobbedObjectStep
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DA662

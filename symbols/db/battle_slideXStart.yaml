@@ -1,0 +1,45 @@
+name: battle_slideXStart
+address: '0x080BBAEC'
+kind: function
+status: probable
+summary: 'Initializes a battle object''s slide across the field: sets its X velocity toward the far edge
+  and a Timer for how long the slide lasts.'
+interface: (r5 = battle object) -> r0 = duration; writes oBattleObject_XVelocity and oBattleObject_Timer
+details: 'Calls object_getFrontDirection to get the +1/-1 facing multiplier and writes multiplier*0x40000
+  (4.0 px/frame in 16.16 fixed point) into oBattleObject_XVelocity. It then computes the distance to the
+  far edge column of the 0..7 field: 7 - PanelX for Alliance 0, else 0 - PanelX, taking the absolute value.
+  That panel count is scaled by 40 px per panel in 16.16 (r2 = 0x28 << 16 = 0x280000) and divided by the
+  velocity constant 0x40000 via SWI 6, yielding 10 frames per panel, which is stored in oBattleObject_Timer.
+  The caller battle_slideXMovePhase ticks this Timer each frame and ends the action when it expires, so
+  this function is the setup phase of the same slide movement.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl object_getFrontDirection then mul r0,r1 (=0x40000) and str to oBattleObject_XVelocity sets
+    slide speed from facing; ldrb PanelX; sub from 7 or 0 based on Alliance; neg if <0 computes signed
+    distance to far edge column; r2 = 0x28<<16 = 0x280000 (40 px/panel in 16.16) and svc 6 Div by 0x40000
+    gives 10 frames/panel stored as Timer; caller battle_slideXMovePhase is described as a per-frame slide
+    handler that ends the action on timeout, matching the Timer set here
+  refs:
+  - bn6f/asm/asm31.s:7869
+  - 0x080BBA26 battle_slideXMovePhase
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x080BBAEC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- exact game action that triggers this slide (which action IDs map to this phase) is not visible from
+  this function alone
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BBAEC -> battle_slideXStart
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BBAEC

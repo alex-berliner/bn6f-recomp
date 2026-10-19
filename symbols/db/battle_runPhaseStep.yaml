@@ -1,0 +1,45 @@
+name: battle_runPhaseStep
+address: '0x080DA266'
+kind: function
+status: probable
+summary: 'Per-frame battle state-machine step: skips when time-stopped or an action change was just applied,
+  otherwise dispatches to the handler for the battle object''s current phase.'
+interface: (r5 = battle object) -> r0 = destroyed; returns early if time-stop active or pending action
+  change was applied
+details: Calls battle_isTimeStop and returns if it reports the battle frozen (bit 2 of battle flags).
+  Then calls battle_objectApplyPendingActionChange; if it returns nonzero, a pending action change was
+  applied (phase forced to 0) and this frame ends. Otherwise it reads oBattleObject_CurPhase from r5 and
+  indexes a two-entry thumb handler table at off_80DA288 (phase 0 = sub_80DA290, phase 1 = sub_80DA2D8),
+  calling it via mov lr, pc / bx r1 so the callee returns to this caller. The r5 base suggests the caller
+  holds the battle object in a fixed register.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl battle_isTimeStop + tst/bne locret: returns without stepping when battle is frozen; bl battle_objectApplyPendingActionChange
+    + cmp/bne: a just-applied action change ends the frame; ldrb r0,[r5,#oBattleObject_CurPhase]; ldr
+    r1,[r1,r0]: dispatch table indexed by current phase; off_80DA288 has exactly two entries (sub_80DA290,
+    sub_80DA2D8), so only phases 0 and 1 exist; mov lr, pc / bx r1: thumb-branch to per-phase handler
+    with return into this function'
+  refs:
+  - bn6f/asm/asm31.s:74239
+  - 0x0800A098 battle_isTimeStop
+  - 0x080DA448 battle_objectApplyPendingActionChange
+  reproduce: python3 tools/asmcat.py 0x080DA266
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- What sub_80DA290 and sub_80DA2D8 do would confirm the phase semantics (likely phase 0 = normal step,
+  phase 1 = action/action-change step)
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DA266 -> battle_runPhaseStep
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DA266

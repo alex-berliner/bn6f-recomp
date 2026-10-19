@@ -1,0 +1,47 @@
+name: battle_bassChipEvAnimEndCheck
+address: '0x080C3A98'
+kind: function
+status: probable
+summary: Per-frame update for a battle object that plays animation 0xA and, once it reaches a frame flagged
+  with attribute 0x80, switches to animation 0xC, starts a 24-frame timer, clears its extra vars, and
+  advances to phase 4.
+interface: (r0 = scratch/callee arg, r5 = battle object ptr) -> r0 = destroyed; updates oBattleObject
+  fields on r5
+details: On the first invocation it sets oBattleObject_PhaseInitialized=1 and starts oBattleObject_CurAnim=0xA.
+  Every call it queries sprite_getFrameParameters for the current frame's attribute byte and tests bit
+  0x80, which acts as an animation-end/signal flag. When set, it switches CurAnim to 0xC, loads oBattleObject_Timer2
+  with 24 (a follow-up delay), zero-fills the object's ExtraVars area (BASS_CHIP_EV_UNK_PANEL_COUNTS_SIZE
+  halfwords, likely per-panel counters), and writes phase 4 into oBattleObject_CurPhaseAndPhaseInitialized.
+  When the flag is clear it just returns, letting the animation keep playing. The use of ExtraVars plus
+  the enum name ties this object to the Bass chip event; caller and full phase table not seen.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb PhaseInitialized / strb 0xA to CurAnim: one-time anim 0xA start on first run; bl sprite_getFrameParameters
+    + tst r0,#0x80: waits for the frame attribute end-flag; strb 0xC to CurAnim and strh 24 to Timer2:
+    starts next anim with a 24-frame delay; ZeroFillByHalfword over ExtraVars with BASS_CHIP_EV_UNK_PANEL_COUNTS_SIZE
+    names the subsystem; strh 4 to CurPhaseAndPhaseInitialized: hands control to phase 4 of the object''s
+    state machine'
+  refs:
+  - bn6f/asm/asm31.s:25599
+  - 0x08002DEA sprite_getFrameParameters
+  - 0x080008C0 ZeroFillByHalfword
+  reproduce: python3 tools/asmcat.py 0x080C3A98
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- No caller found, so the object ID / spawn context (which Bass chip event entity uses this) is unconfirmed
+- Exact meaning of ExtraVars halfword counters and what phase 4 does next
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C3A98 -> battle_bassChipEvAnimEndCheck
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C3A98

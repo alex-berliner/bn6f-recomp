@@ -1,0 +1,49 @@
+name: battle_spawnPairedVariantObject
+address: '0x080CDC7C'
+kind: function
+status: probable
+summary: Spawns battle object 0x4B at given panel/alliance, attaches a per-variant 8-byte data record,
+  optionally links it to a partner object, and initializes it as a field battle object.
+interface: (r0 = panelX, r1 = panelY, r2 = alliance, r3 = param1, r4 = extra spawn arg, r6 = damage/flags
+  word, r7 = partner object ptr) -> r0 = new battleObject or unchanged on spawn failure
+details: 'Thin wrapper over object_spawnType3: it stashes the caller''s r0-r3, passes object ID 0x4B (plus
+  r1-r4) to the spawner, and on success (flags from the bl, checked via beq after pop) fills the new object.
+  It writes caller r0/r1/r2 into oBattleObject_PanelX/PanelY/Alliance and r6 into oBattleObject_DamageAndStaminaDamageCounterDisabler.
+  oBattleObject_Param1 (set by the spawner) is multiplied by 8 and used to index table byte_80CD8AC, whose
+  record pointer goes into oBattleObject_ExtraVars. If Param1 > 1 it cross-links objects: r7 goes into
+  oBattleObject_RelatedObject1Ptr and the new object pointer is written back through r7. It then sets
+  oObjectHeader_Flags bit 0x10 and calls setFieldBattleObject_800F614 with (object, alliance, record[5]).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mov r0, #0x4b + bl object_spawnType3: spawns fixed-type battle object 75; strb r1/r2/r3 to
+    oBattleObject_PanelX/PanelY/Alliance right after pop {r1-r5} shift caller args into place; ldrb r3,[Param1];
+    mul by 8; add off_80CDD40 (=byte_80CD8AC); str to oBattleObject_ExtraVars: variant record table; cmp
+    r1,#1 / ble skips str r7,[RelatedObject1Ptr] + str r0,[r7]: only variants >1 get a partner link; bl
+    setFieldBattleObject_800F614 with alliance in r1 and record byte 5 (ldr r2,[r3,#5]) in r2'
+  refs:
+  - bn6f/asm/asm31.s:47541
+  - 0x080E3290 sub_80E3290
+  - 0x08003358 object_spawnType3
+  - 0x0800F614 setFieldBattleObject_800F614
+  reproduce: python3 tools/asmcat.py 0x080CDC7C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- What battle entity object ID 0x4B is in game terms (no known caller summary or data naming for byte_80CD8AC)
+- Meaning of the 8 bytes in each byte_80CD8AC record beyond offset 5 passed to setFieldBattleObject
+- What r4 contributes to the spawn and what r6's value represents
+- Why the partner link only applies when Param1 > 1 (which two-object setup this models)
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CDC7C -> battle_spawnPairedVariantObject
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CDC7C

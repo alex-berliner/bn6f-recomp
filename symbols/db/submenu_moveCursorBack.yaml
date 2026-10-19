@@ -1,0 +1,47 @@
+name: submenu_moveCursorBack
+address: '0x0803AE78'
+kind: function
+status: probable
+summary: Menu input handler that moves the selection back one entry, cleans up the entry buffer, and plays
+  the cursor-move sound effect.
+interface: (r5 = menu/screen state struct) -> decrements u8 at r5+0x11, clears u8 at r5+0x13, plays sound;
+  no return value used
+details: Reads the byte at [r5+0x11] (a selected-index or entry counter) and, if it is already 0, returns
+  without doing anything — so the action is a no-op at the first entry. Otherwise it stores the decremented
+  value back, then calls sub_803C0BE with r0=0x11 and r1=0x90, whose job is to walk a 2-byte-per-entry
+  list to its 0xE6 terminator and rewrite trailing free slots (0x00 or 0xE5) as 0xE5 0xE5 padding — i.e.
+  trimming/padding the entry text buffer after the selection shrinks. It then zeroes the byte at [r5+0x13]
+  (a sub-state/flag) and plays SOUND_CUR_MOVE_80, the cursor-movement effect. The guard-then-decrement
+  plus cursor sound is consistent with an 'up/previous' or 'back' handler in a list menu. The exact meaning
+  of the callee's r0=0x11 argument is not visible from this call site.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r5,#0x11]; sub r0,#1; blt locret — early-out with no sound when the counter is already
+    0; strb r0,[r5,#0x11] then bl sub_803C0BE with r0=0x11,r1=0x90 — buffer fix-up tied to the same field;
+    callee sub_803C0BE pads trailing 0x00/0xE5 slots with 0xE5 pairs up to a 0xE6 terminator — list/text
+    buffer trimming; bl PlaySoundEffect with SOUND_CUR_MOVE_80 — cursor movement sound confirms menu navigation
+    context
+  refs:
+  - bn6f/asm/asm03_1_1.s:4641
+  - 0x080005CC PlaySoundEffect
+  - 0x0803C0BE sub_803C0BE
+  reproduce: python3 tools/asmcat.py 0x0803AE78
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- No callers known, so which menu/screen owns the r5 struct (offsets 0x11/0x13) is unconfirmed
+- What sub_803C0BE's r0=0x11 and r1=0x90 arguments mean (offset vs. ID, and length vs. capacity)
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803AE78 -> submenu_moveCursorBack
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803AE78

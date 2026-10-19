@@ -1,0 +1,44 @@
+name: battle_collectRewardRarityMask
+address: '0x080AAA1C'
+kind: function
+status: probable
+summary: Builds a 4-bit mask of which reward-entry category values (top 2 bits of each of the 20 halfwords)
+  appear in an enemy's battle reward table row.
+interface: (r0 = reward table row index, passed to sub_80AAE98) -> r0 = bitmask, bit n set if some entry's
+  bits 14-15 equal n; flags clobbered
+details: 'Calls sub_80AAE98 to get the base of the enemy''s 0x28-byte (20 halfword) reward table row,
+  then loops 20 times reading each halfword. Each entry''s bits 14-15 are extracted with lsr #14 and used
+  as an index (0-3) to set a bit in an accumulating mask in r0. The returned mask therefore lists which
+  of the 4 category/rarity values are used by that row''s entries, ignoring all lower bits. The reward-picker
+  caller uses this in its nonzero mode to constrain/validate the random roll over the row.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl sub_80AAE98 at entry fetches byte_80AAEA8 + index*0x28, the known 20-halfword reward row;
+    ldrh r1,[r3]; lsr r1,#0xe extracts only bits 14-15 of each entry; mov r2,#1; lsl r2,r1; orr r0,r2
+    sets bit (entry>>14) in the result mask; cmp r4,#0x14 confirms the loop covers all 20 entries of the
+    row; caller sub_80AAA3C mode!=0 runs this before rolling over the filtered count, consistent with
+    category gating
+  refs:
+  - bn6f/asm/asm29.s:11688
+  - 0x080AAA3C sub_80AAA3C
+  - 0x080AAE98 sub_80AAE98
+  reproduce: python3 tools/asmcat.py 0x080AAA1C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- Exact meaning of the 2-bit field (rarity vs. drop category) not confirmed from code
+- How the caller combines the mask with its RNG roll (bit test vs. popcount) not visible here
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80AAA1C -> battle_collectRewardRarityMask
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80AAA1C

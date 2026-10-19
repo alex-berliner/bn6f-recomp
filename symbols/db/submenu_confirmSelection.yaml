@@ -1,0 +1,48 @@
+name: submenu_confirmSelection
+address: '0x0804AB10'
+kind: function
+status: probable
+summary: 'A-button confirm handler for a menu: recomputes a 1-based page/group index, updates two state
+  bytes, runs the apply helpers and plays the menu-select sound.'
+interface: (r5 = menu state struct pointer; no r0-r3 args) -> r0 = 1 if A newly pressed else 0; writes
+  r5+0x44 and r5+0x45
+details: Calls IsButtonPressed(JOYPAD_A); on press it computes ([r5+3] >> 2) + 1, i.e. a 1-based index
+  of the block of 4 that byte 3 falls in, and stores it at r5+0x44. It then calls sub_804AB4C, copies
+  r5+0x44 into r5+0x45, calls sub_804AB6C, and plays SOUND_MENU_SELECT via PlaySoundEffect. r6 is used
+  as the boolean return and r5 is never set inside, so the caller must establish the struct pointer. The
+  two callees are unnamed but are invoked only on confirm, suggesting redraw/commit steps on the same
+  struct.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl IsButtonPressed with r0=JOYPAD_A gates the whole body; mov r6,#1 / return r6 gives the pressed
+    flag; ldrb r0,[r5,#3]; lsr r0,#2; add r0,#1; strb r0,[r5,#0x44] computes a 1-based group index; bl
+    sub_804AB4C ... bl sub_804AB6C run only inside the A-pressed branch; mov r0,#SOUND_MENU_SELECT; bl
+    PlaySoundEffect confirms a UI selection action; sole caller sub_804A3FC and menu-flavored sound/keys
+    point at a submenu handler
+  refs:
+  - bn6f/asm/asm03_2.s:8378
+  - 0x0804A3FC sub_804A3FC
+  - 0x0811F7EC IsButtonPressed
+  - 0x080005CC PlaySoundEffect
+  - 0x0804AB4C sub_804AB4C
+  reproduce: python3 tools/asmcat.py 0x0804AB10
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- 'Which menu/screen this belongs to: need sub_804A3FC (or higher callers) to identify the r5 struct and
+  the meaning of byte 3 and fields 0x44/0x45'
+- What sub_804AB4C and sub_804AB6C do (redraw vs. state commit) is unverified
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_804AB10 -> submenu_confirmSelection
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_804AB10

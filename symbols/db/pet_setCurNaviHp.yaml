@@ -1,0 +1,45 @@
+name: pet_setCurNaviHp
+address: '0x0813171C'
+kind: function
+status: probable
+summary: Writes one of three HP values (800/1000/1200) into both max-HP and current-HP fields of the navi
+  currently selected on the PET
+interface: (entry point at 0x813171C/0x8131722/0x8131728 selects HP = 800/1000/1200; r0-r3 args unused)
+  -> r0 = ?; sets stats[0x40] and stats[0x42] to the chosen halfword
+details: 'Three shared-tail entry points each load a constant (0x320, 0x3E8, 0x4B0) into r4, then call
+  GetCurPETNavi and pass its navi slot to SetNaviStats203CCE0Hword twice: once with field 0x42, once with
+  field 0x40, both receiving the same r4 value. The struct at 0x203CCE0 is the per-navi stats block; 0x40/0x42
+  being written as a pair suggests max and current HP halfwords. The values 800/1000/1200 are consistent
+  with navi base HP totals in BN6. r0 is never read, so the caller''s only input is which entry point
+  it branches to.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: off_8131748/4C/50 hold 0x320/0x3E8/0x4B0 = 800/1000/1200, loaded as the single value written;
+    each entry point ends in the shared tail calling GetCurPETNavi then SetNaviStats203CCE0Hword with
+    field 0x42 then 0x40; SetNaviStats203CCE0Hword is called with r1=0x42 and r1=0x40 on the same navi,
+    i.e. two adjacent halfword fields set to the same value; r0 is untouched by all three entry points,
+    so selection is purely by entry address
+  refs:
+  - bn6f/asm/asm36.s:3010
+  - 0x080010B6 GetCurPETNavi
+  - 0x08013874 SetNaviStats203CCE0Hword
+  reproduce: python3 tools/asmcat.py 0x0813171C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- which of fields 0x40/0x42 is max vs current HP
+- which caller invokes each entry point and why 800/1000/1200 (navi-specific base HP? patch/version variant?)
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_813171C -> pet_setCurNaviHp
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_813171C

@@ -1,0 +1,46 @@
+name: battle_objectStartDeletion
+address: '0x080CD7A0'
+kind: function
+status: probable
+summary: Once a pending-removal condition in the object's collision data is set, destroys the battle object
+  (HP to 0, collision cleared, forced to the removal action) exactly once.
+interface: (r5 = battle object) -> void; sets oBattleObject_ExtraVars, oObjectHeader_Flags bit1 cleared,
+  oBattleObject_HP=0, oBattleObject_CurAction=2, phase reset
+details: 'Uses the caller''s r5 as the battle object. If oBattleObject_ExtraVars is already nonzero it
+  exits, making the teardown one-shot. Otherwise it reads the halfword at +0x84 of oBattleObject_CollisionDataPtr;
+  only when nonzero does it act: latch ExtraVars=1, call object_clearCollisionRegion to drop the object
+  from its collision region, clear flag bit 1 in oObjectHeader_Flags, store HP=0, set oBattleObject_CurAction=2
+  (destroyed/removal state), and zero oBattleObject_CurPhaseAndPhaseInitialized. Nothing is written when
+  the collision-data trigger is 0, so it acts as a per-frame check.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: tst on [r5,#oBattleObject_ExtraVars] with bne early-exit makes the teardown one-shot (sub_80CD7A0
+    lines 2-4); trigger is halfword [r7,#0x84] of oBattleObject_CollisionDataPtr, action only when nonzero;
+    str 0 -> oBattleObject_HP and strb 2 -> oBattleObject_CurAction match an object being killed/removal
+    action; bl object_clearCollisionRegion removes the object from collision processing before the state
+    change; called from battle_objectFrameUpdate per frame, fitting a 'should this object be destroyed
+    now' check
+  refs:
+  - bn6f/asm/asm31.s:46923
+  - 0x080CD5F8 battle_objectFrameUpdate
+  - 0x0801A074 object_clearCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080CD7A0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- exact meaning of collision-data field 0x84 (which code writes it, e.g. hit or panel/terrain removal)
+- which CurAction value 2 maps to in the action jump table (destroyed vs despawn)
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CD7A0 -> battle_objectStartDeletion
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CD7A0

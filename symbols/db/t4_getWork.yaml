@@ -1,0 +1,46 @@
+name: t4_getWork
+address: '0x08130404'
+kind: function
+status: probable
+summary: Returns a pointer to the overlay's global work struct at 0x2037780.
+interface: () -> r0 = &unk_2037780; flags clobbered only by the return
+details: 'Four-instruction getter: r0 is loaded with the literal address of unk_2037780 (a fixed EWRAM
+  global) and control returns immediately, so it never dereferences or modifies the struct itself. It
+  exists purely so code in this overlay can obtain the shared work-area pointer. t4_sceneInit calls it
+  during full scene initialization, and battle_packChipEntryRecord calls it while building the 0x60-byte
+  chip-entry record at unk_202708C, suggesting that record or its header lives in/near this work struct.
+  Sibling subs 813005C/8130194/8130370/813040C call it as well, consistent with a standard per-overlay
+  accessor.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_8130404: ldr r0, off_8130408 loads .word unk_2037780 then returns — pure pointer getter,
+    no side effects; caller t4_sceneInit 0x08130084 uses the returned pointer during scene/record reset,
+    fitting a work-struct accessor; caller battle_packChipEntryRecord 0x0813068C uses it while writing
+    the chip-entry record, implying the record lives in this struct; four sibling subs (813005C, 8130194,
+    8130370, 813040C) all call it, the usual shared-global accessor pattern'
+  refs:
+  - bn6f/asm/asm36.s:509
+  - 0x0813068C battle_packChipEntryRecord
+  - 0x08130084 t4_sceneInit
+  - 0x0813005C sub_813005C
+  reproduce: python3 tools/asmcat.py 0x08130404
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- layout/field meanings of the struct at 0x2037780 are unknown (would need callers' stores/loads through
+  the returned pointer)
+- whether the prefix should be t4 or battle depends on which overlay 0x2037780 belongs to
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8130404 -> t4_getWork
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8130404

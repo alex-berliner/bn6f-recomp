@@ -1,0 +1,47 @@
+name: object_incParam3CycleCounter
+address: '0x080D3496'
+kind: function
+status: probable
+summary: Increments the battle object's Param3 counter each call and leaves flags set so callers can act
+  on every third call.
+interface: (r0-r3 clobbered then restored via stack; reads/writes [r5+oBattleObject_Param3]) -> returns
+  with Z/C flags from cmp (Param3-1)==2, r0/r1 restored to caller values
+details: Loads the byte at oBattleObject_Param3 from the object in r5, stores old+1 back, and compares
+  the old value against 2; the cmp flags survive the pop, so the caller branches on 'just reached the
+  3rd call'. Because push/pop of r0-r3 bracket the body, r0-r3 are unchanged on return — the function
+  communicates purely through the object field and flags. It is a shared 'every third tick' pacing helper
+  for the risky honey battle object's update subroutines, which likely alternate behavior (e.g. wobble
+  vs. action) on the flagged iteration. The words/bytes following the routine (dword_80D34A4..byte_80D34C0)
+  are data belonging to the neighboring honey object code, not to this helper.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb/strb on [r5,#oBattleObject_Param3] with cmp r0,#2 — a mod-3 cycle counter on the object
+    struct; push {r0-r3,lr}/pop {r0-r3,pc} brackets the body, so only Param3 and flags escape; cmp is
+    the last instruction before pop, so its flags are what the caller sees; both callers (0x080D3404,
+    0x080D343C in riskyHoneyObject_update) are update-path subroutines that would gate behavior by frame
+    count
+  refs:
+  - bn6f/asm/asm31.s:59597
+  - 0x080D3404 riskyHoneyObject_update_0x0_sub_80D3404
+  - 0x080D343C riskyHoneyObject_update_0x0_sub_80D343C
+  reproduce: python3 tools/asmcat.py 0x080D3496
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- caller bodies at 0x080D3404/0x080D343C not shown, so the exact effect of the every-3rd-call branch (animation
+  change vs. state transition) is unconfirmed
+- which animation/behaviour table (byte_80D34B4/byte_80D34C0) the callers index using the counter
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D3496 -> object_incParam3CycleCounter
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D3496

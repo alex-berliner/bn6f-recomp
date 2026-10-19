@@ -1,0 +1,51 @@
+name: sprite_queueHpGaugeEntry
+address: '0x0800AE90'
+kind: function
+status: probable
+summary: Queues a 16-byte graphics-FIFO record that draws a small HP-gauge sprite at the given screen
+  position, alternating its record type every 8 frames and playing sfx 0x91 every 16 frames.
+interface: (r0 = screen x, r1 = screen y) -> void; plays sfx 0x91 when (frame & 0xF)==0; pushes FIFO record
+  only if x+16 < 0xFF and y+16 < 0xB0; clobbers r2-r7,r6 via calls
+details: The function takes an on-screen position, bounds-checks it (x+16 must stay under 0xFF, y+16 under
+  0xB0, i.e. inside the 240x160 screen with a 16px margin) and otherwise silently returns. It packs the
+  position as ((x | 0x400000) << 16) | y — the 0x400000 flag likely marking a gauge/HUD element — into
+  a 16-byte record pushed to the render FIFO ring buffer at dword_3002180 via fifo_pushRecord16_8009FF8.
+  The record's ID is 0xD3CA or 0xD3CE, selected by bit 3 of the current frame counter (r10->CurFramePtr),
+  so the element alternates between two graphics every 8 frames, most plausibly a blinking gauge animation.
+  Independently, every 16 frames (frame & 0xF == 0) it plays sound effect 0x91, matching the caller's
+  documented 'gauge change sound' behavior.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: Both callers in battle_updateTrackedHpGauges (0x080E73A2/0x080E73C4) draw HP gauges over tracked
+    objects, matching the coordinate+sprite-queue payload; bounds checks cmp r2,#0xFF / cmp r2,#0xB0 after
+    adding 0x10 match a 240x160 screen with sprite margin; record ID = 0xd3ca + ((frame & 8) >> 1) alternates
+    0xD3CA/0xD3CE per 8-frame half-cycle (blinking); packed word (x | 0x400000)<<16 | y passed as record
+    data to fifo_pushRecord16_8009FF8; PlaySoundEffect(0x91) gated on (frame & 0xF)==0
+  refs:
+  - bn6f/asm/asm00_1.s:18152
+  - 0x080E73A2 battle_updateTrackedHpGauges
+  - 0x080E73C4 battle_updateTrackedHpGauges
+  - 0x080E23E8 sub_80E23E8
+  - 0x080005CC PlaySoundEffect
+  - 0x08009FF8 fifo_pushRecord16_8009FF8
+  reproduce: python3 tools/asmcat.py 0x0800AE90
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- what record IDs 0xD3CA/0xD3CE resolve to in the FIFO record table (exact sprite/graphic drawn)
+- whether the 0x400000 flag in the packed coordinate has a documented meaning
+- why the sound plays every 16th frame unconditionally rather than only on HP change
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_800AE90 -> sprite_queueHpGaugeEntry
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800AE90

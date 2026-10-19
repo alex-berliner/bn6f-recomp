@@ -1,0 +1,46 @@
+name: battle_pickRandomPanelXInRow
+address: '0x080E26D8'
+kind: function
+status: probable
+summary: Collects the X positions of panels in the object's row matching a mask condition, shuffles them,
+  and stores the count, yielding a random valid panel on that row.
+interface: (r0 = battle object ptr in r5; r2/r3 = panel match masks read from oBattleObject_ExtraVars+4/+8)
+  -> buffer at object+0x68 holds shuffled panel X bytes, ExtraVars+4 = number of matches; r0 destroyed
+details: Reads oBattleObject_PanelY from the object and the two panel-parameter masks from oBattleObject_ExtraVars+4
+  and +8, then loops X = 6 down to 0, calling object_checkPanelParameters(X, PanelY, maskSet, maskNotSet).
+  Each matching X is stored as (PanelY<<4)|X into the byte buffer at object+0x68. The match count is written
+  back to oBattleObject_ExtraVars+4 (reusing that field) and also used as the shuffle length for ShuffleByteList_PrimaryRNG
+  on the buffer. If no panel matched, the function returns without shuffling. X=6 is tested first and
+  presumably fails the panel check, leaving columns 0-5 effective.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: loop body calls object_checkPanelParameters with r0=column, r1=oBattleObject_PanelY, r2/r3=masks
+    from oBattleObject_ExtraVars+4/+8; strb r4,[r7,r6] with r4=(PanelY<<4)|X and r7=r5+0x68 stores matched
+    coordinates into an object-local buffer; str r6,[r5,#oBattleObject_ExtraVars+4] saves the match count
+    after the masks were already consumed; bl ShuffleByteList_PrimaryRNG(r0=buffer, r1=count) randomizes
+    the order of matched columns; callee object_checkPanelParameters is documented as returning 1/0 for
+    a panel matching all/none mask conditions
+  refs:
+  - bn6f/asm/asm31.s:92262
+  - 0x08000C72 ShuffleByteList_PrimaryRNG
+  - 0x0800CC86 object_checkPanelParameters
+  reproduce: python3 tools/asmcat.py 0x080E26D8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- No callers are known, so which object/attack uses this (e.g. an enemy that teleports or strikes a random
+  panel in a row) and the exact meaning of the two mask fields in ExtraVars are unconfirmed
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E26D8 -> battle_pickRandomPanelXInRow
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E26D8

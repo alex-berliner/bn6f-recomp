@@ -1,0 +1,44 @@
+name: ow_startWarpTransition
+address: '0x08005E86'
+kind: function
+status: probable
+summary: 'Begins a warp: remembers the previous map group and player position, fades the screen, and switches
+  the game to the warp subsystem.'
+interface: () -> void; no arguments, no return value
+details: Reads the game state via the toolkit pointer (r10). It copies oGameState_MapGroup into oGameState_LastMapGroup
+  so the previous map can be restored on exit, then calls updatePlayerGameState_800107A to stash the player's
+  X/Y/Z and facing (per its known summary, 'before a warp'). It calls SetScreenFade(0xc, 0x10) to start
+  a fade-out, then writes 0x28 to oGameState_SubsystemIndex, which routes the game loop into the cbGameState_80050EC
+  handler for that subsystem (sub_800572C), i.e. the warp/transition state.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrh/strh around oGameState_MapGroup -> oGameState_LastMapGroup saves prior map identity; bl
+    updatePlayerGameState_800107A, whose known summary says it stores player position before a warp; bl
+    SetScreenFade(0xc,0x10) starts a screen fade typical of transitions; strb #0x28 into oGameState_SubsystemIndex
+    switches to subsystem handler sub_800572C via cbGameState_80050EC'
+  refs:
+  - bn6f/asm/asm00_1.s:6194
+  - 0x08005B6E sub_8005B6E
+  - 0x0800107A updatePlayerGameState_800107A
+  - 0x08006270 SetScreenFade
+  reproduce: python3 tools/asmcat.py 0x08005E86
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- What subsystem 0x28 (sub_800572C) actually does — its handler would confirm it is the warp/dungeon transition
+  and not another fade-out state
+- What the caller sub_8005B6E checks before invoking this (warp trigger conditions)
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8005E86 -> ow_startWarpTransition
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8005E86

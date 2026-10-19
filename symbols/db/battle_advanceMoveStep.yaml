@@ -1,0 +1,47 @@
+name: battle_advanceMoveStep
+address: '0x0803AB6C'
+kind: function
+status: probable
+summary: Advances a battle object's multi-step move/animation counter each tick, playing the move sound
+  and restarting a sub-effect, and marks the object's current action done once the steps run out.
+interface: (r5 = battle object ptr, set by caller; no args) -> r0 = undefined; increments obj+0x10, clears
+  obj+0x13 when a new step starts
+details: 'Treats r5 as a battle-object structure: byte +0x10 is a step/frame counter and halfword +0x24
+  is the number of steps. If counter+1 <= +0x24 it stores the incremented counter, calls sub_803C040(0x10,
+  0x30) (meaning of the two constants unknown), clears byte +0x13 (likely a per-step flag/delay), and
+  plays sound 0x80 (the current-move sound, matching the callees'' naming). Once the counter would exceed
+  the limit it instead calls markBattleObjCurDone_803ABDC, ending the object''s current action. No known
+  callers, and r5 is never set inside the function, so the exact caller context is unconfirmed.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r4,[r5,#0x10] / ldrh r1,[r5,#0x24] / cmp+strb: step counter vs step count; bl markBattleObjCurDone_803ABDC
+    in the fall-out branch: object action completion path; bl PlaySoundEffect with 0x80 on the increment
+    path, matching CUR_MOVE sound used by markBattleObjCurDone callee; strb #0,[r5,#0x13]: per-step state
+    reset when a new step begins; sub_803C040 called with constants 0x10,0x30 — purpose unknown'
+  refs:
+  - bn6f/asm/asm03_1_1.s:4193
+  - 0x080005CC PlaySoundEffect
+  - 0x0803ABDC markBattleObjCurDone_803ABDC
+  - 0x0803C040 sub_803C040
+  reproduce: python3 tools/asmcat.py 0x0803AB6C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- No known callers, so r5's identity and when this runs are unconfirmed
+- sub_803C040(0x10,0x30) is unknown — could be an animation, timer, or palette call and would clarify
+  the step semantics
+- Meaning of byte +0x13 and whether +0x24 is a step count or a duration
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803AB6C -> battle_advanceMoveStep
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803AB6C

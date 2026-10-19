@@ -3172,7 +3172,7 @@ Next battleObject_runAIScript_802DE5C(void) {
  * Allocate (and zero-fill) a fresh entry in the shared entry pool for this
  * object's alliance, then — if battle flag 0x40 is set — initialize it as an
  * entry of kind 3 anchored at the object's panel x position, and notify
- * sub_802E07C about the alliance.
+ * battle_initAllianceEntryDefaults about the alliance.
  * The entry pointer is also left in r4 for callers that inspect it. */
 Next battle_setupAllianceEntryKind3_802DFC8(void) {
     u32 alliance = LD8(R5 + oBattleObject_Alliance);
@@ -3195,7 +3195,7 @@ Next battle_setupAllianceEntryKind3_802DFC8(void) {
         ST8(entry + 0x0E, 3);            /* kind */
 
         R0 = LD8(R5 + oBattleObject_Alliance);
-        GUEST_CALL(sub_802E07C);
+        GUEST_CALL(battle_initAllianceEntryDefaults);
     }
 
     RETURN_TO_CALLER();

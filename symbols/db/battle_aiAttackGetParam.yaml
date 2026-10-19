@@ -1,0 +1,48 @@
+name: battle_aiAttackGetParam
+address: '0x080F4A54'
+kind: function
+status: probable
+summary: 'Helper for AI attack init: resolves an object from a constant descriptor and returns a value
+  (or field offset) that is bumped by 0x1E when the object''s flag word has bits 0x8000/0x2000 set.'
+interface: () -> r0 = value/pointer from sub_800FE28, +0x1E if (flags & 0xA000); flags clobbered by bl
+  calls
+details: Passes the address of the constant dword 0x101E283C to sub_800FE28, whose return value is kept
+  in r4; since object_getFlag is then called with no new argument setup, sub_800FE28 most likely returns
+  a battle object pointer located via that descriptor. object_getFlag returns the object's first collision-flag
+  word, which is tested against 0xA000 (bits 15 and 13). If either bit is set, 0x1E is added to r4, so
+  the result is either the raw value or the value plus 30 — consistent with returning either a pointer
+  to an alternate struct field at +0x1E or a frame delay/param with a 30-unit penalty. Only its single
+  caller battle_initAiAttack (attack id 2) is known, so the meaning of the +0x1E adjustment and the descriptor
+  layout remain inferred.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldr r0, off_80F4A70 passes &0x101E283C as a lookup descriptor to sub_800FE28; bl object_getFlag
+    immediately after, with r0 still holding sub_800FE28's return, shows it returns a battle object; tst
+    r0, 0xA000 / beq / add r4,#0x1E implements the conditional +30 adjustment; sole caller battle_initAiAttack
+    (attack id 2) consumes the result when starting attack state 0xC
+  refs:
+  - bn6f/asm/asm31.s:131108
+  - 0x080F4B34 battle_initAiAttack
+  - 0x0801A166 object_getFlag
+  - 0x0800FE28 sub_800FE28
+  reproduce: python3 tools/asmcat.py 0x080F4A54
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- What sub_800FE28 does with the 0x101E283C descriptor (object search by id/coords?) is unknown
+- Whether r4 is a pointer into the object struct (field at 0 vs 0x1E) or a scalar such as a frame delay
+- Meaning of flag bits 0x8000 and 0x2000 in the object flag word
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F4A54 -> battle_aiAttackGetParam
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F4A54

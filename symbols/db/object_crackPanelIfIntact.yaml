@@ -1,0 +1,42 @@
+name: object_crackPanelIfIntact
+address: '0x080C8A60'
+kind: function
+status: probable
+summary: Cracks the panel at the given field coordinates only if it is not already cracked.
+interface: (r0 = panel x, r1 = panel y, r2 = force flag) -> void; clobbers r0-r3, lr
+details: With r2 == 0 the function first reads the panel's status flags at (r0, r1) via object_getPanelParameters
+  and returns immediately if bit 0x40 (the cracked-panel flag) is already set; otherwise, or whenever
+  r2 != 0, it calls object_crackPanel on the same coordinates. Args are pushed so that r0/r1 can be restored
+  from the stack after the flags call clobbers them. It is a thin guarded wrapper around object_crackPanel,
+  likely used by panel-breaking attacks/effects that must not re-crack an already cracked tile.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: cmp r2,#0 / bne skips the intactness check, so r2 forces cracking unconditionally; tst r0,#0x40
+    with bne to pop returns early when the panel is already cracked; ldr r0,[sp] / ldr r1,[sp,#4] reload
+    the saved x/y before calling object_crackPanel; callee object_getPanelParameters returns the panel
+    status word used for the 0x40 test
+  refs:
+  - bn6f/asm/asm31.s:36399
+  - 0x080C89C8 sub_80C89C8
+  - 0x0800C8F8 object_getPanelParameters
+  - 0x0800C938 object_crackPanel
+  reproduce: python3 tools/asmcat.py 0x080C8A60
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- which callers (e.g. sub_80C89C8's effect) pass r2 != 0, and whether bit 0x40 is definitively the 'cracked'
+  flag vs another status bit
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C8A60 -> object_crackPanelIfIntact
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C8A60

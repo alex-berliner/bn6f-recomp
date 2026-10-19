@@ -1,0 +1,47 @@
+name: battle_cmdWaitForScreenFade
+address: '0x08126EA4'
+kind: function
+status: probable
+summary: Battle-object command handler that stalls the object while a screen fade is active, then advances
+  to its next command.
+interface: (r5 = battle object ptr, set by dispatcher; no args in r0-r3) -> r0 = result of battle_dispatchNextCmd_81272C4;
+  object fields [r5+0xC] |= 0x2 and [r5+1] = 8 when a fade is active
+details: 'This is a battle-object command callback: it takes no register arguments and operates on the
+  object pointer kept in r5 by the battle update loop. It first calls IsScreenFadeActive; if a fade is
+  in progress, it sets bit 0x2 of the object''s word at +0xC (a status/flag field) and stores 8 into the
+  byte at +1 (likely a wait-state or delay counter), making the object re-check later. Either way it then
+  calls battle_dispatchNextCmd_81272C4 to queue the object''s next command (CMD_A/CMD_B per its state
+  bytes) and returns its result. The flag/counter writes only happen under the fade, so the fade gate
+  is the whole point of the handler.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl IsScreenFadeActive + beq skips the flag writes, so the fade check gates the object-state
+    changes (loc 8126EA8-EB4); str [r5,#0xC] orr 0x2 and strb 8 -> [r5,#1] match the battle object''s
+    status-word/counter fields used by other command handlers; tail call battle_dispatchNextCmd_81272C4,
+    the known command dispatcher, confirms it is a per-object command step; no use of r0-r3 before the
+    calls: the object comes from r5, the battle updater''s context, not from a caller argument'
+  refs:
+  - bn6f/asm/asm33.s:7859
+  - 0x081272C4 battle_dispatchNextCmd_81272C4
+  - 0x080062F8 IsScreenFadeActive
+  reproduce: python3 tools/asmcat.py 0x08126EA4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- no callers identified, so which command ID maps to this handler and which objects use it is unconfirmed
+- exact meaning of bit 0x2 at +0xC and the value 8 at +1 (wait count vs state) needs the object-structure
+  documentation
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8126EA4 -> battle_cmdWaitForScreenFade
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8126EA4

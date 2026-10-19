@@ -1,0 +1,47 @@
+name: ai_repeatQueuedAttackState
+address: '0x08112D2A'
+kind: function
+status: probable
+summary: AI state tick that deals the queued attack's damage, waits 10 frames per hit, and repeats until
+  the hit count at +0xE runs out, then switches the object to state 0xC.
+interface: (r7 = battle object pointer, no args) -> r0 = scratch; updates object fields +0, +0x1, +0xE,
+  +0x10 and timer via callee
+details: 'Uses r7 as the current battle object. Byte +1 is an ''attack fired'' latch: when clear it is
+  set, ai_DealQueuedAttackDamage is called once, and halfword +0x10 is loaded with 10 as a frame delay.
+  Each call then decrements +0x10; when it reaches 0 the byte at +0xE (number of remaining hits) is decremented
+  — if still nonzero the latch is cleared so the next call repeats the damage+delay cycle, and if zero
+  the object''s timer field (pointer at +0x30) is reset to 8 via battle_ResetObjectTimerTo8 and halfword
+  +0 is set to 0xC, moving to the next state. No flags of significance are returned; the state lives entirely
+  in the object struct.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'strb/ldrb [r7,#1] plus bl ai_DealQueuedAttackDamage_8112F34: one-shot latch that fires the
+    queued attack then delays; ldrh/strh [r0x10] with sub #1, bgt: 10-frame per-hit countdown; ldrb/strb
+    [r7,#0xe] with sub #1, beq: repeat counter for multiple hits, clearing +1 to re-arm the latch; ldr
+    r0,[r7,#0x30]; bl battle_ResetObjectTimerTo8 + strh 0xC,[r7]: final transition writes state 0xC into
+    the object; Callee ai_DealQueuedAttackDamage_8112F34 hands target panel/damage to the damage routine,
+    confirming the attack-dealing role'
+  refs:
+  - bn6f/asm/asm32.s:10158
+  - 0x08112F34 ai_DealQueuedAttackDamage_8112F34
+  - 0x080C4072 battle_ResetObjectTimerTo8_80C4072
+  reproduce: python3 tools/asmcat.py 0x08112D2A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- No caller is known, so the struct layout meaning of state 0xC and the field at +0x30 is unconfirmed;
+  a caller showing the AI state dispatch table would confirm the state value semantics
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8112D2A -> ai_repeatQueuedAttackState
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8112D2A

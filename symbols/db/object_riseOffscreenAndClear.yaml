@@ -1,0 +1,47 @@
+name: object_riseOffscreenAndClear
+address: '0x0804A5EC'
+kind: function
+status: probable
+summary: Moves an object's sprite group upward 16px per call and despawns (clears sprites, state 4) once
+  it goes past the top of the screen.
+interface: (r0 = object struct in r5 convention; y at [r5+0x18]) -> updates [r5+0x18], sets [r5]=4 and
+  clears three sprite-table entries when off-screen; no return value used
+details: The object's y coordinate at [r5+0x18] is decremented by 0x10; if the result is still >= -0x28
+  the value is stored back and the three sprite entries are moved to (0x58, y, 0) via sprite_setPositionForIdRange3_8119854.
+  If y-0x10 falls below -0x28 (about 40px above the top), the function instead calls setFieldsInThreeTableEntries_811980C
+  with all-zero args to wipe the three sprite entries rooted at 0x2008450, writes state 4 into the object's
+  state byte at [r5], clamps y to -0x28, and still repositions the sprites to (0x58, -0x28). x is fixed
+  at 0x58, so the object rises straight up at a fixed horizontal position.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrsh r0,[r5,#0x18]; sub r0,#0x10 — y coordinate is read and stepped upward by 16; cmp r0,#-0x28;
+    bge loc_804A60C — threshold at -40 marks 'off top of screen'; bl setFieldsInThreeTableEntries_811980C
+    with r0-r3=0 — zeroes the three sprite entries to despawn; strb r0(=4),[r5] — switches object state
+    byte to 4 on despawn; bl sprite_setPositionForIdRange3_8119854 with r0=y, r1=0x58, r2=0 — repositions
+    the three-entry sprite group each call
+  refs:
+  - bn6f/asm/asm03_2.s:7701
+  - 0x0811980C setFieldsInThreeTableEntries_811980C
+  - 0x08119854 sprite_setPositionForIdRange3_8119854
+  reproduce: python3 tools/asmcat.py 0x0804A5EC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- No callers known, so which in-game object/attack uses this (e.g., a rising projectile or launched entity)
+  is unconfirmed
+- Exact meaning of state 4 in the object struct and the sprite-table layout at 0x2008450 would confirm
+  the despawn interpretation
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_804A5EC -> object_riseOffscreenAndClear
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_804A5EC

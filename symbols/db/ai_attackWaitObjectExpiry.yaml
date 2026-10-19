@@ -1,0 +1,45 @@
+name: ai_attackWaitObjectExpiry
+address: '0x080EE532'
+kind: function
+status: probable
+summary: AI attack step that waits ~5 frames while an attack object is active, then unlinks it and leaves
+  the attack state.
+interface: (r5 = battle object, r7 = oAIAttackVars) -> void; sets/clears AttackElement, StepTimer, RelatedObject1Ptr,
+  AIData_TempAttackObjectPtr
+details: On first invocation (AttackElement == 0) it clears ObjectFlags1 bit 0x40 on the object, sets
+  StepTimer = 5, and writes element/state id 4 into AttackElement so the setup branch is skipped on later
+  frames. Every frame it decrements StepTimer; once it goes negative it nulls oBattleObject_RelatedObject1Ptr
+  and the AI data's TempAttackObjectPtr, detaching the spawned attack object from both the owner and the
+  AI, then calls object_exitAttackState to return to normal AI control. The 5-frame delay lets the attack
+  object persist briefly before cleanup. Element 4 is a marker state rather than a real element, since
+  no further use of the value is visible here.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb/tst on oAIAttackVars_AttackElement gates one-time setup, then mov r0,#4 strb stores the
+    done-marker (asm lines 2-9); mov r0,#0x40 bl object_clearFlag clears a battle object flag during setup;
+    StepTimer set to 5 and decremented each call, cleanup only on bge not taken (counter underflow); cleanup
+    writes 0 to oBattleObject_RelatedObject1Ptr and [oAIData_TempAttackObjectPtr] before bl object_exitAttackState
+  refs:
+  - bn6f/asm/asm31.s:118040
+  - 0x0801A15C object_clearFlag
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x080EE532
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- no callers known, so the trigger context (which boss/AI script) is unconfirmed
+- exact meaning of ObjectFlags1 bit 0x40 and element value 4 not established from this function alone
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80EE532 -> ai_attackWaitObjectExpiry
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EE532

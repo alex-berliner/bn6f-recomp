@@ -1,0 +1,53 @@
+name: removeFolderChipsFromPack
+address: '0x08120A88'
+kind: function
+status: probable
+summary: Walks every entry of every folder and removes the corresponding chips from the player's pack,
+  so pack stock reflects chips already placed in folders.
+interface: () -> void; takes no args, reads the toolkit from r10 (oToolkit_S2001c04_Ptr and oToolkit_S_Chip_2002178_Ptr);
+  return value unused, flags clobbered by bl calls
+details: 'Reads a byte count from S2001c04+5 (number of folder blocks to process) and iterates a 0x3C-byte-per-block
+  array at the chip-folder base (S_Chip_2002178): 30 halfword entries per block, 0x3C/2 total. Each halfword
+  holds an 18-bit packed value that split9BitsFromBitfield_8021AE0 splits into low/high 9-bit halves (r0/r1),
+  which are passed straight to TakeChips along with a constant 1 — i.e. (chip id, count) — to deduct that
+  many copies from the pack. The loop nests over blocks (outer r4, decrementing to 0) and entries (inner
+  r6 stepping by 2 up to 0x3C). TakeChips''s void* result is ignored; only the side effect on the pack
+  matters. The count byte at S2001c04+5 is loaded once before the outer loop, so the folder layout is
+  assumed static during the run.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r4,[r0,#5] then outer loop bgt loc_8120A90: r4 is a block/folder count from S2001c04+5;
+    add r7,[chip base]; mul r0,r4*0x3c: per-block stride 0x3C bytes = 30 halfword folder entries; bl split9BitsFromBitfield_8021AE0
+    immediately followed by bl TakeChips with constant 1: entry halves feed (id,count) pack removal; Only
+    callee side effects are used (no use of TakeChips return), so purpose is the pack mutation, not the
+    report'
+  refs:
+  - bn6f/asm/asm32.s:38554
+  - 0x0804A360 sub_804A360
+  - 0x08120A38 sub_8120A38
+  - 0x0812D3A8 sub_812D3A8
+  - 0x08021B92 TakeChips
+  - 0x08021AE0 split9BitsFromBitfield_8021AE0
+  reproduce: python3 tools/asmcat.py 0x08120A88
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- Exact meaning of the byte at S2001c04+5 (folder count vs. active-folder index vs. mode flag)
+- Which gameplay flow invokes caller sub_8120A38 (e.g. save init, folder setup, multiplayer preset) to
+  confirm the in-game trigger
+- Why the 18-bit value is split rather than read as separate fields — whether high 9 bits are a count
+  or a chip-code/index
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8120A88 -> removeFolderChipsFromPack
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8120A88

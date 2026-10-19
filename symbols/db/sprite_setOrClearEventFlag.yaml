@@ -1,0 +1,47 @@
+name: sprite_setOrClearEventFlag
+address: '0x08002338'
+kind: function
+status: probable
+summary: Animation/script callback that sets or clears a single event-work flag depending on the sign
+  of the value stored in its parameter struct.
+interface: (r0 = pointer to a struct whose first u32 word is a signed flag id) -> r0 clobbered; calls
+  SetEventFlag/ClearEventFlag
+details: 'Loads the first word of the passed struct as a signed value. If it is non-negative, it is passed
+  straight to SetEventFlag as the flag id. If negative, the sign bit is stripped (lsl #1 / lsr #1, i.e.
+  id = value & 0x7FFF) and that id is passed to ClearEventFlag. So the sign bit of the stored word is
+  the set/clear selector and the remaining 15 bits are the event-flag index. Given the caller-side comment
+  (GFXAnimState/GFXAnimDataNext), this is almost certainly one of the sprite-animation ''next'' handlers:
+  an animation frame/step that toggles a story flag when reached.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldr r0,[r0]; cmp r0,#0; blt .clearEventFlag — first struct word is a signed flag id whose sign
+    selects set vs clear; bl SetEventFlag / bl ClearEventFlag with r0 unchanged — the value is used directly
+    as the flag argument; lsl r0,#1; lsr r0,#1 before ClearEventFlag — masks off the sign bit to get the
+    clear-flag index; Caller comment ''(self: * GFXAnimState, params: * GFXAnimDataNext)'' — invoked as
+    an animation-step handler on sprite anim data'
+  refs:
+  - bn6f/asm/asm00_0.s:5073
+  - 0x0802F130 ClearEventFlag
+  - 0x0802F114 SetEventFlag
+  reproduce: python3 tools/asmcat.py 0x08002338
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- No caller is known, so the exact struct (GFXAnimDataNext?) layout and when the engine invokes this handler
+  are unconfirmed
+- Whether SetEventFlag/ClearEventFlag take a raw flag id vs a bitfield word here (signature comments say
+  'entryFlagBitfield')
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8002338 -> sprite_setOrClearEventFlag
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8002338

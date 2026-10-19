@@ -1,0 +1,46 @@
+name: battle_stepNaviDisplayThenChipSelect
+address: '0x08009916'
+kind: function
+status: probable
+summary: 'Battle state handler: on entry sets up the result/navi display once, then runs the chip-select
+  init until it finishes, then advances the battle state machine to 0x14.'
+interface: (r5 = battle state struct) -> r0 = 0 when chip-select init still running, 1/nonnull when phase
+  done and state advanced; writes state fields
+details: This is a battle-mode sub-state step keyed off the state struct in r5. On the first pass (oBattleState_SubPhaseInitFlag
+  == 0) it calls setupNaviDisplay_802C34E with the 12-byte result record at unk_2035260 (battle state
+  +0x0D area) to build the result-screen/navi display, then latches the init flag to 4 so setup runs only
+  once. Every frame it calls battle_initChipSelect_802BD60, which initializes the chip-select/custom screen
+  at eS20364C0 and returns nonzero when done. Once that returns nonzero, it sets oBattleState_Index_01
+  = 0x14 and clears oBattleState_StatePhaseAndInitFlag, moving to the next battle state; otherwise it
+  returns with the state unchanged.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'init-once guard: ldrb/tst on oBattleState_SubPhaseInitFlag gates the one-time bl setupNaviDisplay_802C34E
+    (asm lines 2-7); setupNaviDisplay_802C34E is called with off_800999C -> unk_2035260, the battle result
+    record it copies into eS20364C0; per-frame bl battle_initChipSelect_802BD60 with tst/bne on its return
+    controls phase completion (asm lines 9-12); completion writes oBattleState_Index_01 = 0x14 and zeroes
+    oBattleState_StatePhaseAndInitFlag, the standard state-advance pattern (asm lines 13-17)'
+  refs:
+  - bn6f/asm/asm00_1.s:14574
+  - 0x0802BD60 battle_initChipSelect_802BD60
+  - 0x0802C34E setupNaviDisplay_802C34E
+  reproduce: python3 tools/asmcat.py 0x08009916
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- exact meaning of next state index 0x14 in the battle state machine
+- whether unk_2035260 is written by an earlier result phase not seen here
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8009916 -> battle_stepNaviDisplayThenChipSelect
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8009916

@@ -1,0 +1,48 @@
+name: battle_checkPanelInFront
+address: '0x080E2A64'
+kind: function
+status: probable
+summary: Checks the battle panel directly in front of an object against a per-side panel-state mask and,
+  if it matches, records that panel's coordinates and a found-count on the object.
+interface: (r5 = battle object) -> r0 = 1 if the front panel matched the mask else 0; writes oBattleObject_ExtraVars+4
+  (count 0/1) and a panel code at object+0x68
+details: Computes the target panel as PanelX + object_getFrontDirection(±1) with unchanged PanelY. It
+  indexes oBattleObject_ExtraVars by Alliance<<3 and passes fields +4 and +8 of that slot as the required/cleared
+  mask pair to object_checkPanelParameters, along with the panel coordinates. If the panel matches, it
+  stores (PanelY<<4)|PanelX as a byte at object+0x68 and sets the count at ExtraVars+4 to 1; otherwise
+  the count is stored as 0 and no panel code is written. r0-r1,r6-r7 are saved on the stack around the
+  call so the original coordinates survive the callee's clobbering. The result count is also returned
+  in r0.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl object_getFrontDirection then add r0, PanelX yields the panel in front of the object; ldr
+    r2/r3 from ExtraVars+Alliance*8+4/+8 feed object_checkPanelParameters' mask arguments; strb (PanelY<<4|PanelX)
+    at r5+0x68 only when checkPanelParameters returns nonzero; str r6 (0 or 1) to oBattleObject_ExtraVars+4
+    acts as a found-entry count; push/pop {r0,r1,r6,r7} around bl preserves the panel coords across the
+    callee
+  refs:
+  - bn6f/asm/asm31.s:92594
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x080E2A64
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- No callers known, so the meaning of the ExtraVars per-alliance mask fields (+4/+8) and of the object+0x68
+  panel-code slot is unconfirmed
+- Which gameplay feature consumes ExtraVars+4 and the stored panel code (e.g. an AI move or a stage/panel
+  gimmick) needs a caller to determine
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E2A64 -> battle_checkPanelInFront
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E2A64

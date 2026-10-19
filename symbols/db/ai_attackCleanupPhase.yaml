@@ -1,0 +1,45 @@
+name: ai_attackCleanupPhase
+address: '0x0810BC10'
+kind: function
+status: probable
+summary: 'One-shot AI attack teardown: on the first phase tick it clears the hit flag, resets the attack
+  state timer, and frees the attack''s auxiliary objects, then runs the next step every tick.'
+interface: (r5 = battle object) -> void
+details: 'Reads oBattleObject_PhaseInitialized (via ldrb) and, only when it is zero, treats the call as
+  the first entry into this phase: it calls ai_attackHitClearState8, which clears the flag at the object''s
+  +0x60 pointer and sets the +8 state/timer field to 8, then ai_attackFreeAuxObjects, which releases the
+  up-to-five ExtraVars auxiliary object pointers (loaded via offset 0x64 from r5). After the one-shot
+  cleanup, it unconditionally calls sub_8016B36 (purpose unknown, likely the per-tick AI attack phase
+  logic) and returns. The PhaseInitialized flag being checked rather than set suggests the flag is set
+  elsewhere or the bne skip itself is the ''already done'' path.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r5,#oBattleObject_PhaseInitialized]; bne loc_810BC24 — gates the cleanup on the phase's
+    first run; ldr r0,[r5,#0x64]; bl ai_attackHitClearState8 — passes the +0x64 flag pointer and clears
+    it, state set to 8; bl ai_attackFreeAuxObjects — frees the ExtraVars aux object pointers during attack
+    cleanup; bl sub_8016B36 — unconditional per-tick continuation after the one-shot cleanup
+  refs:
+  - bn6f/asm/asm31.s:179452
+  - 0x0810BB64 ai_attackFreeAuxObjects
+  - 0x080D9284 ai_attackHitClearState8
+  - 0x08016B36 sub_8016B36
+  reproduce: python3 tools/asmcat.py 0x0810BC10
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- Purpose of sub_8016B36 (called every tick) is unknown
+- No known callers, so which AI attack state routes here is unconfirmed
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_810BC10 -> ai_attackCleanupPhase
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810BC10

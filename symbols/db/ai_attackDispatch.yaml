@@ -1,0 +1,44 @@
+name: ai_attackDispatch
+address: '0x080EFE7C'
+kind: function
+status: probable
+summary: 'Enemy AI attack handler: either kicks a chip/attack via ai_beginAttack or dispatches to an element-specific
+  attack update by HitElement.'
+interface: (r7 = battle object) -> r0 = dispatch result; flags from branch/tst
+details: Reads the AI data flag at offset 0x44 of the battle object via GetAIData_Unk_44_Flag and tests
+  it against mask 0x600. If any of those bits are set, it calls ai_beginAttack with r1=oAIAttackVars_ChipUseDelay,
+  r2=oAIAttackVars_AiDifficultyTier, r3=oAIAttackVars_Damage from the AI attack vars in the object. Otherwise
+  it loads a handler pointer from a table at off_80EFEA8 indexed by oAIAttackVars_HitElement and tail-jumps
+  to it with lr=pc (long-bl style). Only the wood-element entry (ai_attackWoodElementUpdate) is present
+  in the visible table, suggesting other element tables exist elsewhere or this instance is wood-specific.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl GetAIData_Unk_44_Flag then tst r0,#0x600 gates the two behaviors; ldrb r1,[r7,#oAIAttackVars_ChipUseDelay];
+    ldrb r2,[r7,#oAIAttackVars_AiDifficultyTier]; ldr r3,[r7,#oAIAttackVars_Damage]; bl ai_beginAttack;
+    ldrb r0,[r7,#oAIAttackVars_HitElement]; ldr r1,[r1,r0]; bx r1 dispatches to element handler table;
+    off_80EFEA8 contains ai_attackWoodElementUpdate+1, the wood attack update entry
+  refs:
+  - bn6f/asm/asm31.s:121406
+  - 0x0800FFFE GetAIData_Unk_44_Flag
+  - 0x080105F2 ai_beginAttack
+  reproduce: python3 tools/asmcat.py 0x080EFE7C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- which callers/objects use this handler and whether 0x600 flags a specific AI state or element family
+- what ai_attackWoodElementUpdate expects in lr/registers on entry, since the bx is a computed jump with
+  lr=pc
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80EFE7C -> ai_attackDispatch
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EFE7C

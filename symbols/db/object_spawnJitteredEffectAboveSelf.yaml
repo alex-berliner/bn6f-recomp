@@ -1,0 +1,45 @@
+name: object_spawnJitteredEffectAboveSelf
+address: '0x080DF8D2'
+kind: function
+status: probable
+summary: Spawns a type-4 effect object (effect 0, param 0xC) at the caller object's position, raised 0x20<<16
+  in Z and jittered ±0x1F in X/Y.
+interface: (r5 = source battle object, r4 = 0xC extra arg for spawn wrapper) -> r0 = spawned object pointer
+details: Reads X/Y/Z from the battle object at r5 (oBattleObject_X/Y/Z), adds 0x20<<16 to Z to lift the
+  effect above the object, then calls AddRandomVarianceToTwoCoords with mask 0x1F to randomly offset the
+  X and Y coordinates using one RNG roll. It then calls the thin wrapper spawn_t1_0x0_EffectObject, which
+  spawns a type-4 battle object with effect type 0; r4=0xC is set just before the call and is presumably
+  an extra spawn parameter (variant/palette) consumed by the wrapper. r5 is not reloaded, so the caller
+  must have the object in r5 — a this-style calling convention on r5 rather than r0.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldr r1/r2/r3 from [r5,#oBattleObject_X/Y/Z] feed the position directly; add r3,#0x20 lsl 16
+    raises Z before jittering; mov r0,#0x1f + bl AddRandomVarianceToTwoCoords jitters both coords with
+    one RNG roll; mov r4,#0xc immediately before bl spawn_t1_0x0_EffectObject passes a fixed variant parameter;
+    only caller sub_80DF7D6 calls it right after setting up r5 with a battle object
+  refs:
+  - bn6f/asm/asm31.s:85866
+  - 0x080DF7D6 sub_80DF7D6
+  - 0x0801BDDE AddRandomVarianceToTwoCoords
+  - 0x080E05F6 spawn_t1_0x0_EffectObject
+  reproduce: python3 tools/asmcat.py 0x080DF8D2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- exact meaning of the r4=0xC parameter and effect type 0's visuals — would need spawn_t1_0x0_EffectObject
+  internals or the effect table
+- which in-game event triggers the caller sub_80DF7D6, to name the effect more specifically
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DF8D2 -> object_spawnJitteredEffectAboveSelf
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DF8D2

@@ -1,0 +1,56 @@
+name: chatbox_renderTextEntry
+address: '0x08137DB4'
+kind: function
+status: probable
+summary: Clears a text work buffer, draws the message selected by the caller's text ID from table unk_201CF00
+  into it, and places it at a fixed screen position.
+interface: (r0-r3 = caller state; reads caller's r5 struct field +0x24 as a text/message ID) -> r0 = ?;
+  renders into unk_2017AE0
+details: First zeroes 0xE0 halfwords at unk_2017AE0 via ZeroFillByHalfword, suggesting a tilemap/tile-glyph
+  scratch buffer of fixed window size. It then takes the halfword at [caller r5 + 0x24] as an index and
+  calls sub_8137DE4(index, unk_201CF00, unk_2017AE0, 7, 0), which looks up text/data at unk_201CF00 and
+  writes into the buffer — likely character/glyph expansion with 7 as a row-length or mode parameter.
+  Finally sub_8137E3C(0xa, 4, unk_2017AE0) receives the buffer plus what look like X/Y coordinates (10,
+  4), presumably copying the rendered text to the screen or a BG map. Both known callers show text windows
+  (battle round start, submenu confirm), so this is a shared message-render helper. The function inherits
+  r5 from its caller rather than setting it up, so it is an inner helper of a text-display flow, not a
+  standalone API.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ZeroFillByHalfword(unk_2017AE0, 0xe0) clears a fixed-size buffer before rendering (asm lines
+    4-6); sub_8137DE4([r7+0x24], unk_201CF00, unk_2017AE0, 7, 0): ID-indexed fetch from a data table into
+    the cleared buffer (asm lines 7-12); sub_8137E3C(0xa, 4, unk_2017AE0): buffer passed on with two small
+    constants consistent with X/Y placement (asm lines 13-16); Callers battle_initRoundState and submenu_handleConfirmCancelCursorInput
+    are both text-display contexts, supporting a shared text renderer; r7 = r5 with no r5 setup: helper
+    reads the caller''s active text/struct state at field 0x24'
+  refs:
+  - bn6f/asm/asm36.s:16496
+  - 0x081378D4 battle_initRoundState
+  - 0x081379A0 submenu_handleConfirmCancelCursorInput
+  - 0x08137A1C sub_8137A1C
+  - 0x080008C0 ZeroFillByHalfword
+  - 0x08137DE4 sub_8137DE4
+  - 0x08137E3C sub_8137E3C
+  reproduce: python3 tools/asmcat.py 0x08137DB4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- What unk_201CF00 actually is (message/text table vs font) and what field +0x24 of the caller's struct
+  indexes into it
+- Meaning of the constants 7 and 0 passed to sub_8137DE4 (row width? palette? flags?)
+- Whether sub_8137E3C's (0xa, 4) are screen/BG-map coordinates or something else; reading those two callees
+  would settle the purpose
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8137DB4 -> chatbox_renderTextEntry
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8137DB4

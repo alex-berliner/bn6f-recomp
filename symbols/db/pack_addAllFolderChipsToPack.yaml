@@ -1,0 +1,47 @@
+name: pack_addAllFolderChipsToPack
+address: '0x08120AB8'
+kind: function
+status: probable
+summary: Re-adds every chip from every packed folder (30 halfword entries each) into the spare chip pack,
+  also setting the library flags.
+interface: '(r10->toolkit: S2001c04 byte 5 = folder count, 2002178 ptr = folder data) -> void'
+details: 'Reads a count byte at S2001c04+0x05, then loops that many times over the chip-data structure
+  at 2002178, using a 0x3C-byte (30 halfword) stride per folder: base = chipPtr + (count-1)*0x3C down
+  to folder 1. For each of the 30 halfwords it calls split9BitsFromBitfield_8021AE0 to unpack the chip
+  id (and code) from the 18-bit entry, then calls pack_addChipByIdSetLibraryFlag_8021B2A to grant that
+  chip to the pack, set its library event flag, and slot it by code. Effectively it materializes all chips
+  held in the folder structures as owned chips in the spare pack.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: loop bound r4 = ldrb [r0,#5] of S2001c04 with (r4-1)*0x3C stride = 30 halfword entries per folder;
+    inner loop iterates r6 = 0..0x3C step 2 reading ldrh [r7,r6] halfword entries; callee split9BitsFromBitfield_8021AE0
+    unpacks chip id/code per entry; callee pack_addChipByIdSetLibraryFlag_8021B2A grants each chip to
+    the pack and sets library flag; caller t4_transitionToTextState1C runs it right before opening a text
+    script state
+  refs:
+  - bn6f/asm/asm32.s:38582
+  - 0x0812D880 t4_transitionToTextState1C
+  - 0x0804A460 sub_804A460
+  - 0x08120A38 sub_8120A38
+  - 0x08021B2A pack_addChipByIdSetLibraryFlag_8021B2A
+  - 0x08021AE0 split9BitsFromBitfield_8021AE0
+  reproduce: python3 tools/asmcat.py 0x08120AB8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- exact meaning of the S2001c04+5 byte (folder count vs. last folder index)
+- which game event triggers this via the text-state transition caller
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8120AB8 -> pack_addAllFolderChipsToPack
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8120AB8

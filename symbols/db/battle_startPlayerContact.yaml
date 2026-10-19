@@ -1,0 +1,46 @@
+name: battle_startPlayerContact
+address: '0x0801A400'
+kind: function
+status: probable
+summary: 'Per-frame check for a battle object touching the player: guards against frozen/flagged objects,
+  then marks the contact and sets contact state 3.'
+interface: (r5 = battle object) -> void; no meaningful return
+details: Runs with r5 holding the battle object (r5-based field access, no args). It first reads the object's
+  AI data and returns early if the collision freeze timer (oAIData_CollisionFreezeTimer) is nonzero, then
+  calls object_getFlag and returns early if any of the flag bits 0x24 (0x4|0x20) are set — likely invulnerability/already-hit
+  style flags. Otherwise it sets bit 0x10 in the collision data's 'flags 2' word via object_setFlag2 (probably
+  a 'touching/contact' or 'attacking' marker) and stores 3 into oBattleObject_ContactState, the value
+  that tells the shared battle code how the contact should be resolved. The early returns make it idempotent
+  per contact.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrh r1,[r7,#oAIData_CollisionFreezeTimer]; tst/bne — skips while collision is frozen; mov r1,#0x24;
+    tst r0,r1 after object_getFlag — bails out on flag bits 0x4/0x20; mov r0,#0x10; bl object_setFlag2
+    — marks bit 0x10 in flags2 of collision data; mov r0,#3; strb r0,[r5,#oBattleObject_ContactState]
+    — records contact state 3 on the object; r5-based object access and both callees operate on battle
+    object collision data, so this is shared battle-object contact logic
+  refs:
+  - bn6f/asm/asm00_2.s:23216
+  - 0x0801A166 object_getFlag
+  - 0x0801A16C object_setFlag2
+  reproduce: python3 tools/asmcat.py 0x0801A400
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- No callers known, so the object type and which of flags bits 0x4/0x20 mean what is unconfirmed
+- Exact meaning of flags2 bit 0x10 and contact state 3 (damage vs. grab/hook) would need the shared contact-resolution
+  code
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_801A400 -> battle_startPlayerContact
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_801A400

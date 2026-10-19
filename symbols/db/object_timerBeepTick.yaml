@@ -1,0 +1,46 @@
+name: object_timerBeepTick
+address: '0x0811CE64'
+kind: function
+status: probable
+summary: 'Object behavior tick: counts a frame timer down, and on expiry resets the sprite color shader,
+  rearms the timer, and plays SFX 0x100.'
+interface: (r5 = object work area, no args in r0-r3) -> void; sets [r5+9]=0x10, reloads [r5+0xC]=20, plays
+  SFX 0x100
+details: 'Uses r5 as a per-object struct: decrements the byte counter at +0xC each call and returns early
+  while nonzero. When it reaches zero it stores 0x10 into the byte at +9 (likely a state/animation field),
+  calls sprite_zeroColorShader to clear the object''s palette/color-effect halfword, reloads the +0xC
+  timer with 20 (0x14), and plays sound 0x100 via the M4A wrapper. The rearming timer plus sound suggests
+  a repeating periodic effect (e.g. a blinking/flashing object with a beep every 20 frames) driven from
+  an object update table.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r5,#0xC]; sub r0,#1; strb; bne locret — frame countdown on object field +0xC; mov r0,#0x10;
+    strb r0,[r5,#9] — writes a state/command byte on timer expiry; bl sprite_zeroColorShader — resets
+    the object's color-shader halfword (flash reset); ldr r0,off_811CE84 (=0x100); bl PlaySoundEffect
+    — plays SFX 0x100 each expiry; timer reloaded to 0x14 after every expiry — periodic, not one-shot
+    behavior
+  refs:
+  - bn6f/asm/asm32.s:30692
+  - 0x080005CC PlaySoundEffect
+  - 0x08002EE8 sprite_zeroColorShader
+  reproduce: python3 tools/asmcat.py 0x0811CE64
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- No caller is known, so the object type and what state 0x10 at +9 triggers (animation, next script step)
+  are unconfirmed
+- Exact meaning of SFX 0x100 and which in-game object uses this 20-frame periodic beep/flash is unknown
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_811CE64 -> object_timerBeepTick
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811CE64

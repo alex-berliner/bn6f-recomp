@@ -1,0 +1,47 @@
+name: sprite_unscaleEntryIfBusy
+address: '0x0811B010'
+kind: function
+status: probable
+summary: Clears the scalable state of a struct-2008450 entry's sprite when the entry's state field (bits
+  0-1 of +0x11) is nonzero.
+interface: (r0 = index into eStructArr2008450) -> void; entry validity and state checked via NZ/BEQ
+details: Fetches the entry pointer for index r0 from the fixed 0x58-byte array at eStructArr2008450 via
+  getStructFrom2008450, returning early if the entry is free (first-byte flag clear, BEQ). It then reads
+  the state byte at entry+0x11 and returns early if its low two bits are 0 (tst r1=#3 / beq). Otherwise
+  it calls sprite_makeUnscalable, which strips the scale bits and the matching sprite flag-word bit, so
+  a sprite that was being scaled (or left scaled) is restored to normal. r5 holds the entry pointer but
+  is otherwise unused, suggesting the callee reads context (or r0) beyond what is visible here. Only r4-r7
+  are saved even though most go unused, a common compiler artifact in this codebase.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl getStructFrom2008450 + beq: bails out when the entry''s in-use flag byte is zero; ldrb r0,[r5,#0x11]
+    / mov r1,#3 / tst / beq: gates on the low 2 bits of the entry''s state field; bl sprite_makeUnscalable
+    is the only side effect, matching its known ''clear scale bits'' summary; sole caller sub_812A424
+    passes an index in r0 consistent with getStructFrom2008450''s interface'
+  refs:
+  - bn6f/asm/asm32.s:27092
+  - 0x0812A424 sub_812A424
+  - 0x080466C4 getStructFrom2008450
+  - 0x08002D52 sprite_makeUnscalable
+  reproduce: python3 tools/asmcat.py 0x0811B010
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- What state values the low 2 bits of entry+0x11 represent and which caller context (sub_812A424) sets
+  them
+- Why sprite_makeUnscalable is called with r0 still holding the state byte rather than the entry pointer
+  — whether it takes the value or re-derives the object from context
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_811B010 -> sprite_unscaleEntryIfBusy
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811B010

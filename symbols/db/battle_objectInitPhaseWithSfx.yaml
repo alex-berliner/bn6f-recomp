@@ -1,0 +1,49 @@
+name: battle_objectInitPhaseWithSfx
+address: '0x080E5872'
+kind: function
+status: probable
+summary: 'One-shot initialization step of a battle object''s state phase: validates its linked data, snaps
+  it to its panel, starts an animation and sound effect, then advances the phase.'
+interface: (r5 = battle object) -> void; if oBattleObject_ExtraVars is NULL or *ExtraVars is NULL, sets
+  object state to CUR_STATE_DESTROY instead
+details: 'This runs only once per state: it early-returns when oBattleObject_PhaseInitialized is already
+  nonzero, acting as the phase-0 handler of an object''s update state machine. It requires the object''s
+  ExtraVars pointer and its first field to be set, otherwise the object is moved to the destroy state
+  — suggesting the object depends on an attached/parent record to exist. On success it recomputes the
+  object''s pixel position from its panel coordinates (object_setCoordinatesFromPanels), sets the current
+  animation to 1, plays sound effect 0xBD, calls sub_80E5910 with oBattleObject_PanelX/PanelY (purpose
+  unknown), and stores 4 into oBattleObject_PhaseInitialized to advance to the next phase.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#oBattleObject_PhaseInitialized]; bne locret — one-shot guard, only runs when phase
+    not yet advanced; ldr r0,[r5,#oBattleObject_ExtraVars] / ldr r0,[r0] / beq destroy-state path — object
+    is destroyed if its extra-data pointer chain is missing; bl object_setCoordinatesFromPanels then strh
+    #1 into oBattleObject_CurAnimAndCurAnimCopy — snaps sprite to panel and picks animation 1; mov r0,#0xbd;
+    bl PlaySoundEffect — plays a fixed sound effect at spawn/init time; mov r0,#4; strb r0,[r5,#oBattleObject_PhaseInitialized]
+    — writes the next phase id, so the byte doubles as the current phase counter'
+  refs:
+  - bn6f/asm/asm31.s:99220
+  - 0x080005CC PlaySoundEffect
+  - 0x0800E29C object_setCoordinatesFromPanels
+  - 0x080E5910 sub_80E5910
+  reproduce: python3 tools/asmcat.py 0x080E5872
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- Which battle object/state uses this handler (no callers known), so the domain meaning of SFX 0xBD and
+  animation 1 is unconfirmed
+- What sub_80E5910 does with panelX/panelY — likely spawns or affects something at the object's panels
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E5872 -> battle_objectInitPhaseWithSfx
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E5872

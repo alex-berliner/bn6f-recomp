@@ -1,0 +1,49 @@
+name: object_calcArcingTargetCoords
+address: '0x080CB434'
+kind: function
+status: probable
+summary: Computes the arcing projectile's target point — the midpoint X of two panels at row 2 plus a
+  fixed Y — and stores it in the battle object's extra vars.
+interface: (r0 = battle object ptr (r5 already holds it in caller context)) -> r0 = undefined; stores
+  midpoint X at oBattleObject_ExtraVars+0xC and Y at +0x10
+details: 'Three calls to object_getCoordinatesForPanels, all with row/second argument 2: a hardcoded (1,2)
+  whose returned Y is written to ExtraVars+0x10, and two calls with the object''s oBattleObject_PanelX
+  and oBattleObject_Param2 as the panel column. The two X coordinates are summed and divided by 2 via
+  SWI 6 (GBA Div), giving the horizontal midpoint between the two panels, stored at ExtraVars+0xC. The
+  result is a precomputed target screen position for the object''s flight — the object will arc from its
+  start toward (midX, fixedY). The hardcoded (1,2) Y is suspicious and may rely on the caller having just
+  configured those values, or on row 2 being a fixed landing row for enemy-side attacks.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: caller 0x080CB2A8 object_initArcingProjectile 'precomputes a flight toward a target panel',
+    matching a helper that stores target coords; all three object_getCoordinatesForPanels calls pass 2
+    as the second panel coordinate (same row); add r0,r0,r6 + svc 6 (SWI Div) with r1=2 averages the two
+    panel X coordinates; str r1,[r5,#oBattleObject_ExtraVars+0x10] and str r0,[r5,#oBattleObject_ExtraVars+0xC]
+    store the computed point into the object; fields read are oBattleObject_PanelX and oBattleObject_Param2,
+    the object's own panel and target-panel columns
+  refs:
+  - bn6f/asm/asm31.s:42179
+  - 0x080CB2A8 object_initArcingProjectile
+  - 0x0800E276 object_getCoordinatesForPanels
+  reproduce: python3 tools/asmcat.py 0x080CB434
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- why the first getCoordinatesForPanels call uses hardcoded (1,2) — whether column 1/row 2 is a fixed
+  landing point or the second argument means something other than a row
+- the exact layout/semantics of the ExtraVars+0xC/0x10 fields and how object_initArcingProjectile consumes
+  them during flight
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CB434 -> object_calcArcingTargetCoords
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CB434

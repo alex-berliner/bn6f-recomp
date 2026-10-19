@@ -1,0 +1,44 @@
+name: comm_waitCrossNetReadyFallback
+address: '0x0802B9B8'
+kind: function
+status: probable
+summary: 'State handler for the link/cross-net battle wait: if the linked partner isn''t ready yet, transitions
+  to a fallback state (0x18) with a screen fade.'
+interface: (r5 = task/state struct, fields +1 byte and +2 halfword) -> void; reads comm_checkCrossNetBattleReady_801E754
+  result
+details: Calls comm_checkCrossNetBattleReady_801E754; if it returns nonzero (partner/session ready) the
+  function does nothing and just returns, keeping the current state. If it returns 0, it writes 0x18 to
+  the byte at r5+1 (apparently a next-state/mode selector in the task struct), zeroes the halfword at
+  r5+2 (likely a frame timer/substate), and starts a screen fade via SetScreenFade(0x10, 8) — 0x10 presumably
+  a fade-out mode with 8 as its speed/duration. The struct in r5 is set up by the caller, which is not
+  yet identified. No other fields or globals are touched.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl comm_checkCrossNetBattleReady_801E754; cmp r0, #0; bne locret_802B9D2 — act only when the
+    cross-net ready check fails; strb r0(=0x18), [r5,#1] and strh r0(=0), [r5,#2] — state byte and counter
+    fields of a task struct in r5; mov r0, #0x10; mov r1, #8; bl SetScreenFade — fade mode 0x10, parameter
+    8, only on the not-ready path'
+  refs:
+  - bn6f/asm/asm03_0.s:11782
+  - 0x0801E754 comm_checkCrossNetBattleReady_801E754
+  - 0x08006270 SetScreenFade
+  reproduce: python3 tools/asmcat.py 0x0802B9B8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- Which caller passes r5 and what the struct at r5+1/r5+2 is exactly (task state machine layout), and
+  what fade mode 0x10 vs state 0x18 mean in that context
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_802B9B8 -> comm_waitCrossNetReadyFallback
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802B9B8

@@ -482,10 +482,10 @@ Next chipSelect_dispatchState_803AD20(void) {
     case 0x3F: GUEST_CALL(handleMenuAction90_803AD80); break;
     case 0x40: GUEST_CALL(sub_803ADB8); break;
     case 0x3C: GUEST_CALL(sub_803ADDA); break;
-    case 0x3A: GUEST_CALL(sub_803AE04); break;
+    case 0x3A: GUEST_CALL(battle_tryConfirmAction); break;
     case 0x3B: GUEST_CALL(sub_803AE2A); break;
     case 0x3D: GUEST_CALL(sub_803AE50); break;
-    case 0x3E: GUEST_CALL(sub_803AE78); break;
+    case 0x3E: GUEST_CALL(submenu_moveCursorBack); break;
     default:   GUEST_CALL(menuSelectElement_803AE98); break;
     }
 
@@ -541,7 +541,7 @@ Next handleMenuAction90_803AD80(void) {
 /* menuSelectElement_803AE98: Menu "select" handler for some list element (R5 = element).
  * If element->field_0x11 < element->field_0x26, play a select sound, clear
  * field_0x13, then call sub_803BF70(0x11, 0x90) and sub_803A878().
- * Otherwise, fall through to sub_803AEC0().
+ * Otherwise, fall through to menuClearElementSelection().
  * Outputs r10 (preserved by this function's preserved set). */
 Next menuSelectElement_803AE98(void) {
     u8  current = LD8(R5 + 0x11);
@@ -556,7 +556,7 @@ Next menuSelectElement_803AE98(void) {
         GUEST_CALL(sub_803BF70);
         GUEST_CALL(sub_803A878);
     } else {
-        GUEST_CALL(sub_803AEC0);
+        GUEST_CALL(menuClearElementSelection);
     }
 
     RETURN_TO_CALLER();

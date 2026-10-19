@@ -1,0 +1,47 @@
+name: object_timerFadeStateTick
+address: '0x080270EA'
+kind: function
+status: probable
+summary: Per-tick handler that drains a field for 8 ticks, then fades the screen, plays SFX 0x91 and switches
+  the entity's state to 0xC.
+interface: '(r0-r4 = unused, r5 = entity struct: +0x40 tick counter, +0x44 value drained by 2/tick, +2
+  halfword state) -> r0 = clobbered; writes +0x40, +0x44, +2'
+details: Each call subtracts 2 from the word at r5+0x44 and increments the counter at r5+0x40. Once the
+  counter reaches 8, it resets to 0, calls SetScreenFade(0x34, 0x20) (likely fade color/speed), plays
+  sound effect 0x91 via the M4A wrapper, and stores state id 0xC into the halfword at r5+2, i.e. the owning
+  object's state machine advances to its next phase. It then unconditionally calls sub_80298D8 (purpose
+  unknown) before returning. The 8-tick cadence and fade+sound look like the end of a short timed sequence
+  (charge-up, warp, or drain effect), but the entity and the meaning of the +0x44 field are unknown without
+  callers.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub r0,#2 / str at +0x44 and cmp r0,#8 on +0x40: an 8-tick sequence draining +0x44 by 2 per
+    tick; bl SetScreenFade with r0=0x34, r1=0x20 only on the 8th tick: one-shot screen fade; bl PlaySoundEffect
+    with 0x91 immediately after the fade; strh 0xC,[r5,#2] right after: state-machine field at +2 set
+    to 0xC; tail bl sub_80298D8 runs every call, fade/sound only on the final tick'
+  refs:
+  - bn6f/asm/asm03_0.s:1755
+  - 0x080005CC PlaySoundEffect
+  - 0x08006270 SetScreenFade
+  - 0x080298D8 sub_80298D8
+  reproduce: python3 tools/asmcat.py 0x080270EA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- 'No known callers: which entity/struct is r5, and what does the +0x44 field represent?'
+- What sub_80298D8 does (called every tick) — likely would reveal the subsystem
+- What state 0xC means in the owning object's state machine, and what SFX 0x91 is in the BN6 sound table
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80270EA -> object_timerFadeStateTick
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80270EA

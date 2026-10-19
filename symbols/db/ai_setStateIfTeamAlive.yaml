@@ -1,0 +1,46 @@
+name: ai_setStateIfTeamAlive
+address: '0x080898FC'
+kind: function
+status: probable
+summary: If any actor on team 0x10 is still alive, triggers an AI action, loads a 30-frame value into
+  AIData+0x18, and sets the AI state byte to 0x44; always returns 1.
+interface: (no meaningful args; r5 = AI/entity context set up by callee) -> r0 = 1; flags from tst r0,r0
+details: Calls battle_countAliveActorsOnTeam_8142C20 with team id 0x10; if the count is zero it does nothing
+  but return 1. Otherwise it calls sub_8089CA4 with r0=8 (which presumably sets up r5 to point at an AIData
+  struct), then ai_setAIDataUnk18_8089CB0 with 0x1E, storing 30 into AIData+0x18 — most likely a frame
+  timer or repeat counter. Finally it writes the byte 0x44 to offset 0 of the struct at r5, which reads
+  as an AI mode/state selector. The unconditional return of 1 suggests the caller only cares that the
+  check ran, not its result.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: mov r0,#0x10; bl battle_countAliveActorsOnTeam_8142C20 then beq skip — only acts when team 0x10
+    has living actors; mov r0,#8; bl sub_8089CA4 — parameterized setup call that must establish the r5
+    AI struct; mov r0,#0x1e; bl ai_setAIDataUnk18_8089CB0 — writes halfword 30 to AIData+0x18; mov r0,#0x44;
+    strb r0,[r5] — byte 0x44 written to the struct, i.e. an AI state/mode id; mov r0,#1; pop — return
+    value 1 regardless of the branch taken
+  refs:
+  - bn6f/asm/asm23.s:1253
+  - 0x08089CB0 ai_setAIDataUnk18_8089CB0
+  - 0x08142C20 battle_countAliveActorsOnTeam_8142C20
+  - 0x08089CA4 sub_8089CA4
+  reproduce: python3 tools/asmcat.py 0x080898FC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- No callers are known, so the meaning of team 0x10 and when this check runs are unclear
+- sub_8089CA4 is unnamed; it likely selects the AIData struct (and maybe the actor) from r0=8, which would
+  confirm the target of the 0x44 state write
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80898FC -> ai_setStateIfTeamAlive
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80898FC

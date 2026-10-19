@@ -1,0 +1,48 @@
+name: object_freeEnemyActor
+address: '0x080BFCB2'
+kind: function
+status: probable
+summary: 'Destructor for an enemy battle object: unregisters it by version/actor-type/AI index, clears
+  its extra-var byte, and frees the object slot.'
+interface: (r5 = battle object pointer, not passed in r0-r3) -> r0 = clobbered; frees the object
+details: Reads the object's NameID from r5+oBattleObject_NameID and unpacks it into {version, actor type,
+  AI index} via unpackVerActorTyAndAIIdx_800F29C, then calls sub_8011044 with r2=1, likely unregistering/removing
+  that enemy from some battle-side tracking. If the object's ExtraVars+4 pointer is non-null, it stores
+  0 into the byte it points at (resetting a per-object counter/state kept outside the slot). Finally it
+  calls object_freeMemory, which clears the object's flags, frees its bitmap slot, unlinks it from the
+  active-object list, and resets sprite scaling. Note the object pointer is expected in r5, so this is
+  a tail-style destructor invoked with r5 already set up.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrh r0,[r5,#oBattleObject_NameID]; bl unpackVerActorTyAndAIIdx_800F29C — identifies which enemy
+    is being torn down; mov r2,#1; bl sub_8011044 — passes the unpacked identity plus a flag to an unknown
+    registry-like callee; strb r1,[r0] after tst on [r5,#oBattleObject_ExtraVars+4] — zeroes a byte in
+    an externally allocated block before it is dropped; bl object_freeMemory — final act is releasing
+    the battle object slot, marking this as teardown; no return value is computed; the routine only mutates
+    state and pops {r4,pc}
+  refs:
+  - bn6f/asm/asm31.s:16905
+  - 0x08003458 object_freeMemory
+  - 0x0800F29C unpackVerActorTyAndAIIdx_800F29C
+  - 0x08011044 sub_8011044
+  reproduce: python3 tools/asmcat.py 0x080BFCB2
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- What sub_8011044 does with {version, actorType, AI index} and r2=1 (removal from a roster, UI, or AI
+  list?) would confirm the exact semantics
+- Which structure ExtraVars+4 points to and what its zeroed byte counts
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BFCB2 -> object_freeEnemyActor
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BFCB2

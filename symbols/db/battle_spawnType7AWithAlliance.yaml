@@ -1,0 +1,55 @@
+name: battle_spawnType7AWithAlliance
+address: '0x080D49CC'
+kind: function
+status: probable
+summary: Battle-side wrapper that spawns battle object type 0x7A, copies an existing object's alliance/direction
+  onto it, flags it, and registers it to the same side.
+interface: (r0-r2 forwarded as spawn args, r3 = 4th spawn arg, r5 = source battle object, r6 = value for
+  the new object's damage-counter-disabler field) -> r0 = new battle object (or 0 on failure); flags reflect
+  null check
+details: The wrapper pushes r0-r2/r5 (the pushed words also sit on the stack as the extra spawn arguments),
+  loads r0 with 0x7A and calls object_spawnType3, keeping the caller's r3 as the fourth argument. On success
+  it stores r6 (supplied by the caller) into the new object's DamageAndStaminaDamageCounterDisabler field,
+  copies the AllianceAndDirectionFlip halfword from the object in r5 onto the new object, and ORs flag
+  0x10 into its oObjectHeader_Flags. Finally it masks the alliance byte (r3 & 0xFF) and calls setFieldBattleObject_800F614(newObject,
+  alliance, 1), tying the spawned object to the same team/slot as its source. The combination of the damage-counter-disabler
+  write, the copied alliance, and header flag 0x10 suggests a linked minion/decoy-style object whose damage
+  handling differs from a normal spawn. The pop {r1-r3,r5} paired with push {r0-r2,r5} rotates the saved
+  caller args into r1-r3 for the post-spawn setup.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'mov r0, #0x7a / bl object_spawnType3: spawns battle object type 0x7A using the caller''s args
+    kept on the stack; str r6, [r0,#oBattleObject_DamageAndStaminaDamageCounterDisabler]: caller-supplied
+    r6 written into the new object''s damage/stamina counter field; ldrh r3,[r5,#oBattleObject_AllianceAndDirectionFlip]
+    / strh to the new object: alliance and direction-flip copied from the source object in r5; orr r2,
+    #0x10 into oObjectHeader_Flags: new object gets header flag 0x10; and r1,r3 / mov r2,#1 / bl setFieldBattleObject_800F614:
+    new object registered with its alliance byte and argument 1'
+  refs:
+  - bn6f/asm/asm31.s:62432
+  - 0x080D49F6 sub_80D49F6
+  - 0x080E6000 sub_80E6000
+  - 0x08003358 object_spawnType3
+  - 0x0800F614 setFieldBattleObject_800F614
+  reproduce: python3 tools/asmcat.py 0x080D49CC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- What battle object type 0x7A actually is in gameplay (decoy, minion, hazard, ...) — needs the object's
+  initializer or a spawn table
+- What the callers (sub_80D49F6, sub_80E6000) put in r6 and r5, and what the rotated r0 argument means
+- How the spawned pointer reaches r0/r5 given the odd mov r0,r5 before the pop; verifying object_spawnType3's
+  exact return convention would resolve it
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D49CC -> battle_spawnType7AWithAlliance
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D49CC

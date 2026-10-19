@@ -1,0 +1,49 @@
+name: object_phase100SpawnT3b6
+address: '0x080BF464'
+kind: function
+status: probable
+summary: 'Battle-object phase handler: on entry sets a 100-frame timer, animation 3 and palette 0, spawns
+  a type-3 object 0xB6 at the object''s panel with a parameter derived from the damage field, then counts
+  down and advances to phase 4 when the timer expires.'
+interface: (r0 = battle object ptr in r5 convention) -> void; sets oBattleObject_PhaseInitialized=4 on
+  entry, decrements Timer each frame, writes CurPhaseAndPhaseInitialized=4 on expiry
+details: 'Runs as a per-object phase step keyed on oBattleObject_PhaseInitialized. First execution: Timer=100,
+  CurAnim=3, sprite_setPalette(0), then spawnType3_0xb6_80DC22C(PanelX, PanelY, 0, 0, 2 + (Damage & 0xF000))
+  — the spawned object''s last argument is 2 plus the upper nibble of the Damage field, suggesting the
+  damage field encodes a variant/strength for the spawned effect. It then marks the phase initialized
+  with 4 so the init block runs once. Every subsequent frame it decrements oBattleObject_Timer; when it
+  reaches 0 it writes 4 to CurPhaseAndPhaseInitialized, moving the object to the next phase.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#oBattleObject_PhaseInitialized]; tst/bne gates a one-time init block, ending with
+    strb #4 to PhaseInitialized; mov r0,#0x64; strh [oBattleObject_Timer] and mov #3; strb [oBattleObject_CurAnim]
+    set up a 100-frame countdown with animation 3; ldrh r3,[r5,#oBattleObject_Damage]; lsr/lsl #0xc isolates
+    the high nibble, added to r6=2 before bl spawnType3_0xb6_80DC22C with PanelX/PanelY; bl sprite_setPalette
+    with r0=0 recolors the object at phase start; sub r0,#1; strh back to Timer; bgt skip; strh #4 into
+    CurPhaseAndPhaseInitialized transitions to phase 4 on expiry'
+  refs:
+  - bn6f/asm/asm31.s:15715
+  - 0x08002D80 sprite_setPalette
+  - 0x080DC22C spawnType3_0xb6_80DC22C
+  reproduce: python3 tools/asmcat.py 0x080BF464
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- No known callers, so which battle object/attack uses this phase and what type-3 object 0xB6 represents
+  (visual effect vs projectile) is unconfirmed
+- Exact meaning of the 2 + (Damage>>12) argument to the spawned object (variant id? power tier?) needs
+  spawnType3_0xb6_80DC22C analysis
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BF464 -> object_phase100SpawnT3b6
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BF464

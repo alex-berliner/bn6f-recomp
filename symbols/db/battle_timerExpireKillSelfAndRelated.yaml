@@ -1,0 +1,50 @@
+name: battle_timerExpireKillSelfAndRelated
+address: '0x080B8B6E'
+kind: function
+status: probable
+summary: Counts down the object's Timer; once expired, resolves the related object's enemy identity, destroys
+  both itself and the related object, and clears a status flag/byte.
+interface: (r5 = battle object) -> r0 = clobbered; no return value
+details: Uses r5 as the current battle object. It decrements oBattleObject_Timer and returns while the
+  result is still >= 0 (bge locret), so the body runs exactly once when the timer lapses. It then reads
+  oBattleObject_RelatedObject1Ptr, unpacks that object's oBattleObject_NameID into {version, actor type,
+  AI index} via unpackVerActorTyAndAIIdx_800F29C, and passes them (with r2 = 1) to sub_8011044, whose
+  effect is unknown. It clears bit 0x2 of oObjectHeader_Flags on itself, sets oBattleObject_CurStateActionPhaseAndPhaseInitialized
+  to CUR_STATE_DESTROY, tears down the related object via battle_killObjectWithDependents, and zeroes
+  the first byte of oBattleObject_ExtraVars.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrh r0,[r5,#oBattleObject_Timer]; sub r0,#1; strh; bge locret_80B8B9E — one-shot timer expiry
+    gate; ldr r4,[r5,#oBattleObject_RelatedObject1Ptr]; ldrh r0,[r4,#oBattleObject_NameID]; bl unpackVerActorTyAndAIIdx_800F29C;
+    mov r2,#1; bl sub_8011044; bic bit 0x2 in oObjectHeader_Flags, then mov r0,#CUR_STATE_DESTROY; str
+    [r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]; ldr r0,[r5,#oBattleObject_RelatedObject1Ptr];
+    bl battle_killObjectWithDependents — destroys the linked object too; ldr r1,[r5,#oBattleObject_ExtraVars];
+    mov r0,#0; strb r0,[r1] — resets a per-object byte
+  refs:
+  - bn6f/asm/asm31.s:1325
+  - 0x080E13DC battle_killObjectWithDependents
+  - 0x0800F29C unpackVerActorTyAndAIIdx_800F29C
+  - 0x08011044 sub_8011044
+  reproduce: python3 tools/asmcat.py 0x080B8B6E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- What sub_8011044 does with the unpacked {version, actorType, AIIdx} and the r2=1 argument (respawn/actor
+  re-registration/AI reset?)
+- The semantic meaning of flag bit 0x2 in oObjectHeader_Flags and of the ExtraVars byte cleared here
+- No known caller, so the object type and game context (e.g. delayed self-destruct / timed removal) are
+  unconfirmed
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80B8B6E -> battle_timerExpireKillSelfAndRelated
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80B8B6E

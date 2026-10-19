@@ -1,0 +1,46 @@
+name: object_setPositionIfEntryActive
+address: '0x0811AD18'
+kind: function
+status: probable
+summary: Sets an object's sprite coordinates only if the corresponding entry in the 0x58-byte struct array
+  at eStructArr2008450 is active.
+interface: (r0 = object/resource pointer, r1 = coordinate value/struct for sprite_setCoordinates, r2 =
+  index into eStructArr2008450) -> r0 = pass-through of sprite_setCoordinates result; no meaningful flags
+  (beq used on callee result).
+details: The function saves r0-r2, then calls getStructFrom2008450 with r2 to fetch the in-use/status
+  byte of an entry in the fixed 0x58-byte struct array at eStructArr2008450; if that byte is zero (entry
+  inactive), it returns without doing anything. Otherwise it calls sprite_setCoordinates with the saved
+  r0/r1, which writes x/y into the 0x10-byte sprite sub-entry selected by the high nibble of the resource's
+  byte 2. r4-r7 are pushed but never used, suggesting a thunk/wrapper. The in-use check acts as a guard
+  so positions are only updated for live entries.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl getStructFrom2008450 with r2, then beq loc_811AD34 skips everything when the entry's status
+    byte is zero; nonzero case loads the saved r0/r1 from sp and tail-calls sprite_setCoordinates; sprite_setCoordinates
+    is the only real callee and consumes exactly the two saved arguments; single caller sub_812FAE4 at
+    0x0812FAE4 is the only use site seen; it was not inspected
+  refs:
+  - bn6f/asm/asm32.s:26735
+  - 0x0812FAE4 sub_812FAE4
+  - 0x080466C4 getStructFrom2008450
+  - 0x0800307C sprite_setCoordinates
+  reproduce: python3 tools/asmcat.py 0x0811AD18
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- What sub_812FAE4 passes for r0/r1 (whether r1 is a single coordinate or a packed struct) and what the
+  0x58-byte entries at eStructArr2008450 represent in game terms
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_811AD18 -> object_setPositionIfEntryActive
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811AD18

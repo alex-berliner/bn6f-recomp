@@ -1,0 +1,45 @@
+name: battle_updateObjectSpriteByAction
+address: '0x080C15EC'
+kind: function
+status: probable
+summary: Runs the per-action sprite handler for a battle object and then advances its sprite animation
+  (respecting pause/timestop).
+interface: (r5 = battle object pointer) -> r0 = result of the selected action handler; calls object_updateSpriteTimestop
+  each frame
+details: Reads the object's CurAction byte (oBattleObject_CurAction), indexes a 3-entry dispatch table
+  at off_80C1600 (values 0-2, one per action state), and calls the selected handler with a long-bl (mov
+  lr,pc / bx r1) so the handler's return value lands in r0. Unconditionally afterwards calls object_updateSpriteTimestop
+  to tick the object's sprite animation one frame unless the battle is paused, the object lacks a sprite,
+  or a time stop freezes it. This is the per-frame sprite update step of a battle object, complementing
+  battle_resetObjectSpriteState which re-initializes the sprite when entering the state.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r5,#oBattleObject_CurAction] then ldr r1,[r1,r0] with table off_80C1600 of 3 handler
+    words = action-indexed dispatch; mov lr,pc / bx r1 keeps the handler's r0 as the function's return
+    value; bl object_updateSpriteTimestop follows the dispatch unconditionally, ticking the animation;
+    caller battle_resetObjectSpriteState resets the sprite then moves the object into its update state,
+    so this is that state's per-frame update
+  refs:
+  - bn6f/asm/asm31.s:20616
+  - 0x080C1590 battle_resetObjectSpriteState
+  - 0x0801BBF4 object_updateSpriteTimestop
+  reproduce: python3 tools/asmcat.py 0x080C15EC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- which CurAction values 0-2 correspond to (the three handlers sub_80C1610/sub_80C16BE/sub_80C17B2 are
+  not shown), and the exact oBattleObject layout offset number
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C15EC -> battle_updateObjectSpriteByAction
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C15EC

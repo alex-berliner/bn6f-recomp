@@ -1,0 +1,51 @@
+name: battle_spawnTempAttackDelayPhase
+address: '0x080BF8A8'
+kind: function
+status: probable
+summary: 'Attack-phase handler for a battle object: on first entry it sets animation 0xA, spawns a subtype-5
+  temp attack object linked to itself, plays sound effect 0x94, then waits 30 frames before advancing
+  to phase 4.'
+interface: (r5 = battle object ptr, r4 = 0x10032 spawn param, r7 = r5+0x60 linked-object data) -> r0 clobbered;
+  sets oBattleObject_CurAnim=0xA, oBattleObject_Timer=30, oBattleObject_PhaseInitialized=4, then oBattleObject_CurPhaseAndPhaseInitialized=4
+  when timer expires
+details: 'Standard battle-object phase step using the PhaseInitialized/Timer pattern: on first run it
+  stores anim 0xA and a 30-frame timer (0x1E), loads the constant 0x10032 from a nearby data pool into
+  r4, and calls spawn_t1_0x5_tempAttackObject_80B8E30 with r5+0x60 prepared, so the spawned attack object
+  inherits the owner''s panel position/alliance and is linked back to r5. It then plays M4A sound 0x94
+  and marks the phase as initialized with value 4. On subsequent frames it decrements oBattleObject_Timer;
+  when it reaches 0 it writes phase value 4 into the combined CurPhaseAndPhaseInitialized byte, ending
+  the wait. The 0x10032 constant likely encodes spawn placement or flags for the temp attack; the exact
+  enemy/move identity can''t be read from this code alone.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb/strb around oBattleObject_PhaseInitialized with bne skip shows a run-once init section
+    (asm lines 2-16); strb #0xa to oBattleObject_CurAnim and strh #0x1e to oBattleObject_Timer set a 30-frame
+    anim/wait (init block); ldr r4, dword_80BF978 (=0x10032) followed by bl spawn_t1_0x5_tempAttackObject_80B8E30
+    passes a fixed spawn parameter; mov r0,#0x94; bl PlaySoundEffect plays sound 0x94 immediately after
+    the spawn; timer decrement with bgt, then strh #4 to oBattleObject_CurPhaseAndPhaseInitialized, transitions
+    to phase 4 after the wait'
+  refs:
+  - bn6f/asm/asm31.s:16314
+  - 0x080005CC PlaySoundEffect
+  - 0x080B8E30 spawn_t1_0x5_tempAttackObject_80B8E30
+  reproduce: python3 tools/asmcat.py 0x080BF8A8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- Which boss/enemy attack this phase belongs to (needs callers or the object's spawn table)
+- Exact meaning of the 0x10032 constant passed to the subtype-5 spawn call
+- What animation 0xA and sound 0x94 correspond to in game terms
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BF8A8 -> battle_spawnTempAttackDelayPhase
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BF8A8

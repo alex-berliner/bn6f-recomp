@@ -1,0 +1,51 @@
+name: submenu_toggleStateStartOrB
+address: '0x0804AAD0'
+kind: function
+status: probable
+summary: Handles START/B input to open or close a menu state 0x14, playing select/exit sound effects and
+  resetting a sub-field when opened.
+interface: (r0 unused/scratch, r5 = menu work struct pointer) -> r0 = 0 when no input taken; state byte
+  [r5] toggled 4<->0x14, halfword [r5+0x34] zeroed on open
+details: Checks IsButtonPressed(JOYPAD_START) first; if START is pressed OR (state [r5]==0x14 and B is
+  pressed), it enters the toggle path. If the state byte is 0x14 it stores 4 and plays SOUND_EXIT_SUBMENU
+  (closing); otherwise it stores 0x14, clears the halfword at r5+0x34, and plays SOUND_MENU_SELECT (opening).
+  If START was not pressed and the state byte is not 0x14 (or B not pressed while in 0x14), it sets r0=0
+  and returns without side effects. The 0x14/4 values look like menu-state or screen IDs inside a larger
+  menu controller, and r5+0x34 is plausibly a list cursor or scroll offset reset on open. B only closes;
+  START both opens and closes.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl IsButtonPressed with #JOYPAD_START then bne loc_804AAE8 branches straight into the toggle
+    path; cmp r0, #0x14 on [r5] plus strb #4 / SOUND_EXIT_SUBMENU is the close branch; strb #0x14, strh
+    #0 at [r5+0x34], and SOUND_MENU_SELECT form the open branch; B-button check (bl IsButtonPressed, #JOYPAD_B)
+    is gated behind cmp #0x14, so B only closes; both outcomes end in pop {pc} with r0 left as 0 or the
+    sound call''s return, so r0 is not a meaningful result'
+  refs:
+  - bn6f/asm/asm03_2.s:8342
+  - 0x0804A3FC sub_804A3FC
+  - 0x0804A514 sub_804A514
+  - 0x0811F7EC IsButtonPressed
+  - 0x080005CC PlaySoundEffect
+  reproduce: python3 tools/asmcat.py 0x0804AAD0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- What menu/screen the callers sub_804A3FC and sub_804A514 belong to (to confirm whether 0x14 is a submenu
+  index or a screen mode)
+- What the halfword at r5+0x34 is (cursor, scroll, or timer) and who reads it back
+- Whether SOUND_EXIT_SUBMENU / SOUND_MENU_SELECT constants confirm this is a submenu rather than a full
+  screen swap
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_804AAD0 -> submenu_toggleStateStartOrB
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_804AAD0

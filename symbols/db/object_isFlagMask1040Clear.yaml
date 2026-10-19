@@ -1,0 +1,48 @@
+name: object_isFlagMask1040Clear
+address: '0x0800E5FC'
+kind: function
+status: probable
+summary: Returns 1 when the current battle object's first object-flag word has none of the bits in mask
+  0x1040 set, else 0.
+interface: () -> r0 = 1 if (object flag word & 0x1040) == 0, else 0; no flags meaningful
+details: A thin predicate over object_getFlag, which reads the first object-flag word of the battle object's
+  collision data. It ANDs the result with the constant 0x1040 (bits 4 and 10) loaded from off_800E614;
+  if any of those bits is set it returns 0, otherwise it returns 1, so it tests the absence of this flag
+  combination. It takes no arguments of its own — the object context comes from whatever object_getFlag
+  uses. Its only labeled caller (aiAttackVars_updateIllusionSpawnState) is an AI illusion-spawn step,
+  suggesting the mask flags mark objects/states in which the spawn behavior must not proceed. The semantic
+  meaning of bits 4 and 10 of the flag word is not shown by this function itself.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl object_getFlag then tst r4, #0x1040 — pure mask test on the object flag word; bne returns
+    0, fallthrough returns 1 — inversion makes it a ''flags clear'' predicate; off_800E614 .word 0x1040
+    — single constant mask, bits 4 and 10; caller aiAttackVars_updateIllusionSpawnState_80EB79C gates
+    illusion-spawn logic on the result; callee object_getFlag is documented as returning the battle object''s
+    first object-flag word'
+  refs:
+  - bn6f/asm/object.s:5424
+  - 0x080EB79C aiAttackVars_updateIllusionSpawnState_80EB79C
+  - 0x080EE370 sub_80EE370
+  - 0x080EF004 sub_80EF004
+  - 0x0801A166 object_getFlag
+  reproduce: python3 tools/asmcat.py 0x0800E5FC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- What game-world meaning bits 4 and 10 of the object-flag word carry (e.g. invulnerability, untouchable,
+  no-target) — a caller in the illusion-spawn path using the result would confirm the semantics
+- Whether the inverted return convention (1 = clear) matches how callers branch on it
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_800E5FC -> object_isFlagMask1040Clear
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800E5FC

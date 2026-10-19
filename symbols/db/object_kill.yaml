@@ -1,0 +1,46 @@
+name: object_kill
+address: '0x080D4EE0'
+kind: function
+status: probable
+summary: 'Tears down a battle object: removes its collision region, clears its bit-1 flag, and queues
+  it for destruction unless time-stop is freezing the battle'
+interface: (r5 = battle object header, implied) -> r0 = 0; destroys flags/state fields on the object
+details: Clears the object's collision region via object_clearCollisionRegion so it no longer participates
+  in collision. Then reads oObjectHeader_Flags, bic's bit 1 (0x2), and writes it back — likely clearing
+  a 'hittable/active' or 'invulnerable-from-hits' style flag. Calls battle_isTimeStop; if time-stop is
+  active (nonzero return) it returns early, deferring destruction. Otherwise it stores CUR_STATE_DESTROY
+  into oBattleObject_CurStateActionPhaseAndPhaseInitialized, which the object state machine interprets
+  as 'destroy this object'. Note r5 is used without being set in the routine, so the caller must pass
+  the object pointer in r5 (a register-based this-style convention).
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl object_clearCollisionRegion — first removes the object from collision; ldrb/bic #2/strb
+    on oObjectHeader_Flags — clears bit 1 of the object''s flags; bl battle_isTimeStop; bne locret — destruction
+    is skipped while time-stop freezes the battle; mov r0,#CUR_STATE_DESTROY; str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]
+    — queues the object''s state machine to destroy it; uses r5 as the object pointer without setting
+    it — caller supplies the object in r5'
+  refs:
+  - bn6f/asm/asm31.s:63123
+  - 0x0800A098 battle_isTimeStop
+  - 0x0801A074 object_clearCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080D4EE0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- No callers known, so the register convention (object pointer in r5) and exact trigger contexts (hit-by-attack?
+  HP-zero handler?) are unconfirmed
+- The exact meaning of flags bit 1 in oObjectHeader_Flags is not established from this code alone
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D4EE0 -> object_kill
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D4EE0

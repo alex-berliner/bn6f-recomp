@@ -1,0 +1,52 @@
+name: submenu_showSelectedFastestTime
+address: '0x08138170'
+kind: function
+status: probable
+summary: 'Time-attack result readout for the open submenu entry: takes the faster of two recorded times
+  for that entry and prints it (min:sec.centis) via a chatbox script.'
+interface: '(r5 = submenu/list state: cursor at +0x24, list base at +0x20; r10 = toolkit) -> r0 = 0 if
+  a time was displayed, 1 if the time exceeded the 9:59.99 cap; clobbers r4-r7.'
+details: Builds an index as (field_0x24 + field_0x20)*2+1 and reads a byte from the unk_201CF00 table
+  to get the slot id of the currently highlighted entry. It then loads two u16 timer values for that slot,
+  from unk_2000260[slot] and unk_20018C0[slot], and takes the smaller one (r7 = 0 if the first is smaller,
+  else 2). The smaller frame count is converted to packed BCD by memory_bcd_8000D84; if the BCD exceeds
+  0x95999 (i.e. 9:59.99) the function returns 1 without displaying anything. Otherwise the three 2-digit
+  BCD groups (minutes from the upper halfword, seconds and centiseconds from the lower bytes, each decoded
+  as tens*10+ones) are stored into chatbox fields 0x4C/0x50/0x54 — the number buffers the text engine
+  prints — and chatbox_runScript_803FD78 runs script 0 (first time was faster) or 2 (second was faster)
+  from eTextScript201BF00, returning 0.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: (field_0x24+field_0x20)*2+1 indexes unk_201CF00 to pick a slot, then unk_2000260[r0] and unk_20018C0[r0]
+    are both loaded — two per-entry timers; cmp r2,r3 / mov r7,#0|2 / mov r6 = min(r2,r3) selects the
+    faster time and the matching script index; bl memory_bcd_8000D84 followed by cmp r0,#0x95999 (BCD
+    9:59.99) skips display and returns r5=1 on overflow; three tens*10+ones digit decodings store MM/SS/cc
+    into chatbox +0x4C/+0x50/+0x54, the chatbox number-output fields; bl chatbox_runScript_803FD78 with
+    archive eTextScript201BF00 and index r7 (0 or 2) prints the result message from the caller's submenu
+    input handler
+  refs:
+  - bn6f/asm/asm36.s:17011
+  - 0x081379A0 submenu_handleConfirmCancelCursorInput
+  - 0x0803FD78 chatbox_runScript_803FD78
+  - 0x08000D84 memory_bcd_8000D84
+  reproduce: python3 tools/asmcat.py 0x08138170
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- Which in-game minigame/event owns these two time arrays (unk_2000260 vs unk_20018C0) and the archive
+  eTextScript201BF00 — script texts would disambiguate 'new record' vs 'best time' wording
+- Exact meaning of the return value as consumed by submenu_handleConfirmCancelCursorInput (retry vs. proceed)
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8138170 -> submenu_showSelectedFastestTime
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8138170

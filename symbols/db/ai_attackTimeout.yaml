@@ -1,0 +1,47 @@
+name: ai_attackTimeout
+address: '0x080EEFA4'
+kind: function
+status: probable
+summary: 'Per-frame AI attack timer: after StepTimer counts down to zero, clears the active-attack flag
+  and exits the attack state.'
+interface: (r7 = battle object with oAIAttackVars) -> void; decrements oAIAttackVars_StepTimer, on expiry
+  clears ObjectFlags1 bit 1<<22 and calls object_exitAttackState
+details: Reads oAIAttackVars_StepTimer from the object at r7, decrements it, and stores it back. While
+  the timer is still >0 it returns immediately, so the attack keeps running. When the counter reaches
+  0 (bgt falls through), it calls object_clearFlag with (1 << 22) to clear that ObjectFlags1 bit in the
+  object's collision data — presumably the 'attack active' marker — then calls object_exitAttackState
+  to leave the attack state. No return value; only flags from the calls are affected. The bit being cleared
+  via the generic clearFlag helper rather than a named field suggests 1<<22 is a status flag shared with
+  collision checks.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrh/strh on [r7,#oAIAttackVars_StepTimer] with sub #1 and bgt: a simple per-frame countdown
+    gate; mov r0,#1; lsl r0,#0x16; bl object_clearFlag: clears ObjectFlags1 bit 22 when the timer expires;
+    bl object_exitAttackState immediately after: the timer expiry ends the object''s attack state; Timer
+    field is in oAIAttackVars, tying this to the AI attack variable block'
+  refs:
+  - bn6f/asm/asm31.s:119480
+  - 0x0801A15C object_clearFlag
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x080EEFA4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- No known caller, so which AI attack behaviors use this timer and what value StepTimer is loaded with
+  is unknown
+- The exact meaning of ObjectFlags1 bit 1<<22 (presumably 'attack hitbox active') is inferred only from
+  being cleared alongside exitAttackState
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80EEFA4 -> ai_attackTimeout
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EEFA4

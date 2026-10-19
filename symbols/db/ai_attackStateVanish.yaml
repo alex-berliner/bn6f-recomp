@@ -1,0 +1,48 @@
+name: ai_attackStateVanish
+address: '0x080F6BB8'
+kind: function
+status: probable
+summary: AI attack step that plays a short vanish animation and then removes the enemy object from the
+  battle.
+interface: (r5 = battle object, r7 = AI attack vars) -> r0 = undefined; sets AttackElement/anim/timer,
+  then deactivates the object and exits the attack state
+details: 'First invocation (AttackElement == 0) initializes the attack: writes element 4 to oAIAttackVars_AttackElement,
+  animation 4 to oBattleObject_CurAnim, and a 3-frame timer to oAIAttackVars_StepTimer. Every later call
+  decrements the step timer; while it is still positive the handler returns. When the timer expires it
+  passes oAIAttackVars_ScratchVar to sub_80F7514 (probably spawning/effect setup), then calls battle_deactivateObject
+  so the object drops to Z=0xFF, loses its shadow and collision and is unregistered, calls sub_80F73FA
+  (likely cleanup/effects), and finally object_exitAttackState to return the AI to its normal state. The
+  3-frame animation-4 window suggests a brief dissolve/retreat pose before removal.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb/tst on oAIAttackVars_AttackElement + writes of element 4, anim 4, timer 3 = one-shot attack
+    initialization; ldrh/sub/strh on oAIAttackVars_StepTimer with bgt = frame countdown for the attack
+    step; bl battle_deactivateObject after the timer expires = the attacked object is removed from battle;
+    bl object_exitAttackState at the end = this is a step of the AI attack state machine; ScratchVar passed
+    to sub_80F7514 right before deactivation = per-attack parameter (likely effect/spawn id)
+  refs:
+  - bn6f/asm/asm31.s:135438
+  - 0x080F7140 battle_deactivateObject
+  - 0x08011714 object_exitAttackState
+  - 0x080F73FA sub_80F73FA
+  reproduce: python3 tools/asmcat.py 0x080F6BB8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- sub_80F7514 and sub_80F73FA are unnamed, so the exact effect played while vanishing is unknown
+- no caller is known; identifying which enemy's attack table points here would confirm which boss/enemy
+  uses this vanish
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F6BB8 -> ai_attackStateVanish
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F6BB8

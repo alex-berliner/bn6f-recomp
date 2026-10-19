@@ -1,0 +1,48 @@
+name: battle_checkLinkPartnerCamera
+address: '0x0809CE14'
+kind: function
+status: probable
+summary: Checks the link-battle state and partner slot; on success stores the partner's eCamera-related
+  value into [r5+0x74] and returns 0, otherwise returns 1.
+interface: (uses caller's r5 as destination struct, r7/r12 saved around the call) -> r0 = 0 on success
+  (value stored) or 1 if link state is nonzero or slot 4 is active
+details: First calls battle_getLinkStateCode_803F560; a nonzero link state code aborts with return 1.
+  If the state is 0, it calls sub_803F644, branching to the return-1 path only when that returns nonzero,
+  so it must report 'no issue' for the check to continue. It then queries link slot 4 via link_getSlotState_803F740,
+  which also yields eCamera fields; if the slot's state (r1) is nonzero it bails with 1, otherwise it
+  stores r2 (a camera-related value for that slot) into [r5+0x74] and returns 0. r5 is not set up inside,
+  so the destination structure belongs to the caller sub_809CC60.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl battle_getLinkStateCode_803F560 followed by tst/bne returning 1 aborts on any active link-battle
+    state; link_getSlotState_803F740 is called with slot id 4 and tst r1,r1/bne treats an active slot
+    as failure; str r2,[r5,#0x74] stores the eCamera-related r2 from link_getSlotState into a caller struct
+    field; r4 starts at 1 and is only cleared to 0 on the success path, so 0 = check passed; sole caller
+    sub_809CC60 supplies r5; callee summaries confirm link-state and slot/eCamera semantics
+  refs:
+  - bn6f/asm/asm28_0.s:5255
+  - 0x0809CC60 sub_809CC60
+  - 0x0803F560 battle_getLinkStateCode_803F560
+  - 0x0803F740 link_getSlotState_803F740
+  - 0x0803F644 sub_803F644
+  reproduce: python3 tools/asmcat.py 0x0809CE14
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- what struct [r5+0x74] belongs to and what field 0x74 means (needs sub_809CC60 context)
+- what sub_803F644 tests (its return gating the slot check is inferred, not read)
+- which link player slot 4 represents (partner vs third/fourth player)
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_809CE14 -> battle_checkLinkPartnerCamera
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_809CE14

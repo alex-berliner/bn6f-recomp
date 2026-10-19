@@ -1,0 +1,47 @@
+name: object_countdownDispatch
+address: '0x0801D548'
+kind: function
+status: probable
+summary: Decrements an object's one-byte countdown timer at +0x1B; on reaching zero it clears global flag
+  bit 21 (0x00200000) and dispatches with that flag mask.
+interface: (r5 = structure with u8 countdown at +0x1B) -> r0 = 0x00200000 passed to dispatch; Z flag of
+  the decrement escapes via the bne
+details: 'Loads the byte at [r5,+0x1B], decrements it, stores it back, and returns early while it is still
+  nonzero. When the counter hits zero, it builds the mask 1<<21 (0x00200000) and calls flags_clearBits_eStruct2035280_801BED6
+  to clear those bits in the flags word at dword_20352C0, then calls dispatch_801DACC with the same mask,
+  apparently to trigger whatever action is registered for that flag. This looks like a generic delay/timeout
+  tick used by an object or task: fire an event once after N ticks. r5 is a caller-supplied context pointer,
+  so the routine is position-independent of any single object type.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb/strb on [r5,#0x1b] with sub #1 and ''bne locret'' = classic tick-down counter that only
+    acts on expiry (sub_801D548 lines 2-5); both callee calls receive mov r0,#1; lsl r0,#0x15 = mask 0x00200000,
+    showing one specific global flag drives the action; flags_clearBits_eStruct2035280_801BED6 summary
+    confirms it clears that mask in the flags word at dword_20352C0; dispatch_801DACC''s signature (a0:
+    flags32) -> () shows the mask is dispatched as an event/trigger after the flag is cleared'
+  refs:
+  - bn6f/asm/asm00_2.s:30171
+  - 0x0801BED6 flags_clearBits_eStruct2035280_801BED6
+  - 0x0801DACC dispatch_801DACC
+  reproduce: python3 tools/asmcat.py 0x0801D548
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- What structure r5 points to (offset 0x1B field's meaning beyond 'counter') is unknown
+- No callers are known, so the initial counter value and which game system uses flag bit 0x00200000 are
+  unconfirmed
+- What dispatch_801DACC actually triggers for this mask is only known from its generic signature
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_801D548 -> object_countdownDispatch
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_801D548

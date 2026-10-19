@@ -1,0 +1,45 @@
+name: ai_attackRecoverWait
+address: '0x080EC1C4'
+kind: function
+status: probable
+summary: 'AI attack wind-down: delays ~20 frames, then resets the object''s animation and clears attack
+  references before leaving the attack state.'
+interface: (r7 = AI attack vars struct, r5 = battle object) -> r0 = 0 after cleanup; sets attack-state
+  fields
+details: 'First call: if oAIAttackVars_AttackElement is 0, stores 0x14 into StepTimer and sets AttackElement
+  = 4, turning that field into a state/phase marker. Each subsequent call decrements StepTimer; while
+  >= 0 it just returns. When the timer expires, it calls object_setAnimation(0) to return to the base
+  animation, stores 0 into oBattleObject_RelatedObject1Ptr (dropping the spawned attack object reference),
+  nulls oAIData_TempAttackObjectPtr, and calls object_exitAttackState to finish the attack routine.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne guards a one-time init of StepTimer=0x14
+    and AttackElement=4; StepTimer is decremented with sub/bge so the cleanup only runs once the 20-frame
+    wait lapses; mov r0,#0; bl object_setAnimation restores the default animation after the attack; str
+    r0,[r5,#oBattleObject_RelatedObject1Ptr] and str into oAIData_TempAttackObjectPtr clear lingering
+    attack-object references; bl object_exitAttackState as the final action indicates leaving the AI attack
+    state
+  refs:
+  - bn6f/asm/asm31.s:113124
+  - 0x0800F2B6 object_setAnimation
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x080EC1C4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- exact meaning of AttackElement value 4 vs other AI attack phases
+- which caller(s)/attack scripts invoke this and whether the 0x14 timer varies per attack
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80EC1C4 -> ai_attackRecoverWait
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EC1C4

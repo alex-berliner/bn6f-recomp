@@ -1,0 +1,45 @@
+name: battle_advanceAnimCounters
+address: '0x0801D450'
+kind: function
+status: probable
+summary: Advances a two-digit base-6 frame counter in a battle object, frozen while the battle is paused
+  or time-stopped.
+interface: (r5 = object/work struct with counter fields) -> r0 clobbered; no return value, flags not meaningful
+  to caller
+details: Reads the battle-paused flag and the time-stop flag and returns immediately (leaving the counters
+  untouched) if either is active. Otherwise it increments the halfword at [r5,0x34]; when it reaches 6
+  it wraps to 0 and increments the halfword at [r5,0x36], which also wraps 5→0. The pair therefore forms
+  a 0–5/0–5 counter cycling every 36 unpaused frames, stored in two halfword fields of the struct at r5.
+  Typical of a battle animation/phase timer that must respect pause and time-stop.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'bl battle_isPaused / tst+bne: early exit while paused (0x0801D454–0x0801D45A); bl battle_isTimeStop
+    / bne: also early exit during time-stop (0x0801D45C); ldrh r0,[r5,#0x34]; add #1; cmp #6; blt: inner
+    counter counts 0–5 (0x0801D460); ldrh r1,[r5,#0x36]; add #1; cmp #6; blt; mov r1,#0: outer counter
+    wraps 5→0 only when inner overflows (0x0801D46A)'
+  refs:
+  - bn6f/asm/asm00_2.s:30038
+  - 0x0800A03C battle_isPaused
+  - 0x0800A098 battle_isTimeStop
+  reproduce: python3 tools/asmcat.py 0x0801D450
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- No callers known, so the meaning of the two counter fields (what animation or effect reads [r5+0x34]/[r5+0x36])
+  is inferred only from their 6×6 structure
+- The identity of the struct at r5 is unknown; a caller or xref would confirm it and whether the counters
+  drive an animation frame or a timed event
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_801D450 -> battle_advanceAnimCounters
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_801D450

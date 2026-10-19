@@ -1,0 +1,48 @@
+name: battle_phaseWaitAnim8ThenNext
+address: '0x080C3E00'
+kind: function
+status: probable
+summary: 'Battle-object AI phase handler: plays animation 8 once, then when it finishes switches to animation
+  0xD, plays sound 0xFD, starts a 30-frame timer and advances the object to phase 4.'
+interface: (r0 = scratch, r5 = battle object) -> r0 = sprite_getFrameParameters result clobbered; updates
+  oBattleObject fields on r5
+details: On first entry (oBattleObject_PhaseInitialized == 0) it latches the flag and sets oBattleObject_CurAnim
+  = 8, so the phase's opening animation only starts once. Every call it then asks sprite_getFrameParameters
+  for the current frame's attribute byte and tests bit 0x80, which here acts as the animation-finished/end-of-loop
+  marker. When that bit is set it swaps CurAnim to 0xD, plays sound effect 0xFD via PlaySoundEffect, stores
+  0x1E (30) into oBattleObject_Timer, and writes phase 4 into oBattleObject_CurPhaseAndPhaseInitialized,
+  moving the state machine on. It is a self-contained 'wait for animation then transition' step; r5 is
+  the object pointer throughout.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb/strb on oBattleObject_PhaseInitialized + strb #8 to oBattleObject_CurAnim: one-shot animation-8
+    setup (sub_80C3E00+3..0xC); bl sprite_getFrameParameters then tst r0,#0x80: end-of-animation check
+    via attribute byte; strb #0xd to oBattleObject_CurAnim and PlaySoundEffect(0xfd): transition animation
+    with sound; strh #0x1e to oBattleObject_Timer and strh #4 to oBattleObject_CurPhaseAndPhaseInitialized:
+    30-frame wait handed to phase 4'
+  refs:
+  - bn6f/asm/asm31.s:26125
+  - 0x080005CC PlaySoundEffect
+  - 0x08002DEA sprite_getFrameParameters
+  reproduce: python3 tools/asmcat.py 0x080C3E00
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- No caller is known, so the owning object (which enemy/character this phase belongs to) and the in-game
+  meaning of anims 8/0xD and sound 0xFD are unidentified
+- Whether bit 0x80 of the attribute byte is a generic 'animation finished' flag across the sprite engine
+  could be confirmed from sprite_getFrameParameters' data tables
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C3E00 -> battle_phaseWaitAnim8ThenNext
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C3E00

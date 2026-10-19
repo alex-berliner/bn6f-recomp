@@ -1,0 +1,50 @@
+name: object_checkFrontPanelFlag
+address: '0x080E7E64'
+kind: function
+status: probable
+summary: Returns 1 if the battle panel directly in front of the object (in its facing direction) has flag
+  0x10 set, else 0.
+interface: (r5 = battle object) -> r0 = 1 if front panel passes object_checkPanelParameters(x+dir, y,
+  0x10, 0x0F880080), else 0
+details: 'Computes the panel one step ahead by adding object_getFrontDirection() (+1/-1 from alliance
+  side and DirectionFlip) to oBattleObject_PanelX, keeping oBattleObject_PanelY unchanged. It then calls
+  object_checkPanelParameters with r2=0x10 and r3 pointing at 0x0F880080, so it tests one specific panel-flag
+  state (likely the ''hole/void'' bit) via the shared mask-set/none-mask checker. The result is normalized
+  to a boolean: tst r0,r0 with bne keeps the callee''s 1, otherwise r0 is forced to 0. Notably the object
+  is expected in r5, which this leaf function neither receives in r0 nor saves — the caller (sub_80E7E08)
+  must set it up, an unusual convention worth confirming.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl object_getFrontDirection then 'add r0,r0,[r5,#oBattleObject_PanelX]' computes the adjacent
+    panel in facing direction; mov r2,#0x10; ldr r3,=0x0F880080; bl object_checkPanelParameters — fixed
+    panel-flag test against known flag-state checker; tst r0,r0 / bne / mov r0,#0 — normalizes callee
+    result to boolean 0/1; reads only oBattleObject_PanelX/PanelY from r5 without saving it, so the object
+    is a caller-provided r5 argument; byte_80E7E88 holds two {mask, pointer} pairs (0x10/0x0F8800A0, 0x30/0x0F880080),
+    but only the 0x30/0x0F880080 pair via dword_80E7E98 is used here
+  refs:
+  - bn6f/asm/asm31.s:104525
+  - 0x080E7E08 sub_80E7E08
+  - 0x0800CC86 object_checkPanelParameters
+  - 0x0800E2CA object_getFrontDirection
+  reproduce: python3 tools/asmcat.py 0x080E7E64
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- What flag bit 0x10 means on a battle panel (hole? cracked? object-occupied?) and what the 0x0F880080
+  mask table contains
+- What sub_80E7E08 does with the result (AI step-avoidance vs. attack targeting) — that caller is unnamed
+- Why r5 is used as the object register without being saved
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E7E64 -> object_checkFrontPanelFlag
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E7E64

@@ -1,0 +1,44 @@
+name: object_timerWaitAdvancePhase8
+address: '0x080CDB2C'
+kind: function
+status: probable
+summary: Battle-object phase step that counts down a frame timer and, on expiry, sets a sprite field,
+  plays sound 0xC1, reloads the timer with 60, and moves the object to phase 8.
+interface: (r5 = battle object ptr, r0 unused) -> r0 = 8 after trigger, else timer-decrement result; sets
+  oBattleObject_CurPhase
+details: 'Standard battle-object state handler: decrements the halfword at oBattleObject_Timer and returns
+  until it reaches zero. On expiry it calls sprite_setUnk0x2c with 0x2C000000 (packed sprite-field write,
+  probably animation/display bits in the high byte 0x2C), reloads oBattleObject_Timer with 0x3C (60 frames)
+  for the next cycle, plays sound effect 0xC1 via PlaySoundEffect, and stores phase 8 into oBattleObject_CurPhase
+  so the next tick runs a different handler. The 60-frame reload implies the action repeats every second
+  while the object stays in phase 7 (this handler''s phase).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrh/sub/strh on oBattleObject_Timer with bne exit: per-frame countdown gate; bl sprite_setUnk0x2c
+    with dword_80CDB4C = 0x2C000000 on trigger; mov r0,#0x3C; strh -> timer reset to 60 frames; mov r0,#0xC1;
+    bl PlaySoundEffect — audible cue when timer lapses; mov r0,#8; strb into oBattleObject_CurPhase —
+    transitions to phase 8'
+  refs:
+  - bn6f/asm/asm31.s:47359
+  - 0x080005CC PlaySoundEffect
+  - 0x08002FA6 sprite_setUnk0x2c
+  reproduce: python3 tools/asmcat.py 0x080CDB2C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- No caller or dispatch table seen, so the owning object and phase number are unconfirmed
+- Meaning of the 0x2C000000 payload in the sprite field 0x2c and what sound 0xC1 corresponds to in-game
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CDB2C -> object_timerWaitAdvancePhase8
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CDB2C

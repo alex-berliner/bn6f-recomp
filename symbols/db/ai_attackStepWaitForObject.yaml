@@ -1,0 +1,47 @@
+name: ai_attackStepWaitForObject
+address: '0x080F0068'
+kind: function
+status: probable
+summary: AI attack step that holds the attack for 5 frames while a spawned object stays linked, then unlinks
+  it and ends the attack
+interface: (r5 = battle object, r7 = AI attack vars) -> void; sets/clears ObjectFlags1 bit 0x40, updates
+  StepTimer/AttackElement and object link pointers
+details: 'On the first invocation (AttackElement == 0) it performs the step''s setup: clears bit 0x40
+  of the object''s ObjectFlags1 via object_clearFlag, loads the StepTimer with 5, and stamps AttackElement
+  = 4 so the setup runs only once. Every call thereafter it decrements StepTimer; while the counter is
+  still >= 0 the attack simply waits. When the timer goes negative, it nulls oBattleObject_RelatedObject1Ptr
+  and the AI data''s oAIData_TempAttackObjectPtr (releasing the linked spawned object, which then despawns
+  on its own), and calls object_exitAttackState to hand control back. The element id 4 and the 5-frame
+  timer suggest this is the tail step of a specific AI attack whose effect object lingers briefly.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne: one-time setup guard on first call; mov
+    r0,#0x40; bl object_clearFlag: clears an ObjectFlags1 bit during setup; mov r0,#5; strh [r7,#oAIAttackVars_StepTimer]:
+    fixed 5-frame wait duration; loret path: str #0 into oBattleObject_RelatedObject1Ptr and oAIData_TempAttackObjectPtr
+    before bl object_exitAttackState; callees are object_clearFlag and object_exitAttackState, both battle-object/AI
+    attack helpers'
+  refs:
+  - bn6f/asm/asm31.s:121657
+  - 0x0801A15C object_clearFlag
+  - 0x08011714 object_exitAttackState
+  reproduce: python3 tools/asmcat.py 0x080F0068
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- which attack or enemy uses this step (no known callers), so the meaning of AttackElement 4 and of the
+  linked object is unconfirmed
+- what flag bit 0x40 on ObjectFlags1 represents
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F0068 -> ai_attackStepWaitForObject
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F0068

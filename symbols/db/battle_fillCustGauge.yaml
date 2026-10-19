@@ -1,0 +1,46 @@
+name: battle_fillCustGauge
+address: '0x0800AF34'
+kind: function
+status: probable
+summary: 'Adds to the custom gauge each tick: normally 0x4000 via SetCustGauge, or an alliance-scaled
+  amount when battle flag 0x40 is set'
+interface: (r5 = battle object) -> r0 = gauge result path; calls SetCustGauge(0x4000) or sub_802E032(alliance,
+  0x1555)
+details: Reads battle flag 0x40 via battle_testFlag0x40_800A8F8. If the flag is clear, it calls SetCustGauge
+  with 0x4000, the standard per-turn/period custom-gauge increment. If the flag is set, it instead calls
+  sub_802E032 with the battle object's Alliance field (r5+oBattleObject_Alliance) and constant 0x1555
+  (5461, ~1/12 of 0x10000), suggesting a fractional fixed-point gauge fill rate. The r5 use implies this
+  runs inside an object context with a battle object pointer in r5, likely the per-frame battle update.
+  The two paths presumably implement a modified gauge-speed rule (e.g., a NaviCust part or debuff) selected
+  by flag 0x40.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: bl battle_testFlag0x40_800A8F8 + tst/bne branches between two fill behaviors; ldr r0,=0x4000;
+    bl SetCustGauge — standard gauge increment path; ldrb r0,[r5,#oBattleObject_Alliance]; ldr r1,=0x1555;
+    bl sub_802E032 — alliance-dependent alternate fill
+  refs:
+  - bn6f/asm/asm00_1.s:18245
+  - 0x0800A8F8 battle_testFlag0x40_800A8F8
+  - 0x0801DFA2 SetCustGauge
+  - 0x0802E032 sub_802E032
+  reproduce: python3 tools/asmcat.py 0x0800AF34
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-003606'
+open_questions:
+- what sub_802E032 does with (alliance, 0x1555) — likely writes a gauge rate, unconfirmed
+- which callers invoke this and with what r5 context (battle update loop?)
+- meaning of battle flag 0x40 (which NaviCust effect or state selects the 0x1555 path)
+sources:
+- wf investigate investigate-20261019-003606
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 89cbb703
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_800AF34 -> battle_fillCustGauge
+  where: bn6f 52d37947
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800AF34
