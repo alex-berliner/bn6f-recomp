@@ -1,0 +1,42 @@
+name: battle_objDispatchPhaseUpdate
+address: '0x080E9354'
+kind: function
+status: probable
+summary: Runs the per-phase update handler for a battle object by dispatching on oBattleObject_CurPhase
+  through a 4-entry jump table.
+interface: (r5 = battle object pointer; no args in r0-r3) -> runs handler for phase; no return value
+details: 'Loads the object''s current phase byte at [r5+oBattleObject_CurPhase], indexes off_80E9368 to
+  get a Thumb handler address, and does a long-bl call (mov lr,pc; bx r1) so the handler can return directly
+  to this function''s caller. The table has exactly 4 entries: phases 0 and 1 go to object_phaseSignalRelatedAndWait
+  and battle_obj33UpdateSpawnElementPair respectively, phases 2 and 3 to unknown subs 80E93F2/80E9412.
+  r0 passes through to the handler (garbage from the ldrb). r4, r6, r7 are saved but unused, suggesting
+  a compiler-generated stub.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r5,#oBattleObject_CurPhase]; ldr r1,[r1,r0]; bx r1 — dispatch on phase byte; table
+    off_80E9368 holds object_phaseSignalRelatedAndWait+1 and battle_obj33UpdateSpawnElementPair+1, both
+    battle-object phase handlers; mov lr,pc; bx r1 is a tail-callable Thumb bl, typical of phase-update
+    dispatchers in this codebase
+  refs:
+  - bn6f/asm/asm31.s:109019
+  reproduce: python3 tools/asmcat.py 0x080E9354
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111'
+open_questions:
+- which battle object uses this dispatcher (no callers known)
+- what the phase-2 and phase-3 handlers sub_80E93F2/sub_80E9412 do
+- whether r0 is an input to the handlers or just scratch
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6d29f05
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E9354 -> battle_objDispatchPhaseUpdate
+  where: bn6f cfd1cd0b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E9354

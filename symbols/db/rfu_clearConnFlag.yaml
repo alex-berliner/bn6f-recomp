@@ -1,0 +1,44 @@
+name: rfu_clearConnFlag
+address: '0x0813D760'
+kind: function
+status: probable
+summary: Clears the flag byte at offset 0x5 of the RFU link-state struct eS200BC50, resetting it after
+  the wireless slots are torn down.
+interface: () -> void; writes byte_200BC55 = 0
+details: The function takes no arguments and only does `mov r1,#0; strb r1,[eS200BC50,#0x5]`, zeroing
+  byte_200BC55 in the RFU state struct. Its sole caller (sub_8146F90) invokes it immediately after rfu_clearAllSlot
+  in one branch of a state machine, then jumps to the default case; other branches of the same machine
+  instead call rfu_updateConnState and store a state value into halfword at struct+0x8. So byte_200BC55
+  is a per-connection flag in the same struct the caller manages, and this routine is the 'clear that
+  flag' step of the disconnect/cleanup path.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_813D760 body is just strb #0 to [eS200BC50,#0x5] (byte_200BC55); caller at 0x8147118: bl
+    rfu_clearAllSlot; bl sub_813D760; b def_814700A — cleanup path; sibling branches write state IDs (0xa,
+    0xc) to [eS200BC50,#0x8] and call rfu_updateConnState; no return value used; r1/r0 results ignored
+    by the caller'
+  refs:
+  - bn6f/asm/asm37_0.s:4210
+  - 0x08146F90 sub_8146F90
+  - 0x08147104 sub_8146F90
+  - 0x08147108 sub_8146F90
+  reproduce: python3 tools/asmcat.py 0x0813D760
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111'
+open_questions:
+- What byte_200BC55 semantically means (e.g. 'connected', 'slot valid') is not shown; more call sites
+  reading it would disambiguate
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6d29f05
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_813D760 -> rfu_clearConnFlag
+  where: bn6f cfd1cd0b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_813D760

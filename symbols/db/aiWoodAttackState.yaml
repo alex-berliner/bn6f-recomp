@@ -1,0 +1,43 @@
+name: aiWoodAttackState
+address: '0x080F1C48'
+kind: function
+status: probable
+summary: 'Per-frame enemy AI attack state: on entry arms a wood-element hit (element 4, adds boost to
+  damage, plays anim 0x11), then after 12 frames flags the attack''s hit element as wood.'
+interface: (r5 = battle object, r7 = oAIAttackVars of that object) -> void; no return value
+details: 'Behaves as a state handler called every frame while an AI-controlled object is in its attack
+  step. If oAIAttackVars_AttackElement is still 0 it initializes the attack: sets AttackElement = 4 (wood),
+  adds AttackBoost onto Damage, sets AttackBoost2 = 9, switches the object''s CurAnim to 0x11 and loads
+  StepTimer with 12. On later frames it decrements StepTimer; when it reaches 0 it writes HitElement =
+  4 so the incoming hit resolves as wood. The damage/boost/boost2 fields and the init-once/count-down
+  structure match the oAIAttackVars layout used by enemy AI attack routines.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb [r7,#oAIAttackVars_AttackElement]; tst r0,r0; bne skip — init runs only once per attack;
+    strb #4 to AttackElement and later strh #4 to HitElement — attack and resulting hit are both element
+    4; ldrh Damage + ldrh AttackBoost; add; strh Damage — boost is folded into damage on init; strb #0x11
+    to [r5,#oBattleObject_CurAnim] and strh #12 to StepTimer — play attack anim and wait 12 frames; StepTimer
+    decrement with bgt and HitElement set at expiry — timed transition to the hit phase'
+  refs:
+  - bn6f/asm/asm31.s:127214
+  reproduce: python3 tools/asmcat.py 0x080F1C48
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111'
+open_questions:
+- Which enemy/object uses this attack (no callers known); element table and anim 0x11 not confirmed for
+  the owning object
+- What AttackBoost2 = 9 controls (hit artifact, effect id, or panel effect)
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6d29f05
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F1C48 -> aiWoodAttackState
+  where: bn6f cfd1cd0b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F1C48

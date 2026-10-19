@@ -1,0 +1,47 @@
+name: object_waitTimerThenSetAction
+address: '0x080BFAAE'
+kind: function
+status: probable
+summary: 'Battle-object delay handler: on first entry initializes the object''s Timer, then counts it
+  down each frame and, when it expires, sets the object''s CurAction to 4 and clears its phase.'
+interface: (r5 = battle object pointer, no args in r0-r3) -> r0 = scratch; no return value; sets oBattleObject_Timer,
+  oBattleObject_PhaseInitialized, oBattleObject_CurAction, oBattleObject_CurPhaseAndPhaseInitialized
+details: Uses r5 as the battle object. If oBattleObject_PhaseInitialized is 0, it stores Timer=0 and PhaseInitialized=4,
+  marking this phase as set up. It then decrements oBattleObject_Timer; while the result is still positive
+  it returns, and once the timer has counted down (0 -> -1, so effectively fires the first call after
+  init unless the timer is preset) it writes CurAction=4 and CurPhaseAndPhaseInitialized=0, handing control
+  back to the object's action dispatcher. This is the standard BN6 battle-object 'wait N ticks then advance
+  to action' pattern; the object must be switched back to a phase that sets Timer again for the wait to
+  repeat.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#oBattleObject_PhaseInitialized] / bne: init block only runs once per phase, sets
+    Timer=0 and PhaseInitialized=4; ldrh r0,[r5,#oBattleObject_Timer]; sub r0,#1; strh; bgt: per-frame
+    countdown of the object Timer; mov r0,#4; strb r0,[r5,#oBattleObject_CurAction]: on expiry the object
+    is moved to action 4; mov r0,#0; strh r0,[r5,#oBattleObject_CurPhaseAndPhaseInitialized]: phase state
+    cleared so the dispatcher re-runs phase logic; two trailing .word literals (0x640000, 0xA0000) are
+    pooled data after the tail-merged pop {pc}, not used by this function'
+  refs:
+  - bn6f/asm/asm31.s:16940
+  reproduce: python3 tools/asmcat.py 0x080BFAAE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111'
+open_questions:
+- no callers known, so what value the caller puts in oBattleObject_Timer (or whether Timer=0 means it
+  fires immediately) and what action 4 means for this object type are unconfirmed
+- which battle object(s) use this handler and whether CurAction=4 is a shared 'done/idle' action code
+  across object scripts
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6d29f05
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BFAAE -> object_waitTimerThenSetAction
+  where: bn6f cfd1cd0b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BFAAE

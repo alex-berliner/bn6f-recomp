@@ -1,0 +1,43 @@
+name: object_runParam3StateHandler
+address: '0x080BDAE0'
+kind: function
+status: probable
+summary: Dispatches the battle object's per-state update handler indexed by its Param3 field (a second-level
+  state machine step).
+interface: (r0 = unused/scratch, r5 = battle object) -> r0 = handler result; runs handler [r5+oBattleObject_Param3]
+  via table off_80BDAF4
+details: Reads oBattleObject_Param3 from the object at r5, loads a thumb pointer from the 4-entry table
+  off_80BDAF4, and calls it with mov lr,pc/bx r1 so the callee's lr return lands back in this function.
+  State 0 and 1 run sub_80BDB04 and sub_80BDB3C, state 2 runs object_timer2CountTo15SetParam3C (waits
+  on timer2, counts to 15, then sets Param3=3), and state 3 is nullsub_9 (done). Called unconditionally
+  by sub_80BD89C right after that function's own CurPhase dispatch, so it acts as the object's sub-state
+  (Param3) step, driven after the phase-level handler runs.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#oBattleObject_Param3]; ldr r1,[r1,r0]; mov lr,pc; bx r1 — indexed call into 4-entry
+    table off_80BDAF4; table entries: sub_80BDB04, sub_80BDB3C, object_timer2CountTo15SetParam3C (state
+    advances Param3 to 3), nullsub_9 (terminal state); caller sub_80BD89C at 0x080BD8A8 calls it right
+    after its own CurPhase dispatch table, i.e. as the per-object state step'
+  refs:
+  - bn6f/asm/asm31.s:12481
+  - 0x080BD89C sub_80BD89C
+  reproduce: python3 tools/asmcat.py 0x080BDAE0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111'
+open_questions:
+- exact purpose of states 0/1 (sub_80BDB04, sub_80BDB3C not shown); which object this is and what Param3's
+  states represent in game terms
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6d29f05
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BDAE0 -> object_runParam3StateHandler
+  where: bn6f cfd1cd0b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BDAE0

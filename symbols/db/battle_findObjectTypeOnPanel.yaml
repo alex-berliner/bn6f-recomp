@@ -1,0 +1,47 @@
+name: battle_findObjectTypeOnPanel
+address: '0x080C67A4'
+kind: function
+status: probable
+summary: Scans the battle object list for an object of type 3 with index 0x10 standing on the given panel,
+  returning 0 if found.
+interface: (r0 = panel X, r1 = panel Y) -> r0 = 0 if such an object occupies the panel, else r0 unchanged
+  (nonzero); clobbers r2-r7
+details: 'Iterates eBattleObjectsLinkedListStart via the +4 next pointer until reaching eBattleObjectsLinkedListSentinel.
+  For each node it reads the byte at node+0x10: low nibble (oBattleObject_Type) must be 3 and oBattleObject_Index
+  must be 0x10, then compares oBattleObject_PanelX/oBattleObject_PanelY to r0/r1. On match returns 0;
+  otherwise falls through the whole list and returns with r0 still holding the X argument, so ''not found''
+  is signalled by any nonzero value — a quirk the caller relies on with cmp r0,#0 / beq. Caller sub_80C6774
+  feeds it panel coords packed as one byte per entry at object+0x64+i (X in the high nibble, Y in the
+  low 3 bits) and acts on the panels that are NOT occupied, passing Element, Param1+1 and the damage-counter
+  field to sub_80C67D8.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: sub_80C67A4 walks eBattleObjectsLinkedListStart to eBattleObjectsLinkedListSentinel comparing
+    next pointers; match requires (Type&0xF)==3, Index==0x10, PanelX==r0 and PanelY==r1 before returning
+    0; return path leaves r0 untouched on no-match, so nonzero means 'not occupied'; caller 0x80C6774
+    builds r0/r1 from a packed nibble table at +0x64 and skips its sub_80C67D8 action when r0==0; per-entry
+    fields Element/Param1+1/DamageAndStaminaDamageCounterDisabler loaded only for unoccupied panels
+  refs:
+  - bn6f/asm/asm31.s:32118
+  - 0x080C6774 sub_80C6774
+  reproduce: python3 tools/asmcat.py 0x080C67A4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111'
+open_questions:
+- what gameplay object type 3 / index 0x10 is (obstacle, summoned object, etc.) — the name is generic
+  until that is known
+- what sub_80C67D8 does on the unoccupied panels (spawn, damage, panel conversion?)
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6d29f05
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C67A4 -> battle_findObjectTypeOnPanel
+  where: bn6f cfd1cd0b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C67A4

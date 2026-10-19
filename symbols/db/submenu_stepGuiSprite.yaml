@@ -1,0 +1,44 @@
+name: submenu_stepGuiSprite
+address: '0x08118D60'
+kind: function
+status: probable
+summary: 'Dispatches the sSubmenu GUI-sprite state machine: calls the init, update, or third handler selected
+  by the entry''s state byte.'
+interface: (r5 = sSubmenu entry, [r5,#8] = state index 0-2) -> calls handler in r6 context; no direct
+  return value used
+details: 'Loads sSubmenu into r6, then reads a byte at [r5,#8] used both as the index into off_8118D74
+  and as the r1 argument to the selected handler. The table holds spawn_initGuiSpriteEntry, spawn_updateGuiSpriteEntry,
+  and sub_8118E1C (+1, Thumb). The call is a tail-style ''mov lr, pc; bx r0'' so the handler returns straight
+  back here, and r6 (the sSubmenu pointer) is left set for the callee to use as context. This is a classic
+  per-frame state-machine stepper: state 0 initializes the sprite entry, state 1 updates it, state 2 does
+  the third step.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r1,[r5,#8]; ldr r0,[r0,r1]; bx r0 — byte field selects the handler from off_8118D74 and
+    is also passed as r1; off_8118D74 entries are spawn_initGuiSpriteEntry+1 and spawn_updateGuiSpriteEntry+1
+    — init/update pair of a GUI sprite lifecycle; ldr r6,off_8118D80 (=sSubmenu) before the call — callee
+    receives the submenu object in a high register; mov lr,pc; bx r0 — plain call-and-return, caller does
+    not consume a return value
+  refs:
+  - bn6f/asm/asm32.s:22524
+  reproduce: python3 tools/asmcat.py 0x08118D60
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111'
+open_questions:
+- what sub_8118E1C (state 2) does
+- what r5 points to exactly (an entry within sSubmenu or sSubmenu itself) and the semantics of field 8's
+  other values
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6d29f05
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8118D60 -> submenu_stepGuiSprite
+  where: bn6f cfd1cd0b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8118D60

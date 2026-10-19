@@ -1,0 +1,40 @@
+name: battle_objectBlinkTimerTick
+address: '0x080C03D4'
+kind: function
+status: probable
+summary: 'Per-frame tick for a blinking battle object: flickers it for Param2 frames (toggling the render
+  flag every 3 ticks), then switches it to action 4.'
+interface: (r0/r1 unused; r5 = battle object) -> mutates object fields; r0 clobbered, flags from sub/bic
+details: Runs on the current battle object in r5. Each call sets bit 0x2 of oObjectHeader_Flags (a render/visibility-style
+  flag) and decrements Param3; when Param3 reaches 0 it reloads it with 3 and clears bit 0x2, so the object
+  flickers on a 3-frame cycle. Independently it decrements Param2, the total blink duration; when that
+  expires it sets oBattleObject_CurAction = 4 and zeroes CurPhaseAndPhaseInitialized, moving the object
+  to its next action state. Typical 'invincibility/blink after hit then resume' handler.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_80C03D4 start: orr bit 2 into oObjectHeader_Flags every call — per-frame visibility flag
+    set; Param3 countdown with reload to 3 and bic bit 2 — periodic flicker every 3 frames; Param2 countdown
+    to 0 gates the exit: sets oBattleObject_CurAction = 4; strh 0 to oBattleObject_CurPhaseAndPhaseInitialized
+    resets the action''s phase state machine'
+  refs:
+  - bn6f/asm/asm31.s:18272
+  reproduce: python3 tools/asmcat.py 0x080C03D4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111'
+open_questions:
+- No callers known, so what action/state leads here and what action 4 means for this object type is unconfirmed;
+  exact meaning of flag bit 2 (hide vs flash) and which object uses Param2/Param3 this way
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6d29f05
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C03D4 -> battle_objectBlinkTimerTick
+  where: bn6f cfd1cd0b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C03D4

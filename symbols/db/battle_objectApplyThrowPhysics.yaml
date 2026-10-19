@@ -1,0 +1,42 @@
+name: battle_objectApplyThrowPhysics
+address: '0x080E1028'
+kind: function
+status: probable
+summary: 'Per-frame physics step for a thrown/airborne battle object: advances X and Z by their velocities,
+  applies constant gravity to Z-velocity, and switches the object to action 4 once it drops below Z=0.'
+interface: (r5 = battle object) -> r0 = new Z-velocity (also stored); updates oBattleObject_X, oBattleObject_Z,
+  oBattleObject_ZVelocity, and on landing oBattleObject_CurAction/CurPhaseAndPhaseInitialized; flags clobbered
+details: 'Reads r5 as a battle object: X += XVelocity, then ZVelocity -= 0x3000 (constant at dword_80E1050,
+  i.e. gravity/drag) and Z += ZVelocity each call. If the resulting Z is negative (tst r1,r1 / bge skip),
+  the object is set to CurAction 4 and CurPhaseAndPhaseInitialized is zeroed, starting that action''s
+  phase sequence — consistent with a thrown object falling past the ground and moving to its landing/impact
+  state. X has no clamping here; the gravity is applied unconditionally every call, so callers must only
+  invoke this while the object is in its airborne action.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'dword_80E1050 = 0xFFFFD000 (-0x3000) added to oBattleObject_ZVelocity each call = constant
+    downward acceleration; Z += ZVelocity after velocity update: standard ballistic integration on the
+    object''s height; tst r1,r1 / bge locret: transition only fires when Z goes negative; landing path
+    stores #4 to oBattleObject_CurAction and zeroes CurPhaseAndPhaseInitialized to (re)start action 4'
+  refs:
+  - bn6f/asm/asm31.s:90134
+  reproduce: python3 tools/asmcat.py 0x080E1028
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111'
+open_questions:
+- Which battle object uses this (thrown debris, panel object, enemy knockback?) — no callers known
+- What action 4 means for that object (impact/land/delete) depends on its action table, not shown
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6d29f05
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E1028 -> battle_objectApplyThrowPhysics
+  where: bn6f cfd1cd0b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E1028

@@ -1,0 +1,42 @@
+name: battle_objectRunCurActionHandler
+address: '0x080B8F0A'
+kind: function
+status: probable
+summary: Dispatches the battle object's current action (CurAction) to one of five per-action handler routines.
+interface: (r5 = battle object, r0 unused on entry) -> calls handler for oBattleObject_CurAction via off_80B8F1C[jump
+  table]; returns to caller when handler returns.
+details: Loads the object's CurAction byte from [r5,#oBattleObject_CurAction] and uses it to index a 5-entry
+  jump table at off_80B8F1C, each entry a Thumb handler (sub_80B8F30, sub_80B8F66, sub_80B8F8E, battle_objectPlayAnimAndWaitAction10,
+  sub_80B8FEA). It performs the call with the classic 'mov lr, pc; bx r1' pattern, so execution returns
+  to the pop {pc} after the handler finishes. r1 is reused to hold the table base then the target address;
+  r0 still holds CurAction when the handler is entered. It is a generic action-state stepper for a battle
+  object, with battle_objectPlayAnimAndWaitAction10 as one known handler (play current animation, wait
+  for action end).
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r5,#oBattleObject_CurAction]; ldr r1,[r1,r0] indexes off_80B8F1C by the object's CurAction;
+    mov lr, pc; bx r1; pop {pc} is a call-and-return trampoline to the selected handler; Table holds five
+    Thumb code pointers (sub_80B8F30..sub_80B8FEA), one per action value; Table entry battle_objectPlayAnimAndWaitAction10
+    shows handlers are per-action battle behaviors
+  refs:
+  - bn6f/asm/asm31.s:1736
+  reproduce: python3 tools/asmcat.py 0x080B8F0A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111'
+open_questions:
+- What each of the five handlers (sub_80B8F30, sub_80B8F66, sub_80B8F8E, sub_80B8FEA) does, and which
+  battle objects use this dispatcher
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6d29f05
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80B8F0A -> battle_objectRunCurActionHandler
+  where: bn6f cfd1cd0b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80B8F0A

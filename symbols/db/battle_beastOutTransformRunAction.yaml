@@ -1,0 +1,42 @@
+name: battle_beastOutTransformRunAction
+address: '0x080E95B4'
+kind: function
+status: probable
+summary: 'Dispatch routine for the beast-out transformation battle object: jumps to one of four action
+  handlers selected by the object''s Param1 state.'
+interface: (r5 = battle object ptr; r0 = oBattleObject_Param1 state index 0-3) -> tail-calls handler for
+  that state; returns its result
+details: Reads Param1 from the battle object at r5, multiplies by 4, and indexes the 4-entry jump table
+  off_80E95C8, tail-calling the selected Thumb handler with lr set via 'mov lr, pc' so handlers return
+  through 'pop {pc}'. The handlers are battle_beastOutTransformAction (state 0), sub_80E96C6 (state 1),
+  sub_80E9714 (state 2), and ai_clearRelatedFlagAndEndAction (state 3, apparently the terminal/cleanup
+  step). This is the classic per-frame action/state-machine dispatcher pattern for a battle object, here
+  specifically the beast-out transformation sequence.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: jump table off_80E95C8 holds 4 code pointers selected by (Param1<<2); first entry is battle_beastOutTransformAction,
+    tying this to the beast-out transform object; last entry ai_clearRelatedFlagAndEndAction is a typical
+    final-state cleanup handler; mov lr, pc / bx r1 / pop {pc} is the standard tail-call-into-handler
+    dispatcher pattern; state index comes from oBattleObject_Param1 of the object in r5
+  refs:
+  - bn6f/asm/asm31.s:109390
+  reproduce: python3 tools/asmcat.py 0x080E95B4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111'
+open_questions:
+- no callers known, so the object type that runs this dispatcher and its call frequency are unconfirmed
+- sub_80E96C6 and sub_80E9714 are unnamed; reading them would confirm the transform state-machine steps
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6d29f05
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E95B4 -> battle_beastOutTransformRunAction
+  where: bn6f cfd1cd0b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E95B4

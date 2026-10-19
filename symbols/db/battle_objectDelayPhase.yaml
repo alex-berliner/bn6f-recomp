@@ -1,0 +1,43 @@
+name: battle_objectDelayPhase
+address: '0x080BE254'
+kind: function
+status: probable
+summary: battle object phase handler that resets the object's animation/state, waits 30 frames, then advances
+  to phase 4
+interface: (r5 = battle object) -> void; r0 scratch
+details: On first entry (PhaseInitialized == 0) it sets CurAnim to 0, calls sub_80B8E58 on the pointers
+  at oBattleObject_ExtraVars+8 and +0xC (likely clearing/stopping two attached sub-structures), stores
+  0x1E (30) into Timer, and sets PhaseInitialized = 4. On subsequent frames it decrements Timer and, once
+  it hits 0, writes phase 4 into CurPhaseAndPhaseInitialized, so this state is a fixed 30-frame delay
+  before phase 4.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb/tst on oBattleObject_PhaseInitialized gates one-time init, then strb #4 back (sub_80BE254
+    lines 2-15); mov r0,#0x1e; strh [r5,#oBattleObject_Timer] seeds the wait, and the decrement/bgt loop
+    ends by writing phase 4 to CurPhaseAndPhaseInitialized; mov r0,#0; strb [r5,#oBattleObject_CurAnim]
+    resets the current animation during init; both bl sub_80B8E58 calls pass fields ExtraVars+8 and +0xC,
+    suggesting two sibling sub-objects being reset'
+  refs:
+  - bn6f/asm/asm31.s:13521
+  - 0x080B8E58 sub_80B8E58
+  reproduce: python3 tools/asmcat.py 0x080BE254
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111'
+open_questions:
+- what sub_80B8E58 does to the ExtraVars+8/+0xC structures (reset, stop, clear?)
+- which battle object(s) use this phase and what phase 4 then does, since no callers/other handlers were
+  shown
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6d29f05
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BE254 -> battle_objectDelayPhase
+  where: bn6f cfd1cd0b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BE254

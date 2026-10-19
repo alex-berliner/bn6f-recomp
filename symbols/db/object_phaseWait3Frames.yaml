@@ -1,0 +1,45 @@
+name: object_phaseWait3Frames
+address: '0x080BD760'
+kind: function
+status: probable
+summary: 'Battle-object phase handler: on first entry plays animation 4 and calls a per-object setup,
+  waits 3 frames, then advances the object to phase 4.'
+interface: (r5 = battle object) -> void; no return value, flags not meaningful
+details: Uses r5 as a battle object struct. If oBattleObject_PhaseInitialized is clear, it sets oBattleObject_CurAnim
+  = 4, calls sub_80B8E58 with r0 = [r5, oBattleObject_ExtraVars+8] (an extra-var pointer/word, likely
+  the callee's context), sets oBattleObject_Timer = 3, and marks the phase initialized. On every run it
+  decrements oBattleObject_Timer; when it reaches 0 it writes 4 to oBattleObject_CurPhaseAndPhaseInitialized,
+  which sets the next phase to 4 and clears the initialized flag so the next phase re-runs its init. It
+  is thus a short timed transition step (a 3-frame pause) between phase 3 and phase 4 of an object's state
+  machine.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb/tst on oBattleObject_PhaseInitialized with one-shot init block setting CurAnim=4 and Timer=3
+    (sub_80BD760 prologue); bl sub_80B8E58 with r0=[r5,#oBattleObject_ExtraVars+8] as the only side-effectful
+    init call; Timer decrement with ''bgt'' skip, then strh #4 to oBattleObject_CurPhaseAndPhaseInitialized
+    to move to phase 4; No callers known, so the phase index it serves (likely 3) is inferred from it
+    targeting phase 4'
+  refs:
+  - bn6f/asm/asm31.s:11975
+  - 0x080B8E58 sub_80B8E58
+  reproduce: python3 tools/asmcat.py 0x080BD760
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111'
+open_questions:
+- Which objects route this function (no callers known), and which phase slot it fills in their dispatch
+  table
+- What sub_80B8E58 does with the ExtraVars+8 value (spawn effect, sound, state setup?)
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6d29f05
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BD760 -> object_phaseWait3Frames
+  where: bn6f cfd1cd0b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BD760

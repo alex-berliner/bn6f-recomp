@@ -1,0 +1,44 @@
+name: compactHalfwordArraySkipFFFF
+address: '0x08000EB6'
+kind: function
+status: probable
+summary: Compacts a fixed-length array of halfwords in place, dropping entries equal to 0xFFFF and refilling
+  the tail with 0xFFFF so the array keeps its original length.
+interface: (r0 = halfword array, r1 = entry count) -> r0 unchanged; entries != 0xFFFF shifted to the front,
+  tail filled with 0xFFFF; r0-r7,lr clobbered
+details: Computes the buffer end as r0 + 2*r1, then walks the array copying every halfword that is not
+  0xFFFF (dword_8000EE0 sentinel) to the next output slot; afterwards it writes 0xFFFF into every remaining
+  slot until the write pointer reaches the original end. The array is compacted in place, length preserved,
+  with 0xFFFF acting as the 'empty' marker. The caller at 0x802E674 uses it on a 30-entry (0x1E) halfword
+  list starting at r0+6 after moving one entry elsewhere and writing 0xFFFF into slot [r0+6], i.e. to
+  squeeze out the vacated slot.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_8000EB6: r5 = r0 + 2*r1 marks the original end; loop copies non-0xFFFF halfwords down,
+    tail loop pads with 0xFFFF until r7==r5; dword_8000EE0 = 0xFFFF is used both as the skip-test value
+    and the pad value, so it is the list''s empty sentinel; caller 0x802E692: writes 0xFFFF into [r0+6],
+    passes r0+6 with count 0x1E — a 30-entry list with a slot being emptied and compacted'
+  refs:
+  - bn6f/asm/asm00_0.s:1737
+  - 0x0802E674 sub_802E674
+  reproduce: python3 tools/asmcat.py 0x08000EB6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111'
+open_questions:
+- Which game structure the caller's 30-entry halfword list belongs to (draw pool, chip/card list, etc.),
+  and what moving an entry to index r7-1 before compacting accomplishes
+- Whether 0xFFFF is a game-wide empty marker for this list type or local to this subsystem
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6d29f05
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8000EB6 -> compactHalfwordArraySkipFFFF
+  where: bn6f cfd1cd0b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8000EB6

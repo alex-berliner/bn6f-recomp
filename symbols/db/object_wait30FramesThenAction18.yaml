@@ -1,0 +1,41 @@
+name: object_wait30FramesThenAction18
+address: '0x080C1CA0'
+kind: function
+status: probable
+summary: 'Battle-object phase handler: waits 30 frames on first entry, then switches the object to CurAction
+  0x18.'
+interface: (r5 = battle object) -> r0 = clobbered; sets oBattleObject_PhaseInitialized, oBattleObject_Timer,
+  then oBattleObject_CurAction and clears oBattleObject_CurPhaseAndPhaseInitialized
+details: 'Standard two-stage phase pattern: on first call (PhaseInitialized==0) it writes 4 to PhaseInitialized
+  and 0x1E (30) to Timer, then returns each frame while the timer counts down. Once the 30-frame timer
+  expires it sets CurAction to 0x18 and zeroes CurPhaseAndPhaseInitialized, which should make the object''s
+  action dispatcher run the next action/phase. r0 is passed in but unused; the object pointer comes from
+  r5, so this is a registered handler/state function rather than a normal call target.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#oBattleObject_PhaseInitialized] / str 4+0x1E on first entry = one-time phase setup
+    (sub_80C1CA0 lines 2-8); timer is decremented and ''bgt'' loops until it hits 0 = frame-count delay;
+    on expiry str #0x18 to oBattleObject_CurAction and 0 to CurPhaseAndPhaseInitialized = hand control
+    to next action; no other registers or memory touched: pure object-state timing handler'
+  refs:
+  - bn6f/asm/asm31.s:21919
+  reproduce: python3 tools/asmcat.py 0x080C1CA0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111'
+open_questions:
+- what action 0x18 is (no callers known to show which objects enter this state or what follows)
+- whether the 30-frame wait is a known behavior (e.g. a taunt, stun, or AI idle)
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6d29f05
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C1CA0 -> object_wait30FramesThenAction18
+  where: bn6f cfd1cd0b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C1CA0

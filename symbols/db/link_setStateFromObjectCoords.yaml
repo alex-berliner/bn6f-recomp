@@ -1,0 +1,46 @@
+name: link_setStateFromObjectCoords
+address: '0x0803E828'
+kind: function
+status: probable
+summary: Updates the link-cable state (eLinkState) from a tracked object's two byte fields, entering state
+  0xC with an offset of max(field 0xe, field 0xf)+8 when either exceeds 5.
+interface: (r0 = object/struct pointer, copied to r5) -> r0 = 0xC on change (otherwise garbage from r1);
+  writes eLinkState+0x54 = max(unk_e, unk_f)+8 and eLinkState byte0 = 0xC when either field > 5; clobbers
+  r7
+details: Reads bytes at [r5+0xe] and [r5+0xf]; if both are <= 5 it returns immediately without touching
+  state. Otherwise it loads eLinkState, takes the larger of the two fields, adds 8, and stores that into
+  eLinkState+0x54 (dword_2009A24), then stores 0xC into eLinkState's first byte. The caller passes one
+  of two pointers from eCamera struct fields unk_88/unk_8C, gated by ([ptr] & 0xFC) == 0xFC. r7 is used
+  as scratch (caller's r7 is saved by callee but the callee's own push of r7 is its only use).
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r1,[r5,#0xe] / ldrb r2,[r5,#0xf] with cmp #5 ble: both fields <=5 skips the state write
+    (locret); mov r0,r1 / cmp r1,r2 / bge / mov r0,r2 / add r0,#8: stores max+8 into eLinkState+0x54;
+    strb r0(=0xc),[r7] on eLinkState base: sets link state byte to 0xC; caller 0x0803EEFC: r5 = pointer
+    from eCamera.unk_88, gated by ([ptr]&0xFC)==0xFC, before bl sub_803E828; sibling call sub_803E850
+    uses eCamera.unk_8C the same way'
+  refs:
+  - bn6f/asm/asm03_1_1.s:11490
+  - 0x0803EE98 sub_803EE98
+  reproduce: python3 tools/asmcat.py 0x0803E828
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111'
+open_questions:
+- What fields +0xe/+0xf of the caller's struct mean (coordinates? counters?), and what eLinkState+0x54
+  and state 0xC represent in the link flow
+- What sub_803E850 (the sibling on the unk_8C object) does, and what sub_803EF7C does with the result
+  afterwards
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6d29f05
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803E828 -> link_setStateFromObjectCoords
+  where: bn6f cfd1cd0b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803E828

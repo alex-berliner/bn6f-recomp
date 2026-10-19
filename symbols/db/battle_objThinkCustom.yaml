@@ -1,0 +1,48 @@
+name: battle_objThinkCustom
+address: '0x0810D5CE'
+kind: function
+status: probable
+summary: 'Per-frame think/update for a battle object: one-time init via ExtraVars, a common object tick,
+  then a per-action handler skipped when CurAction is 6.'
+interface: (r5 = battle object pointer, no args in r0-r3) -> r0 clobbered; no meaningful return
+details: 'Reads the object at r5. If oBattleObject_PhaseInitialized is 0 and oBattleObject_ExtraVars is
+  non-null, calls sub_810D4E8, which likely performs one-time initialization and sets PhaseInitialized.
+  Unconditionally calls sub_8016B36, presumably the shared per-frame object update (timers/animation).
+  Then if oBattleObject_CurAction != 6 and ExtraVars is non-null, calls sub_810D4BA, the action/state-specific
+  logic. CurAction 6 appears to be a state that suppresses custom behavior (possibly idle or inactive).
+  ExtraVars acts as a guard: all custom logic is skipped when it is null.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r5,#oBattleObject_PhaseInitialized] / cmp / beq guard around bl sub_810D4E8 shows a
+    run-once init keyed to ExtraVars (asm lines 2-8); unconditional bl sub_8016B36 before any action check
+    suggests a shared per-frame tick every call; ldrb r0,[r5,#oBattleObject_CurAction]; cmp r0,#6; beq
+    return shows action 6 skips the custom handler; bl sub_810D4BA guarded by ExtraVars != 0 is the per-action
+    dispatch after the common tick; all reads/writes use oBattleObject_* offsets on r5, the battle-update
+    object pointer convention
+  refs:
+  - bn6f/asm/dat31.s:2037
+  - 0x08016B36 sub_8016B36
+  - 0x0810D4BA sub_810D4BA
+  - 0x0810D4E8 sub_810D4E8
+  reproduce: python3 tools/asmcat.py 0x0810D5CE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111'
+open_questions:
+- No callers known, so which battle object/enemy uses this think routine is unknown
+- Contents of sub_8016B36, sub_810D4BA, sub_810D4E8 are unknown; confirming they are common tick, per-action
+  handler, and init would raise confidence
+- What CurAction value 6 means, and the layout of the ExtraVars struct
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6d29f05
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_810D5CE -> battle_objThinkCustom
+  where: bn6f cfd1cd0b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810D5CE

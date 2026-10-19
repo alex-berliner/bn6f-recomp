@@ -1,0 +1,41 @@
+name: ai_dispatchDifficultyAttackHandler
+address: '0x08102562'
+kind: function
+status: probable
+summary: Dispatches to one of four per-AI-difficulty-tier attack handlers selected by the battle AI's
+  difficulty setting.
+interface: (r7 = AI attack vars struct) -> tail-jumps to handler table [difficultyTier]; caller of this
+  function receives handler's return
+details: 'Reads oAIAttackVars_AiDifficultyTier (0-3) from the r7 struct, doubles-shifts it to index off_8102578,
+  a table of four Thumb pointers (sub_8102588, sub_8102660, sub_81027A4, sub_8102896). Uses ''mov lr,pc;
+  bx r1'' as a long-call: LR holds the return address so the chosen handler returns directly past this
+  stub (''pop {pc}'') to the original caller. r0/r1 are trashed during dispatch; the handler presumably
+  receives the same r7 context. Effectively a switch on difficulty tier for AI attack behavior.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AiDifficultyTier]; lsl r0,#2 indexes off_8102578 = 4-entry handler
+    table; mov lr,pc; bx r1 tail-dispatch: handler return goes to pop {pc}, i.e. back to this function''s
+    caller; table targets sub_8102588/sub_8102660/sub_81027A4/sub_8102896 = one handler per difficulty
+    tier; field name oAIAttackVars_AiDifficultyTier ties the dispatcher to the battle AI attack subsystem'
+  refs:
+  - bn6f/asm/asm31.s:161668
+  reproduce: python3 tools/asmcat.py 0x08102562
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111'
+open_questions:
+- what each of the four handlers (sub_8102588..sub_8102896) actually does per tier
+- which caller invokes this and with which AI entity in r7
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6d29f05
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8102562 -> ai_dispatchDifficultyAttackHandler
+  where: bn6f cfd1cd0b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8102562

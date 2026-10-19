@@ -1,0 +1,45 @@
+name: battle_deathAnimStateHandler
+address: '0x080BA62E'
+kind: function
+status: probable
+summary: Battle-object state handler that plays a death/explosion animation (anim 0xd, 19 frames), fires
+  an effect/sound call, disables collision, and destroys the object.
+interface: (r5 = battle object) -> none; sets oBattleObject_CurStateActionPhaseAndPhaseInitialized to
+  CUR_STATE_DESTROY on completion
+details: 'On entry with oBattleObject_CurPhase == 0 it initializes the state: phase = 4, animation 0xd,
+  timer 0x13 (19 frames), then returns. On later frames it decrements oBattleObject_Timer; when it reaches
+  0 it calls sub_8011044(2, 0xe) (likely an effect or sound trigger), writes 0 to oCollisionData_Enabled
+  via oBattleObject_CollisionDataPtr so the object stops hitting anything, and stores CUR_STATE_DESTROY
+  into the combined state/phase field so the object framework despawns it. The nonzero-phase check means
+  the setup branch runs only on the first frame of the state. No known callers, so the owning object kind
+  (enemy death, bomb explosion, etc.) is unidentified.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'setup branch sets CurPhase=4, CurAnim=0xd, Timer=0x13 on first frame (tst/bne guard on oBattleObject_CurPhase);
+    timer counts down 19 frames before any action, matching a one-shot anim duration; after timer expires:
+    bl sub_8011044 with r0=2, r1=0xe, then collision disabled via oCollisionData_Enabled=0; ends with
+    mov r0,#CUR_STATE_DESTROY; str into oBattleObject_CurStateActionPhaseAndPhaseInitialized, the standard
+    self-destruct exit'
+  refs:
+  - bn6f/asm/asm31.s:5041
+  - 0x08011044 sub_8011044
+  reproduce: python3 tools/asmcat.py 0x080BA62E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111'
+open_questions:
+- what sub_8011044(2, 0xe) does (effect spawn vs sound)
+- which objects use this state handler and what anim 0xd looks like
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6d29f05
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BA62E -> battle_deathAnimStateHandler
+  where: bn6f cfd1cd0b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BA62E

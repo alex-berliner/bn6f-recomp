@@ -1,0 +1,46 @@
+name: rfu_getRecvQueueFillState
+address: '0x0803F06C'
+kind: function
+status: probable
+summary: 'Reports the fill state of the wireless receive ring buffer at byte_200AC20: 2 = empty, 1 = two
+  or more entries queued, 0 = one entry queued.'
+interface: (void) -> r0 = r1 = fill state (0 = 1 entry, 1 = >=2 entries, 2 = empty); clobbers r0, r1,
+  r3, r5
+details: 'Reads the head byte at byte_200AC20 and tail byte at byte_200AC22 and computes head - tail,
+  wrapping by adding 8 when negative, so the buffer has 8 slots. It maps the wrapped difference onto a
+  tri-state: 0 entries returns 2, difference >= 2 returns 1, difference of 1 returns 0. It only returns
+  the state in r1 (also copied to r0) and modifies nothing, so it is a pure status probe of the queue
+  head/tail fields.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_803F06C: ldrb from byte_200AC20 and byte_200AC22, sub, and ''add r0, #8'' on negative give
+    a mod-8 ring-buffer occupancy; state mapping branches: r3=2 when difference is 0, r3=1 when difference
+    >=2, else r3=0; caller sub_803EC1C: bl sub_803F06C then tst r1,r1 and only proceeds to fill a buffer
+    via sub_803EF7C when the queue is nonempty; caller sub_803EC54: distinguishes r1==0, r1==2 and other
+    values, setting flag 0x10 when entries are pending; caller sub_803EC1C calls rfu_testStatusFlags with
+    0x10 beforehand, placing this in the wireless (rfu) receive path'
+  refs:
+  - bn6f/asm/asm03_1_1.s:12920
+  - 0x0803EC1C sub_803EC1C
+  - 0x0803EC54 sub_803EC54
+  reproduce: python3 tools/asmcat.py 0x0803F06C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111'
+open_questions:
+- what the ring buffer at byte_200AC20 ultimately carries (likely incoming wireless data slots, confirmed
+  by sub_803EF7C/sub_803F00C internals)
+- exact meaning callers attach to state 0 vs 1 beyond 'nonempty'
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6d29f05
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803F06C -> rfu_getRecvQueueFillState
+  where: bn6f cfd1cd0b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803F06C

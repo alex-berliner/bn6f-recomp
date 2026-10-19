@@ -1,0 +1,44 @@
+name: battle_objectCountdownSelfDestructPhase
+address: '0x080C072E'
+kind: function
+status: probable
+summary: 'Battle object state handler: runs a 20-frame countdown, then sets the object''s state to destroy.'
+interface: (r0 unused entry, r5 = battle object pointer) -> r0 = side effect via callee; destroys object
+  when timer expires
+details: On the first invocation (oBattleObject_PhaseInitialized == 0) it stores 0x14 into oBattleObject_Timer
+  and writes 4 to oBattleObject_PhaseInitialized. Every frame it decrements oBattleObject_Timer; once
+  it goes negative it stores CUR_STATE_DESTROY into oBattleObject_CurStateActionPhaseAndPhaseInitialized,
+  ending the object. While counting down it calls sub_80C075E with r0 = Timer*2 and r1 = (Timer*0x70)
+  & 0xFF, which likely drives some per-frame effect (motion, animation or fade), but sub_80C075E is undocumented
+  so the exact behavior is unknown. Uses the standard battle object struct fields at their documented
+  offsets.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_80C072E init block: timer 0x14 + PhaseInitialized=4 on first run; sub_80C072E: timer decrement
+    then ''mov r0, #CUR_STATE_DESTROY; str r0, [r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]''
+    on expiry; sub_80C072E: ''add r0, r1, r1; mov r2, #0x70; mul r1, r2; and r1, #0xff; bl sub_80C075E''
+    passes timer-derived args to unknown callee; No known callers, so the object type this handler serves
+    is unidentified'
+  refs:
+  - bn6f/asm/asm31.s:18775
+  - 0x080C075E sub_80C075E
+  reproduce: python3 tools/asmcat.py 0x080C072E
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111'
+open_questions:
+- What sub_80C075E does with (Timer*2, (Timer*0x70)&0xFF) — motion, animation, fade?
+- Which object type/state index uses this handler, and thus what the 20-frame lifespan represents in game
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6d29f05
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C072E -> battle_objectCountdownSelfDestructPhase
+  where: bn6f cfd1cd0b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C072E

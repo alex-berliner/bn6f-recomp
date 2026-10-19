@@ -1,0 +1,50 @@
+name: ow_getEventFlagIds
+address: '0x081430B6'
+kind: function
+status: probable
+summary: Computes overworld event flag ID(s) for an index, using a per-area base table.
+interface: (r0 = flag index u8) -> r0 = flagId = areaBase[index] + flagIndex (and r1 = second flagId from
+  paired table entry); no flags
+details: Calls sub_8143088, whose result is scaled by 4 to select one of four halfword pairs in the table
+  at byte_81430D4 (bases 0x970, 0x978, 0x980, 0x988, ...), so the table is indexed by current area/map
+  (4 entries). It loads both halfwords of the selected pair, adds the flag index argument to each, and
+  returns them in r0 and r1 — a pair of related flag IDs, presumably a flag and its companion (e.g. 'seen'/'done'
+  variants). Callers feed the result straight into SetEventFlag or TestEventFlag; sub_80A8988 picks r0
+  or r1 depending on a bitfield in [r5,#5], and sub_8142ECC tests r0 in a loop over object spawn entries
+  before calling SpawnOverworldMapObject.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_81430B6: bl sub_8143088; lsl r0,r0,#2 indexes byte_81430D4 by 4 halfword-pairs; ldrh r0/[r1,#2];
+    add r4 to both; returns r0 and r1; 0x080A89A8: ldrb r0,[r5,#4]; bl sub_81430B6; mov r0,r0; bl SetEventFlag
+    — result used directly as a flag ID; 0x080A89C6 site: bl sub_81430B6; mov r0,r1; bl SetEventFlag —
+    second halfword of the pair is also a flag ID, chosen by a bit in [r5,#5]; 0x08142F1C: loop index
+    r4 passed in, result tested with TestEventFlag before SpawnOverworldMapObject — per-object flag in
+    the current area; Table bytes 70 09 78 09 80 09 88 09 = four consecutive 0x...70/78/80/88-style flag
+    bases, one per area'
+  refs:
+  - bn6f/asm/asm37_1.s:2736
+  - 0x080A8988 sub_80A8988
+  - 0x08142ECC sub_8142ECC
+  - 0x08143198 sub_8143198
+  - 0x08143088 sub_8143088
+  reproduce: python3 tools/asmcat.py 0x081430B6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111'
+open_questions:
+- What sub_8143088 returns exactly (presumed current area/map index 0-3) is unconfirmed since it is also
+  unnamed
+- Whether the r0/r1 pair is 'flag set' vs 'flag cleared' variant or two independent flags
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6d29f05
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81430B6 -> ow_getEventFlagIds
+  where: bn6f cfd1cd0b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81430B6

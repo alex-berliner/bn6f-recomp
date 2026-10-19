@@ -1,0 +1,46 @@
+name: ai_getAttackTargetPanel
+address: '0x080FCF04'
+kind: function
+status: probable
+summary: Validates the AI attack's target object position and returns the panel (X,Y) the attack should
+  strike, or 0 if the target is not on a valid panel.
+interface: '(implicit: r5 = object whose oBattleObject_Alliance selects the column table) -> r0 = target
+  panel X (0 = no valid target), r1 = target panel Y; no flag guarantees'
+details: 'Loads the attack''s target object pointer from the caller''s oAIAttackVars_TargetObjectPtr and
+  reads its panel coordinates at struct offsets 0x12 (X) and 0x13 (Y). If Y is not 2, it fails immediately.
+  Otherwise it indexes byte_80FCF30 with the attacking object''s alliance (r5, left by caller) times 3
+  — row 0 = {3,4,5}, row 1 = {4,3,2} — and scans the 3 entries; if the target''s X matches one, it returns
+  (X, Y=2), else 0. Note r5 is never set inside the function: it relies on the caller''s preserved r5
+  as a hidden argument. On success the caller stores the result into oAIAttackVars_TargetPanelX/Y, sets
+  HitElement=4 and a 0x14-frame step timer; on failure it calls object_exitAttackState.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_80FCF04: ldr r1,[r7,#oAIAttackVars_TargetObjectPtr]; ldrb r0/r1 from offsets 0x12/0x13
+    — reads the target''s panel X/Y; cmp r1,#2 / bne fail: valid only when the target''s panel Y equals
+    2; ldrb r2,[r5,#oBattleObject_Alliance]; mul r2,#3; ldr r3,=byte_80FCF30 — alliance selects one of
+    two 3-column rows {3,4,5}/{4,3,2}; caller 0x080FCA36: strb r0->TargetPanelX, strb r1->TargetPanelY,
+    HitElement=4 on success; object_exitAttackState when r0==0'
+  refs:
+  - bn6f/asm/asm31.s:150205
+  - 0x080FC9F8 sub_80FC9F8
+  reproduce: python3 tools/asmcat.py 0x080FCF04
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111'
+open_questions:
+- Which specific AI attack this belongs to (HitElement 4, sound 0x77, effect spawn) and why the alliance
+  tables are {3,4,5} vs {4,3,2}
+- Exact meaning of object struct fields 0x12/0x13 (assumed panelX/panelY)
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6d29f05
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80FCF04 -> ai_getAttackTargetPanel
+  where: bn6f cfd1cd0b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FCF04

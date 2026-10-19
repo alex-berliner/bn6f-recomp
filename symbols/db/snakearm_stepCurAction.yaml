@@ -1,0 +1,43 @@
+name: snakearm_stepCurAction
+address: '0x080E9204'
+kind: function
+status: probable
+summary: 'Snake-arm attack state dispatcher: calls the handler for the battle object''s current action
+  (dim screen, step snake, undim screen, etc.) via jump table.'
+interface: (r0 = unused/scratch, r5 = battle object with oBattleObject_CurAction) -> r0 = handler return
+  value; calls handler for CurAction and returns
+details: Loads the object's CurAction byte from [r5,#oBattleObject_CurAction], indexes the 5-entry table
+  off_80E9218 to get a Thumb handler pointer, and calls it with the standard mov lr,pc/bx r1 pattern,
+  returning whatever the handler returns. Table entries are object_dimScreen, sub_800BDB2, battleObject_stepSnakeArm_800BA8A,
+  sub_80E922C, object_undimScreen — a dim-screen/undim-screen bracket around snake movement suggests the
+  full-screen snake attack sequence. r0 is not set up as an argument before the call; the battle object
+  is passed implicitly via r5.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r5,#oBattleObject_CurAction]; ldr r1,[r1,r0] — action-indexed jump table dispatch (asm);
+    Table mixes object_dimScreen and object_undimScreen with battleObject_stepSnakeArm_800BA8A — screen-dim
+    bracketing a snake step; mov lr,pc; bx r1; pop {pc} — tail-call style dispatch returning the callee's
+    result; Known callee battleObject_stepSnakeArm_800BA8A ties this to the snake-arm subsystem
+  refs:
+  - bn6f/asm/asm31.s:108825
+  reproduce: python3 tools/asmcat.py 0x080E9204
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111'
+open_questions:
+- What sub_800BDB2 and sub_80E922C do (the other two action states)
+- Which battle object type uses this (snake-arm attack object?) and what the five CurAction values mean
+  0..4
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6d29f05
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E9204 -> snakearm_stepCurAction
+  where: bn6f cfd1cd0b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E9204

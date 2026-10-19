@@ -1,0 +1,44 @@
+name: ai_dispatchAttackByHitElement
+address: '0x0810452A'
+kind: function
+status: probable
+summary: Dispatcher that tail-calls the per-type AI attack handler selected by the oAIAttackVars HitElement
+  field.
+interface: (r7 = pointer to AI attack vars, r0 = value of [r7,#oAIAttackVars_HitElement]) -> tail-jumps
+  to handler for that element; no direct return value
+details: 'Loads r0 from [r7,#oAIAttackVars_HitElement] and indexes a table of 8 handler pointers at off_810453C,
+  then performs a computed tail call (mov lr, pc; bx r1) so the callee''s return lands on the pop {r7,pc}.
+  The table entries (sub_810455C ... sub_8104758, including the known ai_stompAttackUpdate) are attack
+  update routines, so this is a switch on the hit/attack element type to run the matching AI attack behavior.
+  The +1 on each table entry confirms Thumb handlers. Quirk: no bounds check on the element index, so
+  values 0-7 are assumed valid.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r7,#oAIAttackVars_HitElement]; ldr r1,[r1,r0]; bx r1 — computed jump indexed by HitElement
+    (0x0810452A block); off_810453C lists 8 Thumb handler pointers, one being ai_stompAttackUpdate, all
+    attack-style updates; mov lr,pc; bx r1 followed by pop {r7,pc} — tail-call dispatch, control passes
+    to handler and returns to this function's caller; callee name ai_stompAttackUpdate shows table entries
+    are AI attack behaviors, matching the ai_ prefix subsystem
+  refs:
+  - bn6f/asm/asm31.s:166005
+  reproduce: python3 tools/asmcat.py 0x0810452A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111'
+open_questions:
+- what each of the 7 unnamed table handlers does (to confirm they are all distinct AI attack routines)
+- no callers known, so what sets oAIAttackVars_HitElement and whether values beyond 0-7 ever reach this
+  dispatcher
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6d29f05
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_810452A -> ai_dispatchAttackByHitElement
+  where: bn6f cfd1cd0b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810452A

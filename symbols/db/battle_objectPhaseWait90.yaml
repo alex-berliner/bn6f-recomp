@@ -1,0 +1,42 @@
+name: battle_objectPhaseWait90
+address: '0x080E4266'
+kind: function
+status: probable
+summary: Battle-object phase handler that waits 90 frames, then ends the phase by setting CurAction to
+  0xC.
+interface: (r0 = battle object? r5 already holds object ptr; no args) -> r0 = scratch only; no meaningful
+  return
+details: On first run for this phase (PhaseInitialized == 0) it loads the object's Timer with 90 and sets
+  PhaseInitialized to 4, so this is a one-shot timer setup per phase. Each invocation it decrements oBattleObject_Timer;
+  while the timer is still >= 0 it returns, keeping the object in this phase. When the timer goes negative
+  it writes 0xC into oBattleObject_CurAction and clears CurPhaseAndPhaseInitialized to 0, moving the object's
+  state machine to its next action. r5 is the battle object pointer, so this is called with the object
+  already in r5 rather than passed in r0.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb PhaseInitialized + store of Timer=0x5A and PhaseInitialized=4 is the standard battle-object
+    phase one-shot init pattern; Timer is decremented and branches back on bge, so the object stalls 90
+    frames; On expiry it sets oBattleObject_CurAction=0xC and clears CurPhaseAndPhaseInitialized, the
+    usual phase-exit pattern in battle object updates
+  refs:
+  - bn6f/asm/asm31.s:97372
+  reproduce: python3 tools/asmcat.py 0x080E4266
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111'
+open_questions:
+- which battle object/state machine uses this phase (no callers known), so the meaning of action 0xC is
+  unverified
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6d29f05
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E4266 -> battle_objectPhaseWait90
+  where: bn6f cfd1cd0b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E4266

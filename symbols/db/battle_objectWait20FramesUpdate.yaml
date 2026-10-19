@@ -1,0 +1,40 @@
+name: battle_objectWait20FramesUpdate
+address: '0x080E6B64'
+kind: function
+status: probable
+summary: Battle-object phase handler that waits 20 frames, then ends the object's action (CurAction=8)
+  and clears its phase.
+interface: (r5 = battle object, r0 unused) -> void; no flags relevant
+details: If oBattleObject_PhaseInitialized is 0, it stores 4 there and loads oBattleObject_Timer with
+  0x14 (20 frames), returning immediately. Otherwise it decrements the timer each call; while positive
+  it does nothing more. When the timer reaches 0 it writes CurAction=8 and zeroes CurPhaseAndPhaseInitialized,
+  signaling the phase/action is finished. This is a state-machine step run every frame while the object
+  is in this phase; it uses no other fields or callees.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb/tst on oBattleObject_PhaseInitialized + 'mov r0,#4; strb' arms the one-shot init (asm 2-6);
+    'mov r0,#0x14; strh [r5,#oBattleObject_Timer]' sets a 20-frame countdown (asm 7-8); timer is decremented
+    with 'sub r0,#1; strh; bgt' until it expires (asm 11-14); on expiry 'mov r0,#8; strb [r5,#oBattleObject_CurAction]'
+    plus zeroing CurPhaseAndPhaseInitialized ends the state (asm 15-17)
+  refs:
+  - bn6f/asm/asm31.s:103317
+  reproduce: python3 tools/asmcat.py 0x080E6B64
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111'
+open_questions:
+- no callers known, so what battle object or situation uses this 20-frame delay is unknown
+- the meaning of CurAction=8 (finished vs. specific action id) is not confirmed from this function alone
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6d29f05
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E6B64 -> battle_objectWait20FramesUpdate
+  where: bn6f cfd1cd0b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E6B64

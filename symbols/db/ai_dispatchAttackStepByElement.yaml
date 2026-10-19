@@ -1,0 +1,43 @@
+name: ai_dispatchAttackStepByElement
+address: '0x0810478C'
+kind: function
+status: probable
+summary: Runs the AI attack step handler selected by the current attack's element, dispatching into a
+  per-element jump table.
+interface: (r7 = AI attack vars struct, r0 = oAIAttackVars_HitElement element id) -> returns whatever
+  the selected element handler returns; flags clobbered
+details: Reads the byte element id at [r7,#oAIAttackVars_HitElement], uses it to index the 8-entry thumb
+  function-pointer table off_81047A0, and calls the handler with LR trickery (mov lr, pc; bx r1) so control
+  returns to this function which then pops {r7,pc} — effectively a tail call. r7 is left untouched so
+  the element handlers inherit the AI attack-vars struct pointer. Handlers include per-element routines
+  like ai_chargeDashAttackStep (charge/dash attacks, e.g. Fire/Elec style) and ai_attackHoldOnPanel. The
+  table has exactly 8 entries matching the game's element count; no bounds check is performed, so element
+  ids must be pre-validated.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_810478C: ldrb r0,[r7,#oAIAttackVars_HitElement]; ldr r1,[r1,r0]; bx r1 — element-indexed
+    dispatch; off_81047A0 lists 8 thumb handlers, including known ai_chargeDashAttackStep and ai_attackHoldOnPanel;
+    mov lr,pc; bx r1 with trailing pop {r7,pc} makes it a tail call, passing r7 context through'
+  refs:
+  - bn6f/asm/asm31.s:166331
+  reproduce: python3 tools/asmcat.py 0x0810478C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111'
+open_questions:
+- callers unknown — which AI attack routine sets oAIAttackVars_HitElement and calls this
+- identities of the 6 unnamed handlers (sub_81047C0, sub_810480A, sub_8104832, sub_810486A, sub_8104998,
+  sub_81049C0) to confirm element-to-handler mapping
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6d29f05
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_810478C -> ai_dispatchAttackStepByElement
+  where: bn6f cfd1cd0b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810478C

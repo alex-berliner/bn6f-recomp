@@ -1,0 +1,47 @@
+name: object_chipNameScreenStep
+address: '0x080E7644'
+kind: function
+status: probable
+summary: 'Per-frame step function of a battle object that dispatches, by the object''s CurAction, through
+  a fixed phase sequence: dim screen, draw chip name, unknown routine, undim screen.'
+interface: (r5 = battle object) -> dispatches to off_80E7658[oBattleObject_CurAction]; r0 left as the
+  action byte, r1 holds the function pointer at call time; no return value used.
+details: Reads oBattleObject_CurAction from the object in r5 and uses it as an index into the 4-entry
+  handler table off_80E7658, then performs a Thumb long-call (mov lr, pc; bx r1) to the selected handler.
+  The phase 0/3 handlers are object_dimScreen/object_undimScreen, phase 1 is object_drawChipName, so the
+  object implements a screen-dim -> chip-name display -> undim presentation. r0 is clobbered with the
+  action byte before the call, so callees either receive the action index in r0 or ignore arguments and
+  read the object from r5. The caller-side loop advancing CurAction is not known, so which code triggers
+  each phase is unknown.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#oBattleObject_CurAction]; ldr r1,[r1,r0]: CurAction indexes the handler table
+    (asm lines 3-5); off_80E7658 = {object_dimScreen+1, object_drawChipName+1, sub_80E7668+1, object_undimScreen+1}:
+    ordered dim->drawChipName->?->undim phases; mov lr, pc; bx r1: standard Thumb long call to table-selected
+    handler; symbol names object_dimScreen/object_undimScreen/object_drawChipName imply a dimmed chip-name
+    overlay in battle; r5 is the object pointer: same register convention as other battle object update
+    routines'
+  refs:
+  - bn6f/asm/asm31.s:104832
+  reproduce: python3 tools/asmcat.py 0x080E7644
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111'
+open_questions:
+- What sub_80E7668 (phase 2) draws between the chip name and the undim
+- Which callers spawn this object and what sets/advances CurAction (i.e., what in-game event shows this
+  overlay)
+- Whether callees take arguments (r0=action, r1=funcptr look accidental) or read the object from r5
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6d29f05
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E7644 -> object_chipNameScreenStep
+  where: bn6f cfd1cd0b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E7644

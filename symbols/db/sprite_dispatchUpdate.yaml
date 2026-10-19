@@ -1,0 +1,42 @@
+name: sprite_dispatchUpdate
+address: '0x0811E7D4'
+kind: function
+status: probable
+summary: Dispatches an entity's per-mode update routine, picking one of three handlers from a jump table
+  using the entity's mode byte.
+interface: (r5 = entity struct, handler table indexed by [r5,#8]; r6 set = &eStruct2001010) -> tail-jumps
+  to handler; r5, r6 passed through
+details: 'Loads the eStruct2001010 pointer into r6, reads a byte at [r5,#8] as an index, fetches a Thumb
+  handler pointer from the table off_811E7E8, and tail-calls it with r5 and r6 still live. The table has
+  three entries: sub_811E7F8, sprite_updateAtCenter, and sub_811E850, so [r5,#8] is likely a sprite/update
+  mode or state selector for an entity whose context block is eStruct2001010. The function is a pure trampoline:
+  no flags set, no stack frame beyond lr.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r1,[r5,#8]; ldr r0,[r0,r1]; bx r0 — indexed handler dispatch off a 3-entry table (off_811E7E8);
+    Middle table entry is sprite_updateAtCenter, tying dispatch to sprite update behavior; r6 is preloaded
+    with eStruct2001010 before the jump, so handlers receive that context; No callers known; 18-instruction
+    stub acts only as a trampoline
+  refs:
+  - bn6f/asm/asm32.s:34045
+  reproduce: python3 tools/asmcat.py 0x0811E7D4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111'
+open_questions:
+- What sub_811E7F8 and sub_811E850 do (the other two modes) and what eStruct2001010 represents
+- Which structure r5 points to and the exact meaning of the [r5,#8] mode byte
+- No known call sites, so the game context in which this dispatch runs is unconfirmed
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6d29f05
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_811E7D4 -> sprite_dispatchUpdate
+  where: bn6f cfd1cd0b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811E7D4

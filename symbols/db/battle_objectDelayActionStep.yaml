@@ -1,0 +1,41 @@
+name: battle_objectDelayActionStep
+address: '0x080BA0D8'
+kind: function
+status: probable
+summary: Per-frame state step that makes a battle object wait 60 frames before starting action 0x14.
+interface: (r5 = battle object) -> void; no return value
+details: 'Runs as part of a battle object''s per-frame state machine (r5 holds the object). On entry with
+  CurPhase == 0 it initializes the wait: sets CurPhase to 4 and the object timer to 60 (0x3C). On subsequent
+  calls (CurPhase != 0) it decrements oBattleObject_Timer; when it reaches zero it writes CurAction =
+  0x14 (20) and clears CurPhaseAndPhaseInitialized to 0, kicking off the next action. Note it writes the
+  halfword CurPhaseAndPhaseInitialized (clearing both phase and initialized flag) but writes only the
+  byte CurPhase when setting phase 4. The 60-frame delay followed by a fixed action suggests a scripted
+  pause before an enemy/object behavior.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#oBattleObject_CurPhase]; tst; phase 0 path stores phase=4 and timer=0x3C (60 frames);
+    decrement path: ldrh/sub/strh on oBattleObject_Timer with bgt exit — a frame countdown; on timer expiry:
+    mov r0,#0x14; strb to oBattleObject_CurAction and clears CurPhaseAndPhaseInitialized; push/pop {pc}
+    with no r0 return value — pure state-mutation step on the r5 object'
+  refs:
+  - bn6f/asm/asm31.s:4285
+  reproduce: python3 tools/asmcat.py 0x080BA0D8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111'
+open_questions:
+- which object kinds and which action 0x14 performs (no callers known)
+- why phase 4 specifically and what other handlers share this phase numbering
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6d29f05
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BA0D8 -> battle_objectDelayActionStep
+  where: bn6f cfd1cd0b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BA0D8

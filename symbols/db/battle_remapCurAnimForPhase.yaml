@@ -1,0 +1,42 @@
+name: battle_remapCurAnimForPhase
+address: '0x080D3F10'
+kind: function
+status: probable
+summary: On a battle object's phase init, remaps its current animation ID to the corresponding variant
+  of the next phase (0x14->0x1a, 0x15->0x1b, 0x17->0x19, else 0x18)
+interface: (r5 = battle object, no explicit args) -> r0 = nothing; writes oBattleObject_CurAnim
+details: 'Reads oBattleObject_CurAnim from the battle object in r5 and maps it through a small lookup:
+  anim 0x15 becomes 0x1b, 0x14 becomes 0x1a, 0x17 becomes 0x19, and any other value becomes 0x18; the
+  result is written back to oBattleObject_CurAnim. The mapping shifts the object''s animation set to a
+  parallel set, consistent with a boss changing state/phase while keeping its visual pose. Its only caller
+  runs it once, guarded by oBattleObject_PhaseInitialized (which it sets to 4), before loading the phase
+  timer from byte_80D3C3C indexed by oBattleObject_Param1*2 and resetting Timer2.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_80D3F10: cmp/branch chain maps CurAnim 0x15->0x1b, 0x14->0x1a, 0x17->0x19, default 0x18,
+    then strb to [r5,#oBattleObject_CurAnim]; caller 0x080D3BCE: guarded by PhaseInitialized==0, sets
+    PhaseInitialized=4 before calling, so it runs once per phase entry; caller continues: Timer = byte_80D3C3C[Param1*2]
+    and Timer2=0, setting up the new phase''s timing after the anim remap'
+  refs:
+  - bn6f/asm/asm31.s:61791
+  - 0x080D3BC2 sub_80D3BC2
+  reproduce: python3 tools/asmcat.py 0x080D3F10
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111'
+open_questions:
+- Which boss/state this phase-4 belongs to and what the 0x14-0x17 animations represent visually; other
+  callers or anim-table data would confirm the phase semantics
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6d29f05
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80D3F10 -> battle_remapCurAnimForPhase
+  where: bn6f cfd1cd0b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D3F10

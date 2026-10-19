@@ -1,0 +1,41 @@
+name: battle_phaseAnimWaitUpdate
+address: '0x080CC400'
+kind: function
+status: probable
+summary: 'Per-frame battle-object phase handler: on first entry starts anim 5 with a 2-frame timer, and
+  once the timer expires sets Z=0xFF and switches the object to phase 8.'
+interface: (r0 = unused, r5 = battle object) -> r0 = clobbered; updates oBattleObject_PhaseInitialized,
+  CurAnim, Timer, Z16, CurPhaseAndPhaseInitialized
+details: Reads oBattleObject_PhaseInitialized; if zero, it marks the phase initialized (4), sets CurAnim=5,
+  Timer=2 and returns. On later frames it decrements Timer and keeps returning while it is still >=0 (branch
+  is 'bge', so it runs until the counter goes negative). When the timer expires it stores 0xFF into oBattleObject_Z16
+  and writes phase 8 into oBattleObject_CurPhaseAndPhaseInitialized. r5 is the caller's battle object
+  pointer, untouched by the caller frame shown.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: init branch stores PhaseInitialized=4, CurAnim=5, Timer=2 (sub_80CC400 +4..+0xC); Timer is decremented
+    and only falls through when negative ('sub r0,#1 ... bge' at loc_80CC416); on expiry Z16=0xFF and
+    CurPhaseAndPhaseInitialized=8, mirroring other battle phase-state handlers
+  refs:
+  - bn6f/asm/asm31.s:44890
+  reproduce: python3 tools/asmcat.py 0x080CC400
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111'
+open_questions:
+- which phase jump table dispatches here (no caller known), so which in-game action (anim 5) this delay
+  precedes
+- meaning of oBattleObject_Z16=0xFF (likely an offscreen/height or visibility value) is not confirmed
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6d29f05
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CC400 -> battle_phaseAnimWaitUpdate
+  where: bn6f cfd1cd0b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CC400

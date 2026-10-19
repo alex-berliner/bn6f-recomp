@@ -1,0 +1,49 @@
+name: battle_displaceRelatedObjectByAngle
+address: '0x080C060A'
+kind: function
+status: probable
+summary: Moves a battle object's attached/related object along a direction taken from the trig tables
+  by a caller-supplied magnitude, while drifting the owner's Y/Z up by 2 each call (used for dash/charge
+  motion effects).
+interface: (r0 = magnitude (fixed-point, scaled by <<8), r1 = angle index 0..255 into math_cosTable/math_sinTable)
+  -> r0 = clobbered; reads/writes [r5+RelatedObject1Ptr]+0x34 triple and r5 oBattleObject_Y16/Z16
+details: Looks up math_cosTable[r1] and math_sinTable[r1], multiplies each by r0 and shifts left 8 to
+  form fixed-point deltas. Loads the 3-word block at RelatedObject1Ptr+0x34 (likely x/?,z of an attached
+  sprite's position), adds the cos delta to the first word and the sin delta to the third, and stores
+  it back; the middle word is untouched. It then increments the owning object's Y16 and Z16 by 2 each
+  call, so repeated calls move both the owner and its attached object steadily. r1 is masked to 8 bits
+  by the caller, matching the 256-entry trig tables. In sub_80C0544 the angle is (timer*0x70)&0xff and
+  magnitude timer*4, followed by sprite_setColorShader(0x2108); in sub_80C05C6 it is called once with
+  (0,0) and followed by a countdown to sprite_disableAlpha, i.e. a timed fade/motion phase.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_80C060A: ldrsh r6,[cosTable,r3]; mul r6,r0; lsl r6,#8 and same for sinTable = scaled direction
+    vector; sub_80C060A: ldmia [RelatedObject1Ptr+0x34] {r1-r3}; add r1,r6; add r3,r7; stmia back = displaces
+    attached object''s pos words 0 and 2; sub_80C0544: r1=(Timer*0x70)&0xff angle, r0=Timer*4 magnitude,
+    then sprite_setColorShader 0x2108; sub_80C05C6: calls it with (0,0) then counts Timer down and calls
+    sprite_disableAlpha, a fade-out phase; sub_80C060A tail: adds #2 to oBattleObject_Y16 and oBattleObject_Z16
+    each invocation'
+  refs:
+  - bn6f/asm/asm31.s:18600
+  - 0x080C0544 sub_80C0544
+  - 0x080C05C6 sub_80C05C6
+  reproduce: python3 tools/asmcat.py 0x080C060A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111'
+open_questions:
+- what object/attachment struct field 0x34..0x3C represents (position triple vs other words)
+- which attack or effect (e.g. Falzar cross motion) owns these two callers
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6d29f05
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C060A -> battle_displaceRelatedObjectByAngle
+  where: bn6f cfd1cd0b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C060A

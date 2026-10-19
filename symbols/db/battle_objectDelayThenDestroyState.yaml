@@ -1,0 +1,43 @@
+name: battle_objectDelayThenDestroyState
+address: '0x080B91E8'
+kind: function
+status: probable
+summary: battle object state handler that waits 4 frames with a set animation, then disables collision
+  and destroys the object
+interface: (r0 = unused/scratch, r5 = battle object ptr) -> void; sets CurPhase/Anim/Timer, then collision
+  off and state = CUR_STATE_DESTROY
+details: Reads oBattleObject_CurPhase; if 0, writes phase=4, oBattleObject_CurAnim=4, and oBattleObject_TimerAndTimer2=4
+  (a 4-frame timer) and returns. Otherwise decrements oBattleObject_Timer; while positive it just returns.
+  When the timer runs out it calls sub_8011044(2,1), clears oCollisionData_Enabled via oBattleObject_CollisionDataPtr,
+  and writes CUR_STATE_DESTROY into oBattleObject_CurStateActionPhaseAndPhaseInitialized so the object
+  is torn down next frame.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: phase-0 branch sets CurPhase=4, CurAnim=4, timer=4 (startup of this state); timer countdown
+    via oBattleObject_Timer with strh/bge loop (asm lines at loc_80B91FE); bl sub_8011044 with r0=2, r1=1
+    fired exactly when the timer expires; clears oCollisionData_Enabled through oBattleObject_CollisionDataPtr
+    before destroying; stores CUR_STATE_DESTROY into oBattleObject_CurStateActionPhaseAndPhaseInitialized
+    as the final action
+  refs:
+  - bn6f/asm/asm31.s:2174
+  - 0x08011044 sub_8011044
+  reproduce: python3 tools/asmcat.py 0x080B91E8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111'
+open_questions:
+- what sub_8011044(2,1) does (effect/sound/animation trigger?) — its identity would pin the game context
+- no known callers, so which objects use this state and when it is entered is unknown
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6d29f05
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80B91E8 -> battle_objectDelayThenDestroyState
+  where: bn6f cfd1cd0b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80B91E8

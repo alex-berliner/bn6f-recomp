@@ -1,0 +1,46 @@
+name: checkAnyCounterReached360
+address: '0x0803EFA0'
+kind: function
+status: probable
+summary: Returns true if any of four halfword counters at word_2010420 has reached 0x168 (360); callers
+  use it to trigger a state change (set byte 0xE=8 in eStruct200BC30 and return 4).
+interface: () -> r0 = 1 if any of word_2010420[0..3] >= 0x168 else 0; flags clobbered
+details: 'Loops over four halfwords at word_2010420, comparing each against 0x168 (360); if any entry
+  is >= 360 it returns 1 immediately, otherwise after all four are below the threshold it returns 0. Both
+  callers wrap it the same way: they call sub_803EBFC, save its result on the stack, call this; if it
+  returns 0 the saved sub_803EBFC result is returned unchanged, but if it returns 1 the caller writes
+  8 to byte +0xE of the eStruct200BC30 structure and returns 4 instead. The array of four short values
+  against a single threshold suggests per-slot timers or progress counters, but the game meaning of word_2010420
+  is not established here.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_803EFA0: ldrh loop over word_2010420[i] (i=0..3) with cmp r0,#0x168 / bge, returning r4=1
+    on first hit else 0; caller 0x0803EB4C and 0x0803EB98: bl sub_803EFA0 then beq returns the pushed
+    sub_803EBFC result unchanged; both callers: on nonzero result, eStruct200BC30_getRef then strb #8,[r0,#0xe]
+    and mov r0,#4; callers also call sub_8146E78/sub_8148884 and sub_8147B3C/sub_8148FC0 with a cmp r4,#4
+    check, indicating a shared state-machine context'
+  refs:
+  - bn6f/asm/asm03_1_1.s:12775
+  - 0x0803EB14 sub_803EB14
+  - 0x0803EB60 sub_803EB60
+  reproduce: python3 tools/asmcat.py 0x0803EFA0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111'
+open_questions:
+- What word_2010420 actually stores (timers, progress counters, something else) and what 0x168=360 represents
+- What sub_803EBFC returns and why it is passed through when this check fails
+- What setting eStruct200BC30+0xE=8 and returning 4 means in the callers' state machine
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6d29f05
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803EFA0 -> checkAnyCounterReached360
+  where: bn6f cfd1cd0b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803EFA0

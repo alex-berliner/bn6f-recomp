@@ -1,0 +1,47 @@
+name: battle_applyQueuedDamageEntries
+address: '0x080C6774'
+kind: function
+status: probable
+summary: Iterates the object's queued byte-encoded hit entries and applies each one's damage to the target
+  the queue lookup resolves.
+interface: () -> r0 = destroyed; uses [r5] battle object; r4/r6-r7 clobbered
+details: Reads a count from [r5,#oBattleObject_ExtraVars] and walks a byte array at object+0x64. Each
+  entry byte encodes a value in its high nibble (passed as r1) and a 3-bit index (passed as r0); sub_80C67A4(r0,r1)
+  returns a resolved target/value, and if nonzero sub_80C67D8 is invoked with r2=oBattleObject_Element,
+  r3=0, r4=oBattleObject_Param1+1 (power/count) and r6=oBattleObject_DamageAndStaminaDamageCounterDisabler,
+  i.e. an attack-application call. The only caller is a bomb-style object (plays SOUND_HIT_BOMB_1) that
+  fires this once when oBattleObject_Timer2 counts down to zero, suggesting the queue is consumed one
+  tick at a time (e.g. one damage application per explosion tick).
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'asm: count taken from [r5,#oBattleObject_ExtraVars], loop reads bytes at r5+0x64+i, splits
+    nibble (lsr #4) and 3-bit index (lsl 0x1d/lsr 0x1d); asm: on sub_80C67A4 != 0 calls sub_80C67D8 with
+    Element, Param1+1 and DamageAndStaminaDamageCounterDisabler, the damage-application field set; caller
+    0x80C66E4: calls it when oBattleObject_Timer2 hits 0 after playing SOUND_HIT_BOMB_1, an exploding-object
+    tick pattern'
+  refs:
+  - bn6f/asm/asm31.s:32089
+  - 0x080C66E4 sub_80C66E4
+  - 0x080C67A4 sub_80C67A4
+  - 0x080C67D8 sub_80C67D8
+  reproduce: python3 tools/asmcat.py 0x080C6774
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111'
+open_questions:
+- exact encoding of the 0x64 queue bytes and what sub_80C67A4 resolves (panel vs. object)
+- meaning of r1/r3/r6 arguments to sub_80C67D8
+- which specific object(s)/attack use this queue besides the bomb-like caller
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6d29f05
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C6774 -> battle_applyQueuedDamageEntries
+  where: bn6f cfd1cd0b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C6774

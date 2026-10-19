@@ -1,0 +1,43 @@
+name: object_execCurAction
+address: '0x080E344C'
+kind: function
+status: probable
+summary: 'Dispatches a battle object''s current action to its handler: dim screen, draw chip name, sub_80E3470,
+  or undim screen'
+interface: (r5 = battle object) -> jumps to handler for [r5+oBattleObject_CurAction]; r0 = action index
+  on entry to handler
+details: 'Reads oBattleObject_CurAction from the battle object at r5 and uses it to index off_80E3460,
+  a 4-entry thumb handler table, then tail-calls the selected handler with lr set so it returns straight
+  to this function''s caller. Handlers: object_dimScreen, object_drawChipName, sub_80E3470 (unknown),
+  object_undimScreen. The object pointer is not passed in registers — handlers must also rely on r5 being
+  the current object. Effectively a per-object state machine step for screen-dim/chip-name overlay states.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0, [r5,#oBattleObject_CurAction]; ldr r1, [r1,r0]; bx r1 — jump table indexed by CurAction
+    (sub_80E344C); table off_80E3460 entries: object_dimScreen+1, object_drawChipName+1, sub_80E3470+1,
+    object_undimScreen+1; mov lr, pc; bx r1 with pop {pc} — tail-call dispatch, no result handling by
+    caller wrapper; no known callers, so r5-as-object convention inferred from callee prefix and struct
+    field'
+  refs:
+  - bn6f/asm/asm31.s:95318
+  reproduce: python3 tools/asmcat.py 0x080E344C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111'
+open_questions:
+- who calls this and with which object (r5 setup)
+- what sub_80E3470 (action 2) does
+- what object type uses this action state machine
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6d29f05
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E344C -> object_execCurAction
+  where: bn6f cfd1cd0b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E344C

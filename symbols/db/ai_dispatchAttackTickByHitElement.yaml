@@ -1,0 +1,41 @@
+name: ai_dispatchAttackTickByHitElement
+address: '0x08107750'
+kind: function
+status: probable
+summary: Dispatches an AI attack tick to a per-element handler based on the hit element stored in the
+  AI attack vars.
+interface: (r7 = AI attack vars struct base) -> tail-calls handler from off_8107764 indexed by [r7,#oAIAttackVars_HitElement];
+  no return value of its own
+details: Reads the oAIAttackVars_HitElement byte from the struct at r7 and jumps to one of five element-specific
+  routines (sub_810777C, sub_81077CC, sub_81077F8, sub_8107816, sub_8107856) or ai_defaultAttackTick for
+  out-of-range elements. The jump table off_8107764 holds Thumb pointers (entry+1), and the call is made
+  with mov lr, pc / bx r1 so the callee can return past the pop {r7,pc}. r0 at entry is clobbered before
+  the branch, so it carries no argument. The struct is preserved only by the dispatcher; handlers see
+  r7 unchanged.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_HitElement] then ldr r1,[r1,r0]: table index is the hit element
+    field; mov lr, pc / bx r1: tail-call into selected handler, callee returns to the pop; off_8107764
+    has 6 entries ending in ai_defaultAttackTick: element-switch with default case'
+  refs:
+  - bn6f/asm/asm31.s:172728
+  reproduce: python3 tools/asmcat.py 0x08107750
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111'
+open_questions:
+- What each element handler (sub_810777C..sub_8107856) does, and which caller sets oAIAttackVars_HitElement
+  before this dispatch
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6d29f05
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8107750 -> ai_dispatchAttackTickByHitElement
+  where: bn6f cfd1cd0b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8107750

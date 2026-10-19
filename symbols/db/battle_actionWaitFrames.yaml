@@ -1,0 +1,44 @@
+name: battle_actionWaitFrames
+address: '0x080BA7F4'
+kind: function
+status: probable
+summary: Battle-object action handler that waits a set number of frames, then advances the object's action
+  state machine
+interface: (r5 = battle object, caller-set; no register args) -> no meaningful return; advances oBattleObject_CurAction
+details: 'On entry the handler checks oBattleObject_CurPhase: if it is 0 it starts the wait by writing
+  phase 4, resetting oBattleObject_CurAnim to 0, and loading oBattleObject_TimerAndTimer2 with 30 (0x1E)
+  frames. On subsequent calls (phase != 0) it decrements oBattleObject_Timer and returns while it is still
+  positive. When the timer reaches 0 it stores 8 into oBattleObject_CurAction and clears CurPhaseAndPhaseInitialized,
+  handing control back to the dispatcher so the next action (action 8) runs. r5 is never set up inside,
+  so the caller must place the object pointer in r5 before calling. This is a typical ''pause for ~half
+  a second during an attack/behavior sequence'' step of a scripted battle actor.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'loc_80BA7F4+2: phase==0 branch writes CurPhase=4, CurAnim=0, Timer=0x1E, i.e. arms a 30-frame
+    wait; loc_80BA80A: decrements oBattleObject_Timer and returns while bgt, classic frame-countdown wait;
+    locret path: when timer expires stores CurAction=8 and zeroes CurPhaseAndPhaseInitialized to advance
+    the state machine; no callee calls and r5 is used uninitialized, so the caller supplies the battle
+    object in r5 (standard object-handler convention)'
+  refs:
+  - bn6f/asm/asm31.s:5302
+  reproduce: python3 tools/asmcat.py 0x080BA7F4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111'
+open_questions:
+- which object/actor uses this handler (no caller known), so which boss or enemy behavior this 30-frame
+  wait belongs to
+- what action id 8 means in this actor's action table and who dispatches on CurAction
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6d29f05
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BA7F4 -> battle_actionWaitFrames
+  where: bn6f cfd1cd0b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BA7F4

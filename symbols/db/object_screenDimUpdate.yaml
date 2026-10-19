@@ -1,0 +1,45 @@
+name: object_screenDimUpdate
+address: '0x080E34E0'
+kind: function
+status: probable
+summary: Per-frame update routine for a battle screen-dim effect object, dispatching on the object's CurAction
+  to dim, hold, wait-and-end, or undim the screen.
+interface: (r5 = battle object, no args via r0-r3) -> r0 = value returned by the dispatched handler; called
+  via bl so lr must be set
+details: 'A tiny dispatcher: it reads the object''s oBattleObject_CurAction from r5 and tail-calls one
+  of four Thumb handlers from off_80E34F4: object_dimScreen (dim the screen), sub_800BBA8 (unknown step),
+  battle_wait60ThenEndPhase (wait 60 frames then advance the battle phase), object_undimScreen (restore
+  the screen). It uses the bl-style ''mov lr, pc; bx r1'' tail-call so the dispatched routine''s return
+  goes straight back to this function''s caller. The four actions form a dim -> (something) -> timed wait
+  -> undim sequence, consistent with a scripted screen-darkening cut-in (e.g. dark power/big attack intro)
+  implemented as a standard battle object.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r5,#oBattleObject_CurAction]; ldr r1,[r1,r0]; bx r1 — classic state-machine dispatch
+    on the object's current action; off_80E34F4 entries are exactly object_dimScreen, sub_800BBA8, battle_wait60ThenEndPhase,
+    object_undimScreen; battle_wait60ThenEndPhase implies this runs inside the battle object update loop
+    during a phase; the dim/undim pair bracketing the sequence indicates a temporary screen-darkening
+    effect object
+  refs:
+  - bn6f/asm/asm31.s:95404
+  reproduce: python3 tools/asmcat.py 0x080E34E0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111'
+open_questions:
+- no known callers, so unclear which battle event spawns this object (boss cut-in, dark aura, etc.)
+- sub_800BBA8 (CurAction 1) is unidentified and may be the hold/dim-while-active step
+- unknown whether r0-r3 carry parameters into the dispatched handlers
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6d29f05
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E34E0 -> object_screenDimUpdate
+  where: bn6f cfd1cd0b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E34E0

@@ -1,0 +1,48 @@
+name: battle_updatePhaseState
+address: '0x0802CB78'
+kind: function
+status: probable
+summary: Runs one update tick of the battle sub-state machine at 203EAD0 and returns busy/advance flags
+  that drive the battle-phase script.
+interface: () -> r0 = busy flag (nonzero = sub-state machine still running), r1 = advance flag (1 = caller
+  advances BattleState.PhaseStepIndex); flags clobbered
+details: Loads the state struct pointer from dword_203EAD0, stores 1 to byte +4 (a busy/started flag),
+  then dispatches via off_802CB94[state_byte0] to one of three handlers (sub_802CBA4, sub_802CBAC, sub_802CCAE)
+  called in ARM mode with lr=pc, so the handler can update the struct. It then returns byte +4 in r0 and
+  byte +7 in r1; the handlers are expected to clear/modify these flags. No arguments are taken. The caller
+  uses r0 to keep waiting and r1==1 as the signal to advance oBattleState_PhaseStepIndex and enter phase
+  0xC.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'asm: strb 1,[r5,#4] before dispatch and ldrb [r5,#4]/[r5,#7] after show r0/r1 are struct flags,
+    not return values of the handler itself; asm: ldr r1,off_802CB94; ldrb r0,[r5]; ldr r1,[r1,r0]; bx
+    r1 shows a 3-entry jump-table dispatch keyed by struct byte 0; caller 0x080083AE: tst r0,r0 / bne
+    exit shows r0 means ''still running''; caller: cmp r1,#1 then increments oBattleState_PhaseStepIndex
+    and stores phase 0xC shows r1 is the phase-advance signal; caller before the call computes battle_getPlayerTotalDamageTaken
+    for both players, placing this in battle end/phase sequencing'
+  refs:
+  - bn6f/asm/asm03_0.s:14255
+  - 0x0800838A sub_800838A
+  reproduce: python3 tools/asmcat.py 0x0802CB78
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111'
+open_questions:
+- what the three handlers sub_802CBA4/sub_802CBAC/sub_802CCAE do, to identify the game meaning of the
+  203EAD0 state machine
+- the layout of the struct at dword_203EAD0 (what bytes 0, 4, 7 mean beyond busy/advance)
+- which battle phase (0xC?) sub_800838A belongs to and what sub_802CB38 does with the two damage-taken
+  totals
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6d29f05
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_802CB78 -> battle_updatePhaseState
+  where: bn6f cfd1cd0b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802CB78

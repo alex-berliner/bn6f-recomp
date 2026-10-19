@@ -1,0 +1,43 @@
+name: battle_refillFolderFromDiscardPile
+address: '0x080294E0'
+kind: function
+status: probable
+summary: Puts the chips used this turn (discard stack) back into the empty 0xFFFF slots of eBattleFolder.
+interface: '(implicit r5 = battle work struct: byte +0x5F = count, u16 array +0x60 = discarded chips)
+  -> void; no register args, no return'
+details: Reads a count from [r5,#0x5F] and loops that many times (r6 counts down). Each pass linearly
+  scans eBattleFolder's 30 u16 entries (0x3C bytes) for the sentinel 0xFFFF (an emptied slot left by battle_compactFolderChipList)
+  and writes the discard entry at r5+0x60+(r6-1)*2 into it, i.e. pops the discard pile LIFO into the holes.
+  Scanning restarts from slot 0 each pass, so filled slots are skipped naturally on later passes. If no
+  0xFFFF slot exists the pass just scans and does nothing. Runs entirely on the caller's r5 context, so
+  r5 must already point at the battle work struct.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrsh r1,[r3,r4]; cmp r1,r7 with r7=-1 searches eBattleFolder for 0xFFFF empty slots (loc_80294EE);
+    ldrh r0,[r5,r2] with r2=0x60+(r6-1)*2 pops entries from a stack-like array at battleWork+0x60; caller
+    at 0x080274F4 calls it immediately after battle_compactFolderChipList_802945A, which empties used
+    chips from the folder; outer loop runs [r5,#0x5F] times, matching one refill per discarded chip; eBattleFolder
+    symdb entry confirms format: 30 u16 chip id|code<<9, hand is first N'
+  refs:
+  - bn6f/asm/asm03_0.s:6970
+  - 0x08027458 sub_8027458
+  reproduce: python3 tools/asmcat.py 0x080294E0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111'
+open_questions:
+- exact role of the r5 struct's +0x5F/+0x60 fields (discard pile vs another chip list) — a summary of
+  battle_compactFolderChipList_802945A or sub_802A61A would confirm the turn-end chip-recycling flow
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6d29f05
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80294E0 -> battle_refillFolderFromDiscardPile
+  where: bn6f cfd1cd0b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80294E0

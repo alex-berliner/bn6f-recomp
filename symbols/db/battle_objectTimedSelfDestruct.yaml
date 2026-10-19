@@ -1,0 +1,45 @@
+name: battle_objectTimedSelfDestruct
+address: '0x080B8FEA'
+kind: function
+status: probable
+summary: 'battle object state handler: plays anim 4 for ~3 frames, then disables its hitbox and marks
+  the object for destruction'
+interface: (r5 = battle object, implicit) -> r0 = unused; sets CurPhase/CurAnim/Timer on entry, disables
+  collision and sets CurState=CUR_STATE_DESTROY when the timer expires
+details: 'Called with r5 pointing at a battle object. On phase 0 it initializes: sets CurPhase to 4, CurAnim
+  to 4, and stores the word 3 into TimerAndTimer2 (starting the timer). On subsequent calls it decrements
+  the object''s Timer (halfword at TimerAndTimer2); once it goes negative it clears oCollisionData_Enabled
+  in the object''s collision data and writes CUR_STATE_DESTROY to the packed CurStateActionPhaseAndPhaseInitialized
+  field, so the object engine removes it. It is a short-lived projectile/hitbox-style object: appear with
+  a fixed animation, stay harmful for 3 frames, then despawn. Which object uses it is unknown without
+  callers.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'entry path sets CurPhase=4, CurAnim=4 and Timer word=3 (loc_80B8FEA+... through ''str r0,[r5,#oBattleObject_TimerAndTimer2]'');
+    timer path decrements halfword oBattleObject_Timer and falls through on ''bge locret_80B9012'' when
+    it expires; expiry writes 0 to [r1,#oCollisionData_Enabled] via ldr r1,[r5,#oBattleObject_CollisionDataPtr],
+    disabling the hitbox; expiry then stores #CUR_STATE_DESTROY into oBattleObject_CurStateActionPhaseAndPhaseInitialized,
+    the standard kill transition; no callers or callees are known, so r5''s object type is inferred only
+    from the battle-object field layout'
+  refs:
+  - bn6f/asm/asm31.s:1873
+  reproduce: python3 tools/asmcat.py 0x080B8FEA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111'
+open_questions:
+- which battle object(s) register this handler, and what anim 4 depicts for them
+- whether the word store to TimerAndTimer2 also sets Timer2 or another packed field
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6d29f05
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80B8FEA -> battle_objectTimedSelfDestruct
+  where: bn6f cfd1cd0b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80B8FEA

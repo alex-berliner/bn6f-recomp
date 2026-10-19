@@ -1,0 +1,42 @@
+name: battle_objWaitTimerThenSetAction
+address: '0x080B9188'
+kind: function
+status: probable
+summary: 'Battle-object phase handler: waits 10 frames (playing anim 15) then switches the object to action
+  12'
+interface: (r0 = scratch, r5 = battle object) -> r0 = 0/1 return-ish side effect only; mutates oBattleObject_CurPhase/CurAnim/Timer/CurAction/CurPhaseAndPhaseInitialized
+details: 'Reads the object''s CurPhase from r5. If phase is 0 it initializes a wait: sets CurPhase to
+  4, CurAnim to 0xF and Timer to 10 (0xA), then returns. On later calls it decrements Timer; while positive
+  it just returns. When the timer expires it sets CurAction to 0xC and zeroes CurPhaseAndPhaseInitialized,
+  handing control back to the object''s action dispatcher. Typical ''pause a beat, then perform next action''
+  step of a battle object''s state machine; the exact meaning of anim 15 / action 12 depends on the object
+  this is registered for.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r5,#oBattleObject_CurPhase]; tst r0,r0; bne loc_80B919E — first run vs. subsequent
+    runs of the same phase; mov r0,#0xf; strb r0,[r5,#oBattleObject_CurAnim] and Timer=#0xa — sets a 10-frame
+    wait with anim 15; ldrh r0,[r5,#oBattleObject_Timer]; sub r0,#1; strh ...; bgt — counts the wait down
+    frame by frame; mov r0,#0xc; strb r0,[r5,#oBattleObject_CurAction] with zeroed CurPhaseAndPhaseInitialized
+    — advances the state machine to action 12
+  refs:
+  - bn6f/asm/asm31.s:2114
+  reproduce: python3 tools/asmcat.py 0x080B9188
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111'
+open_questions:
+- which battle object(s) register this handler, to say what anim 15 / action 12 mean concretely
+- no callers known; caller setup of r5 and how CurAction 0xC is consumed would confirm the flow
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6d29f05
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80B9188 -> battle_objWaitTimerThenSetAction
+  where: bn6f cfd1cd0b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80B9188

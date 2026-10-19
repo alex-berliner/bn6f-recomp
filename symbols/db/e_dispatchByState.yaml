@@ -1,0 +1,42 @@
+name: e_dispatchByState
+address: '0x0811E6C0'
+kind: function
+status: probable
+summary: Dispatches one of three update handlers for eStruct2001010 based on the state byte at [r5,#8].
+interface: (r5 = object/work struct; r1 = state = [r5,#8]) -> tail-call via 'mov lr, pc; bx r0' into off_811E6D4[r1];
+  sets r6 = eStruct2001010 for the handler
+details: Loads the global eStruct2001010 pointer into r6, then reads a state index from [r5,#8] and looks
+  it up in a 3-entry jump table (sub_811E6E4, sprite_resetToCenter, sub_811E73C). The 'mov lr, pc; bx
+  r0' trick makes the call return straight to this function's own caller, so it acts as a transparent
+  state-machine dispatcher. One handler is the known sprite_resetToCenter, suggesting the states drive
+  sprite/entity behavior of the object owning r5. With no callers or handler summaries available, the
+  actual game role of the object and struct cannot be determined.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldr r6, off_811E6E0 loads eStruct2001010 before dispatching, a shared-context setup for handlers;
+    ldrb r1,[r5,#8]; ldr r0,[off_811E6D4 + r1] indexes a 3-entry state jump table; mov lr, pc; bx r0;
+    pop {pc} tail-calls the chosen handler so it returns to the original caller; table entry 1 is sprite_resetToCenter,
+    tying at least one state to sprite behavior
+  refs:
+  - bn6f/asm/asm32.s:33915
+  reproduce: python3 tools/asmcat.py 0x0811E6C0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111'
+open_questions:
+- No callers known, so which object/entity owns r5 and when this dispatch runs is unknown
+- Purpose of the other two handlers sub_811E6E4 and sub_811E73C is unknown
+- Contents and role of eStruct2001010 (what r6 points the handlers at) need identifying
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6d29f05
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_811E6C0 -> e_dispatchByState
+  where: bn6f cfd1cd0b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811E6C0

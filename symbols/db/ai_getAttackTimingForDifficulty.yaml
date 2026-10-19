@@ -1,0 +1,45 @@
+name: ai_getAttackTimingForDifficulty
+address: '0x080F9EDC'
+kind: function
+status: probable
+summary: Returns the AI attack-scheduler's timer value and substep count, each looked up from a 4-entry
+  table indexed by the current AI difficulty tier.
+interface: () -> r0 = attack timer/cycle count (byte_80F9EF8[tier]), r1 = substep index (byte_80F9EF8[4+tier]);
+  flags clobbered
+details: 'The function has no real arguments: it twice calls sub_800FE28 with a pointer into byte_80F9EF8,
+  first to the table base and once to base+4, and returns the two bytes in r0 and r1. Given the caller
+  stores battle_getAiDifficultyTier''s result just before, sub_800FE28 almost certainly indexes the pointed
+  table by that difficulty tier (tables are 4 bytes each: {3,3,4,5} and {2,3,3,3}). The caller (sub_80F9FA6,
+  an AI attack-variable initializer) stores r0 into oAIAttackVars_TimerOrCycles and r1 into oAIAttackVars_SubStepIndex,
+  so the pair configures how the upcoming AI attack is timed. The lookup-by-shared-helper pattern matches
+  the neighboring battle_getAiDifficultyTier_800FE36.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_80F9FA6 at 0x080F9FC4: result r0 -> oAIAttackVars_TimerOrCycles, r1 -> oAIAttackVars_SubStepIndex;
+    caller stores bl battle_getAiDifficultyTier result first, so the tables are difficulty-indexed; byte_80F9EF8
+    = {3,3,4,5, 2,3,3,3}: two 4-entry tables, one per returned value; sub_800FE28 called with byte_80F9EF8
+    and byte_80F9EF8+4, a getter taking a table pointer'
+  refs:
+  - bn6f/asm/asm31.s:143844
+  - 0x080F9FA6 sub_80F9FA6
+  - 0x0800FE28 sub_800FE28
+  reproduce: python3 tools/asmcat.py 0x080F9EDC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111'
+open_questions:
+- exact behavior of sub_800FE28 (presumably table[tier] lookup) not directly inspected
+- gameplay meaning of TimerOrCycles vs SubStepIndex beyond their field names
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6d29f05
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80F9EDC -> ai_getAttackTimingForDifficulty
+  where: bn6f cfd1cd0b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F9EDC

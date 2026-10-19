@@ -1,0 +1,46 @@
+name: ai_callAttackStepByHitElement
+address: '0x081061D6'
+kind: function
+status: probable
+summary: Dispatches to an element-specific AI attack-step handler selected by the attack's hit-element
+  byte
+interface: (r7 = AI attack vars struct) -> tail-jumps to handler table entry [r7+oAIAttackVars_HitElement];
+  no direct return value
+details: 'Loads a byte from the AI attack-vars struct at r7 (field oAIAttackVars_HitElement) and uses
+  it to index a table of 8 handler pointers in a jump table at off_81061E8. It sets lr=pc and does bx
+  r1, so the selected handler runs in ARM/Thumb interchange and returns straight to this function''s caller.
+  Six entries are element-specific handlers (sub_8106208..sub_81062F8), while the last two fall through
+  to generic attack-step routines (ai_attackMoveInStep, ai_attackStepDefaultInit), suggesting the tail
+  entries are defaults for elements without special behavior. It is a pure dispatcher: no state is touched
+  besides reading the element byte.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r7,#oAIAttackVars_HitElement]; ldr r1,[r1,r0]; bx r1 — indexed dispatch on the hit-element
+    field; table entries 6-7 point to ai_attackMoveInStep and ai_attackStepDefaultInit, generic attack-step
+    handlers, marking this as attack-step dispatch; mov lr,pc + bx r1 makes it a tail-call trampoline
+    preserving the caller's return path; six leading table slots are dedicated sub_ handlers, consistent
+    with per-element variants
+  refs:
+  - bn6f/asm/asm31.s:169820
+  reproduce: python3 tools/asmcat.py 0x081061D6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111'
+open_questions:
+- no callers known, so whether r7 is the battle AI's active-attack struct and what each element handler
+  actually changes is unverified
+- exact mapping of element value to table slot (which of the 8 elements indexes where) needs the enum
+  or handler bodies
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6d29f05
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81061D6 -> ai_callAttackStepByHitElement
+  where: bn6f cfd1cd0b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81061D6

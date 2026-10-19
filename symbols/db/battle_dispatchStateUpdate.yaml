@@ -1,0 +1,44 @@
+name: battle_dispatchStateUpdate
+address: '0x08008E7C'
+kind: function
+status: probable
+summary: Dispatches an update handler selected by the state byte at [r5+2] of a battle-scene context
+interface: (r5 = context struct, state id at +2) -> tail-calls handler table entry; returns whatever the
+  handler returns
+details: Reads a byte at [r5,#2] and uses it as an index into off_8008E90, a table of four Thumb handler
+  pointers (sub_8008EA0, sub_8008F10, battle_linkBattleIntroWaitUpdate, sub_8008F52), then jumps to the
+  selected one with lr set so the handler returns directly to the original caller. r5 is not set here,
+  so the caller must have loaded the context pointer into r5 beforehand. The presence of battle_linkBattleIntroWaitUpdate
+  suggests this is the state machine driving the link-battle intro sequence, cycling between wait/update
+  states. The field at +2 acts as a state selector; there is no bounds check, so values outside 0-3 would
+  jump to garbage.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#2] + ldr r1,[r1,r0] + mov lr,pc / bx r1: indexed state dispatch with tail-call;
+    off_8008E90 lists exactly 4 handlers, one being battle_linkBattleIntroWaitUpdate, tying the dispatcher
+    to the link battle intro flow; no other computation: the function''s only job is selecting and calling
+    a handler; no known callers, so r5 must be an established context register in the calling convention
+    of this subsystem'
+  refs:
+  - bn6f/asm/asm00_1.s:13063
+  reproduce: python3 tools/asmcat.py 0x08008E7C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111'
+open_questions:
+- who calls this and how r5 is loaded (which structure r5 points to)
+- what each of the four handler states does (sub_8008EA0, sub_8008F10, sub_8008F52 are unnamed)
+- whether other copycats of this dispatcher exist with different handler tables
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6d29f05
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8008E7C -> battle_dispatchStateUpdate
+  where: bn6f cfd1cd0b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8008E7C

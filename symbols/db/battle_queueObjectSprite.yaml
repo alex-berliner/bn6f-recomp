@@ -1,0 +1,50 @@
+name: battle_queueObjectSprite
+address: '0x080C9EE6'
+kind: function
+status: probable
+summary: For one battle object, updates its sprite/animation state and queues its sprite (x/y from the
+  object) for rendering, skipping null/hidden objects.
+interface: (r0 = pointer to a battle-object list slot (holding object ptr), r2 = queue/context passed
+  through from caller) -> r0 clobbered; queues an entry via sub_80C9EA6, returns nothing
+details: Dereferences the list slot to get the object pointer and bails if null. Skips objects whose halfword
+  at +0x28 is 0xDA and objects whose pointer at +0x54 is null, plus objects whose [obj+0x54]+0x40 has
+  any of the flags 0x348000 set (likely hidden/inactive states). Calls sub_800F898(object) for its side
+  effects (return value discarded via the push/pop of r0), then reads bytes at object+0x12 and +0x13 (likely
+  sprite x/y or animation frame data) and calls sub_80C9EA6(byte12, byte13, r2, 0), where r2 is caller
+  context passed through r7. The caller runs this over all 8 slots of the battle state's object list (stride
+  4), i.e. once per battle entity.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'caller 0x080C9ECE loops 8 times over oToolkit_BattleStatePtr->BattleObjectList with stride
+    4, calling this on each slot; asm: ldr r0,[r0]; cmp NULL; ldrh r1,[r0,#0x28]; cmp #0xDA — null and
+    type/state guards on the object; asm: ldr r1,[r0,#0x54]; tst; ldr r1,[r1,#0x40]; tst r1,0x348000 —
+    skip objects with those state flags; asm: push {r0}; bl sub_800F898; pop {r0} — call made for side
+    effect, original object pointer kept; asm: ldrb r1,[r0,#0x13]; ldrb r0,[r0,#0x12]; mov r2,r7; mov
+    r3,#0; bl sub_80C9EA6 — final queue call uses two object bytes plus passed-through context'
+  refs:
+  - bn6f/asm/asm31.s:39855
+  - 0x080C9ECE sub_80C9ECE
+  - 0x0800F898 sub_800F898
+  - 0x080C9EA6 sub_80C9EA6
+  reproduce: python3 tools/asmcat.py 0x080C9EE6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111'
+open_questions:
+- What sub_80C9EA6 does with (byte, byte, ctx, 0) — its body would confirm whether this queues an OAM
+  entry, a tile cursor, or something else
+- What sub_800F898 updates on the object (likely animation/sprite frame refresh)
+- Exact meaning of object+0x12/0x13 and of the 0x348000 flag set at [obj+0x54]+0x40
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6d29f05
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80C9EE6 -> battle_queueObjectSprite
+  where: bn6f cfd1cd0b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C9EE6

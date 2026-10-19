@@ -1,0 +1,45 @@
+name: battle_objectStateWait5FramesThenDestroy
+address: '0x080E0226'
+kind: function
+status: probable
+summary: 'Battle-object state handler: on entry sets anim 1 and a 5-frame timer, then counts down and
+  switches the object to the destroy state when it expires.'
+interface: (r5 = battle object pointer) -> updates oBattleObject_Timer and oBattleObject_CurStateActionPhaseAndPhaseInitialized;
+  may set oBattleObject_CurAnim and oBattleObject_PhaseInitialized
+details: 'A per-state update routine for a battle object, using r5 as the object pointer and the oBattleObject_*
+  field offsets. On the first invocation (PhaseInitialized == 0) it initializes the state: sets CurAnim
+  to 1, Timer to 5 (16-bit store), and PhaseInitialized to 4, marking the state initialized. On every
+  invocation it decrements Timer; while the result is still positive it returns, and once it reaches 0
+  it writes CUR_STATE_DESTROY into the combined CurState/ActionPhase/PhaseInitialized word, telling the
+  object state machine to destroy the object. It preserves no callee-saved registers and is clearly meant
+  to be called via a state-handler function pointer.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb/tst on oBattleObject_PhaseInitialized with first-time init of CurAnim=1, Timer=5, PhaseInitialized=4
+    (sub_80E0226 start); ldrh/sub/strh on oBattleObject_Timer with 'bgt' skip implements a frame countdown
+    (loc_80E023A); mov r0,#CUR_STATE_DESTROY; str into oBattleObject_CurStateActionPhaseAndPhaseInitialized
+    ends the state (before locret_80E0246); r5-based oBattleObject_* field layout and 'pop {pc}' tail
+    match other battle-object state handlers
+  refs:
+  - bn6f/asm/asm31.s:88359
+  reproduce: python3 tools/asmcat.py 0x080E0226
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111'
+open_questions:
+- No callers are known, so which object type/state uses this handler (i.e. what the object does while
+  waiting 5 frames before destruction) is unknown; finding the state-table entry that points here would
+  confirm the role
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6d29f05
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E0226 -> battle_objectStateWait5FramesThenDestroy
+  where: bn6f cfd1cd0b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E0226

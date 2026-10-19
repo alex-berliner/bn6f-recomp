@@ -1,0 +1,44 @@
+name: rfu_countdownToLinkPhase9
+address: '0x0803C730'
+kind: function
+status: probable
+summary: 'Wireless-link countdown: ticks a timer and, when it expires, switches the RFU link to phase
+  9 and reports completion.'
+interface: (no args; r7 = RFU-related work struct) -> r0 = 1 when countdown finished and phase 9 set,
+  0 while still counting; r1 = 0; flags clobbered
+details: Decrements the 16-bit counter at [r7+0xA]; while nonzero it returns 0 (r0=0, r1=0). When the
+  counter reaches 0 it calls rfu_setLinkPhase with the constant 9 (dword_803C750), writing phase 9 into
+  offset 0x8 of the RFU link work struct at 0x200BC50, clears the byte at [r7+0x0] (likely a state/active
+  flag), and returns r0=1 to signal the wait is over. The caller-visible r1=0 in both paths suggests a
+  second return value deliberately cleared. r7 must be set up by the caller as a pointer to a timer/state
+  struct; the phase-9 constant is hardcoded via a literal pool.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrh r0,[r7,#0xA]; sub r0,#1; strh — 16-bit countdown field in a caller-supplied struct; bne
+    skip / bl rfu_setLinkPhase with literal 9 — on expiry advances the wireless link to phase 9; strb
+    r0(=0),[r7] — clears a state/flag byte at struct base after the transition; returns r0=1 only on expiry
+    path, r0=0 otherwise — boolean 'countdown elapsed' result; callee rfu_setLinkPhase writes phase ID
+    into 0x200BC50+0x8, confirming RFU link-state context
+  refs:
+  - bn6f/asm/asm03_1_1.s:7718
+  - 0x0813D9A0 rfu_setLinkPhase
+  reproduce: python3 tools/asmcat.py 0x0803C730
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111'
+open_questions:
+- no callers known, so the meaning of [r7+0xA] (frames? retries?) and the byte at [r7] is unconfirmed
+- what link phase 9 means in the overall wireless handshake is not shown here
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6d29f05
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803C730 -> rfu_countdownToLinkPhase9
+  where: bn6f cfd1cd0b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803C730

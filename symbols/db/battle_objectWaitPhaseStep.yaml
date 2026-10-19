@@ -1,0 +1,42 @@
+name: battle_objectWaitPhaseStep
+address: '0x080CEFFC'
+kind: function
+status: probable
+summary: Per-frame state handler that delays a battle object for a Param1-selected duration, then moves
+  it to action 0xC.
+interface: (r0 = unused, r5 = battle object pointer) -> r0 = clobbered; updates oBattleObject_CurPhase/CurAnim/Timer/CurAction
+details: On phase 0 it writes phase=4, sets CurAnim=3, and reads a byte delay from dword_80CF02C (values
+  0x28, 0x1E, 0x1A, 0x14) indexed by oBattleObject_Param1, storing it in oBattleObject_Timer. Each later
+  frame decrements the Timer until it reaches 0, then sets oBattleObject_CurAction=0xC and clears CurPhaseAndPhaseInitialized
+  to restart the state machine. Uses the standard battle-object struct fields (CurPhase, CurAnim, Param1,
+  Timer, CurAction). The descending table suggests Param1 picks among a few preset delay lengths.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r5,#oBattleObject_Param1]; ldrb r0,[r1,r0]; strh r0,[r5,#oBattleObject_Timer] loads
+    a table-indexed delay into the timer; dword_80CF02C holds bytes 0x28,0x1E,0x1A,0x14 — four preset
+    durations selected by Param1; locret path: sub timer, bgt exit — a simple per-frame countdown; on
+    expiry: mov r0,#0xc; strb r0,[r5,#oBattleObject_CurAction] and phase reset to 0 — transition to action
+    12'
+  refs:
+  - bn6f/asm/asm31.s:50908
+  reproduce: python3 tools/asmcat.py 0x080CEFFC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 2; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111'
+open_questions:
+- no callers known, so which battle object/attack uses this handler and what action 0xC means for it is
+  unknown
+- what oBattleObject_Param1 represents for this object (difficulty/level-style selector?)
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6d29f05
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CEFFC -> battle_objectWaitPhaseStep
+  where: bn6f cfd1cd0b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CEFFC

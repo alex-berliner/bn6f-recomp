@@ -1,0 +1,43 @@
+name: battle_objectPhaseWait10ThenAction8
+address: '0x080BAB84'
+kind: function
+status: probable
+summary: Battle-object phase handler that waits 10 frames (resetting the object's animation) and then
+  advances the object to CurAction 8.
+interface: (r5 = battle object ptr, no args) -> void; no flags used by callers
+details: 'Standard BN6 phase-handler shape: on first run it writes 4 to oBattleObject_PhaseInitialized,
+  zeroes oBattleObject_CurAnim, and stores 10 into oBattleObject_Timer, returning immediately. On later
+  frames it decrements oBattleObject_Timer and, once it reaches 0, writes 8 to oBattleObject_CurAction
+  and stores 0 into the combined oBattleObject_CurPhaseAndPhaseInitialized halfword, clearing both the
+  current phase and the init flag so the next phase re-initializes. All state lives in the battle object
+  at r5; the function has no locals. Which object uses it (and what action 8 means for it) is not visible
+  without callers.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb/tst on oBattleObject_PhaseInitialized with first-run init block storing 4, CurAnim=0, Timer=10
+    (asm lines 3-10); Timer decrement loop with 'bgt locret' keeps the object in this phase until 10 frames
+    elapse (lines 12-15); On expiry, mov r0,#8; strb to oBattleObject_CurAction and strh 0 to CurPhaseAndPhaseInitialized
+    hand control to action 8 (lines 16-19); All accesses are via r5 with oBattleObject_ offsets, matching
+    the battle-object state-machine pattern
+  refs:
+  - bn6f/asm/asm31.s:5821
+  reproduce: python3 tools/asmcat.py 0x080BAB84
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111'
+open_questions:
+- Which battle object(s) dispatch to this phase and what CurAction 8 means for them — no callers are known,
+  so the object identity and semantic of action 8 are unknown
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6d29f05
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80BAB84 -> battle_objectPhaseWait10ThenAction8
+  where: bn6f cfd1cd0b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BAB84

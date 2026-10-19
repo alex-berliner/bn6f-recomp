@@ -1,0 +1,44 @@
+name: t3_compareBytes
+address: '0x08146A18'
+kind: function
+status: probable
+summary: Compares two buffers byte-by-byte for up to a given length (max 255) and returns 0 if they are
+  identical, 1 at the first mismatch.
+interface: (r0 = buffer A, r1 = buffer B, r2 = byte count) -> r0 = 0 if all bytes equal, 1 on mismatch;
+  flags set by result mov
+details: 'A plain memcmp-style helper: it walks r0 and r1 in lockstep, comparing bytes; on the first inequality
+  it returns 1 immediately, otherwise it stops after r2 bytes (r2 masked to 0-255) and returns 0. No bounds
+  beyond the count, no flags stored. The caller at 0x0814682C uses it as an equality test to search entries:
+  it gets a pointer from sub_81466F4(r4) for each index r4, compares 13 bytes against a record prepared
+  at r5, and treats a 0 return (match) as success, returning that index; nonzero keeps scanning until
+  the count in byte_2010288 is exhausted. So it serves as a 13-byte record lookup key comparison.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'ldrb r0,[r4]/ldrb r5,[r1]/cmp/beq loop with r3 counter up to r2 (sub_8146A26-8146A40) is a
+    byte-compare loop; returns #1 on first mismatch and #0 after full count, i.e. memcmp-style 0=equal;
+    caller 0x0814682C: bl sub_8146A18 with r2=#0xd, then ''cmp r0,#0 / bne'' — nonzero (mismatch) continues
+    the scan, 0 (match) exits with the index'
+  refs:
+  - bn6f/asm/libs.s:5931
+  - 0x08146808 sub_8146808
+  reproduce: python3 tools/asmcat.py 0x08146A18
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111'
+open_questions:
+- what the 13-byte records searched by sub_8146808 represent (needs the meaning of the sub_81466F4 result
+  and unk_20098B0/byte_2010288 structures)
+- which subsystem owns this code, to pick the right prefix
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6d29f05
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8146A18 -> t3_compareBytes
+  where: bn6f cfd1cd0b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8146A18

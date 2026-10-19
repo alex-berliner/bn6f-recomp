@@ -1,0 +1,50 @@
+name: t3_debounceInputValue
+address: '0x0803E7D8'
+kind: function
+status: probable
+summary: 'Debounce state machine: only commits a value into a two-slot history after it has been passed
+  unchanged for 8 consecutive calls (frames).'
+interface: (r0 = value/key bit to track, r7 = state struct base) -> r0 clobbered; updates r7+0x10/0x12/0x14/0x16/0x18
+details: 'If r0 differs from the last raw value at r7+0x14, it stores r0 there and resets the frame counter
+  at r7+0x18 to 0. Each call increments the counter until it reaches 8; until then nothing else happens.
+  Once the value has been stable for 8 calls, it is committed: if r7+0x12 is zero, r0 is written to r7+0x16,
+  r7+0x10 and r7+0x12; otherwise r7+0x12 takes the old r7+0x10, r7+0x10 takes r0, and r7+0x16 is cleared.
+  So 0x10/0x12 act as a current/previous pair of accepted values, 0x14 is the raw last-seen value, 0x18
+  the stability counter, and 0x16 a one-shot flag set only on the first commit. This is a classic hold-8-frames
+  debounce/accept filter for a periodically polled input value.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_803E7D8: cmp r0,[r7,#0x14] / strh r0,[r7,#0x14] + counter reset — detects change of tracked
+    value; sub_803E7D8: ldrh r1,[r7,#0x18]; cmp r1,#8 — 8-call stability threshold before committing;
+    sub_803E7D8: loc_803E7F2 writes r0 to 0x10/0x12 (and 0x16 once), or shifts 0x10 into 0x12 — two-slot
+    accepted-value history; Call site 0x803E046: caller sets r0=4 (Select key bit), calls sub_803E7A4(4)
+    and only feeds 4 into this function when that check fails, ignoring the return value; Caller sub_803E018
+    sits next to a DebugStr string table and returns r6 in {2,4,8} (B/Select/Start key bits), so the tracked
+    values are key bits in a debug input path'
+  refs:
+  - bn6f/asm/asm03_1_1.s:11438
+  - 0x0803E018 sub_803E018
+  reproduce: python3 tools/asmcat.py 0x0803E7D8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111'
+open_questions:
+- What structure r7 points into (base address and other fields) is unknown — r7 is set up earlier in sub_803E018
+- What sub_803E7A4(key) tests (e.g. whether the key is already registered/held), which would clarify the
+  caller's gating logic
+- Whether other callers pass different values (direction keys?) that would reveal the exact gameplay/debug
+  feature this debounce serves
+- Exact meaning of the 0x16 one-shot field for whatever reads the committed history
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6d29f05
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803E7D8 -> t3_debounceInputValue
+  where: bn6f cfd1cd0b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803E7D8

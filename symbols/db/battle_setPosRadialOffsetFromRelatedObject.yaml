@@ -1,0 +1,50 @@
+name: battle_setPosRadialOffsetFromRelatedObject
+address: '0x080E1CB0'
+kind: function
+status: probable
+summary: Positions this battle object at a radial offset (distance r0, angle r1) from its linked object's
+  position, copying that object's 3-word position block to +0x34 with cos/dist applied to the first word
+  and sin/dist to the third.
+interface: (r0 = distance in 1/256 fixed point, r1 = angle index 0-255 into math_cosTable/math_sinTable)
+  -> r0 = clobbered; writes 3 words at object+0x34, no flags of note
+details: Reads cosTable[r1*2] and sinTable[r1*2] as signed halfwords, multiplies each by r0 and shifts
+  left 8 (so r0 is a fixed-point radius, tables are 1/256 scaled). It then loads three words from [oBattleObject_RelatedObject1Ptr
+  + 0x34] and stores them to r5+0x34, adding the cos*radius term to the first word and the sin*radius
+  term to the third word — i.e. the linked object's x/y (or x/depth) position displaced along a circle
+  of the given radius and angle. Caller sub_80E1BDC passes a growing radius (timer*4) and a wrapping angle
+  (timer*0x70 & 0xFF), producing a spiral-away motion before resetting the object's action/phase. Caller
+  sub_80E1C66 passes (0,0), which simply snaps this object onto the linked object's exact position before
+  setting sprite priority and starting an alpha fade.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_80E1CB0: cosTable/sinTable indexed by 2*r1, scaled by r0 << 8 — radius/angle to x/y offset;
+    ldmia from [RelatedObject1Ptr+0x34] / stmia to r5+0x34 with cos added to word 0, sin to word 2 — copies
+    linked object''s position with radial displacement; caller 0x080E1BDC: r0=Timer*4 (growing radius),
+    r1=(Timer*0x70)&0xFF (spinning angle) then dword 0x2108 passed to sprite_setColorShader — spiral visual
+    effect; caller 0x080E1C66: call with (0,0) then sprite_setPriority and later sprite_disableAlpha —
+    object placed exactly at the linked object before fading'
+  refs:
+  - bn6f/asm/asm31.s:92064
+  - 0x080E1BDC sub_80E1BDC
+  - 0x080E1C66 sub_80E1C66
+  reproduce: python3 tools/asmcat.py 0x080E1CB0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111'
+open_questions:
+- which struct fields the three words at +0x34 are (x/y/z vs x/y/padding), to name them precisely
+- what object/attack uses this (both callers are unnamed)
+- whether the angle is degrees*256/360 or another wrap
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6d29f05
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80E1CB0 -> battle_setPosRadialOffsetFromRelatedObject
+  where: bn6f cfd1cd0b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E1CB0

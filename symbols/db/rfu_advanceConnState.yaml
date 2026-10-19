@@ -1,0 +1,43 @@
+name: rfu_advanceConnState
+address: '0x0814610C'
+kind: function
+status: probable
+summary: Advances the wireless-link state machine at eStruct200FE00 from state 1 to 2, saving the old
+  timer/counter bytes and loading new values (0x10/0x11).
+interface: () -> void; no return value, flags clobbered
+details: Operates on the global RFU struct eStruct200FE00. If byte +0x6 is 0 (some gate/enable flag) and
+  the state byte at +0xA equals 1, it backs up the two bytes at +0x4/+0x5 into +0x11/+0x12, writes 0x10
+  and 0x11 into +0x4/+0x5, and sets the state byte +0xA to 2. Called immediately after rfu_handleConnTimeout
+  when the link watchdog poll succeeded, so it looks like the next step of the connection (or retry) sequence
+  in the RFU link state machine.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: asm checks eStruct200FE00+0xA == 1 and rewrites it to 2, a state-machine transition; asm copies
+    bytes +0x4/+0x5 to +0x11/+0x12 before overwriting them with 0x10/0x11; caller sub_81453F0 calls it
+    right after rfu_pollLinkWatchdog and rfu_handleConnTimeout (0x081455CA-0x081455D2); all six call sites
+    are inside sub_81453F0, a link-timeout handling routine using eStruct200FE00
+  refs:
+  - bn6f/asm/libs.s:4487
+  - 0x081453F0 sub_81453F0
+  - 0x081454A4 sub_81453F0
+  - 0x081454C8 sub_81453F0
+  reproduce: python3 tools/asmcat.py 0x0814610C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111'
+open_questions:
+- exact meaning of fields +0x4/+0x5 (timer thresholds? scan channel?) and +0x6 (gate flag) in eStruct200FE00
+- what state 2 leads to — no callees known to follow the sequence
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6d29f05
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_814610C -> rfu_advanceConnState
+  where: bn6f cfd1cd0b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_814610C

@@ -1,0 +1,42 @@
+name: rfu_checkEntryPairEmpty
+address: '0x0803F3A8'
+kind: function
+status: probable
+summary: Returns 0 if the first two 12-byte entries of the selected 0x40-byte block in word_200A010 both
+  hold the 0xFE empty marker, else 1.
+interface: () -> r0 = 0 if both entries are 0xFE (empty), else 1; r2-r4 clobbered
+details: Reads the index byte at unk_200AC33+3 and takes word_200A010 + index*0x40 as a record base. Scans
+  entries at stride 0xC for r7=0 and 1, comparing each entry's leading halfword against 0xFE; bails out
+  returning 1 on the first non-matching entry, and only falls through to return 0 when both entries match.
+  The 0xFE halfword (bytes FE 00) acts as an empty/unused marker. The caller treats a 0 result as 'nothing
+  present', storing state 4 into a status byte.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_803F3A8: base = word_200A010 + byte_200AC33*0x40, entries at +r7*0xC compared (ldrh) to
+    0xFE; loop bails with r4=1 at first non-0xFE entry; only both-0xFE falls through to r4=0; caller 0x803EC28:
+    bl sub_803F3A8; tst r0,r0; bne — result 0 leads to strb #4,[r5,#5]; call is guarded by rfu_testStatusFlags(0x10),
+    placing it in wireless/rfu logic'
+  refs:
+  - bn6f/asm/asm03_1_1.s:13401
+  - 0x0803EC1C sub_803EC1C
+  reproduce: python3 tools/asmcat.py 0x0803F3A8
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111'
+open_questions:
+- what structure word_200A010 holds (connection slot table, recv buffer, player list?)
+- what byte_200AC33 indexes into it
+- what setting state 4 at [r5+5] means in the caller's state machine
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6d29f05
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_803F3A8 -> rfu_checkEntryPairEmpty
+  where: bn6f cfd1cd0b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803F3A8

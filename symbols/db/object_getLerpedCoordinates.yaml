@@ -1,0 +1,45 @@
+name: object_getLerpedCoordinates
+address: '0x080DCACC'
+kind: function
+status: probable
+summary: Linearly interpolates a battle object's position from its current coordinates toward target coordinates,
+  returning the interpolated (X, Y) for the object's current Timer.
+interface: (r0 = current X, r1 = current Y, r2 = target X, r3 = target Y, r6 = progress timer, r7 = duration
+  divisor) -> (r0 = interpolated X, r1 = interpolated Y)
+details: 'Saves the base (r0,r1), computes deltas (r2-r0, r3-r1), scales each by r6 (the object''s oBattleObject_Timer
+  loaded at the call site), and divides each by r7 via SWI 6 (signed Div, quotient in r0), restoring the
+  base afterwards and adding the quotients back: result = base + delta*progress/duration. r6/r7 are register
+  arguments set by the caller, not stack args. The caller stores the result into oBattleObject_X/oBattleObject_Y
+  and then calls object_setPanelsFromCoordinates, so this is per-frame movement of a battle object toward
+  a destination panel.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: 'sub_80DCACC: sub r2,r0 / mul r2,r6 / svc 6 with r1=r7 implements delta*progress/duration per
+    axis; sub_80DCACC: pop {r0,r1} before the final adds shows the result is base + scaled delta; call
+    site 0x080DC906: passes ExtraVars+0/+4 as base, ExtraVars+8/+0xC via object_getCoordinatesForPanels
+    as target, Timer in r6; call site stores r0/r1 into oBattleObject_X/oBattleObject_Y then calls object_setPanelsFromCoordinates,
+    confirming positional movement; follow-up object_isValidPanel/clearCollisionRegion shows the moved
+    object''s panel is revalidated after each step'
+  refs:
+  - bn6f/asm/asm31.s:80849
+  - 0x080DC872 sub_80DC872
+  reproduce: python3 tools/asmcat.py 0x080DCACC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111'
+open_questions:
+- what r7's duration value is set to earlier in sub_80DC872 (not shown), and which object/attack this
+  movement belongs to
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f a6d29f05
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DCACC -> object_getLerpedCoordinates
+  where: bn6f cfd1cd0b
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DCACC
