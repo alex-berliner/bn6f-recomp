@@ -1,0 +1,53 @@
+name: battleObject_hpLanternFrameUpdate
+address: '0x080DA108'
+kind: function
+status: probable
+summary: 'Per-frame update routine for the HP-recovering lantern battle object: unsets its hit-flash,
+  resolves collision, runs its action-state AI, and ticks its sprite.'
+interface: (r0 = scratch, r5 = object header pointer) -> r0 = clobbered; flags set by callees
+details: 'Standard battle-object tick body: it first ORs bit 2 into the object header''s Flags byte, then
+  calls sprite_clearFinalPalette to strip the palette-flash high nibble left by a hit. object_finishCollisionHitReaction_801AD12
+  finalizes any pending hit, and sub_800F672 is called with no arguments (likely a shared per-frame helper).
+  It then loads the handler table at off_80DA134 (ten entries: custom lantern handlers interleaved with
+  shared ones like battle_ResetObjectActionState and battleObject_initAndRunAI) and passes it to battleObject_dispatchActionHandler_801B394,
+  finishing with object_updateSprite and object_presentCollisionData. This matches the common ''object
+  on-frame update'' shape used across battle objects, here specialized for the HP lantern spawned by battleObject_hpLanternInit_80DA07C.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sub_80DA108+0x4: ORs flag bit 2 into [r5,#oObjectHeader_Flags] then bl sprite_clearFinalPalette
+    — clears the hit white-flash each frame; sub_80DA108+0x14: ldr r0, off_80DA130 loads a 10-entry action-handler
+    table and bl battleObject_dispatchActionHandler_801B394; Table mixes lantern-specific handlers (sub_80DA15C,
+    sub_80DA2EC, sub_80DA37A, sub_80DA172, sub_80DA266) with shared battle object states; Tail sequence
+    bl object_updateSprite / bl object_presentCollisionData is the canonical per-frame object tick tail;
+    Only caller is battleObject_hpLanternInit_80DA07C, which sets up the HP lantern object this routine
+    runs for (route: chips)'
+  refs:
+  - bn6f/asm/asm31.s:73007
+  - 0x080DA07C battleObject_hpLanternInit_80DA07C
+  - 0x0801B394 battleObject_dispatchActionHandler_801B394
+  - 0x0801AD12 object_finishCollisionHitReaction_801AD12
+  - 0x0801A018 object_presentCollisionData
+  reproduce: python3 tools/asmcat.py 0x080DA108
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+coverage:
+- chips
+open_questions:
+- Purpose of sub_800F672 called mid-sequence
+- Exact semantics of the five lantern-specific handler entries (sub_80DA15C etc.) and which action indices
+  they map to
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 960a2fd2
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80DA108 -> battleObject_hpLanternFrameUpdate
+  where: bn6f ffbdad58
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80DA108

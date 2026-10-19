@@ -1,0 +1,41 @@
+name: sub_809C09C
+address: '0x0809C09C'
+kind: function
+status: probable
+summary: Grants the mail attached to a BBS board post, then marks that post as read.
+interface: '(r0 = unused/ignored, r5 = context: [r5+6] = BBS post index, [r5+7] = mark-read flag) -> r0 = 0; flags
+  set/cleared via event-flag calls'
+details: Calls reqBBS_8140974 to get the selected BBS post's runtime index, adds it to [r5+6] and to base 0x1CA0,
+  and passes the result to addMail_802f238, so the post's mail id is 0x1CA0 + postIndex + boardOffset. If byte [r5+7]
+  is nonzero, it then clears flag 0x1D20 + postIndex + index (the post's 'new/unread' indicator) and sets flag 0x1DA0
+  + postIndex + index (the 'read' indicator). Always returns 0. This matches BN6's BBS system where reading certain
+  board topics delivers mail and flips the topic's read state.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl reqBBS_8140974 then addMail with flag base dword_809C0E4 = 0x1CA0 (asm lines 2-8); byte [r5,#7] gates
+    the read-state update via tst/beq; ClearEventFlag on 0x1D20-based id matches addMail's companion-flag scheme
+    (mailId + 0x80); SetEventFlag on 0x1DA0-based id mirrors 0x1CA0 (post index) plus 0x100 offset; return value
+    is a constant 0, typical of script/trigger command handlers
+  refs:
+  - bn6f/asm/asm28_0.s:4095
+  - 0x0802F130 ClearEventFlag
+  - 0x0802F114 SetEventFlag
+  - 0x0802F238 addMail_802f238
+  reproduce: python3 tools/asmcat.py 0x0809C09C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree; run wf investigate
+    investigate-20261018-182231; its name was fixed mechanically by tools/investigate_land.py style-fix (the run''s
+    proposal broke the naming style)'
+coverage:
+- beastsp
+open_questions:
+- exact meaning of the reqBBS_8140974 return value (selected topic vs board offset) and the caller context that
+  supplies r5
+- whether r0 is truly ignored or is the post index in some call sites
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 960a2fd2
+  tool: tools/symdoc.py

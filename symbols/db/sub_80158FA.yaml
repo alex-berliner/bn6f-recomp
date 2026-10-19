@@ -1,0 +1,45 @@
+name: sub_80158FA
+address: '0x080158FA'
+kind: function
+status: probable
+summary: 'Clears a battle object''s status/ailment state: hitstun, invulnerability, status-effect timers and related
+  AI/flag bits.'
+interface: (uses caller's battle object in r5; no args) -> r0 clobbered; ObjectFlags1/2 bits cleared, oBattleObject_AIType=0,
+  collision timers zeroed
+details: Operates on the battle object whose pointer the caller keeps in r5 (r5 is not set up here, so each caller
+  supplies it). It clears a bit mask in the object's ObjectFlags1 via object_clearFlag, clears bit 0x10 in ObjectFlags2
+  via object_clearFlag2, and zeroes oBattleObject_AIType. It then clears an AI-data flag (mask 0x200800) via ClearAIDataUnk0x48Flag,
+  and zeroes the collision data's HitStunTimer, HitInvulTimer, StatusEffectTimer1, StunSubTimer and the word at
+  Unk_58. This looks like resetting an object to a neutral, non-ailing state, e.g. when it lands from a move or
+  its movement state is committed/reset.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_clearFlag with mask 0x80111C40 then object_clearFlag2 with 0x10: clears collision flag bits
+    (asm lines 3-7); strb r0,[r5,#oBattleObject_AIType] with r0=0: AI type reset to 0; strh r1 into HitStunTimer/HitInvulTimer/StatusEffectTimer1
+    and str into StunSubTimer/Unk_58 with r1=0: all status timers cleared; Called from battleObject_commitMoveLanding_8014B18,
+    which commits a landing and resets post-move state — consistent with clearing stun/invuln on landing'
+  refs:
+  - bn6f/asm/asm00_2.s:15405
+  - 0x08014B18 battleObject_commitMoveLanding_8014B18
+  - 0x08014D08 sub_8014D08
+  - 0x08014F40 sub_8014F40
+  - 0x0801A15C object_clearFlag
+  - 0x0801A176 object_clearFlag2
+  - 0x0801031C ClearAIDataUnk0x48Flag
+  reproduce: python3 tools/asmcat.py 0x080158FA
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree; run wf investigate
+    investigate-20261018-155607; its name was fixed mechanically by tools/investigate_land.py style-fix (the run''s
+    proposal broke the naming style)'
+coverage:
+- beastsp
+open_questions:
+- Exact meaning of masks 0x80111C40 (ObjectFlags1) and 0x200800 (AIData 0x48 flag); whether the four movement-related
+  callers all pass the same object in r5
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 960a2fd2
+  tool: tools/symdoc.py

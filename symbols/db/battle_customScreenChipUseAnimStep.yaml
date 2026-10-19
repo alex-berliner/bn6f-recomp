@@ -1,0 +1,50 @@
+name: battle_customScreenChipUseAnimStep
+address: '0x0802790C'
+kind: function
+status: probable
+summary: 'Per-frame step for the custom screen ''chip selected'' animation: plays the select sound, waits
+  5 frames while pulsing the slot, then clears selection and runs the chosen chip''s effect.'
+interface: (r0 = self pointer to custom-screen state struct, also in r5) -> r0 = clobbered; updates state
+  byte [+1]=4, phase byte [+2], counter [+0x40]
+details: Self is the custom-screen state struct (comment S20364C0). If the phase byte at +2 is 0, it stores
+  0 into the word counters at +0x40 and +0x44, sets phase=1, and plays sound 0x7D. Each call increments
+  the +0x40 counter; once it exceeds 5 it calls sub_80279FC, battle_customScreen_clearSelection_80279C8
+  and battleObject_runCustomScreenChipPickerEffect_8028476 (which reads the selected chip's kind and dispatches
+  its panel/GFX effect), then sets state byte +1 to 4 and clears the phase byte. Every frame it also calls
+  battleObject_chipSelectAnimTick_8029C08 (pushes an OAM affine record, walks the pulse phase) and sub_802899C
+  (queues a 0x200-byte gfx block to VRAM 0x6016CC0 plus a FIFO record).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb [r5,#2] / strb #1: one-shot entry block with PlaySoundEffect(SOUND_UNK_7D); ldr/str [r5,#0x40],
+    cmp #5, ble: 5-frame delay before the effect fires; calls clearSelection_80279C8 then runCustomScreenChipPickerEffect_8028476:
+    chip-use dispatch on the custom screen; strb #4,[r5,#1] and strh #0,[r2→#2]: advances the state machine
+    to state 4 and resets the phase; unconditional chipSelectAnimTick_8029C08 + sub_802899C: per-frame
+    sprite/gfx upkeep for the select pulse'
+  refs:
+  - bn6f/asm/asm03_0.s:2927
+  - 0x080005CC PlaySoundEffect
+  - 0x08029C08 battleObject_chipSelectAnimTick_8029C08
+  - 0x08028476 battleObject_runCustomScreenChipPickerEffect_8028476
+  reproduce: python3 tools/asmcat.py 0x0802790C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+coverage:
+- beastsp
+open_questions:
+- exact meaning of state 4 and of sub_80279FC (no summary available)
+- which sound 0x7D is, and what the +0x44 counter is used for elsewhere in this state machine
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 960a2fd2
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_802790C -> battle_customScreenChipUseAnimStep
+  where: bn6f ffbdad58
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802790C

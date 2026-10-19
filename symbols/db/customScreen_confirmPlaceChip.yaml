@@ -1,0 +1,70 @@
+name: customScreen_confirmPlaceChip
+address: '0x08028CCC'
+kind: function
+status: probable
+summary: 'Confirm handler for the Custom screen: adds the currently selected chip as the next placed chip,
+  shows its sprite in its slot, then leaves the selection state.'
+interface: (r4 = screen-state (byte +7 = phase, word +8 = ptr to selected chip entry halfword), r5 = screen
+  ctx (+8 = placed count, +0x48+count = slot list, +0xF = flag)) -> r0 = 1 on reject, else chip ID; no
+  flags
+details: 'Only valid when phase [r4,#7]==0 and placed count [r5,#8] < 5; otherwise it plays SOUND_CANT_JACK_IN
+  and returns 1. On success it increments the count, appends the chip slot byte read from [r5,#7] at ctx+0x48+count,
+  loads the selected chip''s (getChipID of the halfword at [r4,#8]) OBJ tiles into VRAM slot count-1,
+  redraws that chip-slot row, and frees the old held sprite''s VRAM entry. It then sets phase to 2, runs
+  customScreen_ExitSequence, plays SOUND_MENU_SELECT and sets ctx+0xF=1. Quirk: if the chip ID''s low
+  9 bits equal the special value 0x13F (sub_802A00C), it instead writes 0x44 to ctx+1 and 0 to ctx+2;
+  the trailing mov r0,#0 is dead (overwritten by the ldrh), so the return value on success is actually
+  the chip ID.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'count check/inc: ''ldrb r0,[r5,#8]; cmp r0,#5; bge'' then ''add r1,r0,#1; strb r1,[r5,#8]'';
+    chip id + sprite load: ''bl getChipID_802A54E'' followed by ''bl sprite_CopyObjTilesToVramSlot_80281D4''
+    with slot=count-1; slot redraw: ''bl customScreen_redrawChipSlot_8029CD4'' with r0=count-1, r1=1,
+    r2=0; cleanup/exit: ''bl sprite_clearObjVramEntry_8028238'' on [r5,#7], ''strb r0,[r4,#7]'' (=2),
+    ''bl customScreen_ExitSequence_8028E32'', PlaySoundEffect(SOUND_MENU_SELECT); reject path: ''mov r0,#SOUND_CANT_JACK_IN;
+    bl PlaySoundEffect; mov r0,#1'' when phase!=0 or count>=5'
+  refs:
+  - bn6f/asm/asm03_0.s:5645
+  - 0x080005CC PlaySoundEffect
+  - 0x08028E32 customScreen_ExitSequence_8028E32
+  - 0x08029CD4 customScreen_redrawChipSlot_8029CD4
+  reproduce: python3 tools/asmcat.py 0x08028CCC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- beastsp
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What the special chip ID 0x13F means (the 0x44 write to ctx+1 and clearing ctx+2 is unexplained)
+- Which exact in-game menu this 'custom screen' is; no direct caller captured, only that the recorded
+  routes run it
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 960a2fd2
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8028CCC -> customScreen_confirmPlaceChip
+  where: bn6f ffbdad58
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8028CCC

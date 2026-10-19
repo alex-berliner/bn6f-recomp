@@ -1,0 +1,54 @@
+name: ai_pickRandomPanelExcludingSelf
+address: '0x08112B06'
+kind: function
+status: probable
+summary: AI helper that returns a random battle panel (x,y) for the acting enemy to target, temporarily
+  reserving the object's own panel while searching.
+interface: (r4 = AI data of acting object, r5 = its battle object) -> r0 = chosen panel X (low 3 bits),
+  r1 = chosen panel Y (high nibble); both 0 if no candidate panel was found.
+details: It first reserves the panel under the object (object_reservePanel on r5's PanelX/PanelY), then
+  looks up an alliance-dependent panel-parameter entry from byte_8112B60 and calls sub_800D45C with a
+  stack buffer, which fills a candidate panel list and returns its count. If that fails it retries with
+  object_getPanelsFiltered; given a nonzero count it draws GetPositiveSignedRNG, divides by the count
+  (svc 6), and reads the indexed buffer byte, splitting it into a 3-bit X and a 4-bit Y. Finally it releases
+  the reservation via object_removePanelReserve and returns the coordinates. The 0,0 fallback when no
+  panels are available means callers must treat (0,0) as 'no target'.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl object_reservePanel ... bl object_removePanelReserve brackets the whole routine around the
+    object''s own panel; byte_8112B60 passed as table to GetAllianceDependentPanelParamArgs twice, feeding
+    sub_800D45C / object_getPanelsFiltered which fill the sp buffer; svc 6 on GetPositiveSignedRNG result
+    divided by r7 (list count), then ldrb [sp,r1] picks a random list entry; lsr r1,r0,#4 / lsl+lsr #0x1d
+    extracts Y (high nibble) and X (low 3 bits) from the picked byte; followed immediately by GunnerEnemyStruct
+    tables, and the route is ''battlesweep''/''beastsp'' enemy AI context'
+  refs:
+  - bn6f/asm/asm32.s:9559
+  - 0x081096FA GetAllianceDependentPanelParamArgs
+  - 0x08001532 GetPositiveSignedRNG
+  - 0x0801BB46 object_removePanelReserve
+  reproduce: python3 tools/asmcat.py 0x08112B06
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607; the run''s proposed name ai_pickRandomPanelTarget
+    was contested; tools/investigate_land.py dedupe gave this distinct name (hyper/glm-5.3-flash proposed,
+    minimax/MiniMax-M3 agreed)'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- exact filter semantics of sub_800D45C vs object_getPanelsFiltered (which panels qualify as targets)
+- meaning of the byte_8112B60 param word 0x0F880000 / 0x0F8800A0 entries
+- whether callers interpret (0,0) as a real coordinate or as failure
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 960a2fd2
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8112B06 -> ai_pickRandomPanelExcludingSelf
+  where: bn6f ffbdad58
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8112B06

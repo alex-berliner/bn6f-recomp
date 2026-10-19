@@ -1,0 +1,52 @@
+name: ai_attackStepMeleeWindup
+address: '0x080FC26A'
+kind: function
+status: probable
+summary: 'AI attack step handler: winds up for 30 frames, marks the panel in front as the hit area at
+  frame 20, spawns its effect sprite, and resolves the attack when the timer expires.'
+interface: (r5 = battle object, r7 = AI attack vars) -> r0 = clobbered; updates oAIAttackVars_AttackElement,
+  CurAnim, StepTimer, HitElement
+details: 'A per-frame AI attack state machine keyed off oAIAttackVars_AttackElement: on entry (element
+  0) it sets element 4, switches the object to animation 5, plays sound 0xB0, calls sub_80FCF90 with oAIAttackVars_ScratchVar,
+  sets object counter time to 12, and loads StepTimer with 0x1E. While the timer runs it decrements StepTimer;
+  when it reaches 0x14 it calls sub_80FCE40(x+frontDir, y, 6) to register the attack on the panel directly
+  in front of the object, then calls object_getFrontDirection/object_getFlip and object_getCoordinatesForPanels
+  to spawn effect object 0x25 (+0x100*flip) at that panel''s pixel position. When the timer hits 0 it
+  writes 0x14 into oAIAttackVars_HitElement and returns, leaving the attack armed for the damage-resolution
+  path.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne guards a first-entry init block setting
+    element 4, anim 5, timer 0x1E; PlaySoundEffect(0xb0) and object_setCounterTime(0xc) in the init block;
+    at timer==0x14: object_getFrontDirection + PanelX/PanelY feed sub_80FCE40(x+dir, y, 6); object_getFlip<<8
+    + 0x25 passed as effect kind to spawn_t1_0x0_EffectObject at the front panel''s screen coords; timer
+    0 path stores 0x14 to oAIAttackVars_HitElement and returns without further work'
+  refs:
+  - bn6f/asm/asm31.s:144347
+  - 0x080005CC PlaySoundEffect
+  - 0x0800E276 object_getCoordinatesForPanels
+  - 0x0800E456 object_getFlip
+  reproduce: python3 tools/asmcat.py 0x080FC26A
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+coverage:
+- battlesweep
+open_questions:
+- what sub_80FCE40 (panel + 6) and sub_80FCF90(ScratchVar) do exactly
+- which enemy/attack this handler belongs to and what element 4 / HitElement 0x14 map to
+- what sound 0xB0 and effect 0x25 are named as
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 960a2fd2
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80FC26A -> ai_attackStepMeleeWindup
+  where: bn6f ffbdad58
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FC26A

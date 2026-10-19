@@ -1,0 +1,50 @@
+name: ai_spawnFrontPanelCollisionRegion
+address: '0x08107A64'
+kind: function
+status: probable
+summary: AI attack step that spawns a hitbox collision region on the panel directly in front of the acting
+  battle object.
+interface: (r5 = battle object, r7 = oAIAttackVars) -> r0 = spawn result of object_spawnCollisionRegion
+details: Reads the object's facing side via object_getFrontDirection (+1/-1 from alliance and DirectionFlip)
+  and adds it to oBattleObject_PanelX to get the panel in front of the object. It then calls object_spawnCollisionRegion
+  with that X, oBattleObject_PanelY as Y, the attack's InitFlag from oAIAttackVars as a parameter, 0,
+  damage taken from oAIAttackVars_Damage, and constants 0x405FF02 (spawn/region attributes) and 0x1001
+  (likely lifetime/flags). This is a helper used by AI attack routines to materialize a melee/area attack
+  hitbox one panel ahead of the enemy.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl object_getFrontDirection then add r0,r0,panelX computes the adjacent panel in the facing
+    direction; ldr r6,[r7,#oAIAttackVars_Damage] passes the AI attack's damage into the region spawn;
+    ldrb r2,[r7,#oAIAttackVars_InitFlag] and r3=0 feed the attack's state flags to the spawned region;
+    bl object_spawnCollisionRegion is the sole side effect, with fixed constants 0x405FF02 and 0x1001;
+    caller sub_8107518 is an AI attack routine (oAIAttackVars user), consistent with an attack-execution
+    step
+  refs:
+  - bn6f/asm/asm31.s:169215
+  - 0x08107518 sub_8107518
+  - 0x0800E2CA object_getFrontDirection
+  - 0x080C536A object_spawnCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x08107A64
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-200615; the run''s proposed name ai_spawnFrontCollisionRegion
+    was contested; tools/investigate_land.py dedupe gave this distinct name (hyper/glm-5.3-flash proposed,
+    minimax/MiniMax-M3 agreed)'
+coverage:
+- battlesweep
+open_questions:
+- exact meaning of the 0x405FF02 and 0x1001 constants (region kind, duration, hit properties) not confirmed
+- which specific AI attack(s) in sub_8107518 invoke this step
+sources:
+- wf investigate investigate-20261018-200615
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 960a2fd2
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8107A64 -> ai_spawnFrontPanelCollisionRegion
+  where: bn6f ffbdad58
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8107A64

@@ -1,0 +1,49 @@
+name: battle_customScreenConfirmSelectedChip
+address: '0x08027AAE'
+kind: function
+status: probable
+summary: 'Custom-screen handler for confirming the highlighted chip: starts a screen fade, fires the chip''s
+  picker effect and sound, then advances the custom-screen state machine.'
+interface: (r5 = custom-screen/battle state struct, read-only) -> void; writes state 0xC to [r5+2]
+details: Runs only when no screen fade is active (IsScreenFadeActive check, early return otherwise), then
+  requests a fade via SetScreenFade(0, 0x20). It passes the byte at [r5+0x1a] (likely the selected chip/slot
+  index) to sub_802A088, runs sub_80279FC, clears the chip-selection UI (battle_customScreen_clearSelection_80279C8),
+  and triggers the per-chip GFX effect via battleObject_runCustomScreenChipPickerEffect_8028476. It plays
+  sound effect 0x92 and finally stores 0xC into the state field at [r5+2], moving the custom screen to
+  its next phase.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'IsScreenFadeActive guard + SetScreenFade(0,0x20) shows it initiates/coordinates a screen transition;
+    call to battleObject_runCustomScreenChipPickerEffect_8028476 ties it to acting on the selected chip;
+    call to battle_customScreen_clearSelection_80279C8 confirms it happens after chip selection concludes;
+    PlaySoundEffect(0x92) is a user-action confirmation blip; strh #0xC, [r5,#2] is a state-machine advance
+    in the custom-screen struct'
+  refs:
+  - bn6f/asm/asm03_0.s:3159
+  - 0x080005CC PlaySoundEffect
+  - 0x08028476 battleObject_runCustomScreenChipPickerEffect_8028476
+  - 0x080279C8 battle_customScreen_clearSelection_80279C8
+  reproduce: python3 tools/asmcat.py 0x08027AAE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+coverage:
+- beastsp
+open_questions:
+- Purpose of sub_802A088 and sub_80279FC unknown; the byte at [r5+0x1a] needs confirmation as the selected
+  chip index
+- Whether sound 0x92 is the chip-confirm sound and what state 0xC represents in the custom-screen FSM
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 960a2fd2
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8027AAE -> battle_customScreenConfirmSelectedChip
+  where: bn6f ffbdad58
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8027AAE

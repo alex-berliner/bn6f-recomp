@@ -1,0 +1,44 @@
+name: sub_80A5A1C
+address: '0x080A5A1C'
+kind: function
+status: probable
+summary: Copies a stored position triple into a battle object's position fields (current and target), then turns
+  the object's navi sprite to face the same direction as the overworld player.
+interface: (r5 = battle object) -> r0 = direction octant from the final anim call; no meaningful return
+details: Reads three words at byte_2000EC0+0xC8 (= dword_2000F88) and writes them twice into the object at r5+0xC..0x14
+  and r5+0x24..0x2C, i.e. two parallel X/Y/Z slots (likely current and destination position). It then calls ReadOWPlayerObjectCoords
+  to get the overworld player's actual X/Y, subtracts the stored position from it, and passes the delta to battle_calcAngleOctant_800118A,
+  whose octant result drives the facing-aware animation swap at 80A598C so the sprite matches the OW player's facing.
+  Finally it sets the object's state byte at r5+0 to 3 and copies the byte at byte_2000EC0 to r5+9 (likely an anim/frame
+  or subtype field). The mirrored-state copy and byte 3 write suggest this is a 'copy of the player' battle object
+  (the Beast-Out shrine's fake player) being aligned to the real player each update.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: str r0/r1/r2 to both r5+0xC..0x14 and r5+0x24..0x2C duplicates the position into two slots (asm lines
+    6-12); bl ReadOWPlayerObjectCoords then sub r0,r0,r2 / sub r1,r1,r3 computes the vector from stored pos to the
+    OW player; bl battle_calcAngleOctant_800118A followed by bl loc_80A598C uses the octant for a facing-aware anim
+    swap; strb r0 [r5] with r0=3 sets the object state, and byte_2000EC0 is copied to r5+9; caller battleObject_initPlayerBeastOutShrine_80A57D0
+    initializes the shrine's fake player object, matching the mirror-the-player behavior
+  refs:
+  - bn6f/asm/asm29.s:1669
+  - 0x080A57D0 battleObject_initPlayerBeastOutShrine_80A57D0
+  - 0x0809E1AE ReadOWPlayerObjectCoords
+  - 0x0800118A battle_calcAngleOctant_800118A
+  - 0x080A598C owPlayer_setDirectionAnimFromOffset_80A5974
+  reproduce: python3 tools/asmcat.py 0x080A5A1C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree; run wf investigate
+    investigate-20261018-155607; its name was fixed mechanically by tools/investigate_land.py style-fix (the run''s
+    proposal broke the naming style)'
+coverage:
+- beastsp
+open_questions:
+- exact meaning of the two position slots at +0xC and +0x24 (current vs. target vs. prev)
+- what state 3 means in the battle object state machine, and the semantic of byte_2000EC0 copied to +9
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 960a2fd2
+  tool: tools/symdoc.py

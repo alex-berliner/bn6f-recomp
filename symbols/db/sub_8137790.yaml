@@ -1,0 +1,45 @@
+name: sub_8137790
+address: '0x08137790'
+kind: function
+status: probable
+summary: When a new Beast chip is registered, shifts the currently equipped S-chip record from slot 1 to slot 2
+  and loads the caller's record into slot 1, updating the beast-chip state bytes and a NaviStats flag.
+interface: (r0-r3 = sChip_loadRecordIntoSlot args with the record for slot 1, r4 = record pointer, r7 = unused input)
+  -> r0 = 1 if the shift ran, else 0
+details: 'Reads byte_20018EE (unk_20018EC+2); if its high nibble is 1 it sets the return flag, swaps byte_20018ED
+  and byte_20018EE (the two beast-chip slot state bytes), then shifts S-chip records: copies the 60-byte record
+  at slot index 1 (S_Chip ptr + 0x3C) to slot index 2 (ptr + 0x78) via CopyWords, and calls sChip_loadRecordIntoSlot
+  with the record passed in r4 into slot 1. Finally, if GetCurPETNaviStatsByte(0, 0x2D) reads 1, it writes 2 there
+  — likely advancing the beast-overheat/usage state so a previously used Beast chip cannot be reused immediately.
+  Returns 0 without touching anything if the high nibble check fails.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'lsr r1, r0, #4; cmp r1, #1 gates the whole body and supplies the return value in r7; strb r0/[r3,#1]
+    + strb r2/[r3,#2] swap the two state bytes at unk_20018EC+1/+2; mul r0, r2 / mul r1, r2 with 0x3C compute 60-byte
+    record offsets 1 and 2 into the oToolkit_S_Chip_2002178_Ptr table before CopyWords; bl sChip_loadRecordIntoSlot_8021AB4
+    with r0=r4, r1=1 loads the incoming record into slot 1; GetCurPETNaviStatsByte(0,0x2D)==1 followed by SetCurPETNaviStatsByte(0,0x2D,2)
+    mutates one NaviStats byte'
+  refs:
+  - bn6f/asm/asm36.s:15565
+  - 0x08137718 GiveFolder
+  - 0x0800093C CopyWords
+  - 0x080137B6 GetCurPETNaviStatsByte
+  - 0x0801379E SetCurPETNaviStatsByte
+  reproduce: python3 tools/asmcat.py 0x08137790
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree; run wf investigate
+    investigate-20261018-155607; its name was fixed mechanically by tools/investigate_land.py style-fix (the run''s
+    proposal broke the naming style)'
+coverage:
+- beastsp
+open_questions:
+- Exact meaning of the high-nibble==1 check on byte_20018EE and of the swapped bytes
+- What NaviStats field 0x2D tracks (beast overheat counter vs. availability flag)
+- Why GiveFolder is the recorded caller and what record it passes in r4
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 960a2fd2
+  tool: tools/symdoc.py

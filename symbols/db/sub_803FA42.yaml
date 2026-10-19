@@ -1,0 +1,63 @@
+name: sub_803FA42
+address: '0x0803FA42'
+kind: function
+status: probable
+summary: At title-screen init, verifies the ROM's version string and checksum of a data blob against saved values;
+  on mismatch clears a story flag and reinitializes the state block.
+interface: () -> r0 = 0 if the version string and checksum match (EVENT_1737 set), r0 = 1 otherwise (EVENT_1737
+  cleared, state block reinitialized)
+details: Calls sub_814D8F0 with (src 0xE007E80, dst dword_2006740, len 0x78), apparently copying/decoding a 120-byte
+  ROM blob into RAM. It then byte-compares 20 bytes at EXE6_InfoText_timestamp against byte_2006750 — a version/build-string
+  check. If that passes, it sums all 0x78 bytes of dword_2006740 and compares against the saved checksum in dword_2006744
+  (which it zeroes before summing). Both matching sets EVENT_1737 and returns 0; any mismatch clears EVENT_1737,
+  calls initStateBlock_803C352 to rebuild the 0x48-byte state at A_word_2006770, and returns 1.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'push {r0-r3} before sub_814D8F0 passes (0xE007E80, dword_2006740, 0x78): ROM-source copy into the checksummed
+    buffer; loop at loc_803FA58 compares 20 bytes of EXE6_InfoText_timestamp vs byte_2006750 (version-string check);
+    loc_803FA72 sums 0x78 bytes of dword_2006740 and compares with saved dword_2006744 (checksum); match path sets
+    EVENT_1737 and returns 0; mismatch path clears it, calls initStateBlock_803C352, returns 1; caller startScreen_initGfx_802F574
+    runs at boot/title screen, consistent with a one-time data-version validation'
+  refs:
+  - bn6f/asm/asm03_1_1.s:14110
+  - 0x0802F574 startScreen_initGfx_802F574
+  - 0x080395E4 sub_80395E4
+  - 0x0802F12C ClearEventFlagFromImmediate
+  - 0x0802F110 SetEventFlagFromImmediate
+  - 0x0803C352 initStateBlock_803C352
+  reproduce: python3 tools/asmcat.py 0x0803FA42
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree; run wf investigate
+    investigate-20261018-155607; its name was fixed mechanically by tools/investigate_land.py style-fix (the run''s
+    proposal broke the naming style)'
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- beastsp
+- chips
+- fuzz
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- What sub_814D8F0 does exactly (plain copy vs. decode/decompress of the 0xE007E80 blob)
+- What dword_2006740/2006744/byte_2006750 represent elsewhere (stored config vs. embedded blob copy) and what EVENT_1737
+  gates in gameplay
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 960a2fd2
+  tool: tools/symdoc.py

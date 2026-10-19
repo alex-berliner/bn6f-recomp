@@ -1,0 +1,73 @@
+name: owPlayer_spawnInit
+address: '0x0809D270'
+kind: function
+status: probable
+summary: 'Initializes the overworld player object: picks and loads the player''s sprite (current navi,
+  with internet/Cybeast-override), resets player state, and runs one update frame.'
+interface: (r5 = player object header/OWPlayer) -> sets oGameState_OverworldPlayerObjectPtr; no return
+  value used
+details: Sets the object flags to ACTIVE|VISIBLE, then reads GetCurPETNavi and indexes PETNaviToNPCSpriteTable
+  to get the navi's overworld sprite id (r4) with r6=0x18 as the palette/secondary arg. On internet maps
+  (MapGroup >= INTERNET_MAP_GROUP_START) — or outside them when EVENT_COPYBOT_ACTIVE is set — it instead
+  checks eStruct2000aa0_Sprite_04; if nonzero it indexes byte_809D338 as (sprite, palette) pairs, else
+  falls back to the default sprite 0x37. It calls sprite_load(0x80, palette, sprite), clears animation
+  select (0 / 0xFF update), applies sprite_noShadow, stores the object pointer into GameState, and zeroes
+  a 0x20-byte block at +0x48. It then resets many OWPlayer fields (interaction lock, wall collision, layer
+  override, facing masked to 0-7, next X/Y/Z = current X/Y/Z, busy/cutscene flag cleared) and calls owPlayer_update_809D348
+  to run the first frame.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: GetCurPETNavi + PETNaviToNPCSpriteTable lookup shows the sprite depends on the selected navi;
+    sprite_load(0x80, r6=palette, r4=sprite) followed by sprite_noShadow installs the player's overworld
+    sprite; str r5,[gameState,#oGameState_OverworldPlayerObjectPtr] marks r5 as the overworld player object;
+    byte_809D338 pairs and eStruct2000aa0_Sprite_04 give an internet-map sprite override (Beast/Cross
+    forms); tail calls owPlayer_update_809D348, the known per-frame player update, after initializing
+    all its state
+  refs:
+  - bn6f/asm/ow_player.s:152
+  - 0x080010B6 GetCurPETNavi
+  - 0x0802F164 TestEventFlagFromImmediate
+  - 0x080008E0 ZeroFillByWord
+  reproduce: python3 tools/asmcat.py 0x0809D270
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- beastsp
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- exact meaning of the 0x18 constant passed as sprite_load arg1 (palette bank vs. VRAM slot)
+- what sets eStruct2000aa0_Sprite_04 and which forms the byte_809D338 pairs map to
+- why EVENT_COPYBOT_ACTIVE forces the internet-map sprite path outside the net
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 960a2fd2
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_809D270 -> owPlayer_spawnInit
+  where: bn6f ffbdad58
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_809D270

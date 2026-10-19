@@ -1,0 +1,52 @@
+name: battleObject_initVisualsFromRelatedObject
+address: '0x080B8600'
+kind: function
+status: probable
+summary: Sets up a battle object's sprite with fixed resource IDs and mirrors palette and animation state
+  from its linked related object.
+interface: (r5 = battle object) -> r0 = destroyed; sets CurStateActionPhaseAndPhaseInitialized to CUR_STATE_UPDATE
+details: 'Loads a sprite for the object with hardcoded parameters (0x80, 0x10, 0x30), loads its animation
+  data and disables its shadow. It then reads the linked RelatedObject1Ptr: copies that object''s palette
+  ID into its own sprite via sprite_setPalette, and copies that object''s CurAnim byte into its own CurAnimAndCurAnimCopy
+  halfword, applying it with sprite_setAnimation and refreshing with sprite_loadAnimationData/sprite_update.
+  Finally it writes CUR_STATE_UPDATE into the object''s state-action phase field and calls battleObject_syncVisualStateFromRelatedObject_80B863A
+  to copy the remaining visual state (flags, shader, palette/mosaic/alpha, flip) from the related object
+  and dispatch the sub-action handler. Net effect: this object takes on the related object''s appearance
+  while running its own fixed sprite resource.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: sprite_load called with immediate (0x80, 0x10, 0x30) — fixed sprite resource parameters, not
+    caller-supplied; ldrb r0,[r0,#oBattleObject_CurAnim] from RelatedObject1Ptr then strh into oBattleObject_CurAnimAndCurAnimCopy
+    — animation copied from related object; sprite_getPalette on RelatedObject1Ptr feeding sprite_setPalette
+    — palette mirrored from related object; mov r0,#CUR_STATE_UPDATE; str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]
+    — transitions the object into its per-frame update phase; tail call battleObject_syncVisualStateFromRelatedObject_80B863A
+    copies flag bits/shader/palette/alpha/flip from the related object
+  refs:
+  - bn6f/asm/asm31.s:571
+  - 0x080B863A battleObject_syncVisualStateFromRelatedObject_80B863A
+  - 0x08002D8C sprite_getPalette
+  - 0x080026E4 sprite_load
+  reproduce: python3 tools/asmcat.py 0x080B8600
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- No caller is recorded, so the gameplay context (which enemy/object uses this) and the meaning of the
+  hardcoded load parameters (0x80, 0x10, 0x30) are unknown
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 960a2fd2
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80B8600 -> battleObject_initVisualsFromRelatedObject
+  where: bn6f ffbdad58
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80B8600

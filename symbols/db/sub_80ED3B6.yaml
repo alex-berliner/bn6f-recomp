@@ -1,0 +1,46 @@
+name: sub_80ED3B6
+address: '0x080ED3B6'
+kind: function
+status: probable
+summary: 'AI attack state-machine step: on first entry spawns the attack object and starts the attack sound, then
+  counts the step timer down and sets the hit element when it expires.'
+interface: (r5 = battle object, r7 = its oAIAttackVars AIData) -> void; writes flags/animation/timer state on the
+  object
+details: 'When oAIAttackVars_AttackElement is 0 it performs the attack launch: sets ObjectFlags1 bit 22, plays animation
+  0xA, spawns a type-1 subtype-5 temp attack object whose parameter comes from AiDifficultyTier read at AIData+0x68,
+  computes damage as Damage+AttackBoost (plus AttackBoost2) and passes it with 0x100000 to sub_80D2B8E via the object
+  at r5+0x4C, resets the counter timer to default, sets StepTimer = TimerOrCycles+0xA, plays sound effect 0xF0,
+  and marks AttackElement = 4 so the launch only happens once. On every call (including after launch) it decrements
+  StepTimer and, when it reaches 0, writes 8 into HitElement, presumably triggering the attack''s hit phase.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: tst on [r7,#oAIAttackVars_AttackElement] guards the whole launch block; it stores 4 back into AttackElement
+    to prevent refire; calls spawn_t1_0x5_tempAttackObject_80B8E30 with AiDifficultyTier loaded from AIData+0x68;
+    adds AttackBoost into Damage and passes it (with 0x100000) to sub_80D2B8E for the object at r5+0x4C; PlaySoundEffect(0xF0)
+    fires right after the spawn, consistent with an attack-activation sound; StepTimer countdown ends by storing
+    8 into HitElement, matching a charge->hit state transition
+  refs:
+  - bn6f/asm/asm31.s:114056
+  - 0x080ED394 sub_80ED394
+  - 0x080005CC PlaySoundEffect
+  - 0x0800F2B6 object_setAnimation
+  - 0x0800FDB6 object_setDefaultCounterTime
+  reproduce: python3 tools/asmcat.py 0x080ED3B6
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree; run wf investigate
+    investigate-20261018-155607; its name was fixed mechanically by tools/investigate_land.py style-fix (the run''s
+    proposal broke the naming style)'
+coverage:
+- beastsp
+open_questions:
+- Purpose of sub_80D2B8E (called with damage sum and 0x100000) is unknown; knowing it would confirm how the attack
+  object is configured
+- Semantics of AttackElement values 4 and 8 and HitElement (state vs. element ID) would need the parent AI attack
+  state machine / sub_80ED394 to confirm
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 960a2fd2
+  tool: tools/symdoc.py

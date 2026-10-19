@@ -1,0 +1,51 @@
+name: aiAttackStepLunge
+address: '0x08106162'
+kind: function
+status: probable
+summary: AI attack state that dashes the enemy object onto its target panel, then arms the hit element
+  after a short delay
+interface: (r5 = battle object, r7 = AI attack vars) -> void; sets up movement/anim on first call, counts
+  oAIAttackVars_StepTimer down on later calls
+details: This is a per-frame step of an AI-controlled attack. On entry (AttackElement == 0) it stamps
+  element 4 into oAIAttackVars_AttackElement, plays battle animation 0x16, commits the object's FuturePanelX/Y
+  into PanelX/Y, releases its reserved panel via object_removePanelReserve, recomputes pixel coordinates
+  and collision panels, zeroes Z, sets collision region 1, clears flag 0x40, and sets the OBJECT_FLAGS_CURRENTLY_MOVING_1
+  bit, with StepTimer = 4. On subsequent frames it just decrements StepTimer; when it reaches 0 it writes
+  0x18 into oAIAttackVars_HitElement, presumably activating the attack's damage. The pattern matches a
+  lunge/dash-in melee attack state machine entry.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/bne guards a one-time init branch (state machine);
+    strb 0x16,[r5,#oBattleObject_CurAnim] then FuturePanelX/Y copied into PanelX/Y and object_removePanelReserve/object_setCoordinatesFromPanels/object_updateCollisionPanels
+    called — moves object onto target panel; mov r0,#1; bl object_setCollisionRegion and setFlag1 with
+    bit OBJECT_FLAGS_CURRENTLY_MOVING_1 mark the object as dashing; tail: StepTimer-- ; on 0 writes 0x18
+    to oAIAttackVars_HitElement, timing when the attack becomes live; all callees are battle-object helpers
+    (object_*) with known battle-object summaries, confirming r5 is a battle object'
+  refs:
+  - bn6f/asm/asm31.s:166848
+  - 0x0801A15C object_clearFlag
+  - 0x0801BB46 object_removePanelReserve
+  - 0x0801A07C object_setCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x08106162
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-223614; the run''s proposed name ai_attackStepLunge was contested;
+    tools/investigate_land.py dedupe gave this distinct name (hyper/glm-5.3-flash proposed, minimax/MiniMax-M3
+    agreed)'
+open_questions:
+- which enemy/attack uses this state (no caller known), so the exact attack name is unknown
+- meaning of element value 4 and HitElement 0x18 in the AI attack vars
+- why flag 0x40 is cleared — semantic of that ObjectFlags1 bit
+sources:
+- wf investigate investigate-20261018-223614
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 960a2fd2
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_8106162 -> aiAttackStepLunge
+  where: bn6f ffbdad58
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8106162

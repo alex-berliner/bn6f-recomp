@@ -1,0 +1,51 @@
+name: battleObject_subactionLoadSprite
+address: '0x080A6A34'
+kind: function
+status: probable
+summary: Battle-object action sub-step that loads the object's sprite, sets its initial animation, disables
+  the shadow, and advances the action state machine.
+interface: (r5 = battle object work area) -> r0 = result of battleObject_runActionSubroutineDispatch_80A6A62;
+  flags from that call
+details: 'Acts on the object struct in r5: writes state 3 to byte +0, then calls sprite_load with the
+  resource ids at bytes +5 and +6, sets the animation index from byte +7, loads the animation data, and
+  marks the sprite shadow-less. It then writes state 4 to byte +8, calls sub_80A6E50 with r6 = 0x24 (likely
+  a size/extent parameter), and finally tail-invokes the subroutine dispatcher at 80A6A62, so it is one
+  of the 19 sub-action handlers of the per-frame action state machine. The +0/+8 byte writes look like
+  a step counter / phase tracker for the current action.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'strb r0(=3),[r5] then later strb r0(=4),[r5,#8]: sequential state bytes on the object struct;
+    sprite_load takes [r5+5] and [r5+6] as arguments, matching a sprite/palette resource-id pair in the
+    object struct; sprite_setAnimation is fed [r5+7], the object''s animation-index field, and sprite_noShadow
+    clears the shadow flag; tail call to battleObject_runActionSubroutineDispatch_80A6A62 shows this is
+    one of that dispatcher''s 19 sub-action handlers; r6 = 0x24 set before sub_80A6E50, an unknown post-load
+    step possibly sizing the object'
+  refs:
+  - bn6f/asm/asm29.s:2879
+  - 0x080A6A62 battleObject_runActionSubroutineDispatch_80A6A62
+  - 0x080026E4 sprite_load
+  - 0x080026A4 sprite_loadAnimationData
+  reproduce: python3 tools/asmcat.py 0x080A6A34
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+coverage:
+- beastsp
+open_questions:
+- purpose of sub_80A6E50 and meaning of the r6=0x24 argument
+- exact meaning of the 3/4 state bytes in the object struct
+- which game action scripts dispatch into this specific sub-action index
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 960a2fd2
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80A6A34 -> battleObject_subactionLoadSprite
+  where: bn6f ffbdad58
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80A6A34

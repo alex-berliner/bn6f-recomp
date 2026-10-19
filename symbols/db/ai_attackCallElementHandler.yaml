@@ -1,0 +1,46 @@
+name: ai_attackCallElementHandler
+address: '0x080FA6D4'
+kind: function
+status: probable
+summary: Dispatches an AI attack routine based on the attack's element, calling one of eight per-element
+  handlers from a table
+interface: (r7 = pointer to AI attack vars) -> tail-calls handler from off_80FA6E8 indexed by oAIAttackVars_HitElement;
+  handler returns directly to this function's caller
+details: Loads the element byte from the AI attack vars struct at [r7, oAIAttackVars_HitElement], uses
+  it as an index into the 8-entry function pointer table off_80FA6E8, and calls the selected handler by
+  setting lr=pc before bx, so the handler's return lands at the pop {r7,pc} epilogue. The table includes
+  known attack behaviors (ai_attackLungeStep, object_aiAttackWindupTick) plus several unexamined sub_80FA7*–80FA9*
+  routines, one per element. Element value 0 routes to ai_attackLungeStep (likely the 'no element / normal'
+  case). r7 is passed through implicitly for the handler's use. No callers are known, so the exact attack
+  flow context is unconfirmed.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0, [r7,#oAIAttackVars_HitElement] + ldr r1,[r1,r0] selects handler by element index; mov
+    lr, pc; bx r1 makes the call return to this function's epilogue (pop {r7,pc}); Table entries ai_attackLungeStep
+    and object_aiAttackWindupTick are known AI attack behavior functions; 8-entry table matches the count
+    of element types, one handler per element
+  refs:
+  - bn6f/asm/asm31.s:144887
+  reproduce: python3 tools/asmcat.py 0x080FA6D4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-055111; the run''s proposed name ai_attackElementDispatch
+    was contested; tools/investigate_land.py dedupe gave this distinct name (hyper/glm-5.3-flash proposed,
+    minimax/MiniMax-M3 agreed)'
+open_questions:
+- No known callers, so which attack phase invokes this dispatch and what each unexamined element handler
+  does is unconfirmed; the meaning of HitElement (element index vs element attack id) could be checked
+  against handler contents
+sources:
+- wf investigate investigate-20261019-055111
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 960a2fd2
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80FA6D4 -> ai_attackCallElementHandler
+  where: bn6f ffbdad58
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FA6D4

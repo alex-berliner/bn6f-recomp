@@ -1,0 +1,44 @@
+name: sub_81059C0
+address: '0x081059C0'
+kind: function
+status: probable
+summary: 'AI attack state machine step: reserves the target panel under an enemy''s jump/lunge attack, locks it,
+  plays a charge animation, and after a short delay arms the strike element.'
+interface: (r5 = battle object, r7 = object's AIAttackVars) -> void; sets object anim/flags and AI attack fields
+details: 'Two-phase state keyed on oAIAttackVars_AttackElement: when 0, it sets it to 4 (phase started), checks
+  object_canMove, then reads a per-Alliance table (byte_8105A1C, Alliance*8: alliance 0 gets 0,0; alliance 1 gets
+  0x20,0) and passes those words as r2/r3 to the stored oAIAttackVars_PanelChooseCallback (thumb long-call via mov
+  lr,pc/bx). The callback returns a target panel in r0/r1 (r0==0 treated as abort); on success the coords are written
+  to oBattleObject_FuturePanelX/Y, object_reservePanel claims the panel, OBJECT_FLAGS_CANNOT_SLIDE is set via object_setFlag1,
+  CurAnim is set to 0x15 and StepTimer to 4. On subsequent calls (element==4) it counts StepTimer down and, at zero,
+  sets oAIAttackVars_HitElement to 8 to trigger the hit phase. If the object cannot move or the callback fails,
+  it plays anim 0x14 and calls object_exitAttackState_801171C to tear the attack down.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]; bne loc_8105A00 splits started vs. pending phases; ldr r0,[r7,#oAIAttackVars_PanelChooseCallback];
+    mov lr,pc; bx r0 then stores r0/r1 into FuturePanelX/Y; bl object_reservePanel then mov r0,#OBJECT_FLAGS_CANNOT_SLIDE;
+    bl object_setFlag1 claims and locks the panel; StepTimer countdown (sub r0,#1; bgt) ends by setting HitElement
+    = 8; Failure path: CurAnim=0x14 + bl object_exitAttackState_801171C'
+  refs:
+  - bn6f/asm/asm31.s:163949
+  - 0x0800E5E2 object_canMove
+  - 0x0801171C object_exitAttackState_801171C
+  - 0x0801BB1C object_reservePanel
+  reproduce: python3 tools/asmcat.py 0x081059C0
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree; run wf investigate
+    investigate-20261018-155607; its name was fixed mechanically by tools/investigate_land.py style-fix (the run''s
+    proposal broke the naming style)'
+coverage:
+- battlesweep
+open_questions:
+- Which enemy/attack uses this (HitElement 8 and anims 0x14/0x15 not matched to a known attack)
+- What the PanelChooseCallback does with the per-alliance offsets and its exact return convention (r0 x, r1 y assumed)
+- No known caller; route data only shows it runs during battle sweep
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 960a2fd2
+  tool: tools/symdoc.py

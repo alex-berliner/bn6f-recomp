@@ -1,0 +1,55 @@
+name: ow_storyTriggerSpawnJackoutLockScene
+address: '0x0808CAD4'
+kind: function
+status: probable
+summary: 'Overworld story-progress trigger: marks one event flag, then if a guard flag is already set,
+  sets another flag and launches a map cutscene object with a jack-out lock.'
+interface: () -> r0 = 0; sets EVENT_9D6 (always) and, if EVENT_9D8 set, EVENT_9D7, EVENT_1700, BBS flag
+  e17b0f7, GameState.Unk_09 = 3
+details: Runs as a map/story script (recorded on beastsp and map routes). It first calls sub_8142C94 and
+  sub_808CBA0 (both unknown), then unconditionally sets event flag EVENT_9D6. It tests EVENT_9D8; only
+  when that flag is already set does it set EVENT_9D7, call sub_808CBD8 — which spawns overworld map object
+  type 0x11, sets EVENT_1700, plays a sound (except in map group 0x85), and sets JackOutLockState = 3
+  — marks BBS request flag 0x7 of event byte 0x17 via reqBBS_setFlag_e17b0f7_8140A00, and re-sets GameState.Unk_09
+  to 3 via gameState_setUnk09_8001172. The TestEventFlagFromImmediate->beq structure means the cutscene
+  block runs when EVENT_9D8 is set, so 9D8 acts as a one-time/progression guard. The unconditional flag-set
+  plus guarded scene start is typical of map-entry story triggers.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'asm: movflag EVENT_9D6; bl SetEventFlagFromImmediate — unconditional story-flag set before
+    any test; asm: movflag EVENT_9D8; bl TestEventFlagFromImmediate; beq loc_808CB06 — cutscene block
+    only when 9D8 is set; callee sub_808CBD8 summary: spawns overworld object 0x11, sets EVENT_1700, JackOutLockState=3,
+    plays sound_8000672; callee reqBBS_setFlag_e17b0f7_8140A00 sets BBS request flag in event byte 0x17
+    at 0x2001F68; callee gameState_setUnk09_8001172 with r0=3 sets the can''t-jack-out control flag, matching
+    sub_808CBD8''s own JackOutLockState=3'
+  refs:
+  - bn6f/asm/asm24.s:1148
+  - 0x0802F110 SetEventFlagFromImmediate
+  - 0x0802F164 TestEventFlagFromImmediate
+  - 0x08001172 gameState_setUnk09_8001172
+  reproduce: python3 tools/asmcat.py 0x0808CAD4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+coverage:
+- beastsp
+- maps
+open_questions:
+- sub_8142C94 and sub_808CBA0 are unknown — they may set up or clean the scene and would refine the trigger's
+  exact role
+- which map/story moment this belongs to (map group 0x85 hint) and what map object type 0x11 displays
+- no direct caller found; presumably invoked from a map event/script table
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 960a2fd2
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_808CAD4 -> ow_storyTriggerSpawnJackoutLockScene
+  where: bn6f ffbdad58
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_808CAD4

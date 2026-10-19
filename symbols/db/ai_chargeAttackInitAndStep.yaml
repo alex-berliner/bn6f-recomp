@@ -1,0 +1,55 @@
+name: ai_chargeAttackInitAndStep
+address: '0x081151CC'
+kind: function
+status: probable
+summary: 'Runs an AI battle object''s charging/ramming attack across the panels: initializes it on the
+  first call, then advances its scripted move each frame.'
+interface: (r7 = AI attack vars, r5 = battle object) -> void; branch into runMoveStep once AttackElement
+  is set
+details: 'Acts as the per-frame driver of one AI attack. If oAIAttackVars_AttackElement is 0 it initializes:
+  sets AttackElement = 1 as a ''started'' marker (later calls tail-branch into ai_attackVars_runMoveStep_8115272
+  at loc_81152CA instead). If object_canMove reports the object blocked, it bails out via object_exitAttackState.
+  Otherwise it sets up collision via object_updateCollisionData (modifier 0x35, args 2 and 3), ORs OBJECT_FLAGS_CANNOT_SLIDE
+  and the bit-22 flag with object_setFlag1, and — unless GetBattleMode returns 6 — arms a counter window
+  of 0x10 via object_setCounterTime. It then picks oAIAttackVars_AiAttackParam from table off_8115234
+  (1,1,2,6,7,0x20,8,8) indexed by AttackBoost2, sets the object''s current animation to 2, StepTimer to
+  0xC, TimerOrCycles and SubStepIndex to 1, HitElement to 4, and calls sub_8115492 to finish setup/start
+  the first step.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldrb r0,[r7,#oAIAttackVars_AttackElement]; bne loc_81152CA — later calls continue via the known
+    runMoveStep callee; bl object_canMove / bl object_exitAttackState — aborts the attack if the object
+    cannot act; bl object_updateCollisionData (r1=0x35, r2=2, r3=3) + object_setFlag1(CANNOT_SLIDE, bit22)
+    — arms collision for a body charge; bl GetBattleMode; cmp r0,#6; mov r0,#0x10; bl object_setCounterTime
+    — counterable except in mode 6; ldrb r0,[r1,r0] off_8115234 -> AiAttackParam, anim 2, HitElement 4,
+    then sub_8115492 — parameterizes and starts the attack
+  refs:
+  - bn6f/asm/asm32.s:14131
+  - 0x0802D234 GetBattleMode
+  - 0x081152CA ai_attackVars_runMoveStep_8115272
+  - 0x0800E5E2 object_canMove
+  reproduce: python3 tools/asmcat.py 0x081151CC
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- What sub_8115492 does (likely first movement/attack step) would confirm the attack's identity
+- Which enemy/move this belongs to — no caller captured on the recorded routes; the table off_8115234's
+  meaning (per-boost damage or reach?) is unverified
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 960a2fd2
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_81151CC -> ai_chargeAttackInitAndStep
+  where: bn6f ffbdad58
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81151CC

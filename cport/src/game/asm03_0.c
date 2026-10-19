@@ -202,7 +202,7 @@ Next object_runFrameUpdate_8026A6C(void) {
  * battle_updateObjectByKind_8026E98, battle_runTutorialDialog_8026FC0, sub_8027044, sub_80271F8,
  * sub_802728C, sub_80273A4, chatbox_resetTextStateIfHidden_80273EC,
  * sub_8027406, sub_802753E, sub_8027548, sub_80275EC, battleObject_chipSelectAnimTick_802770C,
- * sub_8027834, sub_802790C, sub_802794A, sub_8026E78, sub_8027A58) outside
+ * sub_8027834, battle_customScreenChipUseAnimStep, sub_802794A, sub_8026E78, sub_8027A58) outside
  * this file; they have no typed C interface yet */
 static void run_state_handler(u32 state_offset, u32 self) {
     u32 handler = LD32(A_off_8026AA4 + state_offset);
@@ -235,7 +235,7 @@ static void run_state_handler(u32 state_offset, u32 self) {
     case 0x44: GUEST_CALL(sub_80275EC); break;
     case 0x48: GUEST_CALL(battleObject_chipSelectAnimTick_802770C); break;
     case 0x4C: GUEST_CALL(sub_8027834); break;
-    case 0x50: GUEST_CALL(sub_802790C); break;
+    case 0x50: GUEST_CALL(battle_customScreenChipUseAnimStep); break;
     case 0x54: GUEST_CALL(sub_802794A); break;
     case 0x58: GUEST_CALL(sub_8026E78); break;
     case 0x5C: GUEST_CALL(sub_8027A58); break;
@@ -1346,9 +1346,9 @@ static inline call_battle_testFlag0x40_800A8F8_result call_battle_testFlag0x40_8
 }
 
 typedef struct { u32 r3, r4, r5, r6, r7, r8, r9, r10, r11, r12; } call_sub_801DF0C_result;
-/* register form: generated wrapper: sub_801DF0C has no typed C interface yet */
+/* register form: generated wrapper: battle_customGaugeResetForNewTurn has no typed C interface yet */
 static inline call_sub_801DF0C_result call_sub_801DF0C(void) {
-    GUEST_CALL(sub_801DF0C);
+    GUEST_CALL(battle_customGaugeResetForNewTurn);
     return (call_sub_801DF0C_result){ R3, R4, R5, R6, R7, R8, R9, R10, R11, R12 };
 }
 
@@ -1359,9 +1359,9 @@ static inline u32 call_GetBattleMode_battle_customGauge_EndTurn_8027D78(void) {
 }
 
 typedef struct { u32 r4, r5, r6, r8, r9, r10, r11, r12; } call_sub_801DEEE_result;
-/* register form: generated wrapper: sub_801DEEE has no typed C interface yet */
+/* register form: generated wrapper: battle_customGaugeResetGfxAndRequest has no typed C interface yet */
 static inline call_sub_801DEEE_result call_sub_801DEEE(void) {
-    GUEST_CALL(sub_801DEEE);
+    GUEST_CALL(battle_customGaugeResetGfxAndRequest);
     return (call_sub_801DEEE_result){ R4, R5, R6, R8, R9, R10, R11, R12 };
 }
 

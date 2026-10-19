@@ -1,0 +1,48 @@
+name: sub_812B2C4
+address: '0x0812B2C4'
+kind: function
+status: probable
+summary: 'Per-frame animated-sprite step: queues one OAM entry for the entity''s current animation frame and advances
+  to the next frame when the frame timer expires.'
+interface: (r0 = offset/id selecting a byte in the entity record r5, r5 = entity/anim-state record) -> void; r4,
+  r6 preserved, r0-r3 clobbered
+details: 'r5 is an animation-state record: [r5+0x17] is the current animation row index, [r5+0x18] a frame-delay
+  countdown, and bit0 of [r5+0x1b] an enable/pause flag that skips the whole routine. The byte [r5+r0] selects a
+  19-tile (0x13) slot, giving tile base 0x80000 | (byte*0x13 + 0x1D). It then calls battleObject_queueOamFromTableRow
+  with r2 = current frame index [r5+0x17], r3 = tile/attribute table byte_8129178, r1 = 0x20004 and r4 = 0x40000000
+  as packed OAM attribute words, queuing exactly one sprite. After queueing it decrements [r5+0x18]; when it reaches
+  0 it calls battleObject_advanceAnimTableBy0xFF on the frame-index table dword_8129180 and stores the returned
+  row index into [r5+0x17] and the returned frame delay into [r5+0x18]. Effectively this renders one frame of a
+  looping animation and steps the animation table on a timer.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: tst [r5+0x1b], bit0; bne skip — enable/pause gate for the whole update; orr r0, (byte*0x13+0x1D) with
+    0x80000, r2=[r5+0x17], r3=byte_8129178 before bl battleObject_queueOamFromTableRow_811FAF4; sub [r5+0x18] decrement;
+    on zero, bl battleObject_advanceAnimTableBy0xFF_8120CC8 with r1=dword_8129180; strb r0,[r5+0x17] / strb r1,[r5+0x18]
+    store next frame index and next frame delay; Called every frame from battle_runFrameUpdate before the entity
+    update handlers and again by menu_runScreens3Step_81295D8
+  refs:
+  - bn6f/asm/asm33.s:16731
+  - 0x0812B25C battle_runFrameUpdate
+  - 0x081295D8 menu_runScreens3Step_81295D8
+  - 0x08120CC8 battleObject_advanceAnimTableBy0xFF_8120CC8
+  - 0x0811FAF4 battleObject_queueOamFromTableRow_811FAF4
+  reproduce: python3 tools/asmcat.py 0x0812B2C4
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree; run wf investigate
+    investigate-20261018-182231; its name was fixed mechanically by tools/investigate_land.py style-fix (the run''s
+    proposal broke the naming style)'
+coverage:
+- menus3
+open_questions:
+- 'Exact meaning of [r5+r0]: callers pass the command/message id, so it is likely a per-message animation-id field,
+  but the r5 record layout is unconfirmed'
+- Semantics of the packed words 0x20004 and 0x40000000 passed to the OAM queueing callee (which attribute bits they
+  set)
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 960a2fd2
+  tool: tools/symdoc.py

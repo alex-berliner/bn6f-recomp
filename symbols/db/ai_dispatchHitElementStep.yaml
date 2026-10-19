@@ -1,0 +1,43 @@
+name: ai_dispatchHitElementStep
+address: '0x080EF328'
+kind: function
+status: probable
+summary: Calls one of three AI attack-step handlers chosen by the attacker's HitElement field.
+interface: (r7 = AI attack vars struct; r0 taken from [r7+oAIAttackVars_HitElement] and passed on as r0
+  = hit element) -> returns whatever the dispatched handler returns
+details: Loads the byte at r7+oAIAttackVars_HitElement, uses it to index off_80EF33C, and does a computed
+  call (lr set from pc, then bx) to ai_stepJumpAttack (index 0), ai_attackPanelStrikes (1), or ai_attackEndCountdown
+  (2). The element value is still in r0 when the handler is entered, so handlers receive the hit element
+  index. r7 is never modified, so the handler presumably also works on the same attack-vars struct. No
+  callers are known, so the surrounding state machine that sets HitElement and calls this is unseen.
+evidence:
+- method: assembly-reading
+  date: '2026-10-19'
+  detail: ldrb r0,[r7,#oAIAttackVars_HitElement]; ldr r1,[r1,r0]; bx r1 — table indexed by the HitElement
+    byte; off_80EF33C holds +1 entries for ai_stepJumpAttack, ai_attackPanelStrikes, ai_attackEndCountdown
+    — all attack-step routines; mov lr,pc before bx r1 makes the jump a call, so this is a dispatcher,
+    not a tail branch; r0 is not reloaded after ldrb, so the handler receives the hit element index as
+    its first argument
+  refs:
+  - bn6f/asm/asm31.s:121568
+  reproduce: python3 tools/asmcat.py 0x080EF328
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261019-052112; the run''s proposed name ai_dispatchHitElementAttack
+    was contested; tools/investigate_land.py dedupe gave this distinct name (hyper/glm-5.3-flash proposed,
+    minimax/MiniMax-M3 agreed)'
+open_questions:
+- no known caller, so what sets oAIAttackVars_HitElement (and to what range of values 0-2) is unknown
+- what each of the three handlers does with r0/r7 and what they return
+sources:
+- wf investigate investigate-20261019-052112
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 960a2fd2
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80EF328 -> ai_dispatchHitElementStep
+  where: bn6f ffbdad58
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80EF328

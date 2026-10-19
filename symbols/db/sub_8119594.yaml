@@ -1,0 +1,52 @@
+name: sub_8119594
+address: '0x08119594'
+kind: function
+status: probable
+summary: Formats a number as packed BCD and copies its right-aligned digit glyphs (0x40 bytes each) into the chip
+  selection panel's number buffer.
+interface: (r0 = value to render (0xAAAA = special marker), r1 = panel buffer base) -> writes up to 3 glyph tiles
+  at r1+0x8C0..0x980; r0/r1 clobbered, void
+details: Zero-fills a 0xC0-byte region at r1+0x8C0 (3 glyph slots of 0x40 bytes). If the value is the marker 0xAAAA
+  it is kept raw with a fixed digit count of 3; otherwise memory_bcdConvert packs it into BCD and countHexDigits_8000C5C
+  gives the digit count. Each iteration takes the low nibble as a digit index, multiplies by 0x40 into the glyph
+  table at 0x86E411C, and CopyByEightWords copies one 0x40-byte glyph to r7, decrementing r7 so digits fill right-to-left,
+  leaving unused slots zeroed.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ZeroFillByEightWords(r1+0x8C0, 0xC0) clears exactly 3 glyph slots (lines 2-9); cmp r0, 0xAAAA / bne ->
+    special-cased marker value with hardcoded 3-digit count (lines 11-17); mul r0,0x40 + off_86E411C selects a 0x40-byte
+    glyph per BCD nibble (lines 22-26); r7 starts at buffer end and is subbed by 0x40 per loop, so digits are right-aligned
+    (lines 27-29); sole caller chipPanel_renderChipGfxAndText_8119438 draws chip icon/gfx/text into the selection
+    panel
+  refs:
+  - bn6f/asm/asm32.s:22770
+  - 0x08119438 chipPanel_renderChipGfxAndText_8119438
+  - 0x08000950 CopyByEightWords
+  - 0x08000900 ZeroFillByEightWords
+  - 0x08000C5C countHexDigits_8000C5C
+  reproduce: python3 tools/asmcat.py 0x08119594
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree; run wf investigate
+    investigate-20261018-155607; its name was fixed mechanically by tools/investigate_land.py style-fix (the run''s
+    proposal broke the naming style)'
+coverage:
+- battles1
+- battles2
+- beastsp
+- maps
+- menus3
+- story2
+- story4
+- story6
+- story8
+- story9
+open_questions:
+- exact meaning of the 0xAAAA marker in game terms (likely a variable/plus-style chip value shown as glyph 0xA)
+- what the table at 0x86E411C labels each glyph as (0-9 plus one symbol)
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 960a2fd2
+  tool: tools/symdoc.py

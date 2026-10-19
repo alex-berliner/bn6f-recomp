@@ -1,0 +1,61 @@
+name: sub_809FACE
+address: '0x0809FACE'
+kind: function
+status: probable
+summary: Writes a 16-bit value into the mystery-data event-flag buffer entry for a given offset.
+interface: (r0 = offset from 0x1400 into the 0x02004xxx flags buffer, r1 = low byte value, r2 = high byte value)
+  -> r0 = address of the written halfword; no flags of interest
+details: Saves the two value arguments across the call with push {r1,r2}, then calls sub_809FADE, which maps the
+  offset relative to 0x1400 to the address of a halfword-sized entry in the toolkit's 0x02004xxx buffer. It stores
+  r1 at [r0] and r2 at [r0+1], i.e. writes r1:r2 as a little-endian halfword into that entry. r0 ends up holding
+  the entry's address after return. Both known callers are mystery-data processing that clears event flags for map
+  entries, so the halfword is presumably a flag value/count being cleared (likely to 0).
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'sub_809FACE: push {r1,r2} / bl sub_809FADE / pop {r1,r2} preserves r1,r2 through the pointer computation;
+    sub_809FACE: strb r1,[r0] then strb r2,[r0,#1] writes a little-endian halfword at the callee-returned address;
+    callee sub_809FADE returns ''address of a halfword-sized entry ... offset relative to 0x1400'' in the 0x02004xxx
+    buffer; caller clearMysteryDataEventFlags_809FB04 clears each non-GREEN mystery-data entry''s event flag, consistent
+    with writing flag values; caller mysteryData_processMapGroups_809F9DC resolves type-5 entries and clears their
+    event flags'
+  refs:
+  - bn6f/asm/asm28_1.s:169
+  - 0x0809FB04 clearMysteryDataEventFlags_809FB04
+  - 0x0809F9DC mysteryData_processMapGroups_809F9DC
+  - 0x0809FADE sub_809FADE
+  reproduce: python3 tools/asmcat.py 0x0809FACE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree; run wf investigate
+    investigate-20261018-182231; its name was fixed mechanically by tools/investigate_land.py style-fix (the run''s
+    proposal broke the naming style)'
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- beastsp
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- exact semantics of the halfword (flag clear vs. count set) — a caller showing the r1/r2 values passed (e.g. both
+  0) would confirm
+- exact layout of the 0x02004xxx event-flag region and what offset 0x1400 marks
+sources:
+- wf investigate investigate-20261018-182231
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 960a2fd2
+  tool: tools/symdoc.py

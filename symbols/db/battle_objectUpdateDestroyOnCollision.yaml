@@ -1,0 +1,56 @@
+name: battle_objectUpdateDestroyOnCollision
+address: '0x080CB762'
+kind: function
+status: probable
+summary: 'Per-frame update handler for a battle attack object: runs its action step, and when it takes
+  a collision it plays a sound, spawns a hit effect, and destroys itself.'
+interface: (r5 = battle object) -> void; destroys object (sets CurState = CUR_STATE_DESTROY) when colliding
+  or battle over
+details: Tears down the object's old collision data, spawns its collision effect, then reads the collision
+  data's region byte and FlagsFromCollision. If FlagsFromCollision is nonzero it plays sound effect 0xC3,
+  copies three fields starting at oBattleObject+0x34 (r1-r3) and calls spawn_t1_0x0_EffectObject with
+  r4=0x22 (effect type), then clears its collision region and sets oBattleObject_CurStateActionPhaseAndPhaseInitialized
+  to CUR_STATE_DESTROY, killing the object. If the battle is over it also clears the region and destroys
+  itself. Otherwise it dispatches through a 2-entry jump table indexed by oBattleObject_CurAction (sub_80CB7BC
+  / sub_80CB898, likely the object's movement/behavior steps), then calls object_presentCollisionData
+  to run this frame's collision processing.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: ldr r1,[r5,#oBattleObject_CollisionDataPtr]; ldrb r2,[r1,#oCollisionData_Region] plus tst on
+    oCollisionData_FlagsFromCollision gates the death path; mov r0,#0xc3; bl PlaySoundEffect followed
+    by ldmia r0!,{r1-r3} from r5+0x34 and spawn_t1_0x0_EffectObject with r4=0x22; mov r0,#CUR_STATE_DESTROY;
+    str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized] destroys the object after a hit;
+    off_80CB7B4 jump table dispatches on oBattleObject_CurAction to sub_80CB7BC/sub_80CB898, then bl object_presentCollisionData;
+    Only caller sub_80CB71C and route 'battlesweep' place it in battle object update flow alongside object_*
+    collision helpers
+  refs:
+  - bn6f/asm/asm31.s:42115
+  - 0x080CB71C sub_80CB71C
+  - 0x080005CC PlaySoundEffect
+  - 0x0800A18E battle_isBattleOver
+  - 0x0801A074 object_clearCollisionRegion
+  reproduce: python3 tools/asmcat.py 0x080CB762
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+coverage:
+- battlesweep
+open_questions:
+- 'Which attack/objtype this is: the bodies of sub_80CB7BC and sub_80CB898 (the two CurAction handlers)
+  were not shown, so the object''s movement and identity (e.g. which battle chip spawns it) are unknown'
+- Meaning of the three fields copied from oBattleObject+0x34 and effect type 0x22, and which sound 0xC3
+  is, could pin down the exact chip
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 960a2fd2
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_80CB762 -> battle_objectUpdateDestroyOnCollision
+  where: bn6f ffbdad58
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80CB762

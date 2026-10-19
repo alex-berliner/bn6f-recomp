@@ -1,0 +1,50 @@
+name: battle_customGaugeResetGfxAndRequest
+address: '0x0801DEEE'
+kind: function
+status: probable
+summary: End-of-turn handler that empties the custom gauge, reloads its gauge tile graphics into VRAM,
+  and posts request 0x20 to refresh the gauge display.
+interface: () -> r0 = request id passed to dispatcher; calls ClearCustGauge, queues GFX transfer, ORs
+  bit 0x20 into eStruct2035280 request dword.
+details: Called only from battle_customGauge_EndTurn_8027D78 when a turn ends. It first calls ClearCustGauge
+  (0x0801DF92) to zero the gauge progress counter and clear its flags. Then it queues a DMA-style copy
+  of 0x380 bytes from ROM dword_86E489C to VRAM 0x600c440 — evidently the full/empty gauge tile images
+  — via QueueEightWordAlignedGFXTransfer. Finally it sets request bit 0x20 in the eStruct2035280+0x40
+  dword and dispatches request id 0x20 through dispatch_801DA48, which presumably redraws/updates the
+  on-screen custom gauge for the new turn.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'bl ClearCustGauge then GFX queue src=dword_86E489C dst=0x600c440 size=0x380: gauge cleared
+    and its graphics reloaded; dest 0x600c440 and size 0x380 are OAM-adjacent VRAM tile data consistent
+    with gauge UI tiles; mov r0,#0x20 / bl eStruct2035280_SetRequestBits_801BECC then dispatch_801DA48
+    with r0=0x20: posts and runs the gauge refresh request; sole caller battle_customGauge_EndTurn_8027D78
+    runs this on end-of-turn, matching gauge reset semantics'
+  refs:
+  - bn6f/asm/asm00_2.s:31254
+  - 0x08027D78 battle_customGauge_EndTurn_8027D78
+  - 0x0801DF92 ClearCustGauge
+  - 0x0801BECC eStruct2035280_SetRequestBits_801BECC
+  - 0x08000AC8 QueueEightWordAlignedGFXTransfer
+  reproduce: python3 tools/asmcat.py 0x0801DEEE
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+coverage:
+- battlesweep
+open_questions:
+- what request 0x20 does inside dispatch_801DA48 (presumably redraws gauge OAM)
+- exact contents of dword_86E489C tile sheet (empty vs full gauge frames)
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 960a2fd2
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_801DEEE -> battle_customGaugeResetGfxAndRequest
+  where: bn6f ffbdad58
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_801DEEE

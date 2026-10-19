@@ -1,0 +1,46 @@
+name: sub_8105A2C
+address: '0x08105A2C'
+kind: function
+status: probable
+summary: 'AI attack state-machine step: on first call commits the object''s move to the target panel (jump/lunge
+  attack), then counts down a short timer and arms the attack''s hit element.'
+interface: (r5 = battle object, r7 = oAIAttackVars) -> r0 = destroyed; updates object panel/anim/collision flags
+  and AI vars
+details: r7 points to an AI attack-variable block and r5 to the acting battle object. If oAIAttackVars_AttackElement
+  is 0 (attack not yet started), it sets AttackElement=4, plays animation 0x16 on the object, copies FuturePanelX/Y
+  into PanelX/Y, releases the reserved target panel via object_removePanelReserve, recomputes pixel coordinates
+  and collision panels for the move, clears flag 0x40 in CollisionData ObjectFlags1, and sets ObjectFlags1 bit 1<<OBJECT_FLAGS_CURRENTLY_MOVING_1,
+  plus StepTimer=4. On subsequent calls it decrements StepTimer; when it hits zero it stores 0xC into oAIAttackVars_HitElement,
+  presumably so a later step applies the actual damage/effect. Element value 4 and hit element 0xC are game-specific
+  constants for this enemy's attack type.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: 'ldrb r0,[r7,#oAIAttackVars_AttackElement]; tst/branch splits first-call init from timer countdown; copies
+    oBattleObject_FuturePanelX/Y to PanelX/Y then bl object_removePanelReserve and object_setCoordinatesFromPanels
+    — commits the planned move; object_clearFlag 0x40 and object_setFlag1 1<<OBJECT_FLAGS_CURRENTLY_MOVING_1 mark
+    the object as in motion; strh #4,[r7,#oAIAttackVars_StepTimer] then decrement loop ending in strh #0xc,[r7,#oAIAttackVars_HitElement]
+    schedules the hit; callees object_setFlag1/object_clearFlag/object_updateCollisionPanels summaries match battle
+    collision manipulation'
+  refs:
+  - bn6f/asm/asm31.s:164002
+  - 0x0801A15C object_clearFlag
+  - 0x0801BB46 object_removePanelReserve
+  - 0x0800E29C object_setCoordinatesFromPanels
+  reproduce: python3 tools/asmcat.py 0x08105A2C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree; run wf investigate
+    investigate-20261018-155607; its name was fixed mechanically by tools/investigate_land.py style-fix (the run''s
+    proposal broke the naming style)'
+coverage:
+- battlesweep
+open_questions:
+- which enemy/AI uses this attack and what element values 4 and hit element 0xC mean
+- what anim 0x16 depicts (jump, lunge, etc.)
+- which code reads oAIAttackVars_HitElement afterward to apply the damage
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 960a2fd2
+  tool: tools/symdoc.py

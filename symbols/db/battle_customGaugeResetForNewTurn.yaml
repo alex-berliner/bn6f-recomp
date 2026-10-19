@@ -1,0 +1,51 @@
+name: battle_customGaugeResetForNewTurn
+address: '0x0801DF0C'
+kind: function
+status: probable
+summary: 'Resets the in-battle custom gauge for the next turn: clears gauge state, reloads its tile graphics,
+  and flags the HUD for redraw.'
+interface: () -> void; no return value
+details: Called at end of turn by battle_customGauge_EndTurn_8027D78. It first calls ClearCustGauge to
+  zero the gauge progress and flags, then queues the graphics transfer list at off_801DF60 (presumably
+  the empty-gauge tile data) to VRAM via QueueGFXTransfersInList. It ORs bit 0x20000 into the request
+  dword at eStruct2035280+0x40 and dispatches via dispatch_801DA48 with the same mask, requesting the
+  HUD redraw. Finally it zeroes bytes eStruct2035280+0x18 and +0x19, likely gauge animation/flash counters,
+  so the gauge starts fresh.
+evidence:
+- method: assembly-reading
+  date: '2026-10-18'
+  detail: bl ClearCustGauge — gauge state reset before the redraw; bl QueueGFXTransfersInList with off_801DF60
+    — reloads gauge tile graphics to VRAM; SetRequestBits(0x20000) then dispatch(0x20000) on eStruct2035280
+    — HUD redraw request; strb 0 to +0x18/+0x19 of eStruct2035280 — clears gauge sub-state counters; Caller
+    battle_customGauge_EndTurn_8027D78 summary matches end-of-turn gauge teardown
+  refs:
+  - bn6f/asm/asm00_2.s:31269
+  - 0x08027D78 battle_customGauge_EndTurn_8027D78
+  - 0x08008D9C sub_8008D9C
+  - 0x080096E0 sub_80096E0
+  - 0x0801DF92 ClearCustGauge
+  - 0x08000B8E QueueGFXTransfersInList
+  - 0x0801BECC eStruct2035280_SetRequestBits_801BECC
+  reproduce: python3 tools/asmcat.py 0x0801DF0C
+  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
+    run wf investigate investigate-20261018-155607; its name was fixed mechanically by tools/investigate_land.py
+    style-fix (the run''s proposal broke the naming style)'
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- Contents of the graphics list at off_801DF60 not shown, so exact tile set queued is inferred
+- Meaning of bytes +0x18/+0x19 in eStruct2035280 unconfirmed
+sources:
+- wf investigate investigate-20261018-155607
+changes:
+- date: '2026-10-19'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 960a2fd2
+  tool: tools/symdoc.py
+- date: '2026-10-19'
+  what: rename sub_801DF0C -> battle_customGaugeResetForNewTurn
+  where: bn6f ffbdad58
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_801DF0C
