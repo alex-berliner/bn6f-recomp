@@ -956,8 +956,8 @@ def _complete(spec: ModelSpec, prompt: str, system: str, max_tokens: int, timeou
 
 
 def out_of_credits(problem: ToolMessage | None) -> bool:
-    """The provider refused: its credits are spent (HTTP 402)."""
-    return problem is not None and "HTTP 402" in problem
+    """The provider refused: its credits are spent (HTTP 402) or its daily rate limit is (HTTP 429, hours to wait)."""
+    return problem is not None and ("HTTP 402" in problem or "daily rate limit" in problem)
 
 
 def abandoned(problem: ToolMessage | None) -> bool:
